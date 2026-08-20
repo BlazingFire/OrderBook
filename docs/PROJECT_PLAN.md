@@ -63,7 +63,7 @@ before writing code in any future session.
 | Runtime | Node.js (LTS) | Single runtime for both panels, no internet needed after initial local install |
 | HTTP server | Express | Minimal, well understood, easy to serve a built SPA + REST endpoints |
 | Real-time sync | Socket.IO | Auto-reconnect, room support, works fine over raw LAN, easy pub/sub for "live updating" |
-| Database (Master only) | **PostgreSQL**, launched via `embedded-postgres` (bundled binaries, started/stopped by the Master process itself), accessed via **Knex.js** | Most powerful/scalable option (JSONB + GIN indexes, partitioning, real replication headroom) without asking a non-technical shop PC to run a separate installed service — the app starts its own local Postgres instance on launch, same "zero-config for the user" experience as SQLite would have given, see `docs/schema/00-overview.md` §1 |
+| Database (Master only) | **PostgreSQL**, launched via `embedded-postgres` (bundled binaries, started/stopped by the Master process itself), accessed via **Knex.js** | Most powerful/scalable option (JSONB + GIN indexes, partitioning, real replication headroom) without asking a non-technical shop PC to run a separate installed service — the app starts its own local Postgres instance on launch, same "zero-config for the user" experience as SQLite would have given, see `schema/00-overview.md` §1 |
 | File storage (Master only) | Local filesystem under a `data/uploads/` directory, referenced by path in SQLite | Simple, no blob-in-DB overhead |
 | Frontend | React + Vite, built to static assets and served by Express | Fast dev loop, but ships as plain static files — no runtime internet dependency |
 | Styling | Plain CSS / CSS modules, no CDN-hosted UI kit | Keeps the app fully offline-safe; visual polish is an explicit later pass |
@@ -196,8 +196,8 @@ edit:
 ## 7. Data Model (v1)
 
 Full column-level schema, SQL DDL, indexes, and the database-engine/scaling
-rationale live in [`docs/schema/`](docs/schema/00-overview.md) — start at
-`docs/schema/00-overview.md`. Summary of the tables defined there:
+rationale live in [`schema/`](./schema/00-overview.md) — start at
+`schema/00-overview.md`. Summary of the tables defined there:
 
 | Entity | Key fields |
 |---|---|
@@ -218,7 +218,7 @@ rationale live in [`docs/schema/`](docs/schema/00-overview.md) — start at
 duplicating the record when it's finalized, per the user's description ("move that
 lead to order tab"). A lead can hold multiple `lead_items` (multiple products per
 order), rather than one product per lead — see
-`docs/schema/03-leads-orders-inventory.md` for why.
+`schema/03-leads-orders-inventory.md` for why.
 
 ## 8. Real-Time Sync Contract (Socket.IO events, illustrative)
 
@@ -242,14 +242,48 @@ order), rather than one product per lead — see
   keep the transport layer abstracted enough to add TLS later if the user wants it
   for a multi-room/multi-floor deployment.
 
-## 10. Proposed Repo Structure
+## 10. Repo Structure
+
+Documentation and code are kept strictly separate: everything under `docs/` is
+prose, everything under `packages/` is code.
 
 ```
-/master        Master Panel server + its React frontend
-/office        Office Panel server + its React frontend
-/shared        Shared types, Socket.IO event contracts, the UDP discovery protocol
-/docs          This plan + any future design notes
+OrderBook/
+├── HANDOFF.md              Session context for resuming work (root by request)
+├── README.md               Short orientation + how to run
+├── package.json            npm workspaces root
+├── tsconfig.base.json      Shared TypeScript config all packages extend
+├── docs/                   ALL documentation
+│   ├── PROJECT_PLAN.md     This file — requirements, architecture, phased plan
+│   └── schema/             Database schema, table by table
+└── packages/               ALL code
+    ├── shared/             Types, Socket.IO event contract, UDP discovery protocol
+    ├── master/             Master Panel — server + React frontend
+    └── office/             Office Panel — server + React frontend
 ```
+
+Each package under `packages/` follows the same internal layout so navigating
+between them is predictable:
+
+```
+packages/<name>/
+├── package.json
+├── tsconfig.json
+├── src/                    Server-side TypeScript
+│   ├── config/             Environment/config loading and validation
+│   ├── db/                 (master only) Postgres lifecycle, Knex, migrations
+│   ├── repositories/       (master only) Data access — one module per table
+│   ├── services/           Business logic, transactions, orchestration
+│   ├── http/               Express app, routes, middleware
+│   ├── realtime/           Socket.IO server/client wiring
+│   ├── discovery/          UDP pairing protocol implementation
+│   └── lib/                Cross-cutting helpers (logging, errors, ids)
+└── web/                    React + Vite frontend, built to static assets
+```
+
+The layering rule: `http`/`realtime` handle transport only, `services` hold
+business rules, `repositories` are the only code that touches the database.
+Transport layers never issue queries directly.
 
 ## 11. Phased Build Plan
 

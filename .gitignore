@@ -1,0 +1,26 @@
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# Runtime data — Postgres cluster, uploaded images, local panel credentials.
+# Never committed: this is per-installation state, not source.
+data/
+*/data/
+
+# Local environment overrides
+.env
+.env.local
+*.local
+
+# Logs
+*.log
+npm-debug.log*
+logs/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

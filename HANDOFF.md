@@ -17,7 +17,7 @@ apps:
   orders. No database of its own — everything goes through the Master live.
 
 Full requirements, screen-by-screen flows, network pairing design, and the
-phased build plan: **`PROJECT_PLAN.md`** (repo root). Read that in full before
+phased build plan: **`docs/PROJECT_PLAN.md`**. Read that in full before
 touching architecture — this file summarizes it, PROJECT_PLAN.md is the source
 of truth.
 
@@ -41,7 +41,7 @@ Full database schema (every table, columns, indexes, and rationale):
 4. **Network pairing**: custom UDP broadcast discovery protocol (not mDNS —
    picked for reliability across mixed Windows/Linux LAN setups) with both
    an auto-discovery flow and a manual IP/ID/password fallback. Full protocol
-   in `PROJECT_PLAN.md` §4.
+   in `docs/PROJECT_PLAN.md` §4.
 5. **`leads` doubles as `orders`** via a `status` column (`new` → `verified` →
    `order` → `cancelled`) — not two separate tables — matching the user's
    description of "moving" a lead to the order tab, not copying it.
@@ -52,12 +52,12 @@ Full database schema (every table, columns, indexes, and rationale):
    npm workspaces monorepo — chosen for a "production-professional"
    architecture per the user's explicit request in this session, with shared
    types (entities, Socket.IO event contract, discovery protocol messages)
-   living in `/shared` so Master and Office can never drift out of sync on
+   living in `packages/shared` so Master and Office can never drift out of sync on
    the wire format.
 
 ## Open questions (still unresolved — confirm with the user before finalizing)
 
-From `PROJECT_PLAN.md` §12:
+From `docs/PROJECT_PLAN.md` §12:
 - Exact product attribute set for ceramics (size, finish/glaze, series, box
   quantity, price tiers, etc.) beyond the placeholder columns already in the
   schema — the `parameters` JSONB column is the escape hatch until this is
@@ -71,27 +71,38 @@ From `PROJECT_PLAN.md` §12:
 
 ## Repo layout
 
+Docs and code are strictly separated — prose under `docs/`, code under
+`packages/`:
+
 ```
 OrderBook/
-├── HANDOFF.md          this file
-├── PROJECT_PLAN.md      full requirements + architecture + phased plan
+├── HANDOFF.md              this file (kept at root by user request)
 ├── README.md
-├── docs/schema/          full DB schema, table by table
-├── shared/               TS types, Socket.IO event contract, discovery protocol (npm workspace)
-├── master/               Master Panel server + frontend (npm workspace)
-└── office/               Office Panel server + frontend (npm workspace)
+├── package.json            npm workspaces root
+├── tsconfig.base.json
+├── docs/
+│   ├── PROJECT_PLAN.md      full requirements + architecture + phased plan
+│   └── schema/              full DB schema, table by table
+└── packages/
+    ├── shared/              TS types, Socket.IO event contract, discovery protocol
+    ├── master/              Master Panel server + React frontend
+    └── office/              Office Panel server + React frontend
 ```
 
-(`master/` and `office/` are created as part of Phase 1 scaffolding — check
-`git log` / the working tree for what actually exists if this file is stale
-about them.)
+Each package uses the same internal layout (`src/config`, `src/services`,
+`src/repositories`, `src/http`, `src/realtime`, `src/discovery`, `web/`) —
+see `docs/PROJECT_PLAN.md` §10 for the layering rule (transport never queries
+the database directly; only `repositories/` does).
+
+Package contents land incrementally during Phase 1 — check `git log` or the
+working tree for what actually exists if this section reads stale.
 
 ## Status as of this session
 
 - Requirements gathering and full architecture/schema design: **done**
-  (`PROJECT_PLAN.md`, `docs/schema/`).
+  (`docs/PROJECT_PLAN.md`, `docs/schema/`).
 - Database engine decision (Postgres over SQLite): **done**, user confirmed.
-- Phase 1 implementation ("working condition" build per `PROJECT_PLAN.md`
+- Phase 1 implementation ("working condition" build per `docs/PROJECT_PLAN.md`
   §11): **starting now, in this same session** — check the git log after this
   point in the file for what actually landed, since this paragraph will not
   be kept up to date turn-by-turn.
@@ -103,5 +114,5 @@ about them.)
 - Phase 1 is explicitly scoped as **working, not polished** — the user has
   deferred visual/branding polish to Phase 2. Don't gold-plate UI in Phase 1.
 - Any architecture decision that contradicts or extends what's listed above
-  should update this file and/or `PROJECT_PLAN.md`, not just live in chat
+  should update this file and/or `docs/PROJECT_PLAN.md`, not just live in chat
   history.

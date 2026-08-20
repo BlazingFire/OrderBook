@@ -1,0 +1,35 @@
+{
+  "name": "orderbook",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Offline LAN order & inventory management for a ceramic company",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "packages/shared",
+    "packages/master",
+    "packages/office"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace shared && npm run build --workspace master && npm run build --workspace office",
+    "build:shared": "npm run build --workspace shared",
+    "dev:master": "npm run dev --workspace master",
+    "dev:office": "npm run dev --workspace office",
+    "start:master": "npm run start --workspace master",
+    "start:office": "npm run start --workspace office",
+    "migrate": "npm run migrate --workspace master",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "@types/node": "^22.9.0",
+    "eslint": "^9.15.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.15.0"
+  }
+}
