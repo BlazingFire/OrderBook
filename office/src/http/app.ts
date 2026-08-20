@@ -100,6 +100,9 @@ export function createApp(): Express {
     forward(res, 'product:update', { id: req.params.id, input: req.body }),
   );
 
+  app.post('/api/stock/inbound', (req, res) => forward(res, 'stock:inbound', req.body));
+  app.post('/api/stock/adjust', (req, res) => forward(res, 'stock:adjust', req.body));
+
   app.post('/api/leads', (req, res) => forward(res, 'lead:create', req.body));
   app.post('/api/leads/:id/status', (req, res) =>
     forward(res, 'lead:setStatus', { leadId: req.params.id, status: req.body?.status }),

@@ -5,10 +5,18 @@ import type { SyncSnapshot } from '@orderbook/shared';
 
 import { formatMoney } from '../format';
 import { Field } from '../components/Field';
+import { StockCell } from '../components/StockCell';
 
 export function CatalogScreen({ snapshot, view }: { snapshot: SyncSnapshot; view: 'parties' | 'products' }) {
   const [search, setSearch] = useState('');
   const term = search.trim().toLowerCase();
+
+  // Stock is looked up per product so the catalogue can show availability
+  // without a second request — it arrives in the same snapshot.
+  const stockByProduct = useMemo(
+    () => new Map(snapshot.stock.map((level) => [level.productId, level])),
+    [snapshot.stock],
+  );
 
   const parties = useMemo(
     () =>
@@ -75,6 +83,7 @@ export function CatalogScreen({ snapshot, view }: { snapshot: SyncSnapshot; view
               <th>Size</th>
               <th>Finish</th>
               <th>Price / box</th>
+              <th>In stock</th>
             </tr>
           </thead>
           <tbody>
@@ -86,6 +95,9 @@ export function CatalogScreen({ snapshot, view }: { snapshot: SyncSnapshot; view
                 <td>{product.size ?? '—'}</td>
                 <td>{product.finish ?? '—'}</td>
                 <td>{formatMoney(product.pricePerBox)}</td>
+                <td>
+                  <StockCell level={stockByProduct.get(product.id)} />
+                </td>
               </tr>
             ))}
           </tbody>

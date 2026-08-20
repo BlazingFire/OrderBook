@@ -18,6 +18,7 @@ export function DashboardScreen({ summary, panels }: Props) {
         <Stat label="Orders" value={summary?.orderCount} />
         <Stat label="Parties" value={summary?.partyCount} />
         <Stat label="Products" value={summary?.productCount} />
+        <Stat label="Low stock" value={summary?.lowStockCount} alert={(summary?.lowStockCount ?? 0) > 0} />
       </div>
 
       <div className="card" style={{ marginTop: 16 }}>
@@ -41,11 +42,21 @@ export function DashboardScreen({ summary, panels }: Props) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: number | undefined }) {
+function Stat({
+  label,
+  value,
+  alert = false,
+}: {
+  label: string;
+  value: number | undefined;
+  alert?: boolean;
+}) {
   return (
     <div className="card" style={{ marginBottom: 0 }}>
       <div className="muted">{label}</div>
-      <div style={{ fontSize: 30, fontWeight: 600 }}>{value ?? '—'}</div>
+      <div style={{ fontSize: 30, fontWeight: 600, color: alert ? 'var(--danger)' : undefined }}>
+        {value ?? '—'}
+      </div>
     </div>
   );
 }

@@ -119,19 +119,38 @@ working tree for what actually exists if this section reads stale.
     dashboard with no reload → Master restart with automatic Office reconnect
     and data intact.
 
-**What Phase 1 deliberately does not include** (deferred per the user's "make
-it beautiful later" instruction and `docs/PROJECT_PLAN.md` §11 Phase 2): visual
-polish, product image upload UI, inventory stock screens (tables exist, no UI),
-reporting, per-user roles inside the Office Panel, and backup/restore tooling.
+- **Test suite: done.** ~200 tests (`npm test`). Unit tests run anywhere;
+  integration suites drive a real PostgreSQL cluster in a temp directory and
+  skip automatically when the binaries are missing or the process is root. CI
+  runs lint + typecheck + tests + build on every push.
+- **Phase 2 — inventory stock tracking: done and verified in the browser.**
+  Ledger + snapshot, stock-in, physical-count adjustment, reorder levels and
+  low-stock flagging, automatic deduction on lead → order inside the same
+  transaction as the status change, and restoration on cancellation. Stock
+  shows on the Master's Inventory tab and on the Office Panel's product list
+  and Add Lead screen, updating live.
 
-### Known gaps worth picking up next
+  **Policy worth knowing before changing it:** an order is never blocked by
+  insufficient stock — a dealer routinely sells against an undelivered factory
+  order, so stock may go negative and the shortfall is surfaced instead.
+
+### Still to do in Phase 2
+
+The user was asked to prioritise and chose inventory first. Remaining, roughly
+in the order the plan lists them:
+- Visual polish / branding pass (the user's "make it beautiful later").
+- Reporting/analytics and printable order sheets.
+- Product images upload, richer product parameters, bulk import from Excel/CSV.
+- Multi-user roles/permissions within the Office Panel.
+- Backup/restore tooling.
+
+### Known gaps
 
 - `panel:revoked` is defined in the socket contract and handled by the Office
   Panel, but the Master does not emit it yet — a revoked panel currently finds
   out on its next reconnect attempt rather than immediately.
-- No automated test suite yet; verification so far has been manual/browser
-  driven. Worth adding before Phase 2 changes start landing.
 - Product images: schema and static route exist, no upload UI.
+- No frontend component tests; UI verification is browser-driven.
 
 ## Working agreements for this repo
 

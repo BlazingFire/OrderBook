@@ -2,10 +2,10 @@
 
 Covers the actual business workflow: Add Lead → verify → promote to Order
 (`PROJECT_PLAN.md` §6.3–6.4), plus the inventory tables that back the "inventory
-management" half of the product brief. Inventory tables are schema-ready in
-Phase 1 but the stock-tracking *UI* is Phase 2 (`PROJECT_PLAN.md` §11) — having the
-tables now avoids a painful migration once orders already exist. PostgreSQL DDL —
-see `00-overview.md` for the type/convention rationale.
+management" half of the product brief. Inventory is **implemented as of Phase 2**:
+stock moves automatically when a lead becomes an order, and is restored if that
+order is cancelled. PostgreSQL DDL — see `00-overview.md` for the
+type/convention rationale.
 
 ## `leads` (a lead *is* an order — status carries the transition)
 
@@ -120,3 +120,32 @@ answer, and a bug that corrupts the snapshot can be fixed by replaying the ledge
 instead of losing history. Once `stock_movements` grows large, it's also a natural
 candidate for the date-range **partitioning** described in
 `05-scaling-and-operations.md` — Postgres supports this natively.
+
+### How stock actually moves (Phase 2 behaviour)
+
+| Event | Movement written | Effect |
+|---|---|---|
+| Stock arrives from the factory | `inbound`, `reference_type = 'purchase'` | Adds boxes |
+| Physical count corrects the figure | `adjustment`, `reference_type = 'manual'` | Signed difference between counted and recorded |
+| Lead becomes an **order** | `outbound` per line, `reference_type = 'order'`, `reference_id = leads.id` | Subtracts the ordered boxes |
+| An **order** is cancelled | `inbound` per line, referencing the same order | Returns the boxes to stock |
+
+Two rules the implementation depends on:
+
+- **Movements are written in the same transaction as the lead status change.**
+  An order that saved without reducing stock (or the reverse) would leave the
+  two permanently disagreeing.
+- **The ledger is the idempotency check.** Before deducting, the service asks
+  whether an `outbound` movement already exists for that lead; before restoring,
+  whether an `inbound` one does. A status that reaches `order` twice therefore
+  cannot double-count.
+
+**Stock is allowed to go negative.** A ceramic dealer routinely sells against a
+factory order that has not arrived, so an order is never blocked by insufficient
+stock — the negative figure is surfaced in both panels as a reorder signal
+instead. `quantity_boxes` is the authoritative quantity; `quantity_sqft` mirrors
+it using the product's `box_coverage_sqft` at the time of each movement.
+
+`stock_movements.note` (added in migration `20260201000000_stock_movement_notes`)
+records *why* a manual movement happened — "breakage", "factory lot A-77" —
+which is the whole value of keeping a ledger rather than just a running total.

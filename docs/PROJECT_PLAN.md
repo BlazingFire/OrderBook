@@ -64,13 +64,13 @@ before writing code in any future session.
 | HTTP server | Express | Minimal, well understood, easy to serve a built SPA + REST endpoints |
 | Real-time sync | Socket.IO | Auto-reconnect, room support, works fine over raw LAN, easy pub/sub for "live updating" |
 | Database (Master only) | **PostgreSQL**, launched via `embedded-postgres` (bundled binaries, started/stopped by the Master process itself), accessed via **Knex.js** | Most powerful/scalable option (JSONB + GIN indexes, partitioning, real replication headroom) without asking a non-technical shop PC to run a separate installed service — the app starts its own local Postgres instance on launch, same "zero-config for the user" experience as SQLite would have given, see `schema/00-overview.md` §1 |
-| File storage (Master only) | Local filesystem under a `data/uploads/` directory, referenced by path in SQLite | Simple, no blob-in-DB overhead |
+| File storage (Master only) | Local filesystem under a `data/uploads/` directory, referenced by path in the database | Simple, no blob-in-DB overhead |
 | Frontend | React + Vite, built to static assets and served by Express | Fast dev loop, but ships as plain static files — no runtime internet dependency |
 | Styling | Plain CSS / CSS modules, no CDN-hosted UI kit | Keeps the app fully offline-safe; visual polish is an explicit later pass |
 | Discovery protocol | UDP broadcast on the LAN subnet (custom, tiny JSON messages) | mDNS libraries are flaky across mixed Windows/Linux LAN setups; a broadcast ping/pong is simpler to reason about and debug |
-| Auth | Locally generated credentials (ID/password) checked against the Master's SQLite; session cookie per browser | No external auth provider is possible/allowed |
+| Auth | Locally generated credentials (ID/password) checked against the Master's database; session cookie per browser | No external auth provider is possible/allowed |
 
-Both panels share a `/shared` package (types, the discovery protocol, and the
+Both panels share a `shared/` package (types, the discovery protocol, and the
 Socket.IO event contract) so Master and Office never drift out of sync on the wire
 format.
 
@@ -300,10 +300,20 @@ Transport layers never issue queries directly.
 8. Live sync verified end-to-end between two PCs (or two processes on one dev
    machine bound to different ports, simulating two PCs) on a LAN.
 
-**Phase 2 (later, explicitly deferred by the user):**
+**Phase 2 (in progress):**
+
+Done:
+- **Inventory stock tracking** — append-only movement ledger plus a derived
+  snapshot, stock-in, physical-count adjustments, reorder levels and low-stock
+  flagging, with automatic deduction when a lead becomes an order and
+  restoration when an order is cancelled. Stock is visible on both panels and
+  updates live. See `schema/03-leads-orders-inventory.md` for the rules.
+- **Automated test suite** — unit and integration tests, plus CI.
+
+Still to do:
 - Visual polish / branding pass.
-- Richer product parameter schema, bulk import.
-- Reporting/analytics, inventory stock levels tied to orders.
+- Reporting/analytics and printable order sheets.
+- Product images upload, richer product parameter schema, bulk import.
 - Multi-user roles/permissions within Office Panel.
 - Backup/restore tooling for the Master's PostgreSQL data directory + uploads.
 

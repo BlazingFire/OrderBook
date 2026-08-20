@@ -11,6 +11,7 @@ import type { LeadItemInput, Party, Product, SyncSnapshot } from '@orderbook/sha
 
 import { api } from '../api';
 import { Field } from '../components/Field';
+import { StockCell } from '../components/StockCell';
 import { formatMoney } from '../format';
 
 interface Props {
@@ -70,6 +71,21 @@ export function AddLeadScreen({ snapshot, onSaved, onCancel }: Props) {
     (sum, item) => sum + Math.round((item.unitPrice ?? 0) * (item.quantityBoxes ?? 0)),
     0,
   );
+
+  const stockByProduct = useMemo(
+    () => new Map(snapshot.stock.map((level) => [level.productId, level])),
+    [snapshot.stock],
+  );
+
+  /**
+   * Lines whose quantity exceeds what is on the floor. Shown as a warning, not
+   * a blocker — the order is still allowed, because selling against an
+   * incoming factory delivery is routine.
+   */
+  const shortLines = items.filter((item) => {
+    const available = stockByProduct.get(item.productId)?.quantityBoxes;
+    return available !== undefined && (item.quantityBoxes ?? 0) > available;
+  });
 
   function addProduct(product: Product) {
     setItems((current) => [
@@ -209,6 +225,7 @@ export function AddLeadScreen({ snapshot, onSaved, onCancel }: Props) {
             <thead>
               <tr>
                 <th>Product</th>
+                <th style={{ width: 110 }}>In stock</th>
                 <th style={{ width: 110 }}>Boxes</th>
                 <th style={{ width: 140 }}>Price / box</th>
                 <th style={{ width: 120 }}>Total</th>
@@ -221,6 +238,9 @@ export function AddLeadScreen({ snapshot, onSaved, onCancel }: Props) {
                   <td>
                     {item.productName}
                     <div className="muted">{item.productCode}</div>
+                  </td>
+                  <td>
+                    <StockCell level={stockByProduct.get(item.productId)} />
                   </td>
                   <td>
                     <input
@@ -287,6 +307,9 @@ export function AddLeadScreen({ snapshot, onSaved, onCancel }: Props) {
                     </div>
                   </td>
                   <td>{formatMoney(product.pricePerBox)}</td>
+                  <td>
+                    <StockCell level={stockByProduct.get(product.id)} />
+                  </td>
                   <td style={{ textAlign: 'right' }}>
                     <button className="secondary" onClick={() => addProduct(product)}>
                       Add
@@ -329,6 +352,16 @@ export function AddLeadScreen({ snapshot, onSaved, onCancel }: Props) {
             />
           )}
         </Field>
+
+        {shortLines.length > 0 && (
+          <div className="notice">
+            <strong>Not all of this is in stock.</strong>
+            <div className="muted" style={{ marginTop: 4 }}>
+              {shortLines.map((item) => item.productName).join(', ')} — the lead can still be saved,
+              but these will need to be ordered from the factory.
+            </div>
+          </div>
+        )}
 
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <div style={{ fontSize: 18 }}>

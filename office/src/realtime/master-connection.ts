@@ -13,6 +13,7 @@ import type {
   ClientToServerEvents,
   CommandResult,
   DataChangedEvent,
+  InventoryStockLevel,
   Lead,
   Party,
   Product,
@@ -196,6 +197,13 @@ class MasterConnection extends EventEmitter {
       case 'product_category':
         this.snapshot.categories = upsert(this.snapshot.categories, event.payload as ProductCategory);
         break;
+      case 'stock':
+        this.snapshot.stock = upsertBy(
+          this.snapshot.stock,
+          event.payload as InventoryStockLevel,
+          'productId',
+        );
+        break;
       default:
         break;
     }
@@ -203,7 +211,12 @@ class MasterConnection extends EventEmitter {
 }
 
 function upsert<T extends { id: string }>(list: T[], item: T): T[] {
-  const index = list.findIndex((entry) => entry.id === item.id);
+  return upsertBy(list, item, 'id');
+}
+
+/** Stock rows are keyed by productId rather than an `id` of their own. */
+function upsertBy<T, K extends keyof T>(list: T[], item: T, key: K): T[] {
+  const index = list.findIndex((entry) => entry[key] === item[key]);
   if (index === -1) return [item, ...list];
 
   const next = [...list];

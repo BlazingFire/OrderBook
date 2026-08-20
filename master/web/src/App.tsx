@@ -16,13 +16,14 @@ import type {
 import { api } from './api';
 import { DashboardScreen } from './screens/DashboardScreen';
 import { FirstRunScreen } from './screens/FirstRunScreen';
+import { InventoryScreen } from './screens/InventoryScreen';
 import { OrdersScreen } from './screens/OrdersScreen';
 import { PanelsScreen } from './screens/PanelsScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { SignInScreen } from './screens/SignInScreen';
 
 type Phase = 'loading' | 'first-run' | 'signed-out' | 'ready';
-type Tab = 'dashboard' | 'panels' | 'orders' | 'settings';
+type Tab = 'dashboard' | 'panels' | 'orders' | 'inventory' | 'settings';
 
 export function App() {
   const [phase, setPhase] = useState<Phase>('loading');
@@ -67,7 +68,10 @@ export function App() {
     socket.on('panels:changed', setPanels);
     socket.on('dashboard:changed', setSummary);
     socket.on('data:changed', (event) => {
-      if (event.entity === 'lead') setDataRevision((value) => value + 1);
+      // Stock changes when an order is placed, so both views refresh together.
+      if (event.entity === 'lead' || event.entity === 'stock') {
+        setDataRevision((value) => value + 1);
+      }
     });
 
     return () => {
@@ -126,6 +130,10 @@ export function App() {
         <TabButton current={tab} value="orders" onSelect={setTab}>
           Leads &amp; Orders
         </TabButton>
+        <TabButton current={tab} value="inventory" onSelect={setTab}>
+          Inventory
+          {summary && summary.lowStockCount > 0 ? ` (${summary.lowStockCount} low)` : ''}
+        </TabButton>
         <TabButton current={tab} value="settings" onSelect={setTab}>
           Settings
         </TabButton>
@@ -134,6 +142,7 @@ export function App() {
       {tab === 'dashboard' && <DashboardScreen summary={summary} panels={panels} />}
       {tab === 'panels' && <PanelsScreen panels={panels} onRefresh={refreshPanels} />}
       {tab === 'orders' && <OrdersScreen revision={dataRevision} />}
+      {tab === 'inventory' && <InventoryScreen revision={dataRevision} />}
       {tab === 'settings' && <SettingsScreen />}
     </div>
   );

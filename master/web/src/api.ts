@@ -2,6 +2,7 @@
 
 import type {
   DashboardSummary,
+  InventoryStockLevel,
   Lead,
   LeadInput,
   LeadStatus,
@@ -13,6 +14,7 @@ import type {
   Product,
   ProductCategory,
   ProductInput,
+  StockMovement,
   StorageUsage,
   User,
 } from '@orderbook/shared';
@@ -81,6 +83,33 @@ export const api = {
   createProduct: (input: ProductInput) =>
     request<Product>('/api/products', { method: 'POST', body: JSON.stringify(input) }),
   categories: () => request<{ categories: ProductCategory[] }>('/api/categories'),
+
+  stock: (options: { search?: string; lowOnly?: boolean } = {}) => {
+    const params = new URLSearchParams();
+    if (options.search) params.set('search', options.search);
+    if (options.lowOnly) params.set('lowOnly', 'true');
+    const query = params.toString();
+    return request<{ stock: InventoryStockLevel[] }>(`/api/stock${query ? `?${query}` : ''}`);
+  },
+  stockMovements: (productId?: string) =>
+    request<{ movements: StockMovement[] }>(
+      `/api/stock/movements${productId ? `?productId=${productId}` : ''}`,
+    ),
+  stockInbound: (productId: string, quantityBoxes: number, note?: string) =>
+    request<InventoryStockLevel>('/api/stock/inbound', {
+      method: 'POST',
+      body: JSON.stringify({ productId, quantityBoxes, note }),
+    }),
+  stockAdjust: (productId: string, quantityBoxes: number, note?: string) =>
+    request<InventoryStockLevel>('/api/stock/adjust', {
+      method: 'POST',
+      body: JSON.stringify({ productId, quantityBoxes, note }),
+    }),
+  setReorderLevel: (productId: string, reorderLevel: number | null) =>
+    request<InventoryStockLevel>('/api/stock/reorder-level', {
+      method: 'POST',
+      body: JSON.stringify({ productId, reorderLevel }),
+    }),
 
   leads: (statuses?: LeadStatus[]) =>
     request<Paginated<Lead>>(`/api/leads${statuses?.length ? `?statuses=${statuses.join(',')}` : ''}`),

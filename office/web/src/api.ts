@@ -4,6 +4,7 @@
  */
 
 import type {
+  InventoryStockLevel,
   Lead,
   LeadInput,
   LeadStatus,
@@ -76,6 +77,12 @@ export const api = {
     request<Party>('/api/parties', { method: 'POST', body: JSON.stringify(input) }),
   createProduct: (input: ProductInput) =>
     request<Product>('/api/products', { method: 'POST', body: JSON.stringify(input) }),
+  stockInbound: (productId: string, quantityBoxes: number, note?: string) =>
+    request<InventoryStockLevel>('/api/stock/inbound', {
+      method: 'POST',
+      body: JSON.stringify({ productId, quantityBoxes, note }),
+    }),
+
   createLead: (input: LeadInput) =>
     request<Lead>('/api/leads', { method: 'POST', body: JSON.stringify(input) }),
   setLeadStatus: (id: string, status: LeadStatus) =>
