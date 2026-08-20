@@ -38,6 +38,12 @@ Full database schema (every table, columns, indexes, and rationale):
    the Master server) so the shop-floor operator never installs or manages a
    database service — same "just works" experience SQLite would have given.
 3. **Query layer: Knex.js** talking to Postgres via the `pg` driver.
+   The PostgreSQL **server binaries ship with the app** as per-platform
+   optional dependencies (`@embedded-postgres/<platform>`), so no separate
+   database install is needed. That distribution contains server binaries only
+   — `initdb`, `pg_ctl`, `postgres`. There is no `psql`, so anything that needs
+   to talk to the database must use the `pg` driver, never a client
+   executable.
 4. **Network pairing**: custom UDP broadcast discovery protocol (not mDNS —
    picked for reliability across mixed Windows/Linux LAN setups) with both
    an auto-discovery flow and a manual IP/ID/password fallback. Full protocol
@@ -151,11 +157,27 @@ in the order the plan lists them:
   out on its next reconnect attempt rather than immediately.
 - Product images: schema and static route exist, no upload UI.
 - No frontend component tests; UI verification is browser-driven.
+- The bundled PostgreSQL packages are published only as `beta` versions
+  (pinned to `17.10.0-beta.17`). The binaries themselves are official
+  PostgreSQL 17.10 builds and the beta JS wrapper is not used at runtime, but
+  the version pin is worth revisiting if a stable line is published.
+
+### Traps worth knowing
+
+- **`shared/` is consumed as compiled output**, not source. Anything importing
+  `@orderbook/shared` fails on a clean checkout until `tsc` has run, which is
+  why `prepare` and the `pre*` scripts exist. Do not remove them.
+- **A PostgreSQL major-version change orphans the data directory.** The Master
+  refuses to start and explains how to migrate, rather than deleting anything
+  (`assertClusterVersionMatches`). The *test* helper does the opposite and
+  rebuilds its throwaway cluster, since that data is disposable.
 
 ## Working agreements for this repo
 
-- Branch: `claude/ceramic-offline-web-app-6wjqq5` — all work happens here per
-  the session's git instructions.
+- **Branching:** `main` is never pushed to directly. All work lands on `dev`,
+  and reaches `main` only through a pull request.
+- **The owner's PC (`C:\Users\Z\Desktop\OrderBook`) is the working copy.**
+  Changes are pulled from `dev` there.
 - Phase 1 is explicitly scoped as **working, not polished** — the user has
   deferred visual/branding polish to Phase 2. Don't gold-plate UI in Phase 1.
 - Any architecture decision that contradicts or extends what's listed above

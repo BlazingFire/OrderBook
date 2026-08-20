@@ -34,8 +34,9 @@ office/     Office Panel — server (src/) + React frontend (web/)
 
 ## Running it
 
-Requires Node.js 20+ and PostgreSQL binaries available on the machine (the
-Master starts and manages its own database instance — nothing to configure).
+Node.js 20+ is the only prerequisite. PostgreSQL ships with the app — `npm
+install` pulls the server binaries for your platform, and the Master starts and
+stops its own private instance on loopback. Nothing to install or configure.
 
 ```bash
 npm install
@@ -46,11 +47,24 @@ npm run start:office   # on each Office PC → http://localhost:4200
 ```
 
 For development, `npm run dev:master` and `npm run dev:office` run the servers
-with reload; the frontends have their own Vite dev servers (`npm run dev
---workspace @orderbook/master-web`) that proxy to them.
+with reload. If you are editing `shared/`, run `npm run dev:shared` alongside
+them so its output recompiles as you go. The frontends have their own Vite dev
+servers (`npm run dev --workspace @orderbook/master-web`) that proxy to them.
 
-The Master must not be run as root — PostgreSQL refuses to start that way. Use a
-normal user account, or set `DATABASE_URL` to point at an existing database.
+Notes:
+
+- **Do not run the Master as root/Administrator** — PostgreSQL refuses to start
+  that way. Use a normal user account.
+- **`shared/` must be compiled** before anything can import it. The `prepare`
+  and `pre*` scripts handle this automatically; `npm run build:shared` does it
+  by hand if you ever need to.
+- **To use an existing PostgreSQL server** instead of the bundled one, set
+  `DATABASE_URL`. To point at a different set of binaries, set
+  `ORDERBOOK_PG_BIN` to a directory containing `initdb` and `pg_ctl`.
+- **Upgrading across a PostgreSQL major version** (e.g. bundled 17 → 18) cannot
+  reuse an existing data directory. The Master detects this and stops with an
+  explanation rather than touching your data; migrate with `pg_upgrade` or a
+  dump/restore, or pin the old version via `ORDERBOOK_PG_BIN`.
 
 ## First run
 

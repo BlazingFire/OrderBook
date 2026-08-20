@@ -17,6 +17,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import pg from 'pg';
 
 const execFileAsync = promisify(execFile);
 
@@ -74,6 +75,12 @@ export async function startTestPostgres(): Promise<void> {
 
   await fs.mkdir(SOCKET_DIR, { recursive: true });
 
+  // The test cluster is disposable, so a major-version mismatch (after the
+  // bundled PostgreSQL is upgraded, say) is resolved by rebuilding it rather
+  // than failing. Production takes the opposite path and refuses to touch the
+  // data directory — see assertClusterVersionMatches in postgres-server.ts.
+  await discardClusterIfVersionDiffers(binDir);
+
   if (!existsSync(path.join(CLUSTER_DIR, 'PG_VERSION'))) {
     const pwfile = path.join(CLUSTER_ROOT, 'pw.tmp');
     await fs.writeFile(pwfile, PASSWORD, { mode: 0o600 });
@@ -103,7 +110,7 @@ export async function startTestPostgres(): Promise<void> {
     ]);
   }
 
-  await ensureDatabase(binDir);
+  await ensureDatabase();
   started = true;
 }
 
@@ -128,23 +135,46 @@ async function isRunning(binDir: string): Promise<boolean> {
   }
 }
 
-async function ensureDatabase(binDir: string): Promise<void> {
-  const psql = path.join(binDir, binName('psql'));
-  const args = [
-    '--host', process.platform === 'win32' ? '127.0.0.1' : SOCKET_DIR,
-    '--port', String(PORT),
-    '--username', USER,
-    '--no-password',
-    '--dbname', 'postgres',
-    '--tuples-only', '--no-align',
-  ];
-  const env = { ...process.env, PGPASSWORD: PASSWORD };
+async function ensureDatabase(): Promise<void> {
+  // Uses the pg driver rather than psql: the bundled PostgreSQL distribution
+  // ships server binaries only, so no client executable exists on disk.
+  const client = new pg.Client({
+    host: '127.0.0.1',
+    port: PORT,
+    user: USER,
+    password: PASSWORD,
+    database: 'postgres',
+  });
 
-  const { stdout } = await execFileAsync(psql, [
-    ...args, '--command', `SELECT 1 FROM pg_database WHERE datname = '${DATABASE}'`,
-  ], { env });
-
-  if (stdout.trim() !== '1') {
-    await execFileAsync(psql, [...args, '--command', `CREATE DATABASE ${DATABASE}`], { env });
+  await client.connect();
+  try {
+    const existing = await client.query('SELECT 1 FROM pg_database WHERE datname = $1', [DATABASE]);
+    if (!existing.rowCount) await client.query(`CREATE DATABASE "${DATABASE}"`);
+  } finally {
+    await client.end();
   }
+}
+
+/** Wipes the throwaway cluster when it was built by a different major version. */
+async function discardClusterIfVersionDiffers(binDir: string): Promise<void> {
+  const versionFile = path.join(CLUSTER_DIR, 'PG_VERSION');
+  if (!existsSync(versionFile)) return;
+
+  const clusterVersion = (await fs.readFile(versionFile, 'utf8')).trim();
+
+  let serverVersion: string | null = null;
+  try {
+    const { stdout } = await execFileAsync(path.join(binDir, binName('postgres')), ['--version']);
+    serverVersion = /PostgreSQL\)?\s+(\d+)/i.exec(stdout)?.[1] ?? null;
+  } catch {
+    return;
+  }
+
+  if (!serverVersion || serverVersion === clusterVersion) return;
+
+  // Stop whatever may still be running against the old cluster first.
+  await execFileAsync(path.join(binDir, binName('pg_ctl')), [
+    '--pgdata', CLUSTER_DIR, '--mode', 'immediate', '--wait', 'stop',
+  ]).catch(() => {});
+  await fs.rm(CLUSTER_DIR, { recursive: true, force: true });
 }

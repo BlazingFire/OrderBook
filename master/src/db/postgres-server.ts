@@ -18,6 +18,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { randomBytes } from 'node:crypto';
+import pg from 'pg';
 
 import { config } from '../config/index.js';
 import { createLogger } from '../lib/logger.js';
@@ -68,8 +69,10 @@ function resolveBinDir(): string {
   }
 
   throw new Error(
-    'Could not locate PostgreSQL binaries. Install the bundled server, or set ORDERBOOK_PG_BIN ' +
-      'to a directory containing initdb and pg_ctl, or set DATABASE_URL to use an existing server.',
+    'Could not locate PostgreSQL binaries. They normally ship with the app via the ' +
+      '@embedded-postgres package for this platform — reinstalling dependencies (npm install) ' +
+      'usually fixes this. Otherwise set ORDERBOOK_PG_BIN to a directory containing initdb and ' +
+      'pg_ctl, or set DATABASE_URL to use an existing PostgreSQL server.',
   );
 }
 
@@ -104,6 +107,48 @@ function assertNotRoot(): void {
   }
 }
 
+/**
+ * PostgreSQL refuses to open a data directory written by a different major
+ * version, and says so only through a terse pg_ctl failure. That situation is
+ * reachable in production — upgrading the app can change which bundled major
+ * ships with it — so it is detected up front and explained, rather than
+ * surfacing as "Command failed: pg_ctl" with the shop's order data apparently
+ * unreachable.
+ *
+ * Nothing is deleted automatically: the existing data directory is the
+ * business's records, and recovering it needs `pg_upgrade` or a dump/restore,
+ * not a silent wipe.
+ */
+async function assertClusterVersionMatches(binDir: string, clusterDir: string): Promise<void> {
+  const versionFile = path.join(clusterDir, 'PG_VERSION');
+  if (!existsSync(versionFile)) return; // First run — nothing to compare against.
+
+  const clusterVersion = (await fs.readFile(versionFile, 'utf8')).trim();
+  const serverVersion = await readServerMajorVersion(binDir);
+  if (!serverVersion || clusterVersion === serverVersion) return;
+
+  throw new Error(
+    `The existing database was created by PostgreSQL ${clusterVersion}, but this ` +
+      `installation ships PostgreSQL ${serverVersion}. PostgreSQL cannot open a data ` +
+      `directory from a different major version.\n\n` +
+      `Your data is intact at ${clusterDir} — nothing has been changed. To continue, either:\n` +
+      `  • install PostgreSQL ${clusterVersion} and set ORDERBOOK_PG_BIN to its bin directory, or\n` +
+      `  • migrate the data with pg_upgrade, or restore a dump into the new version.`,
+  );
+}
+
+/** Major version of the server binaries, e.g. "17". Null if it cannot be read. */
+async function readServerMajorVersion(binDir: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync(path.join(binDir, binName('postgres')), ['--version']);
+    // "postgres (PostgreSQL) 17.10" → "17"
+    const match = /PostgreSQL\)?\s+(\d+)/i.exec(stdout);
+    return match?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export interface PostgresServerHandle {
   connectionUrl: string;
   stop(): Promise<void>;
@@ -129,9 +174,11 @@ export async function startPostgres(): Promise<PostgresServerHandle> {
   const socketDir = path.join(config.dataDir, 'pg-socket');
   await fs.mkdir(socketDir, { recursive: true });
 
+  await assertClusterVersionMatches(binDir, clusterDir);
+
   const password = await ensureCluster(binDir, clusterDir);
   await startCluster(binDir, clusterDir, socketDir);
-  await ensureApplicationDatabase(binDir, socketDir, password);
+  await ensureApplicationDatabase(password);
 
   const connectionUrl = buildConnectionUrl(password, config.database.database);
 
@@ -242,42 +289,35 @@ async function isClusterRunning(binDir: string, clusterDir: string): Promise<boo
 
 /**
  * `initdb` creates a database named after the superuser; the application
- * database is created separately so it can be dropped/restored independently.
+ * database is created separately so it can be dropped or restored
+ * independently of the cluster.
+ *
+ * Uses the `pg` driver rather than shelling out to `psql`: the bundled
+ * PostgreSQL distribution ships server binaries only (initdb, pg_ctl,
+ * postgres), so assuming a client binary on disk would break the very
+ * deployment this is meant to support.
  */
-async function ensureApplicationDatabase(
-  binDir: string,
-  socketDir: string,
-  password: string,
-): Promise<void> {
-  const psql = path.join(binDir, binName('psql'));
-  const baseArgs = [
-    '--host',
-    process.platform === 'win32' ? '127.0.0.1' : socketDir,
-    '--port',
-    String(config.database.port),
-    '--username',
-    config.database.user,
-    '--no-password',
-    '--dbname',
-    'postgres',
-    '--tuples-only',
-    '--no-align',
-  ];
-  const env = { ...process.env, PGPASSWORD: password };
+async function ensureApplicationDatabase(password: string): Promise<void> {
+  const client = new pg.Client({
+    host: '127.0.0.1',
+    port: config.database.port,
+    user: config.database.user,
+    password,
+    database: 'postgres',
+  });
 
-  const { stdout } = await execFileAsync(psql, [
-    ...baseArgs,
-    '--command',
-    `SELECT 1 FROM pg_database WHERE datname = '${config.database.database}'`,
-  ], { env });
+  await client.connect();
+  try {
+    const existing = await client.query('SELECT 1 FROM pg_database WHERE datname = $1', [
+      config.database.database,
+    ]);
+    if (existing.rowCount) return;
 
-  if (stdout.trim() === '1') return;
-
-  await execFileAsync(psql, [
-    ...baseArgs,
-    '--command',
-    `CREATE DATABASE ${config.database.database}`,
-  ], { env });
-
-  log.info(`Created database "${config.database.database}"`);
+    // CREATE DATABASE cannot take a bind parameter, so the identifier is
+    // quoted instead. The name is ours from config, never user input.
+    await client.query(`CREATE DATABASE "${config.database.database}"`);
+    log.info(`Created database "${config.database.database}"`);
+  } finally {
+    await client.end();
+  }
 }
