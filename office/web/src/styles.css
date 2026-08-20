@@ -1,0 +1,209 @@
+/*
+ * Phase 1 styling: plain, readable, and entirely local — no web fonts, no CSS
+ * framework, nothing that would need the internet. A visual/branding pass is
+ * explicitly deferred to Phase 2 (docs/PROJECT_PLAN.md §11).
+ */
+
+:root {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --border: #d8dee4;
+  --text: #1c2530;
+  --muted: #5b6b7c;
+  --accent: #1d6fd0;
+  --accent-dark: #17579f;
+  --danger: #c0392b;
+  --success: #1e8e4f;
+  --radius: 6px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+  font-size: 15px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  padding: 9px 16px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--radius);
+}
+
+button:hover:not(:disabled) {
+  background: var(--accent-dark);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+button.secondary {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+button.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  width: 100%;
+}
+
+label,
+.field-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.field {
+  margin-bottom: 12px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.grid {
+  display: grid;
+  gap: 12px;
+}
+
+.grid.cols-2 {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.grid.cols-4 {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.error {
+  background: #fdecea;
+  border: 1px solid #f2b8b1;
+  color: #8c241a;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+}
+
+.notice {
+  background: #e8f3ec;
+  border: 1px solid #b5dcc4;
+  color: #14603a;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+}
+
+.dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 6px;
+  background: var(--muted);
+}
+
+.dot.on {
+  background: var(--success);
+}
+
+.dot.off {
+  background: var(--danger);
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  background: #eaeef2;
+  color: var(--muted);
+}
+
+.badge.order {
+  background: #e8f3ec;
+  color: var(--success);
+}
+
+.badge.verified {
+  background: #fff4e0;
+  color: #9a6400;
+}
+
+.badge.cancelled {
+  background: #fdecea;
+  color: var(--danger);
+}
+
+/* Credentials that are shown exactly once must be easy to copy by hand. */
+.secret-box {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 18px;
+  letter-spacing: 1px;
+  background: #f0f4f8;
+  border: 1px dashed var(--border);
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  word-break: break-all;
+}

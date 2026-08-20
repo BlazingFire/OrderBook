@@ -1,0 +1,45 @@
+{
+  "name": "orderbook",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Offline LAN order & inventory management for a ceramic company",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "shared",
+    "master",
+    "master/web",
+    "office",
+    "office/web"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace @orderbook/shared && npm run build --workspace @orderbook/master && npm run build --workspace @orderbook/office",
+    "build:shared": "npm run build --workspace @orderbook/shared",
+    "dev:master": "npm run dev --workspace @orderbook/master",
+    "dev:office": "npm run dev --workspace @orderbook/office",
+    "start:master": "npm run start --workspace @orderbook/master",
+    "start:office": "npm run start --workspace @orderbook/office",
+    "migrate": "npm run migrate --workspace @orderbook/master",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p tsconfig.test.json",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "verify": "npm run lint && npm run typecheck && npm run test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "@types/node": "^22.9.0",
+    "@types/supertest": "^6.0.3",
+    "eslint": "^9.15.0",
+    "prettier": "^3.3.3",
+    "supertest": "^7.2.2",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.15.0",
+    "vitest": "^2.1.9"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["vitest/globals", "node"],
+    // Tests import source modules with the .js specifiers the ESM build uses;
+    // bundler resolution lets Vitest and tsc agree on where those land.
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true
+  },
+  "include": ["shared/tests/**/*.ts", "master/tests/**/*.ts", "office/tests/**/*.ts"]
+}
