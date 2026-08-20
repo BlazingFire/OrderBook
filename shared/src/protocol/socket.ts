@@ -14,11 +14,13 @@
 
 import type {
   DashboardSummary,
+  InventoryStockLevel,
   Lead,
   OfficePanelWithPresence,
   Party,
   Product,
   ProductCategory,
+  StockMovement,
   Uuid,
 } from '../domain/entities.js';
 import type {
@@ -29,6 +31,10 @@ import type {
   Paginated,
   PartyInput,
   ProductInput,
+  ReorderLevelInput,
+  StockAdjustmentInput,
+  StockInboundInput,
+  StockListQuery,
 } from '../domain/inputs.js';
 
 export const SOCKET_PATH = '/socket.io';
@@ -61,7 +67,13 @@ export type CommandResult<T> = { ok: true; data: T } | { ok: false; error: strin
 
 export type CommandAck<T> = (result: CommandResult<T>) => void;
 
-export type ChangedEntity = 'lead' | 'party' | 'product' | 'product_category' | 'office_panel';
+export type ChangedEntity =
+  | 'lead'
+  | 'party'
+  | 'product'
+  | 'product_category'
+  | 'office_panel'
+  | 'stock';
 export type ChangeAction = 'created' | 'updated' | 'deleted';
 
 export interface DataChangedEvent {
@@ -78,6 +90,8 @@ export interface SyncSnapshot {
   products: Product[];
   categories: ProductCategory[];
   leads: Lead[];
+  /** Current stock, so the Add Lead screen can show availability offline-fast. */
+  stock: InventoryStockLevel[];
   serverTime: string;
 }
 
@@ -103,6 +117,15 @@ export interface ClientToServerEvents {
   'lead:get': (id: Uuid, ack: CommandAck<Lead>) => void;
   'lead:create': (input: LeadInput, ack: CommandAck<Lead>) => void;
   'lead:setStatus': (input: LeadStatusChangeInput, ack: CommandAck<Lead>) => void;
+
+  'stock:list': (query: StockListQuery, ack: CommandAck<InventoryStockLevel[]>) => void;
+  'stock:movements': (
+    query: { productId?: Uuid; limit?: number },
+    ack: CommandAck<StockMovement[]>,
+  ) => void;
+  'stock:inbound': (input: StockInboundInput, ack: CommandAck<InventoryStockLevel>) => void;
+  'stock:adjust': (input: StockAdjustmentInput, ack: CommandAck<InventoryStockLevel>) => void;
+  'stock:setReorderLevel': (input: ReorderLevelInput, ack: CommandAck<InventoryStockLevel>) => void;
 
   'sync:request': (ack: CommandAck<SyncSnapshot>) => void;
 }

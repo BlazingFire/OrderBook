@@ -334,6 +334,7 @@ describe.skipIf(!canRunIntegrationTests)('lead service (integration)', () => {
         orderCount: 1,
         partyCount: 1,
         productCount: 1,
+        lowStockCount: 0,
       });
     });
 

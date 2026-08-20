@@ -261,7 +261,13 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
         .expect(201);
 
       const response = await agent.get('/api/dashboard').expect(200);
-      expect(response.body).toEqual({ leadCount: 1, orderCount: 0, partyCount: 1, productCount: 1 });
+      expect(response.body).toEqual({
+        leadCount: 1,
+        orderCount: 0,
+        partyCount: 1,
+        productCount: 1,
+        lowStockCount: 0,
+      });
     });
   });
 

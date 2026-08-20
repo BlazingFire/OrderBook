@@ -9,6 +9,7 @@ import type { LeadStatus } from '@orderbook/shared';
 
 import { ValidationError } from '../../lib/errors.js';
 import * as catalogService from '../../services/catalog.service.js';
+import * as inventoryService from '../../services/inventory.service.js';
 import * as leadService from '../../services/lead.service.js';
 import * as storageService from '../../services/storage.service.js';
 import { asyncHandler } from '../async-handler.js';
@@ -90,6 +91,53 @@ dataRoutes.get(
   '/categories',
   asyncHandler(async (_req, res) => {
     res.json({ categories: await catalogService.listCategories() });
+  }),
+);
+
+dataRoutes.get(
+  '/stock',
+  asyncHandler(async (req, res) => {
+    const stock = await inventoryService.listStock({
+      ...paging(req.query),
+      lowOnly: req.query.lowOnly === 'true',
+    });
+    res.json({ stock });
+  }),
+);
+
+dataRoutes.get(
+  '/stock/movements',
+  asyncHandler(async (req, res) => {
+    const movements = await inventoryService.listMovements({
+      productId: typeof req.query.productId === 'string' ? req.query.productId : undefined,
+      limit: req.query.limit ? Number(req.query.limit) : undefined,
+    });
+    res.json({ movements });
+  }),
+);
+
+dataRoutes.post(
+  '/stock/inbound',
+  asyncHandler(async (req, res) => {
+    res.json(await inventoryService.recordInbound(req.body, actorFrom(req.user?.id)));
+  }),
+);
+
+dataRoutes.post(
+  '/stock/adjust',
+  asyncHandler(async (req, res) => {
+    res.json(await inventoryService.recordAdjustment(req.body, actorFrom(req.user?.id)));
+  }),
+);
+
+dataRoutes.post(
+  '/stock/reorder-level',
+  asyncHandler(async (req, res) => {
+    const { productId, reorderLevel } = req.body ?? {};
+    if (typeof productId !== 'string') throw new ValidationError('Select a product');
+
+    const level = reorderLevel === null || reorderLevel === '' ? null : Number(reorderLevel);
+    res.json(await inventoryService.setReorderLevel(productId, level, actorFrom(req.user?.id)));
   }),
 );
 

@@ -15,6 +15,7 @@
 import type { Knex } from 'knex';
 
 import * as initialSchema from './20260101000000_initial_schema.js';
+import * as stockMovementNotes from './20260201000000_stock_movement_notes.js';
 
 export interface Migration {
   name: string;
@@ -24,6 +25,7 @@ export interface Migration {
 
 export const migrations: Migration[] = [
   { name: '20260101000000_initial_schema', ...initialSchema },
+  { name: '20260201000000_stock_movement_notes', ...stockMovementNotes },
 ];
 
 /** Adapts the registry to the interface Knex's migrator expects. */

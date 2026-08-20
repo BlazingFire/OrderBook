@@ -12,6 +12,7 @@ import * as partyRepo from '../repositories/party.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
 import type { ActorContext } from './catalog.service.js';
 import { publishChange } from './change-bus.js';
+import * as inventoryService from './inventory.service.js';
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
@@ -103,7 +104,17 @@ export async function changeLeadStatus(
     throw new ValidationError(`Cannot move a lead from "${existing.status}" to "${status}"`);
   }
 
-  const lead = await leadRepo.updateLeadStatus(id, status);
+  // Stock moves in the same transaction as the status change: an order that
+  // saved but did not reduce stock (or the reverse) would leave the two
+  // permanently out of step.
+  const lead = await leadRepo.updateLeadStatus(id, status, async (updated, trx) => {
+    if (status === 'order') {
+      await inventoryService.applyOrderDeduction(updated, actor, trx);
+    } else if (status === 'cancelled' && existing.status === 'order') {
+      await inventoryService.reverseOrderDeduction(updated, actor, trx);
+    }
+  });
+
   if (!lead) throw new NotFoundError('Lead');
 
   await activityLog.recordActivity({
@@ -116,16 +127,23 @@ export async function changeLeadStatus(
   });
   publishChange({ entity: 'lead', action: 'updated', id: lead.id, payload: lead });
 
+  // Published after the transaction commits so panels never see stock figures
+  // from a transaction that could still roll back.
+  if (status === 'order' || (status === 'cancelled' && existing.status === 'order')) {
+    await inventoryService.publishStockFor(lead.items.map((item) => item.productId));
+  }
+
   return lead;
 }
 
 export async function getDashboardSummary(): Promise<DashboardSummary> {
-  const [leadCount, orderCount, partyCount, productCount] = await Promise.all([
+  const [leadCount, orderCount, partyCount, productCount, lowStockCount] = await Promise.all([
     leadRepo.countLeadsByStatus(['new', 'verified']),
     leadRepo.countLeadsByStatus(['order']),
     partyRepo.countParties(),
     productRepo.countProducts(),
+    inventoryService.countLowStock(),
   ]);
 
-  return { leadCount, orderCount, partyCount, productCount };
+  return { leadCount, orderCount, partyCount, productCount, lowStockCount };
 }

@@ -25,6 +25,7 @@ import { createLogger } from '../lib/logger.js';
 import { resolveSession } from '../services/auth.service.js';
 import * as catalogService from '../services/catalog.service.js';
 import { onChange } from '../services/change-bus.js';
+import * as inventoryService from '../services/inventory.service.js';
 import * as leadService from '../services/lead.service.js';
 import * as panelService from '../services/panel.service.js';
 
@@ -64,7 +65,12 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
     // Panel membership changes also change what the Master's panel screen and
     // dashboard should show, so those are refreshed as a pair.
     if (event.entity === 'office_panel') void broadcastPanels(io);
-    if (event.entity === 'lead' || event.entity === 'party' || event.entity === 'product') {
+    if (
+      event.entity === 'lead' ||
+      event.entity === 'party' ||
+      event.entity === 'product' ||
+      event.entity === 'stock'
+    ) {
       void broadcastDashboard(io);
     }
   });
@@ -160,6 +166,18 @@ function registerCommands(socket: PanelSocket, panelId: string): void {
   socket.on('lead:setStatus', (input, ack) =>
     run(ack, () => leadService.changeLeadStatus(input.leadId, input.status, actor)),
   );
+
+  socket.on('stock:list', (query, ack) => run(ack, () => inventoryService.listStock(query)));
+  socket.on('stock:movements', (query, ack) => run(ack, () => inventoryService.listMovements(query)));
+  socket.on('stock:inbound', (input, ack) =>
+    run(ack, () => inventoryService.recordInbound(input, actor)),
+  );
+  socket.on('stock:adjust', (input, ack) =>
+    run(ack, () => inventoryService.recordAdjustment(input, actor)),
+  );
+  socket.on('stock:setReorderLevel', (input, ack) =>
+    run(ack, () => inventoryService.setReorderLevel(input.productId, input.reorderLevel, actor)),
+  );
 }
 
 /**
@@ -179,11 +197,12 @@ function run<T>(ack: CommandAck<T>, operation: () => Promise<T>): void {
 }
 
 async function buildSnapshot(): Promise<SyncSnapshot> {
-  const [parties, products, categories, leads] = await Promise.all([
+  const [parties, products, categories, leads, stock] = await Promise.all([
     catalogService.listParties({ limit: 500 }),
     catalogService.listProducts({ limit: 500 }),
     catalogService.listCategories(),
     leadService.listLeads({ limit: 500 }),
+    inventoryService.listStock({ limit: 500 }),
   ]);
 
   return {
@@ -191,6 +210,7 @@ async function buildSnapshot(): Promise<SyncSnapshot> {
     products: products.items,
     categories,
     leads: leads.items,
+    stock,
     serverTime: new Date().toISOString(),
   };
 }

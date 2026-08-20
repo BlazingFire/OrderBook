@@ -110,14 +110,31 @@ export async function insertLead(
   });
 }
 
-export async function updateLeadStatus(id: string, status: LeadStatus): Promise<Lead | null> {
-  const patch: Record<string, unknown> = { status, updated_at: db().fn.now() };
-  // order_date is the moment the lead was finalised, so it is stamped on the
-  // transition rather than recomputed from updated_at later.
-  if (status === 'order') patch.order_date = db().fn.now();
+/**
+ * `onCommitted` runs inside the same transaction as the status change, after
+ * the row is updated — used to move stock so an order and its stock movements
+ * commit or fail together.
+ */
+export async function updateLeadStatus(
+  id: string,
+  status: LeadStatus,
+  onCommitted?: (lead: Lead, trx: Knex.Transaction) => Promise<void>,
+): Promise<Lead | null> {
+  return db().transaction(async (trx) => {
+    const patch: Record<string, unknown> = { status, updated_at: trx.fn.now() };
+    // order_date is the moment the lead was finalised, so it is stamped on the
+    // transition rather than recomputed from updated_at later.
+    if (status === 'order') patch.order_date = trx.fn.now();
 
-  const updated = await db()(TABLE).where({ id }).update(patch);
-  return updated ? findLeadById(id) : null;
+    const updated = await trx(TABLE).where({ id }).update(patch);
+    if (!updated) return null;
+
+    const lead = await findLeadById(id, trx);
+    if (!lead) return null;
+
+    if (onCommitted) await onCommitted(lead, trx);
+    return lead;
+  });
 }
 
 export async function countLeadsByStatus(statuses: LeadStatus[]): Promise<number> {

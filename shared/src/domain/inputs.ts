@@ -56,6 +56,34 @@ export interface LeadStatusChangeInput {
   status: LeadStatus;
 }
 
+/** Stock arriving from the factory or a purchase. */
+export interface StockInboundInput {
+  productId: Uuid;
+  quantityBoxes: number;
+  note?: string | null;
+}
+
+/**
+ * A correction after a physical count. `quantityBoxes` is the counted total,
+ * not a delta — staff count what is on the floor, they do not compute
+ * differences.
+ */
+export interface StockAdjustmentInput {
+  productId: Uuid;
+  quantityBoxes: number;
+  note?: string | null;
+}
+
+export interface ReorderLevelInput {
+  productId: Uuid;
+  reorderLevel: number | null;
+}
+
+export interface StockListQuery extends ListQuery {
+  /** Restrict to products at or below their reorder level. */
+  lowOnly?: boolean;
+}
+
 export interface ListQuery {
   search?: string;
   limit?: number;

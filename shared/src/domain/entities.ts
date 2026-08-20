@@ -126,6 +126,41 @@ export interface Lead {
   items: LeadItem[];
 }
 
+/**
+ * Current stock for one product, joined with enough product identity to be
+ * shown on its own. `quantityBoxes` is the authoritative figure; `quantitySqft`
+ * mirrors it using the product's box coverage for staff who quote in sqft.
+ */
+export interface InventoryStockLevel {
+  productId: Uuid;
+  productCode: string;
+  productName: string;
+  categoryName: string | null;
+  size: string | null;
+  quantityBoxes: number;
+  quantitySqft: number;
+  reorderLevel: number | null;
+  /** True when stock is at or below the reorder level the operator set. */
+  isLow: boolean;
+  updatedAt: IsoTimestamp | null;
+}
+
+export type StockMovementType = 'inbound' | 'outbound' | 'adjustment';
+
+export interface StockMovement {
+  id: number;
+  productId: Uuid;
+  productCode: string;
+  productName: string;
+  movementType: StockMovementType;
+  /** Signed: positive adds stock, negative removes it. */
+  quantityBoxes: number;
+  referenceType: string | null;
+  referenceId: Uuid | null;
+  note: string | null;
+  createdAt: IsoTimestamp;
+}
+
 export interface MasterIdentity {
   masterUniqueId: Uuid;
   companyName: string | null;
@@ -146,4 +181,6 @@ export interface DashboardSummary {
   orderCount: number;
   partyCount: number;
   productCount: number;
+  /** Products at or below their reorder level. */
+  lowStockCount: number;
 }
