@@ -34,7 +34,7 @@ before writing code in any future session.
 │   │        MASTER PANEL PC         │            │        OFFICE PANEL PC(s)      │              │
 │   │  Node.js server (Express)      │  LAN/WiFi  │  Node.js server (Express)      │              │
 │   │  + WebSocket (Socket.IO) hub   │◄──────────►│  + WebSocket (Socket.IO) client│              │
-│   │  + SQLite database             │  HTTP/WS   │  (thin — no local DB, just a   │              │
+│   │  + PostgreSQL database         │  HTTP/WS   │  (thin — no local DB, just a   │              │
 │   │  + local file storage (images) │            │   session cache of the last    │              │
 │   │  Browser → http://localhost:PORT│           │   synced state for snappy UI)  │              │
 │   │  (or http://<master-ip>:PORT   │            │  Browser → http://localhost:PORT│             │
@@ -63,7 +63,7 @@ before writing code in any future session.
 | Runtime | Node.js (LTS) | Single runtime for both panels, no internet needed after initial local install |
 | HTTP server | Express | Minimal, well understood, easy to serve a built SPA + REST endpoints |
 | Real-time sync | Socket.IO | Auto-reconnect, room support, works fine over raw LAN, easy pub/sub for "live updating" |
-| Database (Master only) | SQLite (`better-sqlite3`), accessed via **Knex.js** | Zero-config, single file, no separate DB server to install/manage on a shop PC; Knex keeps queries/migrations engine-agnostic so a move to PostgreSQL is a config change if the business ever needs multi-Master replication (see `docs/schema/05-scaling-and-migration.md`) |
+| Database (Master only) | **PostgreSQL**, launched via `embedded-postgres` (bundled binaries, started/stopped by the Master process itself), accessed via **Knex.js** | Most powerful/scalable option (JSONB + GIN indexes, partitioning, real replication headroom) without asking a non-technical shop PC to run a separate installed service — the app starts its own local Postgres instance on launch, same "zero-config for the user" experience as SQLite would have given, see `docs/schema/00-overview.md` §1 |
 | File storage (Master only) | Local filesystem under a `data/uploads/` directory, referenced by path in SQLite | Simple, no blob-in-DB overhead |
 | Frontend | React + Vite, built to static assets and served by Express | Fast dev loop, but ships as plain static files — no runtime internet dependency |
 | Styling | Plain CSS / CSS modules, no CDN-hosted UI kit | Keeps the app fully offline-safe; visual polish is an explicit later pass |
@@ -125,7 +125,7 @@ Office Panel's first screen continuously checks:
 ### 5.1 First Run — Setup / Identity Screen
 
 Shown once, the very first time the Master server starts with an empty database.
-Generates and displays (and persists to SQLite):
+Generates and displays (and persists to PostgreSQL):
 - Master unique ID (UUID)
 - LAN IP address(es) detected on the machine
 - Port the server is listening on
@@ -255,7 +255,8 @@ order), rather than one product per lead — see
 
 **Phase 1 (this pass — "working condition", not polished):**
 1. Repo scaffolding: `/master`, `/office`, `/shared` packages, dev scripts.
-2. Master: first-run identity screen, sign-in, SQLite schema + migrations.
+2. Master: first-run identity screen, sign-in, embedded PostgreSQL bootstrap +
+   schema migrations.
 3. Discovery protocol (UDP) + auto/manual pairing, both directions.
 4. Master dashboard: connected Office Panels list, Add Office Panel flow, basic
    storage stat.
@@ -270,7 +271,7 @@ order), rather than one product per lead — see
 - Richer product parameter schema, bulk import.
 - Reporting/analytics, inventory stock levels tied to orders.
 - Multi-user roles/permissions within Office Panel.
-- Backup/restore tooling for the Master's SQLite + uploads.
+- Backup/restore tooling for the Master's PostgreSQL data directory + uploads.
 
 ## 12. Open Questions (confirm before/while building the relevant part)
 

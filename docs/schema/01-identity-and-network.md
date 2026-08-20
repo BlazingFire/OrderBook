@@ -1,7 +1,8 @@
 # Schema — Identity & Network
 
 Covers the tables behind Master Panel setup, sign-in, and Office Panel pairing
-(`PROJECT_PLAN.md` §4–5).
+(`PROJECT_PLAN.md` §4–5). PostgreSQL DDL — see `00-overview.md` for the type/
+convention rationale.
 
 ## `master_config`
 
@@ -10,16 +11,16 @@ duplicated (`CHECK (id = 1)` enforces this at the DB level).
 
 ```sql
 CREATE TABLE master_config (
-  id                  INTEGER PRIMARY KEY CHECK (id = 1),
-  master_unique_id    TEXT    NOT NULL UNIQUE,   -- UUID, generated on first run
-  company_name        TEXT,
-  lan_ip              TEXT    NOT NULL,           -- detected at setup, refreshed on IP change
-  port                INTEGER NOT NULL,
-  pairing_password_hash TEXT  NOT NULL,           -- bcrypt hash of the pairing password
-                                                    -- shown once on first-run screen (PROJECT_PLAN §5.1)
-  setup_completed_at  TEXT    NOT NULL,
-  created_at          TEXT    NOT NULL,
-  updated_at          TEXT    NOT NULL
+  id                     INTEGER PRIMARY KEY CHECK (id = 1),
+  master_unique_id       UUID    NOT NULL UNIQUE,   -- generated on first run
+  company_name           TEXT,
+  lan_ip                 TEXT    NOT NULL,           -- detected at setup, refreshed on IP change
+  port                    INTEGER NOT NULL,
+  pairing_password_hash  TEXT    NOT NULL,           -- bcrypt hash of the pairing password
+                                                       -- shown once on first-run screen (PROJECT_PLAN §5.1)
+  setup_completed_at     TIMESTAMPTZ NOT NULL,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at             TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
@@ -37,16 +38,16 @@ adding staff logins later shouldn't require a migration.
 
 ```sql
 CREATE TABLE users (
-  id            TEXT PRIMARY KEY,                 -- UUID
+  id            UUID PRIMARY KEY,
   username      TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,                    -- bcrypt
   full_name     TEXT,
   role          TEXT NOT NULL DEFAULT 'admin'
                 CHECK (role IN ('admin', 'staff')),
-  is_active     INTEGER NOT NULL DEFAULT 1,
-  last_login_at TEXT,
-  created_at    TEXT NOT NULL,
-  updated_at    TEXT NOT NULL
+  is_active     BOOLEAN NOT NULL DEFAULT true,
+  last_login_at TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE UNIQUE INDEX idx_users_username ON users(username);
@@ -62,17 +63,17 @@ One row per paired Office Panel PC (`PROJECT_PLAN.md` §4.1, §5.4).
 
 ```sql
 CREATE TABLE office_panels (
-  id            TEXT PRIMARY KEY,                 -- UUID, issued by Master at pairing time
+  id            UUID PRIMARY KEY,                 -- issued by Master at pairing time
   name          TEXT NOT NULL,                    -- e.g. "Front Office PC", editable by admin
   secret_hash   TEXT NOT NULL,                    -- bcrypt hash of the panel's permanent pairing secret
   lan_ip        TEXT,                              -- last-known IP, informational only
   mac_address   TEXT,                              -- optional, helps re-identify a panel across DHCP lease changes
   status        TEXT NOT NULL DEFAULT 'pending'
                 CHECK (status IN ('pending', 'active', 'revoked')),
-  paired_at     TEXT,
-  last_seen_at  TEXT,
-  created_at    TEXT NOT NULL,
-  updated_at    TEXT NOT NULL
+  paired_at     TIMESTAMPTZ,
+  last_seen_at  TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_office_panels_status ON office_panels(status);

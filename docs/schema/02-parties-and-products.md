@@ -1,13 +1,13 @@
 # Schema — Parties & Products
 
 Covers the master data every lead/order is built from (`PROJECT_PLAN.md` §6.3,
-§6.5).
+§6.5). PostgreSQL DDL — see `00-overview.md` for the type/convention rationale.
 
 ## `parties` (customers)
 
 ```sql
 CREATE TABLE parties (
-  id             TEXT PRIMARY KEY,                -- UUID
+  id             UUID PRIMARY KEY,
   party_code     TEXT NOT NULL UNIQUE,             -- e.g. "P-0001", auto-generated
   name           TEXT NOT NULL,
   phone          TEXT,
@@ -20,22 +20,27 @@ CREATE TABLE parties (
   pincode        TEXT,
   gst_number     TEXT,                             -- optional, for GST-registered dealers
   notes          TEXT,
-  is_active      INTEGER NOT NULL DEFAULT 1,
-  created_by_user_id  TEXT REFERENCES users(id),
-  created_at     TEXT NOT NULL,
-  updated_at     TEXT NOT NULL
+  is_active      BOOLEAN NOT NULL DEFAULT true,
+  created_by_user_id  UUID REFERENCES users(id),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE UNIQUE INDEX idx_parties_code  ON parties(party_code);
-CREATE INDEX        idx_parties_name  ON parties(name);
+CREATE INDEX        idx_parties_name  ON parties(lower(name));   -- case-insensitive search
 CREATE INDEX        idx_parties_phone ON parties(phone);
 ```
 
 `name` and `phone` are indexed (not unique) because the Add Lead screen's "search
 or select existing party" (`PROJECT_PLAN.md` §6.3) needs fast lookup by either, and
-two different customers can legitimately share a name. Exact fields here are
-flagged as an **open question** in `PROJECT_PLAN.md` §12 — `gst_number` and the
-address split are a reasonable ceramic-trade default, confirm before Phase 1 build.
+two different customers can legitimately share a name. The name index is built on
+`lower(name)` (a Postgres expression index) so a search box can do
+case-insensitive `WHERE lower(name) LIKE lower($1) || '%'` lookups without a table
+scan even once the table is large — this kind of expression index is one of the
+concrete "more powerful at scale" advantages Postgres has over a simpler engine.
+Exact fields here are flagged as an **open question** in `PROJECT_PLAN.md` §12 —
+`gst_number` and the address split are a reasonable ceramic-trade default, confirm
+before Phase 1 build.
 
 ## `product_categories` (product "type")
 
@@ -45,9 +50,9 @@ drift) and can be managed from a settings screen later without a migration.
 
 ```sql
 CREATE TABLE product_categories (
-  id         TEXT PRIMARY KEY,                     -- UUID
+  id         UUID PRIMARY KEY,
   name       TEXT NOT NULL UNIQUE,                 -- e.g. "Floor Tile", "Wall Tile", "Sanitaryware"
-  created_at TEXT NOT NULL
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
@@ -55,48 +60,53 @@ CREATE TABLE product_categories (
 
 ```sql
 CREATE TABLE products (
-  id                TEXT PRIMARY KEY,               -- UUID
+  id                UUID PRIMARY KEY,
   product_code      TEXT NOT NULL UNIQUE,            -- printed/scanned code staff search by
   name              TEXT NOT NULL,
-  category_id       TEXT REFERENCES product_categories(id),
+  category_id       UUID REFERENCES product_categories(id),
   size              TEXT,                            -- e.g. "600x600mm"
   finish            TEXT,                            -- e.g. glossy / matte / rustic
   series            TEXT,
   color             TEXT,
-  thickness_mm      REAL,
+  thickness_mm      NUMERIC(6,2),
   pieces_per_box    INTEGER,
-  box_coverage_sqft REAL,
+  box_coverage_sqft NUMERIC(8,2),
   price_per_box     INTEGER,                         -- smallest currency unit
   price_per_sqft    INTEGER,                          -- smallest currency unit
   hsn_code          TEXT,                             -- tax classification code
-  parameters        TEXT,                             -- JSON — extra attributes not yet finalized
-  is_active         INTEGER NOT NULL DEFAULT 1,
-  created_at        TEXT NOT NULL,
-  updated_at        TEXT NOT NULL
+  parameters        JSONB NOT NULL DEFAULT '{}',      -- extra attributes not yet finalized
+  is_active         BOOLEAN NOT NULL DEFAULT true,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX idx_products_code     ON products(product_code);
-CREATE INDEX        idx_products_name     ON products(name);
-CREATE INDEX        idx_products_category ON products(category_id);
+CREATE UNIQUE INDEX idx_products_code       ON products(product_code);
+CREATE INDEX        idx_products_name       ON products(lower(name));
+CREATE INDEX        idx_products_category   ON products(category_id);
+CREATE INDEX        idx_products_parameters ON products USING GIN (parameters);
 ```
 
 The typed columns above (`size`, `finish`, `series`, `color`, `thickness_mm`,
 `pieces_per_box`, `box_coverage_sqft`) are a starting guess at real ceramic
-attributes so search/filter/reporting works well from day one. `parameters` (JSON)
-absorbs anything the user asks for that doesn't fit yet — confirm the real field
-list with the user (see `PROJECT_PLAN.md` §12) and promote anything used often
-from `parameters` into a real column in a follow-up migration; that's a cheap,
+attributes so search/filter/reporting works well from day one — `thickness_mm` and
+`box_coverage_sqft` use `NUMERIC` rather than floating point since they can feed
+into price/quantity math. `parameters` (`JSONB`) absorbs anything the user asks for
+that doesn't fit yet, and the `GIN` index on it means Phase 1 can already support
+"find all products where `parameters->>'glaze' = 'matte'`"-style queries at full
+speed even before that field graduates to a real column — confirm the real field
+list with the user (see `PROJECT_PLAN.md` §12) and promote anything used often out
+of `parameters` into a typed column in a follow-up migration; that's a cheap,
 additive change and not a reason to block Phase 1 on a perfect field list.
 
 ## `product_images`
 
 ```sql
 CREATE TABLE product_images (
-  id          TEXT PRIMARY KEY,                     -- UUID
-  product_id  TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  id          UUID PRIMARY KEY,
+  product_id  UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   file_path   TEXT NOT NULL,                         -- relative to data/uploads/
-  is_primary  INTEGER NOT NULL DEFAULT 0,
-  uploaded_at TEXT NOT NULL
+  is_primary  BOOLEAN NOT NULL DEFAULT false,
+  uploaded_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_product_images_product ON product_images(product_id);
