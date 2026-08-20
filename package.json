@@ -10,7 +10,9 @@
   "workspaces": [
     "packages/shared",
     "packages/master",
-    "packages/office"
+    "packages/master/web",
+    "packages/office",
+    "packages/office/web"
   ],
   "scripts": {
     "build": "npm run build --workspace @orderbook/shared && npm run build --workspace @orderbook/master && npm run build --workspace @orderbook/office",
