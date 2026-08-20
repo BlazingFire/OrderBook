@@ -1,0 +1,41 @@
+import { Router } from 'express';
+
+import { config } from '../../config/index.js';
+import { ValidationError } from '../../lib/errors.js';
+import * as authService from '../../services/auth.service.js';
+import { asyncHandler } from '../async-handler.js';
+import { requireAuth } from '../middleware/require-auth.js';
+
+export const authRoutes: Router = Router();
+
+authRoutes.post(
+  '/sign-in',
+  asyncHandler(async (req, res) => {
+    const { username, password } = req.body ?? {};
+    if (typeof username !== 'string' || typeof password !== 'string') {
+      throw new ValidationError('Enter your ID and password');
+    }
+
+    const { token, user } = await authService.signIn(username, password);
+
+    res.cookie(config.session.cookieName, token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: config.session.ttlMs,
+    });
+    // The token is also returned in the body: the Master's own browser UI
+    // presents it when opening its Socket.IO connection, which does not carry
+    // the cookie in every transport.
+    res.json({ user, sessionToken: token });
+  }),
+);
+
+authRoutes.post('/sign-out', (req, res) => {
+  authService.signOut(req.cookies?.[config.session.cookieName]);
+  res.clearCookie(config.session.cookieName);
+  res.status(204).end();
+});
+
+authRoutes.get('/me', requireAuth, (req, res) => {
+  res.json({ user: req.user, sessionToken: req.sessionToken });
+});

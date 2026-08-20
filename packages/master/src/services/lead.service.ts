@@ -1,0 +1,131 @@
+/**
+ * Leads and orders. A lead becomes an order by changing status — the record
+ * itself never moves or gets copied (docs/schema/03-leads-orders-inventory.md).
+ */
+
+import type { DashboardSummary, Lead, LeadInput, LeadStatus, Paginated } from '@orderbook/shared';
+
+import { NotFoundError, ValidationError } from '../lib/errors.js';
+import * as activityLog from '../repositories/activity-log.repository.js';
+import * as leadRepo from '../repositories/lead.repository.js';
+import * as partyRepo from '../repositories/party.repository.js';
+import * as productRepo from '../repositories/product.repository.js';
+import type { ActorContext } from './catalog.service.js';
+import { publishChange } from './change-bus.js';
+
+const DEFAULT_LIMIT = 100;
+const MAX_LIMIT = 500;
+
+/** Which transitions are legal. Cancelled and delivered orders are terminal. */
+const ALLOWED_TRANSITIONS: Record<LeadStatus, LeadStatus[]> = {
+  new: ['verified', 'cancelled'],
+  verified: ['order', 'new', 'cancelled'],
+  order: ['cancelled'],
+  cancelled: [],
+};
+
+export async function listLeads(query: {
+  statuses?: LeadStatus[];
+  search?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<Paginated<Lead>> {
+  return leadRepo.listLeads({
+    statuses: query.statuses,
+    search: query.search,
+    limit: Math.min(Math.max(query.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT),
+    offset: Math.max(query.offset ?? 0, 0),
+  });
+}
+
+export async function getLead(id: string): Promise<Lead> {
+  const lead = await leadRepo.findLeadById(id);
+  if (!lead) throw new NotFoundError('Lead');
+  return lead;
+}
+
+export async function createLead(
+  input: LeadInput,
+  context: { sourcePanelId: string | null; actor: ActorContext },
+): Promise<Lead> {
+  if (!input.partyId) throw new ValidationError('Select a party for this lead');
+  if (!input.items?.length) throw new ValidationError('Add at least one product to this lead');
+
+  if (!(await partyRepo.findPartyById(input.partyId))) {
+    throw new ValidationError('The selected party no longer exists');
+  }
+
+  // Resolve prices server-side when the panel did not send one, so a lead
+  // always records what the product actually cost at the time it was created.
+  const items = await Promise.all(
+    input.items.map(async (item) => {
+      const product = await productRepo.findProductById(item.productId);
+      if (!product) throw new ValidationError('One of the selected products no longer exists');
+
+      const quantityBoxes = item.quantityBoxes ?? null;
+      if (quantityBoxes !== null && quantityBoxes <= 0) {
+        throw new ValidationError(`Quantity for ${product.name} must be greater than zero`);
+      }
+
+      return { ...item, unitPrice: item.unitPrice ?? product.pricePerBox ?? null };
+    }),
+  );
+
+  const lead = await leadRepo.insertLead(
+    { ...input, items },
+    { sourcePanelId: context.sourcePanelId, createdByUserId: context.actor.actorType === 'user' ? context.actor.actorId : null },
+  );
+
+  await activityLog.recordActivity({
+    entityType: 'lead',
+    entityId: lead.id,
+    action: 'created',
+    actorType: context.actor.actorType,
+    actorId: context.actor.actorId,
+    details: { leadNumber: lead.leadNumber, itemCount: lead.items.length },
+  });
+  publishChange({ entity: 'lead', action: 'created', id: lead.id, payload: lead });
+
+  return lead;
+}
+
+export async function changeLeadStatus(
+  id: string,
+  status: LeadStatus,
+  actor: ActorContext,
+): Promise<Lead> {
+  const existing = await leadRepo.findLeadById(id);
+  if (!existing) throw new NotFoundError('Lead');
+
+  if (existing.status === status) return existing;
+
+  if (!ALLOWED_TRANSITIONS[existing.status].includes(status)) {
+    throw new ValidationError(`Cannot move a lead from "${existing.status}" to "${status}"`);
+  }
+
+  const lead = await leadRepo.updateLeadStatus(id, status);
+  if (!lead) throw new NotFoundError('Lead');
+
+  await activityLog.recordActivity({
+    entityType: 'lead',
+    entityId: lead.id,
+    action: 'status_changed',
+    actorType: actor.actorType,
+    actorId: actor.actorId,
+    details: { from: existing.status, to: status },
+  });
+  publishChange({ entity: 'lead', action: 'updated', id: lead.id, payload: lead });
+
+  return lead;
+}
+
+export async function getDashboardSummary(): Promise<DashboardSummary> {
+  const [leadCount, orderCount, partyCount, productCount] = await Promise.all([
+    leadRepo.countLeadsByStatus(['new', 'verified']),
+    leadRepo.countLeadsByStatus(['order']),
+    partyRepo.countParties(),
+    productRepo.countProducts(),
+  ]);
+
+  return { leadCount, orderCount, partyCount, productCount };
+}
