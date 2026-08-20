@@ -63,7 +63,7 @@ before writing code in any future session.
 | Runtime | Node.js (LTS) | Single runtime for both panels, no internet needed after initial local install |
 | HTTP server | Express | Minimal, well understood, easy to serve a built SPA + REST endpoints |
 | Real-time sync | Socket.IO | Auto-reconnect, room support, works fine over raw LAN, easy pub/sub for "live updating" |
-| Database (Master only) | SQLite (`better-sqlite3`) | Zero-config, single file, no separate DB server to install/manage on a shop PC |
+| Database (Master only) | SQLite (`better-sqlite3`), accessed via **Knex.js** | Zero-config, single file, no separate DB server to install/manage on a shop PC; Knex keeps queries/migrations engine-agnostic so a move to PostgreSQL is a config change if the business ever needs multi-Master replication (see `docs/schema/05-scaling-and-migration.md`) |
 | File storage (Master only) | Local filesystem under a `data/uploads/` directory, referenced by path in SQLite | Simple, no blob-in-DB overhead |
 | Frontend | React + Vite, built to static assets and served by Express | Fast dev loop, but ships as plain static files — no runtime internet dependency |
 | Styling | Plain CSS / CSS modules, no CDN-hosted UI kit | Keeps the app fully offline-safe; visual polish is an explicit later pass |
@@ -195,19 +195,30 @@ edit:
 
 ## 7. Data Model (v1)
 
+Full column-level schema, SQL DDL, indexes, and the database-engine/scaling
+rationale live in [`docs/schema/`](docs/schema/00-overview.md) — start at
+`docs/schema/00-overview.md`. Summary of the tables defined there:
+
 | Entity | Key fields |
 |---|---|
-| `master_config` | id, master_unique_id, lan_ip, port, password_hash, created_at |
+| `master_config` | id, master_unique_id, lan_ip, port, pairing_password_hash, created_at |
+| `users` (Master sign-in) | id, username, password_hash, role |
 | `office_panels` | id, name, secret_hash, lan_ip, last_seen_at, paired_at, status |
-| `users` (Master sign-in) | id, username, password_hash |
-| `parties` | id, name, phone, address, gst/tax id (if applicable), notes, created_by, created_at |
-| `products` | id, code, name, type, parameters (JSON: size/finish/series/etc.), image_path, created_at |
-| `leads` | id, party_id, product_id, quantity, parameters/notes, status (`lead`/`order`), created_by_panel_id, created_at, updated_at |
-| `activity_log` | id, entity_type, entity_id, action, actor, at — for audit/live-feed purposes |
+| `parties` | id, party_code, name, phone, address, gst_number, notes, created_by_user_id |
+| `product_categories` | id, name |
+| `products` | id, product_code, name, category_id, size/finish/series/etc., parameters (JSON), price fields |
+| `product_images` | id, product_id, file_path, is_primary |
+| `leads` | id, lead_number, party_id, status (`new`/`verified`/`order`/`cancelled`), source_panel_id, total_amount |
+| `lead_items` | id, lead_id, product_id, quantity, unit_price, line_total |
+| `inventory_stock` | id, product_id, quantity_boxes, quantity_sqft, reorder_level |
+| `stock_movements` | id, product_id, movement_type, quantity_boxes, reference |
+| `activity_log` | id, entity_type, entity_id, action, actor, details (JSON) — audit/live-feed source |
 
-`leads` doubles as `orders`: a status field (`lead` → `verified` → `order`) avoids
+`leads` doubles as `orders`: a status field (`new` → `verified` → `order`) avoids
 duplicating the record when it's finalized, per the user's description ("move that
-lead to order tab").
+lead to order tab"). A lead can hold multiple `lead_items` (multiple products per
+order), rather than one product per lead — see
+`docs/schema/03-leads-orders-inventory.md` for why.
 
 ## 8. Real-Time Sync Contract (Socket.IO events, illustrative)
 
