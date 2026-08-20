@@ -52,7 +52,7 @@ Full database schema (every table, columns, indexes, and rationale):
    npm workspaces monorepo — chosen for a "production-professional"
    architecture per the user's explicit request in this session, with shared
    types (entities, Socket.IO event contract, discovery protocol messages)
-   living in `packages/shared` so Master and Office can never drift out of sync on
+   living in `shared/` so Master and Office can never drift out of sync on
    the wire format.
 
 ## Open questions (still unresolved — confirm with the user before finalizing)
@@ -71,8 +71,7 @@ From `docs/PROJECT_PLAN.md` §12:
 
 ## Repo layout
 
-Docs and code are strictly separated — prose under `docs/`, code under
-`packages/`:
+Documentation lives under `docs/`; each code package sits at the repo root:
 
 ```
 OrderBook/
@@ -83,13 +82,12 @@ OrderBook/
 ├── docs/
 │   ├── PROJECT_PLAN.md      full requirements + architecture + phased plan
 │   └── schema/              full DB schema, table by table
-└── packages/
-    ├── shared/              TS types, Socket.IO event contract, discovery protocol
-    ├── master/              Master Panel server + React frontend
-    └── office/              Office Panel server + React frontend
+├── shared/                  TS types, Socket.IO event contract, discovery protocol
+├── master/                  Master Panel server + React frontend
+└── office/                  Office Panel server + React frontend
 ```
 
-Each package uses the same internal layout (`src/config`, `src/services`,
+Each of `shared/`, `master/` and `office/` uses the same internal layout (`src/config`, `src/services`,
 `src/repositories`, `src/http`, `src/realtime`, `src/discovery`, `web/`) —
 see `docs/PROJECT_PLAN.md` §10 for the layering rule (transport never queries
 the database directly; only `repositories/` does).

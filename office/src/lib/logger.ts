@@ -1,4 +1,4 @@
-/** Same minimal leveled logger as the Master — see packages/master/src/lib/logger.ts. */
+/** Same minimal leveled logger as the Master — see master/src/lib/logger.ts. */
 
 type Level = 'debug' | 'info' | 'warn' | 'error';
 

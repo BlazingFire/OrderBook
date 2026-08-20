@@ -26,11 +26,10 @@ Both are web apps: each PC runs a small local server and staff open a browser.
 Documentation and code are kept strictly separate.
 
 ```
-docs/         all documentation
-packages/
-  shared/     types, Socket.IO event contract, UDP discovery protocol
-  master/     Master Panel — server (src/) + React frontend (web/)
-  office/     Office Panel — server (src/) + React frontend (web/)
+docs/       all documentation
+shared/     types, Socket.IO event contract, UDP discovery protocol
+master/     Master Panel — server (src/) + React frontend (web/)
+office/     Office Panel — server (src/) + React frontend (web/)
 ```
 
 ## Running it

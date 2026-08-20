@@ -244,8 +244,8 @@ order), rather than one product per lead — see
 
 ## 10. Repo Structure
 
-Documentation and code are kept strictly separate: everything under `docs/` is
-prose, everything under `packages/` is code.
+All documentation lives under `docs/`; the three code packages sit at the repo
+root as npm workspaces.
 
 ```
 OrderBook/
@@ -256,17 +256,16 @@ OrderBook/
 ├── docs/                   ALL documentation
 │   ├── PROJECT_PLAN.md     This file — requirements, architecture, phased plan
 │   └── schema/             Database schema, table by table
-└── packages/               ALL code
-    ├── shared/             Types, Socket.IO event contract, UDP discovery protocol
-    ├── master/             Master Panel — server + React frontend
-    └── office/             Office Panel — server + React frontend
+├── shared/                 Types, Socket.IO event contract, UDP discovery protocol
+├── master/                 Master Panel — server + React frontend
+└── office/                 Office Panel — server + React frontend
 ```
 
-Each package under `packages/` follows the same internal layout so navigating
-between them is predictable:
+Each package follows the same internal layout so navigating between them is
+predictable:
 
 ```
-packages/<name>/
+<package>/
 ├── package.json
 ├── tsconfig.json
 ├── src/                    Server-side TypeScript
@@ -278,6 +277,7 @@ packages/<name>/
 │   ├── realtime/           Socket.IO server/client wiring
 │   ├── discovery/          UDP pairing protocol implementation
 │   └── lib/                Cross-cutting helpers (logging, errors, ids)
+├── tests/                  Unit and integration tests for this package
 └── web/                    React + Vite frontend, built to static assets
 ```
 

@@ -9,11 +9,11 @@
     "node": ">=20"
   },
   "workspaces": [
-    "packages/shared",
-    "packages/master",
-    "packages/master/web",
-    "packages/office",
-    "packages/office/web"
+    "shared",
+    "master",
+    "master/web",
+    "office",
+    "office/web"
   ],
   "scripts": {
     "build": "npm run build --workspace @orderbook/shared && npm run build --workspace @orderbook/master && npm run build --workspace @orderbook/office",

@@ -35,10 +35,14 @@ function candidateBinDirs(): string[] {
   candidates.push(path.join(config.packageRoot, 'vendor', 'postgres', 'bin'));
 
   // `embedded-postgres` ships platform binaries under its package directory.
-  candidates.push(
-    path.join(config.packageRoot, 'node_modules', '@embedded-postgres', 'linux-x64', 'native', 'bin'),
-    path.join(config.packageRoot, '..', '..', 'node_modules', '@embedded-postgres', 'linux-x64', 'native', 'bin'),
-  );
+  // Walking up covers both a local install and hoisting to the workspace root,
+  // without hard-coding how deep this package sits in the tree.
+  const platformDir = `${process.platform}-${process.arch}`;
+  for (const root of ancestorDirs(config.packageRoot)) {
+    candidates.push(
+      path.join(root, 'node_modules', '@embedded-postgres', platformDir, 'native', 'bin'),
+    );
+  }
 
   // A system installation, if the machine already has one.
   for (const version of ['17', '16', '15', '14']) {
@@ -67,6 +71,19 @@ function resolveBinDir(): string {
     'Could not locate PostgreSQL binaries. Install the bundled server, or set ORDERBOOK_PG_BIN ' +
       'to a directory containing initdb and pg_ctl, or set DATABASE_URL to use an existing server.',
   );
+}
+
+/** This directory and each parent up to the filesystem root. */
+function ancestorDirs(from: string): string[] {
+  const dirs: string[] = [];
+  let current = path.resolve(from);
+
+  for (;;) {
+    dirs.push(current);
+    const parent = path.dirname(current);
+    if (parent === current) return dirs;
+    current = parent;
+  }
 }
 
 function binName(tool: string): string {
