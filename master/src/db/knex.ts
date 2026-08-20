@@ -1,11 +1,9 @@
 import knexFactory, { type Knex } from 'knex';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { createLogger } from '../lib/logger.js';
+import { RegistryMigrationSource } from './migrations/index.js';
 
 const log = createLogger('db');
-const here = path.dirname(fileURLToPath(import.meta.url));
 
 let instance: Knex | null = null;
 
@@ -17,10 +15,10 @@ export function buildKnexConfig(connectionUrl: string): Knex.Config {
     // commands still benefit from more than a single connection.
     pool: { min: 2, max: 10 },
     migrations: {
-      directory: path.join(here, 'migrations'),
+      // Migrations come from an explicit registry rather than a directory scan
+      // — see migrations/index.ts for why.
+      migrationSource: new RegistryMigrationSource(),
       tableName: 'knex_migrations',
-      extension: 'ts',
-      loadExtensions: ['.ts', '.js'],
     },
   };
 }
