@@ -97,15 +97,43 @@ the database directly; only `repositories/` does).
 Package contents land incrementally during Phase 1 — check `git log` or the
 working tree for what actually exists if this section reads stale.
 
-## Status as of this session
+## Status
 
 - Requirements gathering and full architecture/schema design: **done**
   (`docs/PROJECT_PLAN.md`, `docs/schema/`).
 - Database engine decision (Postgres over SQLite): **done**, user confirmed.
-- Phase 1 implementation ("working condition" build per `docs/PROJECT_PLAN.md`
-  §11): **starting now, in this same session** — check the git log after this
-  point in the file for what actually landed, since this paragraph will not
-  be kept up to date turn-by-turn.
+- **Phase 1: done and verified end to end.** Everything in
+  `docs/PROJECT_PLAN.md` §11 Phase 1 is built and working:
+  - Master: self-managing PostgreSQL cluster (initdb/pg_ctl lifecycle, loopback
+    only, no install step for the operator), Knex migrations implementing the
+    full documented schema, first-run identity screen, sign-in, repositories →
+    services → HTTP/realtime layering, UDP discovery responder, Socket.IO hub.
+  - Office: UDP discovery client, auto + manual pairing, persisted panel
+    credentials, reconnecting Socket.IO link with snapshot cache, local API
+    forwarding commands to the Master, SSE stream to its own browser.
+  - Both React frontends: Master (first-run, sign-in, dashboard, office panel
+    management, leads/orders, settings/storage) and Office (connection screen
+    with link indicator + auto/manual, home, Add Lead with inline party/product
+    creation, leads/orders with promotion, catalog browsing).
+  - Verified in a real browser across two running servers: fresh install →
+    setup → auto-pairing with no IP typed → lead created on Office appearing
+    live on Master → promotion to order updating the Master's list and
+    dashboard with no reload → Master restart with automatic Office reconnect
+    and data intact.
+
+**What Phase 1 deliberately does not include** (deferred per the user's "make
+it beautiful later" instruction and `docs/PROJECT_PLAN.md` §11 Phase 2): visual
+polish, product image upload UI, inventory stock screens (tables exist, no UI),
+reporting, per-user roles inside the Office Panel, and backup/restore tooling.
+
+### Known gaps worth picking up next
+
+- `panel:revoked` is defined in the socket contract and handled by the Office
+  Panel, but the Master does not emit it yet — a revoked panel currently finds
+  out on its next reconnect attempt rather than immediately.
+- No automated test suite yet; verification so far has been manual/browser
+  driven. Worth adding before Phase 2 changes start landing.
+- Product images: schema and static route exist, no upload UI.
 
 ## Working agreements for this repo
 

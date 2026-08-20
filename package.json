@@ -2,6 +2,7 @@
   "name": "orderbook",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Offline LAN order & inventory management for a ceramic company",
   "license": "UNLICENSED",
   "engines": {
