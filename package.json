@@ -13,13 +13,13 @@
     "packages/office"
   ],
   "scripts": {
-    "build": "npm run build --workspace shared && npm run build --workspace master && npm run build --workspace office",
-    "build:shared": "npm run build --workspace shared",
-    "dev:master": "npm run dev --workspace master",
-    "dev:office": "npm run dev --workspace office",
-    "start:master": "npm run start --workspace master",
-    "start:office": "npm run start --workspace office",
-    "migrate": "npm run migrate --workspace master",
+    "build": "npm run build --workspace @orderbook/shared && npm run build --workspace @orderbook/master && npm run build --workspace @orderbook/office",
+    "build:shared": "npm run build --workspace @orderbook/shared",
+    "dev:master": "npm run dev --workspace @orderbook/master",
+    "dev:office": "npm run dev --workspace @orderbook/office",
+    "start:master": "npm run start --workspace @orderbook/master",
+    "start:office": "npm run start --workspace @orderbook/office",
+    "migrate": "npm run migrate --workspace @orderbook/master",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint .",
     "format": "prettier --write ."

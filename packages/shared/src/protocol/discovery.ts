@@ -1,0 +1,114 @@
+/**
+ * UDP discovery protocol used by an Office Panel to find the Master Panel on
+ * the local network without anyone typing an IP address.
+ *
+ * Scope: discovery only. Once an Office Panel knows the Master's address it
+ * switches to HTTP for the actual pairing handshake (see `pairing.ts`), so no
+ * secret ever travels over a broadcast packet.
+ *
+ * Flow:
+ *   Office  --DISCOVER (broadcast)-->  every host on the subnet
+ *   Master  --HELLO (unicast reply)-->  the Office Panel that asked
+ */
+
+/** Fixed UDP port both sides agree on. Chosen from the unassigned range. */
+export const DISCOVERY_PORT = 45789;
+
+/** Guards against parsing unrelated UDP traffic that lands on our port. */
+export const DISCOVERY_MAGIC = 'ORDERBOOK';
+
+/** Bumped only on a breaking change to the packet shape. */
+export const DISCOVERY_PROTOCOL_VERSION = 1;
+
+/** How often the Office Panel re-broadcasts while waiting for a Master. */
+export const DISCOVERY_BROADCAST_INTERVAL_MS = 1_500;
+
+export interface DiscoverMessage {
+  magic: typeof DISCOVERY_MAGIC;
+  version: number;
+  type: 'DISCOVER';
+  /** Random per-attempt value; echoed in HELLO so replies can be matched. */
+  nonce: string;
+  hostname: string;
+}
+
+export interface HelloMessage {
+  magic: typeof DISCOVERY_MAGIC;
+  version: number;
+  type: 'HELLO';
+  nonce: string;
+  masterUniqueId: string;
+  companyName: string | null;
+  /** Where the Office Panel should send its HTTP pairing request. */
+  lanIp: string;
+  httpPort: number;
+  /**
+   * True only while an operator has the Master's "Add Office Panel" screen
+   * open. Auto-pairing is refused otherwise, so a panel cannot silently join
+   * without someone at the Master authorizing it.
+   */
+  acceptingPairing: boolean;
+}
+
+export type DiscoveryMessage = DiscoverMessage | HelloMessage;
+
+export function createDiscoverMessage(nonce: string, hostname: string): DiscoverMessage {
+  return {
+    magic: DISCOVERY_MAGIC,
+    version: DISCOVERY_PROTOCOL_VERSION,
+    type: 'DISCOVER',
+    nonce,
+    hostname,
+  };
+}
+
+export function createHelloMessage(
+  params: Omit<HelloMessage, 'magic' | 'version' | 'type'>,
+): HelloMessage {
+  return {
+    magic: DISCOVERY_MAGIC,
+    version: DISCOVERY_PROTOCOL_VERSION,
+    type: 'HELLO',
+    ...params,
+  };
+}
+
+export function encodeDiscoveryMessage(message: DiscoveryMessage): Buffer {
+  return Buffer.from(JSON.stringify(message), 'utf8');
+}
+
+/**
+ * Returns null for anything that isn't a well-formed message of our protocol —
+ * stray UDP traffic on this port is expected and must never throw.
+ */
+export function decodeDiscoveryMessage(buffer: Buffer): DiscoveryMessage | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(buffer.toString('utf8'));
+  } catch {
+    return null;
+  }
+
+  if (typeof parsed !== 'object' || parsed === null) return null;
+  const candidate = parsed as Record<string, unknown>;
+
+  if (candidate.magic !== DISCOVERY_MAGIC) return null;
+  if (candidate.version !== DISCOVERY_PROTOCOL_VERSION) return null;
+  if (typeof candidate.nonce !== 'string') return null;
+
+  if (candidate.type === 'DISCOVER' && typeof candidate.hostname === 'string') {
+    return candidate as unknown as DiscoverMessage;
+  }
+
+  if (
+    candidate.type === 'HELLO' &&
+    typeof candidate.masterUniqueId === 'string' &&
+    typeof candidate.lanIp === 'string' &&
+    typeof candidate.httpPort === 'number' &&
+    typeof candidate.acceptingPairing === 'boolean'
+  ) {
+    return candidate as unknown as HelloMessage;
+  }
+
+  return null;
+}
