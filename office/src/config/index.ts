@@ -8,7 +8,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { hostname } from 'node:os';
 
+import { loadEnvFiles } from '../lib/env-file.js';
+
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const repoRoot = path.resolve(packageRoot, '..');
+
+// See master/src/config/index.ts — same precedence, package file wins.
+loadEnvFiles(path.join(packageRoot, '.env'), path.join(repoRoot, '.env'));
 
 function intFromEnv(name: string, fallback: number): number {
   const raw = process.env[name];

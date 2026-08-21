@@ -7,7 +7,16 @@
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
+import { loadEnvFiles } from '../lib/env-file.js';
+
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const repoRoot = path.resolve(packageRoot, '..');
+
+// Loaded before any process.env is read below. First value set wins, so the
+// package-level file is read first and overrides the repo-root one: a single
+// .env at the root can configure both panels, while either panel can still
+// override it locally.
+loadEnvFiles(path.join(packageRoot, '.env'), path.join(repoRoot, '.env'));
 
 function intFromEnv(name: string, fallback: number): number {
   const raw = process.env[name];
