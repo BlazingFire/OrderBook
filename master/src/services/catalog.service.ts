@@ -12,28 +12,15 @@ import type {
   ProductInput,
 } from '@orderbook/shared';
 
+import type { ActorContext } from '../domain/actor.js';
+import { clampPaging } from '../domain/paging.js';
 import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as partyRepo from '../repositories/party.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
 import { publishChange } from './change-bus.js';
 
-const DEFAULT_LIMIT = 100;
-const MAX_LIMIT = 500;
-
-export interface ActorContext {
-  actorType: 'user' | 'office_panel';
-  actorId: string | null;
-}
-
-function normalizePaging(query: { limit?: number; offset?: number }): {
-  limit: number;
-  offset: number;
-} {
-  const limit = Math.min(Math.max(query.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT);
-  const offset = Math.max(query.offset ?? 0, 0);
-  return { limit, offset };
-}
+const PAGING = { defaultLimit: 100, maxLimit: 500 };
 
 // --- Parties ---
 
@@ -42,7 +29,7 @@ export async function listParties(query: {
   limit?: number;
   offset?: number;
 }): Promise<Paginated<Party>> {
-  return partyRepo.listParties({ search: query.search, ...normalizePaging(query) });
+  return partyRepo.listParties({ search: query.search, ...clampPaging(query, PAGING) });
 }
 
 export async function createParty(input: PartyInput, actor: ActorContext): Promise<Party> {
@@ -93,7 +80,7 @@ export async function listProducts(query: {
   limit?: number;
   offset?: number;
 }): Promise<Paginated<Product>> {
-  return productRepo.listProducts({ search: query.search, ...normalizePaging(query) });
+  return productRepo.listProducts({ search: query.search, ...clampPaging(query, PAGING) });
 }
 
 export async function listCategories(): Promise<ProductCategory[]> {

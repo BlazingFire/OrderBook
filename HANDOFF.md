@@ -87,10 +87,14 @@ OrderBook/
 └── office/                  Office Panel server + React frontend
 ```
 
-Each of `shared/`, `master/` and `office/` uses the same internal layout (`src/config`, `src/services`,
-`src/repositories`, `src/http`, `src/realtime`, `src/discovery`, `web/`) —
+Each of `shared/`, `master/` and `office/` uses the same internal layout (`src/config`, `src/domain`,
+`src/services`, `src/repositories`, `src/http`, `src/realtime`, `src/discovery`, `web/`) —
 see `docs/PROJECT_PLAN.md` §10 for the layering rule (transport never queries
-the database directly; only `repositories/` does).
+the database directly; only `repositories/` does). The master's `src/domain/`
+holds pure business rules (actor identity, the lead status state machine,
+paging clamps) with no I/O or framework imports; services orchestrate those
+rules against repositories, and Knex types never leave the repository layer
+(cross-repository transactions pass the opaque `TransactionContext` token).
 
 Package contents land incrementally during Phase 1 — check `git log` or the
 working tree for what actually exists if this section reads stale.

@@ -90,7 +90,13 @@ export interface Product {
   updatedAt: IsoTimestamp;
 }
 
-export type LeadStatus = 'new' | 'verified' | 'order' | 'cancelled';
+export const LEAD_STATUSES = ['new', 'verified', 'order', 'cancelled'] as const;
+
+export type LeadStatus = (typeof LEAD_STATUSES)[number];
+
+export function isLeadStatus(value: unknown): value is LeadStatus {
+  return (LEAD_STATUSES as readonly unknown[]).includes(value);
+}
 
 export interface LeadItem {
   id: Uuid;

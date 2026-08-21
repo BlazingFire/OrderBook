@@ -17,9 +17,9 @@ import {
   type ServerToClientEvents,
   type SocketAuthPayload,
   type SocketData,
-  type SyncSnapshot,
 } from '@orderbook/shared';
 
+import type { ActorContext } from '../domain/actor.js';
 import { toErrorMessage } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import { resolveSession } from '../services/auth.service.js';
@@ -28,6 +28,7 @@ import { onChange } from '../services/change-bus.js';
 import * as inventoryService from '../services/inventory.service.js';
 import * as leadService from '../services/lead.service.js';
 import * as panelService from '../services/panel.service.js';
+import { buildSnapshot } from '../services/snapshot.service.js';
 
 const log = createLogger('realtime');
 
@@ -138,7 +139,7 @@ async function handleConnection(
 }
 
 function registerCommands(socket: PanelSocket, panelId: string): void {
-  const actor: catalogService.ActorContext = { actorType: 'office_panel', actorId: panelId };
+  const actor: ActorContext = { actorType: 'office_panel', actorId: panelId };
 
   socket.on('sync:request', (ack) => run(ack, () => buildSnapshot()));
 
@@ -194,25 +195,6 @@ function run<T>(ack: CommandAck<T>, operation: () => Promise<T>): void {
       log.warn(`Command failed: ${toErrorMessage(error)}`);
       ack({ ok: false, error: toErrorMessage(error) });
     });
-}
-
-async function buildSnapshot(): Promise<SyncSnapshot> {
-  const [parties, products, categories, leads, stock] = await Promise.all([
-    catalogService.listParties({ limit: 500 }),
-    catalogService.listProducts({ limit: 500 }),
-    catalogService.listCategories(),
-    leadService.listLeads({ limit: 500 }),
-    inventoryService.listStock({ limit: 500 }),
-  ]);
-
-  return {
-    parties: parties.items,
-    products: products.items,
-    categories,
-    leads: leads.items,
-    stock,
-    serverTime: new Date().toISOString(),
-  };
 }
 
 async function broadcastPanels(io: RealtimeHub['io']): Promise<void> {
