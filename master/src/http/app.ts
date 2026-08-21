@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import express, { type Express } from 'express';
 import cookieParser from 'cookie-parser';
@@ -45,6 +46,14 @@ export function createApp(): Express {
   const webDist = path.join(config.packageRoot, 'web', 'dist');
   app.use(express.static(webDist));
   app.get(/^(?!\/api).*/, (_req, res, next) => {
+    // web/dist is a build artefact and is gitignored, so a fresh checkout has
+    // none. Without this the request falls through to the JSON 404 handler,
+    // which reads as "the app is broken" rather than "the UI is not built".
+    if (!existsSync(path.join(webDist, 'index.html'))) {
+      res.status(503).type('html').send(missingUiPage());
+      return;
+    }
+
     res.sendFile(path.join(webDist, 'index.html'), (error) => {
       if (error) next();
     });
@@ -54,4 +63,28 @@ export function createApp(): Express {
   app.use(errorHandler);
 
   return app;
+}
+
+/**
+ * Shown when the server is healthy but the frontend has never been built.
+ * Deliberately plain HTML with no assets — the whole point is that nothing
+ * has been compiled yet.
+ */
+function missingUiPage(): string {
+  return `<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>OrderBook — UI not built</title></head>
+  <body style="font-family: 'Segoe UI', Tahoma, Arial, sans-serif; max-width: 640px; margin: 60px auto; padding: 0 20px; color: #1c2530; line-height: 1.55;">
+    <h1 style="font-size: 22px;">The Master Panel is running, but its screens have not been built yet</h1>
+    <p>The server and database are fine — this page is proof the server answered.
+       What is missing is the compiled browser interface.</p>
+    <p>Stop the server and run:</p>
+    <pre style="background:#f0f4f8; border:1px solid #d8dee4; border-radius:6px; padding:12px 14px; overflow-x:auto;">npm run build
+npm run dev:master</pre>
+    <p style="color:#5b6b7c; font-size: 14px;">
+      The interface is a build artefact, so it is not stored in version control and
+      has to be compiled once after cloning or pulling.
+    </p>
+  </body>
+</html>`;
 }

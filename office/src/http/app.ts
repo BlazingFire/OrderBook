@@ -6,6 +6,7 @@
  * credentials.
  */
 
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import express, { type Express, type Request, type Response } from 'express';
 
@@ -114,6 +115,13 @@ export function createApp(): Express {
   const webDist = path.join(config.packageRoot, 'web', 'dist');
   app.use(express.static(webDist));
   app.get(/^(?!\/api).*/, (_req, res, next) => {
+    // See master/src/http/app.ts — web/dist is gitignored, so a fresh checkout
+    // has no UI and would otherwise answer with a confusing JSON 404.
+    if (!existsSync(path.join(webDist, 'index.html'))) {
+      res.status(503).type('html').send(missingUiPage());
+      return;
+    }
+
     res.sendFile(path.join(webDist, 'index.html'), (error) => {
       if (error) next();
     });
@@ -179,4 +187,20 @@ function streamEvents(req: Request, res: Response): void {
     masterConnection.off('snapshot', onSnapshot);
     masterConnection.off('change', onChange);
   });
+}
+
+/** Shown when the Office Panel server runs but its frontend was never built. */
+function missingUiPage(): string {
+  return `<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>OrderBook — UI not built</title></head>
+  <body style="font-family: 'Segoe UI', Tahoma, Arial, sans-serif; max-width: 640px; margin: 60px auto; padding: 0 20px; color: #1c2530; line-height: 1.55;">
+    <h1 style="font-size: 22px;">The Office Panel is running, but its screens have not been built yet</h1>
+    <p>The server answered this request, so it is working. What is missing is the
+       compiled browser interface.</p>
+    <p>Stop the server and run:</p>
+    <pre style="background:#f0f4f8; border:1px solid #d8dee4; border-radius:6px; padding:12px 14px; overflow-x:auto;">npm run build
+npm run dev:office</pre>
+  </body>
+</html>`;
 }
