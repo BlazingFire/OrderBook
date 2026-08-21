@@ -38,12 +38,17 @@ Full database schema (every table, columns, indexes, and rationale):
    the Master server) so the shop-floor operator never installs or manages a
    database service — same "just works" experience SQLite would have given.
 3. **Query layer: Knex.js** talking to Postgres via the `pg` driver.
-   The PostgreSQL **server binaries ship with the app** as per-platform
-   optional dependencies (`@embedded-postgres/<platform>`), so no separate
-   database install is needed. That distribution contains server binaries only
-   — `initdb`, `pg_ctl`, `postgres`. There is no `psql`, so anything that needs
-   to talk to the database must use the `pg` driver, never a client
-   executable.
+   The PostgreSQL **server binaries are declared as per-platform optional
+   dependencies** (`@embedded-postgres/<platform>`). That distribution
+   contains server binaries only — `initdb`, `pg_ctl`, `postgres`. There is
+   no `psql`, so anything that talks to the database must use the `pg`
+   driver, never a client executable. **Caveat (unresolved):** those packages
+   fetch their binaries in a postinstall script, and npm ignores failures in
+   optional-dependency scripts — so `npm install` can "succeed" leaving no
+   binaries, which is exactly what happened on the owner's Windows PC. The
+   supported fallbacks are `DATABASE_URL` (existing server; what the owner's
+   dev PC uses) and `ORDERBOOK_PG_BIN` (existing binaries). Making the
+   bundled path reliable — or failing loudly — is still open work.
 4. **Network pairing**: custom UDP broadcast discovery protocol (not mDNS —
    picked for reliability across mixed Windows/Linux LAN setups) with both
    an auto-discovery flow and a manual IP/ID/password fallback. Full protocol
@@ -60,6 +65,13 @@ Full database schema (every table, columns, indexes, and rationale):
    types (entities, Socket.IO event contract, discovery protocol messages)
    living in `shared/` so Master and Office can never drift out of sync on
    the wire format.
+8. **Configuration comes from a `.env` file** (gitignored; `.env.example`
+   documents every setting), loaded by a small dependency-free parser in
+   `<package>/src/lib/env-file.ts`. Package-level `.env` is read before the
+   repo-root one, and a real environment variable always wins over both. The
+   parser handles CRLF endings and quoted Windows paths — pinned by tests in
+   `master/tests/env-file.test.ts` — because the file is edited in Notepad on
+   the shop PC.
 
 ## Open questions (still unresolved — confirm with the user before finalizing)
 
@@ -140,6 +152,23 @@ working tree for what actually exists if this section reads stale.
   insufficient stock — a dealer routinely sells against an undelivered factory
   order, so stock may go negative and the shortfall is surfaced instead.
 
+- **Running on the owner's Windows PC: confirmed.** The Master Panel runs at
+  `http://localhost:4100` (LAN address `192.168.1.235`) on
+  `C:\Users\Z\Desktop\OrderBook`, signed in, all tabs working. It uses a
+  locally installed PostgreSQL via `.env`:
+  `DATABASE_URL=postgres://postgres:...@localhost:5432/order_book`
+  (the bundled-binaries path failed silently there — see decision 3). Getting
+  it running surfaced and fixed two fresh-clone failures:
+  - `shared/` compiled output missing → `prepare` + `pre*` scripts now build
+    it before install/dev/start/migrate/test.
+  - Frontend `web/dist` missing (gitignored build artefact) → `predev:*` and
+    `prestart:*` now build the panel UIs too, and a request hitting the SPA
+    fallback with no built `index.html` gets a plain "UI not built" page with
+    the command to run, instead of the JSON 404 that read as a broken app.
+  Next milestone on real hardware: pairing an Office Panel from a second PC
+  (the owner has the step-by-step guide; firewall rules for TCP 4100 and UDP
+  45789 on the Master PC are the known tripwire).
+
 ### Still to do in Phase 2
 
 The user was asked to prioritise and chose inventory first. Remaining, roughly
@@ -157,10 +186,15 @@ in the order the plan lists them:
   out on its next reconnect attempt rather than immediately.
 - Product images: schema and static route exist, no upload UI.
 - No frontend component tests; UI verification is browser-driven.
-- The bundled PostgreSQL packages are published only as `beta` versions
-  (pinned to `17.10.0-beta.17`). The binaries themselves are official
-  PostgreSQL 17.10 builds and the beta JS wrapper is not used at runtime, but
-  the version pin is worth revisiting if a stable line is published.
+- **Bundled PostgreSQL is not reliable yet.** The `@embedded-postgres/*`
+  packages (pinned `17.10.0-beta.17`; the binaries are official PostgreSQL
+  17.10 builds) download ~60–100MB in a postinstall script, and npm treats
+  optional-dependency script failures as non-events — a clean-looking
+  `npm install` can leave no binaries. This bit on the owner's Windows PC;
+  dev there now runs on `DATABASE_URL` instead. To make the shop-PC
+  "nothing to install" promise real: verify the binaries exist at startup
+  (already done — the error names the fix), but also make installation
+  fail loudly or fetch the binaries ourselves at first launch.
 
 ### Traps worth knowing
 
@@ -171,13 +205,28 @@ in the order the plan lists them:
   refuses to start and explains how to migrate, rather than deleting anything
   (`assertClusterVersionMatches`). The *test* helper does the opposite and
   rebuilds its throwaway cluster, since that data is disposable.
+- **`npm install --save-optional --workspace` can record nothing** while still
+  placing files in `node_modules` — which is how the embedded-postgres
+  dependency was once "verified working" yet absent from the lockfile. Declare
+  dependencies by editing the workspace `package.json` directly, then run
+  `npm install`, and check the lockfile actually changed.
+- **The frontends are build artefacts too.** `master/web/dist` and
+  `office/web/dist` are gitignored; a server started without them serves the
+  "UI not built" page. The `pre*` scripts handle this — same rule as
+  `shared/`: do not remove them.
 
 ## Working agreements for this repo
 
 - **Branching:** `main` is never pushed to directly. All work lands on `dev`,
   and reaches `main` only through a pull request.
-- **The owner's PC (`C:\Users\Z\Desktop\OrderBook`) is the working copy.**
-  Changes are pulled from `dev` there.
+- **Workflow:** the Claude cloud session develops, verifies what it can, and
+  pushes to `dev`; the owner pulls on their PC
+  (`C:\Users\Z\Desktop\OrderBook`) and runs there. The cloud session has
+  no access to the owner's machine — anything Windows-specific is verified by
+  the owner running it and reporting back.
+- **The owner's dev PC uses an external PostgreSQL** via `.env`
+  (`DATABASE_URL` → database `order_book`). The `.env` file is gitignored;
+  never commit one, and never put credentials anywhere tracked.
 - Phase 1 is explicitly scoped as **working, not polished** — the user has
   deferred visual/branding polish to Phase 2. Don't gold-plate UI in Phase 1.
 - Any architecture decision that contradicts or extends what's listed above
