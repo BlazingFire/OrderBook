@@ -54,6 +54,15 @@ Full database schema (every table, columns, indexes, and rationale):
    types (entities, Socket.IO event contract, discovery protocol messages)
    living in `shared/` so Master and Office can never drift out of sync on
    the wire format.
+8. **Clean-architecture conventions on the Master server** (introduced in the
+   2026-08-21 refactor session): pure business rules live in `master/src/domain/`
+   (no I/O, no framework imports — importable by any layer, importing none);
+   services orchestrate use cases against repositories; Knex types never leave
+   `repositories/` — cross-repository transactional work passes the opaque
+   `TransactionContext` token from `repositories/transaction.ts`; transport
+   (`http/`, `realtime/`) contains no aggregation or business policy. Follow
+   these when adding features: new invariants go in `domain/`, not inline in a
+   service or route.
 
 ## Open questions (still unresolved — confirm with the user before finalizing)
 
@@ -138,6 +147,27 @@ working tree for what actually exists if this section reads stale.
   insufficient stock — a dealer routinely sells against an undelivered factory
   order, so stock may go negative and the shortfall is surfaced instead.
 
+- **Clean-architecture refactor of the Master server: done** (2026-08-21, no
+  behaviour change; lint + typecheck + tests + builds verified). What moved:
+  - `master/src/domain/` now holds the pure rules: `actor.ts` (`ActorContext`,
+    `actorUserId` — previously defined in `catalog.service.ts` and imported
+    everywhere), `lead-workflow.ts` (`canTransitionLead` +
+    `stockEffectOfTransition`, keeping the status transition table and its
+    inventory side effects in one place), `paging.ts` (clamps that were
+    duplicated across three services).
+  - `repositories/transaction.ts` exports the opaque `TransactionContext`;
+    services no longer import Knex. `lead.repository`'s `onCommitted` callback
+    was renamed `withinTransaction` (it runs inside the transaction, before
+    commit — the old name was wrong).
+  - Office Panel snapshot assembly moved from the Socket.IO hub into
+    `services/snapshot.service.ts`; the hub is pure transport.
+  - `LEAD_STATUSES` + `isLeadStatus` live in `@orderbook/shared` next to
+    `LeadStatus`, replacing a hand-rolled guard in `data.routes.ts`.
+  - Deliberately **not** abstracted: the per-mutation `recordActivity` +
+    `publishChange` pairs in services. The payloads differ per call site and a
+    generic "domain event" helper would hide what each mutation records
+    without saving code — don't reintroduce one without a concrete need.
+
 ### Still to do in Phase 2
 
 The user was asked to prioritise and chose inventory first. Remaining, roughly
@@ -158,8 +188,11 @@ in the order the plan lists them:
 
 ## Working agreements for this repo
 
-- Branch: `claude/ceramic-offline-web-app-6wjqq5` — all work happens here per
-  the session's git instructions.
+- Branch: each session works on the branch its git instructions designate
+  (Phase 1–2 landed via `claude/ceramic-offline-web-app-6wjqq5`; the
+  clean-architecture refactor is on
+  `claude/refactor-production-codebase-7gbz9v`). Check your session's
+  instructions rather than assuming a branch name from this file.
 - Phase 1 is explicitly scoped as **working, not polished** — the user has
   deferred visual/branding polish to Phase 2. Don't gold-plate UI in Phase 1.
 - Any architecture decision that contradicts or extends what's listed above
