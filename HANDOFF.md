@@ -172,7 +172,13 @@ working tree for what actually exists if this section reads stale.
 
 The user was asked to prioritise and chose inventory first. Remaining, roughly
 in the order the plan lists them:
-- Visual polish / branding pass (the user's "make it beautiful later").
+- Visual polish / branding pass (the user's "make it beautiful later"). A
+  vendored design-review skill is now committed at
+  `.claude/skills/apple-design/` (Apple HIG principles generalized to any
+  framework) — invoke it as `/apple-design` when starting this work. Note the
+  two frontends currently duplicate `styles.css`, `format.ts` and
+  `Field.tsx` between `master/web` and `office/web`; there is no shared design
+  system yet, and consolidating one is the natural first step of this pass.
 - Reporting/analytics and printable order sheets.
 - Product images upload, richer product parameters, bulk import from Excel/CSV.
 - Multi-user roles/permissions within the Office Panel.
