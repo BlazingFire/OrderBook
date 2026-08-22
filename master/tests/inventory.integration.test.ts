@@ -3,11 +3,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { canRunIntegrationTests } from './helpers/db.js';
 import { resetData, setupDatabase, teardownDatabase } from './helpers/fixtures.js';
 import { db } from '../src/db/knex.js';
+import type { ActorContext } from '../src/domain/actor.js';
 import * as catalog from '../src/services/catalog.service.js';
 import * as inventory from '../src/services/inventory.service.js';
 import * as leads from '../src/services/lead.service.js';
 
-const actor: catalog.ActorContext = { actorType: 'user', actorId: null };
+const actor: ActorContext = { actorType: 'user', actorId: null };
 const context = { sourcePanelId: null, actor };
 
 async function seed(boxCoverageSqft: number | null = 15) {

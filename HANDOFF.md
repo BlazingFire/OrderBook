@@ -72,6 +72,15 @@ Full database schema (every table, columns, indexes, and rationale):
    parser handles CRLF endings and quoted Windows paths — pinned by tests in
    `master/tests/env-file.test.ts` — because the file is edited in Notepad on
    the shop PC.
+9. **Clean-architecture conventions on the Master server** (introduced in the
+   2026-08-21 refactor session): pure business rules live in `master/src/domain/`
+   (no I/O, no framework imports — importable by any layer, importing none);
+   services orchestrate use cases against repositories; Knex types never leave
+   `repositories/` — cross-repository transactional work passes the opaque
+   `TransactionContext` token from `repositories/transaction.ts`; transport
+   (`http/`, `realtime/`) contains no aggregation or business policy. Follow
+   these when adding features: new invariants go in `domain/`, not inline in a
+   service or route.
 
 ## Open questions (still unresolved — confirm with the user before finalizing)
 
@@ -105,10 +114,14 @@ OrderBook/
 └── office/                  Office Panel server + React frontend
 ```
 
-Each of `shared/`, `master/` and `office/` uses the same internal layout (`src/config`, `src/services`,
-`src/repositories`, `src/http`, `src/realtime`, `src/discovery`, `web/`) —
+Each of `shared/`, `master/` and `office/` uses the same internal layout (`src/config`, `src/domain`,
+`src/services`, `src/repositories`, `src/http`, `src/realtime`, `src/discovery`, `web/`) —
 see `docs/PROJECT_PLAN.md` §10 for the layering rule (transport never queries
-the database directly; only `repositories/` does).
+the database directly; only `repositories/` does). The master's `src/domain/`
+holds pure business rules (actor identity, the lead status state machine,
+paging clamps) with no I/O or framework imports; services orchestrate those
+rules against repositories, and Knex types never leave the repository layer
+(cross-repository transactions pass the opaque `TransactionContext` token).
 
 Package contents land incrementally during Phase 1 — check `git log` or the
 working tree for what actually exists if this section reads stale.
@@ -168,12 +181,38 @@ working tree for what actually exists if this section reads stale.
   Next milestone on real hardware: pairing an Office Panel from a second PC
   (the owner has the step-by-step guide; firewall rules for TCP 4100 and UDP
   45789 on the Master PC are the known tripwire).
+- **Clean-architecture refactor of the Master server: done** (2026-08-21, no
+  behaviour change; lint + typecheck + tests + builds verified). What moved:
+  - `master/src/domain/` now holds the pure rules: `actor.ts` (`ActorContext`,
+    `actorUserId` — previously defined in `catalog.service.ts` and imported
+    everywhere), `lead-workflow.ts` (`canTransitionLead` +
+    `stockEffectOfTransition`, keeping the status transition table and its
+    inventory side effects in one place), `paging.ts` (clamps that were
+    duplicated across three services).
+  - `repositories/transaction.ts` exports the opaque `TransactionContext`;
+    services no longer import Knex. `lead.repository`'s `onCommitted` callback
+    was renamed `withinTransaction` (it runs inside the transaction, before
+    commit — the old name was wrong).
+  - Office Panel snapshot assembly moved from the Socket.IO hub into
+    `services/snapshot.service.ts`; the hub is pure transport.
+  - `LEAD_STATUSES` + `isLeadStatus` live in `@orderbook/shared` next to
+    `LeadStatus`, replacing a hand-rolled guard in `data.routes.ts`.
+  - Deliberately **not** abstracted: the per-mutation `recordActivity` +
+    `publishChange` pairs in services. The payloads differ per call site and a
+    generic "domain event" helper would hide what each mutation records
+    without saving code — don't reintroduce one without a concrete need.
 
 ### Still to do in Phase 2
 
 The user was asked to prioritise and chose inventory first. Remaining, roughly
 in the order the plan lists them:
-- Visual polish / branding pass (the user's "make it beautiful later").
+- Visual polish / branding pass (the user's "make it beautiful later"). A
+  vendored design-review skill is now committed at
+  `.claude/skills/apple-design/` (Apple HIG principles generalized to any
+  framework) — invoke it as `/apple-design` when starting this work. Note the
+  two frontends currently duplicate `styles.css`, `format.ts` and
+  `Field.tsx` between `master/web` and `office/web`; there is no shared design
+  system yet, and consolidating one is the natural first step of this pass.
 - Reporting/analytics and printable order sheets.
 - Product images upload, richer product parameters, bulk import from Excel/CSV.
 - Multi-user roles/permissions within the Office Panel.
@@ -218,7 +257,11 @@ in the order the plan lists them:
 ## Working agreements for this repo
 
 - **Branching:** `main` is never pushed to directly. All work lands on `dev`,
-  and reaches `main` only through a pull request.
+  and reaches `main` only through a pull request. `main` therefore sits
+  *behind* `dev` by design. Historical feature branches
+  (`claude/ceramic-offline-web-app-6wjqq5` for Phases 1–2,
+  `claude/refactor-production-codebase-7gbz9v` for the clean-architecture
+  refactor) are all merged into `dev`; new work branches from `dev`.
 - **Workflow:** the Claude cloud session develops, verifies what it can, and
   pushes to `dev`; the owner pulls on their PC
   (`C:\Users\Z\Desktop\OrderBook`) and runs there. The cloud session has

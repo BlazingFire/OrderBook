@@ -5,25 +5,18 @@
 
 import type { DashboardSummary, Lead, LeadInput, LeadStatus, Paginated } from '@orderbook/shared';
 
+import { actorUserId, type ActorContext } from '../domain/actor.js';
+import { canTransitionLead, stockEffectOfTransition } from '../domain/lead-workflow.js';
+import { clampPaging } from '../domain/paging.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as leadRepo from '../repositories/lead.repository.js';
 import * as partyRepo from '../repositories/party.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
-import type { ActorContext } from './catalog.service.js';
 import { publishChange } from './change-bus.js';
 import * as inventoryService from './inventory.service.js';
 
-const DEFAULT_LIMIT = 100;
-const MAX_LIMIT = 500;
-
-/** Which transitions are legal. Cancelled and delivered orders are terminal. */
-const ALLOWED_TRANSITIONS: Record<LeadStatus, LeadStatus[]> = {
-  new: ['verified', 'cancelled'],
-  verified: ['order', 'new', 'cancelled'],
-  order: ['cancelled'],
-  cancelled: [],
-};
+const PAGING = { defaultLimit: 100, maxLimit: 500 };
 
 export async function listLeads(query: {
   statuses?: LeadStatus[];
@@ -34,8 +27,7 @@ export async function listLeads(query: {
   return leadRepo.listLeads({
     statuses: query.statuses,
     search: query.search,
-    limit: Math.min(Math.max(query.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT),
-    offset: Math.max(query.offset ?? 0, 0),
+    ...clampPaging(query, PAGING),
   });
 }
 
@@ -74,7 +66,7 @@ export async function createLead(
 
   const lead = await leadRepo.insertLead(
     { ...input, items },
-    { sourcePanelId: context.sourcePanelId, createdByUserId: context.actor.actorType === 'user' ? context.actor.actorId : null },
+    { sourcePanelId: context.sourcePanelId, createdByUserId: actorUserId(context.actor) },
   );
 
   await activityLog.recordActivity({
@@ -100,17 +92,19 @@ export async function changeLeadStatus(
 
   if (existing.status === status) return existing;
 
-  if (!ALLOWED_TRANSITIONS[existing.status].includes(status)) {
+  if (!canTransitionLead(existing.status, status)) {
     throw new ValidationError(`Cannot move a lead from "${existing.status}" to "${status}"`);
   }
+
+  const stockEffect = stockEffectOfTransition(existing.status, status);
 
   // Stock moves in the same transaction as the status change: an order that
   // saved but did not reduce stock (or the reverse) would leave the two
   // permanently out of step.
   const lead = await leadRepo.updateLeadStatus(id, status, async (updated, trx) => {
-    if (status === 'order') {
+    if (stockEffect === 'deduct') {
       await inventoryService.applyOrderDeduction(updated, actor, trx);
-    } else if (status === 'cancelled' && existing.status === 'order') {
+    } else if (stockEffect === 'restore') {
       await inventoryService.reverseOrderDeduction(updated, actor, trx);
     }
   });
@@ -129,7 +123,7 @@ export async function changeLeadStatus(
 
   // Published after the transaction commits so panels never see stock figures
   // from a transaction that could still roll back.
-  if (status === 'order' || (status === 'cancelled' && existing.status === 'order')) {
+  if (stockEffect) {
     await inventoryService.publishStockFor(lead.items.map((item) => item.productId));
   }
 

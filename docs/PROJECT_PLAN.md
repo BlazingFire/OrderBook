@@ -271,6 +271,7 @@ predictable:
 ├── src/                    Server-side TypeScript
 │   ├── config/             Environment/config loading and validation
 │   ├── db/                 (master only) Postgres lifecycle, Knex, migrations
+│   ├── domain/             (master only) Pure business rules — no I/O, no framework
 │   ├── repositories/       (master only) Data access — one module per table
 │   ├── services/           Business logic, transactions, orchestration
 │   ├── http/               Express app, routes, middleware
@@ -281,8 +282,13 @@ predictable:
 └── web/                    React + Vite frontend, built to static assets
 ```
 
-The layering rule: `http`/`realtime` handle transport only, `services` hold
-business rules, `repositories` are the only code that touches the database.
+The layering rule: `http`/`realtime` handle transport only, `services`
+orchestrate use cases, `domain` holds pure business rules (state machines,
+clamping/validation policy — importable by any layer, importing none of them),
+and `repositories` are the only code that touches the database. Knex types stay
+inside `repositories/`; work that must span repositories in one transaction
+passes the opaque `TransactionContext` token from
+`repositories/transaction.ts`.
 Transport layers never issue queries directly.
 
 ## 11. Phased Build Plan

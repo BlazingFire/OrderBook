@@ -2,10 +2,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { canRunIntegrationTests } from './helpers/db.js';
 import { resetData, setupDatabase, teardownDatabase } from './helpers/fixtures.js';
+import type { ActorContext } from '../src/domain/actor.js';
 import * as catalog from '../src/services/catalog.service.js';
 import { db } from '../src/db/knex.js';
 
-const actor: catalog.ActorContext = { actorType: 'user', actorId: null };
+const actor: ActorContext = { actorType: 'user', actorId: null };
 
 describe.skipIf(!canRunIntegrationTests)('catalog service (integration)', () => {
   beforeAll(setupDatabase);

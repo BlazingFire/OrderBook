@@ -5,8 +5,9 @@
  */
 
 import { Router } from 'express';
-import type { LeadStatus } from '@orderbook/shared';
+import { isLeadStatus, type LeadStatus } from '@orderbook/shared';
 
+import type { ActorContext } from '../../domain/actor.js';
 import { ValidationError } from '../../lib/errors.js';
 import * as catalogService from '../../services/catalog.service.js';
 import * as inventoryService from '../../services/inventory.service.js';
@@ -19,7 +20,7 @@ export const dataRoutes: Router = Router();
 
 dataRoutes.use(requireAuth);
 
-function actorFrom(userId: string | undefined): catalogService.ActorContext {
+function actorFrom(userId: string | undefined): ActorContext {
   return { actorType: 'user', actorId: userId ?? null };
 }
 
@@ -180,8 +181,4 @@ function parseStatuses(raw: unknown): LeadStatus[] | undefined {
   if (typeof raw !== 'string' || !raw) return undefined;
   const parsed = raw.split(',').filter(isLeadStatus);
   return parsed.length ? parsed : undefined;
-}
-
-function isLeadStatus(value: unknown): value is LeadStatus {
-  return value === 'new' || value === 'verified' || value === 'order' || value === 'cancelled';
 }

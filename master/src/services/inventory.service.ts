@@ -15,21 +15,21 @@ import type {
   StockInboundInput,
   StockMovement,
 } from '@orderbook/shared';
-import type { Knex } from 'knex';
 
+import { actorUserId, type ActorContext } from '../domain/actor.js';
+import { clampLimit, clampPaging } from '../domain/paging.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as inventoryRepo from '../repositories/inventory.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
-import type { ActorContext } from './catalog.service.js';
+import type { TransactionContext } from '../repositories/transaction.js';
 import { publishChange } from './change-bus.js';
 
 const log = createLogger('inventory');
 
-const DEFAULT_LIMIT = 200;
-const MAX_LIMIT = 1000;
-const MAX_MOVEMENTS = 200;
+const PAGING = { defaultLimit: 200, maxLimit: 1000 };
+const MOVEMENT_PAGING = { defaultLimit: 50, maxLimit: 200 };
 
 export async function listStock(query: {
   search?: string;
@@ -40,8 +40,7 @@ export async function listStock(query: {
   return inventoryRepo.listStockLevels({
     search: query.search,
     lowOnly: query.lowOnly ?? false,
-    limit: Math.min(Math.max(query.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT),
-    offset: Math.max(query.offset ?? 0, 0),
+    ...clampPaging(query, PAGING),
   });
 }
 
@@ -51,7 +50,7 @@ export async function listMovements(query: {
 }): Promise<StockMovement[]> {
   return inventoryRepo.listMovements({
     productId: query.productId,
-    limit: Math.min(Math.max(query.limit ?? 50, 1), MAX_MOVEMENTS),
+    limit: clampLimit(query.limit, MOVEMENT_PAGING),
   });
 }
 
@@ -71,7 +70,7 @@ export async function recordInbound(
     deltaBoxes: quantity,
     referenceType: 'purchase',
     note: input.note ?? null,
-    createdByUserId: actor.actorType === 'user' ? actor.actorId : null,
+    createdByUserId: actorUserId(actor),
   });
 
   await recordAndPublish(level, actor, 'stock_in', { quantityBoxes: quantity, note: input.note ?? null });
@@ -107,7 +106,7 @@ export async function recordAdjustment(
     deltaBoxes: delta,
     referenceType: 'manual',
     note: input.note ?? null,
-    createdByUserId: actor.actorType === 'user' ? actor.actorId : null,
+    createdByUserId: actorUserId(actor),
   });
 
   await recordAndPublish(level, actor, 'stock_adjusted', {
@@ -145,7 +144,7 @@ export async function setReorderLevel(
 export async function applyOrderDeduction(
   lead: Lead,
   actor: ActorContext,
-  trx: Knex.Transaction,
+  trx: TransactionContext,
 ): Promise<void> {
   if (await inventoryRepo.hasMovementForLead(lead.id, 'outbound', trx)) {
     log.debug(`Lead ${lead.leadNumber} already deducted from stock; skipping`);
@@ -164,7 +163,7 @@ export async function applyOrderDeduction(
         referenceType: 'order',
         referenceId: lead.id,
         note: `Order ${lead.leadNumber}`,
-        createdByUserId: actor.actorType === 'user' ? actor.actorId : null,
+        createdByUserId: actorUserId(actor),
       },
       trx,
     );
@@ -182,7 +181,7 @@ export async function applyOrderDeduction(
 export async function reverseOrderDeduction(
   lead: Lead,
   actor: ActorContext,
-  trx: Knex.Transaction,
+  trx: TransactionContext,
 ): Promise<void> {
   const wasDeducted = await inventoryRepo.hasMovementForLead(lead.id, 'outbound', trx);
   if (!wasDeducted) return;
@@ -204,7 +203,7 @@ export async function reverseOrderDeduction(
         referenceType: 'order',
         referenceId: lead.id,
         note: `Cancelled order ${lead.leadNumber}`,
-        createdByUserId: actor.actorType === 'user' ? actor.actorId : null,
+        createdByUserId: actorUserId(actor),
       },
       trx,
     );

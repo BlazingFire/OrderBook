@@ -4,6 +4,7 @@ import { v4 as uuid } from 'uuid';
 
 import { db } from '../db/knex.js';
 import { firstCount, mapLead, mapLeadItem } from './mappers.js';
+import type { TransactionContext } from './transaction.js';
 
 const TABLE = 'leads';
 const ITEM_TABLE = 'lead_items';
@@ -111,14 +112,15 @@ export async function insertLead(
 }
 
 /**
- * `onCommitted` runs inside the same transaction as the status change, after
- * the row is updated — used to move stock so an order and its stock movements
- * commit or fail together.
+ * `withinTransaction` runs inside the same transaction as the status change,
+ * after the row is updated — used to move stock so an order and its stock
+ * movements commit or fail together. If it throws, the status change rolls
+ * back with it.
  */
 export async function updateLeadStatus(
   id: string,
   status: LeadStatus,
-  onCommitted?: (lead: Lead, trx: Knex.Transaction) => Promise<void>,
+  withinTransaction?: (lead: Lead, trx: TransactionContext) => Promise<void>,
 ): Promise<Lead | null> {
   return db().transaction(async (trx) => {
     const patch: Record<string, unknown> = { status, updated_at: trx.fn.now() };
@@ -132,7 +134,7 @@ export async function updateLeadStatus(
     const lead = await findLeadById(id, trx);
     if (!lead) return null;
 
-    if (onCommitted) await onCommitted(lead, trx);
+    if (withinTransaction) await withinTransaction(lead, trx);
     return lead;
   });
 }
