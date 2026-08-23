@@ -4,7 +4,7 @@ import type { PairingRequest } from '@orderbook/shared';
 import { ValidationError } from '../../lib/errors.js';
 import * as panelService from '../../services/panel.service.js';
 import { asyncHandler } from '../async-handler.js';
-import { requireAuth } from '../middleware/require-auth.js';
+import { actorFromRequest, requireAuth } from '../middleware/require-auth.js';
 
 /**
  * Unauthenticated: an Office Panel has no credentials yet at this point. The
@@ -44,8 +44,9 @@ panelRoutes.use(requireAuth);
 
 panelRoutes.get(
   '/',
-  asyncHandler(async (_req, res) => {
-    res.json({ panels: await panelService.listPanelsWithPresence() });
+  asyncHandler(async (req, res) => {
+    const actor = actorFromRequest(req);
+    res.json({ panels: await panelService.listPanelsWithPresence(actor.tenantId) });
   }),
 );
 

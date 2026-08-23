@@ -4,6 +4,7 @@ import { db } from '../db/knex.js';
 
 export interface MasterConfigRow {
   id: number;
+  tenant_id: string;
   master_unique_id: string;
   company_name: string | null;
   lan_ip: string;

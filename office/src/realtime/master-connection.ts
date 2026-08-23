@@ -15,6 +15,7 @@ import type {
   DataChangedEvent,
   InventoryStockLevel,
   Lead,
+  Order,
   Party,
   Product,
   ProductCategory,
@@ -24,6 +25,9 @@ import type {
 
 import { createLogger } from '../lib/logger.js';
 import { clearCredentials, loadCredentials, masterBaseUrl } from '../services/credentials.store.js';
+import { observe } from '../sync/clock.js';
+import * as localStore from '../sync/local-store.js';
+import { flush, setTransport, stopSync } from '../sync/sync.service.js';
 
 const log = createLogger('master-link');
 
@@ -82,10 +86,15 @@ class MasterConnection extends EventEmitter {
       this.lastError = null;
       this.setState('connected');
       log.info('Connected to Master');
+
+      // The outbox only knows how to hand mutations to *something*; wiring the
+      // socket in here is what keeps the sync service free of transport.
+      setTransport((mutations) => this.command('sync:push', { mutations }));
     });
 
     socket.on('disconnect', (reason) => {
       this.setState('disconnected');
+      setTransport(null);
       log.warn(`Disconnected from Master: ${reason}`);
     });
 
@@ -102,6 +111,24 @@ class MasterConnection extends EventEmitter {
       log.info(
         `Synced: ${snapshot.parties.length} parties, ${snapshot.products.length} products, ${snapshot.leads.length} leads`,
       );
+
+      void (async () => {
+        // Persist before flushing: if the push crashes the process, the panel
+        // still restarts holding what the Master last told it.
+        await localStore.setSnapshot(snapshot);
+        if (snapshot.serverHlc) await observe(snapshot.serverHlc);
+
+        // Anything saved while the link was down goes up now. This is the
+        // moment the panel stops being behind.
+        await flush();
+      })();
+    });
+
+    socket.on('sync:conflict', (conflict) => {
+      log.warn(
+        `A value was overwritten during sync: ${conflict.entity} ${conflict.entityId} field "${conflict.field}"`,
+      );
+      this.emit('conflict', conflict);
     });
 
     socket.on('data:changed', (event) => {
@@ -122,6 +149,7 @@ class MasterConnection extends EventEmitter {
   }
 
   disconnect(): void {
+    stopSync();
     if (!this.socket) return;
     this.socket.removeAllListeners();
     this.socket.disconnect();
@@ -197,11 +225,15 @@ class MasterConnection extends EventEmitter {
       case 'product_category':
         this.snapshot.categories = upsert(this.snapshot.categories, event.payload as ProductCategory);
         break;
+      case 'order':
+        this.snapshot.orders = upsert(this.snapshot.orders, event.payload as Order);
+        break;
       case 'stock':
-        this.snapshot.stock = upsertBy(
+        // Keyed by the (product, colour) pair now that stock is per colour —
+        // matching on productId alone would collapse every colour into one row.
+        this.snapshot.stock = upsertStock(
           this.snapshot.stock,
           event.payload as InventoryStockLevel,
-          'productId',
         );
         break;
       default:
@@ -214,9 +246,20 @@ function upsert<T extends { id: string }>(list: T[], item: T): T[] {
   return upsertBy(list, item, 'id');
 }
 
-/** Stock rows are keyed by productId rather than an `id` of their own. */
 function upsertBy<T, K extends keyof T>(list: T[], item: T, key: K): T[] {
   const index = list.findIndex((entry) => entry[key] === item[key]);
+  if (index === -1) return [item, ...list];
+
+  const next = [...list];
+  next[index] = item;
+  return next;
+}
+
+/** Stock rows have no id of their own — a row is one (product, colour) pair. */
+function upsertStock(list: InventoryStockLevel[], item: InventoryStockLevel): InventoryStockLevel[] {
+  const index = list.findIndex(
+    (entry) => entry.productId === item.productId && entry.colour === item.colour,
+  );
   if (index === -1) return [item, ...list];
 
   const next = [...list];

@@ -1,391 +1,243 @@
+/**
+ * Inventory: per-colour stock, reservations, and dispatch
+ * (docs/LEAD_GENERATION_FLOW.md §5.1, §6).
+ *
+ * The behaviour worth guarding here is the *split* between reserving and
+ * dispatching. Conversion holds stock aside; only dispatch takes it off the
+ * ledger. Getting that wrong in either direction — deducting at conversion, or
+ * never deducting at all — looks identical on a single screen and is only
+ * visible in the numbers these tests assert.
+ */
+
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { canRunIntegrationTests } from './helpers/db.js';
-import { resetData, setupDatabase, teardownDatabase } from './helpers/fixtures.js';
+import { resetData, setupDatabase, teardownDatabase, testActor } from './helpers/fixtures.js';
 import { db } from '../src/db/knex.js';
 import type { ActorContext } from '../src/domain/actor.js';
 import * as catalog from '../src/services/catalog.service.js';
 import * as inventory from '../src/services/inventory.service.js';
 import * as leads from '../src/services/lead.service.js';
+import * as orders from '../src/services/order.service.js';
 
-const actor: ActorContext = { actorType: 'user', actorId: null };
-const context = { sourcePanelId: null, actor };
+let actor: ActorContext;
 
-async function seed(boxCoverageSqft: number | null = 15) {
-  const party = await catalog.createParty({ name: 'Patel Tiles' }, actor);
+async function seed() {
+  const party = await catalog.createParty({ name: 'Shah Ceramics' }, actor);
   const product = await catalog.createProduct(
-    { productCode: 'GVT-01', name: 'Carrara White', pricePerBox: 45_000, boxCoverageSqft },
+    { productCode: 'BSN-01', name: 'Pedestal Basin', rate: 30_000, weightKg: 12 },
     actor,
   );
   return { party, product };
 }
 
-async function stockFor(productId: string) {
-  const levels = await inventory.listStock({});
-  const level = levels.find((entry) => entry.productId === productId);
-  if (!level) throw new Error('stock level missing');
-  return level;
+async function levelFor(productId: string, colour: string) {
+  const levels = await inventory.listStock({ limit: 100 }, actor);
+  return levels.find((level) => level.productId === productId && level.colour === colour);
 }
 
-describe.skipIf(!canRunIntegrationTests)('inventory service (integration)', () => {
+describe.skipIf(!canRunIntegrationTests)('inventory (integration)', () => {
   beforeAll(setupDatabase);
   afterAll(teardownDatabase);
-  beforeEach(resetData);
-
-  describe('listing', () => {
-    it('shows a product with no stock row yet at zero rather than hiding it', async () => {
-      const { product } = await seed();
-
-      const level = await stockFor(product.id);
-      expect(level.quantityBoxes).toBe(0);
-      expect(level.isLow).toBe(false);
-    });
-
-    it('searches by product code, name and category', async () => {
-      await seed();
-      await catalog.createProduct(
-        { productCode: 'WLT-02', name: 'Statuario', categoryName: 'Wall Tile' },
-        actor,
-      );
-
-      expect(await inventory.listStock({ search: 'carrara' })).toHaveLength(1);
-      expect(await inventory.listStock({ search: 'WLT' })).toHaveLength(1);
-      expect(await inventory.listStock({ search: 'Wall' })).toHaveLength(1);
-    });
+  beforeEach(async () => {
+    await resetData();
+    actor = await testActor();
   });
 
-  describe('stock in', () => {
-    it('adds boxes and records a ledger row', async () => {
+  describe('stock in and counting', () => {
+    it('tracks colours of one product separately', async () => {
       const { product } = await seed();
 
-      const level = await inventory.recordInbound(
-        { productId: product.id, quantityBoxes: 40, note: 'Factory lot 12' },
+      await inventory.recordInbound(
+        { productId: product.id, colour: 'White', quantityBoxes: 40 },
+        actor,
+      );
+      await inventory.recordInbound(
+        { productId: product.id, colour: 'Blue', quantityBoxes: 10 },
         actor,
       );
 
-      expect(level.quantityBoxes).toBe(40);
-
-      const movements = await inventory.listMovements({ productId: product.id });
-      expect(movements).toHaveLength(1);
-      expect(movements[0]).toMatchObject({
-        movementType: 'inbound',
-        quantityBoxes: 40,
-        note: 'Factory lot 12',
-      });
+      expect((await levelFor(product.id, 'White'))?.quantityBoxes).toBe(40);
+      expect((await levelFor(product.id, 'Blue'))?.quantityBoxes).toBe(10);
     });
 
-    it('accumulates across several deliveries', async () => {
+    it('turns a counted total into a signed correction', async () => {
+      const { product } = await seed();
+      await inventory.recordInbound(
+        { productId: product.id, colour: 'White', quantityBoxes: 40 },
+        actor,
+      );
+
+      // Staff count what is on the shelf; they do not compute the difference.
+      await inventory.recordAdjustment(
+        { productId: product.id, colour: 'White', quantityBoxes: 37, note: 'breakage' },
+        actor,
+      );
+
+      expect((await levelFor(product.id, 'White'))?.quantityBoxes).toBe(37);
+
+      const movements = await inventory.listMovements({ limit: 10 }, actor);
+      expect(movements[0]?.quantityBoxes).toBe(-3);
+      expect(movements[0]?.movementType).toBe('adjustment');
+      expect(movements[0]?.note).toBe('breakage');
+    });
+
+    it('refuses stock with no colour rather than filing it under a default', async () => {
       const { product } = await seed();
 
-      await inventory.recordInbound({ productId: product.id, quantityBoxes: 40 }, actor);
-      await inventory.recordInbound({ productId: product.id, quantityBoxes: 10 }, actor);
-
-      expect((await stockFor(product.id)).quantityBoxes).toBe(50);
-    });
-
-    it('mirrors the quantity in sqft using the product box coverage', async () => {
-      const { product } = await seed(15);
-
-      const level = await inventory.recordInbound({ productId: product.id, quantityBoxes: 4 }, actor);
-      expect(level.quantitySqft).toBe(60);
-    });
-
-    it('leaves sqft at zero when the product has no coverage recorded', async () => {
-      const { product } = await seed(null);
-
-      const level = await inventory.recordInbound({ productId: product.id, quantityBoxes: 4 }, actor);
-      expect(level.quantityBoxes).toBe(4);
-      expect(level.quantitySqft).toBe(0);
-    });
-
-    it('rejects a zero or negative delivery', async () => {
-      const { product } = await seed();
-
-      await expect(
-        inventory.recordInbound({ productId: product.id, quantityBoxes: 0 }, actor),
-      ).rejects.toThrow(/how many boxes/i);
-      await expect(
-        inventory.recordInbound({ productId: product.id, quantityBoxes: -5 }, actor),
-      ).rejects.toThrow(/how many boxes/i);
-    });
-
-    it('rejects an unknown product', async () => {
       await expect(
         inventory.recordInbound(
-          { productId: '00000000-0000-4000-8000-000000000000', quantityBoxes: 5 },
+          { productId: product.id, colour: '  ', quantityBoxes: 5 },
           actor,
         ),
-      ).rejects.toThrow(/not found/i);
+      ).rejects.toThrow(/which colour/i);
     });
   });
 
-  describe('adjustment after a physical count', () => {
-    it('takes the counted total and derives the difference', async () => {
-      const { product } = await seed();
-      await inventory.recordInbound({ productId: product.id, quantityBoxes: 40 }, actor);
-
-      const level = await inventory.recordAdjustment(
-        { productId: product.id, quantityBoxes: 37, note: 'Breakage found at stock take' },
+  describe('reserving on conversion', () => {
+    async function convertedOrder(quantities: Array<{ colour: string; quantity: number }>) {
+      const { party, product } = await seed();
+      await inventory.recordInbound(
+        { productId: product.id, colour: 'White', quantityBoxes: 40 },
         actor,
       );
 
-      expect(level.quantityBoxes).toBe(37);
-
-      const movements = await inventory.listMovements({ productId: product.id });
-      expect(movements[0]).toMatchObject({ movementType: 'adjustment', quantityBoxes: -3 });
-    });
-
-    it('records a positive movement when the count is higher than expected', async () => {
-      const { product } = await seed();
-      await inventory.recordInbound({ productId: product.id, quantityBoxes: 10 }, actor);
-
-      await inventory.recordAdjustment({ productId: product.id, quantityBoxes: 12 }, actor);
-
-      const movements = await inventory.listMovements({ productId: product.id });
-      expect(movements[0]?.quantityBoxes).toBe(2);
-    });
-
-    it('writes no ledger row when the count matches, keeping the audit trail readable', async () => {
-      const { product } = await seed();
-      await inventory.recordInbound({ productId: product.id, quantityBoxes: 10 }, actor);
-
-      await inventory.recordAdjustment({ productId: product.id, quantityBoxes: 10 }, actor);
-
-      expect(await inventory.listMovements({ productId: product.id })).toHaveLength(1);
-    });
-
-    it('rejects a negative count', async () => {
-      const { product } = await seed();
-      await expect(
-        inventory.recordAdjustment({ productId: product.id, quantityBoxes: -1 }, actor),
-      ).rejects.toThrow(/counted number/i);
-    });
-  });
-
-  describe('reorder level and low stock', () => {
-    it('flags a product at or below its reorder level', async () => {
-      const { product } = await seed();
-      await inventory.recordInbound({ productId: product.id, quantityBoxes: 10 }, actor);
-      await inventory.setReorderLevel(product.id, 10, actor);
-
-      expect((await stockFor(product.id)).isLow).toBe(true);
-    });
-
-    it('does not flag a product above its reorder level', async () => {
-      const { product } = await seed();
-      await inventory.recordInbound({ productId: product.id, quantityBoxes: 11 }, actor);
-      await inventory.setReorderLevel(product.id, 10, actor);
-
-      expect((await stockFor(product.id)).isLow).toBe(false);
-    });
-
-    it('never flags a product with no reorder level set', async () => {
-      const { product } = await seed();
-      expect((await stockFor(product.id)).isLow).toBe(false);
-    });
-
-    it('filters to only low-stock products', async () => {
-      const { product } = await seed();
-      const other = await catalog.createProduct({ productCode: 'B1', name: 'Other' }, actor);
-
-      await inventory.setReorderLevel(product.id, 5, actor);
-      await inventory.recordInbound({ productId: other.id, quantityBoxes: 100 }, actor);
-
-      const low = await inventory.listStock({ lowOnly: true });
-      expect(low).toHaveLength(1);
-      expect(low[0]?.productId).toBe(product.id);
-    });
-
-    it('clears a reorder level back to null', async () => {
-      const { product } = await seed();
-      await inventory.setReorderLevel(product.id, 5, actor);
-      const cleared = await inventory.setReorderLevel(product.id, null, actor);
-
-      expect(cleared.reorderLevel).toBeNull();
-      expect(cleared.isLow).toBe(false);
-    });
-
-    it('rejects a negative reorder level', async () => {
-      const { product } = await seed();
-      await expect(inventory.setReorderLevel(product.id, -1, actor)).rejects.toThrow(/negative/i);
-    });
-
-    it('counts low-stock products for the dashboard', async () => {
-      const { product } = await seed();
-      await inventory.setReorderLevel(product.id, 5, actor);
-
-      expect((await leads.getDashboardSummary()).lowStockCount).toBe(1);
-    });
-  });
-
-  describe('stock moves when a lead becomes an order', () => {
-    async function orderFor(productId: string, partyId: string, boxes: number) {
       const lead = await leads.createLead(
-        { partyId, items: [{ productId, quantityBoxes: boxes }] },
-        context,
+        {
+          partyId: party.id,
+          items: [{ productId: product.id, packaging: 'carton', quantities }],
+        },
+        actor,
       );
-      await leads.changeLeadStatus(lead.id, 'verified', actor);
-      return leads.changeLeadStatus(lead.id, 'order', actor);
+
+      const order = await orders.convertLead({ leadId: lead.id }, actor);
+      return { product, order };
     }
 
-    it('deducts stock only when the lead reaches order, not before', async () => {
-      const { party, product } = await seed();
-      await inventory.recordInbound({ productId: product.id, quantityBoxes: 40 }, actor);
+    it('reduces what is free to sell without touching what is on the floor', async () => {
+      const { product } = await convertedOrder([{ colour: 'White', quantity: 15 }]);
 
-      const lead = await leads.createLead(
-        { partyId: party.id, items: [{ productId: product.id, quantityBoxes: 12 }] },
-        context,
+      const level = await levelFor(product.id, 'White');
+      expect(level?.quantityBoxes).toBe(40);
+      expect(level?.reservedBoxes).toBe(15);
+      expect(level?.availableBoxes).toBe(25);
+    });
+
+    it('does not let a reservation for one colour cover another', async () => {
+      const { product } = await convertedOrder([{ colour: 'Blue', quantity: 5 }]);
+
+      // The hold is against Blue, so White is untouched — a white basin does
+      // not satisfy a reservation for a blue one.
+      expect((await levelFor(product.id, 'White'))?.availableBoxes).toBe(40);
+      expect((await levelFor(product.id, 'Blue'))?.reservedBoxes).toBe(5);
+    });
+
+    it('allows a reservation larger than stock, and surfaces the shortfall', async () => {
+      // Selling against an undelivered factory order is routine, so this is
+      // deliberately not an error.
+      const { product } = await convertedOrder([{ colour: 'White', quantity: 60 }]);
+
+      const level = await levelFor(product.id, 'White');
+      expect(level?.availableBoxes).toBe(-20);
+    });
+
+    it('judges "low" on free stock, not on what is on the floor', async () => {
+      const { product } = await convertedOrder([{ colour: 'White', quantity: 35 }]);
+      await inventory.setReorderLevel(
+        { productId: product.id, colour: 'White', reorderLevel: 10 },
+        actor,
       );
-      expect((await stockFor(product.id)).quantityBoxes).toBe(40);
 
-      await leads.changeLeadStatus(lead.id, 'verified', actor);
-      expect((await stockFor(product.id)).quantityBoxes).toBe(40);
-
-      await leads.changeLeadStatus(lead.id, 'order', actor);
-      expect((await stockFor(product.id)).quantityBoxes).toBe(28);
+      const level = await levelFor(product.id, 'White');
+      // 40 on the floor is comfortably above 10 — but only 5 can be sold.
+      expect(level?.quantityBoxes).toBe(40);
+      expect(level?.isLow).toBe(true);
     });
+  });
 
-    it('records the outbound movement against the order', async () => {
+  describe('dispatch', () => {
+    async function readyToDispatch() {
       const { party, product } = await seed();
-      await inventory.recordInbound({ productId: product.id, quantityBoxes: 40 }, actor);
-      const order = await orderFor(product.id, party.id, 12);
-
-      const movements = await inventory.listMovements({ productId: product.id });
-      expect(movements[0]).toMatchObject({
-        movementType: 'outbound',
-        quantityBoxes: -12,
-        referenceType: 'order',
-        referenceId: order.id,
-      });
-    });
-
-    it('deducts every line of a multi-product order', async () => {
-      const { party, product } = await seed();
-      const second = await catalog.createProduct({ productCode: 'B1', name: 'Other' }, actor);
-      await inventory.recordInbound({ productId: product.id, quantityBoxes: 40 }, actor);
-      await inventory.recordInbound({ productId: second.id, quantityBoxes: 20 }, actor);
+      await inventory.recordInbound(
+        { productId: product.id, colour: 'White', quantityBoxes: 40 },
+        actor,
+      );
 
       const lead = await leads.createLead(
         {
           partyId: party.id,
           items: [
-            { productId: product.id, quantityBoxes: 5 },
-            { productId: second.id, quantityBoxes: 7 },
+            {
+              productId: product.id,
+              packaging: 'carton',
+              quantities: [
+                { colour: 'White', quantity: 12 },
+                { colour: 'Blue', quantity: 3 },
+              ],
+            },
           ],
         },
-        context,
+        actor,
       );
-      await leads.changeLeadStatus(lead.id, 'verified', actor);
-      await leads.changeLeadStatus(lead.id, 'order', actor);
 
-      expect((await stockFor(product.id)).quantityBoxes).toBe(35);
-      expect((await stockFor(second.id)).quantityBoxes).toBe(13);
+      const order = await orders.convertLead({ leadId: lead.id }, actor);
+      return { product, order };
+    }
+
+    it('writes one signed movement per (product, colour)', async () => {
+      const { product, order } = await readyToDispatch();
+
+      await orders.dispatchOrder({ orderId: order.id }, actor);
+
+      const movements = await inventory.listMovements({ limit: 20 }, actor);
+      const outbound = movements.filter((movement) => movement.movementType === 'outbound');
+
+      expect(outbound).toHaveLength(2);
+      expect(outbound.map((movement) => movement.quantityBoxes).sort((a, b) => a - b)).toEqual([
+        -12, -3,
+      ]);
+      expect(outbound.every((movement) => movement.referenceId === order.id)).toBe(true);
+      expect((await levelFor(product.id, 'White'))?.quantityBoxes).toBe(28);
     });
 
-    it('allows stock to go negative rather than blocking the sale', async () => {
-      // A dealer routinely sells against a factory order that has not arrived.
-      // Refusing the sale would break the real workflow; the negative figure is
-      // the reorder signal.
-      const { party, product } = await seed();
-      await inventory.recordInbound({ productId: product.id, quantityBoxes: 5 }, actor);
+    it('consumes the reservations rather than leaving them holding stock', async () => {
+      const { product, order } = await readyToDispatch();
 
-      await orderFor(product.id, party.id, 12);
+      await orders.dispatchOrder({ orderId: order.id }, actor);
 
-      expect((await stockFor(product.id)).quantityBoxes).toBe(-7);
-    });
+      const level = await levelFor(product.id, 'White');
+      expect(level?.reservedBoxes).toBe(0);
+      // 28 on the floor and nothing held against it.
+      expect(level?.availableBoxes).toBe(28);
 
-    it('restores stock when an order is cancelled', async () => {
-      const { party, product } = await seed();
-      await inventory.recordInbound({ productId: product.id, quantityBoxes: 40 }, actor);
-      const order = await orderFor(product.id, party.id, 12);
-      expect((await stockFor(product.id)).quantityBoxes).toBe(28);
-
-      await leads.changeLeadStatus(order.id, 'cancelled', actor);
-
-      expect((await stockFor(product.id)).quantityBoxes).toBe(40);
-    });
-
-    it('restores by appending a movement rather than deleting history', async () => {
-      const { party, product } = await seed();
-      await inventory.recordInbound({ productId: product.id, quantityBoxes: 40 }, actor);
-      const order = await orderFor(product.id, party.id, 12);
-      await leads.changeLeadStatus(order.id, 'cancelled', actor);
-
-      const movements = await inventory.listMovements({ productId: product.id });
-      expect(movements.map((entry) => entry.quantityBoxes)).toEqual([12, -12, 40]);
-    });
-
-    it('does not touch stock when a lead is cancelled before becoming an order', async () => {
-      const { party, product } = await seed();
-      await inventory.recordInbound({ productId: product.id, quantityBoxes: 40 }, actor);
-
-      const lead = await leads.createLead(
-        { partyId: party.id, items: [{ productId: product.id, quantityBoxes: 12 }] },
-        context,
+      const after = await orders.getOrder(order.id, actor);
+      expect(after.reservations.every((reservation) => reservation.status === 'consumed')).toBe(
+        true,
       );
-      await leads.changeLeadStatus(lead.id, 'cancelled', actor);
-
-      expect((await stockFor(product.id)).quantityBoxes).toBe(40);
-      expect(await inventory.listMovements({ productId: product.id })).toHaveLength(1);
+      expect(after.dispatchedAt).not.toBeNull();
+      expect(after.stageName).toBe('Dispatched');
     });
 
-    it('ignores a line with no quantity instead of writing a zero movement', async () => {
-      const { party, product } = await seed();
-      await inventory.recordInbound({ productId: product.id, quantityBoxes: 40 }, actor);
+    it('refuses to dispatch the same order twice', async () => {
+      const { order } = await readyToDispatch();
+      await orders.dispatchOrder({ orderId: order.id }, actor);
 
-      const lead = await leads.createLead(
-        { partyId: party.id, items: [{ productId: product.id, quantityBoxes: null }] },
-        context,
+      await expect(orders.dispatchOrder({ orderId: order.id }, actor)).rejects.toThrow(
+        /already dispatched/i,
       );
-      await leads.changeLeadStatus(lead.id, 'verified', actor);
-      await leads.changeLeadStatus(lead.id, 'order', actor);
 
-      expect((await stockFor(product.id)).quantityBoxes).toBe(40);
+      // And the ledger is unchanged — the guard is not merely cosmetic.
+      const movements = await db()('stock_movements').where({ movement_type: 'outbound' });
+      expect(movements).toHaveLength(2);
     });
 
-    it('rolls the status change back if a stock movement fails', async () => {
-      // The status change and the stock movements share one transaction, so a
-      // failure must leave the lead unpromoted rather than half-applied.
-      const { party, product } = await seed();
-      await inventory.recordInbound({ productId: product.id, quantityBoxes: 40 }, actor);
+    it('leaves a dispatched order uneditable', async () => {
+      const { order } = await readyToDispatch();
+      await orders.dispatchOrder({ orderId: order.id }, actor);
 
-      const lead = await leads.createLead(
-        { partyId: party.id, items: [{ productId: product.id, quantityBoxes: 5 }] },
-        context,
+      await expect(orders.updateOrder(order.id, { notes: 'too late' }, actor)).rejects.toThrow(
+        /can no longer be edited/i,
       );
-      await leads.changeLeadStatus(lead.id, 'verified', actor);
-
-      // Break the ledger insert so the movement cannot be written.
-      await db().raw(`ALTER TABLE stock_movements ADD CONSTRAINT tmp_block CHECK (false) NOT VALID`);
-      try {
-        await expect(leads.changeLeadStatus(lead.id, 'order', actor)).rejects.toThrow();
-      } finally {
-        await db().raw(`ALTER TABLE stock_movements DROP CONSTRAINT tmp_block`);
-      }
-
-      expect((await leads.getLead(lead.id)).status).toBe('verified');
-      expect((await stockFor(product.id)).quantityBoxes).toBe(40);
-    });
-  });
-
-  describe('movement history', () => {
-    it('returns newest first', async () => {
-      const { product } = await seed();
-      await inventory.recordInbound({ productId: product.id, quantityBoxes: 10 }, actor);
-      await inventory.recordInbound({ productId: product.id, quantityBoxes: 20 }, actor);
-
-      const movements = await inventory.listMovements({ productId: product.id });
-      expect(movements.map((entry) => entry.quantityBoxes)).toEqual([20, 10]);
-    });
-
-    it('carries product identity so the list reads without a second lookup', async () => {
-      const { product } = await seed();
-      await inventory.recordInbound({ productId: product.id, quantityBoxes: 10 }, actor);
-
-      expect((await inventory.listMovements({}))[0]).toMatchObject({
-        productCode: 'GVT-01',
-        productName: 'Carrara White',
-      });
     });
   });
 });

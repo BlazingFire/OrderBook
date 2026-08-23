@@ -5,8 +5,8 @@ import { mapOfficePanel } from './mappers.js';
 
 const TABLE = 'office_panels';
 
-export async function listPanels(): Promise<OfficePanel[]> {
-  const rows = await db()(TABLE).orderBy('created_at', 'desc');
+export async function listPanels(tenantId: string): Promise<OfficePanel[]> {
+  const rows = await db()(TABLE).where({ tenant_id: tenantId }).orderBy('created_at', 'desc');
   return rows.map(mapOfficePanel);
 }
 
@@ -23,7 +23,9 @@ export async function findPanelSecretHash(id: string): Promise<string | null> {
 
 export async function insertPanel(values: {
   id: string;
+  tenant_id: string;
   name: string;
+  device_code: string;
   secret_hash: string;
   lan_ip: string | null;
   status: OfficePanelStatus;
@@ -58,7 +60,16 @@ export async function touchLastSeen(id: string, lanIp: string | null): Promise<v
   await db()(TABLE).where({ id }).update(patch);
 }
 
-export async function countPanelsNamed(prefix: string): Promise<number> {
-  const row = await db()(TABLE).count<{ count: string }[]>('id as count').whereILike('name', `${prefix}%`);
+export async function countPanelsNamed(tenantId: string, prefix: string): Promise<number> {
+  const row = await db()(TABLE)
+    .where({ tenant_id: tenantId })
+    .whereILike('name', `${prefix}%`)
+    .count<Array<{ count: string }>>('id as count');
   return Number(row[0]?.count ?? 0);
+}
+
+/** Which role a panel's commands act under. Null means the seeded Office role. */
+export async function findPanelRoleId(id: string): Promise<string | null> {
+  const row = await db()(TABLE).select('role_id').where({ id }).first();
+  return (row?.role_id as string | null) ?? null;
 }

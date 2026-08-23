@@ -27,6 +27,19 @@ export class UnauthorizedError extends AppError {
   }
 }
 
+/**
+ * A caller was authenticated but lacked a permission.
+ *
+ * Carries the permission key as well as putting it in the message, so a client
+ * can react to it (hide the control, prompt for a different sign-in) rather
+ * than having to parse prose.
+ */
+export class ForbiddenError extends AppError {
+  constructor(readonly permission: string) {
+    super(`Missing permission: ${permission}`, 403, 'forbidden');
+  }
+}
+
 export class NotFoundError extends AppError {
   constructor(what: string) {
     super(`${what} not found`, 404, 'not_found');

@@ -1,56 +1,56 @@
 /** Read-only browsing of parties and products; creation happens in Add Lead. */
 
 import { useMemo, useState } from 'react';
-import type { SyncSnapshot } from '@orderbook/shared';
 
-import { formatMoney } from '../format';
+import type { LocalView } from '../api';
 import { Field } from '../components/Field';
-import { StockCell } from '../components/StockCell';
+import { StockByColour } from '../components/StockCell';
+import { formatMoney } from '../format';
 
-export function CatalogScreen({ snapshot, view }: { snapshot: SyncSnapshot; view: 'parties' | 'products' }) {
+export function CatalogScreen({
+  view,
+  tab,
+}: {
+  view: LocalView;
+  tab: 'parties' | 'products';
+}) {
   const [search, setSearch] = useState('');
   const term = search.trim().toLowerCase();
 
-  // Stock is looked up per product so the catalogue can show availability
-  // without a second request — it arrives in the same snapshot.
-  const stockByProduct = useMemo(
-    () => new Map(snapshot.stock.map((level) => [level.productId, level])),
-    [snapshot.stock],
-  );
-
   const parties = useMemo(
     () =>
-      snapshot.parties.filter(
+      view.parties.filter(
         (party) =>
           !term ||
           party.name.toLowerCase().includes(term) ||
           party.partyCode.toLowerCase().includes(term) ||
           (party.phone ?? '').includes(term),
       ),
-    [snapshot.parties, term],
+    [view.parties, term],
   );
 
   const products = useMemo(
     () =>
-      snapshot.products.filter(
+      view.products.filter(
         (product) =>
           !term ||
           product.name.toLowerCase().includes(term) ||
           product.productCode.toLowerCase().includes(term) ||
+          (product.alias ?? '').toLowerCase().includes(term) ||
           (product.categoryName ?? '').toLowerCase().includes(term),
       ),
-    [snapshot.products, term],
+    [view.products, term],
   );
 
   return (
     <div className="card">
-      <Field label={view === 'parties' ? 'Search parties' : 'Search products'}>
+      <Field label={tab === 'parties' ? 'Search parties' : 'Search products'}>
         {(id) => (
           <input id={id} value={search} onChange={(event) => setSearch(event.target.value)} />
         )}
       </Field>
 
-      {view === 'parties' ? (
+      {tab === 'parties' ? (
         <table>
           <thead>
             <tr>
@@ -58,19 +58,32 @@ export function CatalogScreen({ snapshot, view }: { snapshot: SyncSnapshot; view
               <th>Name</th>
               <th>Phone</th>
               <th>City</th>
-              <th>GST</th>
+              <th>Own rates</th>
             </tr>
           </thead>
           <tbody>
-            {parties.map((party) => (
-              <tr key={party.id}>
-                <td>{party.partyCode}</td>
-                <td>{party.name}</td>
-                <td>{party.phone ?? '—'}</td>
-                <td>{party.city ?? '—'}</td>
-                <td>{party.gstNumber ?? '—'}</td>
-              </tr>
-            ))}
+            {parties.map((party) => {
+              const variants = view.partyVariants.filter(
+                (variant) => variant.partyId === party.id,
+              ).length;
+
+              return (
+                <tr key={party.id}>
+                  <td>{party.partyCode}</td>
+                  <td>
+                    {party.name}
+                    {!party.sync.hlc && (
+                      <span className="chip pending" style={{ marginLeft: 6 }}>
+                        not synced
+                      </span>
+                    )}
+                  </td>
+                  <td>{party.phone ?? '—'}</td>
+                  <td>{party.city ?? '—'}</td>
+                  <td>{variants > 0 ? `${variants} product${variants === 1 ? '' : 's'}` : '—'}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       ) : (
@@ -81,22 +94,32 @@ export function CatalogScreen({ snapshot, view }: { snapshot: SyncSnapshot; view
               <th>Name</th>
               <th>Type</th>
               <th>Size</th>
-              <th>Finish</th>
-              <th>Price / box</th>
-              <th>In stock</th>
+              <th>Grade</th>
+              <th>Rate / box</th>
+              <th>Stock by colour</th>
             </tr>
           </thead>
           <tbody>
             {products.map((product) => (
               <tr key={product.id}>
                 <td>{product.productCode}</td>
-                <td>{product.name}</td>
-                <td>{product.categoryName ?? '—'}</td>
-                <td>{product.size ?? '—'}</td>
-                <td>{product.finish ?? '—'}</td>
-                <td>{formatMoney(product.pricePerBox)}</td>
                 <td>
-                  <StockCell level={stockByProduct.get(product.id)} />
+                  {product.name}
+                  {product.alias && <div className="muted">{product.alias}</div>}
+                </td>
+                <td>{product.productType ?? product.categoryName ?? '—'}</td>
+                <td>{product.size ?? '—'}</td>
+                <td>{product.grade ?? '—'}</td>
+                {/* `rate` is absent, not null, when the role cannot see it. */}
+                <td className="num">
+                  {product.rate === undefined ? (
+                    <span className="muted">hidden</span>
+                  ) : (
+                    formatMoney(product.rate)
+                  )}
+                </td>
+                <td>
+                  <StockByColour productId={product.id} stock={view.stock} />
                 </td>
               </tr>
             ))}

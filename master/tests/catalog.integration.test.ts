@@ -1,17 +1,20 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { canRunIntegrationTests } from './helpers/db.js';
-import { resetData, setupDatabase, teardownDatabase } from './helpers/fixtures.js';
+import { resetData, setupDatabase, teardownDatabase, testActor } from './helpers/fixtures.js';
 import type { ActorContext } from '../src/domain/actor.js';
 import * as catalog from '../src/services/catalog.service.js';
 import { db } from '../src/db/knex.js';
 
-const actor: ActorContext = { actorType: 'user', actorId: null };
+let actor: ActorContext;
 
 describe.skipIf(!canRunIntegrationTests)('catalog service (integration)', () => {
   beforeAll(setupDatabase);
   afterAll(teardownDatabase);
-  beforeEach(resetData);
+  beforeEach(async () => {
+    await resetData();
+    actor = await testActor();
+  });
 
   describe('parties', () => {
     it('assigns sequential display codes', async () => {
@@ -42,15 +45,15 @@ describe.skipIf(!canRunIntegrationTests)('catalog service (integration)', () => 
       await catalog.createParty({ name: 'Patel Tiles', phone: '9876543210' }, actor);
       await catalog.createParty({ name: 'Rajesh Traders', phone: '9123456780' }, actor);
 
-      expect((await catalog.listParties({ search: 'patel' })).items).toHaveLength(1);
-      expect((await catalog.listParties({ search: 'P-0002' })).items).toHaveLength(1);
-      expect((await catalog.listParties({ search: '9123' })).items).toHaveLength(1);
-      expect((await catalog.listParties({})).total).toBe(2);
+      expect((await catalog.listParties({ search: 'patel' }, actor)).items).toHaveLength(1);
+      expect((await catalog.listParties({ search: 'P-0002' }, actor)).items).toHaveLength(1);
+      expect((await catalog.listParties({ search: '9123' }, actor)).items).toHaveLength(1);
+      expect((await catalog.listParties({}, actor)).total).toBe(2);
     });
 
     it('searches case-insensitively', async () => {
       await catalog.createParty({ name: 'Patel Tiles' }, actor);
-      expect((await catalog.listParties({ search: 'PATEL' })).items).toHaveLength(1);
+      expect((await catalog.listParties({ search: 'PATEL' }, actor)).items).toHaveLength(1);
     });
 
     it('reports the full total alongside a limited page', async () => {
@@ -58,7 +61,7 @@ describe.skipIf(!canRunIntegrationTests)('catalog service (integration)', () => 
         await catalog.createParty({ name: `Party ${i}` }, actor);
       }
 
-      const page = await catalog.listParties({ limit: 2 });
+      const page = await catalog.listParties({ limit: 2 }, actor);
       expect(page.items).toHaveLength(2);
       expect(page.total).toBe(5);
     });
@@ -114,7 +117,7 @@ describe.skipIf(!canRunIntegrationTests)('catalog service (integration)', () => 
       );
 
       expect(first.categoryId).toBe(second.categoryId);
-      expect(await catalog.listCategories()).toHaveLength(1);
+      expect(await catalog.listCategories(actor)).toHaveLength(1);
     });
 
     it('stores flexible attributes in the JSONB column and reads them back', async () => {
@@ -171,9 +174,9 @@ describe.skipIf(!canRunIntegrationTests)('catalog service (integration)', () => 
         actor,
       );
 
-      expect((await catalog.listProducts({ search: 'carrara' })).items).toHaveLength(1);
-      expect((await catalog.listProducts({ search: 'WLT' })).items).toHaveLength(1);
-      expect((await catalog.listProducts({ search: 'Wall' })).items).toHaveLength(1);
+      expect((await catalog.listProducts({ search: 'carrara' }, actor)).items).toHaveLength(1);
+      expect((await catalog.listProducts({ search: 'WLT' }, actor)).items).toHaveLength(1);
+      expect((await catalog.listProducts({ search: 'Wall' }, actor)).items).toHaveLength(1);
     });
   });
 

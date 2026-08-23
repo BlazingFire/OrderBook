@@ -1,17 +1,23 @@
 /**
- * Office Panel's local API. Every write here is forwarded by this panel's own
- * server to the Master — nothing is stored locally.
+ * The Office Panel's local API.
+ *
+ * Note what the write methods return: `QueuedResult`, not the saved record.
+ * Every write is queued in this panel's outbox and answered immediately, so the
+ * browser learns the record's (temporary) id and moves on — the real record
+ * arrives moments later through the event stream. That asymmetry is the whole
+ * offline story, and it is deliberately visible in these types rather than
+ * hidden behind an optimistic fake.
  */
 
 import type {
-  InventoryStockLevel,
-  Lead,
   LeadInput,
-  LeadStatus,
-  Party,
+  LeadUpdateInput,
+  MutationResult,
   PartyInput,
-  Product,
+  PartyProductVariantInput,
   ProductInput,
+  SearchHit,
+  SyncConflict,
   SyncSnapshot,
 } from '@orderbook/shared';
 
@@ -36,6 +42,31 @@ export interface DiscoveredMaster {
   acceptingPairing: boolean;
 }
 
+/** The panel's view: the Master's snapshot plus anything still queued here. */
+export type LocalView = SyncSnapshot & { pendingCount: number };
+
+export interface QueuedResult {
+  queued: true;
+  /** Temporary id for a create, or the id passed in for an edit. */
+  id: string;
+  mutationId: string;
+  pendingCount: number;
+}
+
+export interface SyncState extends ConnectionInfo {
+  pendingCount: number;
+  rejections: MutationResult[];
+}
+
+export interface FlushOutcome {
+  pushed: number;
+  applied: number;
+  merged: number;
+  rejected: number;
+  rejections: MutationResult[];
+  remaining: number;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
@@ -51,40 +82,68 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+const post = <T>(path: string, body?: unknown) =>
+  request<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) });
+
+const put = <T>(path: string, body: unknown) =>
+  request<T>(path, { method: 'PUT', body: JSON.stringify(body) });
+
 export const api = {
   connection: () => request<ConnectionInfo>('/api/connection'),
-  scan: () => request<{ masters: DiscoveredMaster[] }>('/api/connection/scan', { method: 'POST' }),
+  scan: () => post<{ masters: DiscoveredMaster[] }>('/api/connection/scan'),
   pairAuto: (panelName?: string) =>
-    request<{ ok: true; companyName: string | null }>('/api/connection/pair/auto', {
-      method: 'POST',
-      body: JSON.stringify({ panelName }),
-    }),
+    post<{ ok: true; companyName: string | null }>('/api/connection/pair/auto', { panelName }),
   pairManual: (input: {
     host: string;
     port: number;
     pairingPassword: string;
     masterUniqueId?: string;
     panelName?: string;
-  }) =>
-    request<{ ok: true; companyName: string | null }>('/api/connection/pair/manual', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    }),
+  }) => post<{ ok: true; companyName: string | null }>('/api/connection/pair/manual', input),
 
-  snapshot: () => request<SyncSnapshot>('/api/snapshot'),
+  snapshot: () => request<LocalView>('/api/snapshot'),
+  syncState: () => request<SyncState>('/api/sync'),
+  flush: () => post<FlushOutcome>('/api/sync/flush'),
 
-  createParty: (input: PartyInput) =>
-    request<Party>('/api/parties', { method: 'POST', body: JSON.stringify(input) }),
-  createProduct: (input: ProductInput) =>
-    request<Product>('/api/products', { method: 'POST', body: JSON.stringify(input) }),
-  stockInbound: (productId: string, quantityBoxes: number, note?: string) =>
-    request<InventoryStockLevel>('/api/stock/inbound', {
-      method: 'POST',
-      body: JSON.stringify({ productId, quantityBoxes, note }),
-    }),
+  createParty: (input: PartyInput) => post<QueuedResult>('/api/parties', input),
+  updateParty: (id: string, input: PartyInput) => put<QueuedResult>(`/api/parties/${id}`, input),
 
-  createLead: (input: LeadInput) =>
-    request<Lead>('/api/leads', { method: 'POST', body: JSON.stringify(input) }),
-  setLeadStatus: (id: string, status: LeadStatus) =>
-    request<Lead>(`/api/leads/${id}/status`, { method: 'POST', body: JSON.stringify({ status }) }),
+  createProduct: (input: ProductInput) => post<QueuedResult>('/api/products', input),
+  updateProduct: (id: string, input: ProductInput) =>
+    put<QueuedResult>(`/api/products/${id}`, input),
+
+  upsertVariant: (input: PartyProductVariantInput) =>
+    post<QueuedResult>('/api/party-variants', input),
+
+  createLead: (input: LeadInput) => post<QueuedResult>('/api/leads', input),
+  updateLead: (id: string, input: LeadUpdateInput) => put<QueuedResult>(`/api/leads/${id}`, input),
+  setLeadStage: (id: string, stageId: string, remark?: string | null) =>
+    post<QueuedResult>(`/api/leads/${id}/stage`, { stageId, remark }),
+  addLeadRemark: (id: string, message: string) =>
+    post<QueuedResult>(`/api/leads/${id}/remarks`, { message }),
+  convertLead: (
+    id: string,
+    input: { dispatchAddressLabel?: string | null; expectedDispatchDate?: string | null } = {},
+  ) => post<QueuedResult>(`/api/leads/${id}/convert`, input),
+
+  setOrderStage: (id: string, stageId: string, remark?: string | null) =>
+    post<QueuedResult>(`/api/orders/${id}/stage`, { stageId, remark }),
+  updateOrder: (id: string, input: Record<string, unknown>) =>
+    put<QueuedResult>(`/api/orders/${id}`, input),
+  dispatchOrder: (id: string, note?: string | null) =>
+    post<QueuedResult>(`/api/orders/${id}/dispatch`, { note }),
+
+  // Stock and search need the Master, so these still fail when it is offline —
+  // which is correct: a stale stock figure presented as current is worse than
+  // an honest "cannot reach the Master right now".
+  stockInbound: (input: { productId: string; colour: string; quantityBoxes: number; note?: string }) =>
+    post('/api/stock/inbound', input),
+  stockAdjust: (input: { productId: string; colour: string; quantityBoxes: number; note?: string }) =>
+    post('/api/stock/adjust', input),
+
+  search: (term: string) => request<SearchHit[]>(`/api/search?q=${encodeURIComponent(term)}`),
+
+  conflicts: () => request<SyncConflict[]>('/api/conflicts'),
+  resolveConflict: (id: number, action: 'keepWinner' | 'restoreLoser') =>
+    post<SyncConflict>(`/api/conflicts/${id}/resolve`, { action }),
 };

@@ -8,7 +8,14 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import type { OfficePanel, OfficePanelWithPresence, PairingRequest, PairingSuccess } from '@orderbook/shared';
+import type {
+  OfficePanel,
+  OfficePanelWithPresence,
+  PairingRequest,
+  PairingSuccess,
+  PermissionSet,
+} from '@orderbook/shared';
+import { deviceCodeFromSeed } from '@orderbook/shared';
 import bcrypt from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
 
@@ -16,6 +23,8 @@ import { UnauthorizedError, ValidationError } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as panelRepo from '../repositories/office-panel.repository.js';
+import { permissionSetForRole } from '../repositories/role.repository.js';
+import { roleIdForTier } from '../repositories/user.repository.js';
 import { publishChange } from './change-bus.js';
 import { getIdentity, verifyPairingPassword } from './setup.service.js';
 
@@ -65,9 +74,15 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
   }
 
   const panelSecret = randomBytes(32).toString('base64url');
+  const panelId = uuid();
   const panel = await panelRepo.insertPanel({
-    id: uuid(),
-    name: request.panelName?.trim() || (await defaultPanelName()),
+    id: panelId,
+    tenant_id: identity.tenantId,
+    name: request.panelName?.trim() || (await defaultPanelName(identity.tenantId)),
+    // Derived from the panel id rather than stored randomly, so a panel that
+    // loses its local files recovers the same code — and its existing
+    // temporary ids stay attributable to it.
+    device_code: deviceCodeFromSeed(panelId),
     secret_hash: await bcrypt.hash(panelSecret, BCRYPT_ROUNDS),
     lan_ip: remoteIp,
     status: 'active',
@@ -79,6 +94,7 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
   if (request.mode === 'auto') closePairingWindow();
 
   await activityLog.recordActivity({
+    tenantId: identity.tenantId,
     entityType: 'office_panel',
     entityId: panel.id,
     action: 'created',
@@ -117,6 +133,7 @@ export async function revokePanel(panelId: string): Promise<OfficePanel> {
   connectedPanelIds.delete(panelId);
 
   await activityLog.recordActivity({
+    tenantId: panel.tenantId,
     entityType: 'office_panel',
     entityId: panelId,
     action: 'updated',
@@ -140,9 +157,28 @@ export async function renamePanel(panelId: string, name: string): Promise<Office
   return panel;
 }
 
-export async function listPanelsWithPresence(): Promise<OfficePanelWithPresence[]> {
-  const panels = await panelRepo.listPanels();
+export async function listPanelsWithPresence(
+  tenantId: string,
+): Promise<OfficePanelWithPresence[]> {
+  const panels = await panelRepo.listPanels(tenantId);
   return panels.map((panel) => ({ ...panel, isConnected: connectedPanelIds.has(panel.id) }));
+}
+
+/**
+ * What a panel's commands are allowed to do.
+ *
+ * A panel with no role explicitly assigned falls back to the seeded Office
+ * tier: enough to raise and progress a lead, and nothing more. Defaulting to
+ * "no permissions" would leave a freshly paired panel unable to do the one job
+ * it exists for; defaulting to admin would make pairing a privilege escalation.
+ */
+export async function permissionsForPanel(
+  tenantId: string,
+  panelId: string,
+): Promise<PermissionSet | null> {
+  const roleId =
+    (await panelRepo.findPanelRoleId(panelId)) ?? (await roleIdForTier(tenantId, 'office'));
+  return permissionSetForRole(roleId);
 }
 
 export async function markPanelConnected(panelId: string, lanIp: string | null): Promise<void> {
@@ -159,7 +195,7 @@ export function isPanelConnected(panelId: string): boolean {
   return connectedPanelIds.has(panelId);
 }
 
-async function defaultPanelName(): Promise<string> {
-  const existing = await panelRepo.countPanelsNamed('Office Panel');
+async function defaultPanelName(tenantId: string): Promise<string> {
+  const existing = await panelRepo.countPanelsNamed(tenantId, 'Office Panel');
   return `Office Panel ${existing + 1}`;
 }

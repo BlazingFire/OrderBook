@@ -1,143 +1,474 @@
 /**
- * Leads and orders. A lead becomes an order by changing status — the record
- * itself never moves or gets copied (docs/schema/03-leads-orders-inventory.md).
+ * Leads. A lead no longer becomes an order by changing status — conversion
+ * creates a separate Order record and the lead survives as history
+ * (docs/LEAD_GENERATION_FLOW.md §3–§5).
+ *
+ * Validation, permission checks and change publication live here; SQL lives in
+ * the repositories, and the rules that decide anything live in `domain/`.
  */
 
-import type { DashboardSummary, Lead, LeadInput, LeadStatus, Paginated } from '@orderbook/shared';
+import type { Lead, LeadInput, LeadListQuery, LeadUpdateInput, Paginated } from '@orderbook/shared';
 
-import { actorUserId, type ActorContext } from '../domain/actor.js';
-import { canTransitionLead, stockEffectOfTransition } from '../domain/lead-workflow.js';
+import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
+import { normalizeCustomFields } from '../domain/custom-fields.js';
+import { buildLineSnapshot, type LineDraft, type LineSnapshot } from '../domain/line-items.js';
 import { clampPaging } from '../domain/paging.js';
+import { assertStageMove, defaultStage, findStage, stageChangeMessage } from '../domain/pipeline.js';
+import { canSeeRates, maskLead } from '../domain/visibility.js';
+import { db } from '../db/knex.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
+import * as customFieldRepo from '../repositories/custom-field.repository.js';
+import { nextHlc } from '../repositories/identity.repository.js';
 import * as leadRepo from '../repositories/lead.repository.js';
 import * as partyRepo from '../repositories/party.repository.js';
+import * as variantRepo from '../repositories/party-variant.repository.js';
+import * as pipelineRepo from '../repositories/pipeline.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
+import * as timelineRepo from '../repositories/timeline.repository.js';
 import { publishChange } from './change-bus.js';
-import * as inventoryService from './inventory.service.js';
 
 const PAGING = { defaultLimit: 100, maxLimit: 500 };
 
-export async function listLeads(query: {
-  statuses?: LeadStatus[];
-  search?: string;
-  limit?: number;
-  offset?: number;
-}): Promise<Paginated<Lead>> {
-  return leadRepo.listLeads({
-    statuses: query.statuses,
-    search: query.search,
+export async function listLeads(
+  query: LeadListQuery,
+  actor: ActorContext,
+): Promise<Paginated<Lead>> {
+  requirePermission(actor, 'leads.view');
+
+  const page = await leadRepo.listLeads(actor.tenantId, {
+    ...query,
     ...clampPaging(query, PAGING),
   });
+
+  const allowed = canSeeRates(actor);
+  return { ...page, items: page.items.map((lead) => maskLead(lead, allowed)) };
 }
 
-export async function getLead(id: string): Promise<Lead> {
-  const lead = await leadRepo.findLeadById(id);
+export async function getLead(id: string, actor: ActorContext): Promise<Lead> {
+  requirePermission(actor, 'leads.view');
+
+  const lead = await leadRepo.findLeadById(actor.tenantId, id);
   if (!lead) throw new NotFoundError('Lead');
-  return lead;
+
+  return maskLead(lead, canSeeRates(actor));
 }
 
-export async function createLead(
-  input: LeadInput,
-  context: { sourcePanelId: string | null; actor: ActorContext },
-): Promise<Lead> {
+export async function createLead(input: LeadInput, actor: ActorContext): Promise<Lead> {
+  requirePermission(actor, 'leads.create');
+
+  const ownerId = await resolveOwner(input.ownerId ?? null, actor);
+  const stages = await pipelineRepo.stagesFor(actor.tenantId, 'lead');
+  const definitions = await customFieldRepo.definitionsFor(actor.tenantId, 'lead');
+
   if (!input.partyId) throw new ValidationError('Select a party for this lead');
   if (!input.items?.length) throw new ValidationError('Add at least one product to this lead');
 
-  if (!(await partyRepo.findPartyById(input.partyId))) {
+  if (!(await partyRepo.findPartyById(actor.tenantId, input.partyId))) {
     throw new ValidationError('The selected party no longer exists');
   }
 
-  // Resolve prices server-side when the panel did not send one, so a lead
-  // always records what the product actually cost at the time it was created.
-  const items = await Promise.all(
-    input.items.map(async (item) => {
-      const product = await productRepo.findProductById(item.productId);
-      if (!product) throw new ValidationError('One of the selected products no longer exists');
+  await assertSourcePlatform(actor.tenantId, input.sourcePlatform ?? null);
 
-      const quantityBoxes = item.quantityBoxes ?? null;
-      if (quantityBoxes !== null && quantityBoxes <= 0) {
-        throw new ValidationError(`Quantity for ${product.name} must be greater than zero`);
-      }
+  const customFields = normalizeCustomFields(input.customFields, definitions);
+  const lines = await buildLines(actor.tenantId, input.partyId, input.items, {
+    partyWiseMode: input.partyWiseMode ?? false,
+  });
 
-      return { ...item, unitPrice: item.unitPrice ?? product.pricePerBox ?? null };
-    }),
-  );
+  const id = await db().transaction(async (trx) => {
+    const hlc = await nextHlc(trx);
 
-  const lead = await leadRepo.insertLead(
-    { ...input, items },
-    { sourcePanelId: context.sourcePanelId, createdByUserId: actorUserId(context.actor) },
-  );
+    const leadId = await leadRepo.insertLead(
+      {
+        tenantId: actor.tenantId,
+        partyId: input.partyId,
+        ownerId,
+        stageId: defaultStage(stages).id,
+        sourcePlatform: input.sourcePlatform ?? null,
+        followUpDate: input.followUpDate ?? null,
+        partyWiseMode: input.partyWiseMode ?? false,
+        notes: input.notes?.trim() || null,
+        customFields,
+        sourcePanelId: actor.actorType === 'office_panel' ? actor.actorId : null,
+        createdByUserId: actorUserId(actor),
+        hlc,
+        // Only the fields this create actually set are stamped. Marking every
+        // field as "written at creation" would make the first edit of a field
+        // nobody ever filled in look like a clash with the creator, and bury
+        // the real conflicts in noise.
+        fieldHlc: initialFieldHlc(input, hlc),
+        temporaryId: null,
+      },
+      lines,
+      trx,
+    );
+
+    await timelineRepo.appendEntry(
+      {
+        tenantId: actor.tenantId,
+        parentType: 'lead',
+        parentId: leadId,
+        kind: 'system',
+        message: 'Lead created',
+        toStageId: defaultStage(stages).id,
+        actorUserId: actorUserId(actor),
+      },
+      trx,
+    );
+
+    return leadId;
+  });
+
+  const lead = await leadRepo.findLeadById(actor.tenantId, id);
+  if (!lead) throw new Error('Lead disappeared immediately after insert');
 
   await activityLog.recordActivity({
+    tenantId: actor.tenantId,
     entityType: 'lead',
     entityId: lead.id,
     action: 'created',
-    actorType: context.actor.actorType,
-    actorId: context.actor.actorId,
-    details: { leadNumber: lead.leadNumber, itemCount: lead.items.length },
+    actorType: actor.actorType,
+    actorId: actor.actorId,
+    details: { itemCount: lead.items.length, incomplete: lead.incomplete },
   });
   publishChange({ entity: 'lead', action: 'created', id: lead.id, payload: lead });
 
-  return lead;
+  return maskLead(lead, canSeeRates(actor));
 }
 
-export async function changeLeadStatus(
+export async function updateLead(
   id: string,
-  status: LeadStatus,
+  input: LeadUpdateInput,
   actor: ActorContext,
 ): Promise<Lead> {
-  const existing = await leadRepo.findLeadById(id);
+  requirePermission(actor, 'leads.edit');
+
+  const existing = await leadRepo.findLeadById(actor.tenantId, id);
   if (!existing) throw new NotFoundError('Lead');
-
-  if (existing.status === status) return existing;
-
-  if (!canTransitionLead(existing.status, status)) {
-    throw new ValidationError(`Cannot move a lead from "${existing.status}" to "${status}"`);
+  if (existing.convertedOrderId) {
+    throw new ValidationError('This lead has become an order and can no longer be edited');
   }
 
-  const stockEffect = stockEffectOfTransition(existing.status, status);
+  const definitions = await customFieldRepo.definitionsFor(actor.tenantId, 'lead');
+  const patch: Record<string, unknown> = {};
 
-  // Stock moves in the same transaction as the status change: an order that
-  // saved but did not reduce stock (or the reverse) would leave the two
-  // permanently out of step.
-  const lead = await leadRepo.updateLeadStatus(id, status, async (updated, trx) => {
-    if (stockEffect === 'deduct') {
-      await inventoryService.applyOrderDeduction(updated, actor, trx);
-    } else if (stockEffect === 'restore') {
-      await inventoryService.reverseOrderDeduction(updated, actor, trx);
+  if (input.partyId !== undefined) {
+    if (!(await partyRepo.findPartyById(actor.tenantId, input.partyId))) {
+      throw new ValidationError('The selected party no longer exists');
     }
+    patch.party_id = input.partyId;
+  }
+
+  if (input.ownerId !== undefined) {
+    patch.owner_id = await resolveOwner(input.ownerId, actor, existing.ownerId);
+  }
+
+  if (input.sourcePlatform !== undefined) {
+    await assertSourcePlatform(actor.tenantId, input.sourcePlatform);
+    patch.source_platform = input.sourcePlatform;
+  }
+
+  if (input.followUpDate !== undefined) patch.follow_up_date = input.followUpDate;
+  if (input.partyWiseMode !== undefined) patch.party_wise_mode = input.partyWiseMode;
+  if (input.notes !== undefined) patch.notes = input.notes?.trim() || null;
+
+  if (input.customFields !== undefined) {
+    patch.custom_fields = JSON.stringify(normalizeCustomFields(input.customFields, definitions));
+  }
+
+  const lines =
+    input.items === undefined
+      ? null
+      : await buildLines(actor.tenantId, input.partyId ?? existing.partyId, input.items, {
+          partyWiseMode: input.partyWiseMode ?? existing.partyWiseMode,
+        });
+
+  await db().transaction(async (trx) => {
+    const hlc = await nextHlc(trx);
+    const fieldHlc = { ...existing.sync.fieldHlc };
+    for (const field of Object.keys(patch)) fieldHlc[columnToField(field)] = hlc;
+    if (lines) fieldHlc.items = hlc;
+
+    if (Object.keys(patch).length > 0) {
+      await leadRepo.updateLeadColumns(actor.tenantId, id, patch, { hlc, fieldHlc }, trx);
+    }
+    if (lines) await leadRepo.replaceLeadLines(actor.tenantId, id, lines, trx);
   });
 
+  const lead = await leadRepo.findLeadById(actor.tenantId, id);
   if (!lead) throw new NotFoundError('Lead');
 
   await activityLog.recordActivity({
+    tenantId: actor.tenantId,
     entityType: 'lead',
-    entityId: lead.id,
-    action: 'status_changed',
+    entityId: id,
+    action: 'updated',
     actorType: actor.actorType,
     actorId: actor.actorId,
-    details: { from: existing.status, to: status },
   });
-  publishChange({ entity: 'lead', action: 'updated', id: lead.id, payload: lead });
+  publishChange({ entity: 'lead', action: 'updated', id, payload: lead });
 
-  // Published after the transaction commits so panels never see stock figures
-  // from a transaction that could still roll back.
-  if (stockEffect) {
-    await inventoryService.publishStockFor(lead.items.map((item) => item.productId));
-  }
-
-  return lead;
+  return maskLead(lead, canSeeRates(actor));
 }
 
-export async function getDashboardSummary(): Promise<DashboardSummary> {
-  const [leadCount, orderCount, partyCount, productCount, lowStockCount] = await Promise.all([
-    leadRepo.countLeadsByStatus(['new', 'verified']),
-    leadRepo.countLeadsByStatus(['order']),
-    partyRepo.countParties(),
-    productRepo.countProducts(),
-    inventoryService.countLowStock(),
-  ]);
+export async function setStage(
+  input: { id: string; stageId: string; remark?: string | null },
+  actor: ActorContext,
+): Promise<Lead> {
+  requirePermission(actor, 'leads.edit');
 
-  return { leadCount, orderCount, partyCount, productCount, lowStockCount };
+  const existing = await leadRepo.findLeadById(actor.tenantId, input.id);
+  if (!existing) throw new NotFoundError('Lead');
+  if (existing.stageId === input.stageId) return maskLead(existing, canSeeRates(actor));
+
+  const stages = await pipelineRepo.stagesFor(actor.tenantId, 'lead');
+  const from = findStage(stages, existing.stageId);
+  const to = assertStageMove(stages, existing.stageId, input.stageId, {
+    convertedOrderId: existing.convertedOrderId,
+  });
+
+  await db().transaction(async (trx) => {
+    const hlc = await nextHlc(trx);
+    await leadRepo.updateLeadColumns(
+      actor.tenantId,
+      input.id,
+      { stage_id: to.id },
+      { hlc, fieldHlc: { ...existing.sync.fieldHlc, stageId: hlc } },
+      trx,
+    );
+
+    // The automatic entry is what makes the board's history readable; a typed
+    // remark rides alongside it rather than replacing it.
+    await timelineRepo.appendEntry(
+      {
+        tenantId: actor.tenantId,
+        parentType: 'lead',
+        parentId: input.id,
+        kind: 'system',
+        message: stageChangeMessage(from, to),
+        fromStageId: from.id,
+        toStageId: to.id,
+        actorUserId: actorUserId(actor),
+      },
+      trx,
+    );
+
+    if (input.remark?.trim()) {
+      await timelineRepo.appendEntry(
+        {
+          tenantId: actor.tenantId,
+          parentType: 'lead',
+          parentId: input.id,
+          kind: 'remark',
+          message: input.remark.trim(),
+          actorUserId: actorUserId(actor),
+        },
+        trx,
+      );
+    }
+  });
+
+  const lead = await leadRepo.findLeadById(actor.tenantId, input.id);
+  if (!lead) throw new NotFoundError('Lead');
+
+  await activityLog.recordActivity({
+    tenantId: actor.tenantId,
+    entityType: 'lead',
+    entityId: input.id,
+    action: 'stage_changed',
+    actorType: actor.actorType,
+    actorId: actor.actorId,
+    details: { from: from.name, to: to.name },
+  });
+  publishChange({ entity: 'lead', action: 'updated', id: input.id, payload: lead });
+
+  return maskLead(lead, canSeeRates(actor));
+}
+
+export async function addRemark(
+  input: { id: string; message: string },
+  actor: ActorContext,
+): Promise<Lead> {
+  requirePermission(actor, 'leads.edit');
+
+  const message = input.message?.trim();
+  if (!message) throw new ValidationError('A remark needs some text');
+
+  const existing = await leadRepo.findLeadById(actor.tenantId, input.id);
+  if (!existing) throw new NotFoundError('Lead');
+
+  await db().transaction(async (trx) => {
+    await timelineRepo.appendEntry(
+      {
+        tenantId: actor.tenantId,
+        parentType: 'lead',
+        parentId: input.id,
+        kind: 'remark',
+        message,
+        actorUserId: actorUserId(actor),
+      },
+      trx,
+    );
+  });
+
+  const lead = await leadRepo.findLeadById(actor.tenantId, input.id);
+  if (!lead) throw new NotFoundError('Lead');
+
+  publishChange({ entity: 'lead', action: 'updated', id: input.id, payload: lead });
+  return maskLead(lead, canSeeRates(actor));
+}
+
+/**
+ * Turn what a panel sent into stored lines.
+ *
+ * The party's variants are loaded once for the whole set rather than per line,
+ * and only when the lead is in `partyWiseMode` — a lead that is not in that
+ * mode must take catalogue values even where a variant exists.
+ */
+export async function buildLines(
+  tenantId: string,
+  partyId: string,
+  drafts: LineDraft[],
+  options: { partyWiseMode: boolean },
+): Promise<LineSnapshot[]> {
+  const variants = options.partyWiseMode
+    ? await variantRepo.listForParty(tenantId, partyId)
+    : [];
+  const variantByProduct = new Map(variants.map((variant) => [variant.productId, variant]));
+
+  const lines: LineSnapshot[] = [];
+
+  for (const [index, draft] of drafts.entries()) {
+    const product = await productRepo.findProductById(tenantId, draft.productId);
+    if (!product) throw new ValidationError('One of the selected products no longer exists');
+
+    const variant = variantByProduct.get(product.id) ?? null;
+
+    const line = buildLineSnapshot(
+      draft,
+      {
+        id: product.id,
+        name: product.name,
+        alias: product.alias,
+        rate: product.rate ?? null,
+        productCode: product.productCode,
+        sin: product.sin,
+        size: product.size,
+        weightKg: product.weightKg,
+        grade: product.grade,
+        productType: product.productType,
+      },
+      variant
+        ? {
+            alias: variant.alias,
+            rate: variant.rate ?? null,
+            size: variant.size,
+            sin: variant.sin,
+            grade: variant.grade,
+            productType: variant.productType,
+            weightKg: variant.weightKg,
+            productName: variant.productName,
+          }
+        : null,
+      index + 1,
+    );
+
+    if (line.quantities.length === 0) {
+      throw new ValidationError(`Add a quantity for ${line.productName}`);
+    }
+
+    lines.push(line);
+  }
+
+  return lines;
+}
+
+/**
+ * The per-field clock a newly created lead starts with.
+ *
+ * A field is stamped only when the create supplied a value for it: an unset
+ * `followUpDate` has no writer, so the first panel to set one is not competing
+ * with anybody.
+ */
+function initialFieldHlc(input: LeadInput, hlc: string): Record<string, string> {
+  const written: Record<string, string> = {
+    // Always chosen by the creator, even when they took the defaults.
+    partyId: hlc,
+    stageId: hlc,
+    items: hlc,
+  };
+
+  if (input.ownerId) written.ownerId = hlc;
+  if (input.sourcePlatform) written.sourcePlatform = hlc;
+  if (input.followUpDate) written.followUpDate = hlc;
+  if (input.partyWiseMode !== undefined) written.partyWiseMode = hlc;
+  if (input.notes?.trim()) written.notes = hlc;
+  if (input.customFields && Object.keys(input.customFields).length > 0) {
+    written.customFields = hlc;
+  }
+
+  return written;
+}
+
+/** Fields the offline merge can arbitrate over, in their wire-format names. */
+export const LEAD_MERGE_FIELDS = [
+  'partyId',
+  'ownerId',
+  'stageId',
+  'sourcePlatform',
+  'followUpDate',
+  'partyWiseMode',
+  'notes',
+  'customFields',
+  'items',
+] as const;
+
+const COLUMN_TO_FIELD: Record<string, string> = {
+  party_id: 'partyId',
+  owner_id: 'ownerId',
+  stage_id: 'stageId',
+  source_platform: 'sourcePlatform',
+  follow_up_date: 'followUpDate',
+  party_wise_mode: 'partyWiseMode',
+  notes: 'notes',
+  custom_fields: 'customFields',
+};
+
+function columnToField(column: string): string {
+  return COLUMN_TO_FIELD[column] ?? column;
+}
+
+/**
+ * Owner defaults to the person creating the lead. Naming someone else is a
+ * separate capability, because reassigning a colleague's record changes whose
+ * numbers it lands in.
+ */
+async function resolveOwner(
+  requested: string | null,
+  actor: ActorContext,
+  fallback?: string,
+): Promise<string | null> {
+  const current = fallback ?? actorUserId(actor);
+  if (!requested || requested === current) return current;
+
+  requirePermission(actor, 'record.reassignOwner');
+  return requested;
+}
+
+async function assertSourcePlatform(tenantId: string, value: string | null): Promise<void> {
+  if (!value) return;
+
+  if (!(await customFieldRepo.isValidOption(tenantId, 'lead.sourcePlatform', value))) {
+    // Rejected rather than passed through: sourcePlatform is a reporting
+    // dimension, and a typo would quietly become its own category.
+    throw new ValidationError(`"${value}" is not a configured lead source`);
+  }
+}
+
+export async function getDashboardCounts(tenantId: string) {
+  const [leadCount, followUpsDueCount] = await Promise.all([
+    leadRepo.countOpenLeads(tenantId),
+    leadRepo.countFollowUpsDue(tenantId),
+  ]);
+  return { leadCount, followUpsDueCount };
 }

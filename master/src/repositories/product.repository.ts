@@ -1,25 +1,38 @@
+/**
+ * Products — the catalogue a line item snapshots from. Syncable, so rows carry
+ * text ids and sync bookkeeping.
+ *
+ * `rate` is this table's sale price (it was `price_per_box` before the rebuild).
+ * The line item copies it at add time and never re-reads it, which is why
+ * editing a product here cannot change what an existing order was quoted at.
+ */
+
 import type { Paginated, Product, ProductCategory, ProductInput } from '@orderbook/shared';
-import { v4 as uuid } from 'uuid';
+import type { Knex } from 'knex';
 
 import { db } from '../db/knex.js';
+import { allocatePermanentId } from './identity.repository.js';
 import { firstCount, mapProduct, mapProductCategory } from './mappers.js';
+import type { TransactionContext } from './transaction.js';
 
 const TABLE = 'products';
 const CATEGORY_TABLE = 'product_categories';
 
+type Runner = Knex | Knex.Transaction;
+
 /** Joined so a product always carries its category name for display. */
-function baseQuery() {
-  return db()(`${TABLE} as p`)
+function baseQuery(tenantId: string, runner: Runner = db()) {
+  return runner(`${TABLE} as p`)
     .leftJoin(`${CATEGORY_TABLE} as c`, 'c.id', 'p.category_id')
+    .where('p.tenant_id', tenantId)
     .select('p.*', 'c.name as category_name');
 }
 
-export async function listProducts(options: {
-  search?: string;
-  limit: number;
-  offset: number;
-}): Promise<Paginated<Product>> {
-  const base = baseQuery().where('p.is_active', true);
+export async function listProducts(
+  tenantId: string,
+  options: { search?: string; limit: number; offset: number },
+): Promise<Paginated<Product>> {
+  const base = baseQuery(tenantId).andWhere('p.is_active', true);
 
   if (options.search) {
     const pattern = `%${options.search}%`;
@@ -27,6 +40,7 @@ export async function listProducts(options: {
       builder
         .whereILike('p.name', pattern)
         .orWhereILike('p.product_code', pattern)
+        .orWhereILike('p.alias', pattern)
         .orWhereILike('p.series', pattern)
         .orWhereILike('c.name', pattern),
     );
@@ -36,9 +50,13 @@ export async function listProducts(options: {
     .clone()
     .clearSelect()
     .clearOrder()
-    .count<{ count: string }[]>('p.id as count');
+    .count<Array<{ count: string }>>('p.id as count');
 
-  const rows = await base.clone().orderBy('p.name', 'asc').limit(options.limit).offset(options.offset);
+  const rows = await base
+    .clone()
+    .orderBy('p.name', 'asc')
+    .limit(options.limit)
+    .offset(options.offset);
 
   return {
     items: rows.map(mapProduct),
@@ -48,68 +66,95 @@ export async function listProducts(options: {
   };
 }
 
-export async function findProductById(id: string): Promise<Product | null> {
-  const row = await baseQuery().where('p.id', id).first();
+export async function findProductById(
+  tenantId: string,
+  id: string,
+  runner: Runner = db(),
+): Promise<Product | null> {
+  const row = await baseQuery(tenantId, runner).andWhere('p.id', id).first();
   return row ? mapProduct(row) : null;
 }
 
-export async function findProductByCode(code: string): Promise<Product | null> {
-  const row = await baseQuery().whereRaw('lower(p.product_code) = lower(?)', [code]).first();
+/** Backs the "type a code, the line fills itself" convenience input (§3.2). */
+export async function findProductByCode(
+  tenantId: string,
+  code: string,
+  runner: Runner = db(),
+): Promise<Product | null> {
+  const row = await baseQuery(tenantId, runner)
+    .andWhereRaw('lower(p.product_code) = lower(?)', [code])
+    .first();
   return row ? mapProduct(row) : null;
 }
 
-export async function insertProduct(input: ProductInput): Promise<Product> {
-  const categoryId = await resolveCategoryId(input);
+export interface NewProduct {
+  tenantId: string;
+  input: ProductInput;
+  hlc: string;
+  fieldHlc: Record<string, string>;
+  temporaryId: string | null;
+  id?: string;
+}
 
-  const [row] = await db()(TABLE)
-    .insert({
-      id: uuid(),
-      product_code: input.productCode,
-      name: input.name,
-      category_id: categoryId,
-      size: input.size ?? null,
-      finish: input.finish ?? null,
-      series: input.series ?? null,
-      color: input.color ?? null,
-      thickness_mm: input.thicknessMm ?? null,
-      pieces_per_box: input.piecesPerBox ?? null,
-      box_coverage_sqft: input.boxCoverageSqft ?? null,
-      price_per_box: input.pricePerBox ?? null,
-      price_per_sqft: input.pricePerSqft ?? null,
-      hsn_code: input.hsnCode ?? null,
-      parameters: JSON.stringify(input.parameters ?? {}),
-    })
-    .returning('id');
+export async function insertProduct(
+  product: NewProduct,
+  trx: TransactionContext,
+): Promise<Product> {
+  const id = product.id ?? (await allocatePermanentId(product.tenantId, 'product', trx));
+  const categoryId = await resolveCategoryId(product.tenantId, product.input, trx);
 
-  const created = await findProductById(String(row.id));
+  await trx(TABLE).insert({
+    id,
+    tenant_id: product.tenantId,
+    ...columnsFrom(product.input, categoryId),
+    hlc: product.hlc,
+    field_hlc: JSON.stringify(product.fieldHlc),
+    temporary_id: product.temporaryId,
+  });
+
+  const created = await findProductById(product.tenantId, id, trx);
   if (!created) throw new Error('Product disappeared immediately after insert');
   return created;
 }
 
-export async function updateProduct(id: string, input: ProductInput): Promise<Product | null> {
-  const categoryId = await resolveCategoryId(input);
+export async function updateProduct(
+  tenantId: string,
+  id: string,
+  input: ProductInput,
+  meta: { hlc: string; fieldHlc: Record<string, string> },
+  trx: TransactionContext,
+): Promise<Product | null> {
+  const categoryId = await resolveCategoryId(tenantId, input, trx);
 
-  const updated = await db()(TABLE)
-    .where({ id })
+  const updated = await trx(TABLE)
+    .where({ tenant_id: tenantId, id })
     .update({
-      product_code: input.productCode,
-      name: input.name,
-      category_id: categoryId,
-      size: input.size ?? null,
-      finish: input.finish ?? null,
-      series: input.series ?? null,
-      color: input.color ?? null,
-      thickness_mm: input.thicknessMm ?? null,
-      pieces_per_box: input.piecesPerBox ?? null,
-      box_coverage_sqft: input.boxCoverageSqft ?? null,
-      price_per_box: input.pricePerBox ?? null,
-      price_per_sqft: input.pricePerSqft ?? null,
-      hsn_code: input.hsnCode ?? null,
-      parameters: JSON.stringify(input.parameters ?? {}),
-      updated_at: db().fn.now(),
+      ...columnsFrom(input, categoryId),
+      hlc: meta.hlc,
+      field_hlc: JSON.stringify(meta.fieldHlc),
+      version: trx.raw('version + 1'),
+      updated_at: trx.fn.now(),
     });
 
-  return updated ? findProductById(id) : null;
+  return updated ? findProductById(tenantId, id, trx) : null;
+}
+
+export async function updateProductColumns(
+  tenantId: string,
+  id: string,
+  patch: Record<string, unknown>,
+  meta: { hlc: string; fieldHlc: Record<string, string> },
+  trx: TransactionContext,
+): Promise<void> {
+  await trx(TABLE)
+    .where({ tenant_id: tenantId, id })
+    .update({
+      ...patch,
+      hlc: meta.hlc,
+      field_hlc: JSON.stringify(meta.fieldHlc),
+      version: trx.raw('version + 1'),
+      updated_at: trx.fn.now(),
+    });
 }
 
 export async function nextProductCode(): Promise<string> {
@@ -119,16 +164,44 @@ export async function nextProductCode(): Promise<string> {
   return rows[0].code;
 }
 
-export async function countProducts(): Promise<number> {
+export async function countProducts(tenantId: string): Promise<number> {
   const rows = await db()(TABLE)
-    .where({ is_active: true })
-    .count<{ count: string }[]>('id as count');
+    .where({ tenant_id: tenantId, is_active: true })
+    .count<Array<{ count: string }>>('id as count');
   return firstCount(rows);
 }
 
-export async function listCategories(): Promise<ProductCategory[]> {
-  const rows = await db()(CATEGORY_TABLE).orderBy('name', 'asc');
+export async function listCategories(
+  tenantId: string,
+  runner: Runner = db(),
+): Promise<ProductCategory[]> {
+  const rows = await runner(CATEGORY_TABLE).where({ tenant_id: tenantId }).orderBy('name', 'asc');
   return rows.map(mapProductCategory);
+}
+
+function columnsFrom(input: ProductInput, categoryId: string | null): Record<string, unknown> {
+  return {
+    product_code: input.productCode,
+    name: input.name,
+    alias: input.alias ?? null,
+    category_id: categoryId,
+    size: input.size ?? null,
+    sin: input.sin ?? null,
+    grade: input.grade ?? null,
+    product_type: input.productType ?? null,
+    weight_kg: input.weightKg ?? null,
+    finish: input.finish ?? null,
+    series: input.series ?? null,
+    color: input.color ?? null,
+    thickness_mm: input.thicknessMm ?? null,
+    pieces_per_box: input.piecesPerBox ?? null,
+    box_coverage_sqft: input.boxCoverageSqft ?? null,
+    rate: input.rate ?? null,
+    price_per_sqft: input.pricePerSqft ?? null,
+    hsn_code: input.hsnCode ?? null,
+    parameters: JSON.stringify(input.parameters ?? {}),
+    custom_fields: JSON.stringify(input.customFields ?? {}),
+  };
 }
 
 /**
@@ -136,15 +209,23 @@ export async function listCategories(): Promise<ProductCategory[]> {
  * Product form can offer a combo box that creates categories on the fly
  * without a separate management screen.
  */
-async function resolveCategoryId(input: ProductInput): Promise<string | null> {
+async function resolveCategoryId(
+  tenantId: string,
+  input: ProductInput,
+  trx: TransactionContext,
+): Promise<string | null> {
   if (input.categoryId) return input.categoryId;
 
   const name = input.categoryName?.trim();
   if (!name) return null;
 
-  const existing = await db()(CATEGORY_TABLE).whereRaw('lower(name) = lower(?)', [name]).first();
+  const existing = await trx(CATEGORY_TABLE)
+    .where({ tenant_id: tenantId })
+    .whereRaw('lower(name) = lower(?)', [name])
+    .first();
   if (existing) return String(existing.id);
 
-  const [created] = await db()(CATEGORY_TABLE).insert({ id: uuid(), name }).returning('id');
-  return String(created.id);
+  const id = await allocatePermanentId(tenantId, 'product_category', trx);
+  await trx(CATEGORY_TABLE).insert({ id, tenant_id: tenantId, name });
+  return id;
 }

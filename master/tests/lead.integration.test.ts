@@ -1,355 +1,376 @@
+/**
+ * The lead flow end to end, and the conversion guarantees the guide asks to be
+ * explicitly tested (docs/LEAD_GENERATION_FLOW.md §5.2):
+ *
+ *   1. Conversion copies line items unchanged — no silent recalculation.
+ *   2. A line's snapshotted rate does not move when the product's rate is
+ *      edited afterwards.
+ *   3. `packaging` is never auto-filled during conversion.
+ *   4. Reservations are per (product, colour), never aggregated.
+ */
+
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { canRunIntegrationTests } from './helpers/db.js';
-import { resetData, setupDatabase, teardownDatabase } from './helpers/fixtures.js';
+import {
+  resetData,
+  setupDatabase,
+  stageIdByName,
+  teardownDatabase,
+  testActor,
+} from './helpers/fixtures.js';
 import { db } from '../src/db/knex.js';
 import type { ActorContext } from '../src/domain/actor.js';
 import * as catalog from '../src/services/catalog.service.js';
 import * as leads from '../src/services/lead.service.js';
+import * as orders from '../src/services/order.service.js';
 
-const actor: ActorContext = { actorType: 'user', actorId: null };
-const context = { sourcePanelId: null, actor };
+let actor: ActorContext;
 
 async function seed() {
   const party = await catalog.createParty({ name: 'Patel Tiles' }, actor);
   const product = await catalog.createProduct(
-    { productCode: 'GVT-01', name: 'Carrara White', pricePerBox: 45_000 },
+    {
+      productCode: 'GVT-01',
+      name: 'Carrara White',
+      rate: 45_000,
+      weightKg: 22.5,
+      size: '600x1200',
+      grade: 'Premium',
+    },
     actor,
   );
   return { party, product };
 }
 
-describe.skipIf(!canRunIntegrationTests)('lead service (integration)', () => {
+function line(productId: string, overrides: Record<string, unknown> = {}) {
+  return {
+    productId,
+    packaging: 'carton',
+    quantities: [{ colour: 'Ivory', quantity: 10 }],
+    ...overrides,
+  };
+}
+
+describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
   beforeAll(setupDatabase);
   afterAll(teardownDatabase);
-  beforeEach(resetData);
+  beforeEach(async () => {
+    await resetData();
+    actor = await testActor();
+  });
 
   describe('creating', () => {
-    it('assigns sequential lead numbers', async () => {
+    it('assigns permanent ids in the documented 12-character shape', async () => {
       const { party, product } = await seed();
-      const items = [{ productId: product.id, quantityBoxes: 1 }];
 
-      const first = await leads.createLead({ partyId: party.id, items }, context);
-      const second = await leads.createLead({ partyId: party.id, items }, context);
+      const first = await leads.createLead(
+        { partyId: party.id, items: [line(product.id)] },
+        actor,
+      );
+      const second = await leads.createLead(
+        { partyId: party.id, items: [line(product.id)] },
+        actor,
+      );
 
-      expect(first.leadNumber).toBe('L-000001');
-      expect(second.leadNumber).toBe('L-000002');
+      expect(first.id).toBe('LD0000000001');
+      expect(second.id).toBe('LD0000000002');
     });
 
-    it('snapshots the product price and computes the line total', async () => {
+    it('snapshots the catalogue onto the line and totals it', async () => {
       const { party, product } = await seed();
 
       const lead = await leads.createLead(
-        { partyId: party.id, items: [{ productId: product.id, quantityBoxes: 12 }] },
-        context,
+        { partyId: party.id, items: [line(product.id, { quantities: [{ colour: 'Ivory', quantity: 12 }] })] },
+        actor,
       );
 
-      expect(lead.items[0]?.unitPrice).toBe(45_000);
-      expect(lead.items[0]?.lineTotal).toBe(540_000);
+      const item = lead.items[0];
+      expect(item?.rate).toBe(45_000);
+      expect(item?.code).toBe('GVT-01');
+      expect(item?.size).toBe('600x1200');
+      expect(item?.grade).toBe('Premium');
+      expect(item?.totalQuantity).toBe(12);
+      expect(item?.lineTotal).toBe(540_000);
       expect(lead.totalAmount).toBe(540_000);
     });
 
-    it('keeps the original price after the product price later changes', async () => {
-      const { party, product } = await seed();
-      const lead = await leads.createLead(
-        { partyId: party.id, items: [{ productId: product.id, quantityBoxes: 2 }] },
-        context,
-      );
-
-      await catalog.updateProduct(
-        product.id,
-        { productCode: 'GVT-01', name: 'Carrara White', pricePerBox: 99_000 },
-        actor,
-      );
-
-      const reloaded = await leads.getLead(lead.id);
-      expect(reloaded.items[0]?.unitPrice).toBe(45_000);
-      expect(reloaded.totalAmount).toBe(90_000);
-    });
-
-    it('honours an explicitly supplied price over the catalogue price', async () => {
+    it('starts the lead in the pipeline’s default stage', async () => {
       const { party, product } = await seed();
 
       const lead = await leads.createLead(
-        { partyId: party.id, items: [{ productId: product.id, quantityBoxes: 2, unitPrice: 40_000 }] },
-        context,
-      );
-
-      expect(lead.items[0]?.unitPrice).toBe(40_000);
-      expect(lead.totalAmount).toBe(80_000);
-    });
-
-    it('sums several line items into the total', async () => {
-      const { party, product } = await seed();
-      const second = await catalog.createProduct(
-        { productCode: 'WLT-02', name: 'Statuario', pricePerBox: 32_000 },
+        { partyId: party.id, items: [line(product.id)] },
         actor,
       );
+
+      expect(lead.stageName).toBe('New');
+      expect(lead.timeline.map((entry) => entry.message)).toContain('Lead created');
+    });
+
+    it('keeps several colours as separate quantities on one line', async () => {
+      const { party, product } = await seed();
 
       const lead = await leads.createLead(
         {
           partyId: party.id,
           items: [
-            { productId: product.id, quantityBoxes: 2 },
-            { productId: second.id, quantityBoxes: 3 },
+            line(product.id, {
+              quantities: [
+                { colour: 'Ivory', quantity: 4 },
+                { colour: 'Slate', quantity: 6 },
+              ],
+            }),
           ],
         },
-        context,
+        actor,
       );
 
-      expect(lead.items).toHaveLength(2);
-      expect(lead.totalAmount).toBe(2 * 45_000 + 3 * 32_000);
+      expect(lead.items[0]?.quantities).toHaveLength(2);
+      expect(lead.items[0]?.totalQuantity).toBe(10);
     });
 
-    it('rounds fractional quantities to whole currency units', async () => {
-      const { party, product } = await seed();
+    it('rejects a lead with no products', async () => {
+      const { party } = await seed();
 
-      const lead = await leads.createLead(
-        { partyId: party.id, items: [{ productId: product.id, quantityBoxes: 1.5 }] },
-        context,
+      await expect(leads.createLead({ partyId: party.id, items: [] }, actor)).rejects.toThrow(
+        /at least one product/i,
       );
-
-      expect(lead.items[0]?.lineTotal).toBe(67_500);
-      expect(Number.isInteger(lead.totalAmount)).toBe(true);
     });
 
-    it('records which office panel a lead came from', async () => {
-      const { party, product } = await seed();
-      const [panel] = await db()('office_panels')
-        .insert({
-          id: '11111111-1111-4111-8111-111111111111',
-          name: 'Front Desk',
-          secret_hash: 'x',
-          status: 'active',
-        })
-        .returning('id');
-
-      const lead = await leads.createLead(
-        { partyId: party.id, items: [{ productId: product.id, quantityBoxes: 1 }] },
-        { sourcePanelId: String(panel.id), actor: { actorType: 'office_panel', actorId: String(panel.id) } },
-      );
-
-      expect(lead.sourcePanelId).toBe(String(panel.id));
-    });
-
-    describe('rejects invalid input', () => {
-      it('with no products', async () => {
-        const { party } = await seed();
-        await expect(leads.createLead({ partyId: party.id, items: [] }, context)).rejects.toThrow(
-          /at least one product/i,
-        );
-      });
-
-      it('with no party', async () => {
-        await expect(leads.createLead({ partyId: '', items: [] }, context)).rejects.toThrow(
-          /select a party/i,
-        );
-      });
-
-      it('with a party that does not exist', async () => {
-        const { product } = await seed();
-        await expect(
-          leads.createLead(
-            {
-              partyId: '00000000-0000-4000-8000-000000000000',
-              items: [{ productId: product.id, quantityBoxes: 1 }],
-            },
-            context,
-          ),
-        ).rejects.toThrow(/no longer exists/i);
-      });
-
-      it('with a product that does not exist', async () => {
-        const { party } = await seed();
-        await expect(
-          leads.createLead(
-            {
-              partyId: party.id,
-              items: [{ productId: '00000000-0000-4000-8000-000000000000', quantityBoxes: 1 }],
-            },
-            context,
-          ),
-        ).rejects.toThrow(/no longer exists/i);
-      });
-
-      it('with a zero or negative quantity', async () => {
-        const { party, product } = await seed();
-        await expect(
-          leads.createLead(
-            { partyId: party.id, items: [{ productId: product.id, quantityBoxes: 0 }] },
-            context,
-          ),
-        ).rejects.toThrow(/greater than zero/i);
-      });
-    });
-
-    it('writes nothing at all when one line item is invalid', async () => {
-      // The insert runs in a transaction; a partially-saved order with missing
-      // lines would be worse than a clean failure the user can retry.
+    it('rejects a source platform that is not a configured option', async () => {
       const { party, product } = await seed();
 
       await expect(
         leads.createLead(
-          {
-            partyId: party.id,
-            items: [
-              { productId: product.id, quantityBoxes: 5 },
-              { productId: '00000000-0000-4000-8000-000000000000', quantityBoxes: 1 },
-            ],
-          },
-          context,
+          { partyId: party.id, sourcePlatform: 'whatsap', items: [line(product.id)] },
+          actor,
         ),
-      ).rejects.toThrow();
+      ).rejects.toThrow(/not a configured lead source/i);
+    });
 
-      expect(await db()('leads').count('id as c')).toEqual([{ c: '0' }]);
-      expect(await db()('lead_items').count('id as c')).toEqual([{ c: '0' }]);
+    it('accepts a configured source platform', async () => {
+      const { party, product } = await seed();
+
+      const lead = await leads.createLead(
+        { partyId: party.id, sourcePlatform: 'whatsapp', items: [line(product.id)] },
+        actor,
+      );
+
+      expect(lead.sourcePlatform).toBe('whatsapp');
     });
   });
 
-  describe('status machine', () => {
-    async function newLead() {
-      const { party, product } = await seed();
-      return leads.createLead(
-        { partyId: party.id, items: [{ productId: product.id, quantityBoxes: 1 }] },
-        context,
-      );
-    }
-
-    it('starts as new', async () => {
-      expect((await newLead()).status).toBe('new');
-    });
-
-    it('walks new → verified → order', async () => {
-      const lead = await newLead();
-
-      expect((await leads.changeLeadStatus(lead.id, 'verified', actor)).status).toBe('verified');
-      const ordered = await leads.changeLeadStatus(lead.id, 'order', actor);
-
-      expect(ordered.status).toBe('order');
-      expect(ordered.orderDate).not.toBeNull();
-    });
-
-    it('refuses to skip verification', async () => {
-      const lead = await newLead();
-      await expect(leads.changeLeadStatus(lead.id, 'order', actor)).rejects.toThrow(
-        /cannot move a lead from "new" to "order"/i,
-      );
-    });
-
-    it('refuses to reopen a cancelled lead', async () => {
-      const lead = await newLead();
-      await leads.changeLeadStatus(lead.id, 'cancelled', actor);
-
-      await expect(leads.changeLeadStatus(lead.id, 'new', actor)).rejects.toThrow(/cannot move/i);
-    });
-
-    it('refuses to send an order back to a lead', async () => {
-      const lead = await newLead();
-      await leads.changeLeadStatus(lead.id, 'verified', actor);
-      await leads.changeLeadStatus(lead.id, 'order', actor);
-
-      await expect(leads.changeLeadStatus(lead.id, 'verified', actor)).rejects.toThrow(/cannot move/i);
-    });
-
-    it('allows a verified lead to go back to new for correction', async () => {
-      const lead = await newLead();
-      await leads.changeLeadStatus(lead.id, 'verified', actor);
-
-      expect((await leads.changeLeadStatus(lead.id, 'new', actor)).status).toBe('new');
-    });
-
-    it('treats setting the current status as a no-op rather than an error', async () => {
-      const lead = await newLead();
-      expect((await leads.changeLeadStatus(lead.id, 'new', actor)).status).toBe('new');
-    });
-
-    it('reports a missing lead', async () => {
-      await expect(
-        leads.changeLeadStatus('00000000-0000-4000-8000-000000000000', 'verified', actor),
-      ).rejects.toThrow(/not found/i);
-    });
-
-    it('logs the transition for audit', async () => {
-      const lead = await newLead();
-      await leads.changeLeadStatus(lead.id, 'verified', actor);
-
-      const entry = await db()('activity_log').where({ action: 'status_changed' }).first();
-      expect(entry?.details).toMatchObject({ from: 'new', to: 'verified' });
-    });
-  });
-
-  describe('listing', () => {
-    it('separates open leads from orders', async () => {
-      const { party, product } = await seed();
-      const items = [{ productId: product.id, quantityBoxes: 1 }];
-
-      const promoted = await leads.createLead({ partyId: party.id, items }, context);
-      await leads.createLead({ partyId: party.id, items }, context);
-      await leads.changeLeadStatus(promoted.id, 'verified', actor);
-      await leads.changeLeadStatus(promoted.id, 'order', actor);
-
-      const open = await leads.listLeads({ statuses: ['new', 'verified'] });
-      const orders = await leads.listLeads({ statuses: ['order'] });
-
-      expect(open.items).toHaveLength(1);
-      expect(orders.items).toHaveLength(1);
-      expect(orders.items[0]?.id).toBe(promoted.id);
-    });
-
-    it('loads line items for every lead in the page', async () => {
-      const { party, product } = await seed();
-      const items = [{ productId: product.id, quantityBoxes: 1 }];
-      await leads.createLead({ partyId: party.id, items }, context);
-      await leads.createLead({ partyId: party.id, items }, context);
-
-      const page = await leads.listLeads({});
-      expect(page.items.every((lead) => lead.items.length === 1)).toBe(true);
-      expect(page.items.every((lead) => lead.items[0]?.productName === 'Carrara White')).toBe(true);
-    });
-
-    it('searches by lead number and party name', async () => {
-      const { party, product } = await seed();
-      await leads.createLead(
-        { partyId: party.id, items: [{ productId: product.id, quantityBoxes: 1 }] },
-        context,
-      );
-
-      expect((await leads.listLeads({ search: 'L-000001' })).items).toHaveLength(1);
-      expect((await leads.listLeads({ search: 'patel' })).items).toHaveLength(1);
-      expect((await leads.listLeads({ search: 'nothing' })).items).toHaveLength(0);
-    });
-  });
-
-  describe('dashboard summary', () => {
-    it('counts open leads and orders separately', async () => {
-      const { party, product } = await seed();
-      const items = [{ productId: product.id, quantityBoxes: 1 }];
-
-      const promoted = await leads.createLead({ partyId: party.id, items }, context);
-      await leads.createLead({ partyId: party.id, items }, context);
-      await leads.changeLeadStatus(promoted.id, 'verified', actor);
-      await leads.changeLeadStatus(promoted.id, 'order', actor);
-
-      expect(await leads.getDashboardSummary()).toEqual({
-        leadCount: 1,
-        orderCount: 1,
-        partyCount: 1,
-        productCount: 1,
-        lowStockCount: 0,
-      });
-    });
-
-    it('excludes cancelled leads from the open count', async () => {
+  describe('moving through the pipeline', () => {
+    it('records a system timeline entry for every stage change', async () => {
       const { party, product } = await seed();
       const lead = await leads.createLead(
-        { partyId: party.id, items: [{ productId: product.id, quantityBoxes: 1 }] },
-        context,
+        { partyId: party.id, items: [line(product.id)] },
+        actor,
       );
-      await leads.changeLeadStatus(lead.id, 'cancelled', actor);
 
-      const summary = await leads.getDashboardSummary();
-      expect(summary.leadCount).toBe(0);
-      expect(summary.orderCount).toBe(0);
+      const moved = await leads.setStage(
+        { id: lead.id, stageId: await stageIdByName('lead', 'Quoted') },
+        actor,
+      );
+
+      expect(moved.stageName).toBe('Quoted');
+      expect(moved.timeline.map((entry) => entry.message)).toContain(
+        'Moved from New to Quoted',
+      );
+    });
+
+    it('stores a remark alongside the automatic entry, not instead of it', async () => {
+      const { party, product } = await seed();
+      const lead = await leads.createLead(
+        { partyId: party.id, items: [line(product.id)] },
+        actor,
+      );
+
+      const moved = await leads.setStage(
+        {
+          id: lead.id,
+          stageId: await stageIdByName('lead', 'Negotiating'),
+          remark: 'Asked for 5% off',
+        },
+        actor,
+      );
+
+      const kinds = moved.timeline.map((entry) => entry.kind);
+      expect(kinds).toContain('system');
+      expect(kinds).toContain('remark');
+    });
+  });
+
+  describe('converting to an order', () => {
+    async function convertible() {
+      const { party, product } = await seed();
+      const lead = await leads.createLead(
+        {
+          partyId: party.id,
+          items: [
+            line(product.id, {
+              packaging: 'wooden crate',
+              quantities: [
+                { colour: 'Ivory', quantity: 4 },
+                { colour: 'Slate', quantity: 6 },
+              ],
+            }),
+          ],
+        },
+        actor,
+      );
+      return { party, product, lead };
+    }
+
+    it('creates an order that points back at the lead, and keeps the lead', async () => {
+      const { lead } = await convertible();
+
+      const order = await orders.convertLead({ leadId: lead.id }, actor);
+      const original = await leads.getLead(lead.id, actor);
+
+      expect(order.id).toBe('OD0000000001');
+      expect(order.leadId).toBe(lead.id);
+      expect(original.convertedOrderId).toBe(order.id);
+      expect(original.convertedAt).not.toBeNull();
+      // The lead survives with its lines intact — it is history, not a husk.
+      expect(original.items).toHaveLength(1);
+    });
+
+    it('copies line items unchanged', async () => {
+      const { lead } = await convertible();
+
+      const order = await orders.convertLead({ leadId: lead.id }, actor);
+
+      const before = lead.items[0];
+      const after = order.items[0];
+      expect(after?.productName).toBe(before?.productName);
+      expect(after?.rate).toBe(before?.rate);
+      expect(after?.code).toBe(before?.code);
+      expect(after?.size).toBe(before?.size);
+      expect(after?.grade).toBe(before?.grade);
+      expect(after?.totalQuantity).toBe(before?.totalQuantity);
+      expect(after?.lineTotal).toBe(before?.lineTotal);
+    });
+
+    it('does not move the snapshotted rate when the product is repriced', async () => {
+      const { product, lead } = await convertible();
+
+      // The catalogue changes *between* quoting and converting — the exact case
+      // §8.3 exists to guard against.
+      await catalog.updateProduct(
+        product.id,
+        { productCode: 'GVT-01', name: 'Carrara White', rate: 99_000 },
+        actor,
+      );
+
+      const order = await orders.convertLead({ leadId: lead.id }, actor);
+
+      expect(order.items[0]?.rate).toBe(45_000);
+      expect(order.totalAmount).toBe(450_000);
+    });
+
+    it('carries packaging across exactly as entered, never re-derived', async () => {
+      const { lead } = await convertible();
+
+      const order = await orders.convertLead({ leadId: lead.id }, actor);
+
+      expect(order.items[0]?.packaging).toBe('wooden crate');
+    });
+
+    it('refuses to convert a lead whose line has no packaging', async () => {
+      const { party, product } = await seed();
+      const lead = await leads.createLead(
+        { partyId: party.id, items: [line(product.id, { packaging: null })] },
+        actor,
+      );
+
+      await expect(orders.convertLead({ leadId: lead.id }, actor)).rejects.toThrow(
+        /choose packaging/i,
+      );
+    });
+
+    it('reserves stock per (product, colour) rather than per product', async () => {
+      const { lead } = await convertible();
+
+      const order = await orders.convertLead({ leadId: lead.id }, actor);
+
+      expect(order.reservations).toHaveLength(2);
+      const byColour = Object.fromEntries(
+        order.reservations.map((reservation) => [reservation.colour, reservation.quantity]),
+      );
+      expect(byColour).toEqual({ Ivory: 4, Slate: 6 });
+      expect(order.reservations.every((r) => r.status === 'active')).toBe(true);
+    });
+
+    it('does not touch the stock ledger — reserving is not dispatching', async () => {
+      const { lead } = await convertible();
+
+      await orders.convertLead({ leadId: lead.id }, actor);
+
+      const movements = await db()('stock_movements').select('*');
+      expect(movements).toHaveLength(0);
+    });
+
+    it('sums the order weight from the line weights', async () => {
+      const { lead } = await convertible();
+
+      const order = await orders.convertLead({ leadId: lead.id }, actor);
+
+      // 22.5 kg × 10 boxes
+      expect(order.totalWeightKg).toBe(225);
+      expect(order.weightSource).toBe('computed');
+    });
+
+    it('starts the order in its own pipeline, independent of the lead’s', async () => {
+      const { lead } = await convertible();
+
+      const order = await orders.convertLead({ leadId: lead.id }, actor);
+
+      expect(order.stageName).toBe('In Progress');
+      expect(order.stageId).toBe(await stageIdByName('order', 'In Progress'));
+    });
+
+    it('refuses to convert the same lead twice', async () => {
+      const { lead } = await convertible();
+      await orders.convertLead({ leadId: lead.id }, actor);
+
+      await expect(orders.convertLead({ leadId: lead.id }, actor)).rejects.toThrow(
+        /already been converted/i,
+      );
+    });
+
+    it('stops a converted lead being moved or edited', async () => {
+      const { lead } = await convertible();
+      await orders.convertLead({ leadId: lead.id }, actor);
+
+      await expect(
+        leads.setStage({ id: lead.id, stageId: await stageIdByName('lead', 'Lost') }, actor),
+      ).rejects.toThrow(/already become an order/i);
+
+      await expect(leads.updateLead(lead.id, { notes: 'too late' }, actor)).rejects.toThrow(
+        /can no longer be edited/i,
+      );
+    });
+  });
+
+  describe('order weight override', () => {
+    it('keeps the computed figure and only relabels which one is shown', async () => {
+      const { party, product } = await seed();
+      const lead = await leads.createLead(
+        { partyId: party.id, items: [line(product.id)] },
+        actor,
+      );
+      const order = await orders.convertLead({ leadId: lead.id }, actor);
+
+      const overridden = await orders.updateOrder(order.id, { totalWeightKgOverride: 200 }, actor);
+      expect(overridden.weightSource).toBe('manual');
+      expect(overridden.totalWeightKgOverride).toBe(200);
+      // Still known, so clearing the override restores the real number.
+      expect(overridden.totalWeightKg).toBe(225);
+
+      const cleared = await orders.updateOrder(order.id, { totalWeightKgOverride: null }, actor);
+      expect(cleared.weightSource).toBe('computed');
+      expect(cleared.totalWeightKg).toBe(225);
     });
   });
 });

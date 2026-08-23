@@ -9,7 +9,10 @@ export default defineConfig({
     // Integration tests share one database, so files must not run in parallel.
     fileParallelism: false,
     testTimeout: 30_000,
-    hookTimeout: 60_000,
+    // Generous because the first integration run builds a throwaway
+    // PostgreSQL cluster, and initdb takes ~35s on Windows. Later runs
+    // reuse the cluster and start in a second or two.
+    hookTimeout: 180_000,
     coverage: {
       provider: 'v8',
       include: ['{shared,master,office}/src/**/*.ts'],

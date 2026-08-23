@@ -1,34 +1,63 @@
-import type { Lead, LeadInput, LeadItem, LeadStatus, Paginated } from '@orderbook/shared';
-import type { Knex } from 'knex';
-import { v4 as uuid } from 'uuid';
+/**
+ * Leads. A lead no longer becomes an order by changing status — it is converted,
+ * gaining `converted_order_id`, and survives as history
+ * (docs/LEAD_GENERATION_FLOW.md §5.1).
+ */
 
+import type { Lead, LeadListQuery, Paginated } from '@orderbook/shared';
+import type { Knex } from 'knex';
+
+import { evaluateCompleteness } from '../domain/custom-fields.js';
+import type { LineSnapshot } from '../domain/line-items.js';
+import { orderTotalAmount } from '../domain/line-items.js';
 import { db } from '../db/knex.js';
-import { firstCount, mapLead, mapLeadItem } from './mappers.js';
+import * as customFields from './custom-field.repository.js';
+import { allocatePermanentId } from './identity.repository.js';
+import * as lineItems from './line-item.repository.js';
+import { firstCount, mapLead } from './mappers.js';
+import * as timeline from './timeline.repository.js';
 import type { TransactionContext } from './transaction.js';
 
 const TABLE = 'leads';
-const ITEM_TABLE = 'lead_items';
 
-function baseQuery(runner: Knex | Knex.Transaction = db()) {
+type Runner = Knex | Knex.Transaction;
+
+function baseQuery(tenantId: string, runner: Runner = db()) {
   return runner(`${TABLE} as l`)
     .join('parties as pa', 'pa.id', 'l.party_id')
-    .select('l.*', 'pa.name as party_name');
+    .join('pipeline_stages as st', 'st.id', 'l.stage_id')
+    .leftJoin('users as ow', 'ow.id', 'l.owner_id')
+    .where('l.tenant_id', tenantId)
+    .select(
+      'l.*',
+      'pa.name as party_name',
+      'st.name as stage_name',
+      'st.sequence as stage_sequence',
+      'ow.full_name as owner_name',
+    );
 }
 
-export async function listLeads(options: {
-  statuses?: LeadStatus[];
-  search?: string;
-  limit: number;
-  offset: number;
-}): Promise<Paginated<Lead>> {
-  const base = baseQuery();
+export async function listLeads(
+  tenantId: string,
+  options: LeadListQuery & { limit: number; offset: number },
+): Promise<Paginated<Lead>> {
+  const base = baseQuery(tenantId);
 
-  if (options.statuses?.length) base.whereIn('l.status', options.statuses);
+  if (options.stageIds?.length) base.whereIn('l.stage_id', options.stageIds);
+  if (options.ownerId) base.where('l.owner_id', options.ownerId);
+
+  // A converted lead is history: it stays out of the board unless asked for,
+  // otherwise every won deal would clutter the pipeline forever.
+  if (!options.includeConverted) base.whereNull('l.converted_order_id');
+
+  if (options.followUpDueOnly) {
+    base.whereNotNull('l.follow_up_date').andWhere('l.follow_up_date', '<=', db().fn.now());
+  }
 
   if (options.search) {
     const pattern = `%${options.search}%`;
     base.andWhere((builder) =>
-      builder.whereILike('l.lead_number', pattern).orWhereILike('pa.name', pattern),
+      builder.whereILike('l.id', pattern).orWhereILike('pa.name', pattern),
     );
   }
 
@@ -36,7 +65,7 @@ export async function listLeads(options: {
     .clone()
     .clearSelect()
     .clearOrder()
-    .count<{ count: string }[]>('l.id as count');
+    .count<Array<{ count: string }>>('l.id as count');
 
   const rows = await base
     .clone()
@@ -44,10 +73,8 @@ export async function listLeads(options: {
     .limit(options.limit)
     .offset(options.offset);
 
-  const itemsByLead = await loadItemsFor(rows.map((row) => String(row.id)));
-
   return {
-    items: rows.map((row) => mapLead(row, itemsByLead.get(String(row.id)) ?? [])),
+    items: await hydrate(tenantId, rows),
     total: firstCount(countRows),
     limit: options.limit,
     offset: options.offset,
@@ -55,133 +82,166 @@ export async function listLeads(options: {
 }
 
 export async function findLeadById(
+  tenantId: string,
   id: string,
-  runner: Knex | Knex.Transaction = db(),
+  runner: Runner = db(),
 ): Promise<Lead | null> {
-  const row = await baseQuery(runner).where('l.id', id).first();
+  const row = await baseQuery(tenantId, runner).where('l.id', id).first();
   if (!row) return null;
-  const items = await loadItemsFor([id], runner);
-  return mapLead(row, items.get(id) ?? []);
+
+  const [lead] = await hydrate(tenantId, [row], runner);
+  return lead ?? null;
 }
 
-/**
- * Creates the lead and every line item atomically: a half-written order with
- * missing lines would be worse than a failed save the user can retry.
- */
-export async function insertLead(
-  input: LeadInput,
-  context: { sourcePanelId: string | null; createdByUserId: string | null },
-): Promise<Lead> {
-  return db().transaction(async (trx) => {
-    const { rows } = await trx.raw<{ rows: [{ number: string }] }>(
-      `SELECT 'L-' || lpad(nextval('lead_number_seq')::text, 6, '0') AS number`,
+/** Attach lines, timeline and completeness in three queries, not 3×N. */
+async function hydrate(
+  tenantId: string,
+  rows: Array<Record<string, unknown>>,
+  runner: Runner = db(),
+): Promise<Lead[]> {
+  if (rows.length === 0) return [];
+
+  const ids = rows.map((row) => String(row.id));
+  const [linesByLead, timelineByLead, definitions] = await Promise.all([
+    lineItems.loadLinesFor(tenantId, 'lead', ids, runner),
+    timeline.loadTimelinesFor(tenantId, 'lead', ids, runner),
+    customFields.definitionsFor(tenantId, 'lead', runner),
+  ]);
+
+  return rows.map((row) => {
+    const id = String(row.id);
+    return mapLead(
+      row,
+      linesByLead.get(id) ?? [],
+      timelineByLead.get(id) ?? [],
+      evaluateCompleteness(
+        (row.custom_fields as Record<string, unknown> | null) ?? {},
+        definitions,
+      ),
     );
-    const leadNumber = rows[0].number;
-    const leadId = uuid();
-
-    await trx(TABLE).insert({
-      id: leadId,
-      lead_number: leadNumber,
-      party_id: input.partyId,
-      status: 'new',
-      source_panel_id: context.sourcePanelId,
-      created_by_user_id: context.createdByUserId,
-      notes: input.notes ?? null,
-      total_amount: 0,
-    });
-
-    for (const item of input.items) {
-      await trx(ITEM_TABLE).insert({
-        id: uuid(),
-        lead_id: leadId,
-        product_id: item.productId,
-        quantity_boxes: item.quantityBoxes ?? null,
-        quantity_sqft: item.quantitySqft ?? null,
-        unit_price: item.unitPrice ?? null,
-        line_total: computeLineTotal(item.unitPrice, item.quantityBoxes),
-        parameters: JSON.stringify(item.parameters ?? {}),
-      });
-    }
-
-    await recalculateTotal(leadId, trx);
-
-    const created = await findLeadById(leadId, trx);
-    if (!created) throw new Error('Lead disappeared immediately after insert');
-    return created;
   });
+}
+
+export interface NewLead {
+  tenantId: string;
+  partyId: string;
+  ownerId: string | null;
+  stageId: string;
+  sourcePlatform: string | null;
+  followUpDate: string | null;
+  partyWiseMode: boolean;
+  notes: string | null;
+  customFields: Record<string, unknown>;
+  sourcePanelId: string | null;
+  createdByUserId: string | null;
+  hlc: string;
+  fieldHlc: Record<string, string>;
+  temporaryId: string | null;
+  /** Pre-assigned when a panel's offline id is being promoted. */
+  id?: string;
+}
+
+export async function insertLead(
+  lead: NewLead,
+  lines: LineSnapshot[],
+  trx: TransactionContext,
+): Promise<string> {
+  const id = lead.id ?? (await allocatePermanentId(lead.tenantId, 'lead', trx));
+
+  await trx(TABLE).insert({
+    id,
+    tenant_id: lead.tenantId,
+    party_id: lead.partyId,
+    owner_id: lead.ownerId,
+    stage_id: lead.stageId,
+    source_platform: lead.sourcePlatform,
+    follow_up_date: lead.followUpDate,
+    party_wise_mode: lead.partyWiseMode,
+    notes: lead.notes,
+    custom_fields: JSON.stringify(lead.customFields),
+    total_amount: orderTotalAmount(lines),
+    source_panel_id: lead.sourcePanelId,
+    created_by_user_id: lead.createdByUserId,
+    hlc: lead.hlc,
+    field_hlc: JSON.stringify(lead.fieldHlc),
+    temporary_id: lead.temporaryId,
+  });
+
+  await lineItems.insertLines(
+    { tenantId: lead.tenantId, parentType: 'lead', parentId: id },
+    lines,
+    trx,
+  );
+
+  return id;
 }
 
 /**
- * `withinTransaction` runs inside the same transaction as the status change,
- * after the row is updated — used to move stock so an order and its stock
- * movements commit or fail together. If it throws, the status change rolls
- * back with it.
+ * Apply a patch of already-merged column values.
+ *
+ * The merge decided what wins before this is called; the repository's job is to
+ * write it and bump the row's version, never to arbitrate.
  */
-export async function updateLeadStatus(
+export async function updateLeadColumns(
+  tenantId: string,
   id: string,
-  status: LeadStatus,
-  withinTransaction?: (lead: Lead, trx: TransactionContext) => Promise<void>,
-): Promise<Lead | null> {
-  return db().transaction(async (trx) => {
-    const patch: Record<string, unknown> = { status, updated_at: trx.fn.now() };
-    // order_date is the moment the lead was finalised, so it is stamped on the
-    // transition rather than recomputed from updated_at later.
-    if (status === 'order') patch.order_date = trx.fn.now();
+  patch: Record<string, unknown>,
+  meta: { hlc: string; fieldHlc: Record<string, string> },
+  trx: TransactionContext,
+): Promise<void> {
+  await trx(TABLE)
+    .where({ tenant_id: tenantId, id })
+    .update({
+      ...patch,
+      hlc: meta.hlc,
+      field_hlc: JSON.stringify(meta.fieldHlc),
+      version: trx.raw('version + 1'),
+      updated_at: trx.fn.now(),
+    });
+}
 
-    const updated = await trx(TABLE).where({ id }).update(patch);
-    if (!updated) return null;
+export async function replaceLeadLines(
+  tenantId: string,
+  id: string,
+  lines: LineSnapshot[],
+  trx: TransactionContext,
+): Promise<void> {
+  await lineItems.replaceLines({ tenantId, parentType: 'lead', parentId: id }, lines, trx);
+  await trx(TABLE)
+    .where({ tenant_id: tenantId, id })
+    .update({ total_amount: orderTotalAmount(lines), updated_at: trx.fn.now() });
+}
 
-    const lead = await findLeadById(id, trx);
-    if (!lead) return null;
-
-    if (withinTransaction) await withinTransaction(lead, trx);
-    return lead;
+export async function markConverted(
+  tenantId: string,
+  id: string,
+  orderId: string,
+  trx: TransactionContext,
+): Promise<void> {
+  await trx(TABLE).where({ tenant_id: tenantId, id }).update({
+    converted_order_id: orderId,
+    converted_at: trx.fn.now(),
+    updated_at: trx.fn.now(),
   });
 }
 
-export async function countLeadsByStatus(statuses: LeadStatus[]): Promise<number> {
-  const rows = await db()(TABLE)
-    .whereIn('status', statuses)
-    .count<{ count: string }[]>('id as count');
+export async function countOpenLeads(tenantId: string, runner: Runner = db()): Promise<number> {
+  const rows = await runner(TABLE)
+    .where({ tenant_id: tenantId })
+    .whereNull('converted_order_id')
+    .count<Array<{ count: string }>>('id as count');
   return firstCount(rows);
 }
 
-/** Quantities are NUMERIC; money stays an integer count of the smallest unit. */
-function computeLineTotal(unitPrice: number | null | undefined, quantity: number | null | undefined): number | null {
-  if (unitPrice == null || quantity == null) return null;
-  return Math.round(unitPrice * quantity);
-}
-
-async function recalculateTotal(leadId: string, runner: Knex | Knex.Transaction): Promise<void> {
-  await runner.raw(
-    `UPDATE leads
-        SET total_amount = COALESCE((SELECT SUM(line_total) FROM lead_items WHERE lead_id = ?), 0),
-            updated_at = now()
-      WHERE id = ?`,
-    [leadId, leadId],
-  );
-}
-
-/** Single query for all requested leads, so a list of N leads is 2 queries, not N+1. */
-async function loadItemsFor(
-  leadIds: string[],
-  runner: Knex | Knex.Transaction = db(),
-): Promise<Map<string, LeadItem[]>> {
-  const grouped = new Map<string, LeadItem[]>();
-  if (leadIds.length === 0) return grouped;
-
-  const rows = await runner(`${ITEM_TABLE} as li`)
-    .join('products as p', 'p.id', 'li.product_id')
-    .select('li.*', 'p.product_code as product_code', 'p.name as product_name')
-    .whereIn('li.lead_id', leadIds)
-    .orderBy('li.created_at', 'asc');
-
-  for (const row of rows) {
-    const item = mapLeadItem(row);
-    const bucket = grouped.get(item.leadId);
-    if (bucket) bucket.push(item);
-    else grouped.set(item.leadId, [item]);
-  }
-
-  return grouped;
+export async function countFollowUpsDue(
+  tenantId: string,
+  runner: Runner = db(),
+): Promise<number> {
+  const rows = await runner(TABLE)
+    .where({ tenant_id: tenantId })
+    .whereNull('converted_order_id')
+    .whereNotNull('follow_up_date')
+    .andWhere('follow_up_date', '<=', runner.fn.now())
+    .count<Array<{ count: string }>>('id as count');
+  return firstCount(rows);
 }

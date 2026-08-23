@@ -170,6 +170,14 @@ Once connected, shows quick actions — primarily the **Add Lead** button — an
 list/table of existing leads and orders (scoped to what's useful day-to-day for
 office staff).
 
+> **Superseded in detail by `docs/LEAD_GENERATION_FLOW.md`.** §6.3 and §6.4
+> below describe the original one-product, status-carries-the-transition flow.
+> The lead-generation rebuild (2026-08-22) replaced it with configurable
+> pipelines, per-colour line quantities, manual packaging, and conversion into a
+> separate Order record. That document is the current source of truth for this
+> section; what remains here is kept for the history of how the feature was
+> first specified.
+
 ### 6.3 Add Lead
 
 Opens a form/tab to:

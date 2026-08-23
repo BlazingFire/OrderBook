@@ -30,8 +30,20 @@ const dataDir = process.env.ORDERBOOK_OFFICE_DATA_DIR
 export const config = {
   packageRoot,
   dataDir,
-  /** Pairing credentials issued by the Master. The only state this panel keeps. */
+  /** Pairing credentials issued by the Master. */
   credentialsFile: path.join(dataDir, 'pairing.json'),
+
+  // Offline state (docs/LEAD_GENERATION_FLOW.md §2, §4, §7). A panel is no
+  // longer a pure thin client: it must be able to accept a lead with no link
+  // to the Master and still be holding it after a power cut.
+  /** Device code + the counter behind temporary ids. */
+  deviceFile: path.join(dataDir, 'device.json'),
+  /** Persisted hybrid logical clock, so a restart cannot rewind ordering. */
+  clockFile: path.join(dataDir, 'clock.json'),
+  /** Mutations saved locally and not yet acknowledged by the Master. */
+  outboxFile: path.join(dataDir, 'outbox.json'),
+  /** Last snapshot received, so an offline start still has something to show. */
+  snapshotFile: path.join(dataDir, 'snapshot.json'),
 
   http: {
     // Loopback only: staff use the browser on this same PC, and nothing else
@@ -46,6 +58,13 @@ export const config = {
   discovery: {
     /** How long to keep broadcasting before reporting that no Master answered. */
     timeoutMs: intFromEnv('OFFICE_DISCOVERY_TIMEOUT_MS', 8000),
+  },
+
+  sync: {
+    /** Retry cadence for a flush that failed while the link was up. */
+    retryMs: intFromEnv('OFFICE_SYNC_RETRY_MS', 5000),
+    /** Mutations pushed per batch, so one long outage does not send a huge frame. */
+    batchSize: intFromEnv('OFFICE_SYNC_BATCH_SIZE', 100),
   },
 } as const;
 

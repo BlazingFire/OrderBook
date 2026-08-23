@@ -2,29 +2,37 @@
  * The Master Panel's own UI reads and writes through these endpoints. Office
  * Panels use the Socket.IO commands instead — both funnel into the same
  * services, so behaviour cannot diverge between the two panels.
+ *
+ * One deliberate asymmetry: **the Master cannot create a lead.** Leads are
+ * raised in the Office Panel (docs/LEAD_GENERATION_FLOW.md §2), and the absence
+ * of a POST /leads here is what makes that true rather than merely documented.
  */
 
 import { Router } from 'express';
-import { isLeadStatus, type LeadStatus } from '@orderbook/shared';
 
-import type { ActorContext } from '../../domain/actor.js';
 import { ValidationError } from '../../lib/errors.js';
 import * as catalogService from '../../services/catalog.service.js';
+import * as conflictService from '../../services/conflict.service.js';
+import * as dashboardService from '../../services/dashboard.service.js';
 import * as inventoryService from '../../services/inventory.service.js';
 import * as leadService from '../../services/lead.service.js';
+import * as orderService from '../../services/order.service.js';
+import * as pipelineRepo from '../../repositories/pipeline.repository.js';
+import * as customFieldRepo from '../../repositories/custom-field.repository.js';
+import * as searchService from '../../services/search.service.js';
 import * as storageService from '../../services/storage.service.js';
 import { asyncHandler } from '../async-handler.js';
-import { requireAuth } from '../middleware/require-auth.js';
+import { actorFromRequest, requireAuth } from '../middleware/require-auth.js';
 
 export const dataRoutes: Router = Router();
 
 dataRoutes.use(requireAuth);
 
-function actorFrom(userId: string | undefined): ActorContext {
-  return { actorType: 'user', actorId: userId ?? null };
-}
-
-function paging(query: Record<string, unknown>): { search?: string; limit?: number; offset?: number } {
+function paging(query: Record<string, unknown>): {
+  search?: string;
+  limit?: number;
+  offset?: number;
+} {
   return {
     search: typeof query.search === 'string' && query.search ? query.search : undefined,
     limit: query.limit ? Number(query.limit) : undefined,
@@ -32,10 +40,18 @@ function paging(query: Record<string, unknown>): { search?: string; limit?: numb
   };
 }
 
+function idList(raw: unknown): string[] | undefined {
+  if (typeof raw !== 'string' || !raw) return undefined;
+  const parsed = raw.split(',').filter(Boolean);
+  return parsed.length ? parsed : undefined;
+}
+
+// --- Overview --------------------------------------------------------------
+
 dataRoutes.get(
   '/dashboard',
-  asyncHandler(async (_req, res) => {
-    res.json(await leadService.getDashboardSummary());
+  asyncHandler(async (req, res) => {
+    res.json(await dashboardService.getDashboardSummary(actorFromRequest(req)));
   }),
 );
 
@@ -47,138 +63,347 @@ dataRoutes.get(
 );
 
 dataRoutes.get(
+  '/pipelines',
+  asyncHandler(async (req, res) => {
+    res.json(await pipelineRepo.listPipelines(actorFromRequest(req).tenantId));
+  }),
+);
+
+dataRoutes.get(
+  '/option-lists',
+  asyncHandler(async (req, res) => {
+    res.json(await customFieldRepo.listOptions(actorFromRequest(req).tenantId));
+  }),
+);
+
+dataRoutes.get(
+  '/custom-fields',
+  asyncHandler(async (req, res) => {
+    res.json(await customFieldRepo.listDefinitions(actorFromRequest(req).tenantId));
+  }),
+);
+
+dataRoutes.get(
+  '/search',
+  asyncHandler(async (req, res) => {
+    res.json(
+      await searchService.search(
+        {
+          term: String(req.query.q ?? ''),
+          limit: req.query.limit ? Number(req.query.limit) : undefined,
+        },
+        actorFromRequest(req),
+      ),
+    );
+  }),
+);
+
+// --- Parties & products ----------------------------------------------------
+
+dataRoutes.get(
   '/parties',
   asyncHandler(async (req, res) => {
-    res.json(await catalogService.listParties(paging(req.query)));
+    res.json(await catalogService.listParties(paging(req.query), actorFromRequest(req)));
   }),
 );
 
 dataRoutes.post(
   '/parties',
   asyncHandler(async (req, res) => {
-    res.status(201).json(await catalogService.createParty(req.body, actorFrom(req.user?.id)));
+    res.status(201).json(await catalogService.createParty(req.body, actorFromRequest(req)));
   }),
 );
 
 dataRoutes.put(
   '/parties/:id',
   asyncHandler(async (req, res) => {
-    res.json(await catalogService.updateParty(String(req.params.id), req.body, actorFrom(req.user?.id)));
+    res.json(
+      await catalogService.updateParty(String(req.params.id), req.body, actorFromRequest(req)),
+    );
+  }),
+);
+
+dataRoutes.get(
+  '/parties/:id/variants',
+  asyncHandler(async (req, res) => {
+    res.json(
+      await catalogService.listVariantsForParty(String(req.params.id), actorFromRequest(req)),
+    );
+  }),
+);
+
+dataRoutes.post(
+  '/party-variants',
+  asyncHandler(async (req, res) => {
+    res.json(await catalogService.upsertVariant(req.body, actorFromRequest(req)));
   }),
 );
 
 dataRoutes.get(
   '/products',
   asyncHandler(async (req, res) => {
-    res.json(await catalogService.listProducts(paging(req.query)));
+    res.json(await catalogService.listProducts(paging(req.query), actorFromRequest(req)));
+  }),
+);
+
+dataRoutes.get(
+  '/products/by-code/:code',
+  asyncHandler(async (req, res) => {
+    const product = await catalogService.findProductByCode(
+      String(req.params.code),
+      actorFromRequest(req),
+    );
+    if (!product) {
+      res.status(404).json({ error: 'No product with that code' });
+      return;
+    }
+    res.json(product);
   }),
 );
 
 dataRoutes.post(
   '/products',
   asyncHandler(async (req, res) => {
-    res.status(201).json(await catalogService.createProduct(req.body, actorFrom(req.user?.id)));
+    res.status(201).json(await catalogService.createProduct(req.body, actorFromRequest(req)));
   }),
 );
 
 dataRoutes.put(
   '/products/:id',
   asyncHandler(async (req, res) => {
-    res.json(await catalogService.updateProduct(String(req.params.id), req.body, actorFrom(req.user?.id)));
+    res.json(
+      await catalogService.updateProduct(String(req.params.id), req.body, actorFromRequest(req)),
+    );
   }),
 );
 
 dataRoutes.get(
   '/categories',
-  asyncHandler(async (_req, res) => {
-    res.json({ categories: await catalogService.listCategories() });
+  asyncHandler(async (req, res) => {
+    res.json(await catalogService.listCategories(actorFromRequest(req)));
   }),
 );
+
+// --- Inventory -------------------------------------------------------------
 
 dataRoutes.get(
   '/stock',
   asyncHandler(async (req, res) => {
-    const stock = await inventoryService.listStock({
-      ...paging(req.query),
-      lowOnly: req.query.lowOnly === 'true',
-    });
-    res.json({ stock });
+    res.json(
+      await inventoryService.listStock(
+        { ...paging(req.query), lowOnly: req.query.lowOnly === 'true' },
+        actorFromRequest(req),
+      ),
+    );
   }),
 );
 
 dataRoutes.get(
   '/stock/movements',
   asyncHandler(async (req, res) => {
-    const movements = await inventoryService.listMovements({
-      productId: typeof req.query.productId === 'string' ? req.query.productId : undefined,
-      limit: req.query.limit ? Number(req.query.limit) : undefined,
-    });
-    res.json({ movements });
+    res.json(
+      await inventoryService.listMovements(
+        {
+          productId: typeof req.query.productId === 'string' ? req.query.productId : undefined,
+          limit: req.query.limit ? Number(req.query.limit) : undefined,
+        },
+        actorFromRequest(req),
+      ),
+    );
+  }),
+);
+
+dataRoutes.get(
+  '/stock/colours/:productId',
+  asyncHandler(async (req, res) => {
+    const actor = actorFromRequest(req);
+    res.json(await inventoryService.coloursFor(actor.tenantId, String(req.params.productId)));
   }),
 );
 
 dataRoutes.post(
   '/stock/inbound',
   asyncHandler(async (req, res) => {
-    res.json(await inventoryService.recordInbound(req.body, actorFrom(req.user?.id)));
+    res.json(await inventoryService.recordInbound(req.body, actorFromRequest(req)));
   }),
 );
 
 dataRoutes.post(
   '/stock/adjust',
   asyncHandler(async (req, res) => {
-    res.json(await inventoryService.recordAdjustment(req.body, actorFrom(req.user?.id)));
+    res.json(await inventoryService.recordAdjustment(req.body, actorFromRequest(req)));
   }),
 );
 
 dataRoutes.post(
   '/stock/reorder-level',
   asyncHandler(async (req, res) => {
-    const { productId, reorderLevel } = req.body ?? {};
+    const { productId, colour, reorderLevel } = req.body ?? {};
     if (typeof productId !== 'string') throw new ValidationError('Select a product');
+    if (typeof colour !== 'string') throw new ValidationError('Select a colour');
 
     const level = reorderLevel === null || reorderLevel === '' ? null : Number(reorderLevel);
-    res.json(await inventoryService.setReorderLevel(productId, level, actorFrom(req.user?.id)));
+    res.json(
+      await inventoryService.setReorderLevel(
+        { productId, colour, reorderLevel: level },
+        actorFromRequest(req),
+      ),
+    );
   }),
 );
+
+// --- Leads (read and progress only — creation is the Office Panel's job) ---
 
 dataRoutes.get(
   '/leads',
   asyncHandler(async (req, res) => {
-    const statuses = parseStatuses(req.query.statuses);
-    res.json(await leadService.listLeads({ ...paging(req.query), statuses }));
+    res.json(
+      await leadService.listLeads(
+        {
+          ...paging(req.query),
+          stageIds: idList(req.query.stageIds),
+          includeConverted: req.query.includeConverted === 'true',
+          followUpDueOnly: req.query.followUpDueOnly === 'true',
+        },
+        actorFromRequest(req),
+      ),
+    );
   }),
 );
 
 dataRoutes.get(
   '/leads/:id',
   asyncHandler(async (req, res) => {
-    res.json(await leadService.getLead(String(req.params.id)));
+    res.json(await leadService.getLead(String(req.params.id), actorFromRequest(req)));
   }),
 );
 
 dataRoutes.post(
-  '/leads',
+  '/leads/:id/stage',
   asyncHandler(async (req, res) => {
-    const lead = await leadService.createLead(req.body, {
-      sourcePanelId: null,
-      actor: actorFrom(req.user?.id),
-    });
-    res.status(201).json(lead);
+    const stageId = req.body?.stageId;
+    if (typeof stageId !== 'string') throw new ValidationError('Choose a stage');
+
+    res.json(
+      await leadService.setStage(
+        { id: String(req.params.id), stageId, remark: req.body?.remark ?? null },
+        actorFromRequest(req),
+      ),
+    );
   }),
 );
 
 dataRoutes.post(
-  '/leads/:id/status',
+  '/leads/:id/remarks',
   asyncHandler(async (req, res) => {
-    const status = req.body?.status;
-    if (!isLeadStatus(status)) throw new ValidationError('Invalid lead status');
-    res.json(await leadService.changeLeadStatus(String(req.params.id), status, actorFrom(req.user?.id)));
+    res.json(
+      await leadService.addRemark(
+        { id: String(req.params.id), message: String(req.body?.message ?? '') },
+        actorFromRequest(req),
+      ),
+    );
   }),
 );
 
-function parseStatuses(raw: unknown): LeadStatus[] | undefined {
-  if (typeof raw !== 'string' || !raw) return undefined;
-  const parsed = raw.split(',').filter(isLeadStatus);
-  return parsed.length ? parsed : undefined;
-}
+dataRoutes.post(
+  '/leads/:id/convert',
+  asyncHandler(async (req, res) => {
+    res.status(201).json(
+      await orderService.convertLead(
+        {
+          leadId: String(req.params.id),
+          dispatchAddressLabel: req.body?.dispatchAddressLabel ?? null,
+          expectedDispatchDate: req.body?.expectedDispatchDate ?? null,
+        },
+        actorFromRequest(req),
+      ),
+    );
+  }),
+);
+
+// --- Orders ----------------------------------------------------------------
+
+dataRoutes.get(
+  '/orders',
+  asyncHandler(async (req, res) => {
+    res.json(
+      await orderService.listOrders(
+        { ...paging(req.query), stageIds: idList(req.query.stageIds) },
+        actorFromRequest(req),
+      ),
+    );
+  }),
+);
+
+dataRoutes.get(
+  '/orders/:id',
+  asyncHandler(async (req, res) => {
+    res.json(await orderService.getOrder(String(req.params.id), actorFromRequest(req)));
+  }),
+);
+
+dataRoutes.put(
+  '/orders/:id',
+  asyncHandler(async (req, res) => {
+    res.json(
+      await orderService.updateOrder(String(req.params.id), req.body, actorFromRequest(req)),
+    );
+  }),
+);
+
+dataRoutes.post(
+  '/orders/:id/stage',
+  asyncHandler(async (req, res) => {
+    const stageId = req.body?.stageId;
+    if (typeof stageId !== 'string') throw new ValidationError('Choose a stage');
+
+    res.json(
+      await orderService.setStage(
+        { id: String(req.params.id), stageId, remark: req.body?.remark ?? null },
+        actorFromRequest(req),
+      ),
+    );
+  }),
+);
+
+dataRoutes.post(
+  '/orders/:id/dispatch',
+  asyncHandler(async (req, res) => {
+    res.json(
+      await orderService.dispatchOrder(
+        { orderId: String(req.params.id), note: req.body?.note ?? null },
+        actorFromRequest(req),
+      ),
+    );
+  }),
+);
+
+// --- Sync conflicts --------------------------------------------------------
+
+dataRoutes.get(
+  '/conflicts',
+  asyncHandler(async (req, res) => {
+    res.json(
+      await conflictService.listConflicts(actorFromRequest(req), {
+        includeResolved: req.query.includeResolved === 'true',
+      }),
+    );
+  }),
+);
+
+dataRoutes.post(
+  '/conflicts/:id/resolve',
+  asyncHandler(async (req, res) => {
+    const action = req.body?.action;
+    if (action !== 'keepWinner' && action !== 'restoreLoser') {
+      throw new ValidationError('Choose whether to keep the current value or restore the other');
+    }
+
+    res.json(
+      await conflictService.resolveConflict(
+        { conflictId: Number(req.params.id), action },
+        actorFromRequest(req),
+      ),
+    );
+  }),
+);

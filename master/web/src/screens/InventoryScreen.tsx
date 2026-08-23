@@ -1,47 +1,46 @@
 /**
- * Stock levels, stock-in, physical-count corrections and reorder levels.
+ * Inventory, per (product, colour) (docs/LEAD_GENERATION_FLOW.md §5.1, §6).
  *
- * Negative stock is shown plainly rather than hidden: selling against a
- * factory order that has not arrived is normal here, and the negative figure
- * is exactly the signal that a reorder is due.
+ * Three quantities are shown side by side because they answer different
+ * questions: what is on the floor, what is already reserved for orders that
+ * have not been dispatched, and what is therefore free to sell. Only the last
+ * one is what a new order can actually draw on, so it is what "low stock" is
+ * judged against.
+ *
+ * Stock is allowed to go negative — a dealer routinely sells against a factory
+ * order that has not arrived. The shortfall is surfaced, never blocked.
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import type { InventoryStockLevel, StockMovement } from '@orderbook/shared';
+import type { InventoryStockLevel, Product, StockMovement } from '@orderbook/shared';
 
 import { api } from '../api';
 import { Field } from '../components/Field';
 import { formatDateTime } from '../format';
 
 interface Props {
-  /** Bumped by the live socket whenever stock changes, to trigger a refetch. */
   revision: number;
 }
 
-type Mode = { kind: 'none' } | { kind: 'in' | 'count'; level: InventoryStockLevel };
-
 export function InventoryScreen({ revision }: Props) {
-  const [stock, setStock] = useState<InventoryStockLevel[]>([]);
+  const [levels, setLevels] = useState<InventoryStockLevel[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState('');
   const [lowOnly, setLowOnly] = useState(false);
-  const [mode, setMode] = useState<Mode>({ kind: 'none' });
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
     try {
-      const [levels, history] = await Promise.all([
+      const [stock, recent] = await Promise.all([
         api.stock({ search: search || undefined, lowOnly }),
         api.stockMovements(),
       ]);
-      setStock(levels.stock);
-      setMovements(history.movements);
+      setLevels(stock);
+      setMovements(recent);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not load stock');
-    } finally {
-      setLoading(false);
+      setError(caught instanceof Error ? caught.message : 'Could not load inventory');
     }
   }, [search, lowOnly]);
 
@@ -49,279 +48,317 @@ export function InventoryScreen({ revision }: Props) {
     void load();
   }, [load, revision]);
 
-  const lowCount = stock.filter((level) => level.isLow).length;
+  useEffect(() => {
+    void api
+      .products()
+      .then((page) => setProducts(page.items))
+      .catch(() => setProducts([]));
+  }, []);
 
-  return (
-    <div>
-      <h2>Inventory</h2>
-      {error && <div className="error">{error}</div>}
-
-      {lowCount > 0 && !lowOnly && (
-        <div className="notice">
-          {lowCount} product{lowCount === 1 ? ' is' : 's are'} at or below the reorder level.{' '}
-          <button className="secondary" onClick={() => setLowOnly(true)}>
-            Show only these
-          </button>
-        </div>
-      )}
-
-      <div className="card">
-        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
-          <div style={{ flex: 1, minWidth: 240 }}>
-            <Field label="Search products">
-              {(id) => (
-                <input
-                  id={id}
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Code, name or type"
-                />
-              )}
-            </Field>
-          </div>
-          <button className={lowOnly ? '' : 'secondary'} onClick={() => setLowOnly((value) => !value)}>
-            {lowOnly ? 'Showing low stock' : 'Show low stock only'}
-          </button>
-        </div>
-
-        {loading ? (
-          <p className="muted">Loading…</p>
-        ) : stock.length === 0 ? (
-          <p className="muted">No products match.</p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Product</th>
-                <th>In stock (boxes)</th>
-                <th>Sq ft</th>
-                <th>Reorder at</th>
-                <th>Last movement</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {stock.map((level) => (
-                <tr key={level.productId}>
-                  <td>{level.productCode}</td>
-                  <td>
-                    {level.productName}
-                    <div className="muted">
-                      {[level.categoryName, level.size].filter(Boolean).join(' • ') || '—'}
-                    </div>
-                  </td>
-                  <td>
-                    <strong style={{ color: level.quantityBoxes < 0 ? 'var(--danger)' : undefined }}>
-                      {level.quantityBoxes}
-                    </strong>
-                    {level.isLow && <span className="badge cancelled" style={{ marginLeft: 6 }}>Low</span>}
-                    {level.quantityBoxes < 0 && (
-                      <div className="muted">Short by {Math.abs(level.quantityBoxes)} — reorder</div>
-                    )}
-                  </td>
-                  <td>{level.quantitySqft || '—'}</td>
-                  <td>
-                    <ReorderLevelCell level={level} onSaved={load} onError={setError} />
-                  </td>
-                  <td>{formatDateTime(level.updatedAt)}</td>
-                  <td>
-                    <div className="row">
-                      <button onClick={() => setMode({ kind: 'in', level })}>Stock in</button>
-                      <button className="secondary" onClick={() => setMode({ kind: 'count', level })}>
-                        Count
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {mode.kind !== 'none' && (
-        <StockEntryForm
-          mode={mode}
-          onDone={() => {
-            setMode({ kind: 'none' });
-            void load();
-          }}
-          onCancel={() => setMode({ kind: 'none' })}
-          onError={setError}
-        />
-      )}
-
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>Recent stock movements</h3>
-        {movements.length === 0 ? (
-          <p className="muted">No stock movements recorded yet.</p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>When</th>
-                <th>Product</th>
-                <th>Type</th>
-                <th>Change</th>
-                <th>Reason</th>
-              </tr>
-            </thead>
-            <tbody>
-              {movements.map((movement) => (
-                <tr key={movement.id}>
-                  <td>{formatDateTime(movement.createdAt)}</td>
-                  <td>
-                    {movement.productName}
-                    <div className="muted">{movement.productCode}</div>
-                  </td>
-                  <td>
-                    <span className={`badge ${movement.movementType === 'outbound' ? 'cancelled' : 'order'}`}>
-                      {movement.movementType}
-                    </span>
-                  </td>
-                  <td style={{ color: movement.quantityBoxes < 0 ? 'var(--danger)' : 'var(--success)' }}>
-                    {movement.quantityBoxes > 0 ? '+' : ''}
-                    {movement.quantityBoxes}
-                  </td>
-                  <td className="muted">{movement.note ?? movement.referenceType ?? '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function StockEntryForm({
-  mode,
-  onDone,
-  onCancel,
-  onError,
-}: {
-  mode: Exclude<Mode, { kind: 'none' }>;
-  onDone: () => void;
-  onCancel: () => void;
-  onError: (message: string) => void;
-}) {
-  const isStockIn = mode.kind === 'in';
-  const [quantity, setQuantity] = useState(isStockIn ? '' : String(mode.level.quantityBoxes));
-  const [note, setNote] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  async function submit() {
-    const value = Number(quantity);
-    if (!Number.isFinite(value)) {
-      onError('Enter a number of boxes');
-      return;
-    }
-
+  async function run(action: () => Promise<unknown>, failure: string): Promise<void> {
     setBusy(true);
+    setError(null);
     try {
-      if (isStockIn) await api.stockInbound(mode.level.productId, value, note || undefined);
-      else await api.stockAdjust(mode.level.productId, value, note || undefined);
-      onDone();
+      await action();
+      await load();
     } catch (caught) {
-      onError(caught instanceof Error ? caught.message : 'Could not save');
+      setError(caught instanceof Error ? caught.message : failure);
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="card">
-      <h3 style={{ marginTop: 0 }}>
-        {isStockIn ? 'Stock in' : 'Physical count'} — {mode.level.productName}
-      </h3>
-      <p className="muted">
-        {isStockIn
-          ? 'How many boxes arrived. This is added to the current stock.'
-          : `How many boxes are actually on the floor. Current record says ${mode.level.quantityBoxes}.`}
-      </p>
+    <div>
+      <h2>Inventory</h2>
+
+      {error && <div className="error">{error}</div>}
 
       <div className="grid cols-2">
-        <Field label={isStockIn ? 'Boxes received' : 'Boxes counted'}>
-          {(id) => (
-            <input
-              id={id}
-              type="number"
-              min="0"
-              step="0.01"
-              value={quantity}
-              onChange={(event) => setQuantity(event.target.value)}
-              autoFocus
-            />
-          )}
-        </Field>
-        <Field label="Reason / note (optional)">
-          {(id) => (
-            <input
-              id={id}
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              placeholder={isStockIn ? 'Factory lot number' : 'Breakage, stock take…'}
-            />
-          )}
-        </Field>
+        <MovementForm
+          title="Stock in"
+          description="Boxes that arrived from the factory or a purchase."
+          products={products}
+          levels={levels}
+          submitLabel="Add stock"
+          busy={busy}
+          onSubmit={(input) =>
+            run(() => api.stockInbound(input), 'Could not record the incoming stock')
+          }
+        />
+
+        <MovementForm
+          title="Physical count"
+          description="Enter the number of boxes actually on the shelf — not the difference."
+          products={products}
+          levels={levels}
+          submitLabel="Save count"
+          busy={busy}
+          onSubmit={(input) => run(() => api.stockAdjust(input), 'Could not save the count')}
+        />
       </div>
 
-      <div className="row">
-        <button onClick={submit} disabled={busy}>
-          {busy ? 'Saving…' : 'Save'}
-        </button>
-        <button className="secondary" onClick={onCancel}>
-          Cancel
-        </button>
+      <div className="card">
+        <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
+          <h3 style={{ margin: 0 }}>Stock levels</h3>
+          <div className="row" style={{ gap: 10 }}>
+            <input
+              value={search}
+              placeholder="Search product or colour"
+              style={{ width: 260 }}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <label className="row" style={{ gap: 6, marginBottom: 0, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                style={{ width: 'auto' }}
+                checked={lowOnly}
+                onChange={(event) => setLowOnly(event.target.checked)}
+              />
+              Low only
+            </label>
+          </div>
+        </div>
+
+        {levels.length === 0 ? (
+          <p className="muted">Nothing to show.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Colour</th>
+                <th className="right">On floor</th>
+                <th className="right">Reserved</th>
+                <th className="right">Free to sell</th>
+                <th className="right">Reorder at</th>
+                <th>Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {levels.map((level) => (
+                <tr key={`${level.productId}-${level.colour}`}>
+                  <td>
+                    {level.productName}
+                    <div className="muted">{level.productCode}</div>
+                  </td>
+                  <td>{level.colour}</td>
+                  <td className="right num">{level.quantityBoxes}</td>
+                  <td className="right num">{level.reservedBoxes || '—'}</td>
+                  <td
+                    className="right num"
+                    style={{
+                      color: level.availableBoxes < 0 ? 'var(--danger)' : undefined,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {level.availableBoxes}
+                    {level.isLow && (
+                      <span className="chip short" style={{ marginLeft: 6 }}>
+                        low
+                      </span>
+                    )}
+                  </td>
+                  <td className="right">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="num right"
+                      style={{ width: 90 }}
+                      defaultValue={level.reorderLevel ?? ''}
+                      aria-label={`Reorder level for ${level.productName} ${level.colour}`}
+                      onBlur={(event) =>
+                        void run(
+                          () =>
+                            api.setReorderLevel({
+                              productId: level.productId,
+                              colour: level.colour,
+                              reorderLevel:
+                                event.target.value === '' ? null : Number(event.target.value),
+                            }),
+                          'Could not save the reorder level',
+                        )
+                      }
+                    />
+                  </td>
+                  <td className="muted">{formatDateTime(level.updatedAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>Recent movements</h3>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Every row is a signed change, never a total — which is what makes the running figure
+          reconstructible.
+        </p>
+
+        {movements.length === 0 ? (
+          <p className="muted">No movements recorded yet.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Product</th>
+                <th>Colour</th>
+                <th>Type</th>
+                <th className="right">Change</th>
+                <th>Reference</th>
+                <th>Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {movements.map((movement) => (
+                <tr key={movement.id}>
+                  <td>{formatDateTime(movement.createdAt)}</td>
+                  <td>{movement.productName}</td>
+                  <td>{movement.colour}</td>
+                  <td>{movement.movementType}</td>
+                  <td
+                    className="right num"
+                    style={{ color: movement.quantityBoxes < 0 ? 'var(--danger)' : 'var(--success)' }}
+                  >
+                    {movement.quantityBoxes > 0 ? '+' : ''}
+                    {movement.quantityBoxes}
+                  </td>
+                  <td className="muted">
+                    {movement.referenceType}
+                    {movement.referenceId ? ` ${movement.referenceId}` : ''}
+                  </td>
+                  <td className="muted">{movement.note ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
 }
 
-function ReorderLevelCell({
-  level,
-  onSaved,
-  onError,
+/**
+ * Shared by stock-in and physical count: they differ only in what the number
+ * means and which endpoint receives it, so one form with two labels beats two
+ * near-identical ones.
+ */
+function MovementForm({
+  title,
+  description,
+  products,
+  levels,
+  submitLabel,
+  busy,
+  onSubmit,
 }: {
-  level: InventoryStockLevel;
-  onSaved: () => void;
-  onError: (message: string) => void;
+  title: string;
+  description: string;
+  products: Product[];
+  levels: InventoryStockLevel[];
+  submitLabel: string;
+  busy: boolean;
+  onSubmit: (input: {
+    productId: string;
+    colour: string;
+    quantityBoxes: number;
+    note?: string;
+  }) => Promise<void>;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(level.reorderLevel === null ? '' : String(level.reorderLevel));
+  const [productId, setProductId] = useState('');
+  const [colour, setColour] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [note, setNote] = useState('');
 
-  async function save() {
-    try {
-      await api.setReorderLevel(level.productId, value === '' ? null : Number(value));
-      setEditing(false);
-      onSaved();
-    } catch (caught) {
-      onError(caught instanceof Error ? caught.message : 'Could not save reorder level');
-    }
-  }
+  const knownColours = levels
+    .filter((level) => level.productId === productId)
+    .map((level) => level.colour);
 
-  if (!editing) {
-    return (
-      <button className="secondary" onClick={() => setEditing(true)}>
-        {level.reorderLevel === null ? 'Set' : level.reorderLevel}
-      </button>
-    );
-  }
+  const listId = `${title.replace(/\s+/g, '-').toLowerCase()}-colours`;
 
   return (
-    <div className="row" style={{ flexWrap: 'nowrap' }}>
-      <input
-        type="number"
-        min="0"
-        step="0.01"
-        value={value}
-        onChange={(event) => setValue(event.target.value)}
-        aria-label={`Reorder level for ${level.productName}`}
-        style={{ width: 80 }}
-        autoFocus
-      />
-      <button onClick={save}>Save</button>
+    <div className="card">
+      <h3 style={{ marginTop: 0 }}>{title}</h3>
+      <p className="muted" style={{ marginTop: 0 }}>
+        {description}
+      </p>
+
+      <Field label="Product">
+        {(id) => (
+          <select id={id} value={productId} onChange={(event) => setProductId(event.target.value)}>
+            <option value="">Choose a product…</option>
+            {products.map((product) => (
+              <option key={product.id} value={product.id}>
+                {product.productCode} — {product.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </Field>
+
+      <Field label="Colour">
+        {(id) => (
+          <>
+            <input
+              id={id}
+              list={listId}
+              value={colour}
+              placeholder="e.g. Ivory"
+              onChange={(event) => setColour(event.target.value)}
+            />
+            <datalist id={listId}>
+              {knownColours.map((known) => (
+                <option key={known} value={known} />
+              ))}
+            </datalist>
+          </>
+        )}
+      </Field>
+
+      <Field label="Boxes">
+        {(id) => (
+          <input
+            id={id}
+            type="number"
+            min="0"
+            step="0.01"
+            className="num"
+            value={quantity}
+            onChange={(event) => setQuantity(event.target.value)}
+          />
+        )}
+      </Field>
+
+      <Field label="Note">
+        {(id) => (
+          <input
+            id={id}
+            value={note}
+            placeholder="e.g. factory lot A-77, breakage"
+            onChange={(event) => setNote(event.target.value)}
+          />
+        )}
+      </Field>
+
+      <button
+        disabled={busy || !productId || !colour.trim() || quantity === ''}
+        onClick={() =>
+          void onSubmit({
+            productId,
+            colour: colour.trim(),
+            quantityBoxes: Number(quantity),
+            note: note.trim() || undefined,
+          }).then(() => {
+            setQuantity('');
+            setNote('');
+          })
+        }
+      >
+        {submitLabel}
+      </button>
     </div>
   );
 }

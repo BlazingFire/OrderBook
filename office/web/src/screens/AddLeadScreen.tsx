@@ -1,49 +1,107 @@
 /**
- * Add Lead — the screen office staff spend their day in.
+ * Add Lead — the screen office staff spend their day in
+ * (docs/LEAD_GENERATION_FLOW.md §3).
  *
- * Both the party and the product can be picked from existing records or
- * created inline, because a customer standing at the counter is often new and
- * making staff leave this screen to add them first would lose the lead.
+ * Both the party and the product can be picked from existing records or created
+ * inline, because a customer standing at the counter is often new and making
+ * staff leave this screen to add them first would lose the lead.
+ *
+ * Two rules from the guide are enforced visibly here rather than only on the
+ * server:
+ *  · **Packaging is never auto-filled.** Typing a product code fills every
+ *    other snapshot field and pointedly leaves packaging blank.
+ *  · **Party-wise mode changes where values come from**, but a party's saved
+ *    packaging is offered as a suggestion the user must accept — never applied.
+ *
+ * Saving works with no link to the Master: the lead is queued locally and
+ * appears on the board immediately.
  */
 
 import { useMemo, useState } from 'react';
-import type { LeadItemInput, Party, Product, SyncSnapshot } from '@orderbook/shared';
+import type {
+  CustomFieldDefinition,
+  LineItemInput,
+  OptionListItem,
+  Party,
+  PartyProductVariant,
+  Product,
+} from '@orderbook/shared';
 
-import { api } from '../api';
+import { api, type LocalView } from '../api';
+import { ColourQuantities, type ColourQuantity } from '../components/ColourQuantities';
+import { CustomFields } from '../components/CustomFields';
 import { Field } from '../components/Field';
-import { StockCell } from '../components/StockCell';
 import { formatMoney } from '../format';
 
 interface Props {
-  snapshot: SyncSnapshot;
+  view: LocalView;
   onSaved: () => void;
   onCancel: () => void;
 }
 
-interface DraftItem extends LeadItemInput {
+interface DraftLine {
+  productId: string;
   productName: string;
-  productCode: string;
+  code: string | null;
+  alias: string | null;
+  rate: number | null;
+  sin: string | null;
+  size: string | null;
+  grade: string | null;
+  productType: string | null;
+  weightKg: number | null;
+  packaging: string;
+  notes: string;
+  fromPartyVariant: boolean;
+  quantities: ColourQuantity[];
+  /** Shown as a hint only — accepting it is a deliberate click. */
+  suggestedPackaging: string | null;
 }
 
-export function AddLeadScreen({ snapshot, onSaved, onCancel }: Props) {
+export function AddLeadScreen({ view, onSaved, onCancel }: Props) {
   const [partyId, setPartyId] = useState('');
   const [partySearch, setPartySearch] = useState('');
   const [showNewParty, setShowNewParty] = useState(false);
 
-  const [productSearch, setProductSearch] = useState('');
-  const [showNewProduct, setShowNewProduct] = useState(false);
-
-  const [items, setItems] = useState<DraftItem[]>([]);
+  const [partyWiseMode, setPartyWiseMode] = useState(false);
+  const [sourcePlatform, setSourcePlatform] = useState('');
+  const [followUpDate, setFollowUpDate] = useState('');
   const [notes, setNotes] = useState('');
+  const [customFields, setCustomFields] = useState<Record<string, unknown>>({});
+
+  const [productSearch, setProductSearch] = useState('');
+  const [codeEntry, setCodeEntry] = useState('');
+  const [lines, setLines] = useState<DraftLine[]>([]);
+
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const selectedParty = snapshot.parties.find((party) => party.id === partyId) ?? null;
+  const selectedParty = view.parties.find((party) => party.id === partyId) ?? null;
+
+  const leadFieldDefinitions = view.customFields.filter(
+    (definition: CustomFieldDefinition) => definition.entity === 'lead',
+  );
+  const sourceOptions = view.optionLists.filter(
+    (option: OptionListItem) => option.listKey === 'lead.sourcePlatform' && option.isActive,
+  );
+
+  /** Only consulted when party-wise mode is on — that is the whole toggle. */
+  const variantsForParty = useMemo(
+    () =>
+      partyWiseMode
+        ? new Map(
+            view.partyVariants
+              .filter((variant) => variant.partyId === partyId)
+              .map((variant) => [variant.productId, variant]),
+          )
+        : new Map<string, PartyProductVariant>(),
+    [partyWiseMode, partyId, view.partyVariants],
+  );
 
   const matchingParties = useMemo(() => {
     const term = partySearch.trim().toLowerCase();
-    if (!term) return snapshot.parties.slice(0, 8);
-    return snapshot.parties
+    if (!term) return view.parties.slice(0, 8);
+    return view.parties
       .filter(
         (party) =>
           party.name.toLowerCase().includes(term) ||
@@ -51,86 +109,143 @@ export function AddLeadScreen({ snapshot, onSaved, onCancel }: Props) {
           (party.phone ?? '').includes(term),
       )
       .slice(0, 8);
-  }, [partySearch, snapshot.parties]);
+  }, [partySearch, view.parties]);
 
   const matchingProducts = useMemo(() => {
     const term = productSearch.trim().toLowerCase();
-    if (!term) return snapshot.products.slice(0, 8);
-    return snapshot.products
+    if (!term) return view.products.slice(0, 8);
+    return view.products
       .filter(
         (product) =>
           product.name.toLowerCase().includes(term) ||
           product.productCode.toLowerCase().includes(term) ||
+          (product.alias ?? '').toLowerCase().includes(term) ||
           (product.series ?? '').toLowerCase().includes(term) ||
           (product.categoryName ?? '').toLowerCase().includes(term),
       )
       .slice(0, 8);
-  }, [productSearch, snapshot.products]);
+  }, [productSearch, view.products]);
 
-  const total = items.reduce(
-    (sum, item) => sum + Math.round((item.unitPrice ?? 0) * (item.quantityBoxes ?? 0)),
+  const total = lines.reduce(
+    (sum, line) => sum + Math.round((line.rate ?? 0) * totalQuantity(line)),
     0,
   );
 
-  const stockByProduct = useMemo(
-    () => new Map(snapshot.stock.map((level) => [level.productId, level])),
-    [snapshot.stock],
-  );
-
   /**
-   * Lines whose quantity exceeds what is on the floor. Shown as a warning, not
-   * a blocker — the order is still allowed, because selling against an
-   * incoming factory delivery is routine.
+   * Build a line from a product, applying the party's variant when the lead is
+   * in party-wise mode. `packaging` is left empty on purpose — §3.2 says it is
+   * chosen manually every time, so the variant's value becomes a suggestion.
    */
-  const shortLines = items.filter((item) => {
-    const available = stockByProduct.get(item.productId)?.quantityBoxes;
-    return available !== undefined && (item.quantityBoxes ?? 0) > available;
-  });
+  function lineFrom(product: Product): DraftLine {
+    const variant = variantsForParty.get(product.id) ?? null;
 
-  function addProduct(product: Product) {
-    setItems((current) => [
-      ...current,
-      {
-        productId: product.id,
-        productName: product.name,
-        productCode: product.productCode,
-        quantityBoxes: 1,
-        unitPrice: product.pricePerBox,
-      },
-    ]);
+    return {
+      productId: product.id,
+      productName: variant?.productName ?? product.name,
+      code: product.productCode,
+      alias: variant?.alias ?? product.alias,
+      rate: variant?.rate ?? product.rate ?? null,
+      sin: variant?.sin ?? product.sin,
+      size: variant?.size ?? product.size,
+      grade: variant?.grade ?? product.grade,
+      productType: variant?.productType ?? product.productType,
+      weightKg: variant?.weightKg ?? product.weightKg,
+      packaging: '',
+      notes: '',
+      fromPartyVariant: variant !== null,
+      quantities: [{ colour: product.color ?? '', quantity: 1 }],
+      suggestedPackaging: variant?.packaging ?? null,
+    };
+  }
+
+  function addProduct(product: Product): void {
+    setLines((current) => [...current, lineFrom(product)]);
     setProductSearch('');
+    setCodeEntry('');
   }
 
-  function updateItem(index: number, patch: Partial<DraftItem>) {
-    setItems((current) => current.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  /** The guide's convenience input: a code fills the rest of the line (§3.2). */
+  function addByCode(): void {
+    const code = codeEntry.trim();
+    if (!code) return;
+
+    const product = view.products.find(
+      (candidate) => candidate.productCode.toLowerCase() === code.toLowerCase(),
+    );
+
+    if (!product) {
+      setError(`No product with code "${code}"`);
+      return;
+    }
+
+    setError(null);
+    addProduct(product);
   }
 
-  function removeItem(index: number) {
-    setItems((current) => current.filter((_, i) => i !== index));
+  function updateLine(index: number, patch: Partial<DraftLine>): void {
+    setLines((current) => current.map((line, i) => (i === index ? { ...line, ...patch } : line)));
   }
 
-  async function save() {
+  async function save(): Promise<void> {
     if (!partyId) {
       setError('Choose a party for this lead');
       return;
     }
-    if (items.length === 0) {
+    if (lines.length === 0) {
       setError('Add at least one product');
+      return;
+    }
+
+    const missingPackaging = lines.filter((line) => !line.packaging.trim());
+    if (missingPackaging.length > 0) {
+      setError(
+        `Choose packaging for ${missingPackaging.map((line) => line.productName).join(', ')}`,
+      );
+      return;
+    }
+
+    const missingQuantities = lines.filter((line) => totalQuantity(line) <= 0);
+    if (missingQuantities.length > 0) {
+      setError(
+        `Add a quantity for ${missingQuantities.map((line) => line.productName).join(', ')}`,
+      );
       return;
     }
 
     setBusy(true);
     setError(null);
+
     try {
+      const items: LineItemInput[] = lines.map((line, index) => ({
+        productId: line.productId,
+        productName: line.productName,
+        alias: line.alias,
+        rate: line.rate,
+        code: line.code,
+        sin: line.sin,
+        size: line.size,
+        weightKg: line.weightKg,
+        grade: line.grade,
+        productType: line.productType,
+        packaging: line.packaging.trim(),
+        sequence: index + 1,
+        fromPartyVariant: line.fromPartyVariant,
+        notes: line.notes.trim() || null,
+        quantities: line.quantities
+          .filter((quantity) => quantity.colour.trim() && quantity.quantity > 0)
+          .map((quantity) => ({ colour: quantity.colour.trim(), quantity: quantity.quantity })),
+      }));
+
       await api.createLead({
         partyId,
+        sourcePlatform: sourcePlatform || null,
+        followUpDate: followUpDate || null,
+        partyWiseMode,
         notes: notes.trim() || null,
-        items: items.map((item) => ({
-          productId: item.productId,
-          quantityBoxes: item.quantityBoxes ?? null,
-          unitPrice: item.unitPrice ?? null,
-        })),
+        customFields,
+        items,
       });
+
       onSaved();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not save the lead');
@@ -142,7 +257,7 @@ export function AddLeadScreen({ snapshot, onSaved, onCancel }: Props) {
   return (
     <div>
       <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h2>Add Lead</h2>
+        <h2 style={{ margin: 0 }}>Add Lead</h2>
         <button className="secondary" onClick={onCancel}>
           Cancel
         </button>
@@ -150,8 +265,10 @@ export function AddLeadScreen({ snapshot, onSaved, onCancel }: Props) {
 
       {error && <div className="error">{error}</div>}
 
+      {/* --- 1. Party --------------------------------------------------- */}
+
       <div className="card">
-        <h3 style={{ marginTop: 0 }}>1. Party</h3>
+        <h3 className="section-title">1. Party</h3>
 
         {selectedParty ? (
           <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -159,7 +276,7 @@ export function AddLeadScreen({ snapshot, onSaved, onCancel }: Props) {
               <strong>{selectedParty.name}</strong>{' '}
               <span className="muted">
                 {selectedParty.partyCode}
-                {selectedParty.phone ? ` • ${selectedParty.phone}` : ''}
+                {selectedParty.phone ? ` · ${selectedParty.phone}` : ''}
               </span>
             </div>
             <button className="secondary" onClick={() => setPartyId('')}>
@@ -187,7 +304,7 @@ export function AddLeadScreen({ snapshot, onSaved, onCancel }: Props) {
                       <td>{party.partyCode}</td>
                       <td>{party.name}</td>
                       <td>{party.phone ?? '—'}</td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td className="right">
                         <button className="secondary" onClick={() => setPartyId(party.id)}>
                           Select
                         </button>
@@ -206,8 +323,8 @@ export function AddLeadScreen({ snapshot, onSaved, onCancel }: Props) {
 
             {showNewParty && (
               <NewPartyForm
-                onCreated={(party) => {
-                  setPartyId(party.id);
+                onCreated={(id) => {
+                  setPartyId(id);
                   setShowNewParty(false);
                 }}
                 onError={setError}
@@ -215,82 +332,173 @@ export function AddLeadScreen({ snapshot, onSaved, onCancel }: Props) {
             )}
           </>
         )}
+
+        {selectedParty && (
+          <label
+            className="row"
+            style={{ marginTop: 12, gap: 8, cursor: 'pointer', fontSize: 14, color: 'inherit' }}
+          >
+            <input
+              type="checkbox"
+              style={{ width: 'auto' }}
+              checked={partyWiseMode}
+              onChange={(event) => {
+                setPartyWiseMode(event.target.checked);
+                // Existing lines keep whatever they were built from; switching
+                // mode must not silently rewrite a rate already agreed on screen.
+                setLines((current) => current);
+              }}
+            />
+            Use this party&apos;s own rates and specs where they exist
+          </label>
+        )}
       </div>
 
+      {/* --- 2. Products ------------------------------------------------ */}
+
       <div className="card">
-        <h3 style={{ marginTop: 0 }}>2. Products</h3>
+        <h3 className="section-title">2. Products</h3>
 
-        {items.length > 0 && (
-          <table style={{ marginBottom: 12 }}>
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th style={{ width: 110 }}>In stock</th>
-                <th style={{ width: 110 }}>Boxes</th>
-                <th style={{ width: 140 }}>Price / box</th>
-                <th style={{ width: 120 }}>Total</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item, index) => (
-                <tr key={`${item.productId}-${index}`}>
-                  <td>
-                    {item.productName}
-                    <div className="muted">{item.productCode}</div>
-                  </td>
-                  <td>
-                    <StockCell level={stockByProduct.get(item.productId)} />
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={item.quantityBoxes ?? ''}
-                      onChange={(event) =>
-                        updateItem(index, { quantityBoxes: Number(event.target.value) || 0 })
-                      }
-                      aria-label={`Boxes of ${item.productName}`}
-                    />
-                  </td>
-                  <td>
-                    {/* Entered in rupees, stored in paise. */}
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={item.unitPrice === null ? '' : (item.unitPrice ?? 0) / 100}
-                      onChange={(event) =>
-                        updateItem(index, {
-                          unitPrice: Math.round((Number(event.target.value) || 0) * 100),
-                        })
-                      }
-                      aria-label={`Price per box of ${item.productName}`}
-                    />
-                  </td>
-                  <td>{formatMoney(Math.round((item.unitPrice ?? 0) * (item.quantityBoxes ?? 0)))}</td>
-                  <td>
-                    <button className="danger" onClick={() => removeItem(index)}>
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        {lines.map((line, index) => (
+          <div className="line-card" key={`${line.productId}-${index}`}>
+            <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
+              <div>
+                <strong>{line.productName}</strong>{' '}
+                <span className="muted">{line.code}</span>
+                {line.fromPartyVariant && (
+                  <span className="chip" style={{ marginLeft: 8 }}>
+                    party rate
+                  </span>
+                )}
+              </div>
+              <button
+                className="danger"
+                onClick={() => setLines((current) => current.filter((_, i) => i !== index))}
+              >
+                Remove
+              </button>
+            </div>
 
-        <Field label="Search product by code, name, type or series">
-          {(id) => (
-            <input
-              id={id}
-              value={productSearch}
-              onChange={(event) => setProductSearch(event.target.value)}
-              placeholder="Start typing…"
-            />
-          )}
-        </Field>
+            <div className="line-grid">
+              <Field label="Packaging *">
+                {(id) => (
+                  <>
+                    <input
+                      id={id}
+                      value={line.packaging}
+                      placeholder="e.g. carton, pallet"
+                      onChange={(event) => updateLine(index, { packaging: event.target.value })}
+                    />
+                    {line.suggestedPackaging && !line.packaging && (
+                      <button
+                        type="button"
+                        className="secondary"
+                        style={{ marginTop: 6, padding: '4px 10px', fontSize: 13 }}
+                        onClick={() =>
+                          updateLine(index, { packaging: line.suggestedPackaging ?? '' })
+                        }
+                      >
+                        Use “{line.suggestedPackaging}”
+                      </button>
+                    )}
+                  </>
+                )}
+              </Field>
+
+              <Field label="Rate per box">
+                {(id) => (
+                  // Entered in rupees, stored in paise.
+                  <input
+                    id={id}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="num"
+                    value={line.rate === null ? '' : line.rate / 100}
+                    onChange={(event) =>
+                      updateLine(index, {
+                        rate: Math.round((Number(event.target.value) || 0) * 100),
+                      })
+                    }
+                  />
+                )}
+              </Field>
+
+              <Field label="Size">
+                {(id) => (
+                  <input
+                    id={id}
+                    value={line.size ?? ''}
+                    onChange={(event) => updateLine(index, { size: event.target.value })}
+                  />
+                )}
+              </Field>
+
+              <Field label="Grade">
+                {(id) => (
+                  <input
+                    id={id}
+                    value={line.grade ?? ''}
+                    onChange={(event) => updateLine(index, { grade: event.target.value })}
+                  />
+                )}
+              </Field>
+            </div>
+
+            <div style={{ marginTop: 10 }}>
+              <span className="field-label">Colours &amp; quantities *</span>
+              <ColourQuantities
+                productId={line.productId}
+                productLabel={line.productName}
+                quantities={line.quantities}
+                stock={view.stock}
+                onChange={(quantities) => updateLine(index, { quantities })}
+              />
+            </div>
+
+            <div className="row right" style={{ justifyContent: 'flex-end', marginTop: 8 }}>
+              <span className="muted">
+                {totalQuantity(line)} boxes ·{' '}
+                <strong>{formatMoney(Math.round((line.rate ?? 0) * totalQuantity(line)))}</strong>
+              </span>
+            </div>
+          </div>
+        ))}
+
+        <div className="line-grid" style={{ marginTop: 4 }}>
+          <Field label="Add by product code">
+            {(id) => (
+              <div className="row" style={{ gap: 6 }}>
+                <input
+                  id={id}
+                  value={codeEntry}
+                  placeholder="e.g. PRD-0042"
+                  onChange={(event) => setCodeEntry(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      addByCode();
+                    }
+                  }}
+                />
+                <button className="secondary" onClick={addByCode}>
+                  Add
+                </button>
+              </div>
+            )}
+          </Field>
+
+          <Field label="Or search by name, alias, type or series">
+            {(id) => (
+              <input
+                id={id}
+                value={productSearch}
+                onChange={(event) => setProductSearch(event.target.value)}
+                placeholder="Start typing…"
+              />
+            )}
+          </Field>
+        </div>
 
         {matchingProducts.length > 0 && (
           <table>
@@ -300,17 +508,10 @@ export function AddLeadScreen({ snapshot, onSaved, onCancel }: Props) {
                   <td>{product.productCode}</td>
                   <td>
                     {product.name}
-                    <div className="muted">
-                      {[product.categoryName, product.size, product.finish]
-                        .filter(Boolean)
-                        .join(' • ') || '—'}
-                    </div>
+                    {product.alias && <div className="muted">{product.alias}</div>}
                   </td>
-                  <td>{formatMoney(product.pricePerBox)}</td>
-                  <td>
-                    <StockCell level={stockByProduct.get(product.id)} />
-                  </td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td>{product.size ?? '—'}</td>
+                  <td className="right">
                     <button className="secondary" onClick={() => addProduct(product)}>
                       Add
                     </button>
@@ -320,226 +521,130 @@ export function AddLeadScreen({ snapshot, onSaved, onCancel }: Props) {
             </tbody>
           </table>
         )}
-
-        <div style={{ marginTop: 10 }}>
-          <button className="secondary" onClick={() => setShowNewProduct((value) => !value)}>
-            {showNewProduct ? 'Cancel new product' : '+ New product'}
-          </button>
-        </div>
-
-        {showNewProduct && (
-          <NewProductForm
-            categories={snapshot.categories.map((category) => category.name)}
-            onCreated={(product) => {
-              addProduct(product);
-              setShowNewProduct(false);
-            }}
-            onError={setError}
-          />
-        )}
       </div>
 
+      {/* --- 3. Lead details -------------------------------------------- */}
+
       <div className="card">
-        <h3 style={{ marginTop: 0 }}>3. Finish</h3>
-        <Field label="Notes (optional)">
+        <h3 className="section-title">3. Lead details</h3>
+
+        <div className="line-grid">
+          <Field label="Where did this come from?">
+            {(id) => (
+              <select
+                id={id}
+                value={sourcePlatform}
+                onChange={(event) => setSourcePlatform(event.target.value)}
+              >
+                <option value="">—</option>
+                {sourceOptions.map((option) => (
+                  <option key={option.id} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
+
+          <Field label="Follow up on">
+            {(id) => (
+              <input
+                id={id}
+                type="date"
+                value={followUpDate}
+                onChange={(event) => setFollowUpDate(event.target.value)}
+              />
+            )}
+          </Field>
+        </div>
+
+        <Field label="Notes">
           {(id) => (
             <textarea
               id={id}
               rows={3}
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
-              placeholder="Delivery date, site details, special requests…"
             />
           )}
         </Field>
 
-        {shortLines.length > 0 && (
-          <div className="notice">
-            <strong>Not all of this is in stock.</strong>
-            <div className="muted" style={{ marginTop: 4 }}>
-              {shortLines.map((item) => item.productName).join(', ')} — the lead can still be saved,
-              but these will need to be ordered from the factory.
-            </div>
-          </div>
-        )}
+        <CustomFields
+          definitions={leadFieldDefinitions}
+          values={customFields}
+          onChange={setCustomFields}
+        />
+      </div>
 
-        <div className="row" style={{ justifyContent: 'space-between' }}>
-          <div style={{ fontSize: 18 }}>
-            Total: <strong>{formatMoney(total)}</strong>
-          </div>
-          <button onClick={save} disabled={busy}>
-            {busy ? 'Saving…' : 'Save lead'}
-          </button>
-        </div>
+      <div className="row" style={{ justifyContent: 'space-between', marginTop: 4 }}>
+        <strong>Total: {formatMoney(total)}</strong>
+        <button onClick={save} disabled={busy}>
+          {busy ? 'Saving…' : 'Save lead'}
+        </button>
       </div>
     </div>
   );
+}
+
+function totalQuantity(line: { quantities: ColourQuantity[] }): number {
+  return line.quantities.reduce((sum, quantity) => sum + (quantity.quantity || 0), 0);
 }
 
 function NewPartyForm({
   onCreated,
   onError,
 }: {
-  onCreated: (party: Party) => void;
+  onCreated: (partyId: string) => void;
   onError: (message: string) => void;
 }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [city, setCity] = useState('');
-  const [gstNumber, setGstNumber] = useState('');
   const [busy, setBusy] = useState(false);
 
-  async function create() {
+  async function create(): Promise<void> {
     if (!name.trim()) {
-      onError('Party name is required');
+      onError('Enter the party name');
       return;
     }
+
     setBusy(true);
     try {
-      onCreated(await api.createParty({ name: name.trim(), phone, city, gstNumber }));
+      // Queued like everything else, so a new customer can be taken down with
+      // no link to the Master. The returned id is the temporary one.
+      const result = await api.createParty({
+        name: name.trim(),
+        phone: phone.trim() || null,
+        city: city.trim() || null,
+      });
+      onCreated(result.id);
     } catch (caught) {
-      onError(caught instanceof Error ? caught.message : 'Could not create party');
+      onError(caught instanceof Error ? caught.message : 'Could not create the party');
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-      <div className="grid cols-2">
-        <Field label="Party name">
+    <div className="line-card" style={{ marginTop: 10 }}>
+      <div className="line-grid">
+        <Field label="Name *">
           {(id) => <input id={id} value={name} onChange={(event) => setName(event.target.value)} />}
         </Field>
         <Field label="Phone">
-          {(id) => <input id={id} value={phone} onChange={(event) => setPhone(event.target.value)} />}
+          {(id) => (
+            <input id={id} value={phone} onChange={(event) => setPhone(event.target.value)} />
+          )}
         </Field>
         <Field label="City">
           {(id) => <input id={id} value={city} onChange={(event) => setCity(event.target.value)} />}
         </Field>
-        <Field label="GST number">
-          {(id) => (
-            <input id={id} value={gstNumber} onChange={(event) => setGstNumber(event.target.value)} />
-          )}
-        </Field>
       </div>
       <button onClick={create} disabled={busy}>
-        {busy ? 'Saving…' : 'Save party'}
+        {busy ? 'Saving…' : 'Create party'}
       </button>
     </div>
   );
 }
 
-function NewProductForm({
-  categories,
-  onCreated,
-  onError,
-}: {
-  categories: string[];
-  onCreated: (product: Product) => void;
-  onError: (message: string) => void;
-}) {
-  const [name, setName] = useState('');
-  const [productCode, setProductCode] = useState('');
-  const [categoryName, setCategoryName] = useState('');
-  const [size, setSize] = useState('');
-  const [finish, setFinish] = useState('');
-  const [priceRupees, setPriceRupees] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  async function create() {
-    if (!name.trim()) {
-      onError('Product name is required');
-      return;
-    }
-    setBusy(true);
-    try {
-      const product = await api.createProduct({
-        // Left blank, the Master generates a code rather than blocking staff
-        // who do not have one to hand.
-        productCode: productCode.trim(),
-        name: name.trim(),
-        categoryName: categoryName.trim() || null,
-        size: size.trim() || null,
-        finish: finish.trim() || null,
-        pricePerBox: priceRupees ? Math.round(Number(priceRupees) * 100) : null,
-      });
-      onCreated(product);
-    } catch (caught) {
-      onError(caught instanceof Error ? caught.message : 'Could not create product');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-      <div className="grid cols-2">
-        <Field label="Product name">
-          {(id) => <input id={id} value={name} onChange={(event) => setName(event.target.value)} />}
-        </Field>
-        <Field label="Product code (leave blank to generate)">
-          {(id) => (
-            <input
-              id={id}
-              value={productCode}
-              onChange={(event) => setProductCode(event.target.value)}
-            />
-          )}
-        </Field>
-        <Field label="Type">
-          {(id) => (
-            <>
-              <input
-                id={id}
-                list="office-category-options"
-                value={categoryName}
-                onChange={(event) => setCategoryName(event.target.value)}
-                placeholder="e.g. Floor Tile"
-              />
-              <datalist id="office-category-options">
-                {categories.map((category) => (
-                  <option key={category} value={category} />
-                ))}
-              </datalist>
-            </>
-          )}
-        </Field>
-        <Field label="Size">
-          {(id) => (
-            <input
-              id={id}
-              value={size}
-              onChange={(event) => setSize(event.target.value)}
-              placeholder="600x600mm"
-            />
-          )}
-        </Field>
-        <Field label="Finish">
-          {(id) => (
-            <input
-              id={id}
-              value={finish}
-              onChange={(event) => setFinish(event.target.value)}
-              placeholder="Glossy / Matte"
-            />
-          )}
-        </Field>
-        <Field label="Price per box (₹)">
-          {(id) => (
-            <input
-              id={id}
-              type="number"
-              min="0"
-              step="0.01"
-              value={priceRupees}
-              onChange={(event) => setPriceRupees(event.target.value)}
-            />
-          )}
-        </Field>
-      </div>
-      <button onClick={create} disabled={busy}>
-        {busy ? 'Saving…' : 'Save product'}
-      </button>
-    </div>
-  );
-}
+export type { Party };

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { canRunIntegrationTests } from './helpers/db.js';
-import { resetData, setupDatabase, teardownDatabase } from './helpers/fixtures.js';
+import { resetData, setupDatabase, teardownDatabase, testTenantId } from './helpers/fixtures.js';
 import * as auth from '../src/services/auth.service.js';
 import * as panels from '../src/services/panel.service.js';
 import * as setup from '../src/services/setup.service.js';
@@ -137,7 +137,7 @@ describe.skipIf(!canRunIntegrationTests)('setup, auth and pairing (integration)'
 
       expect(result.panelSecret).toBeTruthy();
 
-      const list = await panels.listPanelsWithPresence();
+      const list = await panels.listPanelsWithPresence(await testTenantId());
       expect(list).toHaveLength(1);
       expect(list[0]).toMatchObject({ name: 'Front Desk', lanIp: '192.168.1.20', status: 'active' });
     });
@@ -159,7 +159,7 @@ describe.skipIf(!canRunIntegrationTests)('setup, auth and pairing (integration)'
       panels.openPairingWindow();
 
       const result = await panels.pairPanel({ mode: 'auto', panelName: '', hostname: 'pc1' }, null);
-      const panel = await panels.listPanelsWithPresence();
+      const panel = await panels.listPanelsWithPresence(await testTenantId());
 
       expect(panel.find((entry) => entry.id === result.panelId)?.name).toBe('Office Panel 1');
     });
@@ -259,7 +259,7 @@ describe.skipIf(!canRunIntegrationTests)('setup, auth and pairing (integration)'
       const paired = await pairOne();
       await panels.revokePanel(paired.panelId);
 
-      const list = await panels.listPanelsWithPresence();
+      const list = await panels.listPanelsWithPresence(await testTenantId());
       expect(list).toHaveLength(1);
       expect(list[0]?.status).toBe('revoked');
     });
@@ -281,7 +281,7 @@ describe.skipIf(!canRunIntegrationTests)('setup, auth and pairing (integration)'
 
       await panels.markPanelConnected(paired.panelId, '192.168.1.20');
       expect(panels.isPanelConnected(paired.panelId)).toBe(true);
-      expect((await panels.listPanelsWithPresence())[0]?.isConnected).toBe(true);
+      expect((await panels.listPanelsWithPresence(await testTenantId()))[0]?.isConnected).toBe(true);
 
       await panels.markPanelDisconnected(paired.panelId);
       expect(panels.isPanelConnected(paired.panelId)).toBe(false);

@@ -14,16 +14,21 @@ import type {
 } from '@orderbook/shared';
 
 import { api } from './api';
+import { SearchBox } from './components/SearchBox';
+import { ConflictsScreen } from './screens/ConflictsScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
 import { FirstRunScreen } from './screens/FirstRunScreen';
 import { InventoryScreen } from './screens/InventoryScreen';
-import { OrdersScreen } from './screens/OrdersScreen';
+import { LeadsOrdersScreen } from './screens/LeadsOrdersScreen';
 import { PanelsScreen } from './screens/PanelsScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { SignInScreen } from './screens/SignInScreen';
 
 type Phase = 'loading' | 'first-run' | 'signed-out' | 'ready';
-type Tab = 'dashboard' | 'panels' | 'orders' | 'inventory' | 'settings';
+type Tab = 'dashboard' | 'panels' | 'orders' | 'inventory' | 'conflicts' | 'settings';
+
+/** Entities whose changes should make the data screens refetch. */
+const REFRESHING_ENTITIES = new Set(['lead', 'order', 'stock', 'reservation', 'sync_conflict']);
 
 export function App() {
   const [phase, setPhase] = useState<Phase>('loading');
@@ -33,8 +38,8 @@ export function App() {
 
   const [panels, setPanels] = useState<OfficePanelWithPresence[]>([]);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  // Incremented on every lead change so screens that fetch their own data know
-  // to refetch, without this shell having to model their state for them.
+  // Incremented on every relevant change so screens that fetch their own data
+  // know to refetch, without this shell having to model their state for them.
   const [dataRevision, setDataRevision] = useState(0);
 
   useEffect(() => {
@@ -68,11 +73,11 @@ export function App() {
     socket.on('panels:changed', setPanels);
     socket.on('dashboard:changed', setSummary);
     socket.on('data:changed', (event) => {
-      // Stock changes when an order is placed, so both views refresh together.
-      if (event.entity === 'lead' || event.entity === 'stock') {
-        setDataRevision((value) => value + 1);
-      }
+      if (REFRESHING_ENTITIES.has(event.entity)) setDataRevision((value) => value + 1);
     });
+    // A merge shadowed somebody's value; the conflicts screen and the dashboard
+    // counter both need to move.
+    socket.on('sync:conflict', () => setDataRevision((value) => value + 1));
 
     return () => {
       socket.close();
@@ -108,12 +113,25 @@ export function App() {
     );
   }
 
+  const openConflicts = summary?.openConflictCount ?? 0;
+
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '20px 16px 60px' }}>
-      <header className="row" style={{ justifyContent: 'space-between', marginBottom: 16 }}>
+    <div style={{ maxWidth: 1280, margin: '0 auto', padding: '20px 16px 60px' }}>
+      <header className="row" style={{ justifyContent: 'space-between', marginBottom: 16, gap: 12 }}>
         <h1 style={{ margin: 0, fontSize: 22 }}>OrderBook — Master Panel</h1>
-        <div className="row">
-          <span className="muted">Signed in as {user.username}</span>
+
+        <div className="row" style={{ gap: 12 }}>
+          <SearchBox
+            onOpen={(hit) => {
+              // Route the hit to the screen that owns it — which is exactly what
+              // `parent_type`/`parent_id` on a line-item hit are for.
+              if (hit.kind === 'lead_line' || hit.kind === 'order_line') setTab('orders');
+              else if (hit.kind === 'product') setTab('inventory');
+            }}
+          />
+          <span className="muted">
+            {user.username} · {user.roleName}
+          </span>
           <button className="secondary" onClick={signOut}>
             Sign out
           </button>
@@ -134,15 +152,25 @@ export function App() {
           Inventory
           {summary && summary.lowStockCount > 0 ? ` (${summary.lowStockCount} low)` : ''}
         </TabButton>
+        <TabButton current={tab} value="conflicts" onSelect={setTab}>
+          Conflicts{openConflicts > 0 ? ` (${openConflicts})` : ''}
+        </TabButton>
         <TabButton current={tab} value="settings" onSelect={setTab}>
           Settings
         </TabButton>
       </nav>
 
-      {tab === 'dashboard' && <DashboardScreen summary={summary} panels={panels} />}
+      {tab === 'dashboard' && (
+        <DashboardScreen
+          summary={summary}
+          panels={panels}
+          onOpenConflicts={() => setTab('conflicts')}
+        />
+      )}
       {tab === 'panels' && <PanelsScreen panels={panels} onRefresh={refreshPanels} />}
-      {tab === 'orders' && <OrdersScreen revision={dataRevision} />}
+      {tab === 'orders' && <LeadsOrdersScreen revision={dataRevision} />}
       {tab === 'inventory' && <InventoryScreen revision={dataRevision} />}
+      {tab === 'conflicts' && <ConflictsScreen revision={dataRevision} />}
       {tab === 'settings' && <SettingsScreen />}
     </div>
   );

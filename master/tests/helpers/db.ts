@@ -11,7 +11,7 @@
  * tests still run anywhere.
  */
 
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -99,19 +99,79 @@ export async function startTestPostgres(): Promise<void> {
   }
 
   if (!(await isRunning(binDir))) {
-    const options = [`-p ${PORT}`, '-h 127.0.0.1'];
-    if (process.platform !== 'win32') options.push(`-k ${SOCKET_DIR}`);
-
-    await execFileAsync(path.join(binDir, binName('pg_ctl')), [
-      '--pgdata', CLUSTER_DIR,
-      '--log', path.join(CLUSTER_ROOT, 'postgres.log'),
-      '--options', options.join(' '),
-      '--wait', 'start',
-    ]);
+    await startServer(binDir);
   }
 
   await ensureDatabase();
   started = true;
+}
+
+/**
+ * Start the cluster without letting the server hold our stdio.
+ *
+ * Deliberately `spawn` with `stdio: 'ignore'` rather than `execFile`. `pg_ctl`
+ * exits as soon as the server is up, but the server it launched inherits the
+ * parent's stdout/stderr pipes and keeps them open for its whole life — and
+ * `execFile` only resolves once the child's pipes close. On Windows that means
+ * the promise never settles and the suite hangs until the hook times out, even
+ * though PostgreSQL started perfectly. Giving the child no pipes to inherit is
+ * what makes the exit observable.
+ */
+async function startServer(binDir: string): Promise<void> {
+  const options = [`-p ${PORT}`, '-h 127.0.0.1'];
+  if (process.platform !== 'win32') options.push(`-k ${SOCKET_DIR}`);
+
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(
+      path.join(binDir, binName('pg_ctl')),
+      [
+        '--pgdata', CLUSTER_DIR,
+        '--log', path.join(CLUSTER_ROOT, 'postgres.log'),
+        '--options', options.join(' '),
+        '--wait', 'start',
+      ],
+      { stdio: 'ignore', windowsHide: true },
+    );
+
+    child.on('error', reject);
+    child.on('exit', (code) =>
+      code === 0 ? resolve() : reject(new Error(`pg_ctl start exited with ${code}`)),
+    );
+  });
+
+  await waitUntilAcceptingConnections();
+}
+
+/**
+ * `pg_ctl --wait` reports the postmaster is up, which is not the same as it
+ * being ready to answer. Polling a real connection is the only honest check.
+ */
+async function waitUntilAcceptingConnections(timeoutMs = 30_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let lastError: unknown = null;
+
+  while (Date.now() < deadline) {
+    const client = new pg.Client({
+      host: '127.0.0.1',
+      port: PORT,
+      user: USER,
+      password: PASSWORD,
+      database: 'postgres',
+      connectionTimeoutMillis: 2000,
+    });
+
+    try {
+      await client.connect();
+      await client.end();
+      return;
+    } catch (error) {
+      lastError = error;
+      await client.end().catch(() => {});
+      await new Promise((wait) => setTimeout(wait, 250));
+    }
+  }
+
+  throw new Error(`Test PostgreSQL never became ready: ${String(lastError)}`);
 }
 
 export async function stopTestPostgres(): Promise<void> {

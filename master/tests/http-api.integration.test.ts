@@ -10,7 +10,8 @@ import request from 'supertest';
 import type { Express } from 'express';
 
 import { canRunIntegrationTests } from './helpers/db.js';
-import { resetData, setupDatabase, teardownDatabase } from './helpers/fixtures.js';
+import * as leads from '../src/services/lead.service.js';
+import { resetData, setupDatabase, teardownDatabase, stageIdByName, testActor } from './helpers/fixtures.js';
 import { createApp } from '../src/http/app.js';
 import { closePairingWindow } from '../src/services/panel.service.js';
 
@@ -113,7 +114,9 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       ['post', '/api/products'],
       ['get', '/api/categories'],
       ['get', '/api/leads'],
-      ['post', '/api/leads'],
+      ['get', '/api/orders'],
+      ['get', '/api/conflicts'],
+      ['get', '/api/pipelines'],
       ['get', '/api/panels'],
       ['post', '/api/panels/pairing-window/open'],
     ];
@@ -167,107 +170,168 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
     });
   });
 
-  describe('leads', () => {
-    async function seed(agent: ReturnType<typeof request.agent>) {
+  describe('leads and orders', () => {
+    /**
+     * Leads are raised on the Office Panels, so these seed through the service
+     * — the same path a panel's socket command takes — and then exercise what
+     * the Master's own API is actually for: watching, progressing, converting
+     * and dispatching.
+     */
+    async function seedLead(agent: ReturnType<typeof request.agent>) {
       const party = await agent.post('/api/parties').send({ name: 'Patel Tiles' }).expect(201);
       const product = await agent
         .post('/api/products')
-        .send({ productCode: 'GVT-01', name: 'Carrara White', pricePerBox: 45_000 })
+        .send({ productCode: 'GVT-01', name: 'Carrara White', rate: 45_000, weightKg: 20 })
         .expect(201);
-      return { partyId: party.body.id as string, productId: product.body.id as string };
+
+      const lead = await leads.createLead(
+        {
+          partyId: party.body.id as string,
+          items: [
+            {
+              productId: product.body.id as string,
+              packaging: 'carton',
+              quantities: [{ colour: 'Ivory', quantity: 12 }],
+            },
+          ],
+        },
+        await testActor(),
+      );
+
+      return { partyId: party.body.id as string, productId: product.body.id as string, lead };
     }
 
-    it('creates a lead with a computed total', async () => {
+    it('has no endpoint for raising a lead — that belongs to the Office Panel', async () => {
       const { password } = await initialize();
       const agent = await signedInAgent(password);
-      const { partyId, productId } = await seed(agent);
 
-      const response = await agent
-        .post('/api/leads')
-        .send({ partyId, items: [{ productId, quantityBoxes: 12 }] })
-        .expect(201);
-
-      expect(response.body).toMatchObject({ leadNumber: 'L-000001', totalAmount: 540_000 });
+      await agent.post('/api/leads').send({ partyId: 'x', items: [] }).expect(404);
     });
 
-    it('rejects a lead with no items', async () => {
+    it('lists open leads with their totals', async () => {
       const { password } = await initialize();
       const agent = await signedInAgent(password);
-      const { partyId } = await seed(agent);
+      await seedLead(agent);
 
-      await agent.post('/api/leads').send({ partyId, items: [] }).expect(400);
+      const response = await agent.get('/api/leads').expect(200);
+
+      expect(response.body.items).toHaveLength(1);
+      expect(response.body.items[0]).toMatchObject({
+        id: 'LD0000000001',
+        totalAmount: 540_000,
+        stageName: 'New',
+      });
     });
 
     it('returns 404 for a lead that does not exist', async () => {
       const { password } = await initialize();
       const agent = await signedInAgent(password);
 
-      await agent.get('/api/leads/00000000-0000-4000-8000-000000000000').expect(404);
+      await agent.get('/api/leads/LD0000009999').expect(404);
     });
 
-    it('walks a lead to an order and filters the two lists apart', async () => {
+    it('moves a lead to another stage', async () => {
       const { password } = await initialize();
       const agent = await signedInAgent(password);
-      const { partyId, productId } = await seed(agent);
+      const { lead } = await seedLead(agent);
 
-      const lead = await agent
-        .post('/api/leads')
-        .send({ partyId, items: [{ productId, quantityBoxes: 1 }] })
-        .expect(201);
+      const stageId = await stageIdByName('lead', 'Quoted');
+      const response = await agent
+        .post(`/api/leads/${lead.id}/stage`)
+        .send({ stageId })
+        .expect(200);
 
-      await agent.post(`/api/leads/${lead.body.id}/status`).send({ status: 'verified' }).expect(200);
-      await agent.post(`/api/leads/${lead.body.id}/status`).send({ status: 'order' }).expect(200);
+      expect(response.body.stageName).toBe('Quoted');
+    });
 
-      const open = await agent.get('/api/leads?statuses=new,verified').expect(200);
-      const orders = await agent.get('/api/leads?statuses=order').expect(200);
+    it('rejects a stage change with no stage', async () => {
+      const { password } = await initialize();
+      const agent = await signedInAgent(password);
+      const { lead } = await seedLead(agent);
+
+      await agent.post(`/api/leads/${lead.id}/stage`).send({}).expect(400);
+    });
+
+    it('converts a lead and then keeps the two lists apart', async () => {
+      const { password } = await initialize();
+      const agent = await signedInAgent(password);
+      const { lead } = await seedLead(agent);
+
+      const order = await agent.post(`/api/leads/${lead.id}/convert`).send({}).expect(201);
+      expect(order.body).toMatchObject({ id: 'OD0000000001', leadId: lead.id });
+
+      // The lead leaves the open board but is still there when asked for.
+      const open = await agent.get('/api/leads').expect(200);
+      const all = await agent.get('/api/leads?includeConverted=true').expect(200);
+      const orders = await agent.get('/api/orders').expect(200);
 
       expect(open.body.items).toHaveLength(0);
+      expect(all.body.items).toHaveLength(1);
       expect(orders.body.items).toHaveLength(1);
     });
 
-    it('rejects an illegal status jump with 400', async () => {
+    it('refuses to convert the same lead twice', async () => {
       const { password } = await initialize();
       const agent = await signedInAgent(password);
-      const { partyId, productId } = await seed(agent);
+      const { lead } = await seedLead(agent);
 
-      const lead = await agent
-        .post('/api/leads')
-        .send({ partyId, items: [{ productId, quantityBoxes: 1 }] })
-        .expect(201);
-
-      await agent.post(`/api/leads/${lead.body.id}/status`).send({ status: 'order' }).expect(400);
+      await agent.post(`/api/leads/${lead.id}/convert`).send({}).expect(201);
+      await agent.post(`/api/leads/${lead.id}/convert`).send({}).expect(400);
     });
 
-    it('rejects an unknown status value', async () => {
+    it('dispatches an order and moves the stock ledger', async () => {
       const { password } = await initialize();
       const agent = await signedInAgent(password);
-      const { partyId, productId } = await seed(agent);
+      const { productId, lead } = await seedLead(agent);
 
-      const lead = await agent
-        .post('/api/leads')
-        .send({ partyId, items: [{ productId, quantityBoxes: 1 }] })
-        .expect(201);
+      await agent
+        .post('/api/stock/inbound')
+        .send({ productId, colour: 'Ivory', quantityBoxes: 50 })
+        .expect(200);
 
-      await agent.post(`/api/leads/${lead.body.id}/status`).send({ status: 'shipped' }).expect(400);
+      const order = await agent.post(`/api/leads/${lead.id}/convert`).send({}).expect(201);
+
+      // Reserved, not yet gone.
+      const held = await agent.get('/api/stock').expect(200);
+      expect(held.body[0]).toMatchObject({ quantityBoxes: 50, reservedBoxes: 12, availableBoxes: 38 });
+
+      await agent.post(`/api/orders/${order.body.id}/dispatch`).send({}).expect(200);
+
+      const after = await agent.get('/api/stock').expect(200);
+      expect(after.body[0]).toMatchObject({ quantityBoxes: 38, reservedBoxes: 0 });
     });
 
     it('reports dashboard counts', async () => {
       const { password } = await initialize();
       const agent = await signedInAgent(password);
-      const { partyId, productId } = await seed(agent);
-      await agent
-        .post('/api/leads')
-        .send({ partyId, items: [{ productId, quantityBoxes: 1 }] })
-        .expect(201);
+      await seedLead(agent);
 
       const response = await agent.get('/api/dashboard').expect(200);
-      expect(response.body).toEqual({
+
+      expect(response.body).toMatchObject({
         leadCount: 1,
         orderCount: 0,
         partyCount: 1,
         productCount: 1,
         lowStockCount: 0,
+        followUpsDueCount: 0,
+        openConflictCount: 0,
       });
+    });
+  });
+
+  describe('search', () => {
+    it('finds a product through the universal endpoint', async () => {
+      const { password } = await initialize();
+      const agent = await signedInAgent(password);
+      await agent
+        .post('/api/products')
+        .send({ productCode: 'SAN-77', name: 'Cascade Basin' })
+        .expect(201);
+
+      const response = await agent.get('/api/search?q=Cascade').expect(200);
+
+      expect(response.body.some((hit: { kind: string }) => hit.kind === 'product')).toBe(true);
     });
   });
 

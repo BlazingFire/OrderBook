@@ -53,9 +53,11 @@ Full database schema (every table, columns, indexes, and rationale):
    picked for reliability across mixed Windows/Linux LAN setups) with both
    an auto-discovery flow and a manual IP/ID/password fallback. Full protocol
    in `docs/PROJECT_PLAN.md` §4.
-5. **`leads` doubles as `orders`** via a `status` column (`new` → `verified` →
-   `order` → `cancelled`) — not two separate tables — matching the user's
-   description of "moving" a lead to the order tab, not copying it.
+5. ~~**`leads` doubles as `orders`** via a `status` column.~~ **Superseded by
+   decision 10.** Orders are now their own table, because the supplied
+   lead-generation guide requires an order to run a pipeline independent of the
+   lead's and to carry fields that only exist once something is a commitment —
+   neither of which is possible on the row that also holds the lead's stage.
 6. **A lead can hold multiple products** (`lead_items` line-item table), even
    though the original brief described one product per lead — this avoids a
    painful schema change the first time a real order needs two products.
@@ -72,7 +74,29 @@ Full database schema (every table, columns, indexes, and rationale):
    parser handles CRLF endings and quoted Windows paths — pinned by tests in
    `master/tests/env-file.test.ts` — because the file is edited in Notepad on
    the shop PC.
-9. **Clean-architecture conventions on the Master server** (introduced in the
+10. **The lead-generation rebuild** (2026-08-22), built from the owner's
+    `lead-generation-full-flow.md` guide. The guide targets a different system
+    — multi-tenant SQLite/FTS5, Electron — so `docs/LEAD_GENERATION_FLOW.md` is
+    the version that is true of OrderBook, and its §11 lists every deliberate
+    difference. What it changed, all confirmed by the owner before building:
+    - **Orders are a separate record.** Conversion creates an `orders` row,
+      copies the lines unchanged, and stamps `converted_order_id` on the lead,
+      which survives as history rather than mutating into the order.
+    - **Reserve, then dispatch.** Conversion writes `stock_reservations` per
+      (product, colour); stock only leaves the ledger at dispatch. Inventory is
+      therefore per-colour — a white basin does not satisfy a reservation for a
+      blue one.
+    - **One `line_items` table** for leads and orders, discriminated by
+      `(parent_type, parent_id)`, with colour quantities as child rows. That
+      shared shape is what makes conversion a copy rather than a translation.
+    - **Text record ids** (`LD0000000042`, temporary `A3F9K2000000123`) with an
+      `id_map`, because an offline panel must mint an id before the Master has
+      seen the record.
+    - **Multi-tenancy, a permission engine, and offline-first sync** — the
+      owner asked for all three explicitly. Search stays on **PostgreSQL
+      `tsvector` + GIN** rather than the guide's FTS5, since FTS5 is
+      SQLite-only and decision 2 stands.
+11. **Clean-architecture conventions on the Master server** (introduced in the
    2026-08-21 refactor session): pure business rules live in `master/src/domain/`
    (no I/O, no framework imports — importable by any layer, importing none);
    services orchestrate use cases against repositories; Knex types never leave
@@ -202,6 +226,35 @@ working tree for what actually exists if this section reads stale.
     generic "domain event" helper would hide what each mutation records
     without saving code — don't reintroduce one without a concrete need.
 
+- **Lead-generation rebuild: done** (2026-08-22). Two migrations
+  (`20260301000000_tenancy_access_and_sync`,
+  `20260302000000_lead_order_rebuild`) migrate existing data rather than
+  dropping it: leads keep their history, and a lead that had already reached
+  `order` becomes a real order whose reservations are recorded as *consumed*,
+  since it had already taken its stock under the old rules. Built end to end —
+  schema, domain, repositories, services, HTTP, sockets, the Office Panel's
+  offline store, and both frontends (Kanban boards, colour quantities,
+  packaging, convert, dispatch, conflicts, universal search).
+
+  **Verified against a real PostgreSQL 17**: `npm run verify` is green —
+  244 tests across 15 files, including the four conversion guarantees the guide
+  asks to be explicitly tested, the reserve/dispatch split, offline id
+  promotion, replay idempotency, the field-level merge, permission refusals and
+  field masking, and search finding a historical order under a product name
+  that has since changed.
+
+  Four real defects were found and fixed while testing, none of which a browser
+  would have shown:
+  - the activity log had been silently dead since `tenant_id` became NOT NULL —
+    every insert failed into a bare `catch {}`. It now logs the failure.
+  - `DATE` columns came back a day early anywhere east of UTC (the owner's
+    machine is IST), because `toISOString()` converts to UTC first.
+  - a reservation against a colour with no stock row was invisible on the
+    inventory screen — exactly the case worth seeing.
+  - the integration suite hung on Windows: `execFile` waits for the child's
+    pipes to close, and the PostgreSQL server `pg_ctl` spawns inherits them and
+    never lets go.
+
 ### Still to do in Phase 2
 
 The user was asked to prioritise and chose inventory first. Remaining, roughly
@@ -213,7 +266,9 @@ in the order the plan lists them:
   two frontends currently duplicate `styles.css`, `format.ts` and
   `Field.tsx` between `master/web` and `office/web`; there is no shared design
   system yet, and consolidating one is the natural first step of this pass.
-- Reporting/analytics and printable order sheets.
+- Reporting/analytics and printable order sheets. The guide's PDF Designer
+  and `Order.exports[]` are deliberately **not** built — see
+  `docs/LEAD_GENERATION_FLOW.md` §11 so they are not mistaken for an oversight.
 - Product images upload, richer product parameters, bulk import from Excel/CSV.
 - Multi-user roles/permissions within the Office Panel.
 - Backup/restore tooling.
@@ -253,6 +308,20 @@ in the order the plan lists them:
   `office/web/dist` are gitignored; a server started without them serves the
   "UI not built" page. The `pre*` scripts handle this — same rule as
   `shared/`: do not remove them.
+
+- **Integration tests need PostgreSQL binaries.** They build a throwaway
+  cluster in the OS temp directory and skip when they cannot. On the owner's PC:
+  `ORDERBOOK_PG_BIN="/c/Program Files/PostgreSQL/17/bin" npm run verify`. The
+  first run takes ~35s extra for `initdb`; later runs reuse the cluster. This
+  never touches the `order_book` database.
+- **Composite keys go through `stockKey()`.** A stock row is identified by a
+  *pair* — (product, colour) — and two call sites that built the key inline with
+  slightly different separators produced keys that never matched, which surfaced
+  as reservations silently reading as zero. `master/src/domain/stock-key.ts` is
+  the only place that decides the format.
+- **A create stamps `field_hlc` only for fields it actually set.** Marking every
+  field as written at creation makes the first edit of a never-filled field look
+  like a clash, and buries the real conflicts in noise.
 
 ## Working agreements for this repo
 

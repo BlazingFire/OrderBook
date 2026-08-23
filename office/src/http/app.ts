@@ -16,6 +16,10 @@ import { hasNetworkLink, listLanInterfaces } from '../lib/network.js';
 import { masterConnection } from '../realtime/master-connection.js';
 import { loadCredentials } from '../services/credentials.store.js';
 import { PairingError, pairAutomatically, pairManually, scanForMasters } from '../services/pairing.service.js';
+import { nextTemporaryId, refreshAfterPairing } from '../sync/device.js';
+import * as localStore from '../sync/local-store.js';
+import * as outbox from '../sync/outbox.store.js';
+import * as sync from '../sync/sync.service.js';
 
 const log = createLogger('http');
 
@@ -50,6 +54,7 @@ export function createApp(): Express {
   app.post('/api/connection/pair/auto', async (req, res) => {
     try {
       const credentials = await pairAutomatically(req.body?.panelName);
+      await refreshAfterPairing();
       await masterConnection.connect();
       res.status(201).json({ ok: true, companyName: credentials.companyName });
     } catch (error) {
@@ -73,6 +78,7 @@ export function createApp(): Express {
         masterUniqueId: typeof masterUniqueId === 'string' && masterUniqueId ? masterUniqueId : undefined,
         panelName: typeof panelName === 'string' && panelName ? panelName : undefined,
       });
+      await refreshAfterPairing();
       await masterConnection.connect();
       res.status(201).json({ ok: true, companyName: credentials.companyName });
     } catch (error) {
@@ -82,31 +88,156 @@ export function createApp(): Express {
 
   // --- Data, forwarded to the Master ---
 
-  app.get('/api/snapshot', (_req, res) => {
-    const snapshot = masterConnection.getSnapshot();
-    if (!snapshot) {
-      res.status(503).json({ error: 'not_synced', message: 'Not connected to the Master Panel yet' });
+  /**
+   * The panel's own view, not the Master's.
+   *
+   * Served from the local store so it includes work saved here but not yet
+   * acknowledged — which is the entire point of the offline path. A panel
+   * that has never synced has nothing to show and says so.
+   */
+  app.get('/api/snapshot', async (_req, res) => {
+    const view = await localStore.getView();
+    if (!view) {
+      res.status(503).json({
+        error: 'not_synced',
+        message: 'This panel has not synced with the Master Panel yet',
+      });
       return;
     }
-    res.json(snapshot);
+    res.json(view);
   });
 
-  app.post('/api/parties', (req, res) => forward(res, 'party:create', req.body));
+  app.get('/api/sync', async (_req, res) => {
+    res.json({
+      pendingCount: await outbox.pendingCount(),
+      rejections: sync.recentRejections(),
+      ...masterConnection.getStatus(),
+    });
+  });
+
+  app.post('/api/sync/flush', async (_req, res) => {
+    res.json(await sync.flush());
+  });
+
+  /**
+   * Every write below queues a mutation and answers immediately.
+   *
+   * The panel does not wait for the Master, because staff cannot wait for the
+   * Master — a customer is at the counter. The record exists locally the
+   * moment this responds, carries a temporary id, and is reconciled on the
+   * next flush.
+   */
+  app.post('/api/parties', (req, res) =>
+    queue(res, { kind: 'party.create', entity: 'party', payload: req.body }),
+  );
   app.put('/api/parties/:id', (req, res) =>
-    forward(res, 'party:update', { id: req.params.id, input: req.body }),
+    queue(res, {
+      kind: 'party.update',
+      entity: 'party',
+      entityId: req.params.id,
+      payload: req.body,
+      baseFieldHlc: req.body?.baseFieldHlc,
+    }),
   );
 
-  app.post('/api/products', (req, res) => forward(res, 'product:create', req.body));
+  app.post('/api/products', (req, res) =>
+    queue(res, { kind: 'product.create', entity: 'product', payload: req.body }),
+  );
   app.put('/api/products/:id', (req, res) =>
-    forward(res, 'product:update', { id: req.params.id, input: req.body }),
+    queue(res, {
+      kind: 'product.update',
+      entity: 'product',
+      entityId: req.params.id,
+      payload: req.body,
+      baseFieldHlc: req.body?.baseFieldHlc,
+    }),
   );
 
+  app.post('/api/party-variants', (req, res) =>
+    queue(res, { kind: 'partyVariant.upsert', entity: 'party_variant', payload: req.body }),
+  );
+
+  app.post('/api/leads', (req, res) =>
+    queue(res, { kind: 'lead.create', entity: 'lead', payload: req.body }),
+  );
+  app.put('/api/leads/:id', (req, res) =>
+    queue(res, {
+      kind: 'lead.update',
+      entity: 'lead',
+      entityId: req.params.id,
+      payload: req.body,
+      baseFieldHlc: req.body?.baseFieldHlc,
+    }),
+  );
+  app.post('/api/leads/:id/stage', (req, res) =>
+    queue(res, {
+      kind: 'lead.setStage',
+      entity: 'lead',
+      entityId: req.params.id,
+      payload: { stageId: req.body?.stageId, remark: req.body?.remark ?? null },
+    }),
+  );
+  app.post('/api/leads/:id/remarks', (req, res) =>
+    queue(res, {
+      kind: 'lead.addRemark',
+      entity: 'lead',
+      entityId: req.params.id,
+      payload: { message: req.body?.message },
+    }),
+  );
+  app.post('/api/leads/:id/convert', (req, res) =>
+    queue(res, {
+      kind: 'lead.convert',
+      entity: 'lead',
+      entityId: req.params.id,
+      payload: req.body ?? {},
+    }),
+  );
+
+  app.put('/api/orders/:id', (req, res) =>
+    queue(res, {
+      kind: 'order.update',
+      entity: 'order',
+      entityId: req.params.id,
+      payload: req.body,
+      baseFieldHlc: req.body?.baseFieldHlc,
+    }),
+  );
+  app.post('/api/orders/:id/stage', (req, res) =>
+    queue(res, {
+      kind: 'order.setStage',
+      entity: 'order',
+      entityId: req.params.id,
+      payload: { stageId: req.body?.stageId, remark: req.body?.remark ?? null },
+    }),
+  );
+  app.post('/api/orders/:id/dispatch', (req, res) =>
+    queue(res, {
+      kind: 'order.dispatch',
+      entity: 'order',
+      entityId: req.params.id,
+      payload: { note: req.body?.note ?? null },
+    }),
+  );
+
+  // Stock stays online-only. An unconfirmed quantity shown as real stock
+  // would be worse than the last figure the Master actually agreed to.
   app.post('/api/stock/inbound', (req, res) => forward(res, 'stock:inbound', req.body));
   app.post('/api/stock/adjust', (req, res) => forward(res, 'stock:adjust', req.body));
+  app.post('/api/stock/reorder-level', (req, res) =>
+    forward(res, 'stock:setReorderLevel', req.body),
+  );
 
-  app.post('/api/leads', (req, res) => forward(res, 'lead:create', req.body));
-  app.post('/api/leads/:id/status', (req, res) =>
-    forward(res, 'lead:setStatus', { leadId: req.params.id, status: req.body?.status }),
+  app.get('/api/search', (req, res) =>
+    forward(res, 'search:query', { term: String(req.query.q ?? ''), limit: 20 }),
+  );
+
+  app.get('/api/conflicts', (_req, res) => forward(res, 'conflict:list', undefined));
+  app.post('/api/conflicts/:id/resolve', (req, res) =>
+    forward(res, 'conflict:resolve', {
+      conflictId: Number(req.params.id),
+      action: req.body?.action,
+    }),
   );
 
   // --- Live updates to this panel's browser ---
@@ -128,6 +259,51 @@ export function createApp(): Express {
   });
 
   return app;
+}
+
+/**
+ * Queue a write locally and answer at once.
+ *
+ * A create with no id yet gets a temporary one here, which is what the browser
+ * then uses to address the record — including for follow-up edits made before
+ * the Master has ever seen it.
+ */
+async function queue(
+  res: Response,
+  request: {
+    kind: outbox.EnqueueRequest['kind'];
+    entity: outbox.EnqueueRequest['entity'];
+    entityId?: string;
+    payload: unknown;
+    baseFieldHlc?: Record<string, string>;
+  },
+): Promise<void> {
+  try {
+    const payload = (request.payload ?? {}) as Record<string, unknown>;
+    const entityId = request.entityId ?? (await nextTemporaryId());
+
+    const mutation = await sync.submit({
+      kind: request.kind,
+      entity: request.entity,
+      entityId,
+      payload,
+      fields: Object.keys(payload),
+      baseFieldHlc: request.baseFieldHlc,
+    });
+
+    res.status(202).json({
+      queued: true,
+      id: entityId,
+      mutationId: mutation.mutationId,
+      pendingCount: await outbox.pendingCount(),
+    });
+  } catch (error) {
+    log.error('Could not queue the change', error);
+    res.status(500).json({
+      error: 'queue_failed',
+      message: 'Could not save locally — check disk space and permissions',
+    });
+  }
 }
 
 async function forward(res: Response, event: string, payload: unknown): Promise<void> {
@@ -166,16 +342,26 @@ function streamEvents(req: Request, res: Response): void {
   };
 
   send('status', masterConnection.getStatus());
-  const snapshot = masterConnection.getSnapshot();
-  if (snapshot) send('snapshot', snapshot);
+
+  // Both a fresh snapshot and a local queue change alter what the browser
+  // should render, so both re-send the merged view rather than the raw one.
+  const pushView = (): void => {
+    void localStore.getView().then((view) => {
+      if (view) send('snapshot', view);
+    });
+  };
+
+  pushView();
 
   const onStatus = (status: unknown): void => send('status', status);
-  const onSnapshot = (value: unknown): void => send('snapshot', value);
   const onChange = (value: unknown): void => send('change', value);
+  const onConflict = (value: unknown): void => send('conflict', value);
 
   masterConnection.on('status', onStatus);
-  masterConnection.on('snapshot', onSnapshot);
+  masterConnection.on('snapshot', pushView);
   masterConnection.on('change', onChange);
+  masterConnection.on('conflict', onConflict);
+  const offSync = sync.onSyncEvent(pushView);
 
   // Proxies and some browsers drop an idle event stream; a periodic comment
   // keeps it open without sending meaningful traffic.
@@ -183,9 +369,11 @@ function streamEvents(req: Request, res: Response): void {
 
   req.on('close', () => {
     clearInterval(keepAlive);
+    offSync();
     masterConnection.off('status', onStatus);
-    masterConnection.off('snapshot', onSnapshot);
+    masterConnection.off('snapshot', pushView);
     masterConnection.off('change', onChange);
+    masterConnection.off('conflict', onConflict);
   });
 }
 

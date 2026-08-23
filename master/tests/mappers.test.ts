@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import {
   firstCount,
   mapLead,
-  mapLeadItem,
+  mapLineItem,
   mapParty,
   mapProduct,
   toIso,
@@ -126,7 +126,7 @@ describe('mapProduct', () => {
       thickness_mm: '9.50',
       pieces_per_box: 4,
       box_coverage_sqft: '15.50',
-      price_per_box: 45000,
+      rate: 45000,
       price_per_sqft: null,
       hsn_code: null,
       parameters: null,
@@ -137,68 +137,103 @@ describe('mapProduct', () => {
 
     expect(product.thicknessMm).toBe(9.5);
     expect(product.boxCoverageSqft).toBe(15.5);
-    expect(product.pricePerBox).toBe(45000);
+    expect(product.rate).toBe(45000);
     expect(product.pricePerSqft).toBeNull();
     expect(product.parameters).toEqual({});
     expect(product.categoryName).toBe('Floor Tile');
   });
 });
 
-describe('mapLeadItem', () => {
-  it('carries the joined product identity alongside the line values', () => {
-    const item = mapLeadItem({
-      id: 'li1',
-      lead_id: 'l1',
-      product_id: 'pr1',
-      product_code: 'GVT-01',
-      product_name: 'Carrara White',
-      quantity_boxes: '12.00',
-      quantity_sqft: null,
-      unit_price: 45000,
-      line_total: 540000,
-      parameters: { note: 'matte edge' },
-      created_at: new Date(),
-      updated_at: new Date(),
-    });
+describe('mapLineItem', () => {
+  it('carries the frozen snapshot alongside the colour quantities', () => {
+    const item = mapLineItem(
+      {
+        id: 'LI0000000001',
+        tenant_id: 't1',
+        parent_type: 'lead',
+        parent_id: 'LD0000000001',
+        product_id: 'PR0000000001',
+        product_name: 'Carrara White',
+        alias: 'Carrara',
+        rate: 45000,
+        code: 'GVT-01',
+        sin: 'SIN-1',
+        size: '600x1200',
+        weight_kg: '22.500',
+        grade: 'Premium',
+        product_type: 'Vitrified',
+        packaging: 'carton',
+        sequence: 1,
+        from_party_variant: false,
+        image_path: null,
+        notes: null,
+        total_quantity: '12.00',
+        line_total: 540000,
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+      [{ id: 'q1', colour: 'Ivory', quantity: 12 }],
+    );
 
     expect(item).toMatchObject({
-      productCode: 'GVT-01',
+      code: 'GVT-01',
       productName: 'Carrara White',
-      quantityBoxes: 12,
-      unitPrice: 45000,
+      rate: 45000,
+      weightKg: 22.5,
+      packaging: 'carton',
+      totalQuantity: 12,
       lineTotal: 540000,
-      parameters: { note: 'matte edge' },
     });
+    expect(item.quantities).toEqual([{ id: 'q1', colour: 'Ivory', quantity: 12 }]);
   });
 });
 
 describe('mapLead', () => {
-  it('attaches items and the joined party name', () => {
+  it('attaches the joined party, stage and completeness', () => {
     const lead = mapLead(
       {
-        id: 'l1',
-        lead_number: 'L-000001',
-        party_id: 'p1',
+        id: 'LD0000000001',
+        tenant_id: 't1',
+        party_id: 'PT0000000001',
         party_name: 'Patel Tiles',
-        status: 'new',
+        owner_id: 'u1',
+        owner_name: 'Asha',
+        stage_id: 's1',
+        stage_name: 'Quoted',
+        stage_sequence: 2,
+        source_platform: 'whatsapp',
+        follow_up_date: null,
+        party_wise_mode: false,
+        notes: null,
+        custom_fields: {},
+        total_amount: '540000',
+        converted_order_id: null,
+        converted_at: null,
         source_panel_id: 'panel-1',
         created_by_user_id: null,
-        notes: null,
-        total_amount: '540000',
-        order_date: null,
+        version: 1,
+        hlc: '0000001700000000000-00000-MASTER',
+        field_hlc: {},
+        temporary_id: null,
         created_at: new Date(),
         updated_at: new Date(),
       },
       [],
+      [],
+      { incomplete: true, missingFields: ['Site address'] },
     );
 
     expect(lead).toMatchObject({
-      leadNumber: 'L-000001',
       partyName: 'Patel Tiles',
-      status: 'new',
+      stageName: 'Quoted',
+      stageSequence: 2,
+      sourcePlatform: 'whatsapp',
       totalAmount: 540000,
-      orderDate: null,
+      convertedOrderId: null,
+      incomplete: true,
+      missingFields: ['Site address'],
       items: [],
     });
+    expect(lead.sync.hlc).toBe('0000001700000000000-00000-MASTER');
   });
 });
