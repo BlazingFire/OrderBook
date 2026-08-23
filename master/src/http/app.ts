@@ -7,6 +7,7 @@ import { config } from '../config/index.js';
 import { hasNetworkLink, listLanInterfaces } from '../lib/network.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { attachSession } from './middleware/require-auth.js';
+import { accessRoutes } from './routes/access.routes.js';
 import { authRoutes } from './routes/auth.routes.js';
 import { dataRoutes } from './routes/data.routes.js';
 import { panelRoutes, pairingRoutes } from './routes/panel.routes.js';
@@ -36,6 +37,7 @@ export function createApp(): Express {
   app.use('/api/auth', authRoutes);
   app.use('/api/pairing', pairingRoutes);
   app.use('/api/panels', panelRoutes);
+  app.use('/api/access', accessRoutes);
   app.use('/api', dataRoutes);
 
   // Uploaded product images.

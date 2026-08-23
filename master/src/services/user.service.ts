@@ -1,0 +1,371 @@
+/**
+ * Users (docs/ROLES_AND_USERS.md §9–§11).
+ *
+ * The rule that costs the most to get wrong lives here: **guard G4 runs inside
+ * the transaction**. Counting remaining administrators before the transaction
+ * lets two concurrent deactivations each see one admin left and both succeed,
+ * locking the company out of its own software — a failure that needs vendor
+ * intervention to undo, and therefore the most expensive bug this module can
+ * ship.
+ */
+
+import type {
+  OneTimeSecret,
+  PasswordResetInput,
+  User,
+  UserInput,
+  UserUpdateInput,
+} from '@orderbook/shared';
+
+import {
+  assertNameAvailable,
+  assertTierWithinActor,
+  assertVersionMatches,
+} from '../domain/access.js';
+import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
+import { db } from '../db/knex.js';
+import { generateTemporaryPassword, hashPassword } from '../lib/password.js';
+import { NotFoundError, ValidationError } from '../lib/errors.js';
+import * as activityLog from '../repositories/activity-log.repository.js';
+import { nextHlc } from '../repositories/identity.repository.js';
+import * as roleRepo from '../repositories/role.repository.js';
+import * as userRepo from '../repositories/user.repository.js';
+import { publishChange } from './change-bus.js';
+import { invalidateSessionsForUser } from './auth.service.js';
+
+const USER_FIELDS = ['username', 'displayName', 'roleId', 'isActive'] as const;
+
+export async function listUsers(actor: ActorContext): Promise<User[]> {
+  requirePermission(actor, 'users.manage');
+  return userRepo.listUsers(actor.tenantId);
+}
+
+export async function listDeletedUsers(actor: ActorContext): Promise<User[]> {
+  requirePermission(actor, 'users.manage');
+  return userRepo.listDeletedUsers(actor.tenantId);
+}
+
+export async function getUser(id: string, actor: ActorContext): Promise<User> {
+  requirePermission(actor, 'users.manage');
+
+  const user = await userRepo.findById(actor.tenantId, id);
+  if (!user) throw new NotFoundError('User');
+  return user;
+}
+
+/**
+ * Create a user and hand back the temporary password **once**.
+ *
+ * The plaintext exists in one local variable, is hashed immediately, and is
+ * returned exactly once. It is never logged, never stored, and never recorded in
+ * the audit trail — the trail records *that* a user was created, not what their
+ * password was.
+ */
+export async function createUser(
+  input: UserInput,
+  actor: ActorContext,
+): Promise<{ user: User; secret: OneTimeSecret }> {
+  requirePermission(actor, 'users.manage');
+
+  const username = input.username?.trim().toLowerCase();
+  const displayName = input.displayName?.trim();
+
+  if (!username) throw new ValidationError('Enter a username');
+  if (!displayName) throw new ValidationError('Enter a display name');
+
+  const role = await roleRepo.findRoleById(actor.tenantId, input.roleId);
+  if (!role) throw new ValidationError('Choose a role that exists');
+
+  // G3 — you cannot mint someone above yourself.
+  assertTierWithinActor(actor, role.tier);
+  assertNameAvailable(
+    await userRepo.isUsernameTaken(actor.tenantId, username, null),
+    'user',
+    username,
+  );
+
+  const password = input.password?.trim() || generateTemporaryPassword();
+  const passwordHash = await hashPassword(password);
+
+  const id = await db().transaction(async (trx) => {
+    const hlc = await nextHlc(trx);
+
+    const userId = await userRepo.insertUser(
+      {
+        tenantId: actor.tenantId,
+        username,
+        displayName,
+        passwordHash,
+        roleId: role.id,
+        createdBy: actorUserId(actor),
+        hlc,
+        fieldHlc: Object.fromEntries(USER_FIELDS.map((field) => [field, hlc])),
+      },
+      trx,
+    );
+
+    await activityLog.recordActivity({
+      tenantId: actor.tenantId,
+      entityType: 'user',
+      entityId: userId,
+      action: 'created',
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      // Username, display name and role. Never the password or its hash.
+      details: { username, displayName, roleId: role.id, roleName: role.name },
+    });
+
+    return userId;
+  });
+
+  const user = await userRepo.findById(actor.tenantId, id);
+  if (!user) throw new Error('User disappeared immediately after insert');
+
+  publishChange({ entity: 'user', action: 'created', id: user.id, payload: user });
+
+  return { user, secret: { userId: user.id, username, password } };
+}
+
+export async function updateUser(
+  id: string,
+  input: UserUpdateInput,
+  actor: ActorContext,
+): Promise<User> {
+  requirePermission(actor, 'users.manage');
+
+  const existing = await userRepo.findById(actor.tenantId, id);
+  if (!existing) throw new NotFoundError('User');
+
+  assertVersionMatches(existing.sync.version, input.expectedVersion);
+
+  const patch: Record<string, unknown> = {};
+  const details: Record<string, unknown> = {};
+
+  if (input.displayName !== undefined) {
+    const displayName = input.displayName.trim();
+    if (!displayName) throw new ValidationError('Enter a display name');
+    patch.display_name = displayName;
+    details.displayName = { from: existing.displayName, to: displayName };
+  }
+
+  if (input.username !== undefined) {
+    const username = input.username.trim().toLowerCase();
+    if (!username) throw new ValidationError('Enter a username');
+    assertNameAvailable(
+      await userRepo.isUsernameTaken(actor.tenantId, username, id),
+      'user',
+      username,
+    );
+    patch.username = username;
+    details.username = { from: existing.username, to: username };
+  }
+
+  if (input.roleId !== undefined && input.roleId !== existing.roleId) {
+    requirePermission(actor, 'roles.assign');
+
+    const role = await roleRepo.findRoleById(actor.tenantId, input.roleId);
+    if (!role) throw new ValidationError('Choose a role that exists');
+    assertTierWithinActor(actor, role.tier);
+
+    patch.role_id = role.id;
+    details.role = {
+      from: { id: existing.roleId, name: existing.roleName },
+      to: { id: role.id, name: role.name },
+    };
+  }
+
+  if (input.isActive !== undefined) {
+    patch.is_active = input.isActive;
+    details.isActive = { from: existing.isActive, to: input.isActive };
+  }
+
+  if (Object.keys(patch).length === 0) return existing;
+
+  await db().transaction(async (trx) => {
+    // G4, inside the transaction. Deactivating, or moving off an admin role, are
+    // both ways to remove the last administrator.
+    const losesAdmin =
+      (input.isActive === false && existing.isActive) ||
+      (patch.role_id !== undefined && existing.roleTier === 'admin');
+
+    if (losesAdmin && existing.roleTier === 'admin') {
+      await assertAnotherAdminRemains(actor.tenantId, id, trx);
+    }
+
+    const hlc = await nextHlc(trx);
+    const fieldHlc = { ...existing.sync.fieldHlc };
+    for (const column of Object.keys(patch)) fieldHlc[columnToField(column)] = hlc;
+
+    await userRepo.updateUserColumns(
+      actor.tenantId,
+      id,
+      { ...patch, updated_by: actorUserId(actor) },
+      { hlc, fieldHlc },
+      trx,
+    );
+
+    await activityLog.recordActivity({
+      tenantId: actor.tenantId,
+      entityType: 'user',
+      entityId: id,
+      action: input.isActive === false ? 'deactivated' : 'updated',
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      details,
+    });
+  });
+
+  // A changed role or a deactivation must not survive in an open session.
+  invalidateSessionsForUser(id);
+
+  const user = await userRepo.findById(actor.tenantId, id);
+  if (!user) throw new NotFoundError('User');
+
+  publishChange({ entity: 'user', action: 'updated', id, payload: user });
+  return user;
+}
+
+export async function deleteUser(id: string, actor: ActorContext): Promise<User> {
+  requirePermission(actor, 'users.manage');
+
+  const existing = await userRepo.findById(actor.tenantId, id);
+  if (!existing) throw new NotFoundError('User');
+
+  await db().transaction(async (trx) => {
+    if (existing.roleTier === 'admin') {
+      await assertAnotherAdminRemains(actor.tenantId, id, trx);
+    }
+
+    await userRepo.softDeleteUser(actor.tenantId, id, actorUserId(actor), trx);
+
+    await activityLog.recordActivity({
+      tenantId: actor.tenantId,
+      entityType: 'user',
+      entityId: id,
+      action: 'deleted',
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      details: { username: existing.username },
+    });
+  });
+
+  invalidateSessionsForUser(id);
+
+  const user = await userRepo.findById(actor.tenantId, id, { includeDeleted: true });
+  if (!user) throw new NotFoundError('User');
+
+  publishChange({ entity: 'user', action: 'deleted', id, payload: user });
+  return user;
+}
+
+export async function restoreUser(id: string, actor: ActorContext): Promise<User> {
+  requirePermission(actor, 'users.manage');
+
+  const existing = await userRepo.findById(actor.tenantId, id, { includeDeleted: true });
+  if (!existing) throw new NotFoundError('User');
+  if (!existing.deletedAt) return existing;
+
+  assertNameAvailable(
+    await userRepo.isUsernameTaken(actor.tenantId, existing.username, id),
+    'user',
+    existing.username,
+  );
+
+  await db().transaction(async (trx) => {
+    await userRepo.restoreUser(actor.tenantId, id, trx);
+
+    await activityLog.recordActivity({
+      tenantId: actor.tenantId,
+      entityType: 'user',
+      entityId: id,
+      action: 'restored',
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      details: { username: existing.username },
+    });
+  });
+
+  const user = await userRepo.findById(actor.tenantId, id);
+  if (!user) throw new NotFoundError('User');
+
+  publishChange({ entity: 'user', action: 'updated', id, payload: user });
+  return user;
+}
+
+/** Reset somebody else's password. Returns the plaintext once. */
+export async function resetPassword(
+  input: PasswordResetInput,
+  actor: ActorContext,
+): Promise<OneTimeSecret> {
+  requirePermission(actor, 'users.manage');
+
+  const existing = await userRepo.findById(actor.tenantId, input.userId);
+  if (!existing) throw new NotFoundError('User');
+
+  const password = input.password?.trim() || generateTemporaryPassword();
+  const passwordHash = await hashPassword(password);
+
+  await db().transaction(async (trx) => {
+    const hlc = await nextHlc(trx);
+
+    await userRepo.updateUserColumns(
+      actor.tenantId,
+      input.userId,
+      { password_hash: passwordHash, updated_by: actorUserId(actor) },
+      { hlc, fieldHlc: { ...existing.sync.fieldHlc, passwordHash: hlc } },
+      trx,
+    );
+
+    await activityLog.recordActivity({
+      tenantId: actor.tenantId,
+      entityType: 'user',
+      entityId: input.userId,
+      action: 'password_reset',
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      // That a reset happened, by whom, for whom. No password material, no hash.
+      details: { username: existing.username },
+    });
+  });
+
+  // Whoever was signed in as them is signed out; the old password is gone.
+  invalidateSessionsForUser(input.userId);
+
+  return { userId: input.userId, username: existing.username, password };
+}
+
+export async function countUsers(tenantId: string): Promise<number> {
+  return userRepo.countUsers(tenantId);
+}
+
+/**
+ * G4 — at least one active administrator must remain.
+ *
+ * Takes the transaction rather than opening its own, so the count and the change
+ * it guards are serialised by the same lock.
+ */
+async function assertAnotherAdminRemains(
+  tenantId: string,
+  excludeUserId: string,
+  trx: Parameters<typeof userRepo.updateUserColumns>[4],
+): Promise<void> {
+  const remaining = await userRepo.countOtherActiveAdmins(tenantId, excludeUserId, trx);
+
+  if (remaining === 0) {
+    throw new ValidationError(
+      'At least one active administrator must remain. Give someone else an admin role first.',
+    );
+  }
+}
+
+const COLUMN_TO_FIELD: Record<string, string> = {
+  display_name: 'displayName',
+  username: 'username',
+  role_id: 'roleId',
+  is_active: 'isActive',
+  password_hash: 'passwordHash',
+};
+
+function columnToField(column: string): string {
+  return COLUMN_TO_FIELD[column] ?? column;
+}

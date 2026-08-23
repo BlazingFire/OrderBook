@@ -18,6 +18,7 @@ import * as initialSchema from './20260101000000_initial_schema.js';
 import * as stockMovementNotes from './20260201000000_stock_movement_notes.js';
 import * as tenancyAccessAndSync from './20260301000000_tenancy_access_and_sync.js';
 import * as leadOrderRebuild from './20260302000000_lead_order_rebuild.js';
+import * as rolesAndUsers from './20260303000000_roles_and_users.js';
 
 export interface Migration {
   name: string;
@@ -30,6 +31,7 @@ export const migrations: Migration[] = [
   { name: '20260201000000_stock_movement_notes', ...stockMovementNotes },
   { name: '20260301000000_tenancy_access_and_sync', ...tenancyAccessAndSync },
   { name: '20260302000000_lead_order_rebuild', ...leadOrderRebuild },
+  { name: '20260303000000_roles_and_users', ...rolesAndUsers },
 ];
 
 /** Adapts the registry to the interface Knex's migrator expects. */

@@ -68,7 +68,7 @@ export async function loadTimelinesFor(
     .where({ 't.tenant_id': tenantId, 't.parent_type': parentType })
     .whereIn('t.parent_id', parentIds)
     .orderBy('t.created_at', 'asc')
-    .select('t.*', 'u.full_name as actor_name');
+    .select('t.*', 'u.display_name as actor_name');
 
   for (const row of rows) {
     const entry = mapTimelineEntry(row);

@@ -467,3 +467,125 @@ th {
 .num {
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------------------------------------------------------------------------
+ * Permission grid (docs/ROLES_AND_USERS.md UI §5.2, §9)
+ *
+ * A real table with header cells on both axes, so a screen reader announces
+ * "Orders, edit, checked" rather than "checkbox, checked". The three cell
+ * states are visually distinct on purpose: a blocked cell must not look like an
+ * unchecked one, or the tier ceiling becomes invisible.
+ * ------------------------------------------------------------------------- */
+
+.permission-grid {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.permission-grid th,
+.permission-grid td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: center;
+}
+
+.permission-grid th[scope='row'] {
+  text-align: left;
+  font-weight: 600;
+}
+
+.permission-grid thead th {
+  background: #eef2f6;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.permission-grid td.cell-na {
+  color: var(--border);
+  background: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 4px,
+    #f4f6f8 4px,
+    #f4f6f8 8px
+  );
+}
+
+/* A blocked checkbox reads as blocked, not merely as "off". */
+.permission-grid input:disabled[aria-disabled='true'] {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.permission-grid input {
+  width: auto;
+  cursor: pointer;
+}
+
+button.link {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+button.link:hover:not(:disabled) {
+  background: none;
+  color: var(--accent);
+}
+
+button.link:disabled {
+  text-decoration: none;
+  cursor: default;
+}
+
+.capability-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.capability {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 0;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.capability input {
+  width: auto;
+}
+
+.capability.blocked {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 4px,
+    #f4f6f8 4px,
+    #f4f6f8 8px
+  );
+}
+
+/* Reasons must reach a screen reader, not only a hover tooltip. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

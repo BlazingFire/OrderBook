@@ -76,14 +76,14 @@ const REQUIRED_PERMISSION: Record<Mutation['kind'], Permission> = {
   'order.update': 'orders.edit',
   'order.setStage': 'orders.edit',
   'order.dispatch': 'orders.dispatch',
-  'party.create': 'parties.manage',
-  'party.update': 'parties.manage',
-  'product.create': 'products.manage',
-  'product.update': 'products.manage',
-  'partyVariant.upsert': 'parties.manage',
-  'stock.inbound': 'inventory.manage',
-  'stock.adjust': 'inventory.manage',
-  'stock.setReorderLevel': 'inventory.manage',
+  'party.create': 'parties.create',
+  'party.update': 'parties.edit',
+  'product.create': 'products.create',
+  'product.update': 'products.edit',
+  'partyVariant.upsert': 'parties.edit',
+  'stock.inbound': 'inventory.edit',
+  'stock.adjust': 'stock.adjust',
+  'stock.setReorderLevel': 'inventory.edit',
 };
 
 /** Wire field → database column, per entity that supports a merged update. */

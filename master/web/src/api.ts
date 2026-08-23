@@ -1,6 +1,7 @@
 /** Thin wrapper over the Master's local HTTP API. */
 
 import type {
+  ChangeOwnPasswordInput,
   CustomFieldDefinition,
   DashboardSummary,
   InventoryStockLevel,
@@ -14,14 +15,21 @@ import type {
   PartyInput,
   PartyProductVariant,
   Pipeline,
+  OneTimeSecret,
+  PermissionCatalogue,
   Product,
   ProductCategory,
   ProductInput,
+  Role,
+  RoleInput,
   SearchHit,
   StockMovement,
   StorageUsage,
+  SignedInUser,
   SyncConflict,
   User,
+  UserInput,
+  UserUpdateInput,
 } from '@orderbook/shared';
 
 export class ApiError extends Error {
@@ -69,9 +77,11 @@ export const api = {
   identity: () => request<MasterIdentity>('/api/setup/identity'),
 
   signIn: (username: string, password: string) =>
-    post<{ user: User; sessionToken: string }>('/api/auth/sign-in', { username, password }),
+    post<{ user: SignedInUser; sessionToken: string }>('/api/auth/sign-in', { username, password }),
   signOut: () => post<void>('/api/auth/sign-out'),
-  me: () => request<{ user: User; sessionToken: string }>('/api/auth/me'),
+  // Carries the caller's own resolved permissions, so the UI renders from what
+  // the trusted process granted rather than guessing from the role name.
+  me: () => request<{ user: SignedInUser; sessionToken: string }>('/api/auth/me'),
 
   dashboard: () => request<DashboardSummary>('/api/dashboard'),
   storage: () => request<StorageUsage>('/api/storage'),
@@ -148,6 +158,31 @@ export const api = {
   setOrderStage: (id: string, stageId: string, remark?: string | null) =>
     post<Order>(`/api/orders/${id}/stage`, { stageId, remark }),
   dispatchOrder: (id: string, note?: string | null) => post<Order>(`/api/orders/${id}/dispatch`, { note }),
+
+  // --- Roles & users -------------------------------------------------------
+
+  permissionCatalogue: () => request<PermissionCatalogue>('/api/access/permission-catalogue'),
+
+  roles: () => request<Role[]>('/api/access/roles'),
+  deletedRoles: () => request<Role[]>('/api/access/roles/deleted'),
+  role: (id: string) => request<Role>(`/api/access/roles/${id}`),
+  createRole: (input: RoleInput) => post<Role>('/api/access/roles', input),
+  updateRole: (id: string, input: RoleInput) =>
+    request<Role>(`/api/access/roles/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+  deleteRole: (id: string) => request<Role>(`/api/access/roles/${id}`, { method: 'DELETE' }),
+  restoreRole: (id: string) => post<Role>(`/api/access/roles/${id}/restore`),
+
+  users: () => request<User[]>('/api/access/users'),
+  deletedUsers: () => request<User[]>('/api/access/users/deleted'),
+  /** The one response in the product that carries a plaintext password, once. */
+  createUser: (input: UserInput) =>
+    post<{ user: User; secret: OneTimeSecret }>('/api/access/users', input),
+  updateUser: (id: string, input: UserUpdateInput) =>
+    request<User>(`/api/access/users/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+  deleteUser: (id: string) => request<User>(`/api/access/users/${id}`, { method: 'DELETE' }),
+  restoreUser: (id: string) => post<User>(`/api/access/users/${id}/restore`),
+  resetPassword: (id: string) => post<OneTimeSecret>(`/api/access/users/${id}/reset-password`),
+  changeOwnPassword: (input: ChangeOwnPasswordInput) => post<void>('/api/access/me/password', input),
 
   conflicts: (includeResolved = false) =>
     request<SyncConflict[]>(`/api/conflicts${includeResolved ? '?includeResolved=true' : ''}`),

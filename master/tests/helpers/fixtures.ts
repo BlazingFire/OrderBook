@@ -18,6 +18,7 @@ import type { ActorContext } from '../../src/domain/actor.js';
 import { invalidateFieldCache } from '../../src/repositories/custom-field.repository.js';
 import { invalidatePipelineCache } from '../../src/repositories/pipeline.repository.js';
 import { invalidateRoleCache } from '../../src/repositories/role.repository.js';
+import { resetAuthState } from '../../src/services/auth.service.js';
 import { startTestPostgres, stopTestPostgres, testConnectionUrl } from './db.js';
 
 /** Business tables, safe to empty between tests. */
@@ -44,10 +45,27 @@ const DATA_TABLES = [
   'master_config',
 ];
 
+/**
+ * The roles the migrations seeded, captured once.
+ *
+ * Roles are configuration and survive the truncate — but a role a *test*
+ * created is test data and must not leak into the next one, or the second test
+ * to create a "Dispatch" role fails on a duplicate name it never made.
+ */
+let seededRoleIds: string[] = [];
+
 export async function setupDatabase(): Promise<void> {
   await startTestPostgres();
   initDatabase(testConnectionUrl());
   await runMigrations();
+
+  // Self-healing: a previous crashed run can leave test-created roles behind,
+  // and capturing those as "seeded" would make them immortal. The migration
+  // seeds exactly three, named for their tiers, so anything else is debris.
+  await db()('roles').whereNotIn('name', ['Admin', 'Management', 'Office']).delete();
+
+  const rows = await db()('roles').select<Array<{ id: string }>>('id');
+  seededRoleIds = rows.map((row) => row.id);
 }
 
 export async function teardownDatabase(): Promise<void> {
@@ -67,6 +85,25 @@ export async function resetData(): Promise<void> {
   // IDENTITY does not touch them — every suite would otherwise start numbering
   // wherever the previous one stopped.
   await db()('id_sequences').update({ next_value: 1 });
+
+  // Anything a test created goes; the seeded roles stay.
+  if (seededRoleIds.length > 0) {
+    await db()('roles').whereNotIn('id', seededRoleIds).delete();
+  }
+
+  // Roles are seeded configuration and survive the truncate, so their counter
+  // must resume *past* them. Resetting it to 1 would hand a test-created role
+  // the id an existing seeded role already holds.
+  await db().raw(`
+    UPDATE id_sequences s
+       SET next_value = COALESCE((
+             SELECT MAX(substring(r.id from 3)::bigint) + 1
+               FROM roles r
+              WHERE r.tenant_id = s.tenant_id
+                AND r.id ~ '^RL[0-9]{10}$'
+           ), 1)
+     WHERE s.entity = 'role';
+  `);
   await db()('master_clock').update({ physical: 0, counter: 0 });
 
   // These caches outlive a truncate; a stale role would let a later test pass
@@ -74,6 +111,7 @@ export async function resetData(): Promise<void> {
   invalidateRoleCache();
   invalidatePipelineCache();
   invalidateFieldCache();
+  resetAuthState();
 }
 
 /** The tenant the migrations seeded. Every test acts inside it. */

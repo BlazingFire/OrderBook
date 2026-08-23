@@ -59,7 +59,7 @@ export async function recordInbound(
   input: StockInboundInput,
   actor: ActorContext,
 ): Promise<InventoryStockLevel> {
-  requirePermission(actor, 'inventory.manage');
+  requirePermission(actor, 'inventory.edit');
 
   const colour = requireColour(input.colour);
   await assertProductExists(actor.tenantId, input.productId);
@@ -104,7 +104,9 @@ export async function recordAdjustment(
   input: StockAdjustmentInput,
   actor: ActorContext,
 ): Promise<InventoryStockLevel> {
-  requirePermission(actor, 'inventory.manage');
+  // Correcting a count is a distinct capability from ordinary stock entry: it
+  // rewrites a figure nobody can re-derive, so it is granted separately.
+  requirePermission(actor, 'stock.adjust');
 
   const colour = requireColour(input.colour);
   await assertProductExists(actor.tenantId, input.productId);
@@ -153,7 +155,7 @@ export async function setReorderLevel(
   input: ReorderLevelInput,
   actor: ActorContext,
 ): Promise<InventoryStockLevel> {
-  requirePermission(actor, 'inventory.manage');
+  requirePermission(actor, 'inventory.edit');
 
   const colour = requireColour(input.colour);
   await assertProductExists(actor.tenantId, input.productId);

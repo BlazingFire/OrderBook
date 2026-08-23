@@ -16,8 +16,43 @@
 
 import { randomUUID } from 'node:crypto';
 
-import { DEFAULT_TIER_PERMISSIONS, ROLE_TIERS, deviceCodeFromSeed } from '@orderbook/shared';
+import { deviceCodeFromSeed } from '@orderbook/shared';
 import type { Knex } from 'knex';
+
+/**
+ * The permission catalogue **as it stood when this migration was written**.
+ *
+ * Deliberately inlined rather than imported from `@orderbook/shared`. An earlier
+ * version imported the live constant, and editing the catalogue later silently
+ * changed what this migration had already done on every installation — a
+ * migration has to be a fixed historical fact, not a view of today's code.
+ * Later migrations remap these keys forward.
+ */
+const SEEDED_TIER_PERMISSIONS: Record<string, string[]> = {
+  admin: [
+    'leads.view', 'leads.create', 'leads.edit', 'leads.delete', 'lead.convert',
+    'orders.view', 'orders.edit', 'orders.dispatch',
+    'parties.view', 'parties.manage', 'products.view', 'products.manage',
+    'inventory.view', 'inventory.manage',
+    'record.reassignOwner',
+    'settings.manage', 'users.manage', 'panels.manage', 'sync.resolveConflicts',
+    'field.saleRate.view',
+  ],
+  management: [
+    'leads.view', 'leads.create', 'leads.edit', 'leads.delete', 'lead.convert',
+    'orders.view', 'orders.edit', 'orders.dispatch',
+    'parties.view', 'parties.manage', 'products.view', 'products.manage',
+    'inventory.view', 'inventory.manage',
+    'record.reassignOwner', 'sync.resolveConflicts', 'field.saleRate.view',
+  ],
+  office: [
+    'leads.view', 'leads.create', 'leads.edit', 'lead.convert',
+    'orders.view', 'parties.view', 'parties.manage', 'products.view',
+    'inventory.view', 'field.saleRate.view',
+  ],
+};
+
+const SEEDED_TIERS = ['admin', 'management', 'office'] as const;
 
 /** Tables that existed before tenancy and now need a tenant column. */
 const EXISTING_TENANT_TABLES = [
@@ -142,7 +177,7 @@ export async function up(knex: Knex): Promise<void> {
   // tier means. They are seeds, not law — an admin may re-grant them afterwards,
   // which is why the runtime check reads role_permissions, not the tier name.
   const roleIdByTier = new Map<string, string>();
-  for (const tier of ROLE_TIERS) {
+  for (const tier of SEEDED_TIERS) {
     const id = randomUUID();
     roleIdByTier.set(tier, id);
 
@@ -155,7 +190,7 @@ export async function up(knex: Knex): Promise<void> {
     });
 
     await knex('role_permissions').insert(
-      DEFAULT_TIER_PERMISSIONS[tier].map((permission) => ({ role_id: id, permission })),
+      (SEEDED_TIER_PERMISSIONS[tier] ?? []).map((permission) => ({ role_id: id, permission })),
     );
   }
 

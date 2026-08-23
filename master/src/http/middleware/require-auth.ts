@@ -24,22 +24,27 @@ declare module 'express-serve-static-core' {
  */
 export function attachSession(req: Request, _res: Response, next: NextFunction): void {
   const token = req.cookies?.[config.session.cookieName] as string | undefined;
-  const user = resolveSession(token);
 
-  if (!user) {
-    next();
-    return;
-  }
+  // Async because resolving a session re-reads the role's version every call —
+  // that is what makes a permission change take effect on the next request
+  // rather than after a timeout (docs/ROLES_AND_USERS.md §4).
+  void (async () => {
+    try {
+      const user = await resolveSession(token);
 
-  req.user = user;
-  req.sessionToken = token;
+      if (!user) {
+        next();
+        return;
+      }
 
-  permissionSetForRole(user.roleId)
-    .then((permissions) => {
-      req.permissions = permissions;
+      req.user = user;
+      req.sessionToken = token;
+      req.permissions = await permissionSetForRole(user.roleId);
       next();
-    })
-    .catch(next);
+    } catch (error) {
+      next(error);
+    }
+  })();
 }
 
 export function requireAuth(req: Request, _res: Response, next: NextFunction): void {

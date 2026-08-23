@@ -38,7 +38,7 @@ function baseQuery(tenantId: string, runner: Runner = db()) {
       'pa.name as party_name',
       'st.name as stage_name',
       'st.sequence as stage_sequence',
-      'ow.full_name as owner_name',
+      'ow.display_name as owner_name',
     );
 }
 

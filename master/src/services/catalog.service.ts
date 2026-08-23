@@ -43,7 +43,7 @@ export async function listParties(
 }
 
 export async function createParty(input: PartyInput, actor: ActorContext): Promise<Party> {
-  requirePermission(actor, 'parties.manage');
+  requirePermission(actor, 'parties.create');
 
   const name = input.name?.trim();
   if (!name) throw new ValidationError('Party name is required');
@@ -81,7 +81,7 @@ export async function updateParty(
   input: PartyInput,
   actor: ActorContext,
 ): Promise<Party> {
-  requirePermission(actor, 'parties.manage');
+  requirePermission(actor, 'parties.edit');
 
   const name = input.name?.trim();
   if (!name) throw new ValidationError('Party name is required');
@@ -143,7 +143,7 @@ export async function createProduct(
   input: ProductInput,
   actor: ActorContext,
 ): Promise<Product> {
-  requirePermission(actor, 'products.manage');
+  requirePermission(actor, 'products.create');
 
   const name = input.name?.trim();
   if (!name) throw new ValidationError('Product name is required');
@@ -188,7 +188,7 @@ export async function updateProduct(
   input: ProductInput,
   actor: ActorContext,
 ): Promise<Product> {
-  requirePermission(actor, 'products.manage');
+  requirePermission(actor, 'products.edit');
 
   const name = input.name?.trim();
   if (!name) throw new ValidationError('Product name is required');
@@ -244,7 +244,7 @@ export async function upsertVariant(
   input: PartyProductVariantInput,
   actor: ActorContext,
 ): Promise<PartyProductVariant> {
-  requirePermission(actor, 'parties.manage');
+  requirePermission(actor, 'parties.edit');
 
   if (!(await partyRepo.findPartyById(actor.tenantId, input.partyId))) {
     throw new NotFoundError('Party');

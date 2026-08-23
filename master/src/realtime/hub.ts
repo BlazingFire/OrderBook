@@ -110,7 +110,7 @@ async function authenticate(socket: PanelSocket): Promise<void> {
   }
 
   if (auth?.kind === 'master-admin') {
-    const user = resolveSession(auth.sessionToken);
+    const user = await resolveSession(auth.sessionToken);
     if (!user) throw new Error('Session is not valid');
 
     socket.data.kind = 'master-admin';
@@ -283,7 +283,7 @@ async function adminActor(socket: PanelSocket): Promise<ActorContext> {
   const userId = socket.data.userId ?? null;
   if (!tenantId) throw new AppError('Session has no tenant', 500, 'internal');
 
-  const user = userId ? await findUserById(userId) : null;
+  const user = userId ? await findUserById(tenantId, userId) : null;
 
   return {
     tenantId,
@@ -312,7 +312,7 @@ async function broadcastDashboard(io: RealtimeHub['io']): Promise<void> {
     const userId = socket.data.userId ?? null;
     if (!tenantId) continue;
 
-    const user = userId ? await findUserById(userId) : null;
+    const user = userId ? await findUserById(tenantId, userId) : null;
     const summary = await dashboardService.getDashboardSummary({
       tenantId,
       actorType: 'user',

@@ -42,6 +42,11 @@ export const SYNCABLE_ENTITIES = [
   'party_variant',
   'timeline_entry',
   'reservation',
+  // Roles and users are syncable because both can be created on a panel with no
+  // link to the Master (docs/ROLES_AND_USERS.md §14) — an admin taking someone
+  // on during an outage must not have to wait for the network.
+  'role',
+  'user',
 ] as const;
 
 export type SyncableEntity = (typeof SYNCABLE_ENTITIES)[number];
@@ -64,6 +69,8 @@ export const ENTITY_PREFIX: Record<SyncableEntity, string> = {
   party_variant: 'PV',
   timeline_entry: 'TL',
   reservation: 'RS',
+  role: 'RL',
+  user: 'US',
 };
 
 const PREFIX_TO_ENTITY: Record<string, SyncableEntity> = Object.fromEntries(

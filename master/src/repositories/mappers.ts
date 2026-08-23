@@ -139,32 +139,45 @@ export function mapTenant(row: Row): Tenant {
   };
 }
 
-export function mapRole(row: Row, permissions: string[]): Role {
+export function mapRole(row: Row): Role {
   return {
     id: String(row.id),
     tenantId: String(row.tenant_id),
     name: String(row.name),
     tier: row.tier as Role['tier'],
+    // Stored as one JSONB array; sorted on write so the order is stable.
+    permissions: toStringArray(row.permissions),
     isSystem: Boolean(row.is_system),
-    permissions,
+    userCount: toRequiredNumber(row.user_count),
+    deletedAt: toIso(row.deleted_at),
     createdAt: toRequiredIso(row.created_at),
     updatedAt: toRequiredIso(row.updated_at),
+    sync: mapSyncMeta(row),
   };
 }
 
+/**
+ * Row to user, with `password_hash` structurally impossible to carry through:
+ * it is destructured away here and the `User` type does not declare it, so a
+ * later caller cannot even ask for it (docs/ROLES_AND_USERS.md §12).
+ */
 export function mapUser(row: Row): User {
+  const { password_hash: _passwordHash, ...safe } = row;
+
   return {
-    id: String(row.id),
-    tenantId: String(row.tenant_id),
-    username: String(row.username),
-    fullName: (row.full_name as string | null) ?? null,
-    roleId: (row.role_id as string | null) ?? null,
-    roleName: String(row.role_name ?? 'Office'),
-    roleTier: (row.role_tier as User['roleTier']) ?? 'office',
-    isActive: Boolean(row.is_active),
-    lastLoginAt: toIso(row.last_login_at),
-    createdAt: toRequiredIso(row.created_at),
-    updatedAt: toRequiredIso(row.updated_at),
+    id: String(safe.id),
+    tenantId: String(safe.tenant_id),
+    username: String(safe.username),
+    displayName: String(safe.display_name ?? safe.username),
+    roleId: (safe.role_id as string | null) ?? null,
+    roleName: String(safe.role_name ?? ''),
+    roleTier: (safe.role_tier as User['roleTier']) ?? 'office',
+    isActive: Boolean(safe.is_active),
+    lastSignInAt: toIso(safe.last_sign_in_at),
+    deletedAt: toIso(safe.deleted_at),
+    createdAt: toRequiredIso(safe.created_at),
+    updatedAt: toRequiredIso(safe.updated_at),
+    sync: mapSyncMeta(safe),
   };
 }
 
@@ -173,6 +186,7 @@ export function mapOfficePanel(row: Row): OfficePanel {
     id: String(row.id),
     tenantId: String(row.tenant_id),
     name: String(row.name),
+    roleId: (row.role_id as string | null) ?? null,
     deviceCode: String(row.device_code ?? ''),
     lanIp: (row.lan_ip as string | null) ?? null,
     macAddress: (row.mac_address as string | null) ?? null,

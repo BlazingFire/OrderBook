@@ -11,7 +11,6 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { DEFAULT_TIER_PERMISSIONS } from '@orderbook/shared';
 
 import { canRunIntegrationTests } from './helpers/db.js';
 import {
@@ -57,6 +56,20 @@ async function seedLead() {
   );
 }
 
+/** What an office-tier lead desk actually holds — every key is office-legal. */
+const OFFICE_KEYS = [
+  'leads.view',
+  'leads.create',
+  'leads.edit',
+  'lead.convert',
+  'orders.view',
+  'parties.view',
+  'parties.create',
+  'products.view',
+  'inventory.view',
+  'field.saleRate.view',
+];
+
 describe.skipIf(!canRunIntegrationTests)('permissions (integration)', () => {
   beforeAll(setupDatabase);
   afterAll(teardownDatabase);
@@ -93,7 +106,7 @@ describe.skipIf(!canRunIntegrationTests)('permissions (integration)', () => {
     });
 
     it('lets the seeded Office tier raise and convert a lead', async () => {
-      const officeUser = await actorWith([...DEFAULT_TIER_PERMISSIONS.office]);
+      const officeUser = await actorWith(OFFICE_KEYS);
       const { party, product } = await seed();
 
       const lead = await leads.createLead(
@@ -116,7 +129,7 @@ describe.skipIf(!canRunIntegrationTests)('permissions (integration)', () => {
     });
 
     it('stops the Office tier dispatching, which is a warehouse decision', async () => {
-      const officeUser = await actorWith([...DEFAULT_TIER_PERMISSIONS.office]);
+      const officeUser = await actorWith(OFFICE_KEYS);
       const lead = await seedLead();
       const order = await orders.convertLead({ leadId: lead.id }, admin);
 
@@ -127,15 +140,17 @@ describe.skipIf(!canRunIntegrationTests)('permissions (integration)', () => {
 
     it('needs record.reassignOwner to hand a lead to someone else', async () => {
       const { party, product } = await seed();
-      const officeUser = await actorWith([...DEFAULT_TIER_PERMISSIONS.office]);
+      const officeUser = await actorWith(OFFICE_KEYS);
 
       const [someoneElse] = await db()('users').insert(
         {
-          id: '11111111-1111-4111-8111-111111111111',
+          // A `US`-tagged text id now, like every other syncable record.
+          id: 'US0000009999',
           tenant_id: admin.tenantId,
           username: 'colleague',
           password_hash: 'x',
-          full_name: 'A Colleague',
+          display_name: 'A Colleague',
+          hlc: '0000001700000000000-00000-MASTER',
         },
         ['id'],
       );

@@ -10,11 +10,12 @@ import type {
   DashboardSummary,
   OfficePanelWithPresence,
   ServerToClientEvents,
-  User,
+  SignedInUser,
 } from '@orderbook/shared';
 
 import { api } from './api';
 import { SearchBox } from './components/SearchBox';
+import { AccessScreen } from './screens/AccessScreen';
 import { ConflictsScreen } from './screens/ConflictsScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
 import { FirstRunScreen } from './screens/FirstRunScreen';
@@ -25,14 +26,14 @@ import { SettingsScreen } from './screens/SettingsScreen';
 import { SignInScreen } from './screens/SignInScreen';
 
 type Phase = 'loading' | 'first-run' | 'signed-out' | 'ready';
-type Tab = 'dashboard' | 'panels' | 'orders' | 'inventory' | 'conflicts' | 'settings';
+type Tab = 'dashboard' | 'panels' | 'orders' | 'inventory' | 'access' | 'conflicts' | 'settings';
 
 /** Entities whose changes should make the data screens refetch. */
 const REFRESHING_ENTITIES = new Set(['lead', 'order', 'stock', 'reservation', 'sync_conflict']);
 
 export function App() {
   const [phase, setPhase] = useState<Phase>('loading');
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<SignedInUser | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('dashboard');
 
@@ -152,6 +153,14 @@ export function App() {
           Inventory
           {summary && summary.lowStockCount > 0 ? ` (${summary.lowStockCount} low)` : ''}
         </TabButton>
+        {/* The entry appears only for somebody who can use it — a disabled
+            tab for a permission they can never hold would be a tease. */}
+        {(user.permissions.includes('roles.view') ||
+          user.permissions.includes('users.manage')) && (
+          <TabButton current={tab} value="access" onSelect={setTab}>
+            Roles &amp; Users
+          </TabButton>
+        )}
         <TabButton current={tab} value="conflicts" onSelect={setTab}>
           Conflicts{openConflicts > 0 ? ` (${openConflicts})` : ''}
         </TabButton>
@@ -170,6 +179,9 @@ export function App() {
       {tab === 'panels' && <PanelsScreen panels={panels} onRefresh={refreshPanels} />}
       {tab === 'orders' && <LeadsOrdersScreen revision={dataRevision} />}
       {tab === 'inventory' && <InventoryScreen revision={dataRevision} />}
+      {tab === 'access' && (
+        <AccessScreen permissions={user.permissions} currentUserId={user.id} />
+      )}
       {tab === 'conflicts' && <ConflictsScreen revision={dataRevision} />}
       {tab === 'settings' && <SettingsScreen />}
     </div>

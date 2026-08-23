@@ -73,25 +73,25 @@ describe.skipIf(!canRunIntegrationTests)('setup, auth and pairing (integration)'
 
     it('rejects a wrong password', async () => {
       await setup.runFirstTimeSetup(null);
-      await expect(auth.signIn('admin', 'WRONGPASS1')).rejects.toThrow(/incorrect/i);
+      await expect(auth.signIn('admin', 'WRONGPASS1')).rejects.toThrow(/sign-in failed/i);
     });
 
     it('rejects an unknown user with the same message as a wrong password', async () => {
       await setup.runFirstTimeSetup(null);
       // Identical wording so the form cannot be used to discover valid usernames.
-      await expect(auth.signIn('nobody', 'whatever')).rejects.toThrow(/incorrect id or password/i);
+      await expect(auth.signIn('nobody', 'whatever')).rejects.toThrow(/sign-in failed/i);
     });
 
     it('issues a session that resolves back to the user', async () => {
       const credentials = await setup.runFirstTimeSetup(null);
       const { token } = await auth.signIn('admin', credentials.password);
 
-      expect(auth.resolveSession(token)?.username).toBe('admin');
+      expect((await auth.resolveSession(token))?.username).toBe('admin');
     });
 
-    it('does not resolve an unknown or missing token', () => {
-      expect(auth.resolveSession('made-up-token')).toBeNull();
-      expect(auth.resolveSession(undefined)).toBeNull();
+    it('does not resolve an unknown or missing token', async () => {
+      expect(await auth.resolveSession('made-up-token')).toBeNull();
+      expect(await auth.resolveSession(undefined)).toBeNull();
     });
 
     it('stops resolving a token after sign out', async () => {
@@ -99,7 +99,7 @@ describe.skipIf(!canRunIntegrationTests)('setup, auth and pairing (integration)'
       const { token } = await auth.signIn('admin', credentials.password);
 
       auth.signOut(token);
-      expect(auth.resolveSession(token)).toBeNull();
+      expect(await auth.resolveSession(token)).toBeNull();
     });
   });
 

@@ -46,32 +46,64 @@ export interface Tenant {
   updatedAt: IsoTimestamp;
 }
 
+/** Kept as an alias so older call sites keep compiling; `RoleTier` is canonical. */
 export type RoleTierName = 'admin' | 'management' | 'office';
 
 export interface Role {
-  id: Uuid;
+  id: RecordId;
   tenantId: Uuid;
   name: string;
   tier: RoleTierName;
-  /** Seeded roles cannot be deleted, only re-granted. */
-  isSystem: boolean;
+  /**
+   * The whole permission set, as one array.
+   *
+   * Deliberately not a join table: permission sets are approved as a whole, so
+   * they must merge as a whole. A per-key merge of two offline edits produces a
+   * union that grants a combination neither administrator reviewed
+   * (docs/ROLES_AND_USERS.md §5).
+   */
   permissions: string[];
+  /** True on the seeded Administrator role: undeletable and tier-locked. */
+  isSystem: boolean;
+  /** Live users holding this role. Drives the "in use" guard and the list. */
+  userCount: number;
+  /** Soft delete. The row stays so a restore can reattach its users. */
+  deletedAt: IsoTimestamp | null;
   createdAt: IsoTimestamp;
   updatedAt: IsoTimestamp;
+  sync: SyncMeta;
 }
 
+/**
+ * A person who signs in.
+ *
+ * There is deliberately no `passwordHash` property. The repository strips it,
+ * and the type not declaring it means a future caller cannot even ask
+ * (docs/ROLES_AND_USERS.md §12).
+ */
 export interface User {
-  id: Uuid;
+  id: RecordId;
   tenantId: Uuid;
   username: string;
-  fullName: string | null;
-  roleId: Uuid | null;
+  displayName: string;
+  roleId: RecordId | null;
   roleName: string;
   roleTier: RoleTierName;
+  /** Deactivation. Distinct from deletion: history and records are untouched. */
   isActive: boolean;
-  lastLoginAt: IsoTimestamp | null;
+  lastSignInAt: IsoTimestamp | null;
+  deletedAt: IsoTimestamp | null;
   createdAt: IsoTimestamp;
   updatedAt: IsoTimestamp;
+  sync: SyncMeta;
+}
+
+/** What a signed-in caller is told about themselves. */
+export interface SignedInUser extends User {
+  /** Already intersected with the tier ceiling. */
+  permissions: string[];
+  /** Bumped when the role changes, so a stale session is detected per call. */
+  roleVersion: number;
 }
 
 export type OfficePanelStatus = 'pending' | 'active' | 'revoked';
@@ -80,6 +112,8 @@ export interface OfficePanel {
   id: Uuid;
   tenantId: Uuid;
   name: string;
+  /** Which role this panel's own commands act under; null falls back to Office. */
+  roleId: RecordId | null;
   /** The 6-char code this panel stamps into temporary ids and HLC timestamps. */
   deviceCode: string;
   lanIp: string | null;

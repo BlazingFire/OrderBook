@@ -36,6 +36,15 @@ authRoutes.post('/sign-out', (req, res) => {
   res.status(204).end();
 });
 
-authRoutes.get('/me', requireAuth, (req, res) => {
-  res.json({ user: req.user, sessionToken: req.sessionToken });
-});
+authRoutes.get(
+  '/me',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    // Decorated with the session's own permission set: the UI hides controls
+    // from this list, and the server refuses them again regardless.
+    res.json({
+      user: await authService.decorate(req.user!, req.sessionToken),
+      sessionToken: req.sessionToken,
+    });
+  }),
+);

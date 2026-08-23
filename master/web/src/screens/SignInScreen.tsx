@@ -1,10 +1,10 @@
 import { useState, type FormEvent } from 'react';
-import type { User } from '@orderbook/shared';
+import type { SignedInUser } from '@orderbook/shared';
 import { api } from '../api';
 import { Field } from '../components/Field';
 
 interface Props {
-  onSignedIn: (user: User, sessionToken: string) => void;
+  onSignedIn: (user: SignedInUser, sessionToken: string) => void;
 }
 
 export function SignInScreen({ onSignedIn }: Props) {

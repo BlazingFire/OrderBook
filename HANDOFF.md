@@ -96,7 +96,24 @@ Full database schema (every table, columns, indexes, and rationale):
       owner asked for all three explicitly. Search stays on **PostgreSQL
       `tsvector` + GIN** rather than the guide's FTS5, since FTS5 is
       SQLite-only and decision 2 stands.
-11. **Clean-architecture conventions on the Master server** (introduced in the
+11. **Roles & Users** (2026-08-23), built from the owner's three supplied
+    documents. Ported to this stack in `docs/ROLES_AND_USERS.md`, whose §16
+    lists every divergence. The notable points:
+    - **Permissions are one JSONB array on the role**, replacing the
+      `role_permissions` join table added the day before. The supplied guide
+      rejects the join table for a reason that only became true once offline
+      sync existed: a per-key merge of two offline edits produces a *union*
+      granting a combination neither administrator approved.
+    - **A tier ceiling** (`office` / `management` / `admin`) caps what a role
+      may hold, enforced on save and again at sign-in.
+    - **scrypt**, replacing bcrypt, with legacy hashes upgraded silently on the
+      next successful sign-in so nobody is locked out.
+    - **`activity_log` is now hash-chained and append-only**, with triggers
+      refusing UPDATE and DELETE.
+    - **Soft delete** on roles and users; `users.role_id` deliberately has *no*
+      SQL foreign key, so a restored role reattaches to its users and a
+      user-creating mutation can arrive before its role does.
+12. **Clean-architecture conventions on the Master server** (introduced in the
    2026-08-21 refactor session): pure business rules live in `master/src/domain/`
    (no I/O, no framework imports — importable by any layer, importing none);
    services orchestrate use cases against repositories; Knex types never leave
@@ -255,6 +272,35 @@ working tree for what actually exists if this section reads stale.
     pipes to close, and the PostgreSQL server `pg_ctl` spawns inherits them and
     never lets go.
 
+- **Roles & Users: done** (2026-08-23), migration
+  `20260303000000_roles_and_users`. Roles and users became syncable records with
+  `RL`/`US` text ids; the permission catalogue became a module x action grid plus
+  grouped capabilities, served to the UI so the grid renders from it rather than
+  from a list typed into the renderer. The Master Panel gained a Roles & Users
+  screen with the permission grid, tier-change preview and one-time password
+  dialog.
+
+  `npm run verify` is green — **276 tests across 16 files**, including the
+  supplied gate list: the last administrator cannot be deactivated (proven with
+  two *concurrent* attempts), a password hash never leaves through a read path,
+  an unknown permission key fails the whole save, a revoked permission takes
+  effect on the next call with no re-login, and the audit chain refuses to be
+  edited.
+
+  Two defects the tests caught before they shipped:
+  - **the scrypt verifier never matched anything** — the parse read six fields
+    as five and took the cost parameter out of the tag, so every sign-in would
+    have failed once bcrypt was gone;
+  - migration `20260301` imported the *live* permission catalogue from
+    `@orderbook/shared`, so editing that catalogue retroactively changed what an
+    already-applied migration had done. Its seed values are now inlined and
+    frozen, and `20260303` remaps the old coarse keys forward.
+
+  **Not built** (also in §16): the Office Panel's own user sign-in screen — the
+  panel still authenticates as a device and acts under the panel's role — plus
+  API keys, a cross-entity Recycle Bin screen, and the translation layer (the
+  `labelToken` contract is in place, the layer is not).
+
 ### Still to do in Phase 2
 
 The user was asked to prioritise and chose inventory first. Remaining, roughly
@@ -322,6 +368,19 @@ in the order the plan lists them:
 - **A create stamps `field_hlc` only for fields it actually set.** Marking every
   field as written at creation makes the first edit of a never-filled field look
   like a clash, and buries the real conflicts in noise.
+
+- **A migration must never import a live shared constant.** `20260301` did,
+  and editing the permission catalogue later silently changed what that
+  migration had already done on every installation. Inline the values a
+  migration writes; a migration is a fixed historical fact, not a view of
+  today's code.
+- **Do not hand-maintain a list of columns referencing a table.** The roles
+  migration originally carried one and it named a column that does not exist.
+  Ask `information_schema` instead — see `userReferences()` in
+  `20260303000000_roles_and_users.ts`.
+- **The last-administrator guard runs inside the transaction.** Moving it out
+  for tidiness lets two concurrent deactivations both succeed and locks the
+  company out of its own software.
 
 ## Working agreements for this repo
 

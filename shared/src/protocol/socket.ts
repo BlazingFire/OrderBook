@@ -101,7 +101,9 @@ export type ChangedEntity =
   | 'pipeline'
   | 'option_list'
   | 'custom_field'
-  | 'sync_conflict';
+  | 'sync_conflict'
+  | 'role'
+  | 'user';
 
 export type ChangeAction = 'created' | 'updated' | 'deleted';
 

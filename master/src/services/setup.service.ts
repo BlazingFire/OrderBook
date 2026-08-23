@@ -17,6 +17,7 @@ import { ConflictError } from '../lib/errors.js';
 import { listLanAddresses, primaryLanAddress } from '../lib/network.js';
 import { findMasterConfig, insertMasterConfig, updateLanIp } from '../repositories/master-config.repository.js';
 import { resolveDefaultTenantId } from '../repositories/tenant.repository.js';
+import { nextHlc } from '../repositories/identity.repository.js';
 import { insertUser, roleIdForTier } from '../repositories/user.repository.js';
 
 const BCRYPT_ROUNDS = 10;
@@ -59,12 +60,14 @@ export async function runFirstTimeSetup(companyName: string | null): Promise<Fir
 
     await insertUser(
       {
-        id: uuid(),
-        tenant_id: tenantId,
+        tenantId,
         username,
-        password_hash: passwordHash,
-        full_name: 'Administrator',
-        role_id: await roleIdForTier(tenantId, 'admin', trx),
+        displayName: 'Administrator',
+        passwordHash,
+        roleId: await roleIdForTier(tenantId, 'admin', trx),
+        createdBy: null,
+        hlc: await nextHlc(trx),
+        fieldHlc: {},
       },
       trx,
     );

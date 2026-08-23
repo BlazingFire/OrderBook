@@ -209,6 +209,56 @@ export interface SearchQuery {
   limit?: number;
 }
 
+// --- Roles & users ---------------------------------------------------------
+
+export interface RoleInput {
+  name: string;
+  tier: 'office' | 'management' | 'admin';
+  /** The whole set. Sorted server-side, so a reorder is not an edit. */
+  permissions: string[];
+  /** Optimistic concurrency; omit to skip the check (creates only). */
+  expectedVersion?: number;
+}
+
+export interface UserInput {
+  username: string;
+  displayName: string;
+  roleId: RecordId;
+  /** Optional: one is generated and shown once if omitted. */
+  password?: string;
+}
+
+export interface UserUpdateInput {
+  username?: string;
+  displayName?: string;
+  roleId?: RecordId;
+  isActive?: boolean;
+  expectedVersion?: number;
+}
+
+export interface PasswordResetInput {
+  userId: RecordId;
+  /** Optional: one is generated and shown once if omitted. */
+  password?: string;
+}
+
+export interface ChangeOwnPasswordInput {
+  currentPassword: string;
+  newPassword: string;
+}
+
+/**
+ * A newly created user or a reset, carrying the plaintext **once**.
+ *
+ * There is no "show again" anywhere in the product; recovery is another reset,
+ * which is itself audited.
+ */
+export interface OneTimeSecret {
+  userId: RecordId;
+  username: string;
+  password: string;
+}
+
 export interface ConflictResolutionInput {
   conflictId: number;
   /** `keepWinner` simply marks it reviewed; `restoreLoser` writes the old value back. */
