@@ -296,10 +296,161 @@ working tree for what actually exists if this section reads stale.
     already-applied migration had done. Its seed values are now inlined and
     frozen, and `20260303` remaps the old coarse keys forward.
 
-  **Not built** (also in §16): the Office Panel's own user sign-in screen — the
-  panel still authenticates as a device and acts under the panel's role — plus
-  API keys, a cross-entity Recycle Bin screen, and the translation layer (the
-  `labelToken` contract is in place, the layer is not).
+  **Not built** (also in §16): API keys, a cross-entity Recycle Bin screen, and
+  the translation layer (the `labelToken` contract is in place, the layer is
+  not). A Roles & Users *management* screen on the Office Panel does not exist
+  either — roles and users are edited on the Master.
+
+- **Office Panel per-user sign-in: done** (2026-08-24), closing the largest gap
+  the supplied guides left. An Office Panel used to authenticate only as a
+  *machine*, so everyone who walked up to it acted under the panel's role.
+  Full design in `docs/ROLES_AND_USERS.md` §15. The three points that matter:
+  - **The panel presents a token, never an identity.** The Master issues it at
+    sign-in, the panel sends `auth:assume`, and every command on that socket then
+    re-resolves the person's `roles` row. A modified panel cannot claim to be an
+    administrator, and a revoked permission applies to the next command rather
+    than the next reconnect. The decision lives in
+    `master/src/services/panel-actor.service.ts` — *not* the hub, because whose
+    authority a command carries is policy, not transport.
+  - **Offline sign-in works against a verifier the panel minted itself**, at the
+    one instant an online sign-in put the plaintext in its hands. The Master
+    never sends a hash to a panel, so this is the only way the offline promise
+    can hold — and it means a panel's disk says nothing about staff who have
+    never used that machine.
+  - **A rejection is final; only silence falls back.** If the Master is reachable
+    and refuses, the local verifier must not be tried, or a password change would
+    not stick on the panel. This is the single easiest thing to get backwards
+    here and it is pinned by a test.
+
+  `npm run verify` is green — **293 tests across 18 files**, up from 276.
+
+  Not verified in a browser beyond the pre-sign-in screens: completing a signed-in
+  run needs the Master's own credentials, which the session did not have. The
+  server-side gate was confirmed by hand (`/api/snapshot` answers 401 until
+  somebody signs in) and the sign-in paths are covered by tests.
+
+- **Multi-agent audit against the three supplied guides: done** (2026-08-24).
+  Six dimension auditors, each adversarially verified by a second agent whose job
+  was to refute it; 104 gaps survived. The findings that were fixed, highest
+  severity first:
+  - **The integration suite was silently skipping on Windows.** The
+    embedded-Postgres lookup built `${process.platform}-${process.arch}` =
+    `win32-x64`, but the package installs to `windows-x64`, and the test helper
+    had no Windows system-path fallback either. `canRunIntegrationTests` went
+    false and every `describe.skipIf` suite — including the file that *is* the
+    §15 gate list — reported skipped, which reads exactly like passing in the
+    summary line. The same expression is in the production launcher, so the
+    bundled-binaries promise did not hold on the target platform either. Both now
+    use `embeddedPostgresPackageDir()`; the helper imports it rather than keeping
+    a copy, because the copy is what drifted.
+  - **Two unrecoverable lockout paths (critical).** G4 was absent from the
+    role-edit path entirely, so the only admin role could be stripped of
+    `users.manage` or re-tiered — no user row touched, company locked out. And
+    the user-path count took no lock at READ COMMITTED, so two deactivations of
+    two *different* admins both passed. See `docs/ROLES_AND_USERS.md` §8.1.
+  - **The audit trail was not atomic with what it recorded.** Fixed for roles,
+    users and auth; still best-effort elsewhere and now honestly named. §7.1.
+  - **A Master revocation never reached a connected panel**, so an administrator
+    could reset a password and the person could pull the network cable and sign
+    in offline against the stale verifier. The wire now carries *why* a session
+    was refused, the Master pushes it, and the panel revalidates every stored
+    verifier on reconnect against a credential fingerprint.
+  - **`field.saleRate.edit` enforced nothing.** It was in the catalogue and
+    rendered as a toggle while appearing in no code path outside its own
+    declaration — so a user who could not see rates could still set them, and
+    unticking the box changed nothing.
+  - **Both shipped non-admin roles were uneditable.** `20260303` expanded
+    `parties.manage` into create/edit/delete without re-checking the tier
+    ceiling, so the office-tier role held `parties.delete`. The grid renders an
+    above-tier key as checked-but-disabled, so it could not be unticked, was
+    resubmitted on save, and G2 rejected the whole save. Migration
+    `20260304000000_role_tier_ceiling_repair` re-filters every role.
+
+  `npm run verify` is green — **318 tests across 20 files**, and they now
+  actually run on Windows without `ORDERBOOK_PG_BIN`.
+
+- **Second wave of audit fixes: done** (2026-08-24). Everything above plus:
+  - **The HTTP error envelope now carries `details`.** `ForbiddenError.permission`
+    and `assertVersionMatches`'s `storedVersion` were attached by the domain layer
+    and dropped by the transport, so `ApiError.missingPermission` was permanently
+    undefined and the client's branches on it were dead code. A duplicate name is
+    now `CONFLICT`/409 rather than a 400 indistinguishable from a tier rejection.
+  - **`expectedVersion` is mandatory.** It was optional with an early return, so
+    any caller disabled the stale-save guard by omission — and *every* user
+    mutation in the shipped product did, making role reassignment and
+    activate/deactivate plain last-write-wins.
+  - **The role editor reports failures.** It called `onError`, which set state
+    only the *list* branch renders, so with the editor open every failure looked
+    like the Save button doing nothing. A 409 now shows the field diff with
+    Reload / Overwrite; nothing is auto-applied.
+  - **Destructive actions confirm, and a Recycle Bin exists.** `restoreRole` and
+    `restoreUser` were declared, routed, and called by nobody.
+  - **The realtime directory leak is closed.** Every role and user row was
+    broadcast to every paired panel — whole staff list, every permission array —
+    with no per-recipient check, while the request path required `users.manage`.
+    A Master-admin socket also never re-checked its session, so a deactivated
+    administrator kept streaming.
+  - **Office Panel**: offline sign-in is throttled (3 failures / 60s, persisted
+    so a relaunch does not reset it); the cached snapshot is re-masked for
+    whoever is signed in *now*, not whoever it was fetched for; tabs are gated by
+    permission; a hidden rate renders as `—` rather than a confident ₹0.00; and
+    `UNAVAILABLE` (503) now distinguishes "the Master is not there" from "the
+    Master said no".
+  - **Sign-in audit completeness**: failures against an unknown username are
+    recorded (that is the entire signal of a spraying attack), the deactivated
+    branch records one, and entries name the source machine.
+  - **Greppable invariants restored**: `readCredentialForVerification` has one
+    call site again, `baseQuery` no longer selects `password_hash` via `u.*`, and
+    `requirePermissionMiddleware` is mounted on every access route rather than
+    defined and forgotten. `master/tests/credential-invariants.test.ts` pins all
+    three by reading the source, which is unusual and is the point.
+  - **Tenant-scoped identity lookups** and a within-batch `applied_mutations`
+    dedupe (two copies in one push both applied; the second bookkeeping insert
+    was swallowed by `onConflict().ignore()`).
+
+  `npm run verify` is green — **333 tests across 21 files**.
+
+  **Still not done from that audit**: `applied_mutations` is still not *atomic*
+  with the effect it records (the projection, the bookkeeping row and the id
+  mapping open three separate transactions — making that one is a restructuring
+  of every service `route()` delegates to); the audit trail is atomic for roles,
+  users and auth but still best-effort for leads/orders/parties/products/
+  inventory/panels; roles and users have no mutation kind, so they cannot be
+  created offline and no role conflict banner can exist; there is no username
+  availability endpoint; and the permission grid has no arrow-key roving focus.
+
+- **UI redesign + six new backend modules: fully specified, nothing built**
+  (2026-08-24). The owner supplied a Claude Design UI system and asked for the
+  backend for the screens it implies (Fields, Logs, Recycle Bin, Reports, PDF
+  Designer, i18n, Office Dashboard) to be planned to implementation-ready
+  detail before any code is written. That planning is done:
+  - **Frontend plan**: `docs/UI_REDESIGN.md` — the mockup-to-real-screen
+    mapping, the divergences between the supplied design and the two-app
+    reality, the new `ui/` component workspace, and the phased build order.
+  - **Backend plan**: a twelve-document specification set at
+    `docs/backend-modules/` (`README.md` is the index) — architecture, file
+    structure, database DDL, API contract, the existing-code change list,
+    runtime workflows, the UI contract the backend must serve, permissions,
+    i18n, the test plan, and the build sequence. Authored by parallel agents,
+    then put through two adversarial consistency passes and a reconciliation
+    pass against 25 arbitration rulings — the kind of thing that catches one
+    document claiming a migration timestamp another document also claims, or
+    a permission-grant algorithm with a subtle skip-on-duplicate bug. Both are
+    fixed. **`docs/BACKEND_MODULES.md`** (singular file, no `s`) was the
+    scoping pass that came before this; `docs/backend-modules/` (directory)
+    is the actual spec to build from — read the directory, not the file.
+  - **Owner decisions locked into the plan**: all six modules are
+    permission-gated and reachable from **both** panels, not Master-admin-only;
+    the `t()` translation layer **is** built (cheaper than first estimated —
+    the `labelToken` contract already exists in `permissions.ts`); Orders
+    keeps its Kanban board *and* gains a table view; the Master chrome goes
+    permanently dark to distinguish it from the Office Panel at a glance.
+  - **Next session starts implementation at Stage 0** of
+    `docs/backend-modules/11-BUILD-SEQUENCE.md` — the ~15-line socket-ack
+    `details` fix that two later modules depend on. Read `README.md` §8 first:
+    it lists the open questions still needing an answer (the sharpest is
+    whether `AppError.messageKey` is required — 129 throw sites depend on the
+    answer and it gates Stage 1) and which stage each one blocks.
 
 ### Still to do in Phase 2
 
@@ -312,9 +463,25 @@ in the order the plan lists them:
   two frontends currently duplicate `styles.css`, `format.ts` and
   `Field.tsx` between `master/web` and `office/web`; there is no shared design
   system yet, and consolidating one is the natural first step of this pass.
-- Reporting/analytics and printable order sheets. The guide's PDF Designer
-  and `Order.exports[]` are deliberately **not** built — see
-  `docs/LEAD_GENERATION_FLOW.md` §11 so they are not mistaken for an oversight.
+  **Update (2026-08-24): the owner supplied a full Claude Design UI system**
+  (tokens, typography, motion, 16 reference screens) for exactly this pass.
+  Ported into a build plan at `docs/UI_REDESIGN.md` — read that before starting;
+  §4 lists every place the supplied design disagrees with the real product
+  (e.g. it assumes one unified shell, the real product is two separate apps),
+  §5 maps every mockup to the real screen it restyles, §7–8 are the new `ui/`
+  workspace plan and the phased build order. **Planning only so far — no code
+  written yet.**
+
+  The **backend** half now has its own implementation-ready spec at
+  `docs/backend-modules/` — see the Status entry above. Implementation has not
+  started; that is the very next piece of work on this repo.
+- Reporting/analytics and printable order sheets. `docs/LEAD_GENERATION_FLOW.md`
+  §11 explains why the guide's PDF Designer and `Order.exports[]` were
+  deliberately left out of that build — that reasoning is historical, not a
+  standing decision: both are now fully specified as Stage 5 (Reports) and
+  Stage 6 (PDF Designer) of `docs/backend-modules/11-BUILD-SEQUENCE.md`,
+  pending the owner's go/no-go on PDF Designer specifically (`README.md` §8 —
+  it is the largest single module in the batch).
 - Product images upload, richer product parameters, bulk import from Excel/CSV.
 - Multi-user roles/permissions within the Office Panel.
 - Backup/restore tooling.
@@ -381,6 +548,25 @@ in the order the plan lists them:
 - **The last-administrator guard runs inside the transaction.** Moving it out
   for tidiness lets two concurrent deactivations both succeed and locks the
   company out of its own software.
+- **An Office Panel's acting user is resolved per command, never captured per
+  connection.** A socket outlives sign-ins, sign-outs and role edits; caching the
+  actor when the panel connects is exactly how a revoked permission survives
+  until the next reconnect.
+- **Offline sign-in may only be reached when the Master could not be *asked*.**
+  Falling back to the panel's local verifier after the Master actively refused
+  turns the panel into a way around a password change or a deactivation. Decide
+  it from a transport flag, never by reading the error message — a Postgres
+  "canceling statement due to statement timeout" is a message the Master *sent*,
+  so it means refused, not silent.
+- **A skipped test suite looks exactly like a passing one.** `describe.skipIf`
+  reports "skipped" in a line most people read as green. The Windows Postgres
+  lookup was broken for months and every integration gate silently did nothing.
+  If a guard matters, check the suite actually ran, not just that it was not red.
+- **`process.platform` is `win32`; the npm package directory is `windows`.**
+  Interpolating the former into a package path silently finds nothing.
+- **A permission that enforces nothing is worse than a missing one.** It renders
+  as a control, an administrator unticks it believing something changed, and
+  nothing does. Either wire it up or delete it from the catalogue.
 
 ## Working agreements for this repo
 
