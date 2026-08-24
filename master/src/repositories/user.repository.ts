@@ -26,10 +26,40 @@ const TABLE = 'users';
 type Runner = Knex | Knex.Transaction;
 
 /** Joined to the role so a user always carries the tier and name it holds. */
+/**
+ * Every user column except the credential, named explicitly.
+ *
+ * `u.*` worked — `mapUser` strips `password_hash` and the `User` type does not
+ * declare it, so nothing leaked — but it read the column out of Postgres and
+ * into this process on every list and every lookup, which breaks §11's rule that
+ * the credential read is the *only* place the column is selected. That rule is
+ * worth keeping literally true: it is greppable, and blast radius you have not
+ * spent is the cheapest kind.
+ */
+const USER_COLUMNS = [
+  'u.tenant_id',
+  'u.id',
+  'u.username',
+  'u.display_name',
+  'u.role_id',
+  'u.is_active',
+  'u.last_sign_in_at',
+  'u.created_by',
+  'u.created_at',
+  'u.updated_by',
+  'u.updated_at',
+  'u.deleted_at',
+  'u.deleted_by',
+  'u.version',
+  'u.hlc',
+  'u.field_hlc',
+  'u.temporary_id',
+] as const;
+
 function baseQuery(runner: Runner = db()) {
   return runner(`${TABLE} as u`)
     .leftJoin('roles as r', 'r.id', 'u.role_id')
-    .select('u.*', 'r.name as role_name', 'r.tier as role_tier');
+    .select(...USER_COLUMNS, 'r.name as role_name', 'r.tier as role_tier');
 }
 
 export async function listUsers(
@@ -70,22 +100,31 @@ export async function findById(
   return row ? mapUser(row) : null;
 }
 
-/**
- * The **only** place `password_hash` is selected.
- *
- * A grep for this function name must return exactly one call site, forever. If
- * it ever returns two, one of them is a leak.
- */
-export async function readCredentialForVerification(
-  username: string,
-  runner: Runner = db(),
-): Promise<{
+export interface CredentialRow {
   id: string;
   tenantId: string;
   passwordHash: string;
   isActive: boolean;
   roleId: string | null;
-} | null> {
+}
+
+/**
+ * The **only** place `password_hash` is selected.
+ *
+ * A grep for this function name must return exactly one call site, forever. If
+ * it ever returns two, one of them is a leak.
+ *
+ * It briefly returned two: `changeOwnPassword` used it to re-read by username
+ * when it already held the person's id. Neither call leaked — both fed
+ * `verifyPassword` and nothing escaped the auth service — but a rule that is
+ * stated as greppable and is not actually true stops being a check at all, and
+ * the *next* addition would have been just as quiet. Verifying by id goes
+ * through `readCredentialById` below, which shares this one query.
+ */
+export async function readCredentialForVerification(
+  username: string,
+  runner: Runner = db(),
+): Promise<CredentialRow | null> {
   const row = await runner(TABLE)
     .whereRaw('lower(username) = lower(?)', [username])
     .whereNull('deleted_at')
@@ -109,6 +148,28 @@ export async function readCredentialForVerification(
     isActive: Boolean(row.is_active),
     roleId: row.role_id,
   };
+}
+
+/**
+ * Verify-by-id, for somebody changing their *own* password.
+ *
+ * Routed through the one credential query above rather than adding a second
+ * `password_hash` select, so the greppable invariant stays literally true. The
+ * username lookup is not a second read of the column: it is the same read.
+ */
+export async function readCredentialById(
+  tenantId: string,
+  userId: string,
+  runner: Runner = db(),
+): Promise<CredentialRow | null> {
+  const user = await findById(tenantId, userId, {}, runner);
+  if (!user) return null;
+
+  const credential = await readCredentialForVerification(user.username, runner);
+
+  // Guards against a same-username row in another company answering for this
+  // one, which the missing tenant predicate on the lookup would otherwise allow.
+  return credential && credential.id === userId ? credential : null;
 }
 
 export interface NewUser {
@@ -206,33 +267,11 @@ export async function isUsernameTaken(
   return (await query.first('id')) !== undefined;
 }
 
-/**
- * Guard G4 — how many active administrators would remain.
- *
- * Must be called with the transaction that is performing the change, never
- * before it. Checked outside, two concurrent deactivations each see one
- * remaining admin and both succeed — and the company is locked out of its own
- * software, which is unrecoverable without vendor intervention.
- */
-export async function countOtherActiveAdmins(
-  tenantId: string,
-  excludeUserId: string,
-  trx: TransactionContext,
-): Promise<number> {
-  const rows = await trx('users as u')
-    .join('roles as r', function join() {
-      this.on('r.id', '=', 'u.role_id').andOn('r.tenant_id', '=', 'u.tenant_id');
-    })
-    .where('u.tenant_id', tenantId)
-    .whereNull('u.deleted_at')
-    .andWhere('u.is_active', true)
-    .whereNull('r.deleted_at')
-    .andWhere('r.tier', 'admin')
-    .whereNot('u.id', excludeUserId)
-    .count<Array<{ count: string }>>('u.id as count');
-
-  return Number(rows[0]?.count ?? 0);
-}
+// Guard G4's read lives in `access-guard.repository.ts`. It used to be a
+// `countOtherActiveAdmins` here, which was insufficient twice over: it took no
+// lock, so two deactivations of two different administrators both passed; and it
+// counted administrators without asking whether they could still *do* anything,
+// so stripping `users.manage` from the only admin role walked straight past it.
 
 export async function touchLastSignIn(userId: string, trx: TransactionContext): Promise<void> {
   await trx(TABLE).where({ id: userId }).update({ last_sign_in_at: trx.fn.now() });

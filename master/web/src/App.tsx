@@ -180,7 +180,11 @@ export function App() {
       {tab === 'orders' && <LeadsOrdersScreen revision={dataRevision} />}
       {tab === 'inventory' && <InventoryScreen revision={dataRevision} />}
       {tab === 'access' && (
-        <AccessScreen permissions={user.permissions} currentUserId={user.id} />
+        <AccessScreen
+          permissions={user.permissions}
+          currentUserId={user.id}
+          currentUserTier={user.roleTier}
+        />
       )}
       {tab === 'conflicts' && <ConflictsScreen revision={dataRevision} />}
       {tab === 'settings' && <SettingsScreen />}

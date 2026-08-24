@@ -14,7 +14,7 @@ import { normalizeCustomFields } from '../domain/custom-fields.js';
 import { buildLineSnapshot, type LineDraft, type LineSnapshot } from '../domain/line-items.js';
 import { clampPaging } from '../domain/paging.js';
 import { assertStageMove, defaultStage, findStage, stageChangeMessage } from '../domain/pipeline.js';
-import { canSeeRates, maskLead } from '../domain/visibility.js';
+import { canEditRates, canSeeRates, maskLead, withPermittedRate } from '../domain/visibility.js';
 import { db } from '../db/knex.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
@@ -73,6 +73,7 @@ export async function createLead(input: LeadInput, actor: ActorContext): Promise
   const customFields = normalizeCustomFields(input.customFields, definitions);
   const lines = await buildLines(actor.tenantId, input.partyId, input.items, {
     partyWiseMode: input.partyWiseMode ?? false,
+    canEditRate: canEditRates(actor),
   });
 
   const id = await db().transaction(async (trx) => {
@@ -122,7 +123,7 @@ export async function createLead(input: LeadInput, actor: ActorContext): Promise
   const lead = await leadRepo.findLeadById(actor.tenantId, id);
   if (!lead) throw new Error('Lead disappeared immediately after insert');
 
-  await activityLog.recordActivity({
+  await activityLog.recordDetachedActivity({
     tenantId: actor.tenantId,
     entityType: 'lead',
     entityId: lead.id,
@@ -130,7 +131,7 @@ export async function createLead(input: LeadInput, actor: ActorContext): Promise
     actorType: actor.actorType,
     actorId: actor.actorId,
     details: { itemCount: lead.items.length, incomplete: lead.incomplete },
-  });
+  }, db());
   publishChange({ entity: 'lead', action: 'created', id: lead.id, payload: lead });
 
   return maskLead(lead, canSeeRates(actor));
@@ -181,6 +182,7 @@ export async function updateLead(
       ? null
       : await buildLines(actor.tenantId, input.partyId ?? existing.partyId, input.items, {
           partyWiseMode: input.partyWiseMode ?? existing.partyWiseMode,
+          canEditRate: canEditRates(actor),
         });
 
   await db().transaction(async (trx) => {
@@ -198,14 +200,14 @@ export async function updateLead(
   const lead = await leadRepo.findLeadById(actor.tenantId, id);
   if (!lead) throw new NotFoundError('Lead');
 
-  await activityLog.recordActivity({
+  await activityLog.recordDetachedActivity({
     tenantId: actor.tenantId,
     entityType: 'lead',
     entityId: id,
     action: 'updated',
     actorType: actor.actorType,
     actorId: actor.actorId,
-  });
+  }, db());
   publishChange({ entity: 'lead', action: 'updated', id, payload: lead });
 
   return maskLead(lead, canSeeRates(actor));
@@ -271,7 +273,7 @@ export async function setStage(
   const lead = await leadRepo.findLeadById(actor.tenantId, input.id);
   if (!lead) throw new NotFoundError('Lead');
 
-  await activityLog.recordActivity({
+  await activityLog.recordDetachedActivity({
     tenantId: actor.tenantId,
     entityType: 'lead',
     entityId: input.id,
@@ -279,7 +281,7 @@ export async function setStage(
     actorType: actor.actorType,
     actorId: actor.actorId,
     details: { from: from.name, to: to.name },
-  });
+  }, db());
   publishChange({ entity: 'lead', action: 'updated', id: input.id, payload: lead });
 
   return maskLead(lead, canSeeRates(actor));
@@ -329,7 +331,7 @@ export async function buildLines(
   tenantId: string,
   partyId: string,
   drafts: LineDraft[],
-  options: { partyWiseMode: boolean },
+  options: { partyWiseMode: boolean; canEditRate: boolean },
 ): Promise<LineSnapshot[]> {
   const variants = options.partyWiseMode
     ? await variantRepo.listForParty(tenantId, partyId)
@@ -345,7 +347,9 @@ export async function buildLines(
     const variant = variantByProduct.get(product.id) ?? null;
 
     const line = buildLineSnapshot(
-      draft,
+      // A rate this actor may not set never reaches the snapshot builder, which
+      // takes the client's value in preference to the catalogue's by design.
+      withPermittedRate(draft, options.canEditRate),
       {
         id: product.id,
         name: product.name,

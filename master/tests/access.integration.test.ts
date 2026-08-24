@@ -194,7 +194,12 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
       await expect(
         roleService.updateRole(
           administrator!.id,
-          { name: administrator!.name, tier: 'office', permissions: [] },
+          {
+            name: administrator!.name,
+            tier: 'office',
+            permissions: [],
+            expectedVersion: administrator!.sync.version,
+          },
           admin,
         ),
       ).rejects.toThrow(/system role/);
@@ -215,7 +220,7 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
         /still assigned/,
       );
 
-      await userService.updateUser(user.id, { roleId: packing.id }, admin);
+      await userService.updateUser(user.id, { roleId: packing.id, expectedVersion: user.sync.version }, admin);
       await expect(roleService.deleteRole(dispatch.id, admin)).resolves.toBeDefined();
     });
 
@@ -326,7 +331,7 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
       const { user } = await seedSecondAdmin();
 
       await expect(
-        userService.updateUser(user.id, { isActive: false }, admin),
+        userService.updateUser(user.id, { isActive: false, expectedVersion: user.sync.version }, admin),
       ).rejects.toThrow(/at least one active administrator/i);
     });
 
@@ -343,7 +348,7 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
       const office = await officeRole();
 
       await expect(
-        userService.updateUser(user.id, { roleId: office.id }, admin),
+        userService.updateUser(user.id, { roleId: office.id, expectedVersion: user.sync.version }, admin),
       ).rejects.toThrow(/at least one active administrator/i);
     });
 
@@ -356,7 +361,7 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
       );
 
       await expect(
-        userService.updateUser(first.id, { isActive: false }, admin),
+        userService.updateUser(first.id, { isActive: false, expectedVersion: first.sync.version }, admin),
       ).resolves.toMatchObject({ isActive: false });
     });
 
@@ -376,8 +381,8 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
       // the count runs inside the transaction, so the second serialises behind
       // the first and then sees zero.
       const results = await Promise.allSettled([
-        userService.updateUser(a.id, { isActive: false }, admin),
-        userService.updateUser(b.id, { isActive: false }, admin),
+        userService.updateUser(a.id, { isActive: false, expectedVersion: a.sync.version }, admin),
+        userService.updateUser(b.id, { isActive: false, expectedVersion: b.sync.version }, admin),
       ]);
 
       const succeeded = results.filter((result) => result.status === 'fulfilled');
@@ -422,7 +427,7 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
         { username: 'spare', displayName: 'Spare', roleId: (await adminRole('Spare 2')).id },
         admin,
       );
-      await userService.updateUser(user.id, { isActive: false }, admin);
+      await userService.updateUser(user.id, { isActive: false, expectedVersion: user.sync.version }, admin);
 
       await expect(authService.signIn('ramesh', password)).rejects.toThrow(/deactivated/i);
     });
@@ -439,6 +444,7 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
           name: role.name,
           tier: 'admin',
           permissions: allPermissions().filter((key) => key !== 'orders.export'),
+          expectedVersion: role.sync.version,
         },
         admin,
       );

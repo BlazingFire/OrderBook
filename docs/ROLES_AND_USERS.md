@@ -102,8 +102,14 @@ The join table's per-key merge looks like an advantage and is not. A union of tw
 the other adds `products.delete` offline, and the union keeps both as though they had been reviewed
 together. Permission sets are approved as a whole, so they merge as a whole.
 
-The cost is accepted and made visible: a same-field clash writes the losing array to
-`sync_conflicts` and the role editor shows it for review.
+The cost is accepted, and is *meant* to be made visible: a same-field clash writes the losing array
+to `sync_conflicts` and the role editor shows it for review.
+
+**Not yet true.** Roles carry no mutation kind (§15.5), so no role edit can currently reach the
+merge path and no `sync_conflicts` row for a role's `permissions` can ever be written —
+`conflict.service.ts`'s column map has no role entry. The editor therefore has no conflict banner
+and no Compare view. This becomes real work the moment roles become syncable, and is recorded here
+rather than described as though it already shipped.
 
 **Storage rules**, all enforced on write:
 
@@ -155,6 +161,26 @@ for no gain.
 If the audit append fails, the change rolls back with it. The projection and the trail can never
 disagree about what happened.
 
+### 7.1 What makes that true, and what it costs
+
+`recordActivity` takes the caller's transaction and is **required** to. It used to insert on the
+root pool — a different connection — and catch its own errors into a warning, so the guarantee
+above was false in both directions: a failed append left the change committed and unrecorded, and
+an entry written inside a transaction that later rolled back survived, describing something that
+never happened. `master/tests/audit-trail.integration.test.ts` pins both.
+
+The cost is real and was accepted deliberately. The `activity_log` chain trigger takes a per-tenant
+advisory lock to serialise the hash chain; holding it inside the caller's transaction means every
+audited write for one company queues behind the others. At this product's scale — one company, a
+handful of panels, human-paced actions — that is not a constraint worth trading a trustworthy trail
+for.
+
+**Still best-effort:** leads, orders, parties, products, inventory and panels call
+`recordDetachedActivity`, which preserves the old behaviour but is named honestly. Those call sites
+record *after* their transaction closes, so making them atomic is a restructuring of each service
+rather than a parameter change. Roles, users and authentication — the module these documents govern
+— are atomic.
+
 ---
 
 ## 8. Guards
@@ -164,16 +190,42 @@ disagree about what happened.
 | G1 | Only tier `admin` may create or restructure roles | `domain/access.ts` |
 | G2 | Every key must exist and be within the role's tier | `domain/access.ts` |
 | G3 | You cannot mint a role or a user above your own tier | `domain/access.ts` |
-| G4 | **At least one active administrator must remain** | `user.service.ts`, *inside the transaction* |
-| G5 | A role held by a live user cannot be deleted | `domain/access.ts` |
+| G4 | **The company must not lose its last administrator** | `domain/access.ts` + `access-guard.repository.ts`, *inside the transaction, under a lock* |
+| G5 | A role held by a live user cannot be deleted | `domain/access.ts`, *inside the transaction* |
 | G6 | The system role cannot be deleted or re-tiered | `domain/access.ts` |
 | G7 | Usernames unique per tenant among live rows | `domain/access.ts` |
 | G8 | Role names unique per tenant among live rows | `domain/access.ts` |
 
-**G4 is the one that must run inside the transaction.** Checked before it, two concurrent
-deactivations each see one remaining admin and both succeed — and the company is locked out of its
-own software, which is unrecoverable without vendor intervention. That makes it the most expensive
-bug this module could ship, and there is a test that runs both deactivations concurrently.
+### 8.1 G4, the lockout guard
+
+The most expensive bug this module can ship. `setup.service.ts` refuses to re-bootstrap once
+`master_config` exists, so a company with no working administrator cannot be repaired from inside
+the product at all — recovery means direct database access. Three things make the guard hold, and
+each replaced a version that did not.
+
+**It covers role edits, not just people.** The obvious route is deactivating the last
+administrator, and that was guarded. The route that was not: editing the only admin-tier role until
+nobody can administer anything — dropping its tier, or stripping `users.manage` from it — which
+removes every administrator's authority without touching a single user row. So G4 is stated as
+*capability*, not headcount: the admin population must retain both `users.manage` and `roles.edit`
+between them.
+
+**It takes a lock before it reads.** Counting inside the transaction is not enough. The connection
+runs at READ COMMITTED, and two transactions deactivating two *different* administrators touch
+disjoint rows — neither blocks the other, and both see one admin remaining. Row locks cannot help,
+because the rows that must not change are the ones nobody is touching. `lockTenantAccessGuards`
+takes a per-tenant advisory lock in the two-argument lock space, deliberately separate from the
+one-argument space the `activity_log` chain trigger uses.
+
+**It applies the change, then asserts.** The previous version enumerated which edits could remove an
+administrator and checked only those — and role edits were not on the list. Asking the database
+after the write is one indexed read and cannot be out-thought by a case nobody enumerated.
+
+It is a **preservation** rule, comparing before against after: a company with no administrator yet
+is a normal state (every fresh install before first-run setup), and a guard that cannot tell that
+apart from a lockout would make the seeded roles uneditable on a brand-new machine.
+
+`master/tests/access-lockout.integration.test.ts` covers both routes.
 
 ---
 
@@ -280,10 +332,81 @@ Restoring a role reattaches every user still pointing at it, which is only possi
 
 ---
 
-## 15. What still works with the Master unreachable
+## 15. Signing in on an Office Panel
 
-The schema and the sync layer support creating roles and users offline with temporary ids, exactly
-as leads are. **The Office Panel's own sign-in screen is not built** — see §16.
+An Office Panel used to authenticate only as a *machine*: it paired once, held a panel secret, and
+everyone who walked up to it acted under the panel's own role. It now asks who is using it.
+
+### 15.1 Two paths, chosen by reachability
+
+| The Master is… | Verified by | Permissions come from |
+|---|---|---|
+| reachable | the Master, which holds the hash | the Master, fresh |
+| unreachable | a verifier this panel minted itself | the set cached at the last online sign-in |
+
+The rule that keeps this honest: **a rejection is final, only silence falls back.** If the Master is
+reachable and says no, the panel must not then try its local verifier — otherwise a password changed
+or an account deactivated on the Master would keep working here, and the panel would quietly become
+the weakest door into the company's data. `signInAgainstMaster` distinguishes the two by inspecting
+the failure, and `office/tests/user-session.test.ts` pins it.
+
+### 15.2 The panel mints its own verifier
+
+The Master strips `password_hash` from everything it serves a panel (§8.1 of `roles-database.md`), so
+a panel can never hold a copy of the Master's hash. Instead, at the one instant a successful online
+sign-in puts the plaintext in the panel's hands, the panel derives a scrypt verifier of its own,
+stores it in `data/users.json` (mode `0600`), and forgets the plaintext.
+
+Two properties follow, and both are the point:
+
+- this panel's disk says nothing about anybody who has never signed in *here*;
+- offline sign-in is available exactly to the people who have used this machine before, which is the
+  same set the shop actually needs it for.
+
+A session the Master later refuses — deactivated, deleted, role removed — takes the local verifier
+with it (`invalidateCurrent`). Leaving it behind would let somebody the company has just locked out
+carry on working by pulling the network cable.
+
+### 15.3 The panel presents a token, never an identity
+
+Once signed in, the panel sends `auth:assume` with the Master-issued token and every subsequent
+command on that socket runs as that person. The Master re-reads their `roles` row each time, so:
+
+- a modified panel gains nothing by lying — it can present a token, and the Master alone decides what
+  that token is worth;
+- a permission revoked on the Master applies to the panel's **next command**, not its next reconnect;
+- a token that resolves to nothing fails *closed*, back to the panel's own role.
+
+The decision lives in `master/src/services/panel-actor.service.ts` rather than in the hub, because
+whose authority a command carries is policy, not transport. `master/tests/panel-actor.integration.test.ts`
+covers the three negative cases: an invented token, a token from another company, and a token whose
+owner has since been deactivated.
+
+The panel's device code is kept even when a person is acting, because a temporary id and an HLC
+timestamp identify the machine that minted them, not the person at it.
+
+### 15.4 What this does not cover
+
+One signed-in person per panel at a time — an Office Panel is one PC at one counter, and the Master
+keys the acting user to that panel's socket, so "who is acting" has to have exactly one answer.
+Signing in replaces any previous session.
+
+The session is held in memory by the panel's server, so restarting the panel signs the person out.
+That is the same call the Master already makes for its own admins.
+
+### 15.5 Creating roles and users offline — not built
+
+The **schema** supports it: roles and users carry `RL`/`US` text ids, `temporary_id`, `hlc`,
+`field_hlc` and `version`, exactly as leads do.
+
+The **sync layer** does not. `MutationKind` is a closed union in `shared/src/sync/mutations.ts` and
+has no `role.*` or `user.*` member, so no role or user edit can be queued in a panel's outbox,
+pushed, merged or promoted. Everything about roles and users goes through the Master's own API while
+it is reachable.
+
+An earlier version of this section claimed both halves were done. They are not, and the distinction
+matters: it is why §5's conflict banner does not exist, and why the Office Panel has no Roles & Users
+*management* screen (§16) rather than merely lacking the screen.
 
 ---
 
@@ -296,7 +419,10 @@ as leads are. **The Office Panel's own sign-in screen is not built** — see §1
 | `ops` / `applied_ops` op log | `applied_mutations` + the panel outbox | The equivalent substrate, built with the lead-generation flow |
 | `audit_entries`, `AU`-tagged | `activity_log`, hash-chained and trigger-protected | The existing table gained the chain rather than a second audit table appearing beside it |
 | `active` column | `is_active` | Matches the convention already used by `parties` and `products` |
-| Sign-in works offline against the local replica | **Not built** — the Office Panel has no user sign-in screen | The panel authenticates as a *device* (panel id + secret) and acts under the panel's role. Adding per-user sign-in means a local user/role replica and a session on the panel; the schema supports it, the UI does not exist yet |
+| Sign-in works offline against the local replica | **Built** — see §15 | The panel verifies against a verifier it minted itself at the last online sign-in, rather than against a replica of the Master's hashes, which the Master never sends. Only people who have signed in on that machine before can sign in there offline |
+| Roles and users are *managed* from any panel | Managed on the Master only | The Office Panel signs people in; it has no role editor or user list. Nothing in the schema prevents one — it has not been built |
+| Every audited write is atomic with its entry | True for roles, users and auth; still best-effort for leads, orders, parties, products, inventory and panels | Those call sites record after their transaction closes, so the fix is a restructuring of each service rather than a parameter change. They call `recordDetachedActivity`, which is named for what it does — see §7.1 |
+| The database refuses to open unencrypted | **Not implemented, and undecided** | SQLCipher is a SQLite-file mechanism and community PostgreSQL has no upstream equivalent, so the swap removed the mechanism with no in-schema replacement. Every `password_hash` is already an irreversible digest and the cluster is loopback-bound, but "data at rest is unreadable without a key" is a guarantee this build does not make. Open question for the owner |
 | Recycle Bin module (`2-…` §4.12) | Soft delete and restore work; there is no cross-entity Recycle Bin screen | Restore is reachable through the API and for roles/users through this module |
 | API keys (`api_keys` referencing `role_id`) | **Not built** | A separate entity the documents describe but do not specify here |
 | Developer Panel vendor support session | **Not built** | There is no Developer Panel in OrderBook |

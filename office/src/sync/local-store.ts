@@ -17,6 +17,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { maskLineItem } from '@orderbook/shared';
 import type {
   Lead,
   LineItem,
@@ -211,9 +212,16 @@ function provisionalLine(
     : [];
 
   const totalQuantity = quantities.reduce((sum, quantity) => sum + quantity.quantity, 0);
+
+  // Absence has to survive the optimistic overlay. When the person who queued
+  // this line cannot see rates, the product they picked came to this panel with
+  // no `rate` key at all — materialising `rate: null` here would turn "hidden"
+  // into "this line is free", which is precisely the distinction §6 is about.
+  const rateHidden =
+    item.rate === undefined && product !== undefined && !('rate' in (product as object));
   const rate = (item.rate as number | null | undefined) ?? product?.rate ?? null;
 
-  return {
+  const line: LineItem = {
     id: `${parentId}-line-${index}`,
     tenantId: product?.tenantId ?? '',
     parentType: 'lead',
@@ -239,6 +247,10 @@ function provisionalLine(
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
+
+  // Same helper the Master masks with, so the two cannot disagree about what
+  // "hidden" looks like on the wire.
+  return maskLineItem(line, !rateHidden);
 }
 
 function provisionalParty(mutation: Mutation): Party {

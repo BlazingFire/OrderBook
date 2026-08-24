@@ -18,8 +18,11 @@ import type {
   Order,
   Party,
   Product,
+  KnownPanelUser,
+  PanelSessionResolution,
   ProductCategory,
   ServerToClientEvents,
+  SessionRejection,
   SyncSnapshot,
 } from '@orderbook/shared';
 
@@ -32,6 +35,29 @@ import { flush, setTransport, stopSync } from '../sync/sync.service.js';
 const log = createLogger('master-link');
 
 export type ConnectionState = 'unpaired' | 'connecting' | 'connected' | 'disconnected';
+
+/**
+ * A command the Master answered with a refusal, or that never reached it.
+ *
+ * The distinction is the whole reason this class exists. Sign-in is allowed to
+ * fall back to this panel's own offline verifier when the Master could not be
+ * *asked*, and must never do so when the Master was asked and said no — and the
+ * previous version decided which by substring-matching the message text, so a
+ * Postgres "canceling statement due to statement timeout" read as silence.
+ */
+export class MasterCommandError extends Error {
+  constructor(
+    message: string,
+    /** Stable code from the Master, absent when the Master never answered. */
+    readonly code: string | undefined,
+    readonly missingPermission: string | undefined,
+    /** True when this panel could not reach the Master at all. */
+    readonly unreachable: boolean,
+  ) {
+    super(message);
+    this.name = 'MasterCommandError';
+  }
+}
 
 export interface ConnectionStatus {
   state: ConnectionState;
@@ -53,6 +79,8 @@ class MasterConnection extends EventEmitter {
   private masterHost: string | null = null;
   private masterPort: number | null = null;
   private companyName: string | null = null;
+  /** The Master-issued token of whoever is signed in on this panel. */
+  private actingToken: string | null = null;
 
   async connect(): Promise<void> {
     const credentials = await loadCredentials();
@@ -87,9 +115,22 @@ class MasterConnection extends EventEmitter {
       this.setState('connected');
       log.info('Connected to Master');
 
-      // The outbox only knows how to hand mutations to *something*; wiring the
-      // socket in here is what keeps the sync service free of transport.
-      setTransport((mutations) => this.command('sync:push', { mutations }));
+      void (async () => {
+        // Re-declare who is acting *before* the outbox can drain. The Master
+        // keys the acting user to the socket, so a reconnect starts as the bare
+        // panel again — and work somebody queued offline must be applied as
+        // them, not as the machine they typed it into.
+        await this.reassume();
+
+        // Then revalidate every offline verifier this panel holds. The push
+        // above only reaches a panel that was switched on when the revocation
+        // happened; this covers the one that was not.
+        this.emit('reconcile');
+
+        // The outbox only knows how to hand mutations to *something*; wiring the
+        // socket in here is what keeps the sync service free of transport.
+        setTransport((mutations) => this.command('sync:push', { mutations }));
+      })();
     });
 
     socket.on('disconnect', (reason) => {
@@ -134,6 +175,15 @@ class MasterConnection extends EventEmitter {
     socket.on('data:changed', (event) => {
       this.applyChange(event);
       this.emit('change', event);
+    });
+
+    // Pushed by the Master when it stops honouring this panel's session, so an
+    // idle panel does not keep somebody on screen as signed in until it happens
+    // to issue another command.
+    socket.on('session:rejected', (reason) => {
+      log.warn(`The Master rejected this panel’s signed-in user: ${reason}`);
+      this.actingToken = null;
+      this.emit('session:rejected', reason);
     });
 
     socket.on('panel:revoked', () => {
@@ -182,20 +232,111 @@ class MasterConnection extends EventEmitter {
   ): Promise<T> {
     const socket = this.socket;
     if (!socket || this.state !== 'connected') {
-      throw new Error('Not connected to the Master Panel');
+      throw new MasterCommandError('Not connected to the Master Panel', undefined, undefined, true);
     }
 
     return new Promise<T>((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('The Master Panel did not respond')), 15_000);
+      const timeout = setTimeout(
+        () =>
+          reject(
+            new MasterCommandError('The Master Panel did not respond', undefined, undefined, true),
+          ),
+        15_000,
+      );
 
       const ack = (result: CommandResult<T>): void => {
         clearTimeout(timeout);
-        if (result.ok) resolve(result.data);
-        else reject(new Error(result.error));
+        if (result.ok) {
+          resolve(result.data);
+          return;
+        }
+
+        // The Master answered. Whatever it said, it was reachable — so this is a
+        // refusal, never silence, and callers must not treat it as an outage.
+        reject(
+          new MasterCommandError(result.error, result.code, result.missingPermission, false),
+        );
       };
 
       (socket.emit as (event: string, ...args: unknown[]) => void)(event as string, ...args, ack);
     });
+  }
+
+  /**
+   * Tell the Master which person's authority this panel's commands carry.
+   *
+   * Remembered locally so a reconnect can re-declare it. Passing null returns
+   * the panel to acting as itself, which is what a sign-out means.
+   */
+  async assume(token: string | null): Promise<PanelSessionResolution> {
+    this.actingToken = token;
+
+    if (!this.socket || this.state !== 'connected') {
+      // Offline, so nobody has refused anything. Reporting an expiry here would
+      // be a statement the panel is in no position to make.
+      return { status: 'released' };
+    }
+
+    return this.command<'auth:assume', PanelSessionResolution>('auth:assume', token);
+  }
+
+  /**
+   * Ask the Master which stored offline verifiers are no longer valid.
+   *
+   * Answered from its database rather than its session map, so a revocation that
+   * landed while this panel was switched off is still caught — the case a purely
+   * push-based signal can never cover.
+   */
+  async reconcile(users: KnownPanelUser[]): Promise<string[]> {
+    if (users.length === 0 || this.state !== 'connected') return [];
+
+    const result = await this.command<'auth:reconcile', { forget: string[] }>(
+      'auth:reconcile',
+      users,
+    );
+
+    return result.forget;
+  }
+
+  /**
+   * Re-declare the acting user after a reconnect.
+   *
+   * Three outcomes, and conflating any two of them is a bug:
+   *  · active    — carry on.
+   *  · revoked   — the account is gone or deactivated. Sign them out here *and*
+   *                destroy the offline verifier, or pulling the network cable
+   *                would restore the access the company just removed.
+   *  · expired   — the token is merely unknown, which includes a Master restart
+   *                emptying an in-memory session map. Sign them out, but keep
+   *                the verifier: rebooting the Master must not cost everybody
+   *                their ability to work offline.
+   */
+  private async reassume(): Promise<void> {
+    const token = this.actingToken;
+    if (!token) return;
+
+    let resolution: PanelSessionResolution;
+
+    try {
+      resolution = await this.command<'auth:assume', PanelSessionResolution>('auth:assume', token);
+    } catch (error) {
+      // A failed round trip is not a revocation. Leave the session alone and let
+      // the next reconnect try again — signing someone out because the network
+      // hiccuped would be worse than briefly acting on a stale set the Master
+      // re-checks anyway.
+      log.warn(`Could not re-establish the signed-in user: ${(error as Error).message}`);
+      return;
+    }
+
+    if (resolution.status === 'active') {
+      this.emit('user', resolution.user);
+      return;
+    }
+
+    const reason: SessionRejection = resolution.status === 'rejected' ? resolution.reason : 'expired';
+    log.warn(`The Master would not re-establish this panel’s signed-in user: ${reason}`);
+    this.actingToken = null;
+    this.emit('session:rejected', reason);
   }
 
   private setState(state: ConnectionState): void {

@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 
-import { AppError } from '../../lib/errors.js';
+import { AppError, TenantViolationError } from '../../lib/errors.js';
 import { createLogger } from '../../lib/logger.js';
 
 const log = createLogger('http');
@@ -16,7 +16,20 @@ export function errorHandler(
   _next: NextFunction,
 ): void {
   if (error instanceof AppError) {
-    res.status(error.statusCode).json({ error: error.code, message: error.message });
+    // `details` carries whatever the domain layer attached — the missing
+    // permission key, the version actually stored, the fields that differ. It
+    // used to be dropped here, which made `ForbiddenError.permission` and
+    // `assertVersionMatches`'s `storedVersion` unreachable over HTTP and left
+    // the client's own branches on them as dead code.
+    if (error instanceof TenantViolationError) {
+      log.error(`Tenant violation: ${error.message}`);
+    }
+
+    res.status(error.statusCode).json({
+      error: error.code,
+      message: error.message,
+      ...(error.details ? { details: error.details } : {}),
+    });
     return;
   }
 

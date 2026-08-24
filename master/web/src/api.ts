@@ -32,13 +32,38 @@ import type {
   UserUpdateInput,
 } from '@orderbook/shared';
 
+/** A field a stale save disagrees with the server about. */
+export interface FieldDifference {
+  stored: unknown;
+  incoming: unknown;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
-    /** Set on a 403, so a screen can say which permission is missing. */
-    readonly missingPermission?: string,
+    /** Stable code — branch on this, never on the message. */
+    readonly code: string,
+    /** Whatever the server attached: permission, storedVersion, diff. */
+    readonly details: Record<string, unknown> = {},
   ) {
     super(message);
+  }
+
+  /** Set on a 403, so a screen can say which permission is missing. */
+  get missingPermission(): string | undefined {
+    return typeof this.details.permission === 'string' ? this.details.permission : undefined;
+  }
+
+  get isConflict(): boolean {
+    return this.code === 'conflict';
+  }
+
+  get storedVersion(): number | undefined {
+    return typeof this.details.storedVersion === 'number' ? this.details.storedVersion : undefined;
+  }
+
+  get diff(): Record<string, FieldDifference> {
+    return (this.details.diff as Record<string, FieldDifference> | undefined) ?? {};
   }
 }
 
@@ -53,8 +78,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const body = await response.json().catch(() => null);
   if (!response.ok) {
-    const detail = body as { message?: string; permission?: string } | null;
-    throw new ApiError(detail?.message ?? 'Request failed', detail?.permission);
+    // `details` is where the server puts the structured facts. It used to read
+    // `body.permission`, which the server never sent at the top level — so
+    // `missingPermission` was permanently undefined and every branch on it was
+    // dead code.
+    const detail = body as
+      | { error?: string; message?: string; details?: Record<string, unknown> }
+      | null;
+
+    throw new ApiError(
+      detail?.message ?? 'Request failed',
+      detail?.error ?? 'internal_error',
+      detail?.details ?? {},
+    );
   }
   return body as T;
 }

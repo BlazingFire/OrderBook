@@ -20,6 +20,7 @@ import type {
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { clampLimit, clampPaging } from '../domain/paging.js';
 import { stockKey } from '../domain/stock-key.js';
+import { db } from '../db/knex.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as inventoryRepo from '../repositories/inventory.repository.js';
@@ -79,7 +80,7 @@ export async function recordInbound(
     createdByUserId: actorUserId(actor),
   });
 
-  await activityLog.recordActivity({
+  await activityLog.recordDetachedActivity({
     tenantId: actor.tenantId,
     entityType: 'stock',
     entityId: input.productId,
@@ -87,7 +88,7 @@ export async function recordInbound(
     actorType: actor.actorType,
     actorId: actor.actorId,
     details: { colour, quantityBoxes: input.quantityBoxes },
-  });
+  }, db());
   publishChange({ entity: 'stock', action: 'updated', id: stockKey(input.productId, colour), payload: level });
 
   return level;
@@ -137,7 +138,7 @@ export async function recordAdjustment(
     createdByUserId: actorUserId(actor),
   });
 
-  await activityLog.recordActivity({
+  await activityLog.recordDetachedActivity({
     tenantId: actor.tenantId,
     entityType: 'stock',
     entityId: input.productId,
@@ -145,7 +146,7 @@ export async function recordAdjustment(
     actorType: actor.actorType,
     actorId: actor.actorId,
     details: { colour, countedBoxes: input.quantityBoxes, delta },
-  });
+  }, db());
   publishChange({ entity: 'stock', action: 'updated', id: stockKey(input.productId, colour), payload: level });
 
   return level;

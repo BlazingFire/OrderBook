@@ -39,7 +39,7 @@ export function attachSession(req: Request, _res: Response, next: NextFunction):
 
       req.user = user;
       req.sessionToken = token;
-      req.permissions = await permissionSetForRole(user.roleId);
+      req.permissions = await permissionSetForRole(user.tenantId, user.roleId);
       next();
     } catch (error) {
       next(error);

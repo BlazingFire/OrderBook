@@ -18,6 +18,8 @@ import type {
 } from '@orderbook/shared';
 
 import {
+  fieldDiff,
+  assertAdministrativeCapabilityRetained,
   assertNameAvailable,
   assertTierWithinActor,
   assertVersionMatches,
@@ -26,6 +28,7 @@ import { actorUserId, requirePermission, type ActorContext } from '../domain/act
 import { db } from '../db/knex.js';
 import { generateTemporaryPassword, hashPassword } from '../lib/password.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
+import * as accessGuard from '../repositories/access-guard.repository.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import { nextHlc } from '../repositories/identity.repository.js';
 import * as roleRepo from '../repositories/role.repository.js';
@@ -113,7 +116,7 @@ export async function createUser(
       actorId: actor.actorId,
       // Username, display name and role. Never the password or its hash.
       details: { username, displayName, roleId: role.id, roleName: role.name },
-    });
+    }, trx);
 
     return userId;
   });
@@ -136,7 +139,24 @@ export async function updateUser(
   const existing = await userRepo.findById(actor.tenantId, id);
   if (!existing) throw new NotFoundError('User');
 
-  assertVersionMatches(existing.sync.version, input.expectedVersion);
+  assertVersionMatches(
+    existing.sync.version,
+    input.expectedVersion,
+    fieldDiff(
+      {
+        username: existing.username,
+        displayName: existing.displayName,
+        roleId: existing.roleId,
+        isActive: existing.isActive,
+      },
+      {
+        username: input.username?.trim().toLowerCase(),
+        displayName: input.displayName?.trim(),
+        roleId: input.roleId,
+        isActive: input.isActive,
+      },
+    ),
+  );
 
   const patch: Record<string, unknown> = {};
   const details: Record<string, unknown> = {};
@@ -182,15 +202,11 @@ export async function updateUser(
   if (Object.keys(patch).length === 0) return existing;
 
   await db().transaction(async (trx) => {
-    // G4, inside the transaction. Deactivating, or moving off an admin role, are
-    // both ways to remove the last administrator.
-    const losesAdmin =
-      (input.isActive === false && existing.isActive) ||
-      (patch.role_id !== undefined && existing.roleTier === 'admin');
-
-    if (losesAdmin && existing.roleTier === 'admin') {
-      await assertAnotherAdminRemains(actor.tenantId, id, trx);
-    }
+    // G4. The lock comes first: two transactions deactivating two *different*
+    // administrators touch disjoint rows, so at READ COMMITTED neither blocks
+    // the other and both would see one admin remaining.
+    await accessGuard.lockTenantAccessGuards(actor.tenantId, trx);
+    const adminsBefore = await accessGuard.readAdministrativeCapability(actor.tenantId, trx);
 
     const hlc = await nextHlc(trx);
     const fieldHlc = { ...existing.sync.fieldHlc };
@@ -204,6 +220,16 @@ export async function updateUser(
       trx,
     );
 
+    // Applied, then asserted. The previous version predicted which edits could
+    // remove an administrator and only checked those — but "moved onto a role
+    // that has since been re-tiered" is not on that list, and neither is any
+    // future field. Asking the database is one indexed read and cannot be
+    // out-thought.
+    assertAdministrativeCapabilityRetained(
+      adminsBefore,
+      await accessGuard.readAdministrativeCapability(actor.tenantId, trx),
+    );
+
     await activityLog.recordActivity({
       tenantId: actor.tenantId,
       entityType: 'user',
@@ -212,7 +238,7 @@ export async function updateUser(
       actorType: actor.actorType,
       actorId: actor.actorId,
       details,
-    });
+    }, trx);
   });
 
   // A changed role or a deactivation must not survive in an open session.
@@ -232,11 +258,18 @@ export async function deleteUser(id: string, actor: ActorContext): Promise<User>
   if (!existing) throw new NotFoundError('User');
 
   await db().transaction(async (trx) => {
-    if (existing.roleTier === 'admin') {
-      await assertAnotherAdminRemains(actor.tenantId, id, trx);
-    }
+    // This path previously held no lock at all — it does not call `nextHlc`, so
+    // it never even took the clock row's lock that the update path incidentally
+    // had.
+    await accessGuard.lockTenantAccessGuards(actor.tenantId, trx);
+    const adminsBefore = await accessGuard.readAdministrativeCapability(actor.tenantId, trx);
 
     await userRepo.softDeleteUser(actor.tenantId, id, actorUserId(actor), trx);
+
+    assertAdministrativeCapabilityRetained(
+      adminsBefore,
+      await accessGuard.readAdministrativeCapability(actor.tenantId, trx),
+    );
 
     await activityLog.recordActivity({
       tenantId: actor.tenantId,
@@ -246,7 +279,7 @@ export async function deleteUser(id: string, actor: ActorContext): Promise<User>
       actorType: actor.actorType,
       actorId: actor.actorId,
       details: { username: existing.username },
-    });
+    }, trx);
   });
 
   invalidateSessionsForUser(id);
@@ -282,7 +315,7 @@ export async function restoreUser(id: string, actor: ActorContext): Promise<User
       actorType: actor.actorType,
       actorId: actor.actorId,
       details: { username: existing.username },
-    });
+    }, trx);
   });
 
   const user = await userRepo.findById(actor.tenantId, id);
@@ -325,7 +358,7 @@ export async function resetPassword(
       actorId: actor.actorId,
       // That a reset happened, by whom, for whom. No password material, no hash.
       details: { username: existing.username },
-    });
+    }, trx);
   });
 
   // Whoever was signed in as them is signed out; the old password is gone.
@@ -338,25 +371,12 @@ export async function countUsers(tenantId: string): Promise<number> {
   return userRepo.countUsers(tenantId);
 }
 
-/**
- * G4 — at least one active administrator must remain.
- *
- * Takes the transaction rather than opening its own, so the count and the change
- * it guards are serialised by the same lock.
- */
-async function assertAnotherAdminRemains(
-  tenantId: string,
-  excludeUserId: string,
-  trx: Parameters<typeof userRepo.updateUserColumns>[4],
-): Promise<void> {
-  const remaining = await userRepo.countOtherActiveAdmins(tenantId, excludeUserId, trx);
-
-  if (remaining === 0) {
-    throw new ValidationError(
-      'At least one active administrator must remain. Give someone else an admin role first.',
-    );
-  }
-}
+// G4 used to live here as `assertAnotherAdminRemains`, whose comment claimed the
+// count and the change it guarded were "serialised by the same lock". They were
+// not: the count took no lock, the connection runs at READ COMMITTED, and two
+// deactivations of two different administrators never met. It now lives in
+// `access-guard.repository.ts` behind a real per-tenant lock, and every caller
+// asserts after applying its change rather than predicting the effect.
 
 const COLUMN_TO_FIELD: Record<string, string> = {
   display_name: 'displayName',

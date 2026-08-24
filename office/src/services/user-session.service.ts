@@ -1,0 +1,329 @@
+/**
+ * Signing a person in on an Office Panel (docs/ROLES_AND_USERS.md §12, §15).
+ *
+ * Two paths, and which one runs is decided by whether the Master is reachable —
+ * never by whether the Master said no:
+ *
+ *   · **Online.** The Master verifies, because the Master holds the hash. It
+ *     returns a session token this panel then presents on every command, so the
+ *     person's own role governs what they may do rather than the panel's. On the
+ *     way through, the panel mints its own verifier from the plaintext it is
+ *     briefly holding — that, and only that, is what makes the offline path
+ *     possible later.
+ *
+ *   · **Offline.** Verified against that locally-minted verifier, with the
+ *     permission set cached at the last online sign-in.
+ *
+ * The rule that matters: a *rejection* from the Master is final. Falling back to
+ * the local verifier when the Master said no would mean a password changed or an
+ * account deactivated on the Master kept working here — the panel would quietly
+ * become the weakest door into the company's data.
+ *
+ * One person is signed in at a time. An Office Panel is one PC at one counter,
+ * and the Master keys the acting user to this panel's socket, so "who is acting"
+ * has to have exactly one answer.
+ */
+
+import type { PanelUserSession, SessionRejection, SignedInUser } from '@orderbook/shared';
+
+import { createLogger } from '../lib/logger.js';
+import { mintVerifier, verifyAgainst } from '../lib/password.js';
+import { MasterCommandError, masterConnection } from '../realtime/master-connection.js';
+import * as attempts from './sign-in-attempts.store.js';
+import * as userStore from './user-store.js';
+
+const log = createLogger('user-session');
+
+export class SignInError extends Error {
+  constructor(
+    message: string,
+    readonly code: 'invalid_credentials' | 'unknown_here' | 'inactive' | 'locked_out',
+  ) {
+    super(message);
+  }
+}
+
+export interface PanelSession {
+  userId: string;
+  username: string;
+  displayName: string;
+  roleId: string | null;
+  roleName: string;
+  roleTier: string;
+  permissions: string[];
+  /** True when nobody asked the Master — the permissions are a cached snapshot. */
+  offline: boolean;
+  signedInAt: string;
+}
+
+/**
+ * In memory, so closing the panel signs the person out.
+ *
+ * The same call the Master makes for its own admins: for software sitting on a
+ * counter, "whoever last used this PC is still signed in tomorrow morning" is a
+ * worse default than asking for a password.
+ */
+let current: PanelSession | null = null;
+
+export function currentSession(): PanelSession | null {
+  return current;
+}
+
+export function sessionPermissions(): string[] {
+  return current?.permissions ?? [];
+}
+
+export function can(permission: string): boolean {
+  return current?.permissions.includes(permission) ?? false;
+}
+
+export async function signIn(username: string, password: string): Promise<PanelSession> {
+  const trimmed = (username ?? '').trim();
+
+  if (!trimmed || !password) {
+    throw new SignInError('Enter your username and password', 'invalid_credentials');
+  }
+
+  // Checked before the credential read, so a locked-out username costs an
+  // attacker a round trip rather than a scrypt derivation.
+  const locked = await attempts.lockedFor(trimmed);
+  if (locked > 0) {
+    throw new SignInError(
+      `Too many failed attempts. Try again in ${Math.ceil(locked / 1000)} seconds.`,
+      'locked_out',
+    );
+  }
+
+  const connected = masterConnection.getStatus().state === 'connected';
+
+  try {
+    const session = connected
+      ? await signInAgainstMaster(trimmed, password)
+      : await signInOffline(trimmed, password);
+
+    await attempts.recordSuccess(trimmed);
+    return session;
+  } catch (error) {
+    // Counted here rather than in each path, so the offline route cannot be
+    // added to later without inheriting the throttle.
+    if (error instanceof SignInError) await attempts.recordFailure(trimmed);
+    throw error;
+  }
+}
+
+async function signInAgainstMaster(username: string, password: string): Promise<PanelSession> {
+  let session: PanelUserSession;
+
+  try {
+    session = await masterConnection.command('auth:signIn', { username, password });
+  } catch (error) {
+    // Distinguish "the Master refused you" from "the Master did not answer".
+    // Only the second may fall back to the local verifier — otherwise a password
+    // changed or an account deactivated on the Master would keep working here,
+    // and this panel would be the weakest door into the company's data.
+    //
+    // Decided from a flag the transport sets, not by reading the message. The
+    // previous version substring-matched English, so a Postgres statement
+    // timeout — a message the Master sent, meaning it was reachable and refused
+    // us — classified as silence and fell straight through to the verifier.
+    if (error instanceof MasterCommandError && error.unreachable) {
+      log.warn(`Master unreachable during sign-in, trying this panel's own record`);
+      return await signInOffline(username, password);
+    }
+
+    throw new SignInError((error as Error).message, 'invalid_credentials');
+  }
+
+  const { token, user, credentialFingerprint } = session;
+
+  // The one moment this panel ever holds the plaintext. Mint a verifier from it
+  // now — there is no second chance, and the Master will never send us its hash.
+  const verifier = await mintVerifier(password);
+
+  await userStore.remember({
+    userId: user.id,
+    username: user.username,
+    displayName: user.displayName,
+    roleId: user.roleId,
+    roleName: user.roleName,
+    roleTier: user.roleTier,
+    verifier,
+    credentialFingerprint,
+    permissions: user.permissions,
+    roleVersion: user.roleVersion,
+    masterToken: token,
+    lastSignInAt: new Date().toISOString(),
+  });
+
+  await masterConnection.assume(token);
+
+  current = {
+    userId: user.id,
+    username: user.username,
+    displayName: user.displayName,
+    roleId: user.roleId,
+    roleName: user.roleName,
+    roleTier: user.roleTier,
+    permissions: user.permissions,
+    offline: false,
+    signedInAt: new Date().toISOString(),
+  };
+
+  log.info(`${user.username} signed in`);
+  return current;
+}
+
+async function signInOffline(username: string, password: string): Promise<PanelSession> {
+  const known = await userStore.findByUsername(username);
+
+  // Deliberately the same message as a wrong password. "You have never signed in
+  // on this panel" tells an outsider that the username itself is real.
+  const matches = await verifyAgainst(password, known?.verifier ?? null);
+
+  if (!known || !matches) {
+    throw new SignInError(
+      'Sign-in failed. With the Master Panel unreachable, only people who have signed in on this panel before can sign in.',
+      'unknown_here',
+    );
+  }
+
+  current = {
+    userId: known.userId,
+    username: known.username,
+    displayName: known.displayName,
+    roleId: known.roleId,
+    roleName: known.roleName,
+    roleTier: known.roleTier,
+    permissions: known.permissions,
+    offline: true,
+    signedInAt: new Date().toISOString(),
+  };
+
+  // Presenting the stored token now is harmless while the link is down and
+  // means the reconnect re-establishes this person without a second prompt.
+  if (known.masterToken) await masterConnection.assume(known.masterToken);
+
+  log.info(`${known.username} signed in offline against this panel's own record`);
+  return current;
+}
+
+export async function signOut(): Promise<void> {
+  const session = current;
+  current = null;
+
+  if (!session) return;
+
+  const known = await userStore.findByUserId(session.userId);
+  await masterConnection.assume(null);
+
+  if (known?.masterToken && masterConnection.getStatus().state === 'connected') {
+    try {
+      await masterConnection.command('auth:signOut', known.masterToken);
+    } catch {
+      // The Master will expire it on its own. Not worth blocking a sign-out.
+    }
+  }
+
+  await userStore.update(session.userId, { masterToken: null });
+  log.info(`${session.username} signed out`);
+}
+
+/**
+ * The Master will not honour this panel's session.
+ *
+ * What follows depends entirely on *why*, and conflating the two reasons is a
+ * bug in either direction:
+ *
+ *  · `revoked` — the account is gone, deactivated, or lost its role. The local
+ *    verifier goes with the session. Leaving it behind would let somebody the
+ *    company has just locked out carry on working here by pulling the network
+ *    cable, which is precisely the hole the offline path must not open.
+ *
+ *  · `expired` — the token is merely unknown, which a Master restart also
+ *    produces because its sessions live in memory. Sign the person out, but keep
+ *    the verifier: destroying it here would mean rebooting the Master silently
+ *    stripped offline sign-in from whoever happened to be signed in at the time.
+ */
+export async function rejectCurrent(reason: SessionRejection): Promise<void> {
+  const session = current;
+  current = null;
+  if (!session) return;
+
+  if (reason === 'revoked') {
+    await userStore.forget(session.userId);
+    log.warn(`${session.username} was signed out and can no longer sign in offline here`);
+    return;
+  }
+
+  log.info(`${session.username} was signed out: the Master no longer holds that session`);
+}
+
+/**
+ * Revalidate every offline verifier this panel holds, on reconnect.
+ *
+ * The pushed rejection above only reaches a panel that was switched on when the
+ * revocation happened. This covers the one that was not — a panel restarted
+ * between a sign-in and a password reset would otherwise keep a verifier for the
+ * old password indefinitely, with nothing anywhere to reconcile it against.
+ */
+export async function reconcileKnownUsers(): Promise<void> {
+  const known = await userStore.listKnown();
+  if (known.length === 0) return;
+
+  let forget: string[];
+
+  try {
+    forget = await masterConnection.reconcile(
+      known.map((user) => ({
+        userId: user.userId,
+        credentialFingerprint: user.credentialFingerprint,
+      })),
+    );
+  } catch (error) {
+    // Keep what we have and try again next reconnect. Forgetting on a failed
+    // round trip would lock people out of their own panel over a dropped packet.
+    log.warn(`Could not revalidate offline sign-ins: ${(error as Error).message}`);
+    return;
+  }
+
+  for (const userId of forget) {
+    await userStore.forget(userId);
+    if (current?.userId === userId) {
+      current = null;
+      log.warn('The signed-in person was revoked while this panel was away');
+    }
+  }
+
+  if (forget.length > 0) {
+    log.info(`Removed ${forget.length} stale offline sign-in record(s)`);
+  }
+}
+
+/** Refresh the cached permissions after the Master re-resolved this person. */
+export async function refreshFrom(user: SignedInUser): Promise<void> {
+  if (!current || current.userId !== user.id) return;
+
+  current = {
+    ...current,
+    displayName: user.displayName,
+    roleId: user.roleId,
+    roleName: user.roleName,
+    roleTier: user.roleTier,
+    permissions: user.permissions,
+    offline: false,
+  };
+
+  await userStore.update(user.id, {
+    displayName: user.displayName,
+    roleId: user.roleId,
+    roleName: user.roleName,
+    roleTier: user.roleTier,
+    permissions: user.permissions,
+    roleVersion: user.roleVersion,
+  });
+}
+
+/** Test seam. */
+export function resetSession(): void {
+  current = null;
+}

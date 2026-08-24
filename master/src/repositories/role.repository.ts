@@ -105,24 +105,33 @@ export async function listDeletedRoles(
  * admin key on an office tier is stripped before it can reach a session.
  */
 export async function permissionSetForRole(
+  tenantId: string,
   roleId: string | null,
   runner: Runner = db(),
 ): Promise<PermissionSet | null> {
   if (!roleId) return null;
 
+  // Tenant-scoped, like every other query in this file claims to be. It used to
+  // match on `id` alone, which is safe only by accident: the primary key is a
+  // single column and per-tenant id sequences make a second company
+  // uncreatable, so no two rows can collide *today*. That is safety from a
+  // schema quirk rather than from the query, and the quirk is itself an open
+  // question (`docs/ROLES_AND_USERS.md` §16).
   const row = await runner(TABLE)
-    .where({ id: roleId })
+    .where({ tenant_id: tenantId, id: roleId })
     .whereNull('deleted_at')
     .first<
       { id: string; name: string; tier: RoleTier; permissions: string[]; version: number } | undefined
     >('id', 'name', 'tier', 'permissions', 'version');
 
+  const cacheKey = `${tenantId}:${roleId}`;
+
   if (!row) {
-    cache.delete(roleId);
+    cache.delete(cacheKey);
     return null;
   }
 
-  const cached = cache.get(roleId);
+  const cached = cache.get(cacheKey);
   if (cached && cached.version === row.version) return cached.set;
 
   const stored = Array.isArray(row.permissions) ? row.permissions : [];
@@ -135,17 +144,18 @@ export async function permissionSetForRole(
     permissions: effectivePermissions(stored.filter(isPermission), row.tier),
   };
 
-  cache.set(roleId, { version: row.version, set });
+  cache.set(cacheKey, { version: row.version, set });
   return set;
 }
 
 /** The role's version, for the per-call staleness check. */
 export async function roleVersion(
+  tenantId: string,
   roleId: string,
   runner: Runner = db(),
 ): Promise<number | null> {
   const row = await runner(TABLE)
-    .where({ id: roleId })
+    .where({ tenant_id: tenantId, id: roleId })
     .whereNull('deleted_at')
     .first<{ version: number } | undefined>('version');
 

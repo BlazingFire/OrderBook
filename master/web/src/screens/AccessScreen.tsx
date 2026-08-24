@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { OneTimeSecret, PermissionCatalogue, Role, RoleTier, User } from '@orderbook/shared';
 
-import { api, ApiError } from '../api';
+import { api, ApiError, type FieldDifference } from '../api';
 import { Field } from '../components/Field';
 import { PermissionGrid } from '../components/PermissionGrid';
 import { formatDateTime } from '../format';
@@ -20,11 +20,13 @@ interface Props {
   /** The signed-in caller's own resolved permissions. */
   permissions: string[];
   currentUserId: string;
+  /** The caller's own tier. A picker must never offer a role above it. */
+  currentUserTier: RoleTier;
 }
 
 type Tab = 'users' | 'roles';
 
-export function AccessScreen({ permissions, currentUserId }: Props) {
+export function AccessScreen({ permissions, currentUserId, currentUserTier }: Props) {
   const [tab, setTab] = useState<Tab>('users');
   const [catalogue, setCatalogue] = useState<PermissionCatalogue | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -32,6 +34,7 @@ export function AccessScreen({ permissions, currentUserId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [secret, setSecret] = useState<OneTimeSecret | null>(null);
   const [editing, setEditing] = useState<Role | 'new' | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const can = useCallback((key: string) => permissions.includes(key), [permissions]);
 
@@ -45,6 +48,11 @@ export function AccessScreen({ permissions, currentUserId }: Props) {
       setUsers(nextUsers);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not load');
+    } finally {
+      // Until this flips, the tables render skeletons. Without it the first
+      // paint said "0 people" and "Nobody here yet." — a statement about the
+      // company that happened to be false.
+      setLoading(false);
     }
   }, [can]);
 
@@ -113,6 +121,17 @@ export function AccessScreen({ permissions, currentUserId }: Props) {
 
       {secret && <OneTimeSecretDialog secret={secret} onClose={() => setSecret(null)} />}
 
+      {/* Delete is soft everywhere in this product, but until now nothing in the
+          UI could undo one — `api.restoreRole`/`api.restoreUser` were declared,
+          routed, and called by nobody. A mis-click had no in-product recovery. */}
+      {(can('roles.delete') || can('users.manage')) && (
+        <RecycleBin
+          canRestoreRoles={can('roles.delete')}
+          canRestoreUsers={can('users.manage')}
+          onRun={run}
+        />
+      )}
+
       {tab === 'users' ? (
         <UsersTab
           users={users}
@@ -120,6 +139,8 @@ export function AccessScreen({ permissions, currentUserId }: Props) {
           canManage={can('users.manage')}
           canAssign={can('roles.assign')}
           currentUserId={currentUserId}
+          actorTier={currentUserTier}
+          loading={loading}
           onSecret={setSecret}
           onRun={run}
         />
@@ -131,6 +152,7 @@ export function AccessScreen({ permissions, currentUserId }: Props) {
           canCreate={can('roles.create')}
           canEdit={can('roles.edit')}
           canDelete={can('roles.delete')}
+          loading={loading}
           onEdit={setEditing}
           onRun={run}
         />
@@ -147,6 +169,8 @@ function UsersTab({
   canManage,
   canAssign,
   currentUserId,
+  actorTier,
+  loading,
   onSecret,
   onRun,
 }: {
@@ -155,10 +179,44 @@ function UsersTab({
   canManage: boolean;
   canAssign: boolean;
   currentUserId: string;
+  /** The caller's own tier, so the role picker cannot offer one above it. */
+  actorTier: RoleTier;
+  loading: boolean;
   onSecret: (secret: OneTimeSecret) => void;
   onRun: (action: () => Promise<unknown>, failure: string) => Promise<void>;
 }) {
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<User | null>(null);
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [sort, setSort] = useState<'created' | 'name' | 'role' | 'lastSignIn'>('created');
+
+  const visible = useMemo(() => {
+    const term = search.trim().toLowerCase();
+
+    const filtered = users.filter((user) => {
+      if (roleFilter && user.roleId !== roleFilter) return false;
+      if (statusFilter === 'active' && !user.isActive) return false;
+      if (statusFilter === 'inactive' && user.isActive) return false;
+      if (!term) return true;
+      return (
+        user.displayName.toLowerCase().includes(term) || user.username.toLowerCase().includes(term)
+      );
+    });
+
+    // 'created' is the server's order — zero-padded ids sort lexicographically,
+    // so creation order needs no separate sort key and no client work.
+    if (sort === 'created') return filtered;
+
+    return [...filtered].sort((a, b) => {
+      if (sort === 'name') return a.displayName.localeCompare(b.displayName);
+      if (sort === 'role') return a.roleName.localeCompare(b.roleName);
+      // Never signed in sorts last rather than first, which is what somebody
+      // scanning for stale accounts actually wants.
+      return (b.lastSignInAt ?? '').localeCompare(a.lastSignInAt ?? '');
+    });
+  }, [users, search, roleFilter, statusFilter, sort]);
 
   /**
    * The client can work out that this would remove the last administrator, so
@@ -179,13 +237,60 @@ function UsersTab({
   return (
     <div className="card">
       <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
-        <h3 style={{ margin: 0 }}>{users.length} people</h3>
+        <h3 style={{ margin: 0 }}>
+          {/* Not "0 people" before the first response — that is a false claim
+              about the company, and a worse one than the spinner §7 forbids. */}
+          {loading ? 'People' : `${users.length} people`}
+        </h3>
         {canManage && <button onClick={() => setAdding(true)}>+ Add user</button>}
       </div>
+
+      {!loading && users.length > 0 && (
+        <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+          <input
+            placeholder="Search name or username…"
+            aria-label="Search people"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+          <select
+            aria-label="Filter by role"
+            value={roleFilter}
+            onChange={(event) => setRoleFilter(event.target.value)}
+          >
+            <option value="">All roles</option>
+            {roles.map((role) => (
+              <option key={role.id} value={role.id}>
+                {role.name}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="Filter by status"
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
+          >
+            <option value="all">Any status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+          <select
+            aria-label="Sort by"
+            value={sort}
+            onChange={(event) => setSort(event.target.value as typeof sort)}
+          >
+            <option value="created">Creation order</option>
+            <option value="name">Name</option>
+            <option value="role">Role</option>
+            <option value="lastSignIn">Last sign-in</option>
+          </select>
+        </div>
+      )}
 
       {adding && (
         <UserForm
           roles={roles}
+          actorTier={actorTier}
           onCancel={() => setAdding(false)}
           onCreated={(secret) => {
             setAdding(false);
@@ -195,8 +300,21 @@ function UsersTab({
         />
       )}
 
-      {users.length === 0 ? (
+      {editing && (
+        <UserEditForm
+          user={editing}
+          onCancel={() => setEditing(null)}
+          onSaved={() => setEditing(null)}
+          onRun={onRun}
+        />
+      )}
+
+      {loading ? (
+        <SkeletonRows columns={6} />
+      ) : users.length === 0 ? (
         <p className="muted">Nobody here yet.</p>
+      ) : visible.length === 0 ? (
+        <p className="muted">Nobody matches those filters.</p>
       ) : (
         <table>
           <thead>
@@ -210,7 +328,7 @@ function UsersTab({
             </tr>
           </thead>
           <tbody>
-            {users.map((user) => {
+            {visible.map((user) => {
               const blocked = lastAdminReason(user);
 
               return (
@@ -223,7 +341,15 @@ function UsersTab({
                         value={user.roleId ?? ''}
                         onChange={(event) =>
                           void onRun(
-                            () => api.updateUser(user.id, { roleId: event.target.value }),
+                            () =>
+                              api.updateUser(user.id, {
+                                roleId: event.target.value,
+                                // Without this the save is last-write-wins: two
+                                // administrators reassigning the same person
+                                // would both "succeed" and one would silently
+                                // lose.
+                                expectedVersion: user.sync.version,
+                              }),
                             'Could not change the role',
                           )
                         }
@@ -247,6 +373,9 @@ function UsersTab({
                   <td>
                     {canManage && (
                       <div className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
+                        <button className="secondary" onClick={() => setEditing(user)}>
+                          Edit
+                        </button>
                         <button
                           className="secondary"
                           onClick={() =>
@@ -262,12 +391,31 @@ function UsersTab({
                           className="secondary"
                           disabled={Boolean(blocked)}
                           title={blocked}
-                          onClick={() =>
+                          onClick={() => {
+                            // Deactivation is not a delete, and the difference
+                            // is load-bearing enough that §4.2 asks for it to be
+                            // spelled out at the moment somebody acts — not
+                            // discovered afterwards.
+                            if (
+                              user.isActive &&
+                              !confirm(
+                                `${user.displayName} will not be able to sign in.\n\n` +
+                                  'Their leads, orders and audit history are unchanged. This is ' +
+                                  'not a delete — use Delete to send them to the Recycle Bin.',
+                              )
+                            ) {
+                              return;
+                            }
+
                             void onRun(
-                              () => api.updateUser(user.id, { isActive: !user.isActive }),
+                              () =>
+                                api.updateUser(user.id, {
+                                  isActive: !user.isActive,
+                                  expectedVersion: user.sync.version,
+                                }),
                               'Could not change the status',
-                            )
-                          }
+                            );
+                          }}
                         >
                           {user.isActive ? 'Deactivate' : 'Activate'}
                         </button>
@@ -275,9 +423,19 @@ function UsersTab({
                           className="danger"
                           disabled={Boolean(blocked) || user.id === currentUserId}
                           title={blocked ?? (user.id === currentUserId ? 'This is you' : undefined)}
-                          onClick={() =>
-                            void onRun(() => api.deleteUser(user.id), 'Could not delete')
-                          }
+                          onClick={() => {
+                            if (
+                              !confirm(
+                                `Delete ${user.displayName}?\n\n` +
+                                  'They go to the Recycle Bin and can be restored. Their records ' +
+                                  'and audit history stay exactly as they are.',
+                              )
+                            ) {
+                              return;
+                            }
+
+                            void onRun(() => api.deleteUser(user.id), 'Could not delete');
+                          }}
                         >
                           Delete
                         </button>
@@ -296,18 +454,25 @@ function UsersTab({
 
 function UserForm({
   roles,
+  actorTier,
   onCancel,
   onCreated,
   onRun,
 }: {
   roles: Role[];
+  actorTier: RoleTier;
   onCancel: () => void;
   onCreated: (secret: OneTimeSecret) => void;
   onRun: (action: () => Promise<unknown>, failure: string) => Promise<void>;
 }) {
+  // G3 in the picker: you cannot mint somebody above yourself. Offering the
+  // Administrator role to a management-tier actor and then answering with a 403
+  // teaches the tier ceiling by refusal rather than by design.
+  const assignable = roles.filter((role) => TIER_RANK[role.tier] <= TIER_RANK[actorTier]);
+
   const [displayName, setDisplayName] = useState('');
   const [username, setUsername] = useState('');
-  const [roleId, setRoleId] = useState(roles[0]?.id ?? '');
+  const [roleId, setRoleId] = useState(assignable[0]?.id ?? '');
 
   return (
     <div className="line-card">
@@ -335,7 +500,7 @@ function UserForm({
         <Field label="Role *">
           {(id) => (
             <select id={id} value={roleId} onChange={(event) => setRoleId(event.target.value)}>
-              {roles.map((role) => (
+              {assignable.map((role) => (
                 <option key={role.id} value={role.id}>
                   {role.name} ({role.tier})
                 </option>
@@ -416,6 +581,7 @@ function RolesTab({
   canCreate,
   canEdit,
   canDelete,
+  loading,
   onEdit,
   onRun,
 }: {
@@ -423,17 +589,26 @@ function RolesTab({
   canCreate: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  loading: boolean;
   onEdit: (role: Role | 'new') => void;
   onRun: (action: () => Promise<unknown>, failure: string) => Promise<void>;
 }) {
   return (
     <div className="card">
       <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
-        <h3 style={{ margin: 0 }}>{roles.length} roles</h3>
+        <h3 style={{ margin: 0 }}>{loading ? 'Roles' : `${roles.length} roles`}</h3>
         {canCreate && <button onClick={() => onEdit('new')}>+ Create role</button>}
       </div>
 
-      <table>
+      {loading && <SkeletonRows columns={5} />}
+
+      {!loading && roles.length === 0 && (
+        <p className="muted">
+          No roles yet. The Administrator role was created with this company.
+        </p>
+      )}
+
+      <table hidden={loading || roles.length === 0}>
         <thead>
           <tr>
             <th>Role</th>
@@ -475,7 +650,19 @@ function RolesTab({
                           ? 'Still assigned to somebody — move them first'
                           : undefined
                       }
-                      onClick={() => void onRun(() => api.deleteRole(role.id), 'Could not delete')}
+                      onClick={() => {
+                        if (
+                          !confirm(
+                            `Delete the "${role.name}" role?\n\n` +
+                              'It goes to the Recycle Bin and can be restored, and anybody who ' +
+                              'still holds it reattaches when it comes back.',
+                          )
+                        ) {
+                          return;
+                        }
+
+                        void onRun(() => api.deleteRole(role.id), 'Could not delete');
+                      }}
                     >
                       Delete
                     </button>
@@ -508,6 +695,13 @@ function RoleEditor({
   const [selected, setSelected] = useState<Set<string>>(new Set(role?.permissions ?? []));
   const [pendingTier, setPendingTier] = useState<RoleTier | null>(null);
   const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<{
+    message: string;
+    diff: Record<string, FieldDifference>;
+  } | null>(null);
+  /** What the server says is stored, once a conflict has told us. */
+  const [baseVersion, setBaseVersion] = useState<number | undefined>(role?.sync.version);
 
   const rank = (value: RoleTier) => catalogue.tiers.indexOf(value);
 
@@ -526,6 +720,27 @@ function RoleEditor({
     name !== role.name ||
     tier !== role.tier ||
     [...selected].sort().join(',') !== [...role.permissions].sort().join(',');
+
+  /**
+   * Cancel, checking first when there is something to lose.
+   *
+   * `dirty` was already computed for the Save button, so the editor knew the
+   * draft was unsaved and discarded it anyway — including on Escape, which §9
+   * asks to cancel *with a confirm if dirty*.
+   */
+  const cancel = useCallback(() => {
+    if (dirty && !confirm('Discard your unsaved changes to this role?')) return;
+    onCancel();
+  }, [dirty, onCancel]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') cancel();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [cancel]);
 
   function toggle(key: string, next: boolean): void {
     setSelected((current) => {
@@ -547,14 +762,20 @@ function RoleEditor({
     });
   }
 
-  async function save(): Promise<void> {
+  async function save(overwrite = false): Promise<void> {
     setBusy(true);
+    setFailure(null);
+    setConflict(null);
+
     try {
       const input = {
         name: name.trim(),
         tier,
         permissions: [...selected].sort(),
-        expectedVersion: role?.sync.version,
+        // On an explicit Overwrite, re-base on what the server actually holds.
+        // Never automatic: taking the other administrator's version silently is
+        // how their work disappears without anybody being told.
+        expectedVersion: overwrite ? baseVersion : role?.sync.version,
       };
 
       if (role) await api.updateRole(role.id, input);
@@ -562,7 +783,17 @@ function RoleEditor({
 
       onSaved();
     } catch (caught) {
-      onError(caught instanceof Error ? caught.message : 'Could not save the role');
+      // Reported *here*, in the editor. This used to call `onError`, which set
+      // state that only the list branch renders — so with the editor open every
+      // failure, from a stale version to a permission denial, looked exactly
+      // like the Save button doing nothing at all.
+      if (caught instanceof ApiError && caught.isConflict && caught.storedVersion !== undefined) {
+        setBaseVersion(caught.storedVersion);
+        setConflict({ message: caught.message, diff: caught.diff });
+      } else {
+        setFailure(caught instanceof Error ? caught.message : 'Could not save the role');
+        onError(caught instanceof Error ? caught.message : 'Could not save the role');
+      }
     } finally {
       setBusy(false);
     }
@@ -573,7 +804,7 @@ function RoleEditor({
       <div className="row" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
         <h2 style={{ margin: 0 }}>{role ? role.name : 'New role'}</h2>
         <div className="row" style={{ gap: 8 }}>
-          <button className="secondary" onClick={onCancel}>
+          <button className="secondary" onClick={cancel}>
             Cancel
           </button>
           <button disabled={busy || !dirty || !name.trim()} onClick={() => void save()}>
@@ -581,6 +812,40 @@ function RoleEditor({
           </button>
         </div>
       </div>
+
+      {failure && (
+        <div className="error" role="alert">
+          {failure}
+        </div>
+      )}
+
+      {conflict && (
+        <div className="notice" role="alert">
+          <strong>{conflict.message}</strong>
+          {Object.keys(conflict.diff).length > 0 && (
+            <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
+              {Object.entries(conflict.diff).map(([field, difference]) => (
+                <li key={field}>
+                  <strong>{humaniseField(field)}</strong>: theirs{' '}
+                  <code>{describeValue(difference.stored)}</code>, yours{' '}
+                  <code>{describeValue(difference.incoming)}</code>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="row" style={{ gap: 8, marginTop: 10 }}>
+            {/* Reload discards this draft for theirs; Overwrite keeps this draft
+                and re-bases on their version. Nothing is applied automatically —
+                auto-overwriting loses whatever they just did, silently. */}
+            <button className="secondary" onClick={onCancel}>
+              Reload theirs
+            </button>
+            <button onClick={() => void save(true)} disabled={busy}>
+              Overwrite with mine
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="card">
         <div className="line-grid">
@@ -662,6 +927,231 @@ function RoleEditor({
           onToggle={toggle}
           onToggleMany={toggleMany}
         />
+      </div>
+    </div>
+  );
+}
+
+/** `permissions` -> `Permissions`, for a conflict list a person has to read. */
+function humaniseField(field: string): string {
+  const spaced = field.replace(/([a-z])([A-Z])/g, '$1 $2');
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+/**
+ * A conflicting value, short enough to sit in a list item.
+ *
+ * A permission array is the interesting case and also the longest: showing all
+ * sixty keys would bury the one that differs, so it is summarised by count.
+ */
+function describeValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.length === 0 ? 'none' : `${value.length} permission${value.length === 1 ? '' : 's'}`;
+  }
+  if (value === null || value === undefined) return 'not set';
+  return String(value);
+}
+
+/**
+ * Deleted roles and users, and the way back.
+ *
+ * Collapsed by default and only fetched when opened: the common case is that
+ * nothing has been deleted, and a permanent empty panel above the list would be
+ * noise on every visit. Restoring a role reattaches everybody who still points
+ * at it, which is why `users.role_id` deliberately carries no SQL foreign key.
+ */
+function RecycleBin({
+  canRestoreRoles,
+  canRestoreUsers,
+  onRun,
+}: {
+  canRestoreRoles: boolean;
+  canRestoreUsers: boolean;
+  onRun: (action: () => Promise<unknown>, failure: string) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [nextRoles, nextUsers] = await Promise.all([
+        canRestoreRoles ? api.deletedRoles() : Promise.resolve([]),
+        canRestoreUsers ? api.deletedUsers() : Promise.resolve([]),
+      ]);
+      setRoles(nextRoles);
+      setUsers(nextUsers);
+    } finally {
+      setLoading(false);
+    }
+  }, [canRestoreRoles, canRestoreUsers]);
+
+  useEffect(() => {
+    if (open) void load();
+  }, [open, load]);
+
+  const total = roles.length + users.length;
+
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <button className="secondary" onClick={() => setOpen((current) => !current)}>
+        {open ? 'Hide' : 'Show'} deleted roles and people
+        {open && total > 0 ? ` (${total})` : ''}
+      </button>
+
+      {open && (
+        <div style={{ marginTop: 12 }}>
+          {loading ? (
+            <p className="muted">Loading…</p>
+          ) : total === 0 ? (
+            <p className="muted">Nothing has been deleted.</p>
+          ) : (
+            <ul style={{ margin: 0, paddingLeft: 20 }}>
+              {roles.map((role) => (
+                <li key={role.id} style={{ marginBottom: 6 }}>
+                  <strong>{role.name}</strong> <span className="muted">role · {role.tier}</span>{' '}
+                  <button
+                    className="secondary"
+                    onClick={() =>
+                      void onRun(async () => {
+                        await api.restoreRole(role.id);
+                        await load();
+                      }, 'Could not restore the role')
+                    }
+                  >
+                    Restore
+                  </button>
+                </li>
+              ))}
+              {users.map((user) => (
+                <li key={user.id} style={{ marginBottom: 6 }}>
+                  <strong>{user.displayName}</strong>{' '}
+                  <span className="muted">person · {user.username}</span>{' '}
+                  <button
+                    className="secondary"
+                    onClick={() =>
+                      void onRun(async () => {
+                        await api.restoreUser(user.id);
+                        await load();
+                      }, 'Could not restore the person')
+                    }
+                  >
+                    Restore
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Tier ordering, for filtering a picker to what the actor may hand out. */
+const TIER_RANK: Record<RoleTier, number> = { office: 1, management: 2, admin: 3 };
+
+/**
+ * Placeholder rows while the first response is in flight.
+ *
+ * §7 asks for skeleton rows rather than a spinner over an empty page — and,
+ * more importantly, rather than the empty *state*, which asserts something false
+ * about the company for as long as the request takes.
+ */
+function SkeletonRows({ columns }: { columns: number }) {
+  return (
+    <table aria-busy="true">
+      <tbody>
+        {[0, 1, 2].map((row) => (
+          <tr key={row}>
+            {Array.from({ length: columns }, (_, column) => (
+              <td key={column}>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    display: 'block',
+                    height: 12,
+                    borderRadius: 4,
+                    background: 'currentColor',
+                    opacity: 0.12,
+                  }}
+                />
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/**
+ * Edit a person's display name and username.
+ *
+ * `updateUser` has always implemented, validated and audited both, and no screen
+ * called it — so a mistyped username was permanent in the product, fixable only
+ * by deleting the person and creating them again.
+ */
+function UserEditForm({
+  user,
+  onCancel,
+  onSaved,
+  onRun,
+}: {
+  user: User;
+  onCancel: () => void;
+  onSaved: () => void;
+  onRun: (action: () => Promise<unknown>, failure: string) => Promise<void>;
+}) {
+  const [displayName, setDisplayName] = useState(user.displayName);
+  const [username, setUsername] = useState(user.username);
+
+  const dirty = displayName.trim() !== user.displayName || username.trim() !== user.username;
+
+  return (
+    <div className="line-card">
+      <div className="line-grid">
+        <Field label="Display name">
+          {(id) => (
+            <input
+              id={id}
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+            />
+          )}
+        </Field>
+        <Field label="Username">
+          {(id) => (
+            <input
+              id={id}
+              value={username}
+              onChange={(event) => setUsername(event.target.value.toLowerCase())}
+            />
+          )}
+        </Field>
+      </div>
+
+      <div className="row" style={{ gap: 8 }}>
+        <button
+          disabled={!dirty || !displayName.trim() || !username.trim()}
+          onClick={() =>
+            void onRun(async () => {
+              await api.updateUser(user.id, {
+                displayName: displayName.trim(),
+                username: username.trim(),
+                expectedVersion: user.sync.version,
+              });
+              onSaved();
+            }, 'Could not save')
+          }
+        >
+          Save
+        </button>
+        <button className="secondary" onClick={onCancel}>
+          Cancel
+        </button>
       </div>
     </div>
   );

@@ -44,6 +44,17 @@ export const config = {
   outboxFile: path.join(dataDir, 'outbox.json'),
   /** Last snapshot received, so an offline start still has something to show. */
   snapshotFile: path.join(dataDir, 'snapshot.json'),
+  /**
+   * People who have signed in on this panel: a locally-minted password verifier
+   * and their cached role, so sign-in works with the Master switched off
+   * (docs/ROLES_AND_USERS.md §15).
+   */
+  usersFile: path.join(dataDir, 'users.json'),
+  /**
+   * Failed sign-in counts, persisted so relaunching the panel does not reset a
+   * lockout — which would make it no obstacle to somebody sitting at the machine.
+   */
+  signInAttemptsFile: path.join(dataDir, 'sign-in-attempts.json'),
 
   http: {
     // Loopback only: staff use the browser on this same PC, and nothing else

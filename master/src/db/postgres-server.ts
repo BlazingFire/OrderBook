@@ -28,6 +28,22 @@ const log = createLogger('postgres');
 
 const PASSWORD_FILE = 'pg-superuser-password';
 
+/**
+ * The `@embedded-postgres/*` package directory for this machine.
+ *
+ * Node reports Windows as `win32`, but the package is published as
+ * `windows-x64`. Interpolating `process.platform` directly produced
+ * `win32-x64`, which exists nowhere — so on Windows the bundled binaries were
+ * never found, the app silently fell through to a system PostgreSQL, and the
+ * "nothing to install" promise quietly did not hold. The test helper imports
+ * this rather than keeping its own copy, because the copy it used to keep is
+ * what drifted.
+ */
+export function embeddedPostgresPackageDir(): string {
+  const platform = process.platform === 'win32' ? 'windows' : process.platform;
+  return `${platform}-${process.arch}`;
+}
+
 /** Where to look for initdb/pg_ctl when ORDERBOOK_PG_BIN is not set. */
 function candidateBinDirs(): string[] {
   const candidates: string[] = [];
@@ -38,7 +54,7 @@ function candidateBinDirs(): string[] {
   // `embedded-postgres` ships platform binaries under its package directory.
   // Walking up covers both a local install and hoisting to the workspace root,
   // without hard-coding how deep this package sits in the tree.
-  const platformDir = `${process.platform}-${process.arch}`;
+  const platformDir = embeddedPostgresPackageDir();
   for (const root of ancestorDirs(config.packageRoot)) {
     candidates.push(
       path.join(root, 'node_modules', '@embedded-postgres', platformDir, 'native', 'bin'),

@@ -165,7 +165,7 @@ export async function convertLead(
   const updatedLead = await leadRepo.findLeadById(actor.tenantId, lead.id);
   if (!order) throw new Error('Order disappeared immediately after conversion');
 
-  await activityLog.recordActivity({
+  await activityLog.recordDetachedActivity({
     tenantId: actor.tenantId,
     entityType: 'order',
     entityId: order.id,
@@ -173,7 +173,7 @@ export async function convertLead(
     actorType: actor.actorType,
     actorId: actor.actorId,
     details: { leadId: lead.id, reservations: reservationPlan.length },
-  });
+  }, db());
 
   publishChange({ entity: 'order', action: 'created', id: order.id, payload: order });
   if (updatedLead) {
@@ -369,7 +369,7 @@ export async function dispatchOrder(
   const order = await orderRepo.findOrderById(actor.tenantId, input.orderId);
   if (!order) throw new NotFoundError('Order');
 
-  await activityLog.recordActivity({
+  await activityLog.recordDetachedActivity({
     tenantId: actor.tenantId,
     entityType: 'order',
     entityId: order.id,
@@ -377,7 +377,7 @@ export async function dispatchOrder(
     actorType: actor.actorType,
     actorId: actor.actorId,
     details: { movements: movements.length },
-  });
+  }, db());
 
   publishChange({ entity: 'order', action: 'updated', id: order.id, payload: order });
   // Published after the transaction commits, so panels never see stock figures

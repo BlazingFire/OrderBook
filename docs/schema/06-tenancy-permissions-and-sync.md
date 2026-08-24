@@ -42,23 +42,28 @@ the paired panel, so there is no signature a client could use to name someone el
 
 ## 2. Roles & permissions
 
+> **Superseded by `20260303000000_roles_and_users`.** Roles became syncable records with `RL` text
+> ids, soft delete and sync bookkeeping, and the `role_permissions` join table was **dropped** in
+> favour of a single JSONB array. `docs/ROLES_AND_USERS.md` is the schema of record for this table;
+> what follows is the shape as it stands.
+
 ```sql
 CREATE TABLE roles (
-  id         UUID PRIMARY KEY,
-  tenant_id  UUID NOT NULL REFERENCES tenants(id),
-  name       TEXT NOT NULL,
-  tier       TEXT NOT NULL CHECK (tier IN ('admin', 'management', 'office')),
-  is_system  BOOLEAN NOT NULL DEFAULT false,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  id          TEXT PRIMARY KEY,          -- 'RL0000000001'
+  tenant_id   UUID NOT NULL REFERENCES tenants(id),
+  name        TEXT NOT NULL,
+  tier        TEXT NOT NULL CHECK (tier IN ('admin', 'management', 'office')),
+  permissions JSONB NOT NULL DEFAULT '[]',
+  is_system   BOOLEAN NOT NULL DEFAULT false,
+  -- soft delete + sync bookkeeping
+  deleted_at  TIMESTAMPTZ, deleted_by TEXT,
+  version     INTEGER NOT NULL DEFAULT 1,
+  hlc         TEXT, field_hlc JSONB, temporary_id TEXT,
+  created_by  TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_by  TEXT, updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE UNIQUE INDEX idx_roles_name_tenant ON roles(tenant_id, lower(name));
-
-CREATE TABLE role_permissions (
-  role_id    UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
-  permission TEXT NOT NULL,
-  PRIMARY KEY (role_id, permission)
-);
+CREATE UNIQUE INDEX idx_roles_name_tenant
+  ON roles(tenant_id, lower(name)) WHERE deleted_at IS NULL;
 ```
 
 `users.role_id` and `office_panels.role_id` both point here. A panel with no role falls back to the
@@ -66,11 +71,15 @@ seeded **Office** tier: enough to raise and progress a lead and nothing more. De
 permissions would leave a freshly paired panel unable to do the one job it exists for; defaulting
 to admin would make pairing a privilege escalation.
 
-The three tiers are **seeded, not hard-coded**. The runtime check reads `role_permissions`, never
-the tier name, so an admin who re-grants a role gets the behaviour they asked for. The seed values
-come from `DEFAULT_TIER_PERMISSIONS` in `@orderbook/shared` — the migration imports them rather
-than restating them in SQL, because a permission list written twice is a permission list that
-drifts.
+**Why one array rather than a join table** (`docs/ROLES_AND_USERS.md` §5): a per-key merge of two
+concurrent offline edits produces a *union*, granting a combination neither administrator approved.
+Permission sets are approved as a whole, so they merge as a whole.
+
+The runtime check reads that array, never the tier name — but it *intersects* it with the tier
+ceiling on every resolution, so a key left in the row after the ceiling moved cannot keep granting.
+Seed values are **inlined and frozen** in each migration rather than imported from
+`@orderbook/shared`: `20260301` imported the live catalogue, which meant editing that catalogue
+retroactively changed what an already-applied migration had done.
 
 Two kinds of permission live in the same column:
 

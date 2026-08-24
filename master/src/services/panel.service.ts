@@ -19,6 +19,7 @@ import { deviceCodeFromSeed } from '@orderbook/shared';
 import bcrypt from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
 
+import { db } from '../db/knex.js';
 import { UnauthorizedError, ValidationError } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
@@ -93,7 +94,7 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
   // pairs, so leaving the screen open does not silently admit others.
   if (request.mode === 'auto') closePairingWindow();
 
-  await activityLog.recordActivity({
+  await activityLog.recordDetachedActivity({
     tenantId: identity.tenantId,
     entityType: 'office_panel',
     entityId: panel.id,
@@ -101,7 +102,7 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
     actorType: 'system',
     actorId: null,
     details: { mode: request.mode, hostname: request.hostname },
-  });
+  }, db());
   publishChange({ entity: 'office_panel', action: 'created', id: panel.id, payload: panel });
 
   log.info(`Paired office panel "${panel.name}" (${panel.id}) via ${request.mode}`);
@@ -132,7 +133,7 @@ export async function revokePanel(panelId: string): Promise<OfficePanel> {
 
   connectedPanelIds.delete(panelId);
 
-  await activityLog.recordActivity({
+  await activityLog.recordDetachedActivity({
     tenantId: panel.tenantId,
     entityType: 'office_panel',
     entityId: panelId,
@@ -140,7 +141,7 @@ export async function revokePanel(panelId: string): Promise<OfficePanel> {
     actorType: 'user',
     actorId: null,
     details: { status: 'revoked' },
-  });
+  }, db());
   publishChange({ entity: 'office_panel', action: 'updated', id: panelId, payload: panel });
 
   return panel;
@@ -178,7 +179,7 @@ export async function permissionsForPanel(
 ): Promise<PermissionSet | null> {
   const roleId =
     (await panelRepo.findPanelRoleId(panelId)) ?? (await roleIdForTier(tenantId, 'office'));
-  return permissionSetForRole(roleId);
+  return permissionSetForRole(tenantId, roleId);
 }
 
 export async function markPanelConnected(panelId: string, lanIp: string | null): Promise<void> {

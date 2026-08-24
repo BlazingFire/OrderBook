@@ -10,6 +10,8 @@ import type { PermissionCatalogue, Role, RoleInput, RoleTier } from '@orderbook/
 import { buildPermissionCatalogue, isRoleTier, keysAboveTier } from '@orderbook/shared';
 
 import {
+  fieldDiff,
+  assertAdministrativeCapabilityRetained,
   assertAdminTier,
   assertNameAvailable,
   assertPermissionsWithinTier,
@@ -21,6 +23,7 @@ import {
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { db } from '../db/knex.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
+import * as accessGuard from '../repositories/access-guard.repository.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import { nextHlc } from '../repositories/identity.repository.js';
 import * as roleRepo from '../repositories/role.repository.js';
@@ -93,7 +96,7 @@ export async function createRole(input: RoleInput, actor: ActorContext): Promise
       // The whole array, not a count: an auditor asks "what could this role do
       // on 14 March", and a chain of diffs makes that a replay, not a lookup.
       details: { name, tier, permissions: [...(input.permissions ?? [])].sort() },
-    });
+    }, trx);
 
     return roleId;
   });
@@ -116,7 +119,21 @@ export async function updateRole(
   const existing = await roleRepo.findRoleById(actor.tenantId, id);
   if (!existing) throw new NotFoundError('Role');
 
-  assertVersionMatches(existing.sync.version, input.expectedVersion);
+  // The diff is computed before the check so a stale save can be told *what*
+  // differs, which is the whole point of offering Reload versus Overwrite —
+  // "somebody else saved first" with no detail leaves Cancel as the only exit.
+  assertVersionMatches(
+    existing.sync.version,
+    input.expectedVersion,
+    fieldDiff(
+      { name: existing.name, tier: existing.tier, permissions: [...existing.permissions].sort() },
+      {
+        name: input.name?.trim(),
+        tier: input.tier,
+        permissions: [...(input.permissions ?? [])].sort(),
+      },
+    ),
+  );
 
   const name = input.name?.trim();
   if (!name) throw new ValidationError('Give the role a name');
@@ -134,6 +151,12 @@ export async function updateRole(
   const permissions = [...(input.permissions ?? [])].sort();
 
   await db().transaction(async (trx) => {
+    // G4. Taken before anything is read or written, because two administrators
+    // editing two different admin-tier roles touch disjoint rows and would
+    // otherwise never see each other.
+    await accessGuard.lockTenantAccessGuards(actor.tenantId, trx);
+    const adminsBefore = await accessGuard.readAdministrativeCapability(actor.tenantId, trx);
+
     const hlc = await nextHlc(trx);
     const fieldHlc = { ...existing.sync.fieldHlc };
     for (const field of ROLE_FIELDS) fieldHlc[field] = hlc;
@@ -144,6 +167,15 @@ export async function updateRole(
       { name, tier, permissions: JSON.stringify(permissions), updated_by: actorUserId(actor) },
       { hlc, fieldHlc },
       trx,
+    );
+
+    // Applied first, asserted second: this edit can remove the company's last
+    // administrator without touching a single user row — by dropping the role's
+    // tier, or by stripping `users.manage` from the only role that had it.
+    // Throwing here rolls the edit back.
+    assertAdministrativeCapabilityRetained(
+      adminsBefore,
+      await accessGuard.readAdministrativeCapability(actor.tenantId, trx),
     );
 
     await activityLog.recordActivity({
@@ -159,7 +191,7 @@ export async function updateRole(
         permissions: { from: existing.permissions, to: permissions },
         ...(droppedByTier.length > 0 ? { droppedByTierCeiling: droppedByTier } : {}),
       },
-    });
+    }, trx);
   });
 
   const role = await roleRepo.findRoleById(actor.tenantId, id);
@@ -177,10 +209,26 @@ export async function deleteRole(id: string, actor: ActorContext): Promise<Role>
   if (!existing) throw new NotFoundError('Role');
 
   assertSystemRoleEditable(existing, { deleting: true });
-  assertRoleUnused(await roleRepo.isRoleInUse(actor.tenantId, id), existing.name);
 
   await db().transaction(async (trx) => {
+    await accessGuard.lockTenantAccessGuards(actor.tenantId, trx);
+    const adminsBefore = await accessGuard.readAdministrativeCapability(actor.tenantId, trx);
+
+    // G5, inside the transaction and under the lock. Evaluated on the pool
+    // beforehand it proved nothing: `users.role_id` carries no SQL foreign key
+    // by design (§4.1), so nothing stops a user being reassigned onto this role
+    // between the check and the delete — and the database would not object.
+    assertRoleUnused(await roleRepo.isRoleInUse(actor.tenantId, id, trx), existing.name);
+
     await roleRepo.softDeleteRole(actor.tenantId, id, actorUserId(actor), trx);
+
+    // G4. G5 already refused a role anybody holds, so this is belt to that
+    // brace — but it costs one indexed read and covers the case where the two
+    // guards disagree about what "holds" means.
+    assertAdministrativeCapabilityRetained(
+      adminsBefore,
+      await accessGuard.readAdministrativeCapability(actor.tenantId, trx),
+    );
 
     await activityLog.recordActivity({
       tenantId: actor.tenantId,
@@ -190,7 +238,7 @@ export async function deleteRole(id: string, actor: ActorContext): Promise<Role>
       actorType: actor.actorType,
       actorId: actor.actorId,
       details: { name: existing.name },
-    });
+    }, trx);
   });
 
   const role = await roleRepo.findRoleById(actor.tenantId, id, { includeDeleted: true });
@@ -231,7 +279,7 @@ export async function restoreRole(id: string, actor: ActorContext): Promise<Role
       actorType: actor.actorType,
       actorId: actor.actorId,
       details: { name: existing.name },
-    });
+    }, trx);
   });
 
   const role = await roleRepo.findRoleById(actor.tenantId, id);

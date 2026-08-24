@@ -25,6 +25,8 @@ import { UnauthorizedError, ValidationError } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import { nextHlc } from '../repositories/identity.repository.js';
+import { resolveDefaultTenantId } from '../repositories/tenant.repository.js';
+import * as panelCredentialRepo from '../repositories/panel-credential.repository.js';
 import * as roleRepo from '../repositories/role.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
 
@@ -51,7 +53,9 @@ const LOCKOUT_MS = 60_000;
 export async function signIn(
   username: string,
   password: string,
-): Promise<{ token: string; user: SignedInUser }> {
+  /** Which machine the attempt came from, for the audit trail. */
+  source?: string,
+): Promise<{ token: string; user: SignedInUser; credentialFingerprint: string }> {
   const key = username?.trim().toLowerCase() ?? '';
   assertNotLockedOut(key);
 
@@ -60,13 +64,20 @@ export async function signIn(
 
   if (!credential || !matches) {
     recordFailure(key);
-    await recordSignInAttempt(credential?.tenantId ?? null, key, false);
+    await recordSignInAttempt(credential?.tenantId ?? null, key, false, undefined, source);
     // Deliberately generic. "No such user" versus "wrong password" is a
     // username oracle.
     throw new UnauthorizedError('Sign-in failed');
   }
 
   if (!credential.isActive) {
+    // Recorded before throwing. Somebody trying a deactivated account is worth
+    // seeing — it is either a person who does not know they were deactivated, or
+    // somebody using credentials that should already have stopped working — and
+    // this branch used to reach neither the trail nor the failure counter.
+    recordFailure(key);
+    await recordSignInAttempt(credential.tenantId, key, false, credential.id, source);
+
     // Distinguished from a bad password on purpose: this is not a guessing
     // signal, it is a fact the person needs in order to ask someone to fix it.
     throw new UnauthorizedError('This account has been deactivated');
@@ -74,7 +85,7 @@ export async function signIn(
 
   failures.delete(key);
 
-  const permissionSet = await roleRepo.permissionSetForRole(credential.roleId);
+  const permissionSet = await roleRepo.permissionSetForRole(credential.tenantId, credential.roleId);
   if (!permissionSet) {
     throw new UnauthorizedError('This account has no role. Ask an administrator to assign one.');
   }
@@ -97,10 +108,10 @@ export async function signIn(
     }
   });
 
-  await recordSignInAttempt(credential.tenantId, key, true, credential.id);
+  await recordSignInAttempt(credential.tenantId, key, true, credential.id, source);
 
   const token = randomBytes(32).toString('base64url');
-  const roleVersion = (await roleRepo.roleVersion(credential.roleId ?? '')) ?? 0;
+  const roleVersion = (await roleRepo.roleVersion(credential.tenantId, credential.roleId ?? '')) ?? 0;
 
   sessions.set(token, {
     userId: credential.id,
@@ -117,7 +128,14 @@ export async function signIn(
   const user = await userRepo.findById(credential.tenantId, credential.id);
   if (!user) throw new UnauthorizedError('Sign-in failed');
 
-  return { token, user: await decorate(user, token) };
+  return {
+    token,
+    user: await decorate(user, token),
+    // Read after any bcrypt→scrypt rewrite above, so the panel stores a marker
+    // for the hash that is now on disk rather than the one it replaced.
+    credentialFingerprint:
+      (await panelCredentialRepo.fingerprintForUser(credential.tenantId, credential.id)) ?? '',
+  };
 }
 
 /**
@@ -137,13 +155,13 @@ export async function resolveSession(token: string | undefined): Promise<User | 
     return null;
   }
 
-  const permissionSet = await roleRepo.permissionSetForRole(user.roleId);
+  const permissionSet = await roleRepo.permissionSetForRole(session.tenantId, user.roleId);
   if (!permissionSet) {
     if (token) sessions.delete(token);
     return null;
   }
 
-  const currentVersion = (await roleRepo.roleVersion(user.roleId ?? '')) ?? 0;
+  const currentVersion = (await roleRepo.roleVersion(session.tenantId, user.roleId ?? '')) ?? 0;
 
   // The role moved (edited, or the user was reassigned): rebuild in place, so
   // the very next permission check uses the new set.
@@ -154,6 +172,36 @@ export async function resolveSession(token: string | undefined): Promise<User | 
   }
 
   return user;
+}
+
+/**
+ * Resolve a session, and say *why* when it fails.
+ *
+ * `resolveSession` collapses three different situations into `null`: the account
+ * was revoked, the token expired, or this Master restarted and lost an in-memory
+ * session map. That is fine for an HTTP request, which just signs the person out
+ * either way — but an Office Panel holds an offline password verifier for that
+ * person, and what it must do differs sharply. `revoked` means destroy it.
+ * `expired` means keep it, because a Master reboot must not strip everybody's
+ * ability to work offline.
+ */
+export async function resolveSessionDetailed(
+  token: string | undefined,
+): Promise<
+  { status: 'active'; user: User } | { status: 'rejected'; reason: 'revoked' | 'expired' }
+> {
+  const session = tokenSession(token);
+
+  // Not in the map: expired, or this process restarted. Not a statement about
+  // the account, so it must not be reported as one.
+  if (!session) return { status: 'rejected', reason: 'expired' };
+
+  const user = await resolveSession(token);
+  if (user) return { status: 'active', user };
+
+  // The session existed and no longer resolves, which is a fact about the
+  // account: deleted, deactivated, or its role removed.
+  return { status: 'rejected', reason: 'revoked' };
 }
 
 /** The resolved permission set for a live session. */
@@ -169,7 +217,10 @@ export async function changeOwnPassword(
   const user = await userRepo.findById(tenantId, userId);
   if (!user) throw new UnauthorizedError();
 
-  const credential = await userRepo.readCredentialForVerification(user.username);
+  // By id, not by username — this caller already knows who they are, and going
+  // back through the username lookup was the second `readCredentialForVerification`
+  // call site that made §11's "exactly one, forever" untrue.
+  const credential = await userRepo.readCredentialById(tenantId, userId);
   const { matches } = await verifyPassword(input.currentPassword, credential?.passwordHash ?? null);
 
   // Changing your own password needs the current one, not `users.manage` —
@@ -200,7 +251,7 @@ export async function changeOwnPassword(
       actorType: 'user',
       actorId: userId,
       details: { username: user.username },
-    });
+    }, trx);
   });
 
   invalidateSessionsForUser(userId, { except: undefined });
@@ -282,24 +333,49 @@ function recordFailure(username: string): void {
   failures.set(username, record);
 }
 
+/**
+ * Record a sign-in attempt, successful or not (§9).
+ *
+ * This used to return early when the tenant was unknown — which is every failure
+ * against a username that does not exist, because the tenant was being derived
+ * *from the matched row*. That is exactly the population an auditor needs:
+ * password spraying and username enumeration produce nothing but unknown-username
+ * failures, so the trail went silent for the whole attack and spoke up only for
+ * the guess that landed.
+ *
+ * The installation is single-tenant, so there is a correct tenant to file under
+ * and no risk of putting a stranger's typo into some other company's trail.
+ *
+ * `source` names the machine when the attempt came through a panel; the socket
+ * handshake has always known it and used to discard it.
+ */
 async function recordSignInAttempt(
   tenantId: string | null,
   username: string,
   success: boolean,
   userId?: string,
+  source?: string,
 ): Promise<void> {
-  // A failure against an unknown username has no tenant to file under, so there
-  // is nothing to record — and inventing one would put a stranger's typo into
-  // some company's audit trail.
-  if (!tenantId) return;
+  const tenant = tenantId ?? (await resolveDefaultTenantId().catch(() => null));
+  if (!tenant) return;
 
-  await activityLog.recordActivity({
-    tenantId,
-    entityType: 'user',
-    entityId: userId ?? username,
-    action: success ? 'sign_in' : 'sign_in_failed',
-    actorType: 'user',
-    actorId: userId ?? null,
-    details: { username },
-  });
+  await activityLog.recordDetachedActivity(
+    {
+      tenantId: tenant,
+      entityType: 'user',
+      entityId: userId ?? username,
+      action: success ? 'sign_in' : 'sign_in_failed',
+      actorType: 'user',
+      actorId: userId ?? null,
+      details: {
+        username,
+        // Distinguishes "this username does not exist here" from "wrong
+        // password", which the *response* deliberately does not — the caller
+        // must not learn it, the auditor must.
+        ...(userId ? {} : { unknownUsername: true }),
+        ...(source ? { source } : {}),
+      },
+    },
+    db(),
+  );
 }

@@ -17,7 +17,13 @@ import type {
 
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { clampPaging } from '../domain/paging.js';
-import { canSeeRates, maskProduct, maskVariant } from '../domain/visibility.js';
+import {
+  canEditRates,
+  canSeeRates,
+  maskProduct,
+  maskVariant,
+  withPermittedRate,
+} from '../domain/visibility.js';
 import { db } from '../db/knex.js';
 import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
@@ -63,14 +69,14 @@ export async function createParty(input: PartyInput, actor: ActorContext): Promi
     );
   });
 
-  await activityLog.recordActivity({
+  await activityLog.recordDetachedActivity({
     tenantId: actor.tenantId,
     entityType: 'party',
     entityId: party.id,
     action: 'created',
     actorType: actor.actorType,
     actorId: actor.actorId,
-  });
+  }, db());
   publishChange({ entity: 'party', action: 'created', id: party.id, payload: party });
 
   return party;
@@ -93,14 +99,14 @@ export async function updateParty(
 
   if (!party) throw new NotFoundError('Party');
 
-  await activityLog.recordActivity({
+  await activityLog.recordDetachedActivity({
     tenantId: actor.tenantId,
     entityType: 'party',
     entityId: party.id,
     action: 'updated',
     actorType: actor.actorType,
     actorId: actor.actorId,
-  });
+  }, db());
   publishChange({ entity: 'party', action: 'updated', id: party.id, payload: party });
 
   return party;
@@ -161,7 +167,11 @@ export async function createProduct(
     return productRepo.insertProduct(
       {
         tenantId: actor.tenantId,
-        input: { ...input, name, productCode },
+        // The rate is a permissioned field in its own right: `products.create`
+        // says you may add a product, `field.saleRate.edit` says you may price
+        // it. Without the second, the rate falls back to whatever the catalogue
+        // default is rather than to what the caller asked for.
+        input: withPermittedRate({ ...input, name, productCode }, canEditRates(actor)),
         hlc,
         fieldHlc: {},
         temporaryId: null,
@@ -170,14 +180,14 @@ export async function createProduct(
     );
   });
 
-  await activityLog.recordActivity({
+  await activityLog.recordDetachedActivity({
     tenantId: actor.tenantId,
     entityType: 'product',
     entityId: product.id,
     action: 'created',
     actorType: actor.actorType,
     actorId: actor.actorId,
-  });
+  }, db());
   publishChange({ entity: 'product', action: 'created', id: product.id, payload: product });
 
   return maskProduct(product, canSeeRates(actor));
@@ -206,7 +216,7 @@ export async function updateProduct(
     return productRepo.updateProduct(
       actor.tenantId,
       id,
-      { ...input, name, productCode },
+      withPermittedRate({ ...input, name, productCode }, canEditRates(actor)),
       { hlc, fieldHlc: {} },
       trx,
     );
@@ -214,14 +224,14 @@ export async function updateProduct(
 
   if (!product) throw new NotFoundError('Product');
 
-  await activityLog.recordActivity({
+  await activityLog.recordDetachedActivity({
     tenantId: actor.tenantId,
     entityType: 'product',
     entityId: product.id,
     action: 'updated',
     actorType: actor.actorType,
     actorId: actor.actorId,
-  });
+  }, db());
   publishChange({ entity: 'product', action: 'updated', id: product.id, payload: product });
 
   return maskProduct(product, canSeeRates(actor));
@@ -255,7 +265,14 @@ export async function upsertVariant(
 
   const variant = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
-    return variantRepo.upsertVariant({ tenantId: actor.tenantId, hlc }, input, trx);
+    // A party variant is, in practice, mostly a negotiated price. Letting it
+    // through unguarded would make the whole permission avoidable by pricing
+    // the product per-party instead.
+    return variantRepo.upsertVariant(
+      { tenantId: actor.tenantId, hlc },
+      withPermittedRate(input, canEditRates(actor)),
+      trx,
+    );
   });
 
   publishChange({

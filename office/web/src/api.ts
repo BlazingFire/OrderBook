@@ -45,6 +45,23 @@ export interface DiscoveredMaster {
 /** The panel's view: the Master's snapshot plus anything still queued here. */
 export type LocalView = SyncSnapshot & { pendingCount: number };
 
+/** Who is signed in on this panel. Held by the panel's server, not the browser. */
+export interface PanelSession {
+  userId: string;
+  username: string;
+  displayName: string;
+  roleId: string | null;
+  roleName: string;
+  roleTier: string;
+  permissions: string[];
+  /**
+   * True when the Master was unreachable at sign-in, so these permissions are
+   * the set cached at the last online sign-in rather than a fresh read.
+   */
+  offline: boolean;
+  signedInAt: string;
+}
+
 export interface QueuedResult {
   queued: true;
   /** Temporary id for a create, or the id passed in for an edit. */
@@ -100,6 +117,11 @@ export const api = {
     masterUniqueId?: string;
     panelName?: string;
   }) => post<{ ok: true; companyName: string | null }>('/api/connection/pair/manual', input),
+
+  session: () => request<{ session: PanelSession | null }>('/api/session'),
+  signIn: (username: string, password: string) =>
+    post<{ session: PanelSession }>('/api/auth/sign-in', { username, password }),
+  signOut: () => post<{ ok: true }>('/api/auth/sign-out'),
 
   snapshot: () => request<LocalView>('/api/snapshot'),
   syncState: () => request<SyncState>('/api/sync'),

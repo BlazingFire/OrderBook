@@ -45,6 +45,7 @@ import {
   isSyncableEntity,
   isTemporaryId,
   mergeFields,
+  MUTATION_PERMISSIONS,
   type Permission,
 } from '@orderbook/shared';
 
@@ -66,25 +67,13 @@ import * as orderService from './order.service.js';
 
 const log = createLogger('sync');
 
-/** Which permission each mutation kind sits behind. */
-const REQUIRED_PERMISSION: Record<Mutation['kind'], Permission> = {
-  'lead.create': 'leads.create',
-  'lead.update': 'leads.edit',
-  'lead.setStage': 'leads.edit',
-  'lead.addRemark': 'leads.edit',
-  'lead.convert': 'lead.convert',
-  'order.update': 'orders.edit',
-  'order.setStage': 'orders.edit',
-  'order.dispatch': 'orders.dispatch',
-  'party.create': 'parties.create',
-  'party.update': 'parties.edit',
-  'product.create': 'products.create',
-  'product.update': 'products.edit',
-  'partyVariant.upsert': 'parties.edit',
-  'stock.inbound': 'inventory.edit',
-  'stock.adjust': 'stock.adjust',
-  'stock.setReorderLevel': 'inventory.edit',
-};
+/**
+ * Which permission each mutation kind sits behind.
+ *
+ * Lives in `@orderbook/shared` because the Office Panel enforces the same table
+ * locally while it is offline; see the note on `MUTATION_PERMISSIONS`.
+ */
+const REQUIRED_PERMISSION: Record<Mutation['kind'], Permission> = MUTATION_PERMISSIONS;
 
 /** Wire field → database column, per entity that supports a merged update. */
 const COLUMN_MAP = {
@@ -160,7 +149,19 @@ export async function applyPush(
       continue;
     }
 
-    results.push(await applyOne(mutation, actor));
+    const result = await applyOne(mutation, actor);
+    results.push(result);
+
+    // Fed back into the same map, so a mutation id repeated *within one batch*
+    // is recognised as the duplicate it is. Reading the applied set once before
+    // the loop and never updating it meant two copies in one request both
+    // applied — two leads from one `lead.create` — while the second
+    // `applied_mutations` insert was swallowed by `onConflict().ignore()` and
+    // left no trace. Only the panel's per-enqueue `randomUUID()` was preventing
+    // it, which is an accident of the client rather than a property of the
+    // protocol.
+    alreadyApplied.set(mutation.mutationId, result);
+
     if (isTemporaryId(mutation.entityId)) temporaryIds.push(mutation.entityId);
   }
 

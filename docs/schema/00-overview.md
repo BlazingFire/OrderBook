@@ -13,7 +13,7 @@ Panels never have their own database (see `PROJECT_PLAN.md` §2).
 | `03-leads-orders-inventory.md` | `leads`, `orders`, `line_items`, `line_item_quantities`, `timeline_entries`, `party_product_variants`, `inventory_stock`, `stock_reservations`, `stock_movements` |
 | `04-activity-log.md` | `activity_log` (audit trail / live feed source) |
 | `05-scaling-and-operations.md` | Why PostgreSQL, how it stays "zero-install" on a shop PC, and how it scales as data grows |
-| `06-tenancy-permissions-and-sync.md` | `tenants`, `roles`, `role_permissions`, `pipelines`, `pipeline_stages`, `option_lists`, `custom_field_definitions`, `id_map`, `applied_mutations`, `sync_conflicts`, `id_sequences`, `master_clock`, and the search vectors |
+| `06-tenancy-permissions-and-sync.md` | `tenants`, `roles`, `pipelines`, `pipeline_stages`, `option_lists`, `custom_field_definitions`, `id_map`, `applied_mutations`, `sync_conflicts`, `id_sequences`, `master_clock`, and the search vectors |
 
 ## 1. Database Engine: PostgreSQL
 

@@ -189,6 +189,76 @@ describe.skipIf(!canRunIntegrationTests)('permissions (integration)', () => {
       expect(seen.items[0]?.totalQuantity).toBe(4);
     });
 
+    it('ignores a rate from somebody without field.saleRate.edit', async () => {
+      const { party, product } = await seed();
+
+      // Holds `leads.create` and can even *see* rates — but may not set one.
+      // Before this was enforced the key existed in the catalogue, rendered as
+      // a togglable cell, and changed nothing: unticking it did not stop
+      // anybody pricing anything.
+      const pricer = await actorWith(['leads.create', 'leads.view', 'field.saleRate.view']);
+
+      const lead = await leads.createLead(
+        {
+          partyId: party.id,
+          items: [
+            {
+              productId: product.id,
+              packaging: 'carton',
+              rate: 1,
+              quantities: [{ colour: 'Ivory', quantity: 4 }],
+            },
+          ],
+        },
+        pricer,
+      );
+
+      // Dropped, not rejected — so the line falls back to the catalogue price
+      // rather than the 1 they asked for, and an offline panel replaying a day
+      // of legitimate work is not refused wholesale.
+      expect(lead.items[0]?.rate).toBe(55_000);
+    });
+
+    it('takes the rate from somebody who holds field.saleRate.edit', async () => {
+      const { party, product } = await seed();
+      const pricer = await actorWith([
+        'leads.create',
+        'leads.view',
+        'field.saleRate.view',
+        'field.saleRate.edit',
+      ]);
+
+      const lead = await leads.createLead(
+        {
+          partyId: party.id,
+          items: [
+            {
+              productId: product.id,
+              packaging: 'carton',
+              rate: 61_000,
+              quantities: [{ colour: 'Ivory', quantity: 4 }],
+            },
+          ],
+        },
+        pricer,
+      );
+
+      expect(lead.items[0]?.rate).toBe(61_000);
+    });
+
+    it('ignores a product rate from somebody without field.saleRate.edit', async () => {
+      const pricer = await actorWith(['products.create', 'products.view', 'field.saleRate.view']);
+
+      const product = await catalog.createProduct(
+        { productCode: 'PRM-02', name: 'Unpriced Tile', rate: 9 },
+        pricer,
+      );
+
+      // `products.create` says you may add a product; pricing it is a separate
+      // permission, or the pricing key is avoidable via the catalogue.
+      expect(product.rate ?? null).toBeNull();
+    });
+
     it('shows the rate to a role that holds field.saleRate.view', async () => {
       const lead = await seedLead();
       const sighted = await actorWith(['leads.view', 'field.saleRate.view']);

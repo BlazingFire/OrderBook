@@ -35,6 +35,8 @@ import { formatMoney } from '../format';
 
 interface Props {
   view: LocalView;
+  /** From the signed-in person's own resolved set, not the snapshot's. */
+  canEditRate: boolean;
   onSaved: () => void;
   onCancel: () => void;
 }
@@ -58,7 +60,7 @@ interface DraftLine {
   suggestedPackaging: string | null;
 }
 
-export function AddLeadScreen({ view, onSaved, onCancel }: Props) {
+export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
   const [partyId, setPartyId] = useState('');
   const [partySearch, setPartySearch] = useState('');
   const [showNewParty, setShowNewParty] = useState(false);
@@ -126,10 +128,17 @@ export function AddLeadScreen({ view, onSaved, onCancel }: Props) {
       .slice(0, 8);
   }, [productSearch, view.products]);
 
-  const total = lines.reduce(
-    (sum, line) => sum + Math.round((line.rate ?? 0) * totalQuantity(line)),
-    0,
-  );
+  /**
+   * The order total, or null when any line's rate is hidden from this person.
+   *
+   * `rate ?? 0` treated a rate this role may not see as free, so a rate-blind
+   * user was shown a confident ₹0.00 total in perfect good faith — the exact
+   * failure the masking rule exists to prevent (`roles-ui.md` §6). Rendering
+   * from absence means the total is either right or visibly unknown.
+   */
+  const total = lines.some((line) => line.rate === null || line.rate === undefined)
+    ? null
+    : lines.reduce((sum, line) => sum + Math.round((line.rate ?? 0) * totalQuantity(line)), 0);
 
   /**
    * Build a line from a product, applying the party's variant when the lead is
@@ -405,7 +414,10 @@ export function AddLeadScreen({ view, onSaved, onCancel }: Props) {
                 )}
               </Field>
 
-              <Field label="Rate per box">
+              <Field
+                label="Rate per box"
+                hint={canEditRate ? undefined : 'Your role cannot set rates'}
+              >
                 {(id) => (
                   // Entered in rupees, stored in paise.
                   <input
@@ -414,6 +426,9 @@ export function AddLeadScreen({ view, onSaved, onCancel }: Props) {
                     min="0"
                     step="0.01"
                     className="num"
+                    // A courtesy only — the Master ignores a rate from anybody
+                    // without `field.saleRate.edit`, whatever the panel sends.
+                    disabled={!canEditRate}
                     value={line.rate === null ? '' : line.rate / 100}
                     onChange={(event) =>
                       updateLine(index, {
@@ -459,7 +474,11 @@ export function AddLeadScreen({ view, onSaved, onCancel }: Props) {
             <div className="row right" style={{ justifyContent: 'flex-end', marginTop: 8 }}>
               <span className="muted">
                 {totalQuantity(line)} boxes ·{' '}
-                <strong>{formatMoney(Math.round((line.rate ?? 0) * totalQuantity(line)))}</strong>
+                <strong>
+                  {line.rate === null || line.rate === undefined
+                    ? '—'
+                    : formatMoney(Math.round(line.rate * totalQuantity(line)))}
+                </strong>
               </span>
             </div>
           </div>

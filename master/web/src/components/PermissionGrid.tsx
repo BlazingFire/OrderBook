@@ -158,20 +158,34 @@ export function PermissionGrid({
                 const allowed = permitted(capability.key);
                 const reason = `Requires ${catalogue.minimumTier[capability.key]} tier.`;
 
+                const hint = allowed ? capabilityHint(capability.key) : reason;
+
                 return (
                   <label
                     key={capability.key}
                     className={`capability${allowed ? '' : ' blocked'}`}
-                    title={allowed ? capabilityHint(capability.key) : reason}
+                    title={hint}
                   >
                     <input
                       type="checkbox"
                       checked={selected.has(capability.key)}
                       disabled={disabled || !allowed}
                       aria-disabled={!allowed}
+                      // The module cells above already do this; these tiles put
+                      // the reason in a `title` alone — and these tiles are
+                      // exactly where the admin-tier keys live, so the tier
+                      // ceiling was invisible to a screen reader for precisely
+                      // the keys it exists to protect. The §6 explanation of
+                      // absent-versus-null was hover-only for the same reason.
+                      aria-describedby={hint ? `why-${capability.key}` : undefined}
                       onChange={(event) => onToggle(capability.key, event.target.checked)}
                     />
                     <span>{humanise(capability.key)}</span>
+                    {hint && (
+                      <span id={`why-${capability.key}`} className="sr-only">
+                        {hint}
+                      </span>
+                    )}
                   </label>
                 );
               })}

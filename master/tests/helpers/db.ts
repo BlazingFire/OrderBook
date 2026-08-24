@@ -19,6 +19,8 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import pg from 'pg';
 
+import { embeddedPostgresPackageDir } from '../../src/db/postgres-server.js';
+
 const execFileAsync = promisify(execFile);
 
 const CLUSTER_ROOT = path.join(os.tmpdir(), 'orderbook-test-pg');
@@ -33,17 +35,32 @@ function binName(tool: string): string {
   return process.platform === 'win32' ? `${tool}.exe` : tool;
 }
 
-/** Mirrors the lookup the application does, so tests exercise the same setup. */
+/**
+ * Mirrors the lookup the application does, so tests exercise the same setup.
+ *
+ * The platform directory is *imported* rather than recomputed: this function
+ * used to build its own `${process.platform}-${process.arch}`, which on Windows
+ * is `win32-x64` while the package installs to `windows-x64`. Nothing was found,
+ * `canRunIntegrationTests` went false, and every integration suite — including
+ * the one that is the §15 gate list — reported *skipped*. A skipped gate reads
+ * exactly like a passing one in the summary line, so the guard failures this
+ * audit found had been invisible on the owner's machine the whole time.
+ */
 export function findPostgresBinDir(): string | null {
   if (process.env.ORDERBOOK_PG_BIN) return process.env.ORDERBOOK_PG_BIN;
 
   const candidates: string[] = [];
-  const platformDir = `${process.platform}-${process.arch}`;
-  candidates.push(
-    path.resolve(process.cwd(), 'node_modules', '@embedded-postgres', platformDir, 'native', 'bin'),
-  );
+  const platformDir = embeddedPostgresPackageDir();
+  for (const root of [process.cwd(), path.resolve(process.cwd(), '..')]) {
+    candidates.push(
+      path.resolve(root, 'node_modules', '@embedded-postgres', platformDir, 'native', 'bin'),
+    );
+  }
   for (const version of ['17', '16', '15', '14']) {
     candidates.push(`/usr/lib/postgresql/${version}/bin`, `/usr/pgsql-${version}/bin`);
+    // Absent before, which is why running the suite on Windows needed
+    // ORDERBOOK_PG_BIN spelled out by hand or it quietly tested nothing.
+    candidates.push(`C:\\Program Files\\PostgreSQL\\${version}\\bin`);
   }
   candidates.push('/usr/local/pgsql/bin', '/opt/homebrew/opt/postgresql/bin');
 

@@ -42,6 +42,34 @@ export function isMutationKind(value: unknown): value is MutationKind {
   return (MUTATION_KINDS as readonly unknown[]).includes(value);
 }
 
+/**
+ * Which permission each mutation kind sits behind.
+ *
+ * Shared because both ends need it and they must not disagree: an Office Panel
+ * consults it to refuse a write locally — the only check that exists while the
+ * Master is unreachable — and the Master consults it again on push, which is the
+ * check that actually counts. Two copies would drift, and the drift would show
+ * up as work a panel accepted for a whole shift and the Master then rejected.
+ */
+export const MUTATION_PERMISSIONS: Record<MutationKind, string> = {
+  'lead.create': 'leads.create',
+  'lead.update': 'leads.edit',
+  'lead.setStage': 'leads.edit',
+  'lead.addRemark': 'leads.edit',
+  'lead.convert': 'lead.convert',
+  'order.update': 'orders.edit',
+  'order.setStage': 'orders.edit',
+  'order.dispatch': 'orders.dispatch',
+  'party.create': 'parties.create',
+  'party.update': 'parties.edit',
+  'product.create': 'products.create',
+  'product.update': 'products.edit',
+  'partyVariant.upsert': 'parties.edit',
+  'stock.inbound': 'inventory.edit',
+  'stock.adjust': 'stock.adjust',
+  'stock.setReorderLevel': 'inventory.edit',
+};
+
 export interface Mutation {
   /** Client-generated. Replaying the same id is a no-op on the Master. */
   mutationId: string;

@@ -9,6 +9,18 @@ export class AppError extends Error {
     message: string,
     readonly statusCode: number,
     readonly code: string,
+    /**
+     * Structured facts about the failure, for a client to act on.
+     *
+     * The rule the guides state is "branch on the `code`, never on the message"
+     * (`roles-software-flow.md` §13). That is only possible if the things a
+     * client needs travel as data: which permission was missing, what version is
+     * actually stored, which fields differ. They were being attached by the
+     * domain layer and then dropped by the HTTP transport, so a UI that wanted
+     * to name the missing permission had to read English prose — or, in
+     * practice, gave up and said nothing.
+     */
+    readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = new.target.name;
@@ -16,8 +28,8 @@ export class AppError extends Error {
 }
 
 export class ValidationError extends AppError {
-  constructor(message: string) {
-    super(message, 400, 'validation_error');
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message, 400, 'validation_error', details);
   }
 }
 
@@ -36,7 +48,20 @@ export class UnauthorizedError extends AppError {
  */
 export class ForbiddenError extends AppError {
   constructor(readonly permission: string) {
-    super(`Missing permission: ${permission}`, 403, 'forbidden');
+    super(`Missing permission: ${permission}`, 403, 'forbidden', { permission });
+  }
+}
+
+/**
+ * A role or user id belonging to another company.
+ *
+ * Distinct from `NotFoundError` on purpose, and logged at error level: a client
+ * asking for an id it cannot possibly have seen is either a bug worth finding or
+ * a probe worth noticing, and "404" makes both invisible.
+ */
+export class TenantViolationError extends AppError {
+  constructor(what: string) {
+    super(`${what} does not belong to this company`, 403, 'tenant_violation');
   }
 }
 
@@ -47,8 +72,8 @@ export class NotFoundError extends AppError {
 }
 
 export class ConflictError extends AppError {
-  constructor(message: string) {
-    super(message, 409, 'conflict');
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message, 409, 'conflict', details);
   }
 }
 

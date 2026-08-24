@@ -14,12 +14,26 @@ import { createLogger } from './lib/logger.js';
 import { hasNetworkLink } from './lib/network.js';
 import { masterConnection } from './realtime/master-connection.js';
 import { loadCredentials } from './services/credentials.store.js';
+import * as userSession from './services/user-session.service.js';
 
 const log = createLogger('office');
 
 async function main(): Promise<void> {
   const app = createApp();
   const httpServer = createServer(app);
+
+  // The link re-establishes the acting user on every reconnect; these two
+  // events are how the outcome reaches the session. Wired here rather than
+  // inside the connection so the transport keeps knowing nothing about sessions.
+  masterConnection.on('user', (user) => {
+    void userSession.refreshFrom(user as Parameters<typeof userSession.refreshFrom>[0]);
+  });
+  masterConnection.on('session:rejected', (reason) => {
+    void userSession.rejectCurrent(reason as Parameters<typeof userSession.rejectCurrent>[0]);
+  });
+  masterConnection.on('reconcile', () => {
+    void userSession.reconcileKnownUsers();
+  });
 
   await new Promise<void>((resolve) => {
     httpServer.listen(config.http.port, config.http.host, resolve);

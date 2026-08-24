@@ -149,6 +149,35 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
       expect(rows).toHaveLength(1);
     });
 
+    it('recognises the same mutation id repeated inside one batch', async () => {
+      const { party, product } = await seed();
+      const only = mutation({
+        kind: 'lead.create',
+        entity: 'lead',
+        payload: {
+          partyId: party.id,
+          items: [
+            {
+              productId: product.id,
+              packaging: 'carton',
+              quantities: [{ colour: 'Ivory', quantity: 1 }],
+            },
+          ],
+        },
+      });
+
+      // The applied set was read once before the loop and never updated, so two
+      // copies in one request both applied — two leads from one create — and the
+      // second bookkeeping insert was swallowed by `onConflict().ignore()`,
+      // leaving nothing to notice afterwards.
+      const response = await sync.applyPush({ mutations: [only, { ...only }] }, actor);
+
+      expect(response.results.map((result) => result.status)).toEqual(['applied', 'duplicate']);
+
+      const rows = await db()('leads').select('id');
+      expect(rows).toHaveLength(1);
+    });
+
     it('numbers a batch by (hlc, device), not by arrival order', async () => {
       const { party, product } = await seed();
 

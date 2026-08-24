@@ -161,7 +161,7 @@ function OrderDetail({
                     </td>
                     <td className="right num">{item.totalQuantity}</td>
                     <td className="right num">
-                      {item.lineTotal === undefined ? '—' : formatMoney(item.lineTotal ?? 0)}
+                      {item.lineTotal === undefined ? '—' : formatMoney(item.lineTotal)}
                     </td>
                   </tr>
                 ))}

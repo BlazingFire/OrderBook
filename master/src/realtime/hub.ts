@@ -25,7 +25,7 @@ import { AppError, ForbiddenError, toErrorMessage } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import { permissionSetForRole } from '../repositories/role.repository.js';
 import * as pipelineRepo from '../repositories/pipeline.repository.js';
-import { findById as findUserById } from '../repositories/user.repository.js';
+import * as authService from '../services/auth.service.js';
 import { resolveSession } from '../services/auth.service.js';
 import * as catalogService from '../services/catalog.service.js';
 import { onChange, onConflict } from '../services/change-bus.js';
@@ -33,7 +33,9 @@ import * as conflictService from '../services/conflict.service.js';
 import * as dashboardService from '../services/dashboard.service.js';
 import * as inventoryService from '../services/inventory.service.js';
 import * as leadService from '../services/lead.service.js';
+import * as panelCredentialRepo from '../repositories/panel-credential.repository.js';
 import * as orderService from '../services/order.service.js';
+import { resolvePanelActor } from '../services/panel-actor.service.js';
 import * as panelService from '../services/panel.service.js';
 import * as searchService from '../services/search.service.js';
 import { buildSnapshot } from '../services/snapshot.service.js';
@@ -70,7 +72,18 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
   });
 
   const unsubscribeChanges = onChange((event) => {
-    io.to(ROOM_OFFICE_PANELS).to(ROOM_MASTER_ADMINS).emit('data:changed', event);
+    // The Master's own screens are the only ones that manage roles and users, and
+    // the only ones entitled to the payload. Broadcasting a `user` row to every
+    // paired panel handed each of them the whole staff list — username, display
+    // name, role, tier, active flag, last sign-in — and every role's complete
+    // permission array, with no per-recipient check, while the equivalent
+    // *request* path correctly requires `users.manage`. No panel consumes these
+    // events, so withholding them costs nothing.
+    if (!DIRECTORY_ENTITIES.has(event.entity)) {
+      io.to(ROOM_OFFICE_PANELS).emit('data:changed', event);
+    }
+
+    io.to(ROOM_MASTER_ADMINS).emit('data:changed', event);
 
     // Panel membership changes also change what the Master's panel screen and
     // dashboard should show, so those are refreshed as a pair.
@@ -94,6 +107,12 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
   };
 }
 
+/**
+ * Company directory data, which an Office Panel has no business receiving
+ * unsolicited. It can still *ask*, and the service checks `users.manage` then.
+ */
+const DIRECTORY_ENTITIES = new Set<string>(['role', 'user']);
+
 /** Changes that move a number on the dashboard. */
 const DASHBOARD_ENTITIES = new Set(['lead', 'order', 'party', 'product', 'stock', 'sync_conflict']);
 
@@ -116,6 +135,7 @@ async function authenticate(socket: PanelSocket): Promise<void> {
     socket.data.kind = 'master-admin';
     socket.data.tenantId = user.tenantId;
     socket.data.userId = user.id;
+    socket.data.sessionToken = auth.sessionToken;
     return;
   }
 
@@ -125,6 +145,11 @@ async function authenticate(socket: PanelSocket): Promise<void> {
 async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Promise<void> {
   if (socket.data.kind === 'master-admin') {
     const actor = await adminActor(socket);
+    if (!actor) {
+      socket.disconnect(true);
+      return;
+    }
+
     await socket.join(ROOM_MASTER_ADMINS);
     socket.emit('panels:changed', await panelService.listPanelsWithPresence(actor.tenantId));
     socket.emit('dashboard:changed', await dashboardService.getDashboardSummary(actor));
@@ -139,12 +164,24 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
   log.info(`Office panel connected: ${panelId}`);
   await broadcastPanels(io);
 
-  const actor = await panelActor(socket, panelId);
-  registerCommands(socket, actor);
+  const actorFor = (): Promise<ActorContext> => panelActor(socket, panelId);
+
+  // Whose snapshot this is depends on who is signed in, and the snapshot carries
+  // the permission set the panel's UI renders from — so signing in or out has to
+  // re-send it, or the screens would keep showing the previous person's view.
+  const sendSnapshot = (): void => {
+    void actorFor()
+      .then(buildSnapshot)
+      .then((snapshot) => socket.emit('sync:snapshot', snapshot))
+      .catch((error: unknown) => log.warn(`Could not build snapshot: ${toErrorMessage(error)}`));
+  };
+
+  registerCommands(socket, actorFor);
+  registerAuthCommands(socket, sendSnapshot);
 
   // A snapshot on connect means a panel that was offline catches up in one
   // round trip before incremental changes resume.
-  socket.emit('sync:snapshot', await buildSnapshot(actor));
+  socket.emit('sync:snapshot', await buildSnapshot(await actorFor()));
 
   socket.on('disconnect', () => {
     void (async () => {
@@ -155,78 +192,191 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
   });
 }
 
-function registerCommands(socket: PanelSocket, actor: ActorContext): void {
-  socket.on('sync:request', (ack) => run(ack, () => buildSnapshot(actor)));
-  socket.on('sync:push', (request, ack) => run(ack, () => syncService.applyPush(request, actor)));
+/**
+ * Wire every command on a panel socket.
+ *
+ * The actor is resolved **per command**, not captured once, because a person can
+ * sign in and out on this panel while the socket stays up — and because their
+ * role can be edited on the Master mid-session. Capturing it at connection time
+ * is how a revoked permission survives until the next reconnect
+ * (docs/ROLES_AND_USERS.md §13).
+ */
+function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorContext>): void {
+  const run = <T>(ack: CommandAck<T>, operation: (actor: ActorContext) => Promise<T>): void =>
+    respond(ack, async () => operation(await actorFor()));
 
-  socket.on('party:list', (query, ack) => run(ack, () => catalogService.listParties(query, actor)));
+  socket.on('sync:request', (ack) => run(ack, (actor) => buildSnapshot(actor)));
+  socket.on('sync:push', (request, ack) =>
+    run(ack, (actor) => syncService.applyPush(request, actor)),
+  );
+
+  socket.on('party:list', (query, ack) =>
+    run(ack, (actor) => catalogService.listParties(query, actor)),
+  );
   socket.on('party:create', (input, ack) =>
-    run(ack, () => catalogService.createParty(input, actor)),
+    run(ack, (actor) => catalogService.createParty(input, actor)),
   );
   socket.on('party:update', ({ id, input }, ack) =>
-    run(ack, () => catalogService.updateParty(id, input, actor)),
+    run(ack, (actor) => catalogService.updateParty(id, input, actor)),
   );
 
   socket.on('product:list', (query, ack) =>
-    run(ack, () => catalogService.listProducts(query, actor)),
+    run(ack, (actor) => catalogService.listProducts(query, actor)),
   );
   socket.on('product:create', (input, ack) =>
-    run(ack, () => catalogService.createProduct(input, actor)),
+    run(ack, (actor) => catalogService.createProduct(input, actor)),
   );
   socket.on('product:update', ({ id, input }, ack) =>
-    run(ack, () => catalogService.updateProduct(id, input, actor)),
+    run(ack, (actor) => catalogService.updateProduct(id, input, actor)),
   );
 
-  socket.on('category:list', (ack) => run(ack, () => catalogService.listCategories(actor)));
+  socket.on('category:list', (ack) => run(ack, (actor) => catalogService.listCategories(actor)));
 
   socket.on('partyVariant:list', (partyId, ack) =>
-    run(ack, () => catalogService.listVariantsForParty(partyId, actor)),
+    run(ack, (actor) => catalogService.listVariantsForParty(partyId, actor)),
   );
   socket.on('partyVariant:upsert', (input, ack) =>
-    run(ack, () => catalogService.upsertVariant(input, actor)),
+    run(ack, (actor) => catalogService.upsertVariant(input, actor)),
   );
 
-  socket.on('lead:list', (query, ack) => run(ack, () => leadService.listLeads(query, actor)));
-  socket.on('lead:get', (id, ack) => run(ack, () => leadService.getLead(id, actor)));
-  socket.on('lead:create', (input, ack) => run(ack, () => leadService.createLead(input, actor)));
+  socket.on('lead:list', (query, ack) => run(ack, (actor) => leadService.listLeads(query, actor)));
+  socket.on('lead:get', (id, ack) => run(ack, (actor) => leadService.getLead(id, actor)));
+  socket.on('lead:create', (input, ack) =>
+    run(ack, (actor) => leadService.createLead(input, actor)),
+  );
   socket.on('lead:update', ({ id, input }, ack) =>
-    run(ack, () => leadService.updateLead(id, input, actor)),
+    run(ack, (actor) => leadService.updateLead(id, input, actor)),
   );
-  socket.on('lead:setStage', (input, ack) => run(ack, () => leadService.setStage(input, actor)));
-  socket.on('lead:addRemark', (input, ack) => run(ack, () => leadService.addRemark(input, actor)));
-  socket.on('lead:convert', (input, ack) => run(ack, () => orderService.convertLead(input, actor)));
+  socket.on('lead:setStage', (input, ack) =>
+    run(ack, (actor) => leadService.setStage(input, actor)),
+  );
+  socket.on('lead:addRemark', (input, ack) =>
+    run(ack, (actor) => leadService.addRemark(input, actor)),
+  );
+  socket.on('lead:convert', (input, ack) =>
+    run(ack, (actor) => orderService.convertLead(input, actor)),
+  );
 
-  socket.on('order:list', (query, ack) => run(ack, () => orderService.listOrders(query, actor)));
-  socket.on('order:get', (id, ack) => run(ack, () => orderService.getOrder(id, actor)));
+  socket.on('order:list', (query, ack) =>
+    run(ack, (actor) => orderService.listOrders(query, actor)),
+  );
+  socket.on('order:get', (id, ack) => run(ack, (actor) => orderService.getOrder(id, actor)));
   socket.on('order:update', ({ id, input }, ack) =>
-    run(ack, () => orderService.updateOrder(id, input, actor)),
+    run(ack, (actor) => orderService.updateOrder(id, input, actor)),
   );
-  socket.on('order:setStage', (input, ack) => run(ack, () => orderService.setStage(input, actor)));
+  socket.on('order:setStage', (input, ack) =>
+    run(ack, (actor) => orderService.setStage(input, actor)),
+  );
   socket.on('order:dispatch', (input, ack) =>
-    run(ack, () => orderService.dispatchOrder(input, actor)),
+    run(ack, (actor) => orderService.dispatchOrder(input, actor)),
   );
 
-  socket.on('stock:list', (query, ack) => run(ack, () => inventoryService.listStock(query, actor)));
+  socket.on('stock:list', (query, ack) =>
+    run(ack, (actor) => inventoryService.listStock(query, actor)),
+  );
   socket.on('stock:movements', (query, ack) =>
-    run(ack, () => inventoryService.listMovements(query, actor)),
+    run(ack, (actor) => inventoryService.listMovements(query, actor)),
   );
   socket.on('stock:inbound', (input, ack) =>
-    run(ack, () => inventoryService.recordInbound(input, actor)),
+    run(ack, (actor) => inventoryService.recordInbound(input, actor)),
   );
   socket.on('stock:adjust', (input, ack) =>
-    run(ack, () => inventoryService.recordAdjustment(input, actor)),
+    run(ack, (actor) => inventoryService.recordAdjustment(input, actor)),
   );
   socket.on('stock:setReorderLevel', (input, ack) =>
-    run(ack, () => inventoryService.setReorderLevel(input, actor)),
+    run(ack, (actor) => inventoryService.setReorderLevel(input, actor)),
   );
 
-  socket.on('search:query', (query, ack) => run(ack, () => searchService.search(query, actor)));
+  socket.on('search:query', (query, ack) =>
+    run(ack, (actor) => searchService.search(query, actor)),
+  );
 
-  socket.on('pipeline:list', (ack) => run(ack, () => pipelineRepo.listPipelines(actor.tenantId)));
+  socket.on('pipeline:list', (ack) =>
+    run(ack, (actor) => pipelineRepo.listPipelines(actor.tenantId)),
+  );
 
-  socket.on('conflict:list', (ack) => run(ack, () => conflictService.listConflicts(actor)));
+  socket.on('conflict:list', (ack) => run(ack, (actor) => conflictService.listConflicts(actor)));
   socket.on('conflict:resolve', (input, ack) =>
-    run(ack, () => conflictService.resolveConflict(input, actor)),
+    run(ack, (actor) => conflictService.resolveConflict(input, actor)),
+  );
+}
+
+/**
+ * Sign-in commands, which deliberately sit outside `registerCommands`.
+ *
+ * These are the one group a panel may issue while holding no user identity at
+ * all — a person cannot sign in if signing in already required being signed in.
+ * They are authorised by the panel's own pairing secret, checked at handshake.
+ */
+function registerAuthCommands(socket: PanelSocket, onActorChanged: () => void): void {
+  socket.on('auth:signIn', (input, ack) =>
+    respond(ack, async () => {
+      const session = await authService.signIn(
+        input?.username ?? '',
+        input?.password ?? '',
+        // The handshake has always known which machine this is; the audit trail
+        // simply never got told. §9 asks for the source device on every entry.
+        socket.data.deviceCode ?? socket.data.panelId,
+      );
+
+      // Deliberately one signed-in person per panel: an Office Panel is one PC
+      // at one counter. Replacing the previous session keeps "who is acting"
+      // unambiguous for every command that follows on this socket.
+      socket.data.actingUserToken = session.token;
+      onActorChanged();
+
+      return session;
+    }),
+  );
+
+  socket.on('auth:assume', (token, ack) =>
+    respond(ack, async () => {
+      if (!token) {
+        socket.data.actingUserToken = undefined;
+        onActorChanged();
+        return { status: 'released' as const };
+      }
+
+      const resolution = await authService.resolveSessionDetailed(token);
+
+      if (resolution.status === 'active') {
+        socket.data.actingUserToken = token;
+        onActorChanged();
+        return { status: 'active' as const, user: await authService.decorate(resolution.user, token) };
+      }
+
+      // A dead token drops the panel back to its own role rather than leaving it
+      // acting as someone the Master no longer recognises. The *reason* travels
+      // with it, because only `revoked` justifies the panel destroying the
+      // offline verifier it holds for that person.
+      socket.data.actingUserToken = undefined;
+      onActorChanged();
+
+      return { status: 'rejected' as const, reason: resolution.reason };
+    }),
+  );
+
+  socket.on('auth:reconcile', (users, ack) =>
+    respond(ack, async () => {
+      const tenantId = socket.data.tenantId;
+      if (!tenantId) return { forget: [] };
+
+      return {
+        forget: await panelCredentialRepo.findRevokedOfflineCredentials(
+          tenantId,
+          Array.isArray(users) ? users : [],
+        ),
+      };
+    }),
+  );
+
+  socket.on('auth:signOut', (token, ack) =>
+    respond(ack, async () => {
+      authService.signOut(token);
+      if (socket.data.actingUserToken === token) socket.data.actingUserToken = undefined;
+      onActorChanged();
+      return null;
+    }),
   );
 }
 
@@ -238,7 +388,7 @@ function registerCommands(socket: PanelSocket, actor: ActorContext): void {
  * A refused permission carries its key alongside the message, so the panel can
  * hide the control rather than only showing the failure.
  */
-function run<T>(ack: CommandAck<T>, operation: () => Promise<T>): void {
+function respond<T>(ack: CommandAck<T>, operation: () => Promise<T>): void {
   if (typeof ack !== 'function') return;
 
   operation()
@@ -256,41 +406,60 @@ function run<T>(ack: CommandAck<T>, operation: () => Promise<T>): void {
 }
 
 /**
- * The actor for an Office Panel command.
- *
- * A panel acts on behalf of the user the Master associated with it. Where none
- * is set, the panel gets the seeded Office role — a panel with no permissions
- * at all could not raise a lead, which is the one thing it exists to do.
+ * The actor for an Office Panel command, resolved by the service that owns the
+ * policy. The hub's only job here is to stop presenting a token the Master has
+ * just refused.
  */
 async function panelActor(socket: PanelSocket, panelId: string): Promise<ActorContext> {
   const tenantId = socket.data.tenantId;
   if (!tenantId) throw new AppError('Panel has no tenant', 500, 'internal');
 
-  const permissions = await panelService.permissionsForPanel(tenantId, panelId);
+  const token = socket.data.actingUserToken;
 
-  return {
+  const { actor, tokenAccepted, rejection } = await resolvePanelActor({
     tenantId,
-    actorType: 'office_panel',
-    actorId: panelId,
-    userId: null,
-    permissions,
+    panelId,
     deviceCode: socket.data.deviceCode ?? null,
-  };
+    actingUserToken: token,
+  });
+
+  if (!tokenAccepted && token) {
+    socket.data.actingUserToken = undefined;
+
+    // Told, not left to be discovered. Clearing the token silently meant the
+    // panel carried on showing somebody as signed in — and kept their offline
+    // verifier — until it happened to issue another command. An idle panel
+    // issues none, so "until it happens to" could be all evening.
+    socket.emit('session:rejected', rejection ?? 'expired');
+  }
+
+  return actor;
 }
 
-async function adminActor(socket: PanelSocket): Promise<ActorContext> {
+/**
+ * The actor for a Master Panel browser socket.
+ *
+ * Resolves through the session rather than reading the user row directly.
+ * `findUserById` filters `deleted_at` only, never `is_active`, so an
+ * administrator deactivated after connecting kept an open socket streaming
+ * `data:changed`, `dashboard:changed` and `panels:changed` at them —
+ * `invalidateSessionsForUser` cleared the map entry and disconnected nothing.
+ *
+ * Returns null when the session no longer resolves, and the caller disconnects.
+ */
+async function adminActor(socket: PanelSocket): Promise<ActorContext | null> {
   const tenantId = socket.data.tenantId;
-  const userId = socket.data.userId ?? null;
   if (!tenantId) throw new AppError('Session has no tenant', 500, 'internal');
 
-  const user = userId ? await findUserById(tenantId, userId) : null;
+  const user = await authService.resolveSession(socket.data.sessionToken);
+  if (!user || user.tenantId !== tenantId) return null;
 
   return {
     tenantId,
     actorType: 'user',
-    actorId: userId,
-    userId,
-    permissions: await permissionSetForRole(user?.roleId ?? null),
+    actorId: user.id,
+    userId: user.id,
+    permissions: await permissionSetForRole(tenantId, user.roleId),
     deviceCode: null,
   };
 }
@@ -309,16 +478,24 @@ async function broadcastDashboard(io: RealtimeHub['io']): Promise<void> {
 
   for (const socket of sockets) {
     const tenantId = socket.data.tenantId;
-    const userId = socket.data.userId ?? null;
     if (!tenantId) continue;
 
-    const user = userId ? await findUserById(tenantId, userId) : null;
+    // Re-resolved per broadcast rather than rebuilt from the handshake's user
+    // id: a dashboard is permission-filtered, so pushing one to somebody whose
+    // account or role has since changed would show them figures their current
+    // role does not entitle them to.
+    const user = await authService.resolveSession(socket.data.sessionToken);
+    if (!user || user.tenantId !== tenantId) {
+      socket.disconnect(true);
+      continue;
+    }
+
     const summary = await dashboardService.getDashboardSummary({
       tenantId,
       actorType: 'user',
-      actorId: userId,
-      userId,
-      permissions: await permissionSetForRole(user?.roleId ?? null),
+      actorId: user.id,
+      userId: user.id,
+      permissions: await permissionSetForRole(tenantId, user.roleId),
       deviceCode: null,
     });
 

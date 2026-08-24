@@ -8,14 +8,23 @@
 
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import express, { type Express, type Request, type Response } from 'express';
+import express, { type Express, type NextFunction, type Request, type Response } from 'express';
+import {
+  maskLead,
+  maskOrder,
+  maskProduct,
+  maskVariant,
+  MUTATION_PERMISSIONS,
+  type SyncSnapshot,
+} from '@orderbook/shared';
 
 import { config } from '../config/index.js';
 import { createLogger } from '../lib/logger.js';
 import { hasNetworkLink, listLanInterfaces } from '../lib/network.js';
-import { masterConnection } from '../realtime/master-connection.js';
+import { MasterCommandError, masterConnection } from '../realtime/master-connection.js';
 import { loadCredentials } from '../services/credentials.store.js';
 import { PairingError, pairAutomatically, pairManually, scanForMasters } from '../services/pairing.service.js';
+import * as userSession from '../services/user-session.service.js';
 import { nextTemporaryId, refreshAfterPairing } from '../sync/device.js';
 import * as localStore from '../sync/local-store.js';
 import * as outbox from '../sync/outbox.store.js';
@@ -86,6 +95,43 @@ export function createApp(): Express {
     }
   });
 
+  // --- Who is using this panel ---
+
+  app.get('/api/session', (_req, res) => {
+    res.json({ session: userSession.currentSession() });
+  });
+
+  app.post('/api/auth/sign-in', (req, res) => {
+    void (async () => {
+      const { username, password } = req.body ?? {};
+
+      if (typeof username !== 'string' || typeof password !== 'string') {
+        res.status(400).json({ error: 'invalid_request', message: 'Enter your username and password' });
+        return;
+      }
+
+      try {
+        res.json({ session: await userSession.signIn(username, password) });
+      } catch (error) {
+        if (error instanceof userSession.SignInError) {
+          res.status(401).json({ error: error.code, message: error.message });
+          return;
+        }
+        log.error('Sign-in failed unexpectedly', error);
+        res.status(500).json({ error: 'sign_in_failed', message: 'Sign-in failed unexpectedly' });
+      }
+    })();
+  });
+
+  app.post('/api/auth/sign-out', (_req, res) => {
+    void userSession.signOut().then(() => res.json({ ok: true }));
+  });
+
+  // Everything past this point needs a person, not just a paired machine.
+  // Placed as one gate rather than repeated per route so a route added later
+  // cannot be forgotten — it is behind this by construction.
+  app.use('/api', requireUser);
+
   // --- Data, forwarded to the Master ---
 
   /**
@@ -104,7 +150,8 @@ export function createApp(): Express {
       });
       return;
     }
-    res.json(view);
+
+    res.json(forCurrentUser(view));
   });
 
   app.get('/api/sync', async (_req, res) => {
@@ -278,6 +325,22 @@ async function queue(
     baseFieldHlc?: Record<string, string>;
   },
 ): Promise<void> {
+  const session = userSession.currentSession();
+  const permission = MUTATION_PERMISSIONS[request.kind];
+
+  // While the Master is unreachable this is the *only* check standing between a
+  // person and a write. It runs against the permission set cached at their last
+  // online sign-in, and the Master re-checks the same table on push — refusing
+  // here simply means the refusal arrives now rather than a shift later.
+  if (permission && !userSession.can(permission)) {
+    res.status(403).json({
+      error: 'permission_denied',
+      message: 'You do not have permission to do that',
+      permission,
+    });
+    return;
+  }
+
   try {
     const payload = (request.payload ?? {}) as Record<string, unknown>;
     const entityId = request.entityId ?? (await nextTemporaryId());
@@ -289,6 +352,11 @@ async function queue(
       payload,
       fields: Object.keys(payload),
       baseFieldHlc: request.baseFieldHlc,
+      // Stamped so work done offline is attributed to the person who did it
+      // once it reaches the Master. It grants nothing: the Master takes the
+      // authority for a push from the session token this panel presented, never
+      // from a name inside the envelope.
+      actorUserId: session?.userId ?? null,
     });
 
     res.status(202).json({
@@ -306,14 +374,90 @@ async function queue(
   }
 }
 
+/**
+ * Re-apply field masking to the cached snapshot for whoever is signed in *now*.
+ *
+ * The snapshot on disk was built by the Master for whoever was signed in when
+ * the link last worked, and it is masked for *them*. If the link drops while a
+ * rate-permitted person is signed in and a rate-blind person then signs in
+ * offline on the same panel, serving the file unchanged hands them the rates.
+ *
+ * So the panel masks again, from the session's own permission set, using the
+ * same shared helpers the Master uses — the key is deleted, never blanked, or
+ * the UI would render a confident ₹0.00 instead of nothing.
+ *
+ * The permissions it carries are replaced too: the browser renders controls from
+ * the session rather than the snapshot, but leaving the previous person's set in
+ * a payload is a trap for the next thing that reads it.
+ */
+type LocalView = SyncSnapshot & { pendingCount: number };
+
+function forCurrentUser(view: LocalView): LocalView {
+  const permissions = userSession.sessionPermissions();
+  const allowed = permissions.includes('field.saleRate.view');
+
+  return {
+    ...view,
+    permissions,
+    leads: view.leads.map((lead) => maskLead(lead, allowed)),
+    orders: view.orders.map((order) => maskOrder(order, allowed)),
+    products: view.products.map((product) => maskProduct(product, allowed)),
+    partyVariants: view.partyVariants.map((variant) => maskVariant(variant, allowed)),
+  };
+}
+
+/**
+ * Refuse anything that is not being done by a signed-in person.
+ *
+ * This panel's API is loopback-only, so this is not a network defence — it is
+ * what stops the UI from operating under the panel's own role when nobody has
+ * identified themselves. Before per-user sign-in existed, every write from this
+ * machine was attributed to the machine; now an unattributed write is a bug.
+ */
+function requireUser(_req: Request, res: Response, next: NextFunction): void {
+  if (!userSession.currentSession()) {
+    res.status(401).json({ error: 'not_signed_in', message: 'Sign in to use this panel' });
+    return;
+  }
+  next();
+}
+
+/**
+ * Forward a command that genuinely needs the Master, and answer honestly.
+ *
+ * The two failures are not the same thing and used to be collapsed into one
+ * 502 carrying the raw message: a `PERMISSION_DENIED`, a `VALIDATION_FAILED`
+ * and "Not connected to the Master Panel" were indistinguishable to the
+ * browser, and the missing-permission key the hub took care to send was
+ * discarded on the way through.
+ *
+ * `UNAVAILABLE` (503) is §13's code for a path that needs the Master when it
+ * cannot be reached — the one code this panel is entitled to invent, because it
+ * is a fact about the panel rather than an answer from the Master.
+ */
 async function forward(res: Response, event: string, payload: unknown): Promise<void> {
   try {
     const data = await masterConnection.command(event as never, payload);
     res.json(data);
   } catch (error) {
+    if (error instanceof MasterCommandError && error.unreachable) {
+      res.status(503).json({ error: 'unavailable', message: error.message });
+      return;
+    }
+
     const message = error instanceof Error ? error.message : 'Command failed';
-    // 502: this panel is fine, the Master rejected or could not be reached.
-    res.status(502).json({ error: 'master_command_failed', message });
+    const code = error instanceof MasterCommandError ? error.code : undefined;
+
+    // The Master answered and said no. Pass its own code and the permission it
+    // named straight through, so the browser can hide a control rather than
+    // only showing a failure.
+    res.status(code === 'forbidden' ? 403 : 502).json({
+      error: code ?? 'master_command_failed',
+      message,
+      ...(error instanceof MasterCommandError && error.missingPermission
+        ? { details: { permission: error.missingPermission } }
+        : {}),
+    });
   }
 }
 
@@ -347,7 +491,9 @@ function streamEvents(req: Request, res: Response): void {
   // should render, so both re-send the merged view rather than the raw one.
   const pushView = (): void => {
     void localStore.getView().then((view) => {
-      if (view) send('snapshot', view);
+      // Masked for whoever is signed in now, exactly as /api/snapshot is — this
+      // is the same payload arriving by a different door.
+      if (view) send('snapshot', forCurrentUser(view));
     });
   };
 
