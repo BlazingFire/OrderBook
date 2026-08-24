@@ -6,16 +6,18 @@
  * applied — so a lead saved while offline appears immediately and simply stops
  * being marked pending once it syncs.
  *
- * Note what is missing compared with the previous version: there is no longer a
- * "cannot save while disconnected" state. Saving offline is the normal path
- * now, so the shell reports the connection rather than gating on it.
+ * Presentation follows 6-UI-DESIGN.md: presence rail, collapsible sidebar,
+ * topbar with universal search, status footer, splash on cold start. There is
+ * deliberately no "cannot save while disconnected" state anywhere — saving
+ * offline is the normal path, so the chrome reports the connection instead of
+ * gating on it.
  */
 
-import { useCallback, useEffect, useState } from 'react';
-import type { MutationResult } from '@orderbook/shared';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { MutationResult, SearchHit } from '@orderbook/shared';
 
 import { api, type ConnectionInfo, type LocalView, type PanelSession } from './api';
-import { SyncStatus } from './components/SyncStatus';
+import { t } from './i18n/strings';
 import { AddLeadScreen } from './screens/AddLeadScreen';
 import { CatalogScreen } from './screens/CatalogScreen';
 import { ConflictsScreen } from './screens/ConflictsScreen';
@@ -23,19 +25,53 @@ import { ConnectionScreen } from './screens/ConnectionScreen';
 import { LeadBoardScreen } from './screens/LeadBoardScreen';
 import { OrderBoardScreen } from './screens/OrderBoardScreen';
 import { SignInScreen } from './screens/SignInScreen';
+import { AppShell, type NavGroup, type NavItem } from './ui/AppShell';
+import { BusyMark } from './ui/BusyMark';
+import { GalleryScreen } from './ui/GalleryScreen';
+import { Icon } from './ui/icons';
+import { Splash } from './ui/Splash';
+import { ToastProvider, useToast } from './ui/Toast';
 
 type Tab = 'leads' | 'orders' | 'parties' | 'products' | 'conflicts';
 
+function readHash(): string {
+  return window.location.hash.replace(/^#/, '');
+}
+
 export function App() {
+  return (
+    <ToastProvider>
+      <OfficePanel />
+    </ToastProvider>
+  );
+}
+
+function OfficePanel() {
+  const toast = useToast();
+
   const [connection, setConnection] = useState<ConnectionInfo | null>(null);
   const [session, setSession] = useState<PanelSession | null>(null);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [view, setView] = useState<LocalView | null>(null);
   const [rejections, setRejections] = useState<MutationResult[]>([]);
+
   const [tab, setTab] = useState<Tab>('leads');
   const [addingLead, setAddingLead] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flushing, setFlushing] = useState(false);
+
+  // Shell chrome state.
+  const [route, setRoute] = useState(readHash);
+  const [collapsed, setCollapsed] = useState(false);
+  const [splashDone, setSplashDone] = useState(false);
+  const [syncPopover, setSyncPopover] = useState(false);
+
+  // Universal search ('/', 180ms debounce, FTS-backed on the Master).
+  const [term, setTerm] = useState('');
+  const [hits, setHits] = useState<SearchHit[] | null>(null);
+  const [searchFailedOffline, setSearchFailedOffline] = useState(false);
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  const debounceRef = useRef<number | undefined>(undefined);
 
   const refreshConnection = useCallback(async () => {
     try {
@@ -60,8 +96,8 @@ export function App() {
       const state = await api.syncState();
       setRejections(state.rejections);
     } catch {
-      // The panel's own server is unreachable — the page will report that via
-      // the connection call; there is nothing useful to say twice.
+      // The panel's own server is unreachable — the connection call will say
+      // so; there is nothing useful to say twice.
     }
   }, []);
 
@@ -70,16 +106,14 @@ export function App() {
     void refreshSession();
   }, [refreshConnection, refreshSession]);
 
-  // Sync state sits behind the sign-in gate, so asking for it before anybody has
-  // signed in earns a 401 whose only effect is a red line in the console.
+  // Sync state sits behind the sign-in gate, so asking for it before anybody
+  // has signed in earns a 401 whose only effect is a red line in the console.
   useEffect(() => {
     if (!session) return;
     void refreshSyncState();
   }, [session, refreshSyncState]);
 
-  // One event stream per signed-in session. The stream carries this panel's
-  // data, so it is behind the same gate the rest of the API is — opening it
-  // before somebody has signed in would just be answered with a 401.
+  // One event stream per signed-in session.
   useEffect(() => {
     if (!session) return;
 
@@ -91,15 +125,12 @@ export function App() {
       if (status.state === 'connected') {
         void refreshConnection();
         void refreshSyncState();
-        // The link coming back is when the Master gets to re-check who this is.
-        // If it has since deactivated them, the panel's session is already gone
-        // and this is how the screen finds out.
+        // The link coming back is when the Master gets to re-check who this
+        // is; a since-deactivated user learns about it here.
         void refreshSession();
       }
     });
 
-    // The server sends the merged view, so this replaces state wholesale rather
-    // than patching it — the merge already happened where the outbox lives.
     source.addEventListener('snapshot', (event) => {
       setView(JSON.parse((event as MessageEvent).data) as LocalView);
       void refreshSyncState();
@@ -112,13 +143,46 @@ export function App() {
     return () => source.close();
   }, [session, refreshConnection, refreshSession, refreshSyncState]);
 
+  // Hash routing: #/gallery is the one extra place a user can land.
+  useEffect(() => {
+    const onHash = () => setRoute(readHash());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  // Looping animations (rail highlight, busy mark) stop on blur (§5).
+  useEffect(() => {
+    const root = document.documentElement;
+    const onBlur = () => {
+      root.dataset.windowBlur = 'true';
+    };
+    const onFocus = () => {
+      root.dataset.windowBlur = 'false';
+    };
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('focus', onFocus);
+      delete root.dataset.windowBlur;
+    };
+  }, []);
+
   async function flush(): Promise<void> {
     setFlushing(true);
     try {
       const outcome = await api.flush();
       setRejections(outcome.rejections);
+      if (outcome.rejections.length > 0 && can('sync.resolveConflicts')) {
+        toast.push(`${outcome.rejections.length} change(s) were refused`, {
+          tone: 'error',
+          action: { label: t('action.reviewConflicts'), onClick: () => setTab('conflicts') },
+        });
+      }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not sync');
+      const message = caught instanceof Error ? caught.message : 'Could not sync';
+      setError(message);
+      toast.push(message, { tone: 'error' });
     } finally {
       setFlushing(false);
     }
@@ -130,9 +194,63 @@ export function App() {
     setView(null);
     setTab('leads');
     setAddingLead(false);
+    setHits(null);
+    setTerm('');
   }
 
-  if (!connection || !sessionChecked) return <div style={{ padding: 40 }}>Starting…</div>;
+  function runSearch(next: string): void {
+    setTerm(next);
+    window.clearTimeout(debounceRef.current);
+    if (!next.trim()) {
+      setHits(null);
+      setSearchFailedOffline(false);
+      return;
+    }
+    debounceRef.current = window.setTimeout(async () => {
+      try {
+        setHits(await api.search(next.trim()));
+        setSearchFailedOffline(false);
+      } catch {
+        setHits(null);
+        setSearchFailedOffline(true);
+      }
+    }, 180);
+  }
+
+  // Global keys: `/` focuses search; Esc closes innermost overlay first (§10).
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const typingTarget =
+        document.activeElement instanceof HTMLElement &&
+        (/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) ||
+          document.activeElement.isContentEditable);
+      if (event.key === '/' && !typingTarget) {
+        event.preventDefault();
+        searchRef.current?.focus();
+      }
+      if (event.key === 'Escape') {
+        if (hits !== null || term !== '') {
+          setHits(null);
+          setTerm('');
+        } else if (syncPopover) {
+          setSyncPopover(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [hits, term, syncPopover]);
+
+  if (!connection || !sessionChecked || !splashDone) {
+    return (
+      <>
+        {!splashDone && <Splash wordmark={t('app.name')} onDone={() => setSplashDone(true)} />}
+        {(!connection || !sessionChecked) && (
+          <div style={{ padding: 'var(--s-40)', color: 'var(--fg-secondary)' }}>{t('shell.starting')}</div>
+        )}
+      </>
+    );
+  }
 
   if (!connection.isPaired) {
     return (
@@ -151,179 +269,338 @@ export function App() {
     return <SignInScreen connection={connection} onSignedIn={setSession} />;
   }
 
-  // The session's set, not the snapshot's: signing in offline means there is no
-  // fresh snapshot to read them from, and the cached set is exactly what the
-  // panel is enforcing locally.
   const permissions = session.permissions;
   const can = (permission: string): boolean => permissions.includes(permission);
 
-  // Which tabs this person actually has. `tab` defaults to 'leads', so somebody
-  // without `leads.view` would otherwise land on a blank panel and conclude the
-  // app was broken rather than that they lack the permission.
-  const visibleTabs: Tab[] = (
-    [
-      ['leads', 'leads.view'],
-      ['orders', 'orders.view'],
-      ['parties', 'parties.view'],
-      ['products', 'products.view'],
-      ['conflicts', 'sync.resolveConflicts'],
-    ] as const
-  )
-    .filter(([, permission]) => can(permission))
-    .map(([name]) => name);
-
-  const activeTab = visibleTabs.includes(tab) ? tab : visibleTabs[0];
   const openConflicts = (view?.conflicts ?? []).filter((conflict) => !conflict.resolvedAt).length;
+  const pendingCount = view?.pendingCount ?? 0;
 
-  return (
-    <div style={{ maxWidth: 1280, margin: '0 auto', padding: '20px 16px 60px' }}>
-      <header className="row" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
-        <h1 style={{ margin: 0, fontSize: 22 }}>
-          OrderBook — Office Panel
-          {connection.companyName ? (
-            <span className="muted"> · {connection.companyName}</span>
-          ) : null}
-        </h1>
+  // ---- Presence rail (§7): conflict review > offline pending > syncing > synced.
+  const linkDown = connection.state === 'disconnected' || !connection.hasNetworkLink;
+  let railState: 'synced' | 'syncing' | 'offline' | 'offlinePending' | 'conflict';
+  if (openConflicts > 0 && can('sync.resolveConflicts')) railState = 'conflict';
+  else if (linkDown || connection.state === 'unpaired' || connection.state === 'connecting')
+    railState = pendingCount > 0 ? 'offlinePending' : 'offline';
+  else railState = flushing || pendingCount > 0 ? 'syncing' : 'synced';
 
-        <div className="row" style={{ gap: 10 }}>
-          <span className="muted">
-            {session.displayName} · {session.roleName}
-            {/*
-              Worth saying out loud: these permissions were cached at the last
-              online sign-in, so an administrator's change made while this panel
-              was unreachable is not reflected yet.
-            */}
-            {session.offline ? ' · signed in offline' : ''}
-          </span>
-          <button className="secondary" onClick={() => void signOut()}>
-            Sign out
-          </button>
-        </div>
-      </header>
+  const syncLabel =
+    railState === 'conflict'
+      ? t('sync.conflictReview', { count: openConflicts })
+      : railState === 'offlinePending'
+        ? t('sync.offlinePending', { count: pendingCount })
+        : railState === 'offline'
+          ? t('sync.offline')
+          : railState === 'syncing'
+            ? t('sync.syncing', { count: pendingCount })
+            : t('sync.synced');
 
-      <SyncStatus
-        connection={connection}
-        pendingCount={view?.pendingCount ?? 0}
-        rejections={rejections}
-        onFlush={() => void flush()}
-        busy={flushing}
-      />
+  const railDotColour =
+    railState === 'conflict'
+      ? 'var(--state-conflict)'
+      : railState === 'offline' || railState === 'offlinePending'
+        ? 'var(--state-offline)'
+        : railState === 'syncing'
+          ? 'var(--accent)'
+          : 'var(--line-strong)';
 
-      {error && (
-        <div className="error" onClick={() => setError(null)} role="alert">
-          {error}
-        </div>
+  // ---- Sidebar modules: absent, not greyed, when the role lacks `view`.
+  const groups: NavGroup[] = [
+    {
+      label: t('nav.work'),
+      items: (
+        [
+          can('leads.view')
+            ? { id: 'leads', label: t('nav.leads'), icon: 'leads' as const }
+            : null,
+          can('orders.view') ? { id: 'orders', label: t('nav.orders'), icon: 'orders' as const } : null,
+          can('sync.resolveConflicts')
+            ? {
+                id: 'conflicts',
+                label: t('nav.conflicts'),
+                icon: 'conflicts' as const,
+                count: openConflicts > 0 ? openConflicts : undefined,
+              }
+            : null,
+        ] satisfies Array<NavItem | null>
+      ).filter((item): item is NonNullable<typeof item> => item !== null),
+    },
+    {
+      label: t('nav.catalogue'),
+      items: (
+        [
+          can('products.view')
+            ? { id: 'products', label: t('nav.products'), icon: 'products' as const }
+            : null,
+          can('parties.view') ? { id: 'parties', label: t('nav.parties'), icon: 'parties' as const } : null,
+        ] satisfies Array<NavItem | null>
+      ).filter((item): item is NonNullable<typeof item> => item !== null),
+    },
+  ];
+
+  // Map sidebar ids back onto the tabs the screens know.
+  const idToTab: Record<string, Tab> = {
+    leads: 'leads',
+    orders: 'orders',
+    parties: 'parties',
+    products: 'products',
+    conflicts: 'conflicts',
+  };
+
+  const activeId =
+    route === 'gallery'
+      ? 'gallery'
+      : groups.some((group) => group.items.some((item) => item.id === idToTab[tab]))
+        ? tab
+        : (groups.flatMap((group) => group.items)[0]?.id ?? '');
+
+  const activeLabel =
+    route === 'gallery'
+      ? t('footer.designSystem')
+      : (groups.flatMap((group) => group.items).find((item) => item.id === activeId)?.label ?? t('app.panel'));
+
+  const lastSynced = connection.lastSyncedAt ? new Date(connection.lastSyncedAt).toLocaleString() : '—';
+
+  const topbar = (
+    <>
+      <h1 className="ob-title" style={{ marginRight: 'var(--s-4)' }}>
+        {activeLabel}
+      </h1>
+
+      <span style={{ flex: 1 }} />
+
+      <div className="ob-search">
+        <input
+          ref={searchRef}
+          className="ob-input"
+          value={term}
+          onChange={(event) => runSearch(event.target.value)}
+          placeholder={t('search.placeholder')}
+          aria-label={t('search.placeholder')}
+          autoComplete="off"
+        />
+        <kbd>/</kbd>
+        {term.trim() !== '' && (hits !== null || searchFailedOffline) && (
+          <div className="ob-popover" style={{ left: 0, right: 0, top: 'calc(var(--ctl-h-md) + var(--s-4))', padding: 'var(--s-4)' }}>
+            {searchFailedOffline ? (
+              <p className="ob-small" style={{ padding: 'var(--s-8)' }}>
+                {t('search.failedOffline')}
+              </p>
+            ) : hits !== null && hits.length === 0 ? (
+              <p className="ob-small" style={{ padding: 'var(--s-8)' }}>
+                {t('search.noResults', { term })}
+              </p>
+            ) : (
+              (hits ?? []).map((hit) => (
+                <button
+                  key={`${hit.kind}:${hit.id}`}
+                  type="button"
+                  onClick={() => {
+                    setHits(null);
+                    setTerm('');
+                    searchRef.current?.blur();
+                  }}
+                  className="ob-navitem"
+                  style={{ borderRadius: 'var(--r-sm)' }}
+                >
+                  <Icon
+                    name={hit.kind === 'product' ? 'products' : hit.kind === 'party' ? 'parties' : 'orders'}
+                  />
+                  <span>{hit.title}</span>
+                  {hit.subtitle && <span className="count">{hit.subtitle}</span>}
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      {!addingLead && route !== 'gallery' && can('leads.create') && (
+        <button
+          className="ob-btn ob-btn--primary"
+          disabled={!view}
+          onClick={() => setAddingLead(true)}
+        >
+          {t('action.newLead')}
+        </button>
       )}
 
-      {addingLead && view ? (
+      <button className="ob-btn ob-btn--ghost" onClick={() => void signOut()}>
+        {t('action.signOut')}
+      </button>
+    </>
+  );
+
+  const footer = (
+    <>
+      <button type="button" className="ob-footer-sync" style={{ color: 'inherit' }} onClick={() => setSyncPopover((open) => !open)}>
+        <span className="dot" style={{ background: railDotColour }} />
+        {syncLabel}
+      </button>
+      <span style={{ flex: 1 }} />
+      {connection.companyName && <span>{`${t('footer.company')} · ${connection.companyName}`}</span>}
+      <span>
+        {t('footer.signedInAs', { name: session.displayName, role: session.roleName })}
+        {session.offline ? ` · ${t('footer.offlineSignIn')}` : ''}
+      </span>
+      <a
+        href="#/gallery"
+        onClick={() => setRoute('gallery')}
+        style={{ color: 'var(--fg-tertiary)' }}
+      >
+        {t('footer.designSystem')}
+      </a>
+      <span className="ob-mono" style={{ fontSize: '10.5px', color: 'var(--fg-tertiary)' }}>
+        {t('footer.version')}
+      </span>
+    </>
+  );
+
+  const overlays = (
+    <>
+      {syncPopover && (
+        <>
+          {/* Click-away shim keeps the popover honest without a portal. */}
+          <div style={{ position: 'absolute', inset: 0, zIndex: 'var(--z-popover)' }} onClick={() => setSyncPopover(false)} />
+          <div className="ob-popover" style={{ left: 'var(--s-12)', bottom: 'calc(var(--shell-footer-h) + var(--s-8))', width: 300, padding: 'var(--s-16)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
+              <span className="ob-body-strong">{syncLabel}</span>
+              <span style={{ flex: 1 }} />
+              <button type="button" className="ob-icon-btn" aria-label={t('action.close')} title={t('action.close')} onClick={() => setSyncPopover(false)}>
+                <Icon name="close" size={10} />
+              </button>
+            </div>
+            <dl className="ob-kv" style={{ marginTop: 'var(--s-8)' }}>
+              <dt>{t('sync.pendingChanges')}</dt>
+              <dd className="ob-data">{pendingCount}</dd>
+              {rejections.length > 0 && (
+                <>
+                  <dt>{t('sync.refusedChanges')}</dt>
+                  <dd className="ob-data" style={{ color: 'var(--state-conflict)' }}>
+                    {rejections.length}
+                  </dd>
+                </>
+              )}
+              <dt>{t('sync.lastSuccessful')}</dt>
+              <dd>{lastSynced}</dd>
+              <dt>{t('sync.pairedServer')}</dt>
+              <dd className="ob-mono" style={{ fontSize: '11.5px' }}>
+                {connection.masterHost ?? '—'}
+              </dd>
+            </dl>
+            <div style={{ display: 'flex', gap: 'var(--s-8)', marginTop: 'var(--s-12)', paddingTop: 'var(--s-8)', borderTop: '1px solid var(--line)' }}>
+              <button className="ob-btn ob-btn--secondary ob-btn--sm" disabled={flushing || pendingCount === 0} aria-busy={flushing} onClick={() => void flush()}>
+                {flushing ? <BusyMark size={12} label="" /> : null}
+                {flushing ? t('sync.flushing') : t('sync.flushNow')}
+              </button>
+              {can('sync.resolveConflicts') && openConflicts > 0 && (
+                <button
+                  className="ob-btn ob-btn--ghost ob-btn--sm"
+                  style={{ color: 'var(--accent)' }}
+                  onClick={() => {
+                    setSyncPopover(false);
+                    setRoute('');
+                    setTab('conflicts');
+                  }}
+                >
+                  {t('action.reviewConflicts')}
+                </button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {error && (
+        <div className="ob-banner ob-banner--conflict" role="alert" style={{ position: 'absolute', right: 'var(--s-20)', bottom: 'calc(var(--shell-footer-h) + var(--s-8))', zIndex: 'var(--z-toast)' }}>
+          <span>{error}</span>
+          <span style={{ flex: 1 }} />
+          <button className="ob-icon-btn" aria-label={t('action.dismiss')} title={t('action.dismiss')} onClick={() => setError(null)}>
+            <Icon name="close" size={10} />
+          </button>
+        </div>
+      )}
+    </>
+  );
+
+  const content = (() => {
+    if (route === 'gallery') return <GalleryScreen />;
+
+    if (addingLead && view) {
+      return (
         <AddLeadScreen
           view={view}
           canEditRate={can('field.saleRate.edit')}
           onSaved={() => {
             setAddingLead(false);
             setTab('leads');
+            toast.push('Lead saved on this machine — it syncs when the Master is reachable');
           }}
           onCancel={() => setAddingLead(false)}
         />
-      ) : (
-        <>
-          <div className="row" style={{ justifyContent: 'space-between', marginBottom: 16 }}>
-            {/*
-              Absent, not greyed. A module somebody's role does not include
-              should not appear at all — `roles-ui.md` §11's second gate is
-              exactly this, and the Master's own shell already does it. The
-              services fail closed regardless, so this is the affordance rather
-              than the rule.
-            */}
-            <nav className="row">
-              {can('leads.view') && (
-                <TabButton current={activeTab} value="leads" onSelect={setTab}>
-                  Leads
-                </TabButton>
-              )}
-              {can('orders.view') && (
-                <TabButton current={activeTab} value="orders" onSelect={setTab}>
-                  Orders
-                </TabButton>
-              )}
-              {can('parties.view') && (
-                <TabButton current={activeTab} value="parties" onSelect={setTab}>
-                  Parties
-                </TabButton>
-              )}
-              {can('products.view') && (
-                <TabButton current={activeTab} value="products" onSelect={setTab}>
-                  Products
-                </TabButton>
-              )}
-              {can('sync.resolveConflicts') && (
-                <TabButton current={activeTab} value="conflicts" onSelect={setTab}>
-                  Conflicts{openConflicts > 0 ? ` (${openConflicts})` : ''}
-                </TabButton>
-              )}
-            </nav>
+      );
+    }
 
-            {/* No longer gated on the connection — offline saving is the point. */}
-            <button onClick={() => setAddingLead(true)} disabled={!view || !can('leads.create')}>
-              + Add Lead
-            </button>
+    if (!view) {
+      return (
+        <div className="ob-empty">
+          <BusyMark size={48} label="" />
+          <h3>{activeLabel}</h3>
+          <p>{t('shell.waitingFirstSync')}</p>
+        </div>
+      );
+    }
+
+    switch (idToTab[activeId] ?? activeId) {
+      case 'leads':
+        return <LeadBoardScreen view={view} canConvert={can('lead.convert')} onError={setError} />;
+      case 'orders':
+        return <OrderBoardScreen view={view} canDispatch={can('orders.dispatch')} onError={setError} />;
+      case 'conflicts':
+        return (
+          <ConflictsScreen
+            conflicts={view.conflicts}
+            canResolve={can('sync.resolveConflicts')}
+            onError={setError}
+            onResolved={() => void flush()}
+          />
+        );
+      case 'parties':
+      case 'products':
+        return <CatalogScreen view={view} tab={activeId as 'parties' | 'products'} />;
+      default:
+        // Every tab is behind a permission, so a role with none reaches this.
+        // Said plainly rather than shown as an empty list.
+        return (
+          <div className="ob-empty">
+            <h3>{activeLabel}</h3>
+            <p>{t('shell.noModules')}</p>
           </div>
+        );
+    }
+  })();
 
-          {!view ? (
-            <div className="card">
-              <p className="muted">
-                Waiting for the first sync with the Master Panel. Once it has happened, this panel
-                keeps working whether or not the Master is reachable.
-              </p>
-            </div>
-          ) : activeTab === 'leads' ? (
-            <LeadBoardScreen view={view} canConvert={can('lead.convert')} onError={setError} />
-          ) : activeTab === 'orders' ? (
-            <OrderBoardScreen
-              view={view}
-              canDispatch={can('orders.dispatch')}
-              onError={setError}
-            />
-          ) : activeTab === 'conflicts' ? (
-            <ConflictsScreen
-              conflicts={view.conflicts}
-              canResolve={can('sync.resolveConflicts')}
-              onError={setError}
-              onResolved={() => void flush()}
-            />
-          ) : activeTab === 'parties' || activeTab === 'products' ? (
-            <CatalogScreen view={view} tab={activeTab} />
-          ) : (
-            // Every tab is behind a permission, so a role with none of them
-            // reaches this. Said plainly rather than shown as an empty list,
-            // which reads as "the company has no data".
-            <div className="card">
-              <p className="muted">
-                Your role does not include access to any of this panel&apos;s screens. Ask an
-                administrator if you think that is wrong.
-              </p>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-function TabButton({
-  current,
-  value,
-  onSelect,
-  children,
-}: {
-  current: Tab;
-  value: Tab;
-  onSelect: (tab: Tab) => void;
-  children: React.ReactNode;
-}) {
   return (
-    <button className={current === value ? '' : 'secondary'} onClick={() => onSelect(value)}>
-      {children}
-    </button>
+    <AppShell
+      groups={groups}
+      activeId={activeId}
+      onNavigate={(id) => {
+        // Clear a stale #/gallery so the hash and the state agree; replaceState
+        // does not fire hashchange, the setRoute below is the source of truth.
+        if (readHash()) window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        setRoute('');
+        setAddingLead(false);
+        if (idToTab[id]) setTab(idToTab[id]);
+      }}
+      collapsed={collapsed}
+      onToggleCollapsed={() => setCollapsed((value) => !value)}
+      topbar={topbar}
+      footer={footer}
+      rail={railState}
+      railLabel={syncLabel}
+      onRailClick={() => setSyncPopover((open) => !open)}
+      overlays={overlays}
+    >
+      {content}
+    </AppShell>
   );
 }

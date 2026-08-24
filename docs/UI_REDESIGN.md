@@ -1,8 +1,47 @@
 # UI redesign — plan
 
-Status: **planning only, nothing built yet.** This is the working document for porting the
-supplied Claude Design UI system onto OrderBook's two real frontends. Update it as phases land,
-the same way `docs/LEAD_GENERATION_FLOW.md` and `docs/ROLES_AND_USERS.md` track their modules.
+Status: **Phase 1 (foundation) landed — inside `office/web` only; Phases 2–4 not started.**
+This is the working document for porting the supplied Claude Design UI system onto OrderBook's
+two real frontends. Update it as phases land, the same way `docs/LEAD_GENERATION_FLOW.md` and
+`docs/ROLES_AND_USERS.md` track their modules.
+
+### Phase 1 landing notes (2026-08-25)
+
+The design-system foundation is built and verified (`tsc`, eslint, `vite build`, budgets all
+green), with four deliberate divergences from §7, each made to avoid touching files the
+parallel backend session was actively editing:
+
+1. **Location: `office/web/src/ui/`, not a new `@orderbook/ui` workspace.** Creating the
+   workspace means editing root `package.json` (+ `npm install` → package-lock churn), which
+   collided with concurrent root-file edits. Everything under `src/ui/` is dependency-free;
+   hoisting it into the shared workspace is a file move plus an import-path fix-up, listed as
+   the first item of remaining Phase 1 work.
+2. **Fonts: `src/ui/fonts/*.woff2` referenced from CSS `url()`, not `public/fonts/`.**
+   Functionally identical (bundled, hashed, `font-display: block`, zero runtime requests) and
+   it skips the public-dir + copy step. Subsets were trimmed to stay under the §11 budget:
+   Inter variable latin (~48 KB) + a symbols slice carrying ₹/dashes/quotes (~8 KB),
+   IBM Plex Mono 400/500/600 latin, Noto Sans Devanagari variable devanagari-only — **218 KB
+   total against the 250 KB budget**.
+3. **i18n: a minimal local module (`office/web/src/i18n/strings.ts`) serves new shell code.**
+   §4.4's "keep t() out of scope" still holds for the existing ~4,000 lines of screens. A
+   shared i18n module is being built on the backend side; when it lands, this dictionary moves
+   onto it without touching call sites.
+4. **Theme/density/motion controls exist only in the token gallery (`#/gallery`)**, per §4.6 —
+   no per-screen toggles shipped. The gallery route itself was endorsed by §5 (Brand row).
+
+Landed and wired into `App.tsx`: tokens (light+dark), reset, motion kill switches (both),
+logo/wordmark, splash (cold start, skipped entirely when motion is off), busy indicator (the
+only spinner), presence rail with real sync state (conflict > offline-pending > syncing >
+synced), collapsible grouped sidebar (permission-filtered, absent-not-greyed), topbar with
+universal search (`/`, 180 ms debounce, Esc-closes-innermost), status footer + sync popover,
+toasts (bottom-left, 4 s, max 3). Existing screens adopt the look through a legacy-compat
+layer in `styles.css` that re-expresses the old class names in tokens; Phase 2 replaces that
+screen by screen.
+
+Still open from the Phase 1 list: extraction to the `ui/` workspace, the remaining dedicated
+primitives (Combobox, Checkbox/Radio/Switch, DateField, Modal, Tooltip, Tabs, FilterBar,
+CursorPager, PermissionGrid as components), and CI gates (§8 Phase 4).
+
 
 Source material (outside the repo, on the owner's Desktop —
 `C:\Users\Z\Desktop\OrderBook UI design\`):

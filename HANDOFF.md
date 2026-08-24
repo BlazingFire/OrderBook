@@ -419,14 +419,18 @@ working tree for what actually exists if this section reads stale.
   created offline and no role conflict banner can exist; there is no username
   availability endpoint; and the permission grid has no arrow-key roving focus.
 
-- **UI redesign + six new backend modules: fully specified, nothing built**
-  (2026-08-24). The owner supplied a Claude Design UI system and asked for the
+- **UI redesign + six new backend modules: backend planning done, implementation underway (Stages 0–2 of 9)**
+  (2026-08-24, foundation 2026-08-25, backend Stages 0–2 2026-08-25). The owner supplied a Claude Design UI system and asked for the
   backend for the screens it implies (Fields, Logs, Recycle Bin, Reports, PDF
   Designer, i18n, Office Dashboard) to be planned to implementation-ready
   detail before any code is written. That planning is done:
   - **Frontend plan**: `docs/UI_REDESIGN.md` — the mockup-to-real-screen
     mapping, the divergences between the supplied design and the two-app
     reality, the new `ui/` component workspace, and the phased build order.
+    Its Phase 1 (design-system foundation) landed 2026-08-25, scoped to
+    `office/web/src/ui/` to avoid root-file collisions with the concurrent
+    backend session — see "Phase 1 landing notes" at the top of that document
+    for what exists, what diverged and why, and what remains.
   - **Backend plan**: a twelve-document specification set at
     `docs/backend-modules/` (`README.md` is the index) — architecture, file
     structure, database DDL, API contract, the existing-code change list,
@@ -445,12 +449,57 @@ working tree for what actually exists if this section reads stale.
     the `labelToken` contract already exists in `permissions.ts`); Orders
     keeps its Kanban board *and* gains a table view; the Master chrome goes
     permanently dark to distinguish it from the Office Panel at a glance.
-  - **Next session starts implementation at Stage 0** of
-    `docs/backend-modules/11-BUILD-SEQUENCE.md` — the ~15-line socket-ack
-    `details` fix that two later modules depend on. Read `README.md` §8 first:
-    it lists the open questions still needing an answer (the sharpest is
-    whether `AppError.messageKey` is required — 129 throw sites depend on the
-    answer and it gates Stage 1) and which stage each one blocks.
+  - **Implementation: Stages 0–2 of 9 done and verified** (2026-08-25).
+    `docs/backend-modules/11-BUILD-SEQUENCE.md` owns the stage numbering.
+    - **Stage 0 — socket ack `details`.** `CommandResult`'s `{ ok: false }`
+      arm carries `details`/`messageKey`/`params`; `hub.ts`'s `respond()` sets
+      them for any `AppError`, not only `ForbiddenError`; the Office's
+      `MasterCommandError` and `forward()` carry them end to end.
+    - **Stage 1 — i18n foundation.** `README.md` §8's open question is
+      answered: `AppError.messageKey` **is required** (Option A) — `message`
+      is derived from the English catalogue, and all **129** throw sites
+      across `master/src` were swept to name a token — somewhat more than
+      the plan's estimated 68 hand-written tokens, because several
+      `UnauthorizedError` messages the plan would have collapsed into one
+      generic token were kept distinct instead, to avoid losing information
+      the product already gave (e.g. "this account has been deactivated" vs.
+      "sign-in failed" vs. "too many failed attempts"). `shared/src/i18n/`
+      has the full EN/HI
+      catalogue (229 keys, matched and placeholder-parity-checked by a pure
+      test), `t()`/`tCount()`, the Devanagari pseudo-locale, and the
+      `no-untranslated-jsx-text` ESLint rule (registered `'off'`, promoted in
+      the UI phase as specified). `recordActivity(entry, actor, trx)`
+      landed here, ahead of Stage 4, across all 24 call sites.
+      `CursorPage`/`CursorQuery` and the one cursor codec
+      (`master/src/domain/cursor.ts`) are built. `config.locale.timeZone`
+      plus startup validation is in `master/src/index.ts`.
+    - **Stage 2 — Recycle Bin.** The first delete path that leads, orders,
+      parties and products have ever had. `DELETE /api/{leads,orders,parties,products}/:id`
+      (mounted in `data.routes.ts`, the first handlers there to carry a
+      permission guard) plus `/api/recycle-bin` (list, counts, restore) and
+      the matching Office Panel forwarding routes and socket commands.
+      `RECYCLE_BIN_ENTITIES` ships with its Stage-2 six (`lead`, `order`,
+      `party`, `product`, `role`, `user`); Fields and the PDF Designer append
+      the rest at their own stages. Restoring a role or user now offers a
+      deterministic rename on a name collision (`suggestRestoredName`) and
+      correctly publishes `'restored'`, not `'updated'` — both were gaps in
+      the existing roles/users Bin, closed as part of this module rather than
+      filed separately. Migration `20260305000000_soft_delete_columns`.
+    - **Verified:** `npm run verify` is green — **461 tests across 30
+      files**, up from 421 before this batch started. Lint and typecheck are
+      clean across all five TypeScript projects (`shared`, `master`, `office`,
+      `master/web`, `office/web`).
+    - **Not yet built:** Stages 3–8 — Fields, Logs, Reports, PDF Designer, the
+      shared permission-grant migration (`20260309`), and the Office
+      Dashboard. Each is substantial; the PDF Designer is documented as the
+      largest single module in the batch and needs its own fontkit-shaping
+      spike (`README.md` §8.1 open question 6) before it starts. Continue at
+      Stage 3 (Fields) in `docs/backend-modules/11-BUILD-SEQUENCE.md`.
+    - **A pre-existing, unrelated item found in passing:** `office/web/src/ui/`
+      is mid-work from the concurrent UI-redesign session (see
+      `docs/UI_REDESIGN.md`'s "Phase 1 landing notes") and does not fully
+      typecheck (`Splash.tsx` references a missing `./logoCells` module). Not
+      touched by this batch — it belongs to that other session's scope.
 
 ### Still to do in Phase 2
 
@@ -567,6 +616,9 @@ in the order the plan lists them:
 - **A permission that enforces nothing is worse than a missing one.** It renders
   as a control, an administrator unticks it believing something changed, and
   nothing does. Either wire it up or delete it from the catalogue.
+- **`zIndex` and friends accept CSS `var()` in React inline styles** — prefer
+  the layer tokens (`--z-toast`…) over bare numbers so layering stays in
+  `tokens.css`.
 
 ## Working agreements for this repo
 
