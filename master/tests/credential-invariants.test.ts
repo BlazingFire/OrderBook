@@ -87,4 +87,29 @@ describe('the two-layer permission check', () => {
     // administrative rights ever could).
     expect(guards.length).toBe(handlers.length - 2);
   });
+
+  it('guards every fields route — no exemptions here, unlike access.routes.ts', () => {
+    const routes = read('http/routes/fields.routes.ts');
+
+    // Comment lines can mention `needs(` (this file's own header does) without
+    // being a guard, so both counts are filtered the same way `countCalls`
+    // filters comments above — a raw substring count would silently pass
+    // whether or not a handler actually calls it.
+    const handlers = routes
+      .split('\n')
+      .filter((line) => /fieldsRoutes\.(get|post|put|delete)\(/.test(line));
+    const guards = routes
+      .split('\n')
+      .filter((line) => {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('//') || trimmed.startsWith('*')) return false;
+        return line.includes('needs(');
+      });
+
+    // Every Fields endpoint is gated by `fields.view` or `fields.manage` — the
+    // `- 2` exemption above is specific to `access.routes.ts`'s two genuinely
+    // ungated routes and must never be copied here or generalised into a loop
+    // over routers.
+    expect(guards.length).toBe(handlers.length);
+  });
 });

@@ -118,6 +118,11 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
   // roles receive them through the permission grid.
   { key: 'recycleBin.view', group: 'admin', labelToken: 'permission.recycleBin.view' },
   { key: 'recycleBin.viewAll', group: 'admin', labelToken: 'permission.recycleBin.viewAll' },
+
+  // Fields (docs/backend-modules/08-PERMISSIONS.md §4). No `MINIMUM_TIER` entry
+  // below — reading is available to every tier, on both panels; only
+  // `fields.manage` is ceilinged.
+  { key: 'fields.view', group: 'admin', labelToken: 'permission.fields.view' },
 ] as const;
 
 // --- The frozen key list ---------------------------------------------------
@@ -168,7 +173,6 @@ const MINIMUM_TIER: Record<string, RoleTier> = {
   'roles.assign': 'admin',
   'panels.manage': 'admin',
   'settings.manage': 'admin',
-  'fields.manage': 'admin',
   'sync.resolveConflicts': 'admin',
   'roles.view': 'admin',
   'roles.create': 'admin',
@@ -190,6 +194,12 @@ const MINIMUM_TIER: Record<string, RoleTier> = {
   // Recycle Bin: viewing your own deletions is office tier; seeing everyone
   // else's is management — a wider disclosure than the delete key itself.
   'recycleBin.viewAll': 'management',
+
+  // Fields: reading is office tier (no entry, above); editing a pipeline stage
+  // or option list reorders every board and picker in the company, so it wants
+  // a supervisor. Lowered from admin — an unattended Office Panel still falls
+  // back to its office-tier role, so this never reaches an unattended panel.
+  'fields.manage': 'management',
 };
 
 /** The lowest tier permitted to hold a key. */

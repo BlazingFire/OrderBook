@@ -31,6 +31,7 @@ import * as catalogService from '../services/catalog.service.js';
 import { onChange, onConflict } from '../services/change-bus.js';
 import * as conflictService from '../services/conflict.service.js';
 import * as dashboardService from '../services/dashboard.service.js';
+import * as fieldsService from '../services/fields.service.js';
 import * as inventoryService from '../services/inventory.service.js';
 import * as leadService from '../services/lead.service.js';
 import * as panelCredentialRepo from '../repositories/panel-credential.repository.js';
@@ -312,6 +313,46 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   socket.on('recycleBin:restore', (input, ack) =>
     run(ack, (actor) => recycleBinService.restoreEntity(input, actor)),
   );
+
+  socket.on('fields:catalogue', (ack) => run(ack, (actor) => Promise.resolve(fieldsService.fieldsCatalogue(actor))));
+  socket.on('fields:values', (query, ack) => run(ack, (actor) => fieldsService.listValues(query, actor)));
+  socket.on('fields:usage', (query, ack) => run(ack, (actor) => fieldsService.fieldUsage(query, actor)));
+  socket.on('fields:createValue', (input, ack) =>
+    run(ack, (actor) => fieldsService.createValue(input, actor)),
+  );
+  socket.on('fields:updateValue', ({ id, input }, ack) =>
+    run(ack, (actor) => fieldsService.updateValue(id, input, actor)),
+  );
+  socket.on('fields:deleteValue', (id, ack) => run(ack, (actor) => fieldsService.deleteValue(id, actor)));
+  socket.on('fields:reorderValues', (input, ack) =>
+    run(ack, (actor) => fieldsService.reorderValues(input, actor)),
+  );
+
+  socket.on('fields:definitions', (query, ack) =>
+    run(ack, (actor) => fieldsService.listDefinitions(query, actor)),
+  );
+  socket.on('fields:createDefinition', (input, ack) =>
+    run(ack, (actor) => fieldsService.createDefinition(input, actor)),
+  );
+  socket.on('fields:updateDefinition', ({ id, input }, ack) =>
+    run(ack, (actor) => fieldsService.updateDefinition(id, input, actor)),
+  );
+  socket.on('fields:deleteDefinition', (id, ack) =>
+    run(ack, (actor) => fieldsService.deleteDefinition(id, actor)),
+  );
+  socket.on('fields:reorderDefinitions', (input, ack) =>
+    run(ack, (actor) => fieldsService.reorderDefinitions(input, actor)),
+  );
+
+  socket.on('fields:stages', (ack) => run(ack, (actor) => fieldsService.listStages(actor)));
+  socket.on('fields:updateStage', ({ id, input }, ack) =>
+    run(ack, (actor) => fieldsService.updateStage(id, input, actor)),
+  );
+  socket.on('fields:reorderStages', (input, ack) =>
+    run(ack, (actor) => fieldsService.reorderStages(input, actor)),
+  );
+  socket.on('fields:archiveStage', (id, ack) => run(ack, (actor) => fieldsService.archiveStage(id, actor)));
+  socket.on('fields:restoreStage', (id, ack) => run(ack, (actor) => fieldsService.restoreStage(id, actor)));
 }
 
 /**

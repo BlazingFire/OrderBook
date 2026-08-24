@@ -449,7 +449,7 @@ working tree for what actually exists if this section reads stale.
     the `labelToken` contract already exists in `permissions.ts`); Orders
     keeps its Kanban board *and* gains a table view; the Master chrome goes
     permanently dark to distinguish it from the Office Panel at a glance.
-  - **Implementation: Stages 0–2 of 9 done and verified** (2026-08-25).
+  - **Implementation: Stages 0–3 of 9 done and verified** (2026-08-25).
     `docs/backend-modules/11-BUILD-SEQUENCE.md` owns the stage numbering.
     - **Stage 0 — socket ack `details`.** `CommandResult`'s `{ ok: false }`
       arm carries `details`/`messageKey`/`params`; `hub.ts`'s `respond()` sets
@@ -485,16 +485,137 @@ working tree for what actually exists if this section reads stale.
       correctly publishes `'restored'`, not `'updated'` — both were gaps in
       the existing roles/users Bin, closed as part of this module rather than
       filed separately. Migration `20260305000000_soft_delete_columns`.
-    - **Verified:** `npm run verify` is green — **461 tests across 30
-      files**, up from 421 before this batch started. Lint and typecheck are
-      clean across all five TypeScript projects (`shared`, `master`, `office`,
-      `master/web`, `office/web`).
-    - **Not yet built:** Stages 3–8 — Fields, Logs, Reports, PDF Designer, the
-      shared permission-grant migration (`20260309`), and the Office
-      Dashboard. Each is substantial; the PDF Designer is documented as the
-      largest single module in the batch and needs its own fontkit-shaping
-      spike (`README.md` §8.1 open question 6) before it starts. Continue at
-      Stage 3 (Fields) in `docs/backend-modules/11-BUILD-SEQUENCE.md`.
+    - **Stage 3 — Fields** (2026-08-24, this session). Managed pipelines,
+      stages, option-list values (including colour hex) and custom-field
+      definitions become editable for the first time — until now
+      `GET /api/pipelines`, `/api/option-lists` and `/api/custom-fields` were
+      the only code that ever touched these three tables, seeded once by
+      `20260301` and never written to again.
+      - **New surface:** `/api/fields/*` (17 endpoints — catalogue, values,
+        usage, definitions, stages, and a write path for each), mirrored 1:1
+        as `fields:*` socket commands and Office forwarding routes. Reading is
+        `fields.view` (every tier, both panels); editing is `fields.manage`
+        (lowered `admin` → `management` — an unattended Office Panel still
+        falls back to its office-tier role, so this never reaches an
+        unattended panel). The three existing reads stay on `requireAuth`
+        alone, **deliberately** — they feed `buildSnapshot`'s `Promise.all`,
+        and a `fields.view` check there would produce no snapshot at all for
+        anyone lacking the key (swallowed into a log line at `hub.ts`'s
+        `sendSnapshot`). This is stated three times in the backend-modules
+        spec as the single most likely way to break the panel for every user,
+        and it is now stated a fourth time here.
+      - **The rule the module hangs on:** a value's identity is the exact
+        string a record holds. `value`/`key` are immutable once created;
+        editing goes through `label`/`hex`/`isActive` only.
+        `normaliseOptionValue` trims and never case-folds — `White` and
+        `white` are two live values, because they are already two distinct
+        `stockKey()` strings. Removing a value soft-deletes the descriptor row
+        only: every lead, order and stock row that already held the string
+        keeps it and keeps rendering, proven by an integration test asserting
+        `inventory_stock` is byte-identical before and after a delete.
+      - **Optimistic concurrency is mandatory**, not optional, on both
+        `PUT /api/fields/values/:id` and `/definitions/:id` — the same
+        `assertVersionMatches` contract roles and users already use: an
+        omitted `expectedVersion` is 400, a stale one is 409 carrying
+        `storedVersion`, and a losing concurrent writer does not overwrite
+        (pinned by an integration test that races two saves against the same
+        starting version).
+      - **Pipeline stages get `is_archived`, not `deleted_at`** — the only
+        configurable value set in the product referenced by a real foreign
+        key (`leads.stage_id`, `orders.stage_id`), so a soft delete would be a
+        delete nothing can ever hard-delete. Archiving stops new records
+        landing in a stage; every record already in it keeps rendering, and
+        `assertStageMove` refuses moving a record *into* an archived stage
+        while leaving a move *out of* one legal. Archiving the pipeline's
+        default stage, or a stage still holding a live lead or order, is
+        refused (409, naming the occupancy and a suggested target — the
+        default stage).
+      - **Reordering needed real schema work, not just a repository
+        function.** `pipeline_stages_seq_unique` (`20260306` migration)
+        replaces the old plain unique *index* with a `DEFERRABLE INITIALLY
+        IMMEDIATE` table constraint — a unique index cannot be deferrable, and
+        dragging one stage above another means writing sequences that
+        transiently collide. The write path opens
+        `SET CONSTRAINTS ... DEFERRED` for exactly that transaction. Swapping
+        the *default* stage cannot use the same trick — its uniqueness is a
+        *partial* index (`WHERE is_default`), which genuinely cannot be
+        deferred — so that write is clear-then-set in one transaction instead
+        (never set-then-clear, which passes through the illegal
+        two-defaults state). Both are exercised by integration tests that
+        would fail immediately without the deferred constraint / correct
+        ordering, not merely assert the end state.
+      - **`RECYCLE_BIN_ENTITIES` grows to eight**: `option_list_item` and
+        `custom_field_definition` join the Stage-2 six, restoring through
+        `fields.manage` (no `recycleBin.restore` key is minted). Both refuse
+        a restore that collides with a live value/key rather than offering a
+        rename — offering one would be the sole loophole in the "value/key
+        are immutable" rule every other write path in this module enforces.
+      - **Migration `20260306000000_field_values_and_stage_ordering`**: the
+        soft-delete pair, `version`, and partial-unique-index rework for both
+        `option_lists` and `custom_field_definitions`; `option_lists.hex`
+        with a `CHECK (hex ~ '^#[0-9A-Fa-f]{6}$')`; `pipeline_stages.is_archived`
+        with its own `CHECK` refusing an archived default; and a one-time
+        backfill of the three list keys `20260301` never seeded
+        (`stock.colour`, `product.productType`, `line.packaging`) from the
+        distinct strings already present in the data. `down()` is
+        deliberately empty — same reasoning as `20260305`, plus: the seeded
+        colour rows are user-visible configuration an administrator may have
+        since relabelled and given hex values to, and reverting the deferrable
+        constraint would leave the reorder endpoint unimplementable while the
+        application still calls it.
+      - **Two real defects found while building this, neither of which a
+        browser would have shown:**
+        - The Recycle Bin's `UNION ALL` failed outright once these two
+          branches were added — `"UNION types text and uuid cannot be
+          matched"`. `option_lists`/`custom_field_definitions` use `UUID`
+          primary keys (Master-only-minted infrastructure, unlike the
+          syncable-record `TEXT` ids every other Bin branch selects), so
+          `recycle-bin.repository.ts`'s two new branches must cast
+          `id::text`. Caught by `recycle-bin.integration.test.ts`'s existing
+          paging gate, re-run at eight branches rather than six.
+        - `master/tests/helpers/fixtures.ts`'s seeded-row treatment for
+          `option_lists`/`custom_field_definitions` (mirroring the existing
+          roles pattern — capture ids once, keep them across a truncate)
+          quietly broke test isolation **across files**, not within one:
+          neither table is in `DATA_TABLES`, so nothing wipes them between
+          test files sharing the one on-disk cluster, and the *next* file's
+          own `setupDatabase()` re-queries current state and would capture
+          whatever a *previous* file's last test left behind — deleted or
+          not — as newly "seeded," immortalising it. Fixed by self-healing
+          both tables in `setupDatabase()` before capturing, the same way
+          roles self-heal by name: `custom_field_definitions` seeds nothing
+          on any installation, so it is unconditionally emptied first;
+          `option_lists`' only rows every migration run against a *fresh*
+          test database is guaranteed to create are the six seeded
+          `lead.sourcePlatform` values (the other three `FIELD_LIST_KEYS`
+          backfill from tables that are always empty at migration time in
+          this harness), so anything else is deleted before capture. Found by
+          running the full suite twice in a row without wiping the test
+          cluster between runs — the first run alone was misleadingly green.
+      - **Verified against real PostgreSQL 16** (not the bundled
+        embedded-postgres binaries — this sandbox has no non-root account
+        those would start cleanly under by default, so the session ran
+        integration tests as a separate non-root user against the
+        distribution's PostgreSQL 16 with `ORDERBOOK_PG_BIN` set, which is
+        exactly the supported fallback path `HANDOFF.md` already documents
+        for the owner's own machine). `npm run verify` is green —
+        **535 tests across 32 files**, up from 461 across 30 — confirmed
+        stable across two consecutive full runs against the same
+        already-populated cluster (the scenario the fixture bug above
+        needed to reproduce). `npm run build` succeeds for all five
+        TypeScript projects including both Vite bundles.
+      - **Not built in this stage, and out of its scope:** any screen —
+        Fields is backend-only per the batch's own scoping rule
+        (`02-FILE-STRUCTURE.md` §2), the ten screens belong to the UI phase.
+        The one frontend surface in scope, typed client wrappers with no UI
+        attached, is done in both `master/web/src/api.ts` and
+        `office/web/src/api.ts`.
+    - **Not yet built:** Stages 4–8 — Logs, Reports, PDF Designer, the shared
+      permission-grant migration (`20260309`), and the Office Dashboard. Each
+      is substantial; the PDF Designer is documented as the largest single
+      module in the batch and needs its own fontkit-shaping spike
+      (`README.md` §8.1 open question 6) before it starts. Continue at
+      Stage 4 (Logs) in `docs/backend-modules/11-BUILD-SEQUENCE.md`.
     - **A pre-existing, unrelated item found in passing:** `office/web/src/ui/`
       is mid-work from the concurrent UI-redesign session (see
       `docs/UI_REDESIGN.md`'s "Phase 1 landing notes") and does not fully
@@ -522,8 +643,8 @@ in the order the plan lists them:
   written yet.**
 
   The **backend** half now has its own implementation-ready spec at
-  `docs/backend-modules/` — see the Status entry above. Implementation has not
-  started; that is the very next piece of work on this repo.
+  `docs/backend-modules/` — see the Status entry above. Stages 0–3 of 9 are
+  done; Stage 4 (Logs) is the very next piece of work on this repo.
 - Reporting/analytics and printable order sheets. `docs/LEAD_GENERATION_FLOW.md`
   §11 explains why the guide's PDF Designer and `Order.exports[]` were
   deliberately left out of that build — that reasoning is historical, not a
@@ -619,6 +740,22 @@ in the order the plan lists them:
 - **`zIndex` and friends accept CSS `var()` in React inline styles** — prefer
   the layer tokens (`--z-toast`…) over bare numbers so layering stays in
   `tokens.css`.
+- **A `UNION ALL` branch must cast to the type its siblings use.**
+  `option_lists`/`custom_field_definitions` have `UUID` primary keys, unlike
+  every other Recycle Bin branch's `TEXT` id; Postgres refuses the union
+  outright ("UNION types text and uuid cannot be matched") rather than
+  coercing silently. Cast the odd one out (`id::text`), don't change the rest.
+- **A test-fixture "seeded row" set captured per test *file* is only correct
+  if every file starts from an identical database.** `option_lists`/
+  `custom_field_definitions` are not in `DATA_TABLES` (truncating either
+  leaves no pipeline stage or source-platform option for anything to write
+  against), so nothing wipes them between files sharing the one on-disk test
+  cluster — meaning whatever a *previous* file's last test left behind, a
+  later file's own `setupDatabase()` re-captures as "seeded" and then
+  protects forever. Self-heal to a known-fixed set before capturing (as
+  roles already do by name), don't just capture "whatever exists now." A
+  single `npx vitest run` can be misleadingly green; the tell is running it
+  twice in a row without wiping the cluster.
 
 ## Working agreements for this repo
 

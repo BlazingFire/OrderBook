@@ -10,15 +10,29 @@
  */
 
 import type {
+  CustomFieldDefinition,
+  CustomFieldDefinitionInput,
+  CustomFieldDefinitionUpdateInput,
+  CustomFieldReorderInput,
+  FieldCatalogue,
+  FieldUsageBreakdown,
   LeadInput,
   LeadUpdateInput,
   MessageKey,
   MessageParams,
   MutationResult,
+  OptionListItem,
+  OptionListItemInput,
+  OptionListItemUpdateInput,
+  OptionListReorderInput,
   PartyInput,
   PartyProductVariantInput,
+  Pipeline,
+  PipelineStage,
+  PipelineStageInput,
   ProductInput,
   SearchHit,
+  StageReorderInput,
   SyncConflict,
   SyncSnapshot,
 } from '@orderbook/shared';
@@ -211,4 +225,48 @@ export const api = {
   conflicts: () => request<SyncConflict[]>('/api/conflicts'),
   resolveConflict: (id: number, action: 'keepWinner' | 'restoreLoser') =>
     post<SyncConflict>(`/api/conflicts/${id}/resolve`, { action }),
+
+  // Fields, forwarded live like stock and search — a curated list is
+  // company-wide configuration with no field-level merge to fall back on
+  // (option_lists/custom_field_definitions carry no hlc/field_hlc), so it
+  // fails hard (503) rather than queuing offline.
+  fieldsCatalogue: () => request<FieldCatalogue>('/api/fields/catalogue'),
+  fieldValues: (listKey: string, options: { includeDeleted?: boolean; includeUnlisted?: boolean } = {}) => {
+    const params = new URLSearchParams({ listKey });
+    if (options.includeDeleted) params.set('includeDeleted', 'true');
+    if (options.includeUnlisted) params.set('includeUnlisted', 'true');
+    return request<{ items: OptionListItem[]; unlisted?: string[] }>(`/api/fields/values?${params}`);
+  },
+  fieldUsage: (listKey: string) =>
+    request<FieldUsageBreakdown>(`/api/fields/usage?listKey=${encodeURIComponent(listKey)}`),
+  createFieldValue: (input: OptionListItemInput) => post<OptionListItem>('/api/fields/values', input),
+  updateFieldValue: (id: string, input: OptionListItemUpdateInput) =>
+    put<OptionListItem>(`/api/fields/values/${id}`, input),
+  deleteFieldValue: (id: string) =>
+    request<{ id: string; deletedAt: string }>(`/api/fields/values/${id}`, { method: 'DELETE' }),
+  reorderFieldValues: (input: OptionListReorderInput) =>
+    post<OptionListItem[]>('/api/fields/values/reorder', input),
+
+  fieldDefinitions: (options: { entity?: string; includeDeleted?: boolean } = {}) => {
+    const params = new URLSearchParams();
+    if (options.entity) params.set('entity', options.entity);
+    if (options.includeDeleted) params.set('includeDeleted', 'true');
+    const query = params.toString();
+    return request<CustomFieldDefinition[]>(`/api/fields/definitions${query ? `?${query}` : ''}`);
+  },
+  createFieldDefinition: (input: CustomFieldDefinitionInput) =>
+    post<CustomFieldDefinition>('/api/fields/definitions', input),
+  updateFieldDefinition: (id: string, input: CustomFieldDefinitionUpdateInput) =>
+    put<CustomFieldDefinition>(`/api/fields/definitions/${id}`, input),
+  deleteFieldDefinition: (id: string) =>
+    request<{ id: string; deletedAt: string }>(`/api/fields/definitions/${id}`, { method: 'DELETE' }),
+  reorderFieldDefinitions: (input: CustomFieldReorderInput) =>
+    post<CustomFieldDefinition[]>('/api/fields/definitions/reorder', input),
+
+  fieldStages: () => request<Pipeline[]>('/api/fields/stages'),
+  updateFieldStage: (id: string, input: PipelineStageInput) =>
+    put<PipelineStage>(`/api/fields/stages/${id}`, input),
+  reorderFieldStages: (input: StageReorderInput) => post<PipelineStage[]>('/api/fields/stages/reorder', input),
+  archiveFieldStage: (id: string) => post<PipelineStage>(`/api/fields/stages/${id}/archive`),
+  restoreFieldStage: (id: string) => post<PipelineStage>(`/api/fields/stages/${id}/restore`),
 };

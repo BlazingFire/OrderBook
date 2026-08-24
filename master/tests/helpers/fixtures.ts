@@ -54,6 +54,36 @@ const DATA_TABLES = [
  */
 let seededRoleIds: string[] = [];
 
+/**
+ * The same treatment for `option_lists` (Stage 3 — Fields): seeded
+ * configuration, not `DATA_TABLES`, for the same reason roles are not — a
+ * lead needs a source-platform option to exist, and truncating it leaves a
+ * database no test can write to.
+ *
+ * `custom_field_definitions` needs no equivalent set: no migration ever
+ * inserts a row into it, so its seeded set is always empty and every row is
+ * unconditionally test data — see the self-heal below.
+ */
+let seededOptionListIds: string[] = [];
+
+/**
+ * `pipeline_stages` is never created or deleted by Fields — only renamed,
+ * recoloured, reordered, archived and restored — so its "seeded" set is every
+ * row, and what must be undone between tests is not row *existence* but the
+ * writable columns a Fields test can touch. Captured once, whatever the seed
+ * migration currently sets them to, rather than duplicating `LEAD_STAGES`/
+ * `ORDER_STAGES` here as a second source of truth.
+ */
+interface StageSnapshot {
+  id: string;
+  name: string;
+  sequence: number;
+  is_default: boolean;
+  is_terminal: boolean;
+  colour: string | null;
+}
+let seededStages: StageSnapshot[] = [];
+
 export async function setupDatabase(): Promise<void> {
   await startTestPostgres();
   initDatabase(testConnectionUrl());
@@ -66,6 +96,39 @@ export async function setupDatabase(): Promise<void> {
 
   const rows = await db()('roles').select<Array<{ id: string }>>('id');
   seededRoleIds = rows.map((row) => row.id);
+
+  // Self-heal the same way, and for the same reason: `option_lists` and
+  // `custom_field_definitions` are not in `DATA_TABLES` and nothing wipes
+  // them between test *files* sharing this cluster, so a row a previous
+  // file's test created — and never got to clean up past its own last test —
+  // would otherwise be captured as "seeded" here and survive every
+  // `resetData()` in this file forever. The only rows every migration run
+  // against a fresh test database is guaranteed to create are the six
+  // `lead.sourcePlatform` values (`20260301`); the other three
+  // `FIELD_LIST_KEYS` backfill from tables that are always empty at
+  // migration time here, and `custom_field_definitions` seeds nothing at
+  // all. Duplicated from the migration deliberately, the same way
+  // `['Admin', 'Management', 'Office']` is duplicated just above — a test
+  // helper's self-heal list is not the "migration imports a live constant"
+  // trap that rule warns about.
+  await db().raw(
+    `DELETE FROM option_lists
+      WHERE NOT (list_key = 'lead.sourcePlatform' AND value = ANY(?))`,
+    [['whatsapp', 'call', 'website', 'walk_in', 'referral', 'other']],
+  );
+  await db()('custom_field_definitions').delete();
+
+  const optionRows = await db()('option_lists').select<Array<{ id: string }>>('id');
+  seededOptionListIds = optionRows.map((row) => row.id);
+
+  seededStages = await db()('pipeline_stages').select<StageSnapshot[]>(
+    'id',
+    'name',
+    'sequence',
+    'is_default',
+    'is_terminal',
+    'colour',
+  );
 }
 
 export async function teardownDatabase(): Promise<void> {
@@ -89,6 +152,42 @@ export async function resetData(): Promise<void> {
   // Anything a test created goes; the seeded roles stay.
   if (seededRoleIds.length > 0) {
     await db()('roles').whereNotIn('id', seededRoleIds).delete();
+  }
+
+  // Same rule for the Fields seed: delete what a test created, keep the
+  // seeded rows, and clear any soft-delete a Bin test left on a seeded row —
+  // otherwise a later test's Bin gate sees a tombstone nothing in that test
+  // ever deleted.
+  if (seededOptionListIds.length > 0) {
+    await db()('option_lists').whereNotIn('id', seededOptionListIds).delete();
+    await db()('option_lists')
+      .whereIn('id', seededOptionListIds)
+      .update({ deleted_at: null, deleted_by: null });
+  }
+  // Always empty — see the self-heal in `setupDatabase()` above — so every
+  // row here is unconditionally test data.
+  await db()('custom_field_definitions').delete();
+
+  // Every writable stage column back to its seeded snapshot. `is_default` is
+  // cleared for every row first, in the same transaction as the deferred
+  // sequence constraint — `idx_pipeline_stages_one_default` is a plain partial
+  // index and cannot be deferred, so restoring two swapped defaults with a
+  // naive per-row UPDATE would collide exactly like a real reorder would.
+  if (seededStages.length > 0) {
+    await db().transaction(async (trx) => {
+      await trx.raw('SET CONSTRAINTS pipeline_stages_seq_unique DEFERRED');
+      await trx('pipeline_stages').update({ is_default: false, is_archived: false });
+
+      for (const stage of seededStages) {
+        await trx('pipeline_stages').where({ id: stage.id }).update({
+          name: stage.name,
+          sequence: stage.sequence,
+          is_default: stage.is_default,
+          is_terminal: stage.is_terminal,
+          colour: stage.colour,
+        });
+      }
+    });
   }
 
   // Roles are seeded configuration and survive the truncate, so their counter

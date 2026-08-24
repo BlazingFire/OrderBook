@@ -144,6 +144,13 @@ export interface PipelineStage {
   /** A record in a terminal stage is finished — won, lost, dispatched. */
   isTerminal: boolean;
   colour: string | null;
+  /**
+   * Stops new records landing in this stage; every record already in it keeps
+   * rendering. Not a soft delete — `pipeline_stages` is referenced by a real
+   * foreign key (`leads.stage_id`, `orders.stage_id`), so it cannot be one, and
+   * it is not a Recycle Bin entity.
+   */
+  isArchived: boolean;
 }
 
 export interface Pipeline {
@@ -161,19 +168,47 @@ export interface OptionListItem {
   id: Uuid;
   tenantId: Uuid;
   listKey: string;
+  /** The record-facing identity. Immutable once created — rename `label` instead. */
   value: string;
   label: string;
   sequence: number;
+  /** Hidden from pickers but still renders on records that hold it; switchable back in place. */
   isActive: boolean;
+  /** `#RRGGBB`, or null for a set with no colour to render — see `FieldSetDefinition.hasHex`. */
+  hex: string | null;
+  /** Removed. Goes to the Recycle Bin; the string stays on every record that holds it. */
+  deletedAt: IsoTimestamp | null;
+  createdAt: IsoTimestamp;
+  updatedAt: IsoTimestamp;
+  /** Optimistic concurrency — mandatory on `PUT /api/fields/values/:id`. */
+  version: number;
 }
 
 export type CustomFieldType = 'text' | 'number' | 'date' | 'select' | 'boolean';
+export const CUSTOM_FIELD_TYPES: readonly CustomFieldType[] = [
+  'text',
+  'number',
+  'date',
+  'select',
+  'boolean',
+];
+
 export type CustomFieldEntity = 'lead' | 'order' | 'party' | 'product';
+export const CUSTOM_FIELD_ENTITIES: readonly CustomFieldEntity[] = ['lead', 'order', 'party', 'product'];
+
+export function isCustomFieldEntity(value: unknown): value is CustomFieldEntity {
+  return (CUSTOM_FIELD_ENTITIES as readonly unknown[]).includes(value);
+}
+
+export function isCustomFieldType(value: unknown): value is CustomFieldType {
+  return (CUSTOM_FIELD_TYPES as readonly unknown[]).includes(value);
+}
 
 export interface CustomFieldDefinition {
   id: Uuid;
   tenantId: Uuid;
   entity: CustomFieldEntity;
+  /** What the value is stored under in the record's `custom_fields` JSONB. Immutable once created. */
   key: string;
   label: string;
   fieldType: CustomFieldType;
@@ -182,6 +217,10 @@ export interface CustomFieldDefinition {
   options: string[];
   sequence: number;
   isActive: boolean;
+  /** Removed. Stored JSONB values keep the key; re-adding it recovers them. */
+  deletedAt: IsoTimestamp | null;
+  /** Optimistic concurrency — mandatory on `PUT /api/fields/definitions/:id`. */
+  version: number;
 }
 
 // --- Reference data --------------------------------------------------------

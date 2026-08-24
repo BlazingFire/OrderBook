@@ -18,6 +18,7 @@ import type {
   CustomFieldDefinition,
   DashboardSummary,
   InventoryStockLevel,
+  IsoTimestamp,
   Lead,
   OfficePanelWithPresence,
   OptionListItem,
@@ -25,6 +26,7 @@ import type {
   Party,
   PartyProductVariant,
   Pipeline,
+  PipelineStage,
   Product,
   ProductCategory,
   RecordId,
@@ -34,20 +36,28 @@ import type {
   SyncConflict,
   Uuid,
 } from '../domain/entities.js';
+import type { FieldCatalogue, FieldUsageBreakdown } from '../domain/fields.js';
 import type {
   ConflictResolutionInput,
   CursorPage,
+  CustomFieldDefinitionInput,
+  CustomFieldDefinitionUpdateInput,
+  CustomFieldReorderInput,
   LeadConvertInput,
   LeadInput,
   LeadListQuery,
   LeadUpdateInput,
   ListQuery,
+  OptionListItemInput,
+  OptionListItemUpdateInput,
+  OptionListReorderInput,
   OrderDispatchInput,
   OrderListQuery,
   OrderUpdateInput,
   Paginated,
   PartyInput,
   PartyProductVariantInput,
+  PipelineStageInput,
   ProductInput,
   RecycleBinQuery,
   RemarkInput,
@@ -55,6 +65,7 @@ import type {
   RestoreInput,
   SearchQuery,
   StageChangeInput,
+  StageReorderInput,
   StockAdjustmentInput,
   StockInboundInput,
   StockListQuery,
@@ -334,6 +345,53 @@ export interface ClientToServerEvents {
   'recycleBin:list': (query: RecycleBinQuery, ack: CommandAck<CursorPage<BinEntry>>) => void;
   'recycleBin:counts': (ack: CommandAck<BinCounts>) => void;
   'recycleBin:restore': (input: RestoreInput, ack: CommandAck<BinRestoreResult>) => void;
+
+  // --- Fields (docs/backend-modules/04-API-CONTRACT.md §5) ------------------
+  // Reading is `fields.view` (every tier); editing is `fields.manage`
+  // (management+). Nothing here is queued offline — see fields.service.ts.
+  'fields:catalogue': (ack: CommandAck<FieldCatalogue>) => void;
+  'fields:values': (
+    query: { listKey: string; includeDeleted?: boolean; includeUnlisted?: boolean },
+    ack: CommandAck<{ items: OptionListItem[]; unlisted?: string[] }>,
+  ) => void;
+  'fields:usage': (query: { listKey: string }, ack: CommandAck<FieldUsageBreakdown>) => void;
+  'fields:createValue': (input: OptionListItemInput, ack: CommandAck<OptionListItem>) => void;
+  'fields:updateValue': (
+    payload: { id: Uuid; input: OptionListItemUpdateInput },
+    ack: CommandAck<OptionListItem>,
+  ) => void;
+  'fields:deleteValue': (id: Uuid, ack: CommandAck<{ id: Uuid; deletedAt: IsoTimestamp }>) => void;
+  'fields:reorderValues': (input: OptionListReorderInput, ack: CommandAck<OptionListItem[]>) => void;
+
+  'fields:definitions': (
+    query: { entity?: string; includeDeleted?: boolean },
+    ack: CommandAck<CustomFieldDefinition[]>,
+  ) => void;
+  'fields:createDefinition': (
+    input: CustomFieldDefinitionInput,
+    ack: CommandAck<CustomFieldDefinition>,
+  ) => void;
+  'fields:updateDefinition': (
+    payload: { id: Uuid; input: CustomFieldDefinitionUpdateInput },
+    ack: CommandAck<CustomFieldDefinition>,
+  ) => void;
+  'fields:deleteDefinition': (
+    id: Uuid,
+    ack: CommandAck<{ id: Uuid; deletedAt: IsoTimestamp }>,
+  ) => void;
+  'fields:reorderDefinitions': (
+    input: CustomFieldReorderInput,
+    ack: CommandAck<CustomFieldDefinition[]>,
+  ) => void;
+
+  'fields:stages': (ack: CommandAck<Pipeline[]>) => void;
+  'fields:updateStage': (
+    payload: { id: Uuid; input: PipelineStageInput },
+    ack: CommandAck<PipelineStage>,
+  ) => void;
+  'fields:reorderStages': (input: StageReorderInput, ack: CommandAck<PipelineStage[]>) => void;
+  'fields:archiveStage': (id: Uuid, ack: CommandAck<PipelineStage>) => void;
+  'fields:restoreStage': (id: Uuid, ack: CommandAck<PipelineStage>) => void;
 }
 
 /** Master → clients. */

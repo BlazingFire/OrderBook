@@ -3,7 +3,12 @@
 import type {
   ChangeOwnPasswordInput,
   CustomFieldDefinition,
+  CustomFieldDefinitionInput,
+  CustomFieldDefinitionUpdateInput,
+  CustomFieldReorderInput,
   DashboardSummary,
+  FieldCatalogue,
+  FieldUsageBreakdown,
   InventoryStockLevel,
   Lead,
   MasterIdentity,
@@ -11,12 +16,17 @@ import type {
   MessageParams,
   OfficePanelWithPresence,
   OptionListItem,
+  OptionListItemInput,
+  OptionListItemUpdateInput,
+  OptionListReorderInput,
   Order,
   Paginated,
   Party,
   PartyInput,
   PartyProductVariant,
   Pipeline,
+  PipelineStage,
+  PipelineStageInput,
   OneTimeSecret,
   PermissionCatalogue,
   Product,
@@ -25,6 +35,7 @@ import type {
   Role,
   RoleInput,
   SearchHit,
+  StageReorderInput,
   StockMovement,
   StorageUsage,
   SignedInUser,
@@ -148,6 +159,52 @@ export const api = {
   pipelines: () => request<Pipeline[]>('/api/pipelines'),
   optionLists: () => request<OptionListItem[]>('/api/option-lists'),
   customFields: () => request<CustomFieldDefinition[]>('/api/custom-fields'),
+
+  // --- Fields (management surface — the three reads above stay ungated) ----
+
+  fieldsCatalogue: () => request<FieldCatalogue>('/api/fields/catalogue'),
+  fieldValues: (listKey: string, options: { includeDeleted?: boolean; includeUnlisted?: boolean } = {}) => {
+    const params = new URLSearchParams({ listKey });
+    if (options.includeDeleted) params.set('includeDeleted', 'true');
+    if (options.includeUnlisted) params.set('includeUnlisted', 'true');
+    return request<{ items: OptionListItem[]; unlisted?: string[] }>(`/api/fields/values?${params}`);
+  },
+  fieldUsage: (listKey: string) =>
+    request<FieldUsageBreakdown>(`/api/fields/usage?listKey=${encodeURIComponent(listKey)}`),
+  createFieldValue: (input: OptionListItemInput) => post<OptionListItem>('/api/fields/values', input),
+  updateFieldValue: (id: string, input: OptionListItemUpdateInput) =>
+    request<OptionListItem>(`/api/fields/values/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+  deleteFieldValue: (id: string) =>
+    request<{ id: string; deletedAt: string }>(`/api/fields/values/${id}`, { method: 'DELETE' }),
+  reorderFieldValues: (input: OptionListReorderInput) =>
+    post<OptionListItem[]>('/api/fields/values/reorder', input),
+
+  fieldDefinitions: (options: { entity?: string; includeDeleted?: boolean } = {}) => {
+    const params = new URLSearchParams();
+    if (options.entity) params.set('entity', options.entity);
+    if (options.includeDeleted) params.set('includeDeleted', 'true');
+    const query = params.toString();
+    return request<CustomFieldDefinition[]>(`/api/fields/definitions${query ? `?${query}` : ''}`);
+  },
+  createFieldDefinition: (input: CustomFieldDefinitionInput) =>
+    post<CustomFieldDefinition>('/api/fields/definitions', input),
+  updateFieldDefinition: (id: string, input: CustomFieldDefinitionUpdateInput) =>
+    request<CustomFieldDefinition>(`/api/fields/definitions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  deleteFieldDefinition: (id: string) =>
+    request<{ id: string; deletedAt: string }>(`/api/fields/definitions/${id}`, { method: 'DELETE' }),
+  reorderFieldDefinitions: (input: CustomFieldReorderInput) =>
+    post<CustomFieldDefinition[]>('/api/fields/definitions/reorder', input),
+
+  fieldStages: () => request<Pipeline[]>('/api/fields/stages'),
+  updateFieldStage: (id: string, input: PipelineStageInput) =>
+    request<PipelineStage>(`/api/fields/stages/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+  reorderFieldStages: (input: StageReorderInput) =>
+    post<PipelineStage[]>('/api/fields/stages/reorder', input),
+  archiveFieldStage: (id: string) => post<PipelineStage>(`/api/fields/stages/${id}/archive`),
+  restoreFieldStage: (id: string) => post<PipelineStage>(`/api/fields/stages/${id}/restore`),
 
   search: (term: string) => request<SearchHit[]>(`/api/search?q=${encodeURIComponent(term)}`),
 

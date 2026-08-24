@@ -119,6 +119,9 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       ['get', '/api/pipelines'],
       ['get', '/api/panels'],
       ['post', '/api/panels/pairing-window/open'],
+      ['get', '/api/fields/catalogue'],
+      ['get', '/api/fields/stages'],
+      ['post', '/api/fields/values'],
     ];
 
     it.each(guarded)('%s %s returns 401 when signed out', async (method, path) => {

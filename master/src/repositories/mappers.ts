@@ -209,6 +209,7 @@ export function mapPipelineStage(row: Row): PipelineStage {
     isDefault: Boolean(row.is_default),
     isTerminal: Boolean(row.is_terminal),
     colour: (row.colour as string | null) ?? null,
+    isArchived: Boolean(row.is_archived),
   };
 }
 
@@ -231,6 +232,11 @@ export function mapOptionListItem(row: Row): OptionListItem {
     label: String(row.label),
     sequence: toRequiredNumber(row.sequence),
     isActive: Boolean(row.is_active),
+    hex: (row.hex as string | null) ?? null,
+    deletedAt: toIso(row.deleted_at),
+    createdAt: toRequiredIso(row.created_at),
+    updatedAt: toRequiredIso(row.updated_at),
+    version: toRequiredNumber(row.version),
   };
 }
 
@@ -246,6 +252,8 @@ export function mapCustomFieldDefinition(row: Row): CustomFieldDefinition {
     options: toStringArray(row.options),
     sequence: toRequiredNumber(row.sequence),
     isActive: Boolean(row.is_active),
+    deletedAt: toIso(row.deleted_at),
+    version: toRequiredNumber(row.version),
   };
 }
 

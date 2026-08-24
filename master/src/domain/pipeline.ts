@@ -18,13 +18,29 @@ export interface Stage {
   sequence: number;
   isDefault: boolean;
   isTerminal: boolean;
+  isArchived: boolean;
 }
 
-/** Where a newly created record lands. */
+/**
+ * Where a newly created record lands.
+ *
+ * `pipeline_stages_archived_not_default` (the CHECK added in
+ * `20260306000000_field_values_and_stage_ordering.ts`) makes the pipeline's
+ * default stage un-archivable at the database, so `stages.find(isDefault)`
+ * can never resolve to an archived row — the `stages[0]` fallback below is
+ * the only path an archived stage could reach, so it skips them too.
+ */
 export function defaultStage(stages: Stage[]): Stage {
-  const fallback = stages.find((stage) => stage.isDefault) ?? stages[0];
+  const fallback = stages.find((stage) => stage.isDefault) ?? stages.find((stage) => !stage.isArchived);
   if (!fallback) {
-    throw new Error('Pipeline has no stages — the tenancy migration seeds them');
+    // Every stage archived is a real, reachable state now that stages can be
+    // archived — not only a fresh-install tenancy-migration gap. The Fields
+    // service refuses to archive a pipeline's last live stage precisely so
+    // this is never hit in practice; this message names both causes rather
+    // than assuming the old one.
+    throw new Error(
+      'Pipeline has no live stages — either the tenancy migration did not seed it, or every stage is archived',
+    );
   }
   return fallback;
 }
@@ -38,11 +54,15 @@ export function findStage(stages: Stage[], stageId: string): Stage {
 /**
  * Validate a stage move.
  *
- * Two rules, both about not rewriting history rather than about process:
+ * Three rules, all about not rewriting history rather than about process:
  *  - a stage from another pipeline is not a move, it is a mistake;
  *  - a converted lead is history and stops moving. Its order carries the
  *    workflow from that point on, and letting the lead drift afterwards would
- *    make "which stage is this business at?" ambiguous.
+ *    make "which stage is this business at?" ambiguous;
+ *  - a move *into* an archived stage would be a new record landing somewhere
+ *    an operator asked to stop landing new records. Deliberately the only new
+ *    rule Fields adds here: a move *out of* an archived stage stays legal, or
+ *    every record already there would be stranded.
  */
 export function assertStageMove(
   stages: Stage[],
@@ -59,6 +79,10 @@ export function assertStageMove(
 
   if (options.convertedOrderId) {
     throw new ValidationError('validation.stage.leadConverted');
+  }
+
+  if (target.isArchived) {
+    throw new ValidationError('validation.stage.archived');
   }
 
   return target;

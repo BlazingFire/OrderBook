@@ -20,6 +20,12 @@ export const RECYCLE_BIN_ENTITIES = [
   'product',
   'role',
   'user',
+  // Stage 3 — Fields appends these two, the tables 20260306 gives `deleted_at`.
+  // `custom_field_definition`, not `custom_field` — the latter is a distinct
+  // `ChangedEntity` member with a different job; confusing the two produces a
+  // Bin branch that restores nothing.
+  'option_list_item',
+  'custom_field_definition',
 ] as const;
 
 export type RecycleBinEntityType = (typeof RECYCLE_BIN_ENTITIES)[number];
@@ -40,6 +46,8 @@ export const RESTORE_PERMISSION: Record<RecycleBinEntityType, string> = {
   product: 'products.delete',
   role: 'roles.delete',
   user: 'users.manage',
+  option_list_item: 'fields.manage',
+  custom_field_definition: 'fields.manage',
 };
 
 export interface BinEntry {

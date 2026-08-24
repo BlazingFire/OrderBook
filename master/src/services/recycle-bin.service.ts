@@ -24,6 +24,7 @@ import { decodeBinCursor, encodeBinCursor, visibleBinScopes } from '../domain/re
 import { ValidationError } from '../lib/errors.js';
 import * as recycleBinRepo from '../repositories/recycle-bin.repository.js';
 import * as catalogService from './catalog.service.js';
+import * as fieldsService from './fields.service.js';
 import * as leadService from './lead.service.js';
 import * as orderService from './order.service.js';
 import * as roleService from './role.service.js';
@@ -138,6 +139,14 @@ export async function restoreEntity(input: RestoreInput, actor: ActorContext): P
     case 'user': {
       const user = await userService.restoreUser(input.id, actor, input.renameTo);
       return { entityType: 'user', id: user.id, renamedTo: input.renameTo, alsoRestored: [] };
+    }
+    case 'option_list_item': {
+      const item = await fieldsService.restoreValue(input.id, actor);
+      return { entityType: 'option_list_item', id: item.id, alsoRestored: [] };
+    }
+    case 'custom_field_definition': {
+      const definition = await fieldsService.restoreDefinition(input.id, actor);
+      return { entityType: 'custom_field_definition', id: definition.id, alsoRestored: [] };
     }
     default: {
       // Unreachable if the route validated `entityType` first

@@ -228,8 +228,8 @@ describe('local view', () => {
         kind: 'lead' as const,
         name: 'Lead pipeline',
         stages: [
-          { id: 's1', pipelineId: 'p1', name: 'New', sequence: 1, isDefault: true, isTerminal: false, colour: null },
-          { id: 's2', pipelineId: 'p1', name: 'Quoted', sequence: 2, isDefault: false, isTerminal: false, colour: null },
+          { id: 's1', pipelineId: 'p1', name: 'New', sequence: 1, isDefault: true, isTerminal: false, colour: null, isArchived: false },
+          { id: 's2', pipelineId: 'p1', name: 'Quoted', sequence: 2, isDefault: false, isTerminal: false, colour: null, isArchived: false },
         ],
       },
     ],

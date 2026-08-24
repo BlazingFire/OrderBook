@@ -1,16 +1,16 @@
 /**
  * The only cross-table SQL in the Recycle Bin module: a `UNION ALL` over the
- * soft-deletable tables, six branches at this stage (Fields and the PDF
- * Designer append two and one more at their own stages — a gate asserting a
- * different branch count belongs to the stage at which that many branches
- * exist).
+ * soft-deletable tables, eight branches as of Stage 3 (Fields) — six at
+ * Stage 2, the PDF Designer appends one more of its own at Stage 6 — a gate
+ * asserting a different branch count belongs to the stage at which that many
+ * branches exist).
  *
  * Branches the caller may not see are omitted from the SQL entirely — that
  * is simultaneously the permission filter, the entity-type filter and the
  * optimisation: Postgres never touches a table the actor holds no delete key
  * for. `deleted_by` display names resolve in one follow-up query over the
  * page's distinct ids, not one `LEFT JOIN` per branch, so a page never pays
- * for six joins to answer a question only some of its rows need.
+ * for eight joins to answer a question only some of its rows need.
  */
 
 import type { BinCounts, RecycleBinEntityType } from '@orderbook/shared';
@@ -96,6 +96,24 @@ const BRANCHES: BranchDefinition[] = [
     sql: `SELECT 'user' AS entity_type, id, display_name AS label, username AS sublabel,
                  deleted_at, ${CURSOR_TEXT} AS deleted_at_text, deleted_by, NULL::integer AS version
             FROM users
+           WHERE tenant_id = ? AND deleted_at IS NOT NULL`,
+  },
+  {
+    // `id` is cast to text — option_lists.id is UUID, and every other branch's
+    // id is the syncable-record TEXT type. Postgres refuses a UNION whose
+    // corresponding columns disagree on type ("UNION types text and uuid
+    // cannot be matched"), so every UUID-keyed branch must cast explicitly.
+    entityType: 'option_list_item',
+    sql: `SELECT 'option_list_item' AS entity_type, id::text AS id, label AS label, list_key AS sublabel,
+                 deleted_at, ${CURSOR_TEXT} AS deleted_at_text, deleted_by, version
+            FROM option_lists
+           WHERE tenant_id = ? AND deleted_at IS NOT NULL`,
+  },
+  {
+    entityType: 'custom_field_definition',
+    sql: `SELECT 'custom_field_definition' AS entity_type, id::text AS id, label AS label, entity AS sublabel,
+                 deleted_at, ${CURSOR_TEXT} AS deleted_at_text, deleted_by, version
+            FROM custom_field_definitions
            WHERE tenant_id = ? AND deleted_at IS NOT NULL`,
   },
 ];
