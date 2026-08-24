@@ -9,6 +9,7 @@
  */
 
 import type { IsoDate, RecordId, Uuid } from './entities.js';
+import type { RecycleBinEntityType } from './recycle-bin.js';
 
 export interface PartyInput {
   name: string;
@@ -270,4 +271,49 @@ export interface Paginated<T> {
   total: number;
   limit: number;
   offset: number;
+}
+
+/**
+ * The one cursor-paged query/response shape, minted once so four independent
+ * modules cannot each declare a structurally different `CursorPage<T>` and
+ * break the build for everyone (`shared/src/index.ts` is a flat `export *`
+ * barrel — a duplicate exported name is a compile error across all four
+ * packages at once, not a merge conflict for one).
+ *
+ * A sibling of `Paginated<T>`, not a replacement: existing offset-based list
+ * endpoints keep `Paginated<T>`, and every new keyset-paged surface in this
+ * batch (Recycle Bin, Logs, document exports, …) uses this instead. There are
+ * no page numbers anywhere in the new surface.
+ */
+export interface CursorQuery {
+  cursor?: string;
+  direction?: 'older' | 'newer';
+  limit?: number;
+}
+
+export interface CursorPage<T> {
+  items: T[];
+  nextCursor: string | null;
+  /** Required and nullable, not optional — every consumer gets one shape even for a one-directional feed. */
+  prevCursor: string | null;
+  limit: number;
+}
+
+// --- Recycle Bin -------------------------------------------------------
+
+export interface RecycleBinQuery extends CursorQuery {
+  /** Repeatable; an empty array means "every type the caller may see". */
+  types?: RecycleBinEntityType[];
+  search?: string;
+  deletedBy?: RecordId;
+}
+
+export interface RestoreInput {
+  entityType: RecycleBinEntityType;
+  id: RecordId;
+  /** Only spent when the name/code collided; deliberately optional (a restore writes no field values). */
+  renameTo?: string;
+  /** Restore every still-deleted parent named by PARENT_LINKS in the same call, rather than refusing. */
+  cascadeParents?: boolean;
+  expectedVersion?: number;
 }

@@ -149,6 +149,7 @@ export async function testActor(
     userId: null,
     permissions: ALL_PERMISSIONS,
     deviceCode: null,
+    actorName: 'Test Actor',
     ...overrides,
   };
 }

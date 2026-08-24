@@ -13,6 +13,7 @@
  * on the wire format.
  */
 
+import type { MessageKey, MessageParams } from '../i18n/keys.js';
 import type {
   CustomFieldDefinition,
   DashboardSummary,
@@ -35,6 +36,7 @@ import type {
 } from '../domain/entities.js';
 import type {
   ConflictResolutionInput,
+  CursorPage,
   LeadConvertInput,
   LeadInput,
   LeadListQuery,
@@ -47,14 +49,17 @@ import type {
   PartyInput,
   PartyProductVariantInput,
   ProductInput,
+  RecycleBinQuery,
   RemarkInput,
   ReorderLevelInput,
+  RestoreInput,
   SearchQuery,
   StageChangeInput,
   StockAdjustmentInput,
   StockInboundInput,
   StockListQuery,
 } from '../domain/inputs.js';
+import type { BinCounts, BinEntry, BinRestoreResult } from '../domain/recycle-bin.js';
 import type { SyncPushRequest, SyncPushResponse } from '../sync/mutations.js';
 
 export const SOCKET_PATH = '/socket.io';
@@ -156,6 +161,18 @@ export type CommandResult<T> =
        */
       code?: string;
       missingPermission?: string;
+      /**
+       * Structured facts about the failure — a `ConflictError`'s `storedVersion`
+       * and `diff`, the Recycle Bin's `blockedBy`, and so on. Without this the
+       * HTTP transport and the socket transport disagreed about what a refusal
+       * contains: `details` already reached the browser over HTTP
+       * (`error-handler.ts`) and died at the socket.
+       */
+      details?: Record<string, unknown>;
+      /** The stable message key a client renders in the reader's own language. */
+      messageKey?: MessageKey;
+      /** Named params for `messageKey`, substituted by `t()` — never pre-formatted. */
+      params?: MessageParams;
     };
 
 export type CommandAck<T> = (result: CommandResult<T>) => void;
@@ -177,7 +194,12 @@ export type ChangedEntity =
   | 'role'
   | 'user';
 
-export type ChangeAction = 'created' | 'updated' | 'deleted';
+/**
+ * `'restored'` is the Recycle Bin's — never minted as a `MutationKind`, since
+ * deletes and restores are Master-online-only; it travels only over this
+ * existing `publishChange`/`ChangedEntity` path.
+ */
+export type ChangeAction = 'created' | 'updated' | 'deleted' | 'restored';
 
 export interface DataChangedEvent {
   entity: ChangedEntity;
@@ -300,6 +322,18 @@ export interface ClientToServerEvents {
   'sync:request': (ack: CommandAck<SyncSnapshot>) => void;
   /** Drains the panel's offline outbox. The only write path that can conflict. */
   'sync:push': (request: SyncPushRequest, ack: CommandAck<SyncPushResponse>) => void;
+
+  // --- Recycle Bin (docs/backend-modules/04-API-CONTRACT.md §4) ------------
+  // Deletes are Master-online-only — no MutationKind, nothing queued into the
+  // outbox. A panel that cannot reach the Master cannot delete or restore.
+  'party:delete': (id: RecordId, ack: CommandAck<{ id: RecordId; deletedAt: string }>) => void;
+  'product:delete': (id: RecordId, ack: CommandAck<{ id: RecordId; deletedAt: string }>) => void;
+  'lead:delete': (id: RecordId, ack: CommandAck<{ id: RecordId; deletedAt: string }>) => void;
+  'order:delete': (id: RecordId, ack: CommandAck<{ id: RecordId; deletedAt: string }>) => void;
+
+  'recycleBin:list': (query: RecycleBinQuery, ack: CommandAck<CursorPage<BinEntry>>) => void;
+  'recycleBin:counts': (ack: CommandAck<BinCounts>) => void;
+  'recycleBin:restore': (input: RestoreInput, ack: CommandAck<BinRestoreResult>) => void;
 }
 
 /** Master → clients. */

@@ -13,7 +13,7 @@ authRoutes.post(
   asyncHandler(async (req, res) => {
     const { username, password } = req.body ?? {};
     if (typeof username !== 'string' || typeof password !== 'string') {
-      throw new ValidationError('Enter your ID and password');
+      throw new ValidationError('validation.signIn.credentialsRequired');
     }
 
     const { token, user } = await authService.signIn(username, password);
@@ -45,6 +45,7 @@ authRoutes.get(
     res.json({
       user: await authService.decorate(req.user!, req.sessionToken),
       sessionToken: req.sessionToken,
+      defaultLocale: config.locale.defaultLocale,
     });
   }),
 );

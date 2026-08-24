@@ -22,11 +22,25 @@ import * as customFieldRepo from '../../repositories/custom-field.repository.js'
 import * as searchService from '../../services/search.service.js';
 import * as storageService from '../../services/storage.service.js';
 import { asyncHandler } from '../async-handler.js';
-import { actorFromRequest, requireAuth } from '../middleware/require-auth.js';
+import {
+  actorFromRequest,
+  requireAuth,
+  requirePermissionMiddleware,
+} from '../middleware/require-auth.js';
 
 export const dataRoutes: Router = Router();
 
 dataRoutes.use(requireAuth);
+
+/**
+ * The Recycle Bin's four DELETE routes are the first handlers on this router
+ * to carry a permission guard — every other route here relies on the
+ * service-layer check alone. `leads.delete` / `orders.delete` /
+ * `parties.delete` / `products.delete` have been in the frozen catalogue and
+ * in stored role rows since `20260303`, and were enforced nowhere because no
+ * delete path existed for any of the four until now.
+ */
+const needs = requirePermissionMiddleware;
 
 function paging(query: Record<string, unknown>): {
   search?: string;
@@ -123,6 +137,14 @@ dataRoutes.put(
   }),
 );
 
+dataRoutes.delete(
+  '/parties/:id',
+  needs('parties.delete'),
+  asyncHandler(async (req, res) => {
+    res.json(await catalogService.deleteParty(String(req.params.id), actorFromRequest(req)));
+  }),
+);
+
 dataRoutes.get(
   '/parties/:id/variants',
   asyncHandler(async (req, res) => {
@@ -174,6 +196,14 @@ dataRoutes.put(
     res.json(
       await catalogService.updateProduct(String(req.params.id), req.body, actorFromRequest(req)),
     );
+  }),
+);
+
+dataRoutes.delete(
+  '/products/:id',
+  needs('products.delete'),
+  asyncHandler(async (req, res) => {
+    res.json(await catalogService.deleteProduct(String(req.params.id), actorFromRequest(req)));
   }),
 );
 
@@ -239,8 +269,8 @@ dataRoutes.post(
   '/stock/reorder-level',
   asyncHandler(async (req, res) => {
     const { productId, colour, reorderLevel } = req.body ?? {};
-    if (typeof productId !== 'string') throw new ValidationError('Select a product');
-    if (typeof colour !== 'string') throw new ValidationError('Select a colour');
+    if (typeof productId !== 'string') throw new ValidationError('validation.stock.productRequired');
+    if (typeof colour !== 'string') throw new ValidationError('validation.stock.colourSelectRequired');
 
     const level = reorderLevel === null || reorderLevel === '' ? null : Number(reorderLevel);
     res.json(
@@ -282,7 +312,7 @@ dataRoutes.post(
   '/leads/:id/stage',
   asyncHandler(async (req, res) => {
     const stageId = req.body?.stageId;
-    if (typeof stageId !== 'string') throw new ValidationError('Choose a stage');
+    if (typeof stageId !== 'string') throw new ValidationError('validation.stage.required');
 
     res.json(
       await leadService.setStage(
@@ -302,6 +332,14 @@ dataRoutes.post(
         actorFromRequest(req),
       ),
     );
+  }),
+);
+
+dataRoutes.delete(
+  '/leads/:id',
+  needs('leads.delete'),
+  asyncHandler(async (req, res) => {
+    res.json(await leadService.deleteLead(String(req.params.id), actorFromRequest(req)));
   }),
 );
 
@@ -355,7 +393,7 @@ dataRoutes.post(
   '/orders/:id/stage',
   asyncHandler(async (req, res) => {
     const stageId = req.body?.stageId;
-    if (typeof stageId !== 'string') throw new ValidationError('Choose a stage');
+    if (typeof stageId !== 'string') throw new ValidationError('validation.stage.required');
 
     res.json(
       await orderService.setStage(
@@ -378,6 +416,14 @@ dataRoutes.post(
   }),
 );
 
+dataRoutes.delete(
+  '/orders/:id',
+  needs('orders.delete'),
+  asyncHandler(async (req, res) => {
+    res.json(await orderService.deleteOrder(String(req.params.id), actorFromRequest(req)));
+  }),
+);
+
 // --- Sync conflicts --------------------------------------------------------
 
 dataRoutes.get(
@@ -396,7 +442,7 @@ dataRoutes.post(
   asyncHandler(async (req, res) => {
     const action = req.body?.action;
     if (action !== 'keepWinner' && action !== 'restoreLoser') {
-      throw new ValidationError('Choose whether to keep the current value or restore the other');
+      throw new ValidationError('validation.conflict.actionRequired');
     }
 
     res.json(

@@ -88,5 +88,6 @@ export function actorFromRequest(req: Request): ActorContext {
     userId: req.user.id,
     permissions: req.permissions ?? null,
     deviceCode: null,
+    actorName: req.user.displayName,
   };
 }

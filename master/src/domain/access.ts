@@ -48,14 +48,15 @@ export function assertPermissionsWithinTier(
 ): asserts permissions is Permission[] {
   const unknown = permissions.filter((permission) => !isPermission(permission));
   if (unknown.length > 0) {
-    throw new ValidationError(`Unknown permission${unknown.length > 1 ? 's' : ''}: ${unknown.join(', ')}`);
+    throw new ValidationError(
+      unknown.length > 1 ? 'validation.permissions.unknown.other' : 'validation.permissions.unknown.one',
+      { keys: unknown.join(', ') },
+    );
   }
 
   const above = keysAboveTier(permissions, tier);
   if (above.length > 0) {
-    throw new ValidationError(
-      `The ${tier} tier cannot hold: ${above.join(', ')}. Raise the tier or remove them.`,
-    );
+    throw new ValidationError('validation.permissions.aboveTier', { tier, keys: above.join(', ') });
   }
 }
 
@@ -67,11 +68,11 @@ export function assertSystemRoleEditable(
   if (!role.isSystem) return;
 
   if (change.deleting) {
-    throw new ValidationError(`"${role.name}" is a system role and cannot be deleted`);
+    throw new ValidationError('validation.role.systemUndeletable', { roleName: role.name });
   }
 
   if (change.tier && change.tier !== role.tier) {
-    throw new ValidationError(`"${role.name}" is a system role and its tier cannot be changed`);
+    throw new ValidationError('validation.role.systemTierLocked', { roleName: role.name });
   }
 }
 
@@ -118,9 +119,7 @@ export function assertAdministrativeCapabilityRetained(
   if (before.adminCount === 0) return;
 
   if (after.adminCount === 0) {
-    throw new ValidationError(
-      'At least one active administrator must remain. Give someone else an admin role first.',
-    );
+    throw new ValidationError('validation.role.lastAdminRequired');
   }
 
   const lost = IRREVOCABLE_CAPABILITIES.filter(
@@ -129,10 +128,9 @@ export function assertAdministrativeCapabilityRetained(
   );
 
   if (lost.length > 0) {
-    throw new ValidationError(
-      `This would leave nobody able to ${lost.map(describeCapability).join(' or ')}. ` +
-        'Grant it to an admin-tier role first.',
-    );
+    throw new ValidationError('validation.role.irrevocableCapabilityLost', {
+      capabilities: lost.map(describeCapability).join(' or '),
+    });
   }
 }
 
@@ -143,9 +141,7 @@ function describeCapability(capability: string): string {
 /** G5 — a role held by a live user cannot be deleted. Reassign first. */
 export function assertRoleUnused(inUse: boolean, roleName: string): void {
   if (inUse) {
-    throw new ValidationError(
-      `"${roleName}" is still assigned to at least one person. Move them to another role first.`,
-    );
+    throw new ValidationError('validation.role.stillAssigned', { roleName });
   }
 }
 
@@ -161,9 +157,8 @@ export function assertNameAvailable(taken: boolean, kind: 'role' | 'user', value
   if (!taken) return;
 
   throw new ConflictError(
-    kind === 'role'
-      ? `A role named "${value}" already exists`
-      : `The username "${value}" is already taken`,
+    kind === 'role' ? 'error.conflict.nameTaken.role' : 'error.conflict.nameTaken.username',
+    { value },
     { field: kind === 'role' ? 'name' : 'username', value },
   );
 }
@@ -187,14 +182,15 @@ export function assertVersionMatches(
 ): void {
   if (expected === undefined) {
     throw new ValidationError(
-      'This change did not say which version it was based on, so it cannot be saved safely.',
+      'validation.expectedVersion.required',
+      {},
       { field: 'expectedVersion', storedVersion: stored },
     );
   }
 
   if (stored !== expected) {
     // 409 rather than 400: the request was well-formed, it just raced.
-    throw new ConflictError('Somebody else saved this first. Reload to see their changes.', {
+    throw new ConflictError('error.conflict.staleVersion', {}, {
       storedVersion: stored,
       expectedVersion: expected,
       ...(diff && Object.keys(diff).length > 0 ? { diff } : {}),

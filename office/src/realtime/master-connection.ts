@@ -15,6 +15,8 @@ import type {
   DataChangedEvent,
   InventoryStockLevel,
   Lead,
+  MessageKey,
+  MessageParams,
   Order,
   Party,
   Product,
@@ -53,6 +55,11 @@ export class MasterCommandError extends Error {
     readonly missingPermission: string | undefined,
     /** True when this panel could not reach the Master at all. */
     readonly unreachable: boolean,
+    /** Structured facts about the refusal — a stale version, a blocked restore, and so on. */
+    readonly details?: Record<string, unknown>,
+    /** The stable message key a client renders in the reader's own language. */
+    readonly messageKey?: MessageKey,
+    readonly params?: MessageParams,
   ) {
     super(message);
     this.name = 'MasterCommandError';
@@ -254,7 +261,15 @@ class MasterConnection extends EventEmitter {
         // The Master answered. Whatever it said, it was reachable — so this is a
         // refusal, never silence, and callers must not treat it as an outage.
         reject(
-          new MasterCommandError(result.error, result.code, result.missingPermission, false),
+          new MasterCommandError(
+            result.error,
+            result.code,
+            result.missingPermission,
+            false,
+            result.details,
+            result.messageKey,
+            result.params,
+          ),
         );
       };
 
@@ -349,10 +364,33 @@ class MasterConnection extends EventEmitter {
    * Keeps the cached snapshot current without a refetch. Unknown entity types
    * are ignored rather than invalidating everything — a Master running a newer
    * version may broadcast entities this panel does not track yet.
+   *
+   * Switches on `action` BEFORE entity — the Recycle Bin is the first module
+   * to ever emit `'deleted'` for `lead`/`order`/`party`/`product`, entities
+   * that reach a panel. Every earlier `'deleted'` emission was for `role` or
+   * `user`, both withheld from panels by `DIRECTORY_ENTITIES`, so nothing
+   * before this ever exercised the branch. Left as a blind upsert, a
+   * soft-deleted lead would reappear on the panel's board seconds after
+   * somebody removed it and stay until the next full reconnect.
    */
   private applyChange(event: DataChangedEvent): void {
     if (!this.snapshot) return;
 
+    if (event.action === 'deleted') {
+      this.removeFromSnapshot(event);
+      return;
+    }
+
+    // `option_list`, `custom_field` and `pipeline` are not stored as flat
+    // id-keyed lists in the snapshot, so there is no single row to upsert —
+    // a fresh pull is simpler and no more expensive than a bespoke merge for
+    // data this small and this rarely changed.
+    if (event.entity === 'option_list' || event.entity === 'custom_field' || event.entity === 'pipeline') {
+      this.requestFreshSnapshot();
+      return;
+    }
+
+    // 'created', 'updated' and 'restored' all converge on the same upsert.
     switch (event.entity) {
       case 'lead':
         this.snapshot.leads = upsert(this.snapshot.leads, event.payload as Lead);
@@ -380,6 +418,43 @@ class MasterConnection extends EventEmitter {
       default:
         break;
     }
+  }
+
+  private removeFromSnapshot(event: DataChangedEvent): void {
+    if (!this.snapshot) return;
+
+    const { id } = event;
+
+    switch (event.entity) {
+      case 'lead':
+        this.snapshot.leads = this.snapshot.leads.filter((row) => row.id !== id);
+        break;
+      case 'party':
+        this.snapshot.parties = this.snapshot.parties.filter((row) => row.id !== id);
+        break;
+      case 'product':
+        this.snapshot.products = this.snapshot.products.filter((row) => row.id !== id);
+        break;
+      case 'order':
+        this.snapshot.orders = this.snapshot.orders.filter((row) => row.id !== id);
+        break;
+      default:
+        break;
+    }
+  }
+
+  /** Pulled on demand for the entities the snapshot does not hold as a flat, upsertable list. */
+  private requestFreshSnapshot(): void {
+    void this.command<'sync:request', SyncSnapshot>('sync:request')
+      .then((snapshot) => {
+        this.snapshot = snapshot;
+        this.lastSyncedAt = snapshot.serverTime;
+        this.emit('snapshot', snapshot);
+        void localStore.setSnapshot(snapshot);
+      })
+      .catch((error: unknown) => {
+        log.warn(`Could not refresh the snapshot: ${(error as Error).message}`);
+      });
   }
 }
 

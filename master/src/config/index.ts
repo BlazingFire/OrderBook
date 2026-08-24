@@ -7,6 +7,8 @@
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
+import { isLocale, DEFAULT_LOCALE } from '@orderbook/shared';
+
 import { loadEnvFiles } from '../lib/env-file.js';
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -63,6 +65,22 @@ export const config = {
     cookieName: 'orderbook_session',
     /** Sessions live in memory; restarting the Master signs admins out. */
     ttlMs: 12 * 60 * 60 * 1000,
+  },
+
+  locale: {
+    /**
+     * Business timezone. Every calendar boundary in Reports and every
+     * `'YYYY-MM'` month bucket is computed against this, never against the
+     * host machine's zone. `||`, not `??` — `ORDERBOOK_TIMEZONE=""` must fall
+     * back to the default rather than reach Postgres as an empty string,
+     * which fails at startup with a confusing message instead of an obvious
+     * one. Validated once at boot by `assertTimeZoneValid()` in `index.ts`.
+     */
+    timeZone: process.env.ORDERBOOK_TIMEZONE || 'Asia/Kolkata',
+    /** Read by each panel's boot endpoint so a fresh browser profile starts in the deployment's language. */
+    defaultLocale: isLocale(process.env.ORDERBOOK_DEFAULT_LOCALE)
+      ? process.env.ORDERBOOK_DEFAULT_LOCALE
+      : DEFAULT_LOCALE,
   },
 } as const;
 

@@ -20,6 +20,7 @@ import * as tenancyAccessAndSync from './20260301000000_tenancy_access_and_sync.
 import * as leadOrderRebuild from './20260302000000_lead_order_rebuild.js';
 import * as rolesAndUsers from './20260303000000_roles_and_users.js';
 import * as roleTierCeilingRepair from './20260304000000_role_tier_ceiling_repair.js';
+import * as softDeleteColumns from './20260305000000_soft_delete_columns.js';
 
 export interface Migration {
   name: string;
@@ -34,6 +35,7 @@ export const migrations: Migration[] = [
   { name: '20260302000000_lead_order_rebuild', ...leadOrderRebuild },
   { name: '20260303000000_roles_and_users', ...rolesAndUsers },
   { name: '20260304000000_role_tier_ceiling_repair', ...roleTierCeilingRepair },
+  { name: '20260305000000_soft_delete_columns', ...softDeleteColumns },
 ];
 
 /** Adapts the registry to the interface Knex's migrator expects. */

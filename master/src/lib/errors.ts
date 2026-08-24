@@ -2,11 +2,23 @@
  * Application error types. Transport layers (HTTP routes, socket handlers)
  * translate these into status codes / command failures — services throw them
  * without knowing which transport is calling.
+ *
+ * `messageKey` is a REQUIRED constructor argument (`docs/backend-modules/09-I18N.md`
+ * §7, Option A) — the server never renders a user-facing sentence, it names a
+ * stable token plus named params, and `message` is *derived* from the English
+ * catalogue so it stays byte-identical to what existing tests already assert.
+ * The alternative — optional, with a coarse `error.<code>` fallback forever —
+ * was rejected because it makes an untranslated error permanently possible,
+ * which is the same shape of defect `HANDOFF.md` already names as a trap: "a
+ * permission that enforces nothing is worse than a missing one".
  */
+
+import { t, type MessageKey, type MessageParams } from '@orderbook/shared';
 
 export class AppError extends Error {
   constructor(
-    message: string,
+    readonly messageKey: MessageKey,
+    readonly params: MessageParams,
     readonly statusCode: number,
     readonly code: string,
     /**
@@ -15,40 +27,43 @@ export class AppError extends Error {
      * The rule the guides state is "branch on the `code`, never on the message"
      * (`roles-software-flow.md` §13). That is only possible if the things a
      * client needs travel as data: which permission was missing, what version is
-     * actually stored, which fields differ. They were being attached by the
-     * domain layer and then dropped by the HTTP transport, so a UI that wanted
-     * to name the missing permission had to read English prose — or, in
-     * practice, gave up and said nothing.
+     * actually stored, which fields differ.
      */
     readonly details?: Record<string, unknown>,
   ) {
-    super(message);
+    // `params as never` is deliberate: at this generic boundary `messageKey`
+    // is widened to the whole `MessageKey` union, so `ParamsFor<K>` cannot be
+    // checked per-call the way a literal `t('en', 'some.key', {...})` call
+    // can be. Each throw site below still names a real token; this cast only
+    // waives the per-site placeholder check at the point where the message is
+    // derived, not the requirement to name a token at all.
+    super(t('en', messageKey, params as never));
     this.name = new.target.name;
   }
 }
 
 export class ValidationError extends AppError {
-  constructor(message: string, details?: Record<string, unknown>) {
-    super(message, 400, 'validation_error', details);
+  constructor(messageKey: MessageKey, params: MessageParams = {}, details?: Record<string, unknown>) {
+    super(messageKey, params, 400, 'validation_error', details);
   }
 }
 
 export class UnauthorizedError extends AppError {
-  constructor(message = 'Not signed in') {
-    super(message, 401, 'unauthorized');
+  constructor(messageKey: MessageKey = 'error.unauthorized', params: MessageParams = {}) {
+    super(messageKey, params, 401, 'unauthorized');
   }
 }
 
 /**
  * A caller was authenticated but lacked a permission.
  *
- * Carries the permission key as well as putting it in the message, so a client
+ * Carries the permission key as well as putting it in `details`, so a client
  * can react to it (hide the control, prompt for a different sign-in) rather
  * than having to parse prose.
  */
 export class ForbiddenError extends AppError {
   constructor(readonly permission: string) {
-    super(`Missing permission: ${permission}`, 403, 'forbidden', { permission });
+    super('error.forbidden.missingPermission', { permission }, 403, 'forbidden', { permission });
   }
 }
 
@@ -61,19 +76,19 @@ export class ForbiddenError extends AppError {
  */
 export class TenantViolationError extends AppError {
   constructor(what: string) {
-    super(`${what} does not belong to this company`, 403, 'tenant_violation');
+    super('error.tenantViolation', { what }, 403, 'tenant_violation');
   }
 }
 
 export class NotFoundError extends AppError {
   constructor(what: string) {
-    super(`${what} not found`, 404, 'not_found');
+    super('error.notFound', { what }, 404, 'not_found');
   }
 }
 
 export class ConflictError extends AppError {
-  constructor(message: string, details?: Record<string, unknown>) {
-    super(message, 409, 'conflict', details);
+  constructor(messageKey: MessageKey, params: MessageParams = {}, details?: Record<string, unknown>) {
+    super(messageKey, params, 409, 'conflict', details);
   }
 }
 

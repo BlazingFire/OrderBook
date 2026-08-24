@@ -39,7 +39,7 @@ export async function isSetupComplete(): Promise<boolean> {
 
 export async function runFirstTimeSetup(companyName: string | null): Promise<FirstRunCredentials> {
   if (await isSetupComplete()) {
-    throw new ConflictError('This Master Panel has already been set up');
+    throw new ConflictError('error.conflict.alreadySetUp');
   }
 
   const masterUniqueId = uuid();

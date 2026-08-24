@@ -73,6 +73,7 @@ export async function resolvePanelActor(
           // Still the panel's device code: a temporary id and an HLC timestamp
           // identify the machine that minted them, not the person at it.
           deviceCode,
+          actorName: resolution.user.displayName,
         },
       };
     }
@@ -97,6 +98,9 @@ export async function resolvePanelActor(
       // exists to do.
       permissions: await panelService.permissionsForPanel(tenantId, panelId),
       deviceCode,
+      // No signed-in person to name; recorded as an honest null rather than
+      // borrowing the panel's own label.
+      actorName: null,
     },
   };
 }

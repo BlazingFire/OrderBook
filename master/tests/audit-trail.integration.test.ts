@@ -69,7 +69,7 @@ describe.skipIf(!canRunIntegrationTests)('the audit trail', () => {
 
   it('writes the entry when its transaction commits', async () => {
     await db().transaction(async (trx) => {
-      await activityLog.recordActivity(entry(tenantId), trx);
+      await activityLog.recordActivity(entry(tenantId), actor, trx);
     });
 
     expect(await auditRowCount()).toBe(1);
@@ -78,7 +78,7 @@ describe.skipIf(!canRunIntegrationTests)('the audit trail', () => {
   it('takes the entry back when its transaction rolls back', async () => {
     await expect(
       db().transaction(async (trx) => {
-        await activityLog.recordActivity(entry(tenantId), trx);
+        await activityLog.recordActivity(entry(tenantId), actor, trx);
         // Something later in the same unit of work fails — a guard refusing the
         // change, say. The entry describes a change that is about to un-happen.
         throw new Error('forced failure after the audit append');
@@ -98,6 +98,7 @@ describe.skipIf(!canRunIntegrationTests)('the audit trail', () => {
         await trx('roles').where({ tenant_id: tenantId }).update({ name: 'Should Not Persist' });
         await activityLog.recordActivity(
           { ...entry(tenantId), tenantId: null as unknown as string },
+          actor,
           trx,
         );
       }),
@@ -170,7 +171,7 @@ describe.skipIf(!canRunIntegrationTests)('the audit trail', () => {
 
   it('refuses to be edited after the fact', async () => {
     await db().transaction(async (trx) => {
-      await activityLog.recordActivity(entry(tenantId), trx);
+      await activityLog.recordActivity(entry(tenantId), actor, trx);
     });
 
     // Append-only, enforced by trigger rather than by convention — an audit

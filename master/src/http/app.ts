@@ -11,6 +11,7 @@ import { accessRoutes } from './routes/access.routes.js';
 import { authRoutes } from './routes/auth.routes.js';
 import { dataRoutes } from './routes/data.routes.js';
 import { panelRoutes, pairingRoutes } from './routes/panel.routes.js';
+import { recycleBinRoutes } from './routes/recycle-bin.routes.js';
 import { setupRoutes } from './routes/setup.routes.js';
 
 export function createApp(): Express {
@@ -38,6 +39,7 @@ export function createApp(): Express {
   app.use('/api/pairing', pairingRoutes);
   app.use('/api/panels', panelRoutes);
   app.use('/api/access', accessRoutes);
+  app.use('/api/recycle-bin', recycleBinRoutes);
   app.use('/api', dataRoutes);
 
   // Uploaded product images.

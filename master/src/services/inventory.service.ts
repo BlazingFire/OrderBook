@@ -66,7 +66,7 @@ export async function recordInbound(
   await assertProductExists(actor.tenantId, input.productId);
 
   if (!Number.isFinite(input.quantityBoxes) || input.quantityBoxes <= 0) {
-    throw new ValidationError('Enter how many boxes arrived');
+    throw new ValidationError('validation.stock.boxesArrivedRequired');
   }
 
   const level = await inventoryRepo.applyMovement({
@@ -88,7 +88,7 @@ export async function recordInbound(
     actorType: actor.actorType,
     actorId: actor.actorId,
     details: { colour, quantityBoxes: input.quantityBoxes },
-  }, db());
+  }, actor, db());
   publishChange({ entity: 'stock', action: 'updated', id: stockKey(input.productId, colour), payload: level });
 
   return level;
@@ -113,7 +113,7 @@ export async function recordAdjustment(
   await assertProductExists(actor.tenantId, input.productId);
 
   if (!Number.isFinite(input.quantityBoxes) || input.quantityBoxes < 0) {
-    throw new ValidationError('Enter the counted number of boxes');
+    throw new ValidationError('validation.stock.countedBoxesRequired');
   }
 
   const current = await inventoryRepo.findStockLevel(actor.tenantId, input.productId, colour);
@@ -146,7 +146,7 @@ export async function recordAdjustment(
     actorType: actor.actorType,
     actorId: actor.actorId,
     details: { colour, countedBoxes: input.quantityBoxes, delta },
-  }, db());
+  }, actor, db());
   publishChange({ entity: 'stock', action: 'updated', id: stockKey(input.productId, colour), payload: level });
 
   return level;
@@ -162,7 +162,7 @@ export async function setReorderLevel(
   await assertProductExists(actor.tenantId, input.productId);
 
   if (input.reorderLevel !== null && input.reorderLevel < 0) {
-    throw new ValidationError('A reorder level cannot be negative');
+    throw new ValidationError('validation.stock.reorderLevelNegative');
   }
 
   const level = await inventoryRepo.setReorderLevel(
@@ -213,7 +213,7 @@ function requireColour(colour: string | undefined): string {
   if (!trimmed) {
     // Not defaulted: stock is tracked per colour, and silently filing boxes
     // under "Default" would put real stock somewhere nobody looks for it.
-    throw new ValidationError('Choose which colour this stock is for');
+    throw new ValidationError('validation.stock.colourRequired');
   }
   return trimmed;
 }

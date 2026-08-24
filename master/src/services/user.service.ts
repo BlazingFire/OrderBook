@@ -25,12 +25,14 @@ import {
   assertVersionMatches,
 } from '../domain/access.js';
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
+import { assertParentsLive, suggestRestoredName } from '../domain/recycle-bin.js';
 import { db } from '../db/knex.js';
 import { generateTemporaryPassword, hashPassword } from '../lib/password.js';
-import { NotFoundError, ValidationError } from '../lib/errors.js';
+import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
 import * as accessGuard from '../repositories/access-guard.repository.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import { nextHlc } from '../repositories/identity.repository.js';
+import * as recycleBinRepo from '../repositories/recycle-bin.repository.js';
 import * as roleRepo from '../repositories/role.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
 import { publishChange } from './change-bus.js';
@@ -73,11 +75,11 @@ export async function createUser(
   const username = input.username?.trim().toLowerCase();
   const displayName = input.displayName?.trim();
 
-  if (!username) throw new ValidationError('Enter a username');
-  if (!displayName) throw new ValidationError('Enter a display name');
+  if (!username) throw new ValidationError('validation.user.username.required');
+  if (!displayName) throw new ValidationError('validation.user.displayName.required');
 
   const role = await roleRepo.findRoleById(actor.tenantId, input.roleId);
-  if (!role) throw new ValidationError('Choose a role that exists');
+  if (!role) throw new ValidationError('validation.user.role.mustExist');
 
   // G3 — you cannot mint someone above yourself.
   assertTierWithinActor(actor, role.tier);
@@ -116,7 +118,7 @@ export async function createUser(
       actorId: actor.actorId,
       // Username, display name and role. Never the password or its hash.
       details: { username, displayName, roleId: role.id, roleName: role.name },
-    }, trx);
+    }, actor, trx);
 
     return userId;
   });
@@ -163,14 +165,14 @@ export async function updateUser(
 
   if (input.displayName !== undefined) {
     const displayName = input.displayName.trim();
-    if (!displayName) throw new ValidationError('Enter a display name');
+    if (!displayName) throw new ValidationError('validation.user.displayName.required');
     patch.display_name = displayName;
     details.displayName = { from: existing.displayName, to: displayName };
   }
 
   if (input.username !== undefined) {
     const username = input.username.trim().toLowerCase();
-    if (!username) throw new ValidationError('Enter a username');
+    if (!username) throw new ValidationError('validation.user.username.required');
     assertNameAvailable(
       await userRepo.isUsernameTaken(actor.tenantId, username, id),
       'user',
@@ -184,7 +186,7 @@ export async function updateUser(
     requirePermission(actor, 'roles.assign');
 
     const role = await roleRepo.findRoleById(actor.tenantId, input.roleId);
-    if (!role) throw new ValidationError('Choose a role that exists');
+    if (!role) throw new ValidationError('validation.user.role.mustExist');
     assertTierWithinActor(actor, role.tier);
 
     patch.role_id = role.id;
@@ -238,7 +240,7 @@ export async function updateUser(
       actorType: actor.actorType,
       actorId: actor.actorId,
       details,
-    }, trx);
+    }, actor, trx);
   });
 
   // A changed role or a deactivation must not survive in an open session.
@@ -279,7 +281,7 @@ export async function deleteUser(id: string, actor: ActorContext): Promise<User>
       actorType: actor.actorType,
       actorId: actor.actorId,
       details: { username: existing.username },
-    }, trx);
+    }, actor, trx);
   });
 
   invalidateSessionsForUser(id);
@@ -291,21 +293,45 @@ export async function deleteUser(id: string, actor: ActorContext): Promise<User>
   return user;
 }
 
-export async function restoreUser(id: string, actor: ActorContext): Promise<User> {
+export async function restoreUser(
+  id: string,
+  actor: ActorContext,
+  renameTo?: string,
+): Promise<User> {
   requirePermission(actor, 'users.manage');
 
   const existing = await userRepo.findById(actor.tenantId, id, { includeDeleted: true });
   if (!existing) throw new NotFoundError('User');
   if (!existing.deletedAt) return existing;
 
-  assertNameAvailable(
-    await userRepo.isUsernameTaken(actor.tenantId, existing.username, id),
-    'user',
-    existing.username,
-  );
+  // A user whose role is still in the Bin would come back unable to sign in
+  // meaningfully — restoring the account must not silently produce that.
+  if (existing.roleId) {
+    const role = await recycleBinRepo.findParentStatus(actor.tenantId, 'role', existing.roleId);
+    assertParentsLive([
+      {
+        entityType: 'role',
+        id: existing.roleId,
+        label: role?.label ?? existing.roleId,
+        isLive: role?.isLive ?? false,
+      },
+    ]);
+  }
+
+  const desiredUsername = renameTo ?? existing.username;
+  if (await userRepo.isUsernameTaken(actor.tenantId, desiredUsername, id)) {
+    const suggestion = await suggestRestoredName(existing.username, (candidate) =>
+      userRepo.isUsernameTaken(actor.tenantId, candidate, id),
+    );
+    throw new ConflictError(
+      'error.conflict.restoreCollision',
+      { field: 'username' },
+      { field: 'username', value: desiredUsername, suggestion },
+    );
+  }
 
   await db().transaction(async (trx) => {
-    await userRepo.restoreUser(actor.tenantId, id, trx);
+    await userRepo.restoreUser(actor.tenantId, id, trx, renameTo);
 
     await activityLog.recordActivity({
       tenantId: actor.tenantId,
@@ -314,14 +340,14 @@ export async function restoreUser(id: string, actor: ActorContext): Promise<User
       action: 'restored',
       actorType: actor.actorType,
       actorId: actor.actorId,
-      details: { username: existing.username },
-    }, trx);
+      details: { username: existing.username, ...(renameTo ? { renamedTo: renameTo } : {}) },
+    }, actor, trx);
   });
 
   const user = await userRepo.findById(actor.tenantId, id);
   if (!user) throw new NotFoundError('User');
 
-  publishChange({ entity: 'user', action: 'updated', id, payload: user });
+  publishChange({ entity: 'user', action: 'restored', id, payload: user });
   return user;
 }
 
@@ -358,7 +384,7 @@ export async function resetPassword(
       actorId: actor.actorId,
       // That a reset happened, by whom, for whom. No password material, no hash.
       details: { username: existing.username },
-    }, trx);
+    }, actor, trx);
   });
 
   // Whoever was signed in as them is signed out; the old password is gone.

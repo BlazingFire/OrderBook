@@ -67,7 +67,7 @@ export async function signIn(
     await recordSignInAttempt(credential?.tenantId ?? null, key, false, undefined, source);
     // Deliberately generic. "No such user" versus "wrong password" is a
     // username oracle.
-    throw new UnauthorizedError('Sign-in failed');
+    throw new UnauthorizedError('error.unauthorized.signInFailed');
   }
 
   if (!credential.isActive) {
@@ -80,14 +80,14 @@ export async function signIn(
 
     // Distinguished from a bad password on purpose: this is not a guessing
     // signal, it is a fact the person needs in order to ask someone to fix it.
-    throw new UnauthorizedError('This account has been deactivated');
+    throw new UnauthorizedError('error.unauthorized.accountDeactivated');
   }
 
   failures.delete(key);
 
   const permissionSet = await roleRepo.permissionSetForRole(credential.tenantId, credential.roleId);
   if (!permissionSet) {
-    throw new UnauthorizedError('This account has no role. Ask an administrator to assign one.');
+    throw new UnauthorizedError('error.unauthorized.noRole');
   }
 
   await db().transaction(async (trx) => {
@@ -126,7 +126,7 @@ export async function signIn(
   });
 
   const user = await userRepo.findById(credential.tenantId, credential.id);
-  if (!user) throw new UnauthorizedError('Sign-in failed');
+  if (!user) throw new UnauthorizedError('error.unauthorized.signInFailed');
 
   return {
     token,
@@ -225,10 +225,10 @@ export async function changeOwnPassword(
 
   // Changing your own password needs the current one, not `users.manage` —
   // otherwise nobody could change their own without administrative rights.
-  if (!matches) throw new UnauthorizedError('Your current password is not correct');
+  if (!matches) throw new UnauthorizedError('error.unauthorized.currentPasswordIncorrect');
 
   if (!input.newPassword || input.newPassword.length < 8) {
-    throw new ValidationError('Choose a password of at least 8 characters');
+    throw new ValidationError('validation.password.tooShort');
   }
 
   const passwordHash = await hashPassword(input.newPassword);
@@ -243,15 +243,27 @@ export async function changeOwnPassword(
       trx,
     );
 
-    await activityLog.recordActivity({
-      tenantId,
-      entityType: 'user',
-      entityId: userId,
-      action: 'password_changed',
-      actorType: 'user',
-      actorId: userId,
-      details: { username: user.username },
-    }, trx);
+    await activityLog.recordActivity(
+      {
+        tenantId,
+        entityType: 'user',
+        entityId: userId,
+        action: 'password_changed',
+        actorType: 'user',
+        actorId: userId,
+        details: { username: user.username },
+      },
+      {
+        tenantId,
+        actorType: 'user',
+        actorId: userId,
+        userId,
+        permissions: null,
+        deviceCode: null,
+        actorName: user.displayName,
+      },
+      trx,
+    );
   });
 
   invalidateSessionsForUser(userId, { except: undefined });
@@ -317,7 +329,7 @@ function tokenSession(token: string | undefined): Session | null {
 function assertNotLockedOut(username: string): void {
   const record = failures.get(username);
   if (record && record.lockedUntil > Date.now()) {
-    throw new UnauthorizedError('Too many failed attempts. Try again in a minute.');
+    throw new UnauthorizedError('error.unauthorized.tooManyAttempts');
   }
 }
 
@@ -375,6 +387,18 @@ async function recordSignInAttempt(
         ...(userId ? {} : { unknownUsername: true }),
         ...(source ? { source } : {}),
       },
+    },
+    {
+      tenantId: tenant,
+      actorType: 'user',
+      actorId: userId ?? null,
+      userId: userId ?? null,
+      permissions: null,
+      deviceCode: null,
+      // The attempted username, not a resolved display name — this is exactly
+      // the case where nothing else identifies who tried, including when the
+      // username does not belong to any account.
+      actorName: username,
     },
     db(),
   );

@@ -5,6 +5,8 @@
  */
 
 import type {
+  BinBlocker,
+  BinRestoreResult,
   Paginated,
   Party,
   PartyInput,
@@ -17,6 +19,7 @@ import type {
 
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { clampPaging } from '../domain/paging.js';
+import { suggestRestoredName } from '../domain/recycle-bin.js';
 import {
   canEditRates,
   canSeeRates,
@@ -52,7 +55,7 @@ export async function createParty(input: PartyInput, actor: ActorContext): Promi
   requirePermission(actor, 'parties.create');
 
   const name = input.name?.trim();
-  if (!name) throw new ValidationError('Party name is required');
+  if (!name) throw new ValidationError('validation.party.nameRequired');
 
   const party = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
@@ -76,7 +79,7 @@ export async function createParty(input: PartyInput, actor: ActorContext): Promi
     action: 'created',
     actorType: actor.actorType,
     actorId: actor.actorId,
-  }, db());
+  }, actor, db());
   publishChange({ entity: 'party', action: 'created', id: party.id, payload: party });
 
   return party;
@@ -90,7 +93,7 @@ export async function updateParty(
   requirePermission(actor, 'parties.edit');
 
   const name = input.name?.trim();
-  if (!name) throw new ValidationError('Party name is required');
+  if (!name) throw new ValidationError('validation.party.nameRequired');
 
   const party = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
@@ -106,10 +109,120 @@ export async function updateParty(
     action: 'updated',
     actorType: actor.actorType,
     actorId: actor.actorId,
-  }, db());
+  }, actor, db());
   publishChange({ entity: 'party', action: 'updated', id: party.id, payload: party });
 
   return party;
+}
+
+/**
+ * The first delete path this record has ever had. Refused while any live
+ * lead or order still references it — a soft-deleted party would otherwise
+ * leave those rows pointing at a tombstone.
+ */
+export async function deleteParty(
+  id: string,
+  actor: ActorContext,
+): Promise<{ id: string; deletedAt: string }> {
+  requirePermission(actor, 'parties.delete');
+
+  const existing = await partyRepo.findPartyById(actor.tenantId, id);
+  if (!existing) throw new NotFoundError('Party');
+
+  const blockers = await partyRepo.liveReferencesToParty(actor.tenantId, id);
+  if (blockers.length > 0) {
+    throw new ConflictError('error.conflict.blockedByLiveReferences', {}, {
+      blockedBy: blockers.map(
+        (b): BinBlocker => ({ entityType: b.entityType, id: b.id, label: b.label, reason: 'live_reference' }),
+      ),
+    });
+  }
+
+  const party = await db().transaction(async (trx) => {
+    const hlc = await nextHlc(trx);
+    const fieldHlc = { ...existing.sync.fieldHlc, deletedAt: hlc };
+    const row = await partyRepo.softDeleteParty(actor.tenantId, id, actorUserId(actor), { hlc, fieldHlc }, trx);
+
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'party',
+        entityId: id,
+        action: 'deleted',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: { name: existing.name },
+      },
+      actor,
+      trx,
+    );
+
+    return row;
+  });
+
+  if (!party) throw new NotFoundError('Party');
+
+  publishChange({ entity: 'party', action: 'deleted', id, payload: party });
+  // `updated_at` is bumped by the same `now()` call as `deleted_at` in one
+  // UPDATE, so the two are byte-identical without a second round trip.
+  return { id: party.id, deletedAt: party.updatedAt };
+}
+
+export async function restoreParty(
+  id: string,
+  actor: ActorContext,
+  renameTo: string | undefined,
+): Promise<BinRestoreResult> {
+  requirePermission(actor, 'parties.delete');
+
+  const existing = await partyRepo.findPartyById(actor.tenantId, id, db(), { includeDeleted: true });
+  if (!existing) throw new NotFoundError('Party');
+
+  const desiredCode = renameTo ?? existing.partyCode;
+  const taken = await partyRepo.isPartyCodeTaken(actor.tenantId, desiredCode, id);
+  if (taken) {
+    const suggestion = await suggestRestoredName(existing.partyCode, (candidate) =>
+      partyRepo.isPartyCodeTaken(actor.tenantId, candidate, id),
+    );
+    throw new ConflictError(
+      'error.conflict.restoreCollision',
+      { field: 'partyCode' },
+      { field: 'partyCode', value: desiredCode, suggestion },
+    );
+  }
+
+  const party = await db().transaction(async (trx) => {
+    const hlc = await nextHlc(trx);
+    const fieldHlc = { ...existing.sync.fieldHlc, deletedAt: hlc };
+    const row = await partyRepo.restoreParty(
+      actor.tenantId,
+      id,
+      { hlc, fieldHlc },
+      trx,
+      renameTo,
+    );
+
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'party',
+        entityId: id,
+        action: 'restored',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: { name: existing.name, ...(renameTo ? { renamedCodeTo: renameTo } : {}) },
+      },
+      actor,
+      trx,
+    );
+
+    return row;
+  });
+
+  if (!party) throw new NotFoundError('Party');
+
+  publishChange({ entity: 'party', action: 'restored', id, payload: party });
+  return { entityType: 'party', id, renamedTo: renameTo, alsoRestored: [] };
 }
 
 // --- Products --------------------------------------------------------------
@@ -152,14 +265,14 @@ export async function createProduct(
   requirePermission(actor, 'products.create');
 
   const name = input.name?.trim();
-  if (!name) throw new ValidationError('Product name is required');
+  if (!name) throw new ValidationError('validation.product.nameRequired');
 
   // Staff who do not have a code to hand get one generated rather than being
   // blocked on inventing one at the counter.
   const productCode = input.productCode?.trim() || (await productRepo.nextProductCode());
 
   if (await productRepo.findProductByCode(actor.tenantId, productCode)) {
-    throw new ConflictError(`Product code "${productCode}" is already in use`);
+    throw new ConflictError('error.conflict.productCodeTaken', { productCode });
   }
 
   const product = await db().transaction(async (trx) => {
@@ -187,7 +300,7 @@ export async function createProduct(
     action: 'created',
     actorType: actor.actorType,
     actorId: actor.actorId,
-  }, db());
+  }, actor, db());
   publishChange({ entity: 'product', action: 'created', id: product.id, payload: product });
 
   return maskProduct(product, canSeeRates(actor));
@@ -201,14 +314,14 @@ export async function updateProduct(
   requirePermission(actor, 'products.edit');
 
   const name = input.name?.trim();
-  if (!name) throw new ValidationError('Product name is required');
+  if (!name) throw new ValidationError('validation.product.nameRequired');
 
   const productCode = input.productCode?.trim();
-  if (!productCode) throw new ValidationError('Product code is required');
+  if (!productCode) throw new ValidationError('validation.product.codeRequired');
 
   const clashing = await productRepo.findProductByCode(actor.tenantId, productCode);
   if (clashing && clashing.id !== id) {
-    throw new ConflictError(`Product code "${productCode}" is already in use`);
+    throw new ConflictError('error.conflict.productCodeTaken', { productCode });
   }
 
   const product = await db().transaction(async (trx) => {
@@ -231,10 +344,121 @@ export async function updateProduct(
     action: 'updated',
     actorType: actor.actorType,
     actorId: actor.actorId,
-  }, db());
+  }, actor, db());
   publishChange({ entity: 'product', action: 'updated', id: product.id, payload: product });
 
   return maskProduct(product, canSeeRates(actor));
+}
+
+/**
+ * Refused while a live line item still quotes this product, or while any
+ * colour has non-zero on-hand or reserved stock — on-hand boxes are physical
+ * goods in a warehouse, and a catalogue entry can be wrong but the pallet is
+ * not.
+ */
+export async function deleteProduct(
+  id: string,
+  actor: ActorContext,
+): Promise<{ id: string; deletedAt: string }> {
+  requirePermission(actor, 'products.delete');
+
+  const existing = await productRepo.findProductById(actor.tenantId, id);
+  if (!existing) throw new NotFoundError('Product');
+
+  const blockers = await productRepo.liveReferencesToProduct(actor.tenantId, id);
+  if (blockers.length > 0) {
+    throw new ConflictError('error.conflict.blockedByLiveReferences', {}, {
+      blockedBy: blockers.map((b): BinBlocker => {
+        const reason = b.entityType === 'line_item' ? 'live_reference' : 'stock_on_hand';
+        return { entityType: b.entityType, id: b.id, label: b.label, reason };
+      }),
+    });
+  }
+
+  const product = await db().transaction(async (trx) => {
+    const hlc = await nextHlc(trx);
+    const fieldHlc = { ...existing.sync.fieldHlc, deletedAt: hlc };
+    const row = await productRepo.softDeleteProduct(
+      actor.tenantId,
+      id,
+      actorUserId(actor),
+      { hlc, fieldHlc },
+      trx,
+    );
+
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'product',
+        entityId: id,
+        action: 'deleted',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: { name: existing.name },
+      },
+      actor,
+      trx,
+    );
+
+    return row;
+  });
+
+  if (!product) throw new NotFoundError('Product');
+
+  publishChange({ entity: 'product', action: 'deleted', id, payload: product });
+  return { id: product.id, deletedAt: product.updatedAt };
+}
+
+export async function restoreProduct(
+  id: string,
+  actor: ActorContext,
+  renameTo: string | undefined,
+): Promise<BinRestoreResult> {
+  requirePermission(actor, 'products.delete');
+
+  const existing = await productRepo.findProductById(actor.tenantId, id, db(), { includeDeleted: true });
+  if (!existing) throw new NotFoundError('Product');
+
+  const desiredCode = renameTo ?? existing.productCode;
+  const clashing = await productRepo.findProductByCode(actor.tenantId, desiredCode);
+  if (clashing && clashing.id !== id) {
+    const suggestion = await suggestRestoredName(existing.productCode, async (candidate) => {
+      const row = await productRepo.findProductByCode(actor.tenantId, candidate);
+      return row !== null && row.id !== id;
+    });
+    throw new ConflictError(
+      'error.conflict.restoreCollision',
+      { field: 'productCode' },
+      { field: 'productCode', value: desiredCode, suggestion },
+    );
+  }
+
+  const product = await db().transaction(async (trx) => {
+    const hlc = await nextHlc(trx);
+    const fieldHlc = { ...existing.sync.fieldHlc, deletedAt: hlc };
+    const row = await productRepo.restoreProduct(actor.tenantId, id, { hlc, fieldHlc }, trx, renameTo);
+
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'product',
+        entityId: id,
+        action: 'restored',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: { name: existing.name, ...(renameTo ? { renamedCodeTo: renameTo } : {}) },
+      },
+      actor,
+      trx,
+    );
+
+    return row;
+  });
+
+  if (!product) throw new NotFoundError('Product');
+
+  publishChange({ entity: 'product', action: 'restored', id, payload: product });
+  return { entityType: 'product', id, renamedTo: renameTo, alsoRestored: [] };
 }
 
 // --- Party-specific variants ----------------------------------------------

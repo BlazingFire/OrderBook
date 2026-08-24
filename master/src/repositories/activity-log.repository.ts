@@ -24,6 +24,7 @@
  * is actually atomic with what it records.
  */
 
+import type { ActorContext } from '../domain/actor.js';
 import { createLogger } from '../lib/logger.js';
 import type { TransactionContext } from './transaction.js';
 
@@ -47,9 +48,19 @@ export interface ActivityEntry {
  * The transaction is **required**. Making it optional would leave the old
  * behaviour reachable by omission, and "forgot to pass the transaction" looks
  * identical to "chose not to" at every call site.
+ *
+ * `actor` is the middle parameter (`(entry, actor, trx)`), taken from the same
+ * `ActorContext` the caller already holds, so `actor_name` never needs a
+ * separate join at read time. Landed in Stage 1 of `docs/backend-modules/`,
+ * ahead of the column it feeds: `activity_log.actor_name` does not exist until
+ * `20260307000000_activity_log_actor_name` (Stage 4), so `actor.actorName` is
+ * read here and simply not persisted until that migration starts writing it.
+ * Taking the parameter now means every module built after Stage 1 is written
+ * once against the final signature, instead of being swept a stage later.
  */
 export async function recordActivity(
   entry: ActivityEntry,
+  actor: ActorContext,
   trx: TransactionContext,
 ): Promise<void> {
   await trx('activity_log').insert({
@@ -75,10 +86,11 @@ export async function recordActivity(
  */
 export async function recordDetachedActivity(
   entry: ActivityEntry,
+  actor: ActorContext,
   runner: { transaction: <T>(handler: (trx: TransactionContext) => Promise<T>) => Promise<T> },
 ): Promise<void> {
   try {
-    await runner.transaction((trx) => recordActivity(entry, trx));
+    await runner.transaction((trx) => recordActivity(entry, actor, trx));
   } catch (error) {
     // Logged, never silent. An earlier version discarded this, and when the
     // tenancy migration made `tenant_id` NOT NULL every insert began failing

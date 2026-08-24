@@ -27,8 +27,8 @@ const TABLE = 'orders';
 
 type Runner = Knex | Knex.Transaction;
 
-function baseQuery(tenantId: string, runner: Runner = db()) {
-  return runner(`${TABLE} as o`)
+function baseQuery(tenantId: string, runner: Runner = db(), options: { includeDeleted?: boolean } = {}) {
+  const query = runner(`${TABLE} as o`)
     .join('parties as pa', 'pa.id', 'o.party_id')
     .join('pipeline_stages as st', 'st.id', 'o.stage_id')
     .leftJoin('users as ow', 'ow.id', 'o.owner_id')
@@ -40,6 +40,9 @@ function baseQuery(tenantId: string, runner: Runner = db()) {
       'st.sequence as stage_sequence',
       'ow.display_name as owner_name',
     );
+
+  if (!options.includeDeleted) query.whereNull('o.deleted_at');
+  return query;
 }
 
 export async function listOrders(
@@ -82,8 +85,9 @@ export async function findOrderById(
   tenantId: string,
   id: string,
   runner: Runner = db(),
+  options: { includeDeleted?: boolean } = {},
 ): Promise<Order | null> {
-  const row = await baseQuery(tenantId, runner).where('o.id', id).first();
+  const row = await baseQuery(tenantId, runner, options).where('o.id', id).first();
   if (!row) return null;
 
   const [order] = await hydrate(tenantId, [row], runner);
@@ -204,9 +208,58 @@ export async function markDispatched(
   });
 }
 
+/**
+ * Soft delete. Active reservations are the caller's responsibility to
+ * release first (`reservation.repository.ts:releaseForOrder`) — this
+ * function only stamps the tombstone and the sync clock.
+ */
+export async function softDeleteOrder(
+  tenantId: string,
+  id: string,
+  actorUserId: string | null,
+  meta: { hlc: string; fieldHlc: Record<string, string> },
+  trx: TransactionContext,
+): Promise<Order | null> {
+  const updated = await trx(TABLE)
+    .where({ tenant_id: tenantId, id })
+    .whereNull('deleted_at')
+    .update({
+      deleted_at: trx.fn.now(),
+      deleted_by: actorUserId,
+      version: trx.raw('version + 1'),
+      hlc: meta.hlc,
+      field_hlc: JSON.stringify(meta.fieldHlc),
+      updated_at: trx.fn.now(),
+    });
+
+  return updated ? findOrderById(tenantId, id, trx, { includeDeleted: true }) : null;
+}
+
+export async function restoreOrder(
+  tenantId: string,
+  id: string,
+  meta: { hlc: string; fieldHlc: Record<string, string> },
+  trx: TransactionContext,
+): Promise<Order | null> {
+  const updated = await trx(TABLE)
+    .where({ tenant_id: tenantId, id })
+    .whereNotNull('deleted_at')
+    .update({
+      deleted_at: null,
+      deleted_by: null,
+      version: trx.raw('version + 1'),
+      hlc: meta.hlc,
+      field_hlc: JSON.stringify(meta.fieldHlc),
+      updated_at: trx.fn.now(),
+    });
+
+  return updated ? findOrderById(tenantId, id, trx, { includeDeleted: true }) : null;
+}
+
 export async function countOrders(tenantId: string, runner: Runner = db()): Promise<number> {
   const rows = await runner(TABLE)
     .where({ tenant_id: tenantId })
+    .whereNull('deleted_at')
     .count<Array<{ count: string }>>('id as count');
   return firstCount(rows);
 }

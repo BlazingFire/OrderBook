@@ -8,6 +8,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { hostname } from 'node:os';
 
+import { isLocale, DEFAULT_LOCALE } from '@orderbook/shared';
+
 import { loadEnvFiles } from '../lib/env-file.js';
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -76,6 +78,18 @@ export const config = {
     retryMs: intFromEnv('OFFICE_SYNC_RETRY_MS', 5000),
     /** Mutations pushed per batch, so one long outage does not send a huge frame. */
     batchSize: intFromEnv('OFFICE_SYNC_BATCH_SIZE', 100),
+  },
+
+  locale: {
+    /**
+     * No timezone here — the Office holds no database and computes no
+     * calendar boundary. Just the default so a fresh browser profile on this
+     * panel starts in the deployment's language, read by `GET /api/session`
+     * (answered locally, never forwarded, so it works with the Master off).
+     */
+    defaultLocale: isLocale(process.env.ORDERBOOK_DEFAULT_LOCALE)
+      ? process.env.ORDERBOOK_DEFAULT_LOCALE
+      : DEFAULT_LOCALE,
   },
 } as const;
 

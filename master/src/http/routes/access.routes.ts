@@ -95,7 +95,9 @@ accessRoutes.post(
   '/roles/:id/restore',
   needs('roles.delete'),
   asyncHandler(async (req, res) => {
-    res.json(await roleService.restoreRole(String(req.params.id), actorFromRequest(req)));
+    res.json(
+      await roleService.restoreRole(String(req.params.id), actorFromRequest(req), req.body?.renameTo),
+    );
   }),
 );
 
@@ -151,7 +153,9 @@ accessRoutes.post(
   '/users/:id/restore',
   needs('users.manage'),
   asyncHandler(async (req, res) => {
-    res.json(await userService.restoreUser(String(req.params.id), actorFromRequest(req)));
+    res.json(
+      await userService.restoreUser(String(req.params.id), actorFromRequest(req), req.body?.renameTo),
+    );
   }),
 );
 
@@ -177,7 +181,7 @@ accessRoutes.post(
   asyncHandler(async (req, res) => {
     const { currentPassword, newPassword } = req.body ?? {};
     if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
-      throw new ValidationError('Enter your current and new password');
+      throw new ValidationError('validation.password.bothRequired');
     }
 
     const actor = actorFromRequest(req);

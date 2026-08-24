@@ -12,6 +12,8 @@
 import type {
   LeadInput,
   LeadUpdateInput,
+  MessageKey,
+  MessageParams,
   MutationResult,
   PartyInput,
   PartyProductVariantInput,
@@ -20,6 +22,31 @@ import type {
   SyncConflict,
   SyncSnapshot,
 } from '@orderbook/shared';
+
+/**
+ * Mirrors `master/web/src/api.ts`'s `ApiError` — the Office is the primary
+ * Hindi consumer, so it needs the same `code`/`details`/`messageKey`/`params`
+ * a screen can act on, not a bare `Error` whose only content is an English
+ * sentence the Master or this panel's own server happened to compose.
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    /** Stable code — branch on this, never on the message. */
+    readonly code: string,
+    /** Whatever the server attached: permission, storedVersion, diff. */
+    readonly details: Record<string, unknown> = {},
+    /** The stable message key a client renders in the reader's own language. */
+    readonly messageKey?: MessageKey,
+    readonly params?: MessageParams,
+  ) {
+    super(message);
+  }
+
+  get missingPermission(): string | undefined {
+    return typeof this.details.permission === 'string' ? this.details.permission : undefined;
+  }
+}
 
 export interface ConnectionInfo {
   hasNetworkLink: boolean;
@@ -94,7 +121,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const body = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error((body as { message?: string } | null)?.message ?? 'Request failed');
+    const detail = body as
+      | {
+          error?: string;
+          message?: string;
+          details?: Record<string, unknown>;
+          messageKey?: MessageKey;
+          params?: MessageParams;
+        }
+      | null;
+
+    throw new ApiError(
+      detail?.message ?? 'Request failed',
+      detail?.error ?? 'internal_error',
+      detail?.details ?? {},
+      detail?.messageKey,
+      detail?.params,
+    );
   }
   return body as T;
 }

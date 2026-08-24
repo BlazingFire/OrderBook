@@ -51,7 +51,7 @@ import {
 
 import { actorCan, type ActorContext } from '../domain/actor.js';
 import { db } from '../db/knex.js';
-import { AppError, ForbiddenError, toErrorMessage } from '../lib/errors.js';
+import { ForbiddenError, NotFoundError, toErrorMessage } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import * as identityRepo from '../repositories/identity.repository.js';
 import * as leadRepo from '../repositories/lead.repository.js';
@@ -359,7 +359,7 @@ async function mergeUpdate(
   const id = await identityRepo.resolveId(actor.tenantId, mutation.entityId);
   const current = await loadMergeTarget(entity, actor.tenantId, id);
 
-  if (!current) throw new AppError(`${entity} not found`, 404, 'not_found');
+  if (!current) throw new NotFoundError(entity);
 
   const columns = COLUMN_MAP[entity] as Record<string, string>;
   const fields = mutation.fields.filter((field) => field in columns);

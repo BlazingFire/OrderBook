@@ -241,13 +241,17 @@ export async function restoreUser(
   tenantId: string,
   id: string,
   trx: TransactionContext,
+  renameTo?: string,
 ): Promise<void> {
-  await trx(TABLE).where({ tenant_id: tenantId, id }).update({
-    deleted_at: null,
-    deleted_by: null,
-    version: trx.raw('version + 1'),
-    updated_at: trx.fn.now(),
-  });
+  await trx(TABLE)
+    .where({ tenant_id: tenantId, id })
+    .update({
+      deleted_at: null,
+      deleted_by: null,
+      ...(renameTo ? { username: renameTo } : {}),
+      version: trx.raw('version + 1'),
+      updated_at: trx.fn.now(),
+    });
 }
 
 /** Guard G7 — username availability among live rows. */

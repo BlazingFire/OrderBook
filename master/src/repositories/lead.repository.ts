@@ -22,8 +22,8 @@ const TABLE = 'leads';
 
 type Runner = Knex | Knex.Transaction;
 
-function baseQuery(tenantId: string, runner: Runner = db()) {
-  return runner(`${TABLE} as l`)
+function baseQuery(tenantId: string, runner: Runner = db(), options: { includeDeleted?: boolean } = {}) {
+  const query = runner(`${TABLE} as l`)
     .join('parties as pa', 'pa.id', 'l.party_id')
     .join('pipeline_stages as st', 'st.id', 'l.stage_id')
     .leftJoin('users as ow', 'ow.id', 'l.owner_id')
@@ -35,6 +35,9 @@ function baseQuery(tenantId: string, runner: Runner = db()) {
       'st.sequence as stage_sequence',
       'ow.display_name as owner_name',
     );
+
+  if (!options.includeDeleted) query.whereNull('l.deleted_at');
+  return query;
 }
 
 export async function listLeads(
@@ -85,8 +88,9 @@ export async function findLeadById(
   tenantId: string,
   id: string,
   runner: Runner = db(),
+  options: { includeDeleted?: boolean } = {},
 ): Promise<Lead | null> {
-  const row = await baseQuery(tenantId, runner).where('l.id', id).first();
+  const row = await baseQuery(tenantId, runner, options).where('l.id', id).first();
   if (!row) return null;
 
   const [lead] = await hydrate(tenantId, [row], runner);
@@ -225,10 +229,62 @@ export async function markConverted(
   });
 }
 
+/**
+ * Soft delete. Line items are not themselves marked — they carry no
+ * `deleted_at` of their own and are only ever reached through their parent,
+ * so once the lead is gone they are unreachable through any surface the
+ * product exposes. Restoring the lead makes them visible again exactly as
+ * they were, which is what "cascades to its line items" means here: nothing
+ * is copied or rewritten, the parent's own tombstone is the whole mechanism.
+ */
+export async function softDeleteLead(
+  tenantId: string,
+  id: string,
+  actorUserId: string | null,
+  meta: { hlc: string; fieldHlc: Record<string, string> },
+  trx: TransactionContext,
+): Promise<Lead | null> {
+  const updated = await trx(TABLE)
+    .where({ tenant_id: tenantId, id })
+    .whereNull('deleted_at')
+    .update({
+      deleted_at: trx.fn.now(),
+      deleted_by: actorUserId,
+      version: trx.raw('version + 1'),
+      hlc: meta.hlc,
+      field_hlc: JSON.stringify(meta.fieldHlc),
+      updated_at: trx.fn.now(),
+    });
+
+  return updated ? findLeadById(tenantId, id, trx, { includeDeleted: true }) : null;
+}
+
+export async function restoreLead(
+  tenantId: string,
+  id: string,
+  meta: { hlc: string; fieldHlc: Record<string, string> },
+  trx: TransactionContext,
+): Promise<Lead | null> {
+  const updated = await trx(TABLE)
+    .where({ tenant_id: tenantId, id })
+    .whereNotNull('deleted_at')
+    .update({
+      deleted_at: null,
+      deleted_by: null,
+      version: trx.raw('version + 1'),
+      hlc: meta.hlc,
+      field_hlc: JSON.stringify(meta.fieldHlc),
+      updated_at: trx.fn.now(),
+    });
+
+  return updated ? findLeadById(tenantId, id, trx, { includeDeleted: true }) : null;
+}
+
 export async function countOpenLeads(tenantId: string, runner: Runner = db()): Promise<number> {
   const rows = await runner(TABLE)
     .where({ tenant_id: tenantId })
     .whereNull('converted_order_id')
+    .whereNull('deleted_at')
     .count<Array<{ count: string }>>('id as count');
   return firstCount(rows);
 }
@@ -240,6 +296,7 @@ export async function countFollowUpsDue(
   const rows = await runner(TABLE)
     .where({ tenant_id: tenantId })
     .whereNull('converted_order_id')
+    .whereNull('deleted_at')
     .whereNotNull('follow_up_date')
     .andWhere('follow_up_date', '<=', runner.fn.now())
     .count<Array<{ count: string }>>('id as count');

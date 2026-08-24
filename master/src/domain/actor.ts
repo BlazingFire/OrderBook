@@ -22,6 +22,15 @@ export interface ActorContext {
   permissions: PermissionSet | null;
   /** Set for panel actors; stamped into HLC timestamps and temporary ids. */
   deviceCode: string | null;
+  /**
+   * A human name for the audit trail — never a translated value, never a
+   * localised label, an identifier like a record id or a device code. `null`
+   * when nobody is signed in (a panel acting as itself) or for the system
+   * actor. Read by `recordActivity` (`activity-log.repository.ts`); persisted
+   * into `activity_log.actor_name` from Stage 4 onward, and harmless before
+   * that column exists.
+   */
+  actorName: string | null;
 }
 
 /**
@@ -56,5 +65,6 @@ export function systemActor(tenantId: string): ActorContext {
     userId: null,
     permissions: null,
     deviceCode: null,
+    actorName: 'System',
   };
 }

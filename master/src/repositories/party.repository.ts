@@ -18,7 +18,7 @@ export async function listParties(
   tenantId: string,
   options: { search?: string; limit: number; offset: number },
 ): Promise<Paginated<Party>> {
-  const base = db()(TABLE).where({ tenant_id: tenantId, is_active: true });
+  const base = db()(TABLE).where({ tenant_id: tenantId, is_active: true }).whereNull('deleted_at');
 
   if (options.search) {
     const pattern = `%${options.search}%`;
@@ -49,8 +49,76 @@ export async function findPartyById(
   tenantId: string,
   id: string,
   runner: Runner = db(),
+  options: { includeDeleted?: boolean } = {},
 ): Promise<Party | null> {
-  const row = await runner(TABLE).where({ tenant_id: tenantId, id }).first();
+  const query = runner(TABLE).where({ tenant_id: tenantId, id });
+  if (!options.includeDeleted) query.whereNull('deleted_at');
+  const row = await query.first();
+  return row ? mapParty(row) : null;
+}
+
+/** Restore-time collision check — over live rows only, matching the partial unique index. */
+export async function isPartyCodeTaken(
+  tenantId: string,
+  code: string,
+  excludeId: string | null,
+  runner: Runner = db(),
+): Promise<boolean> {
+  const query = runner(TABLE).where({ tenant_id: tenantId, party_code: code }).whereNull('deleted_at');
+  if (excludeId) query.whereNot({ id: excludeId });
+  return (await query.first('id')) !== undefined;
+}
+
+/**
+ * Soft delete, stamping `hlc`/`field_hlc.deletedAt` alongside `deleted_at` —
+ * mirroring `softDeleteRole` here would bump `version` without advancing the
+ * clock, leaving a state the merge engine cannot interpret
+ * (`docs/backend-modules/03-DATABASE.md` §9.2).
+ */
+export async function softDeleteParty(
+  tenantId: string,
+  id: string,
+  actorUserId: string | null,
+  meta: { hlc: string; fieldHlc: Record<string, string> },
+  trx: TransactionContext,
+): Promise<Party | null> {
+  const [row] = await trx(TABLE)
+    .where({ tenant_id: tenantId, id })
+    .whereNull('deleted_at')
+    .update({
+      deleted_at: trx.fn.now(),
+      deleted_by: actorUserId,
+      version: trx.raw('version + 1'),
+      hlc: meta.hlc,
+      field_hlc: JSON.stringify(meta.fieldHlc),
+      updated_at: trx.fn.now(),
+    })
+    .returning('*');
+
+  return row ? mapParty(row) : null;
+}
+
+export async function restoreParty(
+  tenantId: string,
+  id: string,
+  meta: { hlc: string; fieldHlc: Record<string, string> },
+  trx: TransactionContext,
+  renameCode?: string,
+): Promise<Party | null> {
+  const [row] = await trx(TABLE)
+    .where({ tenant_id: tenantId, id })
+    .whereNotNull('deleted_at')
+    .update({
+      deleted_at: null,
+      deleted_by: null,
+      ...(renameCode ? { party_code: renameCode } : {}),
+      version: trx.raw('version + 1'),
+      hlc: meta.hlc,
+      field_hlc: JSON.stringify(meta.fieldHlc),
+      updated_at: trx.fn.now(),
+    })
+    .returning('*');
+
   return row ? mapParty(row) : null;
 }
 
@@ -132,8 +200,37 @@ export async function updatePartyColumns(
 export async function countParties(tenantId: string): Promise<number> {
   const rows = await db()(TABLE)
     .where({ tenant_id: tenantId, is_active: true })
+    .whereNull('deleted_at')
     .count<Array<{ count: string }>>('id as count');
   return firstCount(rows);
+}
+
+/**
+ * What blocks deleting this party — any LIVE lead or order that still points
+ * at it. A converted lead's order also references the party directly, so
+ * checking both tables (rather than leads alone) is what catches that case
+ * without special-casing conversion.
+ */
+export async function liveReferencesToParty(
+  tenantId: string,
+  partyId: string,
+  runner: Runner = db(),
+): Promise<Array<{ entityType: 'lead' | 'order'; id: string; label: string }>> {
+  const [leads, orders] = await Promise.all([
+    runner('leads')
+      .where({ tenant_id: tenantId, party_id: partyId })
+      .whereNull('deleted_at')
+      .select<Array<{ id: string }>>('id'),
+    runner('orders')
+      .where({ tenant_id: tenantId, party_id: partyId })
+      .whereNull('deleted_at')
+      .select<Array<{ id: string }>>('id'),
+  ]);
+
+  return [
+    ...leads.map((row) => ({ entityType: 'lead' as const, id: row.id, label: row.id })),
+    ...orders.map((row) => ({ entityType: 'order' as const, id: row.id, label: row.id })),
+  ];
 }
 
 function columnsFrom(input: PartyInput): Record<string, unknown> {

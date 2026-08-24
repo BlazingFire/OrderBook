@@ -37,6 +37,7 @@ import * as panelCredentialRepo from '../repositories/panel-credential.repositor
 import * as orderService from '../services/order.service.js';
 import { resolvePanelActor } from '../services/panel-actor.service.js';
 import * as panelService from '../services/panel.service.js';
+import * as recycleBinService from '../services/recycle-bin.service.js';
 import * as searchService from '../services/search.service.js';
 import { buildSnapshot } from '../services/snapshot.service.js';
 import * as syncService from '../services/sync.service.js';
@@ -219,6 +220,7 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   socket.on('party:update', ({ id, input }, ack) =>
     run(ack, (actor) => catalogService.updateParty(id, input, actor)),
   );
+  socket.on('party:delete', (id, ack) => run(ack, (actor) => catalogService.deleteParty(id, actor)));
 
   socket.on('product:list', (query, ack) =>
     run(ack, (actor) => catalogService.listProducts(query, actor)),
@@ -229,6 +231,7 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   socket.on('product:update', ({ id, input }, ack) =>
     run(ack, (actor) => catalogService.updateProduct(id, input, actor)),
   );
+  socket.on('product:delete', (id, ack) => run(ack, (actor) => catalogService.deleteProduct(id, actor)));
 
   socket.on('category:list', (ack) => run(ack, (actor) => catalogService.listCategories(actor)));
 
@@ -256,6 +259,7 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   socket.on('lead:convert', (input, ack) =>
     run(ack, (actor) => orderService.convertLead(input, actor)),
   );
+  socket.on('lead:delete', (id, ack) => run(ack, (actor) => leadService.deleteLead(id, actor)));
 
   socket.on('order:list', (query, ack) =>
     run(ack, (actor) => orderService.listOrders(query, actor)),
@@ -270,6 +274,7 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   socket.on('order:dispatch', (input, ack) =>
     run(ack, (actor) => orderService.dispatchOrder(input, actor)),
   );
+  socket.on('order:delete', (id, ack) => run(ack, (actor) => orderService.deleteOrder(id, actor)));
 
   socket.on('stock:list', (query, ack) =>
     run(ack, (actor) => inventoryService.listStock(query, actor)),
@@ -298,6 +303,14 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   socket.on('conflict:list', (ack) => run(ack, (actor) => conflictService.listConflicts(actor)));
   socket.on('conflict:resolve', (input, ack) =>
     run(ack, (actor) => conflictService.resolveConflict(input, actor)),
+  );
+
+  socket.on('recycleBin:list', (query, ack) =>
+    run(ack, (actor) => recycleBinService.listBin(query, actor)),
+  );
+  socket.on('recycleBin:counts', (ack) => run(ack, (actor) => recycleBinService.binCounts(actor)));
+  socket.on('recycleBin:restore', (input, ack) =>
+    run(ack, (actor) => recycleBinService.restoreEntity(input, actor)),
   );
 }
 
@@ -385,8 +398,12 @@ function registerAuthCommands(socket: PanelSocket, onActorChanged: () => void): 
  * message. Throwing across the socket would leave the Office Panel's UI
  * waiting forever.
  *
- * A refused permission carries its key alongside the message, so the panel can
- * hide the control rather than only showing the failure.
+ * Any `AppError` carries its `code`, `details`, `messageKey` and `params`
+ * through to the ack — not only a `ForbiddenError`'s `missingPermission`, as
+ * this once did. Without `code` and `details`, `office/src/http/app.ts`'s
+ * `forward()` could not tell a refusal from an outage, and a `ConflictError`'s
+ * `storedVersion`/`diff` and the Recycle Bin's `blockedBy` never reached the
+ * Office Panel at all — they arrived over HTTP and died at the socket.
  */
 function respond<T>(ack: CommandAck<T>, operation: () => Promise<T>): void {
   if (typeof ack !== 'function') return;
@@ -396,8 +413,16 @@ function respond<T>(ack: CommandAck<T>, operation: () => Promise<T>): void {
     .catch((error: unknown) => {
       log.warn(`Command failed: ${toErrorMessage(error)}`);
 
-      if (error instanceof ForbiddenError) {
-        ack({ ok: false, error: error.message, missingPermission: error.permission });
+      if (error instanceof AppError) {
+        ack({
+          ok: false,
+          error: error.message,
+          code: error.code,
+          messageKey: error.messageKey,
+          params: error.params,
+          ...(error.details ? { details: error.details } : {}),
+          ...(error instanceof ForbiddenError ? { missingPermission: error.permission } : {}),
+        });
         return;
       }
 
@@ -412,7 +437,7 @@ function respond<T>(ack: CommandAck<T>, operation: () => Promise<T>): void {
  */
 async function panelActor(socket: PanelSocket, panelId: string): Promise<ActorContext> {
   const tenantId = socket.data.tenantId;
-  if (!tenantId) throw new AppError('Panel has no tenant', 500, 'internal');
+  if (!tenantId) throw new AppError('error.internal.panelNoTenant', {}, 500, 'internal');
 
   const token = socket.data.actingUserToken;
 
@@ -449,7 +474,7 @@ async function panelActor(socket: PanelSocket, panelId: string): Promise<ActorCo
  */
 async function adminActor(socket: PanelSocket): Promise<ActorContext | null> {
   const tenantId = socket.data.tenantId;
-  if (!tenantId) throw new AppError('Session has no tenant', 500, 'internal');
+  if (!tenantId) throw new AppError('error.internal.sessionNoTenant', {}, 500, 'internal');
 
   const user = await authService.resolveSession(socket.data.sessionToken);
   if (!user || user.tenantId !== tenantId) return null;
@@ -461,6 +486,7 @@ async function adminActor(socket: PanelSocket): Promise<ActorContext | null> {
     userId: user.id,
     permissions: await permissionSetForRole(tenantId, user.roleId),
     deviceCode: null,
+    actorName: user.displayName,
   };
 }
 
@@ -497,6 +523,7 @@ async function broadcastDashboard(io: RealtimeHub['io']): Promise<void> {
       userId: user.id,
       permissions: await permissionSetForRole(tenantId, user.roleId),
       deviceCode: null,
+      actorName: user.displayName,
     });
 
     socket.emit('dashboard:changed', summary);

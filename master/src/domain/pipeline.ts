@@ -54,13 +54,11 @@ export function assertStageMove(
   const current = findStage(stages, from);
 
   if (target.pipelineId !== current.pipelineId) {
-    throw new ValidationError('That stage belongs to a different pipeline');
+    throw new ValidationError('validation.stage.differentPipeline');
   }
 
   if (options.convertedOrderId) {
-    throw new ValidationError(
-      'This lead has already become an order — move the order instead',
-    );
+    throw new ValidationError('validation.stage.leadConverted');
   }
 
   return target;

@@ -59,15 +59,15 @@ export async function resolveConflict(
 
   const conflict = await syncRepo.findConflict(actor.tenantId, input.conflictId);
   if (!conflict) throw new NotFoundError('Conflict');
-  if (conflict.resolvedAt) throw new ValidationError('That conflict was already reviewed');
+  if (conflict.resolvedAt) throw new ValidationError('validation.conflict.alreadyReviewed');
 
   const resolved = await db().transaction(async (trx) => {
     if (input.action === 'restoreLoser') {
       const column = COLUMNS[conflict.entity]?.[conflict.field];
       if (!column) {
-        throw new ValidationError(
-          `Cannot restore "${conflict.field}" automatically — edit the record directly`,
-        );
+        throw new ValidationError('validation.conflict.cannotRestoreField', {
+          field: conflict.field,
+        });
       }
 
       const hlc = await nextHlc(trx);
@@ -125,7 +125,7 @@ async function writeRestore(
     case 'product':
       return productRepo.updateProductColumns(tenantId, id, patch, meta, trx);
     default:
-      throw new ValidationError(`Cannot restore a ${entity} value automatically`);
+      throw new ValidationError('validation.conflict.cannotRestoreEntity', { entity });
   }
 }
 

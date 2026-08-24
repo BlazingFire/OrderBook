@@ -21,6 +21,8 @@
  * translation entry and no UI change.
  */
 
+import type { MessageKey } from '../i18n/keys.js';
+
 // --- Tiers -----------------------------------------------------------------
 
 export const ROLE_TIERS = ['office', 'management', 'admin'] as const;
@@ -83,7 +85,7 @@ interface CapabilityDefinition {
   key: string;
   group: CapabilityGroup;
   /** Translation token; the renderer never hard-codes the English. */
-  labelToken: string;
+  labelToken: MessageKey;
 }
 
 export const CAPABILITIES: readonly CapabilityDefinition[] = [
@@ -110,6 +112,12 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
     group: 'admin',
     labelToken: 'permission.sync.resolveConflicts',
   },
+
+  // Recycle Bin (docs/backend-modules/08-PERMISSIONS.md §2). Granted to the
+  // admin tier only by the batch's shared grant migration, `20260309`; other
+  // roles receive them through the permission grid.
+  { key: 'recycleBin.view', group: 'admin', labelToken: 'permission.recycleBin.view' },
+  { key: 'recycleBin.viewAll', group: 'admin', labelToken: 'permission.recycleBin.viewAll' },
 ] as const;
 
 // --- The frozen key list ---------------------------------------------------
@@ -178,6 +186,10 @@ const MINIMUM_TIER: Record<string, RoleTier> = {
   'products.bulk': 'management',
   'record.reassignOwner': 'management',
   'field.saleRate.edit': 'management',
+
+  // Recycle Bin: viewing your own deletions is office tier; seeing everyone
+  // else's is management — a wider disclosure than the delete key itself.
+  'recycleBin.viewAll': 'management',
 };
 
 /** The lowest tier permitted to hold a key. */
@@ -238,7 +250,7 @@ export function allPermissions(): Permission[] {
  * because a seeded role nobody reviewed is a permission set nobody approved.
  */
 export const ROLE_TEMPLATES: ReadonlyArray<{
-  nameToken: string;
+  nameToken: MessageKey;
   tier: RoleTier;
   permissions: readonly Permission[];
 }> = [
@@ -318,14 +330,33 @@ export interface PermissionCatalogue {
   actions: readonly PermissionAction[];
   modules: ReadonlyArray<{
     key: PermissionModule;
-    labelToken: string;
+    labelToken: MessageKey;
     /** Only the actions this module declares; the rest are not applicable. */
     actions: readonly PermissionAction[];
   }>;
-  capabilities: ReadonlyArray<{ key: string; group: CapabilityGroup; labelToken: string }>;
-  groups: ReadonlyArray<{ key: CapabilityGroup; labelToken: string }>;
+  capabilities: ReadonlyArray<{ key: string; group: CapabilityGroup; labelToken: MessageKey }>;
+  groups: ReadonlyArray<{ key: CapabilityGroup; labelToken: MessageKey }>;
   /** Per key, the lowest tier that may hold it — this drives the blocked cells. */
   minimumTier: Record<string, RoleTier>;
+}
+
+/**
+ * `permission.<module>.<action>` and `action.<action>` — the 32 + 6 tokens the
+ * UI phase's renderer will read once it exists. Deliberately **not** embedded
+ * in `PermissionCatalogue` itself: `master/web/src/components/PermissionGrid.tsx`
+ * (a screen file, out of scope for this batch — `02-FILE-STRUCTURE.md` §2.6)
+ * still reads `.actions` as a bare `PermissionAction[]` today, and widening the
+ * wire shape would break its compile before the UI phase gets to fix it. Both
+ * token families follow a fixed, mechanical naming convention, so the renderer
+ * can derive them from the keys it already has with no server round trip —
+ * these two helpers exist so the convention is written once, not re-derived.
+ */
+export function moduleActionLabelToken(module: PermissionModule, action: PermissionAction): MessageKey {
+  return `permission.${module}.${action}` as MessageKey;
+}
+
+export function actionLabelToken(action: PermissionAction): MessageKey {
+  return `action.${action}` as MessageKey;
 }
 
 /**
@@ -338,13 +369,13 @@ export function buildPermissionCatalogue(): PermissionCatalogue {
     actions: ACTIONS,
     modules: MODULES.map((module) => ({
       key: module,
-      labelToken: `module.${module}`,
+      labelToken: `module.${module}` as MessageKey,
       actions: MODULE_ACTIONS[module],
     })),
     capabilities: CAPABILITIES.map((capability) => ({ ...capability })),
     groups: CAPABILITY_GROUPS.map((group) => ({
       key: group,
-      labelToken: `capabilityGroup.${group}`,
+      labelToken: `capabilityGroup.${group}` as MessageKey,
     })),
     minimumTier: Object.fromEntries(
       PERMISSIONS.map((permission) => [permission, minimumTierFor(permission)]),

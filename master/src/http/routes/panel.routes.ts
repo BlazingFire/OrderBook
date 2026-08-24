@@ -18,7 +18,7 @@ pairingRoutes.post(
   asyncHandler(async (req, res) => {
     const body = req.body as Partial<PairingRequest> | undefined;
     if (!body || (body.mode !== 'auto' && body.mode !== 'manual')) {
-      throw new ValidationError('Invalid pairing request');
+      throw new ValidationError('validation.pairing.invalidRequest');
     }
 
     const result = await panelService.pairPanel(
@@ -74,7 +74,7 @@ panelRoutes.patch(
   '/:id',
   asyncHandler(async (req, res) => {
     const name = req.body?.name;
-    if (typeof name !== 'string') throw new ValidationError('Panel name is required');
+    if (typeof name !== 'string') throw new ValidationError('validation.panel.nameRequired');
     res.json(await panelService.renamePanel(String(req.params.id), name));
   }),
 );

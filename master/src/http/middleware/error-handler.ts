@@ -6,7 +6,9 @@ import { createLogger } from '../../lib/logger.js';
 const log = createLogger('http');
 
 export function notFoundHandler(_req: Request, res: Response): void {
-  res.status(404).json({ error: 'not_found', message: 'Endpoint not found' });
+  res
+    .status(404)
+    .json({ error: 'not_found', message: 'Endpoint not found', messageKey: 'error.generic.notFound' });
 }
 
 export function errorHandler(
@@ -28,11 +30,15 @@ export function errorHandler(
     res.status(error.statusCode).json({
       error: error.code,
       message: error.message,
+      messageKey: error.messageKey,
+      params: error.params,
       ...(error.details ? { details: error.details } : {}),
     });
     return;
   }
 
   log.error('Unhandled request error', error);
-  res.status(500).json({ error: 'internal_error', message: 'Something went wrong' });
+  res
+    .status(500)
+    .json({ error: 'internal_error', message: 'Something went wrong', messageKey: 'error.generic.internal' });
 }

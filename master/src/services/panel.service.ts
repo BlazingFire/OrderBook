@@ -20,6 +20,7 @@ import bcrypt from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
 
 import { db } from '../db/knex.js';
+import { systemActor } from '../domain/actor.js';
 import { UnauthorizedError, ValidationError } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
@@ -57,20 +58,18 @@ export function isAcceptingPairing(): boolean {
 
 export async function pairPanel(request: PairingRequest, remoteIp: string | null): Promise<PairingSuccess> {
   const identity = await getIdentity();
-  if (!identity) throw new ValidationError('This Master Panel has not finished its first-run setup');
+  if (!identity) throw new ValidationError('validation.panel.setupIncomplete');
 
   if (request.mode === 'auto') {
     if (!isAcceptingPairing()) {
-      throw new UnauthorizedError(
-        'The Master Panel is not accepting new panels right now. Open "Add Office Panel" on the Master and try again.',
-      );
+      throw new UnauthorizedError('error.unauthorized.pairingNotAccepting');
     }
   } else {
     if (!request.pairingPassword || !(await verifyPairingPassword(request.pairingPassword))) {
-      throw new UnauthorizedError('Incorrect pairing password');
+      throw new UnauthorizedError('error.unauthorized.incorrectPairingPassword');
     }
     if (request.masterUniqueId && request.masterUniqueId !== identity.masterUniqueId) {
-      throw new UnauthorizedError('This is a different Master Panel than the one you entered');
+      throw new UnauthorizedError('error.unauthorized.differentMaster');
     }
   }
 
@@ -102,7 +101,7 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
     actorType: 'system',
     actorId: null,
     details: { mode: request.mode, hostname: request.hostname },
-  }, db());
+  }, systemActor(identity.tenantId), db());
   publishChange({ entity: 'office_panel', action: 'created', id: panel.id, payload: panel });
 
   log.info(`Paired office panel "${panel.name}" (${panel.id}) via ${request.mode}`);
@@ -117,11 +116,11 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
 
 export async function authenticatePanel(panelId: string, panelSecret: string): Promise<OfficePanel> {
   const panel = await panelRepo.findPanelById(panelId);
-  if (!panel || panel.status !== 'active') throw new UnauthorizedError('This panel is not paired');
+  if (!panel || panel.status !== 'active') throw new UnauthorizedError('error.unauthorized.panelNotPaired');
 
   const secretHash = await panelRepo.findPanelSecretHash(panelId);
   if (!secretHash || !(await bcrypt.compare(panelSecret, secretHash))) {
-    throw new UnauthorizedError('Panel credentials are not valid');
+    throw new UnauthorizedError('error.unauthorized.panelCredentialsInvalid');
   }
 
   return panel;
@@ -129,7 +128,7 @@ export async function authenticatePanel(panelId: string, panelSecret: string): P
 
 export async function revokePanel(panelId: string): Promise<OfficePanel> {
   const panel = await panelRepo.updatePanelStatus(panelId, 'revoked');
-  if (!panel) throw new ValidationError('Panel not found');
+  if (!panel) throw new ValidationError('error.notFound', { what: 'Panel' });
 
   connectedPanelIds.delete(panelId);
 
@@ -141,7 +140,7 @@ export async function revokePanel(panelId: string): Promise<OfficePanel> {
     actorType: 'user',
     actorId: null,
     details: { status: 'revoked' },
-  }, db());
+  }, systemActor(panel.tenantId), db());
   publishChange({ entity: 'office_panel', action: 'updated', id: panelId, payload: panel });
 
   return panel;
@@ -149,10 +148,10 @@ export async function revokePanel(panelId: string): Promise<OfficePanel> {
 
 export async function renamePanel(panelId: string, name: string): Promise<OfficePanel> {
   const trimmed = name.trim();
-  if (!trimmed) throw new ValidationError('Panel name cannot be empty');
+  if (!trimmed) throw new ValidationError('validation.panel.nameEmpty');
 
   const panel = await panelRepo.renamePanel(panelId, trimmed);
-  if (!panel) throw new ValidationError('Panel not found');
+  if (!panel) throw new ValidationError('error.notFound', { what: 'Panel' });
 
   publishChange({ entity: 'office_panel', action: 'updated', id: panelId, payload: panel });
   return panel;

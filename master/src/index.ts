@@ -11,7 +11,7 @@ import fs from 'node:fs/promises';
 
 import { config } from './config/index.js';
 import { startPostgres, type PostgresServerHandle } from './db/postgres-server.js';
-import { closeDatabase, initDatabase, runMigrations } from './db/knex.js';
+import { closeDatabase, db, initDatabase, runMigrations } from './db/knex.js';
 import { startDiscoveryResponder, type DiscoveryResponder } from './discovery/responder.js';
 import { createApp } from './http/app.js';
 import { createLogger } from './lib/logger.js';
@@ -24,12 +24,36 @@ const log = createLogger('master');
 
 const SESSION_SWEEP_INTERVAL_MS = 15 * 60 * 1000;
 
+/**
+ * Proves `config.locale.timeZone` at boot rather than letting a typo surface
+ * later as a quietly-wrong report bucket. Nothing pins a timezone otherwise —
+ * `buildKnexConfig` passes only client/connection/pool/migrations, and there
+ * is no `SET TIME ZONE` anywhere — so a mistyped zone would otherwise reach
+ * Postgres invisibly on the first date computation instead of failing loudly
+ * here, on every boot, naming the variable to fix.
+ *
+ * Run AFTER `runMigrations()`: it needs a live, migrated connection, and a
+ * fresh install must fail on a missing schema with a migration error, not a
+ * timezone one.
+ */
+async function assertTimeZoneValid(): Promise<void> {
+  try {
+    await db().raw('SELECT now() AT TIME ZONE ?', [config.locale.timeZone]);
+  } catch {
+    throw new Error(
+      `ORDERBOOK_TIMEZONE is set to "${config.locale.timeZone}", which PostgreSQL does not ` +
+        'recognise. Set it to a valid IANA zone name (for example "Asia/Kolkata") and restart.',
+    );
+  }
+}
+
 async function main(): Promise<void> {
   await fs.mkdir(config.uploadsDir, { recursive: true });
 
   const postgres = await startPostgres();
   initDatabase(postgres.connectionUrl);
   await runMigrations();
+  await assertTimeZoneValid();
 
   if (await isSetupComplete()) {
     await refreshStoredLanIp();

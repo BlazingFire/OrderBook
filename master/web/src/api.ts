@@ -7,6 +7,8 @@ import type {
   InventoryStockLevel,
   Lead,
   MasterIdentity,
+  MessageKey,
+  MessageParams,
   OfficePanelWithPresence,
   OptionListItem,
   Order,
@@ -45,6 +47,9 @@ export class ApiError extends Error {
     readonly code: string,
     /** Whatever the server attached: permission, storedVersion, diff. */
     readonly details: Record<string, unknown> = {},
+    /** The stable message key a client renders in the reader's own language. */
+    readonly messageKey?: MessageKey,
+    readonly params?: MessageParams,
   ) {
     super(message);
   }
@@ -65,6 +70,16 @@ export class ApiError extends Error {
   get diff(): Record<string, FieldDifference> {
     return (this.details.diff as Record<string, FieldDifference> | undefined) ?? {};
   }
+
+  /** Records that must be restored first, from the Recycle Bin's `ConflictError`. */
+  get blockedBy(): unknown[] {
+    return Array.isArray(this.details.blockedBy) ? this.details.blockedBy : [];
+  }
+
+  /** The name `suggestRestoredName` offers when a restore collides with a live record. */
+  get suggestion(): string | undefined {
+    return typeof this.details.suggestion === 'string' ? this.details.suggestion : undefined;
+  }
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -83,13 +98,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     // `missingPermission` was permanently undefined and every branch on it was
     // dead code.
     const detail = body as
-      | { error?: string; message?: string; details?: Record<string, unknown> }
+      | {
+          error?: string;
+          message?: string;
+          details?: Record<string, unknown>;
+          messageKey?: MessageKey;
+          params?: MessageParams;
+        }
       | null;
 
     throw new ApiError(
       detail?.message ?? 'Request failed',
       detail?.error ?? 'internal_error',
       detail?.details ?? {},
+      detail?.messageKey,
+      detail?.params,
     );
   }
   return body as T;

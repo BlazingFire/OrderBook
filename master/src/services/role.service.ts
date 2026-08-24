@@ -21,8 +21,9 @@ import {
   assertVersionMatches,
 } from '../domain/access.js';
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
+import { suggestRestoredName } from '../domain/recycle-bin.js';
 import { db } from '../db/knex.js';
-import { NotFoundError, ValidationError } from '../lib/errors.js';
+import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
 import * as accessGuard from '../repositories/access-guard.repository.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import { nextHlc } from '../repositories/identity.repository.js';
@@ -59,7 +60,7 @@ export async function createRole(input: RoleInput, actor: ActorContext): Promise
   assertAdminTier(actor, 'roles.create');
 
   const name = input.name?.trim();
-  if (!name) throw new ValidationError('Give the role a name');
+  if (!name) throw new ValidationError('validation.role.nameRequired');
 
   const tier = assertTier(input.tier);
   assertTierWithinActor(actor, tier);
@@ -96,7 +97,7 @@ export async function createRole(input: RoleInput, actor: ActorContext): Promise
       // The whole array, not a count: an auditor asks "what could this role do
       // on 14 March", and a chain of diffs makes that a replay, not a lookup.
       details: { name, tier, permissions: [...(input.permissions ?? [])].sort() },
-    }, trx);
+    }, actor, trx);
 
     return roleId;
   });
@@ -136,7 +137,7 @@ export async function updateRole(
   );
 
   const name = input.name?.trim();
-  if (!name) throw new ValidationError('Give the role a name');
+  if (!name) throw new ValidationError('validation.role.nameRequired');
 
   const tier = assertTier(input.tier);
   assertSystemRoleEditable(existing, { tier });
@@ -191,7 +192,7 @@ export async function updateRole(
         permissions: { from: existing.permissions, to: permissions },
         ...(droppedByTier.length > 0 ? { droppedByTierCeiling: droppedByTier } : {}),
       },
-    }, trx);
+    }, actor, trx);
   });
 
   const role = await roleRepo.findRoleById(actor.tenantId, id);
@@ -238,7 +239,7 @@ export async function deleteRole(id: string, actor: ActorContext): Promise<Role>
       actorType: actor.actorType,
       actorId: actor.actorId,
       details: { name: existing.name },
-    }, trx);
+    }, actor, trx);
   });
 
   const role = await roleRepo.findRoleById(actor.tenantId, id, { includeDeleted: true });
@@ -254,7 +255,11 @@ export async function deleteRole(id: string, actor: ActorContext): Promise<Role>
  * Every user still pointing at it reattaches automatically, which only works
  * because `users.role_id` is not a SQL foreign key (§4.1).
  */
-export async function restoreRole(id: string, actor: ActorContext): Promise<Role> {
+export async function restoreRole(
+  id: string,
+  actor: ActorContext,
+  renameTo?: string,
+): Promise<Role> {
   requirePermission(actor, 'roles.delete');
   assertAdminTier(actor, 'roles.delete');
 
@@ -262,14 +267,20 @@ export async function restoreRole(id: string, actor: ActorContext): Promise<Role
   if (!existing) throw new NotFoundError('Role');
   if (!existing.deletedAt) return existing;
 
-  assertNameAvailable(
-    await roleRepo.isNameTaken(actor.tenantId, existing.name, id),
-    'role',
-    existing.name,
-  );
+  const desiredName = renameTo ?? existing.name;
+  if (await roleRepo.isNameTaken(actor.tenantId, desiredName, id)) {
+    const suggestion = await suggestRestoredName(existing.name, (candidate) =>
+      roleRepo.isNameTaken(actor.tenantId, candidate, id),
+    );
+    throw new ConflictError(
+      'error.conflict.restoreCollision',
+      { field: 'name' },
+      { field: 'name', value: desiredName, suggestion },
+    );
+  }
 
   await db().transaction(async (trx) => {
-    await roleRepo.restoreRole(actor.tenantId, id, trx);
+    await roleRepo.restoreRole(actor.tenantId, id, trx, renameTo);
 
     await activityLog.recordActivity({
       tenantId: actor.tenantId,
@@ -278,18 +289,18 @@ export async function restoreRole(id: string, actor: ActorContext): Promise<Role
       action: 'restored',
       actorType: actor.actorType,
       actorId: actor.actorId,
-      details: { name: existing.name },
-    }, trx);
+      details: { name: existing.name, ...(renameTo ? { renamedTo: renameTo } : {}) },
+    }, actor, trx);
   });
 
   const role = await roleRepo.findRoleById(actor.tenantId, id);
   if (!role) throw new NotFoundError('Role');
 
-  publishChange({ entity: 'role', action: 'updated', id, payload: role });
+  publishChange({ entity: 'role', action: 'restored', id, payload: role });
   return role;
 }
 
 function assertTier(value: unknown): RoleTier {
-  if (!isRoleTier(value)) throw new ValidationError('Choose a valid tier');
+  if (!isRoleTier(value)) throw new ValidationError('validation.role.tierInvalid');
   return value;
 }

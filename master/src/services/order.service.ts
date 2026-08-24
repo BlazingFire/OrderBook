@@ -10,6 +10,8 @@
  */
 
 import type {
+  BinBlocker,
+  BinRestoreResult,
   LeadConvertInput,
   Order,
   OrderDispatchInput,
@@ -29,9 +31,10 @@ import { normalizeCustomFields } from '../domain/custom-fields.js';
 import { computeTotalWeightKg } from '../domain/line-items.js';
 import { clampPaging } from '../domain/paging.js';
 import { assertStageMove, defaultStage, findStage, stageChangeMessage } from '../domain/pipeline.js';
+import { assertParentsLive } from '../domain/recycle-bin.js';
 import { canSeeRates, maskOrder } from '../domain/visibility.js';
 import { db } from '../db/knex.js';
-import { NotFoundError, ValidationError } from '../lib/errors.js';
+import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as customFieldRepo from '../repositories/custom-field.repository.js';
 import { nextHlc } from '../repositories/identity.repository.js';
@@ -40,8 +43,10 @@ import * as leadRepo from '../repositories/lead.repository.js';
 import * as lineItemRepo from '../repositories/line-item.repository.js';
 import * as orderRepo from '../repositories/order.repository.js';
 import * as pipelineRepo from '../repositories/pipeline.repository.js';
+import * as recycleBinRepo from '../repositories/recycle-bin.repository.js';
 import * as reservationRepo from '../repositories/reservation.repository.js';
 import * as timelineRepo from '../repositories/timeline.repository.js';
+import { publishStockFor } from './inventory.service.js';
 import { publishChange } from './change-bus.js';
 import * as inventoryService from './inventory.service.js';
 
@@ -173,7 +178,7 @@ export async function convertLead(
     actorType: actor.actorType,
     actorId: actor.actorId,
     details: { leadId: lead.id, reservations: reservationPlan.length },
-  }, db());
+  }, actor, db());
 
   publishChange({ entity: 'order', action: 'created', id: order.id, payload: order });
   if (updatedLead) {
@@ -199,7 +204,7 @@ export async function updateOrder(
   const existing = await orderRepo.findOrderById(actor.tenantId, id);
   if (!existing) throw new NotFoundError('Order');
   if (existing.dispatchedAt) {
-    throw new ValidationError('This order has been dispatched and can no longer be edited');
+    throw new ValidationError('validation.order.dispatchedLocked');
   }
 
   const definitions = await customFieldRepo.definitionsFor(actor.tenantId, 'order');
@@ -218,7 +223,7 @@ export async function updateOrder(
 
   if (input.totalWeightKgOverride !== undefined) {
     if (input.totalWeightKgOverride !== null && input.totalWeightKgOverride < 0) {
-      throw new ValidationError('Weight cannot be negative');
+      throw new ValidationError('validation.order.weightNegative');
     }
     // Setting it to null returns the UI to the computed figure. The computed
     // value is never discarded, so an override can always be undone.
@@ -315,7 +320,7 @@ export async function dispatchOrder(
 
   const existing = await orderRepo.findOrderById(actor.tenantId, input.orderId);
   if (!existing) throw new NotFoundError('Order');
-  if (existing.dispatchedAt) throw new ValidationError('This order was already dispatched');
+  if (existing.dispatchedAt) throw new ValidationError('validation.order.alreadyDispatched');
 
   const stages = await pipelineRepo.stagesFor(actor.tenantId, 'order');
   const from = findStage(stages, existing.stageId);
@@ -328,7 +333,7 @@ export async function dispatchOrder(
     // The ledger is the idempotency check: an order that somehow reaches this
     // path twice cannot double-count, because the first pass left a record.
     if (await inventoryRepo.hasMovementForOrder(actor.tenantId, input.orderId, trx)) {
-      throw new ValidationError('Stock has already moved for this order');
+      throw new ValidationError('validation.order.stockAlreadyMoved');
     }
 
     for (const movement of movements) {
@@ -377,7 +382,7 @@ export async function dispatchOrder(
     actorType: actor.actorType,
     actorId: actor.actorId,
     details: { movements: movements.length },
-  }, db());
+  }, actor, db());
 
   publishChange({ entity: 'order', action: 'updated', id: order.id, payload: order });
   // Published after the transaction commits, so panels never see stock figures
@@ -397,7 +402,7 @@ export async function addRemark(
   requirePermission(actor, 'orders.edit');
 
   const message = input.message?.trim();
-  if (!message) throw new ValidationError('A remark needs some text');
+  if (!message) throw new ValidationError('validation.remark.textRequired');
 
   await db().transaction(async (trx) => {
     await timelineRepo.appendEntry(
@@ -428,4 +433,124 @@ export async function recomputeWeight(tenantId: string, orderId: string): Promis
 
 export async function countOrders(tenantId: string): Promise<number> {
   return orderRepo.countOrders(tenantId);
+}
+
+/**
+ * Refused once an order has been dispatched — goods left the building and
+ * the ledger says so, and the dispatch note may already be in a customer's
+ * hands. Otherwise releases the order's active reservations in the same
+ * transaction, finally giving `releaseForOrder` a caller, and publishes the
+ * affected stock levels after commit.
+ */
+export async function deleteOrder(
+  id: string,
+  actor: ActorContext,
+): Promise<{ id: string; deletedAt: string }> {
+  requirePermission(actor, 'orders.delete');
+
+  const existing = await orderRepo.findOrderById(actor.tenantId, id);
+  if (!existing) throw new NotFoundError('Order');
+
+  if (existing.dispatchedAt) {
+    throw new ConflictError('error.conflict.blockedByLiveReferences', {}, {
+      blockedBy: [
+        { entityType: 'order', id, label: id, reason: 'dispatched' },
+      ] satisfies BinBlocker[],
+    });
+  }
+
+  const releasedTargets = await reservationRepo.activeForOrder(actor.tenantId, id);
+
+  const order = await db().transaction(async (trx) => {
+    const hlc = await nextHlc(trx);
+    const fieldHlc = { ...existing.sync.fieldHlc, deletedAt: hlc };
+    const row = await orderRepo.softDeleteOrder(actor.tenantId, id, actorUserId(actor), { hlc, fieldHlc }, trx);
+
+    await reservationRepo.releaseForOrder(actor.tenantId, id, trx);
+
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'order',
+        entityId: id,
+        action: 'deleted',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+      },
+      actor,
+      trx,
+    );
+
+    return row;
+  });
+
+  if (!order) throw new NotFoundError('Order');
+
+  publishChange({ entity: 'order', action: 'deleted', id, payload: order });
+  await publishStockFor(
+    actor.tenantId,
+    releasedTargets.map((target) => ({ productId: target.productId, colour: target.colour })),
+  );
+
+  return { id: order.id, deletedAt: order.updatedAt };
+}
+
+export async function restoreOrder(id: string, actor: ActorContext): Promise<BinRestoreResult> {
+  requirePermission(actor, 'orders.delete');
+
+  const existing = await orderRepo.findOrderById(actor.tenantId, id, db(), { includeDeleted: true });
+  if (!existing) throw new NotFoundError('Order');
+
+  const [party, lead] = await Promise.all([
+    recycleBinRepo.findParentStatus(actor.tenantId, 'party', existing.partyId),
+    existing.leadId
+      ? recycleBinRepo.findParentStatus(actor.tenantId, 'lead', existing.leadId)
+      : Promise.resolve(null),
+  ]);
+
+  assertParentsLive([
+    {
+      entityType: 'party',
+      id: existing.partyId,
+      label: party?.label ?? existing.partyId,
+      isLive: party?.isLive ?? false,
+    },
+    // A lead-less order (should one ever exist) has nothing to check here.
+    ...(existing.leadId
+      ? [
+          {
+            entityType: 'lead' as const,
+            id: existing.leadId,
+            label: lead?.label ?? existing.leadId,
+            isLive: lead?.isLive ?? false,
+          },
+        ]
+      : []),
+  ]);
+
+  const order = await db().transaction(async (trx) => {
+    const hlc = await nextHlc(trx);
+    const fieldHlc = { ...existing.sync.fieldHlc, deletedAt: hlc };
+    const row = await orderRepo.restoreOrder(actor.tenantId, id, { hlc, fieldHlc }, trx);
+
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'order',
+        entityId: id,
+        action: 'restored',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+      },
+      actor,
+      trx,
+    );
+
+    return row;
+  });
+
+  if (!order) throw new NotFoundError('Order');
+
+  publishChange({ entity: 'order', action: 'restored', id, payload: order });
+  return { entityType: 'order', id, alsoRestored: [] };
 }

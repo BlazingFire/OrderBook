@@ -98,7 +98,7 @@ export function createApp(): Express {
   // --- Who is using this panel ---
 
   app.get('/api/session', (_req, res) => {
-    res.json({ session: userSession.currentSession() });
+    res.json({ session: userSession.currentSession(), defaultLocale: config.locale.defaultLocale });
   });
 
   app.post('/api/auth/sign-in', (req, res) => {
@@ -287,6 +287,31 @@ export function createApp(): Express {
     }),
   );
 
+  // Recycle Bin (docs/backend-modules/04-API-CONTRACT.md §4). Forwarded live
+  // and failing hard offline, like every other module in this batch —
+  // nothing here is queued into the outbox: a soft delete queued for later
+  // could apply against a lead whose lines have since changed, and a queued
+  // restore has the same character.
+  app.delete('/api/parties/:id', (req, res) => forward(res, 'party:delete', req.params.id));
+  app.delete('/api/products/:id', (req, res) => forward(res, 'product:delete', req.params.id));
+  app.delete('/api/leads/:id', (req, res) => forward(res, 'lead:delete', req.params.id));
+  app.delete('/api/orders/:id', (req, res) => forward(res, 'order:delete', req.params.id));
+
+  app.get('/api/recycle-bin', (req, res) => {
+    const rawTypes = req.query.types;
+    const types = Array.isArray(rawTypes) ? rawTypes.map(String) : rawTypes ? [String(rawTypes)] : undefined;
+
+    return forward(res, 'recycleBin:list', {
+      types,
+      search: typeof req.query.search === 'string' ? req.query.search : undefined,
+      deletedBy: typeof req.query.deletedBy === 'string' ? req.query.deletedBy : undefined,
+      cursor: typeof req.query.cursor === 'string' ? req.query.cursor : undefined,
+      limit: req.query.limit ? Number(req.query.limit) : undefined,
+    });
+  });
+  app.get('/api/recycle-bin/counts', (_req, res) => forward(res, 'recycleBin:counts', undefined));
+  app.post('/api/recycle-bin/restore', (req, res) => forward(res, 'recycleBin:restore', req.body));
+
   // --- Live updates to this panel's browser ---
   app.get('/api/events', (req, res) => streamEvents(req, res));
 
@@ -441,22 +466,32 @@ async function forward(res: Response, event: string, payload: unknown): Promise<
     res.json(data);
   } catch (error) {
     if (error instanceof MasterCommandError && error.unreachable) {
-      res.status(503).json({ error: 'unavailable', message: error.message });
+      res
+        .status(503)
+        .json({ error: 'unavailable', message: error.message, messageKey: 'error.unavailable' });
       return;
     }
 
     const message = error instanceof Error ? error.message : 'Command failed';
     const code = error instanceof MasterCommandError ? error.code : undefined;
 
-    // The Master answered and said no. Pass its own code and the permission it
-    // named straight through, so the browser can hide a control rather than
-    // only showing a failure.
+    // The Master answered and said no. Pass its own code, messageKey, params
+    // and details straight through — including the permission it named — so
+    // the browser can hide a control, render the reader's own language, and
+    // act on structured facts (a stale version, a blocked restore) rather than
+    // only showing an English failure.
     res.status(code === 'forbidden' ? 403 : 502).json({
       error: code ?? 'master_command_failed',
       message,
-      ...(error instanceof MasterCommandError && error.missingPermission
-        ? { details: { permission: error.missingPermission } }
+      ...(error instanceof MasterCommandError && error.messageKey
+        ? { messageKey: error.messageKey }
         : {}),
+      ...(error instanceof MasterCommandError && error.params ? { params: error.params } : {}),
+      ...(error instanceof MasterCommandError && error.details
+        ? { details: error.details }
+        : error instanceof MasterCommandError && error.missingPermission
+          ? { details: { permission: error.missingPermission } }
+          : {}),
     });
   }
 }
