@@ -10,6 +10,14 @@ import type { OfficePanelWithPresence } from '@orderbook/shared';
 
 import { api } from '../api';
 import { formatDateTime } from '../format';
+import { t } from '../i18n/strings';
+import { Button } from '../ui/Button';
+import { Card } from '../ui/Card';
+import { StatusPill } from '../ui/DataDisplay';
+import { DataTable, type DataTableColumn } from '../ui/DataTable';
+import { FormField, Input } from '../ui/Form';
+import { Modal } from '../ui/Modal';
+import { ConflictBanner, EmptyState } from '../ui/States';
 
 interface Props {
   panels: OfficePanelWithPresence[];
@@ -19,6 +27,9 @@ interface Props {
 export function PanelsScreen({ panels, onRefresh }: Props) {
   const [waiting, setWaiting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<OfficePanelWithPresence | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [confirmRevoke, setConfirmRevoke] = useState<OfficePanelWithPresence | null>(null);
   const previousPanelCount = useRef(panels.length);
 
   const stopWaiting = useCallback(async () => {
@@ -46,103 +57,187 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
       await api.openPairingWindow();
       setWaiting(true);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not start pairing');
+      setError(caught instanceof Error ? caught.message : t('panels.add.startFailed'));
     }
   }
 
-  async function revoke(panel: OfficePanelWithPresence) {
-    if (!confirm(`Remove "${panel.name}"? That PC will have to connect again.`)) return;
-    await api.revokePanel(panel.id);
-    onRefresh();
+  async function submitRename() {
+    const target = renaming;
+    const name = renameValue.trim();
+    setRenaming(null);
+    if (!target || !name) return;
+    try {
+      await api.renamePanel(target.id, name);
+      onRefresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : t('panels.rename.failed'));
+    }
   }
 
-  async function rename(panel: OfficePanelWithPresence) {
-    const name = prompt('Name for this office panel', panel.name);
-    if (!name) return;
-    await api.renamePanel(panel.id, name);
-    onRefresh();
+  async function confirmRevokePanel() {
+    const target = confirmRevoke;
+    setConfirmRevoke(null);
+    if (!target) return;
+    try {
+      await api.revokePanel(target.id);
+      onRefresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : t('panels.revoke.failed'));
+    }
   }
+
+  const columns: DataTableColumn<OfficePanelWithPresence>[] = [
+    {
+      key: 'status',
+      header: t('panels.table.status'),
+      width: '120px',
+      render: (panel) =>
+        panel.status === 'revoked' ? (
+          <StatusPill tone="default">{t('panels.status.removed')}</StatusPill>
+        ) : panel.isConnected ? (
+          <StatusPill tone="ok">{t('panels.status.connected')}</StatusPill>
+        ) : (
+          <StatusPill tone="offline">{t('panels.status.offline')}</StatusPill>
+        ),
+    },
+    {
+      key: 'name',
+      header: t('panels.table.name'),
+      width: '1fr',
+      render: (panel) => <span>{panel.name}</span>,
+    },
+    {
+      key: 'address',
+      header: t('panels.table.address'),
+      width: '150px',
+      render: (panel) => <span className="ob-small">{panel.lanIp ?? '—'}</span>,
+    },
+    {
+      key: 'paired',
+      header: t('panels.table.paired'),
+      width: '150px',
+      render: (panel) => <span className="ob-small">{formatDateTime(panel.pairedAt)}</span>,
+    },
+    {
+      key: 'lastSeen',
+      header: t('panels.table.lastSeen'),
+      width: '150px',
+      render: (panel) => <span className="ob-small">{formatDateTime(panel.lastSeenAt)}</span>,
+    },
+    {
+      key: 'actions',
+      header: '',
+      width: '190px',
+      render: (panel) =>
+        panel.status !== 'revoked' ? (
+          <div style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setRenameValue(panel.name);
+                setRenaming(panel);
+              }}
+            >
+              {t('panels.action.rename')}
+            </Button>
+            <Button variant="danger" size="sm" onClick={() => setConfirmRevoke(panel)}>
+              {t('panels.action.remove')}
+            </Button>
+          </div>
+        ) : null,
+    },
+  ];
 
   return (
-    <div>
-      <h2>Office Panels</h2>
-      {error && <div className="error">{error}</div>}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
+      {error && <ConflictBanner>{error}</ConflictBanner>}
 
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>Add Office Panel</h3>
+      <Card>
+        <h2 className="ob-title" style={{ margin: '0 0 var(--s-12)' }}>
+          {t('panels.add.title')}
+        </h2>
         {waiting ? (
           <>
-            <div className="notice">
-              <strong>Waiting for office panel…</strong>
-              <div className="muted" style={{ marginTop: 4 }}>
-                On the office PC, open the Office Panel and press “Proceed with Auto Connection”.
-                It will find this Master automatically.
-              </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}>
+              <span className="ob-body-strong">{t('panels.add.waitingTitle')}</span>
+              <span className="ob-small">{t('panels.add.waitingBody')}</span>
             </div>
-            <button className="secondary" onClick={stopWaiting}>
-              Cancel
-            </button>
+            <Button variant="secondary" style={{ marginTop: 'var(--s-12)' }} onClick={() => void stopWaiting()}>
+              {t('panels.add.cancel')}
+            </Button>
           </>
         ) : (
           <>
-            <p className="muted">
-              Press this, then start automatic connection on the office PC. This Master only accepts
-              new panels while you are waiting here.
+            <p className="ob-small" style={{ marginTop: 0 }}>
+              {t('panels.add.description')}
             </p>
-            <button onClick={startWaiting}>Add Office Panel</button>
+            <Button variant="primary" icon="plus" onClick={() => void startWaiting()}>
+              {t('panels.add.action')}
+            </Button>
           </>
         )}
-      </div>
+      </Card>
 
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>Connected Office Panels</h3>
+      <Card padded={false}>
+        <div style={{ padding: 'var(--s-16) var(--s-16) 0' }}>
+          <h2 className="ob-title" style={{ margin: '0 0 var(--s-12)' }}>
+            {t('panels.list.title')}
+          </h2>
+        </div>
         {panels.length === 0 ? (
-          <p className="muted">No office panels have been connected yet.</p>
+          <EmptyState title={t('panels.empty.title')} description={t('panels.empty.description')} />
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Status</th>
-                <th>Name</th>
-                <th>Address</th>
-                <th>Paired</th>
-                <th>Last seen</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {panels.map((panel) => (
-                <tr key={panel.id}>
-                  <td>
-                    <span className={`dot ${panel.isConnected ? 'on' : 'off'}`} />
-                    {panel.status === 'revoked'
-                      ? 'Removed'
-                      : panel.isConnected
-                        ? 'Connected'
-                        : 'Offline'}
-                  </td>
-                  <td>{panel.name}</td>
-                  <td>{panel.lanIp ?? '—'}</td>
-                  <td>{formatDateTime(panel.pairedAt)}</td>
-                  <td>{formatDateTime(panel.lastSeenAt)}</td>
-                  <td>
-                    {panel.status !== 'revoked' && (
-                      <div className="row">
-                        <button className="secondary" onClick={() => rename(panel)}>
-                          Rename
-                        </button>
-                        <button className="danger" onClick={() => revoke(panel)}>
-                          Remove
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div style={{ padding: '0 var(--s-16) var(--s-16)' }}>
+            <DataTable columns={columns} rows={panels} rowKey={(panel) => panel.id} />
+          </div>
         )}
-      </div>
+      </Card>
+
+      <Modal
+        open={Boolean(renaming)}
+        onClose={() => setRenaming(null)}
+        title={renaming ? t('panels.rename.title', { name: renaming.name }) : ''}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setRenaming(null)}>
+              {t('panels.rename.cancel')}
+            </Button>
+            <Button variant="primary" disabled={!renameValue.trim()} onClick={() => void submitRename()}>
+              {t('panels.rename.save')}
+            </Button>
+          </>
+        }
+      >
+        <FormField label={t('panels.rename.label')}>
+          {(id) => (
+            <Input
+              id={id}
+              value={renameValue}
+              onChange={(event) => setRenameValue(event.target.value)}
+              autoFocus
+            />
+          )}
+        </FormField>
+      </Modal>
+
+      <Modal
+        open={Boolean(confirmRevoke)}
+        onClose={() => setConfirmRevoke(null)}
+        title={confirmRevoke ? t('panels.revoke.title', { name: confirmRevoke.name }) : ''}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmRevoke(null)}>
+              {t('panels.revoke.cancel')}
+            </Button>
+            <Button variant="danger" onClick={() => void confirmRevokePanel()}>
+              {t('panels.action.remove')}
+            </Button>
+          </>
+        }
+      >
+        <p className="ob-body">{t('panels.revoke.body')}</p>
+      </Modal>
     </div>
   );
 }

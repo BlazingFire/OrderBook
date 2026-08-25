@@ -21,6 +21,12 @@ import * as leadOrderRebuild from './20260302000000_lead_order_rebuild.js';
 import * as rolesAndUsers from './20260303000000_roles_and_users.js';
 import * as roleTierCeilingRepair from './20260304000000_role_tier_ceiling_repair.js';
 import * as softDeleteColumns from './20260305000000_soft_delete_columns.js';
+import * as fieldValuesAndStageOrdering from './20260306000000_field_values_and_stage_ordering.js';
+import * as productImagesPipeline from './20260307000000_product_images_pipeline.js';
+import * as documentTemplatesAndExports from './20260308000000_document_templates_and_exports.js';
+import * as newModulePermissionGrant from './20260309000000_new_module_permission_grant.js';
+import * as activityLogActorName from './20260310000000_activity_log_actor_name.js';
+import * as storagePermissionGrant from './20260311000000_storage_permission_grant.js';
 
 export interface Migration {
   name: string;
@@ -36,6 +42,25 @@ export const migrations: Migration[] = [
   { name: '20260303000000_roles_and_users', ...rolesAndUsers },
   { name: '20260304000000_role_tier_ceiling_repair', ...roleTierCeilingRepair },
   { name: '20260305000000_soft_delete_columns', ...softDeleteColumns },
+  {
+    name: '20260306000000_field_values_and_stage_ordering',
+    ...fieldValuesAndStageOrdering,
+  },
+  { name: '20260307000000_product_images_pipeline', ...productImagesPipeline },
+  {
+    name: '20260308000000_document_templates_and_exports',
+    ...documentTemplatesAndExports,
+  },
+  { name: '20260310000000_activity_log_actor_name', ...activityLogActorName },
+  { name: '20260311000000_storage_permission_grant', ...storagePermissionGrant },
+  // Stage 7 of `docs/backend-modules/` — last in the array, not last by
+  // timestamp. Its `20260309` slot was reserved before `20260310`/`20260311`
+  // were claimed by concurrent work; what matters is that it runs after every
+  // module that mints a key, and array order is what Knex follows here.
+  {
+    name: '20260309000000_new_module_permission_grant',
+    ...newModulePermissionGrant,
+  },
 ];
 
 /** Adapts the registry to the interface Knex's migrator expects. */

@@ -365,28 +365,34 @@ class MasterConnection extends EventEmitter {
    * are ignored rather than invalidating everything — a Master running a newer
    * version may broadcast entities this panel does not track yet.
    *
-   * Switches on `action` BEFORE entity — the Recycle Bin is the first module
-   * to ever emit `'deleted'` for `lead`/`order`/`party`/`product`, entities
-   * that reach a panel. Every earlier `'deleted'` emission was for `role` or
-   * `user`, both withheld from panels by `DIRECTORY_ENTITIES`, so nothing
-   * before this ever exercised the branch. Left as a blind upsert, a
+   * Entity is settled before action. `'deleted'` means "drop a row" only for
+   * the entities the snapshot holds as flat id-keyed lists; for the rest it
+   * means the same thing every other action means — pull again. Reading the
+   * action first would send an option-list or custom-field delete into
+   * `removeFromSnapshot`, which has no row to find and would silently drop it.
+   *
+   * The `'deleted'` branch itself exists for the Recycle Bin, the first module
+   * to emit it for `lead`/`order`/`party`/`product`, entities that reach a
+   * panel. Every earlier `'deleted'` emission was for `role` or `user`, both
+   * withheld from panels by `DIRECTORY_ENTITIES`. Left as a blind upsert, a
    * soft-deleted lead would reappear on the panel's board seconds after
    * somebody removed it and stay until the next full reconnect.
    */
   private applyChange(event: DataChangedEvent): void {
     if (!this.snapshot) return;
 
-    if (event.action === 'deleted') {
-      this.removeFromSnapshot(event);
+    // `option_list`, `custom_field` and `pipeline` are not stored as flat
+    // id-keyed lists in the snapshot, so there is no single row to upsert or
+    // filter out — one fresh pull covers create, update, restore and delete
+    // alike, and is no more expensive than a bespoke merge for data this small
+    // and this rarely changed.
+    if (event.entity === 'option_list' || event.entity === 'custom_field' || event.entity === 'pipeline') {
+      this.requestFreshSnapshot();
       return;
     }
 
-    // `option_list`, `custom_field` and `pipeline` are not stored as flat
-    // id-keyed lists in the snapshot, so there is no single row to upsert —
-    // a fresh pull is simpler and no more expensive than a bespoke merge for
-    // data this small and this rarely changed.
-    if (event.entity === 'option_list' || event.entity === 'custom_field' || event.entity === 'pipeline') {
-      this.requestFreshSnapshot();
+    if (event.action === 'deleted') {
+      this.removeFromSnapshot(event);
       return;
     }
 

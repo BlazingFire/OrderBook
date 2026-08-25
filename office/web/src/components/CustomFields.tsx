@@ -9,7 +9,7 @@
 
 import type { CustomFieldDefinition } from '@orderbook/shared';
 
-import { Field } from './Field';
+import { Checkbox, FormField, Input, Select } from '../ui/Form';
 
 interface Props {
   definitions: CustomFieldDefinition[];
@@ -26,45 +26,39 @@ export function CustomFields({ definitions, values, onChange }: Props) {
   }
 
   return (
-    <div className="line-grid">
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-12) var(--s-16)' }}>
       {active.map((definition) => {
-        const label = definition.isRequired ? `${definition.label} *` : definition.label;
         const value = values[definition.key];
 
         return (
-          <Field key={definition.id} label={label}>
+          <FormField key={definition.id} label={definition.label} required={definition.isRequired}>
             {(id) => {
               if (definition.fieldType === 'select') {
                 return (
-                  <select
-                    id={id}
-                    value={String(value ?? '')}
-                    onChange={(event) => set(definition.key, event.target.value)}
-                  >
+                  <Select id={id} value={String(value ?? '')} onChange={(event) => set(definition.key, event.target.value)}>
                     <option value="">—</option>
                     {definition.options.map((option) => (
                       <option key={option} value={option}>
                         {option}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 );
               }
 
               if (definition.fieldType === 'boolean') {
                 return (
-                  <input
-                    id={id}
-                    type="checkbox"
-                    style={{ width: 'auto' }}
-                    checked={value === true}
-                    onChange={(event) => set(definition.key, event.target.checked)}
-                  />
+                  <Checkbox checked={value === true} onChange={(checked) => set(definition.key, checked)} />
                 );
               }
 
+              // Every type is stored exactly as typed and left to the server's
+              // normaliser to coerce. Parsing a number here would push the
+              // parsed value back through a controlled input mid-entry, so a
+              // leading "0" — the whole of "0", the start of "0.5" — is erased
+              // before the rest of the figure arrives.
               return (
-                <input
+                <Input
                   id={id}
                   type={
                     definition.fieldType === 'number'
@@ -74,18 +68,11 @@ export function CustomFields({ definitions, values, onChange }: Props) {
                         : 'text'
                   }
                   value={String(value ?? '')}
-                  onChange={(event) =>
-                    set(
-                      definition.key,
-                      definition.fieldType === 'number'
-                        ? Number(event.target.value) || null
-                        : event.target.value,
-                    )
-                  }
+                  onChange={(event) => set(definition.key, event.target.value)}
                 />
               );
             }}
-          </Field>
+          </FormField>
         );
       })}
     </div>

@@ -8,13 +8,24 @@
  * changeable state is disabled with the reason attached.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { OneTimeSecret, PermissionCatalogue, Role, RoleTier, User } from '@orderbook/shared';
 
 import { api, ApiError, type FieldDifference } from '../api';
-import { Field } from '../components/Field';
-import { PermissionGrid } from '../components/PermissionGrid';
 import { formatDateTime } from '../format';
+import { t } from '../i18n/strings';
+import { Button } from '../ui/Button';
+import { Card } from '../ui/Card';
+import { IdField, StatusPill } from '../ui/DataDisplay';
+import { DataTable, type DataTableColumn } from '../ui/DataTable';
+import { Drawer } from '../ui/Drawer';
+import { FilterChip, FilterDivider } from '../ui/FilterBar';
+import { useFilterBar } from '../ui/FilterBarSlot';
+import { FormField, Input, Select } from '../ui/Form';
+import { Modal } from '../ui/Modal';
+import { PermissionGrid } from '../ui/PermissionGrid';
+import { ConflictBanner, EmptyState, OfflineBanner, SkeletonRows } from '../ui/States';
+import { Tabs, type TabItem } from '../ui/Tabs';
 
 interface Props {
   /** The signed-in caller's own resolved permissions. */
@@ -35,6 +46,11 @@ export function AccessScreen({ permissions, currentUserId, currentUserTier }: Pr
   const [secret, setSecret] = useState<OneTimeSecret | null>(null);
   const [editing, setEditing] = useState<Role | 'new' | null>(null);
   const [loading, setLoading] = useState(true);
+  // The drawer's close paths (backdrop click, its own X, Esc via useOverlay)
+  // all call this. It starts as a plain close and RoleEditor overwrites it
+  // with its dirty-aware `cancel` the moment it mounts, so every path shares
+  // the same discard-confirm logic instead of duplicating it.
+  const editorCloseRef = useRef<() => void>(() => setEditing(null));
 
   const can = useCallback((key: string) => permissions.includes(key), [permissions]);
 
@@ -80,41 +96,28 @@ export function AccessScreen({ permissions, currentUserId, currentUserTier }: Pr
     }
   }
 
-  if (editing && catalogue) {
-    return (
-      <RoleEditor
-        catalogue={catalogue}
-        role={editing === 'new' ? null : editing}
-        onCancel={() => setEditing(null)}
-        onSaved={() => {
-          setEditing(null);
-          void load();
-        }}
-        onError={setError}
-      />
-    );
-  }
+  const tabItems: TabItem[] = [
+    ...(can('users.manage') ? [{ id: 'users', label: t('access.tab.users') }] : []),
+    ...(can('roles.view') ? [{ id: 'roles', label: t('access.tab.roles') }] : []),
+  ];
+
+  // `tab` is a preference, not a guarantee: a caller without `users.manage` has
+  // no Users tab to select, and honouring the preference anyway showed them an
+  // empty roster — "0 people" — with the roles list they came for unrendered
+  // behind a tab that read as unselected.
+  const active: Tab = tabItems.some((item) => item.id === tab) ? tab : 'roles';
 
   return (
-    <div>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h2 style={{ marginBottom: 0 }}>Roles &amp; Users</h2>
-        <nav className="row">
-          {can('users.manage') && (
-            <button className={tab === 'users' ? '' : 'secondary'} onClick={() => setTab('users')}>
-              Users
-            </button>
-          )}
-          {can('roles.view') && (
-            <button className={tab === 'roles' ? '' : 'secondary'} onClick={() => setTab('roles')}>
-              Roles
-            </button>
-          )}
-        </nav>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <h1 className="ob-title" style={{ margin: 0 }}>
+          {t('access.title')}
+        </h1>
+        <Tabs tabs={tabItems} activeId={active} onChange={(id) => setTab(id as Tab)} />
       </div>
 
       {error && (
-        <div className="error" role="alert">
+        <div className="ob-banner ob-banner--conflict" role="alert">
           {error}
         </div>
       )}
@@ -132,7 +135,7 @@ export function AccessScreen({ permissions, currentUserId, currentUserTier }: Pr
         />
       )}
 
-      {tab === 'users' ? (
+      {active === 'users' ? (
         <UsersTab
           users={users}
           roles={roles}
@@ -157,6 +160,32 @@ export function AccessScreen({ permissions, currentUserId, currentUserTier }: Pr
           onRun={run}
         />
       )}
+
+      {/* §8: detail screens use a right drawer at 520px, not a route change —
+          only Order and Lead detail may go full-screen. The Users/Roles tabs
+          stay mounted underneath, so their scroll position and filters
+          survive opening and closing this. */}
+      <Drawer
+        open={Boolean(editing && catalogue)}
+        onClose={() => editorCloseRef.current()}
+        title={editing === 'new' ? t('access.roleEditor.newRole') : editing ? editing.name : ''}
+      >
+        {editing && catalogue && (
+          <RoleEditor
+            catalogue={catalogue}
+            role={editing === 'new' ? null : editing}
+            onCancel={() => setEditing(null)}
+            onSaved={() => {
+              setEditing(null);
+              void load();
+            }}
+            onError={setError}
+            registerCancel={(fn) => {
+              editorCloseRef.current = fn;
+            }}
+          />
+        )}
+      </Drawer>
     </div>
   );
 }
@@ -191,6 +220,8 @@ function UsersTab({
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [sort, setSort] = useState<'created' | 'name' | 'role' | 'lastSignIn'>('created');
+  const [confirmDeactivate, setConfirmDeactivate] = useState<User | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<User | null>(null);
 
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -229,63 +260,218 @@ function UsersTab({
 
   function lastAdminReason(user: User): string | undefined {
     if (user.roleTier !== 'admin' || !user.isActive) return undefined;
-    return activeAdmins.length <= 1
-      ? 'At least one active administrator must remain'
-      : undefined;
+    return activeAdmins.length <= 1 ? t('access.users.lastAdminReason') : undefined;
   }
 
-  return (
-    <div className="card">
-      <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
-        <h3 style={{ margin: 0 }}>
-          {/* Not "0 people" before the first response — that is a false claim
-              about the company, and a worse one than the spinner §7 forbids. */}
-          {loading ? 'People' : `${users.length} people`}
-        </h3>
-        {canManage && <button onClick={() => setAdding(true)}>+ Add user</button>}
-      </div>
-
-      {!loading && users.length > 0 && (
-        <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-          <input
-            placeholder="Search name or username…"
-            aria-label="Search people"
+  useFilterBar(
+    !loading && users.length > 0 ? (
+      <>
+        <div className="ob-search">
+          <Input
+            aria-label={t('access.users.searchLabel')}
+            placeholder={t('access.users.searchPlaceholder')}
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
-          <select
-            aria-label="Filter by role"
-            value={roleFilter}
-            onChange={(event) => setRoleFilter(event.target.value)}
+        </div>
+        <FilterDivider />
+        <Select
+          aria-label={t('access.users.filterRoleLabel')}
+          value={roleFilter}
+          onChange={(event) => setRoleFilter(event.target.value)}
+          style={{ width: 160 }}
+        >
+          <option value="">{t('access.users.filterRoleAll')}</option>
+          {roles.map((role) => (
+            <option key={role.id} value={role.id}>
+              {role.name}
+            </option>
+          ))}
+        </Select>
+        <FilterChip
+          active={statusFilter === 'active'}
+          onClick={() => setStatusFilter((current) => (current === 'active' ? 'all' : 'active'))}
+        >
+          {t('access.users.filterStatusActive')}
+        </FilterChip>
+        <FilterChip
+          active={statusFilter === 'inactive'}
+          onClick={() => setStatusFilter((current) => (current === 'inactive' ? 'all' : 'inactive'))}
+        >
+          {t('access.users.filterStatusInactive')}
+        </FilterChip>
+        <FilterDivider />
+        <Select
+          aria-label={t('access.users.sortLabel')}
+          value={sort}
+          onChange={(event) => setSort(event.target.value as typeof sort)}
+          style={{ width: 150 }}
+        >
+          <option value="created">{t('access.users.sortCreated')}</option>
+          <option value="name">{t('access.users.sortName')}</option>
+          <option value="role">{t('access.users.sortRole')}</option>
+          <option value="lastSignIn">{t('access.users.sortLastSignIn')}</option>
+        </Select>
+      </>
+    ) : null,
+  );
+
+  const columns: DataTableColumn<User>[] = [
+    {
+      key: 'name',
+      header: t('access.users.colName'),
+      width: '1fr',
+      render: (user) => (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-2)' }}>
+          <span>{user.displayName}</span>
+          <IdField value={user.id} />
+        </div>
+      ),
+    },
+    {
+      key: 'username',
+      header: t('access.users.colUsername'),
+      width: '160px',
+      render: (user) => <span className="ob-small">{user.username}</span>,
+    },
+    {
+      key: 'role',
+      header: t('access.users.colRole'),
+      width: '180px',
+      render: (user) =>
+        canAssign ? (
+          <Select
+            value={user.roleId ?? ''}
+            onChange={(event) =>
+              void onRun(
+                () =>
+                  api.updateUser(user.id, {
+                    roleId: event.target.value,
+                    // Without this the save is last-write-wins: two
+                    // administrators reassigning the same person
+                    // would both "succeed" and one would silently
+                    // lose.
+                    expectedVersion: user.sync.version,
+                  }),
+                t('access.users.roleChangeFailed'),
+              )
+            }
           >
-            <option value="">All roles</option>
             {roles.map((role) => (
               <option key={role.id} value={role.id}>
                 {role.name}
               </option>
             ))}
-          </select>
-          <select
-            aria-label="Filter by status"
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
-          >
-            <option value="all">Any status</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
-          <select
-            aria-label="Sort by"
-            value={sort}
-            onChange={(event) => setSort(event.target.value as typeof sort)}
-          >
-            <option value="created">Creation order</option>
-            <option value="name">Name</option>
-            <option value="role">Role</option>
-            <option value="lastSignIn">Last sign-in</option>
-          </select>
-        </div>
-      )}
+          </Select>
+        ) : (
+          // Read-only label when the caller cannot assign roles.
+          <span>{user.roleName}</span>
+        ),
+    },
+    {
+      key: 'status',
+      header: t('access.users.colStatus'),
+      width: '110px',
+      render: (user) => (
+        <StatusPill tone={user.isActive ? 'ok' : 'default'}>
+          {user.isActive ? t('access.users.statusActive') : t('access.users.statusInactive')}
+        </StatusPill>
+      ),
+    },
+    {
+      key: 'lastSignIn',
+      header: t('access.users.colLastSignIn'),
+      width: '160px',
+      render: (user) => <span className="ob-small">{formatDateTime(user.lastSignInAt)}</span>,
+    },
+    ...(canManage
+      ? [
+          {
+            key: 'actions',
+            header: '',
+            width: '340px',
+            render: (user: User) => {
+              const blocked = lastAdminReason(user);
+              return (
+                <div style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}>
+                  <Button variant="secondary" size="sm" onClick={() => setEditing(user)}>
+                    {t('access.users.edit')}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() =>
+                      void onRun(
+                        async () => onSecret(await api.resetPassword(user.id)),
+                        t('access.users.resetPasswordFailed'),
+                      )
+                    }
+                  >
+                    {t('access.users.resetPassword')}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={Boolean(blocked)}
+                    title={blocked}
+                    onClick={() => {
+                      // Deactivation is not a delete, and the difference is
+                      // load-bearing enough that §4.2 asks for it to be
+                      // spelled out at the moment somebody acts — not
+                      // discovered afterwards. Only deactivating asks first;
+                      // reactivating never needs a confirmation.
+                      if (user.isActive) setConfirmDeactivate(user);
+                      else
+                        void onRun(
+                          () =>
+                            api.updateUser(user.id, {
+                              isActive: true,
+                              expectedVersion: user.sync.version,
+                            }),
+                          t('access.users.statusChangeFailed'),
+                        );
+                    }}
+                  >
+                    {user.isActive ? t('access.users.deactivate') : t('access.users.activate')}
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    disabled={Boolean(blocked) || user.id === currentUserId}
+                    title={blocked ?? (user.id === currentUserId ? t('access.users.thisIsYou') : undefined)}
+                    onClick={() => setConfirmDelete(user)}
+                  >
+                    {t('access.users.delete')}
+                  </Button>
+                </div>
+              );
+            },
+          } satisfies DataTableColumn<User>,
+        ]
+      : []),
+  ];
+
+  return (
+    <Card>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 'var(--s-12)',
+        }}
+      >
+        <h2 className="ob-title" style={{ margin: 0 }}>
+          {/* Not "0 people" before the first response — that is a false claim
+              about the company, and a worse one than the spinner §7 forbids. */}
+          {loading ? t('access.users.titleLoading') : t('access.users.title', { count: users.length })}
+        </h2>
+        {canManage && (
+          <Button variant="primary" icon="plus" onClick={() => setAdding(true)}>
+            {t('access.users.add')}
+          </Button>
+        )}
+      </div>
 
       {adding && (
         <UserForm
@@ -302,6 +488,11 @@ function UsersTab({
 
       {editing && (
         <UserEditForm
+          // The table stays clickable while this form is open, so Edit on a
+          // second person must remount it. Without the key React reuses the
+          // component, the seeded inputs keep the first person's name and
+          // username, and Save writes them onto the second person's id.
+          key={editing.id}
           user={editing}
           onCancel={() => setEditing(null)}
           onSaved={() => setEditing(null)}
@@ -311,144 +502,86 @@ function UsersTab({
 
       {loading ? (
         <SkeletonRows columns={6} />
-      ) : users.length === 0 ? (
-        <p className="muted">Nobody here yet.</p>
-      ) : visible.length === 0 ? (
-        <p className="muted">Nobody matches those filters.</p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Username</th>
-              <th>Role</th>
-              <th>Status</th>
-              <th>Last sign-in</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map((user) => {
-              const blocked = lastAdminReason(user);
-
-              return (
-                <tr key={user.id}>
-                  <td>{user.displayName}</td>
-                  <td className="muted">{user.username}</td>
-                  <td>
-                    {canAssign ? (
-                      <select
-                        value={user.roleId ?? ''}
-                        onChange={(event) =>
-                          void onRun(
-                            () =>
-                              api.updateUser(user.id, {
-                                roleId: event.target.value,
-                                // Without this the save is last-write-wins: two
-                                // administrators reassigning the same person
-                                // would both "succeed" and one would silently
-                                // lose.
-                                expectedVersion: user.sync.version,
-                              }),
-                            'Could not change the role',
-                          )
-                        }
-                      >
-                        {roles.map((role) => (
-                          <option key={role.id} value={role.id}>
-                            {role.name}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      // Read-only label when the caller cannot assign roles.
-                      <span>{user.roleName}</span>
-                    )}
-                  </td>
-                  <td>
-                    <span className={`dot ${user.isActive ? 'on' : 'off'}`} />
-                    {user.isActive ? 'Active' : 'Inactive'}
-                  </td>
-                  <td className="muted">{formatDateTime(user.lastSignInAt)}</td>
-                  <td>
-                    {canManage && (
-                      <div className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
-                        <button className="secondary" onClick={() => setEditing(user)}>
-                          Edit
-                        </button>
-                        <button
-                          className="secondary"
-                          onClick={() =>
-                            void onRun(
-                              async () => onSecret(await api.resetPassword(user.id)),
-                              'Could not reset the password',
-                            )
-                          }
-                        >
-                          Reset password
-                        </button>
-                        <button
-                          className="secondary"
-                          disabled={Boolean(blocked)}
-                          title={blocked}
-                          onClick={() => {
-                            // Deactivation is not a delete, and the difference
-                            // is load-bearing enough that §4.2 asks for it to be
-                            // spelled out at the moment somebody acts — not
-                            // discovered afterwards.
-                            if (
-                              user.isActive &&
-                              !confirm(
-                                `${user.displayName} will not be able to sign in.\n\n` +
-                                  'Their leads, orders and audit history are unchanged. This is ' +
-                                  'not a delete — use Delete to send them to the Recycle Bin.',
-                              )
-                            ) {
-                              return;
-                            }
-
-                            void onRun(
-                              () =>
-                                api.updateUser(user.id, {
-                                  isActive: !user.isActive,
-                                  expectedVersion: user.sync.version,
-                                }),
-                              'Could not change the status',
-                            );
-                          }}
-                        >
-                          {user.isActive ? 'Deactivate' : 'Activate'}
-                        </button>
-                        <button
-                          className="danger"
-                          disabled={Boolean(blocked) || user.id === currentUserId}
-                          title={blocked ?? (user.id === currentUserId ? 'This is you' : undefined)}
-                          onClick={() => {
-                            if (
-                              !confirm(
-                                `Delete ${user.displayName}?\n\n` +
-                                  'They go to the Recycle Bin and can be restored. Their records ' +
-                                  'and audit history stay exactly as they are.',
-                              )
-                            ) {
-                              return;
-                            }
-
-                            void onRun(() => api.deleteUser(user.id), 'Could not delete');
-                          }}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <DataTable
+          columns={columns}
+          rows={visible}
+          rowKey={(user) => user.id}
+          empty={
+            <EmptyState
+              title={users.length === 0 ? t('access.users.empty') : t('access.users.emptyFiltered')}
+            />
+          }
+        />
       )}
-    </div>
+
+      <Modal
+        open={Boolean(confirmDeactivate)}
+        onClose={() => setConfirmDeactivate(null)}
+        title={
+          confirmDeactivate
+            ? t('access.users.deactivateConfirmTitle', { name: confirmDeactivate.displayName })
+            : ''
+        }
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmDeactivate(null)}>
+              {t('access.users.cancel')}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                const target = confirmDeactivate;
+                setConfirmDeactivate(null);
+                if (target) {
+                  void onRun(
+                    () =>
+                      api.updateUser(target.id, {
+                        isActive: false,
+                        expectedVersion: target.sync.version,
+                      }),
+                    t('access.users.statusChangeFailed'),
+                  );
+                }
+              }}
+            >
+              {t('access.users.deactivate')}
+            </Button>
+          </>
+        }
+      >
+        <p className="ob-body">
+          {confirmDeactivate
+            ? t('access.users.deactivateConfirmBody', { name: confirmDeactivate.displayName })
+            : ''}
+        </p>
+      </Modal>
+
+      <Modal
+        open={Boolean(confirmDelete)}
+        onClose={() => setConfirmDelete(null)}
+        title={confirmDelete ? t('access.users.deleteConfirmTitle', { name: confirmDelete.displayName }) : ''}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmDelete(null)}>
+              {t('access.users.cancel')}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                const target = confirmDelete;
+                setConfirmDelete(null);
+                if (target) void onRun(() => api.deleteUser(target.id), t('access.users.deleteFailed'));
+              }}
+            >
+              {t('access.users.delete')}
+            </Button>
+          </>
+        }
+      >
+        <p className="ob-body">{confirmDelete ? t('access.users.deleteConfirmBody') : ''}</p>
+      </Modal>
+    </Card>
   );
 }
 
@@ -475,20 +608,16 @@ function UserForm({
   const [roleId, setRoleId] = useState(assignable[0]?.id ?? '');
 
   return (
-    <div className="line-card">
-      <div className="line-grid">
-        <Field label="Display name *">
+    <Card className="ob-measure-form" style={{ marginBottom: 'var(--s-16)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--s-12)' }}>
+        <FormField label={t('access.userForm.displayName')} required>
           {(id) => (
-            <input
-              id={id}
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-            />
+            <Input id={id} value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
           )}
-        </Field>
-        <Field label="Username *">
+        </FormField>
+        <FormField label={t('access.userForm.username')} required>
           {(id) => (
-            <input
+            <Input
               id={id}
               value={username}
               // Normalised for the uniqueness check, so "Imran" and "imran" are
@@ -496,41 +625,42 @@ function UserForm({
               onChange={(event) => setUsername(event.target.value.toLowerCase())}
             />
           )}
-        </Field>
-        <Field label="Role *">
+        </FormField>
+        <FormField label={t('access.userForm.role')} required>
           {(id) => (
-            <select id={id} value={roleId} onChange={(event) => setRoleId(event.target.value)}>
+            <Select id={id} value={roleId} onChange={(event) => setRoleId(event.target.value)}>
               {assignable.map((role) => (
                 <option key={role.id} value={role.id}>
                   {role.name} ({role.tier})
                 </option>
               ))}
-            </select>
+            </Select>
           )}
-        </Field>
+        </FormField>
       </div>
 
-      <p className="muted" style={{ marginTop: 0 }}>
-        A temporary password is generated and shown once. There is no way to see it again.
+      <p className="ob-help" style={{ marginTop: 'var(--s-12)' }}>
+        {t('access.userForm.helper')}
       </p>
 
-      <div className="row" style={{ gap: 8 }}>
-        <button
+      <div style={{ display: 'flex', gap: 'var(--s-8)' }}>
+        <Button
+          variant="primary"
           disabled={!displayName.trim() || !username.trim() || !roleId}
           onClick={() =>
             void onRun(async () => {
               const { secret } = await api.createUser({ displayName, username, roleId });
               onCreated(secret);
-            }, 'Could not create the user')
+            }, t('access.userForm.createFailed'))
           }
         >
-          Create user
-        </button>
-        <button className="secondary" onClick={onCancel}>
-          Cancel
-        </button>
+          {t('access.userForm.create')}
+        </Button>
+        <Button variant="secondary" onClick={onCancel}>
+          {t('access.userForm.cancel')}
+        </Button>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -548,29 +678,41 @@ function OneTimeSecretDialog({
   const [copied, setCopied] = useState(false);
 
   return (
-    <div className="card" style={{ borderColor: 'var(--accent)' }} role="dialog" aria-modal="true">
-      <h3 style={{ marginTop: 0 }}>Temporary password for {secret.username}</h3>
-
-      <p className="muted" style={{ marginTop: 0 }}>
-        Copy this now and hand it over. It cannot be shown again — recovery is another reset.
-      </p>
-
-      <div className="row" style={{ gap: 8 }}>
-        <code style={{ fontSize: 20, padding: '8px 12px', background: '#eef2f6', borderRadius: 6 }}>
-          {secret.password}
-        </code>
-        <button
-          className="secondary"
-          onClick={() => {
-            void navigator.clipboard?.writeText(secret.password);
-            setCopied(true);
-          }}
-        >
-          {copied ? 'Copied' : 'Copy'}
-        </button>
-        <button onClick={onClose}>Done</button>
-      </div>
-    </div>
+    <Modal
+      open
+      onClose={onClose}
+      title={t('access.secret.title', { username: secret.username })}
+      footer={
+        <>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              void navigator.clipboard?.writeText(secret.password);
+              setCopied(true);
+            }}
+          >
+            {copied ? t('access.secret.copied') : t('access.secret.copy')}
+          </Button>
+          <Button variant="primary" onClick={onClose}>
+            {t('access.secret.done')}
+          </Button>
+        </>
+      }
+    >
+      <p className="ob-body">{t('access.secret.helper')}</p>
+      <code
+        className="ob-mono"
+        style={{
+          display: 'inline-block',
+          fontSize: 'var(--t-title-size)',
+          padding: 'var(--s-8) var(--s-12)',
+          background: 'var(--bg-sunken)',
+          borderRadius: 'var(--r-md)',
+        }}
+      >
+        {secret.password}
+      </code>
+    </Modal>
   );
 }
 
@@ -593,87 +735,136 @@ function RolesTab({
   onEdit: (role: Role | 'new') => void;
   onRun: (action: () => Promise<unknown>, failure: string) => Promise<void>;
 }) {
+  const [confirmDelete, setConfirmDelete] = useState<Role | null>(null);
+
+  const tierTone = (tier: RoleTier | Role['tier']): 'conflict' | 'accent' | 'default' =>
+    tier === 'admin' ? 'conflict' : tier === 'management' ? 'accent' : 'default';
+
+  const columns: DataTableColumn<Role>[] = [
+    {
+      key: 'name',
+      header: t('access.roles.colRole'),
+      width: '1fr',
+      render: (role) => (
+        <span>
+          {role.name}
+          {role.isSystem && (
+            <span style={{ marginLeft: 'var(--s-8)' }}>
+              <StatusPill tone="default">{t('access.roles.systemBadge')}</StatusPill>
+            </span>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'tier',
+      header: t('access.roles.colTier'),
+      width: '130px',
+      render: (role) => <StatusPill tone={tierTone(role.tier)}>{role.tier}</StatusPill>,
+    },
+    {
+      key: 'permissions',
+      header: t('access.roles.colPermissions'),
+      width: '130px',
+      align: 'right',
+      render: (role) => <span className="ob-data">{role.permissions.length}</span>,
+    },
+    {
+      key: 'users',
+      header: t('access.roles.colUsers'),
+      width: '100px',
+      align: 'right',
+      render: (role) => <span className="ob-data">{role.userCount}</span>,
+    },
+    ...(canEdit || canDelete
+      ? [
+          {
+            key: 'actions',
+            header: '',
+            width: '170px',
+            render: (role: Role) => (
+              <div style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}>
+                {canEdit && (
+                  <Button variant="secondary" size="sm" onClick={() => onEdit(role)}>
+                    {t('access.roles.edit')}
+                  </Button>
+                )}
+                {/* Absent on a system role rather than disabled: it can never
+                    be deleted, so offering the control would be a lie. */}
+                {canDelete && !role.isSystem && (
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    disabled={role.userCount > 0}
+                    title={role.userCount > 0 ? t('access.roles.deleteBlocked') : undefined}
+                    onClick={() => setConfirmDelete(role)}
+                  >
+                    {t('access.roles.delete')}
+                  </Button>
+                )}
+              </div>
+            ),
+          } satisfies DataTableColumn<Role>,
+        ]
+      : []),
+  ];
+
   return (
-    <div className="card">
-      <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
-        <h3 style={{ margin: 0 }}>{loading ? 'Roles' : `${roles.length} roles`}</h3>
-        {canCreate && <button onClick={() => onEdit('new')}>+ Create role</button>}
+    <Card>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 'var(--s-12)',
+        }}
+      >
+        <h2 className="ob-title" style={{ margin: 0 }}>
+          {loading ? t('access.roles.titleLoading') : t('access.roles.title', { count: roles.length })}
+        </h2>
+        {canCreate && (
+          <Button variant="primary" icon="plus" onClick={() => onEdit('new')}>
+            {t('access.roles.create')}
+          </Button>
+        )}
       </div>
 
-      {loading && <SkeletonRows columns={5} />}
-
-      {!loading && roles.length === 0 && (
-        <p className="muted">
-          No roles yet. The Administrator role was created with this company.
-        </p>
+      {loading ? (
+        <SkeletonRows columns={5} />
+      ) : (
+        <DataTable
+          columns={columns}
+          rows={roles}
+          rowKey={(role) => role.id}
+          empty={<EmptyState title={t('access.roles.empty')} />}
+        />
       )}
 
-      <table hidden={loading || roles.length === 0}>
-        <thead>
-          <tr>
-            <th>Role</th>
-            <th>Tier</th>
-            <th className="right">Permissions</th>
-            <th className="right">Users</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {roles.map((role) => (
-            <tr key={role.id}>
-              <td>
-                {role.name}
-                {role.isSystem && (
-                  <span className="chip" style={{ marginLeft: 8 }}>
-                    system
-                  </span>
-                )}
-              </td>
-              <td>{role.tier}</td>
-              <td className="right num">{role.permissions.length}</td>
-              <td className="right num">{role.userCount}</td>
-              <td>
-                <div className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
-                  {canEdit && (
-                    <button className="secondary" onClick={() => onEdit(role)}>
-                      Edit
-                    </button>
-                  )}
-                  {/* Absent on a system role rather than disabled: it can never
-                      be deleted, so offering the control would be a lie. */}
-                  {canDelete && !role.isSystem && (
-                    <button
-                      className="danger"
-                      disabled={role.userCount > 0}
-                      title={
-                        role.userCount > 0
-                          ? 'Still assigned to somebody — move them first'
-                          : undefined
-                      }
-                      onClick={() => {
-                        if (
-                          !confirm(
-                            `Delete the "${role.name}" role?\n\n` +
-                              'It goes to the Recycle Bin and can be restored, and anybody who ' +
-                              'still holds it reattaches when it comes back.',
-                          )
-                        ) {
-                          return;
-                        }
-
-                        void onRun(() => api.deleteRole(role.id), 'Could not delete');
-                      }}
-                    >
-                      Delete
-                    </button>
-                  )}
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+      <Modal
+        open={Boolean(confirmDelete)}
+        onClose={() => setConfirmDelete(null)}
+        title={confirmDelete ? t('access.roles.deleteConfirmTitle', { name: confirmDelete.name }) : ''}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmDelete(null)}>
+              {t('access.roles.cancel')}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                const target = confirmDelete;
+                setConfirmDelete(null);
+                if (target) void onRun(() => api.deleteRole(target.id), t('access.roles.deleteFailed'));
+              }}
+            >
+              {t('access.roles.delete')}
+            </Button>
+          </>
+        }
+      >
+        <p className="ob-body">{confirmDelete ? t('access.roles.deleteConfirmBody') : ''}</p>
+      </Modal>
+    </Card>
   );
 }
 
@@ -683,12 +874,17 @@ function RoleEditor({
   onCancel,
   onSaved,
   onError,
+  registerCancel,
 }: {
   catalogue: PermissionCatalogue;
   role: Role | null;
   onCancel: () => void;
   onSaved: () => void;
   onError: (message: string) => void;
+  /** Hands the drawer-aware caller this editor's dirty-checking cancel, so
+   *  the Drawer's own close paths (backdrop, X, Esc) share it instead of
+   *  bypassing the discard confirm. */
+  registerCancel: (fn: () => void) => void;
 }) {
   const [name, setName] = useState(role?.name ?? '');
   const [tier, setTier] = useState<RoleTier>((role?.tier as RoleTier) ?? 'office');
@@ -729,18 +925,16 @@ function RoleEditor({
    * asks to cancel *with a confirm if dirty*.
    */
   const cancel = useCallback(() => {
-    if (dirty && !confirm('Discard your unsaved changes to this role?')) return;
+    if (dirty && !confirm(t('access.roleEditor.discardConfirm'))) return;
     onCancel();
   }, [dirty, onCancel]);
 
+  // The Drawer (via useOverlay) already traps focus and closes on Esc itself;
+  // it calls back into this same `cancel` through `registerCancel` rather
+  // than this component running a second, competing Esc handler.
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') cancel();
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [cancel]);
+    registerCancel(cancel);
+  }, [cancel, registerCancel]);
 
   function toggle(key: string, next: boolean): void {
     setSelected((current) => {
@@ -791,8 +985,9 @@ function RoleEditor({
         setBaseVersion(caught.storedVersion);
         setConflict({ message: caught.message, diff: caught.diff });
       } else {
-        setFailure(caught instanceof Error ? caught.message : 'Could not save the role');
-        onError(caught instanceof Error ? caught.message : 'Could not save the role');
+        const message = caught instanceof Error ? caught.message : t('access.roleEditor.saveFailedDefault');
+        setFailure(message);
+        onError(message);
       }
     } finally {
       setBusy(false);
@@ -800,72 +995,58 @@ function RoleEditor({
   }
 
   return (
-    <div>
-      <div className="row" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
-        <h2 style={{ margin: 0 }}>{role ? role.name : 'New role'}</h2>
-        <div className="row" style={{ gap: 8 }}>
-          <button className="secondary" onClick={cancel}>
-            Cancel
-          </button>
-          <button disabled={busy || !dirty || !name.trim()} onClick={() => void save()}>
-            {busy ? 'Saving…' : 'Save'}
-          </button>
-        </div>
-      </div>
-
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
       {failure && (
-        <div className="error" role="alert">
+        <div className="ob-banner ob-banner--conflict" role="alert">
           {failure}
         </div>
       )}
 
       {conflict && (
-        <div className="notice" role="alert">
+        <ConflictBanner
+          action={
+            <div style={{ display: 'flex', gap: 'var(--s-8)' }}>
+              {/* Reload discards this draft for theirs; Overwrite keeps this
+                  draft and re-bases on their version. Nothing is applied
+                  automatically — auto-overwriting loses whatever they just
+                  did, silently. */}
+              <Button variant="secondary" size="sm" onClick={onCancel}>
+                {t('access.roleEditor.reloadTheirs')}
+              </Button>
+              <Button size="sm" onClick={() => void save(true)} disabled={busy}>
+                {t('access.roleEditor.overwriteMine')}
+              </Button>
+            </div>
+          }
+        >
           <strong>{conflict.message}</strong>
           {Object.keys(conflict.diff).length > 0 && (
-            <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
+            <ul style={{ margin: 'var(--s-8) 0 0', paddingLeft: 'var(--s-20)' }}>
               {Object.entries(conflict.diff).map(([field, difference]) => (
                 <li key={field}>
-                  <strong>{humaniseField(field)}</strong>: theirs{' '}
-                  <code>{describeValue(difference.stored)}</code>, yours{' '}
+                  <strong>{humaniseField(field)}</strong>: {t('access.roleEditor.theirs')}{' '}
+                  <code>{describeValue(difference.stored)}</code>, {t('access.roleEditor.yours')}{' '}
                   <code>{describeValue(difference.incoming)}</code>
                 </li>
               ))}
             </ul>
           )}
-          <div className="row" style={{ gap: 8, marginTop: 10 }}>
-            {/* Reload discards this draft for theirs; Overwrite keeps this draft
-                and re-bases on their version. Nothing is applied automatically —
-                auto-overwriting loses whatever they just did, silently. */}
-            <button className="secondary" onClick={onCancel}>
-              Reload theirs
-            </button>
-            <button onClick={() => void save(true)} disabled={busy}>
-              Overwrite with mine
-            </button>
-          </div>
-        </div>
+        </ConflictBanner>
       )}
 
-      <div className="card">
-        <div className="line-grid">
-          <Field label="Name">
-            {(id) => (
-              <input
-                id={id}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-              />
-            )}
-          </Field>
+      <Card className="ob-measure-form">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-16)' }}>
+          <FormField label={t('access.roleEditor.nameLabel')}>
+            {(id) => <Input id={id} value={name} onChange={(event) => setName(event.target.value)} />}
+          </FormField>
 
-          <Field label="Tier">
+          <FormField label={t('access.roleEditor.tierLabel')}>
             {(id) => (
-              <select
+              <Select
                 id={id}
                 value={tier}
                 disabled={role?.isSystem}
-                title={role?.isSystem ? 'A system role’s tier is locked' : undefined}
+                title={role?.isSystem ? t('access.roleEditor.tierLocked') : undefined}
                 onChange={(event) => {
                   const next = event.target.value as RoleTier;
                   // Lowering the tier never silently drops keys — it asks first.
@@ -878,47 +1059,56 @@ function RoleEditor({
                     {value}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
-          </Field>
+          </FormField>
         </div>
 
         {pendingTier && (
-          <div className="error" style={{ background: '#fdf1dc', borderColor: '#e6c98a', color: '#8a6115' }}>
-            <strong>
-              Changing to {pendingTier} will remove {wouldDrop.length} permission
-              {wouldDrop.length === 1 ? '' : 's'}:
-            </strong>
-            <ul style={{ margin: '6px 0 10px', paddingLeft: 18 }}>
-              {wouldDrop.map((key) => (
-                <li key={key}>
-                  <code>{key}</code>
-                </li>
-              ))}
-            </ul>
-            <div className="row" style={{ gap: 8 }}>
-              <button className="secondary" onClick={() => setPendingTier(null)}>
-                Keep {tier}
-              </button>
-              <button
-                onClick={() => {
-                  setSelected((current) => {
-                    const copy = new Set(current);
-                    for (const key of wouldDrop) copy.delete(key);
-                    return copy;
-                  });
-                  setTier(pendingTier);
-                  setPendingTier(null);
-                }}
-              >
-                Change to {pendingTier}
-              </button>
-            </div>
+          <div style={{ marginTop: 'var(--s-16)' }}>
+            <OfflineBanner
+              action={
+                <div style={{ display: 'flex', gap: 'var(--s-8)' }}>
+                  <Button variant="secondary" size="sm" onClick={() => setPendingTier(null)}>
+                    {t('access.roleEditor.keepTier', { tier })}
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setSelected((current) => {
+                        const copy = new Set(current);
+                        for (const key of wouldDrop) copy.delete(key);
+                        return copy;
+                      });
+                      setTier(pendingTier);
+                      setPendingTier(null);
+                    }}
+                  >
+                    {t('access.roleEditor.changeTier', { tier: pendingTier })}
+                  </Button>
+                </div>
+              }
+            >
+              <strong>
+                {t('access.roleEditor.pendingWarning', {
+                  tier: pendingTier,
+                  count: wouldDrop.length,
+                  plural: wouldDrop.length === 1 ? '' : 's',
+                })}
+              </strong>
+              <ul style={{ margin: 'var(--s-6) 0 0', paddingLeft: 'var(--s-20)' }}>
+                {wouldDrop.map((key) => (
+                  <li key={key}>
+                    <code>{key}</code>
+                  </li>
+                ))}
+              </ul>
+            </OfflineBanner>
           </div>
         )}
-      </div>
+      </Card>
 
-      <div className="card">
+      <Card>
         <PermissionGrid
           catalogue={catalogue}
           tier={tier}
@@ -927,6 +1117,15 @@ function RoleEditor({
           onToggle={toggle}
           onToggleMany={toggleMany}
         />
+      </Card>
+
+      <div style={{ display: 'flex', gap: 'var(--s-8)' }}>
+        <Button variant="primary" disabled={busy || !dirty || !name.trim()} onClick={() => void save()}>
+          {busy ? t('access.roleEditor.saving') : t('access.roleEditor.save')}
+        </Button>
+        <Button variant="secondary" onClick={cancel}>
+          {t('access.roleEditor.cancel')}
+        </Button>
       </div>
     </div>
   );
@@ -946,9 +1145,14 @@ function humaniseField(field: string): string {
  */
 function describeValue(value: unknown): string {
   if (Array.isArray(value)) {
-    return value.length === 0 ? 'none' : `${value.length} permission${value.length === 1 ? '' : 's'}`;
+    return value.length === 0
+      ? t('access.roleEditor.diffNone')
+      : t('access.roleEditor.diffPermissionsCount', {
+          count: value.length,
+          plural: value.length === 1 ? '' : 's',
+        });
   }
-  if (value === null || value === undefined) return 'not set';
+  if (value === null || value === undefined) return t('access.roleEditor.diffNotSet');
   return String(value);
 }
 
@@ -973,7 +1177,11 @@ function RecycleBin({
   const [roles, setRoles] = useState<Role[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
 
+  // Kept local rather than raised through `onRun`: `run` is redefined on every
+  // AccessScreen render, so depending on it here would re-fire the fetch in a
+  // loop.
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -983,6 +1191,11 @@ function RecycleBin({
       ]);
       setRoles(nextRoles);
       setUsers(nextUsers);
+      setFailure(null);
+    } catch (caught) {
+      // A dropped rejection left the lists at [] and the one panel whose whole
+      // purpose is recovery then stated that nothing had been deleted.
+      setFailure(caught instanceof Error ? caught.message : 'Could not load');
     } finally {
       setLoading(false);
     }
@@ -995,97 +1208,78 @@ function RecycleBin({
   const total = roles.length + users.length;
 
   return (
-    <div className="card" style={{ marginTop: 16 }}>
-      <button className="secondary" onClick={() => setOpen((current) => !current)}>
-        {open ? 'Hide' : 'Show'} deleted roles and people
+    <Card>
+      <Button variant="secondary" onClick={() => setOpen((current) => !current)}>
+        {open ? t('access.recycleBin.hide') : t('access.recycleBin.show')}
         {open && total > 0 ? ` (${total})` : ''}
-      </button>
+      </Button>
 
       {open && (
-        <div style={{ marginTop: 12 }}>
+        <div style={{ marginTop: 'var(--s-12)' }}>
           {loading ? (
-            <p className="muted">Loading…</p>
+            <p className="ob-small">{t('access.recycleBin.loading')}</p>
+          ) : failure ? (
+            <div className="ob-banner ob-banner--conflict" role="alert">
+              {failure}
+            </div>
           ) : total === 0 ? (
-            <p className="muted">Nothing has been deleted.</p>
+            <p className="ob-small">{t('access.recycleBin.empty')}</p>
           ) : (
-            <ul style={{ margin: 0, paddingLeft: 20 }}>
+            <ul
+              style={{
+                margin: 0,
+                paddingLeft: 'var(--s-20)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--s-6)',
+              }}
+            >
               {roles.map((role) => (
-                <li key={role.id} style={{ marginBottom: 6 }}>
-                  <strong>{role.name}</strong> <span className="muted">role · {role.tier}</span>{' '}
-                  <button
-                    className="secondary"
+                <li key={role.id}>
+                  <span className="ob-body-strong">{role.name}</span>{' '}
+                  <span className="ob-small">{t('access.recycleBin.roleMeta', { tier: role.tier })}</span>{' '}
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={() =>
                       void onRun(async () => {
                         await api.restoreRole(role.id);
                         await load();
-                      }, 'Could not restore the role')
+                      }, t('access.recycleBin.restoreRoleFailed'))
                     }
                   >
-                    Restore
-                  </button>
+                    {t('access.recycleBin.restore')}
+                  </Button>
                 </li>
               ))}
               {users.map((user) => (
-                <li key={user.id} style={{ marginBottom: 6 }}>
-                  <strong>{user.displayName}</strong>{' '}
-                  <span className="muted">person · {user.username}</span>{' '}
-                  <button
-                    className="secondary"
+                <li key={user.id}>
+                  <span className="ob-body-strong">{user.displayName}</span>{' '}
+                  <span className="ob-small">{t('access.recycleBin.userMeta', { username: user.username })}</span>{' '}
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={() =>
                       void onRun(async () => {
                         await api.restoreUser(user.id);
                         await load();
-                      }, 'Could not restore the person')
+                      }, t('access.recycleBin.restoreUserFailed'))
                     }
                   >
-                    Restore
-                  </button>
+                    {t('access.recycleBin.restore')}
+                  </Button>
                 </li>
               ))}
             </ul>
           )}
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
 /** Tier ordering, for filtering a picker to what the actor may hand out. */
 const TIER_RANK: Record<RoleTier, number> = { office: 1, management: 2, admin: 3 };
-
-/**
- * Placeholder rows while the first response is in flight.
- *
- * §7 asks for skeleton rows rather than a spinner over an empty page — and,
- * more importantly, rather than the empty *state*, which asserts something false
- * about the company for as long as the request takes.
- */
-function SkeletonRows({ columns }: { columns: number }) {
-  return (
-    <table aria-busy="true">
-      <tbody>
-        {[0, 1, 2].map((row) => (
-          <tr key={row}>
-            {Array.from({ length: columns }, (_, column) => (
-              <td key={column}>
-                <span
-                  aria-hidden="true"
-                  style={{
-                    display: 'block',
-                    height: 12,
-                    borderRadius: 4,
-                    background: 'currentColor',
-                    opacity: 0.12,
-                  }}
-                />
-              </td>
-            ))}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
 
 /**
  * Edit a person's display name and username.
@@ -1111,30 +1305,27 @@ function UserEditForm({
   const dirty = displayName.trim() !== user.displayName || username.trim() !== user.username;
 
   return (
-    <div className="line-card">
-      <div className="line-grid">
-        <Field label="Display name">
+    <Card className="ob-measure-form" style={{ marginBottom: 'var(--s-16)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-12)' }}>
+        <FormField label={t('access.userEdit.displayName')}>
           {(id) => (
-            <input
-              id={id}
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-            />
+            <Input id={id} value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
           )}
-        </Field>
-        <Field label="Username">
+        </FormField>
+        <FormField label={t('access.userEdit.username')}>
           {(id) => (
-            <input
+            <Input
               id={id}
               value={username}
               onChange={(event) => setUsername(event.target.value.toLowerCase())}
             />
           )}
-        </Field>
+        </FormField>
       </div>
 
-      <div className="row" style={{ gap: 8 }}>
-        <button
+      <div style={{ display: 'flex', gap: 'var(--s-8)', marginTop: 'var(--s-12)' }}>
+        <Button
+          variant="primary"
           disabled={!dirty || !displayName.trim() || !username.trim()}
           onClick={() =>
             void onRun(async () => {
@@ -1144,15 +1335,15 @@ function UserEditForm({
                 expectedVersion: user.sync.version,
               });
               onSaved();
-            }, 'Could not save')
+            }, t('access.userEdit.saveFailed'))
           }
         >
-          Save
-        </button>
-        <button className="secondary" onClick={onCancel}>
-          Cancel
-        </button>
+          {t('access.userEdit.save')}
+        </Button>
+        <Button variant="secondary" onClick={onCancel}>
+          {t('access.userEdit.cancel')}
+        </Button>
       </div>
-    </div>
+    </Card>
   );
 }

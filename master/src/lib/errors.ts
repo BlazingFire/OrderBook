@@ -92,6 +92,38 @@ export class ConflictError extends AppError {
   }
 }
 
+export type BackupFailureReason =
+  | 'wrong_passphrase'
+  | 'corrupt_file'
+  | 'populated_data_directory'
+  | 'migration_too_new'
+  | 'hash_chain_invalid';
+
+const BACKUP_FAILURE_STATUS: Record<BackupFailureReason, number> = {
+  wrong_passphrase: 400,
+  corrupt_file: 400,
+  populated_data_directory: 409,
+  migration_too_new: 400,
+  hash_chain_invalid: 500,
+};
+
+/**
+ * A storage export/import failure (`docs/7-STORAGE-BACKUP-RESTORE.md` §7).
+ * Carries `reason` as a stable code a client branches on — the same rule the
+ * rest of this file follows, spelled out again because a backup failure is
+ * exactly the kind of thing a UI needs to react to precisely (offer
+ * "confirm wipe", not just show red text).
+ */
+export class BackupError extends AppError {
+  constructor(
+    readonly reason: BackupFailureReason,
+    messageKey: MessageKey,
+    params: MessageParams = {},
+  ) {
+    super(messageKey, params, BACKUP_FAILURE_STATUS[reason], `backup_${reason}`, { reason });
+  }
+}
+
 export function toErrorMessage(error: unknown): string {
   if (error instanceof AppError) return error.message;
   if (error instanceof Error) return error.message;

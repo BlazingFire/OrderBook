@@ -4,7 +4,7 @@ import type { PairingRequest } from '@orderbook/shared';
 import { ValidationError } from '../../lib/errors.js';
 import * as panelService from '../../services/panel.service.js';
 import { asyncHandler } from '../async-handler.js';
-import { actorFromRequest, requireAuth } from '../middleware/require-auth.js';
+import { actorFromRequest, requireAuth, requirePermissionMiddleware } from '../middleware/require-auth.js';
 
 /**
  * Unauthenticated: an Office Panel has no credentials yet at this point. The
@@ -37,10 +37,22 @@ pairingRoutes.post(
   }),
 );
 
-/** Admin-only management of already-paired panels. */
+/**
+ * Management of already-paired panels.
+ *
+ * Admitting a panel, revoking one and renaming one are `panels.manage`: opening
+ * the pairing window admits any panel that can find the Master over UDP, and a
+ * revoke locks a working panel out until somebody re-pairs it by hand. The two
+ * reads stay on `requireAuth` alone: the shell's presence rail asks for the
+ * panel list on every signed-in session, whatever that session may administer,
+ * and the pairing window reports this Master's own transient state rather than
+ * anything belonging to the company.
+ */
 export const panelRoutes: Router = Router();
 
 panelRoutes.use(requireAuth);
+
+const needs = requirePermissionMiddleware;
 
 panelRoutes.get(
   '/',
@@ -50,11 +62,11 @@ panelRoutes.get(
   }),
 );
 
-panelRoutes.post('/pairing-window/open', (_req, res) => {
+panelRoutes.post('/pairing-window/open', needs('panels.manage'), (_req, res) => {
   res.json(panelService.openPairingWindow());
 });
 
-panelRoutes.post('/pairing-window/close', (_req, res) => {
+panelRoutes.post('/pairing-window/close', needs('panels.manage'), (_req, res) => {
   panelService.closePairingWindow();
   res.status(204).end();
 });
@@ -65,6 +77,7 @@ panelRoutes.get('/pairing-window', (_req, res) => {
 
 panelRoutes.post(
   '/:id/revoke',
+  needs('panels.manage'),
   asyncHandler(async (req, res) => {
     res.json(await panelService.revokePanel(String(req.params.id)));
   }),
@@ -72,6 +85,7 @@ panelRoutes.post(
 
 panelRoutes.patch(
   '/:id',
+  needs('panels.manage'),
   asyncHandler(async (req, res) => {
     const name = req.body?.name;
     if (typeof name !== 'string') throw new ValidationError('validation.panel.nameRequired');

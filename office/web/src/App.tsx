@@ -22,17 +22,21 @@ import { AddLeadScreen } from './screens/AddLeadScreen';
 import { CatalogScreen } from './screens/CatalogScreen';
 import { ConflictsScreen } from './screens/ConflictsScreen';
 import { ConnectionScreen } from './screens/ConnectionScreen';
+import { DashboardScreen } from './screens/DashboardScreen';
 import { LeadBoardScreen } from './screens/LeadBoardScreen';
 import { OrderBoardScreen } from './screens/OrderBoardScreen';
+import { SettingsScreen } from './screens/SettingsScreen';
 import { SignInScreen } from './screens/SignInScreen';
 import { AppShell, type NavGroup, type NavItem } from './ui/AppShell';
 import { BusyMark } from './ui/BusyMark';
+import { FilterBarOutlet, FilterBarProvider } from './ui/FilterBarSlot';
+import { SaveShortcutProvider } from './ui/SaveShortcutSlot';
 import { GalleryScreen } from './ui/GalleryScreen';
 import { Icon } from './ui/icons';
 import { Splash } from './ui/Splash';
 import { ToastProvider, useToast } from './ui/Toast';
 
-type Tab = 'leads' | 'orders' | 'parties' | 'products' | 'conflicts';
+type Tab = 'dashboard' | 'leads' | 'orders' | 'parties' | 'products' | 'conflicts' | 'settings';
 
 function readHash(): string {
   return window.location.hash.replace(/^#/, '');
@@ -55,7 +59,7 @@ function OfficePanel() {
   const [view, setView] = useState<LocalView | null>(null);
   const [rejections, setRejections] = useState<MutationResult[]>([]);
 
-  const [tab, setTab] = useState<Tab>('leads');
+  const [tab, setTab] = useState<Tab>('dashboard');
   const [addingLead, setAddingLead] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flushing, setFlushing] = useState(false);
@@ -192,7 +196,7 @@ function OfficePanel() {
     await api.signOut();
     setSession(null);
     setView(null);
-    setTab('leads');
+    setTab('dashboard');
     setAddingLead(false);
     setHits(null);
     setTerm('');
@@ -309,6 +313,10 @@ function OfficePanel() {
       label: t('nav.work'),
       items: (
         [
+          // Always present, unlike the rest of this group: it only aggregates
+          // what the screens below already show, so it needs no permission of
+          // its own beyond being signed in.
+          { id: 'dashboard', label: t('nav.dashboard'), icon: 'dashboard' as const },
           can('leads.view')
             ? { id: 'leads', label: t('nav.leads'), icon: 'leads' as const }
             : null,
@@ -335,16 +343,34 @@ function OfficePanel() {
         ] satisfies Array<NavItem | null>
       ).filter((item): item is NonNullable<typeof item> => item !== null),
     },
+    {
+      // Per-machine appearance and device info — nothing here is gated by a
+      // permission, so this group has exactly one item, always.
+      label: t('nav.system'),
+      items: [{ id: 'settings', label: t('nav.settings'), icon: 'settings' as const }],
+    },
   ];
 
   // Map sidebar ids back onto the tabs the screens know.
   const idToTab: Record<string, Tab> = {
+    dashboard: 'dashboard',
     leads: 'leads',
     orders: 'orders',
     parties: 'parties',
     products: 'products',
     conflicts: 'conflicts',
+    settings: 'settings',
   };
+
+  /** Shared by the sidebar and by in-content links (e.g. the Dashboard's stat cards). */
+  function goToTab(id: string): void {
+    // Clear a stale #/gallery so the hash and the state agree; replaceState
+    // does not fire hashchange, the setRoute below is the source of truth.
+    if (readHash()) window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    setRoute('');
+    setAddingLead(false);
+    if (idToTab[id]) setTab(idToTab[id]);
+  }
 
   const activeId =
     route === 'gallery'
@@ -540,6 +566,19 @@ function OfficePanel() {
       );
     }
 
+    // Per-machine, not per-sync: available even before the first snapshot
+    // arrives, unlike everything below it.
+    if ((idToTab[activeId] ?? activeId) === 'settings') {
+      return (
+        <SettingsScreen
+          connection={connection}
+          session={session}
+          pendingCount={pendingCount}
+          openConflicts={openConflicts}
+        />
+      );
+    }
+
     if (!view) {
       return (
         <div className="ob-empty">
@@ -551,8 +590,17 @@ function OfficePanel() {
     }
 
     switch (idToTab[activeId] ?? activeId) {
+      case 'dashboard':
+        return <DashboardScreen view={view} onNavigate={goToTab} />;
       case 'leads':
-        return <LeadBoardScreen view={view} canConvert={can('lead.convert')} onError={setError} />;
+        return (
+          <LeadBoardScreen
+            view={view}
+            canConvert={can('lead.convert')}
+            onError={setError}
+            onAddLead={can('leads.create') ? () => setAddingLead(true) : undefined}
+          />
+        );
       case 'orders':
         return <OrderBoardScreen view={view} canDispatch={can('orders.dispatch')} onError={setError} />;
       case 'conflicts':
@@ -580,27 +628,25 @@ function OfficePanel() {
   })();
 
   return (
-    <AppShell
-      groups={groups}
-      activeId={activeId}
-      onNavigate={(id) => {
-        // Clear a stale #/gallery so the hash and the state agree; replaceState
-        // does not fire hashchange, the setRoute below is the source of truth.
-        if (readHash()) window.history.replaceState(null, '', window.location.pathname + window.location.search);
-        setRoute('');
-        setAddingLead(false);
-        if (idToTab[id]) setTab(idToTab[id]);
-      }}
-      collapsed={collapsed}
-      onToggleCollapsed={() => setCollapsed((value) => !value)}
-      topbar={topbar}
-      footer={footer}
-      rail={railState}
-      railLabel={syncLabel}
-      onRailClick={() => setSyncPopover((open) => !open)}
-      overlays={overlays}
-    >
-      {content}
-    </AppShell>
+    <SaveShortcutProvider>
+      <FilterBarProvider>
+        <AppShell
+          groups={groups}
+          activeId={activeId}
+          onNavigate={goToTab}
+          collapsed={collapsed}
+          onToggleCollapsed={() => setCollapsed((value) => !value)}
+          topbar={topbar}
+          filterbar={<FilterBarOutlet />}
+          footer={footer}
+          rail={railState}
+          railLabel={syncLabel}
+          onRailClick={() => setSyncPopover((open) => !open)}
+          overlays={overlays}
+        >
+          {content}
+        </AppShell>
+      </FilterBarProvider>
+    </SaveShortcutProvider>
   );
 }

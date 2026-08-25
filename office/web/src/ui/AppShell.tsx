@@ -34,6 +34,7 @@ export function AppShell({
   collapsed,
   onToggleCollapsed,
   topbar,
+  filterbar,
   footer,
   rail,
   railLabel,
@@ -47,6 +48,8 @@ export function AppShell({
   collapsed: boolean;
   onToggleCollapsed: () => void;
   topbar: ReactNode;
+  /** The 40px strip under the topbar — list screens only (§8). Omit elsewhere. */
+  filterbar?: ReactNode;
   footer: ReactNode;
   rail: RailState;
   railLabel: string;
@@ -104,6 +107,7 @@ export function AppShell({
 
       <div className="ob-main">
         <header className="ob-topbar">{topbar}</header>
+        {filterbar}
         <main className="ob-content">{children}</main>
         <footer className="ob-footer">{footer}</footer>
         {overlays}

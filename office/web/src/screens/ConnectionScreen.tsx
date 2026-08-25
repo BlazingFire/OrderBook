@@ -7,9 +7,17 @@
  */
 
 import { useState, type FormEvent } from 'react';
+import type { BackupRestorePreview } from '@orderbook/shared';
 
-import { api, type ConnectionInfo, type DiscoveredMaster } from '../api';
-import { Field } from '../components/Field';
+import { api, ApiError, type ConnectionInfo, type DiscoveredMaster } from '../api';
+import { t } from '../i18n/strings';
+import { Button } from '../ui/Button';
+import { Card } from '../ui/Card';
+import { StatusPill } from '../ui/DataDisplay';
+import { DataTable, type DataTableColumn } from '../ui/DataTable';
+import { FieldError, FormField, Input } from '../ui/Form';
+import { EmptyState } from '../ui/States';
+import { Segmented } from '../ui/Tabs';
 
 interface Props {
   connection: ConnectionInfo;
@@ -17,7 +25,42 @@ interface Props {
 }
 
 export function ConnectionScreen({ connection, onConnected }: Props) {
-  const [mode, setMode] = useState<'auto' | 'manual'>('auto');
+  const [mode, setMode] = useState<'auto' | 'manual' | 'restore'>('auto');
+
+  const [restoreStep, setRestoreStep] = useState<'pick' | 'preview' | 'done'>('pick');
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restorePreview, setRestorePreview] = useState<BackupRestorePreview | null>(null);
+  const [restorePassphrase, setRestorePassphrase] = useState('');
+  const [restoreBusy, setRestoreBusy] = useState(false);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+
+  async function handleRestoreFileChosen(chosen: File) {
+    setRestoreFile(chosen);
+    setRestoreError(null);
+    setRestoreBusy(true);
+    try {
+      setRestorePreview(await api.previewRestoreConnection(chosen));
+      setRestoreStep('preview');
+    } catch (err) {
+      setRestoreError(err instanceof ApiError ? err.message : t('connection.errorFallback'));
+    } finally {
+      setRestoreBusy(false);
+    }
+  }
+
+  async function handleRestore() {
+    if (!restoreFile) return;
+    setRestoreBusy(true);
+    setRestoreError(null);
+    try {
+      await api.restoreConnection(restoreFile, restorePassphrase, false);
+      setRestoreStep('done');
+    } catch (err) {
+      setRestoreError(err instanceof ApiError ? err.message : t('connection.errorFallback'));
+    } finally {
+      setRestoreBusy(false);
+    }
+  }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [found, setFound] = useState<DiscoveredMaster[] | null>(null);
@@ -34,7 +77,7 @@ export function ConnectionScreen({ connection, onConnected }: Props) {
       await api.pairAuto(panelName);
       onConnected();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Connection failed');
+      setError(caught instanceof Error ? caught.message : t('connection.errorFallback'));
     } finally {
       setBusy(false);
     }
@@ -55,7 +98,7 @@ export function ConnectionScreen({ connection, onConnected }: Props) {
         setPort(String(first.httpPort));
       }
     } catch {
-      setError('Could not search the network');
+      setError(t('connection.scanErrorFallback'));
     } finally {
       setBusy(false);
     }
@@ -74,146 +117,258 @@ export function ConnectionScreen({ connection, onConnected }: Props) {
       });
       onConnected();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Connection failed');
+      setError(caught instanceof Error ? caught.message : t('connection.errorFallback'));
     } finally {
       setBusy(false);
     }
   }
 
-  return (
-    <div style={{ maxWidth: 620, margin: '40px auto', padding: '0 16px' }}>
-      <h1>Connect to Master Panel</h1>
+  const masterColumns: DataTableColumn<DiscoveredMaster>[] = [
+    {
+      key: 'name',
+      header: t('connection.scan.col.master'),
+      render: (master) => master.companyName ?? t('connection.scan.defaultName'),
+    },
+    {
+      key: 'address',
+      header: t('connection.scan.col.address'),
+      width: '160px',
+      render: (master) => (
+        <span className="ob-mono">
+          {master.lanIp}:{master.httpPort}
+        </span>
+      ),
+    },
+    {
+      key: 'accepting',
+      header: t('connection.scan.col.accepting'),
+      width: '130px',
+      render: (master) => (
+        <StatusPill tone={master.acceptingPairing ? 'ok' : 'default'}>
+          {master.acceptingPairing ? t('connection.scan.acceptingYes') : t('connection.scan.acceptingNo')}
+        </StatusPill>
+      ),
+    },
+  ];
 
-      <div className="card">
-        <div className="row">
-          <span className={`dot ${connection.hasNetworkLink ? 'on' : 'off'}`} />
-          <strong>
-            {connection.hasNetworkLink ? 'Connected to network' : 'Not connected to any network'}
-          </strong>
+  return (
+    <div style={{ maxWidth: 620, margin: 'var(--s-40) auto', padding: '0 var(--s-16)' }}>
+      <h1 className="ob-display" style={{ marginBottom: 'var(--s-16)' }}>
+        {t('connection.title')}
+      </h1>
+
+      <Card style={{ marginBottom: 'var(--s-16)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
+          <StatusPill tone={connection.hasNetworkLink ? 'ok' : 'offline'}>
+            {connection.hasNetworkLink
+              ? t('connection.status.connected')
+              : t('connection.status.disconnected')}
+          </StatusPill>
         </div>
         {connection.hasNetworkLink ? (
-          <div className="muted" style={{ marginTop: 6 }}>
-            This PC: {connection.interfaces.map((entry) => entry.address).join(', ')}
-          </div>
-        ) : (
-          <div className="muted" style={{ marginTop: 6 }}>
-            Plug in the LAN cable or join the shop WiFi, then this screen will update.
-          </div>
-        )}
-      </div>
-
-      {error && <div className="error">{error}</div>}
-
-      <div className="row" style={{ marginBottom: 12 }}>
-        <button className={mode === 'auto' ? '' : 'secondary'} onClick={() => setMode('auto')}>
-          Auto connection
-        </button>
-        <button className={mode === 'manual' ? '' : 'secondary'} onClick={() => setMode('manual')}>
-          Manual connection
-        </button>
-      </div>
-
-      {mode === 'auto' ? (
-        <div className="card">
-          <h3 style={{ marginTop: 0 }}>Auto connection (recommended)</h3>
-          <ol className="muted" style={{ paddingLeft: 18, marginTop: 0 }}>
-            <li>On the Master Panel PC, open “Office Panels” and press “Add Office Panel”.</li>
-            <li>It will say “Waiting for office panel…”.</li>
-            <li>Press the button below. The two will find each other automatically.</li>
-          </ol>
-
-          <Field label="Name for this PC">
-            {(id) => (
-              <input id={id} value={panelName} onChange={(event) => setPanelName(event.target.value)} />
-            )}
-          </Field>
-
-          <div className="row">
-            <button onClick={connectAutomatically} disabled={busy || !connection.hasNetworkLink}>
-              {busy ? 'Searching…' : 'Proceed with Auto Connection'}
-            </button>
-            <button className="secondary" onClick={scan} disabled={busy}>
-              Search only
-            </button>
-          </div>
-
-          {found && (
-            <div style={{ marginTop: 12 }}>
-              {found.length === 0 ? (
-                <div className="muted">
-                  No Master Panel answered. Check that the Master PC is switched on and on the same
-                  network.
-                </div>
-              ) : (
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Master</th>
-                      <th>Address</th>
-                      <th>Accepting</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {found.map((master) => (
-                      <tr key={master.masterUniqueId}>
-                        <td>{master.companyName ?? 'Master Panel'}</td>
-                        <td>
-                          {master.lanIp}:{master.httpPort}
-                        </td>
-                        <td>{master.acceptingPairing ? 'Yes' : 'Not right now'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          )}
-        </div>
-      ) : (
-        <form className="card" onSubmit={connectManually}>
-          <h3 style={{ marginTop: 0 }}>Manual connection</h3>
-          <p className="muted">
-            Use the address and pairing password shown on the Master Panel’s setup screen.
+          <p className="ob-small" style={{ marginTop: 'var(--s-6)' }}>
+            {t('connection.status.thisPc', {
+              addresses: connection.interfaces.map((entry) => entry.address).join(', '),
+            })}
           </p>
+        ) : (
+          <p className="ob-small" style={{ marginTop: 'var(--s-6)' }}>
+            {t('connection.status.hint')}
+          </p>
+        )}
+      </Card>
 
-          <div className="grid cols-2">
-            <Field label="Master address">
+      {error && <FieldError>{error}</FieldError>}
+
+      <div style={{ margin: 'var(--s-16) 0' }}>
+        <Segmented
+          options={[
+            { value: 'auto' as const, label: t('connection.mode.auto') },
+            { value: 'manual' as const, label: t('connection.mode.manual') },
+            { value: 'restore' as const, label: t('backup.restore.title') },
+          ]}
+          value={mode}
+          onChange={setMode}
+        />
+      </div>
+
+      {mode === 'restore' ? (
+        <Card>
+          <h2 className="ob-title" style={{ marginBottom: 'var(--s-12)' }}>
+            {t('backup.restore.title')}
+          </h2>
+
+          {restoreError && <FieldError>{restoreError}</FieldError>}
+
+          {restoreStep === 'pick' && (
+            <FormField label={t('backup.restore.chooseFile')}>
               {(id) => (
                 <input
                   id={id}
-                  value={host}
-                  onChange={(event) => setHost(event.target.value)}
-                  placeholder="192.168.1.10"
-                  required
+                  type="file"
+                  accept=".obbackup"
+                  onChange={(event) => {
+                    const chosen = event.target.files?.[0];
+                    if (chosen) void handleRestoreFileChosen(chosen);
+                  }}
                 />
               )}
-            </Field>
-            <Field label="Port">
-              {(id) => <input id={id} value={port} onChange={(event) => setPort(event.target.value)} />}
-            </Field>
+            </FormField>
+          )}
+
+          {restoreStep === 'preview' && restorePreview && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
+              <ul className="ob-small" style={{ margin: 0, paddingLeft: 18 }}>
+                {restorePreview.summaryLines.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+              <FormField label={t('backup.restore.passphraseLabel')}>
+                {(id) => (
+                  <Input
+                    id={id}
+                    type="password"
+                    value={restorePassphrase}
+                    onChange={(event) => setRestorePassphrase(event.target.value)}
+                    autoComplete="current-password"
+                  />
+                )}
+              </FormField>
+              <Button
+                variant="primary"
+                busy={restoreBusy}
+                disabled={!restorePassphrase}
+                onClick={() => void handleRestore()}
+              >
+                {t('backup.restore.confirm')}
+              </Button>
+            </div>
+          )}
+
+          {restoreStep === 'done' && (
+            <>
+              <p className="ob-body">{t('backup.restore.donePairAgain')}</p>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setMode('auto');
+                  window.location.reload();
+                }}
+              >
+                {t('action.close')}
+              </Button>
+            </>
+          )}
+        </Card>
+      ) : mode === 'auto' ? (
+        <Card>
+          <h2 className="ob-title" style={{ marginBottom: 'var(--s-12)' }}>
+            {t('connection.auto.title')}
+          </h2>
+          <ol className="ob-small" style={{ paddingLeft: 18, marginBottom: 'var(--s-16)' }}>
+            <li>{t('connection.auto.step1')}</li>
+            <li>{t('connection.auto.step2')}</li>
+            <li>{t('connection.auto.step3')}</li>
+          </ol>
+
+          <FormField label={t('connection.panelName')}>
+            {(id) => <Input id={id} value={panelName} onChange={(event) => setPanelName(event.target.value)} />}
+          </FormField>
+
+          <div style={{ display: 'flex', gap: 'var(--s-8)', marginTop: 'var(--s-16)' }}>
+            <Button
+              variant="primary"
+              busy={busy}
+              disabled={!connection.hasNetworkLink}
+              onClick={() => void connectAutomatically()}
+            >
+              {busy ? t('connection.auto.connecting') : t('connection.auto.connect')}
+            </Button>
+            <Button variant="secondary" disabled={busy} onClick={() => void scan()}>
+              {t('connection.auto.scanOnly')}
+            </Button>
           </div>
 
-          <Field label="Pairing password">
-            {(id) => (
-              <input
-                id={id}
-                value={pairingPassword}
-                onChange={(event) => setPairingPassword(event.target.value)}
-                required
-              />
-            )}
-          </Field>
+          {found && (
+            <div style={{ marginTop: 'var(--s-16)' }}>
+              {found.length === 0 ? (
+                <EmptyState
+                  title={t('connection.scan.none.title')}
+                  description={t('connection.scan.none.description')}
+                  actionLabel={t('connection.auto.scanOnly')}
+                  onAction={() => void scan()}
+                />
+              ) : (
+                <DataTable
+                  columns={masterColumns}
+                  rows={found}
+                  rowKey={(master) => master.masterUniqueId}
+                  empty={
+                    <EmptyState
+                      title={t('connection.scan.none.title')}
+                      description={t('connection.scan.none.description')}
+                      actionLabel={t('connection.auto.scanOnly')}
+                      onAction={() => void scan()}
+                    />
+                  }
+                />
+              )}
+            </div>
+          )}
+        </Card>
+      ) : (
+        <Card>
+          <form onSubmit={(event) => void connectManually(event)}>
+            <h2 className="ob-title" style={{ marginBottom: 'var(--s-8)' }}>
+              {t('connection.manual.title')}
+            </h2>
+            <p className="ob-small" style={{ marginBottom: 'var(--s-16)' }}>
+              {t('connection.manual.hint')}
+            </p>
 
-          <Field label="Name for this PC">
-            {(id) => (
-              <input id={id} value={panelName} onChange={(event) => setPanelName(event.target.value)} />
-            )}
-          </Field>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-16)' }}>
+              <FormField label={t('connection.manual.address')}>
+                {(id) => (
+                  <Input
+                    id={id}
+                    value={host}
+                    onChange={(event) => setHost(event.target.value)}
+                    placeholder="192.168.1.10"
+                    required
+                  />
+                )}
+              </FormField>
+              <FormField label={t('connection.manual.port')}>
+                {(id) => <Input id={id} value={port} onChange={(event) => setPort(event.target.value)} />}
+              </FormField>
+            </div>
 
-          <button type="submit" disabled={busy}>
-            {busy ? 'Connecting…' : 'Connect'}
-          </button>
-        </form>
+            <div style={{ marginTop: 'var(--s-16)' }}>
+              <FormField label={t('connection.manual.password')}>
+                {(id) => (
+                  <Input
+                    id={id}
+                    value={pairingPassword}
+                    onChange={(event) => setPairingPassword(event.target.value)}
+                    required
+                  />
+                )}
+              </FormField>
+            </div>
+
+            <div style={{ marginTop: 'var(--s-16)' }}>
+              <FormField label={t('connection.panelName')}>
+                {(id) => (
+                  <Input id={id} value={panelName} onChange={(event) => setPanelName(event.target.value)} />
+                )}
+              </FormField>
+            </div>
+
+            <Button type="submit" variant="primary" busy={busy} style={{ marginTop: 'var(--s-16)' }}>
+              {busy ? t('connection.manual.connecting') : t('connection.manual.connect')}
+            </Button>
+          </form>
+        </Card>
       )}
     </div>
   );

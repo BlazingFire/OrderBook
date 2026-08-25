@@ -21,6 +21,7 @@ import {
 } from '@orderbook/shared';
 
 import type { ActorContext } from '../domain/actor.js';
+import { MAX_SOURCE_BYTES } from '../domain/images.js';
 import { AppError, ForbiddenError, toErrorMessage } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import { permissionSetForRole } from '../repositories/role.repository.js';
@@ -31,11 +32,17 @@ import * as catalogService from '../services/catalog.service.js';
 import { onChange, onConflict } from '../services/change-bus.js';
 import * as conflictService from '../services/conflict.service.js';
 import * as dashboardService from '../services/dashboard.service.js';
+import * as documentService from '../services/document.service.js';
+import * as documentRenderService from '../services/document-render.service.js';
 import * as inventoryService from '../services/inventory.service.js';
 import * as leadService from '../services/lead.service.js';
 import * as panelCredentialRepo from '../repositories/panel-credential.repository.js';
 import * as orderService from '../services/order.service.js';
 import { resolvePanelActor } from '../services/panel-actor.service.js';
+import * as fieldsService from '../services/fields.service.js';
+import * as logService from '../services/log.service.js';
+import * as reportService from '../services/report.service.js';
+import * as imageService from '../services/image.service.js';
 import * as panelService from '../services/panel.service.js';
 import * as recycleBinService from '../services/recycle-bin.service.js';
 import * as searchService from '../services/search.service.js';
@@ -56,6 +63,10 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
     // Same-origin for the Master's own UI; Office Panel servers connect from
     // another host on the LAN, so their origin is allowed explicitly.
     cors: { origin: true, credentials: true },
+    // Default is 1 MB, far below a source photo (`domain/images.ts`'s
+    // `MAX_SOURCE_BYTES`) — `product:image:upload`/`image:fetch` carry raw
+    // image bytes as binary attachments over this same command channel.
+    maxHttpBufferSize: MAX_SOURCE_BYTES,
   });
 
   io.use(async (socket, next) => {
@@ -88,7 +99,18 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
 
     // Panel membership changes also change what the Master's panel screen and
     // dashboard should show, so those are refreshed as a pair.
-    if (event.entity === 'office_panel') void broadcastPanels(io);
+    if (event.entity === 'office_panel') {
+      void broadcastPanels(io);
+
+      // A revoked panel is told while it is still connected, so it clears its
+      // stored credentials and drops to the pairing screen immediately. Without
+      // this it keeps running on a dead pairing until it next reconnects — which
+      // for an idle panel can be hours, and looks to the operator like the panel
+      // still being trusted.
+      if ((event.payload as { status?: string } | null)?.status === 'revoked') {
+        void notifyPanelRevoked(io, event.id);
+      }
+    }
 
     if (DASHBOARD_ENTITIES.has(event.entity)) void broadcastDashboard(io);
   });
@@ -111,8 +133,15 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
 /**
  * Company directory data, which an Office Panel has no business receiving
  * unsolicited. It can still *ask*, and the service checks `users.manage` then.
+ *
+ * `document_export` is here because an export row names the lead or order it
+ * was rendered for, and a panel may hold `documents.view` without holding
+ * `leads.view` — broadcasting the row would hand it a subject id and label it
+ * is not entitled to. `document_template` is deliberately **not** here: a
+ * template is configuration gated by `documents.view` and carries no record
+ * data at all.
  */
-const DIRECTORY_ENTITIES = new Set<string>(['role', 'user']);
+const DIRECTORY_ENTITIES = new Set<string>(['role', 'user', 'document_export']);
 
 /** Changes that move a number on the dashboard. */
 const DASHBOARD_ENTITIES = new Set(['lead', 'order', 'party', 'product', 'stock', 'sync_conflict']);
@@ -233,6 +262,22 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   );
   socket.on('product:delete', (id, ack) => run(ack, (actor) => catalogService.deleteProduct(id, actor)));
 
+  socket.on('product:image:upload', ({ productId, file, crop }, ack) =>
+    run(ack, (actor) =>
+      imageService.uploadImage({ productId, fileBuffer: Buffer.from(file), crop }, actor),
+    ),
+  );
+  socket.on('product:image:update', ({ id, input }, ack) =>
+    run(ack, (actor) => imageService.updateImageCaption(id, input, actor)),
+  );
+  socket.on('product:image:reorder', (input, ack) =>
+    run(ack, (actor) => imageService.reorderImages(input, actor)),
+  );
+  socket.on('product:image:delete', (id, ack) => run(ack, (actor) => imageService.deleteImage(id, actor)));
+  socket.on('image:fetch', ({ imageId, variant }, ack) =>
+    run(ack, (actor) => imageService.imageFileBytes(imageId, variant, actor)),
+  );
+
   socket.on('category:list', (ack) => run(ack, (actor) => catalogService.listCategories(actor)));
 
   socket.on('partyVariant:list', (partyId, ack) =>
@@ -312,6 +357,108 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   socket.on('recycleBin:restore', (input, ack) =>
     run(ack, (actor) => recycleBinService.restoreEntity(input, actor)),
   );
+
+  socket.on('fields:catalogue', (ack) => run(ack, (actor) => fieldsService.fieldsCatalogue(actor)));
+  socket.on('fields:values', (query, ack) => run(ack, (actor) => fieldsService.listValues(query, actor)));
+  socket.on('fields:usage', (query, ack) => run(ack, (actor) => fieldsService.fieldUsage(query, actor)));
+  socket.on('fields:definitions', (query, ack) =>
+    run(ack, (actor) => fieldsService.listDefinitions(query, actor)),
+  );
+  socket.on('fields:stages', (ack) => run(ack, (actor) => fieldsService.listStages(actor)));
+  socket.on('fields:createValue', (input, ack) =>
+    run(ack, (actor) => fieldsService.createValue(input, actor)),
+  );
+  socket.on('fields:updateValue', ({ id, input }, ack) =>
+    run(ack, (actor) => fieldsService.updateValue(id, input, actor)),
+  );
+  socket.on('fields:deleteValue', (id, ack) => run(ack, (actor) => fieldsService.removeValue(id, actor)));
+  socket.on('fields:reorderValues', (input, ack) =>
+    run(ack, (actor) => fieldsService.reorderValues(input, actor)),
+  );
+  socket.on('fields:createDefinition', (input, ack) =>
+    run(ack, (actor) => fieldsService.createDefinition(input, actor)),
+  );
+  socket.on('fields:updateDefinition', ({ id, input }, ack) =>
+    run(ack, (actor) => fieldsService.updateDefinition(id, input, actor)),
+  );
+  socket.on('fields:deleteDefinition', (id, ack) =>
+    run(ack, (actor) => fieldsService.removeDefinition(id, actor)),
+  );
+  socket.on('fields:reorderDefinitions', (input, ack) =>
+    run(ack, (actor) => fieldsService.reorderDefinitions(input, actor)),
+  );
+  socket.on('fields:updateStage', ({ id, input }, ack) =>
+    run(ack, (actor) => fieldsService.updateStage(id, input, actor)),
+  );
+  socket.on('fields:reorderStages', (input, ack) =>
+    run(ack, (actor) => fieldsService.reorderStages(input, actor)),
+  );
+  socket.on('fields:archiveStage', (id, ack) => run(ack, (actor) => fieldsService.archiveStage(id, actor)));
+  socket.on('fields:restoreStage', (id, ack) => run(ack, (actor) => fieldsService.restoreStage(id, actor)));
+
+  socket.on('log:list', (query, ack) => run(ack, (actor) => logService.listLogs(query, actor)));
+  socket.on('log:facets', (query, ack) => run(ack, (actor) => logService.listLogFacets(query, actor)));
+  socket.on('log:verifyChain', (input, ack) => run(ack, (actor) => logService.verifyLogChain(input, actor)));
+  socket.on('log:export', (query, ack) => run(ack, (actor) => logService.exportLogs(query, actor)));
+
+  socket.on('report:dispatches', (query, ack) => run(ack, (actor) => reportService.dispatchReport(query, actor)));
+  socket.on('report:leadOutcomes', (query, ack) =>
+    run(ack, (actor) => reportService.leadOutcomeReport(query, actor)),
+  );
+  socket.on('report:topParties', (query, ack) => run(ack, (actor) => reportService.topPartiesReport(query, actor)));
+  socket.on('report:export', (payload, ack) =>
+    run(ack, (actor) => reportService.exportReport(payload.report, payload.query, actor)),
+  );
+
+  // PDF Designer. Every one delegates to the identical service function the
+  // HTTP route calls — the service's own `requirePermission` is the only gate
+  // on this path, because no Express middleware runs here.
+  socket.on('document:listTemplates', (query, ack) =>
+    run(ack, (actor) => documentService.listTemplates(query, actor)),
+  );
+  socket.on('document:getTemplate', (id, ack) =>
+    run(ack, (actor) => documentService.getTemplate(id, actor)),
+  );
+  socket.on('document:createTemplate', (input, ack) =>
+    run(ack, (actor) => documentService.createTemplate(input, actor)),
+  );
+  socket.on('document:updateTemplate', (payload, ack) =>
+    run(ack, (actor) => documentService.updateTemplate(payload.id, payload.input, actor)),
+  );
+  socket.on('document:deleteTemplate', (payload, ack) =>
+    run(ack, (actor) => documentService.deleteTemplate(payload.id, payload.expectedVersion, actor)),
+  );
+  socket.on('document:restoreTemplate', (id, ack) =>
+    run(ack, (actor) => documentService.restoreTemplate(id, actor)),
+  );
+  socket.on('document:uploadAsset', (input, ack) =>
+    run(ack, (actor) => documentService.uploadAsset(input, actor)),
+  );
+  socket.on('document:listAssets', (ack) =>
+    run(ack, (actor) => documentService.listAssets(actor)),
+  );
+  socket.on('document:assetFile', (id, ack) =>
+    run(ack, (actor) => documentRenderService.fetchAssetFile(id, actor)),
+  );
+  socket.on('document:render', (input, ack) =>
+    run(ack, (actor) => documentRenderService.renderDocument(input, actor)),
+  );
+  socket.on('document:preview', (input, ack) =>
+    run(ack, (actor) => documentRenderService.previewDocument(input, actor)),
+  );
+  socket.on('document:listExports', (query, ack) =>
+    run(ack, (actor) => documentRenderService.listExports(query, actor)),
+  );
+  socket.on('document:getExport', (id, ack) =>
+    run(ack, (actor) => documentRenderService.getExport(id, actor)),
+  );
+  socket.on('document:exportFile', (id, ack) =>
+    run(ack, (actor) => documentRenderService.fetchExportFile(id, actor)),
+  );
+
+  // The one live pull; everything else rides on `SyncSnapshot.dashboard` and
+  // the `dashboard:changed` push both extended below.
+  socket.on('dashboard:get', (ack) => run(ack, (actor) => dashboardService.getDashboardSummary(actor)));
 }
 
 /**
@@ -500,9 +647,9 @@ async function broadcastPanels(io: RealtimeHub['io']): Promise<void> {
 }
 
 async function broadcastDashboard(io: RealtimeHub['io']): Promise<void> {
-  const sockets = await io.in(ROOM_MASTER_ADMINS).fetchSockets();
+  const adminSockets = await io.in(ROOM_MASTER_ADMINS).fetchSockets();
 
-  for (const socket of sockets) {
+  for (const socket of adminSockets) {
     const tenantId = socket.data.tenantId;
     if (!tenantId) continue;
 
@@ -527,6 +674,30 @@ async function broadcastDashboard(io: RealtimeHub['io']): Promise<void> {
     });
 
     socket.emit('dashboard:changed', summary);
+  }
+
+  // Deliberately **not** fanned out to Office Panels, though
+  // `docs/backend-modules/04-API-CONTRACT.md` §9.5 once planned to. The Office
+  // Dashboard that actually got built derives every figure from the panel's own
+  // already-synced `LocalView` (see `office/web/src/screens/DashboardScreen.tsx`),
+  // so it registers no `dashboard:changed` handler and Socket.IO drops the event
+  // on arrival. Sending it anyway cost a `panelActor` resolution plus a full
+  // dashboard aggregate **per connected panel, per lead/order/party/product/
+  // stock/conflict change**, for a payload nothing read. If a panel ever needs a
+  // figure `LocalView` cannot produce, restore the fan-out and add the handler in
+  // the same change — one without the other is what this comment exists to stop.
+}
+
+/**
+ * Push `panel:revoked` to whichever live sockets belong to one panel.
+ *
+ * Matched by `socket.data.panelId` rather than a per-panel Socket.IO room,
+ * because revocation is rare and a room would be a second piece of membership
+ * bookkeeping to keep in step with the one that already exists.
+ */
+async function notifyPanelRevoked(io: RealtimeHub['io'], panelId: string): Promise<void> {
+  for (const socket of await io.in(ROOM_OFFICE_PANELS).fetchSockets()) {
+    if (socket.data.panelId === panelId) socket.emit('panel:revoked');
   }
 }
 

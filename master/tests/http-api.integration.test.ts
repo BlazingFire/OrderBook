@@ -5,11 +5,14 @@
  * would not catch that.
  */
 
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
 
 import { canRunIntegrationTests } from './helpers/db.js';
+import { config } from '../src/config/index.js';
 import * as leads from '../src/services/lead.service.js';
 import { resetData, setupDatabase, teardownDatabase, stageIdByName, testActor } from './helpers/fixtures.js';
 import { createApp } from '../src/http/app.js';
@@ -48,6 +51,40 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       const response = await request(app).get('/api/health').expect(200);
       expect(response.body.status).toBe('ok');
       expect(typeof response.body.hasNetworkLink).toBe('boolean');
+    });
+  });
+
+  describe('the data directory is not served statically', () => {
+    /**
+     * `config.imagesDir` lives inside `config.uploadsDir`, so an
+     * `express.static('/uploads')` mount handed out every product image variant
+     * with no session, no `products.view` and no tenant check — routing straight
+     * around `imageFilesRoutes` and `resolveImageFile`, whose documented job is
+     * to answer 404 to a caller who may not see the product. It read as
+     * harmless: the mount was annotated "unused by the pipeline", and it was,
+     * until images were configured to write underneath it.
+     */
+    it('does not expose product image bytes through an unauthenticated /uploads mount', async () => {
+      // A real file on disk, in the exact place the pipeline writes variants —
+      // asserting on a made-up path would pass just as happily with the mount
+      // restored, since `express.static` 404s what does not exist.
+      const secret = Buffer.from('RIFF....WEBP not-really-an-image but uniquely identifiable');
+      const onDisk = path.join(config.imagesDir, 'tenant-under-test', 'image-under-test');
+      await mkdir(onDisk, { recursive: true });
+      await writeFile(path.join(onDisk, 'master.webp'), secret);
+
+      try {
+        const response = await request(app).get('/uploads/images/tenant-under-test/image-under-test/master.webp');
+
+        // The SPA fallback answers non-`/api` paths with index.html, so a 200 is
+        // expected here — what must never happen is the *file's own bytes*
+        // coming back, which is what an `express.static(uploadsDir)` mount did.
+        expect(response.headers['content-type'] ?? '').not.toContain('image/webp');
+        expect(response.body?.toString?.() ?? '').not.toContain('uniquely identifiable');
+        expect(response.text ?? '').not.toContain('uniquely identifiable');
+      } finally {
+        await rm(path.join(config.imagesDir, 'tenant-under-test'), { recursive: true, force: true });
+      }
     });
   });
 

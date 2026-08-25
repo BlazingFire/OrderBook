@@ -7,14 +7,23 @@
  */
 
 import { existsSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
+import multer from 'multer';
 import {
+  IMAGE_VARIANTS,
   maskLead,
   maskOrder,
   maskProduct,
   maskVariant,
+  MAX_IMAGE_SOURCE_BYTES,
   MUTATION_PERMISSIONS,
+  type DataChangedEvent,
+  type Lead,
+  type Order,
+  type PartyProductVariant,
+  type Product,
   type SyncSnapshot,
 } from '@orderbook/shared';
 
@@ -22,6 +31,10 @@ import { config } from '../config/index.js';
 import { createLogger } from '../lib/logger.js';
 import { hasNetworkLink, listLanInterfaces } from '../lib/network.js';
 import { MasterCommandError, masterConnection } from '../realtime/master-connection.js';
+import { BackupValidationError } from '../domain/backup.js';
+import * as backupExportService from '../services/backup-export.service.js';
+import * as backupRestoreService from '../services/backup-restore.service.js';
+import { RestoreError } from '../services/backup-restore.service.js';
 import { loadCredentials } from '../services/credentials.store.js';
 import { PairingError, pairAutomatically, pairManually, scanForMasters } from '../services/pairing.service.js';
 import * as userSession from '../services/user-session.service.js';
@@ -31,6 +44,13 @@ import * as outbox from '../sync/outbox.store.js';
 import * as sync from '../sync/sync.service.js';
 
 const log = createLogger('http');
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const imageUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_IMAGE_SOURCE_BYTES } });
+// This panel's whole replica is a handful of small JSON files — a generous
+// limit still costs nothing to buffer in memory, unlike the Master's case.
+const backupUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 64 * 1024 * 1024 } });
 
 export function createApp(): Express {
   const app = express();
@@ -68,6 +88,46 @@ export function createApp(): Express {
       res.status(201).json({ ok: true, companyName: credentials.companyName });
     } catch (error) {
       respondToPairingError(res, error);
+    }
+  });
+
+  // --- Storage: restore from backup, before pairing exists to gate it
+  // (docs/7-STORAGE-BACKUP-RESTORE.md §5.2) ---
+
+  app.post('/api/connection/restore/preview', backupUpload.single('file'), (req, res) => {
+    if (!req.file) {
+      res.status(400).json({ error: 'validation_error', message: 'Choose a backup file' });
+      return;
+    }
+    try {
+      res.json(backupRestoreService.previewRestore(req.file.buffer));
+    } catch (error) {
+      respondToRestoreError(res, error);
+    }
+  });
+
+  app.post('/api/connection/restore', backupUpload.single('file'), async (req, res) => {
+    if (!req.file) {
+      res.status(400).json({ error: 'validation_error', message: 'Choose a backup file' });
+      return;
+    }
+    const { passphrase } = req.body ?? {};
+    if (typeof passphrase !== 'string' || !passphrase) {
+      res.status(400).json({ error: 'validation_error', message: 'Enter the export passphrase' });
+      return;
+    }
+
+    try {
+      // Never wipes: this route is open precisely because pairing does not
+      // exist yet to gate it, so the only restore it may run is onto a panel
+      // that has never paired. Wiping a paired panel — outbox and all — stays
+      // behind a signed-in user holding `storage.manage` at
+      // `/api/storage/restore`, where the confirmation is a permission check
+      // and not a flag the caller supplies about itself.
+      const outcome = await backupRestoreService.restoreBackup(req.file.buffer, passphrase, false);
+      res.status(201).json(outcome);
+    } catch (error) {
+      respondToRestoreError(res, error);
     }
   });
 
@@ -200,6 +260,81 @@ export function createApp(): Express {
     }),
   );
 
+  // Images stay online-only, like Stock and Recycle Bin — the offline outbox
+  // carries JSON mutations, and there is no mechanism to queue a multipart
+  // file through it (`7-IMAGE-PIPELINE.md` port notes, `HANDOFF.md`).
+  app.post('/api/products/:productId/images', imageUpload.single('file'), (req, res) => {
+    if (!req.file) {
+      res.status(400).json({ error: 'validation_error', message: 'Choose an image file' });
+      return;
+    }
+    return forward(res, 'product:image:upload', {
+      productId: req.params.productId,
+      file: req.file.buffer,
+      crop: {
+        cropX: Number(req.body.cropX),
+        cropY: Number(req.body.cropY),
+        cropWidth: Number(req.body.cropWidth),
+        cropHeight: Number(req.body.cropHeight),
+        rotationDeg: Number(req.body.rotationDeg ?? 0),
+        caption: typeof req.body.caption === 'string' ? req.body.caption : null,
+      },
+    });
+  });
+  app.patch('/api/products/:productId/images/:imageId', (req, res) =>
+    forward(res, 'product:image:update', { id: req.params.imageId, input: req.body }),
+  );
+  app.post('/api/products/:productId/images/reorder', (req, res) =>
+    forward(res, 'product:image:reorder', { productId: req.params.productId, ids: req.body.ids ?? [] }),
+  );
+  app.delete('/api/products/:productId/images/:imageId', (req, res) =>
+    forward(res, 'product:image:delete', req.params.imageId),
+  );
+
+  // The already-derived variant an `<img>` tag points at — served from this
+  // panel's own local cache when present (instant, no Master round trip);
+  // fetched once from the Master and cached to disk on a miss. Not the
+  // spec's full proactive background-prefetch queue (§4.3) — see
+  // `HANDOFF.md` for why that gap is deliberate here.
+  app.get('/uploads/images/:imageId/:variant', async (req, res) => {
+    const { imageId, variant } = req.params;
+    // Express decodes route params after it has matched the path, so an
+    // encoded separator arrives here as a real one and would walk `path.join`
+    // straight out of the cache directory. The Master mints image ids with
+    // `randomUUID()`, so anything that is not one cannot name a cached file.
+    if (!(IMAGE_VARIANTS as readonly string[]).includes(variant) || !UUID_PATTERN.test(imageId)) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+
+    const localPath = path.join(config.imagesDir, imageId, `${variant}.webp`);
+    if (existsSync(localPath)) {
+      res.set('Cache-Control', 'private, max-age=31536000, immutable');
+      res.type('image/webp');
+      res.sendFile(localPath);
+      return;
+    }
+
+    try {
+      const result = await masterConnection.command<'image:fetch', { data: Uint8Array; checksum: string }>(
+        'image:fetch',
+        { imageId, variant },
+      );
+      const buffer = Buffer.from(result.data);
+      await mkdir(path.dirname(localPath), { recursive: true });
+      await writeFile(localPath, buffer);
+      res.set('Cache-Control', 'private, max-age=31536000, immutable');
+      res.type('image/webp');
+      res.send(buffer);
+    } catch (error) {
+      if (error instanceof MasterCommandError && error.unreachable) {
+        res.status(503).json({ error: 'unavailable', message: error.message });
+        return;
+      }
+      res.status(404).json({ error: 'not_found' });
+    }
+  });
+
   app.post('/api/party-variants', (req, res) =>
     queue(res, { kind: 'partyVariant.upsert', entity: 'party_variant', payload: req.body }),
   );
@@ -279,7 +414,7 @@ export function createApp(): Express {
     forward(res, 'search:query', { term: String(req.query.q ?? ''), limit: 20 }),
   );
 
-  app.get('/api/conflicts', (_req, res) => forward(res, 'conflict:list', undefined));
+  app.get('/api/conflicts', (_req, res) => forward(res, 'conflict:list'));
   app.post('/api/conflicts/:id/resolve', (req, res) =>
     forward(res, 'conflict:resolve', {
       conflictId: Number(req.params.id),
@@ -309,8 +444,275 @@ export function createApp(): Express {
       limit: req.query.limit ? Number(req.query.limit) : undefined,
     });
   });
-  app.get('/api/recycle-bin/counts', (_req, res) => forward(res, 'recycleBin:counts', undefined));
+  app.get('/api/recycle-bin/counts', (_req, res) => forward(res, 'recycleBin:counts'));
   app.post('/api/recycle-bin/restore', (req, res) => forward(res, 'recycleBin:restore', req.body));
+
+  // Fields (docs/backend-modules/04-API-CONTRACT.md §5). Forwarded live and
+  // failing hard offline, like every other module in this batch.
+  app.get('/api/fields/catalogue', (_req, res) => forward(res, 'fields:catalogue'));
+  app.get('/api/fields/values', (req, res) =>
+    forward(res, 'fields:values', {
+      listKey: req.query.listKey,
+      includeDeleted: req.query.includeDeleted === 'true',
+      includeUnlisted: req.query.includeUnlisted === 'true',
+    }),
+  );
+  app.get('/api/fields/usage', (req, res) => forward(res, 'fields:usage', { listKey: req.query.listKey }));
+  app.get('/api/fields/definitions', (req, res) =>
+    forward(res, 'fields:definitions', {
+      entity: req.query.entity,
+      includeDeleted: req.query.includeDeleted === 'true',
+    }),
+  );
+  app.get('/api/fields/stages', (_req, res) => forward(res, 'fields:stages'));
+  app.post('/api/fields/values', (req, res) => forward(res, 'fields:createValue', req.body));
+  app.put('/api/fields/values/:id', (req, res) =>
+    forward(res, 'fields:updateValue', { id: req.params.id, input: req.body }),
+  );
+  app.delete('/api/fields/values/:id', (req, res) => forward(res, 'fields:deleteValue', req.params.id));
+  app.post('/api/fields/values/reorder', (req, res) => forward(res, 'fields:reorderValues', req.body));
+  app.post('/api/fields/definitions', (req, res) => forward(res, 'fields:createDefinition', req.body));
+  app.put('/api/fields/definitions/:id', (req, res) =>
+    forward(res, 'fields:updateDefinition', { id: req.params.id, input: req.body }),
+  );
+  app.delete('/api/fields/definitions/:id', (req, res) =>
+    forward(res, 'fields:deleteDefinition', req.params.id),
+  );
+  app.post('/api/fields/definitions/reorder', (req, res) =>
+    forward(res, 'fields:reorderDefinitions', req.body),
+  );
+  app.put('/api/fields/stages/:id', (req, res) =>
+    forward(res, 'fields:updateStage', { id: req.params.id, input: req.body }),
+  );
+  app.post('/api/fields/stages/reorder', (req, res) => forward(res, 'fields:reorderStages', req.body));
+  app.post('/api/fields/stages/:id/archive', (req, res) =>
+    forward(res, 'fields:archiveStage', req.params.id),
+  );
+  app.post('/api/fields/stages/:id/restore', (req, res) =>
+    forward(res, 'fields:restoreStage', req.params.id),
+  );
+
+  // Logs (docs/backend-modules/04-API-CONTRACT.md §2). Forwarded live and
+  // failing hard offline, like every other module in this batch.
+  function parseLogQuery(query: Record<string, unknown>): Record<string, unknown> {
+    return {
+      cursor: typeof query.cursor === 'string' ? query.cursor : undefined,
+      direction: query.direction === 'newer' ? 'newer' : query.direction === 'older' ? 'older' : undefined,
+      limit: query.limit ? Number(query.limit) : undefined,
+      actorType: typeof query.actorType === 'string' ? query.actorType : undefined,
+      actorId: typeof query.actorId === 'string' ? query.actorId : undefined,
+      entityType: typeof query.entityType === 'string' ? query.entityType : undefined,
+      action: typeof query.action === 'string' ? query.action : undefined,
+      from: typeof query.from === 'string' ? query.from : undefined,
+      to: typeof query.to === 'string' ? query.to : undefined,
+      q: typeof query.q === 'string' ? query.q : undefined,
+    };
+  }
+
+  app.get('/api/logs', (req, res) => forward(res, 'log:list', parseLogQuery(req.query)));
+  app.get('/api/logs/facets', (req, res) =>
+    forward(res, 'log:facets', {
+      from: typeof req.query.from === 'string' ? req.query.from : undefined,
+      to: typeof req.query.to === 'string' ? req.query.to : undefined,
+    }),
+  );
+  app.post('/api/logs/verify', (req, res) => forward(res, 'log:verifyChain', req.body ?? {}));
+  // CSV as a string in the ack, per `04-API-CONTRACT.md` §10.2 — bounded by
+  // the same hard cap as the Master's own direct export.
+  app.get('/api/logs/export', (req, res) => {
+    const from = typeof req.query.from === 'string' ? req.query.from : 'all';
+    const to = typeof req.query.to === 'string' ? req.query.to : 'all';
+    return forwardCsv(res, 'log:export', parseLogQuery(req.query), `logs-${from}-${to}.csv`);
+  });
+
+  // Reports (docs/backend-modules/04-API-CONTRACT.md §3). Forwarded live and
+  // failing hard offline, like every other module in this batch.
+  function parseReportQuery(query: Record<string, unknown>): Record<string, unknown> {
+    return {
+      period: typeof query.period === 'string' ? query.period : undefined,
+      fromMonth: typeof query.fromMonth === 'string' ? query.fromMonth : undefined,
+      toMonth: typeof query.toMonth === 'string' ? query.toMonth : undefined,
+    };
+  }
+
+  app.get('/api/reports/dispatches', (req, res) =>
+    forward(res, 'report:dispatches', parseReportQuery(req.query)),
+  );
+  app.get('/api/reports/lead-outcomes', (req, res) =>
+    forward(res, 'report:leadOutcomes', parseReportQuery(req.query)),
+  );
+  app.get('/api/reports/top-parties', (req, res) =>
+    forward(res, 'report:topParties', {
+      ...parseReportQuery(req.query),
+      limit: req.query.limit ? Number(req.query.limit) : undefined,
+    }),
+  );
+  app.get('/api/reports/:report/export', (req, res) => {
+    const report = req.params.report;
+    return forwardCsv(
+      res,
+      'report:export',
+      {
+        report,
+        query: {
+          ...parseReportQuery(req.query),
+          limit: req.query.limit ? Number(req.query.limit) : undefined,
+        },
+      },
+      `${report}.csv`,
+    );
+  });
+
+  // PDF Designer (docs/backend-modules/04-API-CONTRACT.md §6). Online-only,
+  // like every other module in this batch: nothing is queued into the outbox.
+  // A queued render would emit a legally-shaped quotation hours later against
+  // a lead whose lines had since changed, which is worse than failing now.
+  app.get('/api/documents/templates', (req, res) =>
+    forward(res, 'document:listTemplates', {
+      documentType: typeof req.query.documentType === 'string' ? req.query.documentType : undefined,
+      cursor: typeof req.query.cursor === 'string' ? req.query.cursor : undefined,
+      limit: req.query.limit ? Number(req.query.limit) : undefined,
+    }),
+  );
+  app.get('/api/documents/templates/:id', (req, res) =>
+    forward(res, 'document:getTemplate', req.params.id),
+  );
+  app.post('/api/documents/templates', (req, res) =>
+    forward(res, 'document:createTemplate', req.body),
+  );
+  app.put('/api/documents/templates/:id', (req, res) =>
+    forward(res, 'document:updateTemplate', { id: req.params.id, input: req.body }),
+  );
+  app.delete('/api/documents/templates/:id', (req, res) =>
+    forward(res, 'document:deleteTemplate', {
+      id: req.params.id,
+      expectedVersion: req.body?.expectedVersion,
+    }),
+  );
+  app.post('/api/documents/templates/:id/restore', (req, res) =>
+    forward(res, 'document:restoreTemplate', req.params.id),
+  );
+
+  app.post('/api/documents/assets', (req, res) =>
+    forward(res, 'document:uploadAsset', req.body),
+  );
+  app.get('/api/documents/assets', (_req, res) =>
+    forward(res, 'document:listAssets'),
+  );
+  app.get('/api/documents/assets/:id/file', (req, res) =>
+    forwardFile(res, 'document:assetFile', req.params.id, 'inline'),
+  );
+
+  app.post('/api/documents/render', (req, res) => forward(res, 'document:render', req.body));
+  app.post('/api/documents/preview', (req, res) =>
+    forwardFile(res, 'document:preview', req.body, 'inline'),
+  );
+
+  app.get('/api/documents/exports', (req, res) =>
+    forward(res, 'document:listExports', {
+      subjectKind:
+        req.query.subjectKind === 'lead' || req.query.subjectKind === 'order'
+          ? req.query.subjectKind
+          : undefined,
+      subjectId: typeof req.query.subjectId === 'string' ? req.query.subjectId : undefined,
+      cursor: typeof req.query.cursor === 'string' ? req.query.cursor : undefined,
+      limit: req.query.limit ? Number(req.query.limit) : undefined,
+    }),
+  );
+  app.get('/api/documents/exports/:id', (req, res) =>
+    forward(res, 'document:getExport', req.params.id),
+  );
+  app.get('/api/documents/exports/:id/file', (req, res) =>
+    forwardFile(res, 'document:exportFile', req.params.id, 'attachment'),
+  );
+
+  // Dashboard (docs/backend-modules/04-API-CONTRACT.md §7.2). The only live
+  // pull — everything else rides on `SyncSnapshot.dashboard`, cached on
+  // disk, and the `dashboard:changed` push. Cached figures stay on screen
+  // with their `asOf` label when this fails offline.
+  app.post('/api/dashboard/refresh', (_req, res) => forward(res, 'dashboard:get'));
+
+  // --- Storage: export this device's replica, and restore onto this same
+  // device (a migration to new hardware — docs/7-STORAGE-BACKUP-RESTORE.md
+  // §2.2, §2.3, §2.4). Requires a signed-in person with `storage.manage`,
+  // same as every other write in this file relies on `userSession.can`.
+
+  app.post('/api/storage/export', async (req, res) => {
+    if (!userSession.can('storage.manage')) {
+      res.status(403).json({ error: 'permission_denied', message: 'You do not have permission to do that' });
+      return;
+    }
+
+    const { scope, officeScope, passphrase } = req.body ?? {};
+    if (scope !== 'whole' && scope !== 'selected') {
+      res.status(400).json({ error: 'validation_error', message: 'Choose a scope to export' });
+      return;
+    }
+    if (typeof passphrase !== 'string' || !passphrase) {
+      res.status(400).json({ error: 'validation_error', message: 'Enter the export passphrase' });
+      return;
+    }
+
+    try {
+      const result = await backupExportService.exportBackup({
+        scope,
+        officeScope: officeScope === 'settings-only' ? 'settings-only' : 'full-replica',
+        passphrase,
+      });
+      res.setHeader('Content-Disposition', `attachment; filename="${result.fileName}"`);
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.send(result.data);
+    } catch (error) {
+      respondToRestoreError(res, error);
+    }
+  });
+
+  app.post('/api/storage/restore/preview', backupUpload.single('file'), (req, res) => {
+    if (!userSession.can('storage.manage')) {
+      res.status(403).json({ error: 'permission_denied', message: 'You do not have permission to do that' });
+      return;
+    }
+    if (!req.file) {
+      res.status(400).json({ error: 'validation_error', message: 'Choose a backup file' });
+      return;
+    }
+    try {
+      res.json(backupRestoreService.previewRestore(req.file.buffer));
+    } catch (error) {
+      respondToRestoreError(res, error);
+    }
+  });
+
+  app.post('/api/storage/restore', backupUpload.single('file'), async (req, res) => {
+    if (!userSession.can('storage.manage')) {
+      res.status(403).json({ error: 'permission_denied', message: 'You do not have permission to do that' });
+      return;
+    }
+    if (!req.file) {
+      res.status(400).json({ error: 'validation_error', message: 'Choose a backup file' });
+      return;
+    }
+    const { passphrase, confirmWipe } = req.body ?? {};
+    if (typeof passphrase !== 'string' || !passphrase) {
+      res.status(400).json({ error: 'validation_error', message: 'Enter the export passphrase' });
+      return;
+    }
+
+    try {
+      const outcome = await backupRestoreService.restoreBackup(
+        req.file.buffer,
+        passphrase,
+        confirmWipe === 'true' || confirmWipe === true,
+      );
+      res.status(201).json(outcome);
+      // The browser must reconnect through the normal pairing screen — this
+      // process keeps running, but every cached credential and local file was
+      // just replaced (`backup-restore.service.ts`), so the old link is stale.
+      masterConnection.disconnect();
+    } catch (error) {
+      respondToRestoreError(res, error);
+    }
+  });
 
   // --- Live updates to this panel's browser ---
   app.get('/api/events', (req, res) => streamEvents(req, res));
@@ -417,6 +819,82 @@ async function queue(
  */
 type LocalView = SyncSnapshot & { pendingCount: number };
 
+/**
+ * Which permission gates each `DashboardSummary` figure — kept in one place
+ * so `filterDashboardForCurrentUser` and any future figure agree on the
+ * mapping `docs/backend-modules/04-API-CONTRACT.md` §7.1 defines.
+ */
+const DASHBOARD_FIGURE_PERMISSIONS: Record<
+  Exclude<keyof SyncSnapshot['dashboard'], 'asOf' | 'pipelineBreakdown'>,
+  string
+> = {
+  leadCount: 'leads.view',
+  followUpsDueCount: 'leads.view',
+  orderCount: 'orders.view',
+  openOrderCount: 'orders.view',
+  dispatchedThisWeekCount: 'orders.view',
+  partyCount: 'parties.view',
+  productCount: 'products.view',
+  lowStockCount: 'inventory.view',
+  openConflictCount: 'sync.resolveConflicts',
+  pendingSyncCount: 'sync.resolveConflicts',
+};
+
+/**
+ * The cached snapshot on disk was built for whoever was signed in *then* —
+ * the same reason `field.saleRate.view` is re-masked below. Re-filters
+ * `dashboard` for whoever is signed in *now*, stripping a figure the current
+ * session may not see rather than trusting the cached one already omitted
+ * it correctly for this reader.
+ */
+function filterDashboardForCurrentUser(
+  dashboard: SyncSnapshot['dashboard'],
+  permissions: string[],
+): SyncSnapshot['dashboard'] {
+  const filtered: SyncSnapshot['dashboard'] = { asOf: dashboard.asOf };
+
+  for (const [key, permission] of Object.entries(DASHBOARD_FIGURE_PERMISSIONS) as Array<
+    [keyof typeof DASHBOARD_FIGURE_PERMISSIONS, string]
+  >) {
+    if (permissions.includes(permission) && dashboard[key] !== undefined) {
+      (filtered as unknown as Record<string, unknown>)[key] = dashboard[key];
+    }
+  }
+
+  if (permissions.includes('leads.view') && dashboard.pipelineBreakdown !== undefined) {
+    filtered.pipelineBreakdown = dashboard.pipelineBreakdown;
+  }
+
+  return filtered;
+}
+
+/**
+ * What `forCurrentUser` does with each `SyncSnapshot` key, kept as a map typed
+ * over `keyof SyncSnapshot` so a newly added collection is a compile error
+ * here rather than a silent leak — the failure mode `docs/backend-modules/
+ * 10-TESTING.md` §6.8 (`DSH-1`) calls out for this snapshot. The map is the
+ * inventory the pure test pins; `forCurrentUser` below is what actually runs.
+ */
+export type SnapshotPolicy = 'mask-rates' | 'replace' | 'gate' | 'passthrough';
+
+export const SNAPSHOT_POLICY: Record<keyof SyncSnapshot, SnapshotPolicy> = {
+  parties: 'passthrough',
+  products: 'mask-rates',
+  categories: 'passthrough',
+  partyVariants: 'mask-rates',
+  leads: 'mask-rates',
+  orders: 'mask-rates',
+  stock: 'passthrough',
+  pipelines: 'passthrough',
+  optionLists: 'passthrough',
+  customFields: 'passthrough',
+  conflicts: 'passthrough',
+  dashboard: 'gate',
+  permissions: 'replace',
+  serverHlc: 'passthrough',
+  serverTime: 'passthrough',
+};
+
 function forCurrentUser(view: LocalView): LocalView {
   const permissions = userSession.sessionPermissions();
   const allowed = permissions.includes('field.saleRate.view');
@@ -428,7 +906,33 @@ function forCurrentUser(view: LocalView): LocalView {
     orders: view.orders.map((order) => maskOrder(order, allowed)),
     products: view.products.map((product) => maskProduct(product, allowed)),
     partyVariants: view.partyVariants.map((variant) => maskVariant(variant, allowed)),
+    dashboard: filterDashboardForCurrentUser(view.dashboard, permissions),
   };
+}
+
+/**
+ * The same masking `forCurrentUser` applies to a snapshot, applied to one
+ * live `data:changed` event instead. `payload` is `unknown` on the wire —
+ * the Master types it per entity, not per transport — so this only masks the
+ * four entities `SNAPSHOT_POLICY` marks `'mask-rates'` and passes everything
+ * else through untouched.
+ */
+function maskChangeEvent(event: DataChangedEvent): DataChangedEvent {
+  const allowed = userSession.sessionPermissions().includes('field.saleRate.view');
+  if (allowed) return event;
+
+  switch (event.entity) {
+    case 'lead':
+      return { ...event, payload: maskLead(event.payload as Lead, false) };
+    case 'order':
+      return { ...event, payload: maskOrder(event.payload as Order, false) };
+    case 'product':
+      return { ...event, payload: maskProduct(event.payload as Product, false) };
+    case 'party_variant':
+      return { ...event, payload: maskVariant(event.payload as PartyProductVariant, false) };
+    default:
+      return event;
+  }
 }
 
 /**
@@ -460,9 +964,9 @@ function requireUser(_req: Request, res: Response, next: NextFunction): void {
  * cannot be reached — the one code this panel is entitled to invent, because it
  * is a fact about the panel rather than an answer from the Master.
  */
-async function forward(res: Response, event: string, payload: unknown): Promise<void> {
+async function forward(res: Response, event: string, ...payload: unknown[]): Promise<void> {
   try {
-    const data = await masterConnection.command(event as never, payload);
+    const data = await masterConnection.command(event as never, ...payload);
     res.json(data);
   } catch (error) {
     if (error instanceof MasterCommandError && error.unreachable) {
@@ -496,6 +1000,99 @@ async function forward(res: Response, event: string, payload: unknown): Promise<
   }
 }
 
+/**
+ * Same shape as `forward()`, for the two commands whose successful result
+ * must become a `text/csv` download rather than a JSON body (`log:export`,
+ * `report:export`) — the failure path is identical to `forward()`'s, only
+ * the success path differs, so it cannot reuse `forward()` directly.
+ */
+async function forwardCsv(
+  res: Response,
+  event: string,
+  payload: unknown,
+  filename: string,
+): Promise<void> {
+  try {
+    const result = (await masterConnection.command(event as never, payload)) as {
+      csv: string;
+      rowCount: number;
+    };
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(result.csv);
+  } catch (error) {
+    if (error instanceof MasterCommandError && error.unreachable) {
+      res
+        .status(503)
+        .json({ error: 'unavailable', message: error.message, messageKey: 'error.unavailable' });
+      return;
+    }
+
+    const message = error instanceof Error ? error.message : 'Command failed';
+    const code = error instanceof MasterCommandError ? error.code : undefined;
+
+    res.status(code === 'forbidden' ? 403 : 502).json({
+      error: code ?? 'master_command_failed',
+      message,
+      ...(error instanceof MasterCommandError && error.messageKey ? { messageKey: error.messageKey } : {}),
+      ...(error instanceof MasterCommandError && error.params ? { params: error.params } : {}),
+      ...(error instanceof MasterCommandError && error.details ? { details: error.details } : {}),
+    });
+  }
+}
+
+/**
+ * The binary sibling of `forwardCsv`, for the three commands whose success
+ * value is a file rather than JSON (`document:preview`, `document:exportFile`,
+ * `document:assetFile`).
+ *
+ * The bytes are buffered whole into the socket ack and then out again — the
+ * same disclosed limitation the CSV exports carry (open question O-2 in
+ * `04-API-CONTRACT.md` §12). There is no streaming transport between the two
+ * servers for an ack-shaped command, so a Master-side stream would have to be
+ * re-buffered here anyway; one function serving both transports was judged
+ * more valuable than a leaner Master-only path. A rendered quotation is a few
+ * hundred KB, well inside the ack budget — this is a real ceiling for a
+ * hypothetical 200-page document, not for the documents this product makes.
+ */
+async function forwardFile(
+  res: Response,
+  event: string,
+  payload: unknown,
+  disposition: 'inline' | 'attachment',
+): Promise<void> {
+  try {
+    const result = (await masterConnection.command(event as never, payload)) as {
+      fileName: string;
+      contentType: string;
+      bytes: ArrayBufferLike | Uint8Array;
+    };
+
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Content-Disposition', `${disposition}; filename="${result.fileName}"`);
+    res.send(Buffer.from(result.bytes as Uint8Array));
+  } catch (error) {
+    if (error instanceof MasterCommandError && error.unreachable) {
+      res
+        .status(503)
+        .json({ error: 'unavailable', message: error.message, messageKey: 'error.unavailable' });
+      return;
+    }
+
+    const message = error instanceof Error ? error.message : 'Command failed';
+    const code = error instanceof MasterCommandError ? error.code : undefined;
+
+    res.status(code === 'forbidden' ? 403 : 502).json({
+      error: code ?? 'master_command_failed',
+      message,
+      ...(error instanceof MasterCommandError && error.messageKey ? { messageKey: error.messageKey } : {}),
+      ...(error instanceof MasterCommandError && error.params ? { params: error.params } : {}),
+      ...(error instanceof MasterCommandError && error.details ? { details: error.details } : {}),
+    });
+  }
+}
+
 function respondToPairingError(res: Response, error: unknown): void {
   if (error instanceof PairingError) {
     res.status(400).json({ error: error.code, message: error.message });
@@ -503,6 +1100,24 @@ function respondToPairingError(res: Response, error: unknown): void {
   }
   log.error('Pairing failed', error);
   res.status(500).json({ error: 'pairing_failed', message: 'Pairing failed unexpectedly' });
+}
+
+const RESTORE_ERROR_STATUS: Record<string, number> = {
+  backup_wrong_passphrase: 400,
+  backup_corrupt_file: 400,
+  backup_wrong_panel_type: 400,
+  backup_populated_data_directory: 409,
+  backup_migration_too_new: 400,
+  validation_error: 400,
+};
+
+function respondToRestoreError(res: Response, error: unknown): void {
+  if (error instanceof RestoreError || error instanceof BackupValidationError) {
+    res.status(RESTORE_ERROR_STATUS[error.code] ?? 500).json({ error: error.code, message: error.message });
+    return;
+  }
+  log.error('Storage export/restore failed', error);
+  res.status(500).json({ error: 'internal_error', message: 'Something went wrong' });
 }
 
 /**
@@ -535,7 +1150,13 @@ function streamEvents(req: Request, res: Response): void {
   pushView();
 
   const onStatus = (status: unknown): void => send('status', status);
-  const onChange = (value: unknown): void => send('change', value);
+  // Masked the same way `forCurrentUser` masks a snapshot: the Master publishes
+  // the raw record to every paired panel (nothing else on that connection is
+  // permission-scoped to one signed-in person), so this is the last point that
+  // knows who is actually signed in here. Without it, editing any lead or order
+  // pushed `rate`/`lineTotal`/`totalAmount` into the event stream of a browser
+  // whose own `/api/snapshot` had gone to the trouble of hiding them.
+  const onChange = (event: DataChangedEvent): void => send('change', maskChangeEvent(event));
   const onConflict = (value: unknown): void => send('conflict', value);
 
   masterConnection.on('status', onStatus);

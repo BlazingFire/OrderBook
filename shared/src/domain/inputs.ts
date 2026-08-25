@@ -8,7 +8,16 @@
  * identity, never from the body — a client must not be able to name a tenant).
  */
 
-import type { IsoDate, RecordId, Uuid } from './entities.js';
+import type {
+  DocumentAssetKind,
+  DocumentLayout,
+  DocumentSubjectKind,
+  DocumentType,
+  PageOrientation,
+  PaperSize,
+} from './documents.js';
+import type { CustomFieldEntity, CustomFieldType, IsoDate, RecordId, Uuid } from './entities.js';
+import type { FieldListKey } from './fields.js';
 import type { RecycleBinEntityType } from './recycle-bin.js';
 
 export interface PartyInput {
@@ -48,6 +57,33 @@ export interface ProductInput {
   hsnCode?: string | null;
   parameters?: Record<string, unknown>;
   customFields?: Record<string, unknown>;
+}
+
+/**
+ * What the crop/rotate editor sends alongside the original file bytes.
+ * Coordinates are in the *decoded source image's* pixel space — the server
+ * applies rotation then crop and derives every size from that, once, so a
+ * client never re-encodes or resizes anything itself.
+ */
+export interface ImageCropInput {
+  cropX: number;
+  cropY: number;
+  cropWidth: number;
+  cropHeight: number;
+  /** Total rotation in degrees, 90°-increment plus fine adjustment combined. */
+  rotationDeg: number;
+  caption?: string | null;
+}
+
+export interface ProductImageUpdateInput {
+  caption?: string | null;
+  isPrimary?: boolean;
+}
+
+export interface ProductImageReorderInput {
+  productId: RecordId;
+  /** Every live image id for the product, in the desired order. */
+  ids: Uuid[];
 }
 
 export interface PartyProductVariantInput {
@@ -316,4 +352,128 @@ export interface RestoreInput {
   /** Restore every still-deleted parent named by PARENT_LINKS in the same call, rather than refusing. */
   cascadeParents?: boolean;
   expectedVersion?: number;
+}
+
+// --- Fields (docs/backend-modules/04-API-CONTRACT.md §5) -------------------
+
+export interface OptionListItemInput {
+  listKey: FieldListKey;
+  value: string;
+  label: string;
+  hex?: string | null;
+  sequence?: number;
+}
+
+/** `value` is deliberately absent — editing it is refused; rename `label` instead. */
+export interface OptionListItemUpdateInput {
+  label?: string;
+  hex?: string | null;
+  isActive?: boolean;
+  expectedVersion: number;
+}
+
+export interface OptionListReorderInput {
+  listKey: FieldListKey;
+  ids: Uuid[];
+}
+
+export interface CustomFieldDefinitionInput {
+  entity: CustomFieldEntity;
+  key: string;
+  label: string;
+  fieldType: CustomFieldType;
+  isRequired?: boolean;
+  options?: string[];
+  sequence?: number;
+}
+
+/** `key` and `entity` are deliberately absent — both are immutable once set. */
+export interface CustomFieldDefinitionUpdateInput {
+  label?: string;
+  isRequired?: boolean;
+  options?: string[];
+  isActive?: boolean;
+  expectedVersion: number;
+}
+
+export interface CustomFieldReorderInput {
+  entity: CustomFieldEntity;
+  ids: Uuid[];
+}
+
+export interface PipelineStageInput {
+  name?: string;
+  colourHex?: string | null;
+  isTerminal?: boolean;
+  isDefault?: boolean;
+}
+
+export interface StageReorderInput {
+  pipelineId: RecordId;
+  ids: Uuid[];
+}
+
+// --- PDF Designer (docs/backend-modules/04-API-CONTRACT.md §6) -------------
+
+export interface DocumentTemplateInput {
+  name: string;
+  documentType: DocumentType;
+  paperSize?: PaperSize;
+  orientation?: PageOrientation;
+  margins?: { top: number; right: number; bottom: number; left: number };
+
+  showRates?: boolean;
+  showColourChips?: boolean;
+  showTerms?: boolean;
+  showLogo?: boolean;
+  showSignature?: boolean;
+  showPageNumbers?: boolean;
+  showWatermark?: boolean;
+  showPartyBlock?: boolean;
+
+  watermarkText?: string | null;
+  termsText?: string | null;
+  footerText?: string | null;
+  accentColour?: string | null;
+  locale?: string | null;
+
+  layout?: DocumentLayout;
+  logoAssetId?: Uuid | null;
+  signatureAssetId?: Uuid | null;
+  isDefault?: boolean;
+}
+
+/**
+ * A base64 data URL rather than multipart, deliberately: `express.json`
+ * already parses at both ends, so the asset upload needs no `multer` and no
+ * second parser sitting on untrusted input in the global chain.
+ */
+export interface DocumentAssetInput {
+  kind: DocumentAssetKind;
+  dataUrl: string;
+}
+
+export interface RenderDocumentInput {
+  templateId: Uuid;
+  subjectKind: DocumentSubjectKind;
+  subjectId: RecordId;
+}
+
+/**
+ * Takes a whole template rather than an id, so the designer can preview edits
+ * it has not saved. Nothing is persisted either way.
+ */
+export interface PreviewDocumentInput {
+  template: DocumentTemplateInput;
+  subjectKind: DocumentSubjectKind;
+  subjectId: RecordId;
+}
+
+export interface DocumentTemplateQuery extends CursorQuery {
+  documentType?: DocumentType;
+}
+
+export interface DocumentExportQuery extends CursorQuery {
+  subjectKind?: DocumentSubjectKind;
+  subjectId?: RecordId;
 }

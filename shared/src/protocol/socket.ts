@@ -18,6 +18,7 @@ import type {
   CustomFieldDefinition,
   DashboardSummary,
   InventoryStockLevel,
+  IsoTimestamp,
   Lead,
   OfficePanelWithPresence,
   OptionListItem,
@@ -25,6 +26,8 @@ import type {
   Party,
   PartyProductVariant,
   Pipeline,
+  PipelineStage,
+  ImageVariant,
   Product,
   ProductCategory,
   RecordId,
@@ -35,26 +38,65 @@ import type {
   Uuid,
 } from '../domain/entities.js';
 import type {
+  ActivityLogEntry,
+  ActivityLogFacets,
+  ActivityLogQuery,
+  ChainVerification,
+  ChainVerifyInput,
+} from '../domain/activity.js';
+import type { FieldCatalogue, FieldUsageBreakdown } from '../domain/fields.js';
+import type {
+  DocumentAsset,
+  DocumentExport,
+  DocumentFilePayload,
+  DocumentRenderResult,
+  DocumentTemplate,
+} from '../domain/documents.js';
+import type {
+  DispatchesReport,
+  LeadOutcomesReport,
+  ReportKind,
+  ReportRangeInput,
+  TopPartiesReport,
+} from '../domain/reports.js';
+import type {
   ConflictResolutionInput,
   CursorPage,
+  CustomFieldDefinitionInput,
+  CustomFieldDefinitionUpdateInput,
+  CustomFieldReorderInput,
+  DocumentAssetInput,
+  DocumentExportQuery,
+  DocumentTemplateInput,
+  DocumentTemplateQuery,
+  ImageCropInput,
   LeadConvertInput,
   LeadInput,
   LeadListQuery,
   LeadUpdateInput,
   ListQuery,
+  OptionListItemInput,
+  OptionListItemUpdateInput,
+  OptionListReorderInput,
   OrderDispatchInput,
   OrderListQuery,
   OrderUpdateInput,
   Paginated,
   PartyInput,
   PartyProductVariantInput,
+  PipelineStageInput,
+  PreviewDocumentInput,
+  ProductImageReorderInput,
+  ProductImageUpdateInput,
   ProductInput,
   RecycleBinQuery,
   RemarkInput,
+  RenderDocumentInput,
   ReorderLevelInput,
   RestoreInput,
   SearchQuery,
   StageChangeInput,
+  StageReorderInput,
   StockAdjustmentInput,
   StockInboundInput,
   StockListQuery,
@@ -192,7 +234,9 @@ export type ChangedEntity =
   | 'custom_field'
   | 'sync_conflict'
   | 'role'
-  | 'user';
+  | 'user'
+  | 'document_template'
+  | 'document_export';
 
 /**
  * `'restored'` is the Recycle Bin's — never minted as a `MutationKind`, since
@@ -229,6 +273,8 @@ export interface SyncSnapshot {
   optionLists: OptionListItem[];
   customFields: CustomFieldDefinition[];
   conflicts: SyncConflict[];
+  /** Computed per-actor by the Master. Absent figures mean "not yours", never zero. */
+  dashboard: DashboardSummary;
   /** What this panel's signed-in user may do, so the UI can hide what it must. */
   permissions: string[];
   /** The Master's current HLC, folded into the panel's clock on receipt. */
@@ -273,6 +319,31 @@ export interface ClientToServerEvents {
   'product:update': (
     payload: { id: RecordId; input: ProductInput },
     ack: CommandAck<Product>,
+  ) => void;
+
+  /**
+   * §4.3's `GET /sync/v1/image/{imageId}/{variant}`, ported onto this
+   * repo's existing command channel instead of a second HTTP surface — an
+   * Office Panel already holds a live, authenticated socket to the Master,
+   * and every other Office→Master write already travels this way (Fields,
+   * Recycle Bin, Stock). `file`/`data` are transmitted as Socket.IO binary
+   * attachments, not base64, so a 40 MB source photo does not bloat by a
+   * third in transit.
+   */
+  'product:image:upload': (
+    payload: { productId: RecordId; file: Uint8Array; crop: ImageCropInput },
+    ack: CommandAck<Product>,
+  ) => void;
+  'product:image:update': (
+    payload: { id: Uuid; input: ProductImageUpdateInput },
+    ack: CommandAck<Product>,
+  ) => void;
+  'product:image:reorder': (input: ProductImageReorderInput, ack: CommandAck<Product>) => void;
+  'product:image:delete': (id: Uuid, ack: CommandAck<Product>) => void;
+  /** Serves one already-derived variant's bytes — never triggers a resize (§5.6). */
+  'image:fetch': (
+    payload: { imageId: Uuid; variant: ImageVariant },
+    ack: CommandAck<{ data: Uint8Array; checksum: string }>,
   ) => void;
 
   'category:list': (ack: CommandAck<ProductCategory[]>) => void;
@@ -334,6 +405,126 @@ export interface ClientToServerEvents {
   'recycleBin:list': (query: RecycleBinQuery, ack: CommandAck<CursorPage<BinEntry>>) => void;
   'recycleBin:counts': (ack: CommandAck<BinCounts>) => void;
   'recycleBin:restore': (input: RestoreInput, ack: CommandAck<BinRestoreResult>) => void;
+
+  // --- Fields (docs/backend-modules/04-API-CONTRACT.md §5) ------------------
+  // Reads carry `fields.view` (no tier ceiling); writes carry `fields.manage`
+  // (management+). Event names are `fields:<verb>` — the read verbs are
+  // `values`/`definitions`/`stages`/`catalogue`/`usage`, not `listX`.
+  'fields:catalogue': (ack: CommandAck<FieldCatalogue>) => void;
+  'fields:values': (
+    query: { listKey: string; includeDeleted?: boolean; includeUnlisted?: boolean },
+    ack: CommandAck<{ items: OptionListItem[]; unlisted?: string[] }>,
+  ) => void;
+  'fields:usage': (query: { listKey: string }, ack: CommandAck<FieldUsageBreakdown>) => void;
+  'fields:definitions': (
+    query: { entity?: string; includeDeleted?: boolean },
+    ack: CommandAck<CustomFieldDefinition[]>,
+  ) => void;
+  'fields:stages': (ack: CommandAck<Pipeline[]>) => void;
+  'fields:createValue': (input: OptionListItemInput, ack: CommandAck<OptionListItem>) => void;
+  'fields:updateValue': (
+    payload: { id: RecordId; input: OptionListItemUpdateInput },
+    ack: CommandAck<OptionListItem>,
+  ) => void;
+  'fields:deleteValue': (
+    id: RecordId,
+    ack: CommandAck<{ id: RecordId; deletedAt: string }>,
+  ) => void;
+  'fields:reorderValues': (
+    input: OptionListReorderInput,
+    ack: CommandAck<OptionListItem[]>,
+  ) => void;
+  'fields:createDefinition': (
+    input: CustomFieldDefinitionInput,
+    ack: CommandAck<CustomFieldDefinition>,
+  ) => void;
+  'fields:updateDefinition': (
+    payload: { id: RecordId; input: CustomFieldDefinitionUpdateInput },
+    ack: CommandAck<CustomFieldDefinition>,
+  ) => void;
+  'fields:deleteDefinition': (
+    id: RecordId,
+    ack: CommandAck<{ id: RecordId; deletedAt: string }>,
+  ) => void;
+  'fields:reorderDefinitions': (
+    input: CustomFieldReorderInput,
+    ack: CommandAck<CustomFieldDefinition[]>,
+  ) => void;
+  'fields:updateStage': (
+    payload: { id: RecordId; input: PipelineStageInput },
+    ack: CommandAck<PipelineStage>,
+  ) => void;
+  'fields:reorderStages': (input: StageReorderInput, ack: CommandAck<PipelineStage[]>) => void;
+  'fields:archiveStage': (id: RecordId, ack: CommandAck<PipelineStage>) => void;
+  'fields:restoreStage': (id: RecordId, ack: CommandAck<PipelineStage>) => void;
+
+  // --- Logs (docs/backend-modules/04-API-CONTRACT.md §2) --------------------
+  'log:list': (query: ActivityLogQuery, ack: CommandAck<CursorPage<ActivityLogEntry>>) => void;
+  'log:facets': (
+    query: { from?: string; to?: string },
+    ack: CommandAck<ActivityLogFacets>,
+  ) => void;
+  'log:verifyChain': (input: ChainVerifyInput, ack: CommandAck<ChainVerification>) => void;
+  /** CSV as a string in the ack — the Office server has no streaming transport to its own browser for this call. */
+  'log:export': (query: ActivityLogQuery, ack: CommandAck<{ csv: string; rowCount: number }>) => void;
+
+  // --- Reports (docs/backend-modules/04-API-CONTRACT.md §3) -----------------
+  'report:dispatches': (query: ReportRangeInput, ack: CommandAck<DispatchesReport>) => void;
+  'report:leadOutcomes': (query: ReportRangeInput, ack: CommandAck<LeadOutcomesReport>) => void;
+  'report:topParties': (
+    query: ReportRangeInput & { limit?: number },
+    ack: CommandAck<TopPartiesReport>,
+  ) => void;
+  'report:export': (
+    payload: { report: ReportKind; query: ReportRangeInput & { limit?: number } },
+    ack: CommandAck<{ csv: string; rowCount: number }>,
+  ) => void;
+
+  // --- PDF Designer (docs/backend-modules/04-API-CONTRACT.md §6) ------------
+  'document:listTemplates': (
+    query: DocumentTemplateQuery,
+    ack: CommandAck<CursorPage<DocumentTemplate>>,
+  ) => void;
+  'document:getTemplate': (id: Uuid, ack: CommandAck<DocumentTemplate>) => void;
+  'document:createTemplate': (
+    input: DocumentTemplateInput,
+    ack: CommandAck<DocumentTemplate>,
+  ) => void;
+  'document:updateTemplate': (
+    payload: { id: Uuid; input: DocumentTemplateInput & { expectedVersion: number } },
+    ack: CommandAck<DocumentTemplate>,
+  ) => void;
+  'document:deleteTemplate': (
+    payload: { id: Uuid; expectedVersion: number },
+    ack: CommandAck<{ id: Uuid; deletedAt: IsoTimestamp }>,
+  ) => void;
+  'document:restoreTemplate': (id: Uuid, ack: CommandAck<DocumentTemplate>) => void;
+  'document:uploadAsset': (input: DocumentAssetInput, ack: CommandAck<DocumentAsset>) => void;
+  /**
+   * Not among the thirteen `04-API-CONTRACT.md` §9.3 lists. The designer has
+   * to offer a logo picker, and the contract gives it upload and fetch-by-id
+   * but no way to discover what a tenant already has — a gap, not a decision.
+   */
+  'document:listAssets': (ack: CommandAck<DocumentAsset[]>) => void;
+  /**
+   * Binary travels as `Uint8Array`. Socket.IO's default parser sends it as a
+   * separate attachment rather than inline JSON, which avoids base64's 33%
+   * inflation on a ~200 KB file.
+   */
+  'document:assetFile': (id: Uuid, ack: CommandAck<DocumentFilePayload>) => void;
+  /** Returns metadata, never bytes — the browser then fetches the file itself. */
+  'document:render': (input: RenderDocumentInput, ack: CommandAck<DocumentRenderResult>) => void;
+  'document:preview': (input: PreviewDocumentInput, ack: CommandAck<DocumentFilePayload>) => void;
+  'document:listExports': (
+    query: DocumentExportQuery,
+    ack: CommandAck<CursorPage<DocumentExport>>,
+  ) => void;
+  'document:getExport': (id: string, ack: CommandAck<DocumentExport>) => void;
+  'document:exportFile': (id: string, ack: CommandAck<DocumentFilePayload>) => void;
+
+  // --- Dashboard (docs/backend-modules/04-API-CONTRACT.md §7) ---------------
+  /** The one live pull — everything else rides on `SyncSnapshot.dashboard` and the `dashboard:changed` push. */
+  'dashboard:get': (ack: CommandAck<DashboardSummary>) => void;
 }
 
 /** Master → clients. */

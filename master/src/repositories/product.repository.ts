@@ -13,6 +13,7 @@ import type { Knex } from 'knex';
 import { db } from '../db/knex.js';
 import { allocatePermanentId } from './identity.repository.js';
 import { firstCount, mapProduct, mapProductCategory } from './mappers.js';
+import { loadImagesFor } from './product-image.repository.js';
 import type { TransactionContext } from './transaction.js';
 
 const TABLE = 'products';
@@ -61,8 +62,13 @@ export async function listProducts(
     .limit(options.limit)
     .offset(options.offset);
 
+  const images = await loadImagesFor(
+    tenantId,
+    rows.map((row) => String(row.id)),
+  );
+
   return {
-    items: rows.map(mapProduct),
+    items: rows.map((row) => mapProduct(row, images.get(String(row.id)) ?? [])),
     total: firstCount(countRows),
     limit: options.limit,
     offset: options.offset,
@@ -76,7 +82,20 @@ export async function findProductById(
   options: { includeDeleted?: boolean } = {},
 ): Promise<Product | null> {
   const row = await baseQuery(tenantId, runner, options).andWhere('p.id', id).first();
-  return row ? mapProduct(row) : null;
+  if (!row) return null;
+
+  const images = await loadImagesFor(tenantId, [id], runner);
+  return mapProduct(row, images.get(id) ?? []);
+}
+
+/**
+ * Row-locks the product within the caller's transaction — used before an
+ * image upload so two overlapping uploads to the same product's empty
+ * gallery cannot both read `existing.length === 0` and both insert
+ * `isPrimary: true` under READ COMMITTED.
+ */
+export async function lockProduct(tenantId: string, id: string, trx: TransactionContext): Promise<void> {
+  await trx('products').where({ tenant_id: tenantId, id }).forUpdate().first();
 }
 
 /**

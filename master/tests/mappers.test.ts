@@ -13,6 +13,7 @@ import {
   mapParty,
   mapProduct,
   toIso,
+  toIsoDate,
   toNumber,
   toRequiredIso,
   toRequiredNumber,
@@ -65,6 +66,34 @@ describe('toIso', () => {
 
   it('always produces a string for NOT NULL timestamp columns', () => {
     expect(typeof toRequiredIso(null)).toBe('string');
+  });
+});
+
+describe('toIsoDate', () => {
+  // RPT-5: `toIsoDate` (mappers.ts:79-90) is the existing fix for the
+  // shipped defect where a DATE column read a day early anywhere east of
+  // UTC — `toISOString()` converts to UTC first, so a follow-up date of the
+  // 1st on an IST machine came back as the 31st. This is its first test.
+  it('keeps the day the user typed, on a machine east of UTC (IST, UTC+5:30)', () => {
+    // node-postgres parses a DATE column into a JS Date at *local* midnight —
+    // this constructs the same shape a real row would produce on an IST host,
+    // without depending on the test runner's own timezone.
+    const localMidnight = new Date(2026, 0, 1, 0, 0, 0);
+    expect(toIsoDate(localMidnight)).toBe('2026-01-01');
+  });
+
+  it('does not roll over at a month boundary', () => {
+    const localMidnight = new Date(2026, 1, 28, 0, 0, 0);
+    expect(toIsoDate(localMidnight)).toBe('2026-02-28');
+  });
+
+  it('returns null for a missing date', () => {
+    expect(toIsoDate(null)).toBeNull();
+    expect(toIsoDate(undefined)).toBeNull();
+  });
+
+  it('passes an already-string date through, truncated to 10 characters', () => {
+    expect(toIsoDate('2026-03-15')).toBe('2026-03-15');
   });
 });
 

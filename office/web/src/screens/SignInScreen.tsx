@@ -14,7 +14,12 @@
 import { useState, type FormEvent } from 'react';
 
 import { api, type ConnectionInfo, type PanelSession } from '../api';
-import { Field } from '../components/Field';
+import { t } from '../i18n/strings';
+import { Button } from '../ui/Button';
+import { Card } from '../ui/Card';
+import { FieldError, FormField, Input } from '../ui/Form';
+import { LogoLockup } from '../ui/Logo';
+import { OfflineBanner } from '../ui/States';
 
 interface Props {
   connection: ConnectionInfo;
@@ -38,7 +43,7 @@ export function SignInScreen({ connection, onSignedIn }: Props) {
       const { session } = await api.signIn(username, password);
       onSignedIn(session);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Sign-in failed');
+      setError(caught instanceof Error ? caught.message : t('signin.errorFallback'));
       setPassword('');
     } finally {
       setBusy(false);
@@ -46,61 +51,72 @@ export function SignInScreen({ connection, onSignedIn }: Props) {
   }
 
   return (
-    <div style={{ maxWidth: 420, margin: '0 auto', padding: '60px 16px' }}>
-      <h1 style={{ fontSize: 22, marginBottom: 4 }}>OrderBook — Office Panel</h1>
-      <p className="muted" style={{ marginTop: 0 }}>
-        {connection.companyName ?? 'Sign in to continue'}
-      </p>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 'var(--s-24)',
+        maxWidth: 420,
+        margin: '0 auto',
+        padding: 'var(--s-56) var(--s-16)',
+      }}
+    >
+      <LogoLockup markSize={28} />
 
-      {/*
-        Said before the attempt, not after it fails. Offline sign-in only works
-        for people who have signed in on this panel before, and discovering that
-        through a refusal reads as "my password is wrong".
-      */}
-      {offline && (
-        <div className="notice" role="status">
-          The Master Panel is not reachable right now. You can still sign in if you have used this
-          panel before — your work will be saved here and sent when the Master returns.
-        </div>
-      )}
+      <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
+        <p className="ob-small" style={{ textAlign: 'center' }}>
+          {connection.companyName ?? t('signin.subtitleFallback')}
+        </p>
 
-      <form onSubmit={(event) => void submit(event)} className="card">
-        <Field label="Username">
-          {(id) => (
-            <input
-              id={id}
-              value={username}
-              autoFocus
-              autoComplete="username"
-              autoCapitalize="none"
-              spellCheck={false}
-              onChange={(event) => setUsername(event.target.value)}
-            />
-          )}
-        </Field>
+        {/*
+          Said before the attempt, not after it fails. Offline sign-in only works
+          for people who have signed in on this panel before, and discovering that
+          through a refusal reads as "my password is wrong".
+        */}
+        {offline && <OfflineBanner>{t('signin.offlineNotice')}</OfflineBanner>}
 
-        <Field label="Password">
-          {(id) => (
-            <input
-              id={id}
-              type="password"
-              value={password}
-              autoComplete="current-password"
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          )}
-        </Field>
+        <Card>
+          <form
+            onSubmit={(event) => void submit(event)}
+            style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}
+          >
+            <FormField label={t('signin.username')}>
+              {(id) => (
+                <Input
+                  id={id}
+                  value={username}
+                  autoFocus
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  onChange={(event) => setUsername(event.target.value)}
+                />
+              )}
+            </FormField>
 
-        {error && (
-          <div className="error" role="alert">
-            {error}
-          </div>
-        )}
+            <FormField label={t('signin.password')}>
+              {(id) => (
+                <Input
+                  id={id}
+                  type="password"
+                  value={password}
+                  autoComplete="current-password"
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+              )}
+            </FormField>
 
-        <button type="submit" disabled={busy || !username || !password}>
-          {busy ? 'Signing in…' : 'Sign in'}
-        </button>
-      </form>
+            {/* Stays visible until the next attempt — a failed sign-in must not
+                vanish the way a toast would after a few seconds. */}
+            {error && <FieldError>{error}</FieldError>}
+
+            <Button type="submit" variant="primary" busy={busy} disabled={!username || !password}>
+              {busy ? t('signin.submitting') : t('signin.submit')}
+            </Button>
+          </form>
+        </Card>
+      </div>
     </div>
   );
 }

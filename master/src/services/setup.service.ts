@@ -125,7 +125,8 @@ export async function refreshStoredLanIp(): Promise<void> {
  * Ambiguous characters (0/O, 1/l/I) are excluded because these secrets get
  * read off one screen and typed into another by hand.
  */
-function generateReadableSecret(length = 10): string {
+/** Exported for reuse by `backup-restore.service.ts`, which mints a fresh pairing password on every restore. */
+export function generateReadableSecret(length = 10): string {
   const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
   const bytes = randomBytes(length);
   let out = '';

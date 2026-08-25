@@ -36,14 +36,3 @@ export interface PairingSuccess {
   companyName: string | null;
 }
 
-export type PairingFailureReason =
-  | 'not_accepting_pairing'
-  | 'invalid_password'
-  | 'master_mismatch'
-  | 'invalid_request'
-  | 'setup_incomplete';
-
-export interface PairingFailure {
-  error: PairingFailureReason;
-  message: string;
-}

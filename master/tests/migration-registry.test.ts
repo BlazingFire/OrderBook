@@ -60,11 +60,26 @@ describe('the migration registry matches the directory', () => {
     }
   });
 
+  /**
+   * `20260309` was given its slot before `20260310`/`20260311` were claimed by
+   * concurrent work, but it grants permissions for keys those modules mint, so
+   * it has to run after them. It has already been applied in the last position
+   * on a real installation, which is what makes this permanent: renaming the
+   * file to restore ascending order would make Knex see an unrun migration and
+   * apply it a second time.
+   */
+  const DELIBERATELY_LAST = ['20260309000000_new_module_permission_grant'];
+
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {
     const names = namesInArray(registrySource());
-    const timestamps = names.map((name) => name.slice(0, 14));
+    const timestamps = names.filter((name) => !DELIBERATELY_LAST.includes(name)).map((name) => name.slice(0, 14));
     const sorted = [...timestamps].sort();
     expect(timestamps).toEqual(sorted);
+  });
+
+  it('keeps the deliberately-reordered migrations pinned to the end, where they have already run', () => {
+    const names = namesInArray(registrySource());
+    expect(names.slice(-DELIBERATELY_LAST.length)).toEqual(DELIBERATELY_LAST);
   });
 
   it('every filename on disk starts with a 14-digit timestamp', () => {

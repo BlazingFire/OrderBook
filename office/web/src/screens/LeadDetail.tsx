@@ -4,14 +4,23 @@
  *
  * The stage `select` here is not a duplicate of the board's drag: dragging is
  * mouse-only, and this is the path that works with a keyboard.
+ *
+ * Rendered as the body of the Drawer that `LeadBoardScreen` opens — the party
+ * name, id, sync/converted badges, close and full-screen controls all live in
+ * the Drawer's own header, not here.
  */
 
 import { useState } from 'react';
 import type { Lead } from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
-import { Field } from '../components/Field';
 import { formatDateTime, formatMoney } from '../format';
+import { t } from '../i18n/strings';
+import { Button } from '../ui/Button';
+import { Card } from '../ui/Card';
+import { ColourChip, KeyValueList, StatusPill, Timeline, useColourHex } from '../ui/DataDisplay';
+import { DateField, FormField, Input, Select } from '../ui/Form';
+import { ConflictBanner } from '../ui/States';
 
 interface Props {
   lead: Lead;
@@ -26,9 +35,11 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
   const [dispatchLabel, setDispatchLabel] = useState('');
   const [expectedDate, setExpectedDate] = useState('');
   const [busy, setBusy] = useState(false);
+  const colourHex = useColourHex(view.optionLists);
 
   const pipeline = view.pipelines.find((candidate) => candidate.kind === 'lead');
   const stages = [...(pipeline?.stages ?? [])].sort((a, b) => a.sequence - b.sequence);
+  const party = view.parties.find((candidate) => candidate.id === lead.partyId) ?? null;
 
   async function run(action: () => Promise<unknown>, failure: string): Promise<void> {
     setBusy(true);
@@ -44,225 +55,232 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
   const missingPackaging = lead.items.filter((item) => !item.packaging?.trim());
 
   return (
-    <div>
-      <div className="row" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
-        <h2 style={{ margin: 0 }}>
-          {lead.partyName} <span className="muted">{lead.id}</span>
-        </h2>
-        <button className="secondary" onClick={onClose}>
-          Back to board
-        </button>
-      </div>
-
+    <>
       {lead.incomplete && (
-        <div className="error">
-          Missing required information: {lead.missingFields.join(', ')}. The lead is saved — fill
-          this in when you can.
-        </div>
+        <ConflictBanner>
+          {t('lead.detail.incompleteWarning', { fields: lead.missingFields.join(', ') })}
+        </ConflictBanner>
       )}
 
-      <div className="split">
-        <div className="stack">
-          <div className="card">
-            <h3 className="section-title">Products</h3>
-            <table>
-              <thead>
-                <tr>
-                  <th>Product</th>
-                  <th>Packaging</th>
-                  <th>Colours</th>
-                  <th className="right">Boxes</th>
-                  <th className="right">Line total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lead.items.map((item) => (
-                  <tr key={item.id}>
-                    <td>
-                      {item.productName}
-                      <div className="muted">
-                        {item.code}
-                        {item.size ? ` · ${item.size}` : ''}
-                        {item.grade ? ` · ${item.grade}` : ''}
-                      </div>
-                    </td>
-                    <td>
-                      {item.packaging || <span className="chip incomplete">not chosen</span>}
-                    </td>
-                    <td>
-                      {item.quantities.map((quantity) => (
-                        <div key={quantity.id} className="muted">
-                          {quantity.colour} × {quantity.quantity}
-                        </div>
-                      ))}
-                    </td>
-                    <td className="right num">{item.totalQuantity}</td>
-                    <td className="right num">
-                      {item.lineTotal === undefined ? '—' : formatMoney(item.lineTotal)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <Card>
+        <FormField label={t('lead.detail.stageLabel')}>
+          {(id) => (
+            <Select
+              id={id}
+              value={lead.stageId}
+              disabled={busy || Boolean(lead.convertedOrderId)}
+              onChange={(event) =>
+                void run(
+                  () => api.setLeadStage(lead.id, event.target.value),
+                  'Could not move the lead',
+                )
+              }
+            >
+              {stages.map((stage) => (
+                <option key={stage.id} value={stage.id}>
+                  {stage.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </FormField>
+      </Card>
 
-            {lead.totalAmount !== undefined && (
-              <div className="row right" style={{ justifyContent: 'flex-end', marginTop: 8 }}>
-                <strong>Total {formatMoney(lead.totalAmount)}</strong>
+      <Card>
+        <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
+          {t('lead.detail.lineItems')}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}>
+          {lead.items.map((item) => (
+            <div key={item.id} className="ob-card ob-card--pad">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
+                <span className="ob-body-strong" style={{ fontSize: 13.5 }}>
+                  {item.productName}
+                </span>
+                <span className="ob-small">
+                  {item.code}
+                  {item.size ? ` · ${item.size}` : ''}
+                  {item.grade ? ` · ${item.grade}` : ''}
+                </span>
+                <span style={{ flex: 1 }} />
+                <span className="ob-data">
+                  {item.totalQuantity} {t('unit.boxes')}
+                </span>
               </div>
-            )}
-          </div>
 
-          <div className="card">
-            <h3 className="section-title">History</h3>
-            {lead.timeline.length === 0 ? (
-              <p className="muted">Nothing recorded yet.</p>
-            ) : (
-              <ul className="timeline">
-                {lead.timeline.map((entry) => (
-                  <li key={entry.id} className={entry.kind}>
-                    <div>{entry.message}</div>
-                    <div className="when">
-                      {formatDateTime(entry.createdAt)}
-                      {entry.actorName ? ` · ${entry.actorName}` : ''}
-                    </div>
-                  </li>
+              <div style={{ marginTop: 'var(--s-4)' }}>
+                {item.packaging ? (
+                  <span className="ob-small">{item.packaging}</span>
+                ) : (
+                  <StatusPill tone="conflict">{t('lead.detail.packagingNotChosen')}</StatusPill>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s-8) var(--s-16)', marginTop: 'var(--s-8)' }}>
+                {item.quantities.map((quantity) => (
+                  <span key={quantity.id} className="ob-colourname">
+                    <ColourChip name={quantity.colour} hex={colourHex(quantity.colour)} />
+                    <span>
+                      {quantity.colour} × {quantity.quantity}
+                    </span>
+                  </span>
                 ))}
-              </ul>
-            )}
+              </div>
 
-            <div className="row" style={{ gap: 8, marginTop: 12 }}>
-              <input
-                value={remark}
-                placeholder="Add a note…"
-                onChange={(event) => setRemark(event.target.value)}
-              />
-              <button
-                disabled={busy || !remark.trim()}
-                onClick={() =>
-                  void run(async () => {
-                    await api.addLeadRemark(lead.id, remark.trim());
-                    setRemark('');
-                  }, 'Could not add the note')
-                }
-              >
-                Add
-              </button>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--s-8)' }}>
+                <span className="ob-data" style={{ fontWeight: 550 }}>
+                  {item.lineTotal == null ? '—' : formatMoney(item.lineTotal)}
+                </span>
+              </div>
             </div>
-          </div>
+          ))}
         </div>
 
-        <div className="stack">
-          <div className="card">
-            <h3 className="section-title">Stage</h3>
-            <Field label="Move this lead to">
+        {lead.totalAmount !== undefined && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--s-16)', marginTop: 'var(--s-8)' }}>
+            <span className="ob-small">{t('lead.detail.total')}</span>
+            <span className="ob-body-strong" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              {formatMoney(lead.totalAmount)}
+            </span>
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
+          {t('lead.detail.party')}
+        </div>
+        <KeyValueList
+          items={[
+            { label: t('lead.detail.name'), value: lead.partyName },
+            { label: t('lead.detail.code'), value: <span className="ob-mono">{party?.partyCode ?? '—'}</span> },
+            { label: t('lead.detail.phone'), value: party?.phone ?? '—' },
+            { label: t('lead.detail.city'), value: party?.city ?? '—' },
+            { label: t('lead.detail.source'), value: lead.sourcePlatform ?? '—' },
+          ]}
+        />
+      </Card>
+
+      <Card>
+        <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
+          {t('lead.detail.details')}
+        </div>
+        <KeyValueList
+          items={[
+            { label: t('lead.detail.followUp'), value: lead.followUpDate ?? '—' },
+            { label: t('lead.detail.partyRates'), value: lead.partyWiseMode ? t('lead.detail.yes') : t('lead.detail.no') },
+            { label: t('lead.detail.created'), value: formatDateTime(lead.createdAt) },
+          ]}
+        />
+        {lead.notes && (
+          <p className="ob-small" style={{ marginTop: 'var(--s-8)' }}>
+            {lead.notes}
+          </p>
+        )}
+      </Card>
+
+      <Card>
+        <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
+          {t('lead.detail.history')}
+        </div>
+        {lead.timeline.length === 0 ? (
+          <p className="ob-small">{t('lead.detail.noHistory')}</p>
+        ) : (
+          <Timeline
+            entries={lead.timeline.map((entry) => ({
+              id: entry.id,
+              label: (
+                <>
+                  {entry.message}
+                  {entry.actorName ? ` · ${entry.actorName}` : ''}
+                </>
+              ),
+              when: formatDateTime(entry.createdAt),
+            }))}
+          />
+        )}
+
+        <div style={{ display: 'flex', gap: 'var(--s-8)', marginTop: 'var(--s-12)' }}>
+          <Input
+            value={remark}
+            placeholder={t('lead.detail.addNotePlaceholder')}
+            onChange={(event) => setRemark(event.target.value)}
+          />
+          <Button
+            disabled={busy || !remark.trim()}
+            onClick={() =>
+              void run(async () => {
+                await api.addLeadRemark(lead.id, remark.trim());
+                setRemark('');
+              }, 'Could not add the note')
+            }
+          >
+            {t('lead.detail.addNote')}
+          </Button>
+        </div>
+      </Card>
+
+      {lead.convertedOrderId ? (
+        <Card style={{ background: 'var(--state-ok-tint)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
+            <StatusPill tone="ok">{t('lead.badge.converted')}</StatusPill>
+            <span className="ob-small" style={{ color: 'var(--fg-primary)' }}>
+              {t('lead.detail.convertedMessage', { orderId: lead.convertedOrderId })}
+            </span>
+          </div>
+        </Card>
+      ) : (
+        <Card>
+          <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
+            {t('lead.detail.convertTitle')}
+          </div>
+          <p className="ob-small" style={{ margin: 0 }}>
+            {t('lead.detail.convertDesc')}
+          </p>
+
+          {missingPackaging.length > 0 && (
+            <ConflictBanner>
+              {t('lead.detail.convertMissingPackaging', {
+                names: missingPackaging.map((item) => item.productName).join(', '),
+              })}
+            </ConflictBanner>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px', gap: 'var(--s-12)', marginTop: 'var(--s-8)' }}>
+            <FormField label={t('lead.detail.dispatchLabel')}>
               {(id) => (
-                <select
-                  id={id}
-                  value={lead.stageId}
-                  disabled={busy || Boolean(lead.convertedOrderId)}
-                  onChange={(event) =>
-                    void run(
-                      () => api.setLeadStage(lead.id, event.target.value),
-                      'Could not move the lead',
-                    )
-                  }
-                >
-                  {stages.map((stage) => (
-                    <option key={stage.id} value={stage.id}>
-                      {stage.name}
-                    </option>
-                  ))}
-                </select>
+                <Input id={id} value={dispatchLabel} onChange={(event) => setDispatchLabel(event.target.value)} />
               )}
-            </Field>
+            </FormField>
 
-            <dl style={{ margin: 0, fontSize: 14 }}>
-              <Detail label="Source" value={lead.sourcePlatform ?? '—'} />
-              <Detail label="Follow up" value={lead.followUpDate ?? '—'} />
-              <Detail label="Party rates" value={lead.partyWiseMode ? 'Yes' : 'No'} />
-              <Detail label="Created" value={formatDateTime(lead.createdAt)} />
-            </dl>
-
-            {lead.notes && <p style={{ marginBottom: 0 }}>{lead.notes}</p>}
+            <FormField label={t('lead.detail.expectedDate')}>
+              {(id) => (
+                <DateField id={id} value={expectedDate} onChange={(event) => setExpectedDate(event.target.value)} />
+              )}
+            </FormField>
           </div>
 
-          <div className="card">
-            <h3 className="section-title">Convert to order</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)', marginTop: 'var(--s-12)' }}>
+            <Button
+              variant="primary"
+              disabled={busy || !canConvert || missingPackaging.length > 0}
+              onClick={() =>
+                void run(async () => {
+                  await api.convertLead(lead.id, {
+                    dispatchAddressLabel: dispatchLabel.trim() || null,
+                    expectedDispatchDate: expectedDate || null,
+                  });
+                  onClose();
+                }, 'Could not convert the lead')
+              }
+            >
+              {t('lead.detail.convertAction')}
+            </Button>
 
-            {lead.convertedOrderId ? (
-              <p>
-                <span className="chip converted">converted</span> This lead became order{' '}
-                <strong>{lead.convertedOrderId}</strong>.
-              </p>
-            ) : (
-              <>
-                <p className="muted" style={{ marginTop: 0 }}>
-                  Creates an order with these lines copied exactly as they stand, and reserves the
-                  stock for each colour.
-                </p>
-
-                {missingPackaging.length > 0 && (
-                  <div className="error">
-                    Choose packaging for {missingPackaging.map((i) => i.productName).join(', ')}{' '}
-                    first — it is never filled in automatically.
-                  </div>
-                )}
-
-                <Field label="Dispatch address label">
-                  {(id) => (
-                    <input
-                      id={id}
-                      value={dispatchLabel}
-                      onChange={(event) => setDispatchLabel(event.target.value)}
-                    />
-                  )}
-                </Field>
-
-                <Field label="Expected dispatch date">
-                  {(id) => (
-                    <input
-                      id={id}
-                      type="date"
-                      value={expectedDate}
-                      onChange={(event) => setExpectedDate(event.target.value)}
-                    />
-                  )}
-                </Field>
-
-                <button
-                  disabled={busy || !canConvert || missingPackaging.length > 0}
-                  onClick={() =>
-                    void run(async () => {
-                      await api.convertLead(lead.id, {
-                        dispatchAddressLabel: dispatchLabel.trim() || null,
-                        expectedDispatchDate: expectedDate || null,
-                      });
-                      onClose();
-                    }, 'Could not convert the lead')
-                  }
-                >
-                  Convert to order
-                </button>
-
-                {!canConvert && (
-                  <p className="muted" style={{ marginBottom: 0, marginTop: 8 }}>
-                    Your role does not include <code>lead.convert</code>.
-                  </p>
-                )}
-              </>
-            )}
+            {!canConvert && <span className="ob-small">{t('lead.detail.noPermission')}</span>}
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Detail({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="row" style={{ justifyContent: 'space-between', padding: '3px 0' }}>
-      <dt className="muted">{label}</dt>
-      <dd style={{ margin: 0 }}>{value}</dd>
-    </div>
+        </Card>
+      )}
+    </>
   );
 }

@@ -15,9 +15,12 @@
  *
  * Saving works with no link to the Master: the lead is queued locally and
  * appears on the board immediately.
+ *
+ * Restyled onto the design system (6-UI-DESIGN.md, New-Lead.dc.html); the
+ * data flow above is unchanged.
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type {
   CustomFieldDefinition,
   LineItemInput,
@@ -28,10 +31,18 @@ import type {
 } from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
-import { ColourQuantities, type ColourQuantity } from '../components/ColourQuantities';
 import { CustomFields } from '../components/CustomFields';
-import { Field } from '../components/Field';
+import { PartyDrawer, type CreatedParty } from '../components/PartyDrawer';
 import { formatMoney } from '../format';
+import { t } from '../i18n/strings';
+import { Button, IconButton } from '../ui/Button';
+import { Card } from '../ui/Card';
+import { Combobox, type ComboboxOption } from '../ui/Combobox';
+import { ColourQuantityGrid, type ColourQuantity } from '../ui/ColourQuantityGrid';
+import { DateField, FormField, Input, NumberInput, Select, Switch, Textarea } from '../ui/Form';
+import { ConflictBanner } from '../ui/States';
+import { StatusPill, useColourHex } from '../ui/DataDisplay';
+import { useSaveShortcut } from '../ui/SaveShortcutSlot';
 
 interface Props {
   view: LocalView;
@@ -46,7 +57,8 @@ interface DraftLine {
   productName: string;
   code: string | null;
   alias: string | null;
-  rate: number | null;
+  /** The rupee text as typed; see `ratePaise`. `null` is a rate this person may not see. */
+  rateText: string | null;
   sin: string | null;
   size: string | null;
   grade: string | null;
@@ -61,9 +73,9 @@ interface DraftLine {
 }
 
 export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
+  const colourHex = useColourHex(view.optionLists);
   const [partyId, setPartyId] = useState('');
-  const [partySearch, setPartySearch] = useState('');
-  const [showNewParty, setShowNewParty] = useState(false);
+  const [partyDrawerOpen, setPartyDrawerOpen] = useState(false);
 
   const [partyWiseMode, setPartyWiseMode] = useState(false);
   const [sourcePlatform, setSourcePlatform] = useState('');
@@ -71,9 +83,9 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
   const [notes, setNotes] = useState('');
   const [customFields, setCustomFields] = useState<Record<string, unknown>>({});
 
-  const [productSearch, setProductSearch] = useState('');
   const [codeEntry, setCodeEntry] = useState('');
   const [lines, setLines] = useState<DraftLine[]>([]);
+  const productSearchRef = useRef<HTMLInputElement>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -100,33 +112,27 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
     [partyWiseMode, partyId, view.partyVariants],
   );
 
-  const matchingParties = useMemo(() => {
-    const term = partySearch.trim().toLowerCase();
-    if (!term) return view.parties.slice(0, 8);
-    return view.parties
-      .filter(
-        (party) =>
-          party.name.toLowerCase().includes(term) ||
-          party.partyCode.toLowerCase().includes(term) ||
-          (party.phone ?? '').includes(term),
-      )
-      .slice(0, 8);
-  }, [partySearch, view.parties]);
+  const partyOptions = useMemo<ComboboxOption<Party>[]>(
+    () =>
+      view.parties.map((party) => ({
+        key: party.id,
+        label: [party.partyCode, party.name, party.phone, party.city].filter(Boolean).join(' · '),
+        value: party,
+      })),
+    [view.parties],
+  );
 
-  const matchingProducts = useMemo(() => {
-    const term = productSearch.trim().toLowerCase();
-    if (!term) return view.products.slice(0, 8);
-    return view.products
-      .filter(
-        (product) =>
-          product.name.toLowerCase().includes(term) ||
-          product.productCode.toLowerCase().includes(term) ||
-          (product.alias ?? '').toLowerCase().includes(term) ||
-          (product.series ?? '').toLowerCase().includes(term) ||
-          (product.categoryName ?? '').toLowerCase().includes(term),
-      )
-      .slice(0, 8);
-  }, [productSearch, view.products]);
+  const productOptions = useMemo<ComboboxOption<Product>[]>(
+    () =>
+      view.products.map((product) => ({
+        key: product.id,
+        label: [product.productCode, product.name, product.alias, product.series, product.categoryName]
+          .filter(Boolean)
+          .join(' · '),
+        value: product,
+      })),
+    [view.products],
+  );
 
   /**
    * The order total, or null when any line's rate is hidden from this person.
@@ -136,9 +142,10 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
    * failure the masking rule exists to prevent (`roles-ui.md` §6). Rendering
    * from absence means the total is either right or visibly unknown.
    */
-  const total = lines.some((line) => line.rate === null || line.rate === undefined)
-    ? null
-    : lines.reduce((sum, line) => sum + Math.round((line.rate ?? 0) * totalQuantity(line)), 0);
+  const total = lines.reduce<number | null>((sum, line) => {
+    const amount = lineTotal(line);
+    return sum === null || amount === null ? null : sum + amount;
+  }, 0);
 
   /**
    * Build a line from a product, applying the party's variant when the lead is
@@ -147,13 +154,14 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
    */
   function lineFrom(product: Product): DraftLine {
     const variant = variantsForParty.get(product.id) ?? null;
+    const rate = variant?.rate ?? product.rate ?? null;
 
     return {
       productId: product.id,
       productName: variant?.productName ?? product.name,
       code: product.productCode,
       alias: variant?.alias ?? product.alias,
-      rate: variant?.rate ?? product.rate ?? null,
+      rateText: rate === null ? null : String(rate / 100),
       sin: variant?.sin ?? product.sin,
       size: variant?.size ?? product.size,
       grade: variant?.grade ?? product.grade,
@@ -162,14 +170,16 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
       packaging: '',
       notes: '',
       fromPartyVariant: variant !== null,
-      quantities: [{ colour: product.color ?? '', quantity: 1 }],
+      // The grid lists every colour the product has stock for already,
+      // ready for entry — starting empty avoids a stray row for a colour
+      // that was never real (docs/LEAD_GENERATION_FLOW.md §3.7).
+      quantities: [],
       suggestedPackaging: variant?.packaging ?? null,
     };
   }
 
   function addProduct(product: Product): void {
     setLines((current) => [...current, lineFrom(product)]);
-    setProductSearch('');
     setCodeEntry('');
   }
 
@@ -197,18 +207,20 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
 
   async function save(): Promise<void> {
     if (!partyId) {
-      setError('Choose a party for this lead');
+      setError(t('lead.add.errors.partyRequired'));
       return;
     }
     if (lines.length === 0) {
-      setError('Add at least one product');
+      setError(t('lead.add.errors.noProducts'));
       return;
     }
 
     const missingPackaging = lines.filter((line) => !line.packaging.trim());
     if (missingPackaging.length > 0) {
       setError(
-        `Choose packaging for ${missingPackaging.map((line) => line.productName).join(', ')}`,
+        t('lead.add.errors.missingPackaging', {
+          names: missingPackaging.map((line) => line.productName).join(', '),
+        }),
       );
       return;
     }
@@ -216,7 +228,9 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
     const missingQuantities = lines.filter((line) => totalQuantity(line) <= 0);
     if (missingQuantities.length > 0) {
       setError(
-        `Add a quantity for ${missingQuantities.map((line) => line.productName).join(', ')}`,
+        t('lead.add.errors.missingQuantities', {
+          names: missingQuantities.map((line) => line.productName).join(', '),
+        }),
       );
       return;
     }
@@ -229,7 +243,7 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
         productId: line.productId,
         productName: line.productName,
         alias: line.alias,
-        rate: line.rate,
+        rate: ratePaise(line),
         code: line.code,
         sin: line.sin,
         size: line.size,
@@ -257,241 +271,219 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
 
       onSaved();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not save the lead');
+      setError(caught instanceof Error ? caught.message : t('lead.add.errors.generic'));
     } finally {
       setBusy(false);
     }
   }
 
+  function onPartyCreated(party: CreatedParty): void {
+    setPartyId(party.id);
+    setPartyDrawerOpen(false);
+  }
+
+  // Global Ctrl+S (§10) — same action the Save button below calls, withheld
+  // only while a save is already in flight, mirroring the button's own
+  // `busy` gate (it has no other disabled condition to mirror).
+  useSaveShortcut(busy ? null : () => void save());
+
   return (
-    <div>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h2 style={{ margin: 0 }}>Add Lead</h2>
-        <button className="secondary" onClick={onCancel}>
-          Cancel
-        </button>
+    <div style={{ maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <h1 className="ob-title" style={{ margin: 0 }}>
+          {t('lead.add.title')}
+        </h1>
+        <Button variant="secondary" onClick={onCancel}>
+          {t('action.cancel')}
+        </Button>
       </div>
 
-      {error && <div className="error">{error}</div>}
+      {error && <ConflictBanner>{error}</ConflictBanner>}
 
       {/* --- 1. Party --------------------------------------------------- */}
 
-      <div className="card">
-        <h3 className="section-title">1. Party</h3>
+      <Card>
+        <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-12)' }}>
+          {t('lead.add.party.title')}
+        </div>
 
         {selectedParty ? (
-          <div className="row" style={{ justifyContent: 'space-between' }}>
-            <div>
-              <strong>{selectedParty.name}</strong>{' '}
-              <span className="muted">
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-16)' }}>
+              <span className="ob-body-strong">{selectedParty.name}</span>
+              <span className="ob-mono" style={{ fontSize: 11.5, color: 'var(--fg-tertiary)' }}>
                 {selectedParty.partyCode}
-                {selectedParty.phone ? ` · ${selectedParty.phone}` : ''}
               </span>
+              {selectedParty.phone && <span className="ob-small">{selectedParty.phone}</span>}
+              {selectedParty.city && <span className="ob-small">{selectedParty.city}</span>}
+              <span style={{ flex: 1 }} />
+              <Button variant="secondary" size="sm" onClick={() => setPartyId('')}>
+                {t('lead.add.party.change')}
+              </Button>
             </div>
-            <button className="secondary" onClick={() => setPartyId('')}>
-              Change
-            </button>
-          </div>
+
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--s-8)',
+                marginTop: 'var(--s-12)',
+                cursor: 'pointer',
+              }}
+            >
+              <Switch checked={partyWiseMode} onChange={setPartyWiseMode} />
+              <span className="ob-small">{t('lead.add.party.useRates')}</span>
+            </label>
+          </>
         ) : (
           <>
-            <Field label="Search party by name, code or phone">
-              {(id) => (
-                <input
-                  id={id}
-                  value={partySearch}
-                  onChange={(event) => setPartySearch(event.target.value)}
-                  placeholder="Start typing…"
+            <FormField label={t('lead.add.party.search')}>
+              {() => (
+                <Combobox
+                  options={partyOptions}
+                  placeholder={t('lead.add.party.searchPlaceholder')}
+                  onSelect={(option) => setPartyId(option.value.id)}
                 />
               )}
-            </Field>
+            </FormField>
 
-            {matchingParties.length > 0 && (
-              <table>
-                <tbody>
-                  {matchingParties.map((party) => (
-                    <tr key={party.id}>
-                      <td>{party.partyCode}</td>
-                      <td>{party.name}</td>
-                      <td>{party.phone ?? '—'}</td>
-                      <td className="right">
-                        <button className="secondary" onClick={() => setPartyId(party.id)}>
-                          Select
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-
-            <div style={{ marginTop: 10 }}>
-              <button className="secondary" onClick={() => setShowNewParty((value) => !value)}>
-                {showNewParty ? 'Cancel new party' : '+ New party'}
-              </button>
+            <div style={{ marginTop: 'var(--s-8)' }}>
+              <Button variant="ghost" size="sm" icon="plus" onClick={() => setPartyDrawerOpen(true)}>
+                {t('lead.add.party.newParty')}
+              </Button>
             </div>
-
-            {showNewParty && (
-              <NewPartyForm
-                onCreated={(id) => {
-                  setPartyId(id);
-                  setShowNewParty(false);
-                }}
-                onError={setError}
-              />
-            )}
           </>
         )}
-
-        {selectedParty && (
-          <label
-            className="row"
-            style={{ marginTop: 12, gap: 8, cursor: 'pointer', fontSize: 14, color: 'inherit' }}
-          >
-            <input
-              type="checkbox"
-              style={{ width: 'auto' }}
-              checked={partyWiseMode}
-              onChange={(event) => {
-                setPartyWiseMode(event.target.checked);
-                // Existing lines keep whatever they were built from; switching
-                // mode must not silently rewrite a rate already agreed on screen.
-                setLines((current) => current);
-              }}
-            />
-            Use this party&apos;s own rates and specs where they exist
-          </label>
-        )}
-      </div>
+      </Card>
 
       {/* --- 2. Products ------------------------------------------------ */}
 
-      <div className="card">
-        <h3 className="section-title">2. Products</h3>
+      <Card>
+        <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-12)' }}>
+          {t('lead.add.products.title')}
+        </div>
 
-        {lines.map((line, index) => (
-          <div className="line-card" key={`${line.productId}-${index}`}>
-            <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-              <div>
-                <strong>{line.productName}</strong>{' '}
-                <span className="muted">{line.code}</span>
-                {line.fromPartyVariant && (
-                  <span className="chip" style={{ marginLeft: 8 }}>
-                    party rate
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}>
+          {lines.map((line, index) => (
+            <Card key={`${line.productId}-${index}`}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
+                <span className="ob-body-strong" style={{ fontSize: 13.5 }}>
+                  {line.productName}
+                </span>
+                {line.code && (
+                  <span className="ob-mono" style={{ fontSize: 11, color: 'var(--fg-tertiary)' }}>
+                    {line.code}
                   </span>
                 )}
+                {line.fromPartyVariant && <StatusPill tone="accent">{t('lead.add.products.partyRate')}</StatusPill>}
+                <span style={{ flex: 1 }} />
+                <IconButton
+                  icon="trash"
+                  label={t('lead.add.products.remove')}
+                  onClick={() => setLines((current) => current.filter((_, i) => i !== index))}
+                />
               </div>
-              <button
-                className="danger"
-                onClick={() => setLines((current) => current.filter((_, i) => i !== index))}
-              >
-                Remove
-              </button>
-            </div>
 
-            <div className="line-grid">
-              <Field label="Packaging *">
-                {(id) => (
-                  <>
-                    <input
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-12) var(--s-16)', marginTop: 'var(--s-12)' }}>
+                <FormField label={t('lead.add.products.packagingRequired')}>
+                  {(id) => (
+                    <>
+                      <Input
+                        id={id}
+                        value={line.packaging}
+                        placeholder={t('lead.add.products.packagingPlaceholder')}
+                        invalid={!line.packaging.trim()}
+                        onChange={(event) => updateLine(index, { packaging: event.target.value })}
+                      />
+                      {line.suggestedPackaging && !line.packaging && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          style={{ marginTop: 'var(--s-4)' }}
+                          onClick={() => updateLine(index, { packaging: line.suggestedPackaging ?? '' })}
+                        >
+                          {t('lead.add.products.useSuggested', { value: line.suggestedPackaging })}
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </FormField>
+
+                <FormField
+                  label={t('lead.add.products.rate')}
+                  hint={canEditRate ? undefined : t('lead.add.products.rateHint')}
+                >
+                  {(id) => (
+                    // Entered in rupees, kept as typed and converted to paise
+                    // by `ratePaise`.
+                    <NumberInput
                       id={id}
-                      value={line.packaging}
-                      placeholder="e.g. carton, pallet"
-                      onChange={(event) => updateLine(index, { packaging: event.target.value })}
+                      // A courtesy only — the Master ignores a rate from anybody
+                      // without `field.saleRate.edit`, whatever the panel sends.
+                      disabled={!canEditRate}
+                      value={line.rateText ?? ''}
+                      onChange={(event) =>
+                        updateLine(index, { rateText: event.target.value.replace(/[^0-9.]/g, '') })
+                      }
                     />
-                    {line.suggestedPackaging && !line.packaging && (
-                      <button
-                        type="button"
-                        className="secondary"
-                        style={{ marginTop: 6, padding: '4px 10px', fontSize: 13 }}
-                        onClick={() =>
-                          updateLine(index, { packaging: line.suggestedPackaging ?? '' })
-                        }
-                      >
-                        Use “{line.suggestedPackaging}”
-                      </button>
-                    )}
-                  </>
-                )}
-              </Field>
+                  )}
+                </FormField>
 
-              <Field
-                label="Rate per box"
-                hint={canEditRate ? undefined : 'Your role cannot set rates'}
-              >
-                {(id) => (
-                  // Entered in rupees, stored in paise.
-                  <input
-                    id={id}
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className="num"
-                    // A courtesy only — the Master ignores a rate from anybody
-                    // without `field.saleRate.edit`, whatever the panel sends.
-                    disabled={!canEditRate}
-                    value={line.rate === null ? '' : line.rate / 100}
-                    onChange={(event) =>
-                      updateLine(index, {
-                        rate: Math.round((Number(event.target.value) || 0) * 100),
-                      })
-                    }
-                  />
-                )}
-              </Field>
+                <FormField label={t('lead.add.products.size')}>
+                  {(id) => (
+                    <Input
+                      id={id}
+                      value={line.size ?? ''}
+                      onChange={(event) => updateLine(index, { size: event.target.value })}
+                    />
+                  )}
+                </FormField>
 
-              <Field label="Size">
-                {(id) => (
-                  <input
-                    id={id}
-                    value={line.size ?? ''}
-                    onChange={(event) => updateLine(index, { size: event.target.value })}
-                  />
-                )}
-              </Field>
+                <FormField label={t('lead.add.products.grade')}>
+                  {(id) => (
+                    <Input
+                      id={id}
+                      value={line.grade ?? ''}
+                      onChange={(event) => updateLine(index, { grade: event.target.value })}
+                    />
+                  )}
+                </FormField>
+              </div>
 
-              <Field label="Grade">
-                {(id) => (
-                  <input
-                    id={id}
-                    value={line.grade ?? ''}
-                    onChange={(event) => updateLine(index, { grade: event.target.value })}
-                  />
-                )}
-              </Field>
-            </div>
+              <div style={{ marginTop: 'var(--s-12)' }}>
+                <ColourQuantityGrid
+                  mode="entry"
+                  productId={line.productId}
+                  productLabel={line.productName}
+                  quantities={line.quantities}
+                  stock={view.stock}
+                  onChange={(quantities) => updateLine(index, { quantities })}
+                  onEnterLast={() => productSearchRef.current?.focus()}
+                  colourHex={colourHex}
+                />
+                <p className="ob-small" style={{ marginTop: 'var(--s-4)', color: 'var(--fg-tertiary)' }}>
+                  {t('lead.add.products.keyboardHint')}
+                </p>
+              </div>
 
-            <div style={{ marginTop: 10 }}>
-              <span className="field-label">Colours &amp; quantities *</span>
-              <ColourQuantities
-                productId={line.productId}
-                productLabel={line.productName}
-                quantities={line.quantities}
-                stock={view.stock}
-                onChange={(quantities) => updateLine(index, { quantities })}
-              />
-            </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--s-8)' }}>
+                <span className="ob-small">
+                  {totalQuantity(line)} {t('unit.boxes')} ·{' '}
+                  <strong className="ob-body-strong">{formatMoney(lineTotal(line))}</strong>
+                </span>
+              </div>
+            </Card>
+          ))}
+        </div>
 
-            <div className="row right" style={{ justifyContent: 'flex-end', marginTop: 8 }}>
-              <span className="muted">
-                {totalQuantity(line)} boxes ·{' '}
-                <strong>
-                  {line.rate === null || line.rate === undefined
-                    ? '—'
-                    : formatMoney(Math.round(line.rate * totalQuantity(line)))}
-                </strong>
-              </span>
-            </div>
-          </div>
-        ))}
-
-        <div className="line-grid" style={{ marginTop: 4 }}>
-          <Field label="Add by product code">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-12) var(--s-16)', marginTop: 'var(--s-12)' }}>
+          <FormField label={t('lead.add.products.byCode')}>
             {(id) => (
-              <div className="row" style={{ gap: 6 }}>
-                <input
+              <div style={{ display: 'flex', gap: 'var(--s-6)' }}>
+                <Input
                   id={id}
                   value={codeEntry}
-                  placeholder="e.g. PRD-0042"
+                  placeholder={t('lead.add.products.byCodePlaceholder')}
                   onChange={(event) => setCodeEntry(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') {
@@ -500,107 +492,75 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
                     }
                   }}
                 />
-                <button className="secondary" onClick={addByCode}>
-                  Add
-                </button>
+                <Button variant="secondary" onClick={addByCode}>
+                  {t('lead.add.products.add')}
+                </Button>
               </div>
             )}
-          </Field>
+          </FormField>
 
-          <Field label="Or search by name, alias, type or series">
-            {(id) => (
-              <input
-                id={id}
-                value={productSearch}
-                onChange={(event) => setProductSearch(event.target.value)}
-                placeholder="Start typing…"
+          <FormField label={t('lead.add.products.searchLabel')}>
+            {() => (
+              <Combobox
+                options={productOptions}
+                placeholder={t('lead.add.products.searchPlaceholder')}
+                inputRef={productSearchRef}
+                onSelect={(option) => addProduct(option.value)}
               />
             )}
-          </Field>
+          </FormField>
         </div>
-
-        {matchingProducts.length > 0 && (
-          <table>
-            <tbody>
-              {matchingProducts.map((product) => (
-                <tr key={product.id}>
-                  <td>{product.productCode}</td>
-                  <td>
-                    {product.name}
-                    {product.alias && <div className="muted">{product.alias}</div>}
-                  </td>
-                  <td>{product.size ?? '—'}</td>
-                  <td className="right">
-                    <button className="secondary" onClick={() => addProduct(product)}>
-                      Add
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      </Card>
 
       {/* --- 3. Lead details -------------------------------------------- */}
 
-      <div className="card">
-        <h3 className="section-title">3. Lead details</h3>
+      <Card>
+        <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-12)' }}>
+          {t('lead.add.details.title')}
+        </div>
 
-        <div className="line-grid">
-          <Field label="Where did this come from?">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-12) var(--s-16)' }}>
+          <FormField label={t('lead.add.details.source')}>
             {(id) => (
-              <select
-                id={id}
-                value={sourcePlatform}
-                onChange={(event) => setSourcePlatform(event.target.value)}
-              >
+              <Select id={id} value={sourcePlatform} onChange={(event) => setSourcePlatform(event.target.value)}>
                 <option value="">—</option>
                 {sourceOptions.map((option) => (
                   <option key={option.id} value={option.value}>
                     {option.label}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
-          </Field>
+          </FormField>
 
-          <Field label="Follow up on">
-            {(id) => (
-              <input
-                id={id}
-                type="date"
-                value={followUpDate}
-                onChange={(event) => setFollowUpDate(event.target.value)}
-              />
-            )}
-          </Field>
+          <FormField label={t('lead.add.details.followUp')}>
+            {(id) => <DateField id={id} value={followUpDate} onChange={(event) => setFollowUpDate(event.target.value)} />}
+          </FormField>
         </div>
 
-        <Field label="Notes">
-          {(id) => (
-            <textarea
-              id={id}
-              rows={3}
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-            />
-          )}
-        </Field>
+        <FormField label={t('lead.add.details.notes')}>
+          {(id) => <Textarea id={id} rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} />}
+        </FormField>
 
-        <CustomFields
-          definitions={leadFieldDefinitions}
-          values={customFields}
-          onChange={setCustomFields}
-        />
+        <CustomFields definitions={leadFieldDefinitions} values={customFields} onChange={setCustomFields} />
+      </Card>
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <strong className="ob-body-strong">{t('lead.add.total', { amount: formatMoney(total) })}</strong>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
+          <span className="ob-small">{t('lead.add.savingHint')}</span>
+          <Button variant="primary" size="lg" busy={busy} title="Ctrl+S" onClick={() => void save()}>
+            {busy ? t('lead.add.saving') : t('lead.add.save')}
+          </Button>
+        </div>
       </div>
 
-      <div className="row" style={{ justifyContent: 'space-between', marginTop: 4 }}>
-        <strong>Total: {formatMoney(total)}</strong>
-        <button onClick={save} disabled={busy}>
-          {busy ? 'Saving…' : 'Save lead'}
-        </button>
-      </div>
+      <PartyDrawer
+        open={partyDrawerOpen}
+        onClose={() => setPartyDrawerOpen(false)}
+        onCreated={onPartyCreated}
+        onError={setError}
+      />
     </div>
   );
 }
@@ -609,61 +569,26 @@ function totalQuantity(line: { quantities: ColourQuantity[] }): number {
   return line.quantities.reduce((sum, quantity) => sum + (quantity.quantity || 0), 0);
 }
 
-function NewPartyForm({
-  onCreated,
-  onError,
-}: {
-  onCreated: (partyId: string) => void;
-  onError: (message: string) => void;
-}) {
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [city, setCity] = useState('');
-  const [busy, setBusy] = useState(false);
+/**
+ * The line's rate in paise, or null when there is no rate to show.
+ *
+ * The draft holds the rupee text the user typed rather than the paise number,
+ * because a controlled field rendered back from paise cannot be typed into: the
+ * "." in "12." parses to 12, the state does not change, and React restores the
+ * field to "12" as the key is pressed — so ₹12.50 is entered as ₹1250. Keeping
+ * the text and converting once, here, lets a half-typed number stay half-typed.
+ *
+ * A blank or unparseable field is unknown rather than free, the same rule the
+ * order total follows.
+ */
+function ratePaise(line: DraftLine): number | null {
+  if (line.rateText === null || !line.rateText.trim()) return null;
 
-  async function create(): Promise<void> {
-    if (!name.trim()) {
-      onError('Enter the party name');
-      return;
-    }
-
-    setBusy(true);
-    try {
-      // Queued like everything else, so a new customer can be taken down with
-      // no link to the Master. The returned id is the temporary one.
-      const result = await api.createParty({
-        name: name.trim(),
-        phone: phone.trim() || null,
-        city: city.trim() || null,
-      });
-      onCreated(result.id);
-    } catch (caught) {
-      onError(caught instanceof Error ? caught.message : 'Could not create the party');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="line-card" style={{ marginTop: 10 }}>
-      <div className="line-grid">
-        <Field label="Name *">
-          {(id) => <input id={id} value={name} onChange={(event) => setName(event.target.value)} />}
-        </Field>
-        <Field label="Phone">
-          {(id) => (
-            <input id={id} value={phone} onChange={(event) => setPhone(event.target.value)} />
-          )}
-        </Field>
-        <Field label="City">
-          {(id) => <input id={id} value={city} onChange={(event) => setCity(event.target.value)} />}
-        </Field>
-      </div>
-      <button onClick={create} disabled={busy}>
-        {busy ? 'Saving…' : 'Create party'}
-      </button>
-    </div>
-  );
+  const rupees = Number(line.rateText);
+  return Number.isFinite(rupees) ? Math.round(rupees * 100) : null;
 }
 
-export type { Party };
+function lineTotal(line: DraftLine): number | null {
+  const rate = ratePaise(line);
+  return rate === null ? null : Math.round(rate * totalQuantity(line));
+}

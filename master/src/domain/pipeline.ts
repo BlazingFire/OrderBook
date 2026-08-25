@@ -18,6 +18,7 @@ export interface Stage {
   sequence: number;
   isDefault: boolean;
   isTerminal: boolean;
+  isArchived: boolean;
 }
 
 /** Where a newly created record lands. */
@@ -38,11 +39,14 @@ export function findStage(stages: Stage[], stageId: string): Stage {
 /**
  * Validate a stage move.
  *
- * Two rules, both about not rewriting history rather than about process:
+ * Three rules, all about not rewriting history rather than about process:
  *  - a stage from another pipeline is not a move, it is a mistake;
  *  - a converted lead is history and stops moving. Its order carries the
  *    workflow from that point on, and letting the lead drift afterwards would
- *    make "which stage is this business at?" ambiguous.
+ *    make "which stage is this business at?" ambiguous;
+ *  - an archived stage stops accepting new arrivals (`docs/backend-modules/06-WORKFLOWS.md`
+ *    §5.1) — it still resolves for a record already there, and still renders
+ *    in the timeline, but it is not a legal move target.
  */
 export function assertStageMove(
   stages: Stage[],
@@ -59,6 +63,10 @@ export function assertStageMove(
 
   if (options.convertedOrderId) {
     throw new ValidationError('validation.stage.leadConverted');
+  }
+
+  if (target.isArchived) {
+    throw new ValidationError('validation.stage.archived');
   }
 
   return target;

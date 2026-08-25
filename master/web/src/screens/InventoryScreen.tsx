@@ -9,27 +9,72 @@
  *
  * Stock is allowed to go negative — a dealer routinely sells against a factory
  * order that has not arrived. The shortfall is surfaced, never blocked.
+ *
+ * Clicking a stock row opens a drawer scoped to that one (product, colour)
+ * line: the same three quantities, a ledger of just its movements, and
+ * "Stock in" / "Adjust to physical count" pre-locked to the line so the fast
+ * path never requires re-picking the product and colour (6-UI-DESIGN.md §8).
  */
 
-import { useCallback, useEffect, useState } from 'react';
-import type { InventoryStockLevel, Product, StockMovement } from '@orderbook/shared';
+import { useCallback, useEffect, useId, useState } from 'react';
+import type { InventoryStockLevel, OptionListItem, Product, StockMovement } from '@orderbook/shared';
 
 import { api } from '../api';
-import { Field } from '../components/Field';
 import { formatDateTime } from '../format';
+import { t } from '../i18n/strings';
+import { Button } from '../ui/Button';
+import { Card, Section } from '../ui/Card';
+import { DataTable, type DataTableColumn } from '../ui/DataTable';
+import { ColourChip, ColourName, StatusPill, useColourHex } from '../ui/DataDisplay';
+import { Drawer } from '../ui/Drawer';
+import { FilterChip } from '../ui/FilterBar';
+import { useFilterBar } from '../ui/FilterBarSlot';
+import { FormField, Input, NumberInput, Select } from '../ui/Form';
+import { Modal } from '../ui/Modal';
+import { EmptyState, SkeletonRows } from '../ui/States';
 
 interface Props {
   revision: number;
+}
+
+const MOVEMENT_TYPE_KEY = {
+  inbound: 'inventory.movementType.inbound',
+  outbound: 'inventory.movementType.outbound',
+  adjustment: 'inventory.movementType.adjustment',
+} as const;
+
+/** A line-scoped Stock-in/Adjust locks the form to the drawer's (product, colour). */
+interface LineLock {
+  productId: string;
+  colour: string;
+  productCode: string;
+  productName: string;
 }
 
 export function InventoryScreen({ revision }: Props) {
   const [levels, setLevels] = useState<InventoryStockLevel[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [optionLists, setOptionLists] = useState<OptionListItem[]>([]);
+  const colourHex = useColourHex(optionLists);
   const [search, setSearch] = useState('');
   const [lowOnly, setLowOnly] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [stockInOpen, setStockInOpen] = useState(false);
+  const [adjustOpen, setAdjustOpen] = useState(false);
+  const [lineLock, setLineLock] = useState<LineLock | null>(null);
+
+  // Drawer: which (product, colour) line is open, and the movements scoped to
+  // just that line. The drawer's summary numbers are *not* stored here — they
+  // are derived from `levels` below so they stay live as `levels` reloads.
+  const [drawerKey, setDrawerKey] = useState<string | null>(null);
+  const [drawerMovements, setDrawerMovements] = useState<StockMovement[]>([]);
+  const [drawerMovementsLoading, setDrawerMovementsLoading] = useState(false);
+
+  const drawerLevel = drawerKey
+    ? (levels.find((level) => `${level.productId}-${level.colour}` === drawerKey) ?? null)
+    : null;
 
   const load = useCallback(async () => {
     try {
@@ -40,7 +85,7 @@ export function InventoryScreen({ revision }: Props) {
       setLevels(stock);
       setMovements(recent);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not load inventory');
+      setError(caught instanceof Error ? caught.message : t('inventory.error.load'));
     }
   }, [search, lowOnly]);
 
@@ -55,188 +100,501 @@ export function InventoryScreen({ revision }: Props) {
       .catch(() => setProducts([]));
   }, []);
 
-  async function run(action: () => Promise<unknown>, failure: string): Promise<void> {
+  useEffect(() => {
+    void api
+      .optionLists()
+      .then(setOptionLists)
+      .catch(() => setOptionLists([]));
+  }, []);
+
+  // Reports whether the write landed. The movement modals close themselves on
+  // success and stay open on failure, so a rejected write that resolves like an
+  // accepted one is exactly what would make those two outcomes look identical.
+  async function run(action: () => Promise<unknown>, failure: string): Promise<boolean> {
     setBusy(true);
     setError(null);
     try {
       await action();
       await load();
+      return true;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : failure);
+      return false;
     } finally {
       setBusy(false);
     }
   }
 
-  return (
-    <div>
-      <h2>Inventory</h2>
+  // The movements endpoint filters by product server-side but not by colour
+  // (colour is free text within a product), so the line's ledger is fetched
+  // by product and narrowed to the one colour here.
+  const loadDrawerMovements = useCallback(async (productId: string, colour: string) => {
+    setDrawerMovementsLoading(true);
+    setDrawerMovements([]);
+    try {
+      const productMovements = await api.stockMovements(productId);
+      setDrawerMovements(productMovements.filter((movement) => movement.colour === colour));
+    } catch {
+      setDrawerMovements([]);
+    } finally {
+      setDrawerMovementsLoading(false);
+    }
+  }, []);
 
-      {error && <div className="error">{error}</div>}
+  function openLineDrawer(level: InventoryStockLevel): void {
+    setDrawerKey(`${level.productId}-${level.colour}`);
+    void loadDrawerMovements(level.productId, level.colour);
+  }
 
-      <div className="grid cols-2">
-        <MovementForm
-          title="Stock in"
-          description="Boxes that arrived from the factory or a purchase."
-          products={products}
-          levels={levels}
-          submitLabel="Add stock"
-          busy={busy}
-          onSubmit={(input) =>
-            run(() => api.stockInbound(input), 'Could not record the incoming stock')
+  function closeLineDrawer(): void {
+    setDrawerKey(null);
+  }
+
+  function openLineStockIn(level: InventoryStockLevel): void {
+    setLineLock({
+      productId: level.productId,
+      colour: level.colour,
+      productCode: level.productCode,
+      productName: level.productName,
+    });
+    setStockInOpen(true);
+  }
+
+  function openLineAdjust(level: InventoryStockLevel): void {
+    setLineLock({
+      productId: level.productId,
+      colour: level.colour,
+      productCode: level.productCode,
+      productName: level.productName,
+    });
+    setAdjustOpen(true);
+  }
+
+  useFilterBar(
+    <>
+      <div className="ob-search">
+        <Input
+          value={search}
+          placeholder={t('inventory.search.placeholder')}
+          aria-label={t('inventory.search.placeholder')}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+      </div>
+      <FilterChip active={!lowOnly} onClick={() => setLowOnly(false)}>
+        {t('inventory.filter.all')}
+      </FilterChip>
+      <FilterChip active={lowOnly} onClick={() => setLowOnly(true)}>
+        {t('inventory.filter.lowOnly')}
+      </FilterChip>
+      <span style={{ flex: 1 }} />
+      <span
+        className="ob-small"
+        style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}
+      >
+        {t('inventory.filterNote')}
+      </span>
+    </>,
+  );
+
+  const totalFree = levels.reduce((sum, level) => sum + level.availableBoxes, 0);
+
+  const levelColumns: DataTableColumn<InventoryStockLevel>[] = [
+    {
+      key: 'code',
+      header: t('inventory.table.code'),
+      width: '110px',
+      render: (level) => <span className="ob-mono">{level.productCode}</span>,
+    },
+    {
+      key: 'product',
+      header: t('inventory.table.product'),
+      render: (level) => level.productName,
+    },
+    {
+      key: 'colour',
+      header: t('inventory.table.colour'),
+      width: '150px',
+      render: (level) => <ColourName name={level.colour} hex={colourHex(level.colour)} />,
+    },
+    {
+      key: 'onHand',
+      header: t('inventory.table.onHand'),
+      width: '90px',
+      align: 'right',
+      render: (level) => level.quantityBoxes,
+    },
+    {
+      key: 'reserved',
+      header: t('inventory.table.reserved'),
+      width: '90px',
+      align: 'right',
+      render: (level) => String(level.reservedBoxes),
+    },
+    {
+      key: 'free',
+      header: t('inventory.table.free'),
+      width: '90px',
+      align: 'right',
+      render: (level) => (
+        <span
+          className="ob-body-strong"
+          style={{ color: level.availableBoxes < 0 ? 'var(--state-conflict)' : undefined }}
+        >
+          {level.availableBoxes}
+        </span>
+      ),
+    },
+    {
+      key: 'reorder',
+      header: t('inventory.table.reorder'),
+      width: '110px',
+      align: 'right',
+      render: (level) => (
+        <NumberInput
+          defaultValue={level.reorderLevel ?? ''}
+          aria-label={t('inventory.reorderLevelLabel', {
+            product: level.productName,
+            colour: level.colour,
+          })}
+          onClick={(event) => event.stopPropagation()}
+          onBlur={(event) =>
+            void run(
+              () =>
+                api.setReorderLevel({
+                  productId: level.productId,
+                  colour: level.colour,
+                  reorderLevel: event.target.value === '' ? null : Number(event.target.value),
+                }),
+              t('inventory.error.reorder'),
+            )
           }
         />
+      ),
+    },
+    {
+      key: 'status',
+      header: t('inventory.table.status'),
+      width: '100px',
+      render: (level) =>
+        level.isLow ? (
+          <StatusPill tone="offline">{t('inventory.status.low')}</StatusPill>
+        ) : (
+          <StatusPill tone="ok">{t('inventory.status.healthy')}</StatusPill>
+        ),
+    },
+  ];
 
+  const movementColumns: DataTableColumn<StockMovement>[] = [
+    {
+      key: 'when',
+      header: t('inventory.movements.table.when'),
+      width: '150px',
+      render: (movement) => formatDateTime(movement.createdAt),
+    },
+    {
+      key: 'product',
+      header: t('inventory.movements.table.product'),
+      render: (movement) => movement.productName,
+    },
+    {
+      key: 'colour',
+      header: t('inventory.movements.table.colour'),
+      width: '130px',
+      render: (movement) => <ColourName name={movement.colour} hex={colourHex(movement.colour)} />,
+    },
+    {
+      key: 'type',
+      header: t('inventory.movements.table.type'),
+      width: '110px',
+      render: (movement) => t(MOVEMENT_TYPE_KEY[movement.movementType]),
+    },
+    {
+      key: 'change',
+      header: t('inventory.movements.table.change'),
+      width: '90px',
+      align: 'right',
+      render: (movement) => (
+        <span style={{ color: movement.quantityBoxes < 0 ? 'var(--state-conflict)' : 'var(--state-ok)' }}>
+          {movement.quantityBoxes > 0 ? '+' : ''}
+          {movement.quantityBoxes}
+        </span>
+      ),
+    },
+    {
+      key: 'reference',
+      header: t('inventory.movements.table.reference'),
+      width: '170px',
+      render: (movement) => (
+        <span className="ob-small">
+          {movement.referenceType}
+          {movement.referenceId ? ` ${movement.referenceId}` : ''}
+        </span>
+      ),
+    },
+    {
+      key: 'note',
+      header: t('inventory.movements.table.note'),
+      render: (movement) => movement.note ?? '—',
+    },
+  ];
+
+  // Same shape as `movementColumns` minus product/colour — the drawer's
+  // ledger is already scoped to one (product, colour) line.
+  const lineMovementColumns: DataTableColumn<StockMovement>[] = [
+    {
+      key: 'when',
+      header: t('inventory.movements.table.when'),
+      width: '112px',
+      render: (movement) => formatDateTime(movement.createdAt),
+    },
+    {
+      key: 'type',
+      header: t('inventory.movements.table.type'),
+      width: '86px',
+      render: (movement) => t(MOVEMENT_TYPE_KEY[movement.movementType]),
+    },
+    {
+      key: 'change',
+      header: t('inventory.movements.table.change'),
+      width: '72px',
+      align: 'right',
+      render: (movement) => (
+        <span style={{ color: movement.quantityBoxes < 0 ? 'var(--state-conflict)' : 'var(--state-ok)' }}>
+          {movement.quantityBoxes > 0 ? '+' : ''}
+          {movement.quantityBoxes}
+        </span>
+      ),
+    },
+    {
+      key: 'reference',
+      header: t('inventory.movements.table.reference'),
+      width: '112px',
+      render: (movement) => (
+        <span className="ob-small">
+          {movement.referenceType}
+          {movement.referenceId ? ` ${movement.referenceId}` : ''}
+        </span>
+      ),
+    },
+    {
+      key: 'note',
+      header: t('inventory.movements.table.note'),
+      render: (movement) => movement.note ?? '—',
+    },
+  ];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-24)' }}>
+      {error && (
+        <div className="ob-banner ob-banner--conflict" role="alert">
+          <span style={{ flex: 1 }}>{error}</span>
+        </div>
+      )}
+
+      <Section
+        title={t('inventory.section.stockLevels')}
+        action={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
+            <span className="ob-pill">{t('inventory.boxesFree', { count: totalFree })}</span>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => {
+                setLineLock(null);
+                setStockInOpen(true);
+              }}
+            >
+              {t('inventory.action.stockIn')}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setLineLock(null);
+                setAdjustOpen(true);
+              }}
+            >
+              {t('inventory.action.physicalCount')}
+            </Button>
+          </div>
+        }
+      >
+        <DataTable
+          columns={levelColumns}
+          rows={levels}
+          rowKey={(level) => `${level.productId}-${level.colour}`}
+          onRowOpen={openLineDrawer}
+          openOn="click"
+          selectedId={drawerKey ?? undefined}
+          empty={
+            <EmptyState
+              title={t('inventory.empty.title')}
+              description={t('inventory.empty.description')}
+            />
+          }
+        />
+      </Section>
+
+      <Section title={t('inventory.movements.title')}>
+        <p className="ob-small" style={{ margin: 0 }}>
+          {t('inventory.movements.description')}
+        </p>
+        <DataTable
+          columns={movementColumns}
+          rows={movements}
+          rowKey={(movement) => String(movement.id)}
+          empty={
+            <EmptyState
+              title={t('inventory.movements.empty.title')}
+              description={t('inventory.movements.empty.description')}
+            />
+          }
+        />
+      </Section>
+
+      <Drawer
+        open={Boolean(drawerLevel)}
+        onClose={closeLineDrawer}
+        title={
+          drawerLevel && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-8)' }}>
+              <ColourChip hex={colourHex(drawerLevel.colour)} name={drawerLevel.colour} />
+              {t('inventory.drawer.title', { product: drawerLevel.productName, colour: drawerLevel.colour })}
+            </span>
+          )
+        }
+        subtitle={drawerLevel && <span className="ob-mono">{drawerLevel.productCode}</span>}
+      >
+        {drawerLevel && (
+          <>
+            <section style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--s-8)' }}>
+              <Card>
+                <div className="ob-eyebrow">{t('inventory.table.onHand')}</div>
+                <div className="ob-display" style={{ marginTop: 'var(--s-6)', fontVariantNumeric: 'tabular-nums' }}>
+                  {drawerLevel.quantityBoxes}
+                </div>
+              </Card>
+              <Card>
+                <div className="ob-eyebrow">{t('inventory.table.reserved')}</div>
+                <div className="ob-display" style={{ marginTop: 'var(--s-6)', fontVariantNumeric: 'tabular-nums' }}>
+                  {drawerLevel.reservedBoxes}
+                </div>
+              </Card>
+              <Card>
+                <div className="ob-eyebrow">{t('inventory.table.free')}</div>
+                <div
+                  className="ob-display"
+                  style={{
+                    marginTop: 'var(--s-6)',
+                    fontVariantNumeric: 'tabular-nums',
+                    color: drawerLevel.availableBoxes < 0 ? 'var(--state-conflict)' : undefined,
+                  }}
+                >
+                  {drawerLevel.availableBoxes}
+                </div>
+              </Card>
+            </section>
+
+            <section style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}>
+              <div className="ob-eyebrow">{t('inventory.drawer.ledgerTitle')}</div>
+              {drawerMovementsLoading ? (
+                <SkeletonRows rows={4} columns={4} />
+              ) : (
+                <DataTable
+                  columns={lineMovementColumns}
+                  rows={drawerMovements}
+                  rowKey={(movement) => String(movement.id)}
+                  empty={
+                    <EmptyState
+                      title={t('inventory.drawer.ledgerEmpty.title')}
+                      description={t('inventory.drawer.ledgerEmpty.description')}
+                    />
+                  }
+                />
+              )}
+            </section>
+
+            <section style={{ display: 'flex', gap: 'var(--s-8)' }}>
+              <Button variant="primary" size="sm" onClick={() => openLineStockIn(drawerLevel)}>
+                {t('inventory.action.stockIn')}
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => openLineAdjust(drawerLevel)}>
+                {t('inventory.drawer.adjust')}
+              </Button>
+            </section>
+          </>
+        )}
+      </Drawer>
+
+      <Modal
+        open={stockInOpen}
+        onClose={() => {
+          setStockInOpen(false);
+          setLineLock(null);
+        }}
+        title={
+          lineLock
+            ? t('inventory.stockIn.titleForLine', { product: lineLock.productName, colour: lineLock.colour })
+            : t('inventory.stockIn.title')
+        }
+      >
+        {/* The page banner sits under this modal's scrim, so a rejected write
+            has to say so inside the dialog the operator is looking at. */}
+        {error && (
+          <div className="ob-banner ob-banner--conflict" role="alert">
+            <span style={{ flex: 1 }}>{error}</span>
+          </div>
+        )}
         <MovementForm
-          title="Physical count"
-          description="Enter the number of boxes actually on the shelf — not the difference."
+          description={t('inventory.stockIn.description')}
           products={products}
           levels={levels}
-          submitLabel="Save count"
+          submitLabel={t('inventory.stockIn.submit')}
           busy={busy}
-          onSubmit={(input) => run(() => api.stockAdjust(input), 'Could not save the count')}
+          lock={lineLock}
+          onSubmit={async (input) => {
+            const saved = await run(() => api.stockInbound(input), t('inventory.error.inbound'));
+            if (!saved) return;
+            if (lineLock) await loadDrawerMovements(lineLock.productId, lineLock.colour);
+            setStockInOpen(false);
+            setLineLock(null);
+          }}
         />
-      </div>
+      </Modal>
 
-      <div className="card">
-        <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
-          <h3 style={{ margin: 0 }}>Stock levels</h3>
-          <div className="row" style={{ gap: 10 }}>
-            <input
-              value={search}
-              placeholder="Search product or colour"
-              style={{ width: 260 }}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-            <label className="row" style={{ gap: 6, marginBottom: 0, cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                style={{ width: 'auto' }}
-                checked={lowOnly}
-                onChange={(event) => setLowOnly(event.target.checked)}
-              />
-              Low only
-            </label>
+      <Modal
+        open={adjustOpen}
+        onClose={() => {
+          setAdjustOpen(false);
+          setLineLock(null);
+        }}
+        title={
+          lineLock
+            ? t('inventory.physicalCount.titleForLine', { product: lineLock.productName, colour: lineLock.colour })
+            : t('inventory.physicalCount.title')
+        }
+      >
+        {error && (
+          <div className="ob-banner ob-banner--conflict" role="alert">
+            <span style={{ flex: 1 }}>{error}</span>
           </div>
-        </div>
-
-        {levels.length === 0 ? (
-          <p className="muted">Nothing to show.</p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th>Colour</th>
-                <th className="right">On floor</th>
-                <th className="right">Reserved</th>
-                <th className="right">Free to sell</th>
-                <th className="right">Reorder at</th>
-                <th>Updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {levels.map((level) => (
-                <tr key={`${level.productId}-${level.colour}`}>
-                  <td>
-                    {level.productName}
-                    <div className="muted">{level.productCode}</div>
-                  </td>
-                  <td>{level.colour}</td>
-                  <td className="right num">{level.quantityBoxes}</td>
-                  <td className="right num">{level.reservedBoxes || '—'}</td>
-                  <td
-                    className="right num"
-                    style={{
-                      color: level.availableBoxes < 0 ? 'var(--danger)' : undefined,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {level.availableBoxes}
-                    {level.isLow && (
-                      <span className="chip short" style={{ marginLeft: 6 }}>
-                        low
-                      </span>
-                    )}
-                  </td>
-                  <td className="right">
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className="num right"
-                      style={{ width: 90 }}
-                      defaultValue={level.reorderLevel ?? ''}
-                      aria-label={`Reorder level for ${level.productName} ${level.colour}`}
-                      onBlur={(event) =>
-                        void run(
-                          () =>
-                            api.setReorderLevel({
-                              productId: level.productId,
-                              colour: level.colour,
-                              reorderLevel:
-                                event.target.value === '' ? null : Number(event.target.value),
-                            }),
-                          'Could not save the reorder level',
-                        )
-                      }
-                    />
-                  </td>
-                  <td className="muted">{formatDateTime(level.updatedAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         )}
-      </div>
-
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>Recent movements</h3>
-        <p className="muted" style={{ marginTop: 0 }}>
-          Every row is a signed change, never a total — which is what makes the running figure
-          reconstructible.
-        </p>
-
-        {movements.length === 0 ? (
-          <p className="muted">No movements recorded yet.</p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>When</th>
-                <th>Product</th>
-                <th>Colour</th>
-                <th>Type</th>
-                <th className="right">Change</th>
-                <th>Reference</th>
-                <th>Note</th>
-              </tr>
-            </thead>
-            <tbody>
-              {movements.map((movement) => (
-                <tr key={movement.id}>
-                  <td>{formatDateTime(movement.createdAt)}</td>
-                  <td>{movement.productName}</td>
-                  <td>{movement.colour}</td>
-                  <td>{movement.movementType}</td>
-                  <td
-                    className="right num"
-                    style={{ color: movement.quantityBoxes < 0 ? 'var(--danger)' : 'var(--success)' }}
-                  >
-                    {movement.quantityBoxes > 0 ? '+' : ''}
-                    {movement.quantityBoxes}
-                  </td>
-                  <td className="muted">
-                    {movement.referenceType}
-                    {movement.referenceId ? ` ${movement.referenceId}` : ''}
-                  </td>
-                  <td className="muted">{movement.note ?? '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+        <MovementForm
+          description={t('inventory.physicalCount.description')}
+          products={products}
+          levels={levels}
+          submitLabel={t('inventory.physicalCount.submit')}
+          busy={busy}
+          lock={lineLock}
+          onSubmit={async (input) => {
+            const saved = await run(() => api.stockAdjust(input), t('inventory.error.adjust'));
+            if (!saved) return;
+            if (lineLock) await loadDrawerMovements(lineLock.productId, lineLock.colour);
+            setAdjustOpen(false);
+            setLineLock(null);
+          }}
+        />
+      </Modal>
     </div>
   );
 }
@@ -245,22 +603,26 @@ export function InventoryScreen({ revision }: Props) {
  * Shared by stock-in and physical count: they differ only in what the number
  * means and which endpoint receives it, so one form with two labels beats two
  * near-identical ones.
+ *
+ * When opened from a line's drawer, `lock` pins the product and colour to
+ * that line — the picker and datalist are replaced by static text so the
+ * only thing left to enter is the number (and an optional note).
  */
 function MovementForm({
-  title,
   description,
   products,
   levels,
   submitLabel,
   busy,
+  lock,
   onSubmit,
 }: {
-  title: string;
   description: string;
   products: Product[];
   levels: InventoryStockLevel[];
   submitLabel: string;
   busy: boolean;
+  lock?: LineLock | null;
   onSubmit: (input: {
     productId: string;
     colour: string;
@@ -268,97 +630,103 @@ function MovementForm({
     note?: string;
   }) => Promise<void>;
 }) {
-  const [productId, setProductId] = useState('');
-  const [colour, setColour] = useState('');
+  const [productId, setProductId] = useState(lock?.productId ?? '');
+  const [colour, setColour] = useState(lock?.colour ?? '');
   const [quantity, setQuantity] = useState('');
   const [note, setNote] = useState('');
+  const listId = useId();
 
   const knownColours = levels
     .filter((level) => level.productId === productId)
     .map((level) => level.colour);
 
-  const listId = `${title.replace(/\s+/g, '-').toLowerCase()}-colours`;
-
   return (
-    <div className="card">
-      <h3 style={{ marginTop: 0 }}>{title}</h3>
-      <p className="muted" style={{ marginTop: 0 }}>
+    <>
+      <p className="ob-small" style={{ margin: 0 }}>
         {description}
       </p>
 
-      <Field label="Product">
-        {(id) => (
-          <select id={id} value={productId} onChange={(event) => setProductId(event.target.value)}>
-            <option value="">Choose a product…</option>
-            {products.map((product) => (
-              <option key={product.id} value={product.id}>
-                {product.productCode} — {product.name}
-              </option>
-            ))}
-          </select>
-        )}
-      </Field>
-
-      <Field label="Colour">
-        {(id) => (
-          <>
-            <input
-              id={id}
-              list={listId}
-              value={colour}
-              placeholder="e.g. Ivory"
-              onChange={(event) => setColour(event.target.value)}
-            />
-            <datalist id={listId}>
-              {knownColours.map((known) => (
-                <option key={known} value={known} />
+      <FormField label={t('inventory.field.product')}>
+        {(id) =>
+          lock ? (
+            <p id={id} className="ob-body-strong" style={{ margin: 0 }}>
+              {lock.productCode} — {lock.productName}
+            </p>
+          ) : (
+            <Select id={id} value={productId} onChange={(event) => setProductId(event.target.value)}>
+              <option value="">{t('inventory.field.productPlaceholder')}</option>
+              {products.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.productCode} — {product.name}
+                </option>
               ))}
-            </datalist>
-          </>
-        )}
-      </Field>
+            </Select>
+          )
+        }
+      </FormField>
 
-      <Field label="Boxes">
-        {(id) => (
-          <input
-            id={id}
-            type="number"
-            min="0"
-            step="0.01"
-            className="num"
-            value={quantity}
-            onChange={(event) => setQuantity(event.target.value)}
-          />
-        )}
-      </Field>
+      <FormField label={t('inventory.field.colour')}>
+        {(id) =>
+          lock ? (
+            <p id={id} className="ob-body-strong" style={{ margin: 0 }}>
+              {lock.colour}
+            </p>
+          ) : (
+            <>
+              <Input
+                id={id}
+                list={listId}
+                value={colour}
+                placeholder={t('inventory.field.colourPlaceholder')}
+                onChange={(event) => setColour(event.target.value)}
+              />
+              <datalist id={listId}>
+                {knownColours.map((known) => (
+                  <option key={known} value={known} />
+                ))}
+              </datalist>
+            </>
+          )
+        }
+      </FormField>
 
-      <Field label="Note">
+      <FormField label={t('inventory.field.boxes')}>
         {(id) => (
-          <input
+          <NumberInput id={id} value={quantity} onChange={(event) => setQuantity(event.target.value)} />
+        )}
+      </FormField>
+
+      <FormField label={t('inventory.field.note')}>
+        {(id) => (
+          <Input
             id={id}
             value={note}
-            placeholder="e.g. factory lot A-77, breakage"
+            placeholder={t('inventory.field.notePlaceholder')}
             onChange={(event) => setNote(event.target.value)}
           />
         )}
-      </Field>
+      </FormField>
 
-      <button
-        disabled={busy || !productId || !colour.trim() || quantity === ''}
-        onClick={() =>
-          void onSubmit({
-            productId,
-            colour: colour.trim(),
-            quantityBoxes: Number(quantity),
-            note: note.trim() || undefined,
-          }).then(() => {
-            setQuantity('');
-            setNote('');
-          })
-        }
-      >
-        {submitLabel}
-      </button>
-    </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <Button
+          variant="primary"
+          busy={busy}
+          disabled={busy || !productId || !colour.trim() || quantity === ''}
+          onClick={() =>
+            // Nothing is reset here: a successful write closes the modal, which
+            // unmounts this form, and after a rejected one the boxes and note
+            // the operator typed are the only copy of what they meant to record.
+            void onSubmit({
+              productId,
+              colour: colour.trim(),
+              quantityBoxes: Number(quantity),
+              note: note.trim() || undefined,
+            })
+          }
+        >
+          {submitLabel}
+        </Button>
+      </div>
+    </>
   );
 }

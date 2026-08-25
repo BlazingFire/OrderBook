@@ -279,17 +279,3 @@ export async function isNameTaken(
 
   return (await query.first('id')) !== undefined;
 }
-
-export async function tierRoleId(
-  tenantId: string,
-  tier: RoleTier,
-  runner: Runner = db(),
-): Promise<string | null> {
-  const row = await runner(TABLE)
-    .where({ tenant_id: tenantId, tier })
-    .whereNull('deleted_at')
-    .orderBy('id')
-    .first<{ id: string } | undefined>('id');
-
-  return row?.id ?? null;
-}

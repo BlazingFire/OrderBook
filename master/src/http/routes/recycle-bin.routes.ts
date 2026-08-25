@@ -1,8 +1,8 @@
 /**
  * `/api/recycle-bin` (`docs/backend-modules/04-API-CONTRACT.md` §4).
  *
- * Copies `access.routes.ts`'s shape — `requireAuth` then a `needs(...)` guard
- * per handler — never `data.routes.ts`'s (`requireAuth` alone). The route
+ * Copies `access.routes.ts`'s shape — `requireAuth` then a per-handler
+ * permission guard — never `data.routes.ts`'s (`requireAuth` alone). The route
  * guard on `POST /restore` is deliberately the *weaker* of the two checks
  * here: the entity type travels in the body, so only the service, which
  * looks up `RESTORE_PERMISSION[entityType]`, can know which key actually

@@ -27,6 +27,13 @@ const DATA_TABLES = [
   'sync_conflicts',
   'applied_mutations',
   'id_map',
+  // The PDF Designer's three tables are pure test data — `20260308` seeds
+  // nothing, and the renderer's fallback is the in-memory `TEMPLATE_DEFAULTS`.
+  // Listed exports-first so the FKs into templates and assets are gone before
+  // the tables they point at, rather than relying on CASCADE to sort it out.
+  'document_exports',
+  'document_templates',
+  'document_assets',
   'stock_reservations',
   'stock_movements',
   'inventory_stock',
@@ -54,6 +61,66 @@ const DATA_TABLES = [
  */
 let seededRoleIds: string[] = [];
 
+/**
+ * Same idea as `seededRoleIds`, for `option_lists` and
+ * `custom_field_definitions` (Stage 3): both are configuration that survives
+ * the truncate, so a value or definition a *test* creates must not leak into
+ * the next one — otherwise the second test to add "Sea Green" to
+ * `stock.colour` fails on a duplicate it never made.
+ */
+let seededOptionListIds: string[] = [];
+let seededCustomFieldDefinitionIds: string[] = [];
+
+interface StageSnapshotRow {
+  id: string;
+  sequence: number;
+  is_default: boolean;
+  is_terminal: boolean;
+  is_archived: boolean;
+  colour: string | null;
+  name: string;
+}
+
+/**
+ * `pipeline_stages` rows as the migrations seeded them. Stages cannot be
+ * created or deleted by a test (there is no `POST /api/fields/stages`) —
+ * only reordered, renamed, defaulted or archived — so a test exercising any
+ * of those necessarily mutates the *shared* seeded rows. Restoring this
+ * snapshot on every `resetData()` is what keeps one test's reorder or
+ * archive from leaking into the next.
+ */
+let seededStageSnapshot: StageSnapshotRow[] = [];
+
+/**
+ * The `LEAD_STAGES`/`ORDER_STAGES` literals from `20260301000000_tenancy_access_and_sync.ts`,
+ * copied rather than imported (a migration is a fixed historical fact, not a
+ * live import — the same rule `HANDOFF.md` states for migration authors
+ * applies here). Capturing "whatever `pipeline_stages` currently holds" as
+ * the seeded baseline is not safe on this test helper's *reused* cluster: an
+ * earlier, since-fixed bug in a stage-mutating test left `is_default` on the
+ * wrong row, and a plain capture would have enshrined that corruption as the
+ * new "seed" forever. `setupDatabase()` force-corrects to this literal shape
+ * before ever taking the snapshot above.
+ */
+const KNOWN_SEEDED_STAGES: Record<
+  'lead' | 'order',
+  ReadonlyArray<{ name: string; sequence: number; isDefault: boolean; isTerminal: boolean; colour: string }>
+> = {
+  lead: [
+    { name: 'New', sequence: 1, isDefault: true, isTerminal: false, colour: '#5B8DEF' },
+    { name: 'Quoted', sequence: 2, isDefault: false, isTerminal: false, colour: '#9B7BEF' },
+    { name: 'Negotiating', sequence: 3, isDefault: false, isTerminal: false, colour: '#EFA65B' },
+    { name: 'Won', sequence: 4, isDefault: false, isTerminal: true, colour: '#4CAF7D' },
+    { name: 'Lost', sequence: 5, isDefault: false, isTerminal: true, colour: '#C7576B' },
+  ],
+  order: [
+    { name: 'In Progress', sequence: 1, isDefault: true, isTerminal: false, colour: '#5B8DEF' },
+    { name: 'Postpone', sequence: 2, isDefault: false, isTerminal: false, colour: '#EFA65B' },
+    { name: 'Dispatched', sequence: 3, isDefault: false, isTerminal: true, colour: '#4CAF7D' },
+    { name: 'Cancelled', sequence: 4, isDefault: false, isTerminal: true, colour: '#C7576B' },
+  ],
+};
+
 export async function setupDatabase(): Promise<void> {
   await startTestPostgres();
   initDatabase(testConnectionUrl());
@@ -66,6 +133,68 @@ export async function setupDatabase(): Promise<void> {
 
   const rows = await db()('roles').select<Array<{ id: string }>>('id');
   seededRoleIds = rows.map((row) => row.id);
+
+  // Same self-healing for Fields: `20260301` seeds exactly the six
+  // `lead.sourcePlatform` rows unconditionally, and — on a cluster this test
+  // helper controls, where nothing exists yet when `20260306` runs — its
+  // `stock.colour` / `product.productType` / `line.packaging` seed queries
+  // find no data to read and insert nothing. Anything beyond those six rows,
+  // and every `custom_field_definitions` row (none is ever seeded), is debris
+  // a previous crashed run left behind.
+  await db()('option_lists').whereNot({ list_key: 'lead.sourcePlatform' }).delete();
+  await db()('custom_field_definitions').delete();
+
+  const optionRows = await db()('option_lists').select<Array<{ id: string }>>('id');
+  seededOptionListIds = optionRows.map((row) => row.id);
+
+  const definitionRows = await db()('custom_field_definitions').select<Array<{ id: string }>>('id');
+  seededCustomFieldDefinitionIds = definitionRows.map((row) => row.id);
+
+  // Force-correct every pipeline's stages back to `KNOWN_SEEDED_STAGES` before
+  // trusting the table's current contents as "the seed" — see that constant's
+  // comment for why a plain capture here is not safe on a reused cluster.
+  await db().transaction(async (trx) => {
+    await trx.raw('SET CONSTRAINTS pipeline_stages_seq_unique DEFERRED');
+    await trx('pipeline_stages').update({ is_default: false });
+
+    for (const kind of ['lead', 'order'] as const) {
+      for (const stage of KNOWN_SEEDED_STAGES[kind]) {
+        const row = await trx('pipeline_stages as s')
+          .join('pipelines as p', 'p.id', 's.pipeline_id')
+          .where({ 'p.kind': kind, 's.name': stage.name })
+          .first<{ id: string }>('s.id');
+        if (!row) continue;
+
+        await trx('pipeline_stages').where({ id: row.id }).update({
+          sequence: stage.sequence,
+          is_terminal: stage.isTerminal,
+          is_archived: false,
+          colour: stage.colour,
+        });
+      }
+    }
+
+    for (const kind of ['lead', 'order'] as const) {
+      const defaultStage = KNOWN_SEEDED_STAGES[kind].find((stage) => stage.isDefault);
+      if (!defaultStage) continue;
+
+      const row = await trx('pipeline_stages as s')
+        .join('pipelines as p', 'p.id', 's.pipeline_id')
+        .where({ 'p.kind': kind, 's.name': defaultStage.name })
+        .first<{ id: string }>('s.id');
+      if (row) await trx('pipeline_stages').where({ id: row.id }).update({ is_default: true });
+    }
+  });
+
+  seededStageSnapshot = await db()('pipeline_stages').select<StageSnapshotRow[]>(
+    'id',
+    'sequence',
+    'is_default',
+    'is_terminal',
+    'is_archived',
+    'colour',
+    'name',
+  );
 }
 
 export async function teardownDatabase(): Promise<void> {
@@ -89,6 +218,56 @@ export async function resetData(): Promise<void> {
   // Anything a test created goes; the seeded roles stay.
   if (seededRoleIds.length > 0) {
     await db()('roles').whereNotIn('id', seededRoleIds).delete();
+  }
+
+  // Same for the seeded option-list values and custom-field definitions —
+  // Fields configuration survives the truncate for the same reason roles do.
+  if (seededOptionListIds.length > 0) {
+    await db()('option_lists').whereNotIn('id', seededOptionListIds).delete();
+    // A seeded row a test soft-deleted, updated or re-labelled must also come
+    // back to its original shape, or the *next* test inherits that edit.
+    await db().raw(`
+      UPDATE option_lists SET deleted_at = NULL, deleted_by = NULL, is_active = true, version = 1
+       WHERE id = ANY(?) AND (deleted_at IS NOT NULL OR is_active = false OR version <> 1)
+    `, [seededOptionListIds]);
+  }
+  if (seededCustomFieldDefinitionIds.length > 0) {
+    await db()('custom_field_definitions').whereNotIn('id', seededCustomFieldDefinitionIds).delete();
+  }
+
+  // `pipeline_stages` cannot be created or deleted by a test — only reordered,
+  // renamed, defaulted or archived — so restoring the seeded snapshot is what
+  // keeps one stage-mutating test from leaking into the next.
+  //
+  // Deferred and clear-then-set for the same reason the write path is: the
+  // sequence uniqueness is a deferrable constraint that a one-row-at-a-time
+  // restore can transiently collide with, and the one-default partial index
+  // cannot be deferred at all, so every row is cleared to `is_default: false`
+  // before any row is set back to `true`.
+  if (seededStageSnapshot.length > 0) {
+    await db().transaction(async (trx) => {
+      await trx.raw('SET CONSTRAINTS pipeline_stages_seq_unique DEFERRED');
+
+      await trx('pipeline_stages')
+        .whereIn('id', seededStageSnapshot.map((stage) => stage.id))
+        .update({ is_default: false });
+
+      for (const stage of seededStageSnapshot) {
+        await trx('pipeline_stages').where({ id: stage.id }).update({
+          sequence: stage.sequence,
+          is_terminal: stage.is_terminal,
+          is_archived: stage.is_archived,
+          colour: stage.colour,
+          name: stage.name,
+        });
+      }
+
+      for (const stage of seededStageSnapshot) {
+        if (stage.is_default) {
+          await trx('pipeline_stages').where({ id: stage.id }).update({ is_default: true });
+        }
+      }
+    });
   }
 
   // Roles are seeded configuration and survive the truncate, so their counter

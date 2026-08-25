@@ -9,8 +9,11 @@
  */
 
 import { Router } from 'express';
+import multer from 'multer';
 
 import { ValidationError } from '../../lib/errors.js';
+import * as backupExportService from '../../services/backup-export.service.js';
+import * as backupRestoreService from '../../services/backup-restore.service.js';
 import * as catalogService from '../../services/catalog.service.js';
 import * as conflictService from '../../services/conflict.service.js';
 import * as dashboardService from '../../services/dashboard.service.js';
@@ -41,6 +44,14 @@ dataRoutes.use(requireAuth);
  * delete path existed for any of the four until now.
  */
 const needs = requirePermissionMiddleware;
+
+/**
+ * Buffers the whole uploaded backup file in memory before decrypting it — the
+ * same tradeoff `images.routes.ts`'s upload makes, accepted here for the same
+ * reason: this product's scale is one shop's database, not a multi-gigabyte
+ * one. A future increase in scale would want to stream this instead.
+ */
+const backupUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024 * 1024 } });
 
 function paging(query: Record<string, unknown>): {
   search?: string;
@@ -73,6 +84,59 @@ dataRoutes.get(
   '/storage',
   asyncHandler(async (_req, res) => {
     res.json(await storageService.getStorageUsage());
+  }),
+);
+
+// --- Storage: export, restore & migration (docs/7-STORAGE-BACKUP-RESTORE.md) ---
+
+dataRoutes.post(
+  '/storage/export',
+  needs('storage.manage'),
+  asyncHandler(async (req, res) => {
+    const { scope, tenantIds, passphrase } = req.body ?? {};
+    if (scope !== 'whole' && scope !== 'selected') {
+      throw new ValidationError('validation.backup.scopeRequired');
+    }
+    if (typeof passphrase !== 'string' || !passphrase) {
+      throw new ValidationError('validation.backup.passphraseRequired');
+    }
+
+    const result = await backupExportService.exportBackup({
+      scope,
+      tenantIds: Array.isArray(tenantIds) ? tenantIds.map(String) : undefined,
+      passphrase,
+    });
+
+    res.setHeader('Content-Disposition', `attachment; filename="${result.fileName}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.send(result.data);
+  }),
+);
+
+dataRoutes.post(
+  '/storage/restore/preview',
+  needs('storage.manage'),
+  backupUpload.single('file'),
+  asyncHandler(async (req, res) => {
+    if (!req.file) throw new ValidationError('validation.backup.fileRequired');
+    res.json(backupRestoreService.previewRestore(req.file.buffer));
+  }),
+);
+
+dataRoutes.post(
+  '/storage/restore',
+  needs('storage.manage'),
+  backupUpload.single('file'),
+  asyncHandler(async (req, res) => {
+    if (!req.file) throw new ValidationError('validation.backup.fileRequired');
+
+    const passphrase = req.body?.passphrase;
+    if (typeof passphrase !== 'string' || !passphrase) {
+      throw new ValidationError('validation.backup.passphraseRequired');
+    }
+    const confirmWipe = req.body?.confirmWipe === 'true' || req.body?.confirmWipe === true;
+
+    res.json(await backupRestoreService.restoreBackup(req.file.buffer, passphrase, confirmWipe));
   }),
 );
 

@@ -1,0 +1,1600 @@
+/*
+ * Component classes on top of the tokens. Plain CSS only — no runtime style
+ * engine (6-UI-DESIGN.md §2.2). Animate transform and opacity only (§2.4).
+ * No shadow inside a scrolling container (§5).
+ */
+
+/* ===========================================================================
+ * Type roles
+ * ======================================================================== */
+
+.ob-display {
+  font-size: var(--t-display-size);
+  line-height: var(--t-display-line);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.ob-title {
+  font-size: var(--t-title-size);
+  line-height: var(--t-title-line);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.ob-eyebrow {
+  font-size: var(--t-eyebrow-size);
+  line-height: var(--t-eyebrow-line);
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--fg-tertiary);
+}
+
+.ob-body {
+  font-size: var(--t-body-size);
+  line-height: var(--t-body-line);
+}
+
+.ob-body-strong {
+  font-size: var(--t-body-size);
+  line-height: var(--t-body-line);
+  font-weight: 550;
+}
+
+.ob-data {
+  font-size: var(--t-data-size);
+  line-height: var(--t-data-line);
+  font-weight: 450;
+  font-variant-numeric: tabular-nums;
+}
+
+.ob-small {
+  font-size: var(--t-small-size);
+  line-height: var(--t-small-line);
+  color: var(--fg-secondary);
+}
+
+.ob-micro {
+  font-size: var(--t-micro-size);
+  line-height: var(--t-micro-line);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.ob-mono {
+  font-family: var(--font-mono);
+  font-size: var(--t-mono-size);
+  line-height: var(--t-mono-line);
+  font-weight: 450;
+  letter-spacing: 0.01em;
+}
+
+/* Identifiers are read aloud down a phone line: grouped, never one long run
+ * (§4). Wrapping happens at a group boundary only. */
+.ob-fingerprint {
+  font-family: var(--font-mono);
+  font-size: var(--t-mono-size);
+  letter-spacing: 0.01em;
+  display: inline-flex;
+  flex-wrap: wrap;
+  column-gap: 0.5ch;
+  row-gap: var(--s-2);
+}
+
+/* ===========================================================================
+ * Buttons — primary / secondary / ghost / danger · sm / md / lg
+ * All states: default hover active focus-visible disabled loading.
+ * ======================================================================== */
+
+.ob-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-8);
+  height: var(--ctl-h-md);
+  padding: 0 var(--s-12);
+  border-radius: var(--r-md);
+  font-size: var(--t-small-size);
+  font-weight: 550;
+  white-space: nowrap;
+  transition: background-color var(--d-fast) var(--e-standard),
+    border-color var(--d-fast) var(--e-standard), color var(--d-fast) var(--e-standard),
+    transform var(--d-fast) var(--e-standard), opacity var(--d-fast) var(--e-standard);
+}
+
+.ob-btn--primary {
+  background: var(--accent);
+  color: var(--fg-on-accent);
+}
+.ob-btn--primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.ob-btn--primary:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.ob-btn--secondary {
+  background: var(--bg-surface);
+  color: var(--fg-primary);
+  border: 1px solid var(--line);
+}
+.ob-btn--secondary:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.ob-btn--ghost {
+  background: transparent;
+  color: var(--fg-secondary);
+}
+.ob-btn--ghost:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--fg-primary);
+}
+
+.ob-btn--danger {
+  background: var(--bg-surface);
+  color: var(--state-conflict);
+  border: 1px solid var(--line);
+}
+.ob-btn--danger:hover:not(:disabled) {
+  background: var(--state-conflict-tint);
+  border-color: var(--state-conflict);
+}
+
+.ob-btn--sm {
+  height: var(--ctl-h-sm);
+  padding: 0 var(--s-8);
+}
+.ob-btn--lg {
+  height: var(--ctl-h-lg);
+  padding: 0 var(--s-16);
+  font-size: var(--t-body-size);
+}
+
+.ob-btn:disabled {
+  opacity: 0.45;
+}
+
+.ob-btn[aria-busy='true'] {
+  cursor: progress;
+  opacity: 0.85;
+}
+
+/* Icon-only buttons always carry an aria-label equal to their tooltip (§10). */
+.ob-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--ctl-h-sm);
+  height: var(--ctl-h-sm);
+  border-radius: var(--r-sm);
+  color: var(--fg-secondary);
+  transition: background-color var(--d-fast) var(--e-standard);
+}
+.ob-icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--fg-primary);
+}
+
+/* Segmented control (theme switcher, density) */
+.ob-seg {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.ob-seg > button {
+  height: var(--ctl-h-sm);
+  padding: 0 var(--s-12);
+  font-size: var(--t-small-size);
+  background: var(--bg-surface);
+  color: var(--fg-tertiary);
+  transition: background-color var(--d-fast) var(--e-standard);
+}
+.ob-seg > button + button {
+  border-left: 1px solid var(--line);
+}
+.ob-seg > button:hover {
+  background: var(--bg-hover);
+}
+.ob-seg > button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--fg-on-accent);
+}
+
+/* Filter chip row */
+.ob-filterchip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-4);
+  height: calc(var(--ctl-h-md) - 8px);
+  padding: 0 var(--s-8);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  color: var(--fg-secondary);
+  font-size: var(--t-small-size);
+  white-space: nowrap;
+  transition: background-color var(--d-fast) var(--e-standard);
+}
+.ob-filterchip:hover {
+  background: var(--bg-hover);
+}
+.ob-filterchip[aria-pressed='true'] {
+  background: var(--accent-tint);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.ob-filterchip .count {
+  color: var(--fg-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.ob-filterchip[aria-pressed='true'] .count {
+  color: var(--accent);
+}
+
+/* ===========================================================================
+ * Fields
+ * ======================================================================== */
+
+.ob-label {
+  display: block;
+  font-size: var(--t-small-size);
+  color: var(--fg-secondary);
+}
+
+.ob-input,
+.ob-select,
+.ob-textarea {
+  width: 100%;
+  height: var(--ctl-h-md);
+  padding: 0 var(--s-8);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  color: var(--fg-primary);
+  font-size: var(--t-small-size);
+  transition: border-color var(--d-fast) var(--e-standard);
+}
+
+.ob-textarea {
+  height: auto;
+  min-height: calc(var(--t-body-line) * 3 + var(--s-16));
+  padding: var(--s-8);
+  resize: vertical;
+}
+
+.ob-input:hover,
+.ob-select:hover,
+.ob-textarea:hover {
+  border-color: var(--line-strong);
+}
+
+.ob-input:focus,
+.ob-select:focus,
+.ob-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent); /* hairline companion to the ring */
+}
+
+.ob-input:disabled,
+.ob-select:disabled,
+.ob-textarea:disabled {
+  background: var(--bg-sunken);
+  color: var(--fg-disabled);
+  border-color: var(--line);
+}
+
+.ob-input[aria-invalid='true'],
+.ob-textarea[aria-invalid='true'] {
+  border-color: var(--state-conflict);
+}
+
+.ob-help {
+  margin-top: var(--s-4);
+  font-size: var(--t-small-size);
+  line-height: var(--t-small-line);
+  color: var(--fg-tertiary);
+}
+
+.ob-field-error {
+  margin-top: var(--s-4);
+  font-size: var(--t-small-size);
+  line-height: var(--t-small-line);
+  color: var(--state-conflict);
+}
+
+.ob-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+/* Numeric entry: right-aligned tabular figures, no steppers (§9.2). */
+.ob-numinput {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===========================================================================
+ * Surfaces
+ * ======================================================================== */
+
+.ob-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.ob-card--pad {
+  padding: var(--s-16);
+}
+
+.ob-elevated-2 {
+  box-shadow: var(--sh-2);
+}
+.ob-elevated-3 {
+  box-shadow: var(--sh-3);
+}
+
+/* ===========================================================================
+ * DataTable (§9.1)
+ * ======================================================================== */
+
+.ob-tablewrap {
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: auto;
+}
+
+table.ob-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ob-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-sunken);
+  border-bottom: 1px solid var(--line);
+  height: var(--ctl-h-md);
+  padding: 0 var(--s-12);
+  text-align: left;
+  font-size: var(--t-eyebrow-size);
+  line-height: var(--t-eyebrow-line);
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--fg-tertiary);
+  white-space: nowrap;
+}
+
+.ob-table tbody td {
+  height: var(--row-h);
+  padding: 0 var(--s-12);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--t-data-size);
+  line-height: var(--t-data-line);
+  font-weight: 450;
+  vertical-align: middle;
+  /* contain, not paint-heavy effects (§11) */
+  contain: layout paint;
+}
+
+.ob-table tbody tr:hover td {
+  background: var(--bg-hover);
+}
+
+.ob-table tbody tr[data-selected='true'] td {
+  background: var(--bg-selected);
+}
+.ob-table tbody tr[data-selected='true'] td:first-child {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.ob-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.ob-table thead th.num {
+  text-align: right;
+}
+
+/* Redaction renders as an em dash with a tooltip naming the permission (§9.1).
+ * The cell must cope with `undefined` — the key is absent, not null. */
+.ob-redacted::after {
+  content: '\2014'; /* em dash */
+  color: var(--fg-tertiary);
+}
+
+/* ===========================================================================
+ * Colour chips & status pills (§3.4, §9 Data)
+ * ======================================================================== */
+
+.ob-colourchip {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  flex: none;
+}
+
+.ob-colourchip--empty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--fg-tertiary);
+  background: transparent;
+}
+
+.ob-colourname {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-6);
+  font-size: var(--t-small-size);
+  color: var(--fg-secondary);
+  min-width: 0;
+}
+
+.ob-pill {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: var(--r-sm);
+  font-size: var(--t-micro-size);
+  line-height: var(--t-micro-line);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  background: var(--bg-sunken);
+  color: var(--fg-secondary);
+  white-space: nowrap;
+}
+.ob-pill--ok {
+  background: var(--state-ok-tint);
+  color: var(--state-ok);
+}
+.ob-pill--offline {
+  background: var(--state-offline-tint);
+  color: var(--state-offline);
+}
+.ob-pill--conflict {
+  background: var(--state-conflict-tint);
+  color: var(--state-conflict);
+}
+.ob-pill--accent {
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+/* ===========================================================================
+ * Banners, empty/error states (§9.4): two lines and one action.
+ * ======================================================================== */
+
+.ob-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--s-12);
+  padding: var(--s-12) var(--s-16);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  font-size: var(--t-small-size);
+  line-height: var(--t-small-line);
+}
+.ob-banner--offline {
+  background: var(--state-offline-tint);
+  border-color: var(--state-offline);
+  color: var(--fg-primary);
+}
+.ob-banner--conflict {
+  background: var(--state-conflict-tint);
+  border-color: var(--state-conflict);
+}
+
+.ob-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-56) var(--s-20);
+  text-align: center;
+}
+.ob-empty h3 {
+  font-size: var(--t-body-size);
+  line-height: var(--t-body-line);
+  font-weight: 550;
+}
+.ob-empty p {
+  font-size: var(--t-small-size);
+  line-height: var(--t-small-line);
+  color: var(--fg-secondary);
+  max-width: 46ch;
+}
+.ob-empty .ob-btn {
+  margin-top: var(--s-8);
+}
+
+/* ===========================================================================
+ * Key–value list
+ * ======================================================================== */
+
+.ob-kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--s-4) var(--s-16);
+  font-size: var(--t-small-size);
+  line-height: var(--t-small-line);
+}
+.ob-kv dt {
+  color: var(--fg-tertiary);
+}
+.ob-kv dd {
+  margin: 0;
+  color: var(--fg-primary);
+  text-align: right;
+}
+
+/* ===========================================================================
+ * Timeline
+ * ======================================================================== */
+
+.ob-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ob-timeline li {
+  display: flex;
+  gap: var(--s-8);
+  padding: var(--s-4) 0;
+}
+.ob-timeline .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-top: var(--s-6);
+  flex: none;
+  background: var(--line-strong);
+}
+.ob-timeline .dot--ok {
+  background: var(--state-ok);
+}
+.ob-timeline .dot--offline {
+  background: var(--state-offline);
+}
+.ob-timeline .dot--conflict {
+  background: var(--state-conflict);
+}
+.ob-timeline .when {
+  font-size: var(--t-micro-size);
+  line-height: var(--t-micro-line);
+  color: var(--fg-tertiary);
+  margin-top: 1px;
+}
+
+/* ===========================================================================
+ * Kanban board (§9.3): transform-only drag, no drop shadow while dragging.
+ * ======================================================================== */
+
+.ob-board {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(240px, 1fr);
+  gap: var(--s-12);
+  overflow-x: auto;
+  align-items: start;
+  padding-bottom: var(--s-8);
+}
+
+.ob-boardcol {
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  display: flex;
+  flex-direction: column;
+  min-height: 180px;
+  transition: background-color var(--d-base) var(--e-standard),
+    border-color var(--d-base) var(--e-standard);
+}
+.ob-boardcol--drop {
+  background: var(--accent-tint);
+  border-color: var(--accent);
+}
+
+.ob-boardcol-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  padding: var(--s-8) var(--s-12);
+  border-bottom: 1px solid var(--line);
+}
+
+.ob-boardcol-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+  padding: var(--s-8);
+}
+
+.ob-boardcard {
+  position: relative;
+  text-align: left;
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--s-12);
+  cursor: grab;
+  transition: background-color var(--d-fast) var(--e-standard);
+  /* cards carry party, value, colour chips, follow-up date — nothing else */
+  contain: layout paint;
+}
+.ob-boardcard:hover {
+  background: var(--bg-hover);
+}
+.ob-boardcard--dragging {
+  opacity: 0.8;
+  outline: 2px solid var(--accent); /* never a drop-shadow while dragging */
+  pointer-events: none;
+}
+
+/* ===========================================================================
+ * App shell (§8)
+ * ======================================================================== */
+
+.ob-shell {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+.ob-rail {
+  width: var(--rail-w);
+  flex: none;
+  position: relative;
+  overflow: hidden;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+@keyframes ob-rail-travel {
+  0% {
+    transform: translateY(-110%);
+  }
+  100% {
+    transform: translateY(310%);
+  }
+}
+
+.ob-rail-highlight {
+  position: absolute;
+  left: 0;
+  width: var(--rail-w);
+  height: 40%;
+  background: var(--rail-glint);
+  animation: ob-rail-travel 1.4s linear infinite;
+}
+
+/* The two looping animations stop when the window loses focus (§5). */
+html[data-window-blur='true'] .ob-rail-highlight,
+html[data-window-blur='true'] .ob-busy rect {
+  animation-play-state: paused;
+}
+
+.ob-sidebar {
+  width: var(--shell-sidebar-w);
+  flex: none;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  transition: none; /* collapse is instant; animating width is banned */
+}
+
+.ob-sidebar--collapsed {
+  width: var(--shell-sidebar-collapsed-w);
+}
+
+.ob-sidebar-brand {
+  height: var(--shell-topbar-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  padding: 0 var(--s-16);
+  border-bottom: 1px solid var(--line);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.ob-sidebar-wordmark {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.ob-sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s-12) var(--s-8);
+}
+
+.ob-navgroup {
+  padding: var(--s-8) 0 var(--s-2);
+}
+
+.ob-navgroup-label {
+  padding: 0 var(--s-8) var(--s-4);
+}
+
+.ob-navitem {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  width: 100%;
+  padding: var(--s-6) var(--s-8);
+  border-radius: var(--r-sm);
+  color: var(--fg-secondary);
+  font-size: var(--t-small-size);
+  white-space: nowrap;
+  transition: background-color var(--d-fast) var(--e-standard);
+}
+.ob-navitem:hover {
+  background: var(--bg-hover);
+  color: var(--fg-primary);
+}
+.ob-navitem svg {
+  flex: none;
+  opacity: 0.85;
+}
+.ob-navitem[aria-current='page'] {
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-weight: 550;
+}
+.ob-navitem .count {
+  margin-left: auto;
+  font-size: var(--t-micro-size);
+  color: var(--fg-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.ob-navitem[aria-current='page'] .count {
+  color: var(--accent);
+}
+
+.ob-sidebar-collapse {
+  height: var(--ctl-h-md);
+  flex: none;
+  border-top: 1px solid var(--line);
+  background: var(--bg-surface);
+  color: var(--fg-tertiary);
+  font-size: var(--t-micro-size);
+}
+.ob-sidebar-collapse:hover {
+  background: var(--bg-hover);
+}
+
+.ob-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.ob-topbar {
+  height: var(--shell-topbar-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s-12);
+  padding: 0 var(--s-20);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--line);
+}
+/* Truncates rather than pushing search/actions off-screen at the 1366x768
+ * floor, or under a longer translated title (1.4x expansion rule, 10). */
+.ob-topbar h1 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ob-filterbar {
+  height: var(--shell-filterbar-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  padding: 0 var(--s-20);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--line);
+  /* At the 1366x768 floor a full row of stage chips can outgrow the strip;
+   * scroll horizontally inside the 40px band rather than breaking the shell
+   * (whose own overflow is hidden) or clipping chips vertically. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.ob-filterbar > * {
+  flex: none;
+}
+
+.ob-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--s-16) var(--s-20);
+}
+
+.ob-footer {
+  height: var(--shell-footer-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s-16);
+  padding: 0 var(--s-20);
+  background: var(--bg-surface);
+  border-top: 1px solid var(--line);
+  font-size: var(--t-micro-size);
+  line-height: var(--t-micro-line);
+  color: var(--fg-secondary);
+}
+
+.ob-footer-sync {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-6);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.ob-footer-sync .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+/* Search field with the `/` hint, as in every mockup topbar. */
+.ob-search {
+  position: relative;
+  width: 260px;
+}
+.ob-search input {
+  height: var(--ctl-h-md);
+  width: 100%;
+  padding: 0 calc(var(--ctl-h-md)) 0 var(--s-12);
+}
+.ob-search kbd {
+  position: absolute;
+  right: var(--s-6);
+  top: 50%;
+  transform: translateY(-50%);
+  min-width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-sunken);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-tertiary);
+  pointer-events: none;
+}
+
+/* ===========================================================================
+ * Popover · Drawer · Toast (levels 2 and 3)
+ * ======================================================================== */
+
+@keyframes ob-pop-in {
+  from {
+    transform: translateY(4px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes ob-drawer-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes ob-toast-in {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes ob-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.ob-popover {
+  position: absolute;
+  z-index: var(--z-popover);
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-2);
+  animation: ob-pop-in var(--d-base) var(--e-standard);
+}
+
+/* A list of actions inside a Popover — the kanban card's kebab menu, say. */
+.ob-menu {
+  display: flex;
+  flex-direction: column;
+  padding: var(--s-4);
+  min-width: 180px;
+}
+.ob-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--fg-primary);
+  cursor: pointer;
+  padding: var(--s-6) var(--s-12);
+  transition: background-color var(--d-fast) var(--e-standard);
+}
+.ob-menu-item:hover {
+  background: var(--bg-hover);
+}
+.ob-menu-item:disabled {
+  color: var(--fg-disabled);
+  cursor: not-allowed;
+}
+.ob-menu-item:disabled:hover {
+  background: none;
+}
+
+.ob-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--overlay-scrim);
+  z-index: var(--z-overlay);
+  animation: ob-overlay-in var(--d-base) var(--e-standard);
+}
+
+.ob-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: var(--shell-footer-h);
+  width: 520px;
+  max-width: 90vw;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--line);
+  box-shadow: var(--sh-3);
+  z-index: var(--z-drawer);
+  display: flex;
+  flex-direction: column;
+  animation: ob-drawer-in var(--d-slow) var(--e-standard);
+}
+
+.ob-drawer-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s-12);
+  padding: var(--s-16) var(--s-20);
+  border-bottom: 1px solid var(--line);
+}
+
+.ob-drawer-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s-16) var(--s-20) var(--s-24);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-16);
+}
+
+.ob-toasts {
+  position: absolute;
+  left: var(--s-16);
+  bottom: calc(var(--shell-footer-h) + var(--s-12));
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+  z-index: var(--z-toast);
+}
+
+.ob-toast {
+  display: flex;
+  align-items: center;
+  gap: var(--s-12);
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-2);
+  padding: var(--s-8) var(--s-16);
+  font-size: var(--t-small-size);
+  line-height: var(--t-small-line);
+  animation: ob-toast-in var(--d-base) var(--e-standard);
+}
+
+.ob-toast .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+
+/* ===========================================================================
+ * The mark — "The Fill" — and its two jobs (§6)
+ * ======================================================================== */
+
+@keyframes ob-outline-draw {
+  from {
+    stroke-dashoffset: 80;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes ob-outline-fade {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes ob-ink {
+  from {
+    opacity: 0;
+    transform: scale(0.88);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes ob-word {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ob-busy-loop {
+  0% {
+    opacity: 0.06;
+  }
+  22% {
+    opacity: 0.4;
+  }
+  60% {
+    opacity: 0.06;
+  }
+  100% {
+    opacity: 0.06;
+  }
+}
+
+.ob-busy rect {
+  animation: ob-busy-loop 700ms linear infinite;
+}
+
+.ob-splash {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-splash);
+  background: var(--bg-canvas);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-20);
+}
+
+.ob-splash-word {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  opacity: 0;
+  animation: ob-word 280ms var(--e-standard) 620ms both;
+}
+
+/* ===========================================================================
+ * Skeleton — static rows, no shimmer; the busy mark is the only mover (§9)
+ * ======================================================================== */
+
+.ob-skeleton {
+  border-radius: var(--s-2);
+  background: var(--bg-sunken);
+  height: var(--s-8);
+}
+
+/* ===========================================================================
+ * Checkbox · Radio · Switch — custom box over a native, visually-hidden input
+ * so keyboard/AT semantics stay free while the paint matches the system.
+ * ======================================================================== */
+
+.ob-check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-8);
+  cursor: pointer;
+  font-size: var(--t-small-size);
+  color: var(--fg-primary);
+}
+.ob-check-row input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.ob-checkbox-box {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-on-accent);
+  transition: background-color var(--d-fast) var(--e-standard),
+    border-color var(--d-fast) var(--e-standard);
+}
+.ob-check-row input:checked + .ob-checkbox-box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.ob-check-row input:indeterminate + .ob-checkbox-box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.ob-check-row input:focus-visible + .ob-checkbox-box {
+  outline: 2px solid var(--line-focus);
+  outline-offset: 2px;
+}
+.ob-check-row input:disabled + .ob-checkbox-box {
+  background: var(--bg-sunken);
+  border-color: var(--line);
+}
+.ob-check-row[data-disabled='true'] {
+  color: var(--fg-disabled);
+  cursor: default;
+}
+
+.ob-radio-box {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--bg-surface);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color var(--d-fast) var(--e-standard);
+}
+.ob-radio-box::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: scale(0);
+  transition: transform var(--d-fast) var(--e-standard);
+}
+.ob-check-row input:checked + .ob-radio-box {
+  border-color: var(--accent);
+}
+.ob-check-row input:checked + .ob-radio-box::after {
+  transform: scale(1);
+}
+.ob-check-row input:focus-visible + .ob-radio-box {
+  outline: 2px solid var(--line-focus);
+  outline-offset: 2px;
+}
+
+.ob-switch {
+  width: 30px;
+  height: 18px;
+  flex: none;
+  border-radius: 10px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--line-strong);
+  position: relative;
+  transition: background-color var(--d-fast) var(--e-standard),
+    border-color var(--d-fast) var(--e-standard);
+}
+.ob-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  box-shadow: 0 1px 2px rgba(16, 22, 26, 0.3);
+  transform: translateX(0);
+  transition: transform var(--d-fast) var(--e-standard);
+}
+.ob-check-row input:checked + .ob-switch {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.ob-check-row input:checked + .ob-switch::after {
+  transform: translateX(12px);
+}
+.ob-check-row input:focus-visible + .ob-switch {
+  outline: 2px solid var(--line-focus);
+  outline-offset: 2px;
+}
+.ob-check-row input:disabled + .ob-switch {
+  opacity: 0.5;
+}
+
+/* ===========================================================================
+ * Combobox — typeahead over a listbox popover
+ * ======================================================================== */
+
+.ob-combobox {
+  position: relative;
+}
+.ob-combobox-listbox {
+  position: absolute;
+  z-index: var(--z-popover);
+  top: calc(100% + var(--s-4));
+  left: 0;
+  right: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-2);
+  animation: ob-pop-in var(--d-base) var(--e-standard);
+  padding: var(--s-4);
+}
+.ob-combobox-option {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  padding: var(--s-6) var(--s-8);
+  border-radius: var(--r-sm);
+  font-size: var(--t-small-size);
+  cursor: pointer;
+  color: var(--fg-primary);
+}
+.ob-combobox-option[data-active='true'] {
+  background: var(--bg-hover);
+}
+.ob-combobox-option[aria-selected='true'] {
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+.ob-combobox-empty {
+  padding: var(--s-8);
+  font-size: var(--t-small-size);
+  color: var(--fg-tertiary);
+}
+
+/* ===========================================================================
+ * Modal (elevation 3, centred — the drawer's non-anchored sibling)
+ * ======================================================================== */
+
+@keyframes ob-modal-in {
+  from {
+    transform: translateY(8px) scale(0.98);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.ob-modal-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-drawer);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s-24);
+}
+.ob-modal {
+  width: 480px;
+  max-width: 100%;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-3);
+  animation: ob-modal-in var(--d-slow) var(--e-standard);
+}
+.ob-modal-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s-12);
+  padding: var(--s-16) var(--s-20);
+  border-bottom: 1px solid var(--line);
+}
+.ob-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s-16) var(--s-20);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-16);
+}
+.ob-modal-foot {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-8);
+  padding: var(--s-12) var(--s-20);
+  border-top: 1px solid var(--line);
+}
+
+/* ===========================================================================
+ * Tooltip — 400ms delay, keyboard-reachable (§10)
+ * ======================================================================== */
+
+.ob-tooltip {
+  position: fixed;
+  z-index: var(--z-toast);
+  max-width: 220px;
+  padding: var(--s-4) var(--s-8);
+  border-radius: var(--r-sm);
+  background: var(--porcelain-90);
+  color: var(--porcelain-00);
+  font-size: var(--t-micro-size);
+  line-height: var(--t-micro-line);
+  box-shadow: var(--sh-2);
+  pointer-events: none;
+  animation: ob-pop-in var(--d-fast) var(--e-standard);
+  /* porcelain-90/00 invert with the theme (dark chip on light, light chip on
+   * dark) via the ramp itself — no separate dark-mode override needed. */
+}
+
+/* ===========================================================================
+ * Tabs — underline style, distinct from the segmented control
+ * ======================================================================== */
+
+.ob-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--s-16);
+  border-bottom: 1px solid var(--line);
+}
+.ob-tab {
+  position: relative;
+  padding: var(--s-8) var(--s-2);
+  font-size: var(--t-small-size);
+  color: var(--fg-secondary);
+  white-space: nowrap;
+}
+.ob-tab:hover {
+  color: var(--fg-primary);
+}
+.ob-tab[aria-selected='true'] {
+  color: var(--fg-primary);
+  font-weight: 550;
+}
+.ob-tab[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--accent);
+}
+
+/* ===========================================================================
+ * Cursor pager — Load more / Newer · Older. No page numbers (§9.1).
+ * ======================================================================== */
+
+.ob-pager {
+  display: flex;
+  justify-content: center;
+  gap: var(--s-8);
+  padding: var(--s-12);
+}
+
+/* ===========================================================================
+ * IdField — mono identifier plus a copy affordance
+ * ======================================================================== */
+
+.ob-idfield {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-6);
+}
+.ob-idfield .ob-mono {
+  color: var(--fg-secondary);
+}
+
+/* ===========================================================================
+ * FilterBar contents — search box already covered by .ob-search above
+ * ======================================================================== */
+
+.ob-filterbar .ob-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--line);
+  flex: none;
+}
+
+/* ===========================================================================
+ * PermissionGrid (docs/ROLES_AND_USERS.md UI §5.2, §9) — three cell states
+ * stay visually distinct on purpose: a blocked cell must not look like an
+ * unchecked one, or the tier ceiling becomes invisible.
+ * ======================================================================== */
+
+.ob-permgrid {
+  width: 100%;
+  border-collapse: collapse;
+}
+.ob-permgrid th,
+.ob-permgrid td {
+  border: 1px solid var(--line);
+  padding: var(--s-6) var(--s-12);
+  text-align: center;
+  font-size: var(--t-small-size);
+}
+.ob-permgrid th[scope='row'] {
+  text-align: left;
+  font-weight: 600;
+}
+.ob-permgrid thead th {
+  background: var(--bg-sunken);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+.ob-permgrid td.ob-cell-na {
+  color: var(--line-strong);
+  background: repeating-linear-gradient(45deg, transparent, transparent 4px, var(--bg-canvas) 4px, var(--bg-canvas) 8px);
+}
+.ob-permgrid input[type='checkbox'] {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.ob-permgrid input[type='checkbox']:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.ob-linkbtn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+.ob-linkbtn:hover:not(:disabled) {
+  color: var(--accent);
+}
+.ob-linkbtn:disabled {
+  text-decoration: none;
+  cursor: default;
+}
+
+.ob-capgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--s-8);
+}
+.ob-capability {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  padding: var(--s-8) var(--s-12);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-size: var(--t-small-size);
+  color: var(--fg-primary);
+  background: var(--bg-surface);
+}
+.ob-capability input {
+  accent-color: var(--accent);
+}
+.ob-capability--blocked {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: repeating-linear-gradient(45deg, transparent, transparent 4px, var(--bg-canvas) 4px, var(--bg-canvas) 8px);
+}
+
+/* ===========================================================================
+ * Content measure — the design floor is 1366x768 (6-UI-DESIGN.md 2.8), but
+ * nothing caps the ceiling: on a 4K or ultrawide monitor an unconstrained
+ * `repeat(N, 1fr)` grid or a full-width form stretches each cell to an
+ * absurd size. DataTable/KanbanBoard screens *want* the extra width and stay
+ * full-bleed; card grids and forms do not, so they opt into a measure here.
+ * Left-anchored, not centred — matches the mockups' top-left content flow.
+ * ======================================================================== */
+
+.ob-measure-form {
+  max-width: 720px; /* 6-UI-DESIGN.md 8: "single-column forms at a 720px measure" */
+}
+
+.ob-measure-wide {
+  max-width: 1600px;
+}
+
+/* ===========================================================================
+ * Gallery helper (token gallery route)
+ * ======================================================================== */
+
+.ob-gallery {
+  max-width: 1100px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-24);
+  padding-bottom: var(--s-56);
+}
+
+.ob-gallery-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+}
+
+.ob-gallery-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-16);
+}
+
+.ob-swatch {
+  width: 44px;
+  height: 22px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--swatch-ring);
+}

@@ -25,6 +25,7 @@ import type {
   PipelineStage,
   Product,
   ProductCategory,
+  ProductImage,
   Role,
   StockMovement,
   StockReservation,
@@ -209,6 +210,7 @@ export function mapPipelineStage(row: Row): PipelineStage {
     isDefault: Boolean(row.is_default),
     isTerminal: Boolean(row.is_terminal),
     colour: (row.colour as string | null) ?? null,
+    isArchived: Boolean(row.is_archived),
   };
 }
 
@@ -231,6 +233,12 @@ export function mapOptionListItem(row: Row): OptionListItem {
     label: String(row.label),
     sequence: toRequiredNumber(row.sequence),
     isActive: Boolean(row.is_active),
+    hex: (row.hex as string | null) ?? null,
+    createdAt: toRequiredIso(row.created_at),
+    updatedAt: toRequiredIso(row.updated_at),
+    deletedAt: toIso(row.deleted_at),
+    deletedBy: (row.deleted_by as string | null) ?? null,
+    version: toRequiredNumber(row.version),
   };
 }
 
@@ -246,6 +254,9 @@ export function mapCustomFieldDefinition(row: Row): CustomFieldDefinition {
     options: toStringArray(row.options),
     sequence: toRequiredNumber(row.sequence),
     isActive: Boolean(row.is_active),
+    deletedAt: toIso(row.deleted_at),
+    deletedBy: (row.deleted_by as string | null) ?? null,
+    version: toRequiredNumber(row.version),
   };
 }
 
@@ -285,7 +296,23 @@ export function mapProductCategory(row: Row): ProductCategory {
   };
 }
 
-export function mapProduct(row: Row): Product {
+export function mapProductImage(row: Row): ProductImage {
+  return {
+    id: String(row.id),
+    productId: String(row.product_id),
+    caption: (row.caption as string | null) ?? null,
+    isPrimary: Boolean(row.is_primary),
+    sequence: toRequiredNumber(row.sequence),
+    width: toRequiredNumber(row.width),
+    height: toRequiredNumber(row.height),
+    checksum: String(row.checksum ?? ''),
+    blurhash: String(row.blurhash ?? ''),
+    byteSize: toRequiredNumber(row.byte_size),
+    uploadedAt: toRequiredIso(row.uploaded_at),
+  };
+}
+
+export function mapProduct(row: Row, images: ProductImage[] = []): Product {
   return {
     id: String(row.id),
     tenantId: String(row.tenant_id),
@@ -314,6 +341,7 @@ export function mapProduct(row: Row): Product {
     createdAt: toRequiredIso(row.created_at),
     updatedAt: toRequiredIso(row.updated_at),
     sync: mapSyncMeta(row),
+    images,
   };
 }
 

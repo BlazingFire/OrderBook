@@ -10,8 +10,13 @@ import { attachSession } from './middleware/require-auth.js';
 import { accessRoutes } from './routes/access.routes.js';
 import { authRoutes } from './routes/auth.routes.js';
 import { dataRoutes } from './routes/data.routes.js';
+import { documentRoutes } from './routes/document.routes.js';
+import { fieldsRoutes } from './routes/fields.routes.js';
+import { imageFilesRoutes, imagesRoutes } from './routes/images.routes.js';
+import { logRoutes } from './routes/log.routes.js';
 import { panelRoutes, pairingRoutes } from './routes/panel.routes.js';
 import { recycleBinRoutes } from './routes/recycle-bin.routes.js';
+import { reportRoutes } from './routes/report.routes.js';
 import { setupRoutes } from './routes/setup.routes.js';
 
 export function createApp(): Express {
@@ -40,10 +45,23 @@ export function createApp(): Express {
   app.use('/api/panels', panelRoutes);
   app.use('/api/access', accessRoutes);
   app.use('/api/recycle-bin', recycleBinRoutes);
+  app.use('/api/fields', fieldsRoutes);
+  app.use('/api/logs', logRoutes);
+  app.use('/api/reports', reportRoutes);
+  app.use('/api/documents', documentRoutes);
+  app.use('/api/products/:productId/images', imagesRoutes);
+  app.use('/api/images', imageFilesRoutes);
   app.use('/api', dataRoutes);
 
-  // Uploaded product images.
-  app.use('/uploads', express.static(config.uploadsDir));
+  // There is deliberately **no** `express.static` mount for `config.uploadsDir`.
+  // `config.imagesDir` is a subdirectory of it, so serving it statically handed
+  // out every product image variant with no session, no `products.view` and no
+  // tenant check — routing straight around `imageFilesRoutes` and
+  // `image.service.ts#resolveImageFile`, whose whole job is to answer 404 to a
+  // caller who may not see the product. `config.documents` already keeps export
+  // files out of `uploadsDir` for exactly this reason; images had landed inside
+  // it. Anything under the data directory that a client may read needs a route
+  // that checks a permission first.
 
   // The built Master Panel UI. Unknown non-API paths fall through to index.html
   // so client-side routes survive a browser refresh.

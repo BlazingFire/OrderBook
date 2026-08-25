@@ -20,6 +20,13 @@ export const RECYCLE_BIN_ENTITIES = [
   'product',
   'role',
   'user',
+  // Stage 3 (Fields) — 20260306 gives these two `deleted_at` and `version`.
+  'option_list_item',
+  'custom_field_definition',
+  // Stage 6 (PDF Designer) — the ninth and last. `document_export` is
+  // deliberately NOT a tenth: a document that was sent to a customer is a
+  // record of what was sent, not something to put back in a bin.
+  'document_template',
 ] as const;
 
 export type RecycleBinEntityType = (typeof RECYCLE_BIN_ENTITIES)[number];
@@ -40,6 +47,9 @@ export const RESTORE_PERMISSION: Record<RecycleBinEntityType, string> = {
   product: 'products.delete',
   role: 'roles.delete',
   user: 'users.manage',
+  option_list_item: 'fields.manage',
+  custom_field_definition: 'fields.manage',
+  document_template: 'documents.delete',
 };
 
 export interface BinEntry {

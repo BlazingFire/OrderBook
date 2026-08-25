@@ -1,99 +1,116 @@
 /*
- * Phase 1 styling: plain, readable, and entirely local — no web fonts, no CSS
- * framework, nothing that would need the internet. A visual/branding pass is
- * explicitly deferred to Phase 2 (docs/PROJECT_PLAN.md §11).
+ * Master Panel legacy-compatibility layer — the sibling of
+ * `office/web/src/styles.css`. The screens built before the design system
+ * (Dashboard, Panels, LeadsOrders, Inventory, Access, Conflicts, Settings,
+ * Sign-in, First-run) style themselves through the plain class names below;
+ * this file re-expresses them in tokens so the whole panel already speaks the
+ * same visual language as the Office Panel.
+ *
+ * Element-selector rules give bare buttons/inputs the primary look; every
+ * `.ob-*` class is more specific and unaffected. When a screen migrates to
+ * `.ob-*`, its remaining rules here can be deleted.
  */
 
 :root {
-  --bg: #f4f6f8;
-  --surface: #ffffff;
-  --border: #d8dee4;
-  --text: #1c2530;
-  --muted: #5b6b7c;
-  --accent: #1d6fd0;
-  --accent-dark: #17579f;
-  --danger: #c0392b;
-  --success: #1e8e4f;
-  --radius: 6px;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
-  font-size: 15px;
-  background: var(--bg);
-  color: var(--text);
+  --bg: var(--bg-canvas);
+  --surface: var(--bg-surface);
+  --border: var(--line);
+  --text: var(--fg-primary);
+  --muted: var(--fg-secondary);
+  --accent-dark: var(--accent-hover);
+  --danger: var(--state-conflict);
+  --success: var(--state-ok);
+  --radius: var(--r-md);
 }
 
 button {
-  font: inherit;
-  cursor: pointer;
-  padding: 9px 16px;
-  border: 1px solid var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-8);
+  min-height: var(--ctl-h-md);
+  padding: 0 var(--s-12);
+  border: none;
+  border-radius: var(--r-md);
   background: var(--accent);
-  color: #fff;
-  border-radius: var(--radius);
+  color: var(--fg-on-accent);
+  font-size: var(--t-small-size);
+  font-weight: 550;
+  white-space: nowrap;
+  transition: background-color var(--d-fast) var(--e-standard);
 }
 
 button:hover:not(:disabled) {
-  background: var(--accent-dark);
+  background: var(--accent-hover);
 }
 
 button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 button.secondary {
-  background: var(--surface);
-  color: var(--text);
-  border-color: var(--border);
+  background: var(--bg-surface);
+  color: var(--fg-primary);
+  border: 1px solid var(--line);
+}
+
+button.secondary:hover:not(:disabled) {
+  background: var(--bg-hover);
 }
 
 button.danger {
-  background: var(--danger);
-  border-color: var(--danger);
+  background: var(--bg-surface);
+  color: var(--state-conflict);
+  border: 1px solid var(--line);
+}
+
+button.danger:hover:not(:disabled) {
+  background: var(--state-conflict-tint);
+  border-color: var(--state-conflict);
 }
 
 input,
 select,
 textarea {
-  font: inherit;
-  padding: 9px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
   width: 100%;
+  min-height: var(--ctl-h-md);
+  padding: 0 var(--s-8);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  color: var(--fg-primary);
+  font-size: var(--t-small-size);
+}
+
+textarea {
+  height: auto;
+  padding: var(--s-8);
+  resize: vertical;
 }
 
 label,
 .field-label {
   display: block;
-  margin-bottom: 4px;
-  font-size: 13px;
-  color: var(--muted);
+  margin-bottom: var(--s-4);
+  font-size: var(--t-small-size);
+  color: var(--fg-secondary);
 }
 
 .field {
-  margin-bottom: 12px;
+  margin-bottom: var(--s-12);
 }
 
 .card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px;
-  margin-bottom: 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--s-20);
+  margin-bottom: var(--s-16);
 }
 
 .grid {
   display: grid;
-  gap: 12px;
+  gap: var(--s-12);
 }
 
 .grid.cols-2 {
@@ -106,7 +123,7 @@ label,
 
 .row {
   display: flex;
-  gap: 10px;
+  gap: var(--s-12);
   align-items: center;
   flex-wrap: wrap;
 }
@@ -116,43 +133,51 @@ table {
   border-collapse: collapse;
 }
 
-th,
-td {
+th {
   text-align: left;
-  padding: 9px 10px;
-  border-bottom: 1px solid var(--border);
-  font-size: 14px;
+  padding: 0 var(--s-12);
+  height: var(--ctl-h-md);
+  background: var(--bg-sunken);
+  border-bottom: 1px solid var(--line);
+  color: var(--fg-tertiary);
+  font-weight: 600;
+  font-size: var(--t-eyebrow-size);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
 }
 
-th {
-  color: var(--muted);
-  font-weight: 600;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
+td {
+  text-align: left;
+  padding: 0 var(--s-12);
+  height: var(--row-h);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--t-data-size);
+  font-variant-numeric: tabular-nums;
 }
 
 .muted {
-  color: var(--muted);
-  font-size: 13px;
+  color: var(--fg-secondary);
+  font-size: var(--t-small-size);
 }
 
 .error {
-  background: #fdecea;
-  border: 1px solid #f2b8b1;
-  color: #8c241a;
-  padding: 10px 12px;
-  border-radius: var(--radius);
-  margin-bottom: 12px;
+  background: var(--state-conflict-tint);
+  border: 1px solid var(--state-conflict);
+  color: var(--fg-primary);
+  padding: var(--s-12);
+  border-radius: var(--r-md);
+  margin-bottom: var(--s-12);
+  font-size: var(--t-small-size);
 }
 
 .notice {
-  background: #e8f3ec;
-  border: 1px solid #b5dcc4;
-  color: #14603a;
-  padding: 10px 12px;
-  border-radius: var(--radius);
-  margin-bottom: 12px;
+  background: var(--state-ok-tint);
+  border: 1px solid var(--state-ok);
+  color: var(--fg-primary);
+  padding: var(--s-12);
+  border-radius: var(--r-md);
+  margin-bottom: var(--s-12);
+  font-size: var(--t-small-size);
 }
 
 .dot {
@@ -160,86 +185,81 @@ th {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  margin-right: 6px;
-  background: var(--muted);
+  margin-right: var(--s-6);
+  background: var(--fg-disabled);
 }
 
 .dot.on {
-  background: var(--success);
+  background: var(--state-ok);
 }
 
 .dot.off {
-  background: var(--danger);
+  background: var(--state-conflict);
 }
 
 .badge {
   display: inline-block;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 12px;
-  background: #eaeef2;
-  color: var(--muted);
+  padding: 1px 7px;
+  border-radius: var(--r-sm);
+  font-size: var(--t-micro-size);
+  line-height: var(--t-micro-line);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  background: var(--bg-sunken);
+  color: var(--fg-secondary);
 }
 
 .badge.order {
-  background: #e8f3ec;
-  color: var(--success);
+  background: var(--state-ok-tint);
+  color: var(--state-ok);
 }
 
 .badge.verified {
-  background: #fff4e0;
-  color: #9a6400;
+  background: var(--state-offline-tint);
+  color: var(--state-offline);
 }
 
 .badge.cancelled {
-  background: #fdecea;
-  color: var(--danger);
+  background: var(--state-conflict-tint);
+  color: var(--state-conflict);
 }
 
-/* Credentials that are shown exactly once must be easy to copy by hand. */
 .secret-box {
-  font-family: 'Courier New', Courier, monospace;
-  font-size: 18px;
-  letter-spacing: 1px;
-  background: #f0f4f8;
-  border: 1px dashed var(--border);
-  padding: 10px 12px;
-  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: var(--t-title-size);
+  letter-spacing: 0.06em;
+  background: var(--bg-sunken);
+  border: 1px dashed var(--line-strong);
+  padding: var(--s-12);
+  border-radius: var(--r-md);
   word-break: break-all;
 }
 
-/* ---------------------------------------------------------------------------
- * Lead & order boards (docs/LEAD_GENERATION_FLOW.md §4.2)
- *
- * Stages are tenant-configurable, so the board cannot know how many columns it
- * will have. `grid-auto-flow: column` with a fixed track width plus horizontal
- * scroll handles three columns and thirteen equally well, and keeps each column
- * wide enough to read a party name without wrapping.
- * ------------------------------------------------------------------------- */
+/* --- Kanban boards ---------------------------------------------------------- */
 
 .board {
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: minmax(260px, 1fr);
-  gap: 12px;
+  gap: var(--s-12);
   overflow-x: auto;
-  padding-bottom: 8px;
+  padding-bottom: var(--s-8);
   align-items: start;
 }
 
 .board-column {
-  background: #eef2f6;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
   min-height: 140px;
   display: flex;
   flex-direction: column;
+  transition: background-color var(--d-base) var(--e-standard),
+    border-color var(--d-base) var(--e-standard);
 }
 
-/* Feedback while a card is held over a column. Without it, dropping feels like
-   guessing — there is no cursor affordance that says "this one". */
 .board-column.drop-target {
-  background: #e2ecf8;
+  background: var(--accent-tint);
   border-color: var(--accent);
 }
 
@@ -247,173 +267,171 @@ th {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
+  gap: var(--s-8);
+  padding: var(--s-8) var(--s-12);
+  border-bottom: 1px solid var(--line);
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--t-small-size);
 }
 
 .board-column-header .count {
-  color: var(--muted);
+  color: var(--fg-tertiary);
   font-weight: 400;
-  font-size: 13px;
+  font-size: var(--t-small-size);
+  font-variant-numeric: tabular-nums;
 }
 
 .board-column-body {
-  padding: 10px;
+  padding: var(--s-12);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--s-12);
 }
 
 .board-column-empty {
-  color: var(--muted);
-  font-size: 13px;
-  padding: 6px 2px 10px;
+  color: var(--fg-tertiary);
+  font-size: var(--t-small-size);
+  padding: var(--s-6) var(--s-2) var(--s-12);
 }
 
 .stage-swatch {
   width: 10px;
   height: 10px;
-  border-radius: 3px;
+  border-radius: var(--r-sm);
   flex: 0 0 auto;
 }
 
 .board-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 10px 12px;
+  position: relative;
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--s-12);
   cursor: grab;
   text-align: left;
   width: 100%;
   font: inherit;
   color: inherit;
   display: block;
+  transition: background-color var(--d-fast) var(--e-standard);
+  contain: layout paint;
 }
 
-.board-card:hover {
-  border-color: var(--accent);
+.board-card:hover:not(.dragging) {
+  background: var(--bg-hover);
 }
 
 .board-card.dragging {
-  opacity: 0.45;
+  opacity: 0.8;
+  outline: 2px solid var(--accent); /* never a drop shadow while dragging */
+  pointer-events: none;
 }
 
 .board-card-title {
-  font-weight: 600;
+  font-weight: 550;
+  font-size: var(--t-small-size);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--s-6);
   flex-wrap: wrap;
 }
 
 .board-card-meta {
-  color: var(--muted);
-  font-size: 13px;
-  margin-top: 4px;
+  color: var(--fg-tertiary);
+  font-size: var(--t-small-size);
+  line-height: var(--t-small-line);
+  margin-top: var(--s-4);
 }
-
-/* --- Chips & badges ------------------------------------------------------ */
 
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  background: #e7edf3;
-  color: var(--muted);
-  border: 1px solid var(--border);
+  gap: var(--s-4);
+  padding: 1px 7px;
+  border-radius: var(--r-sm);
+  font-size: var(--t-micro-size);
+  line-height: var(--t-micro-line);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  background: var(--bg-sunken);
+  color: var(--fg-secondary);
+  border: 1px solid var(--line);
   white-space: nowrap;
 }
 
 .chip.pending {
-  background: #fdf1dc;
-  border-color: #e6c98a;
-  color: #8a6115;
+  background: var(--state-offline-tint);
+  border-color: var(--state-offline);
+  color: var(--state-offline);
 }
 
-.chip.incomplete {
-  background: #fbe6e9;
-  border-color: #e9b6bf;
-  color: #9c2436;
+.chip.incomplete,
+.chip.short {
+  background: var(--state-conflict-tint);
+  border-color: var(--state-conflict);
+  color: var(--state-conflict);
 }
 
 .chip.converted {
-  background: #e2f3ea;
-  border-color: #a9d8bf;
-  color: #16693c;
+  background: var(--state-ok-tint);
+  border-color: var(--state-ok);
+  color: var(--state-ok);
 }
-
-.chip.short {
-  background: #fbe6e9;
-  border-color: #e9b6bf;
-  color: #9c2436;
-}
-
-/* --- Colour quantity rows ------------------------------------------------ */
 
 .colour-row {
   display: grid;
   grid-template-columns: 1fr 120px auto;
-  gap: 8px;
+  gap: var(--s-8);
   align-items: center;
-  margin-bottom: 6px;
+  margin-bottom: var(--s-6);
 }
 
 .line-card {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px;
-  margin-bottom: 10px;
-  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--s-12);
+  margin-bottom: var(--s-12);
+  background: var(--bg-surface);
 }
 
 .line-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 10px;
+  gap: var(--s-12);
 }
-
-/* --- Sync bar ------------------------------------------------------------ */
 
 .sync-bar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--s-12);
   flex-wrap: wrap;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  margin-bottom: 12px;
-  font-size: 14px;
+  padding: var(--s-8) var(--s-12);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  margin-bottom: var(--s-12);
+  font-size: var(--t-small-size);
 }
 
 .sync-bar.offline {
-  background: #fdf1dc;
-  border-color: #e6c98a;
+  background: var(--state-offline-tint);
+  border-color: var(--state-offline);
 }
 
 .sync-bar .spacer {
   flex: 1 1 auto;
 }
 
-/* --- Timeline ------------------------------------------------------------ */
-
 .timeline {
   list-style: none;
   margin: 0;
   padding: 0;
-  border-left: 2px solid var(--border);
+  border-left: 2px solid var(--line);
 }
 
 .timeline li {
   position: relative;
-  padding: 0 0 14px 16px;
+  padding: 0 0 var(--s-16) var(--s-16);
 }
 
 .timeline li::before {
@@ -424,7 +442,7 @@ th {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--border);
+  background: var(--line-strong);
 }
 
 .timeline li.remark::before {
@@ -432,21 +450,22 @@ th {
 }
 
 .timeline .when {
-  color: var(--muted);
-  font-size: 12px;
+  color: var(--fg-tertiary);
+  font-size: var(--t-micro-size);
 }
 
-/* --- Misc ---------------------------------------------------------------- */
-
 .section-title {
-  margin: 0 0 10px;
-  font-size: 16px;
+  margin: 0 0 var(--s-12);
+  font-size: var(--t-title-size);
+  line-height: var(--t-title-line);
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .split {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-  gap: 16px;
+  gap: var(--s-16);
   align-items: start;
 }
 
@@ -457,7 +476,7 @@ th {
 }
 
 .stack > * + * {
-  margin-top: 10px;
+  margin-top: var(--s-12);
 }
 
 .right {
@@ -471,10 +490,8 @@ th {
 /* ---------------------------------------------------------------------------
  * Permission grid (docs/ROLES_AND_USERS.md UI §5.2, §9)
  *
- * A real table with header cells on both axes, so a screen reader announces
- * "Orders, edit, checked" rather than "checkbox, checked". The three cell
- * states are visually distinct on purpose: a blocked cell must not look like an
- * unchecked one, or the tier ceiling becomes invisible.
+ * Three cell states stay visually distinct on purpose: a blocked cell must not
+ * look like an unchecked one, or the tier ceiling becomes invisible.
  * ------------------------------------------------------------------------- */
 
 .permission-grid {
@@ -484,8 +501,8 @@ th {
 
 .permission-grid th,
 .permission-grid td {
-  border: 1px solid var(--border);
-  padding: 6px 10px;
+  border: 1px solid var(--line);
+  padding: var(--s-6) var(--s-12);
   text-align: center;
 }
 
@@ -495,23 +512,22 @@ th {
 }
 
 .permission-grid thead th {
-  background: #eef2f6;
-  font-size: 13px;
+  background: var(--bg-sunken);
+  font-size: var(--t-small-size);
   font-weight: 600;
 }
 
 .permission-grid td.cell-na {
-  color: var(--border);
+  color: var(--line);
   background: repeating-linear-gradient(
     45deg,
     transparent,
     transparent 4px,
-    #f4f6f8 4px,
-    #f4f6f8 8px
+    var(--bg-canvas) 4px,
+    var(--bg-canvas) 8px
   );
 }
 
-/* A blocked checkbox reads as blocked, not merely as "off". */
 .permission-grid input:disabled[aria-disabled='true'] {
   opacity: 0.3;
   cursor: not-allowed;
@@ -523,11 +539,15 @@ th {
 }
 
 button.link {
+  display: inline;
+  min-height: 0;
+  padding: 0;
   background: none;
   border: none;
+  border-radius: 0;
   color: inherit;
   font: inherit;
-  padding: 0;
+  font-weight: inherit;
   cursor: pointer;
   text-decoration: underline dotted;
 }
@@ -545,20 +565,21 @@ button.link:disabled {
 .capability-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 8px;
+  gap: var(--s-8);
 }
 
 .capability {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  gap: var(--s-8);
+  padding: var(--s-8) var(--s-12);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
   margin-bottom: 0;
   cursor: pointer;
-  font-size: 14px;
-  color: var(--text);
+  font-size: var(--t-small-size);
+  color: var(--fg-primary);
+  background: var(--bg-surface);
 }
 
 .capability input {
@@ -572,12 +593,11 @@ button.link:disabled {
     45deg,
     transparent,
     transparent 4px,
-    #f4f6f8 4px,
-    #f4f6f8 8px
+    var(--bg-canvas) 4px,
+    var(--bg-canvas) 8px
   );
 }
 
-/* Reasons must reach a screen reader, not only a hover tooltip. */
 .sr-only {
   position: absolute;
   width: 1px;

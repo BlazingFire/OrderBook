@@ -1,7 +1,11 @@
 import { useState, type FormEvent } from 'react';
 import type { SignedInUser } from '@orderbook/shared';
 import { api } from '../api';
-import { Field } from '../components/Field';
+import { t } from '../i18n/strings';
+import { Button } from '../ui/Button';
+import { Card } from '../ui/Card';
+import { FieldError, FormField, Input } from '../ui/Form';
+import { LogoLockup } from '../ui/Logo';
 
 interface Props {
   onSignedIn: (user: SignedInUser, sessionToken: string) => void;
@@ -21,44 +25,69 @@ export function SignInScreen({ onSignedIn }: Props) {
       const result = await api.signIn(username, password);
       onSignedIn(result.user, result.sessionToken);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Sign in failed');
+      setError(caught instanceof Error ? caught.message : t('signIn.error.default'));
+      setPassword('');
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div style={{ maxWidth: 400, margin: '100px auto', padding: '0 16px' }}>
-      <h1>Master Panel</h1>
-      <p className="muted">Enter the ID and password generated during setup.</p>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 'var(--s-24)',
+        maxWidth: 420,
+        margin: '0 auto',
+        padding: 'var(--s-56) var(--s-16)',
+      }}
+    >
+      <LogoLockup markSize={28} />
 
-      {error && <div className="error">{error}</div>}
+      <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
+        <p className="ob-small" style={{ textAlign: 'center', margin: 0 }}>
+          {t('signIn.subtitle')}
+        </p>
 
-      <form className="card" onSubmit={submit}>
-        <Field label="ID">
-          {(id) => (
-            <input
-              id={id}
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              autoFocus
-            />
-          )}
-        </Field>
-        <Field label="Password">
-          {(id) => (
-            <input
-              id={id}
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          )}
-        </Field>
-        <button type="submit" disabled={busy}>
-          {busy ? 'Signing in…' : 'Sign in'}
-        </button>
-      </form>
+        <Card>
+          <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
+            <FormField label={t('signIn.field.username')}>
+              {(id) => (
+                <Input
+                  id={id}
+                  value={username}
+                  autoFocus
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  onChange={(event) => setUsername(event.target.value)}
+                />
+              )}
+            </FormField>
+            <FormField label={t('signIn.field.password')}>
+              {(id) => (
+                <Input
+                  id={id}
+                  type="password"
+                  value={password}
+                  autoComplete="current-password"
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+              )}
+            </FormField>
+
+            {/* Stays visible until the next attempt — a failed sign-in must not
+                vanish the way a toast would after a few seconds. */}
+            {error && <FieldError>{error}</FieldError>}
+
+            <Button type="submit" variant="primary" busy={busy} disabled={!username || !password}>
+              {busy ? t('signIn.action.signingIn') : t('signIn.action.signIn')}
+            </Button>
+          </form>
+        </Card>
+      </div>
     </div>
   );
 }

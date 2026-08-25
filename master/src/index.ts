@@ -14,7 +14,12 @@ import { startPostgres, type PostgresServerHandle } from './db/postgres-server.j
 import { closeDatabase, db, initDatabase, runMigrations } from './db/knex.js';
 import { startDiscoveryResponder, type DiscoveryResponder } from './discovery/responder.js';
 import { createApp } from './http/app.js';
+import {
+  ensureDocumentDirectories,
+  sweepOrphanTemporaries,
+} from './lib/document-files.js';
 import { createLogger } from './lib/logger.js';
+import { assertFontsPresent } from './pdf/fonts.js';
 import { listLanAddresses } from './lib/network.js';
 import { createRealtimeHub, type RealtimeHub } from './realtime/hub.js';
 import { purgeExpiredSessions } from './services/auth.service.js';
@@ -49,6 +54,15 @@ async function assertTimeZoneValid(): Promise<void> {
 
 async function main(): Promise<void> {
   await fs.mkdir(config.uploadsDir, { recursive: true });
+
+  // Before anything else: a missing document font must stop the process here,
+  // naming the file. PDFKit's fallback for an unregistered face is Helvetica,
+  // which has no Devanagari glyphs — so the alternative to crashing now is
+  // silently printing every Hindi name as blank boxes on a document already
+  // sent to a customer.
+  assertFontsPresent();
+  await ensureDocumentDirectories();
+  await sweepOrphanTemporaries();
 
   const postgres = await startPostgres();
   initDatabase(postgres.connectionUrl);

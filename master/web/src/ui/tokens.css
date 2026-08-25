@@ -1,0 +1,194 @@
+/*
+ * OrderBook design tokens — the only place a raw colour, font size, radius or
+ * duration may appear (6-UI-DESIGN.md §2.5, gate UI-1).
+ *
+ * Two ramps, one semantic set. Components reference ONLY the --bg-/--fg-/--line/
+ * --accent/--state names; never a ramp value directly.
+ */
+
+:root {
+  /* ---- Ramp — light (porcelain · glaze · kiln) -------------------------- */
+  --porcelain-00: #ffffff;
+  --porcelain-05: #f2f4f5;
+  --porcelain-10: #e9ecee;
+  --porcelain-20: #d6dbde;
+  --porcelain-30: #b9c1c6;
+  --porcelain-50: #6e7c84;
+  --porcelain-70: #46535b;
+  --porcelain-90: #10161a;
+
+  --glaze-50: #14509e;
+  --glaze-60: #0f4088;
+  --glaze-05: #e3ecf8;
+
+  --kiln-amber: #b26a00;
+  --kiln-amber-05: #fbf0dc;
+  --kiln-red: #a8231f;
+  --kiln-red-05: #fae9e8;
+  --kiln-green: #1f6f4a;
+  --kiln-green-05: #e4f1ea;
+
+  /* ---- Semantic — the only names components may use --------------------- */
+  --bg-canvas: var(--porcelain-05);
+  --bg-surface: var(--porcelain-00);
+  --bg-sunken: var(--porcelain-10);
+  --bg-hover: var(--porcelain-05);
+  --bg-selected: var(--glaze-05);
+
+  --fg-primary: var(--porcelain-90);
+  --fg-secondary: var(--porcelain-70);
+  --fg-tertiary: var(--porcelain-50);
+  --fg-disabled: var(--porcelain-30);
+  --fg-on-accent: #ffffff;
+
+  --line: var(--porcelain-20);
+  --line-strong: var(--porcelain-30);
+  --line-focus: var(--glaze-50);
+
+  --accent: var(--glaze-50);
+  --accent-hover: var(--glaze-60);
+  --accent-tint: var(--glaze-05);
+
+  --state-offline: var(--kiln-amber);
+  --state-offline-tint: var(--kiln-amber-05);
+  --state-conflict: var(--kiln-red);
+  --state-conflict-tint: var(--kiln-red-05);
+  --state-ok: var(--kiln-green);
+  --state-ok-tint: var(--kiln-green-05);
+
+  /* ---- Elevation (§5) — exactly three levels ---------------------------- */
+  --sh-2: 0 4px 12px rgba(16, 22, 26, 0.1);
+  --sh-3: 0 16px 40px rgba(16, 22, 26, 0.18);
+
+  /* ---- Scrims & glints (modal overlay, rail highlight, swatch ring) ----- */
+  --overlay-scrim: rgba(16, 22, 26, 0.18);
+  --rail-glint: rgba(255, 255, 255, 0.6);
+  --swatch-ring: rgba(16, 22, 26, 0.14);
+
+  /* ---- Typography roles (§4.1), sized at the Comfortable root of 14px --- */
+  --font-ui: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
+  --font-deva: 'Noto Sans Devanagari', 'Inter', system-ui, sans-serif;
+
+  --t-display-size: 1.7143rem; /* 24px */
+  --t-display-line: 2rem; /* 28px */
+  --t-title-size: 1.2857rem; /* 18px */
+  --t-title-line: 1.7143rem; /* 24px */
+  --t-eyebrow-size: 0.7857rem; /* 11px */
+  --t-eyebrow-line: 1rem; /* 14px */
+  --t-body-size: 1rem; /* 14px */
+  --t-body-line: 1.4286rem; /* 20px */
+  --t-data-size: 0.9643rem; /* 13.5px */
+  --t-data-line: 1.2857rem; /* 18px */
+  --t-small-size: 0.8929rem; /* 12.5px */
+  --t-small-line: 1.1429rem; /* 16px */
+  --t-micro-size: 0.7857rem; /* 11px */
+  --t-micro-line: 1rem; /* 14px */
+  --t-mono-size: 0.8929rem; /* 12.5px */
+  --t-mono-line: 1.2857rem; /* 18px */
+
+  /* ---- Space (§5) — 4px base; nothing else exists ----------------------- */
+  --s-2: 2px;
+  --s-4: 4px;
+  --s-6: 6px;
+  --s-8: 8px;
+  --s-12: 12px;
+  --s-16: 16px;
+  --s-20: 20px;
+  --s-24: 24px;
+  --s-32: 32px;
+  --s-40: 40px;
+  --s-56: 56px;
+
+  /* ---- Radius ------------------------------------------------------------ */
+  --r-sm: 4px; /* chips, inputs   */
+  --r-md: 6px; /* buttons, cards  */
+  --r-lg: 10px; /* modals, drawers */
+
+  /* ---- Motion (§5) -------------------------------------------------------- */
+  --d-fast: 120ms;
+  --d-base: 160ms;
+  --d-slow: 220ms;
+  --e-standard: cubic-bezier(0.2, 0, 0, 1);
+  --e-exit: cubic-bezier(0.4, 0, 1, 1);
+
+  /* ---- Shell dimensions (§8) --------------------------------------------- */
+  --shell-topbar-h: 48px;
+  --shell-filterbar-h: 40px;
+  --shell-footer-h: 26px;
+  --shell-sidebar-w: 208px;
+  --shell-sidebar-collapsed-w: 52px;
+  --rail-w: 3px;
+
+  /* ---- Layering ----------------------------------------------------------- */
+  --z-popover: 40;
+  --z-overlay: 50;
+  --z-drawer: 60;
+  --z-toast: 70;
+  --z-splash: 100;
+
+  /* ---- Density defaults (Comfortable, §10) -------------------------------- */
+  --root-size: 14px;
+  --row-h: 32px;
+  --ctl-h-sm: 26px;
+  --ctl-h-md: 30px;
+  --ctl-h-lg: 36px;
+}
+
+[data-theme='dark'] {
+  --porcelain-00: #151c1f;
+  --porcelain-05: #0e1315;
+  --porcelain-10: #0a0f11;
+  --porcelain-20: #263136;
+  --porcelain-30: #3a484e;
+  --porcelain-50: #7e8e96;
+  --porcelain-70: #9aa9b0;
+  --porcelain-90: #e6edf0;
+
+  --glaze-50: #5b9bf0;
+  --glaze-60: #7db0f4;
+  --glaze-05: #16283f;
+
+  --kiln-amber: #e0a040;
+  --kiln-amber-05: #2e2313;
+  --kiln-red: #e8706b;
+  --kiln-red-05: #331716;
+  --kiln-green: #4fb483;
+  --kiln-green-05: #10281d;
+
+  --bg-hover: #1b2429;
+  --fg-on-accent: #0a0f11;
+
+  --sh-2: 0 4px 12px rgba(0, 0, 0, 0.45);
+  --sh-3: 0 16px 40px rgba(0, 0, 0, 0.6);
+  --overlay-scrim: rgba(0, 0, 0, 0.4);
+  --swatch-ring: rgba(230, 237, 240, 0.14);
+}
+
+/* Density (§10): per-machine, never synced. Only the root size and the three
+ * height families change — every component is in rem or reads these tokens,
+ * so no component knows density exists. */
+[data-density='compact'] {
+  --root-size: 13px;
+  --row-h: 28px;
+  --ctl-h-sm: 24px;
+  --ctl-h-md: 26px;
+  --ctl-h-lg: 30px;
+}
+[data-density='large'] {
+  --root-size: 16px;
+  --row-h: 38px;
+  --ctl-h-sm: 30px;
+  --ctl-h-md: 36px;
+  --ctl-h-lg: 42px;
+}
+
+html {
+  font-size: var(--root-size);
+}
+
+/* Devanagari matches Inter's x-height and gains +2px of line height (§10). */
+:lang(hi) {
+  font-family: var(--font-deva);
+  line-height: calc(1em + 2px);
+}

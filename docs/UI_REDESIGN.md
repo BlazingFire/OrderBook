@@ -42,6 +42,28 @@ Still open from the Phase 1 list: extraction to the `ui/` workspace, the remaini
 primitives (Combobox, Checkbox/Radio/Switch, DateField, Modal, Tooltip, Tabs, FilterBar,
 CursorPager, PermissionGrid as components), and CI gates (§8 Phase 4).
 
+### Master Panel reskin (2026-08-25)
+
+The same `ui/` foundation was ported to `master/web/src/ui/` (byte-identical copy plus two
+extra icons) and `App.tsx` rewired onto `AppShell` — Phase 2 items 4–8 in one pass at the
+shell level, exactly like the Office:
+
+- Sidebar groups follow §4.1's split: **Work** (Dashboard, Leads & orders, Inventory with
+  low-stock count, Conflicts with open count) · **Admin** (Office panels, Roles & users —
+  permission-gated absent-not-greyed, Settings).
+- The presence rail carries the **Master's own aggregate** (§4.8): conflict review >
+  unreachable panels (+pending) > changes waiting on panels > synced — never an inert
+  "Synced". The footer popover shows pending-sync, panels-online and low-stock counts.
+- All nine screens adopt the look through the token-compat `styles.css` (including the
+  permission grid's blocked-cell hatching and capability blocks, re-expressed in tokens);
+  screen logic untouched.
+- Splash, cold-start gate, `#/gallery` route, window-blur animation pause and the
+  theme/density persistence behave identically to Office.
+
+Not done here either: per-screen `.ob-*` migrations (the compat layer is scaffolding for
+that), Orders-as-table behaviour change (§4.3 — still Kanban), and any new backend-gated
+screen.
+
 
 Source material (outside the repo, on the owner's Desktop —
 `C:\Users\Z\Desktop\OrderBook UI design\`):

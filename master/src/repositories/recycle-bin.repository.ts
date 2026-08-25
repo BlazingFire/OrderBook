@@ -1,9 +1,9 @@
 /**
  * The only cross-table SQL in the Recycle Bin module: a `UNION ALL` over the
- * soft-deletable tables, six branches at this stage (Fields and the PDF
- * Designer append two and one more at their own stages — a gate asserting a
- * different branch count belongs to the stage at which that many branches
- * exist).
+ * soft-deletable tables — **nine branches**, complete as of Stage 6. Six
+ * landed with the Bin itself, two with Fields and one with the PDF Designer.
+ * `BIN_BRANCH_TYPES` is exported so a test can prove this list still covers
+ * every member of `RECYCLE_BIN_ENTITIES`.
  *
  * Branches the caller may not see are omitted from the SQL entirely — that
  * is simultaneously the permission filter, the entity-type filter and the
@@ -98,7 +98,52 @@ const BRANCHES: BranchDefinition[] = [
             FROM users
            WHERE tenant_id = ? AND deleted_at IS NOT NULL`,
   },
+  // These three sit on UUID primary keys while every branch above is on a
+  // TEXT record id, and Postgres refuses a UNION that mixes `uuid` with
+  // `text` outright — hence the explicit `::text`. `BinEntry.id` is a string
+  // on the wire either way, so nothing downstream can tell the difference.
+  //
+  // Stage 3 (Fields). Both were added to `RECYCLE_BIN_ENTITIES` and to
+  // `RESTORE_PERMISSION` when Fields landed, but neither got a branch here —
+  // so a deleted option value or custom field was listed nowhere and could
+  // not be restored through the Bin at all, while every type check said it
+  // should be. `FLD-19b` in `fields.integration.test.ts` now makes that
+  // divergence impossible to reintroduce.
+  {
+    entityType: 'option_list_item',
+    sql: `SELECT 'option_list_item' AS entity_type, id::text AS id, label AS label, list_key AS sublabel,
+                 deleted_at, ${CURSOR_TEXT} AS deleted_at_text, deleted_by, version
+            FROM option_lists
+           WHERE tenant_id = ? AND deleted_at IS NOT NULL`,
+  },
+  {
+    entityType: 'custom_field_definition',
+    sql: `SELECT 'custom_field_definition' AS entity_type, id::text AS id, label AS label, entity AS sublabel,
+                 deleted_at, ${CURSOR_TEXT} AS deleted_at_text, deleted_by, version
+            FROM custom_field_definitions
+           WHERE tenant_id = ? AND deleted_at IS NOT NULL`,
+  },
+  // Stage 6 (PDF Designer) — the ninth and last branch. `document_exports` is
+  // deliberately not a tenth: a document that was sent to a customer is a
+  // record of what was sent, not something to put back.
+  {
+    entityType: 'document_template',
+    sql: `SELECT 'document_template' AS entity_type, id::text AS id, name AS label, document_type AS sublabel,
+                 deleted_at, ${CURSOR_TEXT} AS deleted_at_text, deleted_by, version
+            FROM document_templates
+           WHERE tenant_id = ? AND deleted_at IS NOT NULL`,
+  },
 ];
+
+/**
+ * Exported so a test can assert the branch list covers every declared Bin
+ * entity. Adding a type to `RECYCLE_BIN_ENTITIES` without adding a branch here
+ * produces no error anywhere — the type checks pass, the route accepts it, and
+ * the entity is simply invisible in the Bin forever.
+ */
+export const BIN_BRANCH_TYPES: readonly RecycleBinEntityType[] = BRANCHES.map(
+  (branch) => branch.entityType,
+);
 
 interface BinRow {
   entity_type: RecycleBinEntityType;

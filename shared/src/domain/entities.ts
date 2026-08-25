@@ -144,6 +144,13 @@ export interface PipelineStage {
   /** A record in a terminal stage is finished — won, lost, dispatched. */
   isTerminal: boolean;
   colour: string | null;
+  /**
+   * Stops new records landing in this stage while every record already in it
+   * keeps rendering — a different word from soft-delete on purpose, because
+   * `leads.stage_id`/`orders.stage_id` are real foreign keys and Postgres
+   * refuses to delete a stage that holds records. Not a Recycle Bin entity.
+   */
+  isArchived: boolean;
 }
 
 export interface Pipeline {
@@ -165,6 +172,14 @@ export interface OptionListItem {
   label: string;
   sequence: number;
   isActive: boolean;
+  /** `#RRGGBB`, non-null only for the `stock.colour` set. */
+  hex: string | null;
+  createdAt: IsoTimestamp;
+  updatedAt: IsoTimestamp;
+  deletedAt: IsoTimestamp | null;
+  deletedBy: RecordId | null;
+  /** Backs the mandatory `expectedVersion` on `PUT /api/fields/values/:id`. */
+  version: number;
 }
 
 export type CustomFieldType = 'text' | 'number' | 'date' | 'select' | 'boolean';
@@ -182,6 +197,10 @@ export interface CustomFieldDefinition {
   options: string[];
   sequence: number;
   isActive: boolean;
+  deletedAt: IsoTimestamp | null;
+  deletedBy: RecordId | null;
+  /** Backs the mandatory `expectedVersion` on `PUT /api/fields/definitions/:id`. */
+  version: number;
 }
 
 // --- Reference data --------------------------------------------------------
@@ -251,6 +270,48 @@ export interface Product {
   createdAt: IsoTimestamp;
   updatedAt: IsoTimestamp;
   sync: SyncMeta;
+  /**
+   * Ordered gallery, primary first then upload order. Always present as an
+   * array (possibly empty) for anyone who can see the product at all — there
+   * is no separate `images.view` permission (`docs/schema/02-parties-and-products.md`).
+   */
+  images: ProductImage[];
+}
+
+/** One of the four sizes every uploaded image is normalized into at import time. */
+export type ImageVariant = 'master' | 'large' | 'thumb' | 'micro';
+
+/** Fetch priority order — cheap/most-needed first (`7-IMAGE-PIPELINE.md` §4.3). */
+export const IMAGE_VARIANTS: readonly ImageVariant[] = ['thumb', 'micro', 'large', 'master'];
+
+/** No file-size limit at import (§2.1); this is a sanity ceiling against a bad drag-drop, shared so Office's own upload multipart parser rejects the same oversized file the Master would. */
+export const MAX_IMAGE_SOURCE_BYTES = 60 * 1024 * 1024;
+
+/**
+ * One entry in a product's photo gallery. Image *bytes* live on disk as
+ * `master.webp`/`large.webp`/`thumb.webp`/`micro.webp` under
+ * `<uploads>/images/<tenantId>/<id>/`, fetched through `GET /api/images/:id/:variant`
+ * — this row is only ever the metadata that rides the normal product read path.
+ *
+ * `blurhash` is inlined here (not a separate fetch) so a card can paint an
+ * instant colour-accurate placeholder before any variant file has arrived.
+ */
+export interface ProductImage {
+  id: Uuid;
+  productId: RecordId;
+  caption: string | null;
+  isPrimary: boolean;
+  /** Gallery order; the primary image is always sorted first regardless of this. */
+  sequence: number;
+  /** Pixel size of the `master` variant, for aspect-ratio-correct placeholders. */
+  width: number;
+  height: number;
+  /** SHA-256 of `master.webp`, so a replica can verify its local copy without asking the Master. */
+  checksum: string;
+  /** Compact colour-placeholder string, painted before any variant has loaded. */
+  blurhash: string;
+  byteSize: number;
+  uploadedAt: IsoTimestamp;
 }
 
 /**
@@ -564,17 +625,39 @@ export interface StorageUsage {
   diskFreeBytes: number | null;
 }
 
+/**
+ * Every counter is optional and **absent**, never `0`, when the actor does
+ * not hold the key governing the data behind it
+ * (`docs/backend-modules/04-API-CONTRACT.md` §7.1) — a `0` is a claim about
+ * the business, "you may not see this" is a claim about the reader. `asOf`
+ * is the one exception: it describes the response itself, so it is always
+ * present, which is what lets a panel label a cached figure as stale.
+ */
 export interface DashboardSummary {
-  leadCount: number;
-  orderCount: number;
-  partyCount: number;
-  productCount: number;
+  leadCount?: number;
+  orderCount?: number;
+  partyCount?: number;
+  productCount?: number;
   /** Products at or below their reorder level. */
-  lowStockCount: number;
+  lowStockCount?: number;
   /** Leads whose follow-up date has arrived. */
-  followUpsDueCount: number;
+  followUpsDueCount?: number;
   /** Unresolved rows in `sync_conflicts`. */
-  openConflictCount: number;
+  openConflictCount?: number;
   /** Mutations queued on panels that have not reached the Master yet. */
-  pendingSyncCount: number;
+  pendingSyncCount?: number;
+  /** Orders not yet dispatched. */
+  openOrderCount?: number;
+  /** Dispatched since the start of the current business week. */
+  dispatchedThisWeekCount?: number;
+  pipelineBreakdown?: Array<{
+    stageId: Uuid;
+    stageName: string;
+    /** The stage's position in its pipeline, so the client orders without re-deriving it. */
+    sequence: number;
+    colourHex: string | null;
+    leadCount: number;
+  }>;
+  /** When these figures were computed. Always present — an offline panel labels its staleness from it. */
+  asOf: IsoTimestamp;
 }

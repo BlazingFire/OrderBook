@@ -311,6 +311,10 @@ function provisionalProduct(mutation: Mutation): Product {
     createdAt: mutation.createdAt,
     updatedAt: mutation.createdAt,
     sync: { version: 0, hlc: '', fieldHlc: {}, temporaryId: mutation.entityId },
+    // A product created offline has no images yet — images are online-only
+    // (`7-IMAGE-PIPELINE.md` port notes), so this can never be non-empty for
+    // a still-provisional record.
+    images: [],
   };
 }
 

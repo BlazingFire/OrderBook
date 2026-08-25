@@ -11,22 +11,30 @@ import type { SyncConflict } from '@orderbook/shared';
 
 import { api } from '../api';
 import { formatDateTime } from '../format';
+import { t } from '../i18n/strings';
+import { Button } from '../ui/Button';
+import { Card } from '../ui/Card';
+import { Checkbox } from '../ui/Form';
+import { EmptyState, ConflictBanner } from '../ui/States';
 
 interface Props {
   revision: number;
+  canResolve: boolean;
 }
 
-export function ConflictsScreen({ revision }: Props) {
+type ConflictAction = 'keepWinner' | 'restoreLoser';
+
+export function ConflictsScreen({ revision, canResolve }: Props) {
   const [conflicts, setConflicts] = useState<SyncConflict[]>([]);
   const [showResolved, setShowResolved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [busyId, setBusyId] = useState<number | null>(null);
+  const [busy, setBusy] = useState<{ id: number; action: ConflictAction } | null>(null);
 
   const load = useCallback(async () => {
     try {
       setConflicts(await api.conflicts(showResolved));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not load conflicts');
+      setError(caught instanceof Error ? caught.message : t('conflicts.error.load'));
     }
   }, [showResolved]);
 
@@ -34,105 +42,128 @@ export function ConflictsScreen({ revision }: Props) {
     void load();
   }, [load, revision]);
 
-  async function resolve(
-    conflict: SyncConflict,
-    action: 'keepWinner' | 'restoreLoser',
-  ): Promise<void> {
-    setBusyId(conflict.id);
+  async function resolve(conflict: SyncConflict, action: ConflictAction): Promise<void> {
+    setBusy({ id: conflict.id, action });
     setError(null);
     try {
       await api.resolveConflict(conflict.id, action);
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not resolve the conflict');
+      setError(caught instanceof Error ? caught.message : t('conflicts.error.resolve'));
     } finally {
-      setBusyId(null);
+      setBusy(null);
     }
   }
 
   const visible = showResolved ? conflicts : conflicts.filter((conflict) => !conflict.resolvedAt);
 
   return (
-    <div>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h2 style={{ marginBottom: 0 }}>Sync conflicts</h2>
-        <label className="row" style={{ gap: 6, marginBottom: 0, cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            style={{ width: 'auto' }}
-            checked={showResolved}
-            onChange={(event) => setShowResolved(event.target.checked)}
-          />
-          Include reviewed
-        </label>
+    <div className="ob-measure-wide" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <p className="ob-small" style={{ margin: 0 }}>
+          {t('conflicts.description')}
+        </p>
+        <Checkbox
+          checked={showResolved}
+          onChange={setShowResolved}
+          label={t('conflicts.includeReviewed')}
+        />
       </div>
 
-      <p className="muted">
-        Raised when two panels edited the same field of the same record while both were offline. The
-        higher timestamp won; the other value is kept here so nothing is lost silently.
-      </p>
+      {!canResolve && (
+        <p className="ob-small" style={{ margin: 0, color: 'var(--fg-tertiary)' }}>
+          {t('conflicts.noPermission', { permission: 'sync.resolveConflicts' })}
+        </p>
+      )}
 
-      {error && <div className="error">{error}</div>}
+      {error && <ConflictBanner>{error}</ConflictBanner>}
 
       {visible.length === 0 ? (
-        <div className="card">
-          <p className="muted">Nothing to review.</p>
-        </div>
+        <Card>
+          <EmptyState title={t('conflicts.empty.title')} description={t('conflicts.empty.description')} />
+        </Card>
       ) : (
         visible.map((conflict) => (
-          <div className="card" key={conflict.id}>
-            <div className="row" style={{ justifyContent: 'space-between' }}>
-              <h3 style={{ margin: 0 }}>
-                {conflict.entity} {conflict.entityId} — <code>{conflict.field}</code>
-              </h3>
-              <span className="muted">{formatDateTime(conflict.createdAt)}</span>
+          <Card key={conflict.id}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <h2 className="ob-title" style={{ margin: 0 }}>
+                {conflict.entity} {conflict.entityId} — <code className="ob-mono">{conflict.field}</code>
+              </h2>
+              <span className="ob-small">{formatDateTime(conflict.createdAt)}</span>
             </div>
 
-            <div className="grid cols-2" style={{ marginTop: 12 }}>
-              <div className="line-card" style={{ marginBottom: 0 }}>
-                <div className="muted">Kept — from device {conflict.winningDeviceCode}</div>
-                <pre style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap' }}>
-                  {stringify(conflict.winningValue)}
-                </pre>
-              </div>
-              <div className="line-card" style={{ marginBottom: 0 }}>
-                <div className="muted">Overwritten — from device {conflict.losingDeviceCode}</div>
-                <pre style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap' }}>
-                  {stringify(conflict.losingValue)}
-                </pre>
-              </div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: 'var(--s-12)',
+                marginTop: 'var(--s-12)',
+              }}
+            >
+              <ConflictValue
+                label={t('conflicts.kept', { device: conflict.winningDeviceCode })}
+                value={conflict.winningValue}
+              />
+              <ConflictValue
+                label={t('conflicts.overwritten', { device: conflict.losingDeviceCode })}
+                value={conflict.losingValue}
+              />
             </div>
 
             {conflict.resolvedAt ? (
-              <p className="muted" style={{ marginBottom: 0, marginTop: 12 }}>
-                Reviewed {formatDateTime(conflict.resolvedAt)}
+              <p className="ob-small" style={{ marginBottom: 0, marginTop: 'var(--s-12)' }}>
+                {t('conflicts.reviewedAt', { when: formatDateTime(conflict.resolvedAt) })}
               </p>
             ) : (
-              <div className="row" style={{ gap: 8, marginTop: 12 }}>
-                <button
-                  className="secondary"
-                  disabled={busyId === conflict.id}
+              <div style={{ display: 'flex', gap: 'var(--s-8)', marginTop: 'var(--s-12)' }}>
+                <Button
+                  variant="secondary"
+                  busy={busy?.id === conflict.id && busy.action === 'keepWinner'}
+                  disabled={!canResolve || (busy !== null && busy.id !== conflict.id)}
                   onClick={() => void resolve(conflict, 'keepWinner')}
                 >
-                  Keep what is there
-                </button>
-                <button
-                  disabled={busyId === conflict.id}
+                  {t('conflicts.action.keepWinner')}
+                </Button>
+                <Button
+                  variant="primary"
+                  busy={busy?.id === conflict.id && busy.action === 'restoreLoser'}
+                  disabled={!canResolve || (busy !== null && busy.id !== conflict.id)}
                   onClick={() => void resolve(conflict, 'restoreLoser')}
                 >
-                  Put the other value back
-                </button>
+                  {t('conflicts.action.restoreLoser')}
+                </Button>
               </div>
             )}
-          </div>
+          </Card>
         ))
       )}
     </div>
   );
 }
 
+function ConflictValue({ label, value }: { label: string; value: unknown }) {
+  return (
+    <div
+      style={{
+        background: 'var(--bg-sunken)',
+        border: '1px solid var(--line)',
+        borderRadius: 'var(--r-md)',
+        padding: 'var(--s-12)',
+      }}
+    >
+      <div className="ob-small">{label}</div>
+      <pre
+        className="ob-data"
+        style={{ margin: 'var(--s-6) 0 0', whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}
+      >
+        {stringify(value)}
+      </pre>
+    </div>
+  );
+}
+
 function stringify(value: unknown): string {
-  if (value === null || value === undefined) return '(empty)';
-  if (typeof value === 'string') return value || '(empty)';
+  if (value === null || value === undefined) return t('conflicts.emptyValue');
+  if (typeof value === 'string') return value || t('conflicts.emptyValue');
   return JSON.stringify(value, null, 2);
 }

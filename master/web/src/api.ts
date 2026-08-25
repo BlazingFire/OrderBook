@@ -1,34 +1,73 @@
 /** Thin wrapper over the Master's local HTTP API. */
 
 import type {
+  ActivityLogEntry,
+  ActivityLogFacets,
+  ActivityLogQuery,
+  BackupManifest,
+  BackupRestorePreview,
+  BinCounts,
+  BinEntry,
+  BinRestoreResult,
+  ChainVerification,
+  ChainVerifyInput,
   ChangeOwnPasswordInput,
+  CursorPage,
   CustomFieldDefinition,
+  CustomFieldDefinitionInput,
+  CustomFieldDefinitionUpdateInput,
+  CustomFieldReorderInput,
   DashboardSummary,
+  DispatchesReport,
+  FieldCatalogue,
+  FieldUsageBreakdown,
   InventoryStockLevel,
+  LeadOutcomesReport,
   Lead,
   MasterIdentity,
   MessageKey,
   MessageParams,
   OfficePanelWithPresence,
   OptionListItem,
+  OptionListItemInput,
+  OptionListItemUpdateInput,
+  OptionListReorderInput,
   Order,
   Paginated,
   Party,
   PartyInput,
   PartyProductVariant,
   Pipeline,
+  PipelineStage,
+  PipelineStageInput,
   OneTimeSecret,
   PermissionCatalogue,
   Product,
   ProductCategory,
   ProductInput,
+  RecycleBinQuery,
+  DocumentAsset,
+  DocumentAssetInput,
+  DocumentExport,
+  DocumentExportQuery,
+  DocumentRenderResult,
+  DocumentTemplate,
+  DocumentTemplateInput,
+  DocumentTemplateQuery,
+  PreviewDocumentInput,
+  RenderDocumentInput,
+  ReportKind,
+  ReportRangeInput,
+  RestoreInput,
   Role,
   RoleInput,
   SearchHit,
+  StageReorderInput,
   StockMovement,
   StorageUsage,
   SignedInUser,
   SyncConflict,
+  TopPartiesReport,
   User,
   UserInput,
   UserUpdateInput,
@@ -121,6 +160,35 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 const post = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) });
 
+/** Extracts `ApiError` from a non-JSON (or empty) failure body, for the two `fetch` helpers below. */
+async function throwIfNotOk(response: Response): Promise<void> {
+  if (response.ok) return;
+  const body = await response.json().catch(() => null);
+  const detail = body as { error?: string; message?: string; details?: Record<string, unknown> } | null;
+  throw new ApiError(detail?.message ?? 'Request failed', detail?.error ?? 'internal_error', detail?.details ?? {});
+}
+
+/** A binary download, for storage export — the response is the file itself, not JSON. */
+async function requestBlob(path: string, body: unknown): Promise<{ blob: Blob; fileName: string }> {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    credentials: 'same-origin',
+  });
+  await throwIfNotOk(response);
+
+  const match = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') ?? '');
+  return { blob: await response.blob(), fileName: match?.[1] ?? 'orderbook-backup.obbackup' };
+}
+
+/** A multipart upload, for storage restore — the backup file rides as form data, not JSON. */
+async function requestForm<T>(path: string, form: FormData): Promise<T> {
+  const response = await fetch(path, { method: 'POST', body: form, credentials: 'same-origin' });
+  await throwIfNotOk(response);
+  return (await response.json()) as T;
+}
+
 export interface FirstRunCredentials {
   masterUniqueId: string;
   username: string;
@@ -135,6 +203,18 @@ export const api = {
   initialize: (companyName: string) => post<FirstRunCredentials>('/api/setup/initialize', { companyName }),
   identity: () => request<MasterIdentity>('/api/setup/identity'),
 
+  previewRestoreSetup: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return requestForm<BackupRestorePreview>('/api/setup/restore/preview', form);
+  },
+  restoreSetup: (file: File, passphrase: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('passphrase', passphrase);
+    return requestForm<{ manifest: BackupManifest; newPairingPassword: string }>('/api/setup/restore', form);
+  },
+
   signIn: (username: string, password: string) =>
     post<{ user: SignedInUser; sessionToken: string }>('/api/auth/sign-in', { username, password }),
   signOut: () => post<void>('/api/auth/sign-out'),
@@ -144,6 +224,20 @@ export const api = {
 
   dashboard: () => request<DashboardSummary>('/api/dashboard'),
   storage: () => request<StorageUsage>('/api/storage'),
+
+  exportStorage: (passphrase: string) => requestBlob('/api/storage/export', { scope: 'whole', passphrase }),
+  previewRestoreStorage: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return requestForm<BackupRestorePreview>('/api/storage/restore/preview', form);
+  },
+  restoreStorage: (file: File, passphrase: string, confirmWipe: boolean) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('passphrase', passphrase);
+    form.append('confirmWipe', String(confirmWipe));
+    return requestForm<{ manifest: BackupManifest; newPairingPassword: string }>('/api/storage/restore', form);
+  },
 
   pipelines: () => request<Pipeline[]>('/api/pipelines'),
   optionLists: () => request<OptionListItem[]>('/api/option-lists'),
@@ -247,4 +341,194 @@ export const api = {
     request<SyncConflict[]>(`/api/conflicts${includeResolved ? '?includeResolved=true' : ''}`),
   resolveConflict: (id: number, action: 'keepWinner' | 'restoreLoser') =>
     post<SyncConflict>(`/api/conflicts/${id}/resolve`, { action }),
+
+  // --- Recycle Bin (docs/backend-modules/04-API-CONTRACT.md §4) -----------
+
+  deleteParty: (id: string) => request<{ id: string; deletedAt: string }>(`/api/parties/${id}`, { method: 'DELETE' }),
+  deleteProduct: (id: string) => request<{ id: string; deletedAt: string }>(`/api/products/${id}`, { method: 'DELETE' }),
+  deleteLead: (id: string) => request<{ id: string; deletedAt: string }>(`/api/leads/${id}`, { method: 'DELETE' }),
+  deleteOrder: (id: string) => request<{ id: string; deletedAt: string }>(`/api/orders/${id}`, { method: 'DELETE' }),
+
+  recycleBin: (query: RecycleBinQuery = {}) => {
+    const params = new URLSearchParams();
+    if (query.types?.length) params.set('types', query.types.join(','));
+    if (query.search) params.set('search', query.search);
+    if (query.deletedBy) params.set('deletedBy', query.deletedBy);
+    if (query.cursor) params.set('cursor', query.cursor);
+    if (query.limit) params.set('limit', String(query.limit));
+    const qs = params.toString();
+    return request<CursorPage<BinEntry>>(`/api/recycle-bin${qs ? `?${qs}` : ''}`);
+  },
+  recycleBinCounts: () => request<BinCounts>('/api/recycle-bin/counts'),
+  restoreFromBin: (input: RestoreInput) => post<BinRestoreResult>('/api/recycle-bin/restore', input),
+
+  // --- Fields (docs/backend-modules/04-API-CONTRACT.md §5) -----------------
+
+  fieldsCatalogue: () => request<FieldCatalogue>('/api/fields/catalogue'),
+  fieldValues: (listKey: string, options: { includeDeleted?: boolean; includeUnlisted?: boolean } = {}) => {
+    const params = new URLSearchParams({ listKey });
+    if (options.includeDeleted) params.set('includeDeleted', 'true');
+    if (options.includeUnlisted) params.set('includeUnlisted', 'true');
+    return request<{ items: OptionListItem[]; unlisted?: string[] }>(`/api/fields/values?${params}`);
+  },
+  fieldUsage: (listKey: string) =>
+    request<FieldUsageBreakdown>(`/api/fields/usage?listKey=${encodeURIComponent(listKey)}`),
+  fieldDefinitions: (entity?: string, includeDeleted = false) => {
+    const params = new URLSearchParams();
+    if (entity) params.set('entity', entity);
+    if (includeDeleted) params.set('includeDeleted', 'true');
+    const qs = params.toString();
+    return request<CustomFieldDefinition[]>(`/api/fields/definitions${qs ? `?${qs}` : ''}`);
+  },
+  fieldStages: () => request<Pipeline[]>('/api/fields/stages'),
+  createFieldValue: (input: OptionListItemInput) => post<OptionListItem>('/api/fields/values', input),
+  updateFieldValue: (id: string, input: OptionListItemUpdateInput) =>
+    request<OptionListItem>(`/api/fields/values/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+  deleteFieldValue: (id: string) =>
+    request<{ id: string; deletedAt: string }>(`/api/fields/values/${id}`, { method: 'DELETE' }),
+  reorderFieldValues: (input: OptionListReorderInput) =>
+    post<OptionListItem[]>('/api/fields/values/reorder', input),
+  createFieldDefinition: (input: CustomFieldDefinitionInput) =>
+    post<CustomFieldDefinition>('/api/fields/definitions', input),
+  updateFieldDefinition: (id: string, input: CustomFieldDefinitionUpdateInput) =>
+    request<CustomFieldDefinition>(`/api/fields/definitions/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+  deleteFieldDefinition: (id: string) =>
+    request<{ id: string; deletedAt: string }>(`/api/fields/definitions/${id}`, { method: 'DELETE' }),
+  reorderFieldDefinitions: (input: CustomFieldReorderInput) =>
+    post<CustomFieldDefinition[]>('/api/fields/definitions/reorder', input),
+  updateFieldStage: (id: string, input: PipelineStageInput) =>
+    request<PipelineStage>(`/api/fields/stages/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+  reorderFieldStages: (input: StageReorderInput) => post<PipelineStage[]>('/api/fields/stages/reorder', input),
+  archiveFieldStage: (id: string) => post<PipelineStage>(`/api/fields/stages/${id}/archive`),
+  restoreFieldStage: (id: string) => post<PipelineStage>(`/api/fields/stages/${id}/restore`),
+
+  // --- Logs (docs/backend-modules/04-API-CONTRACT.md §2) --------------------
+
+  logs: (query: ActivityLogQuery = {}) => {
+    const params = new URLSearchParams();
+    if (query.cursor) params.set('cursor', query.cursor);
+    if (query.direction) params.set('direction', query.direction);
+    if (query.limit) params.set('limit', String(query.limit));
+    if (query.actorType) params.set('actorType', query.actorType);
+    if (query.actorId) params.set('actorId', query.actorId);
+    if (query.entityType) params.set('entityType', query.entityType);
+    if (query.action) params.set('action', query.action);
+    if (query.from) params.set('from', query.from);
+    if (query.to) params.set('to', query.to);
+    if (query.q) params.set('q', query.q);
+    const qs = params.toString();
+    return request<CursorPage<ActivityLogEntry>>(`/api/logs${qs ? `?${qs}` : ''}`);
+  },
+  logFacets: (range: { from?: string; to?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (range.from) params.set('from', range.from);
+    if (range.to) params.set('to', range.to);
+    const qs = params.toString();
+    return request<ActivityLogFacets>(`/api/logs/facets${qs ? `?${qs}` : ''}`);
+  },
+  verifyLogChain: (input: ChainVerifyInput = {}) => post<ChainVerification>('/api/logs/verify', input),
+  logsExportUrl: (query: ActivityLogQuery = {}) => {
+    const params = new URLSearchParams();
+    if (query.actorType) params.set('actorType', query.actorType);
+    if (query.actorId) params.set('actorId', query.actorId);
+    if (query.entityType) params.set('entityType', query.entityType);
+    if (query.action) params.set('action', query.action);
+    if (query.from) params.set('from', query.from);
+    if (query.to) params.set('to', query.to);
+    if (query.q) params.set('q', query.q);
+    const qs = params.toString();
+    return `/api/logs/export${qs ? `?${qs}` : ''}`;
+  },
+
+  // --- Reports (docs/backend-modules/04-API-CONTRACT.md §3) -----------------
+
+  reportRangeQuery: (input: ReportRangeInput = {}) => {
+    const params = new URLSearchParams();
+    if (input.period) params.set('period', input.period);
+    if (input.fromMonth) params.set('fromMonth', input.fromMonth);
+    if (input.toMonth) params.set('toMonth', input.toMonth);
+    return params;
+  },
+  dispatchReport: (input: ReportRangeInput = {}) =>
+    request<DispatchesReport>(`/api/reports/dispatches?${api.reportRangeQuery(input)}`),
+  leadOutcomeReport: (input: ReportRangeInput = {}) =>
+    request<LeadOutcomesReport>(`/api/reports/lead-outcomes?${api.reportRangeQuery(input)}`),
+  topPartiesReport: (input: ReportRangeInput & { limit?: number } = {}) => {
+    const params = api.reportRangeQuery(input);
+    if (input.limit) params.set('limit', String(input.limit));
+    return request<TopPartiesReport>(`/api/reports/top-parties?${params}`);
+  },
+  reportExportUrl: (kind: ReportKind, input: ReportRangeInput & { limit?: number } = {}) => {
+    const params = api.reportRangeQuery(input);
+    if (input.limit) params.set('limit', String(input.limit));
+    const qs = params.toString();
+    return `/api/reports/${kind}/export${qs ? `?${qs}` : ''}`;
+  },
+
+  // --- PDF Designer (docs/backend-modules/04-API-CONTRACT.md §6) ----------
+  // Online-only. `render` answers with metadata and the browser then fetches
+  // the file from `downloadPath`, so a retry does not re-render and the exact
+  // bytes a customer received stay addressable.
+  documentTemplates: (query: DocumentTemplateQuery = {}) => {
+    const params = new URLSearchParams();
+    if (query.documentType) params.set('documentType', query.documentType);
+    if (query.cursor) params.set('cursor', query.cursor);
+    if (query.limit) params.set('limit', String(query.limit));
+    const qs = params.toString();
+    return request<CursorPage<DocumentTemplate>>(`/api/documents/templates${qs ? `?${qs}` : ''}`);
+  },
+  documentTemplate: (id: string) => request<DocumentTemplate>(`/api/documents/templates/${id}`),
+  createDocumentTemplate: (input: DocumentTemplateInput) =>
+    post<DocumentTemplate>('/api/documents/templates', input),
+  updateDocumentTemplate: (id: string, input: DocumentTemplateInput & { expectedVersion: number }) =>
+    request<DocumentTemplate>(`/api/documents/templates/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  deleteDocumentTemplate: (id: string, expectedVersion: number) =>
+    request<{ id: string; deletedAt: string }>(`/api/documents/templates/${id}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ expectedVersion }),
+    }),
+  restoreDocumentTemplate: (id: string) =>
+    post<DocumentTemplate>(`/api/documents/templates/${id}/restore`),
+
+  documentAssets: () => request<DocumentAsset[]>('/api/documents/assets'),
+  uploadDocumentAsset: (input: DocumentAssetInput) =>
+    post<DocumentAsset>('/api/documents/assets', input),
+  documentAssetUrl: (id: string) => `/api/documents/assets/${id}/file`,
+
+  renderDocument: (input: RenderDocumentInput) =>
+    post<DocumentRenderResult>('/api/documents/render', input),
+  /** The preview is bytes, not JSON — the caller turns it into an object URL. */
+  previewDocument: async (input: PreviewDocumentInput): Promise<Blob> => {
+    const response = await fetch('/api/documents/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!response.ok) {
+      const detail = (await response.json().catch(() => null)) as
+        | { error?: string; message?: string; details?: Record<string, unknown> }
+        | null;
+      throw new ApiError(
+        detail?.message ?? 'Preview failed',
+        detail?.error ?? 'internal_error',
+        detail?.details ?? {},
+      );
+    }
+    return response.blob();
+  },
+
+  documentExports: (query: DocumentExportQuery = {}) => {
+    const params = new URLSearchParams();
+    if (query.subjectKind) params.set('subjectKind', query.subjectKind);
+    if (query.subjectId) params.set('subjectId', query.subjectId);
+    if (query.cursor) params.set('cursor', query.cursor);
+    if (query.limit) params.set('limit', String(query.limit));
+    const qs = params.toString();
+    return request<CursorPage<DocumentExport>>(`/api/documents/exports${qs ? `?${qs}` : ''}`);
+  },
+  documentExport: (id: string) => request<DocumentExport>(`/api/documents/exports/${id}`),
+  documentExportUrl: (id: string) => `/api/documents/exports/${id}/file`,
 };

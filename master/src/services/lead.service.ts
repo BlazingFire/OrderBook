@@ -175,7 +175,12 @@ export async function updateLead(
   }
 
   if (input.sourcePlatform !== undefined) {
-    await assertSourcePlatform(actor.tenantId, input.sourcePlatform);
+    // Only a genuine change is checked against the live option list — a lead
+    // already carrying a since-removed source must stay editable on every
+    // other field without that stale value blocking the save.
+    if (input.sourcePlatform !== existing.sourcePlatform) {
+      await assertSourcePlatform(actor.tenantId, input.sourcePlatform);
+    }
     patch.source_platform = input.sourcePlatform;
   }
 
@@ -423,19 +428,6 @@ function initialFieldHlc(input: LeadInput, hlc: string): Record<string, string> 
 
   return written;
 }
-
-/** Fields the offline merge can arbitrate over, in their wire-format names. */
-export const LEAD_MERGE_FIELDS = [
-  'partyId',
-  'ownerId',
-  'stageId',
-  'sourcePlatform',
-  'followUpDate',
-  'partyWiseMode',
-  'notes',
-  'customFields',
-  'items',
-] as const;
 
 const COLUMN_TO_FIELD: Record<string, string> = {
   party_id: 'partyId',

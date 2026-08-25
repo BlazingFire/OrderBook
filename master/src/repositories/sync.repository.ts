@@ -17,18 +17,6 @@ import type { TransactionContext } from './transaction.js';
 
 type Runner = Knex | Knex.Transaction;
 
-export async function findAppliedMutation(
-  tenantId: string,
-  mutationId: string,
-  runner: Runner = db(),
-): Promise<MutationResult | null> {
-  const row = await runner('applied_mutations')
-    .where({ tenant_id: tenantId, mutation_id: mutationId })
-    .first<{ result: MutationResult } | undefined>('result');
-
-  return row?.result ?? null;
-}
-
 export async function findAppliedMutations(
   tenantId: string,
   mutationIds: string[],

@@ -5,15 +5,28 @@
  * The one action here that moves real stock is Dispatch: it consumes the
  * order's reservations and writes the signed ledger entries. Everything before
  * that only holds stock aside.
+ *
+ * Rendered as a table, not a board (6-UI-DESIGN.md, Orders.dc.html): dispatch
+ * and stage tracking reads better as a sortable list than a kanban column for
+ * this screen.
  */
 
 import { useState } from 'react';
-import type { Order } from '@orderbook/shared';
+import type { Order, PipelineStage, ReservationStatus } from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
-import { Field } from '../components/Field';
-import { KanbanBoard } from '../components/KanbanBoard';
 import { formatDateTime, formatMoney } from '../format';
+import { t } from '../i18n/strings';
+import { Button } from '../ui/Button';
+import { Card, Section } from '../ui/Card';
+import type { DataTableColumn } from '../ui/DataTable';
+import { DataTable } from '../ui/DataTable';
+import { ColourName, StatusPill, Timeline, useColourHex, type PillTone } from '../ui/DataDisplay';
+import { Drawer } from '../ui/Drawer';
+import { FilterChip, FilterDivider } from '../ui/FilterBar';
+import { useFilterBar } from '../ui/FilterBarSlot';
+import { FormField, NumberInput, Input, Select } from '../ui/Form';
+import { EmptyState } from '../ui/States';
 
 interface Props {
   view: LocalView;
@@ -21,82 +34,230 @@ interface Props {
   onError: (message: string) => void;
 }
 
+const SALE_RATE_PERMISSION = 'field.saleRate.view';
+const DISPATCH_PERMISSION = 'orders.dispatch';
+
+function sortedStages(pipeline: LocalView['pipelines'][number] | undefined): PipelineStage[] {
+  return [...(pipeline?.stages ?? [])].sort((a, b) => a.sequence - b.sequence);
+}
+
+function stageTone(order: Order, stages: PipelineStage[]): PillTone {
+  if (order.dispatchedAt) return 'ok';
+  const stage = stages.find((candidate) => candidate.id === order.stageId);
+  if (stage?.isTerminal) return 'ok';
+  if (stage?.isDefault) return 'accent';
+  return 'default';
+}
+
+function totalBoxes(order: Order): number {
+  return order.items.reduce((sum, item) => sum + item.totalQuantity, 0);
+}
+
+function displayWeightKg(order: Order): number {
+  return order.weightSource === 'manual' && order.totalWeightKgOverride !== null
+    ? order.totalWeightKgOverride
+    : order.totalWeightKg;
+}
+
+const RESERVATION_TONE: Record<ReservationStatus, PillTone> = {
+  active: 'accent',
+  consumed: 'ok',
+  released: 'default',
+};
+
 export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
   const [openId, setOpenId] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [stageFilter, setStageFilter] = useState<string | null>(null);
+  const colourHex = useColourHex(view.optionLists);
 
   const pipeline = view.pipelines.find((candidate) => candidate.kind === 'order');
-  const openOrder = view.orders.find((order) => order.id === openId) ?? null;
+  const stages = sortedStages(pipeline);
+  const orders = view.orders;
+  const openOrder = orders.find((order) => order.id === openId) ?? null;
+
+  useFilterBar(
+    pipeline ? (
+      <>
+        <FilterChip active={stageFilter === null} count={orders.length} onClick={() => setStageFilter(null)}>
+          {t('orders.filter.allStages')}
+        </FilterChip>
+        {stages.map((stage) => (
+          <FilterChip
+            key={stage.id}
+            active={stageFilter === stage.id}
+            count={orders.filter((order) => order.stageId === stage.id).length}
+            onClick={() => setStageFilter(stage.id)}
+          >
+            {stage.name}
+          </FilterChip>
+        ))}
+        <FilterDivider />
+        <span style={{ flex: 1 }} />
+        <span className="ob-small">{t('orders.filter.note')}</span>
+      </>
+    ) : null,
+  );
+
+  function closeDrawer(): void {
+    setOpenId(null);
+    setExpanded(false);
+  }
 
   if (!pipeline) {
     return (
-      <div className="card">
-        <p className="muted">Waiting for the pipeline configuration from the Master Panel…</p>
-      </div>
+      <Card>
+        <p className="ob-small">{t('orders.waitingPipeline')}</p>
+      </Card>
     );
   }
 
-  async function move(order: Order, stageId: string): Promise<void> {
-    try {
-      await api.setOrderStage(order.id, stageId);
-    } catch (caught) {
-      onError(caught instanceof Error ? caught.message : 'Could not move the order');
-    }
-  }
+  const filteredOrders = stageFilter ? orders.filter((order) => order.stageId === stageFilter) : orders;
 
-  if (openOrder) {
-    return (
-      <OrderDetail
-        order={openOrder}
-        view={view}
-        canDispatch={canDispatch}
-        onClose={() => setOpenId(null)}
-        onError={onError}
-      />
-    );
-  }
+  const columns: DataTableColumn<Order>[] = [
+    {
+      key: 'id',
+      header: t('orders.column.order'),
+      width: '120px',
+      render: (order) => (
+        <span className="ob-mono" style={{ color: 'var(--fg-secondary)' }}>
+          {order.id}
+        </span>
+      ),
+    },
+    {
+      key: 'party',
+      header: t('orders.column.party'),
+      render: (order) => order.partyName,
+    },
+    {
+      key: 'lead',
+      header: t('orders.column.fromLead'),
+      width: '150px',
+      render: (order) =>
+        order.leadId ? (
+          <span className="ob-mono" style={{ color: 'var(--fg-tertiary)' }}>
+            {order.leadId}
+          </span>
+        ) : (
+          <span style={{ color: 'var(--fg-tertiary)' }}>—</span>
+        ),
+    },
+    {
+      key: 'boxes',
+      header: t('orders.column.boxes'),
+      width: '80px',
+      align: 'right',
+      render: (order) => totalBoxes(order).toLocaleString('en-IN'),
+    },
+    {
+      key: 'weight',
+      header: t('orders.column.weight'),
+      width: '100px',
+      align: 'right',
+      render: (order) => (
+        <span style={{ color: order.weightSource === 'manual' ? 'var(--fg-secondary)' : 'var(--fg-primary)' }}>
+          {displayWeightKg(order).toLocaleString('en-IN')} {t('orders.unit.kg')}
+          {order.weightSource === 'manual' ? '*' : ''}
+        </span>
+      ),
+    },
+    {
+      key: 'amount',
+      header: t('orders.column.amount'),
+      width: '110px',
+      align: 'right',
+      render: (order) => formatMoney(order.totalAmount ?? null),
+      redactedReason: (order) => (order.totalAmount === undefined ? SALE_RATE_PERMISSION : undefined),
+    },
+    {
+      key: 'stage',
+      header: t('orders.column.stage'),
+      width: '110px',
+      render: (order) => <StatusPill tone={stageTone(order, stages)}>{order.stageName}</StatusPill>,
+    },
+    {
+      key: 'sync',
+      header: t('orders.column.sync'),
+      width: '90px',
+      render: (order) => (
+        <span className="ob-micro" style={{ color: order.sync.hlc ? 'var(--fg-tertiary)' : 'var(--state-offline)' }}>
+          {order.sync.hlc ? t('orders.sync.synced') : t('orders.sync.pending')}
+        </span>
+      ),
+    },
+  ];
 
   return (
-    <KanbanBoard
-      stages={pipeline.stages}
-      items={view.orders}
-      onMove={(order, stageId) => void move(order, stageId)}
-      onOpen={(order) => setOpenId(order.id)}
-      isLocked={(order) => Boolean(view.orders.find((o) => o.id === order.id)?.dispatchedAt)}
-      emptyMessage="No orders at this stage."
-      renderCard={(order) => (
-        <>
-          <div className="board-card-title">
-            {order.partyName}
-            {!order.sync.hlc && <span className="chip pending">not synced</span>}
-            {order.dispatchedAt && <span className="chip converted">dispatched</span>}
-          </div>
-          <div className="board-card-meta">
-            {order.id} · {order.items.length} product{order.items.length === 1 ? '' : 's'}
-            {order.totalAmount !== undefined && ` · ${formatMoney(order.totalAmount)}`}
-          </div>
-          <div className="board-card-meta">
-            {order.weightSource === 'manual'
-              ? `${order.totalWeightKgOverride ?? 0} kg (manual)`
-              : `${order.totalWeightKg} kg`}
-          </div>
-        </>
-      )}
-    />
+    <>
+      <DataTable
+        columns={columns}
+        rows={filteredOrders}
+        rowKey={(order) => order.id}
+        onRowOpen={(order) => setOpenId(order.id)}
+        openOn="click"
+        selectedId={openOrder?.id}
+        empty={
+          orders.length === 0 ? (
+            <EmptyState title={t('orders.empty.title')} description={t('orders.empty.description')} />
+          ) : (
+            <EmptyState title={t('orders.empty.filteredTitle')} />
+          )
+        }
+      />
+
+      <Drawer
+        open={Boolean(openOrder)}
+        onClose={closeDrawer}
+        expanded={expanded}
+        onToggleExpand={() => setExpanded((value) => !value)}
+        title={
+          openOrder ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-8)' }}>
+              {openOrder.partyName}
+              {openOrder.dispatchedAt && <StatusPill tone="ok">{t('orders.badge.dispatched')}</StatusPill>}
+            </span>
+          ) : (
+            ''
+          )
+        }
+        subtitle={
+          openOrder
+            ? openOrder.leadId
+              ? t('orders.detail.subtitleWithLead', { id: openOrder.id, leadId: openOrder.leadId })
+              : t('orders.detail.subtitleNoLead', { id: openOrder.id })
+            : undefined
+        }
+      >
+        {openOrder && (
+          <OrderDrawerBody
+            order={openOrder}
+            stages={stages}
+            canDispatch={canDispatch}
+            onClose={closeDrawer}
+            onError={onError}
+            colourHex={colourHex}
+          />
+        )}
+      </Drawer>
+    </>
   );
 }
 
-function OrderDetail({
+function OrderDrawerBody({
   order,
-  view,
+  stages,
   canDispatch,
   onClose,
   onError,
+  colourHex,
 }: {
   order: Order;
-  view: LocalView;
+  stages: PipelineStage[];
   canDispatch: boolean;
   onClose: () => void;
   onError: (message: string) => void;
+  colourHex: (colour: string) => string | undefined;
 }) {
   const [note, setNote] = useState('');
   const [override, setOverride] = useState(
@@ -104,8 +265,6 @@ function OrderDetail({
   );
   const [busy, setBusy] = useState(false);
 
-  const pipeline = view.pipelines.find((candidate) => candidate.kind === 'order');
-  const stages = [...(pipeline?.stages ?? [])].sort((a, b) => a.sequence - b.sequence);
   const active = order.reservations.filter((reservation) => reservation.status === 'active');
 
   async function run(action: () => Promise<unknown>, failure: string): Promise<void> {
@@ -120,28 +279,18 @@ function OrderDetail({
   }
 
   return (
-    <div>
-      <div className="row" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
-        <h2 style={{ margin: 0 }}>
-          {order.partyName} <span className="muted">{order.id}</span>
-        </h2>
-        <button className="secondary" onClick={onClose}>
-          Back to board
-        </button>
-      </div>
-
-      <div className="split">
-        <div className="stack">
-          <div className="card">
-            <h3 className="section-title">Products</h3>
-            <table>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
+      <Card>
+        <Section title={t('orders.detail.products')}>
+          <div className="ob-tablewrap">
+            <table className="ob-table">
               <thead>
                 <tr>
-                  <th>Product</th>
-                  <th>Packaging</th>
-                  <th>Colours</th>
-                  <th className="right">Boxes</th>
-                  <th className="right">Line total</th>
+                  <th>{t('orders.column.product')}</th>
+                  <th>{t('orders.column.packaging')}</th>
+                  <th>{t('orders.column.colours')}</th>
+                  <th className="num">{t('orders.column.boxes')}</th>
+                  <th className="num">{t('orders.detail.lineTotal')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -149,181 +298,182 @@ function OrderDetail({
                   <tr key={item.id}>
                     <td>
                       {item.productName}
-                      <div className="muted">{item.code}</div>
+                      <div className="ob-small">{item.code}</div>
                     </td>
                     <td>{item.packaging ?? '—'}</td>
                     <td>
                       {item.quantities.map((quantity) => (
-                        <div key={quantity.id} className="muted">
+                        <div key={quantity.id} className="ob-small">
                           {quantity.colour} × {quantity.quantity}
                         </div>
                       ))}
                     </td>
-                    <td className="right num">{item.totalQuantity}</td>
-                    <td className="right num">
-                      {item.lineTotal === undefined ? '—' : formatMoney(item.lineTotal)}
+                    <td className="num">{item.totalQuantity.toLocaleString('en-IN')}</td>
+                    <td className="num">
+                      {item.lineTotal === undefined ? (
+                        <span className="ob-redacted" title={`Missing permission: ${SALE_RATE_PERMISSION}`} aria-label="Hidden" />
+                      ) : (
+                        formatMoney(item.lineTotal)
+                      )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        </Section>
+      </Card>
 
-          <div className="card">
-            <h3 className="section-title">Stock held for this order</h3>
-            {order.reservations.length === 0 ? (
-              <p className="muted">No reservations.</p>
-            ) : (
-              <table>
+      <Card>
+        <Section title={t('orders.detail.reservations')}>
+          {order.reservations.length === 0 ? (
+            <p className="ob-small">{t('orders.detail.noReservations')}</p>
+          ) : (
+            <div className="ob-tablewrap">
+              <table className="ob-table">
                 <thead>
                   <tr>
-                    <th>Product</th>
-                    <th>Colour</th>
-                    <th className="right">Boxes</th>
-                    <th>Status</th>
+                    <th>{t('orders.column.product')}</th>
+                    <th>{t('orders.column.colour')}</th>
+                    <th className="num">{t('orders.column.boxes')}</th>
+                    <th>{t('orders.column.status')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {order.reservations.map((reservation) => (
                     <tr key={reservation.id}>
                       <td>{reservation.productName}</td>
-                      <td>{reservation.colour}</td>
-                      <td className="right num">{reservation.quantity}</td>
                       <td>
-                        <span className="chip">{reservation.status}</span>
+                        <ColourName name={reservation.colour} hex={colourHex(reservation.colour)} />
+                      </td>
+                      <td className="num">{reservation.quantity.toLocaleString('en-IN')}</td>
+                      <td>
+                        <StatusPill tone={RESERVATION_TONE[reservation.status]}>
+                          {t(`orders.reservation.status.${reservation.status}`)}
+                        </StatusPill>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+        </Section>
+      </Card>
+
+      <Card>
+        <Section title={t('orders.detail.weight')}>
+          <p className="ob-small" style={{ marginTop: 0 }}>
+            {t('orders.detail.weightComputed', { value: order.totalWeightKg.toLocaleString('en-IN') })}
+          </p>
+
+          <FormField label={t('orders.detail.weightOverrideLabel')}>
+            {(id) => (
+              <NumberInput
+                id={id}
+                value={override}
+                onChange={(event) => setOverride(event.target.value.replace(/[^0-9.]/g, ''))}
+                placeholder={t('orders.detail.weightOverridePlaceholder')}
+                onBlur={() =>
+                  void run(
+                    () =>
+                      api.updateOrder(order.id, {
+                        totalWeightKgOverride: override === '' ? null : Number(override),
+                      }),
+                    'Could not save the weight',
+                  )
+                }
+              />
             )}
-          </div>
+          </FormField>
 
-          <div className="card">
-            <h3 className="section-title">History</h3>
-            <ul className="timeline">
-              {order.timeline.map((entry) => (
-                <li key={entry.id} className={entry.kind}>
-                  <div>{entry.message}</div>
-                  <div className="when">{formatDateTime(entry.createdAt)}</div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
+          <p className="ob-small" style={{ marginBottom: 0 }}>
+            {t('orders.detail.weightShowing', { source: order.weightSource })}
+          </p>
+        </Section>
+      </Card>
 
-        <div className="stack">
-          <div className="card">
-            <h3 className="section-title">Stage</h3>
-            <Field label="Move this order to">
-              {(id) => (
-                <select
-                  id={id}
-                  value={order.stageId}
-                  disabled={busy || Boolean(order.dispatchedAt)}
-                  onChange={(event) =>
-                    void run(
-                      () => api.setOrderStage(order.id, event.target.value),
-                      'Could not move the order',
-                    )
-                  }
-                >
-                  {stages.map((stage) => (
-                    <option key={stage.id} value={stage.id}>
-                      {stage.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </Field>
+      <Card>
+        <Section title={t('orders.detail.stage')}>
+          <FormField label={t('orders.detail.stageLabel')}>
+            {(id) => (
+              <Select
+                id={id}
+                value={order.stageId}
+                disabled={busy || Boolean(order.dispatchedAt)}
+                onChange={(event) =>
+                  void run(() => api.setOrderStage(order.id, event.target.value), 'Could not move the order')
+                }
+              >
+                {stages.map((stage) => (
+                  <option key={stage.id} value={stage.id}>
+                    {stage.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </FormField>
+        </Section>
+      </Card>
 
-            <p className="muted" style={{ marginBottom: 0 }}>
-              From lead <strong>{order.leadId ?? '—'}</strong>
+      <Card>
+        <Section title={t('orders.detail.history')}>
+          <Timeline
+            entries={order.timeline.map((entry) => ({
+              id: entry.id,
+              label: entry.message,
+              when: formatDateTime(entry.createdAt),
+            }))}
+          />
+        </Section>
+      </Card>
+
+      {order.dispatchedAt ? (
+        <Card style={{ background: 'var(--state-ok-tint)' }}>
+          <p className="ob-small" style={{ margin: 0, color: 'var(--fg-primary)' }}>
+            {t('orders.detail.dispatchedBanner', { when: formatDateTime(order.dispatchedAt) })}
+          </p>
+        </Card>
+      ) : (
+        <Card>
+          <Section title={t('orders.detail.dispatch')}>
+            <p className="ob-small" style={{ marginTop: 0 }}>
+              {t('orders.detail.dispatchNote', { count: active.length })}
             </p>
-          </div>
 
-          <div className="card">
-            <h3 className="section-title">Weight</h3>
-            <p style={{ marginTop: 0 }}>
-              Computed from the lines: <strong className="num">{order.totalWeightKg} kg</strong>
-            </p>
-
-            <Field label="Override (leave blank to use the computed figure)">
+            <FormField label={t('orders.detail.dispatchNoteLabel')}>
               {(id) => (
-                <input
+                <Input
                   id={id}
-                  type="number"
-                  min="0"
-                  step="0.001"
-                  className="num"
-                  value={override}
-                  onChange={(event) => setOverride(event.target.value)}
-                  onBlur={() =>
-                    void run(
-                      () =>
-                        api.updateOrder(order.id, {
-                          totalWeightKgOverride: override === '' ? null : Number(override),
-                        }),
-                      'Could not save the weight',
-                    )
-                  }
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                  placeholder={t('orders.detail.dispatchNotePlaceholder')}
                 />
               )}
-            </Field>
+            </FormField>
 
-            <p className="muted" style={{ marginBottom: 0 }}>
-              Showing the {order.weightSource} figure.
-            </p>
-          </div>
+            <Button
+              variant="primary"
+              busy={busy}
+              disabled={busy || !canDispatch}
+              onClick={() =>
+                void run(async () => {
+                  await api.dispatchOrder(order.id, note.trim() || null);
+                  onClose();
+                }, 'Could not dispatch the order')
+              }
+            >
+              {t('orders.detail.dispatchButton')}
+            </Button>
 
-          <div className="card">
-            <h3 className="section-title">Dispatch</h3>
-
-            {order.dispatchedAt ? (
-              <p>
-                <span className="chip converted">dispatched</span>{' '}
-                {formatDateTime(order.dispatchedAt)}
+            {!canDispatch && (
+              <p className="ob-small" style={{ marginBottom: 0, marginTop: 'var(--s-8)' }}>
+                {t('orders.detail.noDispatchPermission', { permission: DISPATCH_PERMISSION })}
               </p>
-            ) : (
-              <>
-                <p className="muted" style={{ marginTop: 0 }}>
-                  Takes {active.length} reservation{active.length === 1 ? '' : 's'} off the stock
-                  ledger. This cannot be undone from here.
-                </p>
-
-                <Field label="Note">
-                  {(id) => (
-                    <input
-                      id={id}
-                      value={note}
-                      onChange={(event) => setNote(event.target.value)}
-                      placeholder="e.g. lorry AB-12"
-                    />
-                  )}
-                </Field>
-
-                <button
-                  disabled={busy || !canDispatch}
-                  onClick={() =>
-                    void run(async () => {
-                      await api.dispatchOrder(order.id, note.trim() || null);
-                      onClose();
-                    }, 'Could not dispatch the order')
-                  }
-                >
-                  Mark dispatched
-                </button>
-
-                {!canDispatch && (
-                  <p className="muted" style={{ marginBottom: 0, marginTop: 8 }}>
-                    Your role does not include <code>orders.dispatch</code>.
-                  </p>
-                )}
-              </>
             )}
-          </div>
-        </div>
-      </div>
+          </Section>
+        </Card>
+      )}
     </div>
   );
 }

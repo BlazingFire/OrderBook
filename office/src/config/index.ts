@@ -57,6 +57,15 @@ export const config = {
    * lockout — which would make it no obstacle to somebody sitting at the machine.
    */
   signInAttemptsFile: path.join(dataDir, 'sign-in-attempts.json'),
+  /**
+   * This panel's own on-disk copy of image variants it has actually viewed —
+   * fetched lazily from the Master on first request, then instant on every
+   * repeat (`http/app.ts`'s `/uploads/images/:imageId/:variant`). Unlike
+   * `7-IMAGE-PIPELINE.md` §4.2's full proactive replica of every image the
+   * company owns, this is a cache, not a guarantee — see `HANDOFF.md` for
+   * why that gap is deliberate for this pass.
+   */
+  imagesDir: path.join(dataDir, 'images'),
 
   http: {
     // Loopback only: staff use the browser on this same PC, and nothing else

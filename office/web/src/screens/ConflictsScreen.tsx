@@ -12,6 +12,10 @@ import type { SyncConflict } from '@orderbook/shared';
 
 import { api } from '../api';
 import { formatDateTime } from '../format';
+import { t } from '../i18n/strings';
+import { Button } from '../ui/Button';
+import { Card } from '../ui/Card';
+import { EmptyState } from '../ui/States';
 
 interface Props {
   conflicts: SyncConflict[];
@@ -20,93 +24,133 @@ interface Props {
   onResolved: () => void;
 }
 
+type ConflictAction = 'keepWinner' | 'restoreLoser';
+
 export function ConflictsScreen({ conflicts, canResolve, onError, onResolved }: Props) {
-  const [busyId, setBusyId] = useState<number | null>(null);
+  const [busy, setBusy] = useState<{ id: number; action: ConflictAction } | null>(null);
 
   const open = conflicts.filter((conflict) => !conflict.resolvedAt);
 
   if (open.length === 0) {
     return (
-      <div className="card">
-        <p className="muted">
-          Nothing to review. Conflicts appear here when two panels edit the same field of the same
-          record while both are offline.
-        </p>
-      </div>
+      <EmptyState title={t('conflicts.empty.title')} description={t('conflicts.empty.description')} />
     );
   }
 
-  async function resolve(
-    conflict: SyncConflict,
-    action: 'keepWinner' | 'restoreLoser',
-  ): Promise<void> {
-    setBusyId(conflict.id);
+  async function resolve(conflict: SyncConflict, action: ConflictAction): Promise<void> {
+    setBusy({ id: conflict.id, action });
     try {
       await api.resolveConflict(conflict.id, action);
       onResolved();
     } catch (caught) {
-      onError(caught instanceof Error ? caught.message : 'Could not resolve the conflict');
+      onError(caught instanceof Error ? caught.message : t('conflicts.resolveErrorFallback'));
     } finally {
-      setBusyId(null);
+      setBusy(null);
     }
   }
 
   return (
-    <div className="stack">
-      {open.map((conflict) => (
-        <div className="card" key={conflict.id}>
-          <div className="row" style={{ justifyContent: 'space-between' }}>
-            <h3 className="section-title" style={{ marginBottom: 0 }}>
-              {conflict.entity} {conflict.entityId} — <code>{conflict.field}</code>
-            </h3>
-            <span className="muted">{formatDateTime(conflict.createdAt)}</span>
-          </div>
-
-          <div className="split" style={{ marginTop: 12 }}>
-            <div className="line-card" style={{ marginBottom: 0 }}>
-              <div className="muted">Kept (device {conflict.winningDeviceCode})</div>
-              <pre style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap' }}>
-                {stringify(conflict.winningValue)}
-              </pre>
+    <div className="ob-measure-wide" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
+      {open.map((conflict) => {
+        const rowBusy = busy?.id === conflict.id;
+        return (
+          <Card key={conflict.id}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'baseline',
+                gap: 'var(--s-12)',
+              }}
+            >
+              <h3 className="ob-title" style={{ margin: 0 }}>
+                {conflict.entity} {conflict.entityId} — <span className="ob-mono">{conflict.field}</span>
+              </h3>
+              <span className="ob-small" style={{ whiteSpace: 'nowrap' }}>
+                {formatDateTime(conflict.createdAt)}
+              </span>
             </div>
 
-            <div className="line-card" style={{ marginBottom: 0 }}>
-              <div className="muted">Overwritten (device {conflict.losingDeviceCode})</div>
-              <pre style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap' }}>
-                {stringify(conflict.losingValue)}
-              </pre>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: 'var(--s-16)',
+                marginTop: 'var(--s-12)',
+              }}
+            >
+              <div
+                style={{
+                  background: 'var(--bg-sunken)',
+                  border: '1px solid var(--line)',
+                  borderRadius: 'var(--r-md)',
+                  padding: 'var(--s-12)',
+                }}
+              >
+                <div className="ob-small">
+                  {t('conflicts.kept', { device: conflict.winningDeviceCode })}
+                </div>
+                <pre
+                  className="ob-data"
+                  style={{ margin: 'var(--s-6) 0 0', whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}
+                >
+                  {stringify(conflict.winningValue)}
+                </pre>
+              </div>
+
+              <div
+                style={{
+                  background: 'var(--bg-sunken)',
+                  border: '1px solid var(--line)',
+                  borderRadius: 'var(--r-md)',
+                  padding: 'var(--s-12)',
+                }}
+              >
+                <div className="ob-small">
+                  {t('conflicts.overwritten', { device: conflict.losingDeviceCode })}
+                </div>
+                <pre
+                  className="ob-data"
+                  style={{ margin: 'var(--s-6) 0 0', whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}
+                >
+                  {stringify(conflict.losingValue)}
+                </pre>
+              </div>
             </div>
-          </div>
 
-          <div className="row" style={{ gap: 8, marginTop: 12 }}>
-            <button
-              className="secondary"
-              disabled={busyId === conflict.id || !canResolve}
-              onClick={() => void resolve(conflict, 'keepWinner')}
-            >
-              Keep what is there
-            </button>
-            <button
-              disabled={busyId === conflict.id || !canResolve}
-              onClick={() => void resolve(conflict, 'restoreLoser')}
-            >
-              Put the other value back
-            </button>
-          </div>
+            <div style={{ display: 'flex', gap: 'var(--s-8)', marginTop: 'var(--s-12)' }}>
+              <Button
+                variant="secondary"
+                disabled={rowBusy || !canResolve}
+                busy={busy?.id === conflict.id && busy.action === 'keepWinner'}
+                onClick={() => void resolve(conflict, 'keepWinner')}
+              >
+                {t('conflicts.action.keepWinner')}
+              </Button>
+              <Button
+                variant="primary"
+                disabled={rowBusy || !canResolve}
+                busy={busy?.id === conflict.id && busy.action === 'restoreLoser'}
+                onClick={() => void resolve(conflict, 'restoreLoser')}
+              >
+                {t('conflicts.action.restoreLoser')}
+              </Button>
+            </div>
 
-          {!canResolve && (
-            <p className="muted" style={{ marginBottom: 0, marginTop: 8 }}>
-              Your role does not include <code>sync.resolveConflicts</code>.
-            </p>
-          )}
-        </div>
-      ))}
+            {!canResolve && (
+              <p className="ob-small" style={{ marginTop: 'var(--s-8)', marginBottom: 0 }}>
+                {t('conflicts.noPermission', { permission: 'sync.resolveConflicts' })}
+              </p>
+            )}
+          </Card>
+        );
+      })}
     </div>
   );
 }
 
 function stringify(value: unknown): string {
-  if (value === null || value === undefined) return '(empty)';
-  if (typeof value === 'string') return value || '(empty)';
+  if (value === null || value === undefined) return t('conflicts.empty.value');
+  if (typeof value === 'string') return value || t('conflicts.empty.value');
   return JSON.stringify(value, null, 2);
 }
