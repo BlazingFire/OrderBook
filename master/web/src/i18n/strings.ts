@@ -74,6 +74,10 @@ const en: Record<string, string> = {
     'The panel is still starting up. On a first run it spends a little while building its database — this screen clears itself as soon as it is ready.',
   'startup.waiting.slow':
     'Still no answer. Check the server window that opened alongside this one for an error, and make sure nothing else is using its port.',
+  'startup.waiting.step': '{step}… this screen clears itself as soon as the panel is ready.',
+  'startup.failed.title': 'This PC’s server could not start',
+  'startup.failed.unknown':
+    'The server stopped while starting up and did not say why. The server window that opened alongside this one will have the details.',
 
   // --- Leads & orders (LeadsOrdersScreen) -----------------------------------
   'leadsOrders.title': 'Leads & orders',

@@ -21,7 +21,7 @@ import type {
   SignedInUser,
 } from '@orderbook/shared';
 
-import { api } from './api';
+import { api, type BootStatus } from './api';
 import { t } from './i18n/strings';
 import { SearchBox } from './components/SearchBox';
 import { AccessScreen } from './screens/AccessScreen';
@@ -130,6 +130,8 @@ function MasterPanel() {
    * button on the waiting screen.
    */
   const [bootAttempt, setBootAttempt] = useState(0);
+  /** What the server says about its own startup, when it can be asked at all. */
+  const [boot, setBoot] = useState<BootStatus | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -157,11 +159,19 @@ function MasterPanel() {
           if (!cancelled) setPhase('signed-out');
         }
       } catch {
-        // The server did not answer at all. This used to be an unhandled
+        // The server did not answer this call. This used to be an unhandled
         // rejection inside a `void`ed async function, which left `phase` on
         // `loading` for good: the panel showed "Starting…" forever, said
         // nothing about why, and never recovered even once the server came up.
         if (cancelled) return;
+
+        // `/api/health` answers before the database exists, and reports a
+        // startup that failed outright — which is the difference between "wait
+        // a moment" and "this is never going to work until you do something".
+        const status = await api.health();
+        if (cancelled) return;
+
+        setBoot(status);
         setPhase('unreachable');
         retry = window.setTimeout(() => setBootAttempt((attempt) => attempt + 1), BOOTSTRAP_RETRY_MS);
       }
@@ -244,6 +254,7 @@ function MasterPanel() {
     return (
       <StartupWaiting
         attempt={bootAttempt}
+        boot={boot}
         onRetry={() => {
           setPhase('loading');
           setBootAttempt((attempt) => attempt + 1);
@@ -547,8 +558,28 @@ function MasterPanel() {
  * "starting up" is honest; a minute of it is not, and by then the useful thing
  * to say is which window to go and look at.
  */
-function StartupWaiting({ attempt, onRetry }: { attempt: number; onRetry: () => void }) {
+function StartupWaiting({
+  attempt,
+  boot,
+  onRetry,
+}: {
+  attempt: number;
+  boot: BootStatus | null;
+  onRetry: () => void;
+}) {
+  const failed = boot?.state === 'failed';
   const stillWaiting = attempt > 5;
+
+  // Three different things to say, and conflating them is the whole bug this
+  // screen exists for: the server has *told us it failed*; the server is
+  // answering and naming the step it is on; or nothing is answering at all.
+  const body = failed
+    ? (boot?.message ?? t('startup.failed.unknown'))
+    : boot?.step
+      ? t('startup.waiting.step', { step: boot.step })
+      : stillWaiting
+        ? t('startup.waiting.slow')
+        : t('startup.waiting.body');
 
   return (
     <div
@@ -563,13 +594,32 @@ function StartupWaiting({ attempt, onRetry }: { attempt: number; onRetry: () => 
         textAlign: 'center',
       }}
     >
-      <BusyMark size={32} />
+      {failed ? <Icon name="warning" size={28} /> : <BusyMark size={32} />}
       <h1 className="ob-title" style={{ margin: 0 }}>
-        {t('startup.waiting.title')}
+        {failed ? t('startup.failed.title') : t('startup.waiting.title')}
       </h1>
-      <p className="ob-small" style={{ margin: 0, maxWidth: 420 }}>
-        {stillWaiting ? t('startup.waiting.slow') : t('startup.waiting.body')}
+      <p className="ob-small" style={{ margin: 0, maxWidth: 460 }}>
+        {body}
       </p>
+      {failed && boot?.detail && boot.detail !== boot.message && (
+        <pre
+          className="ob-mono"
+          style={{
+            margin: 0,
+            maxWidth: 560,
+            padding: 'var(--s-8) var(--s-12)',
+            border: '1px solid var(--line)',
+            borderRadius: 'var(--r-sm)',
+            color: 'var(--fg-tertiary)',
+            fontSize: '11px',
+            textAlign: 'left',
+            whiteSpace: 'pre-wrap',
+            overflowWrap: 'anywhere',
+          }}
+        >
+          {boot.detail}
+        </pre>
+      )}
       <button type="button" className="ob-btn ob-btn--secondary" onClick={onRetry}>
         {t('action.retryNow')}
       </button>

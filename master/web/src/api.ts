@@ -79,6 +79,20 @@ import type {
   UserUpdateInput,
 } from '@orderbook/shared';
 
+/**
+ * What the Master says about its own startup, from `/api/health`.
+ *
+ * Mirrors `master/src/boot-status.ts`. Declared here rather than imported from
+ * `shared` because it is a fact about one process's boot, not part of the
+ * Master↔Office contract that package exists to hold.
+ */
+export interface BootStatus {
+  state: 'starting' | 'ready' | 'failed';
+  step: string;
+  message: string | null;
+  detail: string | null;
+}
+
 /** A field a stale save disagrees with the server about. */
 export interface FieldDifference {
   stored: unknown;
@@ -206,6 +220,21 @@ export interface FirstRunCredentials {
 
 export const api = {
   setupStatus: () => request<{ setupComplete: boolean }>('/api/setup/status'),
+  /**
+   * Answered before the database exists, and again once it does — the one call
+   * that works while the Master is still starting or has failed to.
+   * Deliberately raw `fetch`: `request` throws on a non-OK response, and a
+   * 503 here is the answer, not a failure.
+   */
+  health: async (): Promise<BootStatus | null> => {
+    try {
+      const response = await fetch('/api/health', { credentials: 'same-origin' });
+      const body = (await response.json()) as { boot?: BootStatus } | null;
+      return body?.boot ?? null;
+    } catch {
+      return null;
+    }
+  },
   initialize: (companyName: string) => post<FirstRunCredentials>('/api/setup/initialize', { companyName }),
   identity: () => request<MasterIdentity>('/api/setup/identity'),
 
