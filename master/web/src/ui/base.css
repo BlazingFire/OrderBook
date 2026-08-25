@@ -1656,3 +1656,22 @@ html[data-window-blur='true'] .ob-busy rect {
   border-radius: var(--r-sm);
   border: 1px solid var(--swatch-ring);
 }
+
+/* --- Office Panels: fleet figures and the per-panel detail grid -------------
+   Both are `auto-fit` rather than a fixed column count: the Master runs on a
+   shop PC whose browser window is whatever size somebody left it, and a
+   four-across row of figures that cannot fit becomes four squashed columns
+   rather than two comfortable rows. */
+
+.ob-panel-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--s-12);
+}
+
+.ob-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--s-16);
+  align-items: start;
+}

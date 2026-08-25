@@ -374,6 +374,154 @@ const en: Record<string, string> = {
   'panels.revoke.cancel': 'Cancel',
   'panels.revoke.failed': 'Could not remove the panel',
 
+  // --- Office Panels: the screen's own sections ---------------------------
+
+  'panels.section.all': 'All panels',
+  'panels.section.pairing': 'Add a panel',
+  'panels.section.activity': 'Panel activity',
+  'panels.list.hint': 'Double-click a panel to open and manage it.',
+  'panels.table.machine': 'PC',
+  'panels.table.storage': 'Storage',
+  'panels.summary.total': 'Paired',
+  'panels.summary.connected': 'Connected now',
+  'panels.summary.offline': 'Offline',
+  'panels.summary.pending': 'Changes waiting',
+  'panels.activity.title': 'Everything the panels have done',
+  'panels.activity.empty.title': 'Nothing recorded yet',
+  'panels.activity.empty.description': 'Work raised at a panel, and changes made to one, appear here.',
+  'panels.activity.error': 'Could not read the activity trail',
+  'panels.activity.denied': 'Your role does not include {permission}, so the trail is hidden.',
+  'panels.activity.column.when': 'When',
+  'panels.activity.column.what': 'What happened',
+  'panels.activity.column.who': 'Who',
+
+  // --- Office Panels: one panel's own screen ------------------------------
+
+  'panel.back': 'All panels',
+  'panel.tab.overview': 'Overview',
+  'panel.tab.credentials': 'ID & password',
+  'panel.tab.storage': 'Storage',
+  'panel.tab.access': 'What it may do',
+  'panel.tab.activity': 'Activity',
+
+  'panel.load.failed': 'Could not open that panel',
+  'panel.save.failed': 'Could not save that change',
+  'panel.action.refresh': 'Refresh from the panel',
+  'panel.action.refreshed': 'Updated from {name}',
+  'panel.refresh.offline': 'That panel is offline, so these figures are the last it sent.',
+
+  'panel.status.connected': 'Connected',
+  'panel.status.offline': 'Offline',
+  'panel.status.removed': 'Removed',
+  'panel.status.connectedSince': 'Connected since {when}',
+  'panel.status.lastSeen': 'Last seen {when}',
+  'panel.status.neverSeen': 'Has never connected',
+
+  'panel.overview.identity': 'This panel',
+  'panel.overview.machine': 'The PC it runs on',
+  'panel.overview.link': 'Connection',
+  'panel.overview.work': 'What it has raised',
+  'panel.overview.reportedAt': 'Details as of {when}',
+  'panel.overview.neverReported':
+    'This panel has not described itself yet. It does so the moment it next connects.',
+
+  'panel.field.name': 'Name',
+  'panel.field.notes': 'Note',
+  'panel.field.notesHint': 'Where this PC is, or who uses it. Only the Master shows this.',
+  'panel.field.deviceCode': 'Device code',
+  'panel.field.deviceCodeHint': 'Stamped into every record this panel raises offline.',
+  'panel.field.panelId': 'Panel ID',
+  'panel.field.paired': 'Paired',
+  'panel.field.hostname': 'PC name',
+  'panel.field.platform': 'System',
+  'panel.field.appVersion': 'OrderBook version',
+  'panel.field.nodeVersion': 'Node version',
+  'panel.field.startedAt': 'Running since',
+  'panel.field.address': 'Address on the network',
+  'panel.field.localPort': 'Opens in a browser at',
+  'panel.field.pendingMutations': 'Changes waiting to reach here',
+  'panel.field.snapshotAt': 'Copy of the data dated',
+  'panel.field.signedInUser': 'Signed in on that PC',
+  'panel.field.nobody': 'Nobody',
+  'panel.field.leads': 'Leads raised',
+  'panel.field.orders': 'Orders raised',
+  'panel.field.lastAction': 'Last action',
+  'panel.field.unknown': 'Not reported yet',
+
+  'panel.credentials.title': 'How this panel signs in',
+  'panel.credentials.description':
+    'A panel proves itself to the Master with its ID and a secret. The ID never changes; the secret can be reissued at any time.',
+  'panel.credentials.secretLabel': 'Secret',
+  'panel.credentials.secretStored': 'Stored as a hash — it cannot be read back, only replaced.',
+  'panel.credentials.rotatedAt': 'Last reissued {when}',
+  'panel.credentials.neverRotated': 'Unchanged since this panel was paired.',
+  'panel.credentials.rotate': 'Reissue the secret',
+  'panel.credentials.rotate.title': 'Reissue the secret for {name}?',
+  'panel.credentials.rotate.connected':
+    'That panel is connected, so it will be handed the new secret and carry on working. Nobody has to touch that PC.',
+  'panel.credentials.rotate.offline':
+    'That panel is offline and cannot be told. It will be locked out until somebody pairs that PC again by hand.',
+  'panel.credentials.rotate.confirm': 'Reissue it',
+  'panel.credentials.rotate.failed': 'Could not reissue the secret',
+  'panel.credentials.new.title': 'The new secret for {name}',
+  'panel.credentials.new.once':
+    'This is shown once and is not stored anywhere. Write it down before closing.',
+  'panel.credentials.new.delivered':
+    'The panel has already taken it and is still connected — there is nothing further to do.',
+  'panel.credentials.new.undelivered':
+    'The panel was offline. Enter this on that PC’s Manual Connection screen to bring it back.',
+  'panel.credentials.new.close': 'I have written it down',
+  'panel.credentials.pairing.title': 'Pairing password',
+  'panel.credentials.pairing.description':
+    'The one an operator types on a panel’s Manual Connection screen belongs to this Master, not to any one panel. It is on the Settings screen.',
+
+  'panel.storage.title': 'Where this panel keeps its files',
+  'panel.storage.description':
+    'An Office Panel holds no database. What lives here is its queue of unsent work, its copy of the data, and the photos it has viewed.',
+  'panel.storage.path': 'Folder on that PC',
+  'panel.storage.images': 'Photo cache',
+  'panel.storage.used': 'Used by this panel',
+  'panel.storage.free': 'Free on that drive',
+  'panel.storage.total': 'Drive size',
+  'panel.storage.cachedImages': 'Photos cached',
+  'panel.storage.change': 'Move to another folder',
+  'panel.storage.change.title': 'Move {name}’s files',
+  'panel.storage.change.description':
+    'The panel checks the folder on its own PC and refuses if it cannot write there or the drive is too small.',
+  'panel.storage.change.label': 'New folder on that PC',
+  'panel.storage.change.hint': 'The full path, e.g. D:\\OrderBook\\panel-data',
+  'panel.storage.change.move': 'Copy what is already there',
+  'panel.storage.change.moveHint':
+    'Leave this on. Turning it off starts the panel empty and abandons any work it has not sent yet.',
+  'panel.storage.change.confirm': 'Move the files',
+  'panel.storage.change.failed': 'That panel could not move its files',
+  'panel.storage.change.done': 'Moved {count} files to {path}',
+  'panel.storage.change.oldFolder':
+    'The old folder at {path} was left in place. Delete it from that PC once you are satisfied.',
+  'panel.storage.offline':
+    'The folder can only be moved while that panel is connected — it is the panel that does the moving.',
+
+  'panel.access.title': 'What this panel may do on its own',
+  'panel.access.description':
+    'When nobody is signed in at that desk, the panel still acts — accepting a lead, syncing what it holds. This is the role it acts under then. A person signed in on the panel always acts under their own role instead.',
+  'panel.access.role': 'Role for the unattended panel',
+  'panel.access.fallback': 'Office (the default)',
+  'panel.access.fallbackHint': 'No role chosen, so the seeded Office role stands in.',
+  'panel.access.permissions': 'That role may',
+  'panel.access.permissionCount': '{count} permissions',
+  'panel.access.tier': 'Tier',
+  'panel.access.save': 'Save the role',
+
+  'panel.danger.title': 'Connection',
+  'panel.danger.disconnect': 'Drop the connection',
+  'panel.danger.disconnectHint':
+    'Ends the panel’s current link. It reconnects on its own within seconds — a way to clear a stuck session without going to that PC.',
+  'panel.danger.disconnected': 'Dropped {name}’s connection',
+  'panel.danger.disconnectFailed': 'Could not drop that connection',
+  'panel.danger.remove': 'Remove this panel',
+  'panel.danger.removeHint':
+    'Ends the pairing for good. That PC drops to its connection screen and has to be paired again.',
+
   // --- Sync conflicts ---------------------------------------------------
 
   'conflicts.includeReviewed': 'Include reviewed',

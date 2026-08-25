@@ -33,6 +33,7 @@ import { FirstRunScreen } from './screens/FirstRunScreen';
 import { InventoryScreen } from './screens/InventoryScreen';
 import { LeadsOrdersScreen } from './screens/LeadsOrdersScreen';
 import { LogsScreen } from './screens/LogsScreen';
+import { PanelDetailScreen } from './screens/PanelDetailScreen';
 import { PanelsScreen } from './screens/PanelsScreen';
 import { RecycleBinScreen } from './screens/RecycleBinScreen';
 import { ReportsScreen } from './screens/ReportsScreen';
@@ -63,7 +64,16 @@ type Tab =
 type Route = '' | 'gallery';
 
 /** Entities whose changes should make the data screens refetch. */
-const REFRESHING_ENTITIES = new Set(['lead', 'order', 'stock', 'reservation', 'sync_conflict']);
+const REFRESHING_ENTITIES = new Set([
+  'lead',
+  'order',
+  'stock',
+  'reservation',
+  'sync_conflict',
+  // The panel *list* arrives on its own `panels:changed` event, but the panel
+  // detail screen fetches itself and needs telling when its panel moves.
+  'office_panel',
+]);
 
 function readHash(): string {
   return window.location.hash.replace(/^#/, '');
@@ -82,6 +92,14 @@ function MasterPanel() {
   const [user, setUser] = useState<SignedInUser | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('dashboard');
+  /**
+   * The panel whose own administration screen is open, if any.
+   *
+   * Held here rather than inside `PanelsScreen` so the sidebar's own "Office
+   * panels" click closes it — landing back on a module and finding the detail
+   * screen you left an hour ago is the wrong answer to pressing a nav item.
+   */
+  const [openPanelId, setOpenPanelId] = useState<string | null>(null);
 
   const [panels, setPanels] = useState<OfficePanelWithPresence[]>([]);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
@@ -385,7 +403,23 @@ function MasterPanel() {
           />
         );
       case 'panels':
-        return <PanelsScreen panels={panels} onRefresh={refreshPanels} />;
+        return openPanelId ? (
+          <PanelDetailScreen
+            panelId={openPanelId}
+            permissions={user.permissions}
+            revision={dataRevision}
+            onBack={() => setOpenPanelId(null)}
+            onChanged={refreshPanels}
+          />
+        ) : (
+          <PanelsScreen
+            panels={panels}
+            permissions={user.permissions}
+            revision={dataRevision}
+            onRefresh={refreshPanels}
+            onOpenPanel={setOpenPanelId}
+          />
+        );
       case 'orders':
         return <LeadsOrdersScreen revision={dataRevision} />;
       case 'inventory':
@@ -427,6 +461,7 @@ function MasterPanel() {
             if (id === 'gallery') return;
             if (readHash()) window.history.replaceState(null, '', window.location.pathname + window.location.search);
             setRoute('');
+            if (id !== 'panels') setOpenPanelId(null);
             setTab(id as Tab);
           }}
           collapsed={collapsed}

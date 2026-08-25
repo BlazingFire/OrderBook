@@ -119,15 +119,117 @@ export interface OfficePanel {
   lanIp: string | null;
   macAddress: string | null;
   status: OfficePanelStatus;
+  /** Free text an administrator keeps against the panel — which desk it is on. */
+  notes: string | null;
   pairedAt: IsoTimestamp | null;
   lastSeenAt: IsoTimestamp | null;
+  /** When this panel's secret was last reissued. Null means never since pairing. */
+  secretRotatedAt: IsoTimestamp | null;
   createdAt: IsoTimestamp;
   updatedAt: IsoTimestamp;
+  /** Last thing the panel said about the PC it runs on. Never null; all-null when it has never reported. */
+  device: OfficePanelDevice;
+}
+
+/**
+ * What an Office Panel says about the machine it is installed on.
+ *
+ * The Master cannot discover any of this: an Office Panel binds its HTTP server
+ * to loopback, so nothing on the LAN can ask it a question — the panel has to
+ * volunteer it over the socket it already holds. Every field is nullable
+ * because a panel paired before this existed has reported nothing yet, and
+ * "unknown" must stay distinguishable from "zero" for the disk figures in
+ * particular.
+ */
+export interface OfficePanelDevice {
+  /** The PC's own name, which is what staff call the machine. */
+  hostname: string | null;
+  /** `win32`, `darwin`, `linux` — Node's own token, rendered by the client. */
+  platform: string | null;
+  osVersion: string | null;
+  appVersion: string | null;
+  nodeVersion: string | null;
+  /** Absolute path of this panel's data folder **on that PC**. */
+  dataDir: string | null;
+  /** Where it caches image variants it has viewed; under `dataDir` by default. */
+  imagesDir: string | null;
+  /** Bytes the data folder occupies. */
+  storageBytes: number | null;
+  /** Free and total bytes on the volume holding `dataDir`. */
+  diskFreeBytes: number | null;
+  diskTotalBytes: number | null;
+  /** The loopback port its browser UI is served on. */
+  localPort: number | null;
+  /** When that panel process started — an uptime, not a pairing date. */
+  startedAt: IsoTimestamp | null;
+  /** When the Master last received a report. Stamped by the Master, not the panel. */
+  reportedAt: IsoTimestamp | null;
+}
+
+/** An `OfficePanelDevice` with nothing known yet. */
+export const UNREPORTED_PANEL_DEVICE: OfficePanelDevice = {
+  hostname: null,
+  platform: null,
+  osVersion: null,
+  appVersion: null,
+  nodeVersion: null,
+  dataDir: null,
+  imagesDir: null,
+  storageBytes: null,
+  diskFreeBytes: null,
+  diskTotalBytes: null,
+  localPort: null,
+  startedAt: null,
+  reportedAt: null,
+};
+
+/**
+ * Figures that are only true while the panel is connected, so they are held in
+ * memory on the Master and never written to a column: a stored `pendingCount`
+ * would keep asserting a backlog for a panel that has been switched off for a
+ * week.
+ */
+export interface OfficePanelRuntime {
+  /** Mutations queued on the panel that the Master has not accepted yet. */
+  pendingMutations: number | null;
+  /** Image variants the panel holds in its own cache. */
+  cachedImages: number | null;
+  /** How old the panel's copy of the data is. */
+  lastSnapshotAt: IsoTimestamp | null;
+  /** Who is signed in on that panel right now, if anybody. */
+  signedInUsername: string | null;
+  /** When the current connection was established. */
+  connectedSince: IsoTimestamp | null;
 }
 
 /** Live connection state, derived at runtime — not a database column. */
 export interface OfficePanelWithPresence extends OfficePanel {
   isConnected: boolean;
+  /** Present only while connected — see `OfficePanelRuntime`. */
+  runtime: OfficePanelRuntime | null;
+}
+
+/**
+ * Everything the Master's panel-detail screen shows for one panel: the row, its
+ * presence, and the answers it would otherwise have to make five more requests
+ * for.
+ */
+export interface OfficePanelDetail extends OfficePanelWithPresence {
+  /** The role this panel's own unattended commands act under. */
+  role: {
+    id: RecordId | null;
+    name: string;
+    tier: RoleTierName;
+    permissions: string[];
+    /** True when no role is assigned and the seeded Office tier is standing in. */
+    isFallback: boolean;
+  };
+  /** What this panel has actually produced, so a quiet panel is visible as quiet. */
+  work: {
+    leads: number;
+    orders: number;
+    lastActionAt: IsoTimestamp | null;
+  };
 }
 
 // --- Configurable pipelines (the Kanban columns) ---------------------------

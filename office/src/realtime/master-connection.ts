@@ -11,17 +11,21 @@ import { EventEmitter } from 'node:events';
 import { io, type Socket } from 'socket.io-client';
 import type {
   ClientToServerEvents,
+  CommandAck,
   CommandResult,
   DataChangedEvent,
   InventoryStockLevel,
   Lead,
   MessageKey,
   MessageParams,
+  OfficePanelReportInput,
   Order,
   Party,
   Product,
   KnownPanelUser,
   PanelSessionResolution,
+  PanelStoragePathInput,
+  PanelStoragePathResult,
   ProductCategory,
   ServerToClientEvents,
   SessionRejection,
@@ -29,12 +33,21 @@ import type {
 } from '@orderbook/shared';
 
 import { createLogger } from '../lib/logger.js';
-import { clearCredentials, loadCredentials, masterBaseUrl } from '../services/credentials.store.js';
+import {
+  clearCredentials,
+  loadCredentials,
+  masterBaseUrl,
+  saveCredentials,
+} from '../services/credentials.store.js';
+import { buildReport, moveStorage } from '../services/panel-report.service.js';
 import { observe } from '../sync/clock.js';
 import * as localStore from '../sync/local-store.js';
 import { flush, setTransport, stopSync } from '../sync/sync.service.js';
 
 const log = createLogger('master-link');
+
+/** How often a connected panel repeats its self-description. */
+const REPORT_INTERVAL_MS = 5 * 60 * 1000;
 
 export type ConnectionState = 'unpaired' | 'connecting' | 'connected' | 'disconnected';
 
@@ -88,6 +101,8 @@ class MasterConnection extends EventEmitter {
   private companyName: string | null = null;
   /** The Master-issued token of whoever is signed in on this panel. */
   private actingToken: string | null = null;
+  /** Repeats the self-description while the link is up. Cleared on disconnect. */
+  private reportTimer: NodeJS.Timeout | null = null;
 
   async connect(): Promise<void> {
     const credentials = await loadCredentials();
@@ -137,12 +152,18 @@ class MasterConnection extends EventEmitter {
         // The outbox only knows how to hand mutations to *something*; wiring the
         // socket in here is what keeps the sync service free of transport.
         setTransport((mutations) => this.command('sync:push', { mutations }));
+
+        // Say what this PC is. Nothing depends on it succeeding — a Master too
+        // old to know the event simply never acknowledges — so it must not be
+        // allowed to fail the rest of a reconnect.
+        this.startReporting();
       })();
     });
 
     socket.on('disconnect', (reason) => {
       this.setState('disconnected');
       setTransport(null);
+      this.stopReporting();
       log.warn(`Disconnected from Master: ${reason}`);
     });
 
@@ -193,6 +214,47 @@ class MasterConnection extends EventEmitter {
       this.emit('session:rejected', reason);
     });
 
+    // --- Administered from the Master (docs/UI_REDESIGN.md — Office Panels) ---
+
+    // A pull, for when somebody opens this panel's screen on the Master and
+    // wants figures that are current rather than however stale the timer left
+    // them.
+    socket.on('panel:describe', (ack: CommandAck<OfficePanelReportInput>) => {
+      void buildReport().then(
+        (report) => ack({ ok: true, data: report }),
+        (error: unknown) => ack({ ok: false, error: describeError(error) }),
+      );
+    });
+
+    // A reissued secret. Persisted *before* acknowledging: the Master replaces
+    // its stored hash only once this ack arrives, so an ack sent before the
+    // write completed would be a promise this panel had not yet kept — and the
+    // panel would be locked out on its next reconnect.
+    socket.on('panel:credentials', ({ panelSecret }, ack: CommandAck<null>) => {
+      void (async () => {
+        try {
+          const credentials = await loadCredentials();
+          if (!credentials) throw new Error('This panel is not paired');
+
+          await saveCredentials({ ...credentials, panelSecret });
+          log.info('Stored a reissued panel secret from the Master');
+          ack({ ok: true, data: null });
+        } catch (error) {
+          ack({ ok: false, error: describeError(error) });
+        }
+      })();
+    });
+
+    socket.on(
+      'panel:setStoragePath',
+      (input: PanelStoragePathInput, ack: CommandAck<PanelStoragePathResult>) => {
+        void moveStorage(input).then(
+          (result) => ack({ ok: true, data: result }),
+          (error: unknown) => ack({ ok: false, error: describeError(error) }),
+        );
+      },
+    );
+
     socket.on('panel:revoked', () => {
       void (async () => {
         log.warn('This panel was removed by the Master');
@@ -207,10 +269,44 @@ class MasterConnection extends EventEmitter {
 
   disconnect(): void {
     stopSync();
+    this.stopReporting();
     if (!this.socket) return;
     this.socket.removeAllListeners();
     this.socket.disconnect();
     this.socket = null;
+  }
+
+  /**
+   * Describe this PC now, then keep saying so on a slow timer.
+   *
+   * Slow on purpose: the figures that move — pending changes, disk free — move
+   * over hours, and this runs on a shop PC that also has to stay responsive.
+   * When an administrator needs them fresh, the Master asks directly through
+   * `panel:describe` rather than waiting for the next tick.
+   */
+  private startReporting(): void {
+    this.stopReporting();
+    void this.sendReport();
+
+    this.reportTimer = setInterval(() => void this.sendReport(), REPORT_INTERVAL_MS);
+    // Never hold the process open for a status update.
+    this.reportTimer.unref?.();
+  }
+
+  private stopReporting(): void {
+    if (!this.reportTimer) return;
+    clearInterval(this.reportTimer);
+    this.reportTimer = null;
+  }
+
+  private async sendReport(): Promise<void> {
+    try {
+      await this.command<'panel:report', null>('panel:report', await buildReport());
+    } catch (error) {
+      // Reporting is housekeeping. A Master that refuses it, or a link that
+      // drops mid-report, must not disturb anything a person is doing here.
+      log.debug(`Could not report this panel's details: ${describeError(error)}`);
+    }
   }
 
   getStatus(): ConnectionStatus {
@@ -487,6 +583,12 @@ function upsertStock(list: InventoryStockLevel[], item: InventoryStockLevel): In
   const next = [...list];
   next[index] = item;
   return next;
+}
+
+/** A sentence for whoever is standing at the Master, never a stack trace. */
+function describeError(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  return 'That office panel could not do that';
 }
 
 export const masterConnection = new MasterConnection();

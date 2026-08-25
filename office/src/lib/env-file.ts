@@ -10,6 +10,8 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 
 /**
  * Loads each file in order, skipping any that do not exist.
@@ -50,4 +52,41 @@ export function loadEnvFiles(...files: string[]): void {
       process.env[key] = value;
     }
   }
+}
+
+/**
+ * Set one `KEY=value` in a `.env`, preserving everything else in the file.
+ *
+ * Rewrites the matching line in place rather than appending, so moving a
+ * panel's storage twice leaves one line rather than two — with a dotenv file
+ * the last assignment wins, but a file that accumulates stale paths is one
+ * somebody eventually reads and believes.
+ *
+ * The value is quoted whenever it contains a space, because a Windows path
+ * under `C:\Program Files` would otherwise be truncated by `loadEnvFiles`'s
+ * own trimming when it is read back.
+ */
+export async function writeEnvValue(file: string, key: string, value: string): Promise<void> {
+  let existing = '';
+  try {
+    existing = await readFile(file, 'utf8');
+  } catch {
+    // No file yet — the panel is running entirely on defaults.
+  }
+
+  const line = `${key}=${/\s/.test(value) ? `"${value}"` : value}`;
+  const lines = existing.split(/\r?\n/);
+  const index = lines.findIndex((entry) => entry.trim().startsWith(`${key}=`));
+
+  if (index === -1) {
+    // Keep exactly one trailing newline whether or not the file had one.
+    const body = existing.trimEnd();
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, body ? `${body}\n${line}\n` : `${line}\n`, { mode: 0o600 });
+    return;
+  }
+
+  lines[index] = line;
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, lines.join('\n'), { mode: 0o600 });
 }

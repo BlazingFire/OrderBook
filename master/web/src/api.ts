@@ -27,6 +27,9 @@ import type {
   MasterIdentity,
   MessageKey,
   MessageParams,
+  OfficePanel,
+  OfficePanelDetail,
+  OfficePanelUpdateInput,
   OfficePanelWithPresence,
   OptionListItem,
   OptionListItemInput,
@@ -34,6 +37,9 @@ import type {
   OptionListReorderInput,
   Order,
   Paginated,
+  PanelSecretRotation,
+  PanelStoragePathInput,
+  PanelStoragePathResult,
   Party,
   PartyInput,
   PartyProductVariant,
@@ -297,6 +303,22 @@ export const api = {
   revokePanel: (id: string) => post<void>(`/api/panels/${id}/revoke`),
   renamePanel: (id: string, name: string) =>
     request<void>(`/api/panels/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+
+  // --- One panel, administered (docs/UI_REDESIGN.md — Office Panels) --------
+
+  panel: (id: string) => request<OfficePanelDetail>(`/api/panels/${id}`),
+  /** Omitted fields are left alone; `notes: null` clears the note. */
+  updatePanel: (id: string, input: OfficePanelUpdateInput) =>
+    request<OfficePanel>(`/api/panels/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  /** Pulls a fresh account of the panel's machine instead of the last timed one. */
+  refreshPanel: (id: string) => post<OfficePanelDetail>(`/api/panels/${id}/refresh`),
+  /** The plaintext secret is in this response and nowhere else — there is no second chance. */
+  rotatePanelSecret: (id: string) => post<PanelSecretRotation>(`/api/panels/${id}/rotate-secret`),
+  setPanelStoragePath: (id: string, input: PanelStoragePathInput) =>
+    post<PanelStoragePathResult>(`/api/panels/${id}/storage-path`, input),
+  disconnectPanel: (id: string) => post<{ disconnected: boolean }>(`/api/panels/${id}/disconnect`),
+  panelActivity: (id: string, limit = 50) =>
+    request<{ entries: ActivityLogEntry[] }>(`/api/panels/${id}/activity?limit=${limit}`),
 
   parties: (search?: string) =>
     request<Paginated<Party>>(`/api/parties${search ? `?search=${encodeURIComponent(search)}` : ''}`),

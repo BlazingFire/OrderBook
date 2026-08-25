@@ -1259,6 +1259,64 @@ working tree for what actually exists if this section reads stale.
   not; if per-row audit timestamps on Fields configuration turn out to matter,
   that is new work, not a regression to restore.
 
+- **Office Panel administration on the Master: done** (2026-08-25). The Master's
+  Admin → Office Panels tab used to be a list with Rename and Remove on it. It
+  is now a module: three sections (All panels / Add a panel / Panel activity),
+  four fleet figures above them, and a per-panel screen that opens on
+  double-click with five sections of its own — Overview, ID & password,
+  Storage, What it may do, Activity.
+
+  The load-bearing constraint, and the reason most of this is shaped the way it
+  is: **the Master cannot reach into an Office Panel.** A panel binds its HTTP
+  server to loopback (`office/src/config/index.ts`), so nothing on the LAN can
+  ask it anything. Everything the screen shows about a machine — its name, its
+  Windows version, where its files are, how full its disk is — is there because
+  the panel *volunteered* it over the socket it already holds, and everything
+  the screen *changes* on a panel is a request the panel carries out.
+
+  - **`panel:report` (Office → Master)** carries the panel's account of itself:
+    hostname, platform, OS and app versions, data folder, image cache, bytes
+    used, disk free/total, local port, uptime, plus the per-connection figures
+    (queued mutations, cached images, snapshot age, who is signed in). Sent on
+    connect and every five minutes. The durable half lands in fifteen new
+    nullable columns (`20260312000000_office_panel_administration`); the
+    connection-only half stays in a memory map on the Master, because a stored
+    "12 changes pending" would keep asserting a backlog for a panel that has
+    been switched off for a week. Every column is nullable and nothing is
+    backfilled — "unknown" must stay distinguishable from "zero", or a disk
+    shown as 0 bytes free is a decision somebody acts on.
+  - **`panel:describe`, `panel:credentials`, `panel:setStoragePath` (Master →
+    Office)** are the three requests that go the other way. Services reach one
+    panel's socket through `master/src/realtime/panel-link.ts` — a seam the hub
+    registers at startup, so `panel.service.ts` never imports the hub back.
+  - **Reissuing a panel's secret has one order and it is the non-obvious one.**
+    The connected panel is handed the new secret and must acknowledge storing it
+    *before* the Master replaces the hash. Writing the hash first would kill the
+    old secret while the panel still held it, so a dropped ack would lock out a
+    panel that was working a moment ago — over a network whose whole premise is
+    that it goes down. A panel that is switched off cannot be told at all: the
+    secret is reissued anyway and `delivered: false` sends the operator to that
+    PC with the plaintext, shown once. Pinned by
+    `master/tests/panel-administration.integration.test.ts`.
+  - **Moving a panel's data folder actually moves it, with no restart.**
+    `office/src/config/paths.ts` now owns the live data directory and every
+    store reads through `paths()` rather than the frozen `config.dataDir` — that
+    is what stops work saved after a move being stranded in the old folder until
+    somebody restarts the process. The panel validates on its own terms (path
+    absolute, writable, drive big enough, not nested either way), copies, writes
+    `ORDERBOOK_OFFICE_DATA_DIR` into its own `.env` so a restart agrees, and
+    **leaves the original folder in place** — this runs unattended, triggered by
+    somebody who cannot see that PC's drives, so a half-finished move with the
+    source deleted would be unrecoverable from where they are standing.
+  - Also on the screen: notes against a panel, assigning the role its
+    *unattended* commands act under (`office_panels.role_id`, which had a column
+    and a reader but no way to set it), a force-disconnect that clears a wedged
+    session without ending the pairing, and a per-panel activity trail that
+    reads both directions — what the panel did, and what was done to it.
+  - `GET /api/panels/:id` is `panels.manage`, unlike `GET /api/panels`: the list
+    is what every session's presence rail counts, the detail carries the panel's
+    effective permission set and the layout of its disk.
+
 ### Still to do in Phase 2
 
 The user was asked to prioritise and chose inventory first. Remaining, roughly

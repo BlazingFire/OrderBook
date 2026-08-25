@@ -18,7 +18,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { config } from '../config/index.js';
+import { paths } from '../config/paths.js';
 
 interface Attempt {
   count: number;
@@ -39,7 +39,7 @@ async function load(): Promise<StoredFile> {
   if (cache) return cache;
 
   try {
-    const raw = await fs.readFile(config.signInAttemptsFile, 'utf8');
+    const raw = await fs.readFile(paths().signInAttemptsFile, 'utf8');
     const parsed = JSON.parse(raw) as StoredFile;
     cache = { attempts: parsed.attempts ?? {} };
   } catch {
@@ -50,8 +50,8 @@ async function load(): Promise<StoredFile> {
 }
 
 async function persist(file: StoredFile): Promise<void> {
-  await fs.mkdir(path.dirname(config.signInAttemptsFile), { recursive: true });
-  await fs.writeFile(config.signInAttemptsFile, JSON.stringify(file), { mode: 0o600 });
+  await fs.mkdir(path.dirname(paths().signInAttemptsFile), { recursive: true });
+  await fs.writeFile(paths().signInAttemptsFile, JSON.stringify(file), { mode: 0o600 });
 }
 
 function key(username: string): string {

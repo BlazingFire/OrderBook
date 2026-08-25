@@ -26,21 +26,33 @@ import path from 'node:path';
 import { BACKUP_FORMAT_VERSION, type BackupExportRequest, type BackupManifest } from '@orderbook/shared';
 
 import { config } from '../config/index.js';
+import { paths } from '../config/paths.js';
 import { assertPassphraseStrong } from '../domain/backup.js';
 import { deviceCode } from '../sync/device.js';
 import { encryptBackup } from '../lib/backup-crypto.js';
 
 const appVersion = readAppVersion();
 
-/** Relative name -> absolute path, for every file a replica export can carry. Never `credentialsFile`. */
-const REPLICA_FILES: Record<string, string> = {
-  'device.json': config.deviceFile,
-  'clock.json': config.clockFile,
-  'outbox.json': config.outboxFile,
-  'snapshot.json': config.snapshotFile,
-  'users.json': config.usersFile,
-  'sign-in-attempts.json': config.signInAttemptsFile,
-};
+/**
+ * Relative name -> absolute path, for every file a replica export can carry.
+ * Never `credentialsFile`.
+ *
+ * A function rather than a constant because the data folder can move while the
+ * panel is running (`config/paths.ts`): a map built at import time would keep
+ * exporting whatever was at the old path, which for an export is a silent
+ * wrong answer rather than a visible failure.
+ */
+function replicaFiles(): Record<string, string> {
+  const current = paths();
+  return {
+    'device.json': current.deviceFile,
+    'clock.json': current.clockFile,
+    'outbox.json': current.outboxFile,
+    'snapshot.json': current.snapshotFile,
+    'users.json': current.usersFile,
+    'sign-in-attempts.json': current.signInAttemptsFile,
+  };
+}
 
 /** `local_settings` (§2.3): the person-facing state, not the sync machinery. */
 const SETTINGS_ONLY_FILES = ['users.json', 'sign-in-attempts.json'];
@@ -54,11 +66,12 @@ export async function exportBackup(request: BackupExportRequest): Promise<Export
   assertPassphraseStrong(request.passphrase);
 
   const officeScope = request.officeScope ?? 'full-replica';
-  const names = officeScope === 'settings-only' ? SETTINGS_ONLY_FILES : Object.keys(REPLICA_FILES);
+  const sources = replicaFiles();
+  const names = officeScope === 'settings-only' ? SETTINGS_ONLY_FILES : Object.keys(sources);
 
   const files: Record<string, unknown> = {};
   for (const name of names) {
-    const filePath = REPLICA_FILES[name];
+    const filePath = sources[name];
     if (!filePath) continue;
     files[name] = await readJsonIfPresent(filePath);
   }

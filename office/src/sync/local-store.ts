@@ -27,7 +27,7 @@ import type {
   SyncSnapshot,
 } from '@orderbook/shared';
 
-import { config } from '../config/index.js';
+import { paths } from '../config/paths.js';
 import { createLogger } from '../lib/logger.js';
 import { pending } from './outbox.store.js';
 
@@ -52,7 +52,7 @@ export async function restore(): Promise<SyncSnapshot | null> {
   loaded = true;
 
   try {
-    const raw = await fs.readFile(config.snapshotFile, 'utf8');
+    const raw = await fs.readFile(paths().snapshotFile, 'utf8');
     snapshot = JSON.parse(raw) as SyncSnapshot;
     log.info('Restored the last snapshot from disk');
   } catch {
@@ -340,8 +340,8 @@ function findStage(view: SyncSnapshot, stageId: string) {
 }
 
 async function persist(value: SyncSnapshot): Promise<void> {
-  await fs.mkdir(path.dirname(config.snapshotFile), { recursive: true });
-  await fs.writeFile(config.snapshotFile, JSON.stringify(value), { mode: 0o600 });
+  await fs.mkdir(path.dirname(paths().snapshotFile), { recursive: true });
+  await fs.writeFile(paths().snapshotFile, JSON.stringify(value), { mode: 0o600 });
 }
 
 /** Test seam. */

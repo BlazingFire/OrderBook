@@ -85,6 +85,46 @@ CREATE INDEX idx_office_panels_status ON office_panels(status);
 | `status` | `pending` while a discovery handshake is in progress, `active` once paired, `revoked` if the admin removes it from Master's "Connected Office Panels" screen — a revoked panel's secret is rejected on its next reconnect attempt even though the row is kept for history/audit. |
 | `last_seen_at` | Updated on every Socket.IO heartbeat; drives the live connected/offline indicator in `PROJECT_PLAN.md` §5.4. |
 
+### What the panel says about its own machine
+
+`20260312000000_office_panel_administration` adds the columns behind the
+Master's per-panel administration screen. None of them can be discovered: an
+Office Panel binds its HTTP server to loopback, so the Master has no way to ask
+it a question — the panel volunteers all of this over `panel:report` on connect
+and on a five-minute timer.
+
+```sql
+ALTER TABLE office_panels
+  ADD COLUMN notes              TEXT,        -- free text an admin keeps against the panel
+  ADD COLUMN hostname           TEXT,
+  ADD COLUMN platform           TEXT,        -- Node's token: win32 / darwin / linux
+  ADD COLUMN os_version         TEXT,
+  ADD COLUMN app_version        TEXT,
+  ADD COLUMN node_version       TEXT,
+  ADD COLUMN data_dir           TEXT,        -- absolute path of its data folder ON THAT PC
+  ADD COLUMN images_dir         TEXT,
+  ADD COLUMN storage_bytes      BIGINT,
+  ADD COLUMN disk_free_bytes    BIGINT,
+  ADD COLUMN disk_total_bytes   BIGINT,
+  ADD COLUMN local_port         INTEGER,
+  ADD COLUMN panel_started_at   TIMESTAMPTZ, -- that panel process, not the machine
+  ADD COLUMN device_reported_at TIMESTAMPTZ, -- stamped by the MASTER on receipt
+  ADD COLUMN secret_rotated_at  TIMESTAMPTZ;
+```
+
+| Column | Notes |
+|---|---|
+| every column above | Nullable, and nothing is backfilled. A panel paired before this existed has reported nothing, and "unknown" has to stay distinguishable from "zero" — a `disk_free_bytes` defaulted to 0 reads as a full disk on every panel in the company. |
+| `device_reported_at` | Stamped from the Master's clock, never from the payload. A panel whose PC has the wrong date must not be able to claim its figures are newer than they are. |
+| `secret_rotated_at` | Separate from `updated_at`, which a rename also touches. "When did this panel's credentials last change" is a question about exactly one event. |
+| `data_dir` | Follows a `panel:setStoragePath` immediately rather than waiting for the panel's next timed report, so the screen agrees with what just happened. |
+
+Figures that are only true while a panel is connected — queued mutations,
+cached images, snapshot age, who is signed in — are deliberately **not** here.
+They live in a memory map on the Master (`panel.service.ts`), because a stored
+"12 changes pending" would keep asserting a backlog for a panel that has been
+switched off for a week.
+
 ### Why not delete a panel row on removal?
 
 `leads.source_panel_id` (see `03-leads-orders-inventory.md`) references

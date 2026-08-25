@@ -27,6 +27,7 @@ import * as documentTemplatesAndExports from './20260308000000_document_template
 import * as newModulePermissionGrant from './20260309000000_new_module_permission_grant.js';
 import * as activityLogActorName from './20260310000000_activity_log_actor_name.js';
 import * as storagePermissionGrant from './20260311000000_storage_permission_grant.js';
+import * as officePanelAdministration from './20260312000000_office_panel_administration.js';
 
 export interface Migration {
   name: string;
@@ -53,6 +54,10 @@ export const migrations: Migration[] = [
   },
   { name: '20260310000000_activity_log_actor_name', ...activityLogActorName },
   { name: '20260311000000_storage_permission_grant', ...storagePermissionGrant },
+  {
+    name: '20260312000000_office_panel_administration',
+    ...officePanelAdministration,
+  },
   // Stage 7 of `docs/backend-modules/` — last in the array, not last by
   // timestamp. Its `20260309` slot was reserved before `20260310`/`20260311`
   // were claimed by concurrent work; what matters is that it runs after every

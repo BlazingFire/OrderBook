@@ -20,7 +20,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { Mutation, MutationKind } from '@orderbook/shared';
 
-import { config } from '../config/index.js';
+import { paths } from '../config/paths.js';
 import { createLogger } from '../lib/logger.js';
 import { stamp } from './clock.js';
 import { deviceCode } from './device.js';
@@ -108,7 +108,7 @@ async function load(): Promise<Mutation[]> {
   if (cached) return cached;
 
   try {
-    const raw = await fs.readFile(config.outboxFile, 'utf8');
+    const raw = await fs.readFile(paths().outboxFile, 'utf8');
     const parsed: unknown = JSON.parse(raw);
     cached = Array.isArray(parsed) ? (parsed as Mutation[]) : [];
   } catch {
@@ -132,11 +132,11 @@ function mutate(update: (current: Mutation[]) => Mutation[]): Promise<void> {
 }
 
 async function persist(mutations: Mutation[]): Promise<void> {
-  await fs.mkdir(path.dirname(config.outboxFile), { recursive: true });
+  await fs.mkdir(path.dirname(paths().outboxFile), { recursive: true });
 
-  const temporary = `${config.outboxFile}.tmp`;
+  const temporary = `${paths().outboxFile}.tmp`;
   await fs.writeFile(temporary, JSON.stringify(mutations, null, 2), { mode: 0o600 });
-  await fs.rename(temporary, config.outboxFile);
+  await fs.rename(temporary, paths().outboxFile);
 }
 
 /** Test seam. */

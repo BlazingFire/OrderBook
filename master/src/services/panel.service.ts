@@ -8,11 +8,20 @@
  */
 
 import { randomBytes } from 'node:crypto';
+import path from 'node:path';
 import type {
+  ActivityLogEntry,
   OfficePanel,
+  OfficePanelDetail,
+  OfficePanelReportInput,
+  OfficePanelRuntime,
+  OfficePanelUpdateInput,
   OfficePanelWithPresence,
   PairingRequest,
   PairingSuccess,
+  PanelSecretRotation,
+  PanelStoragePathInput,
+  PanelStoragePathResult,
   PermissionSet,
 } from '@orderbook/shared';
 import { deviceCodeFromSeed } from '@orderbook/shared';
@@ -20,9 +29,11 @@ import bcrypt from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
 
 import { db } from '../db/knex.js';
+import type { ActorContext } from '../domain/actor.js';
 import { systemActor } from '../domain/actor.js';
-import { UnauthorizedError, ValidationError } from '../lib/errors.js';
+import { NotFoundError, UnauthorizedError, ValidationError } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
+import { panelLink } from '../realtime/panel-link.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as panelRepo from '../repositories/office-panel.repository.js';
 import { permissionSetForRole } from '../repositories/role.repository.js';
@@ -40,6 +51,19 @@ let pairingWindowClosesAt = 0;
 
 /** Panel ids with a live socket right now. Presence is runtime state, not a column. */
 const connectedPanelIds = new Set<string>();
+
+/**
+ * Figures that are only true for the life of one connection.
+ *
+ * Deliberately not columns. A stored "12 changes pending" would keep asserting
+ * a backlog for a panel that has been switched off for a week, and an operator
+ * reading it would go looking for work that was pushed long ago. Presence is
+ * runtime state, and so is everything derived from it.
+ */
+const panelRuntime = new Map<string, OfficePanelRuntime>();
+
+/** Longest a note may be. Enough for "front desk, near the printer". */
+const MAX_NOTE_LENGTH = 500;
 
 export function openPairingWindow(): { closesAt: number } {
   pairingWindowClosesAt = Date.now() + PAIRING_WINDOW_MS;
@@ -126,33 +150,87 @@ export async function authenticatePanel(panelId: string, panelSecret: string): P
   return panel;
 }
 
-export async function revokePanel(panelId: string): Promise<OfficePanel> {
+export async function revokePanel(panelId: string, actor?: ActorContext): Promise<OfficePanel> {
+  await assertPanelBelongsTo(panelId, actor);
+
   const panel = await panelRepo.updatePanelStatus(panelId, 'revoked');
   if (!panel) throw new ValidationError('error.notFound', { what: 'Panel' });
 
-  connectedPanelIds.delete(panelId);
+  forgetPanelConnection(panelId);
 
-  await activityLog.recordDetachedActivity({
-    tenantId: panel.tenantId,
-    entityType: 'office_panel',
-    entityId: panelId,
-    action: 'updated',
-    actorType: 'user',
-    actorId: null,
-    details: { status: 'revoked' },
-  }, systemActor(panel.tenantId), db());
+  await recordPanelActivity(panel, actor, { status: 'revoked' });
   publishChange({ entity: 'office_panel', action: 'updated', id: panelId, payload: panel });
 
   return panel;
 }
 
-export async function renamePanel(panelId: string, name: string): Promise<OfficePanel> {
-  const trimmed = name.trim();
-  if (!trimmed) throw new ValidationError('validation.panel.nameEmpty');
+export async function renamePanel(
+  panelId: string,
+  name: string,
+  actor?: ActorContext,
+): Promise<OfficePanel> {
+  return updatePanel(panelId, { name }, actor);
+}
 
-  const panel = await panelRepo.renamePanel(panelId, trimmed);
-  if (!panel) throw new ValidationError('error.notFound', { what: 'Panel' });
+/**
+ * Rename a panel, retag it, or move it onto another role — in one call, because
+ * the administration screen edits them on one form and a half-applied save is
+ * worse than a refused one.
+ *
+ * A field left out is left alone. That is what makes `notes: null` meaningful:
+ * absent means "don't touch", null means "clear it".
+ */
+export async function updatePanel(
+  panelId: string,
+  input: OfficePanelUpdateInput,
+  actor?: ActorContext,
+): Promise<OfficePanel> {
+  const existing = await panelRepo.findPanelById(panelId);
+  if (!existing) throw new NotFoundError('Panel');
+  if (actor && existing.tenantId !== actor.tenantId) throw new NotFoundError('Panel');
 
+  const changed: Record<string, unknown> = {};
+  let panel = existing;
+
+  if (input.name !== undefined) {
+    const trimmed = input.name.trim();
+    if (!trimmed) throw new ValidationError('validation.panel.nameEmpty');
+
+    if (trimmed !== panel.name) {
+      panel = (await panelRepo.renamePanel(panelId, trimmed)) ?? panel;
+      changed.name = trimmed;
+    }
+  }
+
+  if (input.notes !== undefined) {
+    const notes = input.notes === null ? null : input.notes.trim() || null;
+    if (notes && notes.length > MAX_NOTE_LENGTH) {
+      throw new ValidationError('validation.panel.notesTooLong', { max: MAX_NOTE_LENGTH });
+    }
+
+    if (notes !== panel.notes) {
+      panel = (await panelRepo.updatePanelNotes(panelId, notes)) ?? panel;
+      changed.notes = notes === null ? 'cleared' : 'set';
+    }
+  }
+
+  if (input.roleId !== undefined && input.roleId !== panel.roleId) {
+    // A role from another company would silently widen what this panel may do,
+    // so the id is resolved inside the tenant rather than trusted.
+    if (input.roleId !== null) {
+      const set = await permissionSetForRole(panel.tenantId, input.roleId);
+      if (!set) throw new NotFoundError('Role');
+    }
+
+    panel = (await panelRepo.assignPanelRole(panelId, input.roleId)) ?? panel;
+    changed.roleId = input.roleId ?? 'default';
+  }
+
+  // Nothing actually moved — no audit row, no broadcast. An edit that changes
+  // nothing is not an event, and recording it would bury the ones that are.
+  if (Object.keys(changed).length === 0) return panel;
+
+  await recordPanelActivity(panel, actor, changed);
   publishChange({ entity: 'office_panel', action: 'updated', id: panelId, payload: panel });
   return panel;
 }
@@ -161,7 +239,40 @@ export async function listPanelsWithPresence(
   tenantId: string,
 ): Promise<OfficePanelWithPresence[]> {
   const panels = await panelRepo.listPanels(tenantId);
-  return panels.map((panel) => ({ ...panel, isConnected: connectedPanelIds.has(panel.id) }));
+  return panels.map(withPresence);
+}
+
+/**
+ * One panel with everything its administration screen shows.
+ *
+ * Assembled here rather than by five requests from the browser, because the
+ * answers have to agree with each other: a role read a second after the panel
+ * row could describe a role the panel no longer has.
+ */
+export async function getPanelDetail(
+  tenantId: string,
+  panelId: string,
+): Promise<OfficePanelDetail> {
+  const panel = await panelRepo.findPanelById(panelId);
+  if (!panel || panel.tenantId !== tenantId) throw new NotFoundError('Panel');
+
+  const fallbackRoleId = panel.roleId ?? (await roleIdForTier(tenantId, 'office'));
+  const [set, work] = await Promise.all([
+    permissionSetForRole(tenantId, fallbackRoleId),
+    panelRepo.countWorkFromPanel(tenantId, panelId),
+  ]);
+
+  return {
+    ...withPresence(panel),
+    role: {
+      id: set?.roleId ?? null,
+      name: set?.roleName ?? '',
+      tier: set?.tier ?? 'office',
+      permissions: [...(set?.permissions ?? [])],
+      isFallback: panel.roleId === null,
+    },
+    work,
+  };
 }
 
 /**
@@ -183,11 +294,18 @@ export async function permissionsForPanel(
 
 export async function markPanelConnected(panelId: string, lanIp: string | null): Promise<void> {
   connectedPanelIds.add(panelId);
+  panelRuntime.set(panelId, {
+    pendingMutations: null,
+    cachedImages: null,
+    lastSnapshotAt: null,
+    signedInUsername: null,
+    connectedSince: new Date().toISOString(),
+  });
   await panelRepo.touchLastSeen(panelId, lanIp);
 }
 
 export async function markPanelDisconnected(panelId: string): Promise<void> {
-  connectedPanelIds.delete(panelId);
+  forgetPanelConnection(panelId);
   await panelRepo.touchLastSeen(panelId, null);
 }
 
@@ -195,7 +313,291 @@ export function isPanelConnected(panelId: string): boolean {
   return connectedPanelIds.has(panelId);
 }
 
+// --- Administration (docs/UI_REDESIGN.md — the Master's Office Panels screen) --
+
+/**
+ * Take delivery of what a panel says about itself.
+ *
+ * The durable half lands in columns so a switched-off panel still has something
+ * to show; the per-connection half stays in memory. `connectedSince` survives
+ * the report — it belongs to the connection, and a report is not a reconnection.
+ */
+export async function recordPanelReport(
+  panelId: string,
+  report: OfficePanelReportInput,
+): Promise<OfficePanel | null> {
+  const panel = await panelRepo.updateDeviceReport(panelId, report);
+  if (!panel) return null;
+
+  panelRuntime.set(panelId, {
+    pendingMutations: report.pendingMutations,
+    cachedImages: report.cachedImages,
+    lastSnapshotAt: report.lastSnapshotAt,
+    signedInUsername: report.signedInUsername,
+    connectedSince: panelRuntime.get(panelId)?.connectedSince ?? new Date().toISOString(),
+  });
+
+  publishChange({ entity: 'office_panel', action: 'updated', id: panelId, payload: panel });
+  return panel;
+}
+
+/**
+ * Ask a connected panel to describe itself right now, and store the answer.
+ *
+ * Used when an administrator opens a panel's screen: the timed report is
+ * deliberately slow, and a disk figure twenty minutes stale is the kind of
+ * thing somebody makes a decision on.
+ */
+export async function refreshPanelReport(
+  tenantId: string,
+  panelId: string,
+): Promise<OfficePanelDetail> {
+  const panel = await panelRepo.findPanelById(panelId);
+  if (!panel || panel.tenantId !== tenantId) throw new NotFoundError('Panel');
+
+  const report = await requestFromPanel<OfficePanelReportInput>(panelId, 'panel:describe');
+  await recordPanelReport(panelId, report);
+
+  return getPanelDetail(tenantId, panelId);
+}
+
+/**
+ * Issue this panel a new secret.
+ *
+ * The order matters and is the opposite of the obvious one: the panel is handed
+ * the new secret and must acknowledge storing it **before** the Master replaces
+ * the hash. Writing the hash first would invalidate the old secret while the
+ * panel still held it, so a dropped acknowledgement would lock out a panel that
+ * was working a moment ago — over a network whose whole premise is that it goes
+ * down.
+ *
+ * A panel that is switched off cannot be told at all. That is not an error: the
+ * secret is reissued anyway and `delivered: false` says somebody has to walk to
+ * that PC, which is exactly the advice the screen gives.
+ */
+export async function rotatePanelSecret(
+  tenantId: string,
+  panelId: string,
+  actor?: ActorContext,
+): Promise<PanelSecretRotation> {
+  const panel = await panelRepo.findPanelById(panelId);
+  if (!panel || panel.tenantId !== tenantId) throw new NotFoundError('Panel');
+  if (panel.status !== 'active') throw new ValidationError('validation.panel.notActive');
+
+  const panelSecret = randomBytes(32).toString('base64url');
+  let delivered = false;
+
+  if (isPanelConnected(panelId)) {
+    await requestFromPanel<null>(panelId, 'panel:credentials', { panelSecret });
+    delivered = true;
+  }
+
+  const updated = await panelRepo.updatePanelSecretHash(
+    panelId,
+    await bcrypt.hash(panelSecret, BCRYPT_ROUNDS),
+  );
+  if (!updated) throw new NotFoundError('Panel');
+
+  await recordPanelActivity(updated, actor, { secretRotated: true, delivered });
+  publishChange({ entity: 'office_panel', action: 'updated', id: panelId, payload: updated });
+  log.info(`Reissued the secret for office panel ${panelId} (delivered: ${delivered})`);
+
+  return {
+    panelId,
+    panelSecret,
+    delivered,
+    rotatedAt: updated.secretRotatedAt ?? new Date().toISOString(),
+  };
+}
+
+/**
+ * Ask a panel to keep its files somewhere else on its own disk.
+ *
+ * Validated here only as far as the Master can: the path belongs to another
+ * machine, so whether it exists, is writable, or has room is a question only
+ * that panel can answer — and it does, by refusing. What the Master can insist
+ * on is that the path is absolute, because a relative one would resolve against
+ * whatever directory that panel happened to be launched from.
+ */
+export async function setPanelStoragePath(
+  tenantId: string,
+  panelId: string,
+  input: PanelStoragePathInput,
+  actor?: ActorContext,
+): Promise<PanelStoragePathResult> {
+  const panel = await panelRepo.findPanelById(panelId);
+  if (!panel || panel.tenantId !== tenantId) throw new NotFoundError('Panel');
+
+  const target = typeof input.path === 'string' ? input.path.trim() : '';
+  if (!target) throw new ValidationError('validation.panel.storagePathRequired');
+
+  // Both separators, because the Master may be on Linux while the panel is on
+  // Windows: `path.isAbsolute` on a POSIX Master calls `D:\OrderBook` relative.
+  if (!path.isAbsolute(target) && !path.win32.isAbsolute(target)) {
+    throw new ValidationError('validation.panel.storagePathRelative');
+  }
+
+  const result = await requestFromPanel<PanelStoragePathResult>(panelId, 'panel:setStoragePath', {
+    path: target,
+    moveExisting: input.moveExisting !== false,
+  });
+
+  await recordPanelActivity(panel, actor, { storagePath: result.dataDir });
+  // The panel re-reports after moving, but the row on file is stale until it
+  // does; write the new path now so the screen agrees with what just happened.
+  await panelRepo.updateDeviceReport(panelId, {
+    ...toReportInput(panel),
+    dataDir: result.dataDir,
+    diskFreeBytes: result.diskFreeBytes,
+  });
+
+  const refreshed = await panelRepo.findPanelById(panelId);
+  if (refreshed) {
+    publishChange({ entity: 'office_panel', action: 'updated', id: panelId, payload: refreshed });
+  }
+
+  return result;
+}
+
+/**
+ * The recent trail for one panel, both what it did and what was done to it.
+ *
+ * Gated on `logs.view` at the route rather than `panels.manage`: this is the
+ * audit trail, and who may read it is a question the Logs module already
+ * answers. An administrator who may manage panels but not read logs sees the
+ * rest of the screen without this section.
+ */
+export async function listPanelActivity(
+  tenantId: string,
+  panelId: string,
+  limit = 50,
+): Promise<ActivityLogEntry[]> {
+  const panel = await panelRepo.findPanelById(panelId);
+  if (!panel || panel.tenantId !== tenantId) throw new NotFoundError('Panel');
+
+  return activityLog.listPanelActivity(tenantId, panelId, Math.min(Math.max(limit, 1), 200));
+}
+
+/**
+ * Drop a panel's socket without touching its pairing.
+ *
+ * The panel reconnects on its own within seconds — which is the point. It is
+ * the "turn it off and on again" of this system: a panel wedged on a stale
+ * session or a half-applied snapshot gets a clean one, and nobody has to walk
+ * to that PC. Revoking would be the wrong tool: that ends the pairing.
+ */
+export function disconnectPanel(panelId: string): boolean {
+  const link = panelLink();
+  if (!link) return false;
+
+  const dropped = link.disconnect(panelId);
+  if (dropped) log.info(`Dropped the socket for office panel ${panelId}`);
+  return dropped;
+}
+
 async function defaultPanelName(tenantId: string): Promise<string> {
   const existing = await panelRepo.countPanelsNamed(tenantId, 'Office Panel');
   return `Office Panel ${existing + 1}`;
+}
+
+function withPresence(panel: OfficePanel): OfficePanelWithPresence {
+  const isConnected = connectedPanelIds.has(panel.id);
+  return { ...panel, isConnected, runtime: isConnected ? (panelRuntime.get(panel.id) ?? null) : null };
+}
+
+/**
+ * A panel id from another company is a 404, never a silent success.
+ *
+ * Only checked when an actor is supplied. The routes always supply one; the
+ * paths that do not — pairing, and the tests that exercise a service directly —
+ * have no session to check against, and inventing a tenant for them would make
+ * this a check against itself.
+ */
+async function assertPanelBelongsTo(panelId: string, actor: ActorContext | undefined): Promise<void> {
+  if (!actor) return;
+
+  const panel = await panelRepo.findPanelById(panelId);
+  if (!panel || panel.tenantId !== actor.tenantId) throw new NotFoundError('Panel');
+}
+
+function forgetPanelConnection(panelId: string): void {
+  connectedPanelIds.delete(panelId);
+  panelRuntime.delete(panelId);
+}
+
+/**
+ * Send one request to a panel, turning each way it can fail into its own
+ * refusal — "offline", "said no" and "said nothing" are three different things
+ * to whoever is standing at the Master, and collapsing them into one message
+ * would leave them guessing which.
+ */
+async function requestFromPanel<T>(
+  panelId: string,
+  event: 'panel:describe' | 'panel:credentials' | 'panel:setStoragePath',
+  payload?: unknown,
+): Promise<T> {
+  const link = panelLink();
+  if (!link || !link.isConnected(panelId)) {
+    throw new ValidationError('validation.panel.notConnected');
+  }
+
+  try {
+    return await link.request<T>(panelId, event, payload);
+  } catch (error) {
+    if (error instanceof Error && error.message) {
+      throw new ValidationError('validation.panel.noAnswer', {}, { reason: error.message });
+    }
+    throw new ValidationError('validation.panel.noAnswer');
+  }
+}
+
+/** The stored device row, back in the shape `updateDeviceReport` takes. */
+function toReportInput(panel: OfficePanel): OfficePanelReportInput {
+  return {
+    hostname: panel.device.hostname ?? '',
+    platform: panel.device.platform ?? '',
+    osVersion: panel.device.osVersion ?? '',
+    appVersion: panel.device.appVersion ?? '',
+    nodeVersion: panel.device.nodeVersion ?? '',
+    dataDir: panel.device.dataDir ?? '',
+    imagesDir: panel.device.imagesDir ?? '',
+    storageBytes: panel.device.storageBytes,
+    diskFreeBytes: panel.device.diskFreeBytes,
+    diskTotalBytes: panel.device.diskTotalBytes,
+    localPort: panel.device.localPort ?? 0,
+    startedAt: panel.device.startedAt ?? new Date().toISOString(),
+    pendingMutations: null,
+    cachedImages: null,
+    lastSnapshotAt: null,
+    signedInUsername: null,
+  };
+}
+
+/**
+ * One audit row per administrative change, attributed to whoever made it.
+ *
+ * `office_panel`/`updated` is an existing catalogue token, so what varies is
+ * `details` — which is where "what changed" belongs anyway: the trail is
+ * append-only, and a new token per field would be a token per future field.
+ */
+async function recordPanelActivity(
+  panel: OfficePanel,
+  actor: ActorContext | undefined,
+  details: Record<string, unknown>,
+): Promise<void> {
+  const acting = actor ?? systemActor(panel.tenantId);
+
+  await activityLog.recordDetachedActivity(
+    {
+      tenantId: panel.tenantId,
+      entityType: 'office_panel',
+      entityId: panel.id,
+      action: 'updated',
+      actorType: acting.actorType,
+      actorId: acting.actorId,
+      details: { name: panel.name, ...details },
+    },
+    acting,
+    db(),
+  );
 }

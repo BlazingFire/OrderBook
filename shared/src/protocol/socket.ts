@@ -75,6 +75,7 @@ import type {
   LeadListQuery,
   LeadUpdateInput,
   ListQuery,
+  OfficePanelReportInput,
   OptionListItemInput,
   OptionListItemUpdateInput,
   OptionListReorderInput,
@@ -82,6 +83,8 @@ import type {
   OrderListQuery,
   OrderUpdateInput,
   Paginated,
+  PanelStoragePathInput,
+  PanelStoragePathResult,
   PartyInput,
   PartyProductVariantInput,
   PipelineStageInput,
@@ -520,6 +523,17 @@ export interface ClientToServerEvents {
   // --- Dashboard (docs/backend-modules/04-API-CONTRACT.md §7) ---------------
   /** The one live pull — everything else rides on `SyncSnapshot.dashboard` and the `dashboard:changed` push. */
   'dashboard:get': (ack: CommandAck<DashboardSummary>) => void;
+
+  // --- Panel administration -------------------------------------------------
+  /**
+   * What this panel is, and where it keeps its files.
+   *
+   * Volunteered, because it cannot be asked for on the panel's own terms: an
+   * Office Panel serves its HTTP API on loopback only, so the Master has no way
+   * to reach into it. Sent on every connect and on a slow timer thereafter, and
+   * answerable on demand through `panel:describe`.
+   */
+  'panel:report': (report: OfficePanelReportInput, ack: CommandAck<null>) => void;
 }
 
 /** Master → clients. */
@@ -532,6 +546,26 @@ export interface ServerToClientEvents {
   'sync:conflict': (conflict: SyncConflict) => void;
   /** Master tells a panel its pairing was revoked; the panel must re-pair. */
   'panel:revoked': () => void;
+  /**
+   * Master asks a panel to describe itself right now.
+   *
+   * Sent when an administrator opens that panel's screen, so the figures on it
+   * are current rather than however stale the last timed report left them.
+   */
+  'panel:describe': (ack: CommandAck<OfficePanelReportInput>) => void;
+  /**
+   * Master hands a panel a freshly issued secret, which it must persist before
+   * acknowledging. The old secret stops working the moment the Master stores
+   * the new hash, so an ack that never arrives means somebody has to re-pair
+   * that PC by hand — which is exactly what `PanelSecretRotation.delivered`
+   * reports back to the operator.
+   */
+  'panel:credentials': (payload: { panelSecret: string }, ack: CommandAck<null>) => void;
+  /** Master asks a panel to move its data folder to another path on its own disk. */
+  'panel:setStoragePath': (
+    input: PanelStoragePathInput,
+    ack: CommandAck<PanelStoragePathResult>,
+  ) => void;
   /**
    * Master tells a panel it has stopped acting as the signed-in person.
    *

@@ -19,7 +19,7 @@ import path from 'node:path';
 
 import type { RoleTierName } from '@orderbook/shared';
 
-import { config } from '../config/index.js';
+import { paths } from '../config/paths.js';
 import { createLogger } from '../lib/logger.js';
 
 const log = createLogger('user-store');
@@ -69,7 +69,7 @@ async function load(): Promise<StoredFile> {
   if (cache) return cache;
 
   try {
-    const raw = await fs.readFile(config.usersFile, 'utf8');
+    const raw = await fs.readFile(paths().usersFile, 'utf8');
     const parsed = JSON.parse(raw) as StoredFile;
     cache = { users: Array.isArray(parsed.users) ? parsed.users : [] };
   } catch {
@@ -80,10 +80,10 @@ async function load(): Promise<StoredFile> {
 }
 
 async function persist(file: StoredFile): Promise<void> {
-  await fs.mkdir(path.dirname(config.usersFile), { recursive: true });
+  await fs.mkdir(path.dirname(paths().usersFile), { recursive: true });
   // 0o600 for the same reason pairing.json is: this file decides who may use
   // the panel when the Master cannot be asked.
-  await fs.writeFile(config.usersFile, JSON.stringify(file, null, 2), { mode: 0o600 });
+  await fs.writeFile(paths().usersFile, JSON.stringify(file, null, 2), { mode: 0o600 });
 }
 
 export async function findByUsername(username: string): Promise<KnownUser | null> {
