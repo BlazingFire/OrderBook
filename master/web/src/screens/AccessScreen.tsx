@@ -374,7 +374,7 @@ function UsersTab({
   const [sort, setSort] = useState<'created' | 'name' | 'role' | 'lastSignIn'>('created');
   const [confirmDeactivate, setConfirmDeactivate] = useState<User | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<User | null>(null);
-  /** Which person's detail band is open. */
+  /** Which person's detail dialog is open, by id so it re-reads the live row. */
   const [openUserId, setOpenUserId] = useState<string | null>(null);
 
   const visible = useMemo(() => {
@@ -499,38 +499,18 @@ function UsersTab({
       render: (user) => <IdField value={user.id} />,
     },
     {
+      /*
+       * A name, not a picker.
+       *
+       * Every row used to carry a live <select>, so a list somebody was reading
+       * was also a control surface: a stray scroll over the wrong row silently
+       * reassigned a person's role. Assigning is a deliberate act on one
+       * person, so it happens in that person's dialog.
+       */
       key: 'role',
       header: t('access.users.colRole'),
-      width: '180px',
-      render: (user) =>
-        canAssign ? (
-          <Select
-            value={user.roleId ?? ''}
-            onChange={(event) =>
-              void onRun(
-                () =>
-                  api.updateUser(user.id, {
-                    roleId: event.target.value,
-                    // Without this the save is last-write-wins: two
-                    // administrators reassigning the same person
-                    // would both "succeed" and one would silently
-                    // lose.
-                    expectedVersion: user.sync.version,
-                  }),
-                t('access.users.roleChangeFailed'),
-              )
-            }
-          >
-            {roles.map((role) => (
-              <option key={role.id} value={role.id}>
-                {role.name}
-              </option>
-            ))}
-          </Select>
-        ) : (
-          // Read-only label when the caller cannot assign roles.
-          <span>{user.roleName}</span>
-        ),
+      width: '160px',
+      render: (user) => <span>{user.roleName}</span>,
     },
     {
       key: 'status',
@@ -557,28 +537,20 @@ function UsersTab({
       key: 'actions',
       header: '',
       width: '110px',
-      render: (user) => {
-        const open = openUserId === user.id;
-        return (
-          <div style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={open ? 'collapse' : 'expand'}
-              aria-expanded={open}
-              onClick={() => setOpenUserId(open ? null : user.id)}
-            >
-              {open ? t('access.users.close') : t('access.users.open')}
-            </Button>
-          </div>
-        );
-      },
+      render: (user) => (
+        <div style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}>
+          <Button variant="secondary" size="sm" icon="expand" onClick={() => setOpenUserId(user.id)}>
+            {t('access.users.open')}
+          </Button>
+        </div>
+      ),
     },
   ];
 
-  /** The band under an opened person — the facts, and what can be done to them. */
+  const openUser = users.find((user) => user.id === openUserId) ?? null;
+
+  /** The facts about one person, and the one control that changes their access. */
   function renderUserDetail(user: User) {
-    const blocked = lastAdminReason(user);
     return (
       <div className="ob-detail">
         <section className="ob-detail-section">
@@ -603,11 +575,43 @@ function UsersTab({
 
         <section className="ob-detail-section">
           <div className="ob-eyebrow">{t('access.users.detail.access')}</div>
+          {canAssign ? (
+            <FormField label={t('access.users.colRole')} hint={t('access.users.roleHint')}>
+              {(id) => (
+                <Select
+                  id={id}
+                  value={user.roleId ?? ''}
+                  onChange={(event) =>
+                    void onRun(
+                      () =>
+                        api.updateUser(user.id, {
+                          roleId: event.target.value,
+                          // Without this the save is last-write-wins: two
+                          // administrators reassigning the same person would
+                          // both "succeed" and one would silently lose.
+                          expectedVersion: user.sync.version,
+                        }),
+                      t('access.users.roleChangeFailed'),
+                    )
+                  }
+                >
+                  {roles.map((role) => (
+                    <option key={role.id} value={role.id}>
+                      {role.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </FormField>
+          ) : (
+            <dl className="ob-detail-grid">
+              <div>
+                <dt>{t('access.users.colRole')}</dt>
+                <dd>{user.roleName}</dd>
+              </div>
+            </dl>
+          )}
           <dl className="ob-detail-grid">
-            <div>
-              <dt>{t('access.users.colRole')}</dt>
-              <dd>{user.roleName}</dd>
-            </div>
             <div>
               <dt>{t('access.roles.colTier')}</dt>
               <dd>{user.roleTier}</dd>
@@ -643,14 +647,33 @@ function UsersTab({
           </dl>
         </section>
 
+      </div>
+    );
+  }
+
+  /** The dialog's actions. Destructive first and set apart, then the rest. */
+  function renderUserActions(user: User) {
+    const blocked = lastAdminReason(user);
+    return (
+      <>
         {canManage && (
-          <div className="ob-detail-actions">
-            <Button variant="secondary" size="sm" icon="edit" onClick={() => onEdit(user)}>
-              {t('access.users.edit')}
+          <>
+            <Button
+              variant="danger"
+              disabled={Boolean(blocked) || user.id === currentUserId}
+              title={blocked ?? (user.id === currentUserId ? t('access.users.thisIsYou') : undefined)}
+              onClick={() => {
+                // One dialog at a time: a confirmation stacked on the detail
+                // buries the person it is asking about (HIG, Modality).
+                setOpenUserId(null);
+                setConfirmDelete(user);
+              }}
+            >
+              {t('access.users.delete')}
             </Button>
+            <span style={{ flex: 1 }} />
             <Button
               variant="secondary"
-              size="sm"
               onClick={() =>
                 void onRun(
                   async () => onSecret(await api.resetPassword(user.id)),
@@ -662,7 +685,6 @@ function UsersTab({
             </Button>
             <Button
               variant="secondary"
-              size="sm"
               disabled={Boolean(blocked)}
               title={blocked}
               onClick={() => {
@@ -671,8 +693,10 @@ function UsersTab({
                 // at the moment somebody acts — not discovered afterwards.
                 // Only deactivating asks first; reactivating never needs a
                 // confirmation.
-                if (user.isActive) setConfirmDeactivate(user);
-                else
+                if (user.isActive) {
+                  setOpenUserId(null);
+                  setConfirmDeactivate(user);
+                } else {
                   void onRun(
                     () =>
                       api.updateUser(user.id, {
@@ -681,22 +705,27 @@ function UsersTab({
                       }),
                     t('access.users.statusChangeFailed'),
                   );
+                }
               }}
             >
               {user.isActive ? t('access.users.deactivate') : t('access.users.activate')}
             </Button>
             <Button
-              variant="danger"
-              size="sm"
-              disabled={Boolean(blocked) || user.id === currentUserId}
-              title={blocked ?? (user.id === currentUserId ? t('access.users.thisIsYou') : undefined)}
-              onClick={() => setConfirmDelete(user)}
+              variant="secondary"
+              icon="edit"
+              onClick={() => {
+                setOpenUserId(null);
+                onEdit(user);
+              }}
             >
-              {t('access.users.delete')}
+              {t('access.users.edit')}
             </Button>
-          </div>
+          </>
         )}
-      </div>
+        <Button variant="primary" onClick={() => setOpenUserId(null)}>
+          {t('action.done')}
+        </Button>
+      </>
     );
   }
 
@@ -742,9 +771,9 @@ function UsersTab({
           columns={columns}
           rows={visible}
           rowKey={(user) => user.id}
-          expandedId={openUserId}
-          renderDetail={renderUserDetail}
-          onRowOpen={(user) => setOpenUserId((current) => (current === user.id ? null : user.id))}
+          openOn="click"
+          selectedId={openUserId ?? undefined}
+          onRowOpen={(user) => setOpenUserId(user.id)}
           empty={
             <EmptyState
               title={users.length === 0 ? t('access.users.empty') : t('access.users.emptyFiltered')}
@@ -752,6 +781,25 @@ function UsersTab({
           }
         />
       )}
+
+      <Modal
+        open={Boolean(openUser)}
+        onClose={() => setOpenUserId(null)}
+        size="md"
+        title={openUser?.displayName ?? ''}
+        subtitle={
+          openUser && (
+            <>
+              <span className="ob-mono">{openUser.username}</span>
+              {' · '}
+              {openUser.roleName}
+            </>
+          )
+        }
+        footer={openUser && renderUserActions(openUser)}
+      >
+        {openUser && renderUserDetail(openUser)}
+      </Modal>
 
       <Modal
         open={Boolean(confirmDeactivate)}
@@ -978,6 +1026,7 @@ function RolesTab({
   onRun: (action: () => Promise<unknown>, failure: string) => Promise<void>;
 }) {
   const [confirmDelete, setConfirmDelete] = useState<Role | null>(null);
+  /** Which role's detail dialog is open, by id so it re-reads the live row. */
   const [openRoleId, setOpenRoleId] = useState<string | null>(null);
 
   const tierTone = (tier: RoleTier | Role['tier']): 'conflict' | 'accent' | 'default' =>
@@ -1023,26 +1072,19 @@ function RolesTab({
       key: 'actions',
       header: '',
       width: '110px',
-      render: (role) => {
-        const open = openRoleId === role.id;
-        return (
-          <div style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={open ? 'collapse' : 'expand'}
-              aria-expanded={open}
-              onClick={() => setOpenRoleId(open ? null : role.id)}
-            >
-              {open ? t('access.roles.close') : t('access.roles.open')}
-            </Button>
-          </div>
-        );
-      },
+      render: (role) => (
+        <div style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}>
+          <Button variant="secondary" size="sm" icon="expand" onClick={() => setOpenRoleId(role.id)}>
+            {t('access.roles.open')}
+          </Button>
+        </div>
+      ),
     },
   ];
 
-  /** The band under an opened role — what it grants, and what can be done to it. */
+  const openRole = roles.find((role) => role.id === openRoleId) ?? null;
+
+  /** What one role grants, in full. */
   function renderRoleDetail(role: Role) {
     return (
       <div className="ob-detail">
@@ -1091,29 +1133,47 @@ function RolesTab({
           <PermissionSummary catalogue={catalogue} permissions={role.permissions} />
         </section>
 
-        {(canEdit || (canDelete && !role.isSystem)) && (
-          <div className="ob-detail-actions">
-            {canEdit && (
-              <Button variant="secondary" size="sm" icon="edit" onClick={() => onEdit(role)}>
-                {t('access.roles.edit')}
-              </Button>
-            )}
-            {/* Absent on a system role rather than disabled: it can never be
-                deleted, so offering the control would be a lie. */}
-            {canDelete && !role.isSystem && (
-              <Button
-                variant="danger"
-                size="sm"
-                disabled={role.userCount > 0}
-                title={role.userCount > 0 ? t('access.roles.deleteBlocked') : undefined}
-                onClick={() => setConfirmDelete(role)}
-              >
-                {t('access.roles.delete')}
-              </Button>
-            )}
-          </div>
-        )}
       </div>
+    );
+  }
+
+  /** The dialog's actions. Destructive first and set apart, then the rest. */
+  function renderRoleActions(role: Role) {
+    return (
+      <>
+        {/* Absent on a system role rather than disabled: it can never be
+            deleted, so offering the control would be a lie. */}
+        {canDelete && !role.isSystem && (
+          <Button
+            variant="danger"
+            disabled={role.userCount > 0}
+            title={role.userCount > 0 ? t('access.roles.deleteBlocked') : undefined}
+            onClick={() => {
+              // One dialog at a time (HIG, Modality).
+              setOpenRoleId(null);
+              setConfirmDelete(role);
+            }}
+          >
+            {t('access.roles.delete')}
+          </Button>
+        )}
+        <span style={{ flex: 1 }} />
+        {canEdit && (
+          <Button
+            variant="secondary"
+            icon="edit"
+            onClick={() => {
+              setOpenRoleId(null);
+              onEdit(role);
+            }}
+          >
+            {t('access.roles.edit')}
+          </Button>
+        )}
+        <Button variant="primary" onClick={() => setOpenRoleId(null)}>
+          {t('action.done')}
+        </Button>
+      </>
     );
   }
 
@@ -1144,12 +1204,35 @@ function RolesTab({
           columns={columns}
           rows={roles}
           rowKey={(role) => role.id}
-          expandedId={openRoleId}
-          renderDetail={renderRoleDetail}
-          onRowOpen={(role) => setOpenRoleId((current) => (current === role.id ? null : role.id))}
+          openOn="click"
+          selectedId={openRoleId ?? undefined}
+          onRowOpen={(role) => setOpenRoleId(role.id)}
           empty={<EmptyState title={t('access.roles.empty')} />}
         />
       )}
+
+      <Modal
+        open={Boolean(openRole)}
+        onClose={() => setOpenRoleId(null)}
+        size="lg"
+        title={openRole?.name ?? ''}
+        subtitle={
+          openRole && (
+            <>
+              {openRole.tier}
+              {openRole.isSystem ? ` · ${t('access.roles.systemBadge')}` : ''}
+              {' · '}
+              {t('access.roles.detail.metaCounts', {
+                permissions: openRole.permissions.length,
+                users: openRole.userCount,
+              })}
+            </>
+          )
+        }
+        footer={openRole && renderRoleActions(openRole)}
+      >
+        {openRole && renderRoleDetail(openRole)}
+      </Modal>
 
       <Modal
         open={Boolean(confirmDelete)}

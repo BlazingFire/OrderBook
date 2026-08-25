@@ -13,7 +13,12 @@
   --porcelain-10: #e9ecee;
   --porcelain-20: #d6dbde;
   --porcelain-30: #b9c1c6;
-  --porcelain-50: #6e7c84;
+  /* Darkened from #6e7c84, which measured 4.30:1 on white and 4.01:1 on the
+   * sunken band — under the 4.5:1 minimum for text below 18pt (HIG,
+   * Accessibility). This is the only ramp step `--fg-tertiary` maps to, so it
+   * carries every eyebrow, table header and field label in the light theme.
+   * #5d6b73 measures 5.50:1 on surface and 4.64:1 on sunken. */
+  --porcelain-50: #5d6b73;
   --porcelain-70: #46535b;
   --porcelain-90: #10161a;
 

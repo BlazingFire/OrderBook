@@ -448,43 +448,18 @@ table.ob-table {
 }
 
 /* ---------------------------------------------------------------------------
- * Expanded row detail — the submenu that replaced the right-hand drawer.
+ * Record detail — the body of the dialog a row's Open button raises.
  *
- * Every rule here undoes one the single-line body cells depend on: they are
- * one row-height tall, clipped and non-wrapping so a long value ellipsises
- * instead of pushing the grid around. A detail band is the opposite of all of
- * that — it is whatever height its content needs.
+ * Grouped into titled sections rather than run together as one long list:
+ * "group related items to help people find the information they want … use
+ * negative space, background shapes, colors, materials, or separator lines to
+ * show when elements are related" (HIG, Layout).
  * ------------------------------------------------------------------------ */
 
-.ob-table tbody td.ob-table-detail {
-  display: block;
-  width: 100%;
-  height: auto;
-  white-space: normal;
-  overflow: visible;
-  contain: none;
-  padding: var(--s-16);
-  background: var(--bg-canvas);
-  border-bottom: 1px solid var(--line);
-  /* The same accent edge a selected row carries, so the band reads as
-   * belonging to the row above it rather than as a sibling row. */
-  box-shadow: inset 2px 0 0 var(--accent);
-}
-
-.ob-table tbody tr:hover td.ob-table-detail {
-  background: var(--bg-canvas);
-}
-
-.ob-table tbody td.ob-table-detail > * {
-  overflow: visible;
-  text-overflow: clip;
-}
-
-/* Section stack inside a detail band: an eyebrow heading over its content. */
 .ob-detail {
   display: flex;
   flex-direction: column;
-  gap: var(--s-16);
+  gap: var(--s-20);
 }
 
 .ob-detail-section {
@@ -500,23 +475,29 @@ table.ob-table {
   align-items: center;
 }
 
-/* Facts inside a band, as many two-column pairs as the width allows. */
+/*
+ * Label left, value right, one hairline per pair. Two columns where the dialog
+ * is wide enough and one where it is not — a 240px minimum, so a long id or a
+ * timestamp never has to collide with its own label.
+ */
 .ob-detail-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: var(--s-8) var(--s-24);
+  gap: 0 var(--s-24);
 }
 
 .ob-detail-grid > div {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--s-12);
-  min-height: var(--ctl-h-sm);
+  gap: var(--s-16);
+  min-height: 30px;
+  padding: var(--s-6) 0;
   border-bottom: 1px solid var(--line);
-  padding-bottom: var(--s-4);
 }
 
+/* Secondary weight and colour, so the eye runs down the values rather than the
+ * labels — the labels are only there to say what a value is. */
 .ob-detail-grid dt {
   color: var(--fg-tertiary);
   font-size: var(--t-small-size);
@@ -529,6 +510,7 @@ table.ob-table {
   text-align: right;
   font-size: var(--t-data-size);
   line-height: var(--t-data-line);
+  font-weight: 500;
   color: var(--fg-primary);
   min-width: 0;
   overflow-wrap: anywhere;
@@ -556,17 +538,6 @@ table.ob-table {
   white-space: nowrap;
 }
 
-/* The one editor with no row to open under — creating a record. It sits above
- * the table with the same accent edge a detail band carries, so it reads as
- * the same surface rather than as a second kind of panel. */
-.ob-newpanel {
-  margin-bottom: var(--s-12);
-  padding: var(--s-16);
-  background: var(--bg-canvas);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  box-shadow: inset 2px 0 0 var(--accent);
-}
 
 .ob-table tbody tr[data-selected='true'] td {
   background: var(--bg-selected);
@@ -1615,8 +1586,16 @@ html[data-window-blur='true'] .ob-busy rect {
   justify-content: center;
   padding: var(--s-24);
 }
+
+/*
+ * Three widths, because one does not fit three jobs: a confirmation is a
+ * sentence and a pair of buttons, a record's detail wants two columns of
+ * fields, and a role's permission list or a stock ledger wants a table. At the
+ * 1366x768 floor the largest still leaves the list visible either side, which
+ * is the point of opening centred rather than full screen.
+ */
 .ob-modal {
-  width: 480px;
+  width: 440px;
   max-width: 100%;
   max-height: 100%;
   display: flex;
@@ -1627,30 +1606,80 @@ html[data-window-blur='true'] .ob-busy rect {
   box-shadow: var(--sh-3);
   animation: ob-modal-in var(--d-slow) var(--e-standard);
 }
+.ob-modal--md {
+  width: 600px;
+}
+.ob-modal--lg {
+  width: 840px;
+}
+
 .ob-modal-head {
   flex: none;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--s-12);
   padding: var(--s-16) var(--s-20);
   border-bottom: 1px solid var(--line);
 }
+
+.ob-modal-heading {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+/*
+ * The record's name, at display size. A dialog opened from a row is showing one
+ * record, so its name is the largest thing in it — "adjust font weight, size,
+ * and color as needed to emphasize important information" (HIG, Typography).
+ */
+.ob-modal-title {
+  margin: 0;
+  font-size: var(--t-title-size);
+  line-height: var(--t-title-line);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--fg-primary);
+  overflow-wrap: anywhere;
+}
+
+/* What the record *is*, under its name: the line that keeps a reader placed
+ * after they have left the list behind (HIG, Modality — "make it easy to
+ * identify a modal view's task"). */
+.ob-modal-sub {
+  font-size: var(--t-small-size);
+  line-height: var(--t-small-line);
+  color: var(--fg-secondary);
+}
+
 .ob-modal-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--s-16) var(--s-20);
+  padding: var(--s-20);
   display: flex;
   flex-direction: column;
-  gap: var(--s-16);
+  gap: var(--s-20);
 }
+
+/*
+ * Destructive first and hard left, everything else right, with the flexible
+ * spacer the screens insert between them. Delete is not something to land on by
+ * aiming for Done, and putting it at the opposite end of the bar is cheaper
+ * than any amount of warning colour.
+ */
 .ob-modal-foot {
   flex: none;
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: var(--s-8);
   padding: var(--s-12) var(--s-20);
   border-top: 1px solid var(--line);
+  background: var(--bg-canvas);
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
 }
 
 /* ===========================================================================

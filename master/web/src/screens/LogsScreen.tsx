@@ -294,19 +294,10 @@ export function LogsScreen({ permissions }: Props) {
     );
   }
 
-  /**
-   * The band under an opened log entry (§8 submenu, not a right-hand drawer).
-   * An audit entry is read against the rows either side of it — which is
-   * exactly what a drawer covering the list took away.
-   */
+  /** One audit entry, in full — including the hash somebody re-checks by hand. */
   function renderEntryDetail(entry: ActivityLogEntry) {
     return (
       <div className="ob-detail">
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--s-8)' }}>
-          <span className="ob-body-strong">{describe(entry)}</span>
-          <span className="ob-small">{formatDateTime(entry.createdAt)}</span>
-        </div>
-
         <KeyValueList
           items={[
             {
@@ -499,10 +490,9 @@ export function LogsScreen({ permissions }: Props) {
               columns={columns}
               rows={entries}
               rowKey={(entry) => entry.id}
-              onRowOpen={(entry) => setOpenEntry((current) => (current?.id === entry.id ? null : entry))}
+              onRowOpen={setOpenEntry}
               openOn="click"
-              expandedId={openEntry?.id ?? null}
-              renderDetail={renderEntryDetail}
+              selectedId={openEntry?.id}
               empty={
                 <EmptyState
                   title={filtered ? t('logs.emptyFiltered.title') : t('logs.empty.title')}
@@ -526,6 +516,21 @@ export function LogsScreen({ permissions }: Props) {
         )}
       </Section>
 
+
+      <Modal
+        open={openEntry !== null}
+        onClose={() => setOpenEntry(null)}
+        size="lg"
+        title={openEntry ? describe(openEntry) : ''}
+        subtitle={openEntry ? formatDateTime(openEntry.createdAt) : undefined}
+        footer={
+          <Button variant="primary" onClick={() => setOpenEntry(null)}>
+            {t('action.done')}
+          </Button>
+        }
+      >
+        {openEntry && renderEntryDetail(openEntry)}
+      </Modal>
 
       <Modal
         open={verifyOpen}

@@ -137,14 +137,8 @@ export function InventoryScreen({ revision }: Props) {
     }
   }, []);
 
-  /** Clicking the row opens its band underneath it; clicking it again closes. */
-  function toggleLine(level: InventoryStockLevel): void {
-    const key = `${level.productId}-${level.colour}`;
-    if (openLineKey === key) {
-      setOpenLineKey(null);
-      return;
-    }
-    setOpenLineKey(key);
+  function openLine(level: InventoryStockLevel): void {
+    setOpenLineKey(`${level.productId}-${level.colour}`);
     void loadLineMovements(level.productId, level.colour);
   }
 
@@ -381,23 +375,17 @@ export function InventoryScreen({ revision }: Props) {
     },
   ];
 
+  const openLevel = openLineKey
+    ? (levels.find((level) => `${level.productId}-${level.colour}` === openLineKey) ?? null)
+    : null;
+
   /**
-   * The band under an opened stock line (§8 submenu, not a right-hand drawer):
-   * the three figures that matter, that line's own ledger, and the two writes
-   * that act on it. Rendered under the row it belongs to, so the product and
-   * colour it is about stay on screen above it.
+   * One stock line, in full: the three figures that matter and that line's own
+   * ledger. The two writes that act on it live in the dialog's footer.
    */
   function renderLineDetail(level: InventoryStockLevel) {
     return (
       <div className="ob-detail">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
-          <ColourChip hex={colourHex(level.colour)} name={level.colour} />
-          <span className="ob-body-strong">
-            {t('inventory.drawer.title', { product: level.productName, colour: level.colour })}
-          </span>
-          <span className="ob-mono ob-small">{level.productCode}</span>
-        </div>
-
         <section style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--s-8)' }}>
           <Card>
             <div className="ob-eyebrow">{t('inventory.table.onHand')}</div>
@@ -445,14 +433,6 @@ export function InventoryScreen({ revision }: Props) {
           )}
         </section>
 
-        <div className="ob-detail-actions">
-          <Button variant="primary" size="sm" onClick={() => openLineStockIn(level)}>
-            {t('inventory.action.stockIn')}
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => openLineAdjust(level)}>
-            {t('inventory.drawer.adjust')}
-          </Button>
-        </div>
       </div>
     );
   }
@@ -497,10 +477,9 @@ export function InventoryScreen({ revision }: Props) {
           columns={levelColumns}
           rows={levels}
           rowKey={(level) => `${level.productId}-${level.colour}`}
-          onRowOpen={toggleLine}
+          onRowOpen={openLine}
           openOn="click"
-          expandedId={openLineKey}
-          renderDetail={renderLineDetail}
+          selectedId={openLineKey ?? undefined}
           empty={
             <EmptyState
               title={t('inventory.empty.title')}
@@ -527,6 +506,57 @@ export function InventoryScreen({ revision }: Props) {
         />
       </Section>
 
+
+      <Modal
+        open={Boolean(openLevel)}
+        onClose={() => setOpenLineKey(null)}
+        size="lg"
+        title={
+          openLevel && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-8)' }}>
+              <ColourChip hex={colourHex(openLevel.colour)} name={openLevel.colour} />
+              {t('inventory.drawer.title', { product: openLevel.productName, colour: openLevel.colour })}
+            </span>
+          )
+        }
+        label={
+          openLevel
+            ? t('inventory.drawer.title', { product: openLevel.productName, colour: openLevel.colour })
+            : ''
+        }
+        subtitle={openLevel && <span className="ob-mono">{openLevel.productCode}</span>}
+        footer={
+          openLevel && (
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  // One dialog at a time: the movement form replaces this one
+                  // rather than stacking on it (HIG, Modality).
+                  setOpenLineKey(null);
+                  openLineAdjust(openLevel);
+                }}
+              >
+                {t('inventory.drawer.adjust')}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setOpenLineKey(null);
+                  openLineStockIn(openLevel);
+                }}
+              >
+                {t('inventory.action.stockIn')}
+              </Button>
+              <Button variant="primary" onClick={() => setOpenLineKey(null)}>
+                {t('action.done')}
+              </Button>
+            </>
+          )
+        }
+      >
+        {openLevel && renderLineDetail(openLevel)}
+      </Modal>
 
       <Modal
         open={stockInOpen}

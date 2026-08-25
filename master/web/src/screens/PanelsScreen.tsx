@@ -37,9 +37,8 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
   const [renaming, setRenaming] = useState<OfficePanelWithPresence | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [confirmRevoke, setConfirmRevoke] = useState<OfficePanelWithPresence | null>(null);
-  // Which panel's detail band is open. One at a time: two open bands push the
-  // row you were comparing against off the screen, which is the thing opening
-  // detail underneath the row was meant to avoid.
+  /** Which panel's detail dialog is open, by id rather than by value so the
+   *  dialog keeps re-reading the live row as the socket pushes updates. */
   const [openPanelId, setOpenPanelId] = useState<string | null>(null);
   const previousPanelCount = useRef(panels.length);
 
@@ -145,30 +144,22 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
       key: 'actions',
       header: '',
       width: '110px',
-      render: (panel) => {
-        const open = openPanelId === panel.id;
-        return (
-          <div style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={open ? 'collapse' : 'expand'}
-              aria-expanded={open}
-              onClick={() => setOpenPanelId(open ? null : panel.id)}
-            >
-              {open ? t('panels.action.close') : t('panels.action.open')}
-            </Button>
-          </div>
-        );
-      },
+      render: (panel) => (
+        <div style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}>
+          <Button variant="secondary" size="sm" icon="expand" onClick={() => setOpenPanelId(panel.id)}>
+            {t('panels.action.open')}
+          </Button>
+        </div>
+      ),
     },
   ];
 
+  const openPanel = panels.find((panel) => panel.id === openPanelId) ?? null;
+
   /**
-   * The detail band under an opened row (§8 submenu, not a right-hand drawer).
-   * Everything the Master actually knows about a panel is here — the fields the
-   * table has no room for, and the two actions that used to sit on every row
-   * and made the list a wall of buttons.
+   * Everything the Master actually knows about a panel: the fields the table
+   * has no room for, and the two actions that used to sit on every row and made
+   * the list a wall of buttons.
    */
   function renderPanelDetail(panel: OfficePanelWithPresence) {
     return (
@@ -239,26 +230,10 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
           </dl>
         </section>
 
-        {panel.status === 'revoked' ? (
+        {panel.status === 'revoked' && (
           <p className="ob-small" style={{ margin: 0 }}>
             {t('panels.detail.revokedNote')}
           </p>
-        ) : (
-          <div className="ob-detail-actions">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setRenameValue(panel.name);
-                setRenaming(panel);
-              }}
-            >
-              {t('panels.action.rename')}
-            </Button>
-            <Button variant="danger" size="sm" onClick={() => setConfirmRevoke(panel)}>
-              {t('panels.action.remove')}
-            </Button>
-          </div>
         )}
       </div>
     );
@@ -308,13 +283,68 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
               columns={columns}
               rows={panels}
               rowKey={(panel) => panel.id}
-              expandedId={openPanelId}
-              renderDetail={renderPanelDetail}
-              onRowOpen={(panel) => setOpenPanelId((current) => (current === panel.id ? null : panel.id))}
+              openOn="click"
+              selectedId={openPanelId ?? undefined}
+              onRowOpen={(panel) => setOpenPanelId(panel.id)}
             />
           </div>
         )}
       </Card>
+
+      <Modal
+        open={Boolean(openPanel)}
+        onClose={() => setOpenPanelId(null)}
+        size="md"
+        title={openPanel?.name ?? ''}
+        subtitle={
+          openPanel && (
+            <>
+              {openPanel.status === 'revoked'
+                ? t('panels.status.removed')
+                : openPanel.isConnected
+                  ? t('panels.detail.connectionLive')
+                  : t('panels.detail.connectionDown')}
+              {' · '}
+              <span className="ob-mono">{openPanel.deviceCode}</span>
+            </>
+          )
+        }
+        footer={
+          <>
+            {openPanel && openPanel.status !== 'revoked' && (
+              <>
+                <Button
+                  variant="danger"
+                  onClick={() => {
+                    // One dialog at a time: a confirmation stacked on the detail
+                    // buries the record it is asking about (HIG, Modality).
+                    setOpenPanelId(null);
+                    setConfirmRevoke(openPanel);
+                  }}
+                >
+                  {t('panels.action.remove')}
+                </Button>
+                <span style={{ flex: 1 }} />
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setRenameValue(openPanel.name);
+                    setOpenPanelId(null);
+                    setRenaming(openPanel);
+                  }}
+                >
+                  {t('panels.action.rename')}
+                </Button>
+              </>
+            )}
+            <Button variant="primary" onClick={() => setOpenPanelId(null)}>
+              {t('action.done')}
+            </Button>
+          </>
+        }
+      >
+        {openPanel && renderPanelDetail(openPanel)}
+      </Modal>
 
       <Modal
         open={Boolean(renaming)}

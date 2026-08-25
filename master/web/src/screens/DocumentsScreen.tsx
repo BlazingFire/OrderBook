@@ -288,17 +288,20 @@ function TemplatesTab({
           below, because "no templates" would be a claim, not a report. */}
       {failure && templates.length > 0 && <ConflictBanner>{failure}</ConflictBanner>}
 
-      {/* A new template has no row to open under, so it gets the one panel
-          above the table. Still not a drawer: the list stays where it was. */}
-      {editing === 'new' && (
-        <div className="ob-newpanel">
-          <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
-            {t('documents.editor.newTitle')}
-          </div>
+      <Modal
+        open={editing !== null}
+        onClose={closeEditor}
+        size="lg"
+        title={editing === 'new' ? t('documents.editor.newTitle') : (editing?.name ?? '')}
+        subtitle={editing && editing !== 'new' ? t(DOCUMENT_TYPE_KEY[editing.documentType]) : undefined}
+      >
+        {editing && (
           <TemplateEditor
-            key="new"
-            template={null}
-            canSave={canCreate}
+            // Remounting on the edited id throws away a draft that belonged to
+            // a different template, which is what opening another row means.
+            key={editing === 'new' ? 'new' : editing.id}
+            template={editing === 'new' ? null : editing}
+            canSave={editing === 'new' ? canCreate : canEdit}
             canRender={canRender}
             onSaved={(name) => {
               setEditing(null);
@@ -307,8 +310,8 @@ function TemplatesTab({
             }}
             onCancel={closeEditor}
           />
-        </div>
-      )}
+        )}
+      </Modal>
 
       <Card padded={false}>
         {loading ? (
@@ -326,29 +329,12 @@ function TemplatesTab({
             rows={templates}
             rowKey={(template) => template.id}
             openOn="click"
-            // A caller who cannot edit still gets the band: it is the only
+            // A caller who cannot edit still gets the dialog: it is the only
             // place the eight switches and the terms text are readable, and
             // the editor disables its own controls rather than lying about
             // what the template says.
-            onRowOpen={(template) => setEditing((current) => (current !== 'new' && current?.id === template.id ? null : template))}
-            expandedId={editing && editing !== 'new' ? editing.id : null}
-            renderDetail={(template) => (
-              <TemplateEditor
-                // Remounting on the edited id throws away a draft that belonged
-                // to a different template, which is what opening another row
-                // means.
-                key={template.id}
-                template={template}
-                canSave={canEdit}
-                canRender={canRender}
-                onSaved={(name) => {
-                  setEditing(null);
-                  toast.push(t('documents.editor.saved', { name }), { tone: 'ok' });
-                  void load();
-                }}
-                onCancel={closeEditor}
-              />
-            )}
+            onRowOpen={(template) => setEditing(template)}
+            selectedId={editing && editing !== 'new' ? editing.id : undefined}
             empty={
               <EmptyState
                 title={t('documents.templates.empty.title')}
