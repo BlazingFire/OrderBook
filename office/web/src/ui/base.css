@@ -350,15 +350,41 @@
   overflow: auto;
 }
 
+/*
+ * Laid out as blocks rather than as a real table. Every row is a CSS grid so
+ * the header and the body share one column template and the virtualiser can
+ * place rows by arithmetic, which a table formatting context cannot express.
+ * Leaving `display: table` on top of that half-converted structure makes the
+ * browser wrap the rows in anonymous table boxes and then shrink-wrap them to
+ * their content: the stripes and the header band stop short of the right edge
+ * while the table element itself still measures full width, so the mismatch
+ * does not show up in the table's own box. The markup keeps table semantics
+ * for assistive technology; only the layout is block.
+ */
 table.ob-table {
+  display: block;
   width: 100%;
   border-collapse: collapse;
 }
 
-.ob-table thead th {
+/*
+ * The header sticks as one block rather than cell by cell. `position: sticky`
+ * on a `th` only holds while its row participates in a table's own layout; a
+ * block-laid header row scrolls away underneath it and the column names go
+ * with it, leaving a wall of unlabelled figures.
+ */
+.ob-table thead {
+  display: block;
   position: sticky;
   top: 0;
   z-index: 1;
+}
+
+.ob-table tr {
+  width: 100%;
+}
+
+.ob-table thead th {
   background: var(--bg-sunken);
   border-bottom: 1px solid var(--line);
   height: var(--ctl-h-md);
@@ -371,8 +397,28 @@ table.ob-table {
   text-transform: uppercase;
   color: var(--fg-tertiary);
   white-space: nowrap;
+  /* Same grid-item rule as the body cells below: without this a long header
+   * forces its track wider and the column stops lining up with its data. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
+/*
+ * A row is exactly `--row-h` tall, and the virtualiser multiplies that height
+ * to position rows it has not rendered — so a cell must never grow. Without
+ * `nowrap` a long value wrapped to a second line, overflowed the row, and
+ * `contain: paint` sliced it horizontally through the middle of a glyph, which
+ * reads as two rows printed on top of each other rather than as a cell that is
+ * too small. Truncating is the honest option at a fixed height; the full value
+ * stays reachable by opening the row.
+ *
+ * `min-width: 0` is what makes truncation possible at all. Each cell is a grid
+ * item of its row, and a grid item defaults to `min-width: auto` — its
+ * min-content width — so an unbreakable id like a UUID would otherwise force
+ * its `1fr` track wider and drag every later column out of line with the
+ * header instead of ellipsing.
+ */
 .ob-table tbody td {
   height: var(--row-h);
   padding: 0 var(--s-12);
@@ -381,8 +427,20 @@ table.ob-table {
   line-height: var(--t-data-line);
   font-weight: 450;
   vertical-align: middle;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   /* contain, not paint-heavy effects (§11) */
   contain: layout paint;
+}
+
+/* The cell is a flex container, so `text-overflow` applies to its children
+ * rather than to the cell box — a chip-plus-label cell truncates its label. */
+.ob-table tbody td > * {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ob-table tbody tr:hover td {

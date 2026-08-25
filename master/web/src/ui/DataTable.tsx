@@ -79,7 +79,20 @@ export function DataTable<T>({
     padBottom = (rows.length - last) * rowH;
   }
 
-  const gridTemplate = columns.map((c) => c.width ?? '1fr').join(' ');
+  /*
+   * A table whose columns are all fixed widths sums to less than the space it
+   * is given on a wide screen, and the leftover would sit past the last column
+   * as bare canvas — the row stripes and the header band would stop mid-table
+   * and read as a rendering fault. Appending one flexible track absorbs the
+   * slack into an empty trailing cell instead, so every column keeps exactly
+   * the width its screen asked for while the table's chrome still reaches the
+   * right edge. A table that already has a flexible column needs no filler:
+   * that column is what the slack is meant for, and a second `1fr` would halve
+   * it.
+   */
+  const columnTracks = columns.map((c) => c.width ?? '1fr');
+  const hasFlexibleColumn = columnTracks.some((w) => /(\bauto\b|fr|%)/.test(w));
+  const gridTemplate = [...columnTracks, ...(hasFlexibleColumn ? [] : ['minmax(0, 1fr)'])].join(' ');
 
   if (rows.length === 0) {
     return <div className="ob-tablewrap">{empty}</div>;

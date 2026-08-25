@@ -31,6 +31,8 @@ const en: Record<string, string> = {
   'nav.master.conflicts': 'Conflicts',
   'nav.master.panels': 'Office panels',
   'nav.master.access': 'Roles & users',
+  'nav.master.fields': 'Fields',
+  'nav.master.reports': 'Reports',
   'nav.master.settings': 'Settings',
 
   'action.newLead': 'New lead',
@@ -472,6 +474,489 @@ const en: Record<string, string> = {
   'backup.restore.previewCreated': 'Created',
   'backup.restore.previewAppVersion': 'App version',
   'backup.restore.cancel': 'Cancel',
+
+  // --- Activity log (LogsScreen) -------------------------------------------
+
+  // Kept with this screen's own keys rather than in the nav block above, so the
+  // whole Logs vocabulary moves as one when strings are hoisted to shared.
+  'nav.master.logs': 'Activity log',
+
+  'logs.filter.searchPlaceholder': 'Search records and details',
+  'logs.filter.actorLabel': 'Filter by who',
+  'logs.filter.actorAll': 'Anyone',
+  'logs.filter.entityLabel': 'Filter by record type',
+  'logs.filter.entityAll': 'All record types',
+  'logs.filter.actionLabel': 'Filter by action',
+  'logs.filter.actionAll': 'All actions',
+  'logs.filter.fromLabel': 'From date',
+  'logs.filter.toLabel': 'To date',
+  'logs.filter.clear': 'Clear filters',
+  'logs.filter.facetsUnavailable': 'Could not load the filter choices',
+
+  'logs.actorType.user': 'A person',
+  'logs.actorType.office_panel': 'An office panel',
+  'logs.actorType.system': 'The system',
+
+  'logs.section.title': 'Activity log',
+  'logs.section.description':
+    'Append-only and hash-chained: every entry seals the one before it, so a row cannot be altered or removed without the chain saying so.',
+  'logs.action.verify': 'Verify chain',
+  'logs.action.export': 'Export CSV',
+
+  'logs.table.when': 'When',
+  'logs.table.what': 'What happened',
+  'logs.table.who': 'Who',
+  'logs.table.record': 'Record',
+  'logs.table.sequence': 'Seq.',
+
+  'logs.chain.preChain': 'pre-chain',
+  'logs.chain.preChainHint': 'Recorded before hash chaining — unverifiable, not broken',
+
+  'logs.empty.title': 'Nothing recorded yet',
+  'logs.empty.description': 'Every change made in this panel or an office panel appears here.',
+  'logs.emptyFiltered.title': 'No entries match those filters',
+  'logs.emptyFiltered.description': 'Widen the date range, or clear the filters.',
+  'logs.error.title': 'Could not load the activity log',
+  'logs.error.retry': 'Try again',
+  'logs.noPermission.title': 'You cannot see the activity log',
+  'logs.noPermission.description': 'Your role does not include {permission}.',
+
+  'logs.verify.title': 'Audit chain verification',
+  'logs.verify.running': 'Recomputing every hash in the range…',
+  'logs.verify.failed': 'Could not verify the chain',
+  'logs.verify.ok': 'Intact — every hash in the range recomputes to what is stored.',
+  'logs.verify.broken': 'Tampering detected. The chain first breaks at sequence {sequence}.',
+  'logs.verify.break.hash_mismatch': "The entry's own hash does not match its contents.",
+  'logs.verify.break.prev_hash_mismatch':
+    'The entry does not seal the one before it — an entry was replaced or inserted.',
+  'logs.verify.break.sequence_gap': 'An entry is missing from the sequence.',
+  'logs.verify.breakAt': 'First break',
+  'logs.verify.breakDetail': 'entry {id}, recorded {when}',
+  'logs.verify.range': 'Range checked',
+  'logs.verify.rangeValue': 'sequence {from} to {to}',
+  'logs.verify.rangeEmpty': 'Nothing to check — the log is empty.',
+  'logs.verify.checked': 'Entries checked',
+  'logs.verify.skipped': 'Skipped as pre-chain',
+  'logs.verify.truncated':
+    'Only the most recent stretch was checked — the range was capped to keep the scan bounded.',
+  'logs.verify.close': 'Close',
+
+  'logs.drawer.token': 'Token',
+  'logs.drawer.record': 'Record',
+  'logs.drawer.who': 'Who',
+  'logs.drawer.when': 'When',
+  'logs.drawer.sequence': 'Sequence',
+  'logs.drawer.hash': 'Hash',
+  'logs.drawer.entryId': 'Entry',
+  'logs.drawer.details': 'Recorded details',
+  'logs.drawer.noDetails': 'This entry carries no extra detail.',
+
+  // --- Reports (ReportsScreen) ----------------------------------------------
+
+  'reports.title': 'Reports',
+  'reports.tab.dispatches': 'Dispatches',
+  'reports.tab.leadOutcomes': 'Lead outcomes',
+  'reports.tab.topParties': 'Top parties',
+
+  'reports.noPermission.title': 'Reports are not part of your role',
+  'reports.noPermission.description': 'Ask an administrator to add {permission}.',
+
+  'reports.range.period': 'Period',
+  'reports.period.thisMonth': 'This month',
+  'reports.period.last3Months': 'Last 3 months',
+  'reports.period.last6Months': 'Last 6 months',
+  'reports.period.last12Months': 'Last 12 months',
+  'reports.period.custom': 'Custom range',
+  'reports.range.fromMonth': 'From month',
+  'reports.range.toMonth': 'To month',
+  'reports.range.toMonthHint': 'Leave empty to run up to this month',
+  'reports.range.caption': '{from} to {to} · {zone}',
+
+  'reports.export': 'Export CSV',
+  'reports.ratesHidden': 'Money is left out — your role does not include {permission}.',
+  'reports.error.load': 'Could not load the report',
+
+  'reports.empty.title': 'No activity in this range',
+  'reports.dispatches.empty.description':
+    'Nothing was dispatched in these months. Try a wider range.',
+  'reports.leadOutcomes.empty.description':
+    'No leads were raised in these months. Try a wider range.',
+  'reports.topParties.empty.description': 'No party ordered in these months. Try a wider range.',
+
+  'reports.column.month': 'Month',
+  'reports.column.orders': 'Orders',
+  'reports.column.boxes': 'Boxes',
+  'reports.column.value': 'Value',
+  'reports.column.colour': 'Colour',
+  'reports.column.converted': 'Converted',
+  'reports.column.lost': 'Lost',
+  'reports.column.quiet': 'Went quiet',
+  'reports.column.open': 'Still open',
+  'reports.column.party': 'Party',
+  'reports.column.code': 'Code',
+  'reports.column.city': 'City',
+  'reports.column.parties': 'Parties',
+
+  'reports.stat.orders': 'Orders dispatched',
+  'reports.stat.boxes': 'Boxes dispatched',
+  'reports.stat.value': 'Value dispatched',
+
+  'reports.dispatches.byMonth': 'By month',
+  'reports.dispatches.byColour': 'By colour',
+  'reports.dispatches.colours.empty.title': 'No colours to break down',
+  'reports.dispatches.colours.empty.description':
+    'Dispatched boxes carry a colour — none of the lines in this range did.',
+
+  'reports.leadOutcomes.byMonth': 'By month',
+  'reports.leadOutcomes.quietNote':
+    'A lead counts as gone quiet after {days} days with no movement.',
+
+  'reports.topParties.parties': 'Parties',
+  'reports.topParties.orderedByValue': 'Top {limit} by order value.',
+  'reports.topParties.orderedByCount':
+    'Top {limit} by number of orders — your role does not include rates.',
+  'reports.topParties.cities': 'Cities',
+  'reports.topParties.cities.empty.title': 'No cities to group by',
+  'reports.topParties.cities.empty.description': 'None of these parties has a city recorded.',
+
+  // --- Documents (DocumentsScreen) ------------------------------------------
+
+  // Kept with this screen's own keys rather than in the nav block above, so the
+  // whole Documents vocabulary moves as one when strings are hoisted to shared.
+  'nav.master.documents': 'Documents',
+
+  'documents.title': 'Documents',
+  'documents.tab.templates': 'Templates',
+  'documents.tab.exports': 'Export history',
+  'documents.cancel': 'Cancel',
+  'documents.loadMore': 'Load more',
+  'documents.noAccess.title': 'Documents are not open to you',
+  'documents.noAccess.description': 'Your role does not include {permission}.',
+
+  'documents.type.quotation': 'Quotation',
+  'documents.type.orderConfirmation': 'Order confirmation',
+  'documents.type.dispatchNote': 'Dispatch note',
+  'documents.orientation.portrait': 'Portrait',
+  'documents.orientation.landscape': 'Landscape',
+
+  'documents.templates.sectionTitle': 'Templates',
+  'documents.templates.create': 'New template',
+  'documents.templates.colName': 'Template',
+  'documents.templates.colType': 'Document',
+  'documents.templates.colPaper': 'Paper',
+  'documents.templates.colRates': 'Rates',
+  'documents.templates.colUpdated': 'Updated',
+  'documents.templates.defaultBadge': 'default',
+  'documents.templates.ratesShown': 'Shown',
+  'documents.templates.ratesHidden': 'Hidden',
+  'documents.templates.delete': 'Delete',
+  'documents.templates.deleted': 'Deleted “{name}”',
+  'documents.templates.deleteFailed': 'Could not delete the template',
+  'documents.templates.deleteConfirmTitle': 'Delete the “{name}” template?',
+  'documents.templates.deleteConfirmBody':
+    'It goes to the Recycle Bin and can be restored. Documents already rendered from it are untouched — they keep the name they were sent under.',
+  'documents.templates.loadFailed': 'Could not load templates',
+  'documents.templates.empty.title': 'No templates yet',
+  'documents.templates.empty.description':
+    'A template decides what a quotation, order confirmation or dispatch note looks like.',
+
+  'documents.editor.newTitle': 'New template',
+  'documents.editor.save': 'Save',
+  'documents.editor.saved': 'Saved “{name}”',
+  'documents.editor.saveFailed': 'Could not save the template',
+  'documents.editor.reloadTheirs': 'Reload theirs',
+  'documents.editor.overwriteMine': 'Overwrite with mine',
+  'documents.editor.theirs': 'theirs',
+  'documents.editor.yours': 'yours',
+  'documents.editor.name': 'Name',
+  'documents.editor.documentType': 'Document',
+  'documents.editor.paperSize': 'Paper size',
+  'documents.editor.orientation': 'Orientation',
+  'documents.editor.accentColour': 'Accent colour',
+  'documents.editor.accentHint': 'Hex like #2F6FEB. Blank uses the app accent.',
+  'documents.editor.default': 'Default template',
+  'documents.editor.defaultLabel': 'Use this one unless another is chosen',
+  'documents.editor.defaultHint': 'One default per document type.',
+
+  'documents.editor.group.margins': 'Margins (mm)',
+  'documents.editor.margin.top': 'Top',
+  'documents.editor.margin.right': 'Right',
+  'documents.editor.margin.bottom': 'Bottom',
+  'documents.editor.margin.left': 'Left',
+
+  'documents.editor.group.content': 'What the document says',
+  'documents.editor.group.branding': 'Company marks',
+  'documents.editor.group.pageFurniture': 'Around the page',
+  'documents.editor.showRates': 'Rates and amounts',
+  'documents.editor.showColourChips': 'Colour swatches beside each line',
+  'documents.editor.showPartyBlock': 'Party name and address block',
+  'documents.editor.showLogo': 'Logo',
+  'documents.editor.showWatermark': 'Watermark',
+  'documents.editor.showSignature': 'Signature block',
+  'documents.editor.showTerms': 'Terms',
+  'documents.editor.showPageNumbers': 'Page numbers',
+
+  'documents.editor.watermarkText': 'Watermark text',
+  'documents.editor.termsText': 'Terms',
+  'documents.editor.termsHint': 'Up to 500 characters.',
+  'documents.editor.footerText': 'Footer text',
+
+  'documents.preview.title': 'Preview',
+  'documents.preview.description':
+    'Renders what is on this form, saved or not, against a real record — nothing is stored.',
+  'documents.preview.subject': 'Preview against',
+  'documents.preview.action': 'Preview',
+  'documents.preview.failed': 'Could not build the preview',
+  'documents.preview.popupBlocked':
+    'Your browser blocked the preview tab. Allow pop-ups for OrderBook, then preview again.',
+  'documents.preview.loadingSubjects': 'Finding a record to preview against…',
+  'documents.preview.noSubjects': 'Nothing to preview this template against yet.',
+  'documents.preview.subjectsFailed': 'Could not load anything to preview against',
+
+  'documents.exports.sectionTitle': 'Export history',
+  'documents.exports.description':
+    'Every document that was rendered, kept as the record of what was sent. Exports are never deleted.',
+  'documents.exports.colWhen': 'When',
+  'documents.exports.colDocument': 'File',
+  'documents.exports.colType': 'Document',
+  'documents.exports.colSubject': 'For',
+  'documents.exports.colTemplate': 'Template',
+  'documents.exports.colRates': 'Rates',
+  'documents.exports.colPages': 'Pages',
+  'documents.exports.colSize': 'Size',
+  'documents.exports.colRenderedBy': 'Rendered by',
+  'documents.exports.withRates': 'Included',
+  'documents.exports.withoutRates': 'Omitted',
+  'documents.exports.renderedByPanel': 'Office panel',
+  'documents.exports.download': 'Download',
+  'documents.exports.loadFailed': 'Could not load the export history',
+  'documents.exports.empty.title': 'Nothing rendered yet',
+  'documents.exports.empty.description':
+    'Documents rendered from a lead or an order appear here with the file that was sent.',
+
+  // --- Fields (FieldsScreen) ------------------------------------------------
+  // `fieldSet.*` mirrors `shared/src/i18n/en.ts` exactly: the catalogue names
+  // these tokens itself, so a fifth managed set minted server-side arrives here
+  // as a token this file has to answer.
+
+  'fieldSet.lead.sourcePlatform': 'Lead source',
+  'fieldSet.stock.colour': 'Colour',
+  'fieldSet.product.productType': 'Product type',
+  'fieldSet.line.packaging': 'Packaging',
+
+  'fields.title': 'Fields',
+  'fields.tab.values': 'Option lists',
+  'fields.tab.definitions': 'Custom fields',
+  'fields.tab.stages': 'Pipeline stages',
+
+  'fields.noAccess.title': 'Fields are not part of your role',
+  'fields.noAccess.description': 'Ask an administrator for {permission}.',
+  'fields.readOnly': 'You can read these lists but not change them — that needs {permission}.',
+
+  'fields.error.load': 'Could not load the fields',
+  'fields.error.save': 'Could not save',
+  'fields.error.delete': 'Could not remove it',
+  'fields.error.reorder': 'Could not save the new order',
+  'fields.error.title': 'Could not load',
+
+  'fields.conflict.reload': 'Reload theirs',
+  'fields.conflict.overwrite': 'Overwrite with mine',
+  'fields.conflict.theirs': 'theirs',
+  'fields.conflict.yours': 'yours',
+  'fields.conflict.notSet': 'not set',
+
+  'fields.action.cancel': 'Cancel',
+  'fields.action.save': 'Save',
+  'fields.action.create': 'Create',
+  'fields.action.edit': 'Edit',
+  'fields.action.remove': 'Remove',
+  'fields.action.moveUp': 'Move up',
+  'fields.action.moveDown': 'Move down',
+  'fields.col.order': 'Order',
+  'fields.status.active': 'In pickers',
+  'fields.status.inactive': 'Hidden',
+
+  'fields.usedBy.label': 'Used by {sources}',
+  'fields.usedBy.leads': 'leads',
+  'fields.usedBy.orders': 'orders',
+  'fields.usedBy.inventory': 'inventory',
+  'fields.usedBy.products': 'products',
+
+  'fields.values.add': 'Add value',
+  'fields.values.col.colour': 'Colour',
+  'fields.values.col.value': 'Value',
+  'fields.values.col.label': 'Label',
+  'fields.values.col.status': 'Status',
+  'fields.values.col.usage': 'On records',
+  'fields.values.empty.title': 'Nothing in this list yet',
+  'fields.values.empty.description':
+    'Add a value and it becomes a choice everywhere this list is used.',
+  'fields.values.error.description':
+    'The list could not be read, so nothing is shown — this is not an empty list.',
+
+  'fields.values.unlisted.title': 'Already on records, not in the list',
+  'fields.values.unlisted.description':
+    'These strings sit on live records but have no entry here, so nothing offers them for a new record. Add one to put it back in the pickers.',
+  'fields.values.unlisted.item': '{value} · {count}',
+
+  'fields.values.new.title': 'New {set} value',
+  'fields.values.edit.title': 'Edit {label}',
+  'fields.values.field.value': 'Value',
+  'fields.values.field.valueHint':
+    'What gets written onto the record. Cannot be changed afterwards.',
+  'fields.values.field.valueLocked':
+    'The value is what records already hold — only the label can change.',
+  'fields.values.field.label': 'Label',
+  'fields.values.field.labelHint': 'What people read. Safe to rename at any time.',
+  'fields.values.field.hex': 'Colour',
+  'fields.values.field.hexHint': 'Six hex digits, e.g. #c8a165. Leave empty for no swatch.',
+  'fields.values.field.hexInvalid': 'Use six hex digits after a #, e.g. #c8a165.',
+  'fields.values.field.active': 'Offer this in pickers',
+  'fields.values.field.activeHint':
+    'Turning this off hides it from new records. Records already holding it keep showing it.',
+
+  'fields.values.delete.title': 'Remove “{label}”?',
+  'fields.values.delete.body':
+    'It goes to the Recycle Bin and can be restored. Every record already holding “{value}” keeps that exact string — what changes is only that new records are no longer offered it.',
+
+  'fields.definitions.add': 'Add custom field',
+  'fields.definitions.col.key': 'Key',
+  'fields.definitions.col.label': 'Label',
+  'fields.definitions.col.type': 'Type',
+  'fields.definitions.col.required': 'Required',
+  'fields.definitions.col.options': 'Choices',
+  'fields.definitions.empty.title': 'No custom fields on {entity} yet',
+  'fields.definitions.empty.description':
+    'Add one to collect something this product has no column for.',
+  'fields.definitions.error.description':
+    'The definitions could not be read, so nothing is shown — this is not an empty set.',
+  'fields.definitions.requiredYes': 'Required',
+  'fields.definitions.requiredNo': '—',
+
+  'fields.definitions.new.title': 'New {entity} field',
+  'fields.definitions.edit.title': 'Edit {label}',
+  'fields.definitions.field.key': 'Key',
+  'fields.definitions.field.keyHint':
+    'What the answer is stored under on the record. Cannot be changed afterwards.',
+  'fields.definitions.field.keyLocked':
+    'The key is where stored answers live — only the label can change.',
+  'fields.definitions.field.label': 'Label',
+  'fields.definitions.field.type': 'Type',
+  'fields.definitions.field.typeLocked': 'The type is fixed once answers can exist.',
+  'fields.definitions.field.required': 'Required',
+  'fields.definitions.field.requiredHint':
+    'A missing answer flags the record incomplete. It never blocks a save.',
+  'fields.definitions.field.options': 'Choices',
+  'fields.definitions.field.optionsHint': 'One per line. A choice field needs at least one.',
+  'fields.definitions.field.active': 'Show this field on records',
+
+  'fields.definitions.delete.title': 'Remove “{label}”?',
+  'fields.definitions.delete.body':
+    'It goes to the Recycle Bin. Answers already stored under “{key}” stay on their records untouched, and adding the field back recovers them.',
+
+  'fields.type.text': 'Text',
+  'fields.type.number': 'Number',
+  'fields.type.date': 'Date',
+  'fields.type.select': 'Choice',
+  'fields.type.boolean': 'Yes / no',
+
+  'fields.entity.lead': 'Leads',
+  'fields.entity.order': 'Orders',
+  'fields.entity.party': 'Parties',
+  'fields.entity.product': 'Products',
+
+  'fields.stages.description':
+    'Stages are the Kanban columns. Archiving one stops new records landing in it; everything already there keeps rendering.',
+  'fields.stages.col.colour': 'Colour',
+  'fields.stages.col.name': 'Stage',
+  'fields.stages.col.flags': 'Behaviour',
+  'fields.stages.flag.default': 'Default',
+  'fields.stages.flag.terminal': 'Finished',
+  'fields.stages.flag.archived': 'Archived',
+  'fields.stages.action.makeDefault': 'Make default',
+  'fields.stages.action.archive': 'Archive',
+  'fields.stages.action.restore': 'Bring back',
+  'fields.stages.empty.title': 'No stages in this pipeline',
+  'fields.stages.empty.pipelines': 'No pipelines on this company',
+  'fields.stages.empty.description': 'Lead and order pipelines are created with the company.',
+  'fields.stages.error.description':
+    'The pipelines could not be read, so nothing is shown — this is not an empty board.',
+
+  'fields.stages.edit.title': 'Edit {name}',
+  'fields.stages.field.name': 'Name',
+  'fields.stages.field.colour': 'Colour',
+  'fields.stages.field.terminal': 'Records here are finished',
+  'fields.stages.field.terminalHint': 'Won, lost or dispatched — nothing further is expected.',
+
+  'fields.stages.refusal.default':
+    'The default stage cannot be archived — new records need somewhere to land. Make another stage the default first.',
+  'fields.stages.refusal.occupied':
+    '“{stage}” still holds {leads} leads and {orders} orders. Move them out and it can be archived.',
+  'fields.stages.refusal.moveTo': 'The default stage, “{target}”, is where they would normally go.',
+
+  // --- Recycle bin (RecycleBinScreen) ---------------------------------------
+
+  // Kept with this screen's own keys rather than in the nav block above, so the
+  // whole Recycle bin vocabulary moves as one when strings are hoisted to shared.
+  'nav.master.recycleBin': 'Recycle bin',
+
+  'recycleBin.title': 'Recycle bin',
+  'recycleBin.scope.own': 'Your deletions',
+  'recycleBin.scope.own.hint': 'Showing what you deleted yourself.',
+  'recycleBin.scope.everyone': 'Everyone’s deletions',
+  'recycleBin.scope.everyone.hint': 'Showing what anyone in the company deleted.',
+
+  'recycleBin.search.placeholder': 'Search deleted records…',
+  'recycleBin.filter.type': 'Record type',
+  'recycleBin.filter.allTypes': 'All types',
+  'recycleBin.filter.typeWithCount': '{type} ({count})',
+  'recycleBin.filter.deletedBy': 'Deleted by',
+  'recycleBin.filter.anyone': 'Deleted by anyone',
+
+  'recycleBin.entity.lead': 'Lead',
+  'recycleBin.entity.order': 'Order',
+  'recycleBin.entity.party': 'Party',
+  'recycleBin.entity.product': 'Product',
+  'recycleBin.entity.role': 'Role',
+  'recycleBin.entity.user': 'Person',
+  'recycleBin.entity.option_list_item': 'Option value',
+  'recycleBin.entity.custom_field_definition': 'Custom field',
+  'recycleBin.entity.document_template': 'Document template',
+
+  'recycleBin.column.type': 'Type',
+  'recycleBin.column.label': 'Record',
+  'recycleBin.column.detail': 'Detail',
+  'recycleBin.column.deletedAt': 'Deleted',
+  'recycleBin.column.deletedBy': 'Deleted by',
+  'recycleBin.deletedBy.panel': 'Office panel',
+
+  'recycleBin.action.restore': 'Restore',
+  'recycleBin.action.loadMore': 'Load older',
+
+  'recycleBin.empty.title': 'Nothing deleted',
+  'recycleBin.empty.description': 'Deleted records wait here until someone puts them back.',
+  'recycleBin.empty.filtered.title': 'No deleted record matches these filters',
+
+  'recycleBin.error.title': 'Could not load the recycle bin',
+  'recycleBin.error.load': 'Could not load the recycle bin',
+  'recycleBin.error.restore': 'Could not restore that record',
+  'recycleBin.error.restoreParent': 'Could not restore the records this one needs',
+
+  'recycleBin.denied.title': 'You cannot see the recycle bin',
+  'recycleBin.denied.description': 'Your role does not include {permission}.',
+
+  'recycleBin.toast.restored': '{label} restored',
+  'recycleBin.toast.restoredAs': '{label} restored as {name}',
+
+  'recycleBin.refusal.title': 'Cannot restore {label} yet',
+  'recycleBin.refusal.nameLabel': 'New name',
+  'recycleBin.refusal.nameHint': 'A record still in use has the original one. Edit this if you prefer another.',
+  'recycleBin.refusal.restoreAs': 'Restore under this name',
+  'recycleBin.refusal.parentsTitle': 'Still deleted',
+  'recycleBin.refusal.parentLine': '{type} · {label}',
+  'recycleBin.refusal.restoreParents': 'Restore those first, then this',
+  'recycleBin.refusal.parentsNotYours':
+    'Someone allowed to restore those records has to put them back before this one can come back.',
 };
 
 export function t(key: string, params?: Params): string {

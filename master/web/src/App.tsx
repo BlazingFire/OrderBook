@@ -27,10 +27,15 @@ import { SearchBox } from './components/SearchBox';
 import { AccessScreen } from './screens/AccessScreen';
 import { ConflictsScreen } from './screens/ConflictsScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
+import { DocumentsScreen } from './screens/DocumentsScreen';
+import { FieldsScreen } from './screens/FieldsScreen';
 import { FirstRunScreen } from './screens/FirstRunScreen';
 import { InventoryScreen } from './screens/InventoryScreen';
 import { LeadsOrdersScreen } from './screens/LeadsOrdersScreen';
+import { LogsScreen } from './screens/LogsScreen';
 import { PanelsScreen } from './screens/PanelsScreen';
+import { RecycleBinScreen } from './screens/RecycleBinScreen';
+import { ReportsScreen } from './screens/ReportsScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { SignInScreen } from './screens/SignInScreen';
 import { AppShell, type NavGroup, type NavItem } from './ui/AppShell';
@@ -42,7 +47,19 @@ import { Splash } from './ui/Splash';
 import { ToastProvider } from './ui/Toast';
 
 type Phase = 'loading' | 'first-run' | 'signed-out' | 'ready';
-type Tab = 'dashboard' | 'panels' | 'orders' | 'inventory' | 'access' | 'conflicts' | 'settings';
+type Tab =
+  | 'dashboard'
+  | 'panels'
+  | 'orders'
+  | 'inventory'
+  | 'reports'
+  | 'documents'
+  | 'access'
+  | 'fields'
+  | 'logs'
+  | 'recycleBin'
+  | 'conflicts'
+  | 'settings';
 type Route = '' | 'gallery';
 
 /** Entities whose changes should make the data screens refetch. */
@@ -187,6 +204,11 @@ function MasterPanel() {
   const canManageRoles = user.permissions.includes('roles.view') || user.permissions.includes('users.manage');
   const canManagePanels = user.permissions.includes('panels.manage');
   const canManageSettings = user.permissions.includes('settings.manage');
+  const canViewFields = user.permissions.includes('fields.view');
+  const canViewLogs = user.permissions.includes('logs.view');
+  const canViewRecycleBin = user.permissions.includes('recycleBin.view');
+  const canViewReports = user.permissions.includes('reports.view');
+  const canViewDocuments = user.permissions.includes('documents.view');
 
   let railState: 'synced' | 'syncing' | 'offline' | 'offlinePending' | 'conflict';
   if (openConflicts > 0) railState = 'conflict';
@@ -235,6 +257,10 @@ function MasterPanel() {
       icon: 'inventory',
       count: summary?.lowStockCount && summary.lowStockCount > 0 ? summary.lowStockCount : undefined,
     },
+    // Reports and Documents sit under Work rather than Admin: both are things
+    // a manager produces during the day, not settings anyone administers.
+    canViewReports ? { id: 'reports', label: t('nav.master.reports'), icon: 'calendar' } : null,
+    canViewDocuments ? { id: 'documents', label: t('nav.master.documents'), icon: 'copy' } : null,
     {
       id: 'conflicts',
       label: t('nav.master.conflicts'),
@@ -246,6 +272,9 @@ function MasterPanel() {
   const adminItems: Array<NavItem | null> = [
     canManagePanels ? { id: 'panels', label: t('nav.master.panels'), icon: 'server' } : null,
     canManageRoles ? { id: 'access', label: t('nav.master.access'), icon: 'shield' } : null,
+    canViewFields ? { id: 'fields', label: t('nav.master.fields'), icon: 'filter' } : null,
+    canViewLogs ? { id: 'logs', label: t('nav.master.logs'), icon: 'eye' } : null,
+    canViewRecycleBin ? { id: 'recycleBin', label: t('nav.master.recycleBin'), icon: 'trash' } : null,
     canManageSettings ? { id: 'settings', label: t('nav.master.settings'), icon: 'settings' } : null,
   ];
 
@@ -361,6 +390,10 @@ function MasterPanel() {
         return <LeadsOrdersScreen revision={dataRevision} />;
       case 'inventory':
         return <InventoryScreen revision={dataRevision} />;
+      case 'reports':
+        return <ReportsScreen revision={dataRevision} permissions={user.permissions} />;
+      case 'documents':
+        return <DocumentsScreen revision={dataRevision} permissions={user.permissions} />;
       case 'access':
         return (
           <AccessScreen
@@ -369,6 +402,12 @@ function MasterPanel() {
             currentUserTier={user.roleTier}
           />
         );
+      case 'fields':
+        return <FieldsScreen permissions={user.permissions} revision={dataRevision} />;
+      case 'logs':
+        return <LogsScreen permissions={user.permissions} />;
+      case 'recycleBin':
+        return <RecycleBinScreen permissions={user.permissions} revision={dataRevision} />;
       case 'conflicts':
         return (
           <ConflictsScreen revision={dataRevision} canResolve={user.permissions.includes('sync.resolveConflicts')} />
