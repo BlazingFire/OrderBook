@@ -68,6 +68,48 @@ const en: Record<string, string> = {
 
   'shell.starting': 'Starting…',
 
+  // --- Leads & orders (LeadsOrdersScreen) -----------------------------------
+  'leadsOrders.title': 'Leads & orders',
+  'leadsOrders.tab.leads': 'Open leads',
+  'leadsOrders.tab.orders': 'Orders',
+  'leadsOrders.tab.converted': 'Converted leads',
+  'leadsOrders.unit.kg': 'kg',
+
+  'leadsOrders.error.load': 'Could not load',
+  'leadsOrders.error.moveLead': 'Could not move the lead',
+  'leadsOrders.error.moveOrder': 'Could not move the order',
+  'leadsOrders.error.dispatch': 'Could not dispatch the order',
+  'leadsOrders.error.convert': 'Could not convert the lead',
+
+  'leadsOrders.orders.column.order': 'Order',
+  'leadsOrders.orders.column.party': 'Party',
+  'leadsOrders.orders.column.fromLead': 'From lead',
+  'leadsOrders.orders.column.products': 'Products',
+  'leadsOrders.orders.column.weight': 'Weight',
+  'leadsOrders.orders.weightManual': 'Entered by hand, not summed from the lines',
+  'leadsOrders.orders.column.amount': 'Amount',
+  'leadsOrders.orders.column.stage': 'Stage',
+  'leadsOrders.orders.dispatch': 'Dispatch',
+  'leadsOrders.orders.dispatched': 'Dispatched {when}',
+  'leadsOrders.orders.empty.title': 'No orders yet',
+  'leadsOrders.orders.empty.description': 'They appear here once a lead is converted.',
+
+  'leadsOrders.leads.column.lead': 'Lead',
+  'leadsOrders.leads.column.party': 'Party',
+  'leadsOrders.leads.column.products': 'Products',
+  'leadsOrders.leads.column.amount': 'Amount',
+  'leadsOrders.leads.column.stage': 'Stage',
+  'leadsOrders.leads.column.created': 'Created',
+  'leadsOrders.leads.incomplete': 'incomplete',
+  'leadsOrders.leads.converted': 'converted',
+  'leadsOrders.leads.convertedOrder': 'order {id}',
+  'leadsOrders.leads.convert': 'Convert to order',
+  'leadsOrders.leads.convertBlocked':
+    'Every line needs packaging before this can become an order',
+  'leadsOrders.leads.empty.open.title': 'No open leads',
+  'leadsOrders.leads.empty.open.description': 'Office Panels raise them.',
+  'leadsOrders.leads.empty.converted.title': 'No converted leads yet',
+
   'inventory.search.placeholder': 'Search product or colour',
   'inventory.filter.all': 'All stock',
   'inventory.filter.lowOnly': 'Low only',

@@ -9,7 +9,13 @@
 export type Theme = 'light' | 'dark';
 export type Density = 'compact' | 'comfortable' | 'large';
 
-const KEY_THEME = 'ob.theme';
+// The theme key is versioned, the other two are not. `initAppearance()` stores
+// whatever it loads, so an unversioned key cannot tell a machine that was ever
+// opened under a different default from one whose owner deliberately picked
+// that theme in Settings — both hold the same string. The version suffix scopes
+// the stored value to the default it was written against; a preference set from
+// Settings persists under the current key normally.
+const KEY_THEME = 'ob.theme.v2';
 const KEY_DENSITY = 'ob.density';
 const KEY_MOTION = 'ob.motion';
 
@@ -22,8 +28,12 @@ function read<T extends string>(key: string, allowed: readonly T[], fallback: T)
   }
 }
 
+/** Dark unless this machine says otherwise: the Master's chrome is dark so it
+ * is unmistakable from an Office Panel at a glance when both sit open on a
+ * desk. Office keeps the light default. `index.html` ships the same value on
+ * <html> so the dark ramp is already in place before this runs. */
 export function loadTheme(): Theme {
-  return read<Theme>(KEY_THEME, ['light', 'dark'], 'light');
+  return read<Theme>(KEY_THEME, ['light', 'dark'], 'dark');
 }
 
 export function loadDensity(): Density {
@@ -47,6 +57,12 @@ function store(key: string, value: string): void {
 
 export function applyTheme(theme: Theme): void {
   document.documentElement.dataset.theme = theme;
+  // Scrollbars, native select popups and autofill are painted by the browser
+  // from `color-scheme`, not from the token ramp, so they follow the OS unless
+  // the root states which scheme the page is actually using — a light scrollbar
+  // down the side of a dark shell otherwise. `index.html` carries the same
+  // value inline so the first painted frame already agrees.
+  document.documentElement.style.colorScheme = theme;
   store(KEY_THEME, theme);
 }
 

@@ -6,9 +6,41 @@
  * this file re-expresses them in tokens so the whole panel already speaks the
  * same visual language as the Office Panel.
  *
- * Element-selector rules give bare buttons/inputs the primary look; every
- * `.ob-*` class is more specific and unaffected. When a screen migrates to
- * `.ob-*`, its remaining rules here can be deleted.
+ * Element-selector rules give bare buttons/inputs the primary look. Every one
+ * of them is guarded with `:not(:where([class*='ob-']))`, because "the `.ob-*` class is
+ * more specific so it wins" is only true **per property**: specificity decides
+ * a contest between two declarations of the same property, and where the
+ * design-system rule declares nothing there is no contest to win. `.ob-navitem`
+ * sets no resting `background` — it relies on the reset leaving a button
+ * transparent — so an unguarded `button { background: var(--accent) }` painted
+ * every sidebar item solid blue, and `justify-content: center` re-centred their
+ * labels, while `.ob-navitem`'s own `color` still applied on top. The result
+ * read as an unstyled app rather than as a conflict.
+ *
+ * The guard deliberately checks only the element's *own* class, never its
+ * ancestors: legacy screens render inside the design system's `.ob-main`, so an
+ * ancestor-based guard would strip the styling these rules exist to provide.
+ * Weight alone is not enough where a component paints a bare child of its own,
+ * because the properties that component leaves undeclared still land: a
+ * segmented button would keep this file's 30px `min-height` and its rounded
+ * corners, and a toast's action button its accent fill under an accent label.
+ * Those two containers are named in the guard; the cell rules hang off
+ * `table:not(:where([class*='ob-']))` so an `.ob-table` keeps its own; and
+ * checkboxes, radios and sliders sit outside the field rule entirely, which
+ * describes a text box — stretching a checkbox to `width: 100%` was never what
+ * any screen wanted.
+ *
+ * The `:where()` wrapper is load-bearing rather than decoration. `:not()`
+ * normally contributes its argument's specificity, so writing the guard as a
+ * bare `:not([class*='ob-'])` lifts these rules from (0,0,1) to (0,1,1) — which
+ * ties with the design system's own descendant rules, such as the
+ * `.ob-seg > button` that paints an *unselected* segment, and wins the tie on
+ * source order because this file is imported last. `:where()` matches exactly
+ * the same elements while counting as zero, leaving each guarded rule precisely
+ * as weak as the bare element selector it replaces. Guarding a selector must
+ * never make it stronger.
+ *
+ * When a screen migrates to `.ob-*`, its remaining rules here can be deleted.
  */
 
 :root {
@@ -23,7 +55,7 @@
   --radius: var(--r-md);
 }
 
-button {
+button:not(:where([class*='ob-'], .ob-seg > *, .ob-toast > *)) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -40,38 +72,38 @@ button {
   transition: background-color var(--d-fast) var(--e-standard);
 }
 
-button:hover:not(:disabled) {
+button:not(:where([class*='ob-'], .ob-seg > *, .ob-toast > *)):hover:not(:disabled) {
   background: var(--accent-hover);
 }
 
-button:disabled {
+button:not(:where([class*='ob-'], .ob-seg > *, .ob-toast > *)):disabled {
   opacity: 0.45;
 }
 
-button.secondary {
+button.secondary:not(:where([class*='ob-'])) {
   background: var(--bg-surface);
   color: var(--fg-primary);
   border: 1px solid var(--line);
 }
 
-button.secondary:hover:not(:disabled) {
+button.secondary:not(:where([class*='ob-'])):hover:not(:disabled) {
   background: var(--bg-hover);
 }
 
-button.danger {
+button.danger:not(:where([class*='ob-'])) {
   background: var(--bg-surface);
   color: var(--state-conflict);
   border: 1px solid var(--line);
 }
 
-button.danger:hover:not(:disabled) {
+button.danger:not(:where([class*='ob-'])):hover:not(:disabled) {
   background: var(--state-conflict-tint);
   border-color: var(--state-conflict);
 }
 
-input,
-select,
-textarea {
+input:not(:where([class*='ob-'], [type='checkbox'], [type='radio'], [type='range'])),
+select:not(:where([class*='ob-'])),
+textarea:not(:where([class*='ob-'])) {
   width: 100%;
   min-height: var(--ctl-h-md);
   padding: 0 var(--s-8);
@@ -82,13 +114,13 @@ textarea {
   font-size: var(--t-small-size);
 }
 
-textarea {
+textarea:not(:where([class*='ob-'])) {
   height: auto;
   padding: var(--s-8);
   resize: vertical;
 }
 
-label,
+label:not(:where([class*='ob-'])),
 .field-label {
   display: block;
   margin-bottom: var(--s-4);
@@ -128,12 +160,12 @@ label,
   flex-wrap: wrap;
 }
 
-table {
+table:not(:where([class*='ob-'])) {
   width: 100%;
   border-collapse: collapse;
 }
 
-th {
+table:not(:where([class*='ob-'])) th {
   text-align: left;
   padding: 0 var(--s-12);
   height: var(--ctl-h-md);
@@ -146,7 +178,7 @@ th {
   letter-spacing: 0.07em;
 }
 
-td {
+table:not(:where([class*='ob-'])) td {
   text-align: left;
   padding: 0 var(--s-12);
   height: var(--row-h);
@@ -538,7 +570,7 @@ td {
   cursor: pointer;
 }
 
-button.link {
+button.link:not(:where([class*='ob-'])) {
   display: inline;
   min-height: 0;
   padding: 0;
@@ -552,12 +584,12 @@ button.link {
   text-decoration: underline dotted;
 }
 
-button.link:hover:not(:disabled) {
+button.link:not(:where([class*='ob-'])):hover:not(:disabled) {
   background: none;
   color: var(--accent);
 }
 
-button.link:disabled {
+button.link:not(:where([class*='ob-'])):disabled {
   text-decoration: none;
   cursor: default;
 }
