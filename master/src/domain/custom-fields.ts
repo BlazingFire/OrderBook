@@ -17,6 +17,16 @@ export interface CompletenessResult {
   missingFields: string[];
 }
 
+/**
+ * Called with **live** definitions only — `definitionsFor` filters
+ * `deleted_at IS NULL` by default (`custom-field.repository.ts`). Soft-deleting
+ * a required definition therefore makes affected records complete again, and
+ * restoring it makes them incomplete again, deliberately: completeness is a
+ * statement about today's configuration, not a fact stamped onto the record
+ * at save time. Do not "fix" a badge that disappears by snapshotting
+ * completeness onto the record — that is what would break the offline
+ * promise the file header describes.
+ */
 export function evaluateCompleteness(
   values: Record<string, unknown>,
   definitions: CustomFieldDefinition[],

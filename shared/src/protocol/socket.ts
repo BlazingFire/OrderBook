@@ -37,6 +37,7 @@ import type {
   SyncConflict,
   Uuid,
 } from '../domain/entities.js';
+import type { FieldCatalogue, FieldUsageBreakdown } from '../domain/fields.js';
 import type {
   ActivityLogEntry,
   ActivityLogFacets,
@@ -44,7 +45,6 @@ import type {
   ChainVerification,
   ChainVerifyInput,
 } from '../domain/activity.js';
-import type { FieldCatalogue, FieldUsageBreakdown } from '../domain/fields.js';
 import type {
   DocumentAsset,
   DocumentExport,
@@ -407,56 +407,51 @@ export interface ClientToServerEvents {
   'recycleBin:restore': (input: RestoreInput, ack: CommandAck<BinRestoreResult>) => void;
 
   // --- Fields (docs/backend-modules/04-API-CONTRACT.md §5) ------------------
-  // Reads carry `fields.view` (no tier ceiling); writes carry `fields.manage`
-  // (management+). Event names are `fields:<verb>` — the read verbs are
-  // `values`/`definitions`/`stages`/`catalogue`/`usage`, not `listX`.
+  // Reading is `fields.view` (every tier); editing is `fields.manage`
+  // (management+). Nothing here is queued offline — see fields.service.ts.
   'fields:catalogue': (ack: CommandAck<FieldCatalogue>) => void;
   'fields:values': (
     query: { listKey: string; includeDeleted?: boolean; includeUnlisted?: boolean },
     ack: CommandAck<{ items: OptionListItem[]; unlisted?: string[] }>,
   ) => void;
   'fields:usage': (query: { listKey: string }, ack: CommandAck<FieldUsageBreakdown>) => void;
+  'fields:createValue': (input: OptionListItemInput, ack: CommandAck<OptionListItem>) => void;
+  'fields:updateValue': (
+    payload: { id: Uuid; input: OptionListItemUpdateInput },
+    ack: CommandAck<OptionListItem>,
+  ) => void;
+  'fields:deleteValue': (id: Uuid, ack: CommandAck<{ id: Uuid; deletedAt: IsoTimestamp }>) => void;
+  'fields:reorderValues': (input: OptionListReorderInput, ack: CommandAck<OptionListItem[]>) => void;
+
   'fields:definitions': (
     query: { entity?: string; includeDeleted?: boolean },
     ack: CommandAck<CustomFieldDefinition[]>,
-  ) => void;
-  'fields:stages': (ack: CommandAck<Pipeline[]>) => void;
-  'fields:createValue': (input: OptionListItemInput, ack: CommandAck<OptionListItem>) => void;
-  'fields:updateValue': (
-    payload: { id: RecordId; input: OptionListItemUpdateInput },
-    ack: CommandAck<OptionListItem>,
-  ) => void;
-  'fields:deleteValue': (
-    id: RecordId,
-    ack: CommandAck<{ id: RecordId; deletedAt: string }>,
-  ) => void;
-  'fields:reorderValues': (
-    input: OptionListReorderInput,
-    ack: CommandAck<OptionListItem[]>,
   ) => void;
   'fields:createDefinition': (
     input: CustomFieldDefinitionInput,
     ack: CommandAck<CustomFieldDefinition>,
   ) => void;
   'fields:updateDefinition': (
-    payload: { id: RecordId; input: CustomFieldDefinitionUpdateInput },
+    payload: { id: Uuid; input: CustomFieldDefinitionUpdateInput },
     ack: CommandAck<CustomFieldDefinition>,
   ) => void;
   'fields:deleteDefinition': (
-    id: RecordId,
-    ack: CommandAck<{ id: RecordId; deletedAt: string }>,
+    id: Uuid,
+    ack: CommandAck<{ id: Uuid; deletedAt: IsoTimestamp }>,
   ) => void;
   'fields:reorderDefinitions': (
     input: CustomFieldReorderInput,
     ack: CommandAck<CustomFieldDefinition[]>,
   ) => void;
+
+  'fields:stages': (ack: CommandAck<Pipeline[]>) => void;
   'fields:updateStage': (
-    payload: { id: RecordId; input: PipelineStageInput },
+    payload: { id: Uuid; input: PipelineStageInput },
     ack: CommandAck<PipelineStage>,
   ) => void;
   'fields:reorderStages': (input: StageReorderInput, ack: CommandAck<PipelineStage[]>) => void;
-  'fields:archiveStage': (id: RecordId, ack: CommandAck<PipelineStage>) => void;
-  'fields:restoreStage': (id: RecordId, ack: CommandAck<PipelineStage>) => void;
+  'fields:archiveStage': (id: Uuid, ack: CommandAck<PipelineStage>) => void;
+  'fields:restoreStage': (id: Uuid, ack: CommandAck<PipelineStage>) => void;
 
   // --- Logs (docs/backend-modules/04-API-CONTRACT.md §2) --------------------
   'log:list': (query: ActivityLogQuery, ack: CommandAck<CursorPage<ActivityLogEntry>>) => void;

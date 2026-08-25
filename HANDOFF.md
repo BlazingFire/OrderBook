@@ -1244,6 +1244,21 @@ working tree for what actually exists if this section reads stale.
     through would touch roughly ten test call sites, several of which run before
     any tenant exists. Worth doing as its own change, not a drive-by inside this one.
 
+  **A second, independent Stage 3 (Fields) implementation had landed on `origin/dev`**
+  while this session's audit was in progress — two sessions had built the same
+  module concurrently. Reconciled by taking the pushed implementation as
+  canonical throughout (`master/src/domain/field-values.ts`,
+  `fields.service.ts`, `fields.routes.ts`, `field-usage.repository.ts`,
+  `custom-field.repository.ts`, the `20260306` migration, and both Fields test
+  files) and re-applying this session's non-Fields fixes on top, since a
+  pushed, shared, already-verified implementation should not be silently
+  replaced by an unpushed local one — see the corresponding commit for the
+  full file-by-file resolution. One casualty of the discarded draft is worth
+  recording: it tracked `deletedBy`/`createdAt`/`updatedAt` on
+  `OptionListItem`/`CustomFieldDefinition` that the landed implementation does
+  not; if per-row audit timestamps on Fields configuration turn out to matter,
+  that is new work, not a regression to restore.
+
 ### Still to do in Phase 2
 
 The user was asked to prioritise and chose inventory first. Remaining, roughly
@@ -1373,6 +1388,22 @@ in the order the plan lists them:
 - **`zIndex` and friends accept CSS `var()` in React inline styles** — prefer
   the layer tokens (`--z-toast`…) over bare numbers so layering stays in
   `tokens.css`.
+- **A `UNION ALL` branch must cast to the type its siblings use.**
+  `option_lists`/`custom_field_definitions` have `UUID` primary keys, unlike
+  every other Recycle Bin branch's `TEXT` id; Postgres refuses the union
+  outright ("UNION types text and uuid cannot be matched") rather than
+  coercing silently. Cast the odd one out (`id::text`), don't change the rest.
+- **A test-fixture "seeded row" set captured per test *file* is only correct
+  if every file starts from an identical database.** `option_lists`/
+  `custom_field_definitions` are not in `DATA_TABLES` (truncating either
+  leaves no pipeline stage or source-platform option for anything to write
+  against), so nothing wipes them between files sharing the one on-disk test
+  cluster — meaning whatever a *previous* file's last test left behind, a
+  later file's own `setupDatabase()` re-captures as "seeded" and then
+  protects forever. Self-heal to a known-fixed set before capturing (as
+  roles already do by name), don't just capture "whatever exists now." A
+  single `npx vitest run` can be misleadingly green; the tell is running it
+  twice in a row without wiping the cluster.
 
 ## Working agreements for this repo
 

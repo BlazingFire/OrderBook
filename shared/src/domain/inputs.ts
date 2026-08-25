@@ -354,24 +354,28 @@ export interface RestoreInput {
   expectedVersion?: number;
 }
 
-// --- Fields (docs/backend-modules/04-API-CONTRACT.md §5) -------------------
+// --- Fields --------------------------------------------------------------
 
 export interface OptionListItemInput {
   listKey: FieldListKey;
+  /** The record-facing identity. Trimmed, never case-folded, immutable after create. */
   value: string;
   label: string;
+  /** `#RRGGBB`, or omitted/null for a set with no colour to render. */
   hex?: string | null;
   sequence?: number;
 }
 
-/** `value` is deliberately absent — editing it is refused; rename `label` instead. */
+/** `value` and `listKey` are deliberately absent — both are immutable once created. */
 export interface OptionListItemUpdateInput {
   label?: string;
   hex?: string | null;
   isActive?: boolean;
+  /** Mandatory: a save with no version is refused, never treated as "I checked and I am current". */
   expectedVersion: number;
 }
 
+/** The complete ordered id list for one set — a reorder is never expressed as a delta. */
 export interface OptionListReorderInput {
   listKey: FieldListKey;
   ids: Uuid[];
@@ -379,15 +383,17 @@ export interface OptionListReorderInput {
 
 export interface CustomFieldDefinitionInput {
   entity: CustomFieldEntity;
+  /** What the value is stored under in the record's `custom_fields` JSONB. Immutable after create. */
   key: string;
   label: string;
   fieldType: CustomFieldType;
   isRequired?: boolean;
+  /** Required, non-empty when `fieldType === 'select'`. */
   options?: string[];
   sequence?: number;
 }
 
-/** `key` and `entity` are deliberately absent — both are immutable once set. */
+/** `key` and `entity` are deliberately absent — both are immutable once created. */
 export interface CustomFieldDefinitionUpdateInput {
   label?: string;
   isRequired?: boolean;
@@ -401,15 +407,22 @@ export interface CustomFieldReorderInput {
   ids: Uuid[];
 }
 
+/**
+ * `pipeline_stages` carries no `version` column — it is not a screen two people
+ * curate concurrently the way option lists and custom fields are, so this input
+ * carries no `expectedVersion`.
+ */
 export interface PipelineStageInput {
   name?: string;
   colourHex?: string | null;
   isTerminal?: boolean;
+  /** Demotes the previous default in the same transaction, clear-then-set. */
   isDefault?: boolean;
 }
 
+/** The complete ordered id list for one pipeline's stages. */
 export interface StageReorderInput {
-  pipelineId: RecordId;
+  pipelineId: Uuid;
   ids: Uuid[];
 }
 

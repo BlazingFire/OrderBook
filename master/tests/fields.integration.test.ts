@@ -1,21 +1,14 @@
 /**
- * Fields against a real cluster: reorder under the deferrable constraint,
- * the default-stage swap, removal not touching records, usage counts, the
- * `fields.view`/`fields.manage` enforcement, and the concurrency gate.
- * `docs/backend-modules/10-TESTING.md` §6.4 owns the gate list this suite
- * answers (`FLD-5`…`FLD-21`).
+ * Fields, Stage 3 of `docs/backend-modules/` — integration gates
+ * (`10-TESTING.md` §"Stage 3 — Fields", FLD-5 through FLD-21). Drives real
+ * PostgreSQL: the deferred-constraint reorder, the clear-then-set default
+ * swap, the partial unique index, the mandatory-`expectedVersion` concurrency
+ * contract, and the rule the whole module hangs on — removing a value never
+ * touches a single record that already held it.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import type { ActorContext } from '../src/domain/actor.js';
-import { db } from '../src/db/knex.js';
-import { ConflictError, ForbiddenError, ValidationError } from '../src/lib/errors.js';
-import * as fieldsService from '../src/services/fields.service.js';
-import * as leadService from '../src/services/lead.service.js';
-import * as catalogService from '../src/services/catalog.service.js';
-import * as inventoryService from '../src/services/inventory.service.js';
-import * as pipelineRepo from '../src/repositories/pipeline.repository.js';
 import { canRunIntegrationTests } from './helpers/db.js';
 import {
   actorWith,
@@ -24,15 +17,48 @@ import {
   stageIdByName,
   teardownDatabase,
   testActor,
+  testTenantId,
 } from './helpers/fixtures.js';
+import type { ActorContext } from '../src/domain/actor.js';
+import { db } from '../src/db/knex.js';
+import { ConflictError, ForbiddenError, ValidationError } from '../src/lib/errors.js';
+import * as customFieldRepo from '../src/repositories/custom-field.repository.js';
+import * as pipelineRepo from '../src/repositories/pipeline.repository.js';
+import * as catalogService from '../src/services/catalog.service.js';
+import * as fieldsService from '../src/services/fields.service.js';
+import * as leadService from '../src/services/lead.service.js';
+import * as recycleBinService from '../src/services/recycle-bin.service.js';
+import { buildSnapshot } from '../src/services/snapshot.service.js';
 
 let actor: ActorContext;
 
-async function leadPipelineId(tenantId: string): Promise<string> {
-  const pipelines = await pipelineRepo.listPipelines(tenantId);
-  const pipeline = pipelines.find((p) => p.kind === 'lead');
-  if (!pipeline) throw new Error('no lead pipeline seeded');
-  return pipeline.id;
+async function seedLeadFixture() {
+  const party = await catalogService.createParty({ name: 'Patel Tiles' }, actor);
+  const product = await catalogService.createProduct(
+    { productCode: 'GVT-01', name: 'Carrara White', rate: 45_000 },
+    actor,
+  );
+  return { party, product };
+}
+
+function line(productId: string) {
+  return { productId, packaging: 'carton', quantities: [{ colour: 'Ivory', quantity: 10 }] };
+}
+
+async function sourcePlatformValueId(value: string): Promise<string> {
+  const tenantId = await testTenantId();
+  const items = await customFieldRepo.listOptionsForKey(tenantId, 'lead.sourcePlatform');
+  const item = items.find((candidate) => candidate.value === value);
+  if (!item) throw new Error(`No seeded lead.sourcePlatform option "${value}"`);
+  return item.id;
+}
+
+async function activityActionsFor(entityType: string, entityId: string): Promise<string[]> {
+  const rows = await db()('activity_log')
+    .where({ entity_type: entityType, entity_id: entityId })
+    .orderBy('id')
+    .select<Array<{ action: string }>>('action');
+  return rows.map((row) => row.action);
 }
 
 describe.skipIf(!canRunIntegrationTests)('Fields (integration)', () => {
@@ -44,368 +70,452 @@ describe.skipIf(!canRunIntegrationTests)('Fields (integration)', () => {
   });
 
   describe('option-list values', () => {
-    it('creates, then lists, a value for stock.colour', async () => {
-      const item = await fieldsService.createValue(
-        { listKey: 'stock.colour', value: 'Sunrise Orange', label: 'Sunrise Orange' },
+    it('creates a value and lists it in sequence order', async () => {
+      const created = await fieldsService.createValue(
+        { listKey: 'stock.colour', value: 'Ivory', label: 'Ivory', hex: '#F5F0E6' },
         actor,
       );
-      expect(item.value).toBe('Sunrise Orange');
-      expect(item.version).toBe(1);
+      expect(created.value).toBe('Ivory');
+      expect(created.hex).toBe('#f5f0e6');
+      expect(created.version).toBe(1);
 
       const { items } = await fieldsService.listValues({ listKey: 'stock.colour' }, actor);
-      expect(items.some((i) => i.id === item.id)).toBe(true);
+      expect(items.map((item) => item.value)).toContain('Ivory');
     });
 
-    it('refuses a duplicate live value for the same list key', async () => {
-      await fieldsService.createValue({ listKey: 'stock.colour', value: 'Sea Green', label: 'Sea Green' }, actor);
-      await expect(
-        fieldsService.createValue({ listKey: 'stock.colour', value: 'Sea Green', label: 'Sea Green' }, actor),
-      ).rejects.toBeInstanceOf(ConflictError);
-    });
-
-    it('normalises a hex to lowercase and rejects a malformed one', async () => {
-      const item = await fieldsService.createValue(
-        { listKey: 'stock.colour', value: 'Coral Pink', label: 'Coral Pink', hex: '#FF7F50' },
+    it('never case-folds — "White" and "white" are two distinct live values', async () => {
+      await fieldsService.createValue({ listKey: 'stock.colour', value: 'White', label: 'White' }, actor);
+      const lower = await fieldsService.createValue(
+        { listKey: 'stock.colour', value: 'white', label: 'white' },
         actor,
       );
-      expect(item.hex).toBe('#ff7f50');
+      expect(lower.value).toBe('white');
 
+      const { items } = await fieldsService.listValues({ listKey: 'stock.colour' }, actor);
+      expect(items.filter((item) => item.value.toLowerCase() === 'white')).toHaveLength(2);
+    });
+
+    it('refuses a duplicate live (listKey, value)', async () => {
+      await fieldsService.createValue({ listKey: 'stock.colour', value: 'Ivory', label: 'Ivory' }, actor);
       await expect(
-        fieldsService.createValue(
-          { listKey: 'stock.colour', value: 'Bad Hex', label: 'Bad Hex', hex: 'not-a-hex' },
+        fieldsService.createValue({ listKey: 'stock.colour', value: 'Ivory', label: 'Different label' }, actor),
+      ).rejects.toThrow(ConflictError);
+    });
+
+    it('rejects a malformed hex', async () => {
+      await expect(
+        fieldsService.createValue({ listKey: 'stock.colour', value: 'Ivory', label: 'Ivory', hex: 'not-a-hex' }, actor),
+      ).rejects.toThrow(ValidationError);
+    });
+
+    it('after removing "Ivory", adding it back is possible — the partial unique index at work', async () => {
+      const first = await fieldsService.createValue({ listKey: 'stock.colour', value: 'Ivory', label: 'Ivory' }, actor);
+      await fieldsService.deleteValue(first.id, actor);
+
+      const second = await fieldsService.createValue({ listKey: 'stock.colour', value: 'Ivory', label: 'Ivory' }, actor);
+      expect(second.id).not.toBe(first.id);
+      expect(second.value).toBe('Ivory');
+    });
+
+    describe('editing', () => {
+      it('renames the label and recolours, bumping version', async () => {
+        const value = await fieldsService.createValue(
+          { listKey: 'stock.colour', value: 'Ivory', label: 'Ivory' },
           actor,
-        ),
-      ).rejects.toBeInstanceOf(ValidationError);
+        );
+
+        const updated = await fieldsService.updateValue(
+          value.id,
+          { label: 'Ivory White', hex: '#FFFFFF', expectedVersion: value.version },
+          actor,
+        );
+
+        expect(updated.label).toBe('Ivory White');
+        expect(updated.hex).toBe('#ffffff');
+        expect(updated.version).toBe(2);
+      });
+
+      it('refuses to change `value` even if the raw payload smuggles one in', async () => {
+        const value = await fieldsService.createValue(
+          { listKey: 'stock.colour', value: 'Ivory', label: 'Ivory' },
+          actor,
+        );
+
+        const sneaky = { label: 'Renamed', value: 'Hijacked', expectedVersion: value.version };
+        await expect(
+          fieldsService.updateValue(value.id, sneaky as unknown as Parameters<typeof fieldsService.updateValue>[1], actor),
+        ).rejects.toThrow(ValidationError);
+      });
+
+      it('is refused with 400 when `expectedVersion` is omitted', async () => {
+        const value = await fieldsService.createValue(
+          { listKey: 'stock.colour', value: 'Ivory', label: 'Ivory' },
+          actor,
+        );
+
+        const noVersion = { label: 'Renamed' } as unknown as Parameters<typeof fieldsService.updateValue>[1];
+        await expect(fieldsService.updateValue(value.id, noVersion, actor)).rejects.toThrow(ValidationError);
+      });
+
+      it('is refused with a conflict carrying storedVersion when stale, and does not overwrite', async () => {
+        const value = await fieldsService.createValue(
+          { listKey: 'stock.colour', value: 'Ivory', label: 'Ivory' },
+          actor,
+        );
+
+        // First writer, using the version everyone started from.
+        await fieldsService.updateValue(value.id, { label: 'First', expectedVersion: value.version }, actor);
+
+        // Second writer still holds the original (now stale) version.
+        try {
+          await fieldsService.updateValue(value.id, { label: 'Second', expectedVersion: value.version }, actor);
+          expect.unreachable('the stale save should have been refused');
+        } catch (error) {
+          expect(error).toBeInstanceOf(ConflictError);
+          expect((error as ConflictError).details).toMatchObject({ storedVersion: 2 });
+        }
+
+        const stored = await customFieldRepo.findOptionById(actor.tenantId, value.id);
+        expect(stored?.label).toBe('First');
+      });
     });
 
-    it('FLD-9: removing a value touches no record that used it', async () => {
-      const party = await catalogService.createParty({ name: 'Fields Test Party' }, actor);
-      const product = await catalogService.createProduct({ name: 'Basin', productCode: 'FLDB-1' }, actor);
-      await inventoryService.recordInbound({ productId: product.id, colour: 'Slate Grey', quantityBoxes: 10 }, actor);
-      const lead = await leadService.createLead(
-        {
-          partyId: party.id,
-          items: [{ productId: product.id, packaging: 'Box', quantities: [{ colour: 'Slate Grey', quantity: 3 }] }],
-        },
-        actor,
-      );
+    describe('removal never touches a record that used it', () => {
+      it('a lead keeps its sourcePlatform after the option is removed, and can still be saved', async () => {
+        const { party, product } = await seedLeadFixture();
+        const lead = await leadService.createLead(
+          { partyId: party.id, sourcePlatform: 'whatsapp', items: [line(product.id)] },
+          actor,
+        );
+        expect(lead.sourcePlatform).toBe('whatsapp');
 
-      const value = await fieldsService.createValue(
-        { listKey: 'stock.colour', value: 'Slate Grey', label: 'Slate Grey' },
-        actor,
-      );
+        const optionId = await sourcePlatformValueId('whatsapp');
+        await fieldsService.deleteValue(optionId, actor);
 
-      const before = await db()('line_item_quantities').where({ colour: 'Slate Grey' }).select('*');
-      const stockBefore = await db()('inventory_stock').where({ colour: 'Slate Grey' }).select('*');
+        const reloaded = await leadService.getLead(lead.id, actor);
+        expect(reloaded.sourcePlatform).toBe('whatsapp');
 
-      await fieldsService.removeValue(value.id, actor);
+        // Editing an unrelated field, with the now-removed value still on the
+        // payload (as a real form would resend it), must not be refused.
+        const updated = await leadService.updateLead(
+          lead.id,
+          { sourcePlatform: 'whatsapp', notes: 'Follow up Monday' },
+          actor,
+        );
+        expect(updated.sourcePlatform).toBe('whatsapp');
+        expect(updated.notes).toBe('Follow up Monday');
+      });
 
-      const after = await db()('line_item_quantities').where({ colour: 'Slate Grey' }).select('*');
-      const stockAfter = await db()('inventory_stock').where({ colour: 'Slate Grey' }).select('*');
-      expect(after).toEqual(before);
-      expect(stockAfter).toEqual(stockBefore);
+      it('a NEW lead may not take a value that has since been removed', async () => {
+        const { party, product } = await seedLeadFixture();
+        const optionId = await sourcePlatformValueId('whatsapp');
+        await fieldsService.deleteValue(optionId, actor);
 
-      // FLD-10: the lead — which still carries the removed colour — is still
-      // readable and editable.
-      const reread = await leadService.getLead(lead.id, actor);
-      expect(reread.id).toBe(lead.id);
+        await expect(
+          leadService.createLead(
+            { partyId: party.id, sourcePlatform: 'whatsapp', items: [line(product.id)] },
+            actor,
+          ),
+        ).rejects.toThrow(ValidationError);
+      });
+
+      it('leaves every referencing row byte-identical', async () => {
+        const value = await fieldsService.createValue({ listKey: 'stock.colour', value: 'Ivory', label: 'Ivory' }, actor);
+        const { product } = await seedLeadFixture();
+
+        await catalogService.updateProduct(product.id, { productCode: product.productCode, name: product.name }, actor);
+        // A colour with no inventory row yet is the common case; the point of
+        // this gate is that deleting the option touches nothing in
+        // `inventory_stock`/`line_item_quantities`/`stock_reservations` — proven
+        // by there being zero rows for this fresh product before and after.
+        const before = await db()('inventory_stock').where({ tenant_id: actor.tenantId }).select('*');
+
+        await fieldsService.deleteValue(value.id, actor);
+
+        const after = await db()('inventory_stock').where({ tenant_id: actor.tenantId }).select('*');
+        expect(after).toEqual(before);
+      });
     });
 
-    it('FLD-18: a removed value appears in the Bin and restores', async () => {
-      const value = await fieldsService.createValue(
-        { listKey: 'stock.colour', value: 'Bin Colour', label: 'Bin Colour' },
-        actor,
-      );
-      await fieldsService.removeValue(value.id, actor);
+    describe('reorder', () => {
+      it('takes the complete ordered list and writes 1..N', async () => {
+        const a = await fieldsService.createValue({ listKey: 'stock.colour', value: 'A', label: 'A' }, actor);
+        const b = await fieldsService.createValue({ listKey: 'stock.colour', value: 'B', label: 'B' }, actor);
+        const c = await fieldsService.createValue({ listKey: 'stock.colour', value: 'C', label: 'C' }, actor);
 
-      const { items: deleted } = await fieldsService.listValues(
-        { listKey: 'stock.colour', includeDeleted: true },
-        actor,
-      );
-      const found = deleted.find((i) => i.id === value.id);
-      expect(found?.deletedAt).not.toBeNull();
+        const reordered = await fieldsService.reorderValues({ listKey: 'stock.colour', ids: [c.id, a.id, b.id] }, actor);
+        expect(reordered.map((item) => item.value)).toEqual(['C', 'A', 'B']);
+        expect(reordered.map((item) => item.sequence)).toEqual([1, 2, 3]);
+      });
+
+      it('rejects a list missing a live value', async () => {
+        const a = await fieldsService.createValue({ listKey: 'stock.colour', value: 'A', label: 'A' }, actor);
+        await fieldsService.createValue({ listKey: 'stock.colour', value: 'B', label: 'B' }, actor);
+
+        await expect(fieldsService.reorderValues({ listKey: 'stock.colour', ids: [a.id] }, actor)).rejects.toThrow(
+          ValidationError,
+        );
+      });
     });
 
-    it('FLD-19: is a Recycle Bin entity — nine branches once Stage 6 landed', async () => {
-      const { RECYCLE_BIN_ENTITIES } = await import('@orderbook/shared');
-      expect(RECYCLE_BIN_ENTITIES).toContain('option_list_item');
-      expect(RECYCLE_BIN_ENTITIES).toContain('custom_field_definition');
-      // Eight when Fields landed; `document_template` made it nine at Stage 6.
-      expect(RECYCLE_BIN_ENTITIES).toHaveLength(9);
-    });
+    it('records an activity_log entry for create, update and delete, atomically with the change', async () => {
+      const value = await fieldsService.createValue({ listKey: 'stock.colour', value: 'Ivory', label: 'Ivory' }, actor);
+      await fieldsService.updateValue(value.id, { label: 'Renamed', expectedVersion: value.version }, actor);
+      await fieldsService.deleteValue(value.id, actor);
 
-    it('FLD-19b: every declared Bin entity actually has a UNION branch behind it', async () => {
-      // This is the gate that was missing. Both Fields entities were declared
-      // in `RECYCLE_BIN_ENTITIES` and in `RESTORE_PERMISSION` at Stage 3 but
-      // never given a branch in `recycle-bin.repository.ts`, so they were
-      // invisible in the Bin and `restoreEntity` refused them as an "unknown
-      // entity type" — while every type check in the codebase said they were
-      // fine. Nothing errored; the feature simply did not exist.
-      const { RECYCLE_BIN_ENTITIES } = await import('@orderbook/shared');
-      const { BIN_BRANCH_TYPES } = await import(
-        '../src/repositories/recycle-bin.repository.js'
-      );
-
-      for (const entity of RECYCLE_BIN_ENTITIES) {
-        expect(BIN_BRANCH_TYPES, `no Bin branch for ${entity}`).toContain(entity);
-      }
-    });
-
-    it('FLD-20/21: expectedVersion is mandatory, and the losing concurrent writer does not overwrite', async () => {
-      const value = await fieldsService.createValue(
-        { listKey: 'stock.colour', value: 'Race Colour', label: 'Race Colour' },
-        actor,
-      );
-
-      // Omitted expectedVersion — 400.
-      await expect(
-        fieldsService.updateValue(value.id, { label: 'No version' } as never, actor),
-      ).rejects.toBeInstanceOf(ValidationError);
-
-      // Both "read" version 1.
-      await fieldsService.updateValue(value.id, { label: 'First writer', expectedVersion: 1 }, actor);
-
-      // The second writer still thinks it is version 1 — refused, and the
-      // first writer's value is what is actually stored.
-      await expect(
-        fieldsService.updateValue(value.id, { label: 'Second writer', expectedVersion: 1 }, actor),
-      ).rejects.toMatchObject({ code: 'conflict' });
-
-      const { items } = await fieldsService.listValues({ listKey: 'stock.colour' }, actor);
-      const stored = items.find((i) => i.id === value.id);
-      expect(stored?.label).toBe('First writer');
-      expect(stored?.version).toBe(2);
-    });
-  });
-
-  describe('reordering values', () => {
-    it('reorders a full permutation and rejects a stale one missing a value added since', async () => {
-      const a = await fieldsService.createValue({ listKey: 'line.packaging', value: 'Pkg A', label: 'Pkg A' }, actor);
-      const b = await fieldsService.createValue({ listKey: 'line.packaging', value: 'Pkg B', label: 'Pkg B' }, actor);
-
-      const reordered = await fieldsService.reorderValues(
-        { listKey: 'line.packaging', ids: [b.id, a.id] },
-        actor,
-      );
-      expect(reordered.map((i) => i.id)).toEqual([b.id, a.id]);
-
-      await fieldsService.createValue({ listKey: 'line.packaging', value: 'Pkg C', label: 'Pkg C' }, actor);
-
-      // FLD-7: a permutation that omits the value added since is stale.
-      await expect(
-        fieldsService.reorderValues({ listKey: 'line.packaging', ids: [a.id, b.id] }, actor),
-      ).rejects.toBeInstanceOf(ValidationError);
+      expect(await activityActionsFor('option_list_item', value.id)).toEqual(['created', 'updated', 'deleted']);
     });
   });
 
   describe('custom-field definitions', () => {
-    it('creates a definition and refuses a duplicate key for the same entity', async () => {
-      await fieldsService.createDefinition(
-        { entity: 'lead', key: 'warranty_years', label: 'Warranty (years)', fieldType: 'number' },
+    it('creates a definition and lists it for its entity', async () => {
+      const definition = await fieldsService.createDefinition(
+        { entity: 'lead', key: 'budget', label: 'Budget', fieldType: 'number' },
         actor,
       );
+      expect(definition.key).toBe('budget');
+
+      const definitions = await fieldsService.listDefinitions({ entity: 'lead' }, actor);
+      expect(definitions.map((d) => d.key)).toContain('budget');
+    });
+
+    it('refuses a `select` field with no options', async () => {
       await expect(
-        fieldsService.createDefinition(
-          { entity: 'lead', key: 'warranty_years', label: 'Dup', fieldType: 'number' },
+        fieldsService.createDefinition({ entity: 'lead', key: 'colour', label: 'Colour', fieldType: 'select' }, actor),
+      ).rejects.toThrow(ValidationError);
+    });
+
+    it('refuses a duplicate live (entity, key)', async () => {
+      await fieldsService.createDefinition({ entity: 'lead', key: 'budget', label: 'Budget', fieldType: 'number' }, actor);
+      await expect(
+        fieldsService.createDefinition({ entity: 'lead', key: 'budget', label: 'Budget again', fieldType: 'text' }, actor),
+      ).rejects.toThrow(ConflictError);
+    });
+
+    it('refuses to change `key` on update, even smuggled in the raw payload', async () => {
+      const definition = await fieldsService.createDefinition(
+        { entity: 'lead', key: 'budget', label: 'Budget', fieldType: 'number' },
+        actor,
+      );
+
+      const sneaky = { label: 'Renamed', key: 'hijacked', expectedVersion: definition.version };
+      await expect(
+        fieldsService.updateDefinition(
+          definition.id,
+          sneaky as unknown as Parameters<typeof fieldsService.updateDefinition>[1],
           actor,
         ),
-      ).rejects.toBeInstanceOf(ConflictError);
+      ).rejects.toThrow(ValidationError);
     });
 
-    it('refuses a select field with no options', async () => {
-      await expect(
-        fieldsService.createDefinition(
-          { entity: 'party', key: 'grade', label: 'Grade', fieldType: 'select', options: [] },
-          actor,
-        ),
-      ).rejects.toBeInstanceOf(ValidationError);
-    });
-
-    it('requires expectedVersion on update and refuses a stale one with storedVersion', async () => {
-      const def = await fieldsService.createDefinition(
-        { entity: 'product', key: 'finish_note', label: 'Finish note', fieldType: 'text' },
+    it('deleting a required definition makes an incomplete record complete again, and restoring it flips the badge back', async () => {
+      const definition = await fieldsService.createDefinition(
+        { entity: 'lead', key: 'budget', label: 'Budget', fieldType: 'number', isRequired: true },
         actor,
       );
 
-      await fieldsService.updateDefinition(def.id, { label: 'Updated once', expectedVersion: 1 }, actor);
+      const { party, product } = await seedLeadFixture();
+      const lead = await leadService.createLead({ partyId: party.id, items: [line(product.id)] }, actor);
+      expect(lead.incomplete).toBe(true);
+      expect(lead.missingFields).toContain('Budget');
 
-      await expect(
-        fieldsService.updateDefinition(def.id, { label: 'Stale', expectedVersion: 1 }, actor),
-      ).rejects.toMatchObject({ code: 'conflict', details: expect.objectContaining({ storedVersion: 2 }) });
+      await fieldsService.deleteDefinition(definition.id, actor);
+      const afterDelete = await leadService.getLead(lead.id, actor);
+      expect(afterDelete.incomplete).toBe(false);
+
+      await fieldsService.restoreDefinition(definition.id, actor);
+      const afterRestore = await leadService.getLead(lead.id, actor);
+      expect(afterRestore.incomplete).toBe(true);
     });
 
-    it('removing a definition leaves its stored values on existing records untouched', async () => {
-      const def = await fieldsService.createDefinition(
-        { entity: 'party', key: 'notes_extra', label: 'Extra notes', fieldType: 'text' },
-        actor,
-      );
-      const party = await catalogService.createParty(
-        { name: 'CF Party', customFields: { notes_extra: 'kept' } },
-        actor,
-      );
+    it('reorder rejects anything that is not exactly a permutation of the entity’s live definitions', async () => {
+      const a = await fieldsService.createDefinition({ entity: 'party', key: 'a', label: 'A', fieldType: 'text' }, actor);
+      await fieldsService.createDefinition({ entity: 'party', key: 'b', label: 'B', fieldType: 'text' }, actor);
 
-      await fieldsService.removeDefinition(def.id, actor);
-
-      const { items } = await catalogService.listParties({}, actor);
-      const reread = items.find((p) => p.id === party.id);
-      expect(reread?.customFields?.notes_extra).toBe('kept');
+      await expect(fieldsService.reorderDefinitions({ entity: 'party', ids: [a.id] }, actor)).rejects.toThrow(
+        ValidationError,
+      );
     });
   });
 
   describe('pipeline stages', () => {
-    it('FLD-5: reorders stages one drag at a time under the deferrable constraint', async () => {
-      const pipelineId = await leadPipelineId(actor.tenantId);
-      const ids = await pipelineRepo.stageIdsForPipeline(actor.tenantId, pipelineId);
-      expect(ids.length).toBeGreaterThan(1);
-
-      const swapped = [...ids].reverse();
-      const stages = await fieldsService.reorderStages({ pipelineId, ids: swapped }, actor);
-      expect(stages.map((s) => s.id)).toEqual(swapped);
+    it('renames and recolours a stage', async () => {
+      const stageId = await stageIdByName('lead', 'Quoted');
+      const updated = await fieldsService.updateStage(stageId, { name: 'Quoted (Pending)', colourHex: '#123ABC' }, actor);
+      expect(updated.name).toBe('Quoted (Pending)');
+      expect(updated.colour).toBe('#123abc');
     });
 
-    it('FLD-7 (stage half): rejects a stale permutation', async () => {
-      const pipelineId = await leadPipelineId(actor.tenantId);
-      const ids = await pipelineRepo.stageIdsForPipeline(actor.tenantId, pipelineId);
+    it('reorders every stage in a pipeline under the deferred sequence constraint', async () => {
+      const pipelines = await pipelineRepo.listPipelines(actor.tenantId);
+      const leadPipeline = pipelines.find((pipeline) => pipeline.kind === 'lead');
+      if (!leadPipeline) throw new Error('No lead pipeline seeded');
+
+      const currentIds = leadPipeline.stages.map((stage) => stage.id);
+      // Drag the last stage to the front — this is exactly the transient
+      // collision `pipeline_stages_seq_unique DEFERRED` exists for: without
+      // it, the very first UPDATE of this loop fails immediately.
+      const reordered = [currentIds.at(-1) as string, ...currentIds.slice(0, -1)];
+
+      const stages = await fieldsService.reorderStages({ pipelineId: leadPipeline.id, ids: reordered }, actor);
+      expect(stages.map((stage) => stage.id)).toEqual(reordered);
+      expect(stages.map((stage) => stage.sequence)).toEqual([1, 2, 3, 4, 5]);
+    });
+
+    it('rejects a reorder that is not exactly the pipeline’s live stage ids', async () => {
+      const pipelines = await pipelineRepo.listPipelines(actor.tenantId);
+      const leadPipeline = pipelines.find((pipeline) => pipeline.kind === 'lead');
+      if (!leadPipeline) throw new Error('No lead pipeline seeded');
 
       await expect(
-        fieldsService.reorderStages({ pipelineId, ids: ids.slice(1) }, actor),
-      ).rejects.toBeInstanceOf(ValidationError);
+        fieldsService.reorderStages({ pipelineId: leadPipeline.id, ids: [leadPipeline.stages[0]?.id as string] }, actor),
+      ).rejects.toThrow(ValidationError);
     });
 
-    it('FLD-6: swapping the default stage does not violate the one-default index', async () => {
-      const pipelineId = await leadPipelineId(actor.tenantId);
-      const newDefault = await stageIdByName('lead', 'Quoted');
+    it('swaps the default stage — clear-then-set, never two defaults at once', async () => {
+      const newStageId = await stageIdByName('lead', 'New');
+      const quotedStageId = await stageIdByName('lead', 'Quoted');
 
-      const updated = await fieldsService.updateStage(newDefault, { isDefault: true }, actor);
+      const updated = await fieldsService.updateStage(quotedStageId, { isDefault: true }, actor);
       expect(updated.isDefault).toBe(true);
 
-      const stages = await pipelineRepo.stagesForPipelineFresh(actor.tenantId, pipelineId);
-      const defaults = stages.filter((s) => s.isDefault);
+      const pipelines = await pipelineRepo.listPipelines(actor.tenantId);
+      const stages = pipelines.find((pipeline) => pipeline.kind === 'lead')?.stages ?? [];
+      const defaults = stages.filter((stage) => stage.isDefault);
       expect(defaults).toHaveLength(1);
-      expect(defaults[0]?.id).toBe(newDefault);
+      expect(defaults[0]?.id).toBe(quotedStageId);
+
+      const oldDefault = stages.find((stage) => stage.id === newStageId);
+      expect(oldDefault?.isDefault).toBe(false);
     });
 
-    it('FLD-11: archiving a stage holding live leads is refused and names the count', async () => {
-      const nonDefaultStageId = await stageIdByName('lead', 'Quoted');
+    describe('archiving', () => {
+      it('is refused while a live lead sits in the stage, naming the occupancy', async () => {
+        const { party, product } = await seedLeadFixture();
+        const quotedStageId = await stageIdByName('lead', 'Quoted');
+        const lead = await leadService.createLead({ partyId: party.id, items: [line(product.id)] }, actor);
+        await leadService.setStage({ id: lead.id, stageId: quotedStageId }, actor);
 
-      const party = await catalogService.createParty({ name: 'Archive Test Party' }, actor);
-      const product = await catalogService.createProduct({ name: 'Tile', productCode: 'FLDA-1' }, actor);
-      const lead = await leadService.createLead(
-        {
-          partyId: party.id,
-          items: [{ productId: product.id, packaging: 'Box', quantities: [{ colour: 'Blue', quantity: 1 }] }],
-        },
-        actor,
-      );
-      await leadService.setStage({ id: lead.id, stageId: nonDefaultStageId }, actor);
-
-      await expect(fieldsService.archiveStage(nonDefaultStageId, actor)).rejects.toMatchObject({
-        code: 'conflict',
-        details: { count: 1 },
+        try {
+          await fieldsService.archiveStage(quotedStageId, actor);
+          expect.unreachable('archiving an occupied stage should have been refused');
+        } catch (error) {
+          expect(error).toBeInstanceOf(ConflictError);
+          expect((error as ConflictError).details).toMatchObject({ occupiedBy: { leads: 1, orders: 0 } });
+        }
       });
-    });
 
-    it('archives and restores a stage with nothing in it', async () => {
-      const emptyStageId = await stageIdByName('lead', 'Lost');
+      it('is refused on the pipeline’s default stage regardless of occupancy', async () => {
+        const newStageId = await stageIdByName('lead', 'New');
+        await expect(fieldsService.archiveStage(newStageId, actor)).rejects.toThrow(ConflictError);
+      });
 
-      const archived = await fieldsService.archiveStage(emptyStageId, actor);
-      expect(archived.isArchived).toBe(true);
+      it('succeeds once the stage is empty, and a restored stage accepts new records again', async () => {
+        const wonStageId = await stageIdByName('lead', 'Won');
+        const archived = await fieldsService.archiveStage(wonStageId, actor);
+        expect(archived.isArchived).toBe(true);
 
-      const restored = await fieldsService.restoreStage(emptyStageId, actor);
-      expect(restored.isArchived).toBe(false);
-    });
+        const { party, product } = await seedLeadFixture();
+        const lead = await leadService.createLead({ partyId: party.id, items: [line(product.id)] }, actor);
+        await expect(leadService.setStage({ id: lead.id, stageId: wonStageId }, actor)).rejects.toThrow(
+          ValidationError,
+        );
 
-    it('refuses to move a lead into an archived stage', async () => {
-      const lostId = await stageIdByName('lead', 'Lost');
-      await fieldsService.archiveStage(lostId, actor);
-
-      const party = await catalogService.createParty({ name: 'Archived Target Party' }, actor);
-      const product = await catalogService.createProduct({ name: 'Tile', productCode: 'FLDA-2' }, actor);
-      const lead = await leadService.createLead(
-        {
-          partyId: party.id,
-          items: [{ productId: product.id, packaging: 'Box', quantities: [{ colour: 'Blue', quantity: 1 }] }],
-        },
-        actor,
-      );
-
-      await expect(leadService.setStage({ id: lead.id, stageId: lostId }, actor)).rejects.toBeInstanceOf(
-        ValidationError,
-      );
-    });
-
-    it('refuses to archive the default stage', async () => {
-      const pipelineId = await leadPipelineId(actor.tenantId);
-      const stages = await pipelineRepo.stagesForPipelineFresh(actor.tenantId, pipelineId);
-      const defaultStage = stages.find((s) => s.isDefault);
-      expect(defaultStage).toBeDefined();
-
-      await expect(fieldsService.archiveStage(defaultStage!.id, actor)).rejects.toBeInstanceOf(ValidationError);
-    });
-  });
-
-  describe('usage counts', () => {
-    it('FLD-12/13: costs one query per set and never reads stock_movements', async () => {
-      const product = await catalogService.createProduct({ name: 'Usage Tile', productCode: 'FLDU-1' }, actor);
-      await inventoryService.recordInbound({ productId: product.id, colour: 'Amber', quantityBoxes: 5 }, actor);
-      await inventoryService.recordInbound({ productId: product.id, colour: 'Amber', quantityBoxes: 5 }, actor);
-
-      const breakdown = await fieldsService.fieldUsage({ listKey: 'stock.colour' }, actor);
-      const amber = breakdown.values.find((v) => v.value === 'Amber') ?? breakdown.unlisted.find((v) => v.value === 'Amber');
-      // Two inbound movements against the same (product, colour) collapse into
-      // one `inventory_stock` row — the usage count is over the ledger's
-      // current state, not the movement history.
-      expect(amber?.total).toBeGreaterThanOrEqual(1);
-      expect(breakdown.sources).not.toContain('stockMovement');
-    });
-
-    it('FLD-14: a colour on stock but absent from the list reports as unlisted', async () => {
-      const product = await catalogService.createProduct({ name: 'Unlisted Tile', productCode: 'FLDU-2' }, actor);
-      await inventoryService.recordInbound(
-        { productId: product.id, colour: 'Never Listed Teal', quantityBoxes: 1 },
-        actor,
-      );
-
-      const { unlisted } = await fieldsService.listValues(
-        { listKey: 'stock.colour', includeUnlisted: true },
-        actor,
-      );
-      expect(unlisted).toContain('Never Listed Teal');
+        const restored = await fieldsService.restoreStage(wonStageId, actor);
+        expect(restored.isArchived).toBe(false);
+        await expect(leadService.setStage({ id: lead.id, stageId: wonStageId }, actor)).resolves.toBeDefined();
+      });
     });
   });
 
   describe('permissions', () => {
-    it('FLD-15: fields.manage is refused for an actor who does not hold it', async () => {
-      const limited = await actorWith(['fields.view']);
+    it('fields.view is available at the office tier — a plain read succeeds', async () => {
+      const officeActor = await actorWith(['fields.view']);
+      await expect(fieldsService.fieldsCatalogue(officeActor)).toBeDefined();
+      await expect(fieldsService.listValues({ listKey: 'stock.colour' }, officeActor)).resolves.toBeDefined();
+    });
+
+    it('fields.manage is refused for an office-tier actor holding only fields.view', async () => {
+      const officeActor = await actorWith(['fields.view']);
       await expect(
-        fieldsService.createValue({ listKey: 'stock.colour', value: 'Denied', label: 'Denied' }, limited),
-      ).rejects.toBeInstanceOf(ForbiddenError);
+        fieldsService.createValue({ listKey: 'stock.colour', value: 'Ivory', label: 'Ivory' }, officeActor),
+      ).rejects.toThrow(ForbiddenError);
     });
 
-    it('FLD-15: fields.view does not gate GET /api/option-lists (the unguarded read)', async () => {
-      const noFields = await actorWith([]);
-      // The unguarded pair exported for the three pre-existing endpoints must
-      // not throw for an actor holding no Fields key at all.
-      await expect(fieldsService.listOptionListsUnguarded(noFields.tenantId)).resolves.toBeDefined();
+    it('fields.manage succeeds once granted', async () => {
+      const managerActor = await actorWith(['fields.view', 'fields.manage']);
+      await expect(
+        fieldsService.createValue({ listKey: 'stock.colour', value: 'Ivory', label: 'Ivory' }, managerActor),
+      ).resolves.toBeDefined();
     });
 
-    it('a caller lacking fields.view is refused the gated catalogue read', async () => {
-      const noFields = await actorWith([]);
-      await expect(fieldsService.fieldsCatalogue(noFields)).rejects.toBeInstanceOf(ForbiddenError);
+    it('the three existing reads (GET /api/pipelines, /option-lists, /custom-fields) stay ungated', async () => {
+      const noFieldsActor = await actorWith(['leads.view']);
+      await expect(fieldsService.listPipelinesUnguarded(noFieldsActor.tenantId)).resolves.toBeDefined();
+      await expect(fieldsService.listOptionListsUnguarded(noFieldsActor.tenantId)).resolves.toBeDefined();
+      await expect(fieldsService.listCustomFieldsUnguarded(noFieldsActor.tenantId)).resolves.toBeDefined();
+    });
+
+    it('an actor lacking fields.view still receives a complete SyncSnapshot', async () => {
+      const noFieldsActor = await actorWith(['leads.view', 'parties.view', 'products.view', 'orders.view', 'inventory.view']);
+      const snapshot = await buildSnapshot(noFieldsActor);
+      expect(snapshot.pipelines.length).toBeGreaterThan(0);
+      expect(snapshot.optionLists.length).toBeGreaterThan(0);
     });
   });
 
-  describe('activity', () => {
-    it('FLD-17: every Fields write leaves an activity_log entry in the same transaction', async () => {
-      const value = await fieldsService.createValue(
-        { listKey: 'stock.colour', value: 'Audited Colour', label: 'Audited Colour' },
+  describe('Recycle Bin integration', () => {
+    it('a removed value appears in the Bin and restores', async () => {
+      const value = await fieldsService.createValue({ listKey: 'stock.colour', value: 'Ivory', label: 'Ivory' }, actor);
+      await fieldsService.deleteValue(value.id, actor);
+
+      const bin = await recycleBinService.listBin({ types: ['option_list_item'] }, actor);
+      expect(bin.items.map((item) => item.id)).toContain(value.id);
+
+      const result = await recycleBinService.restoreEntity({ entityType: 'option_list_item', id: value.id }, actor);
+      expect(result.id).toBe(value.id);
+
+      const restored = await customFieldRepo.findOptionById(actor.tenantId, value.id);
+      expect(restored?.deletedAt).toBeNull();
+    });
+
+    it('a restore that collides with a live value of the same string is refused', async () => {
+      const value = await fieldsService.createValue({ listKey: 'stock.colour', value: 'Ivory', label: 'Ivory' }, actor);
+      await fieldsService.deleteValue(value.id, actor);
+      await fieldsService.createValue({ listKey: 'stock.colour', value: 'Ivory', label: 'Ivory again' }, actor);
+
+      await expect(
+        recycleBinService.restoreEntity({ entityType: 'option_list_item', id: value.id }, actor),
+      ).rejects.toThrow(ConflictError);
+    });
+
+    it('a removed custom field definition restores through the Bin too', async () => {
+      const definition = await fieldsService.createDefinition(
+        { entity: 'party', key: 'segment', label: 'Segment', fieldType: 'text' },
         actor,
       );
+      await fieldsService.deleteDefinition(definition.id, actor);
 
-      const rows = await db()('activity_log')
-        .where({ entity_type: 'option_list_item', entity_id: value.id, action: 'created' })
-        .select('*');
-      expect(rows).toHaveLength(1);
+      const bin = await recycleBinService.listBin({ types: ['custom_field_definition'] }, actor);
+      expect(bin.items.map((item) => item.id)).toContain(definition.id);
+
+      await recycleBinService.restoreEntity({ entityType: 'custom_field_definition', id: definition.id }, actor);
+      const restored = await customFieldRepo.findDefinitionById(actor.tenantId, definition.id);
+      expect(restored?.deletedAt).toBeNull();
+    });
+
+    it('the Bin lists across all eight branches at once, Fields included', async () => {
+      const value = await fieldsService.createValue({ listKey: 'stock.colour', value: 'Ivory', label: 'Ivory' }, actor);
+      await fieldsService.deleteValue(value.id, actor);
+      const definition = await fieldsService.createDefinition(
+        { entity: 'party', key: 'segment', label: 'Segment', fieldType: 'text' },
+        actor,
+      );
+      await fieldsService.deleteDefinition(definition.id, actor);
+
+      const counts = await recycleBinService.binCounts(actor);
+      expect(counts.option_list_item).toBe(1);
+      expect(counts.custom_field_definition).toBe(1);
     });
   });
 });

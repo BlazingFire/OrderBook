@@ -121,6 +121,28 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
 
       await expect(officeRole('dispatch')).rejects.toThrow(/already exists/);
     });
+
+    it('fields.manage is management+ (Stage 3 lowered it from admin) — office still cannot hold it, management now can', () => {
+      expect(minimumTierFor('fields.manage')).toBe('management');
+      expect(minimumTierFor('fields.view')).toBe('office');
+    });
+
+    it('a management-tier role can now be saved holding fields.manage', async () => {
+      const role = await roleService.createRole(
+        { name: 'Field Curator', tier: 'management', permissions: ['fields.view', 'fields.manage'] },
+        admin,
+      );
+      expect(role.permissions).toContain('fields.manage');
+    });
+
+    it('an office-tier role is still refused fields.manage', async () => {
+      await expect(
+        roleService.createRole(
+          { name: 'Overreaching Office', tier: 'office', permissions: ['fields.manage'] },
+          admin,
+        ),
+      ).rejects.toThrow(/cannot hold/);
+    });
   });
 
   describe('editing roles', () => {

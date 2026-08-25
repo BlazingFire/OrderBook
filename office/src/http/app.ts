@@ -448,7 +448,10 @@ export function createApp(): Express {
   app.post('/api/recycle-bin/restore', (req, res) => forward(res, 'recycleBin:restore', req.body));
 
   // Fields (docs/backend-modules/04-API-CONTRACT.md §5). Forwarded live and
-  // failing hard offline, like every other module in this batch.
+  // failing hard offline, like every other module in this batch — a curated
+  // list is company-wide configuration, and two disconnected panels editing
+  // it offline have no field-level merge to fall back on (option_lists and
+  // custom_field_definitions carry no hlc/field_hlc).
   app.get('/api/fields/catalogue', (_req, res) => forward(res, 'fields:catalogue'));
   app.get('/api/fields/values', (req, res) =>
     forward(res, 'fields:values', {
@@ -458,19 +461,19 @@ export function createApp(): Express {
     }),
   );
   app.get('/api/fields/usage', (req, res) => forward(res, 'fields:usage', { listKey: req.query.listKey }));
-  app.get('/api/fields/definitions', (req, res) =>
-    forward(res, 'fields:definitions', {
-      entity: req.query.entity,
-      includeDeleted: req.query.includeDeleted === 'true',
-    }),
-  );
-  app.get('/api/fields/stages', (_req, res) => forward(res, 'fields:stages'));
   app.post('/api/fields/values', (req, res) => forward(res, 'fields:createValue', req.body));
   app.put('/api/fields/values/:id', (req, res) =>
     forward(res, 'fields:updateValue', { id: req.params.id, input: req.body }),
   );
   app.delete('/api/fields/values/:id', (req, res) => forward(res, 'fields:deleteValue', req.params.id));
   app.post('/api/fields/values/reorder', (req, res) => forward(res, 'fields:reorderValues', req.body));
+
+  app.get('/api/fields/definitions', (req, res) =>
+    forward(res, 'fields:definitions', {
+      entity: req.query.entity,
+      includeDeleted: req.query.includeDeleted === 'true',
+    }),
+  );
   app.post('/api/fields/definitions', (req, res) => forward(res, 'fields:createDefinition', req.body));
   app.put('/api/fields/definitions/:id', (req, res) =>
     forward(res, 'fields:updateDefinition', { id: req.params.id, input: req.body }),
@@ -481,6 +484,8 @@ export function createApp(): Express {
   app.post('/api/fields/definitions/reorder', (req, res) =>
     forward(res, 'fields:reorderDefinitions', req.body),
   );
+
+  app.get('/api/fields/stages', (_req, res) => forward(res, 'fields:stages'));
   app.put('/api/fields/stages/:id', (req, res) =>
     forward(res, 'fields:updateStage', { id: req.params.id, input: req.body }),
   );

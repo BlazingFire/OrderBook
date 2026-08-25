@@ -1,102 +1,89 @@
 /**
- * Fields — every use case (`docs/backend-modules/06-WORKFLOWS.md` §5.1).
+ * Fields: managed pipelines, stages, option lists (including colour hex) and
+ * custom-field definitions (`docs/backend-modules/04-API-CONTRACT.md` §5).
  *
- * Reads open with `fields.view` (no tier ceiling); writes open with
- * `fields.manage` (management+) — the first enforcement sites either key has
- * ever had. Every write is one transaction containing the row change and
- * `recordActivity`, then cache invalidation, then `publishChange` using the
- * already-declared `ChangedEntity` values `'option_list' | 'custom_field' |
- * 'pipeline'`.
- *
- * The three existing reads — `GET /api/pipelines`, `/api/option-lists`,
- * `/api/custom-fields` — are deliberately left alone by this module
- * (`fields.service.ts` exports an *unguarded* pair for them); routing them
- * through `fields.view` would make `buildSnapshot`'s `Promise.all` reject
- * for anyone lacking the key, and a rejected `buildSnapshot` produces no
- * snapshot at all.
+ * **Reading is available to every tier; editing is management+.** The three
+ * unguarded exports at the top (`listPipelinesUnguarded`,
+ * `listOptionListsUnguarded`, `listCustomFieldsUnguarded`) back the existing
+ * `GET /api/pipelines`, `/api/option-lists`, `/api/custom-fields` routes and
+ * `buildSnapshot`'s `Promise.all` — they check nothing, deliberately. Adding a
+ * `fields.view` check to any of them would make that `Promise.all` reject for
+ * anyone lacking the key, and a rejected `buildSnapshot` produces **no
+ * snapshot at all** (swallowed into a log line at `hub.ts`'s `sendSnapshot`).
+ * Every other export in this file is gated.
  */
 
-import type {
-  CustomFieldDefinition,
-  CustomFieldDefinitionInput,
-  CustomFieldDefinitionUpdateInput,
-  CustomFieldEntity,
-  CustomFieldReorderInput,
-  FieldCatalogue,
-  FieldListKey,
-  FieldUsageBreakdown,
-  OptionListItem,
-  OptionListItemInput,
-  OptionListItemUpdateInput,
-  OptionListReorderInput,
-  Pipeline,
-  PipelineStage,
-  PipelineStageInput,
-  StageReorderInput,
+import {
+  buildFieldCatalogue,
+  FIELD_LIST_KEYS,
+  isCustomFieldEntity,
+  isFieldListKey,
+  type CustomFieldDefinition,
+  type CustomFieldDefinitionInput,
+  type CustomFieldDefinitionUpdateInput,
+  type CustomFieldEntity,
+  type CustomFieldReorderInput,
+  type FieldCatalogue,
+  type FieldListKey,
+  type FieldUsage,
+  type FieldUsageBreakdown,
+  type OptionListItem,
+  type OptionListItemInput,
+  type OptionListItemUpdateInput,
+  type OptionListReorderInput,
+  type Pipeline,
+  type PipelineStage,
+  type PipelineStageInput,
+  type StageReorderInput,
 } from '@orderbook/shared';
-import { buildFieldCatalogue, isFieldListKey } from '@orderbook/shared';
-
-import { randomUUID } from 'node:crypto';
 
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
-import { assertVersionMatches, fieldDiff } from '../domain/access.js';
+import { fieldDiff, assertVersionMatches } from '../domain/access.js';
 import {
   assertCompleteReorder,
   assertHexColour,
   normaliseOptionValue,
+  resequence,
 } from '../domain/field-values.js';
 import { db } from '../db/knex.js';
 import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
-import * as fieldRepo from '../repositories/custom-field.repository.js';
-import * as usageRepo from '../repositories/field-usage.repository.js';
+import * as customFieldRepo from '../repositories/custom-field.repository.js';
+import * as fieldUsageRepo from '../repositories/field-usage.repository.js';
 import * as pipelineRepo from '../repositories/pipeline.repository.js';
 import { publishChange } from './change-bus.js';
 
-const CUSTOM_FIELD_ENTITIES: readonly CustomFieldEntity[] = ['lead', 'order', 'party', 'product'];
+// --- The three existing reads. Ungated. Do not add a permission check here. ---
+// See the file header — this is the one rule in this file that must never
+// change without re-reading `04-API-CONTRACT.md` §5.6 first.
 
-function assertListKey(value: unknown): FieldListKey {
-  if (!isFieldListKey(value)) {
-    throw new ValidationError('validation.fields.listKey.unknown', {}, {
-      field: 'listKey',
-      allowed: ['lead.sourcePlatform', 'stock.colour', 'product.productType', 'line.packaging'],
-    });
-  }
-  return value;
-}
-
-function assertEntity(value: unknown): CustomFieldEntity {
-  if (typeof value !== 'string' || !CUSTOM_FIELD_ENTITIES.includes(value as CustomFieldEntity)) {
-    throw new ValidationError('validation.fields.entity.unknown', {}, {
-      field: 'entity',
-      allowed: CUSTOM_FIELD_ENTITIES,
-    });
-  }
-  return value as CustomFieldEntity;
-}
-
-// --- Unguarded reads for the three existing endpoints -----------------------
-// `GET /api/pipelines`, `/api/option-lists`, `/api/custom-fields` stay behind
-// `requireAuth` only — see the file header.
-
-export async function listPipelinesUnguarded(tenantId: string): Promise<Pipeline[]> {
+export function listPipelinesUnguarded(tenantId: string): Promise<Pipeline[]> {
   return pipelineRepo.listPipelines(tenantId);
 }
 
-export async function listOptionListsUnguarded(tenantId: string): Promise<OptionListItem[]> {
-  return fieldRepo.listOptions(tenantId);
+export function listOptionListsUnguarded(tenantId: string): Promise<OptionListItem[]> {
+  return customFieldRepo.listOptions(tenantId);
 }
 
-export async function listCustomFieldsUnguarded(tenantId: string): Promise<CustomFieldDefinition[]> {
-  return fieldRepo.listDefinitions(tenantId);
+export function listCustomFieldsUnguarded(tenantId: string): Promise<CustomFieldDefinition[]> {
+  return customFieldRepo.listDefinitions(tenantId);
 }
 
-// --- The gated /api/fields/* surface ----------------------------------------
+// --- Reads: fields.view -----------------------------------------------------
 
-/** `async` for a uniform Promise-returning shape across every export the socket hub's `run()` dispatches to. */
-export async function fieldsCatalogue(actor: ActorContext): Promise<FieldCatalogue> {
+export function fieldsCatalogue(actor: ActorContext): FieldCatalogue {
   requirePermission(actor, 'fields.view');
   return buildFieldCatalogue();
+}
+
+function assertListKey(raw: unknown): FieldListKey {
+  if (!isFieldListKey(raw)) {
+    throw new ValidationError('validation.fields.listKeyRequired', {}, {
+      field: 'listKey',
+      allowed: FIELD_LIST_KEYS,
+    });
+  }
+  return raw;
 }
 
 export async function listValues(
@@ -106,14 +93,17 @@ export async function listValues(
   requirePermission(actor, 'fields.view');
   const listKey = assertListKey(query.listKey);
 
-  const items = await fieldRepo.optionValuesForKey(actor.tenantId, listKey, {
+  const items = await customFieldRepo.listOptionsForKey(actor.tenantId, listKey, {
     includeDeleted: query.includeDeleted,
   });
 
   if (!query.includeUnlisted) return { items };
 
-  const breakdown = await usageRepo.usageForListKey(actor.tenantId, listKey);
-  return { items, unlisted: breakdown.unlisted.map((usage) => usage.value) };
+  const known = new Set(items.map((item) => item.value));
+  const usage = await fieldUsageRepo.usageForListKey(actor.tenantId, listKey);
+  const unlisted = [...new Set(usage.map((row) => row.value).filter((value) => !known.has(value)))].sort();
+
+  return { items, unlisted };
 }
 
 export async function fieldUsage(
@@ -122,7 +112,42 @@ export async function fieldUsage(
 ): Promise<FieldUsageBreakdown> {
   requirePermission(actor, 'fields.view');
   const listKey = assertListKey(query.listKey);
-  return usageRepo.usageForListKey(actor.tenantId, listKey);
+
+  const rows = await fieldUsageRepo.usageForListKey(actor.tenantId, listKey);
+  const known = new Set(
+    (await customFieldRepo.listOptionsForKey(actor.tenantId, listKey)).map((item) => item.value),
+  );
+
+  const byValue = new Map<string, FieldUsage>();
+  const sources = new Set<string>();
+
+  for (const row of rows) {
+    sources.add(row.source);
+    const entry = byValue.get(row.value) ?? { value: row.value, total: 0, bySource: {} };
+    entry.total += row.count;
+    entry.bySource[row.source] = (entry.bySource[row.source] ?? 0) + row.count;
+    byValue.set(row.value, entry);
+  }
+
+  const values: FieldUsage[] = [];
+  const unlisted: FieldUsage[] = [];
+  for (const entry of byValue.values()) {
+    (known.has(entry.value) ? values : unlisted).push(entry);
+  }
+  values.sort((a, b) => a.value.localeCompare(b.value));
+  unlisted.sort((a, b) => a.value.localeCompare(b.value));
+
+  return { listKey, sources: [...sources].sort(), values, unlisted };
+}
+
+function assertEntity(raw: unknown): CustomFieldEntity {
+  if (!isCustomFieldEntity(raw)) {
+    throw new ValidationError('validation.fields.entityInvalid', {}, {
+      field: 'entity',
+      allowed: ['lead', 'order', 'party', 'product'],
+    });
+  }
+  return raw;
 }
 
 export async function listDefinitions(
@@ -130,10 +155,13 @@ export async function listDefinitions(
   actor: ActorContext,
 ): Promise<CustomFieldDefinition[]> {
   requirePermission(actor, 'fields.view');
-  const all = await fieldRepo.listDefinitions(actor.tenantId, { includeDeleted: Boolean(query.includeDeleted) });
 
   const entity = query.entity === undefined ? undefined : assertEntity(query.entity);
-  return all.filter((definition) => entity === undefined || definition.entity === entity);
+  const rows = query.includeDeleted
+    ? await customFieldRepo.listDefinitionsIncludingDeleted(actor.tenantId, entity)
+    : await customFieldRepo.listDefinitions(actor.tenantId);
+
+  return entity ? rows.filter((row) => row.entity === entity) : rows;
 }
 
 export async function listStages(actor: ActorContext): Promise<Pipeline[]> {
@@ -141,29 +169,31 @@ export async function listStages(actor: ActorContext): Promise<Pipeline[]> {
   return pipelineRepo.listPipelines(actor.tenantId);
 }
 
-// --- Option-list values -------------------------------------------------
+// --- Writes: fields.manage ---------------------------------------------------
 
-export async function createValue(input: OptionListItemInput, actor: ActorContext): Promise<OptionListItem> {
+export async function createValue(
+  input: OptionListItemInput,
+  actor: ActorContext,
+): Promise<OptionListItem> {
   requirePermission(actor, 'fields.manage');
+
   const listKey = assertListKey(input.listKey);
-
   const value = normaliseOptionValue(input.value ?? '');
-  if (!value) throw new ValidationError('validation.fields.value.required', {}, { field: 'value' });
+  if (!value) throw new ValidationError('validation.fields.valueRequired', {}, { field: 'value' });
 
-  const label = (input.label ?? '').trim() || value;
-  const hex = input.hex ? assertHexColour(input.hex) : null;
+  const label = input.label?.trim() || value;
+  const hex = assertHexColour(input.hex ?? null);
 
-  if (await fieldRepo.isOptionValueTaken(actor.tenantId, listKey, value, undefined)) {
-    throw new ConflictError('error.conflict.optionValueTaken', {}, { field: 'value', value });
+  if (await customFieldRepo.isOptionValueTaken(actor.tenantId, listKey, value, null)) {
+    throw new ConflictError('error.conflict.optionValueTaken', { value }, { field: 'value', value });
   }
 
-  const siblingCount = (await fieldRepo.optionValuesForKey(actor.tenantId, listKey)).length;
-  const id = randomUUID();
+  const sequence =
+    input.sequence ?? (await customFieldRepo.listOptionsForKey(actor.tenantId, listKey)).length + 1;
 
-  const item = await db().transaction(async (trx) => {
-    const row = await fieldRepo.insertOptionListItem(
-      actor.tenantId,
-      { id, listKey, value, label, hex, sequence: input.sequence ?? siblingCount + 1 },
+  const id = await db().transaction(async (trx) => {
+    const insertedId = await customFieldRepo.insertOption(
+      { tenantId: actor.tenantId, listKey, value, label, hex, sequence, createdBy: actorUserId(actor) },
       trx,
     );
 
@@ -171,22 +201,35 @@ export async function createValue(input: OptionListItemInput, actor: ActorContex
       {
         tenantId: actor.tenantId,
         entityType: 'option_list_item',
-        entityId: id,
+        entityId: insertedId,
         action: 'created',
         actorType: actor.actorType,
         actorId: actor.actorId,
-        details: { name: label, listKey },
+        details: { name: label, listKey, value },
       },
       actor,
       trx,
     );
 
-    return row;
+    return insertedId;
   });
 
-  fieldRepo.invalidateFieldCache(actor.tenantId);
-  publishChange({ entity: 'option_list', action: 'created', id, payload: item });
+  customFieldRepo.invalidateFieldCache(actor.tenantId);
+
+  const item = await customFieldRepo.findOptionById(actor.tenantId, id);
+  if (!item) throw new Error('Option disappeared immediately after insert');
+
+  publishChange({ entity: 'option_list', action: 'created', id: item.id, payload: item });
   return item;
+}
+
+/** `value` and `listKey` are the record-facing identity and are refused if present, even though the input type has no such field. */
+function assertNoImmutableFields(body: unknown, fields: readonly string[]): void {
+  if (!body || typeof body !== 'object') return;
+  const present = fields.filter((field) => Object.prototype.hasOwnProperty.call(body, field));
+  if (present.length === 0) return;
+
+  throw new ValidationError('validation.fields.valueImmutable', {}, { field: present[0] });
 }
 
 export async function updateValue(
@@ -195,29 +238,34 @@ export async function updateValue(
   actor: ActorContext,
 ): Promise<OptionListItem> {
   requirePermission(actor, 'fields.manage');
+  assertNoImmutableFields(input, ['value', 'listKey']);
 
-  const hex = input.hex === undefined || input.hex === null ? input.hex : assertHexColour(input.hex);
+  const existing = await customFieldRepo.findOptionById(actor.tenantId, id);
+  if (!existing) throw new NotFoundError('Option');
 
-  const item = await db().transaction(async (trx) => {
-    const existing = await fieldRepo.lockOptionListItem(actor.tenantId, id, trx);
-    if (!existing || existing.deletedAt) throw new NotFoundError('Option');
+  assertVersionMatches(
+    existing.version,
+    input.expectedVersion,
+    fieldDiff(
+      { label: existing.label, hex: existing.hex, isActive: existing.isActive },
+      { label: input.label, hex: input.hex, isActive: input.isActive },
+    ),
+  );
 
-    assertVersionMatches(
-      existing.version,
-      input.expectedVersion,
-      fieldDiff(
-        { label: existing.label, hex: existing.hex, isActive: existing.isActive },
-        { label: input.label, hex, isActive: input.isActive },
-      ),
-    );
+  const hex = input.hex === undefined ? undefined : assertHexColour(input.hex, 'hex');
 
-    const row = await fieldRepo.updateOptionListItem(
+  await db().transaction(async (trx) => {
+    await customFieldRepo.updateOptionColumns(
       actor.tenantId,
       id,
-      { label: input.label, hex, isActive: input.isActive },
+      {
+        label: input.label?.trim() || undefined,
+        hex,
+        isActive: input.isActive,
+        updatedBy: actorUserId(actor),
+      },
       trx,
     );
-    if (!row) throw new NotFoundError('Option');
 
     await activityLog.recordActivity(
       {
@@ -227,29 +275,33 @@ export async function updateValue(
         action: 'updated',
         actorType: actor.actorType,
         actorId: actor.actorId,
-        details: { name: row.label, listKey: row.listKey },
+        details: { name: input.label ?? existing.label },
       },
       actor,
       trx,
     );
-
-    return row;
   });
 
-  fieldRepo.invalidateFieldCache(actor.tenantId);
+  customFieldRepo.invalidateFieldCache(actor.tenantId);
+
+  const item = await customFieldRepo.findOptionById(actor.tenantId, id);
+  if (!item) throw new NotFoundError('Option');
+
   publishChange({ entity: 'option_list', action: 'updated', id, payload: item });
   return item;
 }
 
-export async function removeValue(id: string, actor: ActorContext): Promise<{ id: string; deletedAt: string }> {
+export async function deleteValue(
+  id: string,
+  actor: ActorContext,
+): Promise<{ id: string; deletedAt: string }> {
   requirePermission(actor, 'fields.manage');
 
-  const item = await db().transaction(async (trx) => {
-    const existing = await fieldRepo.lockOptionListItem(actor.tenantId, id, trx);
-    if (!existing || existing.deletedAt) throw new NotFoundError('Option');
+  const existing = await customFieldRepo.findOptionById(actor.tenantId, id);
+  if (!existing) throw new NotFoundError('Option');
 
-    const row = await fieldRepo.softDeleteOptionListItem(actor.tenantId, id, actorUserId(actor), trx);
-    if (!row) throw new NotFoundError('Option');
+  await db().transaction(async (trx) => {
+    await customFieldRepo.softDeleteOption(actor.tenantId, id, actorUserId(actor), trx);
 
     await activityLog.recordActivity(
       {
@@ -259,18 +311,69 @@ export async function removeValue(id: string, actor: ActorContext): Promise<{ id
         action: 'deleted',
         actorType: actor.actorType,
         actorId: actor.actorId,
-        details: { name: row.label, listKey: row.listKey },
+        details: { name: existing.label, listKey: existing.listKey, value: existing.value },
       },
       actor,
       trx,
     );
-
-    return row;
   });
 
-  fieldRepo.invalidateFieldCache(actor.tenantId);
+  customFieldRepo.invalidateFieldCache(actor.tenantId);
+
+  const item = await customFieldRepo.findOptionById(actor.tenantId, id, { includeDeleted: true });
+  if (!item) throw new NotFoundError('Option');
+
   publishChange({ entity: 'option_list', action: 'deleted', id, payload: item });
-  return { id, deletedAt: item.deletedAt ?? new Date().toISOString() };
+  return { id: item.id, deletedAt: item.updatedAt };
+}
+
+/**
+ * Restore reuses `fields.manage` — no `recycleBin.restore` key is minted, and
+ * a collision refuses rather than offers a rename. Renaming on restore is how
+ * every other Bin entity resolves a collision, but `value` is the one field
+ * this module's own PUT refuses to change; letting a restore change it would
+ * be the sole loophole in that rule.
+ */
+export async function restoreValue(id: string, actor: ActorContext): Promise<OptionListItem> {
+  requirePermission(actor, 'fields.manage');
+
+  const existing = await customFieldRepo.findOptionById(actor.tenantId, id, { includeDeleted: true });
+  if (!existing) throw new NotFoundError('Option');
+  if (!existing.deletedAt) return existing;
+
+  if (await customFieldRepo.isOptionValueTaken(actor.tenantId, existing.listKey, existing.value, id)) {
+    throw new ConflictError(
+      'error.conflict.optionValueTaken',
+      { value: existing.value },
+      { field: 'value', value: existing.value },
+    );
+  }
+
+  await db().transaction(async (trx) => {
+    await customFieldRepo.restoreOption(actor.tenantId, id, trx);
+
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'option_list_item',
+        entityId: id,
+        action: 'restored',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: { name: existing.label, listKey: existing.listKey, value: existing.value },
+      },
+      actor,
+      trx,
+    );
+  });
+
+  customFieldRepo.invalidateFieldCache(actor.tenantId);
+
+  const item = await customFieldRepo.findOptionById(actor.tenantId, id);
+  if (!item) throw new NotFoundError('Option');
+
+  publishChange({ entity: 'option_list', action: 'restored', id, payload: item });
+  return item;
 }
 
 export async function reorderValues(
@@ -278,75 +381,76 @@ export async function reorderValues(
   actor: ActorContext,
 ): Promise<OptionListItem[]> {
   requirePermission(actor, 'fields.manage');
+
   const listKey = assertListKey(input.listKey);
+  const live = await customFieldRepo.listOptionsForKey(actor.tenantId, listKey);
+  const liveIds = live.map((item) => item.id);
 
-  const current = await fieldRepo.optionValuesForKey(actor.tenantId, listKey);
-  assertCompleteReorder(current.map((item) => item.id), input.ids);
+  assertCompleteReorder(input.ids ?? [], liveIds, { listKey });
 
-  const items = await db().transaction(async (trx) => {
-    await fieldRepo.reorderOptionListItems(actor.tenantId, input.ids, trx);
+  await db().transaction(async (trx) => {
+    await customFieldRepo.reorderOptions(actor.tenantId, resequence(input.ids), trx);
 
     await activityLog.recordActivity(
       {
         tenantId: actor.tenantId,
         entityType: 'option_list_item',
         entityId: listKey,
-        action: 'updated',
+        action: 'reordered',
         actorType: actor.actorType,
         actorId: actor.actorId,
-        details: { listKey, reordered: true },
+        details: { list: listKey },
       },
       actor,
       trx,
     );
-
-    return fieldRepo.optionValuesForKey(actor.tenantId, listKey, {}, trx);
   });
 
-  fieldRepo.invalidateFieldCache(actor.tenantId);
+  customFieldRepo.invalidateFieldCache(actor.tenantId);
+
+  const items = await customFieldRepo.listOptionsForKey(actor.tenantId, listKey);
   publishChange({ entity: 'option_list', action: 'updated', id: listKey, payload: items });
   return items;
 }
 
-// --- Custom-field definitions -------------------------------------------
+// --- Custom-field definitions: fields.manage --------------------------------
 
 export async function createDefinition(
   input: CustomFieldDefinitionInput,
   actor: ActorContext,
 ): Promise<CustomFieldDefinition> {
   requirePermission(actor, 'fields.manage');
+
   const entity = assertEntity(input.entity);
+  const key = input.key?.trim();
+  if (!key) throw new ValidationError('validation.fields.keyRequired', {}, { field: 'key' });
 
-  const key = (input.key ?? '').trim();
-  if (!key) throw new ValidationError('validation.fields.key.required', {}, { field: 'key' });
-
-  const label = (input.label ?? '').trim() || key;
-  const fieldType = assertFieldType(input.fieldType);
+  const label = input.label?.trim() || key;
+  assertFieldType(input.fieldType);
 
   const options = input.options ?? [];
-  if (fieldType === 'select' && options.length === 0) {
-    throw new ValidationError('validation.fields.options.required', {}, { field: 'options' });
+  if (input.fieldType === 'select' && options.length === 0) {
+    throw new ValidationError('validation.fields.optionsRequired', {}, { field: 'options' });
   }
 
-  if (await fieldRepo.isDefinitionKeyTaken(actor.tenantId, entity, key, undefined)) {
-    throw new ConflictError('error.conflict.customFieldKeyTaken', {}, { field: 'key', value: key });
+  if (await customFieldRepo.isDefinitionKeyTaken(actor.tenantId, entity, key, null)) {
+    throw new ConflictError('error.conflict.definitionKeyTaken', { key }, { field: 'key', value: key });
   }
 
-  const siblingCount = (await fieldRepo.definitionsFor(actor.tenantId, entity)).length;
-  const id = randomUUID();
+  const sequence =
+    input.sequence ?? (await customFieldRepo.definitionsFor(actor.tenantId, entity)).length + 1;
 
-  const definition = await db().transaction(async (trx) => {
-    const row = await fieldRepo.insertDefinition(
-      actor.tenantId,
+  const id = await db().transaction(async (trx) => {
+    const insertedId = await customFieldRepo.insertDefinition(
       {
-        id,
+        tenantId: actor.tenantId,
         entity,
         key,
         label,
-        fieldType,
+        fieldType: input.fieldType,
         isRequired: input.isRequired ?? false,
         options,
-        sequence: input.sequence ?? siblingCount + 1,
+        sequence,
       },
       trx,
     );
@@ -355,22 +459,35 @@ export async function createDefinition(
       {
         tenantId: actor.tenantId,
         entityType: 'custom_field_definition',
-        entityId: id,
+        entityId: insertedId,
         action: 'created',
         actorType: actor.actorType,
         actorId: actor.actorId,
-        details: { name: label, entity },
+        details: { name: label, entity, key },
       },
       actor,
       trx,
     );
 
-    return row;
+    return insertedId;
   });
 
-  fieldRepo.invalidateFieldCache(actor.tenantId);
-  publishChange({ entity: 'custom_field', action: 'created', id, payload: definition });
+  customFieldRepo.invalidateFieldCache(actor.tenantId);
+
+  const definition = await customFieldRepo.findDefinitionById(actor.tenantId, id);
+  if (!definition) throw new Error('Custom field disappeared immediately after insert');
+
+  publishChange({ entity: 'custom_field', action: 'created', id: definition.id, payload: definition });
   return definition;
+}
+
+function assertFieldType(value: unknown): void {
+  if (value !== 'text' && value !== 'number' && value !== 'date' && value !== 'select' && value !== 'boolean') {
+    throw new ValidationError('validation.fields.fieldTypeInvalid', {}, {
+      field: 'fieldType',
+      allowed: ['text', 'number', 'date', 'select', 'boolean'],
+    });
+  }
 }
 
 export async function updateDefinition(
@@ -379,31 +496,36 @@ export async function updateDefinition(
   actor: ActorContext,
 ): Promise<CustomFieldDefinition> {
   requirePermission(actor, 'fields.manage');
+  assertNoImmutableFields(input, ['key', 'entity']);
 
-  const definition = await db().transaction(async (trx) => {
-    const existing = await fieldRepo.lockDefinition(actor.tenantId, id, trx);
-    if (!existing || existing.deletedAt) throw new NotFoundError('Custom field');
+  const existing = await customFieldRepo.findDefinitionById(actor.tenantId, id);
+  if (!existing) throw new NotFoundError('Custom field');
 
-    if (existing.fieldType === 'select' && input.options && input.options.length === 0) {
-      throw new ValidationError('validation.fields.options.required', {}, { field: 'options' });
-    }
+  assertVersionMatches(
+    existing.version,
+    input.expectedVersion,
+    fieldDiff(
+      { label: existing.label, isRequired: existing.isRequired, options: existing.options, isActive: existing.isActive },
+      { label: input.label, isRequired: input.isRequired, options: input.options, isActive: input.isActive },
+    ),
+  );
 
-    assertVersionMatches(
-      existing.version,
-      input.expectedVersion,
-      fieldDiff(
-        { label: existing.label, isRequired: existing.isRequired, options: existing.options, isActive: existing.isActive },
-        { label: input.label, isRequired: input.isRequired, options: input.options, isActive: input.isActive },
-      ),
-    );
+  if (input.options !== undefined && existing.fieldType === 'select' && input.options.length === 0) {
+    throw new ValidationError('validation.fields.optionsRequired', {}, { field: 'options' });
+  }
 
-    const row = await fieldRepo.updateDefinition(
+  await db().transaction(async (trx) => {
+    await customFieldRepo.updateDefinitionColumns(
       actor.tenantId,
       id,
-      { label: input.label, isRequired: input.isRequired, options: input.options, isActive: input.isActive },
+      {
+        label: input.label?.trim() || undefined,
+        isRequired: input.isRequired,
+        options: input.options,
+        isActive: input.isActive,
+      },
       trx,
     );
-    if (!row) throw new NotFoundError('Custom field');
 
     await activityLog.recordActivity(
       {
@@ -413,32 +535,33 @@ export async function updateDefinition(
         action: 'updated',
         actorType: actor.actorType,
         actorId: actor.actorId,
-        details: { name: row.label, entity: row.entity },
+        details: { name: input.label ?? existing.label },
       },
       actor,
       trx,
     );
-
-    return row;
   });
 
-  fieldRepo.invalidateFieldCache(actor.tenantId);
+  customFieldRepo.invalidateFieldCache(actor.tenantId);
+
+  const definition = await customFieldRepo.findDefinitionById(actor.tenantId, id);
+  if (!definition) throw new NotFoundError('Custom field');
+
   publishChange({ entity: 'custom_field', action: 'updated', id, payload: definition });
   return definition;
 }
 
-export async function removeDefinition(
+export async function deleteDefinition(
   id: string,
   actor: ActorContext,
 ): Promise<{ id: string; deletedAt: string }> {
   requirePermission(actor, 'fields.manage');
 
-  const definition = await db().transaction(async (trx) => {
-    const existing = await fieldRepo.lockDefinition(actor.tenantId, id, trx);
-    if (!existing || existing.deletedAt) throw new NotFoundError('Custom field');
+  const existing = await customFieldRepo.findDefinitionById(actor.tenantId, id);
+  if (!existing) throw new NotFoundError('Custom field');
 
-    const row = await fieldRepo.softDeleteDefinition(actor.tenantId, id, actorUserId(actor), trx);
-    if (!row) throw new NotFoundError('Custom field');
+  await db().transaction(async (trx) => {
+    await customFieldRepo.softDeleteDefinition(actor.tenantId, id, actorUserId(actor), trx);
 
     await activityLog.recordActivity(
       {
@@ -448,18 +571,63 @@ export async function removeDefinition(
         action: 'deleted',
         actorType: actor.actorType,
         actorId: actor.actorId,
-        details: { name: row.label, entity: row.entity },
+        details: { name: existing.label, entity: existing.entity, key: existing.key },
       },
       actor,
       trx,
     );
-
-    return row;
   });
 
-  fieldRepo.invalidateFieldCache(actor.tenantId);
+  customFieldRepo.invalidateFieldCache(actor.tenantId);
+
+  const definition = await customFieldRepo.findDefinitionById(actor.tenantId, id, { includeDeleted: true });
+  if (!definition) throw new NotFoundError('Custom field');
+
   publishChange({ entity: 'custom_field', action: 'deleted', id, payload: definition });
-  return { id, deletedAt: definition.deletedAt ?? new Date().toISOString() };
+  return { id: definition.id, deletedAt: definition.deletedAt ?? new Date(0).toISOString() };
+}
+
+/** See `restoreValue` — the same "no rename on restore" reasoning applies to `key`. */
+export async function restoreDefinition(id: string, actor: ActorContext): Promise<CustomFieldDefinition> {
+  requirePermission(actor, 'fields.manage');
+
+  const existing = await customFieldRepo.findDefinitionById(actor.tenantId, id, { includeDeleted: true });
+  if (!existing) throw new NotFoundError('Custom field');
+  if (!existing.deletedAt) return existing;
+
+  if (await customFieldRepo.isDefinitionKeyTaken(actor.tenantId, existing.entity, existing.key, id)) {
+    throw new ConflictError(
+      'error.conflict.definitionKeyTaken',
+      { key: existing.key },
+      { field: 'key', value: existing.key },
+    );
+  }
+
+  await db().transaction(async (trx) => {
+    await customFieldRepo.restoreDefinition(actor.tenantId, id, trx);
+
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'custom_field_definition',
+        entityId: id,
+        action: 'restored',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: { name: existing.label, entity: existing.entity, key: existing.key },
+      },
+      actor,
+      trx,
+    );
+  });
+
+  customFieldRepo.invalidateFieldCache(actor.tenantId);
+
+  const definition = await customFieldRepo.findDefinitionById(actor.tenantId, id);
+  if (!definition) throw new NotFoundError('Custom field');
+
+  publishChange({ entity: 'custom_field', action: 'restored', id, payload: definition });
+  return definition;
 }
 
 export async function reorderDefinitions(
@@ -467,45 +635,45 @@ export async function reorderDefinitions(
   actor: ActorContext,
 ): Promise<CustomFieldDefinition[]> {
   requirePermission(actor, 'fields.manage');
+
   const entity = assertEntity(input.entity);
+  const live = await customFieldRepo.definitionsFor(actor.tenantId, entity);
+  const liveIds = live.map((definition) => definition.id);
 
-  const current = await fieldRepo.definitionsForEntity(actor.tenantId, entity);
-  assertCompleteReorder(current.map((definition) => definition.id), input.ids);
+  assertCompleteReorder(input.ids ?? [], liveIds, { entity });
 
-  const definitions = await db().transaction(async (trx) => {
-    await fieldRepo.reorderDefinitions(actor.tenantId, input.ids, trx);
+  await db().transaction(async (trx) => {
+    await customFieldRepo.reorderDefinitions(actor.tenantId, resequence(input.ids), trx);
 
     await activityLog.recordActivity(
       {
         tenantId: actor.tenantId,
         entityType: 'custom_field_definition',
         entityId: entity,
-        action: 'updated',
+        action: 'reordered',
         actorType: actor.actorType,
         actorId: actor.actorId,
-        details: { entity, reordered: true },
+        details: { entity },
       },
       actor,
       trx,
     );
-
-    return fieldRepo.definitionsForEntity(actor.tenantId, entity, trx);
   });
 
-  fieldRepo.invalidateFieldCache(actor.tenantId);
+  customFieldRepo.invalidateFieldCache(actor.tenantId);
+
+  const definitions = await customFieldRepo.definitionsFor(actor.tenantId, entity);
   publishChange({ entity: 'custom_field', action: 'updated', id: entity, payload: definitions });
   return definitions;
 }
 
-function assertFieldType(value: unknown): CustomFieldDefinition['fieldType'] {
-  const allowed = ['text', 'number', 'date', 'select', 'boolean'] as const;
-  if (typeof value !== 'string' || !(allowed as readonly string[]).includes(value)) {
-    throw new ValidationError('validation.fields.fieldType.unknown', {}, { field: 'fieldType', allowed });
-  }
-  return value as CustomFieldDefinition['fieldType'];
-}
+// --- Pipeline stages: fields.manage ------------------------------------------
 
-// --- Pipeline stages ------------------------------------------------------
+async function findStageOrThrow(tenantId: string, id: string): Promise<PipelineStage> {
+  const stage = await pipelineRepo.findStageById(tenantId, id);
+  if (!stage) throw new NotFoundError('Stage');
+  return stage;
+}
 
 export async function updateStage(
   id: string,
@@ -514,69 +682,54 @@ export async function updateStage(
 ): Promise<PipelineStage> {
   requirePermission(actor, 'fields.manage');
 
-  const stage = await db().transaction(async (trx) => {
-    const existing = await pipelineRepo.findStageById(actor.tenantId, id, trx);
-    if (!existing) throw new NotFoundError('Stage');
+  const existing = await findStageOrThrow(actor.tenantId, id);
+  const colour = input.colourHex === undefined ? undefined : assertHexColour(input.colourHex, 'colourHex');
+  const name = input.name?.trim();
 
-    const name = input.name?.trim();
-    if (input.name !== undefined && !name) {
-      throw new ValidationError('validation.stage.required');
-    }
-
-    const colour = input.colourHex === undefined ? undefined : input.colourHex ? assertHexColour(input.colourHex) : null;
-
-    const patch: { name?: string; colour?: string | null; is_terminal?: boolean } = {
-      ...(name !== undefined ? { name } : {}),
-      ...(colour !== undefined ? { colour } : {}),
-      ...(input.isTerminal !== undefined ? { is_terminal: input.isTerminal } : {}),
-    };
-
-    // A caller setting only `isDefault` sends an otherwise-empty patch — an
-    // empty `UPDATE` is a Knex error, not a no-op, so skip the column write
-    // entirely rather than issuing one with nothing to set.
-    let row =
-      Object.keys(patch).length > 0
-        ? await pipelineRepo.updateStageColumns(existing.pipelineId, id, patch, trx)
-        : existing;
+  await db().transaction(async (trx) => {
+    await pipelineRepo.updateStageColumns(
+      id,
+      { name: name || undefined, colour, isTerminal: input.isTerminal },
+      trx,
+    );
 
     if (input.isDefault) {
       await pipelineRepo.setDefaultStage(existing.pipelineId, id, trx);
-      row = await pipelineRepo.findStageById(actor.tenantId, id, trx);
     }
-
-    if (!row) throw new NotFoundError('Stage');
 
     await activityLog.recordActivity(
       {
         tenantId: actor.tenantId,
         entityType: 'pipeline_stage',
         entityId: id,
-        action: 'updated',
+        action: input.isDefault ? 'default_changed' : 'updated',
         actorType: actor.actorType,
         actorId: actor.actorId,
-        details: { name: row.name },
+        details: { name: name || existing.name, pipeline: existing.pipelineId },
       },
       actor,
       trx,
     );
-
-    return row;
   });
 
-  pipelineRepo.invalidatePipelineCache(actor.tenantId);
+  invalidateAfterStageWrite(actor.tenantId);
+
+  const stage = await findStageOrThrow(actor.tenantId, id);
   publishChange({ entity: 'pipeline', action: 'updated', id, payload: stage });
   return stage;
 }
 
-export async function reorderStages(input: StageReorderInput, actor: ActorContext): Promise<PipelineStage[]> {
+export async function reorderStages(
+  input: StageReorderInput,
+  actor: ActorContext,
+): Promise<PipelineStage[]> {
   requirePermission(actor, 'fields.manage');
 
-  const currentIds = await pipelineRepo.stageIdsForPipeline(actor.tenantId, input.pipelineId);
-  if (currentIds.length === 0) throw new NotFoundError('Pipeline');
-  assertCompleteReorder(currentIds, input.ids);
+  const liveIds = await pipelineRepo.liveStageIds(actor.tenantId, input.pipelineId);
+  assertCompleteReorder(input.ids ?? [], liveIds, { pipelineId: input.pipelineId });
 
-  const stages = await db().transaction(async (trx) => {
-    await pipelineRepo.reorderStagesDeferred(input.pipelineId, input.ids, trx);
+  await db().transaction(async (trx) => {
+    await pipelineRepo.reorderStages(resequence(input.ids), trx);
 
     await activityLog.recordActivity(
       {
@@ -591,11 +744,11 @@ export async function reorderStages(input: StageReorderInput, actor: ActorContex
       actor,
       trx,
     );
-
-    return pipelineRepo.stagesForPipelineFresh(actor.tenantId, input.pipelineId, trx);
   });
 
-  pipelineRepo.invalidatePipelineCache(actor.tenantId);
+  invalidateAfterStageWrite(actor.tenantId);
+
+  const stages = await stagesOfPipeline(actor.tenantId, input.pipelineId);
   publishChange({ entity: 'pipeline', action: 'updated', id: input.pipelineId, payload: stages });
   return stages;
 }
@@ -603,25 +756,26 @@ export async function reorderStages(input: StageReorderInput, actor: ActorContex
 export async function archiveStage(id: string, actor: ActorContext): Promise<PipelineStage> {
   requirePermission(actor, 'fields.manage');
 
-  const stage = await db().transaction(async (trx) => {
-    const existing = await pipelineRepo.findStageById(actor.tenantId, id, trx);
-    if (!existing) throw new NotFoundError('Stage');
+  const existing = await findStageOrThrow(actor.tenantId, id);
+  if (existing.isDefault) {
+    throw new ConflictError('error.conflict.stageIsDefault', {}, { field: 'isDefault' });
+  }
 
-    if (existing.isDefault) {
-      throw new ValidationError('validation.fields.stage.archiveDefault', {}, { field: 'isDefault' });
-    }
+  await db().transaction(async (trx) => {
+    const occupancy = await pipelineRepo.stageOccupancy(actor.tenantId, id, trx);
+    if (occupancy.leads > 0 || occupancy.orders > 0) {
+      const pipelines = await pipelineRepo.listPipelines(actor.tenantId, trx);
+      const pipeline = pipelines.find((candidate) => candidate.id === existing.pipelineId);
+      const suggestedTarget = pipeline?.stages.find((stage) => stage.isDefault)?.id ?? null;
 
-    const liveCount = await pipelineRepo.countLiveRecordsInStage(actor.tenantId, id, trx);
-    if (liveCount > 0) {
       throw new ConflictError(
-        liveCount === 1 ? 'validation.fields.stage.archiveBlocked.one' : 'validation.fields.stage.archiveBlocked.other',
-        { count: liveCount },
-        { count: liveCount },
+        'error.conflict.stageOccupied',
+        {},
+        { occupiedBy: occupancy, suggestedTarget },
       );
     }
 
-    const row = await pipelineRepo.archiveStage(existing.pipelineId, id, trx);
-    if (!row) throw new NotFoundError('Stage');
+    await pipelineRepo.archiveStage(id, trx);
 
     await activityLog.recordActivity(
       {
@@ -631,16 +785,16 @@ export async function archiveStage(id: string, actor: ActorContext): Promise<Pip
         action: 'archived',
         actorType: actor.actorType,
         actorId: actor.actorId,
-        details: { name: row.name },
+        details: { name: existing.name, pipeline: existing.pipelineId },
       },
       actor,
       trx,
     );
-
-    return row;
   });
 
-  pipelineRepo.invalidatePipelineCache(actor.tenantId);
+  invalidateAfterStageWrite(actor.tenantId);
+
+  const stage = await findStageOrThrow(actor.tenantId, id);
   publishChange({ entity: 'pipeline', action: 'updated', id, payload: stage });
   return stage;
 }
@@ -648,12 +802,10 @@ export async function archiveStage(id: string, actor: ActorContext): Promise<Pip
 export async function restoreStage(id: string, actor: ActorContext): Promise<PipelineStage> {
   requirePermission(actor, 'fields.manage');
 
-  const stage = await db().transaction(async (trx) => {
-    const existing = await pipelineRepo.findStageById(actor.tenantId, id, trx);
-    if (!existing) throw new NotFoundError('Stage');
+  const existing = await findStageOrThrow(actor.tenantId, id);
 
-    const row = await pipelineRepo.restoreStage(existing.pipelineId, id, trx);
-    if (!row) throw new NotFoundError('Stage');
+  await db().transaction(async (trx) => {
+    await pipelineRepo.restoreStage(id, trx);
 
     await activityLog.recordActivity(
       {
@@ -663,86 +815,25 @@ export async function restoreStage(id: string, actor: ActorContext): Promise<Pip
         action: 'restored',
         actorType: actor.actorType,
         actorId: actor.actorId,
-        details: { name: row.name },
+        details: { name: existing.name, pipeline: existing.pipelineId },
       },
       actor,
       trx,
     );
-
-    return row;
   });
 
-  pipelineRepo.invalidatePipelineCache(actor.tenantId);
+  invalidateAfterStageWrite(actor.tenantId);
+
+  const stage = await findStageOrThrow(actor.tenantId, id);
   publishChange({ entity: 'pipeline', action: 'updated', id, payload: stage });
   return stage;
 }
 
-/**
- * Restore a soft-deleted option-list value or custom-field definition.
- *
- * Both existed in `custom-field.repository.ts` from Stage 3 and both entity
- * types were added to `RECYCLE_BIN_ENTITIES` — but no service function ever
- * called them and the Bin's `UNION` never grew a branch, so a deleted value
- * was listed nowhere and `restoreEntity` refused it as an "unknown entity
- * type" despite the type being in its own allowed list. These close that.
- */
-export async function restoreOptionListItem(id: string, actor: ActorContext): Promise<OptionListItem> {
-  requirePermission(actor, 'fields.manage');
-
-  const item = await db().transaction(async (trx) => {
-    const row = await fieldRepo.restoreOptionListItem(actor.tenantId, id, trx);
-    if (!row) throw new NotFoundError('Option');
-
-    await activityLog.recordActivity(
-      {
-        tenantId: actor.tenantId,
-        entityType: 'option_list_item',
-        entityId: id,
-        action: 'restored',
-        actorType: actor.actorType,
-        actorId: actor.actorId,
-        details: { name: row.label, listKey: row.listKey },
-      },
-      actor,
-      trx,
-    );
-
-    return row;
-  });
-
-  fieldRepo.invalidateFieldCache(actor.tenantId);
-  publishChange({ entity: 'option_list', action: 'restored', id, payload: item });
-  return item;
+async function stagesOfPipeline(tenantId: string, pipelineId: string): Promise<PipelineStage[]> {
+  const pipelines = await pipelineRepo.listPipelines(tenantId);
+  return pipelines.find((pipeline) => pipeline.id === pipelineId)?.stages ?? [];
 }
 
-export async function restoreCustomFieldDefinition(
-  id: string,
-  actor: ActorContext,
-): Promise<CustomFieldDefinition> {
-  requirePermission(actor, 'fields.manage');
-
-  const definition = await db().transaction(async (trx) => {
-    const row = await fieldRepo.restoreDefinition(actor.tenantId, id, trx);
-    if (!row) throw new NotFoundError('Custom field');
-
-    await activityLog.recordActivity(
-      {
-        tenantId: actor.tenantId,
-        entityType: 'custom_field_definition',
-        entityId: id,
-        action: 'restored',
-        actorType: actor.actorType,
-        actorId: actor.actorId,
-        details: { name: row.label },
-      },
-      actor,
-      trx,
-    );
-
-    return row;
-  });
-
-  fieldRepo.invalidateFieldCache(actor.tenantId);
-  publishChange({ entity: 'custom_field', action: 'restored', id, payload: definition });
-  return definition;
+function invalidateAfterStageWrite(tenantId: string): void {
+  pipelineRepo.invalidatePipelineCache(tenantId);
 }

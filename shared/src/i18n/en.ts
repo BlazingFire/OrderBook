@@ -94,6 +94,12 @@ export const EN_MESSAGES = {
   'module.logs': 'Logs',
   'module.documents': 'Documents',
 
+  // --- fieldSet.* — one per FIELD_LIST_KEYS entry, the Fields screen's set labels ---
+  'fieldSet.lead.sourcePlatform': 'Lead source',
+  'fieldSet.stock.colour': 'Colour',
+  'fieldSet.product.productType': 'Product type',
+  'fieldSet.line.packaging': 'Packaging',
+
   // --- action.* — the grid's column headers ---
   'action.view': 'View',
   'action.create': 'Create',
@@ -232,7 +238,7 @@ export const EN_MESSAGES = {
   'validation.stage.differentPipeline': 'That stage belongs to a different pipeline',
   'validation.stage.leadConverted':
     'This lead has already become an order — move the order instead',
-  'validation.stage.archived': 'That stage is archived and no longer accepts new arrivals',
+  'validation.stage.archived': 'That stage is archived and cannot accept new records',
   'validation.stage.required': 'Choose a stage',
   'validation.signIn.credentialsRequired': 'Enter your ID and password',
   'validation.pairing.invalidRequest': 'Invalid pairing request',
@@ -243,28 +249,6 @@ export const EN_MESSAGES = {
   'error.conflict.blockedByLiveReferences': 'Other records still reference this and must be dealt with first',
   'validation.recycleBin.unknownEntityType': 'That is not a Recycle Bin entity type',
   'validation.recycleBin.idRequired': 'That record has no id',
-
-  // --- Fields (docs/backend-modules/04-API-CONTRACT.md §5) ---
-  'fieldSet.lead.sourcePlatform': 'Lead source',
-  'fieldSet.stock.colour': 'Colour',
-  'fieldSet.product.productType': 'Product type',
-  'fieldSet.line.packaging': 'Packaging',
-  'validation.fields.listKey.unknown': 'That is not a known option list',
-  'validation.fields.entity.unknown': 'That is not a valid record type',
-  'validation.fields.value.required': 'A value is required',
-  'validation.fields.value.immutable': 'The value itself cannot be changed — rename the label instead',
-  'validation.fields.hex.invalid': 'Enter a colour as #RRGGBB',
-  'validation.fields.reorder.notPermutation': 'That is not a complete reorder of the current list',
-  'validation.fields.fieldType.unknown': 'Choose a valid field type',
-  'validation.fields.key.required': 'A key is required',
-  'validation.fields.key.immutable': 'The key cannot be changed once set',
-  'validation.fields.options.required': 'Choose at least one option',
-  'error.conflict.optionValueTaken': 'This value is already in the list',
-  'error.conflict.customFieldKeyTaken': 'This key is already in use for this record type',
-  'validation.fields.stage.archiveBlocked.one': '{count} record is still in this stage',
-  'validation.fields.stage.archiveBlocked.other': '{count} records are still in this stage',
-  'validation.fields.stage.archiveDefault':
-    'The default stage cannot be archived — set another stage as default first',
 
   // --- Logs (docs/backend-modules/04-API-CONTRACT.md §2) ---
   'validation.logs.date.invalid': 'Enter a valid date range',
@@ -318,6 +302,22 @@ export const EN_MESSAGES = {
   'validation.image.reorder.notPermutation': 'That is not a complete reorder of this product’s images',
   'error.notFound.image': 'Image not found',
 
+  'validation.fields.listKeyRequired': 'Choose which list this is',
+  'validation.fields.entityInvalid': 'Choose a valid record type',
+  'validation.fields.valueRequired': 'Enter a value',
+  'validation.fields.valueImmutable':
+    'The value cannot be changed once created — rename the label instead',
+  'validation.fields.hexInvalid': 'Enter a colour as #RRGGBB',
+  'validation.fields.reorderMismatch': 'That is not the complete, current list — reload and try again',
+  'validation.fields.fieldTypeInvalid': 'Choose a valid field type',
+  'validation.fields.keyRequired': 'Enter a key',
+  'validation.fields.keyImmutable': 'The key cannot be changed once created',
+  'validation.fields.optionsRequired': 'A select field needs at least one option',
+  'error.conflict.optionValueTaken': '"{value}" already exists in this list',
+  'error.conflict.definitionKeyTaken': 'A custom field with the key "{key}" already exists',
+  'error.conflict.stageOccupied': 'This stage still holds live records — move them first',
+  'error.conflict.stageIsDefault': 'This is the pipeline’s default stage and cannot be archived',
+
   // --- activity.* — activity.<entityType>.<action>, rendered by the Logs screen ---
   'activity.stock.inbound': '{actor} recorded {quantity} boxes in for {product}',
   'activity.stock.adjusted': '{actor} adjusted the counted stock for {product}',
@@ -358,17 +358,20 @@ export const EN_MESSAGES = {
   'activity.option_list_item.updated': '{actor} updated the option {name}',
   'activity.option_list_item.deleted': '{actor} removed the option {name}',
   'activity.option_list_item.restored': '{actor} restored the option {name}',
+  'activity.option_list_item.reordered': '{actor} reordered {list}',
   'activity.custom_field_definition.created': '{actor} added the custom field {name}',
   'activity.custom_field_definition.updated': '{actor} updated the custom field {name}',
   'activity.custom_field_definition.deleted': '{actor} removed the custom field {name}',
   'activity.custom_field_definition.restored': '{actor} restored the custom field {name}',
+  'activity.custom_field_definition.reordered': '{actor} reordered the custom fields for {entity}',
   'activity.product_image.created': '{actor} added a photo to {name}',
   'activity.product_image.updated': '{actor} updated a photo on {name}',
   'activity.product_image.deleted': '{actor} removed a photo from {name}',
   'activity.pipeline_stage.updated': '{actor} updated the stage {name}',
-  'activity.pipeline_stage.reordered': '{actor} reordered the stages of {pipeline}',
+  'activity.pipeline_stage.reordered': '{actor} reordered the stages in {pipeline}',
   'activity.pipeline_stage.archived': '{actor} archived the stage {name}',
   'activity.pipeline_stage.restored': '{actor} restored the stage {name}',
+  'activity.pipeline_stage.default_changed': '{actor} set {name} as the default stage',
   'activity.activity_log.verified': '{actor} verified the audit chain',
   'activity.activity_log.exported': '{actor} exported the activity log',
   'activity.report.exported': '{actor} exported the {report} report',

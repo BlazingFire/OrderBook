@@ -17,11 +17,10 @@ import * as backupRestoreService from '../../services/backup-restore.service.js'
 import * as catalogService from '../../services/catalog.service.js';
 import * as conflictService from '../../services/conflict.service.js';
 import * as dashboardService from '../../services/dashboard.service.js';
+import * as fieldsService from '../../services/fields.service.js';
 import * as inventoryService from '../../services/inventory.service.js';
 import * as leadService from '../../services/lead.service.js';
 import * as orderService from '../../services/order.service.js';
-import * as pipelineRepo from '../../repositories/pipeline.repository.js';
-import * as customFieldRepo from '../../repositories/custom-field.repository.js';
 import * as searchService from '../../services/search.service.js';
 import * as storageService from '../../services/storage.service.js';
 import { asyncHandler } from '../async-handler.js';
@@ -140,24 +139,32 @@ dataRoutes.post(
   }),
 );
 
+/**
+ * Deliberately ungated — `fieldsService.listPipelinesUnguarded` and its two
+ * siblings below check nothing. They feed the Add Lead form and
+ * `buildSnapshot`'s `Promise.all`; routing them through a `fields.view`
+ * check would make that `Promise.all` reject for anyone lacking the key, and
+ * a rejected `buildSnapshot` produces no snapshot at all
+ * (`04-API-CONTRACT.md` §5.6). The management surface is `/api/fields/*`.
+ */
 dataRoutes.get(
   '/pipelines',
   asyncHandler(async (req, res) => {
-    res.json(await pipelineRepo.listPipelines(actorFromRequest(req).tenantId));
+    res.json(await fieldsService.listPipelinesUnguarded(actorFromRequest(req).tenantId));
   }),
 );
 
 dataRoutes.get(
   '/option-lists',
   asyncHandler(async (req, res) => {
-    res.json(await customFieldRepo.listOptions(actorFromRequest(req).tenantId));
+    res.json(await fieldsService.listOptionListsUnguarded(actorFromRequest(req).tenantId));
   }),
 );
 
 dataRoutes.get(
   '/custom-fields',
   asyncHandler(async (req, res) => {
-    res.json(await customFieldRepo.listDefinitions(actorFromRequest(req).tenantId));
+    res.json(await fieldsService.listCustomFieldsUnguarded(actorFromRequest(req).tenantId));
   }),
 );
 

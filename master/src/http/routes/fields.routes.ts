@@ -1,10 +1,9 @@
 /**
  * `/api/fields` (`docs/backend-modules/04-API-CONTRACT.md` §5).
  *
- * Copies `access.routes.ts`'s shape — `requireAuth` then a per-handler
- * permission guard — never `data.routes.ts`'s. A separate surface from the
- * three existing unguarded reads (`GET /api/pipelines`, `/api/option-lists`,
- * `/api/custom-fields`), which stay exactly as they are.
+ * Copies `access.routes.ts`'s shape — `requireAuth` then a `needs(...)` guard
+ * per handler — never `data.routes.ts`'s (`requireAuth` alone). Reading is
+ * `fields.view` (every tier); editing is `fields.manage` (management+).
  */
 
 import { Router } from 'express';
@@ -19,11 +18,13 @@ fieldsRoutes.use(requireAuth);
 
 const needs = requirePermissionMiddleware;
 
+// --- Reads: fields.view ------------------------------------------------
+
 fieldsRoutes.get(
   '/catalogue',
   needs('fields.view'),
   asyncHandler(async (req, res) => {
-    res.json(await fieldsService.fieldsCatalogue(actorFromRequest(req)));
+    res.json(fieldsService.fieldsCatalogue(actorFromRequest(req)));
   }),
 );
 
@@ -73,6 +74,8 @@ fieldsRoutes.get(
   }),
 );
 
+// --- Option-list values: fields.manage ----------------------------------
+
 fieldsRoutes.post(
   '/values',
   needs('fields.manage'),
@@ -85,7 +88,9 @@ fieldsRoutes.put(
   '/values/:id',
   needs('fields.manage'),
   asyncHandler(async (req, res) => {
-    res.json(await fieldsService.updateValue(String(req.params.id), req.body, actorFromRequest(req)));
+    res.json(
+      await fieldsService.updateValue(String(req.params.id), req.body, actorFromRequest(req)),
+    );
   }),
 );
 
@@ -93,7 +98,7 @@ fieldsRoutes.delete(
   '/values/:id',
   needs('fields.manage'),
   asyncHandler(async (req, res) => {
-    res.json(await fieldsService.removeValue(String(req.params.id), actorFromRequest(req)));
+    res.json(await fieldsService.deleteValue(String(req.params.id), actorFromRequest(req)));
   }),
 );
 
@@ -104,6 +109,8 @@ fieldsRoutes.post(
     res.json(await fieldsService.reorderValues(req.body, actorFromRequest(req)));
   }),
 );
+
+// --- Custom-field definitions: fields.manage ----------------------------
 
 fieldsRoutes.post(
   '/definitions',
@@ -117,7 +124,9 @@ fieldsRoutes.put(
   '/definitions/:id',
   needs('fields.manage'),
   asyncHandler(async (req, res) => {
-    res.json(await fieldsService.updateDefinition(String(req.params.id), req.body, actorFromRequest(req)));
+    res.json(
+      await fieldsService.updateDefinition(String(req.params.id), req.body, actorFromRequest(req)),
+    );
   }),
 );
 
@@ -125,7 +134,7 @@ fieldsRoutes.delete(
   '/definitions/:id',
   needs('fields.manage'),
   asyncHandler(async (req, res) => {
-    res.json(await fieldsService.removeDefinition(String(req.params.id), actorFromRequest(req)));
+    res.json(await fieldsService.deleteDefinition(String(req.params.id), actorFromRequest(req)));
   }),
 );
 
@@ -137,11 +146,15 @@ fieldsRoutes.post(
   }),
 );
 
+// --- Pipeline stages: fields.manage --------------------------------------
+
 fieldsRoutes.put(
   '/stages/:id',
   needs('fields.manage'),
   asyncHandler(async (req, res) => {
-    res.json(await fieldsService.updateStage(String(req.params.id), req.body, actorFromRequest(req)));
+    res.json(
+      await fieldsService.updateStage(String(req.params.id), req.body ?? {}, actorFromRequest(req)),
+    );
   }),
 );
 
@@ -168,3 +181,4 @@ fieldsRoutes.post(
     res.json(await fieldsService.restoreStage(String(req.params.id), actorFromRequest(req)));
   }),
 );
+

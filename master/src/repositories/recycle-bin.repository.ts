@@ -10,7 +10,7 @@
  * optimisation: Postgres never touches a table the actor holds no delete key
  * for. `deleted_by` display names resolve in one follow-up query over the
  * page's distinct ids, not one `LEFT JOIN` per branch, so a page never pays
- * for six joins to answer a question only some of its rows need.
+ * for eight joins to answer a question only some of its rows need.
  */
 
 import type { BinCounts, RecycleBinEntityType } from '@orderbook/shared';
@@ -98,7 +98,7 @@ const BRANCHES: BranchDefinition[] = [
             FROM users
            WHERE tenant_id = ? AND deleted_at IS NOT NULL`,
   },
-  // These three sit on UUID primary keys while every branch above is on a
+  // These branches sit on UUID primary keys while every branch above is on a
   // TEXT record id, and Postgres refuses a UNION that mixes `uuid` with
   // `text` outright — hence the explicit `::text`. `BinEntry.id` is a string
   // on the wire either way, so nothing downstream can tell the difference.

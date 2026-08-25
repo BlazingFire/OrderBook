@@ -24,7 +24,6 @@ function definition(overrides: Partial<CustomFieldDefinition> = {}): CustomField
     sequence: 1,
     isActive: true,
     deletedAt: null,
-    deletedBy: null,
     version: 1,
     ...overrides,
   };

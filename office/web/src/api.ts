@@ -345,7 +345,9 @@ export const api = {
 
   // --- Fields (docs/backend-modules/04-API-CONTRACT.md §5) -----------------
   // Reachable from both panels per the owner's decision — forwarded live,
-  // failing hard (503) offline like every other module in this batch.
+  // failing hard (503) offline like every other module in this batch: a
+  // curated list is company-wide configuration with no field-level merge to
+  // fall back on (option_lists/custom_field_definitions carry no hlc/field_hlc).
 
   fieldsCatalogue: () => request<FieldCatalogue>('/api/fields/catalogue'),
   fieldValues: (listKey: string, options: { includeDeleted?: boolean; includeUnlisted?: boolean } = {}) => {
@@ -356,14 +358,6 @@ export const api = {
   },
   fieldUsage: (listKey: string) =>
     request<FieldUsageBreakdown>(`/api/fields/usage?listKey=${encodeURIComponent(listKey)}`),
-  fieldDefinitions: (entity?: string, includeDeleted = false) => {
-    const params = new URLSearchParams();
-    if (entity) params.set('entity', entity);
-    if (includeDeleted) params.set('includeDeleted', 'true');
-    const qs = params.toString();
-    return request<CustomFieldDefinition[]>(`/api/fields/definitions${qs ? `?${qs}` : ''}`);
-  },
-  fieldStages: () => request<Pipeline[]>('/api/fields/stages'),
   createFieldValue: (input: OptionListItemInput) => post<OptionListItem>('/api/fields/values', input),
   updateFieldValue: (id: string, input: OptionListItemUpdateInput) =>
     put<OptionListItem>(`/api/fields/values/${id}`, input),
@@ -371,6 +365,14 @@ export const api = {
     request<{ id: string; deletedAt: string }>(`/api/fields/values/${id}`, { method: 'DELETE' }),
   reorderFieldValues: (input: OptionListReorderInput) =>
     post<OptionListItem[]>('/api/fields/values/reorder', input),
+
+  fieldDefinitions: (options: { entity?: string; includeDeleted?: boolean } = {}) => {
+    const params = new URLSearchParams();
+    if (options.entity) params.set('entity', options.entity);
+    if (options.includeDeleted) params.set('includeDeleted', 'true');
+    const query = params.toString();
+    return request<CustomFieldDefinition[]>(`/api/fields/definitions${query ? `?${query}` : ''}`);
+  },
   createFieldDefinition: (input: CustomFieldDefinitionInput) =>
     post<CustomFieldDefinition>('/api/fields/definitions', input),
   updateFieldDefinition: (id: string, input: CustomFieldDefinitionUpdateInput) =>
@@ -379,6 +381,8 @@ export const api = {
     request<{ id: string; deletedAt: string }>(`/api/fields/definitions/${id}`, { method: 'DELETE' }),
   reorderFieldDefinitions: (input: CustomFieldReorderInput) =>
     post<CustomFieldDefinition[]>('/api/fields/definitions/reorder', input),
+
+  fieldStages: () => request<Pipeline[]>('/api/fields/stages'),
   updateFieldStage: (id: string, input: PipelineStageInput) =>
     put<PipelineStage>(`/api/fields/stages/${id}`, input),
   reorderFieldStages: (input: StageReorderInput) => post<PipelineStage[]>('/api/fields/stages/reorder', input),

@@ -142,11 +142,11 @@ export async function restoreEntity(input: RestoreInput, actor: ActorContext): P
       return { entityType: 'user', id: user.id, renamedTo: input.renameTo, alsoRestored: [] };
     }
     case 'option_list_item': {
-      const item = await fieldsService.restoreOptionListItem(input.id, actor);
+      const item = await fieldsService.restoreValue(input.id, actor);
       return { entityType: 'option_list_item', id: item.id, alsoRestored: [] };
     }
     case 'custom_field_definition': {
-      const definition = await fieldsService.restoreCustomFieldDefinition(input.id, actor);
+      const definition = await fieldsService.restoreDefinition(input.id, actor);
       return { entityType: 'custom_field_definition', id: definition.id, alsoRestored: [] };
     }
     case 'document_template': {

@@ -20,7 +20,10 @@ export const RECYCLE_BIN_ENTITIES = [
   'product',
   'role',
   'user',
-  // Stage 3 (Fields) — 20260306 gives these two `deleted_at` and `version`.
+  // Stage 3 — Fields appends these two, the tables 20260306 gives `deleted_at`.
+  // `custom_field_definition`, not `custom_field` — the latter is a distinct
+  // `ChangedEntity` member with a different job; confusing the two produces a
+  // Bin branch that restores nothing.
   'option_list_item',
   'custom_field_definition',
   // Stage 6 (PDF Designer) — the ninth and last. `document_export` is

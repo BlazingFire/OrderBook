@@ -234,10 +234,9 @@ export function mapOptionListItem(row: Row): OptionListItem {
     sequence: toRequiredNumber(row.sequence),
     isActive: Boolean(row.is_active),
     hex: (row.hex as string | null) ?? null,
+    deletedAt: toIso(row.deleted_at),
     createdAt: toRequiredIso(row.created_at),
     updatedAt: toRequiredIso(row.updated_at),
-    deletedAt: toIso(row.deleted_at),
-    deletedBy: (row.deleted_by as string | null) ?? null,
     version: toRequiredNumber(row.version),
   };
 }
@@ -255,7 +254,6 @@ export function mapCustomFieldDefinition(row: Row): CustomFieldDefinition {
     sequence: toRequiredNumber(row.sequence),
     isActive: Boolean(row.is_active),
     deletedAt: toIso(row.deleted_at),
-    deletedBy: (row.deleted_by as string | null) ?? null,
     version: toRequiredNumber(row.version),
   };
 }

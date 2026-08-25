@@ -120,9 +120,6 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
   { key: 'settings.manage', group: 'admin', labelToken: 'permission.settings.manage' },
   { key: 'storage.manage', group: 'admin', labelToken: 'permission.storage.manage' },
   { key: 'fields.manage', group: 'admin', labelToken: 'permission.fields.manage' },
-  // No `MINIMUM_TIER` entry — every tier may hold it, so both panels can
-  // render the Fields screen read-only (`08-PERMISSIONS.md` §4).
-  { key: 'fields.view', group: 'admin', labelToken: 'permission.fields.view' },
   // No `MINIMUM_TIER` entry — office tier by default, same as `logs.view`/`logs.export`.
   { key: 'logs.verifyChain', group: 'admin', labelToken: 'permission.logs.verifyChain' },
   {
@@ -136,6 +133,11 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
   // roles receive them through the permission grid.
   { key: 'recycleBin.view', group: 'admin', labelToken: 'permission.recycleBin.view' },
   { key: 'recycleBin.viewAll', group: 'admin', labelToken: 'permission.recycleBin.viewAll' },
+
+  // Fields (docs/backend-modules/08-PERMISSIONS.md §4). No `MINIMUM_TIER` entry
+  // below — reading is available to every tier, on both panels; only
+  // `fields.manage` is ceilinged.
+  { key: 'fields.view', group: 'admin', labelToken: 'permission.fields.view' },
 ] as const;
 
 // --- The frozen key list ---------------------------------------------------
@@ -207,16 +209,16 @@ const MINIMUM_TIER: Record<string, RoleTier> = {
   'products.bulk': 'management',
   'record.reassignOwner': 'management',
   'field.saleRate.edit': 'management',
-  // Fields *reading* is ungated (`fields.view`, no ceiling); Fields *editing*
-  // is management+ — an unattended panel falls back to the office-tier role,
-  // so this is what actually stops an office-tier person renaming a pipeline
-  // stage and reordering every board in the company
-  // (`docs/backend-modules/08-PERMISSIONS.md` §4).
-  'fields.manage': 'management',
 
   // Recycle Bin: viewing your own deletions is office tier; seeing everyone
   // else's is management — a wider disclosure than the delete key itself.
   'recycleBin.viewAll': 'management',
+
+  // Fields: reading is office tier (no entry, above); editing a pipeline stage
+  // or option list reorders every board and picker in the company, so it wants
+  // a supervisor. Lowered from admin — an unattended Office Panel still falls
+  // back to its office-tier role, so this never reaches an unattended panel.
+  'fields.manage': 'management',
 };
 
 /** The lowest tier permitted to hold a key. */

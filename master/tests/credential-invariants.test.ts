@@ -101,15 +101,30 @@ describe('the two-layer permission check', () => {
     expect(guards.length).toBe(handlers.length);
   });
 
-  it('guards every Fields route (Stage 3 extends the pattern to its own router)', () => {
+  it('guards every fields route — no exemptions here, unlike access.routes.ts', () => {
     const routes = read('http/routes/fields.routes.ts');
 
-    const handlers = routes.split('\n').filter((line) => /fieldsRoutes\.(get|post|put|delete)\(/.test(line));
-    const guards = routes.split('\n').filter((line) => !line.trim().startsWith('*') && line.includes('needs('));
+    // Comment lines can mention `needs(` (this file's own header does) without
+    // being a guard, so both counts are filtered the same way `countCalls`
+    // filters comments above — a raw substring count would silently pass
+    // whether or not a handler actually calls it.
+    const handlers = routes
+      .split('\n')
+      .filter((line) => /fieldsRoutes\.(get|post|put|delete)\(/.test(line));
+    const guards = routes
+      .split('\n')
+      .filter((line) => {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('//') || trimmed.startsWith('*')) return false;
+        return line.includes('needs(');
+      });
 
-    // Zero exemptions — the three existing unguarded reads
-    // (`GET /api/pipelines`, `/api/option-lists`, `/api/custom-fields`) are a
-    // deliberately separate surface on `data.routes.ts`, not on this router.
+    // Every Fields endpoint is gated by `fields.view` or `fields.manage` — the
+    // `- 2` exemption above is specific to `access.routes.ts`'s two genuinely
+    // ungated routes and must never be copied here or generalised into a loop
+    // over routers. The three pre-existing ungated reads (`GET /api/pipelines`,
+    // `/api/option-lists`, `/api/custom-fields`) are a deliberately separate
+    // surface on `data.routes.ts`, not on this router.
     expect(guards.length).toBe(handlers.length);
   });
 

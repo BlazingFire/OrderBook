@@ -1,7 +1,7 @@
 /**
- * Fields' pure invariants — no case-folding, the only-on-change rule, the
- * permutation check, hex normalisation. Deliberately database-free, per
- * `docs/backend-modules/10-TESTING.md` §6.4 (`FLD-1`…`FLD-4`).
+ * Pure Fields invariants — no database, no transaction, run anywhere.
+ * `docs/backend-modules/10-TESTING.md` §"Stage 3 — Fields": FLD-1 through
+ * FLD-4.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -16,11 +16,11 @@ import {
 import { ValidationError } from '../src/lib/errors.js';
 
 describe('normaliseOptionValue', () => {
-  it('trims surrounding whitespace', () => {
-    expect(normaliseOptionValue('  Ivory  ')).toBe('Ivory');
+  it('trims leading and trailing whitespace', () => {
+    expect(normaliseOptionValue('  White  ')).toBe('White');
   });
 
-  it('never case-folds — "White" and "white" are two distinct values', () => {
+  it('FLD-1: never case-folds — "White" and "white" stay two distinct values', () => {
     expect(normaliseOptionValue('White')).toBe('White');
     expect(normaliseOptionValue('white')).toBe('white');
     expect(normaliseOptionValue('White')).not.toBe(normaliseOptionValue('white'));
@@ -28,79 +28,99 @@ describe('normaliseOptionValue', () => {
 });
 
 describe('assertHexColour', () => {
-  it('normalises to lowercase', () => {
+  it('FLD-4: normalises a valid hex to lowercase', () => {
     expect(assertHexColour('#ABCDEF')).toBe('#abcdef');
+    expect(assertHexColour('#abcdef')).toBe('#abcdef');
   });
 
-  it('accepts an already-lowercase hex unchanged', () => {
-    expect(assertHexColour('#a1b2c3')).toBe('#a1b2c3');
+  it('FLD-4: rejects a malformed hex', () => {
+    expect(() => assertHexColour('abcdef')).toThrow(ValidationError);
+    expect(() => assertHexColour('#abc')).toThrow(ValidationError);
+    expect(() => assertHexColour('#gggggg')).toThrow(ValidationError);
+    expect(() => assertHexColour('#abcdefg')).toThrow(ValidationError);
   });
 
-  it.each(['abcdef', '#abcd', '#ggg', '#12345g', 'red', ''])(
-    'rejects a malformed hex: %s',
-    (bad) => {
-      expect(() => assertHexColour(bad)).toThrow(ValidationError);
-    },
-  );
+  it('is null for null, undefined, or empty — a set with no colour to render', () => {
+    expect(assertHexColour(null)).toBeNull();
+    expect(assertHexColour(undefined)).toBeNull();
+    expect(assertHexColour('')).toBeNull();
+  });
+
+  it('names the field the caller asked about, in the details', () => {
+    try {
+      assertHexColour('nope', 'colourHex');
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(ValidationError);
+      expect((error as ValidationError).details).toMatchObject({ field: 'colourHex' });
+    }
+  });
 });
 
 describe('assertOptionValueChange', () => {
-  it('passes quietly when the value is unchanged, even when invalid', () => {
-    expect(() => assertOptionValueChange('Ivory', 'Ivory', false)).not.toThrow();
+  it('FLD-2: passes a value a record already holds, even when the option is no longer valid', () => {
+    expect(() =>
+      assertOptionValueChange('WhatsApp', 'WhatsApp', false, 'validation.lead.sourceInvalid'),
+    ).not.toThrow();
   });
 
-  it('passes a value a record already holds, even after the option was removed', () => {
-    // `isValid` is false (the option is gone), but the value did not change —
-    // resubmitting the record must not be punished for a removal it did not cause.
-    expect(() => assertOptionValueChange('Ivory', 'Ivory', false)).not.toThrow();
+  it('rejects a new value that is not currently valid', () => {
+    expect(() =>
+      assertOptionValueChange('Carrier Pigeon', 'WhatsApp', false, 'validation.lead.sourceInvalid'),
+    ).toThrow(ValidationError);
   });
 
-  it('throws when the value changes to something invalid', () => {
-    expect(() => assertOptionValueChange('Ivory', 'Ebony', false)).toThrow(ValidationError);
+  it('accepts a new value that is currently valid', () => {
+    expect(() =>
+      assertOptionValueChange('Website', 'WhatsApp', true, 'validation.lead.sourceInvalid'),
+    ).not.toThrow();
   });
 
-  it('passes when the value changes to something valid', () => {
-    expect(() => assertOptionValueChange('Ivory', 'Ebony', true)).not.toThrow();
+  it('accepts a first-time value (no previous) when currently valid', () => {
+    expect(() => assertOptionValueChange('Website', null, true, 'validation.lead.sourceInvalid')).not.toThrow();
   });
 });
 
 describe('assertCompleteReorder', () => {
-  it('accepts a full permutation', () => {
-    expect(() => assertCompleteReorder(['a', 'b', 'c'], ['c', 'a', 'b'])).not.toThrow();
+  const live = ['a', 'b', 'c'];
+
+  it('FLD-3: accepts an exact permutation', () => {
+    expect(() => assertCompleteReorder(['c', 'a', 'b'], live)).not.toThrow();
   });
 
-  it('rejects a list missing an id', () => {
-    expect(() => assertCompleteReorder(['a', 'b', 'c'], ['a', 'b'])).toThrow(ValidationError);
+  it('FLD-3: rejects a list missing a live id', () => {
+    expect(() => assertCompleteReorder(['a', 'b'], live)).toThrow(ValidationError);
   });
 
-  it('rejects a list carrying an unexpected id', () => {
-    expect(() => assertCompleteReorder(['a', 'b'], ['a', 'b', 'z'])).toThrow(ValidationError);
+  it('FLD-3: rejects a list naming an id that is not live', () => {
+    expect(() => assertCompleteReorder(['a', 'b', 'c', 'z'], live)).toThrow(ValidationError);
   });
 
-  it('names the missing and unexpected ids in details', () => {
-    expect.assertions(2);
+  it('FLD-3: rejects a list with a duplicate', () => {
+    expect(() => assertCompleteReorder(['a', 'a', 'b'], ['a', 'b'])).toThrow(ValidationError);
+  });
+
+  it('carries extra context (e.g. listKey, pipelineId) in the error details', () => {
     try {
-      assertCompleteReorder(['a', 'b', 'c'], ['a', 'b', 'z']);
+      assertCompleteReorder(['a'], live, { listKey: 'stock.colour' });
+      expect.unreachable();
     } catch (error) {
-      const details = (error as ValidationError).details as { missing: string[]; unexpected: string[] };
-      expect(details.missing).toEqual(['c']);
-      expect(details.unexpected).toEqual(['z']);
+      expect(error).toBeInstanceOf(ValidationError);
+      expect((error as ValidationError).details).toMatchObject({ field: 'ids', listKey: 'stock.colour' });
     }
-  });
-
-  it('rejects a duplicate standing in for a missing id, even at the same length', () => {
-    expect(() => assertCompleteReorder(['a', 'b', 'c'], ['a', 'b', 'b'])).toThrow(ValidationError);
   });
 });
 
 describe('resequence', () => {
-  it('renumbers a permutation 1..N in the order given', () => {
-    expect(resequence(['c', 'a', 'b'])).toEqual(
-      new Map([
-        ['c', 1],
-        ['a', 2],
-        ['b', 3],
-      ]),
-    );
+  it('numbers an ordered id list 1..N', () => {
+    expect(resequence(['x', 'y', 'z'])).toEqual([
+      { id: 'x', sequence: 1 },
+      { id: 'y', sequence: 2 },
+      { id: 'z', sequence: 3 },
+    ]);
+  });
+
+  it('is empty for an empty list', () => {
+    expect(resequence([])).toEqual([]);
   });
 });

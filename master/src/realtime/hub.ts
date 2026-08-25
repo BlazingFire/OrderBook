@@ -34,12 +34,12 @@ import * as conflictService from '../services/conflict.service.js';
 import * as dashboardService from '../services/dashboard.service.js';
 import * as documentService from '../services/document.service.js';
 import * as documentRenderService from '../services/document-render.service.js';
+import * as fieldsService from '../services/fields.service.js';
 import * as inventoryService from '../services/inventory.service.js';
 import * as leadService from '../services/lead.service.js';
 import * as panelCredentialRepo from '../repositories/panel-credential.repository.js';
 import * as orderService from '../services/order.service.js';
 import { resolvePanelActor } from '../services/panel-actor.service.js';
-import * as fieldsService from '../services/fields.service.js';
 import * as logService from '../services/log.service.js';
 import * as reportService from '../services/report.service.js';
 import * as imageService from '../services/image.service.js';
@@ -358,22 +358,22 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
     run(ack, (actor) => recycleBinService.restoreEntity(input, actor)),
   );
 
-  socket.on('fields:catalogue', (ack) => run(ack, (actor) => fieldsService.fieldsCatalogue(actor)));
+  socket.on('fields:catalogue', (ack) => run(ack, (actor) => Promise.resolve(fieldsService.fieldsCatalogue(actor))));
   socket.on('fields:values', (query, ack) => run(ack, (actor) => fieldsService.listValues(query, actor)));
   socket.on('fields:usage', (query, ack) => run(ack, (actor) => fieldsService.fieldUsage(query, actor)));
-  socket.on('fields:definitions', (query, ack) =>
-    run(ack, (actor) => fieldsService.listDefinitions(query, actor)),
-  );
-  socket.on('fields:stages', (ack) => run(ack, (actor) => fieldsService.listStages(actor)));
   socket.on('fields:createValue', (input, ack) =>
     run(ack, (actor) => fieldsService.createValue(input, actor)),
   );
   socket.on('fields:updateValue', ({ id, input }, ack) =>
     run(ack, (actor) => fieldsService.updateValue(id, input, actor)),
   );
-  socket.on('fields:deleteValue', (id, ack) => run(ack, (actor) => fieldsService.removeValue(id, actor)));
+  socket.on('fields:deleteValue', (id, ack) => run(ack, (actor) => fieldsService.deleteValue(id, actor)));
   socket.on('fields:reorderValues', (input, ack) =>
     run(ack, (actor) => fieldsService.reorderValues(input, actor)),
+  );
+
+  socket.on('fields:definitions', (query, ack) =>
+    run(ack, (actor) => fieldsService.listDefinitions(query, actor)),
   );
   socket.on('fields:createDefinition', (input, ack) =>
     run(ack, (actor) => fieldsService.createDefinition(input, actor)),
@@ -382,11 +382,13 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
     run(ack, (actor) => fieldsService.updateDefinition(id, input, actor)),
   );
   socket.on('fields:deleteDefinition', (id, ack) =>
-    run(ack, (actor) => fieldsService.removeDefinition(id, actor)),
+    run(ack, (actor) => fieldsService.deleteDefinition(id, actor)),
   );
   socket.on('fields:reorderDefinitions', (input, ack) =>
     run(ack, (actor) => fieldsService.reorderDefinitions(input, actor)),
   );
+
+  socket.on('fields:stages', (ack) => run(ack, (actor) => fieldsService.listStages(actor)));
   socket.on('fields:updateStage', ({ id, input }, ack) =>
     run(ack, (actor) => fieldsService.updateStage(id, input, actor)),
   );

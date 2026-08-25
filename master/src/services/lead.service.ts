@@ -19,6 +19,7 @@ import type {
 
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { normalizeCustomFields } from '../domain/custom-fields.js';
+import { assertOptionValueChange } from '../domain/field-values.js';
 import { buildLineSnapshot, type LineDraft, type LineSnapshot } from '../domain/line-items.js';
 import { clampPaging } from '../domain/paging.js';
 import { assertStageMove, defaultStage, findStage, stageChangeMessage } from '../domain/pipeline.js';
@@ -175,12 +176,7 @@ export async function updateLead(
   }
 
   if (input.sourcePlatform !== undefined) {
-    // Only a genuine change is checked against the live option list — a lead
-    // already carrying a since-removed source must stay editable on every
-    // other field without that stale value blocking the save.
-    if (input.sourcePlatform !== existing.sourcePlatform) {
-      await assertSourcePlatform(actor.tenantId, input.sourcePlatform);
-    }
+    await assertSourcePlatform(actor.tenantId, input.sourcePlatform, existing.sourcePlatform);
     patch.source_platform = input.sourcePlatform;
   }
 
@@ -461,14 +457,25 @@ async function resolveOwner(
   return requested;
 }
 
-async function assertSourcePlatform(tenantId: string, value: string | null): Promise<void> {
+async function assertSourcePlatform(
+  tenantId: string,
+  value: string | null,
+  previous: string | null = null,
+): Promise<void> {
   if (!value) return;
 
-  if (!(await customFieldRepo.isValidOption(tenantId, 'lead.sourcePlatform', value))) {
-    // Rejected rather than passed through: sourcePlatform is a reporting
-    // dimension, and a typo would quietly become its own category.
-    throw new ValidationError('validation.lead.sourceInvalid', { value });
-  }
+  // Rejected rather than passed through: sourcePlatform is a reporting
+  // dimension, and a typo would quietly become its own category. Unchanged
+  // from what the lead already carries is always allowed, even once the
+  // option has since been removed from the list — a lead a panel has held
+  // offline all afternoon must not fail to save because head office curated
+  // the source list this morning.
+  assertOptionValueChange(
+    value,
+    previous,
+    await customFieldRepo.isValidOption(tenantId, 'lead.sourcePlatform', value),
+    'validation.lead.sourceInvalid',
+  );
 }
 
 /**
