@@ -38,6 +38,13 @@ import { ToastProvider, useToast } from './ui/Toast';
 
 type Tab = 'dashboard' | 'leads' | 'orders' | 'parties' | 'products' | 'conflicts' | 'settings';
 
+/**
+ * How often the shell re-asks this panel's own server while it is still
+ * coming up. The launcher opens the browser as soon as it has started the
+ * server, so the first request can easily land before anything is listening.
+ */
+const BOOTSTRAP_RETRY_MS = 2000;
+
 function readHash(): string {
   return window.location.hash.replace(/^#/, '');
 }
@@ -54,6 +61,9 @@ function OfficePanel() {
   const toast = useToast();
 
   const [connection, setConnection] = useState<ConnectionInfo | null>(null);
+  /** True once this panel's own server has failed to answer at least once. */
+  const [bootFailed, setBootFailed] = useState(false);
+  const [bootAttempt, setBootAttempt] = useState(0);
   const [session, setSession] = useState<PanelSession | null>(null);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [view, setView] = useState<LocalView | null>(null);
@@ -80,8 +90,14 @@ function OfficePanel() {
   const refreshConnection = useCallback(async () => {
     try {
       setConnection(await api.connection());
+      setBootFailed(false);
     } catch {
       setConnection(null);
+      // This panel's own server did not answer. Before, that left `connection`
+      // null forever and the shell below rendered "Starting…" with no message
+      // and no retry — so a browser opened a moment too early after a launch
+      // never recovered on its own.
+      setBootFailed(true);
     }
   }, []);
 
@@ -108,7 +124,16 @@ function OfficePanel() {
   useEffect(() => {
     void refreshConnection();
     void refreshSession();
-  }, [refreshConnection, refreshSession]);
+  }, [refreshConnection, refreshSession, bootAttempt]);
+
+  // Keep asking while this panel's server is still coming up. It listens
+  // within a second of launch normally, but the launcher opens the browser
+  // straight away and a cold Node start on a shop PC is not instant.
+  useEffect(() => {
+    if (!bootFailed) return;
+    const timer = window.setTimeout(() => setBootAttempt((attempt) => attempt + 1), BOOTSTRAP_RETRY_MS);
+    return () => window.clearTimeout(timer);
+  }, [bootFailed, bootAttempt]);
 
   // Sync state sits behind the sign-in gate, so asking for it before anybody
   // has signed in earns a 401 whose only effect is a red line in the console.
@@ -249,8 +274,18 @@ function OfficePanel() {
     return (
       <>
         {!splashDone && <Splash wordmark={t('app.name')} onDone={() => setSplashDone(true)} />}
-        {(!connection || !sessionChecked) && (
-          <div style={{ padding: 'var(--s-40)', color: 'var(--fg-secondary)' }}>{t('shell.starting')}</div>
+        {bootFailed ? (
+          <StartupWaiting
+            attempt={bootAttempt}
+            onRetry={() => {
+              setBootFailed(false);
+              setBootAttempt((attempt) => attempt + 1);
+            }}
+          />
+        ) : (
+          (!connection || !sessionChecked) && (
+            <div style={{ padding: 'var(--s-40)', color: 'var(--fg-secondary)' }}>{t('shell.starting')}</div>
+          )
         )}
       </>
     );
@@ -648,5 +683,42 @@ function OfficePanel() {
         </AppShell>
       </FilterBarProvider>
     </SaveShortcutProvider>
+  );
+}
+
+/**
+ * Shown while this panel's own local server is not answering yet.
+ *
+ * Not an error screen: the ordinary cause is a browser opened a second too
+ * early by the launcher, and it clears itself. The advice sharpens once
+ * retrying has plainly not worked.
+ */
+function StartupWaiting({ attempt, onRetry }: { attempt: number; onRetry: () => void }) {
+  const stillWaiting = attempt > 5;
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 'var(--s-12)',
+        minHeight: '100vh',
+        padding: 'var(--s-40)',
+        textAlign: 'center',
+      }}
+    >
+      <BusyMark size={32} />
+      <h1 className="ob-title" style={{ margin: 0 }}>
+        {t('startup.waiting.title')}
+      </h1>
+      <p className="ob-small" style={{ margin: 0, maxWidth: 420 }}>
+        {stillWaiting ? t('startup.waiting.slow') : t('startup.waiting.body')}
+      </p>
+      <button type="button" className="ob-btn ob-btn--secondary" onClick={onRetry}>
+        {t('action.retryNow')}
+      </button>
+    </div>
   );
 }

@@ -40,6 +40,7 @@ import { ReportsScreen } from './screens/ReportsScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { SignInScreen } from './screens/SignInScreen';
 import { AppShell, type NavGroup, type NavItem } from './ui/AppShell';
+import { BusyMark } from './ui/BusyMark';
 import { FilterBarOutlet, FilterBarProvider } from './ui/FilterBarSlot';
 import { SaveShortcutProvider } from './ui/SaveShortcutSlot';
 import { GalleryScreen } from './ui/GalleryScreen';
@@ -47,7 +48,7 @@ import { Icon } from './ui/icons';
 import { Splash } from './ui/Splash';
 import { ToastProvider } from './ui/Toast';
 
-type Phase = 'loading' | 'first-run' | 'signed-out' | 'ready';
+type Phase = 'loading' | 'unreachable' | 'first-run' | 'signed-out' | 'ready';
 type Tab =
   | 'dashboard'
   | 'panels'
@@ -74,6 +75,17 @@ const REFRESHING_ENTITIES = new Set([
   // detail screen fetches itself and needs telling when its panel moves.
   'office_panel',
 ]);
+
+/**
+ * How often the shell re-asks a server that has not answered yet.
+ *
+ * The case this exists for is the ordinary one on a shop PC: somebody
+ * double-clicks the launcher, which opens the browser while the Master is
+ * still creating its PostgreSQL cluster — tens of seconds on a first run. The
+ * screen has to come good on its own when the server arrives, because nobody
+ * is going to know to press F5.
+ */
+const BOOTSTRAP_RETRY_MS = 2000;
 
 function readHash(): string {
   return window.location.hash.replace(/^#/, '');
@@ -113,24 +125,53 @@ function MasterPanel() {
   const [collapsed, setCollapsed] = useState(false);
   const [syncPopover, setSyncPopover] = useState(false);
 
-  useEffect(() => {
-    void (async () => {
-      const { setupComplete } = await api.setupStatus();
-      if (!setupComplete) {
-        setPhase('first-run');
-        return;
-      }
+  /**
+   * Bumped to re-run the bootstrap below — by the retry timer, or by the
+   * button on the waiting screen.
+   */
+  const [bootAttempt, setBootAttempt] = useState(0);
 
+  useEffect(() => {
+    let cancelled = false;
+    let retry: number | undefined;
+
+    void (async () => {
       try {
-        const me = await api.me();
-        setUser(me.user);
-        setSessionToken(me.sessionToken);
-        setPhase('ready');
+        const { setupComplete } = await api.setupStatus();
+        if (cancelled) return;
+
+        if (!setupComplete) {
+          setPhase('first-run');
+          return;
+        }
+
+        try {
+          const me = await api.me();
+          if (cancelled) return;
+          setUser(me.user);
+          setSessionToken(me.sessionToken);
+          setPhase('ready');
+        } catch {
+          // A 401 here is the ordinary "nobody is signed in" answer, not a
+          // failure — the server clearly replied.
+          if (!cancelled) setPhase('signed-out');
+        }
       } catch {
-        setPhase('signed-out');
+        // The server did not answer at all. This used to be an unhandled
+        // rejection inside a `void`ed async function, which left `phase` on
+        // `loading` for good: the panel showed "Starting…" forever, said
+        // nothing about why, and never recovered even once the server came up.
+        if (cancelled) return;
+        setPhase('unreachable');
+        retry = window.setTimeout(() => setBootAttempt((attempt) => attempt + 1), BOOTSTRAP_RETRY_MS);
       }
     })();
-  }, []);
+
+    return () => {
+      cancelled = true;
+      if (retry !== undefined) window.clearTimeout(retry);
+    };
+  }, [bootAttempt]);
 
   // One socket for the whole session, opened once signed in.
   useEffect(() => {
@@ -198,6 +239,18 @@ function MasterPanel() {
 
   if (phase === 'loading')
     return <div style={{ padding: 'var(--s-40)', color: 'var(--fg-secondary)' }}>{t('shell.starting')}</div>;
+
+  if (phase === 'unreachable') {
+    return (
+      <StartupWaiting
+        attempt={bootAttempt}
+        onRetry={() => {
+          setPhase('loading');
+          setBootAttempt((attempt) => attempt + 1);
+        }}
+      />
+    );
+  }
 
   if (phase === 'first-run') {
     return <FirstRunScreen onComplete={() => setPhase('signed-out')} />;
@@ -478,5 +531,48 @@ function MasterPanel() {
         </AppShell>
       </FilterBarProvider>
     </SaveShortcutProvider>
+  );
+}
+
+/**
+ * Shown while this Master's own server is not answering yet.
+ *
+ * Deliberately not an error: on a first run the server spends tens of seconds
+ * building its database cluster before it can answer anything, and the browser
+ * is opened by the launcher long before that. So the wording is "not ready
+ * yet", the shell keeps retrying by itself, and the button is only there for
+ * somebody who does not want to wait for the next tick.
+ *
+ * The advice changes once retrying has clearly not worked. Ten seconds of
+ * "starting up" is honest; a minute of it is not, and by then the useful thing
+ * to say is which window to go and look at.
+ */
+function StartupWaiting({ attempt, onRetry }: { attempt: number; onRetry: () => void }) {
+  const stillWaiting = attempt > 5;
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 'var(--s-12)',
+        minHeight: '100vh',
+        padding: 'var(--s-40)',
+        textAlign: 'center',
+      }}
+    >
+      <BusyMark size={32} />
+      <h1 className="ob-title" style={{ margin: 0 }}>
+        {t('startup.waiting.title')}
+      </h1>
+      <p className="ob-small" style={{ margin: 0, maxWidth: 420 }}>
+        {stillWaiting ? t('startup.waiting.slow') : t('startup.waiting.body')}
+      </p>
+      <button type="button" className="ob-btn ob-btn--secondary" onClick={onRetry}>
+        {t('action.retryNow')}
+      </button>
+    </div>
   );
 }
