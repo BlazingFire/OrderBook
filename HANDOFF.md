@@ -1407,12 +1407,17 @@ in the order the plan lists them:
 
 ## Working agreements for this repo
 
-- **Branching:** `main` is never pushed to directly. All work lands on `dev`,
-  and reaches `main` only through a pull request. `main` therefore sits
-  *behind* `dev` by design. Historical feature branches
-  (`claude/ceramic-offline-web-app-6wjqq5` for Phases 1–2,
-  `claude/refactor-production-codebase-7gbz9v` for the clean-architecture
-  refactor) are all merged into `dev`; new work branches from `dev`.
+- **Branching:** all work lands on `dev`. The long-standing default is that
+  `main` is never pushed to directly and reaches `main` only through a pull
+  request — `main` sits *behind* `dev` by design. On 2026-08-25, the owner
+  explicitly asked for `main` to be fast-forwarded to `dev` directly (it had
+  drifted 15 commits behind) rather than opened as a PR; that was a one-time
+  override of the default, not a standing change to it. Treat "PR only" as
+  the rule again unless the owner says otherwise in a given session.
+  Historical feature branches (`claude/ceramic-offline-web-app-6wjqq5` for
+  Phases 1–2, `claude/refactor-production-codebase-7gbz9v` for the
+  clean-architecture refactor) are all merged into `dev`; new work branches
+  from `dev`.
 - **Workflow:** the Claude cloud session develops, verifies what it can, and
   pushes to `dev`; the owner pulls on their PC
   (`C:\Users\Z\Desktop\OrderBook`) and runs there. The cloud session has
