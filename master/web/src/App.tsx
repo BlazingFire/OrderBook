@@ -21,7 +21,7 @@ import type {
   SignedInUser,
 } from '@orderbook/shared';
 
-import { api } from './api';
+import { ApiError, api } from './api';
 import { t } from './i18n/strings';
 import { SearchBox } from './components/SearchBox';
 import { AccessScreen } from './screens/AccessScreen';
@@ -39,8 +39,10 @@ import { ReportsScreen } from './screens/ReportsScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { SignInScreen } from './screens/SignInScreen';
 import { AppShell, type NavGroup, type NavItem } from './ui/AppShell';
+import { Clock } from './ui/Clock';
 import { FilterBarOutlet, FilterBarProvider } from './ui/FilterBarSlot';
 import { SaveShortcutProvider } from './ui/SaveShortcutSlot';
+import { SubNavProvider, useSubNavState } from './ui/SubNavSlot';
 import { GalleryScreen } from './ui/GalleryScreen';
 import { Icon } from './ui/icons';
 import { Splash } from './ui/Splash';
@@ -65,6 +67,30 @@ type Route = '' | 'gallery';
 /** Entities whose changes should make the data screens refetch. */
 const REFRESHING_ENTITIES = new Set(['lead', 'order', 'stock', 'reservation', 'sync_conflict']);
 
+/** The cold-start steps the splash reports, in the order they run. */
+const BOOT_STEPS = ['server', 'session', 'assets'] as const;
+
+/**
+ * A ceiling on every boot call.
+ *
+ * `/api/setup/status` reads the database, so a Master whose Postgres is down
+ * answers the socket and then never replies. Without this the panel sat on
+ * "Starting…" indefinitely with nothing on screen to act on; now the wait ends
+ * in a reason and a Retry.
+ *
+ * ponytail: races rather than aborts, so the original request stays in flight
+ * until it settles. Harmless for boot reads; thread an `AbortSignal` through
+ * `api` if a boot step ever writes.
+ */
+function withTimeout<T>(work: Promise<T>, ms = 10_000): Promise<T> {
+  return Promise.race([
+    work,
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new ApiError(t('splash.error.timeout'), 'timeout')), ms);
+    }),
+  ]);
+}
+
 function readHash(): string {
   return window.location.hash.replace(/^#/, '');
 }
@@ -72,7 +98,9 @@ function readHash(): string {
 export function App() {
   return (
     <ToastProvider>
-      <MasterPanel />
+      <SubNavProvider>
+        <MasterPanel />
+      </SubNavProvider>
     </ToastProvider>
   );
 }
@@ -91,28 +119,72 @@ function MasterPanel() {
 
   // Shell chrome state.
   const [splashDone, setSplashDone] = useState(false);
+  // Cold start: how many boot steps are behind us, and why we stopped if we did.
+  const [bootStep, setBootStep] = useState(0);
+  const [bootError, setBootError] = useState<string | null>(null);
+  const [bootAttempt, setBootAttempt] = useState(0);
   const [route, setRoute] = useState<Route>(readHash() === 'gallery' ? 'gallery' : '');
   const [collapsed, setCollapsed] = useState(false);
   const [syncPopover, setSyncPopover] = useState(false);
 
+  // Cold start. Each step reports itself to the splash on the way past, and a
+  // step that fails leaves a message there rather than an endless wait — which
+  // is what "stuck on the starting screen" was: an unhandled rejection here
+  // pinned `phase` on 'loading' with no way out but a reload.
   useEffect(() => {
+    let cancelled = false;
+
     void (async () => {
-      const { setupComplete } = await api.setupStatus();
-      if (!setupComplete) {
-        setPhase('first-run');
-        return;
-      }
+      setBootError(null);
+      setBootStep(0);
 
       try {
-        const me = await api.me();
-        setUser(me.user);
-        setSessionToken(me.sessionToken);
-        setPhase('ready');
-      } catch {
-        setPhase('signed-out');
+        const { setupComplete } = await withTimeout(api.setupStatus());
+        if (cancelled) return;
+        setBootStep(1);
+
+        if (!setupComplete) {
+          setPhase('first-run');
+        } else {
+          try {
+            const me = await withTimeout(api.me());
+            if (cancelled) return;
+            setUser(me.user);
+            setSessionToken(me.sessionToken);
+            setPhase('ready');
+          } catch {
+            // No session, or one the server no longer honours. That is the
+            // sign-in screen, not a failure to start.
+            if (cancelled) return;
+            setPhase('signed-out');
+          }
+        }
+        setBootStep(2);
+
+        // Waited on deliberately: painting the shell in a fallback face and
+        // reflowing into Inter a moment later is worse than one more frame of
+        // splash. Already resolved on a warm start.
+        await document.fonts.ready;
+        if (cancelled) return;
+        setBootStep(3);
+      } catch (caught) {
+        if (cancelled) return;
+        // A *coded* `ApiError` carries a message meant for a reader — our own
+        // 'timeout', or something the server explained. Everything else is a
+        // transport failure or an unstructured 500, whose message is
+        // "Request failed" and helps nobody.
+        setBootError(
+          caught instanceof ApiError && caught.code !== 'internal_error'
+            ? caught.message
+            : t('splash.error.unreachable'),
+        );
       }
     })();
-  }, []);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bootAttempt]);
 
   // One socket for the whole session, opened once signed in.
   useEffect(() => {
@@ -136,6 +208,10 @@ function MasterPanel() {
       socket.close();
     };
   }, [phase, sessionToken]);
+
+  // Stable, or every boot-step render would hand Splash a new callback and
+  // restart its hold timer.
+  const markSplashDone = useCallback(() => setSplashDone(true), []);
 
   const refreshPanels = useCallback(() => {
     void api.panels().then((result) => setPanels(result.panels));
@@ -174,12 +250,22 @@ function MasterPanel() {
     setRoute('');
   }
 
-  if (!splashDone) {
-    return <Splash wordmark={t('app.name')} onDone={() => setSplashDone(true)} />;
+  // The splash owns the whole cold start now — the minimum hold, the boot
+  // itself, and anything that went wrong with it. There is no second
+  // "Starting…" screen behind it to get stranded on.
+  if (!splashDone || bootStep < BOOT_STEPS.length || bootError) {
+    return (
+      <Splash
+        wordmark={t('app.name')}
+        progress={bootStep / BOOT_STEPS.length}
+        label={t(`splash.step.${BOOT_STEPS[bootStep] ?? 'ready'}`)}
+        error={bootError}
+        retryLabel={t('action.retryNow')}
+        onRetry={() => setBootAttempt((attempt) => attempt + 1)}
+        onDone={markSplashDone}
+      />
+    );
   }
-
-  if (phase === 'loading')
-    return <div style={{ padding: 'var(--s-40)', color: 'var(--fg-secondary)' }}>{t('shell.starting')}</div>;
 
   if (phase === 'first-run') {
     return <FirstRunScreen onComplete={() => setPhase('signed-out')} />;
@@ -278,18 +364,46 @@ function MasterPanel() {
     canManageSettings ? { id: 'settings', label: t('nav.master.settings'), icon: 'settings' } : null,
   ];
 
+  /*
+   * A screen that has opened a large operation — the role editor, a person's
+   * editor — publishes it here, and it hangs off its own module in the sidebar
+   * (§8). The shell does not need to know what the operation *is*, only where
+   * it belongs and how to leave it.
+   */
+  const subNav = useSubNavState();
+
+  const nest = (items: Array<NavItem | null>): NavItem[] =>
+    items
+      .filter((item): item is NavItem => item !== null)
+      .map((item) => (subNav && subNav.parentId === item.id ? { ...item, children: subNav.items } : item));
+
   const groups: NavGroup[] = [
-    { label: t('nav.master.work'), items: workItems.filter((item): item is NavItem => item !== null) },
-    { label: t('nav.master.admin'), items: adminItems.filter((item): item is NavItem => item !== null) },
+    { label: t('nav.master.work'), items: nest(workItems) },
+    { label: t('nav.master.admin'), items: nest(adminItems) },
   ];
 
-  const activeId =
-    route === 'gallery' ? 'gallery' : tab;
+  const activeId = subNav ? subNav.activeId : route === 'gallery' ? 'gallery' : tab;
+  const flatItems = groups.flatMap((group) => [...group.items, ...(group.items.flatMap((item) => item.children ?? []))]);
   const activeLabel =
-    route === 'gallery'
+    route === 'gallery' && !subNav
       ? t('footer.designSystem')
-      : (groups.flatMap((group) => group.items).find((item) => item.id === activeId)?.label ??
-        t('app.panel'));
+      : (flatItems.find((item) => item.id === activeId)?.label ?? t('app.panel'));
+
+  /**
+   * Leaving wherever we are. An open operation gets asked first: it may hold an
+   * unsaved draft, and it answers false to keep the operator where they are
+   * rather than discarding it on the way out.
+   */
+  function navigate(id: string): void {
+    // Already here. Selecting the open operation's own entry is a no-op, not a
+    // reason to ask about discarding its draft.
+    if (subNav?.items.some((item) => item.id === id)) return;
+    if (subNav && !subNav.onExit()) return;
+    if (id === 'gallery') return;
+    if (readHash()) window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    setRoute('');
+    setTab(id as Tab);
+  }
 
   const topbar = (
     <>
@@ -325,6 +439,7 @@ function MasterPanel() {
       <span className="ob-mono" style={{ fontSize: '10.5px', color: 'var(--fg-tertiary)' }}>
         {t('footer.version')}
       </span>
+      <Clock />
     </>
   );
 
@@ -423,12 +538,7 @@ function MasterPanel() {
         <AppShell
           groups={groups}
           activeId={activeId}
-          onNavigate={(id) => {
-            if (id === 'gallery') return;
-            if (readHash()) window.history.replaceState(null, '', window.location.pathname + window.location.search);
-            setRoute('');
-            setTab(id as Tab);
-          }}
+          onNavigate={navigate}
           collapsed={collapsed}
           onToggleCollapsed={() => setCollapsed((value) => !value)}
           topbar={topbar}

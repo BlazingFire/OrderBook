@@ -58,7 +58,14 @@ const en: Record<string, string> = {
   'footer.version': 'v0.1.0',
   'footer.designSystem': 'Design system',
 
-  'shell.starting': 'Starting…',
+  // Splash — the boot steps the shell walks before it can show a screen. The
+  // wording names what is being waited on, so a stall says where it stalled.
+  'splash.step.server': 'Contacting the server',
+  'splash.step.session': 'Restoring your session',
+  'splash.step.assets': 'Preparing the workspace',
+  'splash.step.ready': 'Ready',
+  'splash.error.unreachable': 'Could not reach the server. It may still be starting up.',
+  'splash.error.timeout': 'The server did not answer in time.',
   'shell.noModules':
     "Your role does not include access to any of this panel's screens. Ask an administrator if you think that is wrong.",
   'shell.waitingFirstSync':

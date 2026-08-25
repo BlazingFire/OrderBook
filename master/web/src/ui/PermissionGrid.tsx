@@ -10,9 +10,18 @@
  *
  * A blocked cell is disabled and explained, never hidden — an administrator
  * needs to see that raising the tier would unlock it.
+ *
+ * Every heading here is a name rather than a key: a matrix whose row and column
+ * labels read `recycleBin` / `verifyChain` is a database schema on screen, and
+ * the person granting access to a shop floor is not reading a schema. The keys
+ * are still one hover away on every control, because that is what an
+ * administrator quotes when something is refused.
  */
 
 import type { PermissionCatalogue, RoleTier } from '@orderbook/shared';
+
+import { t } from '../i18n/strings';
+import { actionLabel, capabilityLabel, groupLabel, moduleLabel } from './permissionLabels';
 
 export function PermissionGrid({
   catalogue,
@@ -37,17 +46,28 @@ export function PermissionGrid({
     return keys.filter(permitted);
   }
 
+  const moduleKeys = catalogue.modules.flatMap((module) =>
+    module.actions.map((action) => `${module.key}.${action}`),
+  );
+  const moduleHeld = moduleKeys.filter((key) => selected.has(key)).length;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
-      <div>
-        <h4 className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
-          Modules
-        </h4>
-        <div className="ob-tablewrap" style={{ maxHeight: 420 }}>
+    <div className="ob-permsections">
+      <section className="ob-permsection">
+        <div className="ob-permsection-head">
+          <h4 className="ob-eyebrow" style={{ margin: 0 }}>
+            {t('access.permissions.modules')}
+          </h4>
+          <span className="ob-permsection-count">
+            {moduleHeld}/{moduleKeys.length}
+          </span>
+        </div>
+
+        <div className="ob-tablewrap ob-permwrap">
           <table className="ob-permgrid">
             <thead>
               <tr>
-                <th scope="col">Module</th>
+                <th scope="col">{t('access.permissions.module')}</th>
                 {catalogue.actions.map((action) => {
                   const columnKeys = togglable(
                     catalogue.modules
@@ -59,33 +79,40 @@ export function PermissionGrid({
                     <th scope="col" key={action}>
                       <button
                         type="button"
-                        className="ob-linkbtn"
+                        className="ob-permtoggle"
+                        aria-pressed={allOn}
                         disabled={disabled || columnKeys.length === 0}
-                        title={`Toggle ${action} for every module`}
+                        title={t('access.permissions.toggleColumn', { action: actionLabel(action) })}
                         onClick={() => onToggleMany(columnKeys, !allOn)}
                       >
-                        {action}
+                        {actionLabel(action)}
                       </button>
                     </th>
                   );
                 })}
+                <th scope="col" className="ob-permgrid-tally">
+                  {t('access.permissions.tally')}
+                </th>
               </tr>
             </thead>
             <tbody>
               {catalogue.modules.map((module) => {
-                const rowKeys = togglable(module.actions.map((action) => `${module.key}.${action}`));
+                const declaredKeys = module.actions.map((action) => `${module.key}.${action}`);
+                const rowKeys = togglable(declaredKeys);
                 const allOn = rowKeys.length > 0 && rowKeys.every((key) => selected.has(key));
+                const rowHeld = declaredKeys.filter((key) => selected.has(key)).length;
                 return (
-                  <tr key={module.key}>
+                  <tr key={module.key} data-all={allOn || undefined}>
                     <th scope="row">
                       <button
                         type="button"
-                        className="ob-linkbtn"
+                        className="ob-permtoggle ob-permtoggle--row"
+                        aria-pressed={allOn}
                         disabled={disabled || rowKeys.length === 0}
-                        title={`Toggle every action for ${module.key}`}
+                        title={t('access.permissions.toggleRow', { module: module.key })}
                         onClick={() => onToggleMany(rowKeys, !allOn)}
                       >
-                        {module.key}
+                        {moduleLabel(module.key)}
                       </button>
                     </th>
                     {catalogue.actions.map((action) => {
@@ -93,23 +120,30 @@ export function PermissionGrid({
                       const declared = module.actions.includes(action);
                       if (!declared) {
                         return (
-                          <td key={action} className="ob-cell-na" aria-label="not applicable">
+                          <td
+                            key={action}
+                            className="ob-cell-na"
+                            title={t('access.permissions.notApplicable')}
+                            aria-label={t('access.permissions.notApplicable')}
+                          >
                             &mdash;
                           </td>
                         );
                       }
                       const allowed = permitted(key);
-                      const reason = `Requires ${catalogue.minimumTier[key]} tier. Change the tier above to enable.`;
+                      const reason = t('access.permissions.blocked', {
+                        tier: catalogue.minimumTier[key] ?? 'office',
+                      });
                       return (
-                        <td key={action}>
+                        <td key={action} className={allowed ? undefined : 'ob-cell-blocked'}>
                           <input
                             type="checkbox"
                             checked={selected.has(key)}
                             disabled={disabled || !allowed}
                             aria-disabled={!allowed}
-                            aria-label={`${module.key} ${action}`}
+                            aria-label={`${moduleLabel(module.key)} — ${actionLabel(action)}`}
                             aria-describedby={allowed ? undefined : `why-${key}`}
-                            title={allowed ? undefined : reason}
+                            title={allowed ? key : `${key} · ${reason}`}
                             onChange={(e) => onToggle(key, e.target.checked)}
                           />
                           {!allowed && (
@@ -120,32 +154,55 @@ export function PermissionGrid({
                         </td>
                       );
                     })}
+                    <td className="ob-permgrid-tally">
+                      {rowHeld}/{declaredKeys.length}
+                    </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
       {catalogue.groups.map((group) => {
         const capabilities = catalogue.capabilities.filter((c) => c.group === group.key);
         if (capabilities.length === 0) return null;
+        const groupKeys = togglable(capabilities.map((capability) => capability.key));
+        const allOn = groupKeys.length > 0 && groupKeys.every((key) => selected.has(key));
+        const held = capabilities.filter((capability) => selected.has(capability.key)).length;
         return (
-          <div key={group.key}>
-            <h4 className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
-              {group.key}
-            </h4>
+          <section className="ob-permsection" key={group.key}>
+            <div className="ob-permsection-head">
+              <h4 className="ob-eyebrow" style={{ margin: 0 }}>
+                {groupLabel(group.key)}
+              </h4>
+              <span className="ob-permsection-count">
+                {held}/{capabilities.length}
+              </span>
+              <button
+                type="button"
+                className="ob-permtoggle"
+                aria-pressed={allOn}
+                disabled={disabled || groupKeys.length === 0}
+                onClick={() => onToggleMany(groupKeys, !allOn)}
+              >
+                {allOn ? t('access.permissions.clearAll') : t('access.permissions.selectAll')}
+              </button>
+            </div>
+
             <div className="ob-capgrid">
               {capabilities.map((capability) => {
                 const allowed = permitted(capability.key);
-                const reason = `Requires ${catalogue.minimumTier[capability.key]} tier.`;
+                const reason = t('access.permissions.blocked', {
+                  tier: catalogue.minimumTier[capability.key] ?? 'office',
+                });
                 const hint = allowed ? capabilityHint(capability.key) : reason;
                 return (
                   <label
                     key={capability.key}
                     className={`ob-capability${allowed ? '' : ' ob-capability--blocked'}`}
-                    title={hint}
+                    title={allowed ? capability.key : `${capability.key} · ${reason}`}
                   >
                     <input
                       type="checkbox"
@@ -155,17 +212,23 @@ export function PermissionGrid({
                       aria-describedby={hint ? `why-${capability.key}` : undefined}
                       onChange={(e) => onToggle(capability.key, e.target.checked)}
                     />
-                    <span>{humanise(capability.key)}</span>
-                    {hint && (
-                      <span id={`why-${capability.key}`} className="sr-only">
-                        {hint}
-                      </span>
-                    )}
+                    <span className="ob-capability-body">
+                      <span className="ob-capability-name">{capabilityLabel(capability.key)}</span>
+                      {/* The description target is the visible text itself. It
+                          used to be a duplicate `sr-only` copy, from when the
+                          hint lived only in a `title` — a screen reader read
+                          the sentence twice. */}
+                      {hint && (
+                        <span id={`why-${capability.key}`} className="ob-capability-hint">
+                          {hint}
+                        </span>
+                      )}
+                    </span>
                   </label>
                 );
               })}
             </div>
-          </div>
+          </section>
         );
       })}
     </div>
@@ -174,15 +237,6 @@ export function PermissionGrid({
 
 /** The one place the absent-versus-null rule is explained to the person about to turn it off. */
 function capabilityHint(key: string): string | undefined {
-  if (key === 'field.saleRate.view') {
-    return 'Without this, the rate is not sent to the user’s machine at all — the column disappears rather than showing blank.';
-  }
+  if (key === 'field.saleRate.view') return t('access.permissions.saleRateHint');
   return undefined;
-}
-
-function humanise(key: string): string {
-  const last = key.split('.').slice(-1)[0] ?? key;
-  const spaced = last.replace(/([A-Z])/g, ' $1').toLowerCase();
-  const label = `${key.split('.').slice(0, -1).join(' ')} ${spaced}`.trim();
-  return label.charAt(0).toUpperCase() + label.slice(1);
 }

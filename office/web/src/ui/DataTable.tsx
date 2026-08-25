@@ -5,7 +5,7 @@
  * absent key (redaction removes the key — never assume `null`).
  */
 
-import { useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 export interface DataTableColumn<T> {
@@ -36,6 +36,14 @@ export function DataTable<T>({
    */
   openOn = 'doubleClick',
   selectedId,
+  /**
+   * The row whose detail panel is open, and what to put in it. The detail
+   * opens as a full-width band directly under its own row — the shell's
+   * submenu pattern — rather than a right-hand drawer, so the row it belongs
+   * to stays visible above it and the list keeps its scroll position.
+   */
+  expandedId,
+  renderDetail,
   empty,
 }: {
   columns: DataTableColumn<T>[];
@@ -44,6 +52,8 @@ export function DataTable<T>({
   onRowOpen?: (row: T) => void;
   openOn?: 'click' | 'doubleClick';
   selectedId?: string;
+  expandedId?: string | null;
+  renderDetail?: (row: T) => ReactNode;
   empty?: ReactNode;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -65,7 +75,12 @@ export function DataTable<T>({
     return () => ro.disconnect();
   }, []);
 
-  const virtualize = rows.length > VIRTUALIZE_ABOVE;
+  // The virtualiser places rows by arithmetic on one fixed row height, which an
+  // open detail band — any height at all — makes wrong. Nothing is lost by
+  // standing it down while one is open: expanding a row is a deliberate act on
+  // one record, not the scroll-a-thousand-rows case virtualisation exists for.
+  const expanded = expandedId != null && renderDetail != null;
+  const virtualize = rows.length > VIRTUALIZE_ABOVE && !expanded;
   let visibleRows = rows;
   let padTop = 0;
   let padBottom = 0;
@@ -127,10 +142,11 @@ export function DataTable<T>({
           )}
           {visibleRows.map((row) => {
             const key = rowKey(row);
+            const detailOpen = expanded && expandedId === key;
             return (
+              <Fragment key={key}>
               <tr
-                key={key}
-                data-selected={selectedId === key || undefined}
+                data-selected={selectedId === key || detailOpen || undefined}
                 style={{ display: 'grid', gridTemplateColumns: gridTemplate, cursor: onRowOpen ? 'pointer' : undefined }}
                 title={onRowOpen && openOn === 'doubleClick' ? 'Double-click to open' : undefined}
                 tabIndex={onRowOpen ? 0 : undefined}
@@ -154,6 +170,14 @@ export function DataTable<T>({
                   );
                 })}
               </tr>
+              {detailOpen && (
+                <tr style={{ display: 'block' }}>
+                  <td className="ob-table-detail" colSpan={columns.length}>
+                    {renderDetail(row)}
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             );
           })}
           {padBottom > 0 && (

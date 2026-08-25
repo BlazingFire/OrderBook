@@ -26,7 +26,6 @@ import { Button } from '../ui/Button';
 import { Card, Section } from '../ui/Card';
 import { DataTable, type DataTableColumn } from '../ui/DataTable';
 import { ColourChip, ColourName, StatusPill, useColourHex } from '../ui/DataDisplay';
-import { Drawer } from '../ui/Drawer';
 import { FilterChip } from '../ui/FilterBar';
 import { useFilterBar } from '../ui/FilterBarSlot';
 import { FormField, Input, NumberInput, Select } from '../ui/Form';
@@ -65,16 +64,13 @@ export function InventoryScreen({ revision }: Props) {
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [lineLock, setLineLock] = useState<LineLock | null>(null);
 
-  // Drawer: which (product, colour) line is open, and the movements scoped to
-  // just that line. The drawer's summary numbers are *not* stored here — they
-  // are derived from `levels` below so they stay live as `levels` reloads.
-  const [drawerKey, setDrawerKey] = useState<string | null>(null);
-  const [drawerMovements, setDrawerMovements] = useState<StockMovement[]>([]);
-  const [drawerMovementsLoading, setDrawerMovementsLoading] = useState(false);
-
-  const drawerLevel = drawerKey
-    ? (levels.find((level) => `${level.productId}-${level.colour}` === drawerKey) ?? null)
-    : null;
+  // Which (product, colour) line is opened into its detail band, and the
+  // movements scoped to just that line. The band's summary numbers are *not*
+  // stored here — they are derived from `levels` below so they stay live as
+  // `levels` reloads.
+  const [openLineKey, setOpenLineKey] = useState<string | null>(null);
+  const [lineMovements, setLineMovements] = useState<StockMovement[]>([]);
+  const [lineMovementsLoading, setLineMovementsLoading] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -128,26 +124,28 @@ export function InventoryScreen({ revision }: Props) {
   // The movements endpoint filters by product server-side but not by colour
   // (colour is free text within a product), so the line's ledger is fetched
   // by product and narrowed to the one colour here.
-  const loadDrawerMovements = useCallback(async (productId: string, colour: string) => {
-    setDrawerMovementsLoading(true);
-    setDrawerMovements([]);
+  const loadLineMovements = useCallback(async (productId: string, colour: string) => {
+    setLineMovementsLoading(true);
+    setLineMovements([]);
     try {
       const productMovements = await api.stockMovements(productId);
-      setDrawerMovements(productMovements.filter((movement) => movement.colour === colour));
+      setLineMovements(productMovements.filter((movement) => movement.colour === colour));
     } catch {
-      setDrawerMovements([]);
+      setLineMovements([]);
     } finally {
-      setDrawerMovementsLoading(false);
+      setLineMovementsLoading(false);
     }
   }, []);
 
-  function openLineDrawer(level: InventoryStockLevel): void {
-    setDrawerKey(`${level.productId}-${level.colour}`);
-    void loadDrawerMovements(level.productId, level.colour);
-  }
-
-  function closeLineDrawer(): void {
-    setDrawerKey(null);
+  /** Clicking the row opens its band underneath it; clicking it again closes. */
+  function toggleLine(level: InventoryStockLevel): void {
+    const key = `${level.productId}-${level.colour}`;
+    if (openLineKey === key) {
+      setOpenLineKey(null);
+      return;
+    }
+    setOpenLineKey(key);
+    void loadLineMovements(level.productId, level.colour);
   }
 
   function openLineStockIn(level: InventoryStockLevel): void {
@@ -383,6 +381,82 @@ export function InventoryScreen({ revision }: Props) {
     },
   ];
 
+  /**
+   * The band under an opened stock line (§8 submenu, not a right-hand drawer):
+   * the three figures that matter, that line's own ledger, and the two writes
+   * that act on it. Rendered under the row it belongs to, so the product and
+   * colour it is about stay on screen above it.
+   */
+  function renderLineDetail(level: InventoryStockLevel) {
+    return (
+      <div className="ob-detail">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
+          <ColourChip hex={colourHex(level.colour)} name={level.colour} />
+          <span className="ob-body-strong">
+            {t('inventory.drawer.title', { product: level.productName, colour: level.colour })}
+          </span>
+          <span className="ob-mono ob-small">{level.productCode}</span>
+        </div>
+
+        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--s-8)' }}>
+          <Card>
+            <div className="ob-eyebrow">{t('inventory.table.onHand')}</div>
+            <div className="ob-display" style={{ marginTop: 'var(--s-6)', fontVariantNumeric: 'tabular-nums' }}>
+              {level.quantityBoxes}
+            </div>
+          </Card>
+          <Card>
+            <div className="ob-eyebrow">{t('inventory.table.reserved')}</div>
+            <div className="ob-display" style={{ marginTop: 'var(--s-6)', fontVariantNumeric: 'tabular-nums' }}>
+              {level.reservedBoxes}
+            </div>
+          </Card>
+          <Card>
+            <div className="ob-eyebrow">{t('inventory.table.free')}</div>
+            <div
+              className="ob-display"
+              style={{
+                marginTop: 'var(--s-6)',
+                fontVariantNumeric: 'tabular-nums',
+                color: level.availableBoxes < 0 ? 'var(--state-conflict)' : undefined,
+              }}
+            >
+              {level.availableBoxes}
+            </div>
+          </Card>
+        </section>
+
+        <section className="ob-detail-section">
+          <div className="ob-eyebrow">{t('inventory.drawer.ledgerTitle')}</div>
+          {lineMovementsLoading ? (
+            <SkeletonRows rows={4} columns={4} />
+          ) : (
+            <DataTable
+              columns={lineMovementColumns}
+              rows={lineMovements}
+              rowKey={(movement) => String(movement.id)}
+              empty={
+                <EmptyState
+                  title={t('inventory.drawer.ledgerEmpty.title')}
+                  description={t('inventory.drawer.ledgerEmpty.description')}
+                />
+              }
+            />
+          )}
+        </section>
+
+        <div className="ob-detail-actions">
+          <Button variant="primary" size="sm" onClick={() => openLineStockIn(level)}>
+            {t('inventory.action.stockIn')}
+          </Button>
+          <Button variant="secondary" size="sm" onClick={() => openLineAdjust(level)}>
+            {t('inventory.drawer.adjust')}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-24)' }}>
       {error && (
@@ -423,9 +497,10 @@ export function InventoryScreen({ revision }: Props) {
           columns={levelColumns}
           rows={levels}
           rowKey={(level) => `${level.productId}-${level.colour}`}
-          onRowOpen={openLineDrawer}
+          onRowOpen={toggleLine}
           openOn="click"
-          selectedId={drawerKey ?? undefined}
+          expandedId={openLineKey}
+          renderDetail={renderLineDetail}
           empty={
             <EmptyState
               title={t('inventory.empty.title')}
@@ -452,79 +527,6 @@ export function InventoryScreen({ revision }: Props) {
         />
       </Section>
 
-      <Drawer
-        open={Boolean(drawerLevel)}
-        onClose={closeLineDrawer}
-        title={
-          drawerLevel && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-8)' }}>
-              <ColourChip hex={colourHex(drawerLevel.colour)} name={drawerLevel.colour} />
-              {t('inventory.drawer.title', { product: drawerLevel.productName, colour: drawerLevel.colour })}
-            </span>
-          )
-        }
-        subtitle={drawerLevel && <span className="ob-mono">{drawerLevel.productCode}</span>}
-      >
-        {drawerLevel && (
-          <>
-            <section style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--s-8)' }}>
-              <Card>
-                <div className="ob-eyebrow">{t('inventory.table.onHand')}</div>
-                <div className="ob-display" style={{ marginTop: 'var(--s-6)', fontVariantNumeric: 'tabular-nums' }}>
-                  {drawerLevel.quantityBoxes}
-                </div>
-              </Card>
-              <Card>
-                <div className="ob-eyebrow">{t('inventory.table.reserved')}</div>
-                <div className="ob-display" style={{ marginTop: 'var(--s-6)', fontVariantNumeric: 'tabular-nums' }}>
-                  {drawerLevel.reservedBoxes}
-                </div>
-              </Card>
-              <Card>
-                <div className="ob-eyebrow">{t('inventory.table.free')}</div>
-                <div
-                  className="ob-display"
-                  style={{
-                    marginTop: 'var(--s-6)',
-                    fontVariantNumeric: 'tabular-nums',
-                    color: drawerLevel.availableBoxes < 0 ? 'var(--state-conflict)' : undefined,
-                  }}
-                >
-                  {drawerLevel.availableBoxes}
-                </div>
-              </Card>
-            </section>
-
-            <section style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}>
-              <div className="ob-eyebrow">{t('inventory.drawer.ledgerTitle')}</div>
-              {drawerMovementsLoading ? (
-                <SkeletonRows rows={4} columns={4} />
-              ) : (
-                <DataTable
-                  columns={lineMovementColumns}
-                  rows={drawerMovements}
-                  rowKey={(movement) => String(movement.id)}
-                  empty={
-                    <EmptyState
-                      title={t('inventory.drawer.ledgerEmpty.title')}
-                      description={t('inventory.drawer.ledgerEmpty.description')}
-                    />
-                  }
-                />
-              )}
-            </section>
-
-            <section style={{ display: 'flex', gap: 'var(--s-8)' }}>
-              <Button variant="primary" size="sm" onClick={() => openLineStockIn(drawerLevel)}>
-                {t('inventory.action.stockIn')}
-              </Button>
-              <Button variant="secondary" size="sm" onClick={() => openLineAdjust(drawerLevel)}>
-                {t('inventory.drawer.adjust')}
-              </Button>
-            </section>
-          </>
-        )}
-      </Drawer>
 
       <Modal
         open={stockInOpen}
@@ -555,7 +557,7 @@ export function InventoryScreen({ revision }: Props) {
           onSubmit={async (input) => {
             const saved = await run(() => api.stockInbound(input), t('inventory.error.inbound'));
             if (!saved) return;
-            if (lineLock) await loadDrawerMovements(lineLock.productId, lineLock.colour);
+            if (lineLock) await loadLineMovements(lineLock.productId, lineLock.colour);
             setStockInOpen(false);
             setLineLock(null);
           }}
@@ -589,7 +591,7 @@ export function InventoryScreen({ revision }: Props) {
           onSubmit={async (input) => {
             const saved = await run(() => api.stockAdjust(input), t('inventory.error.adjust'));
             if (!saved) return;
-            if (lineLock) await loadDrawerMovements(lineLock.productId, lineLock.colour);
+            if (lineLock) await loadLineMovements(lineLock.productId, lineLock.colour);
             setAdjustOpen(false);
             setLineLock(null);
           }}

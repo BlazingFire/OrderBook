@@ -13,7 +13,7 @@ import { formatDateTime } from '../format';
 import { t } from '../i18n/strings';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
-import { StatusPill } from '../ui/DataDisplay';
+import { IdField, StatusPill } from '../ui/DataDisplay';
 import { DataTable, type DataTableColumn } from '../ui/DataTable';
 import { FormField, Input } from '../ui/Form';
 import { Modal } from '../ui/Modal';
@@ -24,12 +24,23 @@ interface Props {
   onRefresh: () => void;
 }
 
+/** Spelled out rather than interpolated, so every key is greppable. */
+const STATUS_KEY: Record<OfficePanelWithPresence['status'], string> = {
+  pending: 'panels.detail.status.pending',
+  active: 'panels.detail.status.active',
+  revoked: 'panels.detail.status.revoked',
+};
+
 export function PanelsScreen({ panels, onRefresh }: Props) {
   const [waiting, setWaiting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<OfficePanelWithPresence | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [confirmRevoke, setConfirmRevoke] = useState<OfficePanelWithPresence | null>(null);
+  // Which panel's detail band is open. One at a time: two open bands push the
+  // row you were comparing against off the screen, which is the thing opening
+  // detail underneath the row was meant to avoid.
+  const [openPanelId, setOpenPanelId] = useState<string | null>(null);
   const previousPanelCount = useRef(panels.length);
 
   const stopWaiting = useCallback(async () => {
@@ -107,9 +118,15 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
       render: (panel) => <span>{panel.name}</span>,
     },
     {
+      key: 'deviceCode',
+      header: t('panels.table.deviceCode'),
+      width: '110px',
+      render: (panel) => <span className="ob-mono">{panel.deviceCode}</span>,
+    },
+    {
       key: 'address',
       header: t('panels.table.address'),
-      width: '150px',
+      width: '140px',
       render: (panel) => <span className="ob-small">{panel.lanIp ?? '—'}</span>,
     },
     {
@@ -127,10 +144,107 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
     {
       key: 'actions',
       header: '',
-      width: '190px',
-      render: (panel) =>
-        panel.status !== 'revoked' ? (
+      width: '110px',
+      render: (panel) => {
+        const open = openPanelId === panel.id;
+        return (
           <div style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={open ? 'collapse' : 'expand'}
+              aria-expanded={open}
+              onClick={() => setOpenPanelId(open ? null : panel.id)}
+            >
+              {open ? t('panels.action.close') : t('panels.action.open')}
+            </Button>
+          </div>
+        );
+      },
+    },
+  ];
+
+  /**
+   * The detail band under an opened row (§8 submenu, not a right-hand drawer).
+   * Everything the Master actually knows about a panel is here — the fields the
+   * table has no room for, and the two actions that used to sit on every row
+   * and made the list a wall of buttons.
+   */
+  function renderPanelDetail(panel: OfficePanelWithPresence) {
+    return (
+      <div className="ob-detail">
+        <section className="ob-detail-section">
+          <div className="ob-eyebrow">{t('panels.detail.identity')}</div>
+          <dl className="ob-detail-grid">
+            <div>
+              <dt>{t('panels.detail.id')}</dt>
+              <dd>
+                <IdField value={panel.id} />
+              </dd>
+            </div>
+            <div>
+              <dt>{t('panels.table.deviceCode')}</dt>
+              <dd className="ob-mono">{panel.deviceCode}</dd>
+            </div>
+            <div>
+              <dt>{t('panels.detail.role')}</dt>
+              <dd>{panel.roleId ?? t('panels.detail.roleDefault')}</dd>
+            </div>
+            <div>
+              <dt>{t('panels.detail.statusLabel')}</dt>
+              <dd>{t(STATUS_KEY[panel.status])}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="ob-detail-section">
+          <div className="ob-eyebrow">{t('panels.detail.network')}</div>
+          <dl className="ob-detail-grid">
+            <div>
+              <dt>{t('panels.detail.connection')}</dt>
+              <dd>
+                {panel.isConnected ? t('panels.detail.connectionLive') : t('panels.detail.connectionDown')}
+              </dd>
+            </div>
+            <div>
+              <dt>{t('panels.table.address')}</dt>
+              <dd className="ob-mono">{panel.lanIp ?? '—'}</dd>
+            </div>
+            <div>
+              <dt>{t('panels.detail.mac')}</dt>
+              <dd className="ob-mono">{panel.macAddress ?? '—'}</dd>
+            </div>
+            <div>
+              <dt>{t('panels.table.lastSeen')}</dt>
+              <dd>{formatDateTime(panel.lastSeenAt)}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="ob-detail-section">
+          <div className="ob-eyebrow">{t('panels.detail.history')}</div>
+          <dl className="ob-detail-grid">
+            <div>
+              <dt>{t('panels.table.paired')}</dt>
+              <dd>{formatDateTime(panel.pairedAt)}</dd>
+            </div>
+            <div>
+              <dt>{t('panels.detail.created')}</dt>
+              <dd>{formatDateTime(panel.createdAt)}</dd>
+            </div>
+            <div>
+              <dt>{t('panels.detail.updated')}</dt>
+              <dd>{formatDateTime(panel.updatedAt)}</dd>
+            </div>
+          </dl>
+        </section>
+
+        {panel.status === 'revoked' ? (
+          <p className="ob-small" style={{ margin: 0 }}>
+            {t('panels.detail.revokedNote')}
+          </p>
+        ) : (
+          <div className="ob-detail-actions">
             <Button
               variant="secondary"
               size="sm"
@@ -145,9 +259,10 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
               {t('panels.action.remove')}
             </Button>
           </div>
-        ) : null,
-    },
-  ];
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
@@ -189,7 +304,14 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
           <EmptyState title={t('panels.empty.title')} description={t('panels.empty.description')} />
         ) : (
           <div style={{ padding: '0 var(--s-16) var(--s-16)' }}>
-            <DataTable columns={columns} rows={panels} rowKey={(panel) => panel.id} />
+            <DataTable
+              columns={columns}
+              rows={panels}
+              rowKey={(panel) => panel.id}
+              expandedId={openPanelId}
+              renderDetail={renderPanelDetail}
+              onRowOpen={(panel) => setOpenPanelId((current) => (current === panel.id ? null : panel.id))}
+            />
           </div>
         )}
       </Card>

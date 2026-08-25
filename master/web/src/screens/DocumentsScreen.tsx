@@ -40,7 +40,6 @@ import { Card, Section } from '../ui/Card';
 import { LoadMorePager } from '../ui/CursorPager';
 import { StatusPill } from '../ui/DataDisplay';
 import { DataTable, type DataTableColumn } from '../ui/DataTable';
-import { Drawer } from '../ui/Drawer';
 import { FormField, Input, NumberInput, Select, Switch, Textarea } from '../ui/Form';
 import { Modal } from '../ui/Modal';
 import { ConflictBanner, EmptyState, ErrorState, SkeletonRows } from '../ui/States';
@@ -143,7 +142,7 @@ function TemplatesTab({
   const [deleting, setDeleting] = useState(false);
 
   // `loading` is only ever cleared here, never re-raised: this reloads after
-  // every save, delete and drawer close, and re-raising it would replace the
+  // every save, delete and editor close, and re-raising it would replace the
   // list the caller is looking at with skeleton rows each time.
   const load = useCallback(async () => {
     setFailure(null);
@@ -289,6 +288,28 @@ function TemplatesTab({
           below, because "no templates" would be a claim, not a report. */}
       {failure && templates.length > 0 && <ConflictBanner>{failure}</ConflictBanner>}
 
+      {/* A new template has no row to open under, so it gets the one panel
+          above the table. Still not a drawer: the list stays where it was. */}
+      {editing === 'new' && (
+        <div className="ob-newpanel">
+          <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
+            {t('documents.editor.newTitle')}
+          </div>
+          <TemplateEditor
+            key="new"
+            template={null}
+            canSave={canCreate}
+            canRender={canRender}
+            onSaved={(name) => {
+              setEditing(null);
+              toast.push(t('documents.editor.saved', { name }), { tone: 'ok' });
+              void load();
+            }}
+            onCancel={closeEditor}
+          />
+        </div>
+      )}
+
       <Card padded={false}>
         {loading ? (
           <SkeletonRows rows={5} columns={5} />
@@ -305,11 +326,29 @@ function TemplatesTab({
             rows={templates}
             rowKey={(template) => template.id}
             openOn="click"
-            // A caller who cannot edit still gets the drawer: it is the only
+            // A caller who cannot edit still gets the band: it is the only
             // place the eight switches and the terms text are readable, and
             // the editor disables its own controls rather than lying about
             // what the template says.
-            onRowOpen={(template) => setEditing(template)}
+            onRowOpen={(template) => setEditing((current) => (current !== 'new' && current?.id === template.id ? null : template))}
+            expandedId={editing && editing !== 'new' ? editing.id : null}
+            renderDetail={(template) => (
+              <TemplateEditor
+                // Remounting on the edited id throws away a draft that belonged
+                // to a different template, which is what opening another row
+                // means.
+                key={template.id}
+                template={template}
+                canSave={canEdit}
+                canRender={canRender}
+                onSaved={(name) => {
+                  setEditing(null);
+                  toast.push(t('documents.editor.saved', { name }), { tone: 'ok' });
+                  void load();
+                }}
+                onCancel={closeEditor}
+              />
+            )}
             empty={
               <EmptyState
                 title={t('documents.templates.empty.title')}
@@ -329,28 +368,6 @@ function TemplatesTab({
         label={t('documents.loadMore')}
       />
 
-      <Drawer
-        open={editing !== null}
-        onClose={closeEditor}
-        title={editing === 'new' ? t('documents.editor.newTitle') : editing ? editing.name : ''}
-      >
-        {editing && (
-          <TemplateEditor
-            // Remounting on the edited id throws away a draft that belonged to
-            // a different template, which is what opening another row means.
-            key={editing === 'new' ? 'new' : editing.id}
-            template={editing === 'new' ? null : editing}
-            canSave={editing === 'new' ? canCreate : canEdit}
-            canRender={canRender}
-            onSaved={(name) => {
-              setEditing(null);
-              toast.push(t('documents.editor.saved', { name }), { tone: 'ok' });
-              void load();
-            }}
-            onCancel={closeEditor}
-          />
-        )}
-      </Drawer>
 
       <Modal
         open={confirmDelete !== null}

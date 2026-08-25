@@ -9,6 +9,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { OneTimeSecret, PermissionCatalogue, Role, RoleTier, User } from '@orderbook/shared';
 
 import { api, ApiError, type FieldDifference } from '../api';
@@ -18,12 +19,13 @@ import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { IdField, StatusPill } from '../ui/DataDisplay';
 import { DataTable, type DataTableColumn } from '../ui/DataTable';
-import { Drawer } from '../ui/Drawer';
 import { FilterChip, FilterDivider } from '../ui/FilterBar';
 import { useFilterBar } from '../ui/FilterBarSlot';
 import { FormField, Input, Select } from '../ui/Form';
 import { Modal } from '../ui/Modal';
 import { PermissionGrid } from '../ui/PermissionGrid';
+import { PermissionSummary } from '../ui/PermissionSummary';
+import { useSubNav } from '../ui/SubNavSlot';
 import { ConflictBanner, EmptyState, OfflineBanner, SkeletonRows } from '../ui/States';
 import { Tabs, type TabItem } from '../ui/Tabs';
 
@@ -45,12 +47,21 @@ export function AccessScreen({ permissions, currentUserId, currentUserTier }: Pr
   const [error, setError] = useState<string | null>(null);
   const [secret, setSecret] = useState<OneTimeSecret | null>(null);
   const [editing, setEditing] = useState<Role | 'new' | null>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  // The drawer's close paths (backdrop click, its own X, Esc via useOverlay)
-  // all call this. It starts as a plain close and RoleEditor overwrites it
-  // with its dirty-aware `cancel` the moment it mounts, so every path shares
-  // the same discard-confirm logic instead of duplicating it.
-  const editorCloseRef = useRef<() => void>(() => setEditing(null));
+  /*
+   * The role editor's own dirty-aware cancel.
+   *
+   * Closing is no longer only its Cancel button: the sidebar entry this
+   * operation gets means the operator can navigate straight out of it, and
+   * doing that must ask about an unsaved draft exactly as Cancel does. The ref
+   * starts as a plain close and `RoleEditor` overwrites it when it mounts, so
+   * both exits run the same check rather than one of them silently discarding.
+   */
+  const editorCloseRef = useRef<() => boolean>(() => {
+    setEditing(null);
+    return true;
+  });
 
   const can = useCallback((key: string) => permissions.includes(key), [permissions]);
 
@@ -107,6 +118,134 @@ export function AccessScreen({ permissions, currentUserId, currentUserTier }: Pr
   // behind a tab that read as unselected.
   const active: Tab = tabItems.some((item) => item.id === tab) ? tab : 'roles';
 
+  // Editing a role means a ten-by-six matrix plus two capability groups; it is
+  // a screen, not a panel, so it takes the content area and says where it is in
+  // the sidebar. Editing a person is a smaller form but the same idea, and the
+  // two are mutually exclusive.
+  const roleEditorOpen = editing !== null;
+  const userEditorOpen = editingUser !== null;
+
+  useSubNav(
+    roleEditorOpen
+      ? {
+          parentId: 'access',
+          items: [
+            {
+              id: 'access.role',
+              label:
+                editing === 'new'
+                  ? t('access.roleEditor.newRole')
+                  : t('nav.master.editRole', { name: editing.name }),
+              icon: 'shield',
+            },
+          ],
+          activeId: 'access.role',
+          onExit: () => editorCloseRef.current(),
+        }
+      : userEditorOpen
+        ? {
+            parentId: 'access',
+            items: [
+              {
+                id: 'access.user',
+                label: t('nav.master.editUser', { name: editingUser.displayName }),
+                icon: 'parties',
+              },
+            ],
+            activeId: 'access.user',
+            onExit: () => {
+              setEditingUser(null);
+              return true;
+            },
+          }
+        : null,
+  );
+
+  if (roleEditorOpen) {
+    return (
+      <EditorScreen
+        title={editing === 'new' ? t('access.roleEditor.newRole') : editing.name}
+        meta={
+          editing === 'new' ? null : (
+            <>
+              <StatusPill tone={editing.tier === 'admin' ? 'conflict' : editing.tier === 'management' ? 'accent' : 'default'}>
+                {editing.tier}
+              </StatusPill>
+              {editing.isSystem && <StatusPill tone="default">{t('access.roles.systemBadge')}</StatusPill>}
+              <span className="ob-small">
+                {t('access.roles.detail.metaCounts', {
+                  permissions: editing.permissions.length,
+                  users: editing.userCount,
+                })}
+              </span>
+            </>
+          )
+        }
+        onBack={() => editorCloseRef.current()}
+        backLabel={t('access.editor.backToList')}
+      >
+        {error && (
+          <div className="ob-banner ob-banner--conflict" role="alert">
+            {error}
+          </div>
+        )}
+        {catalogue ? (
+          <RoleEditor
+            key={editing === 'new' ? 'new' : editing.id}
+            catalogue={catalogue}
+            role={editing === 'new' ? null : editing}
+            onCancel={() => setEditing(null)}
+            onSaved={() => {
+              setEditing(null);
+              void load();
+            }}
+            onError={setError}
+            registerCancel={(fn) => {
+              editorCloseRef.current = fn;
+            }}
+          />
+        ) : (
+          <SkeletonRows rows={6} columns={6} />
+        )}
+      </EditorScreen>
+    );
+  }
+
+  if (userEditorOpen) {
+    return (
+      <EditorScreen
+        title={editingUser.displayName}
+        meta={
+          <>
+            <span className="ob-mono ob-small">{editingUser.username}</span>
+            <StatusPill tone={editingUser.isActive ? 'ok' : 'default'}>
+              {editingUser.isActive ? t('access.users.statusActive') : t('access.users.statusInactive')}
+            </StatusPill>
+            <span className="ob-small">{editingUser.roleName}</span>
+          </>
+        }
+        onBack={() => {
+          setEditingUser(null);
+          return true;
+        }}
+        backLabel={t('access.editor.backToList')}
+      >
+        {error && (
+          <div className="ob-banner ob-banner--conflict" role="alert">
+            {error}
+          </div>
+        )}
+        <UserEditForm
+          key={editingUser.id}
+          user={editingUser}
+          onCancel={() => setEditingUser(null)}
+          onSaved={() => setEditingUser(null)}
+          onRun={run}
+        />
+      </EditorScreen>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -144,12 +283,14 @@ export function AccessScreen({ permissions, currentUserId, currentUserTier }: Pr
           currentUserId={currentUserId}
           actorTier={currentUserTier}
           loading={loading}
+          onEdit={setEditingUser}
           onSecret={setSecret}
           onRun={run}
         />
       ) : (
         <RolesTab
           roles={roles}
+          catalogue={catalogue}
           // Absent rather than disabled: a management-tier user can never hold
           // this, so a greyed button would be a permanent tease.
           canCreate={can('roles.create')}
@@ -160,32 +301,41 @@ export function AccessScreen({ permissions, currentUserId, currentUserTier }: Pr
           onRun={run}
         />
       )}
+    </div>
+  );
+}
 
-      {/* §8: detail screens use a right drawer at 520px, not a route change —
-          only Order and Lead detail may go full-screen. The Users/Roles tabs
-          stay mounted underneath, so their scroll position and filters
-          survive opening and closing this. */}
-      <Drawer
-        open={Boolean(editing && catalogue)}
-        onClose={() => editorCloseRef.current()}
-        title={editing === 'new' ? t('access.roleEditor.newRole') : editing ? editing.name : ''}
-      >
-        {editing && catalogue && (
-          <RoleEditor
-            catalogue={catalogue}
-            role={editing === 'new' ? null : editing}
-            onCancel={() => setEditing(null)}
-            onSaved={() => {
-              setEditing(null);
-              void load();
-            }}
-            onError={setError}
-            registerCancel={(fn) => {
-              editorCloseRef.current = fn;
-            }}
-          />
-        )}
-      </Drawer>
+/**
+ * The frame a large operation runs inside: who you are editing, what they are,
+ * and one way back that is always in the same place. The sidebar entry says
+ * where you are; this says what you are looking at.
+ */
+function EditorScreen({
+  title,
+  meta,
+  onBack,
+  backLabel,
+  children,
+}: {
+  title: string;
+  meta?: ReactNode;
+  /** Returns false when the operation refused to close — an unsaved draft. */
+  onBack: () => boolean;
+  backLabel: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="ob-editorscreen">
+      <header className="ob-editorscreen-head">
+        <Button variant="ghost" size="sm" icon="collapse" onClick={() => onBack()}>
+          {backLabel}
+        </Button>
+        <h1 className="ob-title" style={{ margin: 0 }}>
+          {title}
+        </h1>
+        {meta && <div className="ob-editorscreen-meta">{meta}</div>}
+      </header>
+      <div className="ob-editorscreen-body">{children}</div>
     </div>
   );
 }
@@ -200,6 +350,7 @@ function UsersTab({
   currentUserId,
   actorTier,
   loading,
+  onEdit,
   onSecret,
   onRun,
 }: {
@@ -211,17 +362,20 @@ function UsersTab({
   /** The caller's own tier, so the role picker cannot offer one above it. */
   actorTier: RoleTier;
   loading: boolean;
+  /** Opens the person's own editor screen — this tab does not host it. */
+  onEdit: (user: User) => void;
   onSecret: (secret: OneTimeSecret) => void;
   onRun: (action: () => Promise<unknown>, failure: string) => Promise<void>;
 }) {
   const [adding, setAdding] = useState(false);
-  const [editing, setEditing] = useState<User | null>(null);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [sort, setSort] = useState<'created' | 'name' | 'role' | 'lastSignIn'>('created');
   const [confirmDeactivate, setConfirmDeactivate] = useState<User | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<User | null>(null);
+  /** Which person's detail band is open. */
+  const [openUserId, setOpenUserId] = useState<string | null>(null);
 
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -318,21 +472,31 @@ function UsersTab({
 
   const columns: DataTableColumn<User>[] = [
     {
+      /*
+       * One line, and only the name.
+       *
+       * This cell used to stack the display name over an `IdField`. Body cells
+       * are exactly one `--row-h` tall and clip what does not fit, so the
+       * second line rendered on top of the first and the roster read as a
+       * rendering fault. The id is a column of its own now — visible on every
+       * row, and no longer fighting the name for the same 32 pixels.
+       */
       key: 'name',
       header: t('access.users.colName'),
       width: '1fr',
-      render: (user) => (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-2)' }}>
-          <span>{user.displayName}</span>
-          <IdField value={user.id} />
-        </div>
-      ),
+      render: (user) => <span>{user.displayName}</span>,
     },
     {
       key: 'username',
       header: t('access.users.colUsername'),
-      width: '160px',
+      width: '150px',
       render: (user) => <span className="ob-small">{user.username}</span>,
+    },
+    {
+      key: 'id',
+      header: t('access.users.colId'),
+      width: '180px',
+      render: (user) => <IdField value={user.id} />,
     },
     {
       key: 'role',
@@ -384,72 +548,157 @@ function UsersTab({
       width: '160px',
       render: (user) => <span className="ob-small">{formatDateTime(user.lastSignInAt)}</span>,
     },
-    ...(canManage
-      ? [
-          {
-            key: 'actions',
-            header: '',
-            width: '340px',
-            render: (user: User) => {
-              const blocked = lastAdminReason(user);
-              return (
-                <div style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}>
-                  <Button variant="secondary" size="sm" onClick={() => setEditing(user)}>
-                    {t('access.users.edit')}
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() =>
-                      void onRun(
-                        async () => onSecret(await api.resetPassword(user.id)),
-                        t('access.users.resetPasswordFailed'),
-                      )
-                    }
-                  >
-                    {t('access.users.resetPassword')}
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    disabled={Boolean(blocked)}
-                    title={blocked}
-                    onClick={() => {
-                      // Deactivation is not a delete, and the difference is
-                      // load-bearing enough that §4.2 asks for it to be
-                      // spelled out at the moment somebody acts — not
-                      // discovered afterwards. Only deactivating asks first;
-                      // reactivating never needs a confirmation.
-                      if (user.isActive) setConfirmDeactivate(user);
-                      else
-                        void onRun(
-                          () =>
-                            api.updateUser(user.id, {
-                              isActive: true,
-                              expectedVersion: user.sync.version,
-                            }),
-                          t('access.users.statusChangeFailed'),
-                        );
-                    }}
-                  >
-                    {user.isActive ? t('access.users.deactivate') : t('access.users.activate')}
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    disabled={Boolean(blocked) || user.id === currentUserId}
-                    title={blocked ?? (user.id === currentUserId ? t('access.users.thisIsYou') : undefined)}
-                    onClick={() => setConfirmDelete(user)}
-                  >
-                    {t('access.users.delete')}
-                  </Button>
-                </div>
-              );
-            },
-          } satisfies DataTableColumn<User>,
-        ]
-      : []),
+    {
+      /*
+       * Four buttons per row was a wall: the widest column on the screen was
+       * the one carrying no data. They live in the detail band now, next to
+       * the person they act on, and the row keeps a single Open.
+       */
+      key: 'actions',
+      header: '',
+      width: '110px',
+      render: (user) => {
+        const open = openUserId === user.id;
+        return (
+          <div style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={open ? 'collapse' : 'expand'}
+              aria-expanded={open}
+              onClick={() => setOpenUserId(open ? null : user.id)}
+            >
+              {open ? t('access.users.close') : t('access.users.open')}
+            </Button>
+          </div>
+        );
+      },
+    },
   ];
+
+  /** The band under an opened person — the facts, and what can be done to them. */
+  function renderUserDetail(user: User) {
+    const blocked = lastAdminReason(user);
+    return (
+      <div className="ob-detail">
+        <section className="ob-detail-section">
+          <div className="ob-eyebrow">{t('access.users.detail.identity')}</div>
+          <dl className="ob-detail-grid">
+            <div>
+              <dt>{t('access.users.colId')}</dt>
+              <dd>
+                <IdField value={user.id} />
+              </dd>
+            </div>
+            <div>
+              <dt>{t('access.users.colName')}</dt>
+              <dd>{user.displayName}</dd>
+            </div>
+            <div>
+              <dt>{t('access.users.colUsername')}</dt>
+              <dd className="ob-mono">{user.username}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="ob-detail-section">
+          <div className="ob-eyebrow">{t('access.users.detail.access')}</div>
+          <dl className="ob-detail-grid">
+            <div>
+              <dt>{t('access.users.colRole')}</dt>
+              <dd>{user.roleName}</dd>
+            </div>
+            <div>
+              <dt>{t('access.roles.colTier')}</dt>
+              <dd>{user.roleTier}</dd>
+            </div>
+            <div>
+              <dt>{t('access.users.colStatus')}</dt>
+              <dd>{user.isActive ? t('access.users.statusActive') : t('access.users.statusInactive')}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="ob-detail-section">
+          <div className="ob-eyebrow">{t('access.users.detail.activity')}</div>
+          <dl className="ob-detail-grid">
+            <div>
+              <dt>{t('access.users.colLastSignIn')}</dt>
+              <dd>{formatDateTime(user.lastSignInAt)}</dd>
+            </div>
+            <div>
+              <dt>{t('access.users.detail.created')}</dt>
+              <dd>{formatDateTime(user.createdAt)}</dd>
+            </div>
+            <div>
+              <dt>{t('access.users.detail.updated')}</dt>
+              <dd>{formatDateTime(user.updatedAt)}</dd>
+            </div>
+            <div>
+              {/* The number a stale save is rejected against — worth showing
+                  when two administrators are editing the same roster. */}
+              <dt>{t('access.users.detail.version')}</dt>
+              <dd className="ob-mono">{user.sync.version}</dd>
+            </div>
+          </dl>
+        </section>
+
+        {canManage && (
+          <div className="ob-detail-actions">
+            <Button variant="secondary" size="sm" icon="edit" onClick={() => onEdit(user)}>
+              {t('access.users.edit')}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() =>
+                void onRun(
+                  async () => onSecret(await api.resetPassword(user.id)),
+                  t('access.users.resetPasswordFailed'),
+                )
+              }
+            >
+              {t('access.users.resetPassword')}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={Boolean(blocked)}
+              title={blocked}
+              onClick={() => {
+                // Deactivation is not a delete, and the difference is
+                // load-bearing enough that §4.2 asks for it to be spelled out
+                // at the moment somebody acts — not discovered afterwards.
+                // Only deactivating asks first; reactivating never needs a
+                // confirmation.
+                if (user.isActive) setConfirmDeactivate(user);
+                else
+                  void onRun(
+                    () =>
+                      api.updateUser(user.id, {
+                        isActive: true,
+                        expectedVersion: user.sync.version,
+                      }),
+                    t('access.users.statusChangeFailed'),
+                  );
+              }}
+            >
+              {user.isActive ? t('access.users.deactivate') : t('access.users.activate')}
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              disabled={Boolean(blocked) || user.id === currentUserId}
+              title={blocked ?? (user.id === currentUserId ? t('access.users.thisIsYou') : undefined)}
+              onClick={() => setConfirmDelete(user)}
+            >
+              {t('access.users.delete')}
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <Card>
@@ -486,20 +735,6 @@ function UsersTab({
         />
       )}
 
-      {editing && (
-        <UserEditForm
-          // The table stays clickable while this form is open, so Edit on a
-          // second person must remount it. Without the key React reuses the
-          // component, the seeded inputs keep the first person's name and
-          // username, and Save writes them onto the second person's id.
-          key={editing.id}
-          user={editing}
-          onCancel={() => setEditing(null)}
-          onSaved={() => setEditing(null)}
-          onRun={onRun}
-        />
-      )}
-
       {loading ? (
         <SkeletonRows columns={6} />
       ) : (
@@ -507,6 +742,9 @@ function UsersTab({
           columns={columns}
           rows={visible}
           rowKey={(user) => user.id}
+          expandedId={openUserId}
+          renderDetail={renderUserDetail}
+          onRowOpen={(user) => setOpenUserId((current) => (current === user.id ? null : user.id))}
           empty={
             <EmptyState
               title={users.length === 0 ? t('access.users.empty') : t('access.users.emptyFiltered')}
@@ -720,6 +958,7 @@ function OneTimeSecretDialog({
 
 function RolesTab({
   roles,
+  catalogue,
   canCreate,
   canEdit,
   canDelete,
@@ -728,14 +967,18 @@ function RolesTab({
   onRun,
 }: {
   roles: Role[];
+  /** Null until the catalogue lands; the summary lists keys ungrouped until then. */
+  catalogue: PermissionCatalogue | null;
   canCreate: boolean;
   canEdit: boolean;
   canDelete: boolean;
   loading: boolean;
+  /** Opens the role's own editor screen — this tab does not host it. */
   onEdit: (role: Role | 'new') => void;
   onRun: (action: () => Promise<unknown>, failure: string) => Promise<void>;
 }) {
   const [confirmDelete, setConfirmDelete] = useState<Role | null>(null);
+  const [openRoleId, setOpenRoleId] = useState<string | null>(null);
 
   const tierTone = (tier: RoleTier | Role['tier']): 'conflict' | 'accent' | 'default' =>
     tier === 'admin' ? 'conflict' : tier === 'management' ? 'accent' : 'default';
@@ -776,38 +1019,103 @@ function RolesTab({
       align: 'right',
       render: (role) => <span className="ob-data">{role.userCount}</span>,
     },
-    ...(canEdit || canDelete
-      ? [
-          {
-            key: 'actions',
-            header: '',
-            width: '170px',
-            render: (role: Role) => (
-              <div style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}>
-                {canEdit && (
-                  <Button variant="secondary" size="sm" onClick={() => onEdit(role)}>
-                    {t('access.roles.edit')}
-                  </Button>
-                )}
-                {/* Absent on a system role rather than disabled: it can never
-                    be deleted, so offering the control would be a lie. */}
-                {canDelete && !role.isSystem && (
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    disabled={role.userCount > 0}
-                    title={role.userCount > 0 ? t('access.roles.deleteBlocked') : undefined}
-                    onClick={() => setConfirmDelete(role)}
-                  >
-                    {t('access.roles.delete')}
-                  </Button>
-                )}
-              </div>
-            ),
-          } satisfies DataTableColumn<Role>,
-        ]
-      : []),
+    {
+      key: 'actions',
+      header: '',
+      width: '110px',
+      render: (role) => {
+        const open = openRoleId === role.id;
+        return (
+          <div style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={open ? 'collapse' : 'expand'}
+              aria-expanded={open}
+              onClick={() => setOpenRoleId(open ? null : role.id)}
+            >
+              {open ? t('access.roles.close') : t('access.roles.open')}
+            </Button>
+          </div>
+        );
+      },
+    },
   ];
+
+  /** The band under an opened role — what it grants, and what can be done to it. */
+  function renderRoleDetail(role: Role) {
+    return (
+      <div className="ob-detail">
+        <section className="ob-detail-section">
+          <div className="ob-eyebrow">{t('access.roles.detail.summary')}</div>
+          <dl className="ob-detail-grid">
+            <div>
+              <dt>{t('access.roles.detail.id')}</dt>
+              <dd>
+                <IdField value={role.id} />
+              </dd>
+            </div>
+            <div>
+              <dt>{t('access.roles.colTier')}</dt>
+              <dd>{role.tier}</dd>
+            </div>
+            <div>
+              <dt>{t('access.roles.colUsers')}</dt>
+              <dd>{role.userCount}</dd>
+            </div>
+            <div>
+              <dt>{t('access.roles.colPermissions')}</dt>
+              <dd>{role.permissions.length}</dd>
+            </div>
+            <div>
+              <dt>{t('access.roles.detail.system')}</dt>
+              <dd>{role.isSystem ? t('access.roles.detail.yes') : t('access.roles.detail.no')}</dd>
+            </div>
+            <div>
+              <dt>{t('access.roles.detail.created')}</dt>
+              <dd>{formatDateTime(role.createdAt)}</dd>
+            </div>
+            <div>
+              <dt>{t('access.roles.detail.updated')}</dt>
+              <dd>{formatDateTime(role.updatedAt)}</dd>
+            </div>
+            <div>
+              <dt>{t('access.roles.detail.version')}</dt>
+              <dd className="ob-mono">{role.sync.version}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="ob-detail-section">
+          <div className="ob-eyebrow">{t('access.roles.detail.grants')}</div>
+          <PermissionSummary catalogue={catalogue} permissions={role.permissions} />
+        </section>
+
+        {(canEdit || (canDelete && !role.isSystem)) && (
+          <div className="ob-detail-actions">
+            {canEdit && (
+              <Button variant="secondary" size="sm" icon="edit" onClick={() => onEdit(role)}>
+                {t('access.roles.edit')}
+              </Button>
+            )}
+            {/* Absent on a system role rather than disabled: it can never be
+                deleted, so offering the control would be a lie. */}
+            {canDelete && !role.isSystem && (
+              <Button
+                variant="danger"
+                size="sm"
+                disabled={role.userCount > 0}
+                title={role.userCount > 0 ? t('access.roles.deleteBlocked') : undefined}
+                onClick={() => setConfirmDelete(role)}
+              >
+                {t('access.roles.delete')}
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <Card>
@@ -836,6 +1144,9 @@ function RolesTab({
           columns={columns}
           rows={roles}
           rowKey={(role) => role.id}
+          expandedId={openRoleId}
+          renderDetail={renderRoleDetail}
+          onRowOpen={(role) => setOpenRoleId((current) => (current === role.id ? null : role.id))}
           empty={<EmptyState title={t('access.roles.empty')} />}
         />
       )}
@@ -881,10 +1192,9 @@ function RoleEditor({
   onCancel: () => void;
   onSaved: () => void;
   onError: (message: string) => void;
-  /** Hands the drawer-aware caller this editor's dirty-checking cancel, so
-   *  the Drawer's own close paths (backdrop, X, Esc) share it instead of
-   *  bypassing the discard confirm. */
-  registerCancel: (fn: () => void) => void;
+  /** Hands the shell this editor's dirty-checking cancel, so navigating out of
+   *  the operation through the sidebar asks about an unsaved draft too. */
+  registerCancel: (fn: () => boolean) => void;
 }) {
   const [name, setName] = useState(role?.name ?? '');
   const [tier, setTier] = useState<RoleTier>((role?.tier as RoleTier) ?? 'office');
@@ -918,20 +1228,17 @@ function RoleEditor({
     [...selected].sort().join(',') !== [...role.permissions].sort().join(',');
 
   /**
-   * Cancel, checking first when there is something to lose.
-   *
-   * `dirty` was already computed for the Save button, so the editor knew the
-   * draft was unsaved and discarded it anyway — including on Escape, which §9
-   * asks to cancel *with a confirm if dirty*.
+   * Cancel, checking first when there is something to lose. Returns whether the
+   * editor actually closed, so a caller that was on its way somewhere else —
+   * the sidebar, navigating to another module — can stay put when the operator
+   * decides to keep the draft.
    */
-  const cancel = useCallback(() => {
-    if (dirty && !confirm(t('access.roleEditor.discardConfirm'))) return;
+  const cancel = useCallback((): boolean => {
+    if (dirty && !confirm(t('access.roleEditor.discardConfirm'))) return false;
     onCancel();
+    return true;
   }, [dirty, onCancel]);
 
-  // The Drawer (via useOverlay) already traps focus and closes on Esc itself;
-  // it calls back into this same `cancel` through `registerCancel` rather
-  // than this component running a second, competing Esc handler.
   useEffect(() => {
     registerCancel(cancel);
   }, [cancel, registerCancel]);
@@ -1123,7 +1430,7 @@ function RoleEditor({
         <Button variant="primary" disabled={busy || !dirty || !name.trim()} onClick={() => void save()}>
           {busy ? t('access.roleEditor.saving') : t('access.roleEditor.save')}
         </Button>
-        <Button variant="secondary" onClick={cancel}>
+        <Button variant="secondary" onClick={() => cancel()}>
           {t('access.roleEditor.cancel')}
         </Button>
       </div>

@@ -34,7 +34,6 @@ import { Section } from '../ui/Card';
 import { NewerOlderPager } from '../ui/CursorPager';
 import { KeyValueList, StatusPill } from '../ui/DataDisplay';
 import { DataTable, type DataTableColumn } from '../ui/DataTable';
-import { Drawer } from '../ui/Drawer';
 import { useFilterBar } from '../ui/FilterBarSlot';
 import { DateField, Input, Select } from '../ui/Form';
 import { Modal } from '../ui/Modal';
@@ -295,6 +294,90 @@ export function LogsScreen({ permissions }: Props) {
     );
   }
 
+  /**
+   * The band under an opened log entry (§8 submenu, not a right-hand drawer).
+   * An audit entry is read against the rows either side of it — which is
+   * exactly what a drawer covering the list took away.
+   */
+  function renderEntryDetail(entry: ActivityLogEntry) {
+    return (
+      <div className="ob-detail">
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--s-8)' }}>
+          <span className="ob-body-strong">{describe(entry)}</span>
+          <span className="ob-small">{formatDateTime(entry.createdAt)}</span>
+        </div>
+
+        <KeyValueList
+          items={[
+            {
+              label: t('logs.drawer.token'),
+              value: (
+                <span className="ob-mono">
+                  {entry.entityType}.{entry.action}
+                </span>
+              ),
+            },
+            {
+              label: t('logs.drawer.record'),
+              value: <span className="ob-mono">{entry.entityId}</span>,
+            },
+            { label: t('logs.drawer.who'), value: actorLabel(entry) },
+            { label: t('logs.drawer.when'), value: formatDateTime(entry.createdAt) },
+            {
+              label: t('logs.drawer.sequence'),
+              value: entry.chained ? (
+                <span className="ob-mono">{entry.sequence}</span>
+              ) : (
+                <StatusPill tone="offline">{t('logs.chain.preChain')}</StatusPill>
+              ),
+            },
+            {
+              label: t('logs.drawer.entryId'),
+              value: <span className="ob-mono">{entry.id}</span>,
+            },
+            // Shown in full, never abbreviated: this is the value somebody
+            // re-checks by hand against an export when they distrust the
+            // screen that computed the verdict.
+            {
+              label: t('logs.drawer.hash'),
+              value: entry.hash ? (
+                <span className="ob-mono" style={{ wordBreak: 'break-all' }}>
+                  {entry.hash}
+                </span>
+              ) : (
+                <span style={{ color: 'var(--fg-tertiary)' }}>{t('logs.chain.preChainHint')}</span>
+              ),
+            },
+          ]}
+        />
+
+        <section className="ob-detail-section">
+          <div className="ob-eyebrow">{t('logs.drawer.details')}</div>
+          {Object.keys(entry.details).length === 0 ? (
+            <p className="ob-small" style={{ margin: 0 }}>
+              {t('logs.drawer.noDetails')}
+            </p>
+          ) : (
+            <pre
+              className="ob-data"
+              style={{
+                margin: 0,
+                padding: 'var(--s-12)',
+                background: 'var(--bg-sunken)',
+                border: '1px solid var(--line)',
+                borderRadius: 'var(--r-md)',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}
+            >
+              {JSON.stringify(entry.details, null, 2)}
+            </pre>
+          )}
+        </section>
+      </div>
+    );
+  }
+
   const columns: DataTableColumn<ActivityLogEntry>[] = [
     {
       key: 'when',
@@ -416,9 +499,10 @@ export function LogsScreen({ permissions }: Props) {
               columns={columns}
               rows={entries}
               rowKey={(entry) => entry.id}
-              onRowOpen={setOpenEntry}
+              onRowOpen={(entry) => setOpenEntry((current) => (current?.id === entry.id ? null : entry))}
               openOn="click"
-              selectedId={openEntry?.id}
+              expandedId={openEntry?.id ?? null}
+              renderDetail={renderEntryDetail}
               empty={
                 <EmptyState
                   title={filtered ? t('logs.emptyFiltered.title') : t('logs.empty.title')}
@@ -442,86 +526,6 @@ export function LogsScreen({ permissions }: Props) {
         )}
       </Section>
 
-      <Drawer
-        open={openEntry !== null}
-        onClose={() => setOpenEntry(null)}
-        title={openEntry ? describe(openEntry) : ''}
-        subtitle={openEntry ? formatDateTime(openEntry.createdAt) : undefined}
-      >
-        {openEntry && (
-          <>
-            <KeyValueList
-              items={[
-                {
-                  label: t('logs.drawer.token'),
-                  value: (
-                    <span className="ob-mono">
-                      {openEntry.entityType}.{openEntry.action}
-                    </span>
-                  ),
-                },
-                {
-                  label: t('logs.drawer.record'),
-                  value: <span className="ob-mono">{openEntry.entityId}</span>,
-                },
-                { label: t('logs.drawer.who'), value: actorLabel(openEntry) },
-                { label: t('logs.drawer.when'), value: formatDateTime(openEntry.createdAt) },
-                {
-                  label: t('logs.drawer.sequence'),
-                  value: openEntry.chained ? (
-                    <span className="ob-mono">{openEntry.sequence}</span>
-                  ) : (
-                    <StatusPill tone="offline">{t('logs.chain.preChain')}</StatusPill>
-                  ),
-                },
-                {
-                  label: t('logs.drawer.entryId'),
-                  value: <span className="ob-mono">{openEntry.id}</span>,
-                },
-                // Shown in full, never abbreviated: this is the value somebody
-                // re-checks by hand against an export when they distrust the
-                // screen that computed the verdict.
-                {
-                  label: t('logs.drawer.hash'),
-                  value: openEntry.hash ? (
-                    <span className="ob-mono" style={{ wordBreak: 'break-all' }}>
-                      {openEntry.hash}
-                    </span>
-                  ) : (
-                    <span style={{ color: 'var(--fg-tertiary)' }}>
-                      {t('logs.chain.preChainHint')}
-                    </span>
-                  ),
-                },
-              ]}
-            />
-
-            <section style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}>
-              <div className="ob-eyebrow">{t('logs.drawer.details')}</div>
-              {Object.keys(openEntry.details).length === 0 ? (
-                <p className="ob-small" style={{ margin: 0 }}>
-                  {t('logs.drawer.noDetails')}
-                </p>
-              ) : (
-                <pre
-                  className="ob-data"
-                  style={{
-                    margin: 0,
-                    padding: 'var(--s-12)',
-                    background: 'var(--bg-sunken)',
-                    border: '1px solid var(--line)',
-                    borderRadius: 'var(--r-md)',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                  }}
-                >
-                  {JSON.stringify(openEntry.details, null, 2)}
-                </pre>
-              )}
-            </section>
-          </>
-        )}
-      </Drawer>
 
       <Modal
         open={verifyOpen}

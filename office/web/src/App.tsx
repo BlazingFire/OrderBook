@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MutationResult, SearchHit } from '@orderbook/shared';
 
-import { api, type ConnectionInfo, type LocalView, type PanelSession } from './api';
+import { ApiError, api, type ConnectionInfo, type LocalView, type PanelSession } from './api';
 import { t } from './i18n/strings';
 import { AddLeadScreen } from './screens/AddLeadScreen';
 import { CatalogScreen } from './screens/CatalogScreen';
@@ -29,6 +29,7 @@ import { SettingsScreen } from './screens/SettingsScreen';
 import { SignInScreen } from './screens/SignInScreen';
 import { AppShell, type NavGroup, type NavItem } from './ui/AppShell';
 import { BusyMark } from './ui/BusyMark';
+import { Clock } from './ui/Clock';
 import { FilterBarOutlet, FilterBarProvider } from './ui/FilterBarSlot';
 import { SaveShortcutProvider } from './ui/SaveShortcutSlot';
 import { GalleryScreen } from './ui/GalleryScreen';
@@ -40,6 +41,27 @@ type Tab = 'dashboard' | 'leads' | 'orders' | 'parties' | 'products' | 'conflict
 
 function readHash(): string {
   return window.location.hash.replace(/^#/, '');
+}
+
+/** The cold-start steps the splash reports, in the order they run. */
+const BOOT_STEPS = ['server', 'session', 'assets'] as const;
+
+/**
+ * A ceiling on every boot call, so a panel server that accepts the socket and
+ * then never answers ends in a reason and a Retry rather than an endless
+ * "Starting…".
+ *
+ * ponytail: races rather than aborts, so the original request stays in flight
+ * until it settles. Harmless for boot reads; thread an `AbortSignal` through
+ * `api` if a boot step ever writes.
+ */
+function withTimeout<T>(work: Promise<T>, ms = 10_000): Promise<T> {
+  return Promise.race([
+    work,
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new ApiError(t('splash.error.timeout'), 'timeout')), ms);
+    }),
+  ]);
 }
 
 export function App() {
@@ -69,6 +91,10 @@ function OfficePanel() {
   const [collapsed, setCollapsed] = useState(false);
   const [splashDone, setSplashDone] = useState(false);
   const [syncPopover, setSyncPopover] = useState(false);
+  // Cold start: how many boot steps are behind us, and why we stopped if we did.
+  const [bootStep, setBootStep] = useState(0);
+  const [bootError, setBootError] = useState<string | null>(null);
+  const [bootAttempt, setBootAttempt] = useState(0);
 
   // Universal search ('/', 180ms debounce, FTS-backed on the Master).
   const [term, setTerm] = useState('');
@@ -77,11 +103,19 @@ function OfficePanel() {
   const searchRef = useRef<HTMLInputElement | null>(null);
   const debounceRef = useRef<number | undefined>(undefined);
 
+  // Stable, or every boot-step render would hand Splash a new callback and
+  // restart its hold timer.
+  const markSplashDone = useCallback(() => setSplashDone(true), []);
+
   const refreshConnection = useCallback(async () => {
     try {
       setConnection(await api.connection());
     } catch {
-      setConnection(null);
+      // A momentary blip talking to this panel's own server. Blanking the
+      // connection here threw a running app back to the splash with nothing to
+      // act on, so the last known state stands — `state` and `hasNetworkLink`
+      // already model being disconnected. The initial read is the boot
+      // sequence's job, and it reports its own failure.
     }
   }, []);
 
@@ -105,10 +139,60 @@ function OfficePanel() {
     }
   }, []);
 
+  // Cold start. Each step reports itself to the splash on the way past, and a
+  // step that fails leaves a message there rather than an endless wait — which
+  // is what "stuck on the starting screen" was: a failed first read left
+  // `connection` null forever behind a gate that only ever checked for null.
   useEffect(() => {
-    void refreshConnection();
-    void refreshSession();
-  }, [refreshConnection, refreshSession]);
+    let cancelled = false;
+
+    void (async () => {
+      setBootError(null);
+      setBootStep(0);
+
+      try {
+        const info = await withTimeout(api.connection());
+        if (cancelled) return;
+        setConnection(info);
+        setBootStep(1);
+
+        try {
+          const { session: restored } = await withTimeout(api.session());
+          if (cancelled) return;
+          setSession(restored);
+        } catch {
+          // Nobody signed in, or a session the Master no longer honours. That
+          // is the sign-in screen, not a failure to start.
+          if (cancelled) return;
+          setSession(null);
+        }
+        setSessionChecked(true);
+        setBootStep(2);
+
+        // Waited on deliberately: painting the shell in a fallback face and
+        // reflowing into Inter a moment later is worse than one more frame of
+        // splash. Already resolved on a warm start.
+        await document.fonts.ready;
+        if (cancelled) return;
+        setBootStep(3);
+      } catch (caught) {
+        if (cancelled) return;
+        // A *coded* `ApiError` carries a message meant for a reader — our own
+        // 'timeout', or something the server explained. Everything else is a
+        // transport failure or an unstructured 500, whose message is
+        // "Request failed" and helps nobody.
+        setBootError(
+          caught instanceof ApiError && caught.code !== 'internal_error'
+            ? caught.message
+            : t('splash.error.unreachable'),
+        );
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bootAttempt]);
 
   // Sync state sits behind the sign-in gate, so asking for it before anybody
   // has signed in earns a 401 whose only effect is a red line in the console.
@@ -245,14 +329,20 @@ function OfficePanel() {
     return () => window.removeEventListener('keydown', onKey);
   }, [hits, term, syncPopover]);
 
-  if (!connection || !sessionChecked || !splashDone) {
+  // The splash owns the whole cold start now — the minimum hold, the boot
+  // itself, and anything that went wrong with it. There is no second
+  // "Starting…" screen behind it to get stranded on.
+  if (!splashDone || !connection || !sessionChecked || bootStep < BOOT_STEPS.length || bootError) {
     return (
-      <>
-        {!splashDone && <Splash wordmark={t('app.name')} onDone={() => setSplashDone(true)} />}
-        {(!connection || !sessionChecked) && (
-          <div style={{ padding: 'var(--s-40)', color: 'var(--fg-secondary)' }}>{t('shell.starting')}</div>
-        )}
-      </>
+      <Splash
+        wordmark={t('app.name')}
+        progress={bootStep / BOOT_STEPS.length}
+        label={t(`splash.step.${BOOT_STEPS[bootStep] ?? 'ready'}`)}
+        error={bootError}
+        retryLabel={t('action.retryNow')}
+        onRetry={() => setBootAttempt((attempt) => attempt + 1)}
+        onDone={markSplashDone}
+      />
     );
   }
 
@@ -478,6 +568,7 @@ function OfficePanel() {
       <span className="ob-mono" style={{ fontSize: '10.5px', color: 'var(--fg-tertiary)' }}>
         {t('footer.version')}
       </span>
+      <Clock />
     </>
   );
 
