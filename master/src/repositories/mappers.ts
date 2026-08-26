@@ -34,6 +34,7 @@ import type {
   Tenant,
   TimelineEntry,
   User,
+  UserAvatar,
 } from '@orderbook/shared';
 
 export function toNumber(value: unknown): number | null {
@@ -158,6 +159,26 @@ export function mapRole(row: Row): Role {
 }
 
 /**
+ * The avatar columns, or null when this person has not set a picture.
+ *
+ * Keyed on `avatar_id` alone: the other four columns are written in the same
+ * statement, so a row with an id and nothing else would be a torn write, not a
+ * state worth rendering.
+ */
+function mapUserAvatar(row: Row): UserAvatar | null {
+  const id = row.avatar_id as string | null;
+  if (!id) return null;
+
+  return {
+    id,
+    blurhash: String(row.avatar_blurhash ?? ''),
+    size: Number(row.avatar_size ?? 0),
+    byteSize: Number(row.avatar_byte_size ?? 0),
+    uploadedAt: toRequiredIso(row.avatar_uploaded_at),
+  };
+}
+
+/**
  * Row to user, with `password_hash` structurally impossible to carry through:
  * it is destructured away here and the `User` type does not declare it, so a
  * later caller cannot even ask for it (docs/ROLES_AND_USERS.md §12).
@@ -175,6 +196,7 @@ export function mapUser(row: Row): User {
     roleTier: (safe.role_tier as User['roleTier']) ?? 'office',
     isActive: Boolean(safe.is_active),
     lastSignInAt: toIso(safe.last_sign_in_at),
+    avatar: mapUserAvatar(safe),
     deletedAt: toIso(safe.deleted_at),
     createdAt: toRequiredIso(safe.created_at),
     updatedAt: toRequiredIso(safe.updated_at),

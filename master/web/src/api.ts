@@ -387,6 +387,16 @@ export const api = {
     post<OneTimeSecret>(`/api/access/users/${id}/reset-password`, password ? { password } : {}),
   changeOwnPassword: (input: ChangeOwnPasswordInput) => post<void>('/api/access/me/password', input),
 
+  /** Sent as-is; the Master squares and resizes it. Your own always; somebody
+   *  else's needs `users.manage`. */
+  uploadAvatar: (userId: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return requestForm<User>(`/api/access/users/${userId}/avatar`, form);
+  },
+  removeAvatar: (userId: string) =>
+    request<User>(`/api/access/users/${userId}/avatar`, { method: 'DELETE' }),
+
   conflicts: (includeResolved = false) =>
     request<SyncConflict[]>(`/api/conflicts${includeResolved ? '?includeResolved=true' : ''}`),
   resolveConflict: (id: number, action: 'keepWinner' | 'restoreLoser') =>

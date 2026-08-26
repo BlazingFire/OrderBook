@@ -365,4 +365,10 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'count.leads.other': '{count} लीड',
   'count.rows.one': '{count} पंक्ति',
   'count.rows.other': '{count} पंक्तियाँ',
+  // TODO(i18n-hi)
+  'validation.avatar.fileRequired': "Choose a picture",
+  // TODO(i18n-hi)
+  'validation.avatar.tooLarge': "A profile picture must be 5 MB or smaller",
+  // TODO(i18n-hi)
+  'validation.avatar.unreadable': "That file could not be read as a picture",
 };

@@ -81,6 +81,33 @@ export interface Role {
  * and the type not declaring it means a future caller cannot even ask
  * (docs/ROLES_AND_USERS.md §12).
  */
+/**
+ * A person's profile picture, normalised to a square on upload.
+ *
+ * Square because every place it appears is a circle or a rounded square of a
+ * fixed size — a roster row, a dialog header, the status footer — and cropping
+ * per-render would mean four different crops of the same face.
+ */
+export interface UserAvatar {
+  /** Directory key for the stored variants; minted per upload, never reused. */
+  id: Uuid;
+  /** Colour placeholder painted before any variant has loaded. */
+  blurhash: string;
+  /** Edge length of the stored `full` variant, in pixels. Square, so one number. */
+  size: number;
+  byteSize: number;
+  uploadedAt: IsoTimestamp;
+}
+
+export const AVATAR_VARIANTS = ['full', 'thumb', 'micro'] as const;
+export type AvatarVariant = (typeof AVATAR_VARIANTS)[number];
+
+/** The longest edge kept. A face on a shop-floor screen never needs more. */
+export const AVATAR_LONG_EDGE = 1080;
+
+/** Refused above this, before any decode — a phone photo clears it comfortably. */
+export const MAX_AVATAR_SOURCE_BYTES = 5 * 1024 * 1024;
+
 export interface User {
   id: RecordId;
   tenantId: Uuid;
@@ -92,6 +119,7 @@ export interface User {
   /** Deactivation. Distinct from deletion: history and records are untouched. */
   isActive: boolean;
   lastSignInAt: IsoTimestamp | null;
+  avatar: UserAvatar | null;
   deletedAt: IsoTimestamp | null;
   createdAt: IsoTimestamp;
   updatedAt: IsoTimestamp;

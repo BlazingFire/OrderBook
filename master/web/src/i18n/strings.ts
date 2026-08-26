@@ -233,6 +233,17 @@ const en: Record<string, string> = {
   'access.users.colStatus': 'Status',
   'access.users.colLastSignIn': 'Last sign-in',
   'access.users.colId': 'ID',
+
+  // Profile pictures.
+  'avatar.section': 'Profile picture',
+  'avatar.choose': 'Choose a picture',
+  'avatar.change': 'Change picture',
+  'avatar.remove': 'Remove',
+  'avatar.hint': 'Squared and resized to 1080 px on save. JPEG, PNG or WebP, up to 5 MB.',
+  'avatar.error.notAnImage': 'That file is not a picture.',
+  'avatar.error.tooLarge': 'A profile picture must be 5 MB or smaller.',
+  'avatar.error.uploadFailed': 'Could not save the picture',
+  'avatar.error.removeFailed': 'Could not remove the picture',
   'access.users.open': 'Open',
   'access.users.detail.identity': 'Identity',
   'access.users.detail.access': 'Access',

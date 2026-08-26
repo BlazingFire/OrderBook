@@ -39,6 +39,7 @@ import { ReportsScreen } from './screens/ReportsScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { SignInScreen } from './screens/SignInScreen';
 import { AppShell, type NavGroup, type NavItem } from './ui/AppShell';
+import { Avatar } from './ui/Avatar';
 import { Clock } from './ui/Clock';
 import { FilterBarOutlet, FilterBarProvider } from './ui/FilterBarSlot';
 import { SaveShortcutProvider } from './ui/SaveShortcutSlot';
@@ -438,7 +439,10 @@ function MasterPanel() {
         {syncLabel}
       </button>
       <span style={{ flex: 1 }} />
-      <span>{t('footer.signedInAs', { name: user.username, role: user.roleName })}</span>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-6)' }}>
+        <Avatar name={user.displayName} avatar={user.avatar} size="xs" />
+        {t('footer.signedInAs', { name: user.username, role: user.roleName })}
+      </span>
       <a href="#/gallery" onClick={() => setRoute('gallery')} style={{ color: 'var(--fg-tertiary)' }}>
         {t('footer.designSystem')}
       </a>

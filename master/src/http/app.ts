@@ -8,6 +8,7 @@ import { hasNetworkLink, listLanInterfaces } from '../lib/network.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { attachSession } from './middleware/require-auth.js';
 import { accessRoutes } from './routes/access.routes.js';
+import { avatarFilesRoutes, avatarRoutes } from './routes/avatar.routes.js';
 import { authRoutes } from './routes/auth.routes.js';
 import { dataRoutes } from './routes/data.routes.js';
 import { documentRoutes } from './routes/document.routes.js';
@@ -51,6 +52,8 @@ export function createApp(): Express {
   app.use('/api/documents', documentRoutes);
   app.use('/api/products/:productId/images', imagesRoutes);
   app.use('/api/images', imageFilesRoutes);
+  app.use('/api/access/users/:userId/avatar', avatarRoutes);
+  app.use('/api/avatars', avatarFilesRoutes);
   app.use('/api', dataRoutes);
 
   // There is deliberately **no** `express.static` mount for `config.uploadsDir`.

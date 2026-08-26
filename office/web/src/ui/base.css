@@ -217,6 +217,63 @@
   border-right: 1px solid var(--line);
 }
 
+/* ===========================================================================
+ * Avatars — a face, or initials tinted by a stable hash of the name so the
+ * same person is the same colour everywhere.
+ * ======================================================================== */
+
+.ob-avatar {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  overflow: hidden;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  user-select: none;
+  background: var(--bg-sunken);
+  color: var(--fg-secondary);
+  /* A hairline, so a light picture on a light surface still reads as a disc. */
+  box-shadow: inset 0 0 0 1px var(--swatch-ring);
+}
+
+.ob-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Six tints. Deliberately not the accent: a column of accent discs would
+ * compete with every real control on the screen. */
+.ob-avatar[data-tint='0'] { background: var(--glaze-05); color: var(--glaze-50); }
+.ob-avatar[data-tint='1'] { background: var(--kiln-green-05); color: var(--kiln-green); }
+.ob-avatar[data-tint='2'] { background: var(--kiln-amber-05); color: var(--kiln-amber); }
+.ob-avatar[data-tint='3'] { background: var(--kiln-red-05); color: var(--kiln-red); }
+.ob-avatar[data-tint='4'] { background: var(--bg-sunken); color: var(--fg-secondary); }
+.ob-avatar[data-tint='5'] { background: var(--accent-tint); color: var(--accent-hover); }
+
+.ob-avatarpicker {
+  display: flex;
+  align-items: center;
+  gap: var(--s-16);
+}
+
+.ob-avatarpicker-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+  min-width: 0;
+}
+
+/* The footer's own is smaller than anything else and sits on the status line. */
+.ob-footer .ob-avatar {
+  box-shadow: none;
+}
+
 /* Filter chip row */
 .ob-filterchip {
   display: inline-flex;

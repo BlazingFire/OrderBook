@@ -15,6 +15,8 @@ import type { OneTimeSecret, PermissionCatalogue, Role, RoleTier, User } from '@
 import { api, ApiError, type FieldDifference } from '../api';
 import { formatDateTime } from '../format';
 import { t } from '../i18n/strings';
+import { Avatar } from '../ui/Avatar';
+import { AvatarPicker } from '../ui/AvatarPicker';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { IdField, StatusPill } from '../ui/DataDisplay';
@@ -485,6 +487,12 @@ function UsersTab({
 
   const columns: DataTableColumn<User>[] = [
     {
+      key: 'avatar',
+      header: '',
+      width: '44px',
+      render: (user) => <Avatar name={user.displayName} avatar={user.avatar} size="sm" />,
+    },
+    {
       /*
        * One line, and only the name.
        *
@@ -566,6 +574,22 @@ function UsersTab({
   function renderUserDetail(user: User) {
     return (
       <div className="ob-detail">
+        <section className="ob-detail-section">
+          <div className="ob-eyebrow">{t('avatar.section')}</div>
+          <AvatarPicker
+            user={user}
+            // Your own face needs no permission; somebody else's is a roster
+            // edit. The server checks the same thing again either way.
+            canEdit={canManage || user.id === currentUserId}
+            onUpload={async (file) => {
+              await onRun(() => api.uploadAvatar(user.id, file), t('avatar.error.uploadFailed'));
+            }}
+            onRemove={async () => {
+              await onRun(() => api.removeAvatar(user.id), t('avatar.error.removeFailed'));
+            }}
+          />
+        </section>
+
         <section className="ob-detail-section">
           <div className="ob-eyebrow">{t('access.users.detail.identity')}</div>
           <dl className="ob-detail-grid">
@@ -799,7 +823,15 @@ function UsersTab({
         open={Boolean(openUser)}
         onClose={() => setOpenUserId(null)}
         size="md"
-        title={openUser?.displayName ?? ''}
+        title={
+          openUser && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-12)' }}>
+              <Avatar name={openUser.displayName} avatar={openUser.avatar} size="md" />
+              {openUser.displayName}
+            </span>
+          )
+        }
+        label={openUser?.displayName ?? ''}
         subtitle={
           openUser && (
             <>
