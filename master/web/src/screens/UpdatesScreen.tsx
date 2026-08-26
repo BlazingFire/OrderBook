@@ -7,10 +7,10 @@
  * something newer out there" but "which machines on this floor disagree with
  * this one" — which is answerable here, without walking to any of them.
  *
- * A panel reports its version in the socket handshake, so an offline panel
- * still shows the version it had when it was last seen. That is deliberately
- * not blanked: "offline, last seen on 0.1.0" is the answer somebody needs
- * before they walk over.
+ * A panel volunteers its version in the device report it sends over the socket
+ * it already holds, so an offline panel still shows the version it had when it
+ * was last seen. That is deliberately not blanked: "offline, last seen on
+ * 0.1.0" is the answer somebody needs before they walk over.
  */
 
 import type { OfficePanelWithPresence } from '@orderbook/shared';
@@ -25,8 +25,8 @@ import { EmptyState } from '../ui/States';
 export function UpdatesScreen({ panels }: { panels: OfficePanelWithPresence[] }) {
   const master = __APP_VERSION__;
   const live = panels.filter((panel) => panel.status !== 'revoked');
-  const behind = live.filter((panel) => panel.appVersion !== null && panel.appVersion !== master);
-  const unknown = live.filter((panel) => panel.appVersion === null);
+  const behind = live.filter((panel) => panel.device.appVersion !== null && panel.device.appVersion !== master);
+  const unknown = live.filter((panel) => panel.device.appVersion === null);
 
   const columns: DataTableColumn<OfficePanelWithPresence>[] = [
     {
@@ -46,12 +46,12 @@ export function UpdatesScreen({ panels }: { panels: OfficePanelWithPresence[] })
       header: t('updates.table.version'),
       width: '140px',
       render: (panel) =>
-        panel.appVersion === null ? (
+        panel.device.appVersion === null ? (
           <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
             {t('updates.unknown')}
           </span>
         ) : (
-          <span className="ob-mono">{panel.appVersion}</span>
+          <span className="ob-mono">{panel.device.appVersion}</span>
         ),
     },
     {
@@ -59,7 +59,7 @@ export function UpdatesScreen({ panels }: { panels: OfficePanelWithPresence[] })
       header: '',
       width: '160px',
       render: (panel) =>
-        panel.appVersion === null ? null : panel.appVersion === master ? (
+        panel.device.appVersion === null ? null : panel.device.appVersion === master ? (
           <StatusPill tone="ok">{t('updates.upToDate')}</StatusPill>
         ) : (
           <StatusPill tone="offline">{t('updates.behind')}</StatusPill>

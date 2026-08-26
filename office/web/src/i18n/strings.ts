@@ -90,6 +90,12 @@ const en: Record<string, string> = {
   'splash.step.ready': 'Ready',
   'splash.error.unreachable': 'Could not reach the server. It may still be starting up.',
   'splash.error.timeout': 'The server did not answer in time.',
+  'shell.starting': 'Starting…',
+  'startup.waiting.title': 'Waiting for this PC’s server',
+  'startup.waiting.body':
+    'The panel is still starting up. On a first run it spends a little while building its database — this screen clears itself as soon as it is ready.',
+  'startup.waiting.slow':
+    'Still no answer. Check the server window that opened alongside this one for an error, and make sure nothing else is using its port.',
   'shell.noModules':
     "Your role does not include access to any of this panel's screens. Ask an administrator if you think that is wrong.",
   'shell.waitingFirstSync':

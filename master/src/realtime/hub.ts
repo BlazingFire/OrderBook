@@ -15,6 +15,7 @@ import {
   ROOM_OFFICE_PANELS,
   type ClientToServerEvents,
   type CommandAck,
+  type CommandResult,
   type ServerToClientEvents,
   type SocketAuthPayload,
   type SocketData,
@@ -24,6 +25,7 @@ import type { ActorContext } from '../domain/actor.js';
 import { MAX_SOURCE_BYTES } from '../domain/images.js';
 import { AppError, ForbiddenError, toErrorMessage } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
+import { setPanelLink, type PanelRequest } from './panel-link.js';
 import { permissionSetForRole } from '../repositories/role.repository.js';
 import * as pipelineRepo from '../repositories/pipeline.repository.js';
 import * as authService from '../services/auth.service.js';
@@ -53,6 +55,21 @@ const log = createLogger('realtime');
 
 type PanelSocket = Socket<ClientToServerEvents, ServerToClientEvents, never, SocketData>;
 
+/**
+ * Live Office Panel sockets by panel id.
+ *
+ * Kept beside the `office-panels` room rather than as a room-per-panel: the
+ * administration path has to *await an acknowledgement* from one specific
+ * panel, and `fetchSockets()` hands back remote-socket handles that cannot
+ * carry one. A panel that reconnects replaces its entry, and `disconnect`
+ * removes it only when the socket leaving is the one on file — otherwise a
+ * slow teardown of the old socket would evict the new one.
+ */
+const panelSockets = new Map<string, PanelSocket>();
+
+/** How long the Master waits for a panel to answer an administrative request. */
+const PANEL_REQUEST_TIMEOUT_MS = 20_000;
+
 export interface RealtimeHub {
   io: Server<ClientToServerEvents, ServerToClientEvents, never, SocketData>;
   stop(): Promise<void>;
@@ -81,6 +98,28 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
 
   io.on('connection', (socket) => {
     void handleConnection(io, socket as PanelSocket);
+  });
+
+  // Panel administration runs the other way to everything else here: the
+  // Master asks a panel to do something. `panel-link.ts` is the seam that lets
+  // `panel.service.ts` do that without importing this file back — see its
+  // header. Registered on creation, cleared on `stop()`, so a service holding
+  // it can always tell a closed hub from an unreachable panel.
+  setPanelLink({
+    isConnected: (panelId) => panelSockets.has(panelId),
+    request: (panelId, event, payload) => requestFromPanel(panelSockets.get(panelId), event, payload),
+    disconnect: (panelId) => {
+      const socket = panelSockets.get(panelId);
+      if (!socket) return false;
+      socket.disconnect(true);
+      return true;
+    },
+    notify: (panelId, event) => {
+      const socket = panelSockets.get(panelId);
+      if (!socket) return false;
+      (socket.emit as (name: string) => void)(event);
+      return true;
+    },
   });
 
   const unsubscribeChanges = onChange((event) => {
@@ -125,6 +164,8 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
     stop: async () => {
       unsubscribeChanges();
       unsubscribeConflicts();
+      setPanelLink(null);
+      panelSockets.clear();
       await io.close();
     },
   };
@@ -150,7 +191,7 @@ async function authenticate(socket: PanelSocket): Promise<void> {
   const auth = socket.handshake.auth as SocketAuthPayload | undefined;
 
   if (auth?.kind === 'office-panel') {
-    const panel = await panelService.authenticatePanel(auth.panelId, auth.panelSecret, auth.appVersion);
+    const panel = await panelService.authenticatePanel(auth.panelId, auth.panelSecret);
     socket.data.kind = 'office-panel';
     socket.data.panelId = panel.id;
     socket.data.tenantId = panel.tenantId;
@@ -190,6 +231,7 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
   if (!panelId) return;
 
   await socket.join(ROOM_OFFICE_PANELS);
+  panelSockets.set(panelId, socket);
   await panelService.markPanelConnected(panelId, remoteAddress(socket));
   log.info(`Office panel connected: ${panelId}`);
   await broadcastPanels(io);
@@ -215,6 +257,10 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
 
   socket.on('disconnect', () => {
     void (async () => {
+      // Only if this socket is still the one on file: a panel that reconnected
+      // before its old socket finished tearing down has already replaced the
+      // entry, and evicting it here would make a live panel look offline.
+      if (panelSockets.get(panelId) === socket) panelSockets.delete(panelId);
       await panelService.markPanelDisconnected(panelId);
       log.info(`Office panel disconnected: ${panelId}`);
       await broadcastPanels(io);
@@ -234,6 +280,17 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
 function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorContext>): void {
   const run = <T>(ack: CommandAck<T>, operation: (actor: ActorContext) => Promise<T>): void =>
     respond(ack, async () => operation(await actorFor()));
+
+  // Not `run`: this is the panel describing *itself*, so it needs no actor and
+  // no permission — a panel may always say what it is. Everything it reports is
+  // about its own machine and nothing else's.
+  socket.on('panel:report', (report, ack) =>
+    respond(ack, async () => {
+      const panelId = socket.data.panelId;
+      if (panelId) await panelService.recordPanelReport(panelId, report);
+      return null;
+    }),
+  );
 
   socket.on('sync:request', (ack) => run(ack, (actor) => buildSnapshot(actor)));
   socket.on('sync:push', (request, ack) =>
@@ -701,6 +758,33 @@ async function notifyPanelRevoked(io: RealtimeHub['io'], panelId: string): Promi
   for (const socket of await io.in(ROOM_OFFICE_PANELS).fetchSockets()) {
     if (socket.data.panelId === panelId) socket.emit('panel:revoked');
   }
+}
+
+/**
+ * Send one request to a panel and unwrap its acknowledgement.
+ *
+ * Every failure mode is turned into a thrown `Error` with a usable message,
+ * because `panel.service.ts` is what decides how each reads on screen and it
+ * cannot decide from a silence. The timeout matters: without one, a panel whose
+ * process is wedged (rather than disconnected) would leave the administrator's
+ * request hanging until the HTTP client gave up.
+ */
+async function requestFromPanel<T>(
+  socket: PanelSocket | undefined,
+  event: PanelRequest,
+  payload: unknown,
+): Promise<T> {
+  if (!socket) throw new Error('That office panel is not connected');
+
+  const args = payload === undefined ? [] : [payload];
+  const result = (await (
+    socket.timeout(PANEL_REQUEST_TIMEOUT_MS) as unknown as {
+      emitWithAck: (name: string, ...rest: unknown[]) => Promise<CommandResult<T>>;
+    }
+  ).emitWithAck(event, ...args)) as CommandResult<T>;
+
+  if (!result?.ok) throw new Error(result?.error || 'That office panel refused');
+  return result.data;
 }
 
 function remoteAddress(socket: PanelSocket): string | null {

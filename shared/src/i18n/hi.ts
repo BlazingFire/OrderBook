@@ -191,6 +191,13 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.panel.setupIncomplete': 'इस मास्टर पैनल का पहली बार का सेटअप पूरा नहीं हुआ है',
   'validation.panel.nameEmpty': 'पैनल का नाम खाली नहीं हो सकता',
   'validation.panel.nameRequired': 'पैनल का नाम आवश्यक है',
+  'validation.panel.notActive': 'यह पैनल सक्रिय नहीं है, इसलिए इसका प्रबंधन नहीं किया जा सकता',
+  'validation.panel.notConnected': 'वह ऑफिस पैनल ऑफ़लाइन है — जब वह जुड़ा हो तब कोशिश करें',
+  'validation.panel.noAnswer': 'उस ऑफिस पैनल ने कोई उत्तर नहीं दिया',
+  'validation.panel.storagePathRequired': 'उस पीसी पर फ़ोल्डर का पथ भरें',
+  'validation.panel.storagePathRelative': 'ड्राइव या रूट से शुरू होने वाला पूरा पथ भरें',
+  'validation.panel.notesTooLong': 'टिप्पणी {max} अक्षरों से कम रखें',
+  'validation.panel.fieldInvalid': 'ऑफिस पैनल के लिए वह मान मान्य नहीं है',
   'validation.password.tooShort': 'कम से कम 8 अक्षरों का पासवर्ड चुनें',
   'validation.password.bothRequired': 'अपना मौजूदा और नया पासवर्ड दर्ज करें',
   'validation.party.nameRequired': 'पार्टी का नाम आवश्यक है',
@@ -371,4 +378,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.avatar.tooLarge': "A profile picture must be 5 MB or smaller",
   // TODO(i18n-hi)
   'validation.avatar.unreadable': "That file could not be read as a picture",
+  // TODO(i18n-hi)
+  'activity.user.avatar_set': "{actor} set a profile picture for {name}",
+  // TODO(i18n-hi)
+  'activity.user.avatar_cleared': "{actor} removed the profile picture for {name}",
 };

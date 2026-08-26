@@ -15,7 +15,7 @@ import path from 'node:path';
 
 import { initialHlcState, observeHlc, tickHlc, type HlcState } from '@orderbook/shared';
 
-import { config } from '../config/index.js';
+import { paths } from '../config/paths.js';
 import { deviceCode } from './device.js';
 
 const PERSIST_DEBOUNCE_MS = 1000;
@@ -66,7 +66,7 @@ async function load(): Promise<HlcState> {
   const code = await deviceCode();
 
   try {
-    const raw = await fs.readFile(config.clockFile, 'utf8');
+    const raw = await fs.readFile(paths().clockFile, 'utf8');
     const stored = JSON.parse(raw) as HlcState;
 
     // The device code can change at pairing; the clock's progress should not be
@@ -92,8 +92,8 @@ function schedulePersist(): void {
 }
 
 async function persist(value: HlcState): Promise<void> {
-  await fs.mkdir(path.dirname(config.clockFile), { recursive: true });
-  await fs.writeFile(config.clockFile, JSON.stringify(value, null, 2), { mode: 0o600 });
+  await fs.mkdir(path.dirname(paths().clockFile), { recursive: true });
+  await fs.writeFile(paths().clockFile, JSON.stringify(value, null, 2), { mode: 0o600 });
 }
 
 /** Test seam. */

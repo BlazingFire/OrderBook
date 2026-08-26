@@ -237,6 +237,38 @@ export async function listEntries(
   return { entries: page.map(mapLogEntry), hasMore };
 }
 
+/**
+ * Everything the trail holds about one Office Panel, both directions.
+ *
+ * A panel appears in two roles and an administrator wants to see both on one
+ * screen: as the **actor** on work raised at that desk, and as the **subject**
+ * of what somebody did to it from the Master — paired, renamed, secret
+ * reissued, revoked. `listEntries` can filter on either, never on their union,
+ * and running it twice would return two pages that cannot be merged without
+ * inventing a cursor. So this is its own query.
+ *
+ * Deliberately unpaged: it answers "what has this panel been up to lately",
+ * and the Logs screen is where an unbounded search belongs.
+ */
+export async function listPanelActivity(
+  tenantId: string,
+  panelId: string,
+  limit: number,
+  runner: Runner = db(),
+): Promise<ActivityLogEntry[]> {
+  const { rows } = await runner.raw<{ rows: LogRow[] }>(
+    `SELECT id, sequence, tenant_id, entity_type, entity_id, action, actor_type, actor_id, actor_name, details, created_at, hash
+       FROM activity_log
+      WHERE tenant_id = ?
+        AND ((actor_type = 'office_panel' AND actor_id = ?) OR (entity_type = 'office_panel' AND entity_id = ?))
+      ORDER BY id DESC
+      LIMIT ?`,
+    [tenantId, panelId, panelId, limit],
+  );
+
+  return rows.map(mapLogEntry);
+}
+
 /** Populates the filter dropdowns. `action` is free-form TEXT, so this is the only way to enumerate values. */
 export async function listFacets(
   tenantId: string,

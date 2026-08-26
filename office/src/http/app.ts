@@ -28,6 +28,7 @@ import {
 } from '@orderbook/shared';
 
 import { config } from '../config/index.js';
+import { paths } from '../config/paths.js';
 import { createLogger } from '../lib/logger.js';
 import { hasNetworkLink, listLanInterfaces } from '../lib/network.js';
 import { MasterCommandError, masterConnection } from '../realtime/master-connection.js';
@@ -307,7 +308,7 @@ export function createApp(): Express {
       return;
     }
 
-    const localPath = path.join(config.imagesDir, imageId, `${variant}.webp`);
+    const localPath = path.join(paths().imagesDir, imageId, `${variant}.webp`);
     if (existsSync(localPath)) {
       res.set('Cache-Control', 'private, max-age=31536000, immutable');
       res.type('image/webp');

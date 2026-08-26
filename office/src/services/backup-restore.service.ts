@@ -18,7 +18,7 @@ import path from 'node:path';
 
 import type { BackupManifest, BackupRestorePreview } from '@orderbook/shared';
 
-import { config } from '../config/index.js';
+import { paths } from '../config/paths.js';
 import { assertImportableFormatVersion, summarizeManifest } from '../domain/backup.js';
 import { decryptBackup, readManifest, verifyContentHash, BackupFileError } from '../lib/backup-crypto.js';
 import { clearCredentials, loadCredentials } from './credentials.store.js';
@@ -29,14 +29,18 @@ import { resetLocalStore } from '../sync/local-store.js';
 import { resetUserStore } from './user-store.js';
 import { resetSignInAttempts } from './sign-in-attempts.store.js';
 
-const FILE_PATHS: Record<string, string> = {
-  'device.json': config.deviceFile,
-  'clock.json': config.clockFile,
-  'outbox.json': config.outboxFile,
-  'snapshot.json': config.snapshotFile,
-  'users.json': config.usersFile,
-  'sign-in-attempts.json': config.signInAttemptsFile,
-};
+/** Read through `paths()` on each restore — the data folder can move at runtime. */
+function filePaths(): Record<string, string> {
+  const current = paths();
+  return {
+    'device.json': current.deviceFile,
+    'clock.json': current.clockFile,
+    'outbox.json': current.outboxFile,
+    'snapshot.json': current.snapshotFile,
+    'users.json': current.usersFile,
+    'sign-in-attempts.json': current.signInAttemptsFile,
+  };
+}
 
 export class RestoreError extends Error {
   constructor(
@@ -111,7 +115,7 @@ export async function restoreBackup(file: Buffer, passphrase: string, confirmWip
     throw new RestoreError('backup_corrupt_file', 'This backup file is corrupt or incomplete');
   }
 
-  for (const [name, filePath] of Object.entries(FILE_PATHS)) {
+  for (const [name, filePath] of Object.entries(filePaths())) {
     const value = payload.files[name];
     if (value === undefined || value === null) {
       await fs.rm(filePath, { force: true });

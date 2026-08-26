@@ -1,4 +1,8 @@
-import type { OfficePanel, OfficePanelStatus } from '@orderbook/shared';
+import type {
+  OfficePanel,
+  OfficePanelReportInput,
+  OfficePanelStatus,
+} from '@orderbook/shared';
 
 import { db } from '../db/knex.js';
 import { mapOfficePanel } from './mappers.js';
@@ -46,15 +50,6 @@ export async function updatePanelStatus(
   return row ? mapOfficePanel(row) : null;
 }
 
-/** Written on connect, and only when it has changed — see the caller. */
-export async function updatePanelAppVersion(id: string, appVersion: string): Promise<OfficePanel | null> {
-  const [row] = await db()(TABLE)
-    .where({ id })
-    .update({ app_version: appVersion, updated_at: db().fn.now() })
-    .returning('*');
-  return row ? mapOfficePanel(row) : null;
-}
-
 export async function renamePanel(id: string, name: string): Promise<OfficePanel | null> {
   const [row] = await db()(TABLE)
     .where({ id })
@@ -67,6 +62,100 @@ export async function touchLastSeen(id: string, lanIp: string | null): Promise<v
   const patch: Record<string, unknown> = { last_seen_at: db().fn.now() };
   if (lanIp) patch.lan_ip = lanIp;
   await db()(TABLE).where({ id }).update(patch);
+}
+
+/**
+ * Store what a panel last said about its own machine.
+ *
+ * `device_reported_at` is stamped from the Master's clock, never from the
+ * payload: a panel whose PC has the wrong date must not be able to claim its
+ * figures are newer than they are, and every "as of" on the administration
+ * screen is read against the Master's own time.
+ */
+export async function updateDeviceReport(
+  id: string,
+  report: OfficePanelReportInput,
+): Promise<OfficePanel | null> {
+  const [row] = await db()(TABLE)
+    .where({ id })
+    .update({
+      hostname: report.hostname,
+      platform: report.platform,
+      os_version: report.osVersion,
+      app_version: report.appVersion,
+      node_version: report.nodeVersion,
+      data_dir: report.dataDir,
+      images_dir: report.imagesDir,
+      storage_bytes: report.storageBytes,
+      disk_free_bytes: report.diskFreeBytes,
+      disk_total_bytes: report.diskTotalBytes,
+      local_port: report.localPort,
+      panel_started_at: report.startedAt ? new Date(report.startedAt) : null,
+      device_reported_at: db().fn.now(),
+      updated_at: db().fn.now(),
+    })
+    .returning('*');
+  return row ? mapOfficePanel(row) : null;
+}
+
+/** Replaces the stored bcrypt hash. `secret_rotated_at` is what dates the change. */
+export async function updatePanelSecretHash(
+  id: string,
+  secretHash: string,
+): Promise<OfficePanel | null> {
+  const [row] = await db()(TABLE)
+    .where({ id })
+    .update({ secret_hash: secretHash, secret_rotated_at: db().fn.now(), updated_at: db().fn.now() })
+    .returning('*');
+  return row ? mapOfficePanel(row) : null;
+}
+
+export async function updatePanelNotes(id: string, notes: string | null): Promise<OfficePanel | null> {
+  const [row] = await db()(TABLE)
+    .where({ id })
+    .update({ notes, updated_at: db().fn.now() })
+    .returning('*');
+  return row ? mapOfficePanel(row) : null;
+}
+
+/** `null` returns the panel to the seeded Office role — see `permissionsForPanel`. */
+export async function assignPanelRole(id: string, roleId: string | null): Promise<OfficePanel | null> {
+  const [row] = await db()(TABLE)
+    .where({ id })
+    .update({ role_id: roleId, updated_at: db().fn.now() })
+    .returning('*');
+  return row ? mapOfficePanel(row) : null;
+}
+
+/**
+ * What this panel has actually raised, so a panel nobody uses is visible as
+ * such before somebody unplugs the wrong PC.
+ *
+ * Counts soft-deleted records too: they were still this panel's work, and
+ * excluding them would make a panel look idle because somebody tidied up.
+ */
+export async function countWorkFromPanel(
+  tenantId: string,
+  panelId: string,
+): Promise<{ leads: number; orders: number; lastActionAt: string | null }> {
+  const [leads, orders, lastAction] = await Promise.all([
+    db()('leads')
+      .where({ tenant_id: tenantId, source_panel_id: panelId })
+      .count<Array<{ count: string }>>('id as count'),
+    db()('orders')
+      .where({ tenant_id: tenantId, source_panel_id: panelId })
+      .count<Array<{ count: string }>>('id as count'),
+    db()('activity_log')
+      .where({ tenant_id: tenantId, actor_type: 'office_panel', actor_id: panelId })
+      .max<Array<{ max: Date | null }>>('created_at as max'),
+  ]);
+
+  const at = lastAction[0]?.max ?? null;
+  return {
+    leads: Number(leads[0]?.count ?? 0),
+    orders: Number(orders[0]?.count ?? 0),
+    lastActionAt: at ? new Date(at).toISOString() : null,
+  };
 }
 
 export async function countPanelsNamed(tenantId: string, prefix: string): Promise<number> {

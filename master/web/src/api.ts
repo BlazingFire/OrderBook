@@ -27,6 +27,9 @@ import type {
   MasterIdentity,
   MessageKey,
   MessageParams,
+  OfficePanel,
+  OfficePanelDetail,
+  OfficePanelUpdateInput,
   OfficePanelWithPresence,
   OptionListItem,
   OptionListItemInput,
@@ -34,6 +37,9 @@ import type {
   OptionListReorderInput,
   Order,
   Paginated,
+  PanelSecretRotation,
+  PanelStoragePathInput,
+  PanelStoragePathResult,
   Party,
   PartyInput,
   PartyProductVariant,
@@ -72,6 +78,20 @@ import type {
   UserInput,
   UserUpdateInput,
 } from '@orderbook/shared';
+
+/**
+ * What the Master says about its own startup, from `/api/health`.
+ *
+ * Mirrors `master/src/boot-status.ts`. Declared here rather than imported from
+ * `shared` because it is a fact about one process's boot, not part of the
+ * Master↔Office contract that package exists to hold.
+ */
+export interface BootStatus {
+  state: 'starting' | 'ready' | 'failed';
+  step: string;
+  message: string | null;
+  detail: string | null;
+}
 
 /** A field a stale save disagrees with the server about. */
 export interface FieldDifference {
@@ -200,6 +220,21 @@ export interface FirstRunCredentials {
 
 export const api = {
   setupStatus: () => request<{ setupComplete: boolean }>('/api/setup/status'),
+  /**
+   * Answered before the database exists, and again once it does — the one call
+   * that works while the Master is still starting or has failed to.
+   * Deliberately raw `fetch`: `request` throws on a non-OK response, and a
+   * 503 here is the answer, not a failure.
+   */
+  health: async (): Promise<BootStatus | null> => {
+    try {
+      const response = await fetch('/api/health', { credentials: 'same-origin' });
+      const body = (await response.json()) as { boot?: BootStatus } | null;
+      return body?.boot ?? null;
+    } catch {
+      return null;
+    }
+  },
   initialize: (companyName: string) => post<FirstRunCredentials>('/api/setup/initialize', { companyName }),
   identity: () => request<MasterIdentity>('/api/setup/identity'),
 
@@ -297,6 +332,22 @@ export const api = {
   revokePanel: (id: string) => post<void>(`/api/panels/${id}/revoke`),
   renamePanel: (id: string, name: string) =>
     request<void>(`/api/panels/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+
+  // --- One panel, administered (docs/UI_REDESIGN.md — Office Panels) --------
+
+  panel: (id: string) => request<OfficePanelDetail>(`/api/panels/${id}`),
+  /** Omitted fields are left alone; `notes: null` clears the note. */
+  updatePanel: (id: string, input: OfficePanelUpdateInput) =>
+    request<OfficePanel>(`/api/panels/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  /** Pulls a fresh account of the panel's machine instead of the last timed one. */
+  refreshPanel: (id: string) => post<OfficePanelDetail>(`/api/panels/${id}/refresh`),
+  /** The plaintext secret is in this response and nowhere else — there is no second chance. */
+  rotatePanelSecret: (id: string) => post<PanelSecretRotation>(`/api/panels/${id}/rotate-secret`),
+  setPanelStoragePath: (id: string, input: PanelStoragePathInput) =>
+    post<PanelStoragePathResult>(`/api/panels/${id}/storage-path`, input),
+  disconnectPanel: (id: string) => post<{ disconnected: boolean }>(`/api/panels/${id}/disconnect`),
+  panelActivity: (id: string, limit = 50) =>
+    request<{ entries: ActivityLogEntry[] }>(`/api/panels/${id}/activity?limit=${limit}`),
 
   parties: (search?: string) =>
     request<Paginated<Party>>(`/api/parties${search ? `?search=${encodeURIComponent(search)}` : ''}`),

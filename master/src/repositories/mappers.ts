@@ -17,6 +17,7 @@ import type {
   LineItem,
   LineItemQuantity,
   OfficePanel,
+  OfficePanelDevice,
   OptionListItem,
   Order,
   Party,
@@ -214,11 +215,39 @@ export function mapOfficePanel(row: Row): OfficePanel {
     lanIp: (row.lan_ip as string | null) ?? null,
     macAddress: (row.mac_address as string | null) ?? null,
     status: row.status as OfficePanel['status'],
-    appVersion: (row.app_version as string | null) ?? null,
+    notes: (row.notes as string | null) ?? null,
     pairedAt: toIso(row.paired_at),
     lastSeenAt: toIso(row.last_seen_at),
+    secretRotatedAt: toIso(row.secret_rotated_at),
     createdAt: toRequiredIso(row.created_at),
     updatedAt: toRequiredIso(row.updated_at),
+    device: mapOfficePanelDevice(row),
+  };
+}
+
+/**
+ * The panel's own account of the PC it runs on.
+ *
+ * `toNumber` rather than `toRequiredNumber` throughout: these are BIGINT
+ * columns that are genuinely NULL until the panel first reports, and a disk
+ * figure coerced to 0 would render as a full disk on every panel paired before
+ * this existed.
+ */
+export function mapOfficePanelDevice(row: Row): OfficePanelDevice {
+  return {
+    hostname: (row.hostname as string | null) ?? null,
+    platform: (row.platform as string | null) ?? null,
+    osVersion: (row.os_version as string | null) ?? null,
+    appVersion: (row.app_version as string | null) ?? null,
+    nodeVersion: (row.node_version as string | null) ?? null,
+    dataDir: (row.data_dir as string | null) ?? null,
+    imagesDir: (row.images_dir as string | null) ?? null,
+    storageBytes: toNumber(row.storage_bytes),
+    diskFreeBytes: toNumber(row.disk_free_bytes),
+    diskTotalBytes: toNumber(row.disk_total_bytes),
+    localPort: toNumber(row.local_port),
+    startedAt: toIso(row.panel_started_at),
+    reportedAt: toIso(row.device_reported_at),
   };
 }
 

@@ -19,6 +19,7 @@ import path from 'node:path';
 import { deviceCodeFromSeed, formatTemporaryId } from '@orderbook/shared';
 
 import { config } from '../config/index.js';
+import { paths } from '../config/paths.js';
 import { createLogger } from '../lib/logger.js';
 import { loadCredentials } from '../services/credentials.store.js';
 
@@ -74,7 +75,7 @@ async function load(): Promise<DeviceState> {
   if (cached) return cached;
 
   try {
-    const raw = await fs.readFile(config.deviceFile, 'utf8');
+    const raw = await fs.readFile(paths().deviceFile, 'utf8');
     cached = JSON.parse(raw) as DeviceState;
     return cached;
   } catch {
@@ -89,8 +90,8 @@ async function load(): Promise<DeviceState> {
 
 async function save(state: DeviceState): Promise<void> {
   cached = state;
-  await fs.mkdir(path.dirname(config.deviceFile), { recursive: true });
-  await fs.writeFile(config.deviceFile, JSON.stringify(state, null, 2), { mode: 0o600 });
+  await fs.mkdir(path.dirname(paths().deviceFile), { recursive: true });
+  await fs.writeFile(paths().deviceFile, JSON.stringify(state, null, 2), { mode: 0o600 });
 }
 
 /** Test seam: drops the in-memory cache so the next read hits disk. */

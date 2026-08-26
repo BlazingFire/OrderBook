@@ -16,7 +16,14 @@ import type {
   PageOrientation,
   PaperSize,
 } from './documents.js';
-import type { CustomFieldEntity, CustomFieldType, IsoDate, RecordId, Uuid } from './entities.js';
+import type {
+  CustomFieldEntity,
+  CustomFieldType,
+  IsoDate,
+  IsoTimestamp,
+  RecordId,
+  Uuid,
+} from './entities.js';
 import type { FieldListKey } from './fields.js';
 import type { RecycleBinEntityType } from './recycle-bin.js';
 
@@ -489,4 +496,78 @@ export interface DocumentTemplateQuery extends CursorQuery {
 export interface DocumentExportQuery extends CursorQuery {
   subjectKind?: DocumentSubjectKind;
   subjectId?: RecordId;
+}
+
+// --- Office Panel administration -------------------------------------------
+
+/**
+ * What an Office Panel volunteers about itself over the socket.
+ *
+ * Deliberately not `OfficePanelDevice`: `reportedAt` is stamped by the Master
+ * on receipt, because a panel with a wrong clock must not be able to claim its
+ * figures are newer than they are.
+ */
+export interface OfficePanelReportInput {
+  hostname: string;
+  platform: string;
+  osVersion: string;
+  appVersion: string;
+  nodeVersion: string;
+  dataDir: string;
+  imagesDir: string;
+  storageBytes: number | null;
+  diskFreeBytes: number | null;
+  diskTotalBytes: number | null;
+  localPort: number;
+  startedAt: IsoTimestamp;
+  /** Runtime figures, true only while this connection lasts. */
+  pendingMutations: number | null;
+  cachedImages: number | null;
+  lastSnapshotAt: IsoTimestamp | null;
+  signedInUsername: string | null;
+}
+
+/** The fields an administrator may edit on a paired panel. */
+export interface OfficePanelUpdateInput {
+  name?: string;
+  notes?: string | null;
+  /** `null` puts the panel back on the seeded Office role. */
+  roleId?: RecordId | null;
+}
+
+/** A request to move an Office Panel's data folder to another path on its own PC. */
+export interface PanelStoragePathInput {
+  /** Absolute path on the panel's machine. */
+  path: string;
+  /**
+   * Copy what is already there. Off means "start clean at the new path", which
+   * loses queued offline work — so the Master asks for it explicitly rather
+   * than inferring it.
+   */
+  moveExisting: boolean;
+}
+
+/** What the panel reports back after moving (or refusing to move) its data folder. */
+export interface PanelStoragePathResult {
+  dataDir: string;
+  previousDataDir: string;
+  filesMoved: number;
+  bytesMoved: number;
+  diskFreeBytes: number | null;
+}
+
+/**
+ * A reissued panel secret, shown to the operator exactly once.
+ *
+ * `delivered` is the whole point: a connected panel is handed the new secret
+ * over its live socket and simply carries on, while a panel that was switched
+ * off cannot be told — somebody has to walk to that PC and pair it again. The
+ * two outcomes need different advice on screen, so they travel as data.
+ */
+export interface PanelSecretRotation {
+  panelId: Uuid;
+  /** Plaintext, shown once and never stored — only its hash is kept. */
+  panelSecret: string;
+  delivered: boolean;
+  rotatedAt: IsoTimestamp;
 }
