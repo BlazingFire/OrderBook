@@ -136,6 +136,11 @@ From `docs/PROJECT_PLAN.md` §12:
   how conflicts should be resolved (last-write-wins is the current default
   assumption, not yet confirmed).
 - Desired app name/branding (currently just "OrderBook" per the repo name).
+- **How a new build should actually reach the machines.** Both panels now have
+  an App update screen that reports versions, but nothing installs anything:
+  the copy says builds are installed by hand, Master first. Making it real
+  means deciding a package format and how a panel applies one and restarts —
+  which is why it was not guessed at. See the App update Status entry.
 
 ## Repo layout
 
@@ -882,10 +887,10 @@ working tree for what actually exists if this section reads stale.
       the same reason Stages 4–5 and 8 skipped it: other sessions were still
       active on this repo and share the integration cluster.
     - **A pre-existing, unrelated item found in passing:** `office/web/src/ui/`
-      is mid-work from the concurrent UI-redesign session (see
-      `docs/UI_REDESIGN.md`'s "Phase 1 landing notes") and does not fully
-      typecheck (`Splash.tsx` references a missing `./logoCells` module). Not
-      touched by this batch — it belongs to that other session's scope.
+      was mid-work from the concurrent UI-redesign session and did not fully
+      typecheck (`Splash.tsx` referenced a missing `./logoCells` module).
+      **Resolved since** — `logoCells.ts` exists in both panels and every
+      workspace typechecks.
 
 - **Conservative dead-code sweep: done** (2026-08-25). An unused-dependency
   audit across all five workspaces found nothing to remove — every declared
@@ -1317,6 +1322,92 @@ working tree for what actually exists if this section reads stale.
     is what every session's presence rail counts, the detail carries the panel's
     effective permission set and the layout of its disk.
 
+- **UI redesign, frontend: substantially built** (2026-08-26). What
+  `docs/UI_REDESIGN.md` had planned is now largely real in `master/web`, and
+  mirrored into `office/web` where the two share a component. The design system
+  lives in `ui/tokens.css` + `ui/base.css`; both panels import the same file
+  set. Three things in it were settled by the owner rejecting the alternatives,
+  so do not re-decide them without asking:
+
+  - **Record detail opens in a centred dialog.** The spec's §8 right-hand
+    `Drawer` at 520px was rejected for covering the list. It was rebuilt as a
+    band expanding inline under its own row; that was rejected too, as reading
+    like a drop-down. It is now a centred `Modal` over the list — Office
+    panels, Roles & Users, stock lines, activity log entries and document
+    templates all use it. `Modal` grew three widths (440/600/840), a `subtitle`
+    for the line that keeps a reader placed, and a `label` for when the title
+    is markup rather than a string. Two rules from Apple's HIG shape the rest
+    and are worth keeping: a dismiss control the reader can *see* (every detail
+    dialog ends in Done, not just Esc and the scrim), and never two dialogs at
+    once — Delete, Remove, Deactivate and the stock-movement forms all close
+    the detail before raising their own.
+  - **An operation too large for a dialog becomes its own screen** and says so
+    in the sidebar. The role editor — a ten-by-six permission matrix plus two
+    capability groups — takes the content area, and while it is open an entry
+    for it nests under its module (`ui/SubNavSlot.tsx`, `NavItem.children`).
+    Because the sidebar is then an exit from an open editor, an editor holding
+    an unsaved draft returns `false` from its `onExit` so navigation stops
+    rather than silently discarding it.
+  - **A screen may publish one control into the topbar's trailing cluster**
+    (`ui/TopbarSlot.tsx`), which is where the Users/Roles switcher now lives.
+    Same publish-don't-prop-drill shape as `FilterBarSlot`, including its split
+    of setter and value into two contexts — a screen that rebuilds its control
+    every render would otherwise re-render itself by publishing.
+
+  Also landed in this pass:
+
+  - **A determinate splash.** Both panels could sit on "Starting…" forever: the
+    Master awaited `api.setupStatus()` with no catch, and the Office Panel's
+    `refreshConnection` caught its failure and set `connection` to null, which
+    the render gate only ever tested for. Boot now runs as three reported steps
+    behind a progress bar, each with a ten-second ceiling, and a failed step
+    shows the reason and a Retry that re-runs it in place. Note `main` fixed
+    the same symptom differently and better on the server side — see the
+    `BootStatus` gap below.
+  - **An error boundary around both apps** (`ui/ErrorBoundary.tsx`). React
+    unmounts the whole tree when a component throws, so one bad property took
+    the panel to an empty dark window with no message — which on a shop floor
+    is indistinguishable from the software being broken beyond use. It now
+    names what threw and offers Reload and Copy details.
+  - **Profile pictures** (`avatar.service.ts`, `20260312000000_user_avatars`).
+    Squared and resized to 1080px on upload, refused above 5MB before any
+    decode, three stored variants so a 24px roster circle never fetches the
+    1080px file. Your own needs no permission — it is your face; somebody
+    else's is a roster edit needing `users.manage`, which is why the check sits
+    in the service next to the record rather than in a route gate.
+  - **Setting a password, since none can be shown.** The owner asked for every
+    user's current password to be visible; it cannot be, and not as policy —
+    `password_hash` is a one-way scrypt digest, the repository strips it, and
+    the type declares no field for it. The server already accepted a chosen
+    password on `resetPassword` and only the web client never sent one, so
+    Reset password now offers "type one" alongside "generate one", and either
+    lands in the existing one-time dialog. **Do not add plaintext or
+    reversibly-encrypted password storage**: `.obbackup` exports carry the
+    database onto USB sticks, so every stored password would travel with them.
+  - **App update screens** in both panels, listing the Master's version and
+    every panel's, sourced from `main`'s `panel:report` device record. Neither
+    has a "check for updates" button and neither should — this network has no
+    internet by design.
+  - **A single source of truth for the version.** It used to be a literal
+    typed into both `i18n/strings.ts` files. Servers read `appVersion()`
+    (`master/src/lib/app-version.ts`), bundles get `__APP_VERSION__` injected by
+    Vite from the package that built them.
+  - **One accessibility fix worth keeping.** `--fg-tertiary` resolved to
+    `#6e7c84` — 4.30:1 on white, 4.01:1 on the sunken band, both under the
+    4.5:1 minimum for text below 18pt. It carries every eyebrow, table header
+    and field label in the light theme, so this was failing app-wide. Now
+    `#5d6b73`: 5.50:1 and 4.64:1.
+
+- **`main` and `dev` reconciled** (2026-08-26). Two sessions had rebuilt
+  overlapping parts of this app in parallel and the branches had diverged —
+  `main` carried the panel administration module, relocatable panel storage and
+  the early-port Master; `dev` carried everything in the entry above. Merged at
+  `cb92a02`, with `dev`'s UI winning where the two genuinely competed, and both
+  sides' additions kept where they only added. **The owner's previous
+  "everything lands on dev, leave main alone" policy is therefore no longer in
+  force** — the two branches are identical and should be kept in step, or the
+  policy restated deliberately.
+
 ### Still to do in Phase 2
 
 The user was asked to prioritise and chose inventory first. Remaining, roughly
@@ -1334,8 +1425,12 @@ in the order the plan lists them:
   §4 lists every place the supplied design disagrees with the real product
   (e.g. it assumes one unified shell, the real product is two separate apps),
   §5 maps every mockup to the real screen it restyles, §7–8 are the new `ui/`
-  workspace plan and the phased build order. **Planning only so far — no code
-  written yet.**
+  workspace plan and the phased build order. **No longer planning-only** — see
+  the "UI redesign, frontend" Status entry above for what is built, and for the
+  three interaction decisions the owner settled by rejecting the alternatives.
+  The shared `ui/` workspace §7 proposes still does not exist: `master/web/src/ui`
+  and `office/web/src/ui` are kept in step by copying files between them, which
+  is why a change to one almost always needs the same change to the other.
 
   The **backend** half now has its own implementation-ready spec at
   `docs/backend-modules/` — see the Status entry above. **All nine backend
@@ -1368,7 +1463,21 @@ in the order the plan lists them:
   screen), so there is nowhere on the Master's own UI to upload/view a photo
   yet — see the image pipeline Status entry below for the rest of what did and
   didn't ship.
-- No frontend component tests; UI verification is browser-driven.
+- No frontend component tests; UI verification is browser-driven. There is no
+  jsdom or React testing setup at all, and `vitest.config.ts` only collects
+  `{shared,master,office}/tests/**`, so adding one is a config change and a new
+  dependency rather than just writing a test file.
+- **`BootStatus` has a server but no screen.** `main`'s early-port work has the
+  Master open its HTTP port before anything that can fail and report its own
+  startup state, which is a better answer than the client-side splash for "the
+  server never came up at all". The merge kept `dev`'s splash, so nothing reads
+  `BootStatus` yet — wiring it in would let the panel distinguish "still
+  starting, be patient" from "failed", which the splash currently cannot.
+- **Profile pictures are Master-only.** `office/web` has the `Avatar` component
+  but no picker and no way to display one: `PanelSession` carries no avatar
+  field, and the office server has no `/uploads/avatars/...` route to mirror
+  the local-cache-then-fetch-from-Master path its product images already use.
+  Both are small and follow existing patterns.
 - **Bundled PostgreSQL is not reliable yet.** The `@embedded-postgres/*`
   packages (pinned `17.10.0-beta.17`; the binaries are official PostgreSQL
   17.10 builds) download ~60–100MB in a postinstall script, and npm treats
@@ -1393,6 +1502,19 @@ in the order the plan lists them:
   dependency was once "verified working" yet absent from the lockfile. Declare
   dependencies by editing the workspace `package.json` directly, then run
   `npm install`, and check the lockfile actually changed.
+- **Two branches can mint the same migration timestamp.** `main` and `dev`
+  both created a `20260312000000_*` migration, and both added an `app_version`
+  column to `office_panels`. Knex keys migrations by *name*, so both would have
+  run, and the second would have failed with "column already exists" on every
+  installation that had run the first. The merge deleted the duplicate. Before
+  adding a migration, check what the other branch has claimed — the timestamp
+  is not the collision, the columns are.
+- **`master/tests/i18n-tokens.test.ts` is load-bearing.** It reads service
+  source and asserts every literal `(entityType, action)` pair given to
+  `recordActivity` has an `activity.<entity>.<action>` entry in
+  `shared/src/i18n/en.ts`. A new audited action silently renders as its raw key
+  in the Logs screen without it; this caught exactly that for the avatar
+  service. Run `npm test` after adding one.
 - **The frontends are build artefacts too.** `master/web/dist` and
   `office/web/dist` are gitignored; a server started without them serves the
   "UI not built" page. The `pre*` scripts handle this — same rule as
@@ -1465,13 +1587,17 @@ in the order the plan lists them:
 
 ## Working agreements for this repo
 
-- **Branching:** all work lands on `dev`. The long-standing default is that
-  `main` is never pushed to directly and reaches `main` only through a pull
-  request — `main` sits *behind* `dev` by design. On 2026-08-25, the owner
-  explicitly asked for `main` to be fast-forwarded to `dev` directly (it had
-  drifted 15 commits behind) rather than opened as a PR; that was a one-time
-  override of the default, not a standing change to it. Treat "PR only" as
-  the rule again unless the owner says otherwise in a given session.
+- **Branching:** all work lands on `dev`. The long-standing default was that
+  `main` is never pushed to directly and reaches it only through a pull
+  request, sitting *behind* `dev` by design. That default has now been
+  overridden twice at the owner's explicit request — a fast-forward on
+  2026-08-25, and on 2026-08-26 a real merge (`cb92a02`) reconciling two
+  branches that had diverged after parallel sessions rebuilt overlapping parts
+  of the app. **`main` and `dev` are currently identical.** Two overrides in
+  two days is no longer plausibly a one-time exception, so ask which the owner
+  wants for a given session rather than assuming either; what must not happen
+  is `main` silently drifting far enough behind that reconciling it needs
+  another ten-file conflict resolution.
   Historical feature branches (`claude/ceramic-offline-web-app-6wjqq5` for
   Phases 1–2, `claude/refactor-production-codebase-7gbz9v` for the
   clean-architecture refactor) are all merged into `dev`; new work branches
