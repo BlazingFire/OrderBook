@@ -247,6 +247,13 @@ const en: Record<string, string> = {
   'access.users.edit': 'Edit',
   'access.users.resetPassword': 'Reset password',
   'access.users.resetPasswordFailed': 'Could not reset the password',
+  'access.users.setPasswordTitle': 'Set a password for {name}',
+  'access.users.setPasswordSubtitle':
+    'Their current password cannot be shown — it is stored as a one-way hash, not as text.',
+  'access.users.newPassword': 'New password',
+  'access.users.newPasswordHint': 'At least 8 characters. Shown once here, then only its hash is kept.',
+  'access.users.setPassword': 'Set password',
+  'access.users.generateInstead': 'Generate one instead',
   'access.users.deactivate': 'Deactivate',
   'access.users.activate': 'Activate',
   'access.users.statusChangeFailed': 'Could not change the status',

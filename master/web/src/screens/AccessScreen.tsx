@@ -386,6 +386,9 @@ function UsersTab({
   const [confirmDelete, setConfirmDelete] = useState<User | null>(null);
   /** Which person's detail dialog is open, by id so it re-reads the live row. */
   const [openUserId, setOpenUserId] = useState<string | null>(null);
+  /** The person whose password is being set, and the value being set. */
+  const [settingPassword, setSettingPassword] = useState<User | null>(null);
+  const [passwordValue, setPasswordValue] = useState('');
 
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -684,12 +687,12 @@ function UsersTab({
             <span style={{ flex: 1 }} />
             <Button
               variant="secondary"
-              onClick={() =>
-                void onRun(
-                  async () => onSecret(await api.resetPassword(user.id)),
-                  t('access.users.resetPasswordFailed'),
-                )
-              }
+              onClick={() => {
+                // One dialog at a time (HIG, Modality).
+                setOpenUserId(null);
+                setPasswordValue('');
+                setSettingPassword(user);
+              }}
             >
               {t('access.users.resetPassword')}
             </Button>
@@ -809,6 +812,71 @@ function UsersTab({
         footer={openUser && renderUserActions(openUser)}
       >
         {openUser && renderUserDetail(openUser)}
+      </Modal>
+
+      {/*
+        * There is no "show this person's password" anywhere in this screen, and
+        * there cannot be: `password_hash` holds a scrypt digest, the repository
+        * strips it from every `User` it returns, and the type has no field for
+        * it. Setting a known one is the nearest thing that actually exists —
+        * and unlike a stored plaintext, it leaves nothing readable behind.
+        */}
+      <Modal
+        open={Boolean(settingPassword)}
+        onClose={() => setSettingPassword(null)}
+        title={settingPassword ? t('access.users.setPasswordTitle', { name: settingPassword.displayName }) : ''}
+        subtitle={t('access.users.setPasswordSubtitle')}
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                const target = settingPassword;
+                setSettingPassword(null);
+                if (target) {
+                  void onRun(
+                    async () => onSecret(await api.resetPassword(target.id)),
+                    t('access.users.resetPasswordFailed'),
+                  );
+                }
+              }}
+            >
+              {t('access.users.generateInstead')}
+            </Button>
+            <span style={{ flex: 1 }} />
+            <Button variant="secondary" onClick={() => setSettingPassword(null)}>
+              {t('access.users.cancel')}
+            </Button>
+            <Button
+              variant="primary"
+              disabled={passwordValue.trim().length < 8}
+              onClick={() => {
+                const target = settingPassword;
+                const chosen = passwordValue.trim();
+                setSettingPassword(null);
+                if (target) {
+                  void onRun(
+                    async () => onSecret(await api.resetPassword(target.id, chosen)),
+                    t('access.users.resetPasswordFailed'),
+                  );
+                }
+              }}
+            >
+              {t('access.users.setPassword')}
+            </Button>
+          </>
+        }
+      >
+        <FormField label={t('access.users.newPassword')} hint={t('access.users.newPasswordHint')}>
+          {(id) => (
+            <Input
+              id={id}
+              value={passwordValue}
+              onChange={(event) => setPasswordValue(event.target.value)}
+              autoFocus
+            />
+          )}
+        </FormField>
       </Modal>
 
       <Modal

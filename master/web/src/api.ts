@@ -380,7 +380,11 @@ export const api = {
     request<User>(`/api/access/users/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   deleteUser: (id: string) => request<User>(`/api/access/users/${id}`, { method: 'DELETE' }),
   restoreUser: (id: string) => post<User>(`/api/access/users/${id}/restore`),
-  resetPassword: (id: string) => post<OneTimeSecret>(`/api/access/users/${id}/reset-password`),
+  /** Omit `password` to have the Master generate one. A stored password cannot
+   *  be read back — it is a scrypt hash — so setting a known one is the only
+   *  way an administrator can tell somebody what theirs is. */
+  resetPassword: (id: string, password?: string) =>
+    post<OneTimeSecret>(`/api/access/users/${id}/reset-password`, password ? { password } : {}),
   changeOwnPassword: (input: ChangeOwnPasswordInput) => post<void>('/api/access/me/password', input),
 
   conflicts: (includeResolved = false) =>
