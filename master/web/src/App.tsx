@@ -43,6 +43,7 @@ import { Clock } from './ui/Clock';
 import { FilterBarOutlet, FilterBarProvider } from './ui/FilterBarSlot';
 import { SaveShortcutProvider } from './ui/SaveShortcutSlot';
 import { SubNavProvider, useSubNavState } from './ui/SubNavSlot';
+import { TopbarActionsOutlet, TopbarActionsProvider } from './ui/TopbarSlot';
 import { GalleryScreen } from './ui/GalleryScreen';
 import { Icon } from './ui/icons';
 import { Splash } from './ui/Splash';
@@ -99,7 +100,9 @@ export function App() {
   return (
     <ToastProvider>
       <SubNavProvider>
-        <MasterPanel />
+        <TopbarActionsProvider>
+          <MasterPanel />
+        </TopbarActionsProvider>
       </SubNavProvider>
     </ToastProvider>
   );
@@ -411,6 +414,9 @@ function MasterPanel() {
         {activeLabel}
       </h1>
       <span style={{ flex: 1 }} />
+      {/* The screen's own control sits inside the app-wide ones: Search and
+          Sign out mean the same thing on every screen, this does not. */}
+      <TopbarActionsOutlet />
       <SearchBox
         onOpen={(hit) => {
           // Route the hit to the screen that owns it — which is exactly what

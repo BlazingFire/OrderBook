@@ -27,7 +27,8 @@ import { PermissionGrid } from '../ui/PermissionGrid';
 import { PermissionSummary } from '../ui/PermissionSummary';
 import { useSubNav } from '../ui/SubNavSlot';
 import { ConflictBanner, EmptyState, OfflineBanner, SkeletonRows } from '../ui/States';
-import { Tabs, type TabItem } from '../ui/Tabs';
+import { Segmented } from '../ui/Tabs';
+import { useTopbarActions } from '../ui/TopbarSlot';
 
 interface Props {
   /** The signed-in caller's own resolved permissions. */
@@ -107,16 +108,16 @@ export function AccessScreen({ permissions, currentUserId, currentUserTier }: Pr
     }
   }
 
-  const tabItems: TabItem[] = [
-    ...(can('users.manage') ? [{ id: 'users', label: t('access.tab.users') }] : []),
-    ...(can('roles.view') ? [{ id: 'roles', label: t('access.tab.roles') }] : []),
+  const tabItems: Array<{ value: Tab; label: string }> = [
+    ...(can('users.manage') ? [{ value: 'users' as Tab, label: t('access.tab.users') }] : []),
+    ...(can('roles.view') ? [{ value: 'roles' as Tab, label: t('access.tab.roles') }] : []),
   ];
 
   // `tab` is a preference, not a guarantee: a caller without `users.manage` has
   // no Users tab to select, and honouring the preference anyway showed them an
   // empty roster — "0 people" — with the roles list they came for unrendered
   // behind a tab that read as unselected.
-  const active: Tab = tabItems.some((item) => item.id === tab) ? tab : 'roles';
+  const active: Tab = tabItems.some((item) => item.value === tab) ? tab : 'roles';
 
   // Editing a role means a ten-by-six matrix plus two capability groups; it is
   // a screen, not a panel, so it takes the content area and says where it is in
@@ -124,6 +125,22 @@ export function AccessScreen({ permissions, currentUserId, currentUserTier }: Pr
   // two are mutually exclusive.
   const roleEditorOpen = editing !== null;
   const userEditorOpen = editingUser !== null;
+
+  /*
+   * The Users/Roles switcher lives in the topbar, beside the screen's name,
+   * rather than above the first card. It used to sit in the content next to a
+   * second copy of the heading the topbar was already showing — two titles for
+   * one screen, and a control that read as belonging to the card under it
+   * rather than to the screen.
+   *
+   * Withdrawn while an editor has the screen: there is nothing to switch
+   * between inside one, and a live switcher there would throw away a draft.
+   */
+  useTopbarActions(
+    tabItems.length > 1 && !roleEditorOpen && !userEditorOpen ? (
+      <Segmented options={tabItems} value={active} onChange={setTab} />
+    ) : null,
+  );
 
   useSubNav(
     roleEditorOpen
@@ -248,13 +265,6 @@ export function AccessScreen({ permissions, currentUserId, currentUserTier }: Pr
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h1 className="ob-title" style={{ margin: 0 }}>
-          {t('access.title')}
-        </h1>
-        <Tabs tabs={tabItems} activeId={active} onChange={(id) => setTab(id as Tab)} />
-      </div>
-
       {error && (
         <div className="ob-banner ob-banner--conflict" role="alert">
           {error}

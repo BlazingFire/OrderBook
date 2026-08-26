@@ -203,6 +203,20 @@
   color: var(--fg-on-accent);
 }
 
+/*
+ * A screen's own control in the topbar's trailing cluster, set apart from the
+ * app-wide ones by a hairline so the two groups do not read as one row of
+ * unrelated buttons.
+ */
+.ob-topbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-8);
+  padding-right: var(--s-12);
+  margin-right: var(--s-4);
+  border-right: 1px solid var(--line);
+}
+
 /* Filter chip row */
 .ob-filterchip {
   display: inline-flex;
