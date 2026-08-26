@@ -74,6 +74,12 @@ const en: Record<string, string> = {
 
   // Splash — the boot steps the shell walks before it can show a screen. The
   // wording names what is being waited on, so a stall says where it stalled.
+  'crash.title': 'Something went wrong on this screen',
+  'crash.body':
+    'The panel stopped rather than showing something wrong. Reloading usually gets you back to where you were.',
+  'crash.reload': 'Reload',
+  'crash.copy': 'Copy details',
+
   'splash.step.server': 'Contacting the server',
   'splash.step.session': 'Restoring your session',
   'splash.step.assets': 'Preparing the workspace',

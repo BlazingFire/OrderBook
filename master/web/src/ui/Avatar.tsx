@@ -36,14 +36,22 @@ export function Avatar({
   size = 'sm',
 }: {
   name: string;
-  avatar: UserAvatar | null;
+  /**
+   * Undefined as well as null, and the difference is not academic. A Master and
+   * its panels update independently, so a panel built with this field can be
+   * talking to a Master whose `User` payload predates it — the key is then
+   * absent, not null. Testing `!== null` passed for `undefined` and read `.id`
+   * off it, which threw inside a component the status footer renders on every
+   * screen and took the whole app down to a blank window.
+   */
+  avatar: UserAvatar | null | undefined;
   size?: AvatarSize;
 }) {
   const [failed, setFailed] = useState(false);
   const { px, variant } = SIZES[size];
 
   const initials = initialsOf(name);
-  const showImage = avatar !== null && !failed;
+  const showImage = Boolean(avatar) && !failed;
 
   return (
     <span
@@ -52,7 +60,7 @@ export function Avatar({
       style={{ width: px, height: px, fontSize: Math.round(px * 0.4) }}
       title={name}
     >
-      {showImage ? (
+      {showImage && avatar ? (
         <img
           // Keyed on the avatar id so replacing a picture swaps the element
           // rather than leaving a failed `img` in its error state.

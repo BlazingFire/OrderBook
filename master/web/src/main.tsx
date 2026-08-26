@@ -7,6 +7,7 @@ import './ui/tokens.css';
 import './ui/reset.css';
 import './ui/base.css';
 import './styles.css';
+import { ErrorBoundary } from './ui/ErrorBoundary';
 import { initAppearance } from './ui/theme';
 
 // Before first paint, so there is no flash of the wrong theme or density.
@@ -17,6 +18,8 @@ if (!container) throw new Error('Root element missing from index.html');
 
 createRoot(container).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 );

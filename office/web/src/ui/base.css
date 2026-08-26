@@ -274,6 +274,49 @@
   box-shadow: none;
 }
 
+/* ===========================================================================
+ * Crash screen — what a render error shows instead of an empty window.
+ * ======================================================================== */
+
+.ob-crash {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s-24);
+  background: var(--bg-canvas);
+}
+
+.ob-crash-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+  width: 560px;
+  max-width: 100%;
+  padding: var(--s-24);
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-2);
+}
+
+.ob-crash-detail {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: var(--s-12);
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  font-family: var(--font-mono);
+  font-size: var(--t-mono-size);
+  line-height: var(--t-mono-line);
+  color: var(--fg-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* Filter chip row */
 .ob-filterchip {
   display: inline-flex;
