@@ -26,6 +26,7 @@ import { DashboardScreen } from './screens/DashboardScreen';
 import { LeadBoardScreen } from './screens/LeadBoardScreen';
 import { OrderBoardScreen } from './screens/OrderBoardScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
+import { UpdatesScreen } from './screens/UpdatesScreen';
 import { SignInScreen } from './screens/SignInScreen';
 import { AppShell, type NavGroup, type NavItem } from './ui/AppShell';
 import { BusyMark } from './ui/BusyMark';
@@ -37,7 +38,7 @@ import { Icon } from './ui/icons';
 import { Splash } from './ui/Splash';
 import { ToastProvider, useToast } from './ui/Toast';
 
-type Tab = 'dashboard' | 'leads' | 'orders' | 'parties' | 'products' | 'conflicts' | 'settings';
+type Tab = 'dashboard' | 'leads' | 'orders' | 'parties' | 'products' | 'conflicts' | 'settings' | 'updates';
 
 function readHash(): string {
   return window.location.hash.replace(/^#/, '');
@@ -437,7 +438,10 @@ function OfficePanel() {
       // Per-machine appearance and device info — nothing here is gated by a
       // permission, so this group has exactly one item, always.
       label: t('nav.system'),
-      items: [{ id: 'settings', label: t('nav.settings'), icon: 'settings' as const }],
+      items: [
+        { id: 'settings', label: t('nav.settings'), icon: 'settings' as const },
+        { id: 'updates', label: t('nav.updates'), icon: 'sync' as const },
+      ],
     },
   ];
 
@@ -450,6 +454,7 @@ function OfficePanel() {
     products: 'products',
     conflicts: 'conflicts',
     settings: 'settings',
+    updates: 'updates',
   };
 
   /** Shared by the sidebar and by in-content links (e.g. the Dashboard's stat cards). */
@@ -566,7 +571,7 @@ function OfficePanel() {
         {t('footer.designSystem')}
       </a>
       <span className="ob-mono" style={{ fontSize: '10.5px', color: 'var(--fg-tertiary)' }}>
-        {t('footer.version')}
+        v{__APP_VERSION__}
       </span>
       <Clock />
     </>
@@ -659,6 +664,12 @@ function OfficePanel() {
 
     // Per-machine, not per-sync: available even before the first snapshot
     // arrives, unlike everything below it.
+    // Reads the connection rather than the merged view, so it answers the
+    // moment the shell has one — same reason Settings sits above the gate.
+    if ((idToTab[activeId] ?? activeId) === 'updates') {
+      return <UpdatesScreen connection={connection} />;
+    }
+
     if ((idToTab[activeId] ?? activeId) === 'settings') {
       return (
         <SettingsScreen

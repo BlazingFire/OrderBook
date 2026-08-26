@@ -147,6 +147,10 @@ export interface OfficePanel {
   lanIp: string | null;
   macAddress: string | null;
   status: OfficePanelStatus;
+  /** Reported on connect; null for a panel that has never connected since this
+   *  field existed. Last known, not live — an offline panel keeps the version
+   *  it had when it was last seen. */
+  appVersion: string | null;
   pairedAt: IsoTimestamp | null;
   lastSeenAt: IsoTimestamp | null;
   createdAt: IsoTimestamp;

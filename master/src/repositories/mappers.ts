@@ -214,6 +214,7 @@ export function mapOfficePanel(row: Row): OfficePanel {
     lanIp: (row.lan_ip as string | null) ?? null,
     macAddress: (row.mac_address as string | null) ?? null,
     status: row.status as OfficePanel['status'],
+    appVersion: (row.app_version as string | null) ?? null,
     pairedAt: toIso(row.paired_at),
     lastSeenAt: toIso(row.last_seen_at),
     createdAt: toRequiredIso(row.created_at),

@@ -20,20 +20,16 @@
  */
 
 import { gzipSync } from 'node:zlib';
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
 
 import { BACKUP_FORMAT_VERSION, type BackupExportRequest, type BackupManifest } from '@orderbook/shared';
 
-import { config } from '../config/index.js';
+import { appVersion } from '../lib/app-version.js';
 import { db } from '../db/knex.js';
 import { assertPassphraseStrong } from '../domain/backup.js';
 import { ConflictError, ValidationError } from '../lib/errors.js';
 import { encryptBackup } from '../lib/backup-crypto.js';
 import { dumpTable, listTenantIds, listUserTables, tenantScopedTables } from '../repositories/backup.repository.js';
 import { getIdentity } from './setup.service.js';
-
-const appVersion = readAppVersion();
 
 export interface ExportResult {
   fileName: string;
@@ -72,7 +68,7 @@ export async function exportBackup(request: BackupExportRequest): Promise<Export
     scope: request.scope,
     scopeDetail: tenantIds,
     createdAt: new Date().toISOString(),
-    appVersion,
+    appVersion: appVersion(),
   };
 
   const data = await encryptBackup(manifestWithoutHash, payload, request.passphrase);
@@ -81,11 +77,3 @@ export async function exportBackup(request: BackupExportRequest): Promise<Export
   return { fileName, data };
 }
 
-function readAppVersion(): string {
-  try {
-    const raw = readFileSync(path.join(config.packageRoot, 'package.json'), 'utf8');
-    return (JSON.parse(raw) as { version?: string }).version ?? '0.0.0';
-  } catch {
-    return '0.0.0';
-  }
-}

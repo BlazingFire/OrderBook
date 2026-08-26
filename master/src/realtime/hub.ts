@@ -150,7 +150,7 @@ async function authenticate(socket: PanelSocket): Promise<void> {
   const auth = socket.handshake.auth as SocketAuthPayload | undefined;
 
   if (auth?.kind === 'office-panel') {
-    const panel = await panelService.authenticatePanel(auth.panelId, auth.panelSecret);
+    const panel = await panelService.authenticatePanel(auth.panelId, auth.panelSecret, auth.appVersion);
     socket.data.kind = 'office-panel';
     socket.data.panelId = panel.id;
     socket.data.tenantId = panel.tenantId;

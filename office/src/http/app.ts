@@ -898,6 +898,7 @@ export const SNAPSHOT_POLICY: Record<keyof SyncSnapshot, SnapshotPolicy> = {
   permissions: 'replace',
   serverHlc: 'passthrough',
   serverTime: 'passthrough',
+  serverVersion: 'passthrough',
 };
 
 function forCurrentUser(view: LocalView): LocalView {

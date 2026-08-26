@@ -29,6 +29,7 @@ import type {
 } from '@orderbook/shared';
 
 import { createLogger } from '../lib/logger.js';
+import { appVersion } from '../lib/app-version.js';
 import { clearCredentials, loadCredentials, masterBaseUrl } from '../services/credentials.store.js';
 import { observe } from '../sync/clock.js';
 import * as localStore from '../sync/local-store.js';
@@ -73,6 +74,8 @@ export interface ConnectionStatus {
   companyName: string | null;
   lastError: string | null;
   lastSyncedAt: string | null;
+  /** What the Master reported in its last snapshot; null until one arrives. */
+  masterVersion: string | null;
 }
 
 type MasterSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
@@ -83,6 +86,7 @@ class MasterConnection extends EventEmitter {
   private state: ConnectionState = 'unpaired';
   private lastError: string | null = null;
   private lastSyncedAt: string | null = null;
+  private masterVersion: string | null = null;
   private masterHost: string | null = null;
   private masterPort: number | null = null;
   private companyName: string | null = null;
@@ -108,6 +112,10 @@ class MasterConnection extends EventEmitter {
         kind: 'office-panel',
         panelId: credentials.panelId,
         panelSecret: credentials.panelSecret,
+        // Sent on every connect rather than once at pairing: a panel that has
+        // been updated should say so the moment it comes back, without anybody
+        // re-pairing it.
+        appVersion: appVersion(),
       },
       transports: ['websocket'],
       // Retry forever: the Master PC may simply be switched off overnight, and
@@ -155,6 +163,7 @@ class MasterConnection extends EventEmitter {
     socket.on('sync:snapshot', (snapshot) => {
       this.snapshot = snapshot;
       this.lastSyncedAt = snapshot.serverTime;
+      this.masterVersion = snapshot.serverVersion ?? this.masterVersion;
       this.emit('snapshot', snapshot);
       log.info(
         `Synced: ${snapshot.parties.length} parties, ${snapshot.products.length} products, ${snapshot.leads.length} leads`,
@@ -221,6 +230,7 @@ class MasterConnection extends EventEmitter {
       companyName: this.companyName,
       lastError: this.lastError,
       lastSyncedAt: this.lastSyncedAt,
+      masterVersion: this.masterVersion,
     };
   }
 
@@ -455,6 +465,7 @@ class MasterConnection extends EventEmitter {
       .then((snapshot) => {
         this.snapshot = snapshot;
         this.lastSyncedAt = snapshot.serverTime;
+        this.masterVersion = snapshot.serverVersion ?? this.masterVersion;
         this.emit('snapshot', snapshot);
         void localStore.setSnapshot(snapshot);
       })

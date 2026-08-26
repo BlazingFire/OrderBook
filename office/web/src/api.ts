@@ -104,6 +104,8 @@ export interface ConnectionInfo {
   companyName: string | null;
   lastError: string | null;
   lastSyncedAt: string | null;
+  /** What the Master reported in its last snapshot; null until one arrives. */
+  masterVersion: string | null;
 }
 
 export interface DiscoveredMaster {

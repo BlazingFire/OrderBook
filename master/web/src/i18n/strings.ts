@@ -69,7 +69,28 @@ const en: Record<string, string> = {
   'sync.flushing': 'Syncing…',
 
   'footer.signedInAs': '{name} · {role}',
-  'footer.version': 'v0.1.0',
+
+  // App update.
+  'nav.updates': 'App update',
+  'updates.masterVersion': 'Master version',
+  'updates.unknown': 'Unknown',
+  'updates.upToDate': 'Up to date',
+  'updates.behind': 'Different version',
+  'updates.howTitle': 'How updates reach this software',
+  'updates.howHint':
+    'This network has no internet by design, so nothing here checks an update server or downloads anything on its own.',
+  'updates.thisMachine': 'This Master',
+  'updates.panelsTracked': 'Office panels paired',
+  'updates.panelsBehind': 'On a different version',
+  'updates.panelsTitle': 'Office panel versions',
+  'updates.table.version': 'Version',
+  'updates.allMatch': 'Every panel is on {version}, the same version as this Master.',
+  'updates.someBehind':
+    '{count} panel(s) are on a different version from this Master ({version}). They keep working — a panel is never blocked for being out of step.',
+  'updates.someUnknown':
+    '{count} panel(s) have not reported a version yet. They will the next time they connect.',
+  'updates.howBody':
+    'A new build is installed on each machine by hand, from the release folder. Update the Master first, then each Office Panel; a panel on the previous version keeps syncing in the meantime.',
   'footer.designSystem': 'Design system',
 
   // Splash — the boot steps the shell walks before it can show a screen. The

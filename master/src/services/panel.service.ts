@@ -114,13 +114,25 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
   };
 }
 
-export async function authenticatePanel(panelId: string, panelSecret: string): Promise<OfficePanel> {
+export async function authenticatePanel(
+  panelId: string,
+  panelSecret: string,
+  /** What the panel says it is running. Absent from panels older than the field. */
+  appVersion?: string,
+): Promise<OfficePanel> {
   const panel = await panelRepo.findPanelById(panelId);
   if (!panel || panel.status !== 'active') throw new UnauthorizedError('error.unauthorized.panelNotPaired');
 
   const secretHash = await panelRepo.findPanelSecretHash(panelId);
   if (!secretHash || !(await bcrypt.compare(panelSecret, secretHash))) {
     throw new UnauthorizedError('error.unauthorized.panelCredentialsInvalid');
+  }
+
+  // Recorded only when it has actually changed, so a panel reconnecting every
+  // few seconds on a flaky link does not write a row every time.
+  if (appVersion && appVersion !== panel.appVersion) {
+    const updated = await panelRepo.updatePanelAppVersion(panelId, appVersion);
+    if (updated) return updated;
   }
 
   return panel;

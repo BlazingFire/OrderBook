@@ -55,7 +55,25 @@ const en: Record<string, string> = {
   'footer.company': 'Company',
   'footer.signedInAs': '{name} · {role}',
   'footer.offlineSignIn': 'signed in offline',
-  'footer.version': 'v0.1.0',
+
+  // App update.
+  'nav.updates': 'App update',
+  'updates.masterVersion': 'Master version',
+  'updates.unknown': 'Unknown',
+  'updates.upToDate': 'Up to date',
+  'updates.behind': 'Different version',
+  'updates.howTitle': 'How updates reach this software',
+  'updates.howHint':
+    'This network has no internet by design, so nothing here checks an update server or downloads anything on its own.',
+  'updates.thisPanel': 'This panel',
+  'updates.panelVersion': 'Panel version',
+  'updates.statusLabel': 'Against the Master',
+  'updates.panel.matchBody':
+    'This panel is on the same version as the Master. Nothing to do.',
+  'updates.panel.behindBody':
+    'The Master is on {version}. This panel keeps working exactly as it does now — ask whoever looks after the Master to install the same build here when convenient.',
+  'updates.panel.unknownBody':
+    'This panel has not heard from the Master since it started, so it cannot say which version the Master is on. It will once the link is back.',
   'footer.designSystem': 'Design system',
 
   // Splash — the boot steps the shell walks before it can show a screen. The

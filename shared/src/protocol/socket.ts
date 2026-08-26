@@ -115,6 +115,13 @@ export interface PanelAuthPayload {
   kind: 'office-panel';
   panelId: Uuid;
   panelSecret: string;
+  /**
+   * The panel build's version, so the Master can report which machines are
+   * behind. Optional: a panel older than this field simply does not send it,
+   * and the Master shows "unknown" rather than refusing the connection — a
+   * version mismatch must never be what stops a shop floor working.
+   */
+  appVersion?: string;
 }
 
 /** Handshake `auth` payload sent by a Master Panel browser. */
@@ -280,6 +287,12 @@ export interface SyncSnapshot {
   /** The Master's current HLC, folded into the panel's clock on receipt. */
   serverHlc: string;
   serverTime: string;
+  /**
+   * What the Master is running, so a panel can tell whether it is behind
+   * without a second round trip. Optional so a panel built against this field
+   * still reads a snapshot from an older Master.
+   */
+  serverVersion?: string;
 }
 
 /** Office Panel → Master. Each carries an ack callback. */

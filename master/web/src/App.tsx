@@ -37,6 +37,7 @@ import { PanelsScreen } from './screens/PanelsScreen';
 import { RecycleBinScreen } from './screens/RecycleBinScreen';
 import { ReportsScreen } from './screens/ReportsScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
+import { UpdatesScreen } from './screens/UpdatesScreen';
 import { SignInScreen } from './screens/SignInScreen';
 import { AppShell, type NavGroup, type NavItem } from './ui/AppShell';
 import { Avatar } from './ui/Avatar';
@@ -63,7 +64,8 @@ type Tab =
   | 'logs'
   | 'recycleBin'
   | 'conflicts'
-  | 'settings';
+  | 'settings'
+  | 'updates';
 type Route = '' | 'gallery';
 
 /** Entities whose changes should make the data screens refetch. */
@@ -366,6 +368,9 @@ function MasterPanel() {
     canViewLogs ? { id: 'logs', label: t('nav.master.logs'), icon: 'eye' } : null,
     canViewRecycleBin ? { id: 'recycleBin', label: t('nav.master.recycleBin'), icon: 'trash' } : null,
     canManageSettings ? { id: 'settings', label: t('nav.master.settings'), icon: 'settings' } : null,
+    // Visible to everyone: which version a machine runs is not privileged
+    // information, and the person asked to read it out is rarely an admin.
+    { id: 'updates', label: t('nav.updates'), icon: 'sync' },
   ];
 
   /*
@@ -447,7 +452,7 @@ function MasterPanel() {
         {t('footer.designSystem')}
       </a>
       <span className="ob-mono" style={{ fontSize: '10.5px', color: 'var(--fg-tertiary)' }}>
-        {t('footer.version')}
+        v{__APP_VERSION__}
       </span>
       <Clock />
     </>
@@ -537,6 +542,9 @@ function MasterPanel() {
         return (
           <ConflictsScreen revision={dataRevision} canResolve={user.permissions.includes('sync.resolveConflicts')} />
         );
+      case 'updates':
+        return <UpdatesScreen panels={panels} />;
+
       case 'settings':
         return <SettingsScreen />;
     }

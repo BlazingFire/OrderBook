@@ -26,6 +26,7 @@ import * as dashboardService from './dashboard.service.js';
 import * as inventoryService from './inventory.service.js';
 import * as leadService from './lead.service.js';
 import * as orderService from './order.service.js';
+import { appVersion } from '../lib/app-version.js';
 
 /** One page, deliberately generous: LAN-local and small-business sized. */
 const SNAPSHOT_LIMIT = 500;
@@ -92,5 +93,6 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
     permissions: [...(actor.permissions?.permissions ?? [])],
     serverHlc,
     serverTime: new Date().toISOString(),
+    serverVersion: appVersion(),
   };
 }

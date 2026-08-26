@@ -46,6 +46,15 @@ export async function updatePanelStatus(
   return row ? mapOfficePanel(row) : null;
 }
 
+/** Written on connect, and only when it has changed — see the caller. */
+export async function updatePanelAppVersion(id: string, appVersion: string): Promise<OfficePanel | null> {
+  const [row] = await db()(TABLE)
+    .where({ id })
+    .update({ app_version: appVersion, updated_at: db().fn.now() })
+    .returning('*');
+  return row ? mapOfficePanel(row) : null;
+}
+
 export async function renamePanel(id: string, name: string): Promise<OfficePanel | null> {
   const [row] = await db()(TABLE)
     .where({ id })
