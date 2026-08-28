@@ -9,6 +9,7 @@
  * reveal which half was wrong.
  */
 
+import { fieldFor, ORDER_COLUMNS } from '@orderbook/shared';
 import type {
   BinBlocker,
   BinRestoreResult,
@@ -247,8 +248,12 @@ export async function updateOrder(
 
   await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
+    // Keyed by wire field, not column. `mergeFields` looks these up by wire
+    // field, so stamping `total_weight_kg_override` wrote the clock somewhere
+    // nothing reads and left the real key unset — every offline edit to those
+    // fields then merged as if the Master had never touched them.
     const fieldHlc = { ...existing.sync.fieldHlc };
-    for (const column of Object.keys(patch)) fieldHlc[column] = hlc;
+    for (const column of Object.keys(patch)) fieldHlc[fieldFor(ORDER_COLUMNS, column)] = hlc;
 
     await orderRepo.updateOrderColumns(actor.tenantId, id, patch, { hlc, fieldHlc }, trx);
   });

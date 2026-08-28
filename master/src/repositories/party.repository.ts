@@ -2,6 +2,7 @@
  * Parties (customers). Syncable, so rows carry text ids and sync bookkeeping.
  */
 
+import { columnPatch, PARTY_COLUMNS } from '@orderbook/shared';
 import type { Paginated, Party, PartyInput, PartyScopeFilter } from '@orderbook/shared';
 import type { Knex } from 'knex';
 
@@ -249,21 +250,16 @@ export async function liveReferencesToParty(
   ];
 }
 
+/**
+ * Only the columns this input actually asserts.
+ *
+ * This used to list every column with `?? null` and was spread straight into
+ * `.update()`, which made an update a full record replace: the 5-field party
+ * drawer nulled `alt_phone`, `email`, both address lines, `state` and
+ * `pincode`. See the contract in `shared/src/domain/columns.ts`.
+ */
 function columnsFrom(input: PartyInput): Record<string, unknown> {
-  return {
-    name: input.name,
-    phone: input.phone ?? null,
-    alt_phone: input.altPhone ?? null,
-    email: input.email ?? null,
-    address_line1: input.addressLine1 ?? null,
-    address_line2: input.addressLine2 ?? null,
-    city: input.city ?? null,
-    state: input.state ?? null,
-    pincode: input.pincode ?? null,
-    gst_number: input.gstNumber ?? null,
-    notes: input.notes ?? null,
-    custom_fields: JSON.stringify(input.customFields ?? {}),
-  };
+  return columnPatch(input, PARTY_COLUMNS);
 }
 
 // --- Party Access ----------------------------------------------------------

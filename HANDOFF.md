@@ -24,6 +24,37 @@ of truth.
 Full database schema (every table, columns, indexes, and rationale):
 **`docs/schema/`**, starting at `docs/schema/00-overview.md`.
 
+## Current work: the overhaul programme (started 2026-08-28)
+
+The owner asked, in one message, for a stability fix plus fourteen further
+changes — Electron reliability, a UI scale setting, tab state that survives
+navigation, keyboard shortcuts, a plaintext password view on the Master, more
+product attributes, searchable pickers everywhere, 1024×768-to-4K layouts, an
+AI section, an external API in both directions, and Miracle-style dense forms,
+grid entry and report exports.
+
+That work is planned in **`docs/overhaul/`**. Read `README.md` first (the
+executive plan), then `00-sequenced-plan.md` for the thirteen stages, then the
+per-workstream file for whatever you are about to build. Each workstream was
+designed and then adversarially reviewed against the real code; the reviewers
+raised 218 findings, 51 of them blockers, and every design in there is the
+*corrected* version. The findings are listed at the top of each file — read
+them, because several are "the obvious approach silently leaks masked data".
+
+**Stage order is not advisory.** `docs/overhaul/00-sequenced-plan.md` §1 gives
+the dependency graph and §2 says which stage owns which contended file. The
+short version: Stage 3 (extracting the hand-duplicated `web/src/ui/` into one
+package) blocks every UI stage, and Stage 4 (the settings table) blocks the AI
+config, the connector secrets and the password toggle.
+
+Done so far:
+
+- **Stage 0 — repo safety.** 26 untracked paths committed, including two
+  migrations already in the `SHIPPED` list. See the trap below.
+- **The reported bug.** Both panels closing by themselves: two independent
+  causes, both fixed and verified. See "Traps worth knowing".
+- **Stage 1 (core) — the whole-record-replace data-loss bug.** See below.
+
 ## Key decisions made so far (do not re-decide these without a reason)
 
 1. **Two Node.js/Express + Socket.IO servers**, one per panel type, each
@@ -1770,6 +1801,65 @@ in the order the plan lists them:
 
 ### Traps worth knowing
 
+- **Half the tree was untracked, including two `SHIPPED` migrations.** On
+  2026-08-28 `git status` reported 26 untracked paths. Two of them were
+  `20260313000000_panel_app_version.ts` and `20260313000000_party_access.ts` —
+  both already named in the `SHIPPED` list of `migration-registry.test.ts`,
+  neither gitignored. A `git clean`, a fresh clone or one bad merge would have
+  deleted them and reproduced the 2026-08-27 boot failure exactly, and the test
+  written to prevent that recurrence could not have caught it, because the test
+  file was untracked too. Also untracked: the whole desktop layer, the whole
+  Party Access module and the whole update subsystem. All committed now.
+  **After any session that adds files, check `git status` for `??` before you
+  stop** — an uncommitted migration is indistinguishable from a deleted one to
+  every machine that is not this one.
+- **An update used to be a full record replace, and it silently destroyed
+  data.** `columnsFrom()` in the product and party repositories listed every
+  column with `?? null` and was spread straight into `.update()`. The only
+  product form in the app edits 8 of ~20 columns, so saving it nulled `finish`,
+  `series`, `color`, `thickness_mm`, `pieces_per_box`, `box_coverage_sqft`,
+  `price_per_sqft`, `hsn_code`, `parameters` and `custom_fields`; the 5-field
+  party drawer did the same to six party columns. Fixed on 2026-08-28 by
+  `shared/src/domain/columns.ts`, which owns the wire-field→column table for
+  all five entities and whose `columnPatch()` emits **only asserted keys**.
+  **The contract is `undefined` = not asserted, `null` = clear it**, and it now
+  binds the sync merge and every future REST or connector client. Pinned by
+  `master/tests/partial-patch.integration.test.ts`. Damaged rows are *not*
+  recoverable from the activity log — `catalog.service` records
+  `action: 'updated'` with no `details`, so the hash chain proves *that* a row
+  changed, never what it held. On the evidence this never fired on a shipped
+  install (the Master has no product or party screen and `master/web/src/api.ts`
+  has no `put`/`patch` at all), but it would have on the first Master form.
+- **Never re-add a second copy of the column map.** There were five, and two had
+  drifted into bugs: the sync service claimed a `notes` column on `products`
+  that has never existed, and the order service stamped per-field clocks under
+  snake_case names while `mergeFields` reads them by wire field — so those
+  clocks were written where nothing looks. Both disappeared when the map became
+  one table. If you need field↔column anywhere, import it.
+- **The Office panel had no `/api/health`, and its shell polled that path
+  forever.** `office/electron/main.ts` waits for `/api/health` to answer before
+  it navigates the window, and the Office server never defined the route — so
+  the request hit the blanket `requireUser` gate, returned 401, and the shell
+  sat on its splash for the full 60-second timeout and then declared a running
+  server dead. Fixed 2026-08-28: the route is mounted above the auth gate and
+  returns the same `{status, boot}` shape as the Master's `boot-app.ts`. If you
+  add a readiness field, add it to both panels — the shell reads one contract.
+- **Both panels shared one single-instance lock when run from source.**
+  `app.requestSingleInstanceLock()` is keyed on Electron's `userData`
+  directory, which is derived from the application name. Packaged, the name
+  comes from `productName` and the two panels differ; unpackaged there is no
+  `productName`, so both were `Electron`, shared one lock, and whichever
+  started second quit instantly with no window, no dialog and nothing in any
+  log. Both shells now call `app.setName()` before the lock, and losing the
+  lock shows a dialog. **Do not "fix" this with `app.setPath('userData', …)`**
+  — that relocates the whole Chromium profile and wipes every stored
+  preference (`ob.theme.v2`, `ob.density`, `ob.motion`).
+- **The frontend had never been typechecked.** Root `typecheck` is
+  `npm run typecheck --workspaces --if-present`, and neither web workspace
+  declared the script, so `npm run verify` silently skipped ~29,000 lines of
+  React. Both now declare it, and the root script also covers both Electron
+  shells. It passes — but it had never run, so treat any large frontend change
+  as the first real exercise of it.
 - **`shared/` is consumed as compiled output**, not source. Anything importing
   `@orderbook/shared` fails on a clean checkout until `tsc` has run, which is
   why `prepare` and the `pre*` scripts exist. Do not remove them.

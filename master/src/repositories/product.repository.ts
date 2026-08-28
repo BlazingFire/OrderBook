@@ -7,6 +7,7 @@
  * editing a product here cannot change what an existing order was quoted at.
  */
 
+import { columnPatch, PRODUCT_COLUMNS } from '@orderbook/shared';
 import type { Paginated, Product, ProductCategory, ProductInput } from '@orderbook/shared';
 import type { Knex } from 'knex';
 
@@ -320,29 +321,30 @@ export async function liveReferencesToProduct(
   ];
 }
 
+/**
+ * Only the columns this input actually asserts.
+ *
+ * This used to list every column with `?? null` and was spread straight into
+ * `.update()`, which made an update a full record replace: the 8-field product
+ * drawer nulled the twelve columns it does not know about. See the contract in
+ * `shared/src/domain/columns.ts`.
+ *
+ * A partial insert is safe because `parameters` and `custom_fields` are both
+ * `JSONB NOT NULL DEFAULT '{}'` — the constraint any column added here must
+ * also meet.
+ */
 function columnsFrom(input: ProductInput, categoryId: string | null): Record<string, unknown> {
-  return {
-    product_code: input.productCode,
-    name: input.name,
-    alias: input.alias ?? null,
-    category_id: categoryId,
-    size: input.size ?? null,
-    sin: input.sin ?? null,
-    grade: input.grade ?? null,
-    product_type: input.productType ?? null,
-    weight_kg: input.weightKg ?? null,
-    finish: input.finish ?? null,
-    series: input.series ?? null,
-    color: input.color ?? null,
-    thickness_mm: input.thicknessMm ?? null,
-    pieces_per_box: input.piecesPerBox ?? null,
-    box_coverage_sqft: input.boxCoverageSqft ?? null,
-    rate: input.rate ?? null,
-    price_per_sqft: input.pricePerSqft ?? null,
-    hsn_code: input.hsnCode ?? null,
-    parameters: JSON.stringify(input.parameters ?? {}),
-    custom_fields: JSON.stringify(input.customFields ?? {}),
-  };
+  const patch = columnPatch(input, PRODUCT_COLUMNS);
+
+  // The category is resolved by the caller, from either an id or a free-text
+  // name, so it is settled here rather than copied straight off the input.
+  if (input.categoryId !== undefined || input.categoryName !== undefined) {
+    patch.category_id = categoryId;
+  } else {
+    delete patch.category_id;
+  }
+
+  return patch;
 }
 
 /**

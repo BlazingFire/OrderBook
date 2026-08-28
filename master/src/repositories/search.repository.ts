@@ -91,6 +91,7 @@ async function runQuery(
            FROM products p
           WHERE p.tenant_id = ?
             AND p.is_active
+            AND p.deleted_at IS NULL
             AND p.search_vector @@ ${TSQUERY}
           ORDER BY rank DESC
           LIMIT ?`,
@@ -109,6 +110,7 @@ async function runQuery(
            FROM parties pa
           WHERE pa.tenant_id = ?
             AND pa.is_active
+            AND pa.deleted_at IS NULL
             AND pa.search_vector @@ ${TSQUERY}${partyScope.sql}
           ORDER BY rank DESC
           LIMIT ?`,

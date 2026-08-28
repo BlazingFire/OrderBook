@@ -7,6 +7,7 @@
  * the repositories, and the rules that decide anything live in `domain/`.
  */
 
+import { fieldFor, LEAD_COLUMNS } from '@orderbook/shared';
 import type {
   BinBlocker,
   BinRestoreResult,
@@ -453,19 +454,8 @@ function initialFieldHlc(input: LeadInput, hlc: string): Record<string, string> 
   return written;
 }
 
-const COLUMN_TO_FIELD: Record<string, string> = {
-  party_id: 'partyId',
-  owner_id: 'ownerId',
-  stage_id: 'stageId',
-  source_platform: 'sourcePlatform',
-  follow_up_date: 'followUpDate',
-  party_wise_mode: 'partyWiseMode',
-  notes: 'notes',
-  custom_fields: 'customFields',
-};
-
 function columnToField(column: string): string {
-  return COLUMN_TO_FIELD[column] ?? column;
+  return fieldFor(LEAD_COLUMNS, column);
 }
 
 /**

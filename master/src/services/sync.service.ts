@@ -41,9 +41,12 @@ import type {
   SyncPushResponse,
 } from '@orderbook/shared';
 import {
+  columnPatch,
   compareForIdAssignment,
   isSyncableEntity,
   isTemporaryId,
+  MERGEABLE_COLUMNS,
+  type MergeableEntity,
   mergeFields,
   MUTATION_PERMISSIONS,
   type Permission,
@@ -76,59 +79,6 @@ const log = createLogger('sync');
  * locally while it is offline; see the note on `MUTATION_PERMISSIONS`.
  */
 const REQUIRED_PERMISSION: Record<Mutation['kind'], Permission> = MUTATION_PERMISSIONS;
-
-/** Wire field → database column, per entity that supports a merged update. */
-const COLUMN_MAP = {
-  lead: {
-    partyId: 'party_id',
-    ownerId: 'owner_id',
-    stageId: 'stage_id',
-    sourcePlatform: 'source_platform',
-    followUpDate: 'follow_up_date',
-    partyWiseMode: 'party_wise_mode',
-    notes: 'notes',
-    customFields: 'custom_fields',
-  },
-  order: {
-    dispatchAddressLabel: 'dispatch_address_label',
-    expectedDispatchDate: 'expected_dispatch_date',
-    totalWeightKgOverride: 'total_weight_kg_override',
-    notes: 'notes',
-    customFields: 'custom_fields',
-  },
-  party: {
-    name: 'name',
-    phone: 'phone',
-    altPhone: 'alt_phone',
-    email: 'email',
-    addressLine1: 'address_line1',
-    addressLine2: 'address_line2',
-    city: 'city',
-    state: 'state',
-    pincode: 'pincode',
-    gstNumber: 'gst_number',
-    notes: 'notes',
-    customFields: 'custom_fields',
-  },
-  product: {
-    productCode: 'product_code',
-    name: 'name',
-    alias: 'alias',
-    size: 'size',
-    sin: 'sin',
-    grade: 'grade',
-    productType: 'product_type',
-    weightKg: 'weight_kg',
-    rate: 'rate',
-    notes: 'notes',
-    customFields: 'custom_fields',
-  },
-} as const satisfies Record<string, Record<string, string>>;
-
-type MergeableEntity = keyof typeof COLUMN_MAP;
-
-/** Columns that hold JSON and therefore need serialising on the way in. */
-const JSON_COLUMNS = new Set(['custom_fields']);
 
 export async function applyPush(
   request: SyncPushRequest,
@@ -370,7 +320,7 @@ async function mergeUpdate(
   // around the whole feature.
   await assertMergeTargetAccessible(entity, current.values, id, actor);
 
-  const columns = COLUMN_MAP[entity] as Record<string, string>;
+  const columns = MERGEABLE_COLUMNS[entity] as Record<string, string>;
   const fields = mutation.fields.filter((field) => field in columns);
 
   const outcome = mergeFields(
@@ -384,12 +334,7 @@ async function mergeUpdate(
     },
   );
 
-  const patch: Record<string, unknown> = {};
-  for (const [field, value] of Object.entries(outcome.accepted)) {
-    const column = columns[field];
-    if (!column) continue;
-    patch[column] = JSON_COLUMNS.has(column) ? JSON.stringify(value ?? {}) : value;
-  }
+  const patch = columnPatch(outcome.accepted, columns);
 
   // A merge that moves a lead or order onto another party has to clear that
   // party too, or the move itself becomes the escape hatch.

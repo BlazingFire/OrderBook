@@ -9,6 +9,7 @@
  * ship.
  */
 
+import { fieldFor, USER_COLUMNS } from '@orderbook/shared';
 import type {
   OneTimeSecret,
   PasswordResetInput,
@@ -404,14 +405,6 @@ export async function countUsers(tenantId: string): Promise<number> {
 // `access-guard.repository.ts` behind a real per-tenant lock, and every caller
 // asserts after applying its change rather than predicting the effect.
 
-const COLUMN_TO_FIELD: Record<string, string> = {
-  display_name: 'displayName',
-  username: 'username',
-  role_id: 'roleId',
-  is_active: 'isActive',
-  password_hash: 'passwordHash',
-};
-
 function columnToField(column: string): string {
-  return COLUMN_TO_FIELD[column] ?? column;
+  return fieldFor(USER_COLUMNS, column);
 }
