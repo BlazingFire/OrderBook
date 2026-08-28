@@ -655,7 +655,6 @@ table.ob-table {
   white-space: nowrap;
 }
 
-
 .ob-table tbody tr[data-selected='true'] td {
   background: var(--bg-selected);
 }
@@ -1216,135 +1215,6 @@ html[data-window-blur='true'] .ob-busy rect {
   pointer-events: none;
 }
 
-/* ===========================================================================
- * Popover · Drawer · Toast (levels 2 and 3)
- * ======================================================================== */
-
-@keyframes ob-pop-in {
-  from {
-    transform: translateY(4px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-@keyframes ob-drawer-in {
-  from {
-    transform: translateX(24px);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-@keyframes ob-toast-in {
-  from {
-    transform: translateY(8px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-@keyframes ob-overlay-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.ob-popover {
-  position: absolute;
-  z-index: var(--z-popover);
-  background: var(--bg-surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  box-shadow: var(--sh-2);
-  animation: ob-pop-in var(--d-base) var(--e-standard);
-}
-
-/* A list of actions inside a Popover — the kanban card's kebab menu, say. */
-.ob-menu {
-  display: flex;
-  flex-direction: column;
-  padding: var(--s-4);
-  min-width: 12.8571rem;
-}
-.ob-menu-item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  border: none;
-  border-radius: var(--r-sm);
-  background: none;
-  color: var(--fg-primary);
-  cursor: pointer;
-  padding: var(--s-6) var(--s-12);
-  transition: background-color var(--d-fast) var(--e-standard);
-}
-.ob-menu-item:hover {
-  background: var(--bg-hover);
-}
-.ob-menu-item:disabled {
-  color: var(--fg-disabled);
-  cursor: not-allowed;
-}
-.ob-menu-item:disabled:hover {
-  background: none;
-}
-
-.ob-overlay {
-  position: absolute;
-  inset: 0;
-  background: var(--overlay-scrim);
-  z-index: var(--z-overlay);
-  animation: ob-overlay-in var(--d-base) var(--e-standard);
-}
-
-.ob-drawer {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: var(--shell-footer-h);
-  width: 37.1429rem;
-  max-width: 90vw;
-  background: var(--bg-surface);
-  border-left: 1px solid var(--line);
-  box-shadow: var(--sh-3);
-  z-index: var(--z-drawer);
-  display: flex;
-  flex-direction: column;
-  animation: ob-drawer-in var(--d-slow) var(--e-standard);
-}
-
-.ob-drawer-head {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: var(--s-12);
-  padding: var(--s-16) var(--s-20);
-  border-bottom: 1px solid var(--line);
-}
-
-.ob-drawer-body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: var(--s-16) var(--s-20) var(--s-24);
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-16);
-}
-
 .ob-toasts {
   position: absolute;
   left: var(--s-16);
@@ -1692,6 +1562,40 @@ html[data-window-blur='true'] .ob-busy rect {
 .ob-combobox-empty {
   padding: var(--s-8);
   font-size: var(--t-small-size);
+  color: var(--fg-tertiary);
+}
+
+/* ===========================================================================
+ * Dense form grid
+ *
+ * `auto-fill` with a rem floor and no media query: the track minimum grows with
+ * the UI scale, so the column count falls as somebody turns the scale up and
+ * rises again on a wider window — without any breakpoint having to know either
+ * number.
+ * ======================================================================== */
+
+.ob-fieldgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: var(--s-8) var(--s-12);
+  align-items: start;
+}
+
+/* A field wide enough to need it — an address line, a note. Clamped, so a
+   two-column span on a one-column layout does not overflow the grid. */
+.ob-fieldgrid > [data-span='2'] {
+  grid-column: span min(2, var(--fieldgrid-columns, 2));
+}
+.ob-fieldgrid > [data-span='3'] {
+  grid-column: 1 / -1;
+}
+
+.ob-fieldgroup + .ob-fieldgroup {
+  margin-top: var(--s-20);
+}
+
+.ob-fieldgroup > .ob-eyebrow {
+  margin-bottom: var(--s-8);
   color: var(--fg-tertiary);
 }
 

@@ -1,44 +1,41 @@
 /**
- * ProductDrawer — create a new product, or edit an existing one, without
- * leaving the Catalog screen.
+ * Create or edit a product without leaving the Catalog screen.
  *
- * Same shape as `PartyDrawer` on purpose: `api.createProduct` already existed
- * (docs/UI_REDESIGN.md's Catalog slice) with no UI anywhere in the panel, so
- * this is that real, already-wired write path wrapped in the same
- * Drawer-based create-form pattern as the party flow. Edit mode was added
- * alongside the image pipeline (`7-IMAGE-PIPELINE.md`) — a product needs
- * somewhere to attach photos to, and there was no product detail/edit surface
- * anywhere in the panel before this.
+ * **Twenty-two fields, in five labelled groups.** The form used to offer eight
+ * of a product's columns; the other fourteen — every ceramic and trade
+ * attribute the owner asked for — had no way in at all, so a shade or a PEI
+ * rating could only be recorded by writing it somewhere it did not belong. The
+ * field coverage is the change that matters here; the container being a centred
+ * modal rather than a right-hand drawer follows the standing rule and is
+ * secondary.
  *
- *   open      — whether the drawer is open.
- *   product   — pass an existing product to edit it (title becomes "Edit
- *               product", the Images section appears, Save calls
- *               `api.updateProduct`); omit to create a new one.
- *   onClose   — called to dismiss without saving (Cancel, Esc, backdrop, the
- *               drawer's own close button). The draft is discarded.
- *   onCreated — called once `api.createProduct` resolves (create mode only).
- *               The product write is queued like every other write in this
- *               app, so the server only hands back a `QueuedResult` — an id,
- *               nothing else. `onCreated` is given that id plus the code and
- *               name the caller just typed.
- *   onUpdated — called once `api.updateProduct` resolves (edit mode only),
- *               with the caller-typed name for the confirmation toast — the
- *               full record arrives moments later through the event stream,
- *               same asymmetry as create.
- *   onError   — surfaces a failure through the caller's own error channel,
- *               same convention as every other screen in this panel.
+ * The name is kept for its call sites; it is a modal now.
  *
- * The rate field has no permission gate here: the Master ignores a rate from
- * anybody without `field.saleRate.edit` regardless of what the panel sends
- * (see AddLeadScreen), so a client-side gate would only be a courtesy — and
- * this screen isn't handed a `can()` to check in the first place.
+ * **The purchase rate is hidden entirely without the key, not disabled.** A
+ * disabled field with a value in it is a disclosure; a disabled field with no
+ * value in it is a permanent tease. The Master masks the field by *absence*, so
+ * "the key is not there" and "the person may not see cost" are the same test.
+ *
+ * The sale rate has no client-side gate, deliberately: the Master ignores a
+ * rate from anybody without `field.saleRate.edit` whatever the panel sends, so
+ * a gate here would be a courtesy — and this screen is not handed a `can()`.
  */
 
 import { useEffect, useState } from 'react';
 import type { Product } from '@orderbook/shared';
+import { PRODUCT_APPLICATIONS, PRODUCT_EDGE_TYPES, PRODUCT_UOMS } from '@orderbook/shared';
 
 import { api } from '../api';
-import { Button, Drawer, FormField, Input, NumberInput, t } from '@orderbook/ui';
+import {
+  Button,
+  Field,
+  FieldGroup,
+  Input,
+  Modal,
+  NumberInput,
+  Select,
+  t,
+} from '@orderbook/ui';
 import { ProductImages } from './ProductImages';
 
 export interface CreatedProduct {
@@ -56,6 +53,54 @@ interface ProductDrawerProps {
   onError: (message: string) => void;
 }
 
+/** Every editable column, so the form and the record cannot drift apart. */
+const EMPTY = {
+  productCode: '',
+  name: '',
+  alias: '',
+  productType: '',
+  series: '',
+  size: '',
+  grade: '',
+  finish: '',
+  color: '',
+  hsnCode: '',
+  rate: '',
+  mrp: '',
+  purchaseRate: '',
+  gstRatePct: '',
+  uom: 'box',
+  barcode: '',
+  brand: '',
+  weightKg: '',
+  piecesPerBox: '',
+  boxCoverageSqft: '',
+  thicknessMm: '',
+  shade: '',
+  calibre: '',
+  waterAbsorptionPct: '',
+  peiRating: '',
+  edgeType: '',
+  surfaceTexture: '',
+  application: '',
+  originPlant: '',
+};
+
+type Draft = typeof EMPTY;
+
+/** Money is entered in rupees and stored in paise. */
+function toPaise(value: string): number | null {
+  return value.trim() ? Math.round(Number(value) * 100) : null;
+}
+
+function toNumber(value: string): number | null {
+  return value.trim() ? Number(value) : null;
+}
+
+function fromPaise(value: number | null | undefined): string {
+  return value != null ? String(value / 100) : '';
+}
+
 export function ProductDrawer({
   open,
   product,
@@ -66,87 +111,140 @@ export function ProductDrawer({
 }: ProductDrawerProps) {
   const editing = product ?? null;
 
-  const [productCode, setProductCode] = useState('');
-  const [name, setName] = useState('');
-  const [alias, setAlias] = useState('');
-  const [productType, setProductType] = useState('');
-  const [size, setSize] = useState('');
-  const [grade, setGrade] = useState('');
-  const [weightKg, setWeightKg] = useState('');
-  const [rate, setRate] = useState('');
+  const [draft, setDraft] = useState<Draft>(EMPTY);
   const [busy, setBusy] = useState(false);
-  // Local mirror of the editing product's `images[]`, patched in place as
-  // uploads/reorders/deletes resolve — the merged `view` also updates a
-  // moment later through the event stream, but waiting for that would mean
-  // the thumbnail strip flickered blank between each action.
+
+  /*
+   * Local mirror of the editing product's `images[]`, patched in place as
+   * uploads, reorders and deletes resolve. The merged view updates a moment
+   * later through the event stream, but waiting for that would make the
+   * thumbnail strip flicker blank between actions.
+   */
   const [liveProduct, setLiveProduct] = useState<Product | null>(editing);
 
-  function fillFrom(source: Product): void {
-    setProductCode(source.productCode);
-    setName(source.name);
-    setAlias(source.alias ?? '');
-    setProductType(source.productType ?? '');
-    setSize(source.size ?? '');
-    setGrade(source.grade ?? '');
-    setWeightKg(source.weightKg != null ? String(source.weightKg) : '');
-    setRate(source.rate != null ? String(source.rate / 100) : '');
-  }
+  const set = (field: keyof Draft, value: string): void =>
+    setDraft((current) => ({ ...current, [field]: value }));
+
+  /**
+   * Whether this panel's signed-in person may see what the company pays.
+   *
+   * Read from the record rather than from a permission list: the Master masks
+   * the purchase rate by **key absence**, so an editing product that carries no
+   * `purchaseRate` property is exactly the case where the field must not
+   * render. On a new product there is nothing to disclose, so it is offered —
+   * and the Master drops it if they may not set one.
+   */
+  const canSeeCost = !editing || 'purchaseRate' in editing;
 
   useEffect(() => {
-    if (open && editing) fillFrom(editing);
-    else if (open) reset();
+    if (!open) return;
+
+    setDraft(
+      editing
+        ? {
+            productCode: editing.productCode,
+            name: editing.name,
+            alias: editing.alias ?? '',
+            productType: editing.productType ?? '',
+            series: editing.series ?? '',
+            size: editing.size ?? '',
+            grade: editing.grade ?? '',
+            finish: editing.finish ?? '',
+            color: editing.color ?? '',
+            hsnCode: editing.hsnCode ?? '',
+            rate: fromPaise(editing.rate),
+            mrp: fromPaise(editing.mrp),
+            purchaseRate: fromPaise(editing.purchaseRate),
+            gstRatePct: editing.gstRatePct != null ? String(editing.gstRatePct) : '',
+            uom: editing.uom || 'box',
+            barcode: editing.barcode ?? '',
+            brand: editing.brand ?? '',
+            weightKg: editing.weightKg != null ? String(editing.weightKg) : '',
+            piecesPerBox: editing.piecesPerBox != null ? String(editing.piecesPerBox) : '',
+            boxCoverageSqft:
+              editing.boxCoverageSqft != null ? String(editing.boxCoverageSqft) : '',
+            thicknessMm: editing.thicknessMm != null ? String(editing.thicknessMm) : '',
+            shade: editing.shade ?? '',
+            calibre: editing.calibre ?? '',
+            waterAbsorptionPct:
+              editing.waterAbsorptionPct != null ? String(editing.waterAbsorptionPct) : '',
+            peiRating: editing.peiRating != null ? String(editing.peiRating) : '',
+            edgeType: editing.edgeType ?? '',
+            surfaceTexture: editing.surfaceTexture ?? '',
+            application: editing.application ?? '',
+            originPlant: editing.originPlant ?? '',
+          }
+        : EMPTY,
+    );
+
     setLiveProduct(editing);
+    // Keyed on the record's identity, not the record: an unrelated field
+    // arriving through the event stream must not wipe a half-typed draft.
   }, [open, editing?.id]);
 
-  function reset(): void {
-    setProductCode('');
-    setName('');
-    setAlias('');
-    setProductType('');
-    setSize('');
-    setGrade('');
-    setWeightKg('');
-    setRate('');
-  }
-
   function close(): void {
-    reset();
+    setDraft(EMPTY);
     onClose();
   }
 
   async function save(): Promise<void> {
-    const trimmedCode = productCode.trim();
-    const trimmedName = name.trim();
-    if (!trimmedCode) {
+    const productCode = draft.productCode.trim();
+    const name = draft.name.trim();
+
+    if (!productCode) {
       onError(t('product.codeRequired'));
       return;
     }
-    if (!trimmedName) {
+    if (!name) {
       onError(t('product.nameRequired'));
       return;
     }
 
+    const text = (field: keyof Draft): string | null => draft[field].trim() || null;
+
     const input = {
-      productCode: trimmedCode,
-      name: trimmedName,
-      alias: alias.trim() || null,
-      productType: productType.trim() || null,
-      size: size.trim() || null,
-      grade: grade.trim() || null,
-      // Entered in kilograms/rupees, stored as-is/in paise respectively.
-      weightKg: weightKg.trim() ? Number(weightKg) : null,
-      rate: rate.trim() ? Math.round(Number(rate) * 100) : null,
+      productCode,
+      name,
+      alias: text('alias'),
+      productType: text('productType'),
+      series: text('series'),
+      size: text('size'),
+      grade: text('grade'),
+      finish: text('finish'),
+      color: text('color'),
+      hsnCode: text('hsnCode'),
+      rate: toPaise(draft.rate),
+      mrp: toPaise(draft.mrp),
+      gstRatePct: toNumber(draft.gstRatePct),
+      uom: draft.uom,
+      barcode: text('barcode'),
+      brand: text('brand'),
+      weightKg: toNumber(draft.weightKg),
+      piecesPerBox: toNumber(draft.piecesPerBox),
+      boxCoverageSqft: toNumber(draft.boxCoverageSqft),
+      thicknessMm: toNumber(draft.thicknessMm),
+      shade: text('shade'),
+      calibre: text('calibre'),
+      waterAbsorptionPct: toNumber(draft.waterAbsorptionPct),
+      peiRating: toNumber(draft.peiRating),
+      edgeType: text('edgeType'),
+      surfaceTexture: text('surfaceTexture'),
+      application: text('application'),
+      originPlant: text('originPlant'),
+      // Sent only when the field was rendered. Sending `null` for a hidden
+      // field would clear a cost this person was never shown.
+      ...(canSeeCost ? { purchaseRate: toPaise(draft.purchaseRate) } : {}),
     };
 
     setBusy(true);
     try {
       if (editing) {
         await api.updateProduct(editing.id, input);
-        onUpdated?.(trimmedName);
+        onUpdated?.(name);
       } else {
         const result = await api.createProduct(input);
-        onCreated?.({ id: result.id, productCode: trimmedCode, name: trimmedName });
-        reset();
+        onCreated?.({ id: result.id, productCode, name });
+        setDraft(EMPTY);
       }
     } catch (caught) {
       onError(caught instanceof Error ? caught.message : t('product.createFailed'));
@@ -155,111 +253,153 @@ export function ProductDrawer({
     }
   }
 
+  const text = (field: keyof Draft, label: string, extra: Record<string, unknown> = {}) => (
+    <Field label={label}>
+      {(id) => (
+        <Input
+          id={id}
+          value={draft[field]}
+          onChange={(event) => set(field, event.target.value)}
+          {...extra}
+        />
+      )}
+    </Field>
+  );
+
+  /** A numeric cell. Digits and one dot — a stepper is wrong for a free figure. */
+  const numeric = (field: keyof Draft, label: string, hint?: string) => (
+    <Field label={label} hint={hint}>
+      {(id) => (
+        <NumberInput
+          id={id}
+          value={draft[field]}
+          onChange={(event) => set(field, event.target.value.replace(/[^0-9.]/g, ''))}
+        />
+      )}
+    </Field>
+  );
+
+  /** A closed set. A native select, because that is exactly what one is. */
+  const choice = (
+    field: keyof Draft,
+    label: string,
+    values: readonly string[],
+    labelFor: (value: string) => string,
+    blank = true,
+  ) => (
+    <Field label={label}>
+      {(id) => (
+        <Select id={id} value={draft[field]} onChange={(event) => set(field, event.target.value)}>
+          {blank && <option value="">{t('product.field.none')}</option>}
+          {values.map((value) => (
+            <option key={value} value={value}>
+              {labelFor(value)}
+            </option>
+          ))}
+        </Select>
+      )}
+    </Field>
+  );
+
   return (
-    <Drawer
+    <Modal
       open={open}
       onClose={close}
+      size="xl"
       title={editing ? t('product.edit.title') : t('product.new.title')}
-    >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-12)' }}>
-          <FormField label={t('product.field.code')} required>
-            {(id) => (
-              <Input
-                id={id}
-                value={productCode}
-                autoFocus
-                className="ob-mono"
-                onChange={(event) => setProductCode(event.target.value)}
-              />
-            )}
-          </FormField>
-          <FormField label={t('product.field.name')} required>
-            {(id) => (
-              <Input
-                id={id}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') void save();
-                }}
-              />
-            )}
-          </FormField>
-        </div>
-
-        <FormField label={t('product.field.alias')}>
-          {(id) => (
-            <Input id={id} value={alias} onChange={(event) => setAlias(event.target.value)} />
-          )}
-        </FormField>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-12)' }}>
-          <FormField label={t('product.field.type')}>
-            {(id) => (
-              <Input
-                id={id}
-                value={productType}
-                onChange={(event) => setProductType(event.target.value)}
-              />
-            )}
-          </FormField>
-          <FormField label={t('product.field.size')}>
-            {(id) => (
-              <Input id={id} value={size} onChange={(event) => setSize(event.target.value)} />
-            )}
-          </FormField>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-12)' }}>
-          <FormField label={t('product.field.grade')}>
-            {(id) => (
-              <Input id={id} value={grade} onChange={(event) => setGrade(event.target.value)} />
-            )}
-          </FormField>
-          <FormField label={t('product.field.weight')}>
-            {(id) => (
-              <NumberInput
-                id={id}
-                value={weightKg}
-                onChange={(event) => setWeightKg(event.target.value.replace(/[^0-9.]/g, ''))}
-              />
-            )}
-          </FormField>
-        </div>
-
-        <FormField label={t('product.field.rate')} hint={t('product.field.rateHint')}>
-          {(id) => (
-            <NumberInput
-              id={id}
-              value={rate}
-              onChange={(event) => setRate(event.target.value.replace(/[^0-9.]/g, ''))}
-            />
-          )}
-        </FormField>
-
-        {liveProduct && (
-          <FormField label={t('product.field.images')}>
-            {() => (
-              <ProductImages product={liveProduct} onChanged={setLiveProduct} onError={onError} />
-            )}
-          </FormField>
-        )}
-
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--s-8)',
-            marginTop: 'var(--s-4)',
-          }}
-        >
+      footer={
+        <>
+          <span className="ob-small">{!editing && t('product.saveHint')}</span>
+          <span style={{ flex: 1 }} />
+          <Button variant="secondary" onClick={close}>
+            {t('common.cancel')}
+          </Button>
           <Button variant="primary" busy={busy} onClick={() => void save()}>
             {busy ? t('product.saving') : editing ? t('product.saveChanges') : t('product.save')}
           </Button>
-          {!editing && <span className="ob-small">{t('product.saveHint')}</span>}
-        </div>
-      </div>
-    </Drawer>
+        </>
+      }
+    >
+      <FieldGroup title={t('product.group.identity')}>
+        <Field label={t('product.field.code')} required>
+          {(id) => (
+            <Input
+              id={id}
+              value={draft.productCode}
+              autoFocus
+              className="ob-mono"
+              onChange={(event) => set('productCode', event.target.value)}
+            />
+          )}
+        </Field>
+        <Field label={t('product.field.name')} required span={2}>
+          {(id) => (
+            <Input
+              id={id}
+              value={draft.name}
+              onChange={(event) => set('name', event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void save();
+              }}
+            />
+          )}
+        </Field>
+        {text('alias', t('product.field.alias'))}
+        {text('brand', t('product.field.brand'))}
+        {text('productType', t('product.field.type'))}
+        {text('series', t('product.field.series'))}
+        {text('barcode', t('product.field.barcode'), { className: 'ob-mono' })}
+      </FieldGroup>
+
+      <FieldGroup title={t('product.group.pricing')}>
+        {numeric('rate', t('product.field.rate'), t('product.field.rateHint'))}
+        {numeric('mrp', t('product.field.mrp'))}
+        {canSeeCost &&
+          numeric(
+            'purchaseRate',
+            t('product.field.purchaseRate'),
+            t('product.field.purchaseRateHint'),
+          )}
+        {numeric('gstRatePct', t('product.field.gstRate'))}
+        {text('hsnCode', t('product.field.hsnCode'), { className: 'ob-mono' })}
+      </FieldGroup>
+
+      <FieldGroup title={t('product.group.packing')}>
+        {choice('uom', t('product.field.uom'), PRODUCT_UOMS, (value) => t(`product.uom.${value}` as never), false)}
+        {numeric('piecesPerBox', t('product.field.piecesPerBox'))}
+        {numeric('boxCoverageSqft', t('product.field.boxCoverage'))}
+        {numeric('weightKg', t('product.field.weight'))}
+      </FieldGroup>
+
+      <FieldGroup title={t('product.group.spec')}>
+        {text('size', t('product.field.size'))}
+        {numeric('thicknessMm', t('product.field.thickness'))}
+        {text('grade', t('product.field.grade'))}
+        {text('finish', t('product.field.finish'))}
+        {text('color', t('product.field.color'))}
+        {text('shade', t('product.field.shade'))}
+        {text('surfaceTexture', t('product.field.surfaceTexture'))}
+        {text('calibre', t('product.field.calibre'))}
+        {numeric('waterAbsorptionPct', t('product.field.waterAbsorption'))}
+        {numeric('peiRating', t('product.field.peiRating'))}
+        {choice('edgeType', t('product.field.edgeType'), PRODUCT_EDGE_TYPES, (value) =>
+          t(`product.edge.${value}` as never),
+        )}
+        {choice('application', t('product.field.application'), PRODUCT_APPLICATIONS, (value) =>
+          t(`product.application.${value}` as never),
+        )}
+        {text('originPlant', t('product.field.originPlant'))}
+      </FieldGroup>
+
+      {liveProduct && (
+        <FieldGroup title={t('product.group.photos')}>
+          <Field label={t('product.field.images')} span={3}>
+            {() => (
+              <ProductImages product={liveProduct} onChanged={setLiveProduct} onError={onError} />
+            )}
+          </Field>
+        </FieldGroup>
+      )}
+    </Modal>
   );
 }

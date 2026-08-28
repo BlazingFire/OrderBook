@@ -1,46 +1,44 @@
 /**
- * PartyDrawer — create a new party without leaving whatever screen needed one
+ * Create or edit a party without leaving whatever screen needed one
  * (docs/LEAD_GENERATION_FLOW.md §3.1's "a customer standing at the counter is
- * often new"). Visually matches `New-Party.dc.html`; behaviourally it is the
- * inline "+ New party" flow that used to live in AddLeadScreen, pulled out so
- * a second screen can reuse it.
+ * often new").
  *
- * Props are deliberately generic, not Add-Lead-specific, because Catalog/
- * Parties reuses this exact component in a follow-up pass:
+ * **Every column the record has, not the five it used to offer.** That is the
+ * change that matters here; the container being a centred modal rather than a
+ * right-hand drawer is secondary, and follows the standing rule that a record's
+ * detail opens centred over the list it came from. A form that offers five of a
+ * party's fourteen fields is not a shorter form — it is a form that quietly
+ * cannot record an address, so somebody writes it in the notes.
  *
- *   open      — whether the drawer is open.
- *   party     — pass an existing party to edit it (title becomes "Edit
- *               party", Save calls `api.updateParty`); omit to create a new
- *               one. Added alongside the Catalog/Parties view-detail drawer,
- *               which needed somewhere for its "Edit party" action to go —
- *               same shape as `ProductDrawer`'s edit mode.
- *   onClose   — called to dismiss without creating (Cancel, Esc, backdrop,
- *               the drawer's own close button). The draft is discarded.
- *   onCreated — called once `api.createParty` resolves (create mode only).
- *               The party write is queued like every other write in this app
- *               (docs §"offline is the normal path"), so the server only
- *               hands back a `QueuedResult` — an id, nothing else.
- *               `onCreated` is given that id plus the fields the caller just
- *               typed, which is enough for a screen to select the new party
- *               immediately without waiting for it to sync back through the
- *               snapshot.
- *   onUpdated — called once `api.updateParty` resolves (edit mode only),
- *               with the caller-typed name for the confirmation toast — same
- *               asymmetry as `ProductDrawer.onUpdated`.
- *   onError   — surfaces a failure through the caller's own error channel,
- *               same convention as every other screen in this panel.
+ * The name is kept for its call sites; it is a modal now.
  *
- * Party-specific product rate overrides (`PartyProductVariant`) are shown in
- * `New-Party.dc.html` too, but they need the product catalogue alongside the
- * party fields — that belongs to the Catalog/Parties view-detail drawer that
- * reads them, not this create/edit form.
+ * Props are deliberately generic rather than Add-Lead-specific:
+ *
+ *   party     — pass one to edit it; omit to create.
+ *   onCreated — called once the write is queued. Writes go through the outbox
+ *               like everything else in this panel, so the server hands back an
+ *               id and nothing else; the caller gets that plus the fields just
+ *               typed, which is enough to select the new party immediately.
+ *   onUpdated — the caller-typed name, for the confirmation toast.
+ *
+ * Party-specific product rate overrides are deliberately not here: they need
+ * the product catalogue alongside the party fields, which belongs to the screen
+ * that reads them.
  */
 
 import { useEffect, useState } from 'react';
 import type { Party } from '@orderbook/shared';
 
 import { api } from '../api';
-import { Button, Drawer, FormField, Input, Textarea, t } from '@orderbook/ui';
+import {
+  Button,
+  Field,
+  FieldGroup,
+  Input,
+  Modal,
+  Textarea,
+  t,
+} from '@orderbook/ui';
 
 export interface CreatedParty {
   id: string;
@@ -58,6 +56,23 @@ interface PartyDrawerProps {
   onError: (message: string) => void;
 }
 
+/** Every text column on a party, so the form and the record cannot drift. */
+const EMPTY = {
+  name: '',
+  phone: '',
+  altPhone: '',
+  email: '',
+  addressLine1: '',
+  addressLine2: '',
+  city: '',
+  state: '',
+  pincode: '',
+  gstNumber: '',
+  notes: '',
+};
+
+type Draft = typeof EMPTY;
+
 export function PartyDrawer({
   open,
   party,
@@ -68,65 +83,73 @@ export function PartyDrawer({
 }: PartyDrawerProps) {
   const editing = party ?? null;
 
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [city, setCity] = useState('');
-  const [gstNumber, setGstNumber] = useState('');
-  const [notes, setNotes] = useState('');
+  const [draft, setDraft] = useState<Draft>(EMPTY);
   const [busy, setBusy] = useState(false);
 
-  function fillFrom(source: Party): void {
-    setName(source.name);
-    setPhone(source.phone ?? '');
-    setCity(source.city ?? '');
-    setGstNumber(source.gstNumber ?? '');
-    setNotes(source.notes ?? '');
-  }
-
-  function reset(): void {
-    setName('');
-    setPhone('');
-    setCity('');
-    setGstNumber('');
-    setNotes('');
-  }
+  const set = (field: keyof Draft, value: string): void =>
+    setDraft((current) => ({ ...current, [field]: value }));
 
   useEffect(() => {
-    if (open && editing) fillFrom(editing);
-    else if (open) reset();
+    if (!open) return;
+
+    setDraft(
+      editing
+        ? {
+            name: editing.name,
+            phone: editing.phone ?? '',
+            altPhone: editing.altPhone ?? '',
+            email: editing.email ?? '',
+            addressLine1: editing.addressLine1 ?? '',
+            addressLine2: editing.addressLine2 ?? '',
+            city: editing.city ?? '',
+            state: editing.state ?? '',
+            pincode: editing.pincode ?? '',
+            gstNumber: editing.gstNumber ?? '',
+            notes: editing.notes ?? '',
+          }
+        : EMPTY,
+    );
+    // Keyed on the record's identity, not the record: an unrelated field
+    // arriving through the event stream must not wipe a half-typed draft.
   }, [open, editing?.id]);
 
   function close(): void {
-    reset();
+    setDraft(EMPTY);
     onClose();
   }
 
   async function save(): Promise<void> {
-    const trimmedName = name.trim();
-    if (!trimmedName) {
+    const name = draft.name.trim();
+    if (!name) {
       onError(t('party.nameRequired'));
       return;
     }
 
-    const trimmedPhone = phone.trim() || null;
-    const trimmedCity = city.trim() || null;
+    const trimmed = (field: keyof Draft): string | null => draft[field].trim() || null;
+
     const input = {
-      name: trimmedName,
-      phone: trimmedPhone,
-      city: trimmedCity,
-      gstNumber: gstNumber.trim() || null,
-      notes: notes.trim() || null,
+      name,
+      phone: trimmed('phone'),
+      altPhone: trimmed('altPhone'),
+      email: trimmed('email'),
+      addressLine1: trimmed('addressLine1'),
+      addressLine2: trimmed('addressLine2'),
+      city: trimmed('city'),
+      state: trimmed('state'),
+      pincode: trimmed('pincode'),
+      gstNumber: trimmed('gstNumber'),
+      notes: trimmed('notes'),
     };
 
     setBusy(true);
     try {
       if (editing) {
         await api.updateParty(editing.id, input);
-        onUpdated?.(trimmedName);
+        onUpdated?.(name);
       } else {
         const result = await api.createParty(input);
-        onCreated?.({ id: result.id, name: trimmedName, phone: trimmedPhone, city: trimmedCity });
-        reset();
+        onCreated?.({ id: result.id, name, phone: input.phone, city: input.city });
+        setDraft(EMPTY);
       }
     } catch (caught) {
       onError(caught instanceof Error ? caught.message : t('party.createFailed'));
@@ -135,82 +158,110 @@ export function PartyDrawer({
     }
   }
 
+  /** A plain text cell. The dense grid gives every one of these a column. */
+  const text = (field: keyof Draft, label: string, extra: Record<string, unknown> = {}) => (
+    <Field label={label}>
+      {(id) => (
+        <Input
+          id={id}
+          value={draft[field]}
+          onChange={(event) => set(field, event.target.value)}
+          {...extra}
+        />
+      )}
+    </Field>
+  );
+
   return (
-    <Drawer
+    <Modal
       open={open}
       onClose={close}
+      size="lg"
       title={editing ? t('party.edit.title') : t('party.new.title')}
+      footer={
+        <>
+          <span className="ob-small">{!editing && t('party.saveHint')}</span>
+          <span style={{ flex: 1 }} />
+          <Button variant="secondary" onClick={close}>
+            {t('common.cancel')}
+          </Button>
+          <Button variant="primary" busy={busy} onClick={() => void save()}>
+            {busy ? t('party.saving') : editing ? t('party.saveChanges') : t('party.save')}
+          </Button>
+        </>
+      }
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}>
-        <FormField label={t('party.field.name')} required>
+      <FieldGroup title={t('party.group.identity')}>
+        <Field label={t('party.field.name')} required span={2}>
           {(id) => (
             <Input
               id={id}
-              value={name}
+              value={draft.name}
               autoFocus
-              onChange={(event) => setName(event.target.value)}
+              onChange={(event) => set('name', event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') void save();
               }}
             />
           )}
-        </FormField>
+        </Field>
+      </FieldGroup>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-12)' }}>
-          <FormField label={t('party.field.phone')}>
-            {(id) => (
-              <Input
-                id={id}
-                value={phone}
-                inputMode="tel"
-                className="ob-numinput"
-                onChange={(event) => setPhone(event.target.value)}
-              />
-            )}
-          </FormField>
-          <FormField label={t('party.field.city')}>
-            {(id) => (
-              <Input id={id} value={city} onChange={(event) => setCity(event.target.value)} />
-            )}
-          </FormField>
-        </div>
+      <FieldGroup title={t('party.group.contact')}>
+        {text('phone', t('party.field.phone'), { inputMode: 'tel', className: 'ob-numinput' })}
+        {text('altPhone', t('party.field.altPhone'), {
+          inputMode: 'tel',
+          className: 'ob-numinput',
+        })}
+        {text('email', t('party.field.email'), { type: 'email' })}
+      </FieldGroup>
 
-        <FormField label={t('party.field.taxId')} hint={t('party.field.taxIdHint')}>
+      <FieldGroup title={t('party.group.address')}>
+        <Field label={t('party.field.addressLine1')} span={2}>
           {(id) => (
             <Input
               id={id}
-              value={gstNumber}
-              className="ob-mono"
-              onChange={(event) => setGstNumber(event.target.value)}
+              value={draft.addressLine1}
+              onChange={(event) => set('addressLine1', event.target.value)}
             />
           )}
-        </FormField>
+        </Field>
+        <Field label={t('party.field.addressLine2')} span={2}>
+          {(id) => (
+            <Input
+              id={id}
+              value={draft.addressLine2}
+              onChange={(event) => set('addressLine2', event.target.value)}
+            />
+          )}
+        </Field>
+        {text('city', t('party.field.city'))}
+        {text('state', t('party.field.state'))}
+        {text('pincode', t('party.field.pincode'), { className: 'ob-numinput' })}
+      </FieldGroup>
 
-        <FormField label={t('party.field.notes')}>
+      <FieldGroup title={t('party.group.tax')}>
+        <Field label={t('party.field.taxId')} hint={t('party.field.taxIdHint')}>
+          {(id) => (
+            <Input
+              id={id}
+              value={draft.gstNumber}
+              className="ob-mono"
+              onChange={(event) => set('gstNumber', event.target.value)}
+            />
+          )}
+        </Field>
+        <Field label={t('party.field.notes')} span={3}>
           {(id) => (
             <Textarea
               id={id}
               rows={2}
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
+              value={draft.notes}
+              onChange={(event) => set('notes', event.target.value)}
             />
           )}
-        </FormField>
-
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--s-8)',
-            marginTop: 'var(--s-4)',
-          }}
-        >
-          <Button variant="primary" busy={busy} onClick={() => void save()}>
-            {busy ? t('party.saving') : editing ? t('party.saveChanges') : t('party.save')}
-          </Button>
-          {!editing && <span className="ob-small">{t('party.saveHint')}</span>}
-        </div>
-      </div>
-    </Drawer>
+        </Field>
+      </FieldGroup>
+    </Modal>
   );
 }

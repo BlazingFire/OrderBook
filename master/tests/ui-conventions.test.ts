@@ -12,7 +12,7 @@
  * point is what is written in the files.
  */
 
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
@@ -157,10 +157,15 @@ describe('record detail is a modal', () => {
     return out;
   }
 
-  it('opens no Drawer from a screen', () => {
+  it('has no Drawer left to open', () => {
+    // The component is gone, not merely unused: the two form drawers were the
+    // last holdouts and they are modals now. A `<Drawer>` anywhere would not
+    // compile, and this catches the resurrection before somebody writes one.
+    expect(existsSync(path.join(ROOT, 'ui', 'src', 'Drawer.tsx'))).toBe(false);
+
     const offenders: string[] = [];
 
-    for (const app of ['master/web/src/screens', 'office/web/src/screens']) {
+    for (const app of ['master/web/src', 'office/web/src', 'ui/src']) {
       for (const file of screenFiles(path.join(ROOT, app))) {
         if (readFileSync(file, 'utf8').includes('<Drawer')) {
           offenders.push(path.relative(ROOT, file));
@@ -168,10 +173,6 @@ describe('record detail is a modal', () => {
       }
     }
 
-    // The two remaining `<Drawer>` sites are `PartyDrawer` and `ProductDrawer`
-    // under `office/web/src/components/` — creation and edit *forms*, not
-    // record detail. They go with the drawer itself when the forms workstream
-    // lands; until then they are deliberately out of this assertion's reach.
     expect(offenders).toEqual([]);
   });
 

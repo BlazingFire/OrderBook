@@ -131,16 +131,11 @@ textarea:not(:where([class*='ob-'])) {
   resize: vertical;
 }
 
-label:not(:where([class*='ob-'])),
-.field-label {
+label:not(:where([class*='ob-'])) {
   display: block;
   margin-bottom: var(--s-4);
   font-size: var(--t-small-size);
   color: var(--fg-secondary);
-}
-
-.field {
-  margin-bottom: var(--s-12);
 }
 
 .card {
