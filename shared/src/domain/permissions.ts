@@ -115,6 +115,19 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
   { key: 'stock.adjust', group: 'stock', labelToken: 'permission.stock.adjust' },
 
   { key: 'users.manage', group: 'admin', labelToken: 'permission.users.manage' },
+  /**
+   * Reading back a stored plaintext password on the Master.
+   *
+   * Stated plainly, because the obvious reading is wrong: the migration grants
+   * this to nobody, but on a **fresh** install the seeded Administrator holds
+   * it anyway — `20260303000000_roles_and_users.ts` updates that role with a
+   * *live* `allPermissions()` import, and `master/tests/helpers/fixtures.ts`
+   * widens every `testActor()` the same way. Only an upgraded installation
+   * starts with nobody holding it. The control that actually decides whether
+   * anything is recoverable is the `security.passwordRevealEnabled` setting,
+   * which is `false` on both.
+   */
+  { key: 'users.viewPassword', group: 'admin', labelToken: 'permission.users.viewPassword' },
   { key: 'roles.assign', group: 'admin', labelToken: 'permission.roles.assign' },
   { key: 'panels.manage', group: 'admin', labelToken: 'permission.panels.manage' },
   { key: 'settings.manage', group: 'admin', labelToken: 'permission.settings.manage' },
@@ -194,6 +207,7 @@ export const FIELD_PERMISSIONS = ['field.saleRate.view', 'field.saleRate.edit'] 
 const MINIMUM_TIER: Record<string, RoleTier> = {
   // Administration is the company's own governance.
   'users.manage': 'admin',
+  'users.viewPassword': 'admin',
   'roles.assign': 'admin',
   'panels.manage': 'admin',
   'settings.manage': 'admin',

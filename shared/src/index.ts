@@ -7,6 +7,7 @@ export * from './domain/inputs.js';
 export * from './domain/permissions.js';
 export * from './domain/recycle-bin.js';
 export * from './domain/reports.js';
+export * from './domain/settings.js';
 export * from './domain/version.js';
 export * from './domain/visibility.js';
 export * from './i18n/index.js';

@@ -29,6 +29,8 @@ import { resolveDefaultTenantId } from '../repositories/tenant.repository.js';
 import * as panelCredentialRepo from '../repositories/panel-credential.repository.js';
 import * as roleRepo from '../repositories/role.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
+import { rememberPassword } from './password-vault.service.js';
+import { clearRecentReauth, sweepRecentReauth } from './reauth-cache.js';
 
 const log = createLogger('auth');
 
@@ -128,13 +130,27 @@ export async function signIn(
   const user = await userRepo.findById(credential.tenantId, credential.id);
   if (!user) throw new UnauthorizedError('error.unauthorized.signInFailed');
 
+  // Read after any bcrypt→scrypt rewrite above, so the panel stores a marker
+  // for the hash that is now on disk rather than the one it replaced.
+  const credentialFingerprint =
+    (await panelCredentialRepo.fingerprintForUser(credential.tenantId, credential.id)) ?? '';
+
+  // The password vault's back-fill, and the only reason it needs no migration:
+  // this is the one moment the Master holds somebody's plaintext without having
+  // just set it. A no-op unless the company switched the feature on, and after
+  // the transaction so the fingerprint is the post-upgrade one.
+  await rememberPassword(
+    credential.tenantId,
+    credential.id,
+    password,
+    credential.id,
+    credentialFingerprint,
+  );
+
   return {
     token,
     user: await decorate(user, token),
-    // Read after any bcrypt→scrypt rewrite above, so the panel stores a marker
-    // for the hash that is now on disk rather than the one it replaced.
-    credentialFingerprint:
-      (await panelCredentialRepo.fingerprintForUser(credential.tenantId, credential.id)) ?? '',
+    credentialFingerprint,
   };
 }
 
@@ -266,6 +282,8 @@ export async function changeOwnPassword(
     );
   });
 
+  await rememberPassword(tenantId, userId, input.newPassword, userId);
+
   invalidateSessionsForUser(userId, { except: undefined });
 }
 
@@ -292,6 +310,7 @@ export function invalidateSessionsForUser(
 export function resetAuthState(): void {
   sessions.clear();
   failures.clear();
+  clearRecentReauth();
 }
 
 export function purgeExpiredSessions(): void {
@@ -299,6 +318,10 @@ export function purgeExpiredSessions(): void {
   for (const [token, session] of sessions) {
     if (session.expiresAt <= now) sessions.delete(token);
   }
+
+  // The reveal's re-authentication window rides the same sweep. An unswept map
+  // keyed by session token is exactly the defect `failures` above still has.
+  sweepRecentReauth();
 }
 
 /** Attach the caller's own resolved permissions, for the UI to render from. */

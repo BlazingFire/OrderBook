@@ -33,6 +33,7 @@ import {
   sweepOrphanTemporaries,
 } from './lib/document-files.js';
 import { createLogger } from './lib/logger.js';
+import { loadOrCreateKey } from './lib/secret-box.js';
 import { assertFontsPresent } from './pdf/fonts.js';
 import { listLanAddresses } from './lib/network.js';
 import { createRealtimeHub, type RealtimeHub } from './realtime/hub.js';
@@ -174,6 +175,13 @@ async function main(): Promise<void> {
     // fallback for an unregistered face is Helvetica, which has no Devanagari
     // glyphs — so the alternative to failing now is silently printing every
     // Hindi name as blank boxes on a document already sent to a customer.
+    // A pre-flight, not the only initialiser: `secret-box.ts` creates the key
+    // lazily on first use, because no integration suite runs `main()`. Calling
+    // it here means an unwritable `dataDir/secrets` is loud on the boot screen
+    // rather than silent until the first person signs in.
+    bootStep('Preparing secure storage');
+    loadOrCreateKey();
+
     bootStep('Checking document fonts');
     assertFontsPresent();
     await ensureDocumentDirectories();

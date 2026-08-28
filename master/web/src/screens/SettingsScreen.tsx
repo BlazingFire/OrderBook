@@ -7,8 +7,15 @@
  * only its hash is stored, so it cannot be displayed again.
  */
 
-import { useEffect, useState, type ReactNode } from 'react';
-import type { MasterIdentity, StorageUsage } from '@orderbook/shared';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import type {
+  MasterIdentity,
+  SettingKey,
+  SettingView,
+  StorageUsage,
+  VaultStatus,
+} from '@orderbook/shared';
+import { SETTINGS } from '@orderbook/shared';
 
 import { api } from '../api';
 import { StorageBackupActions } from '../components/StorageBackup';
@@ -16,6 +23,7 @@ import {
   Button,
   Card,
   IdField,
+  Input,
   KeyValueList,
   SCALE_DEFAULT,
   SCALE_MAX,
@@ -53,6 +61,14 @@ export function SettingsScreen() {
   const [scale, setScale] = useState<number>(() => loadScale());
   const [motionOn, setMotionOn] = useState<boolean>(() => !motionDisabled());
   const [canManageStorage, setCanManageStorage] = useState(false);
+  const [settings, setSettings] = useState<SettingView[] | null>(null);
+  const [vault, setVault] = useState<VaultStatus | null>(null);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+
+  const loadCompanySettings = useCallback(async (canManage: boolean, canReveal: boolean) => {
+    if (canManage) setSettings(await api.settings().catch(() => null));
+    if (canReveal) setVault(await api.vaultStatus().catch(() => null));
+  }, []);
 
   useEffect(() => {
     void api
@@ -70,9 +86,28 @@ export function SettingsScreen() {
     // because nothing else on this screen needs the session.
     void api
       .me()
-      .then(({ user }) => setCanManageStorage(user.permissions.includes('storage.manage')))
+      .then(({ user }) => {
+        setCanManageStorage(user.permissions.includes('storage.manage'));
+        return loadCompanySettings(
+          user.permissions.includes('settings.manage'),
+          user.permissions.includes('users.viewPassword'),
+        );
+      })
       .catch(() => setCanManageStorage(false));
-  }, []);
+  }, [loadCompanySettings]);
+
+  async function saveSetting(key: SettingKey, value: unknown): Promise<void> {
+    setSettingsError(null);
+    try {
+      setSettings(await api.saveSetting(key, value));
+      // Switching the reveal toggle off has just deleted every stored
+      // password, so a stale coverage line would be a lie about what this
+      // company is holding.
+      setVault(await api.vaultStatus().catch(() => null));
+    } catch (caught) {
+      setSettingsError(caught instanceof Error ? caught.message : t('settings.company.saveFailed'));
+    }
+  }
 
   function handleThemeChange(next: Theme) {
     setTheme(next);
@@ -175,6 +210,32 @@ export function SettingsScreen() {
         </div>
       </Card>
 
+      {settings && (
+        <Card>
+          <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-4)' }}>
+            {t('settings.company.title')}
+          </div>
+          <p className="ob-small" style={{ margin: '0 0 var(--s-12)' }}>
+            {t('settings.company.subtitle')}
+          </p>
+          {settingsError && (
+            <div className="ob-banner ob-banner--conflict" role="alert">
+              {settingsError}
+            </div>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
+            {settings.map((setting) => (
+              <CompanySetting
+                key={setting.key}
+                setting={setting}
+                vault={setting.key === 'security.passwordRevealEnabled' ? vault : null}
+                onSave={saveSetting}
+              />
+            ))}
+          </div>
+        </Card>
+      )}
+
       <Card>
         <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-4)' }}>
           {t('settings.connection.title')}
@@ -241,6 +302,79 @@ export function SettingsScreen() {
         {canManageStorage && <StorageBackupActions />}
       </Card>
     </div>
+  );
+}
+
+/**
+ * One row of the company card, rendered from the declaration rather than from a
+ * hand-written control per key.
+ *
+ * Three shapes and no fourth: a boolean is a switch, a secret is "set / not
+ * set" plus a field that writes a new value and never reads the old one back,
+ * and anything else is shown read-only because the screen that owns it is not
+ * this one. That last branch is what keeps this component honest as `SETTINGS`
+ * grows — a key with no editor yet appears saying so, instead of silently
+ * missing.
+ */
+function CompanySetting({
+  setting,
+  vault,
+  onSave,
+}: {
+  setting: SettingView;
+  /** Only for the reveal toggle: how much of the company is actually covered. */
+  vault: VaultStatus | null;
+  onSave: (key: SettingKey, value: unknown) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState('');
+  const label = t(SETTINGS[setting.key].labelToken);
+  const help = t(SETTINGS[setting.key].descriptionToken);
+
+  return (
+    <SettingRow label={label}>
+      {setting.secret ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
+          <span className="ob-small">
+            {setting.configured
+              ? t('settings.company.secretSet')
+              : t('settings.company.secretNotSet')}
+          </span>
+          <Input
+            type="password"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            aria-label={label}
+          />
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={draft.length === 0}
+            onClick={() => {
+              const value = draft;
+              setDraft('');
+              void onSave(setting.key, value);
+            }}
+          >
+            {t('settings.company.secretSave')}
+          </Button>
+        </div>
+      ) : typeof setting.value === 'boolean' ? (
+        <Switch
+          checked={setting.value}
+          onChange={(next) => void onSave(setting.key, next)}
+          label={label}
+        />
+      ) : (
+        <span className="ob-mono ob-small">
+          {JSON.stringify(setting.value)} - {t('settings.company.editedElsewhere')}
+        </span>
+      )}
+      <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
+        {vault && vault.enabled
+          ? t('settings.vault.coverage', { stored: vault.stored, total: vault.total })
+          : help}
+      </span>
+    </SettingRow>
   );
 }
 

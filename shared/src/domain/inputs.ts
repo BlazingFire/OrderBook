@@ -305,15 +305,34 @@ export interface ChangeOwnPasswordInput {
 }
 
 /**
- * A newly created user or a reset, carrying the plaintext **once**.
+ * A newly created user, a reset, or a reveal — carrying the plaintext once.
  *
- * There is no "show again" anywhere in the product; recovery is another reset,
- * which is itself audited.
+ * It used to be true that there was no "show again" anywhere in the product and
+ * that recovery was another reset. The password vault changed that on
+ * installations that deliberately switch it on: `security.passwordRevealEnabled`
+ * makes `POST /api/access/users/:id/reveal-password` answer with this same
+ * shape, gated on `users.viewPassword`, a re-typed password, and an audit row
+ * written before the response. On an installation that leaves the setting alone
+ * — the default — the old sentence still holds exactly.
  */
 export interface OneTimeSecret {
   userId: RecordId;
   username: string;
   password: string;
+}
+
+/**
+ * How much of the company the vault actually covers.
+ *
+ * `stored` trails `total` by design rather than by accident: nothing is sealed
+ * until somebody signs in **online** after the toggle went on, so a clerk who
+ * works offline for a fortnight is a gap the Settings screen shows as a number
+ * instead of a surprise at the moment somebody needs their password.
+ */
+export interface VaultStatus {
+  enabled: boolean;
+  stored: number;
+  total: number;
 }
 
 export interface ConflictResolutionInput {

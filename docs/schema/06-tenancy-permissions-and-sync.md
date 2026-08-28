@@ -92,6 +92,65 @@ Two kinds of permission live in the same column:
 
 ---
 
+## 2b. `settings` and `user_password_vault`
+
+Added by `20260314000000_settings_and_password_vault`. Neither table is seeded and the migration
+grants no permission, so an installation that runs it behaves exactly as it did the minute before.
+
+```sql
+CREATE TABLE settings (
+  tenant_id   UUID NOT NULL REFERENCES tenants(id),
+  "key"       TEXT NOT NULL,
+  "value"     JSONB,
+  is_secret   BOOLEAN NOT NULL DEFAULT false,
+  key_version INT NOT NULL DEFAULT 1,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_by  TEXT,
+  PRIMARY KEY (tenant_id, "key")
+);
+```
+
+A row per key, the shape `option_lists` already establishes — not a column per toggle (a migration
+per switch is what makes people stop adding switches) and not one JSONB blob (no per-key audit, no
+per-key secret handling, a read-modify-write race on every save). **An absent row means the default
+declared in `shared/src/domain/settings.ts`**, which is why the migration inserts nothing.
+
+No `version`/`hlc`/`field_hlc`: settings never sync, and the table is deliberately absent from
+`sync.service.ts`'s `COLUMN_MAP`. A `secret: true` key stores a sealed envelope as its `value`, with
+`aad = setting:<tenant>:<key>`; the read endpoint answers `configured: true|false` and never the
+value.
+
+```sql
+CREATE TABLE user_password_vault (
+  tenant_id              UUID NOT NULL REFERENCES tenants(id),
+  user_id                TEXT NOT NULL,
+  key_version            INT  NOT NULL DEFAULT 1,
+  sealed                 JSONB NOT NULL,
+  credential_fingerprint TEXT NOT NULL,
+  updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_by             TEXT,
+  PRIMARY KEY (tenant_id, user_id)
+);
+```
+
+A separate table rather than a column on `users`, for two reasons that are both about blast radius:
+`USER_COLUMNS` is one `u.*` regression away from carrying a new column into every user list, and a
+named table can be excluded from the backup scan and truncated wholesale. `user_id` carries **no
+foreign key**, matching `party_access.user_id` and `users.role_id` — a restored person must come
+back with their vault row intact.
+
+`credential_fingerprint` is `credentialFingerprint(password_hash)` from
+`panel-credential.repository.ts`, reused rather than reimplemented. At reveal time the stored value
+is compared to the live one; a mismatch reports "stale" instead of showing a password that has since
+been changed.
+
+**This table is in `backup.repository.ts`'s `EXCLUDED_TABLES`.** It never enters an export, and a
+restore clears the live copy — the key that opens these rows lives in `dataDir/secrets/` and does not
+travel with the data, so a restored row would be unopenable ciphertext keyed to a user id that may
+now mean somebody else. See `docs/ROLES_AND_USERS.md` §4.2 for the residual risk, stated plainly.
+
+---
+
 ## 2a. Party Access — row-level scoping
 
 Added by `20260313000000_party_access`. Module permissions answer "may this role see leads at all";

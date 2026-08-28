@@ -1,3 +1,6 @@
+import os from 'node:os';
+import path from 'node:path';
+
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
@@ -13,6 +16,19 @@ export default defineConfig({
     // globals to the server suites.
     environmentMatchGlobs: [['ui/tests/**', 'jsdom']],
     environment: 'node',
+    /*
+     * Point the Master's data directory at a throwaway location for the whole
+     * run. `master/src/config/index.ts` resolves `dataDir` at module load, so
+     * this cannot be set from inside a test file — an ESM import is hoisted
+     * above any statement that would set it.
+     *
+     * Without this, suites write into the developer's live `master/data/`:
+     * the image suites already say so in their own comments, and the password
+     * vault would additionally create a real `secrets/vault.key` there.
+     */
+    env: {
+      ORDERBOOK_DATA_DIR: path.join(os.tmpdir(), 'orderbook-test-data'),
+    },
     // Integration tests share one database, so files must not run in parallel.
     fileParallelism: false,
     testTimeout: 30_000,

@@ -135,7 +135,20 @@ describe('moving the data folder', () => {
     // verifiers; a copy that landed world-readable would undo the 0o600 the
     // stores write them with.
     const stats = await fs.stat(path.join(target, 'pairing.json'));
-    expect(stats.mode & 0o077).toBe(0);
+
+    // The mode bits are asserted on POSIX only, and that is not a gap being
+    // waved away — it is that Windows has no POSIX mode to assert. Node's
+    // `chmod` there toggles the read-only attribute and nothing else, and
+    // `stat().mode` answers a synthesised `0o666`, so `mode & 0o077` is `0o066`
+    // on a file that is in fact protected by the folder's inherited ACL. This
+    // assertion ran red on every Windows run for exactly that reason, which is
+    // worse than not running: a permanently-failing test stops being read.
+    // What Windows *can* be held to is that the copy happened at all.
+    if (process.platform === 'win32') {
+      expect(stats.isFile()).toBe(true);
+    } else {
+      expect(stats.mode & 0o077).toBe(0);
+    }
   });
 
   it('starts clean when told not to bring anything', async () => {

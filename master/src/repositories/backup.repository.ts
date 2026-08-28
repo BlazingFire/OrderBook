@@ -37,7 +37,24 @@ import { db } from '../db/knex.js';
 
 type Runner = Knex | Knex.Transaction;
 
-const SYSTEM_TABLES = new Set(['knex_migrations', 'knex_migrations_lock']);
+/**
+ * Tables an export must never carry and a restore must never write.
+ *
+ * The two Knex bookkeeping tables are here because a restore replays into a
+ * schema whose migration history is its own. `user_password_vault` is here for
+ * a sharper reason: it holds passwords that are only encrypted, and the key
+ * that opens them lives in `dataDir/secrets/`, deliberately outside every
+ * backup. Excluding the table is what makes a stolen `.obbackup` worth nothing
+ * — and it must never be removed from this set to "fix" a restore that comes
+ * back with an empty vault. An empty vault after a restore is correct: those
+ * rows are keyed to user ids that may now mean somebody else, and
+ * `backup-restore.service.ts` clears the live table for exactly that reason.
+ */
+const EXCLUDED_TABLES = new Set([
+  'knex_migrations',
+  'knex_migrations_lock',
+  'user_password_vault',
+]);
 
 export async function listUserTables(runner: Runner = db()): Promise<string[]> {
   const { rows } = await runner.raw<{ rows: Array<{ table_name: string }> }>(`
@@ -45,7 +62,7 @@ export async function listUserTables(runner: Runner = db()): Promise<string[]> {
      WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
      ORDER BY table_name
   `);
-  return rows.map((row) => row.table_name).filter((name) => !SYSTEM_TABLES.has(name));
+  return rows.map((row) => row.table_name).filter((name) => !EXCLUDED_TABLES.has(name));
 }
 
 /** Tables carrying a `tenant_id` column — the unit a `selected` export/restore filters by. */

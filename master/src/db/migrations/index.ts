@@ -31,6 +31,7 @@ import * as officePanelAdministration from './20260312000000_office_panel_admini
 import * as userAvatars from './20260312000000_user_avatars.js';
 import * as panelAppVersion from './20260313000000_panel_app_version.js';
 import * as partyAccess from './20260313000000_party_access.js';
+import * as settingsAndPasswordVault from './20260314000000_settings_and_password_vault.js';
 
 export interface Migration {
   name: string;
@@ -74,6 +75,10 @@ export const migrations: Migration[] = [
   // list, so there is no ordering dependency between them and no reason to add
   // a second exception to the array's one rule.
   { name: '20260313000000_party_access', ...partyAccess },
+  {
+    name: '20260314000000_settings_and_password_vault',
+    ...settingsAndPasswordVault,
+  },
   // Stage 7 of `docs/backend-modules/` — last in the array, not last by
   // timestamp. Its `20260309` slot was reserved before `20260310`/`20260311`
   // were claimed by concurrent work; what matters is that it runs after every

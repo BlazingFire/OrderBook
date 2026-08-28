@@ -60,6 +60,16 @@ export function AccessScreen({ permissions, currentUserId, currentUserTier }: Pr
   const [users, setUsers] = useState<User[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [secret, setSecret] = useState<OneTimeSecret | null>(null);
+  /**
+   * Whether this company has switched the password vault on.
+   *
+   * Asked for separately from the permission because the two answer different
+   * questions, and the permission is the weaker of them: a fresh install's
+   * seeded Administrator already holds `users.viewPassword`, so hanging the
+   * control on that alone would show a button whose only possible outcome is a
+   * refusal.
+   */
+  const [vaultEnabled, setVaultEnabled] = useState(false);
   const [editing, setEditing] = useState<Role | 'new' | null>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -103,6 +113,14 @@ export function AccessScreen({ permissions, currentUserId, currentUserTier }: Pr
       .then(setCatalogue)
       .catch(() => setCatalogue(null));
   }, []);
+
+  useEffect(() => {
+    if (!permissions.includes('users.viewPassword')) return;
+    void api
+      .vaultStatus()
+      .then((status) => setVaultEnabled(status.enabled))
+      .catch(() => setVaultEnabled(false));
+  }, [permissions]);
 
   useEffect(() => {
     void load();
@@ -318,6 +336,7 @@ export function AccessScreen({ permissions, currentUserId, currentUserTier }: Pr
           roles={roles}
           canManage={can('users.manage')}
           canAssign={can('roles.assign')}
+          canReveal={can('users.viewPassword') && vaultEnabled}
           currentUserId={currentUserId}
           actorTier={currentUserTier}
           loading={loading}
@@ -385,6 +404,7 @@ function UsersTab({
   roles,
   canManage,
   canAssign,
+  canReveal,
   currentUserId,
   actorTier,
   loading,
@@ -396,6 +416,8 @@ function UsersTab({
   roles: Role[];
   canManage: boolean;
   canAssign: boolean;
+  /** Both the key and the company's switch — see `vaultEnabled` above. */
+  canReveal: boolean;
   currentUserId: string;
   /** The caller's own tier, so the role picker cannot offer one above it. */
   actorTier: RoleTier;
@@ -417,6 +439,9 @@ function UsersTab({
   /** The person whose password is being set, and the value being set. */
   const [settingPassword, setSettingPassword] = useState<User | null>(null);
   const [passwordValue, setPasswordValue] = useState('');
+  /** The person whose stored password is being revealed, and the caller's own. */
+  const [revealing, setRevealing] = useState<User | null>(null);
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -747,6 +772,19 @@ function UsersTab({
               {t('access.users.delete')}
             </Button>
             <span style={{ flex: 1 }} />
+            {canReveal && (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  // One dialog at a time (HIG, Modality).
+                  setOpenUserId(null);
+                  setConfirmPassword('');
+                  setRevealing(user);
+                }}
+              >
+                {t('access.users.revealPassword')}
+              </Button>
+            )}
             <Button
               variant="secondary"
               onClick={() => {
@@ -887,12 +925,65 @@ function UsersTab({
       </Modal>
 
       {/*
-       * There is no "show this person's password" anywhere in this screen, and
-       * there cannot be: `password_hash` holds a scrypt digest, the repository
-       * strips it from every `User` it returns, and the type has no field for
-       * it. Setting a known one is the nearest thing that actually exists —
-       * and unlike a stored plaintext, it leaves nothing readable behind.
+       * "Show this person's password" exists here only on an installation that
+       * has deliberately switched the password vault on: `canReveal` is the
+       * permission AND the company's own setting, so on a default install this
+       * dialog is unreachable and there is nothing stored for it to show.
+       *
+       * `password_hash` is still a one-way scrypt digest that nothing reverses,
+       * the repository still strips it from every `User`, and the type still
+       * has no field for it. What the vault holds is a separately sealed copy
+       * of the plaintext, in its own table, under a key outside every backup.
        */}
+      <Modal
+        open={Boolean(revealing)}
+        onClose={() => setRevealing(null)}
+        title={
+          revealing ? t('access.users.revealPasswordTitle', { name: revealing.displayName }) : ''
+        }
+        subtitle={t('access.users.revealPasswordSubtitle')}
+        footer={
+          <>
+            <span style={{ flex: 1 }} />
+            <Button variant="secondary" onClick={() => setRevealing(null)}>
+              {t('access.users.cancel')}
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => {
+                const target = revealing;
+                const typed = confirmPassword;
+                setRevealing(null);
+                setConfirmPassword('');
+                if (target) {
+                  void onRun(
+                    async () => onSecret(await api.revealPassword(target.id, typed)),
+                    t('access.users.revealPasswordFailed'),
+                  );
+                }
+              }}
+            >
+              {t('access.users.reveal')}
+            </Button>
+          </>
+        }
+      >
+        <FormField
+          label={t('access.users.revealPasswordConfirm')}
+          hint={t('access.users.revealPasswordConfirmHint')}
+        >
+          {(id) => (
+            <Input
+              id={id}
+              type="password"
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              autoFocus
+            />
+          )}
+        </FormField>
+      </Modal>
+
       <Modal
         open={Boolean(settingPassword)}
         onClose={() => setSettingPassword(null)}

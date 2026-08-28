@@ -19,6 +19,7 @@ import { findMasterConfig, insertMasterConfig, updateLanIp } from '../repositori
 import { resolveDefaultTenantId } from '../repositories/tenant.repository.js';
 import { nextHlc } from '../repositories/identity.repository.js';
 import { insertUser, roleIdForTier } from '../repositories/user.repository.js';
+import { rememberPassword } from './password-vault.service.js';
 
 const BCRYPT_ROUNDS = 10;
 
@@ -53,12 +54,12 @@ export async function runFirstTimeSetup(companyName: string | null): Promise<Fir
     bcrypt.hash(pairingPassword, BCRYPT_ROUNDS),
   ]);
 
-  await db().transaction(async (trx) => {
+  const seeded = await db().transaction(async (trx) => {
     // The tenancy migration seeds the tenant and its roles, so setup looks
     // them up rather than inventing a second set.
     const tenantId = await resolveDefaultTenantId(trx);
 
-    await insertUser(
+    const userId = await insertUser(
       {
         tenantId,
         username,
@@ -84,7 +85,17 @@ export async function runFirstTimeSetup(companyName: string | null): Promise<Fir
       },
       trx,
     );
+
+    return { tenantId, userId };
   });
+
+  // Wired for completeness and a no-op on every fresh install: the password
+  // vault's switch defaults to off, so this administrator's password is not
+  // stored until somebody deliberately turns the feature on and signs in again.
+  // Sealed after the transaction because this hash is bcrypt and `signIn`
+  // rewrites it to scrypt on first use — a fingerprint taken from the hash
+  // above would never match the live one.
+  await rememberPassword(seeded.tenantId, seeded.userId, password, null);
 
   return { masterUniqueId, username, password, pairingPassword, lanIps, port: config.http.port };
 }

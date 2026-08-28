@@ -27,6 +27,9 @@ import {
   tenantScopedTables,
   verifyActivityLogChain,
 } from '../repositories/backup.repository.js';
+import { clearVault } from '../repositories/password-vault.repository.js';
+import { invalidateRoleCache } from '../repositories/role.repository.js';
+import { invalidateSettingsCache } from './settings.service.js';
 import { generateReadableSecret, isSetupComplete } from './setup.service.js';
 
 const BCRYPT_ROUNDS = 10;
@@ -94,6 +97,14 @@ export async function restoreBackup(file: Buffer, passphrase: string, confirmWip
 
     await loadTables(trx, tables, scoped, parsedPayload.tables, tenantIds);
 
+    // The password vault is excluded from the export, so `loadTables` never
+    // sees its table and therefore never truncates it either. Clearing it here
+    // is not tidiness: a restore reinstates a different set of `users` rows,
+    // and a surviving vault entry would be a sealed password keyed to an id
+    // that may now mean somebody else entirely. (The table is named in exactly
+    // three files, none of them this one — `password-vault-invariants.test.ts`.)
+    await clearVault(trx, tenantIds);
+
     if (tables.includes('office_panels')) await revokeAllOfficePanels(trx);
     if (tables.includes('master_config')) await regeneratePairingPasswordHash(trx, newPairingHash);
 
@@ -103,6 +114,14 @@ export async function restoreBackup(file: Buffer, passphrase: string, confirmWip
       throw new BackupError('hash_chain_invalid', 'error.internal.backupHashChainInvalid');
     }
   });
+
+  // In-memory caches survive the transaction that replaced the rows behind
+  // them. `settings` is the sharp one — a restore can land a database whose
+  // password-vault switch is off while this process still believes it is on —
+  // but the role cache has had the identical defect since it shipped, and a
+  // stale role after a restore is a permission set nobody granted.
+  invalidateSettingsCache();
+  invalidateRoleCache();
 
   return { manifest: parsed.manifest, newPairingPassword };
 }

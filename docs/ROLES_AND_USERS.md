@@ -66,7 +66,7 @@ company-configurable and therefore live in data.
 |---|---|
 | `username` | Sign-in identifier. Unique per tenant, case-insensitive, among live rows |
 | `display_name` | Required. Was the optional `full_name` before this module |
-| `password_hash` | `scrypt$…` prefixed. Never plaintext, never recoverable, never leaves the server |
+| `password_hash` | `scrypt$…` prefixed. Never plaintext, never reversible, never leaves the server — but see §4.2, which is how a password can nonetheless be shown again |
 | `role_id` | FK **by convention only** — see §4.1 |
 | `is_active` | Deactivation. Distinct from deletion |
 | `last_sign_in_at` | Written on success |
@@ -85,6 +85,29 @@ deleted). Every *other* reference to `users(id)` — six of them — does keep i
 users are never hard-deleted.
 
 ---
+
+### 4.2 The password vault, and what it changes about the sentence above
+
+`password_hash` is still a one-way hash and nothing reverses it. What changed on 2026-08-29 is that
+an installation may **also** keep the plaintext, sealed, in a separate table.
+
+`user_password_vault` holds an AES-256-GCM-sealed copy of the password, under a key file at
+`dataDir/secrets/vault.key` that is deliberately outside the database and outside every backup. It
+is **off by default**: nothing is written until an administrator sets
+`security.passwordRevealEnabled`, and setting it back to `false` deletes every stored plaintext in
+the same transaction as the flag. Rows fill themselves as people sign in online — there is no
+back-fill migration, because a successful sign-in is the one moment the Master legitimately holds
+somebody's plaintext.
+
+Reading one back needs `users.viewPassword` (admin tier), the setting switched on, a
+re-authentication by the caller, and a fingerprint that still matches the live hash; every reveal
+writes an `activity_log` row before the response is built.
+
+**The honest statement of what this costs** is in `docs/overhaul/workstream-F.md` §1.8 and belongs
+here too: once it is switched on, every password of every person who signs in afterwards is
+recoverable by anyone who can read the Master PC's data directory. The encryption stops a copied
+database file and a stolen backup, and nothing else. Misuse is visible in the audit trail, not
+prevented.
 
 ## 5. The `permissions` column — one JSON array, deliberately
 

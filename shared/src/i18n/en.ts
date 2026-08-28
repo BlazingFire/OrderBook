@@ -30,6 +30,7 @@ export const EN_MESSAGES = {
   'permission.field.saleRate.edit': 'Edit sale rate',
   'permission.stock.adjust': 'Adjust stock by physical count',
   'permission.users.manage': 'Manage users',
+  'permission.users.viewPassword': 'Reveal a stored password',
   'permission.roles.assign': 'Assign roles to users',
   'permission.panels.manage': 'Manage office panels',
   'permission.settings.manage': 'Manage settings',
@@ -120,9 +121,25 @@ export const EN_MESSAGES = {
   'roleTemplate.sales': 'Sales',
   'roleTemplate.dispatch': 'Dispatch',
 
+  // --- setting.* — label and help for every key in `domain/settings.ts` ---
+  'setting.security.passwordRevealEnabled.label': 'Remember passwords so they can be shown again',
+  'setting.security.passwordRevealEnabled.help':
+    'While this is on, every password typed on this network is kept in a form an administrator can read back. Turning it off deletes every one already kept.',
+  'setting.ai.provider.label': 'AI provider',
+  'setting.ai.provider.help': 'Which model the AI section talks to. Off means it talks to nothing.',
+  'setting.ai.apiKey.label': 'AI key',
+  'setting.ai.apiKey.help': 'Stored sealed. It is never shown again after it is saved.',
+  'setting.externalApi.enabled.label': 'Allow other software to connect',
+  'setting.externalApi.enabled.help':
+    'Opens this Master to keyed requests from other programs on the network.',
+  'setting.externalApi.connectors.label': 'Outbound connections',
+  'setting.externalApi.connectors.help': 'The other systems this Master sends data to.',
+
   // --- error.* — one per AppError subclass and per stable code ---
   'error.notFound': '{what} not found',
   'error.forbidden.missingPermission': 'Missing permission: {permission}',
+  'error.forbidden.passwordRevealDisabled':
+    'Password recovery is switched off for this company. An administrator can turn it on in Settings.',
   'error.unauthorized': 'Not signed in',
   'error.unauthorized.signInFailed': 'Sign-in failed',
   'error.unauthorized.accountDeactivated': 'This account has been deactivated',
@@ -226,6 +243,7 @@ export const EN_MESSAGES = {
   'validation.panel.fieldInvalid': 'That value is not valid for an office panel',
   'validation.password.tooShort': 'Choose a password of at least 8 characters',
   'validation.password.bothRequired': 'Enter your current and new password',
+  'validation.setting.invalid': 'That value is not valid for the setting {key}',
   'validation.party.nameRequired': 'Party name is required',
   'validation.updates.checksumMismatch':
     'That setup file does not match its checksum — it may be damaged or incomplete. Copy it across again.',
@@ -262,6 +280,10 @@ export const EN_MESSAGES = {
   'validation.cursor.malformed': 'This link to a page of results is no longer valid',
   'error.conflict.parentDeleted': 'One or more related records are still in the Recycle Bin',
   'error.conflict.restoreCollision': 'A live record already uses this {field}',
+  'error.conflict.passwordNotStored':
+    'No password is stored for this person yet. It is remembered the next time they sign in on this network.',
+  'error.conflict.vaultUnreadable':
+    'The stored password could not be read on this machine. Reset the password instead.',
   'error.conflict.blockedByLiveReferences': 'Other records still reference this and must be dealt with first',
   'validation.recycleBin.unknownEntityType': 'That is not a Recycle Bin entity type',
   'validation.recycleBin.idRequired': 'That record has no id',
@@ -347,6 +369,12 @@ export const EN_MESSAGES = {
   'activity.user.restored': '{actor} restored the account for {name}',
   'activity.user.password_reset': '{actor} reset the password for {name}',
   'activity.user.password_changed': '{actor} changed their password',
+  // No {from}/{to} placeholders on purpose: `renderActivity` copies only
+  // strings and numbers out of `details`, and `fill` leaves an unmatched
+  // placeholder verbatim — so a token naming a value the details may omit
+  // renders the braces at the reader.
+  'activity.user.password_revealed': '{actor} revealed the password for {name}',
+  'activity.setting.updated': '{actor} changed the setting {name}',
   'activity.user.sign_in': '{actor} signed in',
   'activity.user.sign_in_failed': 'A sign-in attempt failed for {name}',
   'activity.user.avatar_set': '{actor} set a profile picture for {name}',
@@ -507,7 +535,7 @@ export const EN_MESSAGES = {
   'access.secret.copied': 'Copied',
   'access.secret.copy': 'Copy',
   'access.secret.done': 'Done',
-  'access.secret.helper': 'Copy this now and hand it over. It cannot be shown again — recovery is another reset.',
+  'access.secret.helper': 'Copy this now and hand it over. This screen will not show it again.',
   'access.secret.title': 'Temporary password for {username}',
   'access.tab.roles': 'Roles',
   'access.tab.users': 'Users',
@@ -559,13 +587,21 @@ export const EN_MESSAGES = {
   'access.users.newPasswordHint': 'At least 8 characters. Shown once here, then only its hash is kept.',
   'access.users.open': 'Open',
   'access.users.resetPassword': 'Reset password',
+  'access.users.revealPassword': 'Show password',
+  'access.users.revealPasswordTitle': "Show {name}'s password",
+  'access.users.revealPasswordSubtitle':
+    'Type your own password to continue. Every use of this is recorded in the activity log, permanently.',
+  'access.users.revealPasswordConfirm': 'Your password',
+  'access.users.revealPasswordConfirmHint': 'The one you signed in with.',
+  'access.users.revealPasswordFailed': 'Could not show that password',
+  'access.users.reveal': 'Show it',
   'access.users.resetPasswordFailed': 'Could not reset the password',
   'access.users.roleChangeFailed': 'Could not change the role',
   'access.users.roleHint': 'Saved as soon as you choose. Everything this person may do comes from their role.',
   'access.users.searchLabel': 'Search people',
   'access.users.searchPlaceholder': 'Search name or username…',
   'access.users.setPassword': 'Set password',
-  'access.users.setPasswordSubtitle': 'Their current password cannot be shown — it is stored as a one-way hash, not as text.',
+  'access.users.setPasswordSubtitle': 'Setting a known password is how you tell somebody what theirs is. The stored hash itself is never reversed.',
   'access.users.setPasswordTitle': 'Set a password for {name}',
   'access.users.sortCreated': 'Creation order',
   'access.users.sortLabel': 'Sort by',
@@ -1729,6 +1765,14 @@ export const EN_MESSAGES = {
   'settings.appearance.themeDark': 'Dark',
   'settings.appearance.themeLight': 'Light',
   'settings.appearance.title': 'Appearance',
+  'settings.company.title': 'Company settings',
+  'settings.company.subtitle': 'Decided once for the whole company — not per machine.',
+  'settings.company.saveFailed': 'Could not save that setting',
+  'settings.company.secretSet': 'Set',
+  'settings.company.secretNotSet': 'Not set',
+  'settings.company.secretSave': 'Save',
+  'settings.company.editedElsewhere': 'Edited from its own screen',
+  'settings.vault.coverage': '{stored} of {total} people can have their password shown',
   'settings.connection.company': 'Company',
   'settings.connection.description': 'Office Panels normally connect automatically. Use these only for manual connection.',
   'settings.connection.masterAddress': 'Master address',

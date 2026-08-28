@@ -18,6 +18,7 @@ import type { ActorContext } from '../../src/domain/actor.js';
 import { invalidateFieldCache } from '../../src/repositories/custom-field.repository.js';
 import { invalidatePipelineCache } from '../../src/repositories/pipeline.repository.js';
 import { invalidateRoleCache } from '../../src/repositories/role.repository.js';
+import { invalidateSettingsCache } from '../../src/services/settings.service.js';
 import { resetAuthState } from '../../src/services/auth.service.js';
 import { startTestPostgres, stopTestPostgres, testConnectionUrl } from './db.js';
 
@@ -51,7 +52,13 @@ const DATA_TABLES = [
   'product_categories',
   'parties',
   'office_panels',
+  // Before `users` for readability only — the vault carries no foreign key to
+  // it, deliberately, so a restored person comes back with their row intact.
+  // Both this and `settings` must be listed or every integration suite leaks
+  // rows into the next; no migration seeds either, so every row is test data.
+  'user_password_vault',
   'users',
+  'settings',
   'master_config',
 ];
 
@@ -220,6 +227,10 @@ export async function resetData(): Promise<void> {
   invalidateRoleCache();
   invalidatePipelineCache();
   invalidateFieldCache();
+  // Joins the other three for the same reason: an in-process cache survives a
+  // TRUNCATE, and with `fileParallelism: false` a leaked `true` on the password
+  // vault's switch surfaces in an unrelated suite.
+  invalidateSettingsCache();
   resetAuthState();
 }
 

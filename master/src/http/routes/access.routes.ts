@@ -13,6 +13,7 @@ import { ValidationError } from '../../lib/errors.js';
 import * as roleService from '../../services/role.service.js';
 import * as userService from '../../services/user.service.js';
 import * as authService from '../../services/auth.service.js';
+import * as passwordVaultService from '../../services/password-vault.service.js';
 import { asyncHandler } from '../async-handler.js';
 import {
   actorFromRequest,
@@ -167,6 +168,33 @@ accessRoutes.post(
       await userService.resetPassword(
         { userId: String(req.params.id), password: req.body?.password },
         actorFromRequest(req),
+      ),
+    );
+  }),
+);
+
+/**
+ * Reveal a stored password, once, to a re-authenticated administrator.
+ *
+ * POST rather than GET so it never enters a URL, a history entry, a referrer or
+ * a proxy log; `no-store` so no cache holds it; and a route of its own so it
+ * can never ride along in `GET /api/access/users`, which the Access screen
+ * refetches on every mount.
+ *
+ * Refused outright while `security.passwordRevealEnabled` is false — which is
+ * every installation that has not deliberately turned it on.
+ */
+accessRoutes.post(
+  '/users/:id/reveal-password',
+  needs('users.viewPassword'),
+  asyncHandler(async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json(
+      await passwordVaultService.revealPassword(
+        String(req.params.id),
+        String(req.body?.confirmPassword ?? ''),
+        actorFromRequest(req),
+        req.sessionToken,
       ),
     );
   }),

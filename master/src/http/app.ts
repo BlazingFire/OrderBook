@@ -19,6 +19,7 @@ import { panelRoutes, pairingRoutes } from './routes/panel.routes.js';
 import { partyAccessRoutes } from './routes/party-access.routes.js';
 import { recycleBinRoutes } from './routes/recycle-bin.routes.js';
 import { reportRoutes } from './routes/report.routes.js';
+import { settingsRoutes } from './routes/settings.routes.js';
 import { setupRoutes } from './routes/setup.routes.js';
 import { publicUpdateRoutes, updateRoutes } from './routes/update.routes.js';
 
@@ -56,6 +57,8 @@ export function createApp(): Express {
   app.use('/api/images', imageFilesRoutes);
   app.use('/api/access/users/:userId/avatar', avatarRoutes);
   app.use('/api/avatars', avatarFilesRoutes);
+  // Before the catch-all below, which would otherwise swallow `/api/settings`.
+  app.use('/api/settings', settingsRoutes);
   app.use('/api', dataRoutes);
 
   // There is deliberately **no** `express.static` mount for `config.uploadsDir`.

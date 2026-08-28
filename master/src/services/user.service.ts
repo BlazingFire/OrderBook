@@ -38,6 +38,7 @@ import * as roleRepo from '../repositories/role.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
 import { publishChange } from './change-bus.js';
 import { invalidateSessionsForUser } from './auth.service.js';
+import { rememberPassword } from './password-vault.service.js';
 
 const USER_FIELDS = ['username', 'displayName', 'roleId', 'isActive'] as const;
 
@@ -126,6 +127,11 @@ export async function createUser(
 
   const user = await userRepo.findById(actor.tenantId, id);
   if (!user) throw new Error('User disappeared immediately after insert');
+
+  // Sealed after the transaction, so the fingerprint is taken from the hash
+  // that is actually on disk. A no-op unless the company switched the password
+  // vault on.
+  await rememberPassword(actor.tenantId, user.id, password, actorUserId(actor));
 
   publishChange({ entity: 'user', action: 'created', id: user.id, payload: user });
 
@@ -387,6 +393,8 @@ export async function resetPassword(
       details: { username: existing.username },
     }, actor, trx);
   });
+
+  await rememberPassword(actor.tenantId, input.userId, password, actorUserId(actor));
 
   // Whoever was signed in as them is signed out; the old password is gone.
   invalidateSessionsForUser(input.userId);

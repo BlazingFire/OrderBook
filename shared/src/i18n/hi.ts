@@ -21,6 +21,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'permission.field.saleRate.edit': 'बिक्री दर संपादित करें',
   'permission.stock.adjust': 'भौतिक गणना से स्टॉक समायोजित करें',
   'permission.users.manage': 'उपयोगकर्ता प्रबंधित करें',
+  'permission.users.viewPassword': 'संग्रहीत पासवर्ड दिखाएँ',
   'permission.roles.assign': 'उपयोगकर्ताओं को भूमिकाएँ सौंपें',
   'permission.panels.manage': 'ऑफ़िस पैनल प्रबंधित करें',
   'permission.settings.manage': 'सेटिंग्स प्रबंधित करें',
@@ -105,8 +106,23 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'roleTemplate.sales': 'बिक्री',
   'roleTemplate.dispatch': 'डिस्पैच',
 
+  'setting.security.passwordRevealEnabled.label': 'पासवर्ड याद रखें ताकि उन्हें फिर दिखाया जा सके',
+  'setting.security.passwordRevealEnabled.help':
+    'जब तक यह चालू है, इस नेटवर्क पर टाइप किया गया हर पासवर्ड ऐसे रूप में रखा जाता है जिसे प्रशासक पढ़ सकता है। इसे बंद करने पर पहले से रखे गए सभी पासवर्ड हटा दिए जाते हैं।',
+  'setting.ai.provider.label': 'एआई प्रदाता',
+  'setting.ai.provider.help': 'एआई अनुभाग किस मॉडल से बात करता है। बंद का अर्थ है किसी से नहीं।',
+  'setting.ai.apiKey.label': 'एआई कुंजी',
+  'setting.ai.apiKey.help': 'सील करके रखी जाती है। सहेजने के बाद इसे दोबारा नहीं दिखाया जाता।',
+  'setting.externalApi.enabled.label': 'अन्य सॉफ़्टवेयर को जुड़ने दें',
+  'setting.externalApi.enabled.help':
+    'नेटवर्क के अन्य प्रोग्रामों से कुंजी-युक्त अनुरोधों के लिए इस मास्टर को खोलता है।',
+  'setting.externalApi.connectors.label': 'बाहर जाने वाले कनेक्शन',
+  'setting.externalApi.connectors.help': 'वे अन्य सिस्टम जिन्हें यह मास्टर डेटा भेजता है।',
+
   'error.notFound': '{what} नहीं मिला',
   'error.forbidden.missingPermission': 'अनुमति नहीं है: {permission}',
+  'error.forbidden.passwordRevealDisabled':
+    'इस कंपनी के लिए पासवर्ड पुनर्प्राप्ति बंद है। कोई प्रशासक इसे सेटिंग्स में चालू कर सकता है।',
   'error.unauthorized': 'साइन इन नहीं है',
   'error.unauthorized.signInFailed': 'साइन-इन विफल',
   'error.unauthorized.accountDeactivated': 'यह खाता निष्क्रिय कर दिया गया है',
@@ -204,6 +220,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.panel.fieldInvalid': 'ऑफिस पैनल के लिए वह मान मान्य नहीं है',
   'validation.password.tooShort': 'कम से कम 8 अक्षरों का पासवर्ड चुनें',
   'validation.password.bothRequired': 'अपना मौजूदा और नया पासवर्ड दर्ज करें',
+  'validation.setting.invalid': 'सेटिंग {key} के लिए वह मान मान्य नहीं है',
   'validation.party.nameRequired': 'पार्टी का नाम आवश्यक है',
   'validation.updates.checksumMismatch':
     'वह सेटअप फ़ाइल अपने चेकसम से मेल नहीं खाती — यह खराब या अधूरी हो सकती है। इसे फिर से कॉपी करें।',
@@ -239,6 +256,10 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.cursor.malformed': 'परिणामों के इस पृष्ठ का लिंक अब मान्य नहीं है',
   'error.conflict.parentDeleted': 'एक या अधिक संबंधित रिकॉर्ड अभी भी रीसायकल बिन में हैं',
   'error.conflict.restoreCollision': 'एक मौजूदा रिकॉर्ड पहले से ही इस {field} का उपयोग कर रहा है',
+  'error.conflict.passwordNotStored':
+    'इस व्यक्ति के लिए अभी कोई पासवर्ड संग्रहीत नहीं है। अगली बार जब वे इस नेटवर्क पर साइन इन करेंगे तब वह याद रखा जाएगा।',
+  'error.conflict.vaultUnreadable':
+    'संग्रहीत पासवर्ड इस मशीन पर पढ़ा नहीं जा सका। इसके बजाय पासवर्ड रीसेट करें।',
   'error.conflict.blockedByLiveReferences': 'अन्य रिकॉर्ड अभी भी इसका संदर्भ देते हैं, पहले उन्हें निपटाएँ',
   'validation.recycleBin.unknownEntityType': 'यह रीसायकल बिन की इकाई प्रकार नहीं है',
   'validation.recycleBin.idRequired': 'उस रिकॉर्ड का कोई आईडी नहीं है',
@@ -315,6 +336,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'activity.user.restored': '{actor} ने {name} का खाता पुनर्स्थापित किया',
   'activity.user.password_reset': '{actor} ने {name} का पासवर्ड रीसेट किया',
   'activity.user.password_changed': '{actor} ने अपना पासवर्ड बदला',
+  'activity.user.password_revealed': '{actor} ने {name} का पासवर्ड देखा',
+  'activity.setting.updated': '{actor} ने सेटिंग {name} बदली',
   'activity.user.sign_in': '{actor} ने साइन इन किया',
   'activity.user.sign_in_failed': '{name} के लिए साइन-इन प्रयास विफल रहा',
   'activity.party.created': '{actor} ने पार्टी {name} जोड़ी',
@@ -539,7 +562,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'access.secret.done': "Done",
   // TODO(i18n-hi)
-  'access.secret.helper': "Copy this now and hand it over. It cannot be shown again — recovery is another reset.",
+  'access.secret.helper': 'इसे अभी कॉपी करके सौंप दें। यह स्क्रीन इसे दोबारा नहीं दिखाएगी।',
   // TODO(i18n-hi)
   'access.secret.title': "Temporary password for {username}",
   // TODO(i18n-hi)
@@ -642,6 +665,14 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'access.users.open': "Open",
   // TODO(i18n-hi)
   'access.users.resetPassword': "Reset password",
+  'access.users.revealPassword': 'पासवर्ड दिखाएँ',
+  'access.users.revealPasswordTitle': '{name} का पासवर्ड दिखाएँ',
+  'access.users.revealPasswordSubtitle':
+    'जारी रखने के लिए अपना पासवर्ड टाइप करें। इसका हर उपयोग गतिविधि लॉग में स्थायी रूप से दर्ज होता है।',
+  'access.users.revealPasswordConfirm': 'आपका पासवर्ड',
+  'access.users.revealPasswordConfirmHint': 'वही जिससे आपने साइन इन किया।',
+  'access.users.revealPasswordFailed': 'वह पासवर्ड दिखाया नहीं जा सका',
+  'access.users.reveal': 'दिखाएँ',
   // TODO(i18n-hi)
   'access.users.resetPasswordFailed': "Could not reset the password",
   // TODO(i18n-hi)
@@ -655,7 +686,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'access.users.setPassword': "Set password",
   // TODO(i18n-hi)
-  'access.users.setPasswordSubtitle': "Their current password cannot be shown — it is stored as a one-way hash, not as text.",
+  'access.users.setPasswordSubtitle': 'किसी को उनका पासवर्ड बताने का तरीका यही है कि आप एक ज्ञात पासवर्ड सेट करें। संग्रहीत हैश को कभी उलटा नहीं जाता।',
   // TODO(i18n-hi)
   'access.users.setPasswordTitle': "Set a password for {name}",
   // TODO(i18n-hi)
@@ -2977,6 +3008,14 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'settings.appearance.title': "Appearance",
   // TODO(i18n-hi)
+  'settings.company.title': 'कंपनी सेटिंग्स',
+  'settings.company.subtitle': 'पूरी कंपनी के लिए एक बार तय — हर मशीन के लिए नहीं।',
+  'settings.company.saveFailed': 'वह सेटिंग सहेजी नहीं जा सकी',
+  'settings.company.secretSet': 'सेट है',
+  'settings.company.secretNotSet': 'सेट नहीं है',
+  'settings.company.secretSave': 'सहेजें',
+  'settings.company.editedElsewhere': 'अपनी अलग स्क्रीन से संपादित',
+  'settings.vault.coverage': '{total} में से {stored} लोगों का पासवर्ड दिखाया जा सकता है',
   'settings.connection.company': "Company",
   // TODO(i18n-hi)
   'settings.connection.description': "Office Panels normally connect automatically. Use these only for manual connection.",

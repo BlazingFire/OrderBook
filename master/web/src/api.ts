@@ -74,6 +74,8 @@ import type {
   ReportRangeInput,
   RestoreInput,
   Role,
+  SettingKey,
+  SettingView,
   RoleInput,
   SearchHit,
   StageReorderInput,
@@ -83,6 +85,7 @@ import type {
   SyncConflict,
   TopPartiesReport,
   User,
+  VaultStatus,
   UserInput,
   UserUpdateInput,
 } from '@orderbook/shared';
@@ -499,11 +502,17 @@ export const api = {
     request<User>(`/api/access/users/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   deleteUser: (id: string) => request<User>(`/api/access/users/${id}`, { method: 'DELETE' }),
   restoreUser: (id: string) => post<User>(`/api/access/users/${id}/restore`),
-  /** Omit `password` to have the Master generate one. A stored password cannot
-   *  be read back — it is a scrypt hash — so setting a known one is the only
-   *  way an administrator can tell somebody what theirs is. */
+  /** Omit `password` to have the Master generate one. On an installation that
+   *  has not switched the password vault on, this is still the only way an
+   *  administrator can tell somebody what their password is: what is stored is
+   *  a scrypt hash and nothing reads it back. */
   resetPassword: (id: string, password?: string) =>
     post<OneTimeSecret>(`/api/access/users/${id}/reset-password`, password ? { password } : {}),
+  /** Refused unless `security.passwordRevealEnabled` is on, the caller holds
+   *  `users.viewPassword`, and they re-type their own password. POST so it
+   *  never lands in a URL or a proxy log. */
+  revealPassword: (id: string, confirmPassword: string) =>
+    post<OneTimeSecret>(`/api/access/users/${id}/reveal-password`, { confirmPassword }),
   changeOwnPassword: (input: ChangeOwnPasswordInput) =>
     post<void>('/api/access/me/password', input),
 
@@ -516,6 +525,23 @@ export const api = {
   },
   removeAvatar: (userId: string) =>
     request<User>(`/api/access/users/${userId}/avatar`, { method: 'DELETE' }),
+
+  // --- Settings (docs/overhaul/workstream-F.md §2) -------------------------
+
+  /** Every declared key, with the company's value or a note that it is the
+   *  default. A secret comes back as `configured`, never as its value. */
+  settings: () => request<SettingView[]>('/api/settings'),
+  /** Returns the whole list again, so the screen never re-reads to find out
+   *  what its own write did. */
+  saveSetting: (key: SettingKey, value: unknown) =>
+    request<SettingView[]>(`/api/settings/${encodeURIComponent(key)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ value }),
+    }),
+  /** How many people's passwords are actually recoverable, out of how many
+   *  there are. The gap is everyone who has not signed in online since the
+   *  feature was switched on. */
+  vaultStatus: () => request<VaultStatus>('/api/settings/vault-status'),
 
   conflicts: (includeResolved = false) =>
     request<SyncConflict[]>(`/api/conflicts${includeResolved ? '?includeResolved=true' : ''}`),
