@@ -113,13 +113,29 @@ migration. Hairlines and radii stay px on purpose — a 1px border scaled to
 1.14px renders blurry, and a radius is a visual constant, not a measurement
 against text. If you add a length that is measured against text, use rem.
 
+- **Stage 6, second half — responsive** (requirement 10). Three breakpoints,
+  sidebar auto-collapse, and a 192-literal `rem()` sweep across the JSX.
+
+**Breakpoints are physical px on purpose.** Scale changes how big things are;
+it must not change what is on screen, so a layout that reorganised mid-drag
+would read as a bug. `em` in `@media` also resolves against the browser default
+rather than `html { font-size }`, so it could not track the scale anyway.
+`master/tests/ui-conventions.test.ts` fails if one is written in rem or em, if
+a text-measured token stops being rem, if a hairline or radius becomes rem, if
+a density block sets `--root-size`, or if a raw pixel size appears in a JSX
+style object. Zero and 1–3px hairlines are exempt, matching the CSS rule.
+
 Next, in order:
 
-1. **Stage 6, second half** — responsive breakpoints for 1024×768 through 4K,
-   and the fluency pass. Three breakpoints in *physical* px, deliberately: a
-   layout that reorganises while you drag the scale slider reads as a bug.
-2. **Stage 4** — settings table and the password vault, which unblocks the AI
+1. **Stage 4** — settings table and the password vault, which unblocks the AI
    config and the connector secrets. Independent of the UI stages.
+2. **Stage 7** — performance and memory.
+
+Still unfinished in Stage 6, deliberately deferred rather than forgotten:
+DataTable column priority (dropping low-priority columns below 1180px), the
+drawer-to-modal conversion for the four record-detail screens, `SkeletonTable`,
+the Retina variant picking, and the `styles.css` trim. None blocks another
+stage.
 
 ### What the `<Activity>` spike established
 
