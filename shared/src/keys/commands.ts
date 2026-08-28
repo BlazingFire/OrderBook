@@ -131,7 +131,11 @@ export const COMMANDS: readonly CommandDef[] = [
     id: 'record.new',
     titleToken: 'keys.command.new',
     scope: 'screen',
-    panel: 'both',
+    // Office only. "New record" means one thing there — a lead — and nothing in
+    // particular on the Master, where each screen has its own new-record
+    // action. A palette entry that does nothing on half the installation is
+    // worse than an absent one.
+    panel: 'office',
     defaultChord: 'Ctrl+Shift+N',
   },
   {

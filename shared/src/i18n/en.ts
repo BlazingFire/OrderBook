@@ -199,9 +199,11 @@ export const EN_MESSAGES = {
   'error.generic.unknownHere': 'That is not available on this panel',
 
   // --- validation.* — field-level messages, one per distinct throw site ---
-  'validation.backup.passphraseTooShort': 'The export passphrase must be at least {min} characters long',
+  'validation.backup.passphraseTooShort':
+    'The export passphrase must be at least {min} characters long',
   'validation.backup.passphraseRequired': 'Enter the export passphrase',
-  'validation.backup.scopeRequired': 'Choose whether to export the whole database or selected companies',
+  'validation.backup.scopeRequired':
+    'Choose whether to export the whole database or selected companies',
   'validation.backup.fileRequired': 'Choose a backup file',
   'validation.backup.tenantsRequired': 'Choose at least one company to export',
   'validation.user.username.required': 'Enter a username',
@@ -299,7 +301,8 @@ export const EN_MESSAGES = {
     'No password is stored for this person yet. It is remembered the next time they sign in on this network.',
   'error.conflict.vaultUnreadable':
     'The stored password could not be read on this machine. Reset the password instead.',
-  'error.conflict.blockedByLiveReferences': 'Other records still reference this and must be dealt with first',
+  'error.conflict.blockedByLiveReferences':
+    'Other records still reference this and must be dealt with first',
   'validation.recycleBin.unknownEntityType': 'That is not a Recycle Bin entity type',
   'validation.recycleBin.idRequired': 'That record has no id',
 
@@ -324,7 +327,8 @@ export const EN_MESSAGES = {
   'validation.documents.margins.invalid': 'Margins must be between {min}mm and {max}mm',
   'validation.documents.margins.exceedsPage': 'Those margins leave no room for the document',
   'validation.documents.accentColour.invalid': 'Enter a colour as #RRGGBB',
-  'validation.documents.watermarkText.required': 'Enter the watermark text, or turn the watermark off',
+  'validation.documents.watermarkText.required':
+    'Enter the watermark text, or turn the watermark off',
   'validation.documents.locale.unknown': 'That is not a language this product speaks',
   'validation.documents.layout.duplicateKind': 'A document cannot have two {kind} sections',
   'validation.documents.layout.missingLines': 'A document needs a line-items section',
@@ -355,7 +359,8 @@ export const EN_MESSAGES = {
   'validation.avatar.tooLarge': 'A profile picture must be 5 MB or smaller',
   'validation.avatar.unreadable': 'That file could not be read as a picture',
   'validation.image.rotation.invalid': 'The rotation was not applied correctly — try again',
-  'validation.image.reorder.notPermutation': 'That is not a complete reorder of this product’s images',
+  'validation.image.reorder.notPermutation':
+    'That is not a complete reorder of this product’s images',
   'error.notFound.image': 'Image not found',
 
   'validation.fields.listKeyRequired': 'Choose which list this is',
@@ -364,7 +369,8 @@ export const EN_MESSAGES = {
   'validation.fields.valueImmutable':
     'The value cannot be changed once created — rename the label instead',
   'validation.fields.hexInvalid': 'Enter a colour as #RRGGBB',
-  'validation.fields.reorderMismatch': 'That is not the complete, current list — reload and try again',
+  'validation.fields.reorderMismatch':
+    'That is not the complete, current list — reload and try again',
   'validation.fields.fieldTypeInvalid': 'Choose a valid field type',
   'validation.fields.keyRequired': 'Enter a key',
   'validation.fields.keyImmutable': 'The key cannot be changed once created',
@@ -481,14 +487,16 @@ export const EN_MESSAGES = {
    */
   'lead.add.discardConfirm': 'Discard this lead and start over?',
   'screen.reset': 'Reset this screen',
-  'screen.resetHint': 'Clear the filters, scroll and unsaved entry on this screen and load it fresh.',
+  'screen.resetHint':
+    'Clear the filters, scroll and unsaved entry on this screen and load it fresh.',
   'access.editor.backToList': 'Roles & users',
   'access.permissions.blocked': 'Needs the {tier} tier. Change the tier above to enable it.',
   'access.permissions.clearAll': 'Clear all',
   'access.permissions.module': 'Module',
   'access.permissions.modules': 'Modules',
   'access.permissions.notApplicable': 'This module has no such action — it cannot exist.',
-  'access.permissions.saleRateHint': 'Without this the rate is never sent to the person’s machine — the column disappears rather than showing blank.',
+  'access.permissions.saleRateHint':
+    'Without this the rate is never sent to the person’s machine — the column disappears rather than showing blank.',
   'access.permissions.selectAll': 'Select all',
   'access.permissions.tally': 'Held',
   'access.permissions.toggleColumn': 'Turn {action} on or off for every module',
@@ -529,7 +537,8 @@ export const EN_MESSAGES = {
   'access.roles.create': 'Create role',
   'access.roles.delete': 'Delete',
   'access.roles.deleteBlocked': 'Still assigned to somebody — move them first',
-  'access.roles.deleteConfirmBody': 'It goes to the Recycle Bin and can be restored, and anybody who still holds it reattaches when it comes back.',
+  'access.roles.deleteConfirmBody':
+    'It goes to the Recycle Bin and can be restored, and anybody who still holds it reattaches when it comes back.',
   'access.roles.deleteConfirmTitle': 'Delete the "{name}" role?',
   'access.roles.deleteFailed': 'Could not delete',
   'access.roles.detail.catalogueLoading': 'Still loading the permission list',
@@ -569,7 +578,8 @@ export const EN_MESSAGES = {
   'access.userForm.create': 'Create user',
   'access.userForm.createFailed': 'Could not create the user',
   'access.userForm.displayName': 'Display name',
-  'access.userForm.helper': 'A temporary password is generated and shown once. There is no way to see it again.',
+  'access.userForm.helper':
+    'A temporary password is generated and shown once. There is no way to see it again.',
   'access.userForm.role': 'Role',
   'access.userForm.username': 'Username',
   'access.users.activate': 'Activate',
@@ -582,10 +592,12 @@ export const EN_MESSAGES = {
   'access.users.colStatus': 'Status',
   'access.users.colUsername': 'Username',
   'access.users.deactivate': 'Deactivate',
-  'access.users.deactivateConfirmBody': '{name} will not be able to sign in. Their leads, orders and audit history are unchanged. This is not a delete — use Delete to send them to the Recycle Bin.',
+  'access.users.deactivateConfirmBody':
+    '{name} will not be able to sign in. Their leads, orders and audit history are unchanged. This is not a delete — use Delete to send them to the Recycle Bin.',
   'access.users.deactivateConfirmTitle': 'Deactivate {name}?',
   'access.users.delete': 'Delete',
-  'access.users.deleteConfirmBody': 'They go to the Recycle Bin and can be restored. Their records and audit history stay exactly as they are.',
+  'access.users.deleteConfirmBody':
+    'They go to the Recycle Bin and can be restored. Their records and audit history stay exactly as they are.',
   'access.users.deleteConfirmTitle': 'Delete {name}?',
   'access.users.deleteFailed': 'Could not delete',
   'access.users.detail.access': 'Access',
@@ -604,7 +616,8 @@ export const EN_MESSAGES = {
   'access.users.generateInstead': 'Generate one instead',
   'access.users.lastAdminReason': 'At least one active administrator must remain',
   'access.users.newPassword': 'New password',
-  'access.users.newPasswordHint': 'At least 8 characters. Shown once here, then only its hash is kept.',
+  'access.users.newPasswordHint':
+    'At least 8 characters. Shown once here, then only its hash is kept.',
   'access.users.open': 'Open',
   'access.users.resetPassword': 'Reset password',
   'access.users.revealPassword': 'Show password',
@@ -617,11 +630,13 @@ export const EN_MESSAGES = {
   'access.users.reveal': 'Show it',
   'access.users.resetPasswordFailed': 'Could not reset the password',
   'access.users.roleChangeFailed': 'Could not change the role',
-  'access.users.roleHint': 'Saved as soon as you choose. Everything this person may do comes from their role.',
+  'access.users.roleHint':
+    'Saved as soon as you choose. Everything this person may do comes from their role.',
   'access.users.searchLabel': 'Search people',
   'access.users.searchPlaceholder': 'Search name or username…',
   'access.users.setPassword': 'Set password',
-  'access.users.setPasswordSubtitle': 'Setting a known password is how you tell somebody what theirs is. The stored hash itself is never reversed.',
+  'access.users.setPasswordSubtitle':
+    'Setting a known password is how you tell somebody what theirs is. The stored hash itself is never reversed.',
   'access.users.setPasswordTitle': 'Set a password for {name}',
   'access.users.sortCreated': 'Creation order',
   'access.users.sortLabel': 'Sort by',
@@ -655,7 +670,8 @@ export const EN_MESSAGES = {
   'backup.export.action': 'Export data…',
   'backup.export.confirm': 'Export',
   'backup.export.done': 'Export ready — check your downloads',
-  'backup.export.passphraseHint': 'At least 10 characters. This passphrase is never stored anywhere — if it is lost, this file cannot be opened again.',
+  'backup.export.passphraseHint':
+    'At least 10 characters. This passphrase is never stored anywhere — if it is lost, this file cannot be opened again.',
   'backup.export.passphraseLabel': 'Export passphrase',
   'backup.export.scopeFullReplica': 'Full device replica',
   'backup.export.scopeLabel': 'What to export',
@@ -667,8 +683,10 @@ export const EN_MESSAGES = {
   'backup.restore.confirm': 'Restore',
   'backup.restore.confirmWipeInput': 'Type CONFIRM',
   'backup.restore.done': 'Restore complete',
-  'backup.restore.donePairAgain': 'This device has been restored. It will now reload and ask you to pair again.',
-  'backup.restore.newPairingPassword': 'New pairing password (shown once): {password}. Every Office Panel must re-pair using it.',
+  'backup.restore.donePairAgain':
+    'This device has been restored. It will now reload and ask you to pair again.',
+  'backup.restore.newPairingPassword':
+    'New pairing password (shown once): {password}. Every Office Panel must re-pair using it.',
   'backup.restore.passphraseLabel': 'Backup passphrase',
   'backup.restore.previewAppVersion': 'App version',
   'backup.restore.previewCreated': 'Created',
@@ -717,8 +735,10 @@ export const EN_MESSAGES = {
   'common.yes': 'Yes',
   'conflicts.action.keepWinner': 'Keep what is there',
   'conflicts.action.restoreLoser': 'Put the other value back',
-  'conflicts.description': 'Raised when two panels edited the same field of the same record while both were offline. The higher timestamp won; the other value is kept here so nothing is lost silently.',
-  'conflicts.empty.description': 'Conflicts appear here when two panels edit the same field of the same record while both are offline.',
+  'conflicts.description':
+    'Raised when two panels edited the same field of the same record while both were offline. The higher timestamp won; the other value is kept here so nothing is lost silently.',
+  'conflicts.empty.description':
+    'Conflicts appear here when two panels edit the same field of the same record while both are offline.',
   'conflicts.empty.title': 'No conflicts',
   'conflicts.empty.value': '(empty)',
   'conflicts.emptyValue': '(empty)',
@@ -733,7 +753,8 @@ export const EN_MESSAGES = {
   'connection.auto.connect': 'Proceed with Auto Connection',
   'connection.auto.connecting': 'Searching…',
   'connection.auto.scanOnly': 'Search only',
-  'connection.auto.step1': 'On the Master Panel PC, open “Office Panels” and press “Add Office Panel”.',
+  'connection.auto.step1':
+    'On the Master Panel PC, open “Office Panels” and press “Add Office Panel”.',
   'connection.auto.step2': 'It will say “Waiting for office panel…”.',
   'connection.auto.step3': 'Press the button below. The two will find each other automatically.',
   'connection.auto.title': 'Auto connection (recommended)',
@@ -741,7 +762,8 @@ export const EN_MESSAGES = {
   'connection.manual.address': 'Master address',
   'connection.manual.connect': 'Connect',
   'connection.manual.connecting': 'Connecting…',
-  'connection.manual.hint': 'Use the address and pairing password shown on the Master Panel’s setup screen.',
+  'connection.manual.hint':
+    'Use the address and pairing password shown on the Master Panel’s setup screen.',
   'connection.manual.password': 'Pairing password',
   'connection.manual.port': 'Port',
   'connection.manual.title': 'Manual connection',
@@ -754,15 +776,18 @@ export const EN_MESSAGES = {
   'connection.scan.col.address': 'Address',
   'connection.scan.col.master': 'Master',
   'connection.scan.defaultName': 'Master Panel',
-  'connection.scan.none.description': 'Check that the Master PC is switched on and on the same network.',
+  'connection.scan.none.description':
+    'Check that the Master PC is switched on and on the same network.',
   'connection.scan.none.title': 'No Master Panel answered',
   'connection.scanErrorFallback': 'Could not search the network',
   'connection.status.connected': 'Connected to network',
   'connection.status.disconnected': 'Not connected to any network',
-  'connection.status.hint': 'Plug in the LAN cable or join the shop WiFi, then this screen will update.',
+  'connection.status.hint':
+    'Plug in the LAN cable or join the shop WiFi, then this screen will update.',
   'connection.status.thisPc': 'This PC: {addresses}',
   'connection.title': 'Connect to Master Panel',
-  'crash.body': 'The panel stopped rather than showing something wrong. Reloading usually gets you back to where you were.',
+  'crash.body':
+    'The panel stopped rather than showing something wrong. Reloading usually gets you back to where you were.',
   'crash.copy': 'Copy details',
   'crash.reload': 'Reload',
   'crash.title': 'Something went wrong on this screen',
@@ -772,7 +797,8 @@ export const EN_MESSAGES = {
   'dashboard.dispatched.title': 'Dispatched this week',
   'dashboard.dispatched.unitMany': 'orders',
   'dashboard.dispatched.unitOne': 'order',
-  'dashboard.empty.description': 'Once leads, orders or stock exist on this panel, your dashboard fills in.',
+  'dashboard.empty.description':
+    'Once leads, orders or stock exist on this panel, your dashboard fills in.',
   'dashboard.empty.title': 'Nothing here yet',
   'dashboard.leads.dueToday': '{count} due for follow-up today',
   'dashboard.leads.noneDueToday': 'None due today',
@@ -784,7 +810,8 @@ export const EN_MESSAGES = {
   'dashboard.panels.deviceLabel': 'device {code}',
   'dashboard.panels.empty.description': 'Panels you add appear here, online or off.',
   'dashboard.panels.empty.title': 'No office panels yet',
-  'dashboard.panels.footerNote': 'A panel that is offline is still taking leads — they arrive here when it reconnects.',
+  'dashboard.panels.footerNote':
+    'A panel that is offline is still taking leads — they arrive here when it reconnects.',
   'dashboard.panels.subtitle': '{connected} of {total} online',
   'dashboard.stat.conflicts': 'Conflicts to review',
   'dashboard.stat.conflicts.noteNone': 'Nothing to review',
@@ -852,9 +879,11 @@ export const EN_MESSAGES = {
   'documents.exports.colTemplate': 'Template',
   'documents.exports.colType': 'Document',
   'documents.exports.colWhen': 'When',
-  'documents.exports.description': 'Every document that was rendered, kept as the record of what was sent. Exports are never deleted.',
+  'documents.exports.description':
+    'Every document that was rendered, kept as the record of what was sent. Exports are never deleted.',
   'documents.exports.download': 'Download',
-  'documents.exports.empty.description': 'Documents rendered from a lead or an order appear here with the file that was sent.',
+  'documents.exports.empty.description':
+    'Documents rendered from a lead or an order appear here with the file that was sent.',
   'documents.exports.empty.title': 'Nothing rendered yet',
   'documents.exports.loadFailed': 'Could not load the export history',
   'documents.exports.renderedByPanel': 'Office panel',
@@ -867,11 +896,13 @@ export const EN_MESSAGES = {
   'documents.orientation.landscape': 'Landscape',
   'documents.orientation.portrait': 'Portrait',
   'documents.preview.action': 'Preview',
-  'documents.preview.description': 'Renders what is on this form, saved or not, against a real record — nothing is stored.',
+  'documents.preview.description':
+    'Renders what is on this form, saved or not, against a real record — nothing is stored.',
   'documents.preview.failed': 'Could not build the preview',
   'documents.preview.loadingSubjects': 'Finding a record to preview against…',
   'documents.preview.noSubjects': 'Nothing to preview this template against yet.',
-  'documents.preview.popupBlocked': 'Your browser blocked the preview tab. Allow pop-ups for OrderBook, then preview again.',
+  'documents.preview.popupBlocked':
+    'Your browser blocked the preview tab. Allow pop-ups for OrderBook, then preview again.',
   'documents.preview.subject': 'Preview against',
   'documents.preview.subjectsFailed': 'Could not load anything to preview against',
   'documents.preview.title': 'Preview',
@@ -885,11 +916,13 @@ export const EN_MESSAGES = {
   'documents.templates.create': 'New template',
   'documents.templates.defaultBadge': 'default',
   'documents.templates.delete': 'Delete',
-  'documents.templates.deleteConfirmBody': 'It goes to the Recycle Bin and can be restored. Documents already rendered from it are untouched — they keep the name they were sent under.',
+  'documents.templates.deleteConfirmBody':
+    'It goes to the Recycle Bin and can be restored. Documents already rendered from it are untouched — they keep the name they were sent under.',
   'documents.templates.deleteConfirmTitle': 'Delete the “{name}” template?',
   'documents.templates.deleteFailed': 'Could not delete the template',
   'documents.templates.deleted': 'Deleted “{name}”',
-  'documents.templates.empty.description': 'A template decides what a quotation, order confirmation or dispatch note looks like.',
+  'documents.templates.empty.description':
+    'A template decides what a quotation, order confirmation or dispatch note looks like.',
   'documents.templates.empty.title': 'No templates yet',
   'documents.templates.loadFailed': 'Could not load templates',
   'documents.templates.ratesHidden': 'Hidden',
@@ -918,21 +951,27 @@ export const EN_MESSAGES = {
   'fields.definitions.col.options': 'Choices',
   'fields.definitions.col.required': 'Required',
   'fields.definitions.col.type': 'Type',
-  'fields.definitions.delete.body': 'It goes to the Recycle Bin. Answers already stored under “{key}” stay on their records untouched, and adding the field back recovers them.',
+  'fields.definitions.delete.body':
+    'It goes to the Recycle Bin. Answers already stored under “{key}” stay on their records untouched, and adding the field back recovers them.',
   'fields.definitions.delete.title': 'Remove “{label}”?',
   'fields.definitions.edit.title': 'Edit {label}',
-  'fields.definitions.empty.description': 'Add one to collect something this product has no column for.',
+  'fields.definitions.empty.description':
+    'Add one to collect something this product has no column for.',
   'fields.definitions.empty.title': 'No custom fields on {entity} yet',
-  'fields.definitions.error.description': 'The definitions could not be read, so nothing is shown — this is not an empty set.',
+  'fields.definitions.error.description':
+    'The definitions could not be read, so nothing is shown — this is not an empty set.',
   'fields.definitions.field.active': 'Show this field on records',
   'fields.definitions.field.key': 'Key',
-  'fields.definitions.field.keyHint': 'What the answer is stored under on the record. Cannot be changed afterwards.',
-  'fields.definitions.field.keyLocked': 'The key is where stored answers live — only the label can change.',
+  'fields.definitions.field.keyHint':
+    'What the answer is stored under on the record. Cannot be changed afterwards.',
+  'fields.definitions.field.keyLocked':
+    'The key is where stored answers live — only the label can change.',
   'fields.definitions.field.label': 'Label',
   'fields.definitions.field.options': 'Choices',
   'fields.definitions.field.optionsHint': 'One per line. A choice field needs at least one.',
   'fields.definitions.field.required': 'Required',
-  'fields.definitions.field.requiredHint': 'A missing answer flags the record incomplete. It never blocks a save.',
+  'fields.definitions.field.requiredHint':
+    'A missing answer flags the record incomplete. It never blocks a save.',
   'fields.definitions.field.type': 'Type',
   'fields.definitions.field.typeLocked': 'The type is fixed once answers can exist.',
   'fields.definitions.new.title': 'New {entity} field',
@@ -956,12 +995,14 @@ export const EN_MESSAGES = {
   'fields.stages.col.colour': 'Colour',
   'fields.stages.col.flags': 'Behaviour',
   'fields.stages.col.name': 'Stage',
-  'fields.stages.description': 'Stages are the Kanban columns. Archiving one stops new records landing in it; everything already there keeps rendering.',
+  'fields.stages.description':
+    'Stages are the Kanban columns. Archiving one stops new records landing in it; everything already there keeps rendering.',
   'fields.stages.edit.title': 'Edit {name}',
   'fields.stages.empty.description': 'Lead and order pipelines are created with the company.',
   'fields.stages.empty.pipelines': 'No pipelines on this company',
   'fields.stages.empty.title': 'No stages in this pipeline',
-  'fields.stages.error.description': 'The pipelines could not be read, so nothing is shown — this is not an empty board.',
+  'fields.stages.error.description':
+    'The pipelines could not be read, so nothing is shown — this is not an empty board.',
   'fields.stages.field.colour': 'Colour',
   'fields.stages.field.name': 'Name',
   'fields.stages.field.terminal': 'Records here are finished',
@@ -969,9 +1010,11 @@ export const EN_MESSAGES = {
   'fields.stages.flag.archived': 'Archived',
   'fields.stages.flag.default': 'Default',
   'fields.stages.flag.terminal': 'Finished',
-  'fields.stages.refusal.default': 'The default stage cannot be archived — new records need somewhere to land. Make another stage the default first.',
+  'fields.stages.refusal.default':
+    'The default stage cannot be archived — new records need somewhere to land. Make another stage the default first.',
   'fields.stages.refusal.moveTo': 'The default stage, “{target}”, is where they would normally go.',
-  'fields.stages.refusal.occupied': '“{stage}” still holds {leads} leads and {orders} orders. Move them out and it can be archived.',
+  'fields.stages.refusal.occupied':
+    '“{stage}” still holds {leads} leads and {orders} orders. Move them out and it can be archived.',
   'fields.status.active': 'In pickers',
   'fields.status.inactive': 'Hidden',
   'fields.tab.definitions': 'Custom fields',
@@ -994,24 +1037,31 @@ export const EN_MESSAGES = {
   'fields.values.col.status': 'Status',
   'fields.values.col.usage': 'On records',
   'fields.values.col.value': 'Value',
-  'fields.values.delete.body': 'It goes to the Recycle Bin and can be restored. Every record already holding “{value}” keeps that exact string — what changes is only that new records are no longer offered it.',
+  'fields.values.delete.body':
+    'It goes to the Recycle Bin and can be restored. Every record already holding “{value}” keeps that exact string — what changes is only that new records are no longer offered it.',
   'fields.values.delete.title': 'Remove “{label}”?',
   'fields.values.edit.title': 'Edit {label}',
-  'fields.values.empty.description': 'Add a value and it becomes a choice everywhere this list is used.',
+  'fields.values.empty.description':
+    'Add a value and it becomes a choice everywhere this list is used.',
   'fields.values.empty.title': 'Nothing in this list yet',
-  'fields.values.error.description': 'The list could not be read, so nothing is shown — this is not an empty list.',
+  'fields.values.error.description':
+    'The list could not be read, so nothing is shown — this is not an empty list.',
   'fields.values.field.active': 'Offer this in pickers',
-  'fields.values.field.activeHint': 'Turning this off hides it from new records. Records already holding it keep showing it.',
+  'fields.values.field.activeHint':
+    'Turning this off hides it from new records. Records already holding it keep showing it.',
   'fields.values.field.hex': 'Colour',
   'fields.values.field.hexHint': 'Six hex digits, e.g. {example}. Leave empty for no swatch.',
   'fields.values.field.hexInvalid': 'Use six hex digits after a #, e.g. {example}.',
   'fields.values.field.label': 'Label',
   'fields.values.field.labelHint': 'What people read. Safe to rename at any time.',
   'fields.values.field.value': 'Value',
-  'fields.values.field.valueHint': 'What gets written onto the record. Cannot be changed afterwards.',
-  'fields.values.field.valueLocked': 'The value is what records already hold — only the label can change.',
+  'fields.values.field.valueHint':
+    'What gets written onto the record. Cannot be changed afterwards.',
+  'fields.values.field.valueLocked':
+    'The value is what records already hold — only the label can change.',
   'fields.values.new.title': 'New {set} value',
-  'fields.values.unlisted.description': 'These strings sit on live records but have no entry here, so nothing offers them for a new record. Add one to put it back in the pickers.',
+  'fields.values.unlisted.description':
+    'These strings sit on live records but have no entry here, so nothing offers them for a new record. Add one to put it back in the pickers.',
   'fields.values.unlisted.item': '{value} · {count}',
   'fields.values.unlisted.title': 'Already on records, not in the list',
   'firstRun.choose.back': 'Back',
@@ -1024,16 +1074,19 @@ export const EN_MESSAGES = {
   'firstRun.ready.masterIdLabel': 'Master ID',
   'firstRun.ready.noAddress': 'This PC has no network address yet — port {port}',
   'firstRun.ready.pairingPasswordLabel': 'Pairing password',
-  'firstRun.ready.panelsHelp': 'Office Panels normally connect automatically. These details are only needed for manual connection, when automatic search is blocked on your network.',
+  'firstRun.ready.panelsHelp':
+    'Office Panels normally connect automatically. These details are only needed for manual connection, when automatic search is blocked on your network.',
   'firstRun.ready.panelsSection': 'Connecting Office Panels',
   'firstRun.ready.passwordLabel': 'Password',
   'firstRun.ready.signInSection': 'Sign in to this Master Panel',
   'firstRun.ready.title': 'Master Panel is ready',
   'firstRun.ready.usernameLabel': 'Username',
-  'firstRun.ready.writeDownWarning': 'Write these down now. The two passwords are shown only on this screen and cannot be displayed again.',
+  'firstRun.ready.writeDownWarning':
+    'Write these down now. The two passwords are shown only on this screen and cannot be displayed again.',
   'firstRun.setup.companyName': 'Company name (optional)',
   'firstRun.setup.companyNamePlaceholder': 'e.g. Shree Ceramics',
-  'firstRun.setup.description': 'This PC will store all data for the software. Run this once, on the computer that stays connected to your WiFi router.',
+  'firstRun.setup.description':
+    'This PC will store all data for the software. Run this once, on the computer that stays connected to your WiFi router.',
   'firstRun.setup.generate': 'Generate connection details',
   'firstRun.setup.generating': 'Generating…',
   'firstRun.setup.title': 'Set up this Master Panel',
@@ -1045,7 +1098,8 @@ export const EN_MESSAGES = {
   'inventory.action.stockIn': 'Stock in',
   'inventory.boxesFree': '{count} boxes free',
   'inventory.drawer.adjust': 'Adjust to physical count',
-  'inventory.drawer.ledgerEmpty.description': 'Stock in, dispatch and adjustments for this colour will appear here.',
+  'inventory.drawer.ledgerEmpty.description':
+    'Stock in, dispatch and adjustments for this colour will appear here.',
   'inventory.drawer.ledgerEmpty.title': 'No movements yet',
   'inventory.drawer.ledgerTitle': 'Ledger — signed, append-only',
   'inventory.drawer.title': '{product} — {colour}',
@@ -1068,7 +1122,8 @@ export const EN_MESSAGES = {
   'inventory.movementType.adjustment': 'Adjusted',
   'inventory.movementType.inbound': 'Stock in',
   'inventory.movementType.outbound': 'Dispatched',
-  'inventory.movements.description': 'Every row is a signed change, never a total — which is what makes the running figure reconstructible.',
+  'inventory.movements.description':
+    'Every row is a signed change, never a total — which is what makes the running figure reconstructible.',
   'inventory.movements.empty.description': 'Stock in, dispatch and adjustments will appear here.',
   'inventory.movements.empty.title': 'No movements yet',
   'inventory.movements.table.change': 'Change',
@@ -1079,7 +1134,8 @@ export const EN_MESSAGES = {
   'inventory.movements.table.type': 'Type',
   'inventory.movements.table.when': 'When',
   'inventory.movements.title': 'Recent movements',
-  'inventory.physicalCount.description': 'Enter the number of boxes actually on the shelf — not the difference.',
+  'inventory.physicalCount.description':
+    'Enter the number of boxes actually on the shelf — not the difference.',
   'inventory.physicalCount.submit': 'Save count',
   'inventory.physicalCount.title': 'Physical count',
   'inventory.physicalCount.titleForLine': 'Physical count — {product} ({colour})',
@@ -1114,13 +1170,14 @@ export const EN_MESSAGES = {
   'lead.add.party.search': 'Search party by name, code or phone',
   'lead.add.party.searchPlaceholder': 'Start typing…',
   'lead.add.party.title': '1. Party',
-  'lead.add.party.useRates': 'Use this party\'s own rates and specs where they exist',
+  'lead.add.party.useRates': "Use this party's own rates and specs where they exist",
   'lead.add.products.add': 'Add',
   'lead.add.products.byCode': 'Add by product code',
   'lead.add.products.byCodePlaceholder': 'e.g. {example}',
   'lead.add.products.freeToSell': 'Free to sell',
   'lead.add.products.grade': 'Grade',
-  'lead.add.products.keyboardHint': 'Tab moves down the quantity column · ↑↓ adjust by 1 · Shift ±10',
+  'lead.add.products.keyboardHint':
+    'Tab moves down the quantity column · ↑↓ adjust by 1 · Shift ±10',
   'lead.add.products.packagingPlaceholder': 'e.g. carton, pallet',
   'lead.add.products.packagingRequired': 'Packaging *',
   'lead.add.products.partyRate': 'party rate',
@@ -1152,7 +1209,8 @@ export const EN_MESSAGES = {
   'lead.board.menu.convertBlocked': 'Choose packaging before converting',
   'lead.board.menu.moveTo': 'Move to {stage}',
   'lead.board.menu.open': 'Open',
-  'lead.board.noPipelineDesc': 'The lead pipeline configuration has not arrived from the Master Panel yet.',
+  'lead.board.noPipelineDesc':
+    'The lead pipeline configuration has not arrived from the Master Panel yet.',
   'lead.board.noPipelineTitle': 'Waiting for the pipeline',
   'lead.board.tab.board': 'Board',
   'lead.board.tab.list': 'List',
@@ -1161,8 +1219,10 @@ export const EN_MESSAGES = {
   'lead.detail.city': 'City',
   'lead.detail.code': 'Code',
   'lead.detail.convertAction': 'Convert to order',
-  'lead.detail.convertDesc': 'Creates an order with these lines copied exactly as they stand, and reserves the stock for each colour.',
-  'lead.detail.convertMissingPackaging': 'Choose packaging for {names} first — it is never filled in automatically.',
+  'lead.detail.convertDesc':
+    'Creates an order with these lines copied exactly as they stand, and reserves the stock for each colour.',
+  'lead.detail.convertMissingPackaging':
+    'Choose packaging for {names} first — it is never filled in automatically.',
   'lead.detail.convertTitle': 'Convert to order',
   'lead.detail.convertedMessage': 'This lead became order {orderId}.',
   'lead.detail.created': 'Created',
@@ -1171,7 +1231,8 @@ export const EN_MESSAGES = {
   'lead.detail.expectedDate': 'Expected dispatch date',
   'lead.detail.followUp': 'Follow up',
   'lead.detail.history': 'History',
-  'lead.detail.incompleteWarning': 'Missing required information: {fields}. The lead is saved — fill this in when you can.',
+  'lead.detail.incompleteWarning':
+    'Missing required information: {fields}. The lead is saved — fill this in when you can.',
   'lead.detail.lineItems': 'Line items',
   'lead.detail.name': 'Name',
   'lead.detail.no': 'No',
@@ -1266,15 +1327,17 @@ export const EN_MESSAGES = {
   'logs.filter.toLabel': 'To date',
   'logs.noPermission.description': 'Your role does not include {permission}.',
   'logs.noPermission.title': 'You cannot see the activity log',
-  'logs.section.description': 'Append-only and hash-chained: every entry seals the one before it, so a row cannot be altered or removed without the chain saying so.',
+  'logs.section.description':
+    'Append-only and hash-chained: every entry seals the one before it, so a row cannot be altered or removed without the chain saying so.',
   'logs.section.title': 'Activity log',
   'logs.table.record': 'Record',
   'logs.table.sequence': 'Seq.',
   'logs.table.what': 'What happened',
   'logs.table.when': 'When',
   'logs.table.who': 'Who',
-  'logs.verify.break.hash_mismatch': 'The entry\'s own hash does not match its contents.',
-  'logs.verify.break.prev_hash_mismatch': 'The entry does not seal the one before it — an entry was replaced or inserted.',
+  'logs.verify.break.hash_mismatch': "The entry's own hash does not match its contents.",
+  'logs.verify.break.prev_hash_mismatch':
+    'The entry does not seal the one before it — an entry was replaced or inserted.',
   'logs.verify.break.sequence_gap': 'An entry is missing from the sequence.',
   'logs.verify.breakAt': 'First break',
   'logs.verify.breakDetail': 'entry {id}, recorded {when}',
@@ -1289,10 +1352,12 @@ export const EN_MESSAGES = {
   'logs.verify.running': 'Recomputing every hash in the range…',
   'logs.verify.skipped': 'Skipped as pre-chain',
   'logs.verify.title': 'Audit chain verification',
-  'logs.verify.truncated': 'Only the most recent stretch was checked — the range was capped to keep the scan bounded.',
+  'logs.verify.truncated':
+    'Only the most recent stretch was checked — the range was capped to keep the scan bounded.',
   'master.app.panel': 'Master Panel',
   'master.backup.export.title': 'Export whole data',
-  'master.backup.restore.confirmWipe': 'This installation already has data. Restoring will replace it completely. Type CONFIRM to proceed.',
+  'master.backup.restore.confirmWipe':
+    'This installation already has data. Restoring will replace it completely. Type CONFIRM to proceed.',
   'master.settings.storage.title': 'Storage on this PC',
   'master.sync.conflictReview': '{count} conflicts — review',
   'master.sync.offline': '{count} offline',
@@ -1313,6 +1378,15 @@ export const EN_MESSAGES = {
   'keys.palette.records': 'Records',
   'keys.palette.empty': 'Nothing matches',
   'keys.palette.offline': 'Searching what this panel has cached — the Master is unreachable',
+  'keys.settings.hint':
+    'Shortcuts are stored on this machine, so a change here does not follow you to another PC.',
+  'keys.settings.resetAll': 'Restore defaults',
+  'keys.settings.change': 'Change shortcut',
+  'keys.settings.press': 'Press a key…',
+  'keys.settings.clear': 'Clear shortcut',
+  'keys.settings.reserved':
+    'Escape and Tab are reserved for closing dialogs and moving between fields.',
+  'keys.settings.title': 'Keyboard shortcuts',
   'keys.help.title': 'Keyboard shortcuts',
   'keys.help.unbound': 'Not bound',
   'keys.help.conflict': 'Shared with another command',
@@ -1347,7 +1421,8 @@ export const EN_MESSAGES = {
   'nav.work': 'Work',
   'office.app.panel': 'Office Panel',
   'office.backup.export.title': 'Export this device',
-  'office.backup.restore.confirmWipe': 'This device already has data. Restoring will replace it completely. Type CONFIRM to proceed.',
+  'office.backup.restore.confirmWipe':
+    'This device already has data. Restoring will replace it completely. Type CONFIRM to proceed.',
   'office.settings.storage.title': 'Storage on this device',
   'office.sync.conflictReview': '{count} fields resolved — review',
   'office.sync.offline': 'Offline',
@@ -1372,10 +1447,12 @@ export const EN_MESSAGES = {
   'orders.column.weight': 'Weight',
   'orders.detail.dispatch': 'Dispatch',
   'orders.detail.dispatchButton': 'Mark dispatched',
-  'orders.detail.dispatchNote': 'Takes {count} reservation(s) off the stock ledger. This cannot be undone from here.',
+  'orders.detail.dispatchNote':
+    'Takes {count} reservation(s) off the stock ledger. This cannot be undone from here.',
   'orders.detail.dispatchNoteLabel': 'Note',
   'orders.detail.dispatchNotePlaceholder': 'e.g. lorry AB-12',
-  'orders.detail.dispatchedBanner': 'Dispatched {when} — reservations consumed, ledger entries written.',
+  'orders.detail.dispatchedBanner':
+    'Dispatched {when} — reservations consumed, ledger entries written.',
   'orders.detail.history': 'History',
   'orders.detail.lineTotal': 'Line total',
   'orders.detail.noDispatchPermission': 'Your role does not include {permission}.',
@@ -1403,7 +1480,8 @@ export const EN_MESSAGES = {
   'orders.sync.synced': 'Synced',
   'orders.unit.kg': 'kg',
   'orders.waitingPipeline': 'Waiting for the pipeline configuration from the Master Panel…',
-  'panel.access.description': 'When nobody is signed in at that desk, the panel still acts — accepting a lead, syncing what it holds. This is the role it acts under then. A person signed in on the panel always acts under their own role instead.',
+  'panel.access.description':
+    'When nobody is signed in at that desk, the panel still acts — accepting a lead, syncing what it holds. This is the role it acts under then. A person signed in on the panel always acts under their own role instead.',
   'panel.access.fallback': 'Office (the default)',
   'panel.access.fallbackHint': 'No role chosen, so the seeded Office role stands in.',
   'panel.access.permissionCount': '{count} permissions',
@@ -1415,20 +1493,27 @@ export const EN_MESSAGES = {
   'panel.action.refresh': 'Refresh from the panel',
   'panel.action.refreshed': 'Updated from {name}',
   'panel.back': 'All panels',
-  'panel.credentials.description': 'A panel proves itself to the Master with its ID and a secret. The ID never changes; the secret can be reissued at any time.',
+  'panel.credentials.description':
+    'A panel proves itself to the Master with its ID and a secret. The ID never changes; the secret can be reissued at any time.',
   'panel.credentials.neverRotated': 'Unchanged since this panel was paired.',
   'panel.credentials.new.close': 'I have written it down',
-  'panel.credentials.new.delivered': 'The panel has already taken it and is still connected — there is nothing further to do.',
-  'panel.credentials.new.once': 'This is shown once and is not stored anywhere. Write it down before closing.',
+  'panel.credentials.new.delivered':
+    'The panel has already taken it and is still connected — there is nothing further to do.',
+  'panel.credentials.new.once':
+    'This is shown once and is not stored anywhere. Write it down before closing.',
   'panel.credentials.new.title': 'The new secret for {name}',
-  'panel.credentials.new.undelivered': 'The panel was offline. Enter this on that PC’s Manual Connection screen to bring it back.',
-  'panel.credentials.pairing.description': 'The one an operator types on a panel’s Manual Connection screen belongs to this Master, not to any one panel. It is on the Settings screen.',
+  'panel.credentials.new.undelivered':
+    'The panel was offline. Enter this on that PC’s Manual Connection screen to bring it back.',
+  'panel.credentials.pairing.description':
+    'The one an operator types on a panel’s Manual Connection screen belongs to this Master, not to any one panel. It is on the Settings screen.',
   'panel.credentials.pairing.title': 'Pairing password',
   'panel.credentials.rotate': 'Reissue the secret',
   'panel.credentials.rotate.confirm': 'Reissue it',
-  'panel.credentials.rotate.connected': 'That panel is connected, so it will be handed the new secret and carry on working. Nobody has to touch that PC.',
+  'panel.credentials.rotate.connected':
+    'That panel is connected, so it will be handed the new secret and carry on working. Nobody has to touch that PC.',
   'panel.credentials.rotate.failed': 'Could not reissue the secret',
-  'panel.credentials.rotate.offline': 'That panel is offline and cannot be told. It will be locked out until somebody pairs that PC again by hand.',
+  'panel.credentials.rotate.offline':
+    'That panel is offline and cannot be told. It will be locked out until somebody pairs that PC again by hand.',
   'panel.credentials.rotate.title': 'Reissue the secret for {name}?',
   'panel.credentials.rotatedAt': 'Last reissued {when}',
   'panel.credentials.secretLabel': 'Secret',
@@ -1436,10 +1521,12 @@ export const EN_MESSAGES = {
   'panel.credentials.title': 'How this panel signs in',
   'panel.danger.disconnect': 'Drop the connection',
   'panel.danger.disconnectFailed': 'Could not drop that connection',
-  'panel.danger.disconnectHint': 'Ends the panel’s current link. It reconnects on its own within seconds — a way to clear a stuck session without going to that PC.',
+  'panel.danger.disconnectHint':
+    'Ends the panel’s current link. It reconnects on its own within seconds — a way to clear a stuck session without going to that PC.',
   'panel.danger.disconnected': 'Dropped {name}’s connection',
   'panel.danger.remove': 'Remove this panel',
-  'panel.danger.removeHint': 'Ends the pairing for good. That PC drops to its connection screen and has to be paired again.',
+  'panel.danger.removeHint':
+    'Ends the pairing for good. That PC drops to its connection screen and has to be paired again.',
   'panel.danger.title': 'Connection',
   'panel.field.address': 'Address on the network',
   'panel.field.appVersion': 'OrderBook version',
@@ -1467,7 +1554,8 @@ export const EN_MESSAGES = {
   'panel.overview.identity': 'This panel',
   'panel.overview.link': 'Connection',
   'panel.overview.machine': 'The PC it runs on',
-  'panel.overview.neverReported': 'This panel has not described itself yet. It does so the moment it next connects.',
+  'panel.overview.neverReported':
+    'This panel has not described itself yet. It does so the moment it next connects.',
   'panel.overview.reportedAt': 'Details as of {when}',
   'panel.overview.work': 'What it has raised',
   'panel.refresh.offline': 'That panel is offline, so these figures are the last it sent.',
@@ -1481,19 +1569,24 @@ export const EN_MESSAGES = {
   'panel.storage.cachedImages': 'Photos cached',
   'panel.storage.change': 'Move to another folder',
   'panel.storage.change.confirm': 'Move the files',
-  'panel.storage.change.description': 'The panel checks the folder on its own PC and refuses if it cannot write there or the drive is too small.',
+  'panel.storage.change.description':
+    'The panel checks the folder on its own PC and refuses if it cannot write there or the drive is too small.',
   'panel.storage.change.done': 'Moved {count} files to {path}',
   'panel.storage.change.failed': 'That panel could not move its files',
   'panel.storage.change.hint': 'The full path, e.g. D:\\OrderBook\\panel-data',
   'panel.storage.change.label': 'New folder on that PC',
   'panel.storage.change.move': 'Copy what is already there',
-  'panel.storage.change.moveHint': 'Leave this on. Turning it off starts the panel empty and abandons any work it has not sent yet.',
-  'panel.storage.change.oldFolder': 'The old folder at {path} was left in place. Delete it from that PC once you are satisfied.',
+  'panel.storage.change.moveHint':
+    'Leave this on. Turning it off starts the panel empty and abandons any work it has not sent yet.',
+  'panel.storage.change.oldFolder':
+    'The old folder at {path} was left in place. Delete it from that PC once you are satisfied.',
   'panel.storage.change.title': 'Move {name}’s files',
-  'panel.storage.description': 'An Office Panel holds no database. What lives here is its queue of unsent work, its copy of the data, and the photos it has viewed.',
+  'panel.storage.description':
+    'An Office Panel holds no database. What lives here is its queue of unsent work, its copy of the data, and the photos it has viewed.',
   'panel.storage.free': 'Free on that drive',
   'panel.storage.images': 'Photo cache',
-  'panel.storage.offline': 'The folder can only be moved while that panel is connected — it is the panel that does the moving.',
+  'panel.storage.offline':
+    'The folder can only be moved while that panel is connected — it is the panel that does the moving.',
   'panel.storage.path': 'Folder on that PC',
   'panel.storage.title': 'Where this panel keeps its files',
   'panel.storage.total': 'Drive size',
@@ -1510,16 +1603,19 @@ export const EN_MESSAGES = {
   'panels.activity.column.when': 'When',
   'panels.activity.column.who': 'Who',
   'panels.activity.denied': 'Your role does not include {permission}, so the trail is hidden.',
-  'panels.activity.empty.description': 'Work raised at a panel, and changes made to one, appear here.',
+  'panels.activity.empty.description':
+    'Work raised at a panel, and changes made to one, appear here.',
   'panels.activity.empty.title': 'Nothing recorded yet',
   'panels.activity.error': 'Could not read the activity trail',
   'panels.activity.title': 'Everything the panels have done',
   'panels.add.action': 'Add Office Panel',
   'panels.add.cancel': 'Cancel',
-  'panels.add.description': 'Press this, then start automatic connection on the office PC. This Master only accepts new panels while you are waiting here.',
+  'panels.add.description':
+    'Press this, then start automatic connection on the office PC. This Master only accepts new panels while you are waiting here.',
   'panels.add.startFailed': 'Could not start pairing',
   'panels.add.title': 'Add Office Panel',
-  'panels.add.waitingBody': 'On the office PC, open the Office Panel and press "Proceed with Auto Connection". It will find this Master automatically.',
+  'panels.add.waitingBody':
+    'On the office PC, open the Office Panel and press "Proceed with Auto Connection". It will find this Master automatically.',
   'panels.add.waitingTitle': 'Waiting for office panel…',
   'panels.detail.connection': 'Live connection',
   'panels.detail.connectionDown': 'Not connected',
@@ -1530,7 +1626,8 @@ export const EN_MESSAGES = {
   'panels.detail.identity': 'Identity',
   'panels.detail.mac': 'MAC address',
   'panels.detail.network': 'Network',
-  'panels.detail.revokedNote': 'This panel was removed. It has to pair again before it can connect.',
+  'panels.detail.revokedNote':
+    'This panel was removed. It has to pair again before it can connect.',
   'panels.detail.role': 'Acts under role',
   'panels.detail.roleDefault': 'Office (default)',
   'panels.detail.status.active': 'Paired',
@@ -1570,8 +1667,10 @@ export const EN_MESSAGES = {
   'panels.table.status': 'Status',
   'panels.table.storage': 'Storage',
   'party.createFailed': 'Could not create the party',
-  'party.detail.access.manage': 'This party is assigned to you. You can see and change its records.',
-  'party.detail.access.open': 'Nobody is assigned, so everyone with the right role can see and work this party.',
+  'party.detail.access.manage':
+    'This party is assigned to you. You can see and change its records.',
+  'party.detail.access.open':
+    'Nobody is assigned, so everyone with the right role can see and work this party.',
   'party.detail.access.view': 'You can see this party and its records, but not change them.',
   'party.detail.accessTitle': 'Who can reach this party',
   'party.detail.city': 'City',
@@ -1612,7 +1711,7 @@ export const EN_MESSAGES = {
   'party.field.notes': 'Notes',
   'party.field.phone': 'Phone',
   'party.field.taxId': 'Tax ID',
-  'party.field.taxIdHint': 'The party\'s GST number, if registered',
+  'party.field.taxIdHint': "The party's GST number, if registered",
   'party.nameRequired': 'Enter the party name',
   'party.new.title': 'New party',
   'party.save': 'Save party',
@@ -1633,12 +1732,15 @@ export const EN_MESSAGES = {
   'partyAccess.error.load': 'Could not load party access',
   'partyAccess.error.save': 'Could not save the assignments',
   'partyAccess.everyone': 'Everyone',
-  'partyAccess.explainOpen': 'Nobody is assigned, so everyone with the right role can see and work this party.',
-  'partyAccess.explainRestricted': 'Only the people below can see this party and its leads and orders. View can read; manage can also create and edit.',
+  'partyAccess.explainOpen':
+    'Nobody is assigned, so everyone with the right role can see and work this party.',
+  'partyAccess.explainRestricted':
+    'Only the people below can see this party and its leads and orders. View can read; manage can also create and edit.',
   'partyAccess.filter.all': 'All',
   'partyAccess.filter.open': 'Open',
   'partyAccess.filter.restricted': 'Restricted',
-  'partyAccess.intro': 'A party nobody is assigned to is open to everyone. Assign someone and only they can reach it.',
+  'partyAccess.intro':
+    'A party nobody is assigned to is open to everyone. Assign someone and only they can reach it.',
   'partyAccess.level.manage': 'Manage',
   'partyAccess.level.view': 'View',
   'partyAccess.more': '+{count} more',
@@ -1663,7 +1765,8 @@ export const EN_MESSAGES = {
   'product.detail.stock.colour': 'Colour',
   'product.detail.stock.free': 'Free',
   'product.detail.stock.none': 'No stock recorded for this product yet.',
-  'product.detail.stock.note': 'Zero stock never blocks a lead — you can quote stock you have not made yet.',
+  'product.detail.stock.note':
+    'Zero stock never blocks a lead — you can quote stock you have not made yet.',
   'product.detail.stock.onHand': 'On hand',
   'product.detail.stock.reserved': 'Reserved',
   'product.detail.stockForm.adjustDone': 'Stock count for {colour} adjusted',
@@ -1726,7 +1829,8 @@ export const EN_MESSAGES = {
   'product.field.images': 'Photos',
   'product.field.name': 'Product name',
   'product.field.rate': 'Rate per box',
-  'product.field.rateHint': 'Entered in rupees; the Master ignores this without field.saleRate.edit',
+  'product.field.rateHint':
+    'Entered in rupees; the Master ignores this without field.saleRate.edit',
   'product.field.size': 'Size',
   'product.field.type': 'Type',
   'product.field.weight': 'Box weight (kg)',
@@ -1768,10 +1872,12 @@ export const EN_MESSAGES = {
   'recycleBin.filter.deletedBy': 'Deleted by',
   'recycleBin.filter.type': 'Record type',
   'recycleBin.filter.typeWithCount': '{type} ({count})',
-  'recycleBin.refusal.nameHint': 'A record still in use has the original one. Edit this if you prefer another.',
+  'recycleBin.refusal.nameHint':
+    'A record still in use has the original one. Edit this if you prefer another.',
   'recycleBin.refusal.nameLabel': 'New name',
   'recycleBin.refusal.parentLine': '{type} · {label}',
-  'recycleBin.refusal.parentsNotYours': 'Someone allowed to restore those records has to put them back before this one can come back.',
+  'recycleBin.refusal.parentsNotYours':
+    'Someone allowed to restore those records has to put them back before this one can come back.',
   'recycleBin.refusal.parentsTitle': 'Still deleted',
   'recycleBin.refusal.restoreAs': 'Restore under this name',
   'recycleBin.refusal.restoreParents': 'Restore those first, then this',
@@ -1802,15 +1908,19 @@ export const EN_MESSAGES = {
   'reports.kind.topParties': 'Top parties',
   'reports.dispatches.byColour': 'By colour',
   'reports.dispatches.byMonth': 'By month',
-  'reports.dispatches.colours.empty.description': 'Dispatched boxes carry a colour — none of the lines in this range did.',
+  'reports.dispatches.colours.empty.description':
+    'Dispatched boxes carry a colour — none of the lines in this range did.',
   'reports.dispatches.colours.empty.title': 'No colours to break down',
-  'reports.dispatches.empty.description': 'Nothing was dispatched in these months. Try a wider range.',
+  'reports.dispatches.empty.description':
+    'Nothing was dispatched in these months. Try a wider range.',
   'reports.empty.title': 'No activity in this range',
   'reports.error.load': 'Could not load the report',
   'reports.export': 'Export CSV',
   'reports.leadOutcomes.byMonth': 'By month',
-  'reports.leadOutcomes.empty.description': 'No leads were raised in these months. Try a wider range.',
-  'reports.leadOutcomes.quietNote': 'A lead counts as gone quiet after {days} days with no movement.',
+  'reports.leadOutcomes.empty.description':
+    'No leads were raised in these months. Try a wider range.',
+  'reports.leadOutcomes.quietNote':
+    'A lead counts as gone quiet after {days} days with no movement.',
   'reports.noPermission.description': 'Ask an administrator to add {permission}.',
   'reports.noPermission.title': 'Reports are not part of your role',
   'reports.period.custom': 'Custom range',
@@ -1835,7 +1945,8 @@ export const EN_MESSAGES = {
   'reports.topParties.cities.empty.description': 'None of these parties has a city recorded.',
   'reports.topParties.cities.empty.title': 'No cities to group by',
   'reports.topParties.empty.description': 'No party ordered in these months. Try a wider range.',
-  'reports.topParties.orderedByCount': 'Top {limit} by number of orders — your role does not include rates.',
+  'reports.topParties.orderedByCount':
+    'Top {limit} by number of orders — your role does not include rates.',
   'reports.topParties.orderedByValue': 'Top {limit} by order value.',
   'reports.topParties.parties': 'Parties',
   'settings.appearance.density': 'Density',
@@ -1847,7 +1958,7 @@ export const EN_MESSAGES = {
   'settings.appearance.scaleReset': 'Reset',
   'settings.appearance.scaleNote': 'Root {size} — this screen resizes live',
   'settings.appearance.motion': 'Motion',
-  'settings.appearance.motionHint': 'Also honours the system\'s reduced-motion setting',
+  'settings.appearance.motionHint': "Also honours the system's reduced-motion setting",
   'settings.appearance.motionLabel': 'Turn animation off',
   'settings.appearance.subtitle': 'Per-machine — never synced',
   'settings.appearance.theme': 'Theme',
@@ -1863,12 +1974,14 @@ export const EN_MESSAGES = {
   'settings.company.editedElsewhere': 'Edited from its own screen',
   'settings.vault.coverage': '{stored} of {total} people can have their password shown',
   'settings.connection.company': 'Company',
-  'settings.connection.description': 'Office Panels normally connect automatically. Use these only for manual connection.',
+  'settings.connection.description':
+    'Office Panels normally connect automatically. Use these only for manual connection.',
   'settings.connection.masterAddress': 'Master address',
   'settings.connection.masterAddresses': 'Master addresses',
   'settings.connection.masterId': 'Master ID',
   'settings.connection.noAddress': 'No network address detected — port {port}',
-  'settings.connection.passwordNote': 'The pairing password is not stored in readable form and cannot be shown again. Office Panels already connected are unaffected.',
+  'settings.connection.passwordNote':
+    'The pairing password is not stored in readable form and cannot be shown again. Office Panels already connected are unaffected.',
   'settings.connection.setupCompleted': 'Set up on',
   'settings.connection.state.connected': 'Connected',
   'settings.connection.state.connecting': 'Connecting…',
@@ -1890,7 +2003,7 @@ export const EN_MESSAGES = {
   'settings.machine.signedInAs': 'Signed in as',
   'settings.machine.signedInAsOffline': '{name} · {role} (signed in offline)',
   'settings.machine.title': 'This machine',
-  'settings.motion.hint': 'Also honours the system\'s reduced-motion setting',
+  'settings.motion.hint': "Also honours the system's reduced-motion setting",
   'settings.motion.label': 'Motion',
   'settings.motion.turnOff': 'Turn animation off',
   'settings.perMachine': 'Per-machine — never synced',
@@ -1898,14 +2011,17 @@ export const EN_MESSAGES = {
   'settings.storage.free': 'Free space on this drive',
   'settings.storage.total': 'Total used by this software',
   'settings.storage.uploads': 'Images and files',
-  'settings.sync.note': 'Working offline is normal. Everything saves here first and syncs when the Master is reachable — nothing is ever lost to a dropped connection.',
+  'settings.sync.note':
+    'Working offline is normal. Everything saves here first and syncs when the Master is reachable — nothing is ever lost to a dropped connection.',
   'settings.sync.title': 'Sync',
   'settings.theme.dark': 'Dark',
   'settings.theme.label': 'Theme',
   'settings.theme.light': 'Light',
-  'shell.noModules': 'Your role does not include access to any of this panel\'s screens. Ask an administrator if you think that is wrong.',
+  'shell.noModules':
+    "Your role does not include access to any of this panel's screens. Ask an administrator if you think that is wrong.",
   'shell.starting': 'Starting…',
-  'shell.waitingFirstSync': 'Waiting for the first sync with the Master Panel. Once it has happened, this panel keeps working whether or not the Master is reachable.',
+  'shell.waitingFirstSync':
+    'Waiting for the first sync with the Master Panel. Once it has happened, this panel keeps working whether or not the Master is reachable.',
   'signIn.action.signIn': 'Sign in',
   'signIn.action.signingIn': 'Signing in…',
   'signIn.error.default': 'Sign in failed',
@@ -1913,7 +2029,8 @@ export const EN_MESSAGES = {
   'signIn.field.username': 'Username',
   'signIn.subtitle': 'Enter the ID and password generated during setup.',
   'signin.errorFallback': 'Sign-in failed',
-  'signin.offlineNotice': 'The Master Panel is not reachable right now. You can still sign in if you have used this panel before — your work will be saved here and sent when the Master returns.',
+  'signin.offlineNotice':
+    'The Master Panel is not reachable right now. You can still sign in if you have used this panel before — your work will be saved here and sent when the Master returns.',
   'signin.password': 'Password',
   'signin.submit': 'Sign in',
   'signin.submitting': 'Signing in…',
@@ -1926,9 +2043,12 @@ export const EN_MESSAGES = {
   'splash.step.server': 'Contacting the server',
   'splash.step.session': 'Restoring your session',
   'startup.failed.title': 'This PC’s server could not start',
-  'startup.failed.unknown': 'The server stopped while starting up and did not say why. The server window that opened alongside this one will have the details.',
-  'startup.waiting.body': 'The panel is still starting up. On a first run it spends a little while building its database — this screen clears itself as soon as it is ready.',
-  'startup.waiting.slow': 'Still no answer. Check the server window that opened alongside this one for an error, and make sure nothing else is using its port.',
+  'startup.failed.unknown':
+    'The server stopped while starting up and did not say why. The server window that opened alongside this one will have the details.',
+  'startup.waiting.body':
+    'The panel is still starting up. On a first run it spends a little while building its database — this screen clears itself as soon as it is ready.',
+  'startup.waiting.slow':
+    'Still no answer. Check the server window that opened alongside this one for an error, and make sure nothing else is using its port.',
   'startup.waiting.step': '{step}… this screen clears itself as soon as the panel is ready.',
   'startup.waiting.title': 'Waiting for this PC’s server',
   'sync.flushNow': 'Sync now',
@@ -1948,32 +2068,43 @@ export const EN_MESSAGES = {
   'updates.ahead': 'Newer than this Master',
   'updates.allMatch': 'Every panel is on {version}, the same version as this Master.',
   'updates.behind': 'Different version',
-  'updates.dataStays': 'Your data stays exactly where it is. The setup replaces the program only — parties, leads, orders and settings are untouched.',
+  'updates.dataStays':
+    'Your data stays exactly where it is. The setup replaces the program only — parties, leads, orders and settings are untouched.',
   'updates.downloading': 'Getting it from the Master…',
-  'updates.howBody': 'Copy a new build into the releases folder on this PC. This Master installs its own from there; every Office Panel pulls its own copy from this Master over the office network. Update the Master first — a panel on the previous version keeps working and syncing in the meantime.',
-  'updates.howHint': 'This network has no internet by design, so nothing here checks an update server or downloads anything on its own.',
+  'updates.howBody':
+    'Copy a new build into the releases folder on this PC. This Master installs its own from there; every Office Panel pulls its own copy from this Master over the office network. Update the Master first — a panel on the previous version keeps working and syncing in the meantime.',
+  'updates.howHint':
+    'This network has no internet by design, so nothing here checks an update server or downloads anything on its own.',
   'updates.howTitle': 'How updates reach this software',
   'updates.installFailed': 'The update could not be prepared',
   'updates.installNow': 'Install now',
-  'updates.launchRefused': 'Windows would not start the installer. Run the file yourself from the path above.',
+  'updates.launchRefused':
+    'Windows would not start the installer. Run the file yourself from the path above.',
   'updates.launching': 'Starting the installer…',
   'updates.masterVersion': 'Master version',
-  'updates.needsPermission': 'Ask an administrator to install this — it needs the "Manage settings" permission.',
+  'updates.needsPermission':
+    'Ask an administrator to install this — it needs the "Manage settings" permission.',
   'updates.noFolder': 'No releases folder on this PC yet, so there is nothing to install from.',
   'updates.noRelease': 'The releases folder is there, but no build has been put in it yet.',
-  'updates.officeReady': 'Office build {version} is ready on this Master. Each panel can install it from its own App update screen.',
-  'updates.panel.behindBody': 'The Master is on {version} and this panel is on an older build. Nothing is wrong — it keeps working and syncing exactly as it does now. When a matching build is published on the Master it will appear here to install.',
+  'updates.officeReady':
+    'Office build {version} is ready on this Master. Each panel can install it from its own App update screen.',
+  'updates.panel.behindBody':
+    'The Master is on {version} and this panel is on an older build. Nothing is wrong — it keeps working and syncing exactly as it does now. When a matching build is published on the Master it will appear here to install.',
   'updates.panel.matchBody': 'This panel is on the same version as the Master. Nothing to do.',
-  'updates.panel.offerBody': 'Version {version} is waiting on the Master. Installing it copies the file to this PC first, so nothing depends on the network once it starts. Anything this panel has queued offline is kept.',
-  'updates.panel.unknownBody': 'This panel has not heard from the Master since it started, so it cannot say which version the Master is on. It will once the link is back.',
+  'updates.panel.offerBody':
+    'Version {version} is waiting on the Master. Installing it copies the file to this PC first, so nothing depends on the network once it starts. Anything this panel has queued offline is kept.',
+  'updates.panel.unknownBody':
+    'This panel has not heard from the Master since it started, so it cannot say which version the Master is on. It will once the link is back.',
   'updates.panelVersion': 'Panel version',
   'updates.panelsBehind': 'On a different version',
   'updates.panelsTitle': 'Office panel versions',
   'updates.panelsTracked': 'Office panels paired',
   'updates.readyLabel': 'Ready to install',
   'updates.runByHand': 'The file is ready. Run it yourself from:',
-  'updates.someBehind': '{count} panel(s) are on a different version from this Master ({version}). They keep working — a panel is never blocked for being out of step.',
-  'updates.someUnknown': '{count} panel(s) have not reported a version yet. They will the next time they connect.',
+  'updates.someBehind':
+    '{count} panel(s) are on a different version from this Master ({version}). They keep working — a panel is never blocked for being out of step.',
+  'updates.someUnknown':
+    '{count} panel(s) have not reported a version yet. They will the next time they connect.',
   'updates.statusLabel': 'Against the Master',
   'updates.table.version': 'Version',
   'updates.thisMachine': 'This Master',

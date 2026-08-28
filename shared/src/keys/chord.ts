@@ -109,27 +109,72 @@ function isLetter(key: string): boolean {
   return key.length === 1 && key >= 'a' && key <= 'z';
 }
 
+/** The punctuation whose `code` name is worth knowing, both ways. */
+const NAMED_CODES: Record<string, string> = {
+  '/': 'Slash',
+  '.': 'Period',
+  ',': 'Comma',
+  ';': 'Semicolon',
+  "'": 'Quote',
+  '[': 'BracketLeft',
+  ']': 'BracketRight',
+  '\\': 'Backslash',
+  '-': 'Minus',
+  '=': 'Equal',
+  '`': 'Backquote',
+};
+
 /** `1` → `Digit1`, `f2` → `F2`, `/` → `Slash`. */
 function codeFor(key: string): string | null {
   if (key.length === 1 && key >= '0' && key <= '9') return `Digit${key}`;
   if (/^f\d{1,2}$/i.test(key)) return key.toUpperCase();
   if (isLetter(key)) return `Key${key.toUpperCase()}`;
 
-  const NAMED: Record<string, string> = {
-    '/': 'Slash',
-    '.': 'Period',
-    ',': 'Comma',
-    ';': 'Semicolon',
-    "'": 'Quote',
-    '[': 'BracketLeft',
-    ']': 'BracketRight',
-    '\\': 'Backslash',
-    '-': 'Minus',
-    '=': 'Equal',
-    '`': 'Backquote',
-  };
+  return NAMED_CODES[key] ?? null;
+}
 
-  return NAMED[key] ?? null;
+/**
+ * The chord somebody just pressed, for the rebinding editor.
+ *
+ * Reads `code` for everything except letters, which is the same asymmetry
+ * `matchesChord` applies in reverse: recording `Digit1` and then matching on
+ * `key` would produce a binding that never fires on the Mac it was recorded on.
+ *
+ * Returns `null` for a modifier pressed on its own, so holding Ctrl while
+ * reaching for the second key does not end the capture early. Escape and Tab do
+ * come back — `isReservedChord` is what refuses them, and refusing them by name
+ * lets the editor say so rather than appearing to ignore the key.
+ */
+export function chordFromEvent(event: KeyEventLike): Chord | null {
+  const key = keyNameFor(event);
+  if (!key) return null;
+
+  const chord: Chord = { key };
+  if (event.ctrlKey) chord.ctrl = true;
+  if (event.altKey) chord.alt = true;
+  if (event.shiftKey) chord.shift = true;
+  if (event.metaKey) chord.meta = true;
+  return chord;
+}
+
+function keyNameFor(event: KeyEventLike): string | null {
+  const digit = /^Digit(\d)$/.exec(event.code);
+  if (digit) return digit[1]!;
+
+  if (/^F\d{1,2}$/.test(event.code)) return event.code;
+
+  const letter = /^Key([A-Z])$/.exec(event.code);
+  // The letter on the key, not the position: `matchesChord` compares a letter
+  // chord against `event.key`, so that is what has to be stored.
+  if (letter) return event.key.length === 1 ? event.key.toLowerCase() : letter[1]!.toLowerCase();
+
+  for (const [symbol, code] of Object.entries(NAMED_CODES)) {
+    if (code === event.code) return symbol;
+  }
+
+  if (event.key === 'Escape' || event.key === 'Tab') return event.key;
+
+  return null;
 }
 
 export function matchesChord(event: KeyEventLike, chord: Chord): boolean {

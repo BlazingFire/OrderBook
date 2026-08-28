@@ -37,6 +37,7 @@ import {
   t,
   type Density,
   type Theme,
+  ShortcutSettings,
 } from '@orderbook/ui';
 
 interface Props {
@@ -208,6 +209,13 @@ export function SettingsScreen({ connection, session, pendingCount, openConflict
             </span>
           </div>
         </div>
+      </Card>
+
+      <Card>
+        <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-12)' }}>
+          {t('keys.settings.title')}
+        </div>
+        <ShortcutSettings />
       </Card>
 
       <Card>

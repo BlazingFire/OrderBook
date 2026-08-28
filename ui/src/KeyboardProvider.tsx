@@ -23,7 +23,15 @@
  * what keeps the two apart.
  */
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { ReactNode } from 'react';
 import {
   BINDINGS_STORAGE_KEY,
@@ -105,6 +113,7 @@ export function KeyboardProvider({
   panel,
   userId = null,
   onNavigate,
+  shellCommands,
   children,
 }: {
   panel: 'master' | 'office';
@@ -116,6 +125,16 @@ export function KeyboardProvider({
    * lose a half-filled form than clicking the sidebar is.
    */
   onNavigate?: (tab: string) => void;
+  /**
+   * Commands the shell answers rather than a screen — resetting the visible
+   * pane, reloading, starting a new record.
+   *
+   * They live here rather than in a `useCommand` call because the component
+   * that owns them is this provider's *parent*: `App()` renders the provider,
+   * so it cannot use a hook that reads its context. A registration from a
+   * screen still wins, because the stack is consulted first.
+   */
+  shellCommands?: Record<string, (() => void) | null | undefined>;
   children: ReactNode;
 }) {
   const [bindings, setBindings] = useState<BindingMap>(() => load(userId));
@@ -136,8 +155,8 @@ export function KeyboardProvider({
    * every keystroke, and the handlers it dispatches to are closures rebuilt on
    * each render anyway.
    */
-  const latest = useRef({ bindings, panel, onNavigate });
-  latest.current = { bindings, panel, onNavigate };
+  const latest = useRef({ bindings, panel, onNavigate, shellCommands });
+  latest.current = { bindings, panel, onNavigate, shellCommands };
 
   const runCommand = useCallback((commandId: string): boolean => {
     const command = COMMANDS_BY_ID.get(commandId);
@@ -158,6 +177,12 @@ export function KeyboardProvider({
     // than making nine screens register nine near-identical handlers.
     if (command.tab && latest.current.onNavigate) {
       latest.current.onNavigate(command.tab);
+      return true;
+    }
+
+    const shell = latest.current.shellCommands?.[commandId];
+    if (shell) {
+      shell();
       return true;
     }
 
@@ -209,50 +234,63 @@ export function KeyboardProvider({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  const api = useRef<KeyboardApi>({
-    panel,
-    bindings,
-    setBinding: () => undefined,
-    resetBindings: () => undefined,
-    paletteOpen,
-    setPaletteOpen,
-    helpOpen,
-    setHelpOpen,
-    run: (commandId) => void runCommand(commandId),
-    push(registration) {
+  /*
+   * The stack's two methods never change, so they are not part of the context
+   * value that consumers re-render on. `useCommand` depends on the api object,
+   * and a fresh one every render would push and pop a registration on every
+   * keystroke anywhere in the panel.
+   */
+  const registry = useRef({
+    push(registration: Registration) {
       stack.current.push(registration);
     },
-    pop(registration) {
+    pop(registration: Registration) {
       const index = stack.current.indexOf(registration);
       if (index >= 0) stack.current.splice(index, 1);
     },
   }).current;
 
-  // The stable object is what keeps `push`/`pop` out of every consumer's
-  // dependency arrays; the mutable fields are what the consumers read.
-  api.panel = panel;
-  api.bindings = bindings;
-  api.paletteOpen = paletteOpen;
-  api.helpOpen = helpOpen;
-  api.setBinding = (commandId, chord) => {
-    setBindings((current) => {
-      const next = { ...current, [commandId]: chord };
-      try {
-        window.localStorage.setItem(storageKey(userId), JSON.stringify(next));
-      } catch {
-        // Unwritable storage costs the remap its persistence, not its effect.
-      }
-      return next;
-    });
-  };
-  api.resetBindings = () => {
-    try {
-      window.localStorage.removeItem(storageKey(userId));
-    } catch {
-      // As above.
-    }
-    setBindings({});
-  };
+  /*
+   * A new object whenever the state changes, deliberately.
+   *
+   * `children` is the same element on every render of this provider, so React
+   * skips the subtree unless the context value itself changes identity — mutate
+   * fields on one stable object and the palette goes on showing the binding it
+   * read the first time.
+   */
+  const api = useMemo<KeyboardApi>(
+    () => ({
+      panel,
+      bindings,
+      paletteOpen,
+      helpOpen,
+      setPaletteOpen,
+      setHelpOpen,
+      run: (commandId) => void runCommand(commandId),
+      push: registry.push,
+      pop: registry.pop,
+      setBinding: (commandId, chord) => {
+        setBindings((current) => {
+          const next = { ...current, [commandId]: chord };
+          try {
+            window.localStorage.setItem(storageKey(userId), JSON.stringify(next));
+          } catch {
+            // Unwritable storage costs the remap its persistence, not its effect.
+          }
+          return next;
+        });
+      },
+      resetBindings: () => {
+        try {
+          window.localStorage.removeItem(storageKey(userId));
+        } catch {
+          // As above.
+        }
+        setBindings({});
+      },
+    }),
+    [panel, bindings, paletteOpen, helpOpen, userId, runCommand, registry],
+  );
 
   return <KeyboardContext.Provider value={api}>{children}</KeyboardContext.Provider>;
 }

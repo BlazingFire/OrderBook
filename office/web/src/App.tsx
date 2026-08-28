@@ -862,7 +862,20 @@ function OfficePanel() {
     );
 
   return (
-    <KeyboardProvider panel="office" userId={session?.userId ?? null} onNavigate={goToTab}>
+    <KeyboardProvider
+      panel="office"
+      userId={session?.userId ?? null}
+      onNavigate={goToTab}
+      shellCommands={{
+        'view.reset': resetActiveScreen,
+        // As on the Master: the shell swallows F5, so this is what hands the key
+        // back rather than a second, different meaning for it.
+        'view.refresh': () => window.location.reload(),
+        // A new record on this panel is a lead. Absent rather than inert when
+        // the role cannot create one — the palette then simply does not offer it.
+        'record.new': can('leads.create') ? () => setTab('addLead') : null,
+      }}
+    >
       <FilterBarProvider>
         <AppShell
           groups={groups}

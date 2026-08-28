@@ -12,6 +12,7 @@ import {
   COMMANDS,
   COMMANDS_BY_ID,
   chordFor,
+  chordFromEvent,
   defaultBindings,
   findConflicts,
   formatChord,
@@ -96,6 +97,44 @@ describe('rule three — AltGr is not Alt', () => {
         parseChord('Alt+N')!,
       ),
     ).toBe(false);
+  });
+});
+
+describe('recording a chord', () => {
+  it('records the physical key for a digit, so the binding survives a Mac', () => {
+    expect(chordFromEvent(press({ key: '¡', code: 'Digit1', altKey: true }))).toEqual({
+      key: '1',
+      alt: true,
+    });
+  });
+
+  it('records the letter on the key, which is what a letter chord matches on', () => {
+    expect(chordFromEvent(press({ key: 's', code: 'KeyO', ctrlKey: true }))).toEqual({
+      key: 's',
+      ctrl: true,
+    });
+  });
+
+  it('ignores a modifier pressed on its own', () => {
+    // Otherwise the capture ends the moment somebody reaches for Ctrl, before
+    // they have pressed the key they meant.
+    expect(
+      chordFromEvent(press({ key: 'Control', code: 'ControlLeft', ctrlKey: true })),
+    ).toBeNull();
+  });
+
+  it('records Escape rather than dropping it, so the editor can refuse it by name', () => {
+    const chord = chordFromEvent(press({ key: 'Escape', code: 'Escape' }));
+    expect(chord).not.toBeNull();
+    expect(isReservedChord(chord!)).toBe(true);
+  });
+
+  it('round-trips whatever it records', () => {
+    const chord = chordFromEvent(press({ key: 'k', code: 'KeyK', ctrlKey: true, shiftKey: true }))!;
+    expect(
+      matchesChord(press({ key: 'k', code: 'KeyK', ctrlKey: true, shiftKey: true }), chord),
+    ).toBe(true);
+    expect(formatChord(chord)).toBe('Ctrl+Shift+K');
   });
 });
 

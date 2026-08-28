@@ -50,6 +50,7 @@ export * from './PresenceRail.js';
 export * from './ProgressiveImage.js';
 export * from './ResetSlot.js';
 export * from './ScreenHost.js';
+export * from './ShortcutSettings.js';
 export * from './Splash.js';
 export * from './States.js';
 export * from './SubNavSlot.js';

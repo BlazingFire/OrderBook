@@ -749,7 +749,18 @@ function MasterPanel() {
   );
 
   return (
-    <KeyboardProvider panel="master" userId={user?.id ?? null} onNavigate={navigate}>
+    <KeyboardProvider
+      panel="master"
+      userId={user?.id ?? null}
+      onNavigate={navigate}
+      shellCommands={{
+        'view.reset': resetActiveScreen,
+        // F5 is swallowed by the desktop shell so it cannot bypass the panel;
+        // binding it here gives the key back its ordinary meaning, and in a
+        // browser tab this does exactly what the browser would have done.
+        'view.refresh': () => window.location.reload(),
+      }}
+    >
       <FilterBarProvider>
         <AppShell
           groups={groups}

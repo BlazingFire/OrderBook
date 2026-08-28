@@ -47,6 +47,7 @@ import {
   t,
   type Density,
   type Theme,
+  ShortcutSettings,
 } from '@orderbook/ui';
 
 function currentRootSize(): string {
@@ -208,6 +209,13 @@ export function SettingsScreen() {
             </span>
           </SettingRow>
         </div>
+      </Card>
+
+      <Card>
+        <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-12)' }}>
+          {t('keys.settings.title')}
+        </div>
+        <ShortcutSettings />
       </Card>
 
       {settings && (
