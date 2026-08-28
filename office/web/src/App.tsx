@@ -25,9 +25,14 @@ import {
   FilterBarProvider,
   GalleryScreen,
   Icon,
+  IconButton,
+  ResetProvider,
   SaveShortcutProvider,
+  ScreenHost,
+  type ScreenSpec,
   Splash,
   ToastProvider,
+  useResetGate,
   t,
   useToast,
   type NavGroup,
@@ -54,7 +59,10 @@ type Tab =
   | 'products'
   | 'conflicts'
   | 'settings'
-  | 'updates';
+  | 'updates'
+  /* A screen, not a mode: as a boolean it was cleared by `goToTab`, so
+     switching tab silently discarded a half-filled lead. */
+  | 'addLead';
 
 function readHash(): string {
   return window.location.hash.replace(/^#/, '');
@@ -84,7 +92,9 @@ function withTimeout<T>(work: Promise<T>, ms = 10_000): Promise<T> {
 export function App() {
   return (
     <ToastProvider>
-      <OfficePanel />
+      <ResetProvider>
+        <OfficePanel />
+      </ResetProvider>
     </ToastProvider>
   );
 }
@@ -99,7 +109,6 @@ function OfficePanel() {
   const [rejections, setRejections] = useState<MutationResult[]>([]);
 
   const [tab, setTab] = useState<Tab>('dashboard');
-  const [addingLead, setAddingLead] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flushing, setFlushing] = useState(false);
 
@@ -298,7 +307,6 @@ function OfficePanel() {
     setSession(null);
     setView(null);
     setTab('dashboard');
-    setAddingLead(false);
     setHits(null);
     setTerm('');
   }
@@ -484,13 +492,27 @@ function OfficePanel() {
   };
 
   /** Shared by the sidebar and by in-content links (e.g. the Dashboard's stat cards). */
+  /*
+   * One counter per screen; bumping it re-keys that screen inside
+   * `ScreenHost` and React remounts it. The deliberate way to throw away a
+   * draft, now that navigating away no longer does.
+   */
+  const [resetNonce, setResetNonce] = useState<Record<string, number>>({});
+  const askReset = useResetGate();
+
+  function resetActiveScreen(): void {
+    if (route === 'gallery') return;
+    if (!askReset()) return;
+    const id = idToTab[activeId] ?? activeId;
+    setResetNonce((current) => ({ ...current, [id]: (current[id] ?? 0) + 1 }));
+  }
+
   function goToTab(id: string): void {
     // Clear a stale #/gallery so the hash and the state agree; replaceState
     // does not fire hashchange, the setRoute below is the source of truth.
     if (readHash())
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
     setRoute('');
-    setAddingLead(false);
     if (idToTab[id]) setTab(idToTab[id]);
   }
 
@@ -579,15 +601,22 @@ function OfficePanel() {
         )}
       </div>
 
-      {!addingLead && route !== 'gallery' && can('leads.create') && (
+      {tab !== 'addLead' && route !== 'gallery' && can('leads.create') && (
         <button
           className="ob-btn ob-btn--primary"
           disabled={!view}
-          onClick={() => setAddingLead(true)}
+          onClick={() => setTab('addLead')}
         >
           {t('action.newLead')}
         </button>
       )}
+
+      <IconButton
+        icon="reset"
+        label={t('screen.reset')}
+        title={t('screen.resetHint')}
+        onClick={resetActiveScreen}
+      />
 
       <button className="ob-btn ob-btn--ghost" onClick={() => void signOut()}>
         {t('action.signOut')}
@@ -739,94 +768,116 @@ function OfficePanel() {
     </>
   );
 
-  const content = (() => {
-    if (route === 'gallery') return <GalleryScreen />;
-
-    if (addingLead && view) {
-      return (
-        <AddLeadScreen
-          view={view}
-          canEditRate={can('field.saleRate.edit')}
-          onSaved={() => {
-            setAddingLead(false);
-            setTab('leads');
-            toast.push('Lead saved on this machine — it syncs when the Master is reachable');
-          }}
-          onCancel={() => setAddingLead(false)}
-        />
-      );
-    }
-
-    // Per-machine, not per-sync: available even before the first snapshot
-    // arrives, unlike everything below it.
-    // Reads the connection rather than the merged view, so it answers the
-    // moment the shell has one — same reason Settings sits above the gate.
-    if ((idToTab[activeId] ?? activeId) === 'updates') {
-      return <UpdatesScreen connection={connection} permissions={permissions} />;
-    }
-
-    if ((idToTab[activeId] ?? activeId) === 'settings') {
-      return (
+  /*
+   * Two tiers, because this panel's screens are not interchangeable.
+   *
+   * `updates` and `settings` read the connection rather than the merged view,
+   * so they work before the first snapshot ever arrives — which is exactly
+   * when an operator needs them. Everything else takes a non-null `LocalView`.
+   * `ScreenHost` renders all visited screens at once, so a null view must
+   * never reach the second tier; the gate stays outside the host.
+   *
+   * `addLead` is a screen here rather than a mode, which is what stops a
+   * half-filled lead being thrown away by navigating to another tab.
+   */
+  const alwaysAvailable: ScreenSpec[] = [
+    {
+      id: 'updates',
+      render: () => <UpdatesScreen connection={connection} permissions={permissions} />,
+    },
+    {
+      id: 'settings',
+      render: () => (
         <SettingsScreen
           connection={connection}
           session={session}
           pendingCount={pendingCount}
           openConflicts={openConflicts}
         />
-      );
-    }
+      ),
+    },
+  ];
 
-    if (!view) {
-      return (
+  const needsView: ScreenSpec[] = view
+    ? [
+        { id: 'dashboard', render: () => <DashboardScreen view={view} onNavigate={goToTab} /> },
+        {
+          id: 'leads',
+          render: () => (
+            <LeadBoardScreen
+              view={view}
+              canConvert={can('lead.convert')}
+              onError={setError}
+              onAddLead={can('leads.create') ? () => setTab('addLead') : undefined}
+            />
+          ),
+        },
+        {
+          id: 'orders',
+          render: () => (
+            <OrderBoardScreen view={view} canDispatch={can('orders.dispatch')} onError={setError} />
+          ),
+        },
+        {
+          id: 'conflicts',
+          render: () => (
+            <ConflictsScreen
+              conflicts={view.conflicts}
+              canResolve={can('sync.resolveConflicts')}
+              onError={setError}
+              onResolved={() => void flush()}
+            />
+          ),
+        },
+        {
+          id: 'partyAccess',
+          render: () => (
+            <PartyAccessScreen permissions={permissions} revision={view.pendingCount ?? 0} />
+          ),
+        },
+        // Two entries sharing one screen: the sidebar has separate Parties and
+        // Products items, and each keeps its own state.
+        { id: 'parties', render: () => <CatalogScreen view={view} tab="parties" /> },
+        { id: 'products', render: () => <CatalogScreen view={view} tab="products" /> },
+        {
+          id: 'addLead',
+          render: () => (
+            <AddLeadScreen
+              view={view}
+              canEditRate={can('field.saleRate.edit')}
+              onSaved={() => {
+                setTab('leads');
+                toast.push('Lead saved on this machine — it syncs when the Master is reachable');
+              }}
+              onCancel={() => setTab('leads')}
+            />
+          ),
+        },
+      ]
+    : [];
+
+  const screens = [...alwaysAvailable, ...needsView];
+  const activeScreenId = idToTab[activeId] ?? activeId;
+  const known = screens.some((screen) => screen.id === activeScreenId);
+
+  const content =
+    route === 'gallery' ? (
+      <div className="ob-pane">
+        <GalleryScreen />
+      </div>
+    ) : known ? (
+      <ScreenHost screens={screens} activeId={activeScreenId} resetNonce={resetNonce} />
+    ) : (
+      <div className="ob-pane">
         <div className="ob-empty">
-          <BusyMark size={48} label="" />
+          {view ? null : <BusyMark size={48} label="" />}
           <h3>{activeLabel}</h3>
-          <p>{t('shell.waitingFirstSync')}</p>
+          {/* Before the first snapshot every data screen is unavailable; after
+              it, an unknown id means a role with no modules at all. */}
+          <p>{view ? t('shell.noModules') : t('shell.waitingFirstSync')}</p>
         </div>
-      );
-    }
-
-    switch (idToTab[activeId] ?? activeId) {
-      case 'dashboard':
-        return <DashboardScreen view={view} onNavigate={goToTab} />;
-      case 'leads':
-        return (
-          <LeadBoardScreen
-            view={view}
-            canConvert={can('lead.convert')}
-            onError={setError}
-            onAddLead={can('leads.create') ? () => setAddingLead(true) : undefined}
-          />
-        );
-      case 'orders':
-        return (
-          <OrderBoardScreen view={view} canDispatch={can('orders.dispatch')} onError={setError} />
-        );
-      case 'conflicts':
-        return (
-          <ConflictsScreen
-            conflicts={view.conflicts}
-            canResolve={can('sync.resolveConflicts')}
-            onError={setError}
-            onResolved={() => void flush()}
-          />
-        );
-      case 'partyAccess':
-        return <PartyAccessScreen permissions={permissions} revision={view?.pendingCount ?? 0} />;
-      case 'parties':
-      case 'products':
-        return <CatalogScreen view={view} tab={activeId as 'parties' | 'products'} />;
-      default:
-        // Every tab is behind a permission, so a role with none reaches this.
-        // Said plainly rather than shown as an empty list.
-        return (
-          <div className="ob-empty">
-            <h3>{activeLabel}</h3>
-            <p>{t('shell.noModules')}</p>
-          </div>
-        );
-    }
-  })();
+      </div>
+    );
 
   return (
     <SaveShortcutProvider>

@@ -16,16 +16,33 @@
  * and therefore referentially stable for the life of the provider.
  */
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
-const SetFilterBarContext = createContext<(node: ReactNode) => void>(() => undefined);
+interface FilterBarApi {
+  set: (node: ReactNode) => void;
+  /** Clear, but only if this node is still the one showing. */
+  release: (node: ReactNode) => void;
+}
+
+const SetFilterBarContext = createContext<FilterBarApi>({
+  set: () => undefined,
+  release: () => undefined,
+});
 const FilterBarNodeContext = createContext<ReactNode>(null);
 
 export function FilterBarProvider({ children }: { children: ReactNode }) {
   const [node, setNode] = useState<ReactNode>(null);
+
+  // Stable for the life of the provider, so a publisher subscribing to it
+  // never re-renders in response to its own publish.
+  const api = useRef<FilterBarApi>({
+    set: (next) => setNode(next),
+    release: (owned) => setNode((current) => (current === owned ? null : current)),
+  }).current;
+
   return (
-    <SetFilterBarContext.Provider value={setNode}>
+    <SetFilterBarContext.Provider value={api}>
       <FilterBarNodeContext.Provider value={node}>{children}</FilterBarNodeContext.Provider>
     </SetFilterBarContext.Provider>
   );
@@ -40,11 +57,17 @@ export function FilterBarOutlet() {
 
 /** Call from a screen with the filter bar content it wants shown; pass null for none. */
 export function useFilterBar(node: ReactNode): void {
-  const set = useContext(SetFilterBarContext);
+  const { set, release } = useContext(SetFilterBarContext);
   useEffect(() => {
     set(node);
   });
-  // Mount/unmount only: clears the strip when this screen goes away, even if
-  // its last render published a non-null bar.
-  useEffect(() => () => set(null), [set]);
+  /*
+   * Clear only if this screen still owns the strip.
+   *
+   * Screens are hidden rather than unmounted now, and React does not promise
+   * that the outgoing pane's cleanup runs before the incoming pane's effect.
+   * An unconditional `set(null)` therefore raced: hide-then-show left the bar
+   * correct, show-then-hide wiped the bar the *new* screen had just published.
+   */
+  useEffect(() => () => release(node), [release, node]);
 }

@@ -13,6 +13,7 @@ export type IconName =
   | 'parties'
   | 'conflicts'
   | 'settings'
+  | 'reset'
   | 'shield'
   | 'server'
   | 'collapse'
@@ -65,6 +66,9 @@ const PATHS: Record<IconName, string> = {
   copy: 'M6 6h6.5v6.5H6zM3.5 3.5h6.5v2M3.5 3.5v6.5h2',
   warning: 'M8 2.8L13.5 12.5H2.5zM8 6.8v2.6M8 11.6v.01',
   sync: 'M12.5 5.5A5 5 0 0 0 3.6 4M3.5 10.5A5 5 0 0 0 12.4 12M12.5 2.5v3h-3M3.5 13.5v-3h3',
+  // Distinct from `sync`, which is already the Updates nav glyph — a counter-
+  // clockwise arrow reads as "start over", not "fetch again".
+  reset: 'M3.5 8a4.5 4.5 0 1 0 1.6-3.4M3 3v3h3',
   edit: 'M10.5 2.5l3 3L5 14H2v-3zM9 4l3 3',
   eye: 'M2 8s2.3-4.5 6-4.5S14 8 14 8s-2.3 4.5-6 4.5S2 8 2 8zM8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
   'eye-off':

@@ -431,6 +431,9 @@ export const EN_MESSAGES = {
    * Those 12 are namespaced `master.*` / `office.*` here, because both
    * readings are correct for their own panel. Everything else is shared.
    */
+  'lead.add.discardConfirm': 'Discard this lead and start over?',
+  'screen.reset': 'Reset this screen',
+  'screen.resetHint': 'Clear the filters, scroll and unsaved entry on this screen and load it fresh.',
   'access.editor.backToList': 'Roles & users',
   'access.permissions.blocked': 'Needs the {tier} tier. Change the tier above to enable it.',
   'access.permissions.clearAll': 'Clear all',

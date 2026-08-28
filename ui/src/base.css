@@ -1118,9 +1118,19 @@ html[data-window-blur='true'] .ob-busy rect {
   flex: none;
 }
 
+/* The content area holds one pane per visited screen — all mounted, all but
+   one hidden — so it must not scroll itself. Each pane is its own scroller,
+   which is what lets a hidden screen keep its scroll position and what gives
+   `DataTable` a real viewport to measure against. */
 .ob-content {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.ob-pane {
+  height: 100%;
   overflow: auto;
   padding: var(--s-16) var(--s-20);
 }

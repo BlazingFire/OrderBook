@@ -51,6 +51,7 @@ import {
   formatMoney,
   t,
   useColourHex,
+  useResetGuard,
   useSaveShortcut,
   type ColourQuantity,
   type ComboboxOption,
@@ -321,6 +322,17 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
   // only while a save is already in flight, mirroring the button's own
   // `busy` gate (it has no other disabled condition to mirror).
   useSaveShortcut(busy ? null : () => void save());
+
+  /*
+   * Resetting this screen throws away a lead somebody is part-way through
+   * typing, so it asks first — but only when there is actually something to
+   * lose. An empty form resets silently.
+   */
+  useResetGuard(
+    partyId || lines.length > 0 || notes.trim()
+      ? () => window.confirm(t('lead.add.discardConfirm'))
+      : null,
+  );
 
   return (
     <div style={{ maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>

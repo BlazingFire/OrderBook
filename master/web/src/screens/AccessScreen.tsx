@@ -157,7 +157,12 @@ export function AccessScreen({ permissions, currentUserId, currentUserTier }: Pr
     ) : null,
   );
 
+  // Keyed by the screen it belongs to: entries are held per screen now, and
+  // deliberately survive being hidden. `onExit` is gone — navigating away no
+  // longer unmounts this screen, so there is no draft to lose and nothing to
+  // ask about. Closing the editor is still the explicit way out.
   useSubNav(
+    'access',
     roleEditorOpen
       ? {
           parentId: 'access',
@@ -172,7 +177,6 @@ export function AccessScreen({ permissions, currentUserId, currentUserTier }: Pr
             },
           ],
           activeId: 'access.role',
-          onExit: () => editorCloseRef.current(),
         }
       : userEditorOpen
         ? {
@@ -185,10 +189,6 @@ export function AccessScreen({ permissions, currentUserId, currentUserTier }: Pr
               },
             ],
             activeId: 'access.user',
-            onExit: () => {
-              setEditingUser(null);
-              return true;
-            },
           }
         : null,
   );

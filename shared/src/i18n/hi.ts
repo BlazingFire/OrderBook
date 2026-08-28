@@ -3210,4 +3210,10 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'updates.upToDateBody': "This is the newest build in the releases folder. Nothing to do.",
   // TODO(i18n-hi)
   'updates.verifying': "Checking the file…",
+  // TODO(i18n-hi)
+  'screen.reset': "Reset this screen",
+  // TODO(i18n-hi)
+  'screen.resetHint': "Clear the filters, scroll and unsaved entry on this screen and load it fresh.",
+  // TODO(i18n-hi)
+  'lead.add.discardConfirm': "Discard this lead and start over?",
 };

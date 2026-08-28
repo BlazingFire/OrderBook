@@ -53,7 +53,17 @@ export function useOverlay(
         // dialog act: a stacked Modal is either a descendant of the Drawer that
         // opened it or rendered after it in the same subtree, so in both cases
         // the innermost overlay is the last `[role="dialog"]` in the document.
-        const dialogs = document.querySelectorAll('[role="dialog"]');
+        //
+        // Visible ones only. Screens are now kept mounted and hidden by
+        // `<Activity>`, which leaves their DOM in the document — so a hidden
+        // pane's open Drawer, sitting later in the screens array, became the
+        // "last dialog" and the visible overlay silently refused Escape.
+        // Verified in Chromium: `checkVisibility()` is false inside a
+        // `display:none` subtree. (jsdom does not implement it at all, so this
+        // line cannot be unit-tested — see `ui/tests/activity-spike.test.tsx`.)
+        const dialogs = [...document.querySelectorAll('[role="dialog"]')].filter((dialog) =>
+          dialog.checkVisibility(),
+        );
         if (container && dialogs[dialogs.length - 1] !== container) return;
         e.stopPropagation();
         closeRef.current();
@@ -77,7 +87,17 @@ export function useOverlay(
     document.addEventListener('keydown', onKeyDown, true);
     return () => {
       document.removeEventListener('keydown', onKeyDown, true);
-      restoreFocus.current?.focus();
+      /*
+       * Restore focus only to something still on screen.
+       *
+       * This cleanup now also runs when the screen is merely *hidden*, and
+       * focusing an element inside a `display:none` subtree either does
+       * nothing or drags focus somewhere invisible. `isConnected` catches a
+       * removed node, `checkVisibility()` catches a hidden one.
+       */
+      const target = restoreFocus.current;
+      if (target?.isConnected && target.checkVisibility()) target.focus();
+      restoreFocus.current = null;
     };
   }, [open, containerRef]);
 }

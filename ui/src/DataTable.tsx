@@ -51,19 +51,52 @@ export function DataTable<T>({
   const [viewportH, setViewportH] = useState(0);
   const [rowH, setRowH] = useState(DEFAULT_ROW_H);
 
+  /*
+   * Measure against the pane that actually scrolls.
+   *
+   * This used to read `wrapRef.current.clientHeight` and take `scrollTop` from
+   * an `onScroll` on the wrapper — and the whole virtualiser was therefore
+   * inert. `.ob-tablewrap` has `overflow: auto` but no height constraint, so
+   * it grows to the full height of the table and never scrolls; the real
+   * scroller is the enclosing `.ob-pane`. `clientHeight` was the entire table
+   * height, `visibleCount` came out larger than `rows.length`, and React's
+   * `onScroll` never fired because scroll does not bubble. Every row rendered,
+   * always. That was survivable while one screen was mounted at a time; with
+   * screens kept alive it would multiply a 500-row page by every tab visited.
+   *
+   * Row height is measured from a real row rather than read out of `--row-h`
+   * with `getComputedStyle`. The token is about to become a rem value, and
+   * `parseFloat('2.2857rem')` is 2.2857 — which would ask for roughly ten
+   * thousand rows.
+   */
   useLayoutEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+
+    const scroller = wrap.closest('.ob-pane') as HTMLElement | null;
+
     const measure = () => {
-      const varH = parseFloat(getComputedStyle(el).getPropertyValue('--row-h'));
-      if (!Number.isNaN(varH) && varH > 0) setRowH(varH);
-      setViewportH(el.clientHeight);
+      const row = wrap.querySelector('tbody tr[data-row]') as HTMLElement | null;
+      if (row && row.offsetHeight > 0) setRowH(row.offsetHeight);
+      setViewportH(scroller ? scroller.clientHeight : wrap.clientHeight);
+      setScrollTop(scroller ? Math.max(0, scroller.scrollTop - wrap.offsetTop) : 0);
     };
+
     measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(wrap);
+    if (scroller) observer.observe(scroller);
+
+    // Passive: this only reads, and the listener sits on a scroller that also
+    // carries the page's own scrolling.
+    scroller?.addEventListener('scroll', measure, { passive: true });
+
+    return () => {
+      observer.disconnect();
+      scroller?.removeEventListener('scroll', measure);
+    };
+  }, [rows.length]);
 
   const virtualize = rows.length > VIRTUALIZE_ABOVE;
   let visibleRows = rows;
@@ -104,7 +137,6 @@ export function DataTable<T>({
     <div
       ref={wrapRef}
       className="ob-tablewrap"
-      onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
     >
       <table className="ob-table" style={{ tableLayout: 'fixed' }}>
         <colgroup>
@@ -136,6 +168,9 @@ export function DataTable<T>({
             return (
               <tr
                 key={key}
+                // Marks a real data row, so the virtualiser can measure one
+                // rather than trusting a CSS token it would have to parse.
+                data-row=""
                 data-selected={selectedId === key || undefined}
                 style={{
                   display: 'grid',

@@ -32,11 +32,17 @@ import {
   Icon,
   SaveShortcutProvider,
   Splash,
+  IconButton,
+  ResetProvider,
+  ScreenHost,
+  type ScreenSpec,
   SubNavProvider,
   ToastProvider,
   TopbarActionsOutlet,
   TopbarActionsProvider,
   t,
+  useClearSubNav,
+  useResetGate,
   useSubNavState,
   type NavGroup,
   type NavItem,
@@ -120,7 +126,9 @@ export function App() {
     <ToastProvider>
       <SubNavProvider>
         <TopbarActionsProvider>
-          <MasterPanel />
+          <ResetProvider>
+            <MasterPanel />
+          </ResetProvider>
         </TopbarActionsProvider>
       </SubNavProvider>
     </ToastProvider>
@@ -409,7 +417,25 @@ function MasterPanel() {
    * (§8). The shell does not need to know what the operation *is*, only where
    * it belongs and how to leave it.
    */
-  const subNav = useSubNavState();
+  const subNav = useSubNavState(route === 'gallery' ? null : tab);
+
+  /*
+   * One counter per screen. Bumping it changes that screen's key inside
+   * `ScreenHost`, so React remounts it — a total reset with no cooperation
+   * needed from the screen itself.
+   */
+  const [resetNonce, setResetNonce] = useState<Record<string, number>>({});
+  const askReset = useResetGate();
+  const clearSubNav = useClearSubNav();
+
+  function resetActiveScreen(): void {
+    if (route === 'gallery') return;
+    if (!askReset()) return;
+    // The screen is going away, so its sidebar entry must go with it — the
+    // registry deliberately does not clear itself on teardown any more.
+    clearSubNav(tab);
+    setResetNonce((current) => ({ ...current, [tab]: (current[tab] ?? 0) + 1 }));
+  }
 
   const nest = (items: Array<NavItem | null>): NavItem[] =>
     items
@@ -442,7 +468,12 @@ function MasterPanel() {
     // Already here. Selecting the open operation's own entry is a no-op, not a
     // reason to ask about discarding its draft.
     if (subNav?.items.some((item) => item.id === id)) return;
-    if (subNav && !subNav.onExit()) return;
+    /*
+     * No "are you sure" on the way out any more. Leaving an open editor used
+     * to unmount it and throw its draft away, so the shell had to ask; now the
+     * screen stays exactly as it was and is still there when you come back.
+     * The deliberate discard is the Reset button.
+     */
     if (id === 'gallery') return;
     if (readHash())
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
@@ -459,6 +490,12 @@ function MasterPanel() {
       {/* The screen's own control sits inside the app-wide ones: Search and
           Sign out mean the same thing on every screen, this does not. */}
       <TopbarActionsOutlet />
+      <IconButton
+        icon="reset"
+        label={t('screen.reset')}
+        title={t('screen.resetHint')}
+        onClick={resetActiveScreen}
+      />
       <SearchBox
         onOpen={(hit) => {
           // Route the hit to the screen that owns it — which is exactly what
@@ -567,58 +604,85 @@ function MasterPanel() {
     </>
   );
 
-  const content = (() => {
-    if (route === 'gallery') return <GalleryScreen />;
+  /*
+   * Every screen, not just the current one.
+   *
+   * `ScreenHost` keeps the ones you have visited mounted and hides the rest,
+   * so a tab you come back to still holds its filters, its scroll position and
+   * its half-typed form. This was a `switch (tab)` returning a single element,
+   * which unmounted the outgoing screen and threw all of that away.
+   */
+  const screens: ScreenSpec[] = [
+    {
+      id: 'dashboard',
+      render: () => (
+        <DashboardScreen
+          summary={summary}
+          panels={panels}
+          onOpenConflicts={() => setTab('conflicts')}
+        />
+      ),
+    },
+    { id: 'panels', render: () => <PanelsScreen panels={panels} onRefresh={refreshPanels} /> },
+    { id: 'orders', render: () => <LeadsOrdersScreen revision={dataRevision} /> },
+    { id: 'inventory', render: () => <InventoryScreen revision={dataRevision} /> },
+    {
+      id: 'reports',
+      render: () => <ReportsScreen revision={dataRevision} permissions={user.permissions} />,
+    },
+    {
+      id: 'documents',
+      render: () => <DocumentsScreen revision={dataRevision} permissions={user.permissions} />,
+    },
+    {
+      id: 'access',
+      render: () => (
+        <AccessScreen
+          permissions={user.permissions}
+          currentUserId={user.id}
+          currentUserTier={user.roleTier}
+        />
+      ),
+    },
+    {
+      id: 'partyAccess',
+      render: () => <PartyAccessScreen permissions={user.permissions} revision={dataRevision} />,
+    },
+    {
+      id: 'fields',
+      render: () => <FieldsScreen permissions={user.permissions} revision={dataRevision} />,
+    },
+    { id: 'logs', render: () => <LogsScreen permissions={user.permissions} /> },
+    {
+      id: 'recycleBin',
+      render: () => <RecycleBinScreen permissions={user.permissions} revision={dataRevision} />,
+    },
+    {
+      id: 'conflicts',
+      render: () => (
+        <ConflictsScreen
+          revision={dataRevision}
+          canResolve={user.permissions.includes('sync.resolveConflicts')}
+        />
+      ),
+    },
+    { id: 'updates', render: () => <UpdatesScreen panels={panels} permissions={user.permissions} /> },
+    { id: 'settings', render: () => <SettingsScreen /> },
+  ];
 
-    switch (tab) {
-      case 'dashboard':
-        return (
-          <DashboardScreen
-            summary={summary}
-            panels={panels}
-            onOpenConflicts={() => setTab('conflicts')}
-          />
-        );
-      case 'panels':
-        return <PanelsScreen panels={panels} onRefresh={refreshPanels} />;
-      case 'orders':
-        return <LeadsOrdersScreen revision={dataRevision} />;
-      case 'inventory':
-        return <InventoryScreen revision={dataRevision} />;
-      case 'reports':
-        return <ReportsScreen revision={dataRevision} permissions={user.permissions} />;
-      case 'documents':
-        return <DocumentsScreen revision={dataRevision} permissions={user.permissions} />;
-      case 'access':
-        return (
-          <AccessScreen
-            permissions={user.permissions}
-            currentUserId={user.id}
-            currentUserTier={user.roleTier}
-          />
-        );
-      case 'partyAccess':
-        return <PartyAccessScreen permissions={user.permissions} revision={dataRevision} />;
-      case 'fields':
-        return <FieldsScreen permissions={user.permissions} revision={dataRevision} />;
-      case 'logs':
-        return <LogsScreen permissions={user.permissions} />;
-      case 'recycleBin':
-        return <RecycleBinScreen permissions={user.permissions} revision={dataRevision} />;
-      case 'conflicts':
-        return (
-          <ConflictsScreen
-            revision={dataRevision}
-            canResolve={user.permissions.includes('sync.resolveConflicts')}
-          />
-        );
-      case 'updates':
-        return <UpdatesScreen panels={panels} permissions={user.permissions} />;
-
-      case 'settings':
-        return <SettingsScreen />;
-    }
-  })();
+  /*
+   * The gallery is a separate `route`, not a `Tab`, and is reachable only by
+   * URL — so it stays outside the host rather than becoming a screen that can
+   * never be navigated to and would sit mounted for ever once visited.
+   */
+  const content =
+    route === 'gallery' ? (
+      <div className="ob-pane">
+        <GalleryScreen />
+      </div>
+    ) : (
+      <ScreenHost screens={screens} activeId={tab} resetNonce={resetNonce} />
+    );
 
   return (
     <SaveShortcutProvider>
