@@ -64,8 +64,8 @@ secrets and the password toggle.
 | 6 — UI scale + responsive | **done** |
 | 7 — performance and memory | **done** |
 | 8 — product & party attributes | **done** (product half; party fields still open) |
-| 9 — picker, dense forms, grid, exports | **next** |
-| 10 — keyboard system | not started |
+| 9 — picker, dense forms, grid, exports | **done** (three items deferred, below) |
+| 10 — keyboard system | **next** |
 | 11 — public API + connectors | not started |
 | 12 — AI section | not started |
 
@@ -112,6 +112,26 @@ Master's `App.tsx`, not as a React context. The defect the design named — an
 allow-list in front of one counter, so the Fields, Documents and Recycle Bin
 screens never refetched at all — is fixed; a context would only have removed
 prop-threading that already works.
+
+### What Stage 9 deliberately did not do
+
+Three items, each with a reason rather than a shortage of time.
+
+**`useRowWindow`.** The design extracts the row window out of `DataTable` and
+then says in the same paragraph that `LineGrid` must not use it — a voucher is
+tens of lines, and windowing an editable grid unmounts the input under the
+caret. An abstraction extracted for no second caller is the thing this codebase
+keeps deleting, so it was not extracted.
+
+**Master-side `ProductsScreen` / `ProductEditorScreen`.** The catalogue is
+managed on the Office panel and now has every field; these would be a second
+home for a form that already exists, on a panel that has never had product
+screens. The field coverage — which the design itself calls "the change that
+matters" — is delivered.
+
+**`exceljs`.** The design puts it last, behind CSV and PDF, and both of those
+ship here. Excel opens CSV; xlsx buys number formats and a frozen header row.
+It is a dependency decision worth making deliberately rather than in passing.
 
 ### Owed work
 

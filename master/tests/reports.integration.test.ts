@@ -190,13 +190,103 @@ describe.skipIf(!canRunIntegrationTests)('Reports (integration)', () => {
     it('produces a CSV with an empty cell for a redacted total, never 0', async () => {
       await createDispatchedOrder('ExportCity');
       const noRates = await actorWith(['reports.view', 'reports.export']);
-      const { csv, rowCount } = await reportService.exportReport('dispatches', { period: 'thisMonth' }, noRates);
+      const exported = await reportService.exportReport(
+        'dispatches',
+        { period: 'thisMonth' },
+        noRates,
+      );
+      const { csv, rowCount } = exported as { csv: string; rowCount: number };
 
       expect(rowCount).toBeGreaterThan(0);
       const lines = csv.trim().split('\r\n');
       expect(lines[0]).toBe('month,orderCount,boxCount,totalValue');
       const dataLine = lines[1] ?? '';
       expect(dataLine.endsWith(',')).toBe(true); // trailing totalValue cell is empty
+    });
+
+    it('narrows and reorders to the columns asked for', async () => {
+      await createDispatchedOrder('ExportCity');
+      const actor = await testActor();
+
+      const exported = await reportService.exportReport(
+        'dispatches',
+        { period: 'thisMonth', columns: ['orderCount', 'month'] },
+        actor,
+      );
+
+      expect(exported.format).toBe('csv');
+      const lines = (exported as { csv: string }).csv.trim().split('\r\n');
+      expect(lines[0]).toBe('orderCount,month');
+    });
+
+    it('ignores a column that no longer exists rather than refusing', async () => {
+      await createDispatchedOrder('ExportCity');
+      const actor = await testActor();
+
+      // A bookmarked URL must keep working when a column is renamed. Asking
+      // for nothing recognisable falls back to everything, because an empty
+      // spreadsheet is never what somebody meant.
+      const exported = await reportService.exportReport(
+        'dispatches',
+        { period: 'thisMonth', columns: ['thisColumnWentAway'] },
+        actor,
+      );
+
+      const lines = (exported as { csv: string }).csv.trim().split('\r\n');
+      expect(lines[0]).toBe('month,orderCount,boxCount,totalValue');
+    });
+
+    it('appends a totals row that sums only the numeric columns', async () => {
+      await createDispatchedOrder('ExportCity');
+      const actor = await testActor();
+
+      const exported = await reportService.exportReport(
+        'dispatches',
+        { period: 'thisMonth', totals: true },
+        actor,
+      );
+
+      const lines = (exported as { csv: string }).csv.trim().split('\r\n');
+      const totals = (lines[lines.length - 1] ?? '').split(',');
+
+      // A total of a month name is nonsense, so the first cell is the label.
+      expect(totals[0]).toBe('Total');
+      expect(Number(totals[1])).toBeGreaterThan(0);
+    });
+
+    it('never sums a money column it just redacted', async () => {
+      await createDispatchedOrder('ExportCity');
+      const noRates = await actorWith(['reports.view', 'reports.export']);
+
+      const exported = await reportService.exportReport(
+        'dispatches',
+        { period: 'thisMonth', totals: true },
+        noRates,
+      );
+
+      const lines = (exported as { csv: string }).csv.trim().split('\r\n');
+      const totals = (lines[lines.length - 1] ?? '').split(',');
+
+      // A total would reconstruct exactly the figure the redaction withheld.
+      expect(totals[totals.length - 1]).toBe('');
+    });
+
+    it('renders a PDF when one is asked for', async () => {
+      await createDispatchedOrder('ExportCity');
+      const actor = await testActor();
+
+      const exported = await reportService.exportReport(
+        'dispatches',
+        { period: 'thisMonth', format: 'pdf' },
+        actor,
+      );
+
+      expect(exported.format).toBe('pdf');
+      const pdf = exported as { bytes: Buffer; fileName: string; contentType: string };
+      expect(pdf.contentType).toBe('application/pdf');
+      expect(pdf.fileName).toBe('dispatches.pdf');
+      // A real PDF, not an empty buffer with the right name on it.
+      expect(pdf.bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-');
     });
   });
 });

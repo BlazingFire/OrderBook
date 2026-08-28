@@ -55,6 +55,7 @@ import type {
   DispatchesReport,
   LeadOutcomesReport,
   ReportKind,
+  ReportExportOptions,
   ReportRangeInput,
   TopPartiesReport,
 } from '../domain/reports.js';
@@ -647,9 +648,29 @@ export interface ClientToServerEvents {
     query: ReportRangeInput & { limit?: number },
     ack: CommandAck<TopPartiesReport>,
   ) => void;
+  /**
+   * A report as a file.
+   *
+   * The ack is a **discriminated union**, not an optional `bytes`: the Office
+   * panel forwards this and has to know which door to send it out of. It used
+   * to cast the ack to `{ csv: string }` and always set `text/csv`, so the
+   * moment a second format existed a PDF would have arrived as a corrupt CSV.
+   */
   'report:export': (
-    payload: { report: ReportKind; query: ReportRangeInput & { limit?: number } },
-    ack: CommandAck<{ csv: string; rowCount: number }>,
+    payload: {
+      report: ReportKind;
+      query: ReportRangeInput & { limit?: number } & ReportExportOptions;
+    },
+    ack: CommandAck<
+      | { format: 'csv'; csv: string; rowCount: number }
+      | {
+          format: 'pdf';
+          fileName: string;
+          contentType: string;
+          bytes: Uint8Array;
+          rowCount: number;
+        }
+    >,
   ) => void;
 
   // --- PDF Designer (docs/backend-modules/04-API-CONTRACT.md §6) ------------

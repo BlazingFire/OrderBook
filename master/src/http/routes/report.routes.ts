@@ -5,7 +5,7 @@
 
 import { Router } from 'express';
 
-import { isReportKind } from '@orderbook/shared';
+import { isReportFormat, isReportKind } from '@orderbook/shared';
 
 import * as reportService from '../../services/report.service.js';
 import { ValidationError } from '../../lib/errors.js';
@@ -68,14 +68,37 @@ reportRoutes.get(
       throw new ValidationError('validation.reports.kind.unknown', {}, { field: 'report' });
     }
 
-    const { csv } = await reportService.exportReport(
+    const columns = String(req.query.columns ?? '')
+      .split(',')
+      .map((key) => key.trim())
+      .filter(Boolean);
+
+    const exported = await reportService.exportReport(
       kind,
-      { ...parseRangeQuery(req.query), limit: req.query.limit ? Number(req.query.limit) : undefined },
+      {
+        ...parseRangeQuery(req.query),
+        limit: req.query.limit ? Number(req.query.limit) : undefined,
+        // Every option is absent by default, and the defaults reproduce
+        // today's output byte for byte — somebody's spreadsheet is pointing at
+        // this URL.
+        format: isReportFormat(req.query.format) ? req.query.format : undefined,
+        columns: columns.length > 0 ? columns : undefined,
+        totals: req.query.totals === 'true',
+        paperSize: req.query.paperSize === 'letter' ? 'letter' : undefined,
+        orientation: req.query.orientation === 'portrait' ? 'portrait' : undefined,
+      },
       actorFromRequest(req),
     );
 
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${kind}.csv"`);
-    res.send(csv);
+    if (exported.format === 'csv') {
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${kind}.csv"`);
+      res.send(exported.csv);
+      return;
+    }
+
+    res.setHeader('Content-Type', exported.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${exported.fileName}"`);
+    res.send(exported.bytes);
   }),
 );

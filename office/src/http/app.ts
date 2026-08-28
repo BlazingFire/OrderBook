@@ -758,20 +758,62 @@ export function createApp(): Express {
       limit: req.query.limit ? Number(req.query.limit) : undefined,
     }),
   );
+  /**
+   * A report export, in whichever format the Master answered with.
+   *
+   * The ack is a discriminated union and this has to branch on it. It used to
+   * cast to `{ csv: string }` and always set `text/csv` with a `.csv`
+   * filename, so the moment a second format existed a PDF would have reached
+   * the browser as a corrupt CSV — a file that opens, looks like nonsense, and
+   * says nothing about why.
+   */
   app.get('/api/reports/:report/export', (req, res) => {
     const report = req.params.report;
-    return forwardCsv(
-      res,
-      'report:export',
-      {
-        report,
-        query: {
-          ...parseReportQuery(req.query),
-          limit: req.query.limit ? Number(req.query.limit) : undefined,
-        },
-      },
-      `${report}.csv`,
-    );
+
+    const columns = String(req.query.columns ?? '')
+      .split(',')
+      .map((key) => key.trim())
+      .filter(Boolean);
+
+    void (async () => {
+      try {
+        const exported = await masterConnection.command<
+          'report:export',
+          | { format: 'csv'; csv: string; rowCount: number }
+          | {
+              format: 'pdf';
+              fileName: string;
+              contentType: string;
+              bytes: Uint8Array;
+              rowCount: number;
+            }
+        >('report:export', {
+          report,
+          query: {
+            ...parseReportQuery(req.query),
+            limit: req.query.limit ? Number(req.query.limit) : undefined,
+            format: req.query.format === 'pdf' ? 'pdf' : undefined,
+            columns: columns.length > 0 ? columns : undefined,
+            totals: req.query.totals === 'true',
+            paperSize: req.query.paperSize === 'letter' ? 'letter' : undefined,
+            orientation: req.query.orientation === 'portrait' ? 'portrait' : undefined,
+          },
+        });
+
+        if (exported.format === 'csv') {
+          res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+          res.setHeader('Content-Disposition', `attachment; filename="${report}.csv"`);
+          res.send(exported.csv);
+          return;
+        }
+
+        res.setHeader('Content-Type', exported.contentType);
+        res.setHeader('Content-Disposition', `attachment; filename="${exported.fileName}"`);
+        res.send(Buffer.from(exported.bytes));
+      } catch (error) {
+        failForward(res, error);
+      }
+    })();
   });
 
   // PDF Designer (docs/backend-modules/04-API-CONTRACT.md §6). Online-only,

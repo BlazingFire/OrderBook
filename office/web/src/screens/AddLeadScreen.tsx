@@ -20,7 +20,7 @@
  * data flow above is unchanged.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   CustomFieldDefinition,
   LineItemInput,
@@ -75,6 +75,15 @@ interface DraftLine {
   alias: string | null;
   /** The rupee text as typed; see `ratePaise`. `null` is a rate this person may not see. */
   rateText: string | null;
+  /**
+   * True once somebody has typed in the rate cell.
+   *
+   * Which is the difference between a rate this line *derived* and a rate a
+   * person *decided*. Changing the party, or turning party-wise rates on,
+   * re-rates every untouched line — and must leave the decided ones exactly
+   * where they were, or the toggle silently overwrites somebody's negotiation.
+   */
+  rateTouched: boolean;
   sin: string | null;
   size: string | null;
   grade: string | null;
@@ -236,6 +245,7 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
       code: product.productCode,
       alias: variant?.alias ?? product.alias,
       rateText: rate === null ? null : String(rate / 100),
+      rateTouched: false,
       sin: variant?.sin ?? product.sin,
       size: variant?.size ?? product.size,
       grade: variant?.grade ?? product.grade,
@@ -273,6 +283,98 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
 
     setError(null);
     addProduct(product);
+  }
+
+  /*
+   * Re-rate the lines nobody has priced by hand.
+   *
+   * Choosing a party, or turning party-wise rates on, changes what every line
+   * on the voucher costs. It used to change only the lines added *after* the
+   * switch, so a voucher built before the party was chosen quietly quoted
+   * catalogue prices while the badge said otherwise — the kind of wrong that
+   * reaches a customer.
+   *
+   * Only untouched lines move. A rate somebody typed is a decision, and a
+   * toggle must not overwrite a negotiation.
+   */
+  useEffect(() => {
+    setLines((current) =>
+      current.map((line) => {
+        if (line.rateTouched) return line;
+
+        const product = view.products.find((candidate) => candidate.id === line.productId);
+        if (!product) return line;
+
+        const variant = variantsForParty.get(line.productId) ?? null;
+        const rate = variant?.rate ?? product.rate ?? null;
+
+        return {
+          ...line,
+          rateText: rate === null ? null : String(rate / 100),
+          fromPartyVariant: variant !== null,
+          suggestedPackaging: variant?.packaging ?? null,
+        };
+      }),
+    );
+  }, [variantsForParty, view.products]);
+
+  /**
+   * Paste a block of lines out of a spreadsheet.
+   *
+   * Excel and every sheet program put **TSV** on the clipboard, not CSV — so
+   * this splits on newlines and then on tabs rather than reaching for a CSV
+   * parser, which would be the wrong tool and would mangle any product name
+   * containing a comma.
+   *
+   * A row is `code`, optionally followed by `colour` and `quantity`. Anything
+   * whose code does not resolve is collected and named once at the end rather
+   * than failing the paste: somebody pasting forty lines wants the
+   * thirty-eight that worked, plus a list of the two that did not.
+   */
+  function pasteLines(text: string): boolean {
+    const rows = text
+      .split(/\r?\n/)
+      .map((row) => row.trim())
+      .filter(Boolean)
+      .map((row) => row.split('\t').map((cell) => cell.trim()));
+
+    // A single cell with no tab is somebody pasting one code into the box.
+    // That is an ordinary paste and the input should handle it itself.
+    if (rows.length <= 1 && (rows[0]?.length ?? 0) <= 1) return false;
+
+    const added: DraftLine[] = [];
+    const unknown: string[] = [];
+
+    for (const [code, colour, quantity] of rows) {
+      if (!code) continue;
+
+      const product = view.products.find(
+        (candidate) => candidate.productCode.toLowerCase() === code.toLowerCase(),
+      );
+
+      if (!product) {
+        unknown.push(code);
+        continue;
+      }
+
+      const line = lineFrom(product);
+      const boxes = Number(quantity);
+
+      // A colour and a quantity are optional: a two-column paste of codes and
+      // totals is just as common as a full one, and a line with no quantity is
+      // still a line somebody wanted on the voucher.
+      if (colour && Number.isFinite(boxes) && boxes > 0) {
+        line.quantities = [{ colour, quantity: boxes }];
+      }
+
+      added.push(line);
+    }
+
+    if (added.length > 0) setLines((current) => [...current, ...added]);
+    setError(unknown.length > 0 ? t('lead.add.products.pasteUnknown', { codes: unknown.join(', ') }) : null);
+    setCodeEntry('');
+
+    return true;
   }
 
   function updateLine(index: number, patch: Partial<DraftLine>): void {
@@ -538,7 +640,10 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
                       disabled={!canEditRate}
                       value={line.rateText ?? ''}
                       onChange={(event) =>
-                        updateLine(index, { rateText: event.target.value.replace(/[^0-9.]/g, '') })
+                        updateLine(index, {
+                          rateText: event.target.value.replace(/[^0-9.]/g, ''),
+                          rateTouched: true,
+                        })
                       }
                     />
                   )}
@@ -612,6 +717,13 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
                     example: PRODUCT_CODE_EXAMPLE,
                   })}
                   onChange={(event) => setCodeEntry(event.target.value)}
+                  onPaste={(event) => {
+                    // Only intercepted when it is actually a block. A single
+                    // pasted code falls through to the browser's own handling.
+                    if (pasteLines(event.clipboardData.getData('text/plain'))) {
+                      event.preventDefault();
+                    }
+                  }}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') {
                       event.preventDefault();

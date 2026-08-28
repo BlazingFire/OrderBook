@@ -2626,6 +2626,14 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'party.group.contact': 'संपर्क',
   'party.group.address': 'पता',
   'party.group.tax': 'कर और टिप्पणियाँ',
+  'lead.add.products.pasteUnknown': 'इन कोड के लिए कोई उत्पाद नहीं: {codes}',
+  'reports.column.orderCount': 'ऑर्डर',
+  'reports.column.boxCount': 'बॉक्स',
+  'reports.column.totalValue': 'कुल मूल्य',
+  'reports.column.partyId': 'पार्टी आईडी',
+  'reports.column.partyName': 'पार्टी',
+  'reports.column.partyCode': 'कोड',
+  'reports.export.totals': 'कुल',
   'party.field.city': "City",
   // TODO(i18n-hi)
   'party.field.name': "Party name",
@@ -2969,6 +2977,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'reports.column.value': "Value",
   // TODO(i18n-hi)
+  'reports.kind.dispatches': 'डिस्पैच',
+  'reports.kind.leadOutcomes': 'लीड परिणाम',
+  'reports.kind.topParties': 'शीर्ष पार्टियाँ',
   'reports.dispatches.byColour': "By colour",
   // TODO(i18n-hi)
   'reports.dispatches.byMonth': "By month",
