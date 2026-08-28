@@ -107,6 +107,7 @@ import type {
   StockInboundInput,
   StockListQuery,
 } from '../domain/inputs.js';
+import type { PartyPickPage, PickKind, PickQuery, ProductPickPage } from '../domain/pick.js';
 import type { BinCounts, BinEntry, BinRestoreResult } from '../domain/recycle-bin.js';
 import type { SyncPushRequest, SyncPushResponse } from '../sync/mutations.js';
 
@@ -491,6 +492,21 @@ export interface ClientToServerEvents {
   ) => void;
   'product:image:reorder': (input: ProductImageReorderInput, ack: CommandAck<Product>) => void;
   'product:image:delete': (id: Uuid, ack: CommandAck<Product>) => void;
+
+  /**
+   * Rows for a searchable dropdown.
+   *
+   * A different question from `search`: that one says where a word appears
+   * across four indexes, this one says which record you mean for one kind and
+   * hands back whole rows, because what is chosen goes straight into a line or
+   * a form. The Office panel answers it from its own cached snapshot when the
+   * link is down — see `offline-pick.ts` — so the shape has to be the same
+   * either way.
+   */
+  'pick': (
+    payload: { kind: PickKind; query: PickQuery },
+    ack: CommandAck<ProductPickPage | PartyPickPage>,
+  ) => void;
 
   'category:list': (ack: CommandAck<ProductCategory[]>) => void;
 

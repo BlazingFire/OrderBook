@@ -13,6 +13,7 @@ import express, { type Express, type NextFunction, type Request, type Response }
 import multer from 'multer';
 import {
   IMAGE_VARIANTS,
+  isPickKind,
   maskLead,
   maskOrder,
   maskProduct,
@@ -40,6 +41,7 @@ import * as backupExportService from '../services/backup-export.service.js';
 import * as backupRestoreService from '../services/backup-restore.service.js';
 import { RestoreError } from '../services/backup-restore.service.js';
 import { loadCredentials, masterBaseUrl } from '../services/credentials.store.js';
+import { OfflinePickForbidden, pickFromView } from '../services/offline-pick.js';
 import { PairingError, pairAutomatically, pairManually, scanForMasters } from '../services/pairing.service.js';
 import * as updateService from '../services/update.service.js';
 import { UpdateError } from '../services/update.service.js';
@@ -486,6 +488,76 @@ export function createApp(): Express {
   app.get('/api/search', (req, res) =>
     forward(res, 'search:query', { term: String(req.query.q ?? ''), limit: 20 }),
   );
+
+  /**
+   * The searchable picker, answered locally when the Master is off.
+   *
+   * Online it forwards, so the picker sees the whole catalogue and the Master's
+   * own ranking. Offline it falls back to this panel's cached snapshot — which
+   * is the point of the product — and says so, because that snapshot holds one
+   * page per collection rather than everything.
+   *
+   * The view it ranks is `forCurrentUser(...)`, **never** the raw one: the raw
+   * snapshot was built for whoever was signed in when the link last worked, and
+   * carries their restricted parties and a `rate` this person may not see.
+   */
+  app.get('/api/pick/:kind', (req, res) => {
+    const kind: unknown = String(req.params.kind);
+    if (!isPickKind(kind)) {
+      res.status(400).json({ error: 'validation_error', message: 'Unknown pick kind' });
+      return;
+    }
+
+    const query = {
+      term: String(req.query.q ?? ''),
+      limit: req.query.limit ? Number(req.query.limit) : undefined,
+      include: String(req.query.include ?? '')
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean),
+    };
+
+    void (async () => {
+      try {
+        res.json(await masterConnection.command('pick' as never, { kind, query }));
+      } catch (error) {
+        if (!(error instanceof MasterCommandError && error.unreachable)) {
+          failForward(res, error);
+          return;
+        }
+
+        try {
+          const view = await localStore.getView();
+          if (!view) {
+            res.json({ items: [], truncated: false, offline: true });
+            return;
+          }
+
+          const page = pickFromView(
+            kind,
+            query,
+            forCurrentUser(view),
+            userSession.sessionPermissions(),
+          );
+
+          // `offline` is what lets the listbox say the list is a cached page
+          // rather than the catalogue. A picker that quietly narrows teaches
+          // people the thing they want is not there.
+          res.json({ ...page, offline: true });
+        } catch (offlineError) {
+          if (offlineError instanceof OfflinePickForbidden) {
+            res.status(403).json({
+              error: 'forbidden',
+              message: offlineError.message,
+              details: { permission: offlineError.permission },
+            });
+            return;
+          }
+          failForward(res, offlineError);
+        }
+      }
+    })();
+  });
 
   app.get('/api/conflicts', (_req, res) => forward(res, 'conflict:list'));
   app.post('/api/conflicts/:id/resolve', (req, res) =>
@@ -1224,47 +1296,60 @@ function requireUser(_req: Request, res: Response, next: NextFunction): void {
  * cannot be reached — the one code this panel is entitled to invent, because it
  * is a fact about the panel rather than an answer from the Master.
  */
+/**
+ * How a forwarded command's failure reaches the browser.
+ *
+ * One function, because there were three copies and they had already drifted:
+ * `forward` passed the Master's `missingPermission` through as
+ * `details.permission` and the other two silently dropped it, so a control the
+ * browser should have hidden stayed on screen for anybody who happened to use
+ * an export or a document.
+ *
+ * The distinction it exists to keep is between **silence** and a **refusal**.
+ * `unreachable` means the Master did not answer and the caller may retry;
+ * anything else means it answered and said no, and its own code, messageKey,
+ * params and details are passed straight through so the browser can hide a
+ * control, render the reader's own language, and act on structured facts.
+ */
+function failForward(res: Response, error: unknown): void {
+  if (error instanceof MasterCommandError && error.unreachable) {
+    res
+      .status(503)
+      .json({ error: 'unavailable', message: error.message, messageKey: 'error.unavailable' });
+    return;
+  }
+
+  const message = error instanceof Error ? error.message : 'Command failed';
+  const code = error instanceof MasterCommandError ? error.code : undefined;
+
+  res.status(code === 'forbidden' ? 403 : 502).json({
+    error: code ?? 'master_command_failed',
+    message,
+    ...(error instanceof MasterCommandError && error.messageKey
+      ? { messageKey: error.messageKey }
+      : {}),
+    ...(error instanceof MasterCommandError && error.params ? { params: error.params } : {}),
+    ...(error instanceof MasterCommandError && error.details
+      ? { details: error.details }
+      : error instanceof MasterCommandError && error.missingPermission
+        ? { details: { permission: error.missingPermission } }
+        : {}),
+  });
+}
+
 async function forward(res: Response, event: string, ...payload: unknown[]): Promise<void> {
   try {
     const data = await masterConnection.command(event as never, ...payload);
     res.json(data);
   } catch (error) {
-    if (error instanceof MasterCommandError && error.unreachable) {
-      res
-        .status(503)
-        .json({ error: 'unavailable', message: error.message, messageKey: 'error.unavailable' });
-      return;
-    }
-
-    const message = error instanceof Error ? error.message : 'Command failed';
-    const code = error instanceof MasterCommandError ? error.code : undefined;
-
-    // The Master answered and said no. Pass its own code, messageKey, params
-    // and details straight through — including the permission it named — so
-    // the browser can hide a control, render the reader's own language, and
-    // act on structured facts (a stale version, a blocked restore) rather than
-    // only showing an English failure.
-    res.status(code === 'forbidden' ? 403 : 502).json({
-      error: code ?? 'master_command_failed',
-      message,
-      ...(error instanceof MasterCommandError && error.messageKey
-        ? { messageKey: error.messageKey }
-        : {}),
-      ...(error instanceof MasterCommandError && error.params ? { params: error.params } : {}),
-      ...(error instanceof MasterCommandError && error.details
-        ? { details: error.details }
-        : error instanceof MasterCommandError && error.missingPermission
-          ? { details: { permission: error.missingPermission } }
-          : {}),
-    });
+    failForward(res, error);
   }
 }
 
 /**
- * Same shape as `forward()`, for the two commands whose successful result
- * must become a `text/csv` download rather than a JSON body (`log:export`,
- * `report:export`) — the failure path is identical to `forward()`'s, only
- * the success path differs, so it cannot reuse `forward()` directly.
+ * For the commands whose successful result is a `text/csv` download rather than
+ * a JSON body. Only the success path differs from `forward()`; the failure path
+ * is `failForward` in both.
  */
 async function forwardCsv(
   res: Response,
@@ -1282,23 +1367,7 @@ async function forwardCsv(
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(result.csv);
   } catch (error) {
-    if (error instanceof MasterCommandError && error.unreachable) {
-      res
-        .status(503)
-        .json({ error: 'unavailable', message: error.message, messageKey: 'error.unavailable' });
-      return;
-    }
-
-    const message = error instanceof Error ? error.message : 'Command failed';
-    const code = error instanceof MasterCommandError ? error.code : undefined;
-
-    res.status(code === 'forbidden' ? 403 : 502).json({
-      error: code ?? 'master_command_failed',
-      message,
-      ...(error instanceof MasterCommandError && error.messageKey ? { messageKey: error.messageKey } : {}),
-      ...(error instanceof MasterCommandError && error.params ? { params: error.params } : {}),
-      ...(error instanceof MasterCommandError && error.details ? { details: error.details } : {}),
-    });
+    failForward(res, error);
   }
 }
 
@@ -1333,23 +1402,7 @@ async function forwardFile(
     res.setHeader('Content-Disposition', `${disposition}; filename="${result.fileName}"`);
     res.send(Buffer.from(result.bytes as Uint8Array));
   } catch (error) {
-    if (error instanceof MasterCommandError && error.unreachable) {
-      res
-        .status(503)
-        .json({ error: 'unavailable', message: error.message, messageKey: 'error.unavailable' });
-      return;
-    }
-
-    const message = error instanceof Error ? error.message : 'Command failed';
-    const code = error instanceof MasterCommandError ? error.code : undefined;
-
-    res.status(code === 'forbidden' ? 403 : 502).json({
-      error: code ?? 'master_command_failed',
-      message,
-      ...(error instanceof MasterCommandError && error.messageKey ? { messageKey: error.messageKey } : {}),
-      ...(error instanceof MasterCommandError && error.params ? { params: error.params } : {}),
-      ...(error instanceof MasterCommandError && error.details ? { details: error.details } : {}),
-    });
+    failForward(res, error);
   }
 }
 

@@ -86,15 +86,6 @@ function isParentBlocker(value: unknown): value is ParentBlocker {
   );
 }
 
-/** Folds a page's deleters into the picker's options without dropping earlier pages'. */
-function withDeleters(known: Map<string, string>, items: BinEntry[]): Map<string, string> {
-  const next = new Map(known);
-  for (const item of items) {
-    if (item.deletedBy) next.set(item.deletedBy, item.deletedByName ?? item.deletedBy);
-  }
-  return next;
-}
-
 /** A `1fr` cell clips rather than wraps, so a long value ends in an ellipsis and shows in full on hover. */
 function Truncated({ children, className }: { children: string; className?: string }) {
   return (
@@ -135,6 +126,14 @@ export function RecycleBinScreen({ permissions, revision }: Props) {
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   // The deleters seen so far, so choosing one from the picker does not shrink
   // the list it was chosen from — the next page is filtered to that one person.
+  /**
+   * The filter's options, fetched as a facet over the whole Bin.
+   *
+   * They used to be folded together from the pages already fetched, which meant
+   * the filter could only ever offer the people whose deletions you had already
+   * scrolled past — and picking one re-queried from the top, so it could not
+   * even find its own options again.
+   */
   const [deleters, setDeleters] = useState<Map<string, string>>(new Map());
   const [refresh, setRefresh] = useState(0);
 
@@ -159,7 +158,6 @@ export function RecycleBinScreen({ permissions, revision }: Props) {
         if (cancelled) return;
         setEntries(page.items);
         setNextCursor(page.nextCursor);
-        setDeleters((known) => withDeleters(known, page.items));
       } catch (caught) {
         if (cancelled) return;
         // A failed fetch is not an empty bin: the rows are dropped and the
@@ -181,6 +179,12 @@ export function RecycleBinScreen({ permissions, revision }: Props) {
     if (!canView) return;
     // A counts failure is not a set of zeroes either — the numbers just stay off.
     void api
+      .recycleBinDeleters()
+      .then((rows) => setDeleters(new Map(rows.map((row) => [row.id, row.name]))))
+      // A failed facet is an empty filter, not an empty Bin.
+      .catch(() => setDeleters(new Map()));
+
+    void api
       .recycleBinCounts()
       .then(setCounts)
       .catch(() => setCounts(null));
@@ -194,7 +198,6 @@ export function RecycleBinScreen({ permissions, revision }: Props) {
       const page = await api.recycleBin({ ...filters(), cursor: nextCursor });
       setEntries((current) => [...current, ...page.items]);
       setNextCursor(page.nextCursor);
-      setDeleters((known) => withDeleters(known, page.items));
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : t('recycleBin.error.load'));
     } finally {

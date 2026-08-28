@@ -65,6 +65,14 @@ recycleBinRoutes.get(
   }),
 );
 
+recycleBinRoutes.get(
+  '/deleters',
+  needs('recycleBin.view'),
+  asyncHandler(async (req, res) => {
+    res.json(await recycleBinService.binDeleters(actorFromRequest(req)));
+  }),
+);
+
 recycleBinRoutes.post(
   '/restore',
   needs('recycleBin.view'),

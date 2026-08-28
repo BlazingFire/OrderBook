@@ -264,6 +264,7 @@ export const EN_MESSAGES = {
   'validation.product.negativeAmount': 'That amount cannot be negative',
   'validation.stock.levelRange': 'The maximum cannot be below the minimum',
   'validation.stock.levelNegative': 'A stock level cannot be negative',
+  'validation.pick.unknownKind': 'That is not something this panel can look up',
   'validation.product.nameRequired': 'Product name is required',
   'validation.product.codeRequired': 'Product code is required',
   'validation.role.nameRequired': 'Give the role a name',

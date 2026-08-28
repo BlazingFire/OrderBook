@@ -516,7 +516,7 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
     );
 
     expect(response.results[0]?.status).not.toBe('rejected');
-    expect((await catalog.findProductByCode(product.productCode, actor)).brand).toBe('Somany');
+    expect((await catalog.findProductByCode(product.productCode, actor))!.brand).toBe('Somany');
   });
 
   it('refuses a value the column could never hold, with a reason', async () => {
@@ -545,7 +545,7 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
     expect(result?.error ?? '').toMatch(/unit of measure/i);
 
     // …and nothing was written.
-    expect((await catalog.findProductByCode(product.productCode, actor)).uom).toBe('box');
+    expect((await catalog.findProductByCode(product.productCode, actor))!.uom).toBe('box');
   });
 
   it('does not merge a category assignment', async () => {
@@ -571,6 +571,6 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
     // merge cannot run `resolveCategoryId`, so a stale id would be a foreign
     // key error rather than a rename — assignment stays an online operation.
     expect(response.results[0]?.status).not.toBe('rejected');
-    expect((await catalog.findProductByCode(product.productCode, actor)).categoryId).toBeNull();
+    expect((await catalog.findProductByCode(product.productCode, actor))!.categoryId).toBeNull();
   });
 });

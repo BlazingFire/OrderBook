@@ -394,6 +394,10 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   );
   socket.on('product:image:delete', (id, ack) => run(ack, (actor) => imageService.deleteImage(id, actor)));
 
+  socket.on('pick', ({ kind, query }, ack) =>
+    run(ack, (actor) => searchService.pick(kind, query, actor)),
+  );
+
   socket.on('category:list', (ack) => run(ack, (actor) => catalogService.listCategories(actor)));
 
   socket.on('partyVariant:list', (partyId, ack) =>

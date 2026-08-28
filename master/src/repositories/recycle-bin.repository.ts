@@ -297,6 +297,38 @@ export async function binCounts(
 }
 
 /** Display names for a page's distinct `deleted_by` ids — one query, never one join per branch. */
+/**
+ * Everybody who has deleted something still in the Bin.
+ *
+ * A facet, deliberately, rather than the set of names on the page in front of
+ * you. The screen used to build its "deleted by" options from whatever pages it
+ * had already fetched, so the filter could only ever offer the people whose
+ * deletions you had already scrolled past — and choosing one then re-queried
+ * from the top, which is the opposite of what a filter is for.
+ *
+ * Scoped exactly like the list it filters: same entity types, same party scope.
+ * Otherwise the dropdown would name people whose deletions the caller cannot
+ * see, which is a small disclosure with no upside.
+ */
+export async function distinctDeleters(
+  tenantId: string,
+  options: { types: RecycleBinEntityType[]; scope: PartyScope },
+  runner: Runner = db(),
+): Promise<string[]> {
+  if (options.types.length === 0) return [];
+
+  const { sql: unionSql, bindings } = buildUnion(options.types, tenantId, options.scope);
+
+  const { rows } = await runner.raw<{ rows: Array<{ deleted_by: string }> }>(
+    `SELECT DISTINCT u.deleted_by FROM (
+${unionSql}
+) u WHERE u.deleted_by IS NOT NULL`,
+    bindings,
+  );
+
+  return rows.map((row) => row.deleted_by);
+}
+
 export async function deletedByNames(
   tenantId: string,
   userIds: readonly string[],

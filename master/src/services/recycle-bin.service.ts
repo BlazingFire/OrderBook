@@ -18,7 +18,7 @@ import type {
 } from '@orderbook/shared';
 import { hasPermission, RECYCLE_BIN_ENTITIES, RESTORE_PERMISSION } from '@orderbook/shared';
 
-import { requirePermission, type ActorContext } from '../domain/actor.js';
+import { actorCan, requirePermission, type ActorContext } from '../domain/actor.js';
 import { resolvePartyScope } from '../domain/party-scope.js';
 import { clampCursorLimit } from '../domain/cursor.js';
 import { decodeBinCursor, encodeBinCursor, visibleBinScopes } from '../domain/recycle-bin.js';
@@ -31,6 +31,47 @@ import * as leadService from './lead.service.js';
 import * as orderService from './order.service.js';
 import * as roleService from './role.service.js';
 import * as userService from './user.service.js';
+
+/**
+ * Everybody who has deleted something still in the Bin, for the filter.
+ *
+ * A facet computed over the whole Bin rather than over the page in front of
+ * you. The screen used to build these options from the pages it had already
+ * fetched, so the filter could only offer people whose deletions you had
+ * already scrolled past.
+ *
+ * Not a pick kind: `listUsers` requires `users.manage` while this filter is
+ * gated on `recycleBin.viewAll`, so routing it through a picker would 403
+ * exactly the people who have a working filter today.
+ */
+export async function binDeleters(
+  actor: ActorContext,
+): Promise<Array<{ id: string; name: string }>> {
+  requirePermission(actor, 'recycleBin.view');
+
+  // Somebody who can only see their own deletions needs no filter over other
+  // people, and must not be told who those people are.
+  if (!actorCan(actor, 'recycleBin.viewAll')) return [];
+
+  const held = new Set(actor.permissions?.permissions ?? []);
+  const visible = visibleBinScopes(
+    undefined,
+    (type) => RESTORE_PERMISSION[type],
+    held,
+    RECYCLE_BIN_ENTITIES,
+  );
+
+  const ids = await recycleBinRepo.distinctDeleters(actor.tenantId, {
+    types: visible,
+    scope: resolvePartyScope(actor),
+  });
+
+  const names = await recycleBinRepo.deletedByNames(actor.tenantId, ids);
+
+  return ids
+    .map((id) => ({ id, name: names.get(id) ?? id }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
 
 export async function listBin(
   query: RecycleBinQuery,

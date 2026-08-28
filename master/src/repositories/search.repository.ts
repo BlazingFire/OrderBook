@@ -24,9 +24,13 @@ import type { Knex } from 'knex';
 
 import { db } from '../db/knex.js';
 import type { PartyScope } from '../domain/party-scope.js';
+import { likePrefix, prefixTsQuery } from '../domain/search-terms.js';
 import { partyScopeSql } from './party-access.repository.js';
 
 type Runner = Knex | Knex.Transaction;
+
+/** A raw row, mapped by the service that knows which entity it is. */
+type Row = Record<string, unknown>;
 
 interface RankedRow {
   id: string;
@@ -155,4 +159,137 @@ async function runQuery(
     default:
       return [];
   }
+}
+
+// --- The picker -------------------------------------------------------------
+
+/**
+ * Rows for a searchable dropdown, ranked for prefix typing.
+ *
+ * Different from `search()` above in three ways that all come from the same
+ * fact — a picker answers on the third keystroke while somebody is still
+ * typing:
+ *
+ *  · **Prefix matching.** `websearch_to_tsquery` matches whole lexemes, so
+ *    "gla" finds nothing until the "zed" arrives. `prefixTsQuery` builds
+ *    `gla:*` instead.
+ *  · **A boost for a true prefix on the code or the name**, so typing a product
+ *    code puts that product first rather than somewhere in a rank-ordered pile.
+ *  · **`include`**, which is what stops the currently-selected row vanishing
+ *    when somebody types a term it does not match.
+ *
+ * `include` sits **outside** the active and deleted guards and **inside** the
+ * tenant and party guards. Outside, because a selection that was made before a
+ * product was archived must still render rather than silently becoming blank;
+ * inside, because neither of those is a display concern.
+ *
+ * The prefix `ILIKE` is a **filter as well as a boost**, and that is not
+ * belt-and-braces. Postgres's parser reads `RST-300` as the three lexemes
+ * `rst-300`, `rst` and `-300` — note the sign — so a `300:*` prefix built from
+ * the same string matches nothing, and typing a product code in full would find
+ * the product it names. Whichever way the parser split it, a row whose code or
+ * name *starts with what was typed* is a match.
+ */
+export async function pickProducts(
+  tenantId: string,
+  options: { term: string; limit: number; include: string[] },
+  runner: Runner = db(),
+): Promise<{ rows: Row[]; truncated: boolean }> {
+  const tsQuery = prefixTsQuery(options.term);
+  const hasQuery = tsQuery !== null;
+  const pattern = likePrefix(options.term.trim());
+
+  // One more than asked for, so "there are more" is a fact rather than a guess.
+  const fetch = options.limit + 1;
+  const hasInclude = options.include.length > 0;
+
+  const { rows } = await runner.raw<{ rows: Row[] }>(
+    `SELECT p.*, c.name AS category_name,
+            (COALESCE(p.product_code ILIKE ? ESCAPE '\\', false)
+             OR COALESCE(p.name ILIKE ? ESCAPE '\\', false)) AS exact_prefix,
+            CASE WHEN ? THEN ts_rank(p.search_vector, to_tsquery('simple', ?)) ELSE 0 END AS rank
+       FROM products p
+       LEFT JOIN product_categories c ON c.id = p.category_id
+      WHERE p.tenant_id = ?
+        AND (
+          (p.is_active AND p.deleted_at IS NULL AND (
+            NOT ?
+            OR p.search_vector @@ to_tsquery('simple', ?)
+            OR p.product_code ILIKE ? ESCAPE '\\'
+            OR p.name ILIKE ? ESCAPE '\\'
+          ))
+          OR (? AND p.id = ANY(?))
+        )
+      ORDER BY exact_prefix DESC NULLS LAST, rank DESC, p.name ASC
+      LIMIT ?`,
+    [
+      pattern,
+      pattern,
+      hasQuery,
+      tsQuery ?? '',
+      tenantId,
+      hasQuery,
+      tsQuery ?? '',
+      pattern,
+      pattern,
+      hasInclude,
+      options.include,
+      fetch,
+    ],
+  );
+
+  return { rows: rows.slice(0, options.limit), truncated: rows.length > options.limit };
+}
+
+export async function pickParties(
+  tenantId: string,
+  options: { term: string; limit: number; include: string[]; scope: PartyScope },
+  runner: Runner = db(),
+): Promise<{ rows: Row[]; truncated: boolean }> {
+  const tsQuery = prefixTsQuery(options.term);
+  const hasQuery = tsQuery !== null;
+  const pattern = likePrefix(options.term.trim());
+  const fetch = options.limit + 1;
+  const hasInclude = options.include.length > 0;
+
+  // The party scope wraps everything, `include` included: a selection is not a
+  // reason to hand somebody a party they may not see.
+  const scope = partyScopeSql('pa.id', tenantId, options.scope);
+
+  const { rows } = await runner.raw<{ rows: Row[] }>(
+    `SELECT pa.*,
+            (COALESCE(pa.party_code ILIKE ? ESCAPE '\\', false)
+             OR COALESCE(pa.name ILIKE ? ESCAPE '\\', false)) AS exact_prefix,
+            CASE WHEN ? THEN ts_rank(pa.search_vector, to_tsquery('simple', ?)) ELSE 0 END AS rank
+       FROM parties pa
+      WHERE pa.tenant_id = ?
+        AND (
+          (pa.is_active AND pa.deleted_at IS NULL AND (
+            NOT ?
+            OR pa.search_vector @@ to_tsquery('simple', ?)
+            OR pa.party_code ILIKE ? ESCAPE '\\'
+            OR pa.name ILIKE ? ESCAPE '\\'
+          ))
+          OR (? AND pa.id = ANY(?))
+        )${scope.sql}
+      ORDER BY exact_prefix DESC NULLS LAST, rank DESC, pa.name ASC
+      LIMIT ?`,
+    [
+      pattern,
+      pattern,
+      hasQuery,
+      tsQuery ?? '',
+      tenantId,
+      hasQuery,
+      tsQuery ?? '',
+      pattern,
+      pattern,
+      hasInclude,
+      options.include,
+      ...scope.bindings,
+      fetch,
+    ],
+  );
+
+  return { rows: rows.slice(0, options.limit), truncated: rows.length > options.limit };
 }

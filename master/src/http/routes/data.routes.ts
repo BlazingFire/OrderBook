@@ -11,6 +11,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import type { ListQuery } from '@orderbook/shared';
+import { isPickKind } from '@orderbook/shared';
 
 import { ValidationError } from '../../lib/errors.js';
 import * as backupExportService from '../../services/backup-export.service.js';
@@ -177,6 +178,43 @@ dataRoutes.get(
         {
           term: String(req.query.q ?? ''),
           limit: req.query.limit ? Number(req.query.limit) : undefined,
+        },
+        actorFromRequest(req),
+      ),
+    );
+  }),
+);
+
+/**
+ * The searchable picker's endpoint.
+ *
+ * Separate from `/search` because it answers a different question: search says
+ * where a word appears across four indexes, a pick says which record you mean
+ * for one kind and hands back the whole row, because the thing chosen goes
+ * straight into a line or a form.
+ *
+ * `include` carries the ids that must come back whatever the term matches —
+ * the row already selected, and anything pinned — so a picker never blanks a
+ * selection the moment somebody types.
+ */
+dataRoutes.get(
+  '/pick/:kind',
+  asyncHandler(async (req, res) => {
+    const kind = String(req.params.kind);
+    if (!isPickKind(kind)) throw new ValidationError('validation.pick.unknownKind');
+
+    const include = String(req.query.include ?? '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean);
+
+    res.json(
+      await searchService.pick(
+        kind,
+        {
+          term: String(req.query.q ?? ''),
+          limit: req.query.limit ? Number(req.query.limit) : undefined,
+          include,
         },
         actorFromRequest(req),
       ),

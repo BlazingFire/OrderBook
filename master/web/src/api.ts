@@ -662,6 +662,10 @@ export const api = {
     return request<CursorPage<BinEntry>>(`/api/recycle-bin${qs ? `?${qs}` : ''}`);
   },
   recycleBinCounts: () => request<BinCounts>('/api/recycle-bin/counts'),
+  /** Everybody who has deleted something still in the Bin — a facet over the
+   *  whole Bin, not over the page in front of you. */
+  recycleBinDeleters: () =>
+    request<Array<{ id: string; name: string }>>('/api/recycle-bin/deleters'),
   restoreFromBin: (input: RestoreInput) =>
     post<BinRestoreResult>('/api/recycle-bin/restore', input),
 

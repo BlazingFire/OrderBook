@@ -241,6 +241,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.product.negativeAmount': 'यह राशि ऋणात्मक नहीं हो सकती',
   'validation.stock.levelRange': 'अधिकतम, न्यूनतम से कम नहीं हो सकता',
   'validation.stock.levelNegative': 'स्टॉक स्तर ऋणात्मक नहीं हो सकता',
+  'validation.pick.unknownKind': 'यह ऐसी चीज़ नहीं है जिसे यह पैनल खोज सके',
   'validation.product.nameRequired': 'उत्पाद का नाम आवश्यक है',
   'validation.product.codeRequired': 'उत्पाद कोड आवश्यक है',
   'validation.role.nameRequired': 'भूमिका को एक नाम दें',
