@@ -112,15 +112,27 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
     [partyWiseMode, partyId, view.partyVariants],
   );
 
-  const partyOptions = useMemo<ComboboxOption<Party>[]>(
-    () =>
-      view.parties.map((party) => ({
+  /**
+   * Parties this person may only *read* are left out.
+   *
+   * The Master refuses the save either way — a lead against a view-only party
+   * is a 403 naming why — so this is not the enforcement. It exists so the
+   * picker does not walk somebody into a refusal for a party they are looking
+   * straight at.
+   */
+  const partyOptions = useMemo<ComboboxOption<Party>[]>(() => {
+    const readOnly = new Set(
+      (view.partyGrants ?? []).filter((grant) => grant.level === 'view').map((grant) => grant.partyId),
+    );
+
+    return view.parties
+      .filter((party) => !readOnly.has(party.id))
+      .map((party) => ({
         key: party.id,
         label: [party.partyCode, party.name, party.phone, party.city].filter(Boolean).join(' · '),
         value: party,
-      })),
-    [view.parties],
-  );
+      }));
+  }, [view.parties, view.partyGrants]);
 
   const productOptions = useMemo<ComboboxOption<Product>[]>(
     () =>

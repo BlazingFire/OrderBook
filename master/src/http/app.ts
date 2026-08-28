@@ -16,9 +16,11 @@ import { fieldsRoutes } from './routes/fields.routes.js';
 import { imageFilesRoutes, imagesRoutes } from './routes/images.routes.js';
 import { logRoutes } from './routes/log.routes.js';
 import { panelRoutes, pairingRoutes } from './routes/panel.routes.js';
+import { partyAccessRoutes } from './routes/party-access.routes.js';
 import { recycleBinRoutes } from './routes/recycle-bin.routes.js';
 import { reportRoutes } from './routes/report.routes.js';
 import { setupRoutes } from './routes/setup.routes.js';
+import { publicUpdateRoutes, updateRoutes } from './routes/update.routes.js';
 
 export function createApp(): Express {
   const app = express();
@@ -45,6 +47,11 @@ export function createApp(): Express {
   app.use('/api/pairing', pairingRoutes);
   app.use('/api/panels', panelRoutes);
   app.use('/api/access', accessRoutes);
+  // Mounted before the session-guarded half so a paired panel — which carries
+  // no user session — can still discover and fetch its own build.
+  app.use('/api/updates', publicUpdateRoutes);
+  app.use('/api/updates', updateRoutes);
+  app.use('/api/party-access', partyAccessRoutes);
   app.use('/api/recycle-bin', recycleBinRoutes);
   app.use('/api/fields', fieldsRoutes);
   app.use('/api/logs', logRoutes);

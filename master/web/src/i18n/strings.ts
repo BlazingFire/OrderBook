@@ -72,6 +72,22 @@ const en: Record<string, string> = {
 
   // App update.
   'nav.updates': 'App update',
+  'updates.ahead': 'Newer than this Master',
+  'updates.readyLabel': 'Ready to install',
+  'updates.installNow': 'Install now',
+  'updates.verifying': 'Checking the file…',
+  'updates.launching': 'Starting the installer…',
+  'updates.dataStays':
+    'Your data stays exactly where it is. The setup replaces the program only — parties, leads, orders and settings are untouched.',
+  'updates.runByHand': 'The file is ready. Run it yourself from:',
+  'updates.launchRefused': 'Windows would not start the installer. Run the file yourself from the path above.',
+  'updates.installFailed': 'The update could not be prepared',
+  'updates.needsPermission': 'Ask an administrator to install this — it needs the "Manage settings" permission.',
+  'updates.noFolder': 'No releases folder on this PC yet, so there is nothing to install from.',
+  'updates.noRelease': 'The releases folder is there, but no build has been put in it yet.',
+  'updates.upToDateBody': 'This is the newest build in the releases folder. Nothing to do.',
+  'updates.officeReady':
+    'Office build {version} is ready on this Master. Each panel can install it from its own App update screen.',
   'updates.masterVersion': 'Master version',
   'updates.unknown': 'Unknown',
   'updates.upToDate': 'Up to date',
@@ -90,7 +106,7 @@ const en: Record<string, string> = {
   'updates.someUnknown':
     '{count} panel(s) have not reported a version yet. They will the next time they connect.',
   'updates.howBody':
-    'A new build is installed on each machine by hand, from the release folder. Update the Master first, then each Office Panel; a panel on the previous version keeps syncing in the meantime.',
+    'Copy a new build into the releases folder on this PC. This Master installs its own from there; every Office Panel pulls its own copy from this Master over the office network. Update the Master first — a panel on the previous version keeps working and syncing in the meantime.',
   'footer.designSystem': 'Design system',
 
   // Splash — the boot steps the shell walks before it can show a screen. The
@@ -1230,6 +1246,46 @@ const en: Record<string, string> = {
   'recycleBin.refusal.restoreParents': 'Restore those first, then this',
   'recycleBin.refusal.parentsNotYours':
     'Someone allowed to restore those records has to put them back before this one can come back.',
+  // --- Party Access ---------------------------------------------------------
+  'partyAccess.action.export': 'Export',
+  'partyAccess.action.save': 'Save',
+  'partyAccess.action.cancel': 'Cancel',
+  'partyAccess.summary': '{restricted} of {total} parties are restricted.',
+  'partyAccess.title': 'Party access',
+  'partyAccess.intro':
+    'A party nobody is assigned to is open to everyone. Assign someone and only they can reach it.',
+  'partyAccess.searchPlaceholder': 'Search parties',
+  'partyAccess.column.code': 'Code',
+  'partyAccess.column.party': 'Party',
+  'partyAccess.column.city': 'City',
+  'partyAccess.column.access': 'Access',
+  'partyAccess.column.assignedTo': 'Assigned to',
+  'partyAccess.open': 'Open',
+  'partyAccess.restricted': 'Restricted',
+  'partyAccess.everyone': 'Everyone',
+  'partyAccess.more': '+{count} more',
+  'partyAccess.filter.all': 'All',
+  'partyAccess.filter.open': 'Open',
+  'partyAccess.filter.restricted': 'Restricted',
+  'partyAccess.empty': 'No parties match this filter',
+  'partyAccess.level.view': 'View',
+  'partyAccess.level.manage': 'Manage',
+  'partyAccess.addPerson': 'Add a person',
+  'partyAccess.remove': 'Remove',
+  'partyAccess.reload': 'Reload',
+  'partyAccess.noAssignees': 'Nobody is assigned',
+  'partyAccess.explainOpen':
+    'Nobody is assigned, so everyone with the right role can see and work this party.',
+  'partyAccess.explainRestricted':
+    'Only the people below can see this party and its leads and orders. View can read; manage can also create and edit.',
+  'partyAccess.staleSave': 'Somebody else changed this party’s access first. Reload to see it.',
+  'partyAccess.error.load': 'Could not load party access',
+  'partyAccess.error.save': 'Could not save the assignments',
+  'partyAccess.scope.all': 'All parties',
+  'partyAccess.scope.assigned': 'My parties',
+  'nav.master.partyAccess': 'Party access',
+  'nav.partyAccess': 'Party access',
+
 };
 
 export function t(key: string, params?: Params): string {

@@ -29,6 +29,7 @@ import { ConflictsScreen } from './screens/ConflictsScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
 import { DocumentsScreen } from './screens/DocumentsScreen';
 import { FieldsScreen } from './screens/FieldsScreen';
+import { PartyAccessScreen } from './screens/PartyAccessScreen';
 import { FirstRunScreen } from './screens/FirstRunScreen';
 import { InventoryScreen } from './screens/InventoryScreen';
 import { LeadsOrdersScreen } from './screens/LeadsOrdersScreen';
@@ -60,6 +61,7 @@ type Tab =
   | 'reports'
   | 'documents'
   | 'access'
+  | 'partyAccess'
   | 'fields'
   | 'logs'
   | 'recycleBin'
@@ -69,7 +71,7 @@ type Tab =
 type Route = '' | 'gallery';
 
 /** Entities whose changes should make the data screens refetch. */
-const REFRESHING_ENTITIES = new Set(['lead', 'order', 'stock', 'reservation', 'sync_conflict']);
+const REFRESHING_ENTITIES = new Set(['lead', 'order', 'party', 'stock', 'reservation', 'sync_conflict']);
 
 /** The cold-start steps the splash reports, in the order they run. */
 const BOOT_STEPS = ['server', 'session', 'assets'] as const;
@@ -297,6 +299,11 @@ function MasterPanel() {
   const canManagePanels = user.permissions.includes('panels.manage');
   const canManageSettings = user.permissions.includes('settings.manage');
   const canViewFields = user.permissions.includes('fields.view');
+  // Either key opens the screen: `party.assign` to redraw the map,
+  // `party.accessAll` to read it. Somebody trusted with the whole book should
+  // be able to see how it is divided without also being able to change it.
+  const canViewPartyAccess =
+    user.permissions.includes('party.assign') || user.permissions.includes('party.accessAll');
   const canViewLogs = user.permissions.includes('logs.view');
   const canViewRecycleBin = user.permissions.includes('recycleBin.view');
   const canViewReports = user.permissions.includes('reports.view');
@@ -364,6 +371,9 @@ function MasterPanel() {
   const adminItems: Array<NavItem | null> = [
     canManagePanels ? { id: 'panels', label: t('nav.master.panels'), icon: 'server' } : null,
     canManageRoles ? { id: 'access', label: t('nav.master.access'), icon: 'shield' } : null,
+    canViewPartyAccess
+      ? { id: 'partyAccess', label: t('nav.master.partyAccess'), icon: 'parties' }
+      : null,
     canViewFields ? { id: 'fields', label: t('nav.master.fields'), icon: 'filter' } : null,
     canViewLogs ? { id: 'logs', label: t('nav.master.logs'), icon: 'eye' } : null,
     canViewRecycleBin ? { id: 'recycleBin', label: t('nav.master.recycleBin'), icon: 'trash' } : null,
@@ -532,6 +542,8 @@ function MasterPanel() {
             currentUserTier={user.roleTier}
           />
         );
+      case 'partyAccess':
+        return <PartyAccessScreen permissions={user.permissions} revision={dataRevision} />;
       case 'fields':
         return <FieldsScreen permissions={user.permissions} revision={dataRevision} />;
       case 'logs':
@@ -543,7 +555,7 @@ function MasterPanel() {
           <ConflictsScreen revision={dataRevision} canResolve={user.permissions.includes('sync.resolveConflicts')} />
         );
       case 'updates':
-        return <UpdatesScreen panels={panels} />;
+        return <UpdatesScreen panels={panels} permissions={user.permissions} />;
 
       case 'settings':
         return <SettingsScreen />;

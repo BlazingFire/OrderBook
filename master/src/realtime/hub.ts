@@ -16,12 +16,15 @@ import {
   type ClientToServerEvents,
   type CommandAck,
   type CommandResult,
+  type DataChangedEvent,
   type ServerToClientEvents,
   type SocketAuthPayload,
   type SocketData,
 } from '@orderbook/shared';
 
 import type { ActorContext } from '../domain/actor.js';
+import { levelFor, resolvePartyScope } from '../domain/party-scope.js';
+import * as partyAccessRepo from '../repositories/party-access.repository.js';
 import { MAX_SOURCE_BYTES } from '../domain/images.js';
 import { AppError, ForbiddenError, toErrorMessage } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
@@ -46,6 +49,7 @@ import * as logService from '../services/log.service.js';
 import * as reportService from '../services/report.service.js';
 import * as imageService from '../services/image.service.js';
 import * as panelService from '../services/panel.service.js';
+import * as partyAccessService from '../services/party-access.service.js';
 import * as recycleBinService from '../services/recycle-bin.service.js';
 import * as searchService from '../services/search.service.js';
 import { buildSnapshot } from '../services/snapshot.service.js';
@@ -123,6 +127,16 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
   });
 
   const unsubscribeChanges = onChange((event) => {
+    // A lead, order, party or party-variant row belongs to exactly one party,
+    // and a broadcast is a read like any other. Without this, every panel and
+    // every Master browser was handed the full record of a party its signed-in
+    // user cannot open — the request path would have refused the same row.
+    if (PARTY_SCOPED_ENTITIES.has(event.entity)) {
+      void emitPartyScopedChange(io, event);
+      if (DASHBOARD_ENTITIES.has(event.entity)) void broadcastDashboard(io);
+      return;
+    }
+
     // The Master's own screens are the only ones that manage roles and users, and
     // the only ones entitled to the payload. Broadcasting a `user` row to every
     // paired panel handed each of them the whole staff list — username, display
@@ -183,6 +197,18 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
  * data at all.
  */
 const DIRECTORY_ENTITIES = new Set<string>(['role', 'user', 'document_export']);
+
+/**
+ * Entities whose rows hang off one party, and therefore cannot be broadcast to
+ * a room — each recipient's own party scope decides whether the row is theirs.
+ *
+ * The other direction is what makes this necessary rather than tidy: an
+ * unassigned party is open to everyone, so a blanket "never broadcast these"
+ * would stop live updates working for the ordinary case the product has always
+ * had. `emitPartyScopedChange` broadcasts exactly then, and fans out per socket
+ * only when the party is actually restricted.
+ */
+const PARTY_SCOPED_ENTITIES = new Set<string>(['lead', 'order', 'party', 'party_variant']);
 
 /** Changes that move a number on the dashboard. */
 const DASHBOARD_ENTITIES = new Set(['lead', 'order', 'party', 'product', 'stock', 'sync_conflict']);
@@ -413,6 +439,22 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   socket.on('recycleBin:counts', (ack) => run(ack, (actor) => recycleBinService.binCounts(actor)));
   socket.on('recycleBin:restore', (input, ack) =>
     run(ack, (actor) => recycleBinService.restoreEntity(input, actor)),
+  );
+
+  socket.on('partyAccess:list', (query, ack) =>
+    run(ack, (actor) => partyAccessService.listAssignments(query, actor)),
+  );
+  socket.on('partyAccess:forParty', (partyId, ack) =>
+    run(ack, (actor) => partyAccessService.assignmentsForParty(partyId, actor)),
+  );
+  socket.on('partyAccess:people', (ack) =>
+    run(ack, (actor) => partyAccessService.assignablePeople(actor)),
+  );
+  socket.on('partyAccess:export', (ack) =>
+    run(ack, (actor) => partyAccessService.exportRows(actor)),
+  );
+  socket.on('partyAccess:replace', ({ partyId, input }, ack) =>
+    run(ack, (actor) => partyAccessService.replaceAssignments(partyId, input, actor)),
   );
 
   socket.on('fields:catalogue', (ack) => run(ack, (actor) => Promise.resolve(fieldsService.fieldsCatalogue(actor))));
@@ -694,6 +736,102 @@ async function adminActor(socket: PanelSocket): Promise<ActorContext | null> {
     deviceCode: null,
     actorName: user.displayName,
   };
+}
+
+/** The party a change event is about, or `null` if it cannot be told. */
+function partyIdOfChange(event: DataChangedEvent): string | null {
+  if (event.entity === 'party') return event.id;
+
+  const payload = event.payload as { partyId?: unknown } | null;
+  return typeof payload?.partyId === 'string' ? payload.partyId : null;
+}
+
+/**
+ * Deliver a party-scoped change to the sockets entitled to it.
+ *
+ * An unrestricted party takes the old broadcast path unchanged — that is the
+ * common case and it costs one indexed query. A restricted party fans out per
+ * socket, re-resolving each one's acting user, because the person signed in on
+ * a panel changes while the socket stays up (the same reason commands resolve
+ * their actor per call rather than at connection time).
+ */
+async function emitPartyScopedChange(
+  io: RealtimeHub['io'],
+  event: DataChangedEvent,
+): Promise<void> {
+  const tenantId = (event.payload as { tenantId?: unknown } | null)?.tenantId;
+  const partyId = partyIdOfChange(event);
+
+  if (typeof tenantId !== 'string' || !partyId) {
+    // Fail closed, and say so. Withholding a live update is a stale screen
+    // until the next refresh; guessing the other way is a disclosure.
+    log.warn(`Withholding ${event.entity} change ${event.id}: no party could be resolved`);
+    return;
+  }
+
+  const grants = await partyAccessRepo.grantsForParty(tenantId, partyId);
+
+  if (grants.length === 0) {
+    io.to(ROOM_OFFICE_PANELS).to(ROOM_MASTER_ADMINS).emit('data:changed', event);
+    return;
+  }
+
+  const recipients = [...panelSockets.values(), ...(await io.in(ROOM_MASTER_ADMINS).fetchSockets())];
+
+  await Promise.all(
+    recipients.map(async (socket) => {
+      try {
+        const actor = await actorForRecipient(socket);
+        if (!actor) return;
+        if (levelFor(resolvePartyScope(actor), grants) === 'none') return;
+
+        socket.emit('data:changed', event);
+      } catch (error: unknown) {
+        log.warn(`Could not scope a change for a socket: ${toErrorMessage(error)}`);
+      }
+    }),
+  );
+}
+
+/**
+ * Whoever a socket is currently acting as, with no side effects.
+ *
+ * Deliberately not `panelActor`: that one clears a refused token and emits
+ * `session:rejected`, which is right on a command and wrong on a broadcast —
+ * a background fan-out should not be able to sign somebody out.
+ */
+async function actorForRecipient(socket: {
+  data: SocketData;
+}): Promise<ActorContext | null> {
+  const tenantId = socket.data.tenantId;
+  if (!tenantId) return null;
+
+  if (socket.data.kind === 'master-admin') {
+    const user = await authService.resolveSession(socket.data.sessionToken);
+    if (!user || user.tenantId !== tenantId) return null;
+
+    return {
+      tenantId,
+      actorType: 'user',
+      actorId: user.id,
+      userId: user.id,
+      permissions: await permissionSetForRole(tenantId, user.roleId),
+      deviceCode: null,
+      actorName: user.displayName,
+    };
+  }
+
+  const panelId = socket.data.panelId;
+  if (!panelId) return null;
+
+  const { actor } = await resolvePanelActor({
+    tenantId,
+    panelId,
+    deviceCode: socket.data.deviceCode ?? null,
+    actingUserToken: socket.data.actingUserToken,
+  });
+
+  return actor;
 }
 
 async function broadcastPanels(io: RealtimeHub['io']): Promise<void> {

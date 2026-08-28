@@ -10,6 +10,7 @@
 import type { ConflictResolutionInput, SyncConflict } from '@orderbook/shared';
 
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
+import { resolvePartyScope, UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
 import { db } from '../db/knex.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
 import * as leadRepo from '../repositories/lead.repository.js';
@@ -48,7 +49,10 @@ export async function listConflicts(
   options: { includeResolved?: boolean } = {},
 ): Promise<SyncConflict[]> {
   requirePermission(actor, 'sync.resolveConflicts');
-  return syncRepo.listConflicts(actor.tenantId, options);
+  return syncRepo.listConflicts(actor.tenantId, {
+    ...options,
+    scope: resolvePartyScope(actor),
+  });
 }
 
 export async function resolveConflict(
@@ -132,9 +136,9 @@ async function writeRestore(
 async function republish(entity: string, tenantId: string, id: string): Promise<void> {
   const payload =
     entity === 'lead'
-      ? await leadRepo.findLeadById(tenantId, id)
+      ? await leadRepo.findLeadById(tenantId, id, UNSCOPED_PARTY_ACCESS)
       : entity === 'order'
-        ? await orderRepo.findOrderById(tenantId, id)
+        ? await orderRepo.findOrderById(tenantId, id, UNSCOPED_PARTY_ACCESS)
         : entity === 'party'
           ? await partyRepo.findPartyById(tenantId, id)
           : await productRepo.findProductById(tenantId, id);

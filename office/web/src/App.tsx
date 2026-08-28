@@ -20,6 +20,7 @@ import { ApiError, api, type ConnectionInfo, type LocalView, type PanelSession }
 import { t } from './i18n/strings';
 import { AddLeadScreen } from './screens/AddLeadScreen';
 import { CatalogScreen } from './screens/CatalogScreen';
+import { PartyAccessScreen } from './screens/PartyAccessScreen';
 import { ConflictsScreen } from './screens/ConflictsScreen';
 import { ConnectionScreen } from './screens/ConnectionScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
@@ -38,7 +39,16 @@ import { Icon } from './ui/icons';
 import { Splash } from './ui/Splash';
 import { ToastProvider, useToast } from './ui/Toast';
 
-type Tab = 'dashboard' | 'leads' | 'orders' | 'parties' | 'products' | 'conflicts' | 'settings' | 'updates';
+type Tab =
+  | 'dashboard'
+  | 'leads'
+  | 'orders'
+  | 'parties'
+  | 'partyAccess'
+  | 'products'
+  | 'conflicts'
+  | 'settings'
+  | 'updates';
 
 function readHash(): string {
   return window.location.hash.replace(/^#/, '');
@@ -431,6 +441,13 @@ function OfficePanel() {
             ? { id: 'products', label: t('nav.products'), icon: 'products' as const }
             : null,
           can('parties.view') ? { id: 'parties', label: t('nav.parties'), icon: 'parties' as const } : null,
+          // Either key opens it: `party.assign` to redraw the map,
+          // `party.accessAll` to read it. Both are admin/management tier, so
+          // this never appears for the office-tier role an unattended panel
+          // falls back to.
+          can('party.assign') || can('party.accessAll')
+            ? { id: 'partyAccess', label: t('nav.partyAccess'), icon: 'shield' as const }
+            : null,
         ] satisfies Array<NavItem | null>
       ).filter((item): item is NonNullable<typeof item> => item !== null),
     },
@@ -451,6 +468,7 @@ function OfficePanel() {
     leads: 'leads',
     orders: 'orders',
     parties: 'parties',
+    partyAccess: 'partyAccess',
     products: 'products',
     conflicts: 'conflicts',
     settings: 'settings',
@@ -667,7 +685,7 @@ function OfficePanel() {
     // Reads the connection rather than the merged view, so it answers the
     // moment the shell has one — same reason Settings sits above the gate.
     if ((idToTab[activeId] ?? activeId) === 'updates') {
-      return <UpdatesScreen connection={connection} />;
+      return <UpdatesScreen connection={connection} permissions={permissions} />;
     }
 
     if ((idToTab[activeId] ?? activeId) === 'settings') {
@@ -714,6 +732,8 @@ function OfficePanel() {
             onResolved={() => void flush()}
           />
         );
+      case 'partyAccess':
+        return <PartyAccessScreen permissions={permissions} revision={view?.pendingCount ?? 0} />;
       case 'parties':
       case 'products':
         return <CatalogScreen view={view} tab={activeId as 'parties' | 'products'} />;

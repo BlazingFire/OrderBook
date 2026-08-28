@@ -9,6 +9,8 @@ import type { Knex } from 'knex';
 
 import { config } from '../config/index.js';
 import { db } from '../db/knex.js';
+import type { PartyScope } from '../domain/party-scope.js';
+import { applyPartyScope, partyScopeSql } from './party-access.repository.js';
 import { firstCount, toRequiredNumber } from './mappers.js';
 
 type Runner = Knex | Knex.Transaction;
@@ -22,7 +24,17 @@ export interface StageLeadCount {
 }
 
 /** Live, unconverted leads grouped by stage, for the tenant's lead pipeline — every stage present, even at zero. */
-export async function leadCountsByStage(tenantId: string, runner: Runner = db()): Promise<StageLeadCount[]> {
+export async function leadCountsByStage(
+  tenantId: string,
+  scope: PartyScope,
+  runner: Runner = db(),
+): Promise<StageLeadCount[]> {
+  // The scope goes in the LEFT JOIN's ON clause, not the WHERE: moving it to
+  // the WHERE would drop every stage whose only leads are out of scope, and a
+  // board that silently loses a column reads as a broken pipeline rather than
+  // as an empty one.
+  const partyScope = partyScopeSql('l.party_id', tenantId, scope);
+
   const { rows } = await runner.raw<{
     rows: Array<{ stage_id: string; stage_name: string; sequence: number; colour: string | null; lead_count: string }>;
   }>(
@@ -31,11 +43,11 @@ export async function leadCountsByStage(tenantId: string, runner: Runner = db())
        FROM pipeline_stages s
        JOIN pipelines p ON p.id = s.pipeline_id AND p.kind = 'lead'
        LEFT JOIN leads l
-         ON l.stage_id = s.id AND l.tenant_id = ? AND l.deleted_at IS NULL AND l.converted_order_id IS NULL
+         ON l.stage_id = s.id AND l.tenant_id = ? AND l.deleted_at IS NULL AND l.converted_order_id IS NULL${partyScope.sql}
       WHERE p.tenant_id = ?
       GROUP BY s.id, s.name, s.sequence, s.colour
       ORDER BY s.sequence`,
-    [tenantId, tenantId],
+    [tenantId, ...partyScope.bindings, tenantId],
   );
 
   return rows.map((row) => ({
@@ -53,22 +65,36 @@ export async function leadCountsByStage(tenantId: string, runner: Runner = db())
  * at UTC midnight starts at 05:30 IST, which would put an early-morning
  * dispatch in the wrong week.
  */
-export async function dispatchedThisWeek(tenantId: string, runner: Runner = db()): Promise<number> {
+export async function dispatchedThisWeek(
+  tenantId: string,
+  scope: PartyScope,
+  runner: Runner = db(),
+): Promise<number> {
   const tz = config.locale.timeZone;
-  const rows = await runner('orders')
+  const query = runner('orders')
     .where({ tenant_id: tenantId })
     .whereNull('deleted_at')
-    .andWhereRaw('dispatched_at >= (date_trunc(\'week\', now() AT TIME ZONE ?) AT TIME ZONE ?)', [tz, tz])
-    .count<Array<{ count: string }>>('id as count');
+    .andWhereRaw('dispatched_at >= (date_trunc(\'week\', now() AT TIME ZONE ?) AT TIME ZONE ?)', [tz, tz]);
+
+  applyPartyScope(query, tenantId, 'orders.party_id', scope, { level: 'view' });
+
+  const rows = await query.count<Array<{ count: string }>>('id as count');
   return firstCount(rows);
 }
 
-export async function openOrderCount(tenantId: string, runner: Runner = db()): Promise<number> {
-  const rows = await runner('orders')
+export async function openOrderCount(
+  tenantId: string,
+  scope: PartyScope,
+  runner: Runner = db(),
+): Promise<number> {
+  const query = runner('orders')
     .where({ tenant_id: tenantId })
     .whereNull('deleted_at')
-    .whereNull('dispatched_at')
-    .count<Array<{ count: string }>>('id as count');
+    .whereNull('dispatched_at');
+
+  applyPartyScope(query, tenantId, 'orders.party_id', scope, { level: 'view' });
+
+  const rows = await query.count<Array<{ count: string }>>('id as count');
   return firstCount(rows);
 }
 

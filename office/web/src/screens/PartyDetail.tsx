@@ -29,7 +29,7 @@ import { formatDateTime, formatMoney } from '../format';
 import { t } from '../i18n/strings';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
-import { KeyValueList } from '../ui/DataDisplay';
+import { KeyValueList, StatusPill } from '../ui/DataDisplay';
 import { DataTable, type DataTableColumn } from '../ui/DataTable';
 
 const RATE_PERMISSION = 'field.saleRate.view';
@@ -61,6 +61,17 @@ export function PartyDetail({
         ownRate: variant.rate,
       };
     });
+
+  /**
+   * Party Access, read straight off the snapshot this panel already holds —
+   * `partyGrants` is computed per-actor by the Master, so no fetch is needed
+   * and no other person's grants are here to read.
+   *
+   * The absence of a grant is not "no access": an unassigned party is open to
+   * everyone, which is why this reads the grant rather than inferring from its
+   * absence. `undefined` means a Master too old to send the field at all.
+   */
+  const grant = (view.partyGrants ?? []).find((entry) => entry.partyId === party.id);
 
   const recentLeads = view.leads
     .filter((lead) => lead.partyId === party.id)
@@ -111,6 +122,28 @@ export function PartyDetail({
             {party.notes}
           </p>
         )}
+      </Card>
+
+      <Card>
+        <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
+          {t('party.detail.accessTitle')}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
+          {grant ? (
+            <StatusPill tone="accent">{t('partyAccess.restricted')}</StatusPill>
+          ) : (
+            <StatusPill>{t('partyAccess.open')}</StatusPill>
+          )}
+          <span className="ob-small">
+            {grant
+              ? t(
+                  grant.level === 'manage'
+                    ? 'party.detail.access.manage'
+                    : 'party.detail.access.view',
+                )
+              : t('party.detail.access.open')}
+          </span>
+        </div>
       </Card>
 
       <div>

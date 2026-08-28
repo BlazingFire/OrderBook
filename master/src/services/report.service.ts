@@ -22,6 +22,7 @@ import type {
   TopPartyRow,
 } from '@orderbook/shared';
 import { requirePermission, type ActorContext } from '../domain/actor.js';
+import { resolvePartyScope } from '../domain/party-scope.js';
 import { canSeeRates } from '../domain/visibility.js';
 import { QUIET_AFTER_DAYS } from '../domain/lead-outcome.js';
 import { resolveReportRange, type DateComponents } from '../domain/report-range.js';
@@ -75,8 +76,8 @@ export async function dispatchReport(input: ReportRangeInput, actor: ActorContex
   const ratesIncluded = canSeeRates(actor);
 
   const [monthRows, colourRows] = await Promise.all([
-    reportRepo.dispatchesByMonth({ tenantId: actor.tenantId, fromDate, toDateExclusive }),
-    reportRepo.dispatchesByColour({ tenantId: actor.tenantId, fromDate, toDateExclusive }),
+    reportRepo.dispatchesByMonth({ tenantId: actor.tenantId, fromDate, toDateExclusive, scope: resolvePartyScope(actor) }),
+    reportRepo.dispatchesByColour({ tenantId: actor.tenantId, fromDate, toDateExclusive, scope: resolvePartyScope(actor) }),
   ]);
 
   const byMonth = new Map(monthRows.map((row) => [row.month, row]));
@@ -112,7 +113,7 @@ export async function leadOutcomeReport(input: ReportRangeInput, actor: ActorCon
   requirePermission(actor, 'reports.view');
   const { range, fromDate, toDateExclusive } = buildRange(input);
 
-  const rows = await reportRepo.leadOutcomesByMonth({ tenantId: actor.tenantId, fromDate, toDateExclusive });
+  const rows = await reportRepo.leadOutcomesByMonth({ tenantId: actor.tenantId, fromDate, toDateExclusive, scope: resolvePartyScope(actor) });
 
   const byMonth = new Map<string, Record<LeadOutcome, number>>();
   for (const month of range.months) byMonth.set(month, { converted: 0, lost: 0, quiet: 0, open: 0 });
@@ -142,9 +143,9 @@ export async function topPartiesReport(
 
   const [partyRows, cityRows] = await Promise.all([
     ratesIncluded
-      ? reportRepo.topPartiesByValue({ tenantId: actor.tenantId, fromDate, toDateExclusive }, limit)
-      : reportRepo.topPartiesByOrderCount({ tenantId: actor.tenantId, fromDate, toDateExclusive }, limit),
-    reportRepo.topPartiesByCity({ tenantId: actor.tenantId, fromDate, toDateExclusive }),
+      ? reportRepo.topPartiesByValue({ tenantId: actor.tenantId, fromDate, toDateExclusive, scope: resolvePartyScope(actor) }, limit)
+      : reportRepo.topPartiesByOrderCount({ tenantId: actor.tenantId, fromDate, toDateExclusive, scope: resolvePartyScope(actor) }, limit),
+    reportRepo.topPartiesByCity({ tenantId: actor.tenantId, fromDate, toDateExclusive, scope: resolvePartyScope(actor) }),
   ]);
 
   const parties: TopPartyRow[] = partyRows.map((row) => {

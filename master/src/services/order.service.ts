@@ -30,6 +30,7 @@ import {
 import { normalizeCustomFields } from '../domain/custom-fields.js';
 import { computeTotalWeightKg } from '../domain/line-items.js';
 import { clampPaging } from '../domain/paging.js';
+import { resolvePartyScope, UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
 import { assertStageMove, defaultStage, findStage, stageChangeMessage } from '../domain/pipeline.js';
 import { assertParentsLive } from '../domain/recycle-bin.js';
 import { canSeeRates, maskOrder } from '../domain/visibility.js';
@@ -48,6 +49,7 @@ import * as reservationRepo from '../repositories/reservation.repository.js';
 import * as timelineRepo from '../repositories/timeline.repository.js';
 import { publishStockFor } from './inventory.service.js';
 import { publishChange } from './change-bus.js';
+import { requirePartyAccess } from './party-access.service.js';
 import * as inventoryService from './inventory.service.js';
 
 const PAGING = { defaultLimit: 100, maxLimit: 500 };
@@ -61,6 +63,7 @@ export async function listOrders(
   const page = await orderRepo.listOrders(actor.tenantId, {
     ...query,
     ...clampPaging(query, PAGING),
+    partyScope: resolvePartyScope(actor),
   });
 
   const allowed = canSeeRates(actor);
@@ -70,7 +73,9 @@ export async function listOrders(
 export async function getOrder(id: string, actor: ActorContext): Promise<Order> {
   requirePermission(actor, 'orders.view');
 
-  const order = await orderRepo.findOrderById(actor.tenantId, id);
+  // Scoped at the query, so an order on somebody else's party is a 404 rather
+  // than a 403 — on a read, confirming the record exists is itself the leak.
+  const order = await orderRepo.findOrderById(actor.tenantId, id, resolvePartyScope(actor));
   if (!order) throw new NotFoundError('Order');
 
   return maskOrder(order, canSeeRates(actor));
@@ -89,8 +94,13 @@ export async function convertLead(
 ): Promise<Order> {
   requirePermission(actor, 'lead.convert');
 
-  const lead = await leadRepo.findLeadById(actor.tenantId, input.leadId);
+  const lead = await leadRepo.findLeadById(actor.tenantId, input.leadId, UNSCOPED_PARTY_ACCESS);
   if (!lead) throw new NotFoundError('Lead');
+
+  // Conversion is the only way an order comes into existence, so this is the
+  // one place that has to refuse an order on a party the caller does not
+  // manage — there is no `createOrder` to guard as well.
+  await requirePartyAccess(lead.partyId, 'manage', actor);
 
   // Read the lines back as domain snapshots rather than reusing the masked
   // entities: a converter without `field.saleRate.view` must still carry the
@@ -166,8 +176,8 @@ export async function convertLead(
     return id;
   });
 
-  const order = await orderRepo.findOrderById(actor.tenantId, orderId);
-  const updatedLead = await leadRepo.findLeadById(actor.tenantId, lead.id);
+  const order = await orderRepo.findOrderById(actor.tenantId, orderId, UNSCOPED_PARTY_ACCESS);
+  const updatedLead = await leadRepo.findLeadById(actor.tenantId, lead.id, UNSCOPED_PARTY_ACCESS);
   if (!order) throw new Error('Order disappeared immediately after conversion');
 
   await activityLog.recordDetachedActivity({
@@ -201,8 +211,13 @@ export async function updateOrder(
 ): Promise<Order> {
   requirePermission(actor, 'orders.edit');
 
-  const existing = await orderRepo.findOrderById(actor.tenantId, id);
+  const existing = await orderRepo.findOrderById(actor.tenantId, id, UNSCOPED_PARTY_ACCESS);
   if (!existing) throw new NotFoundError('Order');
+
+  // Read unscoped so an out-of-scope caller is refused with a 403 naming why,
+  // not a 404 that reads as "somebody deleted it".
+  await requirePartyAccess(existing.partyId, 'manage', actor);
+
   if (existing.dispatchedAt) {
     throw new ValidationError('validation.order.dispatchedLocked');
   }
@@ -238,7 +253,7 @@ export async function updateOrder(
     await orderRepo.updateOrderColumns(actor.tenantId, id, patch, { hlc, fieldHlc }, trx);
   });
 
-  const order = await orderRepo.findOrderById(actor.tenantId, id);
+  const order = await orderRepo.findOrderById(actor.tenantId, id, UNSCOPED_PARTY_ACCESS);
   if (!order) throw new NotFoundError('Order');
 
   publishChange({ entity: 'order', action: 'updated', id, payload: order });
@@ -251,8 +266,13 @@ export async function setStage(
 ): Promise<Order> {
   requirePermission(actor, 'orders.edit');
 
-  const existing = await orderRepo.findOrderById(actor.tenantId, input.id);
+  const existing = await orderRepo.findOrderById(actor.tenantId, input.id, UNSCOPED_PARTY_ACCESS);
   if (!existing) throw new NotFoundError('Order');
+
+  // Read unscoped so an out-of-scope caller is refused with a 403 naming why,
+  // not a 404 that reads as "somebody deleted it".
+  await requirePartyAccess(existing.partyId, 'manage', actor);
+
   if (existing.stageId === input.stageId) return maskOrder(existing, canSeeRates(actor));
 
   const stages = await pipelineRepo.stagesFor(actor.tenantId, 'order');
@@ -298,7 +318,7 @@ export async function setStage(
     }
   });
 
-  const order = await orderRepo.findOrderById(actor.tenantId, input.id);
+  const order = await orderRepo.findOrderById(actor.tenantId, input.id, UNSCOPED_PARTY_ACCESS);
   if (!order) throw new NotFoundError('Order');
 
   publishChange({ entity: 'order', action: 'updated', id: input.id, payload: order });
@@ -318,8 +338,13 @@ export async function dispatchOrder(
 ): Promise<Order> {
   requirePermission(actor, 'orders.dispatch');
 
-  const existing = await orderRepo.findOrderById(actor.tenantId, input.orderId);
+  const existing = await orderRepo.findOrderById(actor.tenantId, input.orderId, UNSCOPED_PARTY_ACCESS);
   if (!existing) throw new NotFoundError('Order');
+
+  // Read unscoped so an out-of-scope caller is refused with a 403 naming why,
+  // not a 404 that reads as "somebody deleted it".
+  await requirePartyAccess(existing.partyId, 'manage', actor);
+
   if (existing.dispatchedAt) throw new ValidationError('validation.order.alreadyDispatched');
 
   const stages = await pipelineRepo.stagesFor(actor.tenantId, 'order');
@@ -371,7 +396,7 @@ export async function dispatchOrder(
     );
   });
 
-  const order = await orderRepo.findOrderById(actor.tenantId, input.orderId);
+  const order = await orderRepo.findOrderById(actor.tenantId, input.orderId, UNSCOPED_PARTY_ACCESS);
   if (!order) throw new NotFoundError('Order');
 
   await activityLog.recordDetachedActivity({
@@ -404,6 +429,10 @@ export async function addRemark(
   const message = input.message?.trim();
   if (!message) throw new ValidationError('validation.remark.textRequired');
 
+  const existing = await orderRepo.findOrderById(actor.tenantId, input.id, UNSCOPED_PARTY_ACCESS);
+  if (!existing) throw new NotFoundError('Order');
+  await requirePartyAccess(existing.partyId, 'manage', actor);
+
   await db().transaction(async (trx) => {
     await timelineRepo.appendEntry(
       {
@@ -418,7 +447,7 @@ export async function addRemark(
     );
   });
 
-  const order = await orderRepo.findOrderById(actor.tenantId, input.id);
+  const order = await orderRepo.findOrderById(actor.tenantId, input.id, UNSCOPED_PARTY_ACCESS);
   if (!order) throw new NotFoundError('Order');
 
   publishChange({ entity: 'order', action: 'updated', id: input.id, payload: order });
@@ -431,8 +460,8 @@ export async function recomputeWeight(tenantId: string, orderId: string): Promis
   return computeTotalWeightKg(lines);
 }
 
-export async function countOrders(tenantId: string): Promise<number> {
-  return orderRepo.countOrders(tenantId);
+export async function countOrders(actor: ActorContext): Promise<number> {
+  return orderRepo.countOrders(actor.tenantId, resolvePartyScope(actor));
 }
 
 /**
@@ -448,8 +477,12 @@ export async function deleteOrder(
 ): Promise<{ id: string; deletedAt: string }> {
   requirePermission(actor, 'orders.delete');
 
-  const existing = await orderRepo.findOrderById(actor.tenantId, id);
+  const existing = await orderRepo.findOrderById(actor.tenantId, id, UNSCOPED_PARTY_ACCESS);
   if (!existing) throw new NotFoundError('Order');
+
+  // Read unscoped so an out-of-scope caller is refused with a 403 naming why,
+  // not a 404 that reads as "somebody deleted it".
+  await requirePartyAccess(existing.partyId, 'manage', actor);
 
   if (existing.dispatchedAt) {
     throw new ConflictError('error.conflict.blockedByLiveReferences', {}, {
@@ -498,8 +531,13 @@ export async function deleteOrder(
 export async function restoreOrder(id: string, actor: ActorContext): Promise<BinRestoreResult> {
   requirePermission(actor, 'orders.delete');
 
-  const existing = await orderRepo.findOrderById(actor.tenantId, id, db(), { includeDeleted: true });
+  const existing = await orderRepo.findOrderById(actor.tenantId, id, UNSCOPED_PARTY_ACCESS, db(), { includeDeleted: true });
   if (!existing) throw new NotFoundError('Order');
+
+  // Read unscoped so an out-of-scope caller is refused with a 403 naming why,
+  // not a 404 that reads as "somebody deleted it".
+  await requirePartyAccess(existing.partyId, 'manage', actor);
+
 
   const [party, lead] = await Promise.all([
     recycleBinRepo.findParentStatus(actor.tenantId, 'party', existing.partyId),

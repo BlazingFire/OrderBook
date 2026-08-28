@@ -12,7 +12,7 @@
  * Postgres.
  */
 
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -262,16 +262,44 @@ async function startCluster(binDir: string, clusterDir: string, socketDir: strin
 
   const logFile = path.join(config.dataDir, 'postgres.log');
 
-  await execFileAsync(path.join(binDir, binName('pg_ctl')), [
-    '--pgdata',
-    clusterDir,
-    '--log',
-    logFile,
-    '--options',
-    serverOptions.join(' '),
-    '--wait',
-    'start',
-  ]);
+  /*
+   * `spawn` with `stdio: 'ignore'`, never `execFile`.
+   *
+   * `pg_ctl` exits as soon as the server is up, but the `postgres` process it
+   * launched inherits the parent's stdout/stderr and holds them for its whole
+   * life — and `execFile` only resolves once the child's pipes close. Whenever
+   * this server's own stdout is a pipe rather than a console, that promise
+   * never settles: PostgreSQL starts perfectly, `postgres.log` says
+   * "ready to accept connections", and the boot screen sits on
+   * "Starting the database" forever.
+   *
+   * Latent for as long as the Master only ever ran from a terminal, and
+   * uncovered the first time the desktop shell spawned it with pipes.
+   * `master/tests/helpers/db.ts` hit the identical hang in the test suite and
+   * fixed it there; this is the same fix in the launcher it was always also
+   * true of.
+   */
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(
+      path.join(binDir, binName('pg_ctl')),
+      [
+        '--pgdata',
+        clusterDir,
+        '--log',
+        logFile,
+        '--options',
+        serverOptions.join(' '),
+        '--wait',
+        'start',
+      ],
+      { stdio: 'ignore', windowsHide: true },
+    );
+
+    child.on('error', reject);
+    child.on('exit', (code) =>
+      code === 0 ? resolve() : reject(new Error(`pg_ctl start exited with ${code ?? 'no code'}`)),
+    );
+  });
 
   log.info(`Database listening on 127.0.0.1:${config.database.port}`);
 }

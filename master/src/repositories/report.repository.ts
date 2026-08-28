@@ -19,6 +19,8 @@ import type { Knex } from 'knex';
 import { config } from '../config/index.js';
 import { db } from '../db/knex.js';
 import { QUIET_AFTER_DAYS } from '../domain/lead-outcome.js';
+import type { PartyScope } from '../domain/party-scope.js';
+import { partyScopeSql } from './party-access.repository.js';
 import { toNumber } from './mappers.js';
 
 type Runner = Knex | Knex.Transaction;
@@ -27,6 +29,13 @@ export interface DateRange {
   tenantId: string;
   fromDate: string;
   toDateExclusive: string;
+  /**
+   * Carried on the range rather than passed separately so no report can be
+   * added later that forgets it — a report is a read like any other, and an
+   * unscoped total tells somebody exactly how much business sits on the
+   * parties they cannot open.
+   */
+  scope: PartyScope;
 }
 
 export interface DispatchMonthRow {
@@ -44,6 +53,8 @@ export interface DispatchColourRow {
 /** Order-level month buckets. Box counts joined separately so a multi-line order is not double-counted. */
 export async function dispatchesByMonth(range: DateRange, runner: Runner = db()): Promise<DispatchMonthRow[]> {
   const tz = config.locale.timeZone;
+  const orderAggScope = partyScopeSql('orders.party_id', range.tenantId, range.scope);
+  const boxAggScope = partyScopeSql('o.party_id', range.tenantId, range.scope);
   const { rows } = await runner.raw<{
     rows: Array<{ month: string; order_count: string; box_count: string; total_value: string | null }>;
   }>(
@@ -55,7 +66,7 @@ export async function dispatchesByMonth(range: DateRange, runner: Runner = db())
         WHERE tenant_id = ?
           AND dispatched_at >= (?::timestamp AT TIME ZONE ?)
           AND dispatched_at <  (?::timestamp AT TIME ZONE ?)
-          AND deleted_at IS NULL
+          AND deleted_at IS NULL${orderAggScope.sql}
         GROUP BY 1
      ),
      box_agg AS (
@@ -68,7 +79,7 @@ export async function dispatchesByMonth(range: DateRange, runner: Runner = db())
         WHERE o.tenant_id = ?
           AND o.dispatched_at >= (?::timestamp AT TIME ZONE ?)
           AND o.dispatched_at <  (?::timestamp AT TIME ZONE ?)
-          AND o.deleted_at IS NULL
+          AND o.deleted_at IS NULL${boxAggScope.sql}
         GROUP BY 1
      )
      SELECT oa.month, oa.order_count, COALESCE(ba.box_count, 0) AS box_count, oa.total_value
@@ -76,8 +87,8 @@ export async function dispatchesByMonth(range: DateRange, runner: Runner = db())
        LEFT JOIN box_agg ba ON ba.month = oa.month
       ORDER BY oa.month`,
     [
-      tz, range.tenantId, range.fromDate, tz, range.toDateExclusive, tz,
-      tz, range.tenantId, range.fromDate, tz, range.toDateExclusive, tz,
+      tz, range.tenantId, range.fromDate, tz, range.toDateExclusive, tz, ...orderAggScope.bindings,
+      tz, range.tenantId, range.fromDate, tz, range.toDateExclusive, tz, ...boxAggScope.bindings,
     ],
   );
 
@@ -97,6 +108,7 @@ export async function dispatchesByMonth(range: DateRange, runner: Runner = db())
  */
 export async function dispatchesByColour(range: DateRange, runner: Runner = db()): Promise<DispatchColourRow[]> {
   const tz = config.locale.timeZone;
+  const scope = partyScopeSql('o.party_id', range.tenantId, range.scope);
   const { rows } = await runner.raw<{ rows: Array<{ colour: string; box_count: string }> }>(
     `SELECT m.colour, SUM(-m.quantity_boxes) AS box_count
        FROM orders o
@@ -106,10 +118,10 @@ export async function dispatchesByColour(range: DateRange, runner: Runner = db()
       WHERE o.tenant_id = ?
         AND o.dispatched_at >= (?::timestamp AT TIME ZONE ?)
         AND o.dispatched_at <  (?::timestamp AT TIME ZONE ?)
-        AND o.deleted_at IS NULL
+        AND o.deleted_at IS NULL${scope.sql}
       GROUP BY m.colour
       ORDER BY box_count DESC`,
-    [range.tenantId, range.fromDate, tz, range.toDateExclusive, tz],
+    [range.tenantId, range.fromDate, tz, range.toDateExclusive, tz, ...scope.bindings],
   );
 
   return rows.map((row) => ({ colour: row.colour, boxCount: toNumber(row.box_count) ?? 0 }));
@@ -131,6 +143,7 @@ export interface LeadOutcomeRow {
  */
 export async function leadOutcomesByMonth(range: DateRange, runner: Runner = db()): Promise<LeadOutcomeRow[]> {
   const tz = config.locale.timeZone;
+  const scope = partyScopeSql('l.party_id', range.tenantId, range.scope);
   const { rows } = await runner.raw<{ rows: Array<{ month: string; outcome: LeadOutcomeRow['outcome']; count: string }> }>(
     `SELECT to_char(date_trunc('month', l.created_at AT TIME ZONE ?), 'YYYY-MM') AS month,
             CASE
@@ -145,9 +158,9 @@ export async function leadOutcomesByMonth(range: DateRange, runner: Runner = db(
       WHERE l.tenant_id = ?
         AND l.created_at >= (?::timestamp AT TIME ZONE ?)
         AND l.created_at <  (?::timestamp AT TIME ZONE ?)
-        AND l.deleted_at IS NULL
+        AND l.deleted_at IS NULL${scope.sql}
       GROUP BY 1, 2`,
-    [tz, tz, tz, QUIET_AFTER_DAYS, range.tenantId, range.fromDate, tz, range.toDateExclusive, tz],
+    [tz, tz, tz, QUIET_AFTER_DAYS, range.tenantId, range.fromDate, tz, range.toDateExclusive, tz, ...scope.bindings],
   );
 
   return rows.map((row) => ({ month: row.month, outcome: row.outcome, count: toNumber(row.count) ?? 0 }));
@@ -175,6 +188,7 @@ export async function topPartiesByValue(
   runner: Runner = db(),
 ): Promise<TopPartyRowInternal[]> {
   const tz = config.locale.timeZone;
+  const scope = partyScopeSql('o.party_id', range.tenantId, range.scope);
   const { rows } = await runner.raw<{
     rows: Array<{
       party_id: string;
@@ -192,11 +206,11 @@ export async function topPartiesByValue(
       WHERE o.tenant_id = ?
         AND o.dispatched_at >= (?::timestamp AT TIME ZONE ?)
         AND o.dispatched_at <  (?::timestamp AT TIME ZONE ?)
-        AND o.deleted_at IS NULL
+        AND o.deleted_at IS NULL${scope.sql}
       GROUP BY p.id, p.name, p.party_code, p.city
       ORDER BY total_value DESC
       LIMIT ?`,
-    [range.tenantId, range.fromDate, tz, range.toDateExclusive, tz, limit],
+    [range.tenantId, range.fromDate, tz, range.toDateExclusive, tz, ...scope.bindings, limit],
   );
 
   return rows.map((row) => ({
@@ -216,6 +230,7 @@ export async function topPartiesByOrderCount(
   runner: Runner = db(),
 ): Promise<TopPartyRowInternal[]> {
   const tz = config.locale.timeZone;
+  const scope = partyScopeSql('o.party_id', range.tenantId, range.scope);
   const { rows } = await runner.raw<{
     rows: Array<{
       party_id: string;
@@ -233,11 +248,11 @@ export async function topPartiesByOrderCount(
       WHERE o.tenant_id = ?
         AND o.dispatched_at >= (?::timestamp AT TIME ZONE ?)
         AND o.dispatched_at <  (?::timestamp AT TIME ZONE ?)
-        AND o.deleted_at IS NULL
+        AND o.deleted_at IS NULL${scope.sql}
       GROUP BY p.id, p.name, p.party_code, p.city
       ORDER BY order_count DESC
       LIMIT ?`,
-    [range.tenantId, range.fromDate, tz, range.toDateExclusive, tz, limit],
+    [range.tenantId, range.fromDate, tz, range.toDateExclusive, tz, ...scope.bindings, limit],
   );
 
   return rows.map((row) => ({
@@ -260,6 +275,7 @@ export interface TopCityRowInternal {
 /** `NULL` and blank collapse into one bucket (`city: null`) — the server never invents "Unknown". */
 export async function topPartiesByCity(range: DateRange, runner: Runner = db()): Promise<TopCityRowInternal[]> {
   const tz = config.locale.timeZone;
+  const scope = partyScopeSql('o.party_id', range.tenantId, range.scope);
   const { rows } = await runner.raw<{
     rows: Array<{ city: string | null; party_count: string; order_count: string; total_value: string }>;
   }>(
@@ -272,10 +288,10 @@ export async function topPartiesByCity(range: DateRange, runner: Runner = db()):
       WHERE o.tenant_id = ?
         AND o.dispatched_at >= (?::timestamp AT TIME ZONE ?)
         AND o.dispatched_at <  (?::timestamp AT TIME ZONE ?)
-        AND o.deleted_at IS NULL
+        AND o.deleted_at IS NULL${scope.sql}
       GROUP BY lower(btrim(COALESCE(p.city, '')))
       ORDER BY total_value DESC`,
-    [range.tenantId, range.fromDate, tz, range.toDateExclusive, tz],
+    [range.tenantId, range.fromDate, tz, range.toDateExclusive, tz, ...scope.bindings],
   );
 
   return rows.map((row) => ({

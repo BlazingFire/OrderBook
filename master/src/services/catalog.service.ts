@@ -7,6 +7,7 @@
 import type {
   BinBlocker,
   BinRestoreResult,
+  ListQuery,
   Paginated,
   Party,
   PartyInput,
@@ -19,6 +20,7 @@ import type {
 
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { clampPaging } from '../domain/paging.js';
+import { resolvePartyScope } from '../domain/party-scope.js';
 import { suggestRestoredName } from '../domain/recycle-bin.js';
 import {
   canEditRates,
@@ -35,19 +37,22 @@ import * as partyRepo from '../repositories/party.repository.js';
 import * as variantRepo from '../repositories/party-variant.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
 import { publishChange } from './change-bus.js';
+import { requirePartyAccess } from './party-access.service.js';
 
 const PAGING = { defaultLimit: 100, maxLimit: 500 };
 
 // --- Parties ---------------------------------------------------------------
 
 export async function listParties(
-  query: { search?: string; limit?: number; offset?: number },
+  query: ListQuery,
   actor: ActorContext,
 ): Promise<Paginated<Party>> {
   requirePermission(actor, 'parties.view');
   return partyRepo.listParties(actor.tenantId, {
     search: query.search,
     ...clampPaging(query, PAGING),
+    scope: resolvePartyScope(actor),
+    filter: query.scope,
   });
 }
 
@@ -91,6 +96,7 @@ export async function updateParty(
   actor: ActorContext,
 ): Promise<Party> {
   requirePermission(actor, 'parties.edit');
+  await requirePartyAccess(id, 'manage', actor);
 
   const name = input.name?.trim();
   if (!name) throw new ValidationError('validation.party.nameRequired');
@@ -125,6 +131,7 @@ export async function deleteParty(
   actor: ActorContext,
 ): Promise<{ id: string; deletedAt: string }> {
   requirePermission(actor, 'parties.delete');
+  await requirePartyAccess(id, 'manage', actor);
 
   const existing = await partyRepo.findPartyById(actor.tenantId, id);
   if (!existing) throw new NotFoundError('Party');
@@ -174,6 +181,10 @@ export async function restoreParty(
   renameTo: string | undefined,
 ): Promise<BinRestoreResult> {
   requirePermission(actor, 'parties.delete');
+  // Grants outlive a soft delete, so a restore is checked like any other write
+  // to the party — otherwise the Recycle Bin would be a way to put somebody
+  // else's party back into your own screens.
+  await requirePartyAccess(id, 'manage', actor);
 
   const existing = await partyRepo.findPartyById(actor.tenantId, id, db(), { includeDeleted: true });
   if (!existing) throw new NotFoundError('Party');
@@ -468,6 +479,9 @@ export async function listVariantsForParty(
   actor: ActorContext,
 ): Promise<PartyProductVariant[]> {
   requirePermission(actor, 'parties.view');
+  // A party variant is a negotiated price for one party, so it is exactly as
+  // private as the party it belongs to.
+  await requirePartyAccess(partyId, 'view', actor);
 
   const variants = await variantRepo.listForParty(actor.tenantId, partyId);
   const allowed = canSeeRates(actor);
@@ -483,6 +497,7 @@ export async function upsertVariant(
   if (!(await partyRepo.findPartyById(actor.tenantId, input.partyId))) {
     throw new NotFoundError('Party');
   }
+  await requirePartyAccess(input.partyId, 'manage', actor);
   if (!(await productRepo.findProductById(actor.tenantId, input.productId))) {
     throw new NotFoundError('Product');
   }
@@ -509,8 +524,8 @@ export async function upsertVariant(
   return maskVariant(variant, canSeeRates(actor));
 }
 
-export async function countParties(tenantId: string): Promise<number> {
-  return partyRepo.countParties(tenantId);
+export async function countParties(actor: ActorContext): Promise<number> {
+  return partyRepo.countParties(actor.tenantId, resolvePartyScope(actor));
 }
 
 export async function countProducts(tenantId: string): Promise<number> {

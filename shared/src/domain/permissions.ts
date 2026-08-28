@@ -138,6 +138,15 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
   // below — reading is available to every tier, on both panels; only
   // `fields.manage` is ceilinged.
   { key: 'fields.view', group: 'admin', labelToken: 'permission.fields.view' },
+
+  // Party Access. `party.accessAll` is the bypass — a holder sees every party
+  // and every lead, order, report row and log entry hanging off one. Without
+  // it a caller sees the parties nobody has claimed, plus the ones assigned to
+  // them. `party.assign` is the separate right to *change* those assignments,
+  // which is why they are two keys: a general manager can be given the whole
+  // picture without being given the power to redraw it.
+  { key: 'party.accessAll', group: 'admin', labelToken: 'permission.party.accessAll' },
+  { key: 'party.assign', group: 'admin', labelToken: 'permission.party.assign' },
 ] as const;
 
 // --- The frozen key list ---------------------------------------------------
@@ -219,6 +228,13 @@ const MINIMUM_TIER: Record<string, RoleTier> = {
   // a supervisor. Lowered from admin — an unattended Office Panel still falls
   // back to its office-tier role, so this never reaches an unattended panel.
   'fields.manage': 'management',
+
+  // Party Access. Seeing every party is a supervisor's view of the whole book,
+  // so an administrator may grant it to a senior manager; deciding who may see
+  // which party is the company's own governance and stays with administrators,
+  // which is what "changed in the admin login only" means in practice.
+  'party.accessAll': 'management',
+  'party.assign': 'admin',
 };
 
 /** The lowest tier permitted to hold a key. */

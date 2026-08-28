@@ -62,8 +62,20 @@ export class UnauthorizedError extends AppError {
  * than having to parse prose.
  */
 export class ForbiddenError extends AppError {
-  constructor(readonly permission: string) {
-    super('error.forbidden.missingPermission', { permission }, 403, 'forbidden', { permission });
+  /**
+   * `messageKey` overrides the generic "Missing permission: X" sentence for the
+   * refusals where naming the key alone would mislead. A row-level party
+   * refusal is the case that needed it: the caller *has* `leads.edit`, so
+   * telling them they are missing it sends them to an administrator who will
+   * look at the grid, find the box ticked, and have no idea what to change.
+   * `permission` still travels in `details` either way, so a client branching
+   * on it keeps working.
+   */
+  constructor(
+    readonly permission: string,
+    messageKey: MessageKey = 'error.forbidden.missingPermission',
+  ) {
+    super(messageKey, { permission }, 403, 'forbidden', { permission });
   }
 }
 

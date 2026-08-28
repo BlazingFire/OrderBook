@@ -29,6 +29,8 @@ import * as activityLogActorName from './20260310000000_activity_log_actor_name.
 import * as storagePermissionGrant from './20260311000000_storage_permission_grant.js';
 import * as officePanelAdministration from './20260312000000_office_panel_administration.js';
 import * as userAvatars from './20260312000000_user_avatars.js';
+import * as panelAppVersion from './20260313000000_panel_app_version.js';
+import * as partyAccess from './20260313000000_party_access.js';
 
 export interface Migration {
   name: string;
@@ -60,10 +62,22 @@ export const migrations: Migration[] = [
     ...officePanelAdministration,
   },
   { name: '20260312000000_user_avatars', ...userAvatars },
+  /*
+   * Restored, not new. `dev` ran this before the branches merged, and Knex
+   * refuses to start when a *completed* migration is missing from this list —
+   * so deleting it locked every pre-merge database out of its own data. Its
+   * `up` is a no-op on any database that met `20260312` first. See the file.
+   */
+  { name: '20260313000000_panel_app_version', ...panelAppVersion },
+  // Ascending, and deliberately *before* the reordered `20260309` below: Party
+  // Access grants its own two keys rather than relying on that one's frozen
+  // list, so there is no ordering dependency between them and no reason to add
+  // a second exception to the array's one rule.
+  { name: '20260313000000_party_access', ...partyAccess },
   // Stage 7 of `docs/backend-modules/` — last in the array, not last by
   // timestamp. Its `20260309` slot was reserved before `20260310`/`20260311`
   // were claimed by concurrent work; what matters is that it runs after every
-  // module that mints a key, and array order is what Knex follows here.
+  // module whose keys it grants, and array order is what Knex follows here.
   {
     name: '20260309000000_new_module_permission_grant',
     ...newModulePermissionGrant,

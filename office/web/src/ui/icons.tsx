@@ -13,6 +13,7 @@ export type IconName =
   | 'parties'
   | 'conflicts'
   | 'settings'
+  | 'shield'
   | 'collapse'
   | 'expand'
   | 'close'
@@ -45,6 +46,9 @@ const PATHS: Record<IconName, string> = {
   parties:
     'M5.5 6.5a2.5 2.5 0 1 0 0-.01M10.5 6.5a2.5 2.5 0 1 0 0-.01M2.5 13c.6-2.2 2-3.2 3.5-3.2M13.5 13c-.6-2.2-2-3.2-3.5-3.2',
   conflicts: 'M8 2.8L13.5 12.5H2.5zM8 6.8v2.6M8 11.6v.01',
+  // Copied from `master/web/src/ui/icons.tsx` — the two panels keep their own
+  // copy of `ui/`, so an icon added to one has to be added to the other.
+  shield: 'M8 2.2l4.8 1.9v3.6c0 2.9-1.9 4.8-4.8 6-2.9-1.2-4.8-3.1-4.8-6V4.1zM8 6v4M8 10h.01',
   settings: 'M3 5.5h10M3 10.5h10M5.5 4v3M10.5 9v3',
   collapse: 'M10 3L5 8l5 5',
   expand: 'M6 3l5 5-5 5',

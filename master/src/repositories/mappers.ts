@@ -166,7 +166,7 @@ export function mapRole(row: Row): Role {
  * statement, so a row with an id and nothing else would be a torn write, not a
  * state worth rendering.
  */
-function mapUserAvatar(row: Row): UserAvatar | null {
+export function mapUserAvatar(row: Row): UserAvatar | null {
   const id = row.avatar_id as string | null;
   if (!id) return null;
 

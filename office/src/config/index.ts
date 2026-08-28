@@ -15,8 +15,28 @@ import { loadEnvFiles } from '../lib/env-file.js';
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const repoRoot = path.resolve(packageRoot, '..');
 
-// See master/src/config/index.ts — same precedence, package file wins.
-loadEnvFiles(path.join(packageRoot, '.env'), path.join(repoRoot, '.env'));
+/**
+ * A writable overrides file, for settings this panel changes about itself at
+ * runtime — today only where its data lives, after a Master-triggered move.
+ *
+ * It cannot live in `packageRoot`: once this panel is installed under Program
+ * Files that directory is read-only, and the write would fail at exactly the
+ * moment somebody is watching a storage move. It cannot live inside `dataDir`
+ * either, for a subtler reason — it is the file that *says where dataDir is*,
+ * so putting it there would move the pointer along with the data and leave the
+ * next start looking in the old place.
+ *
+ * So: a fixed per-machine location, beside the default data directory rather
+ * than inside it. `ORDERBOOK_OFFICE_SETTINGS_FILE` is what the desktop shell
+ * sets when packaged; from source it stays in the package folder, exactly
+ * where it has always been.
+ */
+export const settingsFile = process.env.ORDERBOOK_OFFICE_SETTINGS_FILE
+  ? path.resolve(process.env.ORDERBOOK_OFFICE_SETTINGS_FILE)
+  : path.join(packageRoot, '.env');
+
+// See master/src/config/index.ts — same precedence, most specific file wins.
+loadEnvFiles(settingsFile, path.join(packageRoot, '.env'), path.join(repoRoot, '.env'));
 
 function intFromEnv(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -32,6 +52,7 @@ const dataDir = process.env.ORDERBOOK_OFFICE_DATA_DIR
 export const config = {
   packageRoot,
   dataDir,
+  settingsFile,
   /** Pairing credentials issued by the Master. */
   credentialsFile: path.join(dataDir, 'pairing.json'),
 

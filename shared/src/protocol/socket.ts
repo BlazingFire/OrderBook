@@ -60,6 +60,7 @@ import type {
   TopPartiesReport,
 } from '../domain/reports.js';
 import type {
+  AssignablePerson,
   ConflictResolutionInput,
   CursorPage,
   CustomFieldDefinitionInput,
@@ -85,6 +86,10 @@ import type {
   Paginated,
   PanelStoragePathInput,
   PanelStoragePathResult,
+  PartyAccessInput,
+  PartyAccessLevel,
+  PartyAccessQuery,
+  PartyAccessRow,
   PartyInput,
   PartyProductVariantInput,
   PipelineStageInput,
@@ -280,6 +285,30 @@ export interface SyncSnapshot {
   dashboard: DashboardSummary;
   /** What this panel's signed-in user may do, so the UI can hide what it must. */
   permissions: string[];
+  /**
+   * The signed-in person's own Party Access grants, for the parties in this
+   * snapshot. One field rather than two derived lists, because both things the
+   * UI needs fall out of it: which parties are theirs (the "My parties"
+   * toggle), and which of those they may read but not change (the Add Lead
+   * picker leaves those out).
+   *
+   * Optional, so a panel built against this field still reads a snapshot from
+   * an older Master. Absence means "no grants known", which fails in the
+   * *permissive* direction on purpose: the picker offers the party, the Master
+   * refuses if it must, and the person sees a reason — rather than an option
+   * they were entitled to disappearing with no explanation.
+   */
+  partyGrants?: Array<{ partyId: string; level: PartyAccessLevel }>;
+  /**
+   * The user this snapshot was scoped for, so a panel can tell whether the
+   * copy on its disk is still the right one for whoever is signed in now.
+   *
+   * It matters only offline. Online, signing in re-fetches the snapshot; with
+   * no Master to ask, a second person signing in on the same panel would
+   * otherwise be shown the first person's restricted parties — the easiest
+   * bypass of the whole feature there is. `null` for an unattended panel.
+   */
+  builtForUserId?: string | null;
   /** The Master's current HLC, folded into the panel's clock on receipt. */
   serverHlc: string;
   serverTime: string;
@@ -414,6 +443,21 @@ export interface ClientToServerEvents {
   'recycleBin:list': (query: RecycleBinQuery, ack: CommandAck<CursorPage<BinEntry>>) => void;
   'recycleBin:counts': (ack: CommandAck<BinCounts>) => void;
   'recycleBin:restore': (input: RestoreInput, ack: CommandAck<BinRestoreResult>) => void;
+
+  // --- Party Access ---------------------------------------------------------
+  // Reading needs `party.assign` or `party.accessAll`; writing needs
+  // `party.assign` (admin tier). Nothing here is queued offline, for the same
+  // reason as Fields below: a whole-set grant has no field-level merge, and
+  // merging two administrators' offline edits would produce a union neither
+  // approved.
+  'partyAccess:list': (query: PartyAccessQuery, ack: CommandAck<Paginated<PartyAccessRow>>) => void;
+  'partyAccess:forParty': (partyId: RecordId, ack: CommandAck<PartyAccessRow>) => void;
+  'partyAccess:people': (ack: CommandAck<AssignablePerson[]>) => void;
+  'partyAccess:export': (ack: CommandAck<{ csv: string; rowCount: number }>) => void;
+  'partyAccess:replace': (
+    payload: { partyId: RecordId; input: PartyAccessInput },
+    ack: CommandAck<PartyAccessRow>,
+  ) => void;
 
   // --- Fields (docs/backend-modules/04-API-CONTRACT.md §5) ------------------
   // Reading is `fields.view` (every tier); editing is `fields.manage`

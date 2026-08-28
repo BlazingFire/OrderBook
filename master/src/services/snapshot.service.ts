@@ -17,9 +17,11 @@ import type { SyncSnapshot } from '@orderbook/shared';
 import { actorCan, type ActorContext } from '../domain/actor.js';
 import * as customFieldRepo from '../repositories/custom-field.repository.js';
 import { currentHlc } from '../repositories/identity.repository.js';
+import * as partyAccessRepo from '../repositories/party-access.repository.js';
 import * as variantRepo from '../repositories/party-variant.repository.js';
 import * as pipelineRepo from '../repositories/pipeline.repository.js';
 import * as syncRepo from '../repositories/sync.repository.js';
+import { resolvePartyScope } from '../domain/party-scope.js';
 import { canSeeRates, maskVariant } from '../domain/visibility.js';
 import * as catalogService from './catalog.service.js';
 import * as dashboardService from './dashboard.service.js';
@@ -63,17 +65,34 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
     canInventory ? inventoryService.listStock({ limit: SNAPSHOT_LIMIT }, actor) : Promise.resolve([]),
   ]);
 
+  // The six collections above come from services that scope themselves. These
+  // two call repositories directly, so they have to be given the scope by hand
+  // — and both leak without it: a variant is another party's negotiated rate,
+  // and a conflict names the lead or order it belongs to.
+  const partyScope = resolvePartyScope(actor);
+
   const [variants, pipelines, optionLists, customFields, conflicts, serverHlc, dashboard] = await Promise.all([
-    variantRepo.listAll(actor.tenantId),
+    variantRepo.listAll(actor.tenantId, partyScope),
     pipelineRepo.listPipelines(actor.tenantId),
     customFieldRepo.listOptions(actor.tenantId),
     customFieldRepo.listDefinitions(actor.tenantId),
-    syncRepo.listConflicts(actor.tenantId, { limit: 100 }),
+    syncRepo.listConflicts(actor.tenantId, { limit: 100, scope: partyScope }),
     currentHlc(),
     dashboardService.getDashboardSummary(actor),
   ]);
 
   const allowed = canSeeRates(actor);
+
+  // This person's own Party Access grants over the parties above. The panel
+  // uses them for two things: the "My parties" toggle, and leaving a view-only
+  // party out of the Add Lead picker rather than offering one whose save the
+  // Master will refuse. The refusal still stands either way — this only stops
+  // the UI walking somebody into it.
+  const partyGrants = await partyAccessRepo.grantsForUser(
+    actor.tenantId,
+    partyScope.userId,
+    parties.map((party) => party.id),
+  );
 
   return {
     parties,
@@ -91,6 +110,8 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
     // Sent so the panel can hide controls it may not use. It is a UI courtesy,
     // never the enforcement — every mutation is checked again on arrival.
     permissions: [...(actor.permissions?.permissions ?? [])],
+    partyGrants,
+    builtForUserId: partyScope.userId,
     serverHlc,
     serverTime: new Date().toISOString(),
     serverVersion: appVersion(),

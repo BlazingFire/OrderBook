@@ -1,0 +1,55 @@
+# Windows setup file for the Office Panel.
+#
+# The shape that matters: the panel's server ships as **real files** under
+# `resources/panel`, not inside the asar. The server is spawned as its own Node
+# process and reads fonts, the built web bundle and (on the Master) 100 MB of
+# PostgreSQL binaries from disk — none of which works from inside an archive.
+# Only the small Electron shell goes in the asar.
+#
+# Nothing here writes to the data directory. That lives under %APPDATA%\OrderBook,
+# put there by the shell before the server starts, precisely so an upgrade or an
+# uninstall cannot touch a company's parties, leads and orders.
+appId: com.orderbook.office
+productName: OrderBook Office Panel
+copyright: OrderBook
+
+directories:
+  output: ../build/office
+  # `build/` is gitignored repo-wide, so the NSIS hook would never be committed.
+  buildResources: installer
+
+# Nothing here has native modules to rebuild, and the panel's own dependencies
+# ship as staged files rather than as an app `node_modules`. Both flags are off
+# because electron-builder otherwise runs `npm install --omit=dev` against this
+# workspace — which strips the repo's dev dependencies and breaks the next
+# `npm run build` on the developer's own machine. It did exactly that once.
+npmRebuild: false
+buildDependenciesFromSource: false
+
+files:
+  - electron/dist/**/*
+  - package.json
+
+extraResources:
+  - from: staging
+    to: panel
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  # Unsigned. Windows SmartScreen will warn until a certificate is bought and
+  # the build is signed with it — a purchase, not a code change.
+  signAndEditExecutable: false
+
+nsis:
+  oneClick: false
+  perMachine: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  # Never delete the data directory. An uninstall removes the program; the
+  # company's records are not the program's to take with it.
+  deleteAppDataOnUninstall: false
+  include: installer/installer.nsh
+  artifactName: OrderBook-Office-${version}-Setup.${ext}

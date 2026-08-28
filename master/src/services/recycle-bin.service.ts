@@ -19,6 +19,7 @@ import type {
 import { hasPermission, RECYCLE_BIN_ENTITIES, RESTORE_PERMISSION } from '@orderbook/shared';
 
 import { requirePermission, type ActorContext } from '../domain/actor.js';
+import { resolvePartyScope } from '../domain/party-scope.js';
 import { clampCursorLimit } from '../domain/cursor.js';
 import { decodeBinCursor, encodeBinCursor, visibleBinScopes } from '../domain/recycle-bin.js';
 import { ValidationError } from '../lib/errors.js';
@@ -59,6 +60,11 @@ export async function listBin(
     deletedBy: scopedTo === 'anyone' ? undefined : scopedTo,
     after,
     limit,
+    // The Bin already scopes to the caller's own deletions unless they hold
+    // `recycleBin.viewAll`; this narrows the lead/order/party branches again by
+    // party, so a `viewAll` holder still cannot read back somebody else's book
+    // through the one screen that lists deleted records from every table.
+    scope: resolvePartyScope(actor),
   });
 
   const names = await recycleBinRepo.deletedByNames(
@@ -104,6 +110,7 @@ export async function binCounts(actor: ActorContext): Promise<BinCounts> {
     actor.tenantId,
     visible,
     scopedTo === 'anyone' ? undefined : scopedTo,
+    resolvePartyScope(actor),
   );
 }
 

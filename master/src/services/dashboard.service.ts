@@ -10,6 +10,7 @@
 import type { DashboardSummary } from '@orderbook/shared';
 
 import { actorCan, type ActorContext } from '../domain/actor.js';
+import { resolvePartyScope } from '../domain/party-scope.js';
 import * as catalogService from './catalog.service.js';
 import * as conflictService from './conflict.service.js';
 import * as dashboardRepo from '../repositories/dashboard.repository.js';
@@ -25,16 +26,21 @@ export async function getDashboardSummary(actor: ActorContext): Promise<Dashboar
   const canInventory = actorCan(actor, 'inventory.view');
   const canSync = actorCan(actor, 'sync.resolveConflicts');
 
+  // Every lead/order/party figure below counts only what this person may see.
+  // A count is a disclosure: "you have 40 open orders" tells somebody exactly
+  // how much business sits on the parties they cannot open.
+  const scope = resolvePartyScope(actor);
+
   const [leadFigures, orderCount, openOrderCount, dispatchedThisWeekCount, partyCount, productCount, lowStockCount, pipelineBreakdown, openConflictCount, pendingSyncCount] =
     await Promise.all([
-      canLeads ? leadService.getDashboardCounts(actor.tenantId) : Promise.resolve(null),
-      canOrders ? orderService.countOrders(actor.tenantId) : Promise.resolve(null),
-      canOrders ? dashboardRepo.openOrderCount(actor.tenantId) : Promise.resolve(null),
-      canOrders ? dashboardRepo.dispatchedThisWeek(actor.tenantId) : Promise.resolve(null),
-      canParties ? catalogService.countParties(actor.tenantId) : Promise.resolve(null),
+      canLeads ? leadService.getDashboardCounts(actor) : Promise.resolve(null),
+      canOrders ? orderService.countOrders(actor) : Promise.resolve(null),
+      canOrders ? dashboardRepo.openOrderCount(actor.tenantId, scope) : Promise.resolve(null),
+      canOrders ? dashboardRepo.dispatchedThisWeek(actor.tenantId, scope) : Promise.resolve(null),
+      canParties ? catalogService.countParties(actor) : Promise.resolve(null),
       canProducts ? catalogService.countProducts(actor.tenantId) : Promise.resolve(null),
       canInventory ? inventoryService.countLowStock(actor.tenantId) : Promise.resolve(null),
-      canLeads ? dashboardRepo.leadCountsByStage(actor.tenantId) : Promise.resolve(null),
+      canLeads ? dashboardRepo.leadCountsByStage(actor.tenantId, scope) : Promise.resolve(null),
       canSync ? conflictService.countOpen(actor.tenantId) : Promise.resolve(null),
       canSync ? dashboardRepo.countRecentMutations(actor.tenantId) : Promise.resolve(null),
     ]);

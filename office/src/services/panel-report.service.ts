@@ -12,12 +12,11 @@
  * Master issued the session for in the first place.
  */
 
-import { readFileSync } from 'node:fs';
 import os from 'node:os';
-import path from 'node:path';
 import type { OfficePanelReportInput, PanelStoragePathInput, PanelStoragePathResult } from '@orderbook/shared';
 
 import { config } from '../config/index.js';
+import { appVersion } from '../lib/app-version.js';
 import {
   countFiles,
   directorySize,
@@ -43,8 +42,6 @@ const log = createLogger('panel-report');
  */
 const startedAt = new Date().toISOString();
 
-const appVersion = readAppVersion();
-
 export async function buildReport(): Promise<OfficePanelReportInput> {
   const current = paths();
 
@@ -63,7 +60,7 @@ export async function buildReport(): Promise<OfficePanelReportInput> {
     hostname: os.hostname(),
     platform: process.platform,
     osVersion: `${os.type()} ${os.release()}`,
-    appVersion,
+    appVersion: appVersion(),
     nodeVersion: process.version,
     dataDir: current.dataDir,
     imagesDir: current.imagesDir,
@@ -108,11 +105,3 @@ export async function moveStorage(input: PanelStoragePathInput): Promise<PanelSt
   }
 }
 
-function readAppVersion(): string {
-  try {
-    const raw = readFileSync(path.join(config.packageRoot, 'package.json'), 'utf8');
-    return (JSON.parse(raw) as { version?: string }).version ?? '0.0.0';
-  } catch {
-    return '0.0.0';
-  }
-}

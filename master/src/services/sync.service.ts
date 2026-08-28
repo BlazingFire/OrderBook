@@ -50,6 +50,8 @@ import {
 } from '@orderbook/shared';
 
 import { actorCan, type ActorContext } from '../domain/actor.js';
+import { UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
+import { requirePartyAccess } from './party-access.service.js';
 import { db } from '../db/knex.js';
 import { ForbiddenError, NotFoundError, toErrorMessage } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
@@ -361,6 +363,13 @@ async function mergeUpdate(
 
   if (!current) throw new NotFoundError(entity);
 
+  // Party Access, on the one write path that does not go through a service.
+  // `route()` delegates every other mutation kind to `leadService` /
+  // `orderService` / `catalogService`, which check for themselves; a merge
+  // writes columns directly, so without this an offline panel would be the way
+  // around the whole feature.
+  await assertMergeTargetAccessible(entity, current.values, id, actor);
+
   const columns = COLUMN_MAP[entity] as Record<string, string>;
   const fields = mutation.fields.filter((field) => field in columns);
 
@@ -380,6 +389,12 @@ async function mergeUpdate(
     const column = columns[field];
     if (!column) continue;
     patch[column] = JSON_COLUMNS.has(column) ? JSON.stringify(value ?? {}) : value;
+  }
+
+  // A merge that moves a lead or order onto another party has to clear that
+  // party too, or the move itself becomes the escape hatch.
+  if (typeof patch.party_id === 'string') {
+    await requirePartyAccess(patch.party_id, 'manage', actor);
   }
 
   await db().transaction(async (trx) => {
@@ -418,6 +433,29 @@ async function mergeUpdate(
   };
 }
 
+/**
+ * The party a merge target belongs to, and whether this caller may manage it.
+ *
+ * `product` is not party-scoped — a product belongs to the catalogue, not to a
+ * customer — so it passes through untouched rather than being given a
+ * meaningless check.
+ */
+async function assertMergeTargetAccessible(
+  entity: MergeableEntity,
+  values: Record<string, unknown>,
+  id: string,
+  actor: ActorContext,
+): Promise<void> {
+  if (entity === 'product') return;
+  if (entity === 'party') {
+    await requirePartyAccess(id, 'manage', actor);
+    return;
+  }
+
+  const partyId = values.partyId;
+  if (typeof partyId === 'string') await requirePartyAccess(partyId, 'manage', actor);
+}
+
 async function loadMergeTarget(
   entity: MergeableEntity,
   tenantId: string,
@@ -425,11 +463,11 @@ async function loadMergeTarget(
 ): Promise<{ values: Record<string, unknown>; fieldHlc: Record<string, string> } | null> {
   switch (entity) {
     case 'lead': {
-      const lead = await leadRepo.findLeadById(tenantId, id);
+      const lead = await leadRepo.findLeadById(tenantId, id, UNSCOPED_PARTY_ACCESS);
       return lead ? { values: lead as unknown as Record<string, unknown>, fieldHlc: lead.sync.fieldHlc } : null;
     }
     case 'order': {
-      const order = await orderRepo.findOrderById(tenantId, id);
+      const order = await orderRepo.findOrderById(tenantId, id, UNSCOPED_PARTY_ACCESS);
       return order ? { values: order as unknown as Record<string, unknown>, fieldHlc: order.sync.fieldHlc } : null;
     }
     case 'party': {
@@ -477,9 +515,9 @@ async function republish(
 ): Promise<void> {
   const payload =
     entity === 'lead'
-      ? await leadRepo.findLeadById(tenantId, id)
+      ? await leadRepo.findLeadById(tenantId, id, UNSCOPED_PARTY_ACCESS)
       : entity === 'order'
-        ? await orderRepo.findOrderById(tenantId, id)
+        ? await orderRepo.findOrderById(tenantId, id, UNSCOPED_PARTY_ACCESS)
         : entity === 'party'
           ? await partyRepo.findPartyById(tenantId, id)
           : await productRepo.findProductById(tenantId, id);

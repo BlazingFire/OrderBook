@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import type { Lead, LineItem, Order, Pipeline } from '@orderbook/shared';
+import type { Lead, LineItem, Order, PartyScopeFilter, Pipeline } from '@orderbook/shared';
 
 import { api } from '../api';
 import { formatDateTime, formatMoney } from '../format';
@@ -18,7 +18,8 @@ import { StatusPill } from '../ui/DataDisplay';
 import { DataTable, type DataTableColumn } from '../ui/DataTable';
 import { Select } from '../ui/Form';
 import { ConflictBanner, EmptyState, SkeletonRows } from '../ui/States';
-import { Tabs, type TabItem } from '../ui/Tabs';
+import { useFilterBar } from '../ui/FilterBarSlot';
+import { Segmented, Tabs, type TabItem } from '../ui/Tabs';
 
 type View = 'leads' | 'orders' | 'converted';
 
@@ -47,6 +48,13 @@ function summariseItems(items: LineItem[]): { text: string; title: string } {
 
 export function LeadsOrdersScreen({ revision }: Props) {
   const [view, setView] = useState<View>('leads');
+  /**
+   * "All" is everything this person may see — which, for somebody without
+   * `party.accessAll`, already excludes other people's parties, so it is never
+   * a way around the scope. "My parties" narrows further to the parties they
+   * are explicitly assigned to, hiding the unclaimed ones.
+   */
+  const [scope, setScope] = useState<PartyScopeFilter>('all');
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -65,10 +73,10 @@ export function LeadsOrdersScreen({ revision }: Props) {
     const load = async (): Promise<void> => {
       try {
         if (view === 'orders') {
-          const page = await api.orders();
+          const page = await api.orders({ scope });
           if (!cancelled) setOrders(page.items);
         } else {
-          const page = await api.leads({ includeConverted: view === 'converted' });
+          const page = await api.leads({ includeConverted: view === 'converted', scope });
           if (!cancelled) {
             setLeads(
               view === 'converted'
@@ -88,7 +96,7 @@ export function LeadsOrdersScreen({ revision }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [view, revision]);
+  }, [view, scope, revision]);
 
   const leadStages = pipelines.find((pipeline) => pipeline.kind === 'lead')?.stages ?? [];
   const orderStages = pipelines.find((pipeline) => pipeline.kind === 'order')?.stages ?? [];
@@ -104,6 +112,23 @@ export function LeadsOrdersScreen({ revision }: Props) {
       setBusyId(null);
     }
   }
+
+  /*
+   * The scope toggle lives in the shell's filter strip, beside where the other
+   * list filters go, rather than up beside the Tabs — it narrows the rows, which
+   * is what that strip is for, and crowding it against the tab group made two
+   * unrelated controls read as one segmented switch.
+   */
+  useFilterBar(
+    <Segmented<PartyScopeFilter>
+      value={scope}
+      onChange={setScope}
+      options={[
+        { value: 'all', label: t('partyAccess.scope.all') },
+        { value: 'assigned', label: t('partyAccess.scope.assigned') },
+      ]}
+    />,
+  );
 
   const tabItems: TabItem[] = [
     { id: 'leads', label: t('leadsOrders.tab.leads') },

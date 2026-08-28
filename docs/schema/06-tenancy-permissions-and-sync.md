@@ -92,6 +92,55 @@ Two kinds of permission live in the same column:
 
 ---
 
+## 2a. Party Access — row-level scoping
+
+Added by `20260313000000_party_access`. Module permissions answer "may this role see leads at all";
+this answers "may **this person** see *this* party's leads".
+
+```sql
+CREATE TABLE party_access (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id    UUID NOT NULL REFERENCES tenants(id),
+  party_id     TEXT NOT NULL REFERENCES parties(id),
+  user_id      TEXT NOT NULL,             -- no FK, deliberately
+  access_level TEXT NOT NULL CHECK (access_level IN ('view', 'manage')),
+  granted_by   TEXT,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX idx_party_access_unique ON party_access(tenant_id, party_id, user_id);
+CREATE INDEX idx_party_access_user  ON party_access(tenant_id, user_id);
+CREATE INDEX idx_party_access_party ON party_access(tenant_id, party_id);
+```
+
+**A party with no row here is open to everyone.** That is the rule the whole feature turns on, and
+the reason the migration backfills nothing: an installation looks exactly as it did the minute
+before, and only the parties an administrator actually assigns become restricted. The alternative —
+assignment mandatory — would empty every staff member's screens on upgrade day.
+
+`user_id` carries **no foreign key**, for the same reason `users.role_id` has none: users are
+soft-deleted and restorable, and a restored person must come back holding the parties they were
+assigned rather than having had those rows cascaded away. The service validates the account exists
+and is live when a grant is written.
+
+Two new capabilities, both in the `admin` group:
+
+| Key | Minimum tier | Meaning |
+|---|---|---|
+| `party.accessAll` | `management` | Bypasses every party scope. Held by admin roles; grantable to a senior manager. |
+| `party.assign` | `admin` | May edit the grants. |
+
+The predicate every read narrows by is *"nobody is assigned to this party **or** I am"*, written once
+in `master/src/repositories/party-access.repository.ts` (`applyPartyScope` for query builders,
+`partyScopeSql` for the hand-written SQL in search, the dashboard, reports and the recycle bin, and
+`partyScopeLogSql` for the activity log, where the subject is named indirectly by
+`(entity_type, entity_id)`). Writes go through `requirePartyAccess(partyId, 'manage', actor)` in the
+**service** layer, never a route guard — an Office Panel reaches the same functions over Socket.IO.
+
+Deliberately **not** scoped: inventory. Stock belongs to no party, and hiding the warehouse from the
+people who pick from it would be wrong rather than safe.
+
+---
+
 ## 3. Configurable pipelines
 
 ```sql

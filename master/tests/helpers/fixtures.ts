@@ -43,6 +43,9 @@ const DATA_TABLES = [
   'orders',
   'leads',
   'party_product_variants',
+  // Listed before `parties` so the FK is gone first, rather than relying on
+  // CASCADE. It is test data in every suite: no migration seeds a grant.
+  'party_access',
   'product_images',
   'products',
   'product_categories',

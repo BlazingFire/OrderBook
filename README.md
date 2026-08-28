@@ -78,3 +78,24 @@ Notes:
 
 If automatic connection is blocked on your network, the Office Panel's **Manual
 Connection** tab accepts the address and pairing password from step 1.
+
+## Building the installers
+
+```bash
+npm run release          # both panels, current version
+npm run release 1.1.0    # bump every package.json first
+npm run release -- --panel office
+```
+
+Setup files land in `C:\OrderBook-Releases\{master-panel,office-panel}\`
+alongside a `latest.json` carrying a SHA-256. Copy that folder to the Master PC
+and the distribution is done: the Master installs its own build from it, and
+every Office Panel pulls the office build from the Master over the LAN.
+
+`ORDERBOOK_RELEASES_DIR` overrides the location on both the build PC and the
+Master. Building needs internet once, for electron-builder's toolchain; the
+shipped apps never reach the internet.
+
+Data lives in `%APPDATA%\OrderBook\{master,office}`, outside the program
+folder, so installing a new build over an old one leaves every party, lead and
+order exactly where it was.

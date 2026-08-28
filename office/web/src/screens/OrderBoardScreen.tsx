@@ -12,7 +12,13 @@
  */
 
 import { useState } from 'react';
-import type { Order, PipelineStage, ReservationStatus } from '@orderbook/shared';
+import type {
+  Order,
+  PartyScopeFilter,
+  PipelineStage,
+  ReservationStatus,
+  SyncSnapshot,
+} from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
 import { formatDateTime, formatMoney } from '../format';
@@ -27,6 +33,7 @@ import { FilterChip, FilterDivider } from '../ui/FilterBar';
 import { useFilterBar } from '../ui/FilterBarSlot';
 import { FormField, NumberInput, Input, Select } from '../ui/Form';
 import { EmptyState } from '../ui/States';
+import { Segmented } from '../ui/Tabs';
 
 interface Props {
   view: LocalView;
@@ -65,20 +72,49 @@ const RESERVATION_TONE: Record<ReservationStatus, PillTone> = {
   released: 'default',
 };
 
+
+/**
+ * "My parties" — the leads or orders on parties explicitly assigned to the
+ * signed-in person.
+ *
+ * A narrowing of what is already on screen, never a widening: the snapshot the
+ * Master built for this person has already dropped everything they may not see,
+ * so this only hides the *unassigned* parties they can reach like everyone
+ * else. `partyGrants` absent (an older Master) leaves the list untouched.
+ */
+function onMyParties<T extends { partyId: string }>(
+  rows: T[],
+  grants: SyncSnapshot['partyGrants'],
+): T[] {
+  if (!grants) return rows;
+  const mine = new Set(grants.map((grant) => grant.partyId));
+  return rows.filter((row) => mine.has(row.partyId));
+}
+
 export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [stageFilter, setStageFilter] = useState<string | null>(null);
+  const [scope, setScope] = useState<PartyScopeFilter>('all');
   const colourHex = useColourHex(view.optionLists);
 
   const pipeline = view.pipelines.find((candidate) => candidate.kind === 'order');
   const stages = sortedStages(pipeline);
-  const orders = view.orders;
+  const orders = onMyParties(view.orders, scope === 'assigned' ? view.partyGrants : undefined);
   const openOrder = orders.find((order) => order.id === openId) ?? null;
 
   useFilterBar(
     pipeline ? (
       <>
+        <Segmented
+          options={[
+            { value: 'all' as const, label: t('partyAccess.scope.all') },
+            { value: 'assigned' as const, label: t('partyAccess.scope.assigned') },
+          ]}
+          value={scope}
+          onChange={setScope}
+        />
+        <FilterDivider />
         <FilterChip active={stageFilter === null} count={orders.length} onClick={() => setStageFilter(null)}>
           {t('orders.filter.allStages')}
         </FilterChip>

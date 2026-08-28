@@ -2,6 +2,7 @@
 
 import type {
   ActivityLogEntry,
+  DesktopBridge,
   ActivityLogFacets,
   ActivityLogQuery,
   BackupManifest,
@@ -41,6 +42,13 @@ import type {
   PanelStoragePathInput,
   PanelStoragePathResult,
   Party,
+  AssignablePerson,
+  PartyAccessInput,
+  PartyAccessQuery,
+  PartyAccessRow,
+  ReleaseManifest,
+  UpdateAvailability,
+  PartyScopeFilter,
   PartyInput,
   PartyProductVariant,
   Pipeline,
@@ -218,6 +226,17 @@ export interface FirstRunCredentials {
   port: number;
 }
 
+/**
+ * The desktop shell hosting this panel, or `null` in a plain browser tab.
+ *
+ * Absent is the normal case in development and whenever somebody opens this
+ * panel from another machine's browser, so a caller must have a path that does
+ * not need it — never a button that silently does nothing.
+ */
+export function desktopBridge(): DesktopBridge | null {
+  return (window as Window & { orderbook?: DesktopBridge }).orderbook ?? null;
+}
+
 export const api = {
   setupStatus: () => request<{ setupComplete: boolean }>('/api/setup/status'),
   /**
@@ -277,6 +296,37 @@ export const api = {
   pipelines: () => request<Pipeline[]>('/api/pipelines'),
   optionLists: () => request<OptionListItem[]>('/api/option-lists'),
   customFields: () => request<CustomFieldDefinition[]>('/api/custom-fields'),
+
+  // --- App update ----------------------------------------------------------
+
+  updateStatus: () =>
+    request<{ running: string; master: UpdateAvailability; office: UpdateAvailability }>(
+      '/api/updates/status',
+    ),
+  /** Verifies the setup file and returns its path; the shell runs it. */
+  prepareMasterUpdate: () =>
+    post<{ path: string; manifest: ReleaseManifest }>('/api/updates/master/install', {}),
+
+  // --- Party Access --------------------------------------------------------
+
+  partyAccess: (query: PartyAccessQuery = {}) => {
+    const params = new URLSearchParams();
+    if (query.search) params.set('search', query.search);
+    if (query.userId) params.set('userId', query.userId);
+    if (query.restriction) params.set('restriction', query.restriction);
+    if (query.limit) params.set('limit', String(query.limit));
+    if (query.offset) params.set('offset', String(query.offset));
+    const search = params.toString();
+    return request<Paginated<PartyAccessRow>>(`/api/party-access${search ? `?${search}` : ''}`);
+  },
+  partyAccessPeople: () => request<AssignablePerson[]>('/api/party-access/people'),
+  partyAccessFor: (partyId: string) => request<PartyAccessRow>(`/api/party-access/${partyId}`),
+  savePartyAccess: (partyId: string, input: PartyAccessInput) =>
+    request<PartyAccessRow>(`/api/party-access/${partyId}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  partyAccessExportUrl: () => '/api/party-access/export.csv',
 
   // --- Fields (management surface — the three reads above stay ungated) ----
 
@@ -380,10 +430,11 @@ export const api = {
 
   // Leads are read-only here: they are raised in the Office Panel, and the
   // Master's API has no create endpoint at all (docs/LEAD_GENERATION_FLOW.md §2).
-  leads: (options: { stageIds?: string[]; includeConverted?: boolean } = {}) => {
+  leads: (options: { stageIds?: string[]; includeConverted?: boolean; scope?: PartyScopeFilter } = {}) => {
     const params = new URLSearchParams();
     if (options.stageIds?.length) params.set('stageIds', options.stageIds.join(','));
     if (options.includeConverted) params.set('includeConverted', 'true');
+    if (options.scope === 'assigned') params.set('scope', 'assigned');
     const query = params.toString();
     return request<Paginated<Lead>>(`/api/leads${query ? `?${query}` : ''}`);
   },
@@ -396,9 +447,10 @@ export const api = {
     input: { dispatchAddressLabel?: string | null; expectedDispatchDate?: string | null } = {},
   ) => post<Order>(`/api/leads/${id}/convert`, input),
 
-  orders: (options: { stageIds?: string[] } = {}) => {
+  orders: (options: { stageIds?: string[]; scope?: PartyScopeFilter } = {}) => {
     const params = new URLSearchParams();
     if (options.stageIds?.length) params.set('stageIds', options.stageIds.join(','));
+    if (options.scope === 'assigned') params.set('scope', 'assigned');
     const query = params.toString();
     return request<Paginated<Order>>(`/api/orders${query ? `?${query}` : ''}`);
   },

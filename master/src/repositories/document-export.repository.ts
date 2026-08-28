@@ -17,6 +17,8 @@ import type { DocumentExport, DocumentSubjectKind, DocumentType } from '@orderbo
 import type { Knex } from 'knex';
 
 import { db } from '../db/knex.js';
+import type { PartyScope } from '../domain/party-scope.js';
+import { applyPartyScope } from './party-access.repository.js';
 import { toIso, toRequiredNumber } from './mappers.js';
 import type { TransactionContext } from './transaction.js';
 
@@ -67,6 +69,7 @@ const SELECT_WITH_LABELS = `
 `;
 
 export interface ExportListQuery {
+  scope: PartyScope;
   subjectKind?: DocumentSubjectKind;
   subjectId?: string;
   /** Exclusive upper bound — the feed reads newest-first. */
@@ -100,6 +103,10 @@ export async function listExports(
   if (query.subjectId) builder.andWhere('e.subject_id', query.subjectId);
   if (query.beforeId) builder.andWhere('e.id', '<', query.beforeId);
 
+  // A rendered document carries the subject's contents, so its ledger row is as
+  // private as the lead or order it was rendered from.
+  applyExportPartyScope(builder, tenantId, query.scope);
+
   const rows = await builder
     .orderBy('e.id', 'desc')
     .limit(query.limit)
@@ -111,32 +118,77 @@ export async function listExports(
 export async function findExportById(
   tenantId: string,
   id: string,
+  scope: PartyScope,
   runner: Runner = db(),
 ): Promise<DocumentExport | null> {
-  const row = await runner(`${TABLE} as e`)
+  const builder = runner(`${TABLE} as e`)
     .leftJoin('users as u', 'u.id', 'e.rendered_by_user_id')
     .where('e.tenant_id', tenantId)
     .andWhere('e.id', id)
-    .whereNull('e.deleted_at')
-    .first<Row>(runner.raw(SELECT_WITH_LABELS));
+    .whereNull('e.deleted_at');
 
+  applyExportPartyScope(builder, tenantId, scope);
+
+  const row = await builder.first<Row>(runner.raw(SELECT_WITH_LABELS));
   return row ? mapDocumentExport(row) : null;
 }
 
-/** The stored path and key, for the authenticated download route. */
+/**
+ * `document_exports` names its subject as `(subject_type, subject_id)`, so the
+ * lead or order has to be joined in a subquery before the party scope has a
+ * column to test.
+ */
+function applyExportPartyScope(
+  builder: Knex.QueryBuilder,
+  tenantId: string,
+  scope: PartyScope,
+): void {
+  if (scope.seesAll) return;
+
+  builder.where((outer) => {
+    for (const [kind, table] of [
+      ['lead', 'leads'],
+      ['order', 'orders'],
+    ] as const) {
+      outer.orWhere((branch) => {
+        branch.where('e.subject_type', kind).whereExists((sub) => {
+          const parent = sub
+            .select(db().raw('1'))
+            .from(`${table} as scoped_subject`)
+            .where('scoped_subject.tenant_id', tenantId)
+            .whereRaw('scoped_subject.id = e.subject_id');
+
+          return applyPartyScope(parent, tenantId, 'scoped_subject.party_id', scope, {
+            level: 'view',
+          });
+        });
+      });
+    }
+  });
+}
+
+/**
+ * The stored path and key, for the authenticated download route.
+ *
+ * Scoped like every other read of this table: the bytes on the other end are a
+ * rendering of the lead or order, so a download is the same disclosure as
+ * opening the record — and this is the path that hands over the actual file.
+ */
 export async function findExportFile(
   tenantId: string,
   id: string,
+  scope: PartyScope,
   runner: Runner = db(),
 ): Promise<{ storageKey: string; storagePath: string; subjectKind: DocumentSubjectKind } | null> {
-  const row = await runner(TABLE)
-    .where({ tenant_id: tenantId, id })
-    .whereNull('deleted_at')
-    .first<{ storage_key: string; storage_path: string; subject_type: string }>(
-      'storage_key',
-      'storage_path',
-      'subject_type',
-    );
+  const builder = runner(`${TABLE} as e`).where({ 'e.tenant_id': tenantId, 'e.id': id }).whereNull('e.deleted_at');
+
+  applyExportPartyScope(builder, tenantId, scope);
+
+  const row = await builder.first<{ storage_key: string; storage_path: string; subject_type: string }>(
+    'e.storage_key as storage_key',
+    'e.storage_path as storage_path',
+    'e.subject_type as subject_type',
+  );
 
   if (!row) return null;
   return {

@@ -19,19 +19,15 @@
  */
 
 import { gzipSync } from 'node:zlib';
-import { readFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
-import path from 'node:path';
 
 import { BACKUP_FORMAT_VERSION, type BackupExportRequest, type BackupManifest } from '@orderbook/shared';
 
-import { config } from '../config/index.js';
+import { appVersion } from '../lib/app-version.js';
 import { paths } from '../config/paths.js';
 import { assertPassphraseStrong } from '../domain/backup.js';
 import { deviceCode } from '../sync/device.js';
 import { encryptBackup } from '../lib/backup-crypto.js';
-
-const appVersion = readAppVersion();
 
 /**
  * Relative name -> absolute path, for every file a replica export can carry.
@@ -85,7 +81,7 @@ export async function exportBackup(request: BackupExportRequest): Promise<Export
     scope: request.scope,
     scopeDetail: officeScope,
     createdAt: new Date().toISOString(),
-    appVersion,
+    appVersion: appVersion(),
   };
 
   const data = await encryptBackup(manifestWithoutHash, payload, request.passphrase);
@@ -102,11 +98,3 @@ async function readJsonIfPresent(filePath: string): Promise<unknown> {
   }
 }
 
-function readAppVersion(): string {
-  try {
-    const raw = readFileSync(path.join(config.packageRoot, 'package.json'), 'utf8');
-    return (JSON.parse(raw) as { version?: string }).version ?? '0.0.0';
-  } catch {
-    return '0.0.0';
-  }
-}

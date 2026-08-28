@@ -148,8 +148,12 @@ export async function relocateDataDir(
   }
 
   // Written before the switch so a restart lands where this run just moved to.
-  // The panel's own `.env` wins over the repository one (`config/index.ts`).
-  await writeEnvValue(path.join(config.packageRoot, '.env'), 'ORDERBOOK_OFFICE_DATA_DIR', resolved);
+  //
+  // `config.settingsFile`, not `packageRoot/.env`: once this panel is installed
+  // under Program Files the package folder is read-only, and this write is the
+  // one that decides where the panel looks on its next start. Writing it
+  // somewhere unwritable would move the files and then forget it had.
+  await writeEnvValue(config.settingsFile, 'ORDERBOOK_OFFICE_DATA_DIR', resolved);
 
   relocatedTo = resolved;
   log.warn(`Storage moved to ${resolved} (${filesMoved} files, was ${previousDataDir})`);

@@ -7,6 +7,8 @@ import type { PartyProductVariant, PartyProductVariantInput } from '@orderbook/s
 import type { Knex } from 'knex';
 
 import { db } from '../db/knex.js';
+import type { PartyScope } from '../domain/party-scope.js';
+import { applyPartyScope } from './party-access.repository.js';
 import { allocatePermanentId } from './identity.repository.js';
 import { mapPartyProductVariant } from './mappers.js';
 import type { TransactionContext } from './transaction.js';
@@ -34,14 +36,24 @@ export async function listForParty(
  * build a party-wise line, and it cannot ask for one party's variants at that
  * point. The set is small — variants exist only where a price was negotiated.
  */
+/**
+ * Every variant the caller may see — scoped, because a variant is a negotiated
+ * price for one named party and is exactly as private as that party.
+ *
+ * This one is easy to miss: it feeds the Office Panel's offline snapshot
+ * directly rather than through a service, so an unscoped version would leave
+ * another party's rates sitting on a panel's disk no screen ever asked for.
+ */
 export async function listAll(
   tenantId: string,
+  scope: PartyScope,
   runner: Runner = db(),
 ): Promise<PartyProductVariant[]> {
-  const rows = await runner(TABLE)
-    .where({ tenant_id: tenantId })
-    .orderBy(['party_id', 'product_id'])
-    .select('*');
+  const query = runner(TABLE).where({ tenant_id: tenantId });
+
+  applyPartyScope(query, tenantId, `${TABLE}.party_id`, scope, { level: 'view' });
+
+  const rows = await query.orderBy(['party_id', 'product_id']).select('*');
   return rows.map(mapPartyProductVariant);
 }
 

@@ -236,6 +236,24 @@ export function CatalogScreen({
           return count > 0 ? `${count} ${count === 1 ? t('unit.product') : t('unit.products')}` : '—';
         },
       },
+      {
+        // Only ever three states, and only two are worth a pill. A party with
+        // no grant to this person is simply the ordinary case — everyone can
+        // reach it — so it renders as nothing rather than as "Open", which
+        // would put a badge on almost every row and say nothing.
+        key: 'access',
+        header: t('catalog.parties.column.access'),
+        width: '110px',
+        render: (party) => {
+          const grant = (view.partyGrants ?? []).find((entry) => entry.partyId === party.id);
+          if (!grant) return '';
+          return (
+            <StatusPill tone={grant.level === 'manage' ? 'accent' : 'default'}>
+              {grant.level === 'manage' ? t('partyAccess.level.manage') : t('partyAccess.level.view')}
+            </StatusPill>
+          );
+        },
+      },
     ];
 
     const openParty = view.parties.find((party) => party.id === openPartyId) ?? null;

@@ -23,16 +23,25 @@ let root: string;
 /**
  * `config` is mocked rather than driven through `ORDERBOOK_OFFICE_DATA_DIR`,
  * for one specific reason: a relocation persists the new folder into
- * `packageRoot/.env`, and the real `packageRoot` is `office/` in this
- * repository. A test that wrote there would leave every later `npm run
- * dev:office` pointed at a deleted temp directory.
+ * `config.settingsFile`, and the real one is `office/.env` in this repository.
+ * A test that wrote there would leave every later `npm run dev:office` pointed
+ * at a deleted temp directory.
  *
  * Fresh module registry per test as well — a relocation is process-wide state
  * that must not leak from one test into the next.
  */
 async function loadPaths() {
   vi.doMock('../src/config/index.js', () => ({
-    config: { dataDir, packageRoot: root, http: { port: 4200 }, hostname: 'test-pc' },
+    config: {
+      dataDir,
+      packageRoot: root,
+      // Beside the data directory, never inside it — this is the file that
+      // records *where* the data directory is, so a move must not carry it
+      // along and leave the next start looking in the old place.
+      settingsFile: path.join(root, 'office-settings.env'),
+      http: { port: 4200 },
+      hostname: 'test-pc',
+    },
   }));
 
   const paths = await import('../src/config/paths.js');
@@ -176,16 +185,31 @@ describe('refusing a move', () => {
 });
 
 describe('remembering the move across a restart', () => {
-  it('writes the folder into the panel’s own .env', async () => {
+  it('writes the folder into the panel’s own settings file', async () => {
     const { relocateDataDir } = await loadPaths();
     const target = path.join(root, 'moved');
 
     await relocateDataDir(target, { moveExisting: false });
 
-    // `root` is this test's stand-in for the panel's package directory — see
-    // `loadPaths` for why that is mocked rather than the real one.
-    const env = await fs.readFile(path.join(root, '.env'), 'utf8');
+    // `config.settingsFile`, not `packageRoot/.env`: under Program Files the
+    // package folder is read-only, and this write is what makes the move
+    // survive a restart.
+    const env = await fs.readFile(path.join(root, 'office-settings.env'), 'utf8');
     expect(env).toContain(`ORDERBOOK_OFFICE_DATA_DIR=${target}`);
+  });
+
+  it('keeps that settings file outside the folder it is moving', async () => {
+    const { relocateDataDir } = await loadPaths();
+    const target = path.join(root, 'moved');
+
+    await relocateDataDir(target, { moveExisting: true });
+
+    // The subtle one. If the file recording where the data lives were kept
+    // inside the data directory, moving the data would carry the pointer with
+    // it — and the next start would look in the old place, find nothing, and
+    // quietly begin again on an empty panel.
+    await expect(fs.stat(path.join(target, 'office-settings.env'))).rejects.toThrow();
+    await expect(fs.stat(path.join(root, 'office-settings.env'))).resolves.toBeTruthy();
   });
 });
 

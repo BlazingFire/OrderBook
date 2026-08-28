@@ -15,6 +15,7 @@ import type {
 } from '@orderbook/shared';
 
 import { requirePermission, type ActorContext } from '../domain/actor.js';
+import { resolvePartyScope } from '../domain/party-scope.js';
 import { clampLogPage, decodeLogCursor, encodeLogCursor } from '../domain/log-cursor.js';
 import { db } from '../db/knex.js';
 import { toCsv } from '../lib/csv.js';
@@ -58,6 +59,7 @@ export async function listLogs(
   const afterId = query.cursor ? decodeLogCursor(query.cursor) : undefined;
 
   const { entries, hasMore } = await activityLogRepo.listEntries(actor.tenantId, {
+    scope: resolvePartyScope(actor),
     actorType: query.actorType,
     actorId: query.actorId,
     entityType: query.entityType,
@@ -98,7 +100,11 @@ export async function listLogFacets(
 ): Promise<ActivityLogFacets> {
   requirePermission(actor, 'logs.view');
   assertDateRange(query.from, query.to);
-  return activityLogRepo.listFacets(actor.tenantId, { from: query.from, to: query.to });
+  return activityLogRepo.listFacets(actor.tenantId, {
+    from: query.from,
+    to: query.to,
+    scope: resolvePartyScope(actor),
+  });
 }
 
 export async function verifyLogChain(input: ChainVerifyInput, actor: ActorContext): Promise<ChainVerification> {
@@ -210,7 +216,16 @@ export async function exportLogs(
 
   for await (const batch of activityLogRepo.streamForExport(
     actor.tenantId,
-    { actorType: query.actorType, actorId: query.actorId, entityType: query.entityType, action: query.action, from: query.from, to: query.to, q: query.q },
+    {
+      scope: resolvePartyScope(actor),
+      actorType: query.actorType,
+      actorId: query.actorId,
+      entityType: query.entityType,
+      action: query.action,
+      from: query.from,
+      to: query.to,
+      q: query.q,
+    },
     EXPORT_BATCH_SIZE,
     EXPORT_HARD_CAP,
   )) {

@@ -8,17 +8,19 @@
  * dispatch address, expected date, weight, reservations.
  */
 
-import type { Order, OrderListQuery, Paginated } from '@orderbook/shared';
+import type { Order, OrderListQuery, Paginated, PartyScopeFilter } from '@orderbook/shared';
 import type { Knex } from 'knex';
 
 import { evaluateCompleteness } from '../domain/custom-fields.js';
 import type { LineSnapshot } from '../domain/line-items.js';
 import { computeTotalWeightKg, orderTotalAmount } from '../domain/line-items.js';
+import { UNSCOPED_PARTY_ACCESS, type PartyScope } from '../domain/party-scope.js';
 import { db } from '../db/knex.js';
 import * as customFields from './custom-field.repository.js';
 import { allocatePermanentId } from './identity.repository.js';
 import * as lineItems from './line-item.repository.js';
 import { firstCount, mapOrder } from './mappers.js';
+import { applyPartyScope } from './party-access.repository.js';
 import * as reservations from './reservation.repository.js';
 import * as timeline from './timeline.repository.js';
 import type { TransactionContext } from './transaction.js';
@@ -27,7 +29,13 @@ const TABLE = 'orders';
 
 type Runner = Knex | Knex.Transaction;
 
-function baseQuery(tenantId: string, runner: Runner = db(), options: { includeDeleted?: boolean } = {}) {
+/** `scope` is required for the same reason it is on leads — see that file. */
+function baseQuery(
+  tenantId: string,
+  scope: PartyScope,
+  runner: Runner = db(),
+  options: { includeDeleted?: boolean; filter?: PartyScopeFilter } = {},
+) {
   const query = runner(`${TABLE} as o`)
     .join('parties as pa', 'pa.id', 'o.party_id')
     .join('pipeline_stages as st', 'st.id', 'o.stage_id')
@@ -41,15 +49,17 @@ function baseQuery(tenantId: string, runner: Runner = db(), options: { includeDe
       'ow.display_name as owner_name',
     );
 
+  applyPartyScope(query, tenantId, 'o.party_id', scope, { level: 'view', filter: options.filter });
+
   if (!options.includeDeleted) query.whereNull('o.deleted_at');
   return query;
 }
 
 export async function listOrders(
   tenantId: string,
-  options: OrderListQuery & { limit: number; offset: number },
+  options: OrderListQuery & { limit: number; offset: number; partyScope: PartyScope },
 ): Promise<Paginated<Order>> {
-  const base = baseQuery(tenantId);
+  const base = baseQuery(tenantId, options.partyScope, db(), { filter: options.scope });
 
   if (options.stageIds?.length) base.whereIn('o.stage_id', options.stageIds);
   if (options.ownerId) base.where('o.owner_id', options.ownerId);
@@ -84,10 +94,11 @@ export async function listOrders(
 export async function findOrderById(
   tenantId: string,
   id: string,
+  scope: PartyScope,
   runner: Runner = db(),
   options: { includeDeleted?: boolean } = {},
 ): Promise<Order | null> {
-  const row = await baseQuery(tenantId, runner, options).where('o.id', id).first();
+  const row = await baseQuery(tenantId, scope, runner, options).where('o.id', id).first();
   if (!row) return null;
 
   const [order] = await hydrate(tenantId, [row], runner);
@@ -232,7 +243,11 @@ export async function softDeleteOrder(
       updated_at: trx.fn.now(),
     });
 
-  return updated ? findOrderById(tenantId, id, trx, { includeDeleted: true }) : null;
+  // Unscoped: the service already checked access before asking for this write,
+  // and refusing to read back a row we just wrote would report a phantom failure.
+  return updated
+    ? findOrderById(tenantId, id, UNSCOPED_PARTY_ACCESS, trx, { includeDeleted: true })
+    : null;
 }
 
 export async function restoreOrder(
@@ -253,13 +268,22 @@ export async function restoreOrder(
       updated_at: trx.fn.now(),
     });
 
-  return updated ? findOrderById(tenantId, id, trx, { includeDeleted: true }) : null;
+  // Unscoped: the service already checked access before asking for this write,
+  // and refusing to read back a row we just wrote would report a phantom failure.
+  return updated
+    ? findOrderById(tenantId, id, UNSCOPED_PARTY_ACCESS, trx, { includeDeleted: true })
+    : null;
 }
 
-export async function countOrders(tenantId: string, runner: Runner = db()): Promise<number> {
-  const rows = await runner(TABLE)
-    .where({ tenant_id: tenantId })
-    .whereNull('deleted_at')
-    .count<Array<{ count: string }>>('id as count');
+export async function countOrders(
+  tenantId: string,
+  scope: PartyScope,
+  runner: Runner = db(),
+): Promise<number> {
+  const query = runner(TABLE).where({ tenant_id: tenantId }).whereNull('deleted_at');
+
+  applyPartyScope(query, tenantId, `${TABLE}.party_id`, scope, { level: 'view' });
+
+  const rows = await query.count<Array<{ count: string }>>('id as count');
   return firstCount(rows);
 }

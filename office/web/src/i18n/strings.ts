@@ -58,6 +58,25 @@ const en: Record<string, string> = {
 
   // App update.
   'nav.updates': 'App update',
+  'updates.ahead': 'Newer than this Master',
+  'updates.readyLabel': 'Ready to install',
+  'updates.downloading': 'Getting it from the Master…',
+  'updates.panel.offerBody':
+    'Version {version} is waiting on the Master. Installing it copies the file to this PC first, so nothing depends on the network once it starts. Anything this panel has queued offline is kept.',
+  'updates.installNow': 'Install now',
+  'updates.verifying': 'Checking the file…',
+  'updates.launching': 'Starting the installer…',
+  'updates.dataStays':
+    'Your data stays exactly where it is. The setup replaces the program only — parties, leads, orders and settings are untouched.',
+  'updates.runByHand': 'The file is ready. Run it yourself from:',
+  'updates.launchRefused': 'Windows would not start the installer. Run the file yourself from the path above.',
+  'updates.installFailed': 'The update could not be prepared',
+  'updates.needsPermission': 'Ask an administrator to install this — it needs the "Manage settings" permission.',
+  'updates.noFolder': 'No releases folder on this PC yet, so there is nothing to install from.',
+  'updates.noRelease': 'The releases folder is there, but no build has been put in it yet.',
+  'updates.upToDateBody': 'This is the newest build in the releases folder. Nothing to do.',
+  'updates.officeReady':
+    'Office build {version} is ready on this Master. Each panel can install it from its own App update screen.',
   'updates.masterVersion': 'Master version',
   'updates.unknown': 'Unknown',
   'updates.upToDate': 'Up to date',
@@ -71,7 +90,7 @@ const en: Record<string, string> = {
   'updates.panel.matchBody':
     'This panel is on the same version as the Master. Nothing to do.',
   'updates.panel.behindBody':
-    'The Master is on {version}. This panel keeps working exactly as it does now — ask whoever looks after the Master to install the same build here when convenient.',
+    'The Master is on {version} and this panel is on an older build. Nothing is wrong — it keeps working and syncing exactly as it does now. When a matching build is published on the Master it will appear here to install.',
   'updates.panel.unknownBody':
     'This panel has not heard from the Master since it started, so it cannot say which version the Master is on. It will once the link is back.',
   'footer.designSystem': 'Design system',
@@ -529,6 +548,53 @@ const en: Record<string, string> = {
   'party.detail.leadsTitle': 'Recent leads',
   'party.detail.leads.none': 'No leads yet for this party.',
   'party.detail.editAction': 'Edit party',
+  'catalog.parties.column.access': 'My access',
+  'party.detail.accessTitle': 'Who can reach this party',
+  'party.detail.access.open':
+    'Nobody is assigned, so everyone with the right role can see and work this party.',
+  'party.detail.access.view': 'You can see this party and its records, but not change them.',
+  'party.detail.access.manage': 'This party is assigned to you. You can see and change its records.',
+
+  // --- Party Access ---------------------------------------------------------
+  'partyAccess.action.export': 'Export',
+  'partyAccess.action.save': 'Save',
+  'partyAccess.action.cancel': 'Cancel',
+  'partyAccess.summary': '{restricted} of {total} parties are restricted.',
+  'partyAccess.title': 'Party access',
+  'partyAccess.intro':
+    'A party nobody is assigned to is open to everyone. Assign someone and only they can reach it.',
+  'partyAccess.searchPlaceholder': 'Search parties',
+  'partyAccess.column.code': 'Code',
+  'partyAccess.column.party': 'Party',
+  'partyAccess.column.city': 'City',
+  'partyAccess.column.access': 'Access',
+  'partyAccess.column.assignedTo': 'Assigned to',
+  'partyAccess.open': 'Open',
+  'partyAccess.restricted': 'Restricted',
+  'partyAccess.everyone': 'Everyone',
+  'partyAccess.more': '+{count} more',
+  'partyAccess.filter.all': 'All',
+  'partyAccess.filter.open': 'Open',
+  'partyAccess.filter.restricted': 'Restricted',
+  'partyAccess.empty': 'No parties match this filter',
+  'partyAccess.level.view': 'View',
+  'partyAccess.level.manage': 'Manage',
+  'partyAccess.addPerson': 'Add a person',
+  'partyAccess.remove': 'Remove',
+  'partyAccess.reload': 'Reload',
+  'partyAccess.noAssignees': 'Nobody is assigned',
+  'partyAccess.explainOpen':
+    'Nobody is assigned, so everyone with the right role can see and work this party.',
+  'partyAccess.explainRestricted':
+    'Only the people below can see this party and its leads and orders. View can read; manage can also create and edit.',
+  'partyAccess.staleSave': 'Somebody else changed this party’s access first. Reload to see it.',
+  'partyAccess.error.load': 'Could not load party access',
+  'partyAccess.error.save': 'Could not save the assignments',
+  'partyAccess.scope.all': 'All parties',
+  'partyAccess.scope.assigned': 'My parties',
+  'nav.master.partyAccess': 'Party access',
+  'nav.partyAccess': 'Party access',
+
 };
 
 export function t(key: string, params?: Params): string {

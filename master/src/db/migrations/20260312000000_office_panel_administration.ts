@@ -20,24 +20,41 @@
 
 import type { Knex } from 'knex';
 
+/*
+ * Every `ADD COLUMN` carries `IF NOT EXISTS`, and `app_version` is the reason.
+ *
+ * `dev` shipped that one column separately as
+ * `20260313000000_panel_app_version` before the two branches were merged, so a
+ * database created on `dev` already has it while this migration has never run
+ * there. Without `IF NOT EXISTS` this fails on "column app_version already
+ * exists" and takes the other fourteen columns down with it — leaving the
+ * panel-administration screen reading columns that do not exist.
+ *
+ * Editing a migration that has already run elsewhere is normally forbidden, and
+ * this is the narrow case where it is safe: `IF NOT EXISTS` cannot change what
+ * happened on a database that already ran it (Knex never re-runs a recorded
+ * migration), and it is the only thing that lets a pre-merge database converge
+ * with a fresh one. The `down` below has always used `IF EXISTS`, so this only
+ * makes the two halves symmetric.
+ */
 export async function up(knex: Knex): Promise<void> {
   await knex.raw(`
     ALTER TABLE office_panels
-      ADD COLUMN notes              TEXT,
-      ADD COLUMN hostname           TEXT,
-      ADD COLUMN platform           TEXT,
-      ADD COLUMN os_version         TEXT,
-      ADD COLUMN app_version        TEXT,
-      ADD COLUMN node_version       TEXT,
-      ADD COLUMN data_dir           TEXT,
-      ADD COLUMN images_dir         TEXT,
-      ADD COLUMN storage_bytes      BIGINT,
-      ADD COLUMN disk_free_bytes    BIGINT,
-      ADD COLUMN disk_total_bytes   BIGINT,
-      ADD COLUMN local_port         INTEGER,
-      ADD COLUMN panel_started_at   TIMESTAMPTZ,
-      ADD COLUMN device_reported_at TIMESTAMPTZ,
-      ADD COLUMN secret_rotated_at  TIMESTAMPTZ;
+      ADD COLUMN IF NOT EXISTS notes              TEXT,
+      ADD COLUMN IF NOT EXISTS hostname           TEXT,
+      ADD COLUMN IF NOT EXISTS platform           TEXT,
+      ADD COLUMN IF NOT EXISTS os_version         TEXT,
+      ADD COLUMN IF NOT EXISTS app_version        TEXT,
+      ADD COLUMN IF NOT EXISTS node_version       TEXT,
+      ADD COLUMN IF NOT EXISTS data_dir           TEXT,
+      ADD COLUMN IF NOT EXISTS images_dir         TEXT,
+      ADD COLUMN IF NOT EXISTS storage_bytes      BIGINT,
+      ADD COLUMN IF NOT EXISTS disk_free_bytes    BIGINT,
+      ADD COLUMN IF NOT EXISTS disk_total_bytes   BIGINT,
+      ADD COLUMN IF NOT EXISTS local_port         INTEGER,
+      ADD COLUMN IF NOT EXISTS panel_started_at   TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS device_reported_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS secret_rotated_at  TIMESTAMPTZ;
   `);
 }
 

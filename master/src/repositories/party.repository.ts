@@ -2,12 +2,14 @@
  * Parties (customers). Syncable, so rows carry text ids and sync bookkeeping.
  */
 
-import type { Paginated, Party, PartyInput } from '@orderbook/shared';
+import type { Paginated, Party, PartyInput, PartyScopeFilter } from '@orderbook/shared';
 import type { Knex } from 'knex';
 
 import { db } from '../db/knex.js';
+import type { PartyScope } from '../domain/party-scope.js';
 import { allocatePermanentId } from './identity.repository.js';
 import { firstCount, mapParty } from './mappers.js';
+import { applyPartyScope } from './party-access.repository.js';
 import type { TransactionContext } from './transaction.js';
 
 const TABLE = 'parties';
@@ -16,9 +18,20 @@ type Runner = Knex | Knex.Transaction;
 
 export async function listParties(
   tenantId: string,
-  options: { search?: string; limit: number; offset: number },
+  options: {
+    search?: string;
+    limit: number;
+    offset: number;
+    scope: PartyScope;
+    filter?: PartyScopeFilter;
+  },
 ): Promise<Paginated<Party>> {
   const base = db()(TABLE).where({ tenant_id: tenantId, is_active: true }).whereNull('deleted_at');
+
+  applyPartyScope(base, tenantId, `${TABLE}.id`, options.scope, {
+    level: 'view',
+    filter: options.filter,
+  });
 
   if (options.search) {
     const pattern = `%${options.search}%`;
@@ -197,11 +210,14 @@ export async function updatePartyColumns(
     });
 }
 
-export async function countParties(tenantId: string): Promise<number> {
-  const rows = await db()(TABLE)
+export async function countParties(tenantId: string, scope: PartyScope): Promise<number> {
+  const query = db()(TABLE)
     .where({ tenant_id: tenantId, is_active: true })
-    .whereNull('deleted_at')
-    .count<Array<{ count: string }>>('id as count');
+    .whereNull('deleted_at');
+
+  applyPartyScope(query, tenantId, `${TABLE}.id`, scope, { level: 'view' });
+
+  const rows = await query.count<Array<{ count: string }>>('id as count');
   return firstCount(rows);
 }
 
@@ -248,4 +264,136 @@ function columnsFrom(input: PartyInput): Record<string, unknown> {
     notes: input.notes ?? null,
     custom_fields: JSON.stringify(input.customFields ?? {}),
   };
+}
+
+// --- Party Access ----------------------------------------------------------
+
+/** A party as the Party Access screen lists it — no scope, by design. */
+export interface PartyAccessListRow {
+  id: string;
+  partyCode: string;
+  name: string;
+  city: string | null;
+  version: number;
+}
+
+/**
+ * The party book as an administrator sees it.
+ *
+ * Deliberately **not** party-scoped: the caller has already been checked for
+ * `party.assign` or `party.accessAll`, and the whole purpose of the screen is
+ * to show the parties they are about to divide up. The `userId` and
+ * `restriction` filters are what narrow it.
+ */
+export async function listPartiesForAccess(
+  tenantId: string,
+  options: {
+    search?: string;
+    userId?: string;
+    restriction?: 'open' | 'restricted';
+    limit: number;
+    offset: number;
+  },
+): Promise<Paginated<PartyAccessListRow>> {
+  const base = db()(TABLE).where({ tenant_id: tenantId }).whereNull('deleted_at');
+
+  if (options.search) {
+    const pattern = `%${options.search}%`;
+    base.andWhere((builder) =>
+      builder
+        .whereILike('name', pattern)
+        .orWhereILike('phone', pattern)
+        .orWhereILike('party_code', pattern),
+    );
+  }
+
+  if (options.userId) {
+    base.whereExists((sub) =>
+      sub
+        .select(db().raw('1'))
+        .from('party_access as pac_f')
+        .where('pac_f.tenant_id', tenantId)
+        .where('pac_f.user_id', options.userId as string)
+        .whereRaw(`pac_f.party_id = ${TABLE}.id`),
+    );
+  }
+
+  if (options.restriction) {
+    const anyGrant = (sub: Knex.QueryBuilder): Knex.QueryBuilder =>
+      sub
+        .select(db().raw('1'))
+        .from('party_access as pac_r')
+        .where('pac_r.tenant_id', tenantId)
+        .whereRaw(`pac_r.party_id = ${TABLE}.id`);
+
+    if (options.restriction === 'restricted') base.whereExists(anyGrant);
+    else base.whereNotExists(anyGrant);
+  }
+
+  const countRows = await base.clone().clearOrder().count<Array<{ count: string }>>('id as count');
+  const rows = await base
+    .clone()
+    .orderBy('name', 'asc')
+    .limit(options.limit)
+    .offset(options.offset)
+    .select('id', 'party_code', 'name', 'city', 'version');
+
+  return {
+    items: rows.map((row: Record<string, unknown>) => ({
+      id: String(row.id),
+      partyCode: String(row.party_code),
+      name: String(row.name),
+      city: (row.city as string | null) ?? null,
+      version: Number(row.version),
+    })),
+    total: firstCount(countRows),
+    limit: options.limit,
+    offset: options.offset,
+  };
+}
+
+/**
+ * Take the party's row lock and read its version, inside the caller's
+ * transaction.
+ *
+ * `SELECT … FOR UPDATE` before comparing, rather than reading the version and
+ * then opening a transaction: the older entities in this codebase do the
+ * latter, which is a real check-then-act race under two concurrent saves. This
+ * follows what Fields already does (`fieldRepo.lockOptionListItem`).
+ */
+export async function lockParty(
+  tenantId: string,
+  id: string,
+  trx: TransactionContext,
+): Promise<{ id: string; name: string; version: number } | null> {
+  const row = await trx(TABLE)
+    .where({ tenant_id: tenantId, id })
+    .whereNull('deleted_at')
+    .forUpdate()
+    .first('id', 'name', 'version');
+
+  if (!row) return null;
+  return { id: String(row.id), name: String(row.name), version: Number(row.version) };
+}
+
+/**
+ * Bump the party's version and clock without touching a business field.
+ *
+ * Grants live in their own table, but they are approved as part of the party,
+ * so the party's version is what an optimistic save checks against — which
+ * only works if changing the grants moves it.
+ */
+export async function touchParty(
+  tenantId: string,
+  id: string,
+  hlc: string,
+  trx: TransactionContext,
+): Promise<void> {
+  await trx(TABLE)
+    .where({ tenant_id: tenantId, id })
+    .update({
+      version: trx.raw('version + 1'),
+      hlc,
+      updated_at: trx.fn.now(),
+    });
 }

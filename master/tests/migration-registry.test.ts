@@ -82,6 +82,72 @@ describe('the migration registry matches the directory', () => {
     expect(names.slice(-DELIBERATELY_LAST.length)).toEqual(DELIBERATELY_LAST);
   });
 
+  /**
+   * The one that actually bit, on 2026-08-27.
+   *
+   * `dev` shipped `20260313000000_panel_app_version`; `origin/main`
+   * independently added the same `office_panels.app_version` column inside
+   * `20260312000000_office_panel_administration`. The merge resolved the
+   * duplicate by **deleting the file** — which is right for a database created
+   * afterwards, and locks out every database created before it. Knex validates
+   * completed-against-source before it runs anything, so the Master would not
+   * boot at all:
+   *
+   *     The migration directory is corrupt, the following files are missing:
+   *     20260313000000_panel_app_version
+   *
+   * The shop's data was intact and unreachable. There is no automated way to
+   * know which migrations a *stranger's* database has already run, so this
+   * pins the names that are known to have shipped: deleting one of these files
+   * again turns this test red instead of turning somebody's Master into an
+   * error page.
+   *
+   * Add to this list when a migration reaches a real installation. Never
+   * remove from it.
+   */
+  const SHIPPED = [
+    '20260101000000_initial_schema',
+    '20260201000000_stock_movement_notes',
+    '20260301000000_tenancy_access_and_sync',
+    '20260302000000_lead_order_rebuild',
+    '20260303000000_roles_and_users',
+    '20260304000000_role_tier_ceiling_repair',
+    '20260305000000_soft_delete_columns',
+    '20260306000000_field_values_and_stage_ordering',
+    '20260307000000_product_images_pipeline',
+    '20260308000000_document_templates_and_exports',
+    '20260309000000_new_module_permission_grant',
+    '20260310000000_activity_log_actor_name',
+    '20260311000000_storage_permission_grant',
+    '20260312000000_office_panel_administration',
+    '20260312000000_user_avatars',
+    '20260313000000_panel_app_version',
+    '20260313000000_party_access',
+  ];
+
+  it('still lists every migration that has ever run on a real installation', () => {
+    const listed = new Set(namesInArray(registrySource()));
+
+    for (const name of SHIPPED) {
+      expect(listed.has(name), `${name} has shipped and must stay in the registry`).toBe(true);
+    }
+  });
+
+  /**
+   * Two files sharing a timestamp is survivable — Knex keys on the name, and
+   * this repo already carries two `20260312000000_*`. What is not survivable is
+   * two of them trying to create the same thing, which is how the pair above
+   * came to exist. A guard against the *timestamp* would be noise; this one
+   * checks the property that actually matters when a collision happens.
+   */
+  it('lets a duplicate timestamp coexist, since Knex keys on the whole name', () => {
+    const names = namesInArray(registrySource());
+    const timestamps = names.map((name) => name.slice(0, 14));
+
+    expect(new Set(timestamps).size).toBeLessThan(timestamps.length);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
   it('every filename on disk starts with a 14-digit timestamp', () => {
     for (const name of filesOnDisk()) {
       expect(name.slice(0, 14)).toMatch(/^\d{14}$/);

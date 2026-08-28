@@ -70,6 +70,7 @@ import * as partyRepo from '../repositories/party.repository.js';
 import * as templateRepo from '../repositories/document-template.repository.js';
 import { renderPdf } from '../pdf/renderer.js';
 import * as documentService from './document.service.js';
+import { resolvePartyScope } from '../domain/party-scope.js';
 import * as leadService from './lead.service.js';
 import * as orderService from './order.service.js';
 import * as setupService from './setup.service.js';
@@ -347,6 +348,7 @@ export async function listExports(
   const beforeId = query.cursor ? decodeExportCursor(query.cursor) : undefined;
 
   const rows = await exportRepo.listExports(actor.tenantId, {
+    scope: resolvePartyScope(actor),
     subjectKind: query.subjectKind,
     subjectId: query.subjectId,
     beforeId,
@@ -369,7 +371,7 @@ export async function listExports(
 export async function getExport(id: string, actor: ActorContext): Promise<DocumentExport> {
   requirePermission(actor, 'documents.view');
 
-  const row = await exportRepo.findExportById(actor.tenantId, id);
+  const row = await exportRepo.findExportById(actor.tenantId, id, resolvePartyScope(actor));
   // Another tenant's id answers 404, never 403 — a 403 confirms the id exists.
   if (!row) throw new NotFoundError('Document export');
 
@@ -383,7 +385,7 @@ export async function fetchExportFile(
 ): Promise<{ fileName: string; contentType: 'application/pdf'; bytes: Uint8Array }> {
   requirePermission(actor, 'documents.view');
 
-  const stored = await exportRepo.findExportFile(actor.tenantId, id);
+  const stored = await exportRepo.findExportFile(actor.tenantId, id, resolvePartyScope(actor));
   if (!stored) throw new NotFoundError('Document export');
 
   requirePermission(actor, viewKeyFor(stored.subjectKind));

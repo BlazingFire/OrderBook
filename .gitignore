@@ -3,6 +3,12 @@ dist/
 build/
 *.tsbuildinfo
 
+# Packaging output. `staging/` is the folder the setup file lays down,
+# `vendor/` is the 100 MB of PostgreSQL copied into it, and the setup files
+# themselves go to the releases folder outside this repo entirely.
+*/staging/
+master/vendor/
+
 # Runtime data — Postgres cluster, uploaded images, local panel credentials.
 # Never committed: this is per-installation state, not source.
 data/

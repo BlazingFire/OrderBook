@@ -4,17 +4,19 @@
  * (docs/LEAD_GENERATION_FLOW.md §5.1).
  */
 
-import type { Lead, LeadListQuery, Paginated } from '@orderbook/shared';
+import type { Lead, LeadListQuery, Paginated, PartyScopeFilter } from '@orderbook/shared';
 import type { Knex } from 'knex';
 
 import { evaluateCompleteness } from '../domain/custom-fields.js';
 import type { LineSnapshot } from '../domain/line-items.js';
 import { orderTotalAmount } from '../domain/line-items.js';
+import { UNSCOPED_PARTY_ACCESS, type PartyScope } from '../domain/party-scope.js';
 import { db } from '../db/knex.js';
 import * as customFields from './custom-field.repository.js';
 import { allocatePermanentId } from './identity.repository.js';
 import * as lineItems from './line-item.repository.js';
 import { firstCount, mapLead } from './mappers.js';
+import { applyPartyScope } from './party-access.repository.js';
 import * as timeline from './timeline.repository.js';
 import type { TransactionContext } from './transaction.js';
 
@@ -22,7 +24,20 @@ const TABLE = 'leads';
 
 type Runner = Knex | Knex.Transaction;
 
-function baseQuery(tenantId: string, runner: Runner = db(), options: { includeDeleted?: boolean } = {}) {
+/**
+ * `scope` is required, not optional. Every read of a lead goes through here, so
+ * this is the one place the party scope has to hold — and an optional
+ * parameter would let any caller disable it by omission, which is exactly how
+ * `expectedVersion` came to be unenforced everywhere it mattered. Internal
+ * reads that legitimately need the row regardless pass `UNSCOPED_PARTY_ACCESS`
+ * and say so.
+ */
+function baseQuery(
+  tenantId: string,
+  scope: PartyScope,
+  runner: Runner = db(),
+  options: { includeDeleted?: boolean; filter?: PartyScopeFilter } = {},
+) {
   const query = runner(`${TABLE} as l`)
     .join('parties as pa', 'pa.id', 'l.party_id')
     .join('pipeline_stages as st', 'st.id', 'l.stage_id')
@@ -36,15 +51,17 @@ function baseQuery(tenantId: string, runner: Runner = db(), options: { includeDe
       'ow.display_name as owner_name',
     );
 
+  applyPartyScope(query, tenantId, 'l.party_id', scope, { level: 'view', filter: options.filter });
+
   if (!options.includeDeleted) query.whereNull('l.deleted_at');
   return query;
 }
 
 export async function listLeads(
   tenantId: string,
-  options: LeadListQuery & { limit: number; offset: number },
+  options: LeadListQuery & { limit: number; offset: number; partyScope: PartyScope },
 ): Promise<Paginated<Lead>> {
-  const base = baseQuery(tenantId);
+  const base = baseQuery(tenantId, options.partyScope, db(), { filter: options.scope });
 
   if (options.stageIds?.length) base.whereIn('l.stage_id', options.stageIds);
   if (options.ownerId) base.where('l.owner_id', options.ownerId);
@@ -87,10 +104,11 @@ export async function listLeads(
 export async function findLeadById(
   tenantId: string,
   id: string,
+  scope: PartyScope,
   runner: Runner = db(),
   options: { includeDeleted?: boolean } = {},
 ): Promise<Lead | null> {
-  const row = await baseQuery(tenantId, runner, options).where('l.id', id).first();
+  const row = await baseQuery(tenantId, scope, runner, options).where('l.id', id).first();
   if (!row) return null;
 
   const [lead] = await hydrate(tenantId, [row], runner);
@@ -256,7 +274,11 @@ export async function softDeleteLead(
       updated_at: trx.fn.now(),
     });
 
-  return updated ? findLeadById(tenantId, id, trx, { includeDeleted: true }) : null;
+  // Unscoped: the service checked access before this write, and refusing to
+  // read back a row we just wrote would report a phantom failure.
+  return updated
+    ? findLeadById(tenantId, id, UNSCOPED_PARTY_ACCESS, trx, { includeDeleted: true })
+    : null;
 }
 
 export async function restoreLead(
@@ -277,28 +299,43 @@ export async function restoreLead(
       updated_at: trx.fn.now(),
     });
 
-  return updated ? findLeadById(tenantId, id, trx, { includeDeleted: true }) : null;
+  // Unscoped: the service checked access before this write, and refusing to
+  // read back a row we just wrote would report a phantom failure.
+  return updated
+    ? findLeadById(tenantId, id, UNSCOPED_PARTY_ACCESS, trx, { includeDeleted: true })
+    : null;
 }
 
-export async function countOpenLeads(tenantId: string, runner: Runner = db()): Promise<number> {
-  const rows = await runner(TABLE)
+export async function countOpenLeads(
+  tenantId: string,
+  scope: PartyScope,
+  runner: Runner = db(),
+): Promise<number> {
+  const query = runner(TABLE)
     .where({ tenant_id: tenantId })
     .whereNull('converted_order_id')
-    .whereNull('deleted_at')
-    .count<Array<{ count: string }>>('id as count');
+    .whereNull('deleted_at');
+
+  applyPartyScope(query, tenantId, `${TABLE}.party_id`, scope, { level: 'view' });
+
+  const rows = await query.count<Array<{ count: string }>>('id as count');
   return firstCount(rows);
 }
 
 export async function countFollowUpsDue(
   tenantId: string,
+  scope: PartyScope,
   runner: Runner = db(),
 ): Promise<number> {
-  const rows = await runner(TABLE)
+  const query = runner(TABLE)
     .where({ tenant_id: tenantId })
     .whereNull('converted_order_id')
     .whereNull('deleted_at')
     .whereNotNull('follow_up_date')
-    .andWhere('follow_up_date', '<=', runner.fn.now())
-    .count<Array<{ count: string }>>('id as count');
+    .andWhere('follow_up_date', '<=', runner.fn.now());
+
+  applyPartyScope(query, tenantId, `${TABLE}.party_id`, scope, { level: 'view' });
+
+  const rows = await query.count<Array<{ count: string }>>('id as count');
   return firstCount(rows);
 }

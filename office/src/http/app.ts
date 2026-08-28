@@ -38,6 +38,8 @@ import * as backupRestoreService from '../services/backup-restore.service.js';
 import { RestoreError } from '../services/backup-restore.service.js';
 import { loadCredentials } from '../services/credentials.store.js';
 import { PairingError, pairAutomatically, pairManually, scanForMasters } from '../services/pairing.service.js';
+import * as updateService from '../services/update.service.js';
+import { UpdateError } from '../services/update.service.js';
 import * as userSession from '../services/user-session.service.js';
 import { nextTemporaryId, refreshAfterPairing } from '../sync/device.js';
 import * as localStore from '../sync/local-store.js';
@@ -56,6 +58,28 @@ const backupUpload = multer({ storage: multer.memoryStorage(), limits: { fileSiz
 export function createApp(): Express {
   const app = express();
   app.use(express.json({ limit: '1mb' }));
+
+  /*
+   * The desktop shell's readiness probe — see `office/electron/main.ts`.
+   *
+   * Mounted first, and deliberately above the `requireUser` gate further down:
+   * the shell polls this before anyone has signed in, so a guarded route would
+   * answer 401 for ever and the shell would sit on its splash until the timeout
+   * and then declare a server that is in fact running to be dead.
+   *
+   * The `boot` key mirrors the Master's `boot-app.ts` contract so one shell can
+   * read both panels. This panel has no cluster to build and nothing to migrate,
+   * so it is ready the moment it is listening — there is no `starting` state to
+   * report, only the shape.
+   */
+  app.get('/api/health', (_req, res) => {
+    res.json({
+      status: 'ok',
+      boot: { state: 'ready', step: 'Ready', message: null, detail: null },
+      hasNetworkLink: hasNetworkLink(),
+      port: config.http.port,
+    });
+  });
 
   // --- Connection screen ---
 
@@ -448,6 +472,67 @@ export function createApp(): Express {
   app.get('/api/recycle-bin/counts', (_req, res) => forward(res, 'recycleBin:counts'));
   app.post('/api/recycle-bin/restore', (req, res) => forward(res, 'recycleBin:restore', req.body));
 
+  // Party Access. Forwarded live and failing hard offline, for the same reason
+  // as Fields below: a grant set is company-wide configuration approved as a
+  // whole, with no field-level merge to fall back on, so two administrators
+  // editing it offline would merge into a union neither of them approved.
+  app.get('/api/party-access', (req, res) =>
+    forward(res, 'partyAccess:list', {
+      search: typeof req.query.search === 'string' ? req.query.search : undefined,
+      userId: typeof req.query.userId === 'string' ? req.query.userId : undefined,
+      restriction:
+        req.query.restriction === 'open' || req.query.restriction === 'restricted'
+          ? req.query.restriction
+          : undefined,
+      limit: req.query.limit ? Number(req.query.limit) : undefined,
+      offset: req.query.offset ? Number(req.query.offset) : undefined,
+    }),
+  );
+  // --- App update ----------------------------------------------------------
+  // Asks the Master directly over HTTP rather than through `forward`: the
+  // download is a 100 MB stream, and the metadata call has to work before
+  // anybody is signed in so the screen can say what is on offer.
+
+  app.get('/api/updates/available', requireUser, (_req, res) => {
+    void updateService
+      .availableUpdate()
+      .then((availability) => res.json(availability))
+      .catch((error: unknown) => respondToUpdateFailure(res, error));
+  });
+
+  /**
+   * Downloads and verifies, then hands back a path. Running it is the desktop
+   * shell's job — this process is the one being replaced.
+   */
+  app.post('/api/updates/download', requireUser, (_req, res) => {
+    if (!userSession.can('settings.manage')) {
+      res.status(403).json({
+        error: 'forbidden',
+        message: 'Missing permission: settings.manage',
+        details: { permission: 'settings.manage' },
+      });
+      return;
+    }
+
+    void updateService
+      .downloadUpdate()
+      .then((result) => res.json(result))
+      .catch((error: unknown) => respondToUpdateFailure(res, error));
+  });
+
+  app.get('/api/party-access/people', (_req, res) => forward(res, 'partyAccess:people'));
+  // Through `forwardCsv`, the same path Logs and Reports already take, so this
+  // panel serves the file rather than needing a download route of its own.
+  app.get('/api/party-access/export.csv', (_req, res) =>
+    forwardCsv(res, 'partyAccess:export', undefined, 'party-access.csv'),
+  );
+  app.get('/api/party-access/:partyId', (req, res) =>
+    forward(res, 'partyAccess:forParty', req.params.partyId),
+  );
+  app.put('/api/party-access/:partyId', (req, res) =>
+    forward(res, 'partyAccess:replace', { partyId: req.params.partyId, input: req.body }),
+  );
+
   // Fields (docs/backend-modules/04-API-CONTRACT.md §5). Forwarded live and
   // failing hard offline, like every other module in this batch — a curated
   // list is company-wide configuration, and two disconnected panels editing
@@ -738,7 +823,30 @@ export function createApp(): Express {
     });
   });
 
+  /*
+   * Mirrors `master/src/http/app.ts`. Without these, an unmatched `/api` path
+   * fell through to Express's built-in HTML 404 — which `response.json()` in
+   * both the browser client and the desktop shell parses as a thrown error
+   * rather than a status, turning "no such endpoint" into "the panel is
+   * broken".
+   */
+  app.use('/api', notFoundHandler);
+  app.use(errorHandler);
+
   return app;
+}
+
+function notFoundHandler(_req: Request, res: Response): void {
+  res
+    .status(404)
+    .json({ error: 'not_found', message: 'Endpoint not found', messageKey: 'error.generic.notFound' });
+}
+
+function errorHandler(error: unknown, _req: Request, res: Response, _next: NextFunction): void {
+  log.error('Unhandled request error', error);
+  res
+    .status(500)
+    .json({ error: 'internal_error', message: 'Something went wrong', messageKey: 'error.generic.internal' });
 }
 
 /**
@@ -900,20 +1008,67 @@ export const SNAPSHOT_POLICY: Record<keyof SyncSnapshot, SnapshotPolicy> = {
   serverHlc: 'passthrough',
   serverTime: 'passthrough',
   serverVersion: 'passthrough',
+  // Already computed per-actor by the Master, exactly like `permissions` and
+  // `dashboard`. This panel re-masks a cached snapshot for whoever is signed in
+  // *now*, but it cannot recompute a Party Access grant it was never told
+  // about, so a stale value here is why the snapshot is re-fetched on sign-in.
+  // Both are computed per-actor by the Master. `forCurrentUser` uses them
+  // together to decide whether a cached snapshot still belongs to whoever is
+  // signed in — see `withoutAnotherPersonsParties` below.
+  partyGrants: 'gate',
+  builtForUserId: 'passthrough',
 };
+
+/**
+ * Drop the restricted parties from a snapshot that was scoped for somebody
+ * else, and everything hanging off them.
+ *
+ * Only reachable offline: signing in online re-fetches the snapshot for the new
+ * person. Offline there is nobody to ask, and without this the second person to
+ * sign in on a panel would be shown the first person's restricted parties —
+ * which is the easiest way around the whole feature there is.
+ *
+ * What survives is the parties the previous person held **no grant** on. Those
+ * are the ones open to everyone: a party restricted to somebody else never
+ * entered this snapshot at all, so a party that is here and ungranted is
+ * unassigned, and unassigned means open. The new person may well hold grants of
+ * their own on parties dropped here — they get them back on reconnect, which is
+ * the right way round to be wrong.
+ */
+function withoutAnotherPersonsParties(view: LocalView): LocalView {
+  const signedInAs = userSession.currentSession()?.userId ?? null;
+
+  // Same person, or a Master too old to say — nothing to withhold. `undefined`
+  // stays permissive on purpose: an older Master sent no restricted parties in
+  // the first place, because it had no such concept.
+  if (view.builtForUserId === undefined || view.builtForUserId === signedInAs) return view;
+
+  const restricted = new Set((view.partyGrants ?? []).map((grant) => grant.partyId));
+  if (restricted.size === 0) return { ...view, partyGrants: [] };
+
+  return {
+    ...view,
+    partyGrants: [],
+    parties: view.parties.filter((party) => !restricted.has(party.id)),
+    leads: view.leads.filter((lead) => !restricted.has(lead.partyId)),
+    orders: view.orders.filter((order) => !restricted.has(order.partyId)),
+    partyVariants: view.partyVariants.filter((variant) => !restricted.has(variant.partyId)),
+  };
+}
 
 function forCurrentUser(view: LocalView): LocalView {
   const permissions = userSession.sessionPermissions();
   const allowed = permissions.includes('field.saleRate.view');
+  const scoped = withoutAnotherPersonsParties(view);
 
   return {
-    ...view,
+    ...scoped,
     permissions,
-    leads: view.leads.map((lead) => maskLead(lead, allowed)),
-    orders: view.orders.map((order) => maskOrder(order, allowed)),
-    products: view.products.map((product) => maskProduct(product, allowed)),
-    partyVariants: view.partyVariants.map((variant) => maskVariant(variant, allowed)),
-    dashboard: filterDashboardForCurrentUser(view.dashboard, permissions),
+    leads: scoped.leads.map((lead) => maskLead(lead, allowed)),
+    orders: scoped.orders.map((order) => maskOrder(order, allowed)),
+    products: scoped.products.map((product) => maskProduct(product, allowed)),
+    partyVariants: scoped.partyVariants.map((variant) => maskVariant(variant, allowed)),
+    dashboard: filterDashboardForCurrentUser(scoped.dashboard, permissions),
   };
 }
 
@@ -940,6 +1095,27 @@ function maskChangeEvent(event: DataChangedEvent): DataChangedEvent {
     default:
       return event;
   }
+}
+
+/**
+ * An update failure, told apart by what a person can do about it.
+ *
+ * `unreachable` is a 503 for the same reason `forward` uses one: "the Master is
+ * not there" is a wait-and-retry, and collapsing it into the same 502 as "the
+ * file was corrupt" would have somebody re-copying a perfectly good installer
+ * because the network was down.
+ */
+function respondToUpdateFailure(res: Response, error: unknown): void {
+  if (error instanceof UpdateError) {
+    const status = error.code === 'unreachable' || error.code === 'unpaired' ? 503 : 400;
+    res.status(status).json({ error: error.code, message: error.message });
+    return;
+  }
+
+  res.status(500).json({
+    error: 'update_failed',
+    message: error instanceof Error ? error.message : 'The update could not be prepared',
+  });
 }
 
 /**

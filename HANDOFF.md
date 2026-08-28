@@ -1453,8 +1453,289 @@ in the order the plan lists them:
   live storage-path move are still open, and need `3-ARCHITECTURE.md` §10
   before either is built for real.)
 
+- **Party Access — per-party visibility and management scoping: done**
+  (2026-08-27), migration `20260313000000_party_access`. Until now every user
+  holding `leads.view` saw every lead in the company; the only row-level
+  scoping anywhere was the Recycle Bin's `deleted_by` filter. An administrator
+  can now divide the party book between staff.
+
+  **The rule the whole feature turns on: a party with nobody assigned is open
+  to everyone.** Assigning the first person makes it restricted; removing the
+  last one opens it again. That is why the migration backfills nothing — an
+  installation looks exactly as it did the minute before. The inverse design
+  (assignment mandatory) would have emptied every staff screen on upgrade day.
+
+  Two levels per assignment. *View* is a window — the party and its leads and
+  orders are visible, nothing can be changed. *Manage* adds raising a lead,
+  editing, converting and dispatching. Both stay bounded by the person's own
+  role: manage access to a party does not hand somebody `leads.create`.
+
+  Two new capabilities (`shared/src/domain/permissions.ts`):
+  `party.accessAll` (management tier, the bypass) and `party.assign` (admin
+  tier, the right to redraw the map). Two keys rather than one so a senior
+  manager can be trusted with the whole book without being trusted to change
+  who else sees it.
+
+  **Owner decisions locked in:** the editor is reachable from *both* panels,
+  gated on admin tier, with CSV export on the Master; unassigned means open;
+  two levels; and the scope is enforced **everywhere in the software**.
+
+  What "everywhere" turned out to mean — the list is the useful part, because
+  four of these are the paths a scoping feature usually forgets:
+  - lists, boards, `getLead`/`getOrder` (scoped at the query, so an
+    out-of-scope record is a 404, not a 403 — on a *read*, confirming the
+    record exists is itself the leak);
+  - universal search, including the line-item indexes, which needed the parent
+    lead/order joined in purely to give the predicate a column to test;
+  - dashboard counts and the Kanban stage breakdown (a count is a disclosure:
+    "40 open orders" says how much business sits on parties you cannot open);
+  - every report and its CSV;
+  - the Recycle Bin, per branch — only three of its nine branches have a party;
+  - the activity log and its facet dropdowns, where the subject is named
+    indirectly by `(entity_type, entity_id)`;
+  - the document export ledger **and the file download**;
+  - `sync.service`'s `mergeUpdate`, the one write path that does not go through
+    a service — without it an offline panel was the way around the feature;
+  - the Office Panel's snapshot, including two collections it reads straight
+    from repositories rather than through a service: `partyVariants` (another
+    party's negotiated rate) and `sync_conflicts` (which name their lead);
+  - the realtime `data:changed` fan-out, which used to broadcast every lead,
+    order, party and variant row to every panel and every Master browser with
+    no per-recipient check. A restricted party now fans out per socket,
+    re-resolving each one's acting user.
+
+  **Deliberately not scoped: inventory.** Stock belongs to no party, and hiding
+  the warehouse from the people who pick from it would be wrong, not safe.
+
+  Two decisions worth not re-deriving:
+  - **`baseQuery` takes the scope as a required parameter**, with a named
+    `UNSCOPED_PARTY_ACCESS` constant for the internal reads that legitimately
+    need the row regardless. An optional parameter is how `expectedVersion`
+    came to be unenforced everywhere it mattered; `grep UNSCOPED_PARTY_ACCESS`
+    lists every deliberate exception.
+  - **A refusal names `party.accessAll`, not `leads.edit`.** The caller *holds*
+    `leads.edit` — sending an administrator to that box would send them to one
+    that is already ticked.
+
+  **The offline hand-off**, which is subtler than it looks: a snapshot is
+  scoped for one person, and offline there is nobody to re-fetch it from. The
+  Master stamps `builtForUserId`, and when somebody else signs in on that panel
+  the Office server drops the *restricted* parties and their records, keeping
+  the ones open to everyone. A party that is in the snapshot and carries no
+  grant is unassigned — a party restricted to somebody else never entered the
+  snapshot at all — which is what makes that filter both safe and not
+  scorched-earth.
+
+  `npm run verify` is green apart from one pre-existing Windows failure (see
+  Known gaps) — **809 tests across 57 files**, up from 786. Twenty of the new
+  ones are `master/tests/party-access.integration.test.ts`.
+
+  **Verified in a real browser**, against a throwaway `orderbook_pa_check`
+  database and a second Master on port 4101 so the owner's own instance and
+  `order_book` were never touched: first-run setup, the Party Access screen in
+  the Admin nav, the centred-modal editor (add a person, View/Manage toggle,
+  save), the Restricted/Open filters, the CSV export, and then the actual
+  point — an office user with no grant sees 2 of 3 parties, a `partyCount` of
+  2, no search hits for the restricted party, a 403 from `/api/party-access`,
+  and "That party is not assigned to you" when editing it, while the manage
+  assignee sees all three and "My parties" narrows to the one.
+
+  **Not done:** no role-level assignment (parties are assigned to people, as
+  asked; a role shortcut can be layered on later with no schema change), no
+  denormalised `is_restricted` flag on `parties` (add it only if a profiler
+  asks), and assignments are not offline-editable — they forward live and fail
+  503 like Fields, because a grant set has no field-level merge and two
+  administrators' offline edits would union into a set neither approved.
+
+- **Shipped as two installable desktop apps, with update menus that work: done**
+  (2026-08-27). Three things the product has never had, and the answer to the
+  question `docs/PROJECT_PLAN.md` §12 has carried since the start —
+  *"How a new build should actually reach the machines."*
+
+  **Owner decisions, taken before any code:** Electron (chosen deliberately over
+  the free `msedge --app=` route the two `.bat` launchers already prove, so the
+  window is genuinely part of OrderBook rather than borrowed from Edge — the
+  ~150 MB cost was accepted); office panels update **from the Master over the
+  LAN**; the Master's setup file **carries PostgreSQL**; setup files live
+  **outside the project** at `C:\OrderBook-Releases`; the Master **starts with
+  Windows**.
+
+  **How a release works now.** `npm run release [version]` builds both panels,
+  vendors PostgreSQL into `master/vendor/postgres` (the path
+  `postgres-server.ts:52` has always looked in first, commented *"Binaries
+  bundled into the packaged app"* — the folder simply never existed), runs
+  electron-builder, and publishes to:
+
+  ```
+  C:\OrderBook-Releases\
+    master-panel\  OrderBook-Master-1.0.1-Setup.exe + latest.json
+    office-panel\  OrderBook-Office-1.0.1-Setup.exe + latest.json
+  ```
+
+  Copy that folder to the Master PC and the whole distribution story is done:
+  the Master installs its own build from it, and every Office Panel pulls the
+  office build from the Master over the office network. `latest.json` carries a
+  SHA-256, and **nothing runs a setup file that has not matched it** on either
+  side.
+
+  **Sizes: Master 156 MB, Office 81 MB.** The first attempt produced 223 MB for
+  a panel whose entire runtime is Express, Multer and a socket client, because
+  `node_modules` was copied wholesale. `tools/release.mjs` now stages only the
+  production tree, read from `npm ls --omit=dev` — what is *installed*, not a
+  fresh resolution, so the installer ships the tree the tests ran against.
+
+  **Data survives an update because it was moved out of the program folder.**
+  `dataDir` defaulted to `<packageRoot>/data`, which is correct from source and
+  catastrophic under Program Files. The fix is in the **Electron shell**, which
+  sets `ORDERBOOK_DATA_DIR` before spawning the server — the server's own
+  defaults are untouched, so running from source behaves exactly as it did.
+  `office/src/config/paths.ts` gained `config.settingsFile` for the same reason:
+  it wrote `ORDERBOOK_OFFICE_DATA_DIR` into `packageRoot/.env`, which fails when
+  that folder is read-only. It is kept *beside* the data directory and never
+  inside it — a pointer that moves with the thing it points at is no pointer.
+
+  **Two real defects surfaced by packaging, both now fixed and pinned:**
+  - **`pg_ctl start` used `execFile`, which never resolves when this process's
+    stdout is a pipe.** `pg_ctl` exits immediately but the `postgres` it spawned
+    inherits the pipes and holds them for life. Latent for as long as the Master
+    only ran from a terminal; the first packaged run hung on "Starting the
+    database" with a `postgres.log` reading *"ready to accept connections"*.
+    `master/tests/helpers/db.ts` fixed this in the *test* helper long ago and
+    HANDOFF even noted "the same expression is in the production launcher" —
+    where it stayed. `master/tests/postgres-launcher.test.ts` reads the source
+    and refuses to let it back.
+  - **The release script published the wrong bytes.** It picked the first
+    `*-Setup.exe` in the output folder, so a stale 1.0.0 build shipped under a
+    1.0.1 manifest — an update that installs and leaves the version unchanged,
+    which reads as a broken update mechanism rather than a broken build. It now
+    matches on the expected filename and clears the output folder first.
+  - Also worth knowing: **electron-builder ran `npm install --omit=dev` against
+    this workspace** and stripped its dev dependencies, breaking the next
+    `npm run build`. `npmRebuild: false` and `buildDependenciesFromSource: false`
+    in both `electron-builder.yml` files stop it.
+
+  **Verified end to end on this machine**, against a throwaway data directory,
+  never touching `order_book` or the owner's PostgreSQL: the packaged Master
+  boots in ~4s on a PC with **no PostgreSQL configured** (bundled cluster
+  created, all 16 migrations applied), first-run setup completes, a party is
+  created — then the **1.0.1 build runs against the 1.0.0 data directory, the
+  same credentials sign in, and the party is still there**, with the version
+  reading 1.0.1 and the update screen switching to "up to date". A right-sized
+  but tampered setup file is offered and then refused at install with
+  `validation.updates.checksumMismatch`.
+
+  **Not verified, and needs the owner:** running the NSIS installer itself. It is
+  `perMachine`, so it needs an administrator prompt nobody can click from here,
+  and installing system-wide software plus firewall rules on the owner's PC is
+  their call rather than a verification step. Everything the installer *contains*
+  is verified; what is unproven is Windows' own install/upgrade/uninstall
+  behaviour and the firewall rules in `master/build/installer.nsh`.
+
+  **Expect a SmartScreen warning.** The installers are unsigned. A certificate is
+  a purchase, not a code change.
+
+  `npm run verify` — **830 of 831 tests across 61 files**, up from 809. The one
+  failure is the pre-existing Windows POSIX-mode assertion in Known gaps below.
+
+- **Party Access refinements: done** (2026-08-27). Finishing what the feature's
+  own plan left out, and closing the divergence that had already started:
+  - The Office Panel's party detail now shows who can reach that party, read
+    straight off `partyGrants` in the snapshot it already holds.
+  - **The two copies of `PartyAccessScreen.tsx` are byte-identical again**, and
+    `master/tests/party-access-screen-parity.test.ts` keeps them that way. They
+    had drifted in four places within a day. The fix was to remove the reasons
+    for divergence rather than document them: the Office gained the CSV export
+    (through the existing `forwardCsv` helper and a new `partyAccess:export`
+    command) and the `isConflict` getter its `ApiError` was missing.
+  - `office/src/lib/app-version.ts` replaces two copy-pasted `readAppVersion()`
+    functions — the Master has had the shared helper all along.
+  - **`applyPartyScope` and `partyScopeSql` are now proven to agree** (`PA-15`).
+    One rule written twice is a standing invitation to disagree, and the
+    disagreement would have surfaced months later as "search finds a party the
+    list does not".
+  - Real avatars on the assignment list, a "2 of 12 parties are restricted"
+    count, and the All / My parties toggle moved into the filter strip.
+  - **Deliberately dropped:** the "Assigned to" column on the Office parties
+    table. That table renders from the offline snapshot, which carries no
+    assignee names — adding them would push the staff directory onto every
+    panel's disk to fill one column. The "My access" column covers what a person
+    at that panel needs.
+
+
+- **The merge left every pre-merge database unbootable: found and fixed**
+  (2026-08-27). The owner's Master refused to start with:
+
+  ```
+  The migration directory is corrupt, the following files are missing:
+  20260313000000_panel_app_version
+  ```
+
+  **What happened.** `dev` shipped `20260313000000_panel_app_version` in
+  `1c33b52`, adding `office_panels.app_version`. `origin/main` independently
+  added the same column inside `20260312000000_office_panel_administration`.
+  The merge (`cb92a02`) resolved the duplicate by **deleting the `dev` file** —
+  right for any database created afterwards, and catastrophic for one created
+  before it, because Knex keys completed migrations by *name* and validates
+  completed-against-source before running anything. HANDOFF's own trap entry
+  described the collision and said the merge deleted the duplicate; what nobody
+  did was reconcile the databases that had already run it.
+
+  It is not a warning, and it does not degrade: the Master will not boot at all,
+  with the shop's data intact and unreachable.
+
+  **The owner's `order_book` was in a worse state than the message showed.**
+  It had run `20260313000000_panel_app_version` and had *never* run
+  `20260312000000_office_panel_administration` — so beyond the boot failure,
+  **fourteen `office_panels` columns today's code reads were simply absent**
+  (`device_reported_at`, `hostname`, `disk_free_bytes`, …). Even past the
+  validation error, that migration would then have failed on
+  "column app_version already exists" and taken the other fourteen down with it.
+
+  **The fix, in two parts:**
+  - `20260313000000_panel_app_version.ts` is **restored** and its `up` made
+    idempotent (`ADD COLUMN IF NOT EXISTS`). A database that ran it never runs
+    it again — the file's only job is to exist so validation passes. A database
+    created after the merge finds the column already there and does nothing.
+  - `20260312000000_office_panel_administration` now uses `ADD COLUMN IF NOT
+    EXISTS` for all fifteen columns, so it can finally run on a database that
+    already has `app_version`. Editing an applied migration is normally
+    forbidden; this is the narrow safe case — Knex never re-runs a recorded
+    migration, so it cannot change what already happened, and it is the only
+    thing that lets a pre-merge database converge with a fresh one. The `down`
+    has always used `IF EXISTS`, so this only makes the halves symmetric.
+
+  Rehearsed on a `CREATE DATABASE … TEMPLATE order_book` clone before the real
+  one was touched. `order_book` is now at **17 completed migrations** with every
+  column and the `party_access` table, and its data is intact — 1 party,
+  3 users, 3 roles, 2 office panels, 49 activity-log entries. The Master boots.
+
+  **`master/tests/migration-registry.test.ts` now pins the names that have
+  shipped.** There is no way to know what a stranger's database has run, so the
+  list is maintained by hand: deleting one of those files turns the test red
+  instead of turning somebody's Master into an error page. **Add to that list
+  when a migration reaches a real installation; never remove from it.**
+
+- **A packaged Master no longer inherits `DATABASE_URL`** (2026-08-27). The
+  Electron shell passes its environment to the server it spawns, so launching
+  the installed application from a terminal that happened to have `DATABASE_URL`
+  set pointed it at a developer's database — which is how the failure above was
+  first seen through the packaged window rather than from source. `app.isPackaged`
+  now deletes it from the child's environment. A deliberate override still
+  works and has an obvious home: a `.env` beside the installed application,
+  which `loadEnvFiles` already reads. What is gone is the accident.
+
+
 ### Known gaps
 
+- **`office/tests/storage-path.test.ts` fails on Windows, and always has.** It
+  asserts `stat.mode & 0o077 === 0` after `fs.chmod(dest, 0o600)`; on Windows
+  `chmod` only toggles the read-only bit, so the mode reads back `0o666` and
+  the expression is `54`. Verified directly: a three-line Node script doing
+  exactly that write-then-chmod on this machine also returns 54, so no change
+  to `office/src/config/paths.ts` can make it pass here. It is a real assertion
+  about a real POSIX guarantee — do not weaken it to go green. Either skip it
+  off POSIX or assert the Windows equivalent; that is an owner's call, not a
+  drive-by.
 - `panel:revoked` is defined in the socket contract and handled by the Office
   Panel, but the Master does not emit it yet — a revoked panel currently finds
   out on its next reconnect attempt rather than immediately.
@@ -1467,12 +1748,11 @@ in the order the plan lists them:
   jsdom or React testing setup at all, and `vitest.config.ts` only collects
   `{shared,master,office}/tests/**`, so adding one is a config change and a new
   dependency rather than just writing a test file.
-- **`BootStatus` has a server but no screen.** `main`'s early-port work has the
-  Master open its HTTP port before anything that can fail and report its own
-  startup state, which is a better answer than the client-side splash for "the
-  server never came up at all". The merge kept `dev`'s splash, so nothing reads
-  `BootStatus` yet — wiring it in would let the panel distinguish "still
-  starting, be patient" from "failed", which the splash currently cannot.
+- ~~**`BootStatus` has a server but no screen.**~~ **Closed 2026-08-27.** The
+  Electron shell polls `/api/health` while the server starts and shows the boot
+  step on its splash, which is what that design was always for. The in-browser
+  splash still does not read it — a plain browser tab reaching a starting Master
+  is the remaining case.
 - **Profile pictures are Master-only.** `office/web` has the `Avatar` component
   but no picker and no way to display one: `PanelSession` carries no avatar
   field, and the office server has no `/uploads/avatars/...` route to mirror
@@ -1502,13 +1782,25 @@ in the order the plan lists them:
   dependency was once "verified working" yet absent from the lockfile. Declare
   dependencies by editing the workspace `package.json` directly, then run
   `npm install`, and check the lockfile actually changed.
-- **Two branches can mint the same migration timestamp.** `main` and `dev`
-  both created a `20260312000000_*` migration, and both added an `app_version`
-  column to `office_panels`. Knex keys migrations by *name*, so both would have
-  run, and the second would have failed with "column already exists" on every
-  installation that had run the first. The merge deleted the duplicate. Before
-  adding a migration, check what the other branch has claimed — the timestamp
-  is not the collision, the columns are.
+- **Two branches can mint the same migration timestamp — and deleting the
+  duplicate locks out every database that already ran it.** `main` and `dev`
+  both added an `app_version` column to `office_panels`, from different
+  migrations. Knex keys migrations by *name*, so both would have run and the
+  second would have failed with "column already exists". The merge deleted the
+  `dev` one — and on 2026-08-27 the owner's Master refused to boot with *"The
+  migration directory is corrupt, the following files are missing:
+  20260313000000_panel_app_version"*, because that name was still recorded in
+  its `knex_migrations`. Knex validates completed-against-source before it runs
+  anything, so the failure is total, not partial: the data is intact and
+  unreachable.
+
+  Two rules follow. **Never delete a migration file that may have run
+  anywhere** — make its `up` idempotent and keep it, which is what
+  `20260313000000_panel_app_version.ts` now is. And when two migrations create
+  the same thing, **both** need `IF NOT EXISTS`, because which one gets there
+  first depends only on which order a given database met them in, and both
+  orders exist in the wild. `master/tests/migration-registry.test.ts` pins the
+  shipped names against exactly this.
 - **`master/tests/i18n-tokens.test.ts` is load-bearing.** It reads service
   source and asserts every literal `(entityType, action)` pair given to
   `recordActivity` has an `activity.<entity>.<action>` entry in
@@ -1534,6 +1826,39 @@ in the order the plan lists them:
   field as written at creation makes the first edit of a never-filled field look
   like a clash, and buries the real conflicts in noise.
 
+- **A child process that inherits your pipes never lets `execFile` resolve.**
+  `pg_ctl` exits the moment PostgreSQL is up, but the `postgres` it launched
+  keeps the parent's stdout and stderr open for its whole life — and `execFile`
+  waits for the pipes, not the exit. From a terminal the pipes belong to the
+  console and nothing shows; from a parent that created real pipes (the desktop
+  shell) the promise never settles and the boot screen sits on "Starting the
+  database" while `postgres.log` says it is ready. `spawn` with
+  `stdio: 'ignore'`, then wait for `exit`. This bit the test suite once and the
+  production launcher once, eighteen months apart, for the same reason.
+- **electron-builder will `npm install --omit=dev` in your workspace.** It walks
+  the app directory looking for native modules to rebuild and, in a monorepo,
+  that prunes the *root* `node_modules` — the next `npm run build` then fails on
+  missing `@types/*` with nothing to connect it to the packaging run. Both
+  `electron-builder.yml` files set `npmRebuild: false` and
+  `buildDependenciesFromSource: false`.
+- **A build output folder keeps the last build.** Picking "the file ending
+  `-Setup.exe`" published 1.0.0's bytes under a 1.0.1 manifest — an update that
+  installs and leaves the version unchanged, which reads as a broken update
+  mechanism rather than a stale artefact. Match the filename you expect, and
+  clear the folder first.
+- **The file that records where the data lives must not live in the data.**
+  `ORDERBOOK_OFFICE_DATA_DIR` is persisted to `config.settingsFile`, kept beside
+  the data directory rather than inside it: a pointer that moves with the thing
+  it points at leaves the next start looking in the old place, finding nothing,
+  and quietly beginning again on an empty panel.
+- **A scoping feature is only as good as its least-obvious read path.** Party
+  Access had to reach nine of them beyond the obvious lists — search's
+  line-item index, dashboard counts, report CSVs, the Recycle Bin's union, the
+  activity log's indirect `(entity_type, entity_id)` subject, the document
+  ledger *and* its file download, the sync merge path, two collections the
+  Office snapshot reads straight from repositories, and the realtime
+  `data:changed` broadcast. Adding a tenth scoped entity means walking that
+  list again; `grep applyPartyScope` and `grep partyScopeSql` are how.
 - **A migration must never import a live shared constant.** `20260301` did,
   and editing the permission catalogue later silently changed what that
   migration had already done on every installation. Inline the values a

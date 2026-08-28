@@ -74,6 +74,24 @@ export const config = {
    * path from this config plus the stored `storage_key`, never from any
    * client-supplied string.
    */
+  /**
+   * Where setup files for both panels are kept.
+   *
+   * Deliberately **outside** `dataDir` and outside the program folder: it is a
+   * drop box an operator copies files into, not application state, and it has
+   * to survive an uninstall that clears the program folder. The Master reads
+   * its own build from `master-panel/` and serves the Office one from
+   * `office-panel/` to paired panels, which is what lets an office PC update
+   * over the LAN instead of by USB stick.
+   *
+   * A folder that does not exist is not an error — it is "no updates
+   * available", which is the honest state on a machine nobody has published a
+   * build to yet.
+   */
+  releasesDir: process.env.ORDERBOOK_RELEASES_DIR
+    ? path.resolve(process.env.ORDERBOOK_RELEASES_DIR)
+    : path.join(path.parse(process.cwd()).root, 'OrderBook-Releases'),
+
   documents: {
     dir: path.join(dataDir, 'documents'),
     /** `<exportsDir>/<storageKey>.pdf` — the rendered files themselves. */

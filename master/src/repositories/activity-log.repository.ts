@@ -30,6 +30,8 @@ import type { Knex } from 'knex';
 import type { ActorContext } from '../domain/actor.js';
 import { config } from '../config/index.js';
 import { db } from '../db/knex.js';
+import type { PartyScope } from '../domain/party-scope.js';
+import { partyScopeLogSql } from './party-access.repository.js';
 import { createLogger } from '../lib/logger.js';
 import { toJsonObject, toRequiredIso } from './mappers.js';
 import type { TransactionContext } from './transaction.js';
@@ -148,6 +150,7 @@ function mapLogEntry(row: LogRow): ActivityLogEntry {
 }
 
 export interface ListLogsOptions {
+  scope: PartyScope;
   actorType?: string;
   actorId?: string;
   entityType?: string;
@@ -182,6 +185,12 @@ export async function listEntries(
 ): Promise<ListLogsResult> {
   const bindings: Array<string | number> = [tenantId];
   let where = 'tenant_id = ?';
+
+  // Applied first, before the caller's own filters, so no combination of
+  // filters can reach an entry about somebody else's party.
+  const partyScope = partyScopeLogSql(tenantId, options.scope);
+  where += partyScope.sql;
+  bindings.push(...partyScope.bindings);
 
   if (options.actorType) {
     where += ' AND actor_type = ?';
@@ -272,11 +281,18 @@ export async function listPanelActivity(
 /** Populates the filter dropdowns. `action` is free-form TEXT, so this is the only way to enumerate values. */
 export async function listFacets(
   tenantId: string,
-  options: { from?: string; to?: string },
+  options: { from?: string; to?: string; scope: PartyScope },
   runner: Runner = db(),
 ): Promise<ActivityLogFacets> {
   const bindings: Array<string | number> = [tenantId];
   let where = 'tenant_id = ?';
+
+  // The dropdowns are built from the rows the caller can actually see. An
+  // unscoped facet list would name every actor in the company on a screen whose
+  // rows are narrowed — which is its own small disclosure.
+  const partyScope = partyScopeLogSql(tenantId, options.scope);
+  where += partyScope.sql;
+  bindings.push(...partyScope.bindings);
 
   if (options.from) {
     where += ' AND created_at >= (?::timestamp AT TIME ZONE ?)';
@@ -432,6 +448,7 @@ export async function verifyChain(
 }
 
 export interface ExportLogsOptions {
+  scope: PartyScope;
   actorType?: string;
   actorId?: string;
   entityType?: string;

@@ -23,6 +23,8 @@ import type { SearchHit, SearchHitKind } from '@orderbook/shared';
 import type { Knex } from 'knex';
 
 import { db } from '../db/knex.js';
+import type { PartyScope } from '../domain/party-scope.js';
+import { partyScopeSql } from './party-access.repository.js';
 
 type Runner = Knex | Knex.Transaction;
 
@@ -42,7 +44,7 @@ const TSQUERY = `websearch_to_tsquery('simple', ?)`;
 
 export async function search(
   tenantId: string,
-  options: { term: string; kinds?: SearchHitKind[]; limit: number },
+  options: { term: string; kinds?: SearchHitKind[]; limit: number; scope: PartyScope },
   runner: Runner = db(),
 ): Promise<SearchHit[]> {
   const term = options.term.trim();
@@ -54,7 +56,7 @@ export async function search(
 
   const groups = await Promise.all(
     kinds.map(async (kind) => {
-      const rows = await runQuery(kind, tenantId, term, options.limit, runner);
+      const rows = await runQuery(kind, tenantId, term, options.limit, options.scope, runner);
       return rows.map((row) => ({
         kind,
         id: row.id,
@@ -76,6 +78,7 @@ async function runQuery(
   tenantId: string,
   term: string,
   limit: number,
+  scope: PartyScope,
   runner: Runner,
 ): Promise<RankedRow[]> {
   switch (kind) {
@@ -97,6 +100,7 @@ async function runQuery(
     }
 
     case 'party': {
+      const partyScope = partyScopeSql('pa.id', tenantId, scope);
       const { rows } = await runner.raw<{ rows: RankedRow[] }>(
         `SELECT pa.id,
                 pa.name AS title,
@@ -105,10 +109,10 @@ async function runQuery(
            FROM parties pa
           WHERE pa.tenant_id = ?
             AND pa.is_active
-            AND pa.search_vector @@ ${TSQUERY}
+            AND pa.search_vector @@ ${TSQUERY}${partyScope.sql}
           ORDER BY rank DESC
           LIMIT ?`,
-        [term, tenantId, term, limit],
+        [term, tenantId, term, ...partyScope.bindings, limit],
       );
       return rows;
     }
@@ -120,19 +124,28 @@ async function runQuery(
       // Returns the *parent* id, not the line's: a search result has to open
       // the lead or order the line belongs to, which is what parent_type and
       // parent_id exist for.
+      // The party lives on the parent record, not on the line, so the parent is
+      // joined purely to give the party scope a column to test. Without it a
+      // line-item search would name every lead and order in the company.
+      const parentTable = kind === 'lead_line' ? 'leads' : 'orders';
+      const partyScope = partyScopeSql('parent.party_id', tenantId, scope);
+
       const { rows } = await runner.raw<{ rows: RankedRow[] }>(
         `SELECT li.parent_id AS id,
                 li.product_name AS title,
                 li.parent_id || COALESCE(' · ' || li.code, '') AS subtitle,
                 MAX(ts_rank(li.search_vector, ${TSQUERY})) AS rank
            FROM line_items li
+           JOIN ${parentTable} parent
+             ON parent.id = li.parent_id AND parent.tenant_id = li.tenant_id
           WHERE li.tenant_id = ?
             AND li.parent_type = ?
-            AND li.search_vector @@ ${TSQUERY}
+            AND parent.deleted_at IS NULL
+            AND li.search_vector @@ ${TSQUERY}${partyScope.sql}
           GROUP BY li.parent_id, li.product_name, li.code
           ORDER BY rank DESC
           LIMIT ?`,
-        [term, tenantId, parentType, term, limit],
+        [term, tenantId, parentType, term, ...partyScope.bindings, limit],
       );
       return rows;
     }

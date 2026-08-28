@@ -82,6 +82,8 @@ export const EN_MESSAGES = {
   'permission.recycleBin.viewAll': 'View everybody’s deleted items',
   'permission.fields.view': 'View pipelines, stages and custom fields',
   'permission.documents.render': 'Render a document',
+  'permission.party.accessAll': 'See every party, assigned or not',
+  'permission.party.assign': 'Decide who may see and manage each party',
 
   // --- module.* — one per MODULES entry ---
   'module.leads': 'Leads',
@@ -133,6 +135,8 @@ export const EN_MESSAGES = {
   'error.unauthorized.differentMaster': 'This is a different Master Panel than the one you entered',
   'error.unauthorized.panelNotPaired': 'This panel is not paired',
   'error.unauthorized.panelCredentialsInvalid': 'Panel credentials are not valid',
+  'error.forbidden.partyNotAssigned': 'That party is not assigned to you',
+  'error.forbidden.partyViewOnly': 'You may view that party but not change its records',
   'error.tenantViolation': '{what} does not belong to this company',
   'error.conflict.alreadySetUp': 'This Master Panel has already been set up',
   'error.conflict.notSetUp': 'This Master Panel has not been set up yet',
@@ -223,6 +227,11 @@ export const EN_MESSAGES = {
   'validation.password.tooShort': 'Choose a password of at least 8 characters',
   'validation.password.bothRequired': 'Enter your current and new password',
   'validation.party.nameRequired': 'Party name is required',
+  'validation.updates.checksumMismatch':
+    'That setup file does not match its checksum — it may be damaged or incomplete. Copy it across again.',
+  'validation.updates.noneAvailable': 'There is no newer version to install',
+  'validation.partyAccess.levelInvalid': 'Access level must be view or manage',
+  'validation.partyAccess.userUnknown': 'No live account with the id {userId}',
   'validation.product.nameRequired': 'Product name is required',
   'validation.product.codeRequired': 'Product code is required',
   'validation.role.nameRequired': 'Give the role a name',
@@ -364,6 +373,7 @@ export const EN_MESSAGES = {
   'activity.order.restored': '{actor} restored this order',
   'activity.party.deleted': '{actor} deleted the party {name}',
   'activity.party.restored': '{actor} restored the party {name}',
+  'activity.party.access_changed': '{actor} changed who may access the party {name}',
   'activity.product.deleted': '{actor} deleted the product {name}',
   'activity.product.restored': '{actor} restored the product {name}',
   'activity.option_list_item.created': '{actor} added the option {name}',

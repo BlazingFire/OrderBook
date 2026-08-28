@@ -17,6 +17,8 @@ import type { BinCounts, RecycleBinEntityType } from '@orderbook/shared';
 import type { Knex } from 'knex';
 
 import { db } from '../db/knex.js';
+import type { PartyScope } from '../domain/party-scope.js';
+import { partyScopeSql } from './party-access.repository.js';
 import { toRequiredIso } from './mappers.js';
 
 type Runner = Knex | Knex.Transaction;
@@ -43,6 +45,13 @@ interface BranchDefinition {
   entityType: RecycleBinEntityType;
   /** `label, sublabel` selected from the branch's own columns/joins. */
   sql: string;
+  /**
+   * The party-id expression to narrow this branch by, for the three branches
+   * that hang off a party. Absent means the branch is not party-scoped — a
+   * product, a role, a user and a document template belong to the company, not
+   * to a customer.
+   */
+  partyIdExpr?: string;
 }
 
 /**
@@ -61,6 +70,7 @@ const BRANCHES: BranchDefinition[] = [
                  l.deleted_by AS deleted_by, l.version AS version
             FROM leads l JOIN parties pa ON pa.id = l.party_id
            WHERE l.tenant_id = ? AND l.deleted_at IS NOT NULL`,
+    partyIdExpr: 'l.party_id',
   },
   {
     entityType: 'order',
@@ -69,6 +79,7 @@ const BRANCHES: BranchDefinition[] = [
                  o.deleted_by AS deleted_by, o.version AS version
             FROM orders o JOIN parties pa ON pa.id = o.party_id
            WHERE o.tenant_id = ? AND o.deleted_at IS NOT NULL`,
+    partyIdExpr: 'o.party_id',
   },
   {
     entityType: 'party',
@@ -76,6 +87,7 @@ const BRANCHES: BranchDefinition[] = [
                  deleted_at, ${CURSOR_TEXT} AS deleted_at_text, deleted_by, version
             FROM parties
            WHERE tenant_id = ? AND deleted_at IS NOT NULL`,
+    partyIdExpr: 'parties.id',
   },
   {
     entityType: 'product',
@@ -160,6 +172,7 @@ export interface ListBinOptions {
   types: readonly RecycleBinEntityType[];
   search?: string;
   deletedBy?: string;
+  scope: PartyScope;
   /** From `decodeBinCursor` — the last row of the previous page. */
   after?: { deletedAt: string; entityType: RecycleBinEntityType; id: string };
   limit: number;
@@ -171,15 +184,25 @@ export interface BinListResult {
   hasMore: boolean;
 }
 
+/**
+ * The party scope is applied **per branch**, not to the union's outer WHERE:
+ * only three of the nine branches have a party at all, and the union's columns
+ * do not carry one. Each branch's own alias is what the predicate can name.
+ */
 function buildUnion(
   types: readonly RecycleBinEntityType[],
   tenantId: string,
+  scope: PartyScope,
 ): { sql: string; bindings: Array<string | number> } {
   const chosen = BRANCHES.filter((branch) => types.includes(branch.entityType));
   const bindings: Array<string | number> = [];
   const parts = chosen.map((branch) => {
     bindings.push(tenantId);
-    return branch.sql;
+    if (!branch.partyIdExpr) return branch.sql;
+
+    const narrowed = partyScopeSql(branch.partyIdExpr, tenantId, scope);
+    bindings.push(...narrowed.bindings);
+    return branch.sql + narrowed.sql;
   });
   return { sql: parts.join('\nUNION ALL\n'), bindings };
 }
@@ -191,7 +214,7 @@ export async function listBinEntries(
 ): Promise<BinListResult> {
   if (options.types.length === 0) return { entries: [], hasMore: false };
 
-  const { sql: unionSql, bindings } = buildUnion(options.types, tenantId);
+  const { sql: unionSql, bindings } = buildUnion(options.types, tenantId, options.scope);
 
   let where = '';
   if (options.deletedBy) {
@@ -245,6 +268,7 @@ export async function binCounts(
   tenantId: string,
   types: readonly RecycleBinEntityType[],
   deletedBy: string | undefined,
+  scope: PartyScope,
   runner: Runner = db(),
 ): Promise<BinCounts> {
   const chosen = BRANCHES.filter((branch) => types.includes(branch.entityType));
@@ -253,6 +277,7 @@ export async function binCounts(
   const { sql: unionSql, bindings } = buildUnion(
     chosen.map((b) => b.entityType),
     tenantId,
+    scope,
   );
 
   let where = '';

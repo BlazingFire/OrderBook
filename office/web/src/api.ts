@@ -11,6 +11,7 @@
 
 import type {
   ActivityLogEntry,
+  DesktopBridge,
   ActivityLogFacets,
   ActivityLogQuery,
   BackupManifest,
@@ -39,6 +40,13 @@ import type {
   OptionListItemInput,
   OptionListItemUpdateInput,
   OptionListReorderInput,
+  Paginated,
+  AssignablePerson,
+  PartyAccessInput,
+  PartyAccessQuery,
+  PartyAccessRow,
+  ReleaseManifest,
+  UpdateAvailability,
   PartyInput,
   PartyProductVariantInput,
   Pipeline,
@@ -90,6 +98,17 @@ export class ApiError extends Error {
 
   get missingPermission(): string | undefined {
     return typeof this.details.permission === 'string' ? this.details.permission : undefined;
+  }
+
+  /**
+   * Mirrors `master/web/src/api.ts`'s getter of the same name.
+   *
+   * Its absence here was the only reason a screen shared by both panels had to
+   * spell the same check two different ways — which is exactly the kind of
+   * divergence that makes the next edit to one copy miss the other.
+   */
+  get isConflict(): boolean {
+    return this.code === 'conflict';
   }
 }
 
@@ -226,6 +245,17 @@ async function postForBlob(path: string, body: unknown): Promise<{ blob: Blob; f
   return { blob: await response.blob(), fileName: match?.[1] ?? 'orderbook-backup.obbackup' };
 }
 
+/**
+ * The desktop shell hosting this panel, or `null` in a plain browser tab.
+ *
+ * Absent is the normal case in development and whenever somebody opens this
+ * panel from another machine's browser, so a caller must have a path that does
+ * not need it — never a button that silently does nothing.
+ */
+export function desktopBridge(): DesktopBridge | null {
+  return (window as Window & { orderbook?: DesktopBridge }).orderbook ?? null;
+}
+
 export const api = {
   connection: () => request<ConnectionInfo>('/api/connection'),
   scan: () => post<{ masters: DiscoveredMaster[] }>('/api/connection/scan'),
@@ -344,6 +374,33 @@ export const api = {
   },
   recycleBinCounts: () => request<BinCounts>('/api/recycle-bin/counts'),
   restoreFromBin: (input: RestoreInput) => post<BinRestoreResult>('/api/recycle-bin/restore', input),
+
+  // --- App update ----------------------------------------------------------
+
+  updateAvailable: () => request<UpdateAvailability>('/api/updates/available'),
+  /** Downloads from the Master and checksums it; the shell runs it. */
+  downloadUpdate: () =>
+    post<{ path: string; manifest: ReleaseManifest }>('/api/updates/download', {}),
+
+  // --- Party Access --------------------------------------------------------
+  // Reachable from both panels, gated on admin tier. Forwarded live and failing
+  // 503 offline, like Fields below.
+
+  partyAccess: (query: PartyAccessQuery = {}) => {
+    const params = new URLSearchParams();
+    if (query.search) params.set('search', query.search);
+    if (query.userId) params.set('userId', query.userId);
+    if (query.restriction) params.set('restriction', query.restriction);
+    if (query.limit) params.set('limit', String(query.limit));
+    if (query.offset) params.set('offset', String(query.offset));
+    const search = params.toString();
+    return request<Paginated<PartyAccessRow>>(`/api/party-access${search ? `?${search}` : ''}`);
+  },
+  partyAccessPeople: () => request<AssignablePerson[]>('/api/party-access/people'),
+  partyAccessFor: (partyId: string) => request<PartyAccessRow>(`/api/party-access/${partyId}`),
+  partyAccessExportUrl: () => '/api/party-access/export.csv',
+  savePartyAccess: (partyId: string, input: PartyAccessInput) =>
+    put<PartyAccessRow>(`/api/party-access/${partyId}`, input),
 
   // --- Fields (docs/backend-modules/04-API-CONTRACT.md §5) -----------------
   // Reachable from both panels per the owner's decision — forwarded live,

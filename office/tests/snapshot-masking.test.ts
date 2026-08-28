@@ -287,4 +287,63 @@ describe('snapshot masking (DSH-1, DSH-2)', () => {
     expect(response.body.products[0].rate).toBe(1250);
     expect(response.body.leads[0].totalAmount).toBe(2500);
   });
+
+  /**
+   * Only reachable offline — an online sign-in re-fetches the snapshot for the
+   * new person. Offline there is nobody to ask, so a cached snapshot scoped for
+   * one person has to stop being trusted the moment somebody else signs in on
+   * that panel, or a second sign-in is the easiest bypass of Party Access there
+   * is.
+   */
+  describe('a snapshot scoped for somebody else', () => {
+    const RESTRICTED = {
+      ...FIXTURE,
+      builtForUserId: 'US0000000001',
+      partyGrants: [{ partyId: 'PT0000000001', level: 'manage' as const }],
+    };
+
+    it('withholds the previous person’s restricted parties and their records', async () => {
+      vi.spyOn(localStore, 'getView').mockResolvedValue({ ...RESTRICTED, pendingCount: 0 });
+      vi.spyOn(userSession, 'currentSession').mockReturnValue({
+        ...FAKE_SESSION,
+        userId: 'US0000000002',
+      } as never);
+      vi.spyOn(userSession, 'sessionPermissions').mockReturnValue(['leads.create']);
+
+      const response = await request(createApp()).get('/api/snapshot');
+
+      expect(response.status).toBe(200);
+      expect(response.body.parties).toHaveLength(0);
+      expect(response.body.leads).toHaveLength(0);
+      expect(response.body.orders).toHaveLength(0);
+      expect(response.body.partyVariants).toHaveLength(0);
+      expect(response.body.partyGrants).toEqual([]);
+    });
+
+    it('keeps everything for the person it was built for', async () => {
+      vi.spyOn(localStore, 'getView').mockResolvedValue({ ...RESTRICTED, pendingCount: 0 });
+      vi.spyOn(userSession, 'sessionPermissions').mockReturnValue(['leads.create']);
+
+      const response = await request(createApp()).get('/api/snapshot');
+
+      expect(response.status).toBe(200);
+      expect(response.body.parties).toHaveLength(1);
+      expect(response.body.leads).toHaveLength(1);
+    });
+
+    it('leaves an older Master’s snapshot alone — it has no restricted parties in it', async () => {
+      vi.spyOn(userSession, 'currentSession').mockReturnValue({
+        ...FAKE_SESSION,
+        userId: 'US0000000002',
+      } as never);
+      vi.spyOn(userSession, 'sessionPermissions').mockReturnValue(['leads.create']);
+
+      // `FIXTURE` carries no `builtForUserId` — exactly what a Master built
+      // before this feature existed sends.
+      const response = await request(createApp()).get('/api/snapshot');
+
+      expect(response.status).toBe(200);
+      expect(response.body.parties).toHaveLength(1);
+    });
+  });
 });

@@ -12,6 +12,8 @@ import type { MutationResult, SyncConflict } from '@orderbook/shared';
 import type { Knex } from 'knex';
 
 import { db } from '../db/knex.js';
+import type { PartyScope } from '../domain/party-scope.js';
+import { applyPartyScope } from './party-access.repository.js';
 import { firstCount, mapSyncConflict } from './mappers.js';
 import type { TransactionContext } from './transaction.js';
 
@@ -93,11 +95,40 @@ export async function recordConflicts(
 
 export async function listConflicts(
   tenantId: string,
-  options: { includeResolved?: boolean; limit?: number } = {},
+  options: { includeResolved?: boolean; limit?: number; scope?: PartyScope } = {},
   runner: Runner = db(),
 ): Promise<SyncConflict[]> {
   const query = runner('sync_conflicts').where({ tenant_id: tenantId });
   if (!options.includeResolved) query.whereNull('resolved_at');
+
+  // A conflict names an entity and both competing values, so a lead conflict
+  // discloses the lead. Only the two party-scoped entities are narrowed; a
+  // `product` conflict belongs to the catalogue and stays visible to everyone.
+  if (options.scope) {
+    const scope = options.scope;
+    query.where((outer) => {
+      outer.whereNotIn('entity', ['lead', 'order']);
+
+      for (const [entity, table] of [
+        ['lead', 'leads'],
+        ['order', 'orders'],
+      ] as const) {
+        outer.orWhere((branch) => {
+          branch.where('entity', entity).whereExists((sub) => {
+            const parent = sub
+              .select(db().raw('1'))
+              .from(`${table} as scoped_parent`)
+              .where('scoped_parent.tenant_id', tenantId)
+              .whereRaw('scoped_parent.id = sync_conflicts.entity_id');
+
+            return applyPartyScope(parent, tenantId, 'scoped_parent.party_id', scope, {
+              level: 'view',
+            });
+          });
+        });
+      }
+    });
+  }
 
   const rows = await query.orderBy('created_at', 'desc').limit(options.limit ?? 200).select('*');
   return rows.map(mapSyncConflict);

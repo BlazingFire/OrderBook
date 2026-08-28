@@ -1,9 +1,9 @@
 {
   "name": "@orderbook/office",
-  "version": "0.1.0",
+  "version": "1.0.2",
   "private": true,
   "type": "module",
-  "main": "./dist/index.js",
+  "main": "electron/dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json && npm run build --workspace @orderbook/office-web",
     "build:server": "tsc -p tsconfig.json",

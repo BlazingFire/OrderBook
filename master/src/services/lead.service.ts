@@ -22,6 +22,7 @@ import { normalizeCustomFields } from '../domain/custom-fields.js';
 import { assertOptionValueChange } from '../domain/field-values.js';
 import { buildLineSnapshot, type LineDraft, type LineSnapshot } from '../domain/line-items.js';
 import { clampPaging } from '../domain/paging.js';
+import { resolvePartyScope, UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
 import { assertStageMove, defaultStage, findStage, stageChangeMessage } from '../domain/pipeline.js';
 import { assertParentsLive } from '../domain/recycle-bin.js';
 import { canEditRates, canSeeRates, maskLead, withPermittedRate } from '../domain/visibility.js';
@@ -38,6 +39,7 @@ import * as productRepo from '../repositories/product.repository.js';
 import * as recycleBinRepo from '../repositories/recycle-bin.repository.js';
 import * as timelineRepo from '../repositories/timeline.repository.js';
 import { publishChange } from './change-bus.js';
+import { requirePartyAccess } from './party-access.service.js';
 
 const PAGING = { defaultLimit: 100, maxLimit: 500 };
 
@@ -50,6 +52,7 @@ export async function listLeads(
   const page = await leadRepo.listLeads(actor.tenantId, {
     ...query,
     ...clampPaging(query, PAGING),
+    partyScope: resolvePartyScope(actor),
   });
 
   const allowed = canSeeRates(actor);
@@ -59,7 +62,9 @@ export async function listLeads(
 export async function getLead(id: string, actor: ActorContext): Promise<Lead> {
   requirePermission(actor, 'leads.view');
 
-  const lead = await leadRepo.findLeadById(actor.tenantId, id);
+  // Scoped at the query, so a lead on somebody else's party is a 404 rather
+  // than a 403 — on a read, confirming the record exists is itself the leak.
+  const lead = await leadRepo.findLeadById(actor.tenantId, id, resolvePartyScope(actor));
   if (!lead) throw new NotFoundError('Lead');
 
   return maskLead(lead, canSeeRates(actor));
@@ -78,6 +83,11 @@ export async function createLead(input: LeadInput, actor: ActorContext): Promise
   if (!(await partyRepo.findPartyById(actor.tenantId, input.partyId))) {
     throw new ValidationError('validation.lead.partyMissing');
   }
+
+  // Party Access: a lead may only be raised against a party the caller manages.
+  // Checked here rather than in the route because the Office Panel — which
+  // raises nearly every lead — reaches this function over Socket.IO instead.
+  await requirePartyAccess(input.partyId, 'manage', actor);
 
   await assertSourcePlatform(actor.tenantId, input.sourcePlatform ?? null);
 
@@ -131,7 +141,7 @@ export async function createLead(input: LeadInput, actor: ActorContext): Promise
     return leadId;
   });
 
-  const lead = await leadRepo.findLeadById(actor.tenantId, id);
+  const lead = await leadRepo.findLeadById(actor.tenantId, id, UNSCOPED_PARTY_ACCESS);
   if (!lead) throw new Error('Lead disappeared immediately after insert');
 
   await activityLog.recordDetachedActivity({
@@ -155,8 +165,13 @@ export async function updateLead(
 ): Promise<Lead> {
   requirePermission(actor, 'leads.edit');
 
-  const existing = await leadRepo.findLeadById(actor.tenantId, id);
+  const existing = await leadRepo.findLeadById(actor.tenantId, id, UNSCOPED_PARTY_ACCESS);
   if (!existing) throw new NotFoundError('Lead');
+
+  // Read unscoped so an out-of-scope caller is refused with a 403 naming why,
+  // not a 404 that reads as "somebody deleted it".
+  await requirePartyAccess(existing.partyId, 'manage', actor);
+
   if (existing.convertedOrderId) {
     throw new ValidationError('validation.lead.convertedLocked');
   }
@@ -168,6 +183,10 @@ export async function updateLead(
     if (!(await partyRepo.findPartyById(actor.tenantId, input.partyId))) {
       throw new ValidationError('validation.lead.partyMissing');
     }
+    // Both ends of the move: the old party was checked above, and moving a lead
+    // *onto* a party you do not manage would otherwise be a way to write into
+    // somebody else's book — or to smuggle a record out of your own.
+    await requirePartyAccess(input.partyId, 'manage', actor);
     patch.party_id = input.partyId;
   }
 
@@ -208,7 +227,7 @@ export async function updateLead(
     if (lines) await leadRepo.replaceLeadLines(actor.tenantId, id, lines, trx);
   });
 
-  const lead = await leadRepo.findLeadById(actor.tenantId, id);
+  const lead = await leadRepo.findLeadById(actor.tenantId, id, UNSCOPED_PARTY_ACCESS);
   if (!lead) throw new NotFoundError('Lead');
 
   await activityLog.recordDetachedActivity({
@@ -230,8 +249,13 @@ export async function setStage(
 ): Promise<Lead> {
   requirePermission(actor, 'leads.edit');
 
-  const existing = await leadRepo.findLeadById(actor.tenantId, input.id);
+  const existing = await leadRepo.findLeadById(actor.tenantId, input.id, UNSCOPED_PARTY_ACCESS);
   if (!existing) throw new NotFoundError('Lead');
+
+  // Read unscoped so an out-of-scope caller is refused with a 403 naming why,
+  // not a 404 that reads as "somebody deleted it".
+  await requirePartyAccess(existing.partyId, 'manage', actor);
+
   if (existing.stageId === input.stageId) return maskLead(existing, canSeeRates(actor));
 
   const stages = await pipelineRepo.stagesFor(actor.tenantId, 'lead');
@@ -281,7 +305,7 @@ export async function setStage(
     }
   });
 
-  const lead = await leadRepo.findLeadById(actor.tenantId, input.id);
+  const lead = await leadRepo.findLeadById(actor.tenantId, input.id, UNSCOPED_PARTY_ACCESS);
   if (!lead) throw new NotFoundError('Lead');
 
   await activityLog.recordDetachedActivity({
@@ -307,8 +331,12 @@ export async function addRemark(
   const message = input.message?.trim();
   if (!message) throw new ValidationError('validation.remark.textRequired');
 
-  const existing = await leadRepo.findLeadById(actor.tenantId, input.id);
+  const existing = await leadRepo.findLeadById(actor.tenantId, input.id, UNSCOPED_PARTY_ACCESS);
   if (!existing) throw new NotFoundError('Lead');
+
+  // Read unscoped so an out-of-scope caller is refused with a 403 naming why,
+  // not a 404 that reads as "somebody deleted it".
+  await requirePartyAccess(existing.partyId, 'manage', actor);
 
   await db().transaction(async (trx) => {
     await timelineRepo.appendEntry(
@@ -324,7 +352,7 @@ export async function addRemark(
     );
   });
 
-  const lead = await leadRepo.findLeadById(actor.tenantId, input.id);
+  const lead = await leadRepo.findLeadById(actor.tenantId, input.id, UNSCOPED_PARTY_ACCESS);
   if (!lead) throw new NotFoundError('Lead');
 
   publishChange({ entity: 'lead', action: 'updated', id: input.id, payload: lead });
@@ -491,8 +519,12 @@ export async function deleteLead(
 ): Promise<{ id: string; deletedAt: string }> {
   requirePermission(actor, 'leads.delete');
 
-  const existing = await leadRepo.findLeadById(actor.tenantId, id);
+  const existing = await leadRepo.findLeadById(actor.tenantId, id, UNSCOPED_PARTY_ACCESS);
   if (!existing) throw new NotFoundError('Lead');
+
+  // Read unscoped so an out-of-scope caller is refused with a 403 naming why,
+  // not a 404 that reads as "somebody deleted it".
+  await requirePartyAccess(existing.partyId, 'manage', actor);
 
   if (existing.convertedOrderId) {
     throw new ConflictError('error.conflict.blockedByLiveReferences', {}, {
@@ -532,8 +564,13 @@ export async function deleteLead(
 export async function restoreLead(id: string, actor: ActorContext): Promise<BinRestoreResult> {
   requirePermission(actor, 'leads.delete');
 
-  const existing = await leadRepo.findLeadById(actor.tenantId, id, db(), { includeDeleted: true });
+  const existing = await leadRepo.findLeadById(actor.tenantId, id, UNSCOPED_PARTY_ACCESS, db(), { includeDeleted: true });
   if (!existing) throw new NotFoundError('Lead');
+
+  // Read unscoped so an out-of-scope caller is refused with a 403 naming why,
+  // not a 404 that reads as "somebody deleted it".
+  await requirePartyAccess(existing.partyId, 'manage', actor);
+
 
   const party = await recycleBinRepo.findParentStatus(actor.tenantId, 'party', existing.partyId);
   assertParentsLive([
@@ -572,10 +609,11 @@ export async function restoreLead(id: string, actor: ActorContext): Promise<BinR
   return { entityType: 'lead', id, alsoRestored: [] };
 }
 
-export async function getDashboardCounts(tenantId: string) {
+export async function getDashboardCounts(actor: ActorContext) {
+  const scope = resolvePartyScope(actor);
   const [leadCount, followUpsDueCount] = await Promise.all([
-    leadRepo.countOpenLeads(tenantId),
-    leadRepo.countFollowUpsDue(tenantId),
+    leadRepo.countOpenLeads(actor.tenantId, scope),
+    leadRepo.countFollowUpsDue(actor.tenantId, scope),
   ]);
   return { leadCount, followUpsDueCount };
 }

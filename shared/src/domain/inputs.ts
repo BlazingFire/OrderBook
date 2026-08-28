@@ -22,6 +22,7 @@ import type {
   IsoDate,
   IsoTimestamp,
   RecordId,
+  UserAvatar,
   Uuid,
 } from './entities.js';
 import type { FieldListKey } from './fields.js';
@@ -223,10 +224,22 @@ export interface ReorderLevelInput {
   reorderLevel: number | null;
 }
 
+/**
+ * Which slice of the party book a list is asking for.
+ *
+ * `'all'` is *everything the caller may see* — which for somebody without
+ * `party.accessAll` already excludes parties assigned to other people, so it is
+ * never a way around the scope. `'assigned'` narrows further, to the parties
+ * explicitly assigned to the caller: it hides the unclaimed ones, which is the
+ * whole point of the toggle for a person who works a fixed set of accounts.
+ */
+export type PartyScopeFilter = 'all' | 'assigned';
+
 export interface ListQuery {
   search?: string;
   limit?: number;
   offset?: number;
+  scope?: PartyScopeFilter;
 }
 
 export interface LeadListQuery extends ListQuery {
@@ -570,4 +583,94 @@ export interface PanelSecretRotation {
   panelSecret: string;
   delivered: boolean;
   rotatedAt: IsoTimestamp;
+}
+
+// --- Party Access ----------------------------------------------------------
+
+/**
+ * How much of a party one person may do.
+ *
+ * `view` is a window: the party, its leads and its orders are visible, and
+ * nothing about them can be changed. `manage` adds the ability to raise a lead
+ * against the party, edit its records, convert and dispatch. There is
+ * deliberately no third level — "may see the party but not its orders" would
+ * mean scoping the same record two ways, and nobody asked for it.
+ */
+export type PartyAccessLevel = 'view' | 'manage';
+
+/** One person's grant on one party. */
+export interface PartyAccessEntry {
+  userId: RecordId;
+  level: PartyAccessLevel;
+}
+
+/** The same grant, with enough of the person attached to render a row. */
+export interface PartyAccessAssignee extends PartyAccessEntry {
+  displayName: string;
+  username: string;
+  roleName: string;
+  roleTier: 'office' | 'management' | 'admin';
+  isActive: boolean;
+  avatar?: UserAvatar | null;
+}
+
+/**
+ * A party as the Party Access screen sees it.
+ *
+ * `isRestricted` is derived, not stored: a party with no assignees is open to
+ * everyone, so "restricted" means precisely `assignees.length > 0`. Sending it
+ * anyway keeps the renderer from re-deriving the product's central rule in a
+ * template, where it would quietly drift.
+ */
+export interface PartyAccessRow {
+  partyId: RecordId;
+  partyCode: string;
+  partyName: string;
+  city: string | null;
+  version: number;
+  isRestricted: boolean;
+  assignees: PartyAccessAssignee[];
+}
+
+/**
+ * Replace a party's whole assignment set.
+ *
+ * The whole set, never a single add or remove: a permission set is approved as
+ * a whole (`docs/ROLES_AND_USERS.md` §5), and merging two administrators'
+ * partial edits produces a union neither of them approved.
+ */
+export interface PartyAccessInput {
+  entries: PartyAccessEntry[];
+  /** Against `parties.version`. Mandatory — an absent one is a disabled guard. */
+  expectedVersion: number;
+}
+
+/**
+ * Somebody who can be assigned to a party.
+ *
+ * A deliberately narrow shape rather than the full `User`: this list exists to
+ * populate one picker, and it is served to `party.assign` holders — who are
+ * administrators, but should still not receive the staff directory through a
+ * screen that is about parties.
+ */
+export interface AssignablePerson {
+  id: RecordId;
+  displayName: string;
+  username: string;
+  roleName: string;
+  roleTier: 'office' | 'management' | 'admin';
+  /**
+   * `null` when the person has no picture, `undefined` from a Master too old
+   * to send the field — and the `Avatar` component takes both, deliberately
+   * (an absent key once threw inside a component every screen renders and
+   * blanked the whole panel).
+   */
+  avatar?: UserAvatar | null;
+}
+
+export interface PartyAccessQuery extends ListQuery {
+  /** Only parties this person is assigned to. */
+  userId?: RecordId;
+  /** `open` — nobody is assigned; `restricted` — somebody is. */
+  restriction?: 'open' | 'restricted';
 }

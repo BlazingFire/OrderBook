@@ -10,6 +10,7 @@
 
 import { Router } from 'express';
 import multer from 'multer';
+import type { ListQuery } from '@orderbook/shared';
 
 import { ValidationError } from '../../lib/errors.js';
 import * as backupExportService from '../../services/backup-export.service.js';
@@ -52,15 +53,15 @@ const needs = requirePermissionMiddleware;
  */
 const backupUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024 * 1024 } });
 
-function paging(query: Record<string, unknown>): {
-  search?: string;
-  limit?: number;
-  offset?: number;
-} {
+function paging(query: Record<string, unknown>): ListQuery {
   return {
     search: typeof query.search === 'string' && query.search ? query.search : undefined,
     limit: query.limit ? Number(query.limit) : undefined,
     offset: query.offset ? Number(query.offset) : undefined,
+    // The "All parties / My parties" toggle. Anything other than the literal
+    // `assigned` means "all", so a stray value widens to the caller's normal
+    // view rather than silently narrowing it to nothing.
+    scope: query.scope === 'assigned' ? 'assigned' : undefined,
   };
 }
 

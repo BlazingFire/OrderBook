@@ -14,6 +14,7 @@ import type { SearchHit, SearchHitKind, SearchQuery } from '@orderbook/shared';
 
 import { actorCan, requirePermission, type ActorContext } from '../domain/actor.js';
 import { clampLimit } from '../domain/paging.js';
+import { resolvePartyScope } from '../domain/party-scope.js';
 import * as searchRepo from '../repositories/search.repository.js';
 
 const PAGING = { defaultLimit: 20, maxLimit: 100 };
@@ -43,6 +44,9 @@ export async function search(query: SearchQuery, actor: ActorContext): Promise<S
     term,
     kinds: permitted,
     limit: clampLimit(query.limit, PAGING),
+    // Search is just another read, so it narrows the same way every list does.
+    // Without this it would be the one hole straight through the party scope.
+    scope: resolvePartyScope(actor),
   });
 }
 
