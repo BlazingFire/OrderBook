@@ -15,6 +15,26 @@ export type Density = 'compact' | 'comfortable' | 'large';
 // are the same everywhere.
 const KEY_DENSITY = 'ob.density';
 const KEY_MOTION = 'ob.motion';
+const KEY_SCALE = 'ob.scale';
+const KEY_SIDEBAR = 'ob.sidebar';
+
+/**
+ * The UI scale range, in px of root font size.
+ *
+ * Everything in the app is either rem or reads a token that is, so this one
+ * number resizes the whole interface. Shown to the operator as a percentage of
+ * 14, which is 79% to 157%.
+ */
+export const SCALE_MIN = 11;
+export const SCALE_MAX = 22;
+export const SCALE_STEP = 0.5;
+export const SCALE_DEFAULT = 14;
+
+/** Whether the sidebar follows the window width or is pinned by the operator. */
+export type SidebarMode = 'auto' | 'open' | 'closed';
+
+const clampScale = (value: number): number =>
+  Math.min(SCALE_MAX, Math.max(SCALE_MIN, value));
 
 export function read<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
   try {
@@ -41,6 +61,45 @@ export function loadTheme(): Theme {
 
 export function loadDensity(): Density {
   return read<Density>(KEY_DENSITY, ['compact', 'comfortable', 'large'], 'comfortable');
+}
+
+/**
+ * The stored scale, or one migrated from whatever density this machine was
+ * last using.
+ *
+ * Density used to carry the root size, so a machine set to Compact was also
+ * asking for 13px text. Reading that across once keeps those machines looking
+ * the way they did. `ob.density` is deliberately NOT cleared: density is still
+ * a live, independent setting — it just governs row and control heights now.
+ */
+export function loadScale(): number {
+  try {
+    const raw = window.localStorage.getItem(KEY_SCALE);
+    if (raw !== null) {
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed)) return clampScale(parsed);
+    }
+    return { compact: 13, comfortable: 14, large: 16 }[loadDensity()];
+  } catch {
+    return SCALE_DEFAULT;
+  }
+}
+
+export function applyScale(px: number): void {
+  const value = clampScale(px);
+  // Set on the element rather than in a stylesheet: `html { font-size:
+  // var(--root-size) }` in tokens.css reads it, so this one assignment
+  // resizes everything, live, with no reflow of the token layer.
+  document.documentElement.style.setProperty('--root-size', `${value}px`);
+  store(KEY_SCALE, String(value));
+}
+
+export function loadSidebarMode(): SidebarMode {
+  return read<SidebarMode>(KEY_SIDEBAR, ['auto', 'open', 'closed'], 'auto');
+}
+
+export function storeSidebarMode(mode: SidebarMode): void {
+  store(KEY_SIDEBAR, mode);
 }
 
 /** True when animation is switched off in settings. The OS-level
@@ -82,6 +141,7 @@ export function applyMotion(motionOn: boolean): void {
 /** Called once before first paint so there is no flash of the wrong theme. */
 export function initAppearance(): void {
   applyTheme(loadTheme());
+  applyScale(loadScale());
   applyDensity(loadDensity());
   applyMotion(!motionDisabled());
 }

@@ -219,3 +219,44 @@ export function Switch({ checked, onChange, label, disabled, name }: CheckRowPro
     </label>
   );
 }
+
+/**
+ * A native range input, styled.
+ *
+ * Native because a range is one of the few controls the platform gets exactly
+ * right — keyboard, screen reader, touch and pointer all work with no code —
+ * and the alternative is a dependency or a hand-rolled drag handler that has
+ * to reimplement all four. The legacy stylesheet deliberately excludes
+ * `[type='range']` from its input rule, so this is the only styling it gets.
+ */
+export function Slider({
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  label,
+  disabled,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (value: number) => void;
+  label: string;
+  disabled?: boolean;
+}) {
+  return (
+    <input
+      className="ob-slider"
+      type="range"
+      value={value}
+      min={min}
+      max={max}
+      step={step}
+      disabled={disabled}
+      aria-label={label}
+      onChange={(event) => onChange(Number(event.target.value))}
+    />
+  );
+}

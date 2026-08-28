@@ -13,18 +13,26 @@ import type { MasterIdentity, StorageUsage } from '@orderbook/shared';
 import { api } from '../api';
 import { StorageBackupActions } from '../components/StorageBackup';
 import {
+  Button,
   Card,
   IdField,
   KeyValueList,
+  SCALE_DEFAULT,
+  SCALE_MAX,
+  SCALE_MIN,
+  SCALE_STEP,
   Segmented,
   Skeleton,
+  Slider,
   Switch,
   applyDensity,
   applyMotion,
+  applyScale,
   applyTheme,
   formatBytes,
   formatDateTime,
   loadDensity,
+  loadScale,
   loadTheme,
   motionDisabled,
   t,
@@ -41,6 +49,7 @@ export function SettingsScreen() {
   const [storage, setStorage] = useState<StorageUsage | null>(null);
   const [theme, setTheme] = useState<Theme>(() => loadTheme());
   const [density, setDensity] = useState<Density>(() => loadDensity());
+  const [scale, setScale] = useState<number>(() => loadScale());
   const [motionOn, setMotionOn] = useState<boolean>(() => !motionDisabled());
   const [canManageStorage, setCanManageStorage] = useState(false);
 
@@ -74,6 +83,11 @@ export function SettingsScreen() {
     applyDensity(next);
   }
 
+  function handleScaleChange(next: number): void {
+    applyScale(next);
+    setScale(next);
+  }
+
   // Matches the mockup's own convention (and Office's): the switch reads
   // "Turn animation off," so checked means motion is off, not on.
   function handleMotionChange(motionOff: boolean) {
@@ -103,6 +117,33 @@ export function SettingsScreen() {
             />
           </SettingRow>
 
+          <SettingRow label={t('settings.scale.label')}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
+              <Slider
+                value={scale}
+                min={SCALE_MIN}
+                max={SCALE_MAX}
+                step={SCALE_STEP}
+                label={t('settings.scale.label')}
+                onChange={handleScaleChange}
+              />
+              <span className="ob-mono ob-small" style={{ minWidth: '3.5rem', textAlign: 'right' }}>
+                {Math.round((scale / SCALE_DEFAULT) * 100)}%
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleScaleChange(SCALE_DEFAULT)}
+                disabled={scale === SCALE_DEFAULT}
+              >
+                {t('settings.scale.reset')}
+              </Button>
+            </div>
+            <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
+              {t('settings.scale.note', { size: currentRootSize() })}
+            </span>
+          </SettingRow>
+
           <SettingRow label={t('settings.density.label')}>
             <Segmented
               options={[
@@ -114,7 +155,7 @@ export function SettingsScreen() {
               onChange={handleDensityChange}
             />
             <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
-              {t('settings.density.note', { size: currentRootSize() })}
+              {t('settings.density.note')}
             </span>
           </SettingRow>
 

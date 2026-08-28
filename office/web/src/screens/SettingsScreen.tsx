@@ -14,15 +14,23 @@ import { useState } from 'react';
 import type { ConnectionInfo, PanelSession } from '../api';
 import { StorageBackupActions } from '../components/StorageBackup';
 import {
+  Button,
   Card,
   KeyValueList,
+  SCALE_DEFAULT,
+  SCALE_MAX,
+  SCALE_MIN,
+  SCALE_STEP,
   Segmented,
+  Slider,
   Switch,
   applyDensity,
   applyMotion,
+  applyScale,
   applyTheme,
   formatDateTime,
   loadDensity,
+  loadScale,
   loadTheme,
   motionDisabled,
   t,
@@ -51,6 +59,7 @@ const CONNECTION_STATE_KEY: Record<ConnectionInfo['state'], string> = {
 export function SettingsScreen({ connection, session, pendingCount, openConflicts }: Props) {
   const [theme, setTheme] = useState<Theme>(loadTheme);
   const [density, setDensity] = useState<Density>(loadDensity);
+  const [scale, setScale] = useState<number>(loadScale);
   const [motionOn, setMotionOn] = useState<boolean>(() => !motionDisabled());
 
   function pickTheme(next: Theme): void {
@@ -61,6 +70,11 @@ export function SettingsScreen({ connection, session, pendingCount, openConflict
   function pickDensity(next: Density): void {
     applyDensity(next);
     setDensity(next);
+  }
+
+  function pickScale(next: number): void {
+    applyScale(next);
+    setScale(next);
   }
 
   function toggleMotion(motionOff: boolean): void {
@@ -130,6 +144,34 @@ export function SettingsScreen({ connection, session, pendingCount, openConflict
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
             <span className="ob-body" style={{ width: 140 }}>
+              {t('settings.appearance.scale')}
+            </span>
+            <Slider
+              value={scale}
+              min={SCALE_MIN}
+              max={SCALE_MAX}
+              step={SCALE_STEP}
+              label={t('settings.appearance.scale')}
+              onChange={pickScale}
+            />
+            <span className="ob-mono ob-small" style={{ minWidth: '3.5rem', textAlign: 'right' }}>
+              {Math.round((scale / SCALE_DEFAULT) * 100)}%
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => pickScale(SCALE_DEFAULT)}
+              disabled={scale === SCALE_DEFAULT}
+            >
+              {t('settings.appearance.scaleReset')}
+            </Button>
+            <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
+              {t('settings.appearance.scaleNote', { size: currentRootSize() })}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
+            <span className="ob-body" style={{ width: 140 }}>
               {t('settings.appearance.density')}
             </span>
             <Segmented
@@ -145,7 +187,7 @@ export function SettingsScreen({ connection, session, pendingCount, openConflict
               onChange={pickDensity}
             />
             <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
-              {t('settings.appearance.densityNote', { size: currentRootSize() })}
+              {t('settings.appearance.densityNote')}
             </span>
           </div>
 

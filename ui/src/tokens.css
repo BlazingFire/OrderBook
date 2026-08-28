@@ -93,17 +93,21 @@
   --t-mono-line: 1.2857rem; /* 18px */
 
   /* ---- Space (§5) — 4px base; nothing else exists ----------------------- */
-  --s-2: 2px;
-  --s-4: 4px;
-  --s-6: 6px;
-  --s-8: 8px;
-  --s-12: 12px;
-  --s-16: 16px;
-  --s-20: 20px;
-  --s-24: 24px;
-  --s-32: 32px;
-  --s-40: 40px;
-  --s-56: 56px;
+  /* Spacing is in rem so the whole layout follows the scale slider. Four
+     decimals lands within 0.002px at every scale in range. Radii and
+     hairlines below stay px: they are visual constants, not measurements
+     against text, and a 1px border scaled to 1.14px just renders blurry. */
+  --s-2: 0.1429rem;
+  --s-4: 0.2857rem;
+  --s-6: 0.4286rem;
+  --s-8: 0.5714rem;
+  --s-12: 0.8571rem;
+  --s-16: 1.1429rem;
+  --s-20: 1.4286rem;
+  --s-24: 1.7143rem;
+  --s-32: 2.2857rem;
+  --s-40: 2.8571rem;
+  --s-56: 4.0rem;
 
   /* ---- Radius ------------------------------------------------------------ */
   --r-sm: 4px; /* chips, inputs   */
@@ -118,11 +122,11 @@
   --e-exit: cubic-bezier(0.4, 0, 1, 1);
 
   /* ---- Shell dimensions (§8) --------------------------------------------- */
-  --shell-topbar-h: 48px;
-  --shell-filterbar-h: 40px;
-  --shell-footer-h: 26px;
-  --shell-sidebar-w: 208px;
-  --shell-sidebar-collapsed-w: 52px;
+  --shell-topbar-h: 3.4286rem;
+  --shell-filterbar-h: 2.8571rem;
+  --shell-footer-h: 1.8571rem;
+  --shell-sidebar-w: 14.8571rem;
+  --shell-sidebar-collapsed-w: 3.7143rem;
   --rail-w: 3px;
 
   /* ---- Layering ----------------------------------------------------------- */
@@ -132,12 +136,18 @@
   --z-toast: 70;
   --z-splash: 100;
 
-  /* ---- Density defaults (Comfortable, §10) -------------------------------- */
+  /* ---- Scale and density (§10) --------------------------------------------
+     Two separate jobs, which used to be one. `--root-size` is the continuous
+     scale knob, owned by `theme.ts` and set on the root element from the
+     Settings slider (11-22px). Density keeps only the height-to-text RATIOS,
+     which is why they are rem: each is the old absolute value over the old
+     per-density root, so every preset keeps its exact proportions and now
+     scales with the slider too. */
   --root-size: 14px;
-  --row-h: 32px;
-  --ctl-h-sm: 26px;
-  --ctl-h-md: 30px;
-  --ctl-h-lg: 36px;
+  --row-h: 2.2857rem;
+  --ctl-h-sm: 1.8571rem;
+  --ctl-h-md: 2.1429rem;
+  --ctl-h-lg: 2.5714rem;
 }
 
 [data-theme='dark'] {
@@ -170,22 +180,25 @@
   --swatch-ring: rgba(230, 237, 240, 0.14);
 }
 
-/* Density (§10): per-machine, never synced. Only the root size and the three
- * height families change — every component is in rem or reads these tokens,
- * so no component knows density exists. */
+/* Density (§10): per-machine, never synced. Only the three height families
+ * change — every component is in rem or reads these tokens, so no component
+ * knows density or scale exists.
+ *
+ * Density deliberately no longer touches `--root-size`. It used to, which made
+ * "denser" and "smaller text" the same control and left no way to ask for
+ * small text with roomy rows, or the reverse. Ratios are the old px over the
+ * old root: compact 28/13, large 38/16, and so on. */
 [data-density='compact'] {
-  --root-size: 13px;
-  --row-h: 28px;
-  --ctl-h-sm: 24px;
-  --ctl-h-md: 26px;
-  --ctl-h-lg: 30px;
+  --row-h: 2.1538rem;
+  --ctl-h-sm: 1.8462rem;
+  --ctl-h-md: 2rem;
+  --ctl-h-lg: 2.3077rem;
 }
 [data-density='large'] {
-  --root-size: 16px;
-  --row-h: 38px;
-  --ctl-h-sm: 30px;
-  --ctl-h-md: 36px;
-  --ctl-h-lg: 42px;
+  --row-h: 2.375rem;
+  --ctl-h-sm: 1.875rem;
+  --ctl-h-md: 2.25rem;
+  --ctl-h-lg: 2.625rem;
 }
 
 html {

@@ -2959,7 +2959,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'settings.appearance.densityLarge': "Large",
   // TODO(i18n-hi)
-  'settings.appearance.densityNote': "Root {size} — this screen resizes live",
+  'settings.appearance.densityNote': "Row and control heights only — text size is the scale above.",
   // TODO(i18n-hi)
   'settings.appearance.motion': "Motion",
   // TODO(i18n-hi)
@@ -3011,7 +3011,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'settings.density.large': "Large",
   // TODO(i18n-hi)
-  'settings.density.note': "Root {size} — this screen resizes live",
+  'settings.density.note': "Row and control heights only — text size is the scale above.",
   // TODO(i18n-hi)
   'settings.machine.company': "Company",
   // TODO(i18n-hi)
@@ -3216,4 +3216,16 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'screen.resetHint': "Clear the filters, scroll and unsaved entry on this screen and load it fresh.",
   // TODO(i18n-hi)
   'lead.add.discardConfirm': "Discard this lead and start over?",
+  // TODO(i18n-hi)
+  'settings.appearance.scale': "UI scale",
+  // TODO(i18n-hi)
+  'settings.appearance.scaleReset': "Reset",
+  // TODO(i18n-hi)
+  'settings.appearance.scaleNote': "Root {size} — this screen resizes live",
+  // TODO(i18n-hi)
+  'settings.scale.label': "UI scale",
+  // TODO(i18n-hi)
+  'settings.scale.reset': "Reset",
+  // TODO(i18n-hi)
+  'settings.scale.note': "Root {size} — this screen resizes live",
 };
