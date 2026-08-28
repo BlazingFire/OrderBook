@@ -22,6 +22,7 @@ import {
   type DataChangedEvent,
   type Lead,
   type Order,
+  type PanelHealth,
   type PartyProductVariant,
   type Product,
   type SyncSnapshot,
@@ -29,6 +30,7 @@ import {
 
 import { config } from '../config/index.js';
 import { paths } from '../config/paths.js';
+import { appVersion } from '../lib/app-version.js';
 import { createLogger } from '../lib/logger.js';
 import { hasNetworkLink, listLanInterfaces } from '../lib/network.js';
 import { MasterCommandError, masterConnection } from '../realtime/master-connection.js';
@@ -72,13 +74,31 @@ export function createApp(): Express {
    * so it is ready the moment it is listening — there is no `starting` state to
    * report, only the shape.
    */
-  app.get('/api/health', (_req, res) => {
+  app.get('/api/health', (req, res) => {
+    const address = req.socket.remoteAddress;
+    const loopback =
+      address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+
     res.json({
+      panel: 'office',
       status: 'ok',
       boot: { state: 'ready', step: 'Ready', message: null, detail: null },
-      hasNetworkLink: hasNetworkLink(),
+      version: appVersion(),
       port: config.http.port,
-    });
+      hasNetworkLink: hasNetworkLink(),
+      interfaces: listLanInterfaces(),
+      // Absolute paths go to loopback callers only. This panel binds
+      // 127.0.0.1 so that is everyone, but the rule is the Master's and the
+      // two must not diverge — that divergence is what this contract exists
+      // to prevent.
+      ...(loopback
+        ? {
+            dataDir: paths().dataDir,
+            logFile: process.env.ORDERBOOK_LOG_FILE ?? null,
+            installerDir: updateService.updatesDir(),
+          }
+        : {}),
+    } satisfies PanelHealth);
   });
 
   // --- Connection screen ---

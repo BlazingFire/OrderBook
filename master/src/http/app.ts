@@ -4,7 +4,7 @@ import express, { type Express } from 'express';
 import cookieParser from 'cookie-parser';
 
 import { config } from '../config/index.js';
-import { hasNetworkLink, listLanInterfaces } from '../lib/network.js';
+import { liveHealth } from './health.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { attachSession } from './middleware/require-auth.js';
 import { accessRoutes } from './routes/access.routes.js';
@@ -33,13 +33,8 @@ export function createApp(): Express {
   app.use(cookieParser());
   app.use(attachSession);
 
-  app.get('/api/health', (_req, res) => {
-    res.json({
-      status: 'ok',
-      hasNetworkLink: hasNetworkLink(),
-      interfaces: listLanInterfaces(),
-      port: config.http.port,
-    });
+  app.get('/api/health', (req, res) => {
+    res.json(liveHealth(req));
   });
 
   app.use('/api/setup', setupRoutes);

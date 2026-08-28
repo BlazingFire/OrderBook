@@ -91,8 +91,20 @@ export async function availableUpdate(): Promise<UpdateAvailability> {
   return { current: running, available: manifest };
 }
 
+/**
+ * The one folder this panel downloads installers into.
+ *
+ * Exported because the desktop shell will only run a setup file from inside
+ * it, and it learns the path from this panel's own health route. Having
+ * `downloadPath` call this rather than rebuilding the join is the point: the
+ * allowlist and the download target cannot drift apart.
+ */
+export function updatesDir(): string {
+  return path.join(paths().dataDir, 'updates');
+}
+
 function downloadPath(manifest: ReleaseManifest): string {
-  return path.join(paths().dataDir, 'updates', path.basename(manifest.file));
+  return path.join(updatesDir(), path.basename(manifest.file));
 }
 
 /**

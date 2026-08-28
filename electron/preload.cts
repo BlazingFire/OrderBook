@@ -1,0 +1,45 @@
+/**
+ * The whole bridge between a panel's web UI and its desktop shell.
+ *
+ * `contextIsolation` is on, `nodeIntegration` off and `sandbox` on, so this is
+ * the only surface the page ever sees — it gets a function that takes a path,
+ * not a `spawn`. A page that could ask for anything to be run would make the
+ * shell strictly more dangerous than the browser tab it replaces. The shell
+ * additionally refuses any path outside the panel's own updates folder.
+ *
+ * Panel-agnostic: both panels load this same file. It used to carry a `panel`
+ * field naming which one, which nothing ever read.
+ *
+ * CommonJS (`.cts`) deliberately: Electron preload scripts are not ESM.
+ */
+
+import { contextBridge, ipcRenderer } from 'electron';
+
+contextBridge.exposeInMainWorld('orderbook', {
+  shellVersion: process.versions.electron,
+
+  applyUpdate: (filePath: string): Promise<boolean> =>
+    ipcRenderer.invoke('orderbook:applyUpdate', filePath) as Promise<boolean>,
+
+  getShellSettings: (): Promise<{ openAtLogin: boolean; logFile: string }> =>
+    ipcRenderer.invoke('orderbook:getShellSettings') as Promise<{
+      openAtLogin: boolean;
+      logFile: string;
+    }>,
+
+  setShellSettings: (value: { openAtLogin: boolean }): Promise<boolean> =>
+    ipcRenderer.invoke('orderbook:setShellSettings', value) as Promise<boolean>,
+
+  openLogFolder: (): Promise<boolean> =>
+    ipcRenderer.invoke('orderbook:openLogFolder') as Promise<boolean>,
+
+  /**
+   * The application menu asking the page to go somewhere. One-way and
+   * id-based: the menu is built in the main process and the renderer only
+   * matches ids it knows, so the menu can never make the page do something it
+   * has no command for.
+   */
+  onMenuCommand: (handler: (id: string) => void): void => {
+    ipcRenderer.on('orderbook:menuCommand', (_event, id: string) => handler(id));
+  },
+});

@@ -3,7 +3,7 @@
   "version": "1.0.2",
   "private": true,
   "type": "module",
-  "main": "electron/dist/main.js",
+  "main": "electron/dist/office.main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json && npm run build --workspace @orderbook/office-web",
     "build:server": "tsc -p tsconfig.json",

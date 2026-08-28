@@ -230,7 +230,20 @@ async function build(panel, version) {
   console.log(`\n== ${config.label} Panel ${version} ==`);
 
   run('npm', ['run', 'build', '--workspace', `@orderbook/${panel}`]);
-  run('npx', ['tsc', '-p', path.join(config.dir, 'electron', 'tsconfig.json')]);
+
+  /*
+   * One shell, compiled once, copied into whichever panel is being packaged.
+   *
+   * Both panels ran a near-identical 300-line `main.ts` of their own until the
+   * two drifted — the Office copy spent a minute polling a health route its
+   * server did not have. `electron-builder.yml` still ships
+   * `electron/dist/**\/*` from the panel folder, so the built shell is copied
+   * in rather than the yml learning about a path outside the panel.
+   */
+  run('npx', ['tsc', '-p', path.join('electron', 'tsconfig.json')]);
+  const shellDist = path.join(panelRoot, 'electron', 'dist');
+  await rm(shellDist, { recursive: true, force: true });
+  await cp(path.join(ROOT, 'electron', 'dist'), shellDist, { recursive: true });
 
   if (config.vendorPostgres) await vendorPostgres();
   await stage(panel);

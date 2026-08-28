@@ -31,7 +31,78 @@ export interface DesktopBridge {
    */
   applyUpdate(filePath: string): Promise<boolean>;
 
-  /** Which shell is hosting this, for the Updates screen's own diagnostics. */
-  readonly panel: 'master' | 'office';
   readonly shellVersion: string;
+
+  /*
+   * Everything below is optional on purpose.
+   *
+   * An already-installed shell exposes only `applyUpdate` and `shellVersion`,
+   * and a panel's web bundle is updated by the same setup file as its shell
+   * but not necessarily at the same moment as every *other* panel's. A caller
+   * must therefore branch per method, exactly as it already has to branch on
+   * the bridge being absent altogether in a browser tab.
+   */
+
+  /** Whether the panel starts with the PC, and where the shell's log lives. */
+  getShellSettings?(): Promise<{ openAtLogin: boolean; logFile: string }>;
+  setShellSettings?(value: { openAtLogin: boolean }): Promise<boolean>;
+  openLogFolder?(): Promise<boolean>;
+
+  /**
+   * The application menu asking the page to go somewhere, by command id.
+   *
+   * The menu lives in the main process and cannot see the panel's routes, so
+   * it sends an id and the page decides. It previously navigated by URL, to a
+   * hash route the panel does not have.
+   */
+  onMenuCommand?(handler: (id: string) => void): void;
+}
+
+/**
+ * What a panel says about itself at `GET /api/health` — the one contract the
+ * desktop shell reads, from either panel.
+ *
+ * This exists because the shell polls this route to decide when to swap its
+ * splash for the app, and the two panels answered differently: the Office
+ * server had no such route at all, so its shell waited out the full timeout
+ * and then declared a running server dead, and the Master's live app omitted
+ * `boot` entirely, which made the shell's failure check dead code against it.
+ * Annotating every implementation `satisfies PanelHealth` is what stops them
+ * drifting apart again.
+ *
+ * The route is deliberately unauthenticated — the shell polls it before anyone
+ * has signed in — and the Master binds `0.0.0.0`, so this shape is readable by
+ * anything on the shop LAN. The three filesystem paths are therefore optional
+ * and served only to loopback callers.
+ */
+export type PanelBootState = 'starting' | 'ready' | 'failed';
+
+export interface PanelBootStatus {
+  state: PanelBootState;
+  /** What the panel is doing right now — shown on the splash while starting. */
+  step: string;
+  /** Why it stopped, in words an operator can act on. Only when `failed`. */
+  message: string | null;
+  detail: string | null;
+}
+
+export interface PanelHealthInterface {
+  name: string;
+  address: string;
+  netmask: string;
+  broadcastAddress: string;
+}
+
+export interface PanelHealth {
+  panel: 'master' | 'office';
+  status: 'ok' | 'starting';
+  boot: PanelBootStatus;
+  version: string;
+  port: number;
+  hasNetworkLink: boolean;
+  interfaces: readonly PanelHealthInterface[];
+  /** Loopback callers only — absent over the LAN. */
+  dataDir?: string;
+  logFile?: string | null;
+  installerDir?: string;
 }

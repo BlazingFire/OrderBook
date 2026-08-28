@@ -9,5 +9,10 @@
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true
   },
-  "include": ["shared/tests/**/*.ts", "master/tests/**/*.ts", "office/tests/**/*.ts"]
+  "include": [
+    "shared/tests/**/*.ts",
+    "master/tests/**/*.ts",
+    "office/tests/**/*.ts",
+    "electron/tests/**/*.ts"
+  ]
 }

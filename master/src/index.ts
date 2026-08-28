@@ -43,6 +43,88 @@ const log = createLogger('master');
 
 const SESSION_SWEEP_INTERVAL_MS = 15 * 60 * 1000;
 
+/*
+ * Everything shutdown has to tear down, at module scope so the handlers can be
+ * registered before `main()` runs.
+ *
+ * They used to be locals inside `main()`, and the handlers were installed at
+ * the *end* of the boot sequence — after `startPostgres()` and
+ * `runMigrations()`, which is 60-90 seconds on a first run. That is precisely
+ * the window in which an operator watching a splash screen gives up and closes
+ * it, and precisely the half-built cluster the handlers exist to protect: for
+ * the whole of it there was no SIGTERM handler at all, so the process died
+ * where it stood and left `initdb` output behind for the next launch to trip
+ * over. Registering at module scope costs nothing and closes that window.
+ */
+let postgres: PostgresServerHandle | null = null;
+let hub: RealtimeHub | null = null;
+let discovery: DiscoveryResponder | null = null;
+let httpServer: ReturnType<typeof createServer> | null = null;
+let sessionSweep: NodeJS.Timeout | null = null;
+let bootSucceeded = false;
+let shuttingDown = false;
+
+/**
+ * Extra teardown a subsystem registers for itself.
+ *
+ * A seam, so that a feature needing cleanup adds a line here instead of
+ * reshaping `shutdown()` — which is how this function grew two near-identical
+ * copies the first time.
+ */
+export const disposables: Array<() => void | Promise<void>> = [];
+
+/**
+ * Stop everything that is currently running, in dependency order.
+ *
+ * Safe at any point in the boot sequence, including before it starts: every
+ * resource is null until it exists. Postgres goes last so nothing is mid-query
+ * when it goes down.
+ */
+async function shutdown(reason: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  log.info(`Received ${reason}, shutting down`);
+
+  if (sessionSweep) clearInterval(sessionSweep);
+
+  for (const dispose of disposables) {
+    await Promise.resolve()
+      .then(dispose)
+      .catch(() => {});
+  }
+
+  await discovery?.stop().catch(() => {});
+  await hub?.stop().catch(() => {});
+  if (httpServer) await new Promise<void>((resolve) => httpServer?.close(() => resolve()));
+  await closeDatabase().catch(() => {});
+  await postgres?.stop().catch(() => {});
+
+  log.info('Shutdown complete');
+  process.exit(bootSucceeded ? 0 : 1);
+}
+
+process.on('SIGINT', () => void shutdown('SIGINT'));
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+
+/*
+ * The desktop shell asks over IPC rather than by signal, because Windows has
+ * no signals: `child.kill('SIGTERM')` there is `TerminateProcess`, which the
+ * process cannot observe — so on the operator's actual machine none of the
+ * teardown above had ever run.
+ */
+process.on('message', (message: unknown) => {
+  if ((message as { type?: string } | null)?.type === 'orderbook:shutdown') {
+    void shutdown('shutdown request');
+  }
+});
+
+/*
+ * The shell died. Do not outlive it holding the port and the cluster — the
+ * next launch would meet its own orphan. Only fires when an IPC channel
+ * exists, so `npm run dev:master` is unaffected.
+ */
+process.on('disconnect', () => void shutdown('parent gone'));
+
 /**
  * Proves `config.locale.timeZone` at boot rather than letting a typo surface
  * later as a quietly-wrong report bucket. Nothing pins a timezone otherwise —
@@ -74,16 +156,15 @@ async function main(): Promise<void> {
    * would reintroduce the very window this exists to close.
    */
   let handler: (req: IncomingMessage, res: ServerResponse) => void = createBootApp();
-  const httpServer = createServer((req, res) => handler(req, res));
+  const server = createServer((req, res) => handler(req, res));
+  httpServer = server;
 
   await new Promise<void>((resolve, reject) => {
-    httpServer.once('error', reject);
-    httpServer.listen(config.http.port, config.http.host, resolve);
+    server.once('error', reject);
+    server.listen(config.http.port, config.http.host, resolve);
   });
 
   log.info(`Master Panel starting — open http://localhost:${config.http.port} to watch its progress`);
-
-  let postgres: PostgresServerHandle | null = null;
 
   try {
     bootStep('Preparing folders');
@@ -114,19 +195,18 @@ async function main(): Promise<void> {
 
     bootStep('Starting the panel');
     handler = createApp();
-    const hub = createRealtimeHub(httpServer);
+    hub = createRealtimeHub(server);
 
-    const discovery = await startDiscoveryResponder();
-    const sessionSweep = setInterval(purgeExpiredSessions, SESSION_SWEEP_INTERVAL_MS);
+    discovery = await startDiscoveryResponder();
+    sessionSweep = setInterval(purgeExpiredSessions, SESSION_SWEEP_INTERVAL_MS);
 
     bootReady();
+    bootSucceeded = true;
 
     for (const address of listLanAddresses()) {
       log.info(`Master Panel ready at http://${address}:${config.http.port}`);
     }
     log.info(`Master Panel ready at http://localhost:${config.http.port}`);
-
-    installShutdownHandlers({ postgres, hub, discovery, httpServer, sessionSweep });
   } catch (error) {
     /*
      * Deliberately no `process.exit`. The HTTP server stays up serving the boot
@@ -138,64 +218,14 @@ async function main(): Promise<void> {
     log.error('Failed to start', error);
     log.error(`The Master Panel is not usable. Open http://localhost:${config.http.port} to see why.`);
 
-    installFailedShutdownHandlers(httpServer, postgres);
+    /*
+     * Deliberately still running. `shutdown()` is already registered and will
+     * stop a half-started cluster when the signal comes — there used to be a
+     * second, near-identical handler installer here for exactly that case, and
+     * having two of them is how the successful path ended up protected and the
+     * failing one not.
+     */
   }
-}
-
-function installShutdownHandlers(resources: {
-  postgres: PostgresServerHandle;
-  hub: RealtimeHub;
-  discovery: DiscoveryResponder;
-  httpServer: ReturnType<typeof createServer>;
-  sessionSweep: NodeJS.Timeout;
-}): void {
-  let shuttingDown = false;
-
-  const shutdown = async (signal: string): Promise<void> => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    log.info(`Received ${signal}, shutting down`);
-
-    clearInterval(resources.sessionSweep);
-    await resources.discovery.stop().catch(() => {});
-    await resources.hub.stop().catch(() => {});
-    await new Promise<void>((resolve) => resources.httpServer.close(() => resolve()));
-    await closeDatabase().catch(() => {});
-    // Postgres is stopped last so nothing is mid-query when it goes down.
-    await resources.postgres.stop().catch(() => {});
-
-    log.info('Shutdown complete');
-    process.exit(0);
-  };
-
-  process.on('SIGINT', () => void shutdown('SIGINT'));
-  process.on('SIGTERM', () => void shutdown('SIGTERM'));
-}
-
-/**
- * Ctrl-C has to work even when startup failed, and it has to stop a PostgreSQL
- * that got half-way up — otherwise the next launch meets its own leftover
- * cluster and fails differently.
- */
-function installFailedShutdownHandlers(
-  httpServer: ReturnType<typeof createServer>,
-  postgres: PostgresServerHandle | null,
-): void {
-  let shuttingDown = false;
-
-  const shutdown = async (signal: string): Promise<void> => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    log.info(`Received ${signal}, shutting down`);
-
-    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
-    await closeDatabase().catch(() => {});
-    await postgres?.stop().catch(() => {});
-    process.exit(1);
-  };
-
-  process.on('SIGINT', () => void shutdown('SIGINT'));
-  process.on('SIGTERM', () => void shutdown('SIGTERM'));
 }
 
 /**

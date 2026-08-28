@@ -18,9 +18,56 @@ import * as userSession from './services/user-session.service.js';
 
 const log = createLogger('office');
 
+/*
+ * At module scope, and registered before `main()` runs, so a panel killed
+ * while it is still loading credentials still closes its port and its link
+ * rather than dying where it stands. The mirror of `master/src/index.ts`.
+ */
+let httpServer: ReturnType<typeof createServer> | null = null;
+let shuttingDown = false;
+
+/** Extra teardown a subsystem registers for itself. See the master's copy. */
+export const disposables: Array<() => void | Promise<void>> = [];
+
+async function shutdown(reason: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  log.info(`Received ${reason}, shutting down`);
+
+  for (const dispose of disposables) {
+    await Promise.resolve()
+      .then(dispose)
+      .catch(() => {});
+  }
+
+  masterConnection.disconnect();
+  if (httpServer) await new Promise<void>((resolve) => httpServer?.close(() => resolve()));
+
+  log.info('Shutdown complete');
+  process.exit(0);
+}
+
+process.on('SIGINT', () => void shutdown('SIGINT'));
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+
+/*
+ * Windows has no signals — `child.kill('SIGTERM')` there is `TerminateProcess`,
+ * which the process cannot observe — so the desktop shell asks over IPC
+ * instead, and `disconnect` stops this panel outliving a shell that died.
+ * Both only fire when an IPC channel exists, so `npm run dev:office` is
+ * unaffected.
+ */
+process.on('message', (message: unknown) => {
+  if ((message as { type?: string } | null)?.type === 'orderbook:shutdown') {
+    void shutdown('shutdown request');
+  }
+});
+process.on('disconnect', () => void shutdown('parent gone'));
+
 async function main(): Promise<void> {
   const app = createApp();
-  const httpServer = createServer(app);
+  const server = createServer(app);
+  httpServer = server;
 
   // The link re-establishes the acting user on every reconnect; these two
   // events are how the outcome reaches the session. Wired here rather than
@@ -36,7 +83,7 @@ async function main(): Promise<void> {
   });
 
   await new Promise<void>((resolve) => {
-    httpServer.listen(config.http.port, config.http.host, resolve);
+    server.listen(config.http.port, config.http.host, resolve);
   });
 
   log.info(`Office Panel ready at http://localhost:${config.http.port}`);
@@ -54,15 +101,6 @@ async function main(): Promise<void> {
     log.info('Not paired yet — open the panel in a browser to connect to a Master');
   }
 
-  const shutdown = async (signal: string): Promise<void> => {
-    log.info(`Received ${signal}, shutting down`);
-    masterConnection.disconnect();
-    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
-    process.exit(0);
-  };
-
-  process.on('SIGINT', () => void shutdown('SIGINT'));
-  process.on('SIGTERM', () => void shutdown('SIGTERM'));
 }
 
 main().catch((error) => {

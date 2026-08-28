@@ -1,5 +1,5 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": ".",
@@ -9,5 +9,6 @@
     "types": ["node"],
     "skipLibCheck": true
   },
-  "include": ["main.ts", "preload.cts"]
+  "include": ["**/*.ts", "**/*.cts"],
+  "exclude": ["tests", "dist"]
 }

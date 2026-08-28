@@ -15,12 +15,13 @@ import express, { type Express } from 'express';
 
 import { bootStatus } from '../boot-status.js';
 import { config } from '../config/index.js';
+import { bootHealth } from './health.js';
 
 export function createBootApp(): Express {
   const app = express();
 
-  app.get('/api/health', (_req, res) => {
-    res.json({ status: bootStatus().state === 'ready' ? 'ok' : 'starting', boot: bootStatus() });
+  app.get('/api/health', (req, res) => {
+    res.json(bootHealth(req));
   });
 
   /*
