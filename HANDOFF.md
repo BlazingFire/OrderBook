@@ -50,10 +50,30 @@ config, the connector secrets and the password toggle.
 Done so far:
 
 - **Stage 0 — repo safety.** 26 untracked paths committed, including two
-  migrations already in the `SHIPPED` list. See the trap below.
-- **The reported bug.** Both panels closing by themselves: two independent
-  causes, both fixed and verified. See "Traps worth knowing".
-- **Stage 1 (core) — the whole-record-replace data-loss bug.** See below.
+  migrations already in the `SHIPPED` list. Both web workspaces gained the
+  `typecheck` script they never had. See the traps below.
+- **Stage 1 (core) — the whole-record-replace data-loss bug**, plus the two
+  drifted copies of the column map that were hiding beside it. See the traps.
+  What remains of Stage 1 — `validateProductInput`, purchase-rate masking and
+  the `setStockLevels` partial upsert — validates columns that do not exist
+  until Stage 8's migration, so it lands there rather than being written
+  against nothing.
+- **Stage 2 — the Electron shell.** One `electron/` at the repo root, two thin
+  entrypoints, ~640 lines of duplication deleted. The panels-close-by-themselves
+  bug, the stuck `updating` flag, shutdown handlers registering 60–90 s too
+  late, the Windows `TerminateProcess` problem, the unrestricted installer
+  path, missing crash handlers, and logs going nowhere. `PanelHealth` in
+  `shared` is now the one contract both panels answer with.
+
+**Running the shell from source:** `npm run build:shell` compiles it and copies
+the output into `master/electron/dist` and `office/electron/dist` (the shell
+locates its server by walking up two levels, and electron-builder packages
+`electron/dist/**` from inside the panel folder). Then
+`npx electron master/electron/dist/master.main.js`.
+
+Next: **Stage 3**, extracting the hand-duplicated `web/src/ui/` into one
+package and folding the two forked string dictionaries. It is the largest and
+riskiest stage and it blocks every other UI stage.
 
 ## Key decisions made so far (do not re-decide these without a reason)
 
@@ -1850,10 +1870,25 @@ in the order the plan lists them:
   comes from `productName` and the two panels differ; unpackaged there is no
   `productName`, so both were `Electron`, shared one lock, and whichever
   started second quit instantly with no window, no dialog and nothing in any
-  log. Both shells now call `app.setName()` before the lock, and losing the
-  lock shows a dialog. **Do not "fix" this with `app.setPath('userData', …)`**
-  — that relocates the whole Chromium profile and wipes every stored
-  preference (`ob.theme.v2`, `ob.density`, `ob.motion`).
+  log. The shell calls `app.setName()` **before** the lock, and losing the lock
+  shows a dialog. **The order of those two lines is the whole fix** — putting
+  the lock first silently brings the bug back, which happened once while
+  building the shared shell. **Do not "fix" any of this with
+  `app.setPath('userData', …)`** — that relocates the whole Chromium profile
+  and wipes every stored preference (`ob.theme.v2`, `ob.density`, `ob.motion`).
+- **On Windows, `child.kill('SIGTERM')` is `TerminateProcess`.** The signal
+  name is ignored and the process cannot observe it, so the server's shutdown
+  handlers — closing sockets, the knex pool, and stopping the PostgreSQL
+  cluster with `pg_ctl` — had never once run on the operator's actual machine.
+  Every quit left the cluster to recover on the next boot. The shell now sends
+  `{type:'orderbook:shutdown'}` over an IPC channel (the fourth `stdio` slot),
+  waits for the child to exit, and only hard-kills at a deadline. Both servers
+  listen for that message, and for `disconnect` so they do not outlive a shell
+  that died. If you change the spawn options, keep the `'ipc'` slot.
+- **The hard-kill fallback still orphans `postgres.exe`.** `pg_ctl` starts the
+  postmaster detached, so killing the Node child leaves it holding port 55432.
+  Survivable, and deliberately not chased: `startCluster` returns early when
+  the cluster is already running, so the next launch adopts the orphan.
 - **The frontend had never been typechecked.** Root `typecheck` is
   `npm run typecheck --workspaces --if-present`, and neither web workspace
   declared the script, so `npm run verify` silently skipped ~29,000 lines of
