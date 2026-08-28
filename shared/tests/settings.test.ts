@@ -37,6 +37,9 @@ describe('every parser rejects a wrong shape', () => {
     'security.passwordRevealEnabled': 'yes',
     'ai.provider': { kind: 'anthropic' },
     'ai.apiKey': 42,
+    'ai.allowWrites': 'yes',
+    'ai.retentionDays': -1,
+    'ai.dailyTokenBudget': 'lots',
     'externalApi.enabled': 1,
   };
 

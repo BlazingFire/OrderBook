@@ -18,6 +18,7 @@
  */
 
 export * from './AppShell.js';
+export * from './AssistantScreen.js';
 export * from './Avatar.js';
 export * from './AvatarPicker.js';
 export * from './BusyMark.js';

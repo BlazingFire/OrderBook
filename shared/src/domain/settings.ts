@@ -51,8 +51,14 @@ export interface SettingDefinition<T> {
 
 /** How the AI section reaches a model. `off` is the shipped default. */
 export type AiProviderSetting =
-  | { kind: 'off' }
-  | { kind: 'openaiCompatible'; baseUrl: string; model: string };
+  { kind: 'off' } | { kind: 'openaiCompatible'; baseUrl: string; model: string };
+
+function asPositiveNumber(raw: unknown): number {
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0)
+    throw new TypeError('expected a number of at least zero');
+  return Math.floor(value);
+}
 
 function asBoolean(raw: unknown): boolean {
   if (typeof raw !== 'boolean') throw new TypeError('expected a boolean');
@@ -124,6 +130,48 @@ export const SETTINGS = {
   },
 
   /**
+   * Whether a person may apply a change the assistant suggested.
+   *
+   * Separate from the `ai.write` permission, and both are required: the
+   * permission says who, this says whether the installation allows it at all.
+   * A shop that wants the assistant only as a reader turns this off once
+   * instead of auditing every role.
+   */
+  'ai.allowWrites': {
+    labelToken: 'setting.ai.allowWrites.label',
+    descriptionToken: 'setting.ai.allowWrites.help',
+    fallback: false,
+    parse: (raw: unknown): boolean => asBoolean(raw),
+  },
+
+  /**
+   * How many days a transcript is kept.
+   *
+   * Prompts and answers are the most sensitive thing this feature stores — a
+   * question is often about a particular customer — so they age out. The
+   * `activity_log` entry does not, but it carries only figures.
+   */
+  'ai.retentionDays': {
+    labelToken: 'setting.ai.retentionDays.label',
+    descriptionToken: 'setting.ai.retentionDays.help',
+    fallback: 90,
+    parse: (raw: unknown): number => asPositiveNumber(raw),
+  },
+
+  /**
+   * A ceiling on tokens spent per day against a paid provider.
+   *
+   * Zero means no ceiling, which is the right default for a model running on a
+   * machine in the building: there is nothing to spend.
+   */
+  'ai.dailyTokenBudget': {
+    labelToken: 'setting.ai.dailyTokenBudget.label',
+    descriptionToken: 'setting.ai.dailyTokenBudget.help',
+    fallback: 0,
+    parse: (raw: unknown): number => asPositiveNumber(raw),
+  },
+
+  /**
    * The public API's master switch.
    *
    * There was a second key beside this one — a list of `{slug, label, baseUrl}`
@@ -138,7 +186,6 @@ export const SETTINGS = {
     fallback: false,
     parse: (raw: unknown): boolean => asBoolean(raw),
   },
-
 } satisfies Record<string, SettingDefinition<unknown>>;
 
 export type SettingKey = keyof typeof SETTINGS;

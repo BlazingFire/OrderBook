@@ -24,6 +24,7 @@ import type {
 import { ApiError, api, desktopBridge } from './api';
 import {
   AppShell,
+  AssistantScreen,
   Avatar,
   BP_NARROW,
   Clock,
@@ -43,6 +44,7 @@ import {
   TopbarActionsOutlet,
   TopbarActionsProvider,
   loadSidebarMode,
+  publishAiEvent,
   rem,
   storeSidebarMode,
   t,
@@ -83,6 +85,7 @@ type Tab =
   | 'documents'
   | 'access'
   | 'partyAccess'
+  | 'assistant'
   | 'fields'
   | 'integrations'
   | 'logs'
@@ -263,6 +266,11 @@ function MasterPanel() {
     // synthetic key rather than riding on some other entity's counter.
     socket.on('sync:conflict', () => bump('sync_conflict'));
 
+    // The assistant's tokens ride this socket rather than a stream of their
+    // own — a second one would mean a second keep-alive and a second reconnect
+    // for a channel that is already open and already authenticated.
+    socket.on('ai:event', publishAiEvent);
+
     return () => {
       socket.close();
     };
@@ -351,6 +359,7 @@ function MasterPanel() {
   const canManagePanels = user.permissions.includes('panels.manage');
   const canManageSettings = user.permissions.includes('settings.manage');
   const canManageApi = user.permissions.includes('api.manage');
+  const canUseAi = user.permissions.includes('ai.use');
   const canViewFields = user.permissions.includes('fields.view');
   // Either key opens the screen: `party.assign` to redraw the map,
   // `party.accessAll` to read it. Somebody trusted with the whole book should
@@ -433,6 +442,7 @@ function MasterPanel() {
     canViewRecycleBin
       ? { id: 'recycleBin', label: t('nav.master.recycleBin'), icon: 'trash' }
       : null,
+    canUseAi ? { id: 'assistant', label: t('nav.master.assistant'), icon: 'eye' } : null,
     canManageApi
       ? { id: 'integrations', label: t('nav.master.integrations'), icon: 'server' }
       : null,
@@ -720,6 +730,19 @@ function MasterPanel() {
     {
       id: 'updates',
       render: () => <UpdatesScreen panels={panels} permissions={user.permissions} />,
+    },
+    {
+      id: 'assistant',
+      render: () => (
+        <AssistantScreen
+          transport={{
+            status: api.aiStatus,
+            listRuns: api.aiRuns,
+            ask: api.aiAsk,
+            cancel: api.aiCancel,
+          }}
+        />
+      ),
     },
     { id: 'integrations', render: () => <IntegrationsScreen canManage={canManageApi} /> },
     { id: 'settings', render: () => <SettingsScreen /> },

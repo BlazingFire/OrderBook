@@ -2424,3 +2424,40 @@ html[data-window-blur='true'] .ob-busy rect {
     min-height: 8rem;
   }
 }
+
+/* ===========================================================================
+ * The assistant (Stage 12)
+ *
+ * Appended as its own block rather than folded into the surrounding rules, per
+ * the ownership table: this stage adds, it does not rewrite.
+ *
+ * `white-space: pre-wrap` is the whole of the text treatment, and that is the
+ * point — a generated answer is plain text on purpose. No markdown, no HTML,
+ * no auto-linkification: part of what the model saw was a party's notes, which
+ * anybody outside this company can write into.
+ * ======================================================================== */
+
+.ob-ai-stream {
+  white-space: pre-wrap;
+  margin: var(--s-8) 0 0;
+  line-height: var(--t-body-line);
+}
+
+/* A generated sentence beside figures that were computed, not generated. */
+.ob-ai-note {
+  border-left: 2px solid var(--accent);
+  background: var(--accent-tint);
+  padding: var(--s-6) var(--s-8);
+  border-radius: var(--r-sm);
+  margin-top: var(--s-8);
+}
+
+.ob-ai-provenance {
+  margin-top: var(--s-8);
+  color: var(--fg-tertiary);
+}
+
+.ob-ai-provenance ul {
+  margin: var(--s-4) 0 0;
+  padding-left: var(--s-16);
+}

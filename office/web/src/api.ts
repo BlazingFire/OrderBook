@@ -69,6 +69,10 @@ import type {
   ReportKind,
   ReportRangeInput,
   RestoreInput,
+  AiRun,
+  AiStartInput,
+  AiStatus,
+  Insight,
   SearchHit,
   StageReorderInput,
   SyncConflict,
@@ -210,7 +214,11 @@ function release(key: string): void {
   inFlight.delete(key);
 }
 
-async function send<T>(path: string, init: RequestInit | undefined, signal: AbortSignal): Promise<T> {
+async function send<T>(
+  path: string,
+  init: RequestInit | undefined,
+  signal: AbortSignal,
+): Promise<T> {
   const response = await fetch(path, {
     ...init,
     signal,
@@ -446,6 +454,14 @@ export const api = {
   }) => post('/api/stock/adjust', input),
 
   search: (term: string) => request<SearchHit[]>(`/api/search?q=${encodeURIComponent(term)}`),
+
+  // --- The assistant (Stage 12). Master-online-only, never queued: an answer
+  // to an hour-old question delivered when the link returns helps nobody.
+  aiStatus: () => request<AiStatus>('/api/ai/status'),
+  aiRuns: () => request<AiRun[]>('/api/ai/runs'),
+  aiAsk: (input: AiStartInput) => post<{ runId: string }>('/api/ai/runs', input),
+  aiCancel: (runId: string) => request<void>(`/api/ai/runs/${runId}`, { method: 'DELETE' }),
+  aiInsights: () => request<Insight[]>('/api/ai/insights'),
 
   conflicts: () => request<SyncConflict[]>('/api/conflicts'),
   resolveConflict: (id: number, action: 'keepWinner' | 'restoreLoser') =>

@@ -55,6 +55,9 @@ import { resolvePanelActor } from '../services/panel-actor.service.js';
 import * as logService from '../services/log.service.js';
 import * as reportService from '../services/report.service.js';
 import * as imageService from '../services/image.service.js';
+import * as aiService from '../services/ai.service.js';
+import { abortRunsOf, onAiEvent } from '../services/ai.service.js';
+import * as insightService from '../services/ai-insight.service.js';
 import * as panelService from '../services/panel.service.js';
 import * as partyAccessService from '../services/party-access.service.js';
 import * as recycleBinService from '../services/recycle-bin.service.js';
@@ -146,7 +149,8 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
   // it can always tell a closed hub from an unreachable panel.
   setPanelLink({
     isConnected: (panelId) => panelSockets.has(panelId),
-    request: (panelId, event, payload) => requestFromPanel(panelSockets.get(panelId), event, payload),
+    request: (panelId, event, payload) =>
+      requestFromPanel(panelSockets.get(panelId), event, payload),
     disconnect: (panelId) => {
       const socket = panelSockets.get(panelId);
       if (!socket) return false;
@@ -269,8 +273,26 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
 
     await socket.join(ROOM_MASTER_ADMINS);
     adminSocketCount += 1;
+
+    /*
+     * The assistant's tokens ride this socket rather than a stream of their own.
+     *
+     * Filtered by `socket.data.userId`, which the handshake already set: a run
+     * is one person's question, and its answer is not for the other
+     * administrators watching the same room.
+     */
+    const stopAi = onAiEvent((event) => {
+      if (socket.data.userId && event.userId === socket.data.userId) {
+        socket.emit('ai:event', { ...event.payload, runId: event.runId });
+      }
+    });
+
     socket.on('disconnect', () => {
       adminSocketCount = Math.max(0, adminSocketCount - 1);
+      stopAi();
+      // A run whose watcher has gone is a run generating into nothing, on
+      // somebody's token budget.
+      if (socket.data.userId) abortRunsOf(socket.data.userId);
     });
 
     socket.emit('panels:changed', await panelService.listPanelsWithPresence(actor.tenantId));
@@ -303,6 +325,24 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
   registerAuthCommands(socket, sendSnapshot);
 
   /*
+   * One `ai:event` listener per panel socket, resolved against whoever is
+   * signed in on that panel at the moment the event arrives.
+   *
+   * Not per run: a listener added and removed per run would grow this socket's
+   * listener count with every question somebody asks, and a panel is a
+   * long-lived connection.
+   */
+  const stopPanelAi = onAiEvent((event) => {
+    void actorFor()
+      .then((current) => {
+        if (current.userId === event.userId) {
+          socket.emit('ai:event', { ...event.payload, runId: event.runId });
+        }
+      })
+      .catch(() => undefined);
+  });
+
+  /*
    * Catch the panel up in one round trip before incremental changes resume.
    *
    * A cursor in the handshake — rather than a command the panel sends after
@@ -323,6 +363,7 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
   }
 
   socket.on('disconnect', () => {
+    stopPanelAi();
     void (async () => {
       // Only if this socket is still the one on file: a panel that reconnected
       // before its old socket finished tearing down has already replaced the
@@ -359,6 +400,30 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
     }),
   );
 
+  /*
+   * The assistant, forwarded like every other command.
+   *
+   * `ai:start` acks as soon as the run exists — never on completion — because
+   * `MasterConnection.command` gives up after fifteen seconds and would report
+   * this Master unreachable while the model was still answering.
+   */
+  socket.on('ai:start', (input, ack) => run(ack, (actor) => aiService.startRun(actor, input)));
+  socket.on('ai:cancel', (runId, ack) =>
+    run(ack, async (actor) => {
+      await aiService.cancelRun(actor, runId);
+      return null;
+    }),
+  );
+  socket.on('ai:listRuns', (ack) => run(ack, (actor) => aiService.listOwnRuns(actor)));
+  socket.on('ai:status', (ack) => run(ack, (actor) => aiService.status(actor)));
+  socket.on('ai:insights', (ack) => run(ack, (actor) => insightService.listInsights(actor)));
+  socket.on('ai:apply', ({ runId, fields }, ack) =>
+    run(ack, async (actor) => {
+      await aiService.applyProposal(actor, runId, fields);
+      return null;
+    }),
+  );
+
   socket.on('sync:request', (ack) => run(ack, (actor) => buildSnapshot(actor)));
   socket.on('sync:push', (request, ack) =>
     run(ack, (actor) => syncService.applyPush(request, actor)),
@@ -373,7 +438,9 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   socket.on('party:update', ({ id, input }, ack) =>
     run(ack, (actor) => catalogService.updateParty(id, input, actor)),
   );
-  socket.on('party:delete', (id, ack) => run(ack, (actor) => catalogService.deleteParty(id, actor)));
+  socket.on('party:delete', (id, ack) =>
+    run(ack, (actor) => catalogService.deleteParty(id, actor)),
+  );
 
   socket.on('product:list', (query, ack) =>
     run(ack, (actor) => catalogService.listProducts(query, actor)),
@@ -384,7 +451,9 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   socket.on('product:update', ({ id, input }, ack) =>
     run(ack, (actor) => catalogService.updateProduct(id, input, actor)),
   );
-  socket.on('product:delete', (id, ack) => run(ack, (actor) => catalogService.deleteProduct(id, actor)));
+  socket.on('product:delete', (id, ack) =>
+    run(ack, (actor) => catalogService.deleteProduct(id, actor)),
+  );
 
   socket.on('product:image:update', ({ id, input }, ack) =>
     run(ack, (actor) => imageService.updateImageCaption(id, input, actor)),
@@ -392,7 +461,9 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   socket.on('product:image:reorder', (input, ack) =>
     run(ack, (actor) => imageService.reorderImages(input, actor)),
   );
-  socket.on('product:image:delete', (id, ack) => run(ack, (actor) => imageService.deleteImage(id, actor)));
+  socket.on('product:image:delete', (id, ack) =>
+    run(ack, (actor) => imageService.deleteImage(id, actor)),
+  );
 
   socket.on('pick', ({ kind, query }, ack) =>
     run(ack, (actor) => searchService.pick(kind, query, actor)),
@@ -494,16 +565,24 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
     run(ack, (actor) => partyAccessService.replaceAssignments(partyId, input, actor)),
   );
 
-  socket.on('fields:catalogue', (ack) => run(ack, (actor) => Promise.resolve(fieldsService.fieldsCatalogue(actor))));
-  socket.on('fields:values', (query, ack) => run(ack, (actor) => fieldsService.listValues(query, actor)));
-  socket.on('fields:usage', (query, ack) => run(ack, (actor) => fieldsService.fieldUsage(query, actor)));
+  socket.on('fields:catalogue', (ack) =>
+    run(ack, (actor) => Promise.resolve(fieldsService.fieldsCatalogue(actor))),
+  );
+  socket.on('fields:values', (query, ack) =>
+    run(ack, (actor) => fieldsService.listValues(query, actor)),
+  );
+  socket.on('fields:usage', (query, ack) =>
+    run(ack, (actor) => fieldsService.fieldUsage(query, actor)),
+  );
   socket.on('fields:createValue', (input, ack) =>
     run(ack, (actor) => fieldsService.createValue(input, actor)),
   );
   socket.on('fields:updateValue', ({ id, input }, ack) =>
     run(ack, (actor) => fieldsService.updateValue(id, input, actor)),
   );
-  socket.on('fields:deleteValue', (id, ack) => run(ack, (actor) => fieldsService.deleteValue(id, actor)));
+  socket.on('fields:deleteValue', (id, ack) =>
+    run(ack, (actor) => fieldsService.deleteValue(id, actor)),
+  );
   socket.on('fields:reorderValues', (input, ack) =>
     run(ack, (actor) => fieldsService.reorderValues(input, actor)),
   );
@@ -531,19 +610,31 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   socket.on('fields:reorderStages', (input, ack) =>
     run(ack, (actor) => fieldsService.reorderStages(input, actor)),
   );
-  socket.on('fields:archiveStage', (id, ack) => run(ack, (actor) => fieldsService.archiveStage(id, actor)));
-  socket.on('fields:restoreStage', (id, ack) => run(ack, (actor) => fieldsService.restoreStage(id, actor)));
+  socket.on('fields:archiveStage', (id, ack) =>
+    run(ack, (actor) => fieldsService.archiveStage(id, actor)),
+  );
+  socket.on('fields:restoreStage', (id, ack) =>
+    run(ack, (actor) => fieldsService.restoreStage(id, actor)),
+  );
 
   socket.on('log:list', (query, ack) => run(ack, (actor) => logService.listLogs(query, actor)));
-  socket.on('log:facets', (query, ack) => run(ack, (actor) => logService.listLogFacets(query, actor)));
-  socket.on('log:verifyChain', (input, ack) => run(ack, (actor) => logService.verifyLogChain(input, actor)));
+  socket.on('log:facets', (query, ack) =>
+    run(ack, (actor) => logService.listLogFacets(query, actor)),
+  );
+  socket.on('log:verifyChain', (input, ack) =>
+    run(ack, (actor) => logService.verifyLogChain(input, actor)),
+  );
   socket.on('log:export', (query, ack) => run(ack, (actor) => logService.exportLogs(query, actor)));
 
-  socket.on('report:dispatches', (query, ack) => run(ack, (actor) => reportService.dispatchReport(query, actor)));
+  socket.on('report:dispatches', (query, ack) =>
+    run(ack, (actor) => reportService.dispatchReport(query, actor)),
+  );
   socket.on('report:leadOutcomes', (query, ack) =>
     run(ack, (actor) => reportService.leadOutcomeReport(query, actor)),
   );
-  socket.on('report:topParties', (query, ack) => run(ack, (actor) => reportService.topPartiesReport(query, actor)));
+  socket.on('report:topParties', (query, ack) =>
+    run(ack, (actor) => reportService.topPartiesReport(query, actor)),
+  );
   socket.on('report:export', (payload, ack) =>
     run(ack, (actor) => reportService.exportReport(payload.report, payload.query, actor)),
   );
@@ -572,9 +663,7 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   socket.on('document:uploadAsset', (input, ack) =>
     run(ack, (actor) => documentService.uploadAsset(input, actor)),
   );
-  socket.on('document:listAssets', (ack) =>
-    run(ack, (actor) => documentService.listAssets(actor)),
-  );
+  socket.on('document:listAssets', (ack) => run(ack, (actor) => documentService.listAssets(actor)));
   socket.on('document:assetFile', (id, ack) =>
     run(ack, (actor) => documentRenderService.fetchAssetFile(id, actor)),
   );
@@ -596,7 +685,9 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
 
   // The one live pull; everything else rides on `SyncSnapshot.dashboard` and
   // the `dashboard:changed` push both extended below.
-  socket.on('dashboard:get', (ack) => run(ack, (actor) => dashboardService.getDashboardSummary(actor)));
+  socket.on('dashboard:get', (ack) =>
+    run(ack, (actor) => dashboardService.getDashboardSummary(actor)),
+  );
 }
 
 /**
@@ -640,7 +731,10 @@ function registerAuthCommands(socket: PanelSocket, onActorChanged: () => void): 
       if (resolution.status === 'active') {
         socket.data.actingUserToken = token;
         onActorChanged();
-        return { status: 'active' as const, user: await authService.decorate(resolution.user, token) };
+        return {
+          status: 'active' as const,
+          user: await authService.decorate(resolution.user, token),
+        };
       }
 
       // A dead token drops the panel back to its own role rather than leaving it
@@ -806,7 +900,10 @@ async function emitPartyScopedChange(
     return;
   }
 
-  const recipients = [...panelSockets.values(), ...(await io.in(ROOM_MASTER_ADMINS).fetchSockets())];
+  const recipients = [
+    ...panelSockets.values(),
+    ...(await io.in(ROOM_MASTER_ADMINS).fetchSockets()),
+  ];
 
   await Promise.all(
     recipients.map(async (socket) => {
@@ -830,9 +927,7 @@ async function emitPartyScopedChange(
  * `session:rejected`, which is right on a command and wrong on a broadcast —
  * a background fan-out should not be able to sign somebody out.
  */
-async function actorForRecipient(socket: {
-  data: SocketData;
-}): Promise<ActorContext | null> {
+async function actorForRecipient(socket: { data: SocketData }): Promise<ActorContext | null> {
   const tenantId = socket.data.tenantId;
   if (!tenantId) return null;
 
@@ -879,7 +974,10 @@ async function broadcastPanels(io: RealtimeHub['io']): Promise<void> {
   const tenants = new Set(sockets.map((socket) => socket.data.tenantId).filter(Boolean));
 
   for (const tenantId of tenants) {
-    io.to(ROOM_MASTER_ADMINS).emit('panels:changed', await panelService.listPanelsWithPresence(tenantId));
+    io.to(ROOM_MASTER_ADMINS).emit(
+      'panels:changed',
+      await panelService.listPanelsWithPresence(tenantId),
+    );
   }
 }
 

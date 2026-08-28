@@ -280,6 +280,18 @@ class MasterConnection extends EventEmitter {
       this.emit('change', event);
     });
 
+    /*
+     * Exactly one assistant listener, attached here at construction.
+     *
+     * Not one per run and not one per open browser stream: this emitter already
+     * carries four listeners per stream, and a per-run listener would grow that
+     * with every question anybody asked. The HTTP layer fans out from a single
+     * set of open streams instead.
+     */
+    socket.on('ai:event', (event) => {
+      this.emit('ai', event);
+    });
+
     // Pushed by the Master when it stops honouring this panel's session, so an
     // idle panel does not keep somebody on screen as signed in until it happens
     // to issue another command.
@@ -433,10 +445,7 @@ class MasterConnection extends EventEmitter {
    * with the Master's own message so the UI can show a real explanation rather
    * than a generic failure.
    */
-  async command<E extends keyof ClientToServerEvents, T>(
-    event: E,
-    ...args: unknown[]
-  ): Promise<T> {
+  async command<E extends keyof ClientToServerEvents, T>(event: E, ...args: unknown[]): Promise<T> {
     const socket = this.socket;
     if (!socket || this.state !== 'connected') {
       throw new MasterCommandError('Not connected to the Master Panel', undefined, undefined, true);
@@ -456,7 +465,9 @@ class MasterConnection extends EventEmitter {
     try {
       result = (await (
         socket as unknown as {
-          timeout: (ms: number) => { emitWithAck: (event: string, ...args: unknown[]) => Promise<CommandResult<T>> };
+          timeout: (ms: number) => {
+            emitWithAck: (event: string, ...args: unknown[]) => Promise<CommandResult<T>>;
+          };
         }
       )
         .timeout(ACK_TIMEOUT_MS)
@@ -551,7 +562,8 @@ class MasterConnection extends EventEmitter {
       return;
     }
 
-    const reason: SessionRejection = resolution.status === 'rejected' ? resolution.reason : 'expired';
+    const reason: SessionRejection =
+      resolution.status === 'rejected' ? resolution.reason : 'expired';
     log.warn(`The Master would not re-establish this panel’s signed-in user: ${reason}`);
     this.actingToken = null;
     this.emit('session:rejected', reason);

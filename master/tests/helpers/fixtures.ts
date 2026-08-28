@@ -37,6 +37,7 @@ const DATA_TABLES = [
   'api_connectors',
   'api_key_scopes',
   'api_keys',
+  'ai_runs',
   // The PDF Designer's three tables are pure test data — `20260308` seeds
   // nothing, and the renderer's fallback is the in-memory `TEMPLATE_DEFAULTS`.
   // Listed exports-first so the FKs into templates and assets are gone before

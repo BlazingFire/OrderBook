@@ -14,6 +14,7 @@
  */
 
 import type { MessageKey, MessageParams } from '../i18n/keys.js';
+import type { AiRun, AiStartInput, AiStatus, AiStreamEvent, Insight } from '../domain/ai.js';
 import type {
   CustomFieldDefinition,
   DashboardSummary,
@@ -458,10 +459,7 @@ export interface ClientToServerEvents {
    * caught. Without it a panel that restarted at the wrong moment would keep a
    * verifier the Master had already invalidated, forever.
    */
-  'auth:reconcile': (
-    users: KnownPanelUser[],
-    ack: CommandAck<{ forget: string[] }>,
-  ) => void;
+  'auth:reconcile': (users: KnownPanelUser[], ack: CommandAck<{ forget: string[] }>) => void;
 
   'party:list': (query: ListQuery, ack: CommandAck<Paginated<Party>>) => void;
   'party:create': (input: PartyInput, ack: CommandAck<Party>) => void;
@@ -504,7 +502,7 @@ export interface ClientToServerEvents {
    * link is down — see `offline-pick.ts` — so the shape has to be the same
    * either way.
    */
-  'pick': (
+  pick: (
     payload: { kind: PickKind; query: PickQuery },
     ack: CommandAck<ProductPickPage | PartyPickPage>,
   ) => void;
@@ -520,10 +518,7 @@ export interface ClientToServerEvents {
   'lead:list': (query: LeadListQuery, ack: CommandAck<Paginated<Lead>>) => void;
   'lead:get': (id: RecordId, ack: CommandAck<Lead>) => void;
   'lead:create': (input: LeadInput, ack: CommandAck<Lead>) => void;
-  'lead:update': (
-    payload: { id: RecordId; input: LeadUpdateInput },
-    ack: CommandAck<Lead>,
-  ) => void;
+  'lead:update': (payload: { id: RecordId; input: LeadUpdateInput }, ack: CommandAck<Lead>) => void;
   'lead:setStage': (input: StageChangeInput, ack: CommandAck<Lead>) => void;
   'lead:addRemark': (input: RemarkInput, ack: CommandAck<Lead>) => void;
   'lead:convert': (input: LeadConvertInput, ack: CommandAck<Order>) => void;
@@ -599,7 +594,10 @@ export interface ClientToServerEvents {
     ack: CommandAck<OptionListItem>,
   ) => void;
   'fields:deleteValue': (id: Uuid, ack: CommandAck<{ id: Uuid; deletedAt: IsoTimestamp }>) => void;
-  'fields:reorderValues': (input: OptionListReorderInput, ack: CommandAck<OptionListItem[]>) => void;
+  'fields:reorderValues': (
+    input: OptionListReorderInput,
+    ack: CommandAck<OptionListItem[]>,
+  ) => void;
 
   'fields:definitions': (
     query: { entity?: string; includeDeleted?: boolean },
@@ -633,13 +631,13 @@ export interface ClientToServerEvents {
 
   // --- Logs (docs/backend-modules/04-API-CONTRACT.md §2) --------------------
   'log:list': (query: ActivityLogQuery, ack: CommandAck<CursorPage<ActivityLogEntry>>) => void;
-  'log:facets': (
-    query: { from?: string; to?: string },
-    ack: CommandAck<ActivityLogFacets>,
-  ) => void;
+  'log:facets': (query: { from?: string; to?: string }, ack: CommandAck<ActivityLogFacets>) => void;
   'log:verifyChain': (input: ChainVerifyInput, ack: CommandAck<ChainVerification>) => void;
   /** CSV as a string in the ack — the Office server has no streaming transport to its own browser for this call. */
-  'log:export': (query: ActivityLogQuery, ack: CommandAck<{ csv: string; rowCount: number }>) => void;
+  'log:export': (
+    query: ActivityLogQuery,
+    ack: CommandAck<{ csv: string; rowCount: number }>,
+  ) => void;
 
   // --- Reports (docs/backend-modules/04-API-CONTRACT.md §3) -----------------
   'report:dispatches': (query: ReportRangeInput, ack: CommandAck<DispatchesReport>) => void;
@@ -672,6 +670,21 @@ export interface ClientToServerEvents {
         }
     >,
   ) => void;
+
+  /*
+   * --- The assistant ------------------------------------------------------
+   *
+   * `ai:start` acks the moment the run row exists and the request is away,
+   * **never** on completion: `MasterConnection.command` hard-fails after
+   * fifteen seconds and would report the Master unreachable while the model was
+   * still typing. Every token afterwards arrives on `ai:event`.
+   */
+  'ai:start': (input: AiStartInput, ack: CommandAck<{ runId: Uuid }>) => void;
+  'ai:cancel': (runId: Uuid, ack: CommandAck<null>) => void;
+  'ai:listRuns': (ack: CommandAck<AiRun[]>) => void;
+  'ai:status': (ack: CommandAck<AiStatus>) => void;
+  'ai:insights': (ack: CommandAck<Insight[]>) => void;
+  'ai:apply': (payload: { runId: Uuid; fields: string[] }, ack: CommandAck<null>) => void;
 
   // --- PDF Designer (docs/backend-modules/04-API-CONTRACT.md §6) ------------
   'document:listTemplates': (
@@ -740,6 +753,8 @@ export interface ServerToClientEvents {
    */
   'sync:delta': (delta: SyncDelta) => void;
   'data:changed': (event: DataChangedEvent) => void;
+  /** One fragment of an answer, one tool step, or the finished run. */
+  'ai:event': (event: AiStreamEvent & { runId: Uuid }) => void;
   'panels:changed': (panels: OfficePanelWithPresence[]) => void;
   'dashboard:changed': (summary: DashboardSummary) => void;
   /** Raised when a merge shadowed somebody's value, so panels can surface it. */

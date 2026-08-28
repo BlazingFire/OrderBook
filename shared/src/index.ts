@@ -1,4 +1,5 @@
 export * from './domain/activity.js';
+export * from './domain/ai.js';
 export * from './domain/api-keys.js';
 export * from './domain/columns.js';
 export * from './domain/connectors.js';

@@ -38,11 +38,21 @@ import { listLanAddresses } from './lib/network.js';
 import { createRealtimeHub, type RealtimeHub } from './realtime/hub.js';
 import { purgeExpiredSessions } from './services/auth.service.js';
 import { startConnectorScheduler } from './services/connector-scheduler.js';
+import { failStaleAiRuns, sweepExpiredAiRuns } from './services/ai.service.js';
 import { isSetupComplete, refreshStoredLanIp } from './services/setup.service.js';
 
 const log = createLogger('master');
 
 const SESSION_SWEEP_INTERVAL_MS = 15 * 60 * 1000;
+
+/**
+ * How often expired assistant transcripts are deleted.
+ *
+ * Hourly rather than daily: `ai.retentionDays` is a promise about how long a
+ * question is kept, and a sweep that runs once a day makes that promise off by
+ * up to a day.
+ */
+const AI_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 
 /*
  * Everything shutdown has to tear down, at module scope so the handlers can be
@@ -225,6 +235,17 @@ async function main(): Promise<void> {
     // One disposable, per this file's rule: the scheduler owns its own timer
     // and hands back the way to stop it.
     disposables.push(startConnectorScheduler());
+
+    // Anything still `running` belonged to the process that just died.
+    await failStaleAiRuns().catch(() => 0);
+
+    const aiSweep = setInterval(() => {
+      void sweepExpiredAiRuns().catch((error: unknown) => {
+        log.warn(`Could not sweep AI transcripts: ${toErrorMessage(error)}`);
+      });
+    }, AI_SWEEP_INTERVAL_MS);
+    aiSweep.unref?.();
+    disposables.push(() => clearInterval(aiSweep));
 
     bootReady();
     bootSucceeded = true;

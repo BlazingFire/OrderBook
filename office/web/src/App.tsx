@@ -33,6 +33,7 @@ import {
   FilterBarOutlet,
   FilterBarProvider,
   GalleryScreen,
+  AssistantScreen,
   Icon,
   IconButton,
   KeyboardOverlays,
@@ -43,6 +44,7 @@ import {
   Splash,
   ToastProvider,
   loadSidebarMode,
+  publishAiEvent,
   rem,
   storeSidebarMode,
   t,
@@ -68,6 +70,7 @@ import { UpdatesScreen } from './screens/UpdatesScreen';
 import { SignInScreen } from './screens/SignInScreen';
 
 type Tab =
+  | 'assistant'
   | 'dashboard'
   | 'leads'
   | 'orders'
@@ -270,6 +273,15 @@ function OfficePanel() {
         // is; a since-deactivated user learns about it here.
         void refreshSession();
       }
+    });
+
+    /*
+     * The assistant's tokens, on the stream this browser already has open.
+     * `MasterConnection` re-emits exactly one `ai:event` listener into it, so
+     * nothing here is attached or removed per run.
+     */
+    source.addEventListener('ai', (event) => {
+      publishAiEvent(JSON.parse((event as MessageEvent).data));
     });
 
     source.addEventListener('snapshot', (event) => {
@@ -492,15 +504,24 @@ function OfficePanel() {
       // Per-machine appearance and device info — nothing here is gated by a
       // permission, so this group has exactly one item, always.
       label: t('nav.system'),
-      items: [
-        { id: 'settings', label: t('nav.settings'), icon: 'settings' as const },
-        { id: 'updates', label: t('nav.updates'), icon: 'sync' as const },
-      ],
+      items: (
+        [
+          // Absent rather than disabled, like every other permission-gated
+          // entry: a greyed tab for a permission somebody will never hold is a
+          // permanent tease.
+          can('ai.use')
+            ? { id: 'assistant', label: t('nav.assistant'), icon: 'eye' as const }
+            : null,
+          { id: 'settings', label: t('nav.settings'), icon: 'settings' as const },
+          { id: 'updates', label: t('nav.updates'), icon: 'sync' as const },
+        ] satisfies Array<NavItem | null>
+      ).filter((item): item is NonNullable<typeof item> => item !== null),
     },
   ];
 
   // Map sidebar ids back onto the tabs the screens know.
   const idToTab: Record<string, Tab> = {
+    assistant: 'assistant',
     dashboard: 'dashboard',
     leads: 'leads',
     orders: 'orders',
@@ -763,6 +784,19 @@ function OfficePanel() {
    * half-filled lead being thrown away by navigating to another tab.
    */
   const alwaysAvailable: ScreenSpec[] = [
+    {
+      id: 'assistant',
+      render: () => (
+        <AssistantScreen
+          transport={{
+            status: api.aiStatus,
+            listRuns: api.aiRuns,
+            ask: api.aiAsk,
+            cancel: api.aiCancel,
+          }}
+        />
+      ),
+    },
     {
       id: 'updates',
       render: () => <UpdatesScreen connection={connection} permissions={permissions} />,

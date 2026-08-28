@@ -8,6 +8,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { SETTING_KEYS } from '@orderbook/shared';
 
 import { db } from '../src/db/knex.js';
 import type { ActorContext } from '../src/domain/actor.js';
@@ -45,7 +46,10 @@ describe.skipIf(!canRunIntegrationTests)('settings (integration)', () => {
     expect(await settingsService.getSetting(admin.tenantId, 'ai.provider')).toEqual({ kind: 'off' });
 
     const views = await settingsService.readSettings(admin);
-    expect(views).toHaveLength(5);
+    // Counted against the catalogue rather than a literal: this list grows with
+    // each stage that adds a setting, and a hard-coded number turns that into a
+    // failure in a suite that is not about the new setting.
+    expect(views).toHaveLength(SETTING_KEYS.length);
     expect(viewFor(views, 'security.passwordRevealEnabled')).toMatchObject({
       isDefault: true,
       value: false,

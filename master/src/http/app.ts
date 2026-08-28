@@ -10,6 +10,7 @@ import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { attachSession } from './middleware/require-auth.js';
 import { accessRoutes } from './routes/access.routes.js';
 import { avatarFilesRoutes, avatarRoutes } from './routes/avatar.routes.js';
+import { aiRoutes } from './routes/ai.routes.js';
 import { authRoutes } from './routes/auth.routes.js';
 import { dataRoutes } from './routes/data.routes.js';
 import { documentRoutes } from './routes/document.routes.js';
@@ -77,6 +78,7 @@ export function createApp(): Express {
   app.use('/api/access/users/:userId/avatar', avatarRoutes);
   app.use('/api/avatars', avatarFilesRoutes);
   // Before the catch-all below, which would otherwise swallow `/api/settings`.
+  app.use('/api/ai', aiRoutes);
   app.use('/api/integrations', integrationRoutes);
   app.use('/api/settings', settingsRoutes);
   app.use('/api', dataRoutes);

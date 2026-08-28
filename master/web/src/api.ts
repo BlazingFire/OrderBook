@@ -19,6 +19,9 @@ import type {
   CustomFieldDefinitionUpdateInput,
   CustomFieldReorderInput,
   DashboardSummary,
+  AiRun,
+  AiStartInput,
+  AiStatus,
   ApiKey,
   ApiKeyInput,
   Connector,
@@ -29,6 +32,7 @@ import type {
   ConnectorRun,
   ConnectorTestResult,
   DispatchesReport,
+  Insight,
   FieldCatalogue,
   FieldUsageBreakdown,
   InventoryStockLevel,
@@ -861,4 +865,16 @@ export const api = {
   runConnector: (id: string, mode: 'dry_run' | 'import') =>
     post<ConnectorRun & { runId: number }>(`/api/integrations/connectors/${id}/run`, { mode }),
   connectorRuns: (id: string) => request<ConnectorRun[]>(`/api/integrations/connectors/${id}/runs`),
+
+  // --- The assistant (Stage 12) --------------------------------------------
+
+  aiStatus: () => request<AiStatus>('/api/ai/status'),
+  aiRuns: () => request<AiRun[]>('/api/ai/runs'),
+  aiAsk: (input: AiStartInput) => post<{ runId: string }>('/api/ai/runs', input),
+  aiCancel: (runId: string) => request<void>(`/api/ai/runs/${runId}`, { method: 'DELETE' }),
+  aiInsights: () => request<Insight[]>('/api/ai/insights'),
+  aiTest: () =>
+    post<{ ok: boolean; supportsTools: boolean; model: string; error?: string }>('/api/ai/test'),
+  aiApply: (runId: string, fields: string[]) =>
+    post<void>(`/api/ai/proposals/${runId}/apply`, { fields }),
 };

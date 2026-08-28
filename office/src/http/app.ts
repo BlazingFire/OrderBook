@@ -42,7 +42,12 @@ import * as backupRestoreService from '../services/backup-restore.service.js';
 import { RestoreError } from '../services/backup-restore.service.js';
 import { loadCredentials, masterBaseUrl } from '../services/credentials.store.js';
 import { OfflinePickForbidden, pickFromView } from '../services/offline-pick.js';
-import { PairingError, pairAutomatically, pairManually, scanForMasters } from '../services/pairing.service.js';
+import {
+  PairingError,
+  pairAutomatically,
+  pairManually,
+  scanForMasters,
+} from '../services/pairing.service.js';
 import * as updateService from '../services/update.service.js';
 import { UpdateError } from '../services/update.service.js';
 import * as userSession from '../services/user-session.service.js';
@@ -55,10 +60,16 @@ const log = createLogger('http');
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const imageUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_IMAGE_SOURCE_BYTES } });
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_IMAGE_SOURCE_BYTES },
+});
 // This panel's whole replica is a handful of small JSON files — a generous
 // limit still costs nothing to buffer in memory, unlike the Master's case.
-const backupUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 64 * 1024 * 1024 } });
+const backupUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 64 * 1024 * 1024 },
+});
 
 export function createApp(): Express {
   const app = express();
@@ -79,8 +90,7 @@ export function createApp(): Express {
    */
   app.get('/api/health', (req, res) => {
     const address = req.socket.remoteAddress;
-    const loopback =
-      address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+    const loopback = address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
 
     res.json({
       panel: 'office',
@@ -182,8 +192,18 @@ export function createApp(): Express {
   app.post('/api/connection/pair/manual', async (req, res) => {
     const { host, port, pairingPassword, masterUniqueId, panelName } = req.body ?? {};
 
-    if (typeof host !== 'string' || !host || typeof pairingPassword !== 'string' || !pairingPassword) {
-      res.status(400).json({ error: 'invalid_request', message: 'Enter the Master address and pairing password' });
+    if (
+      typeof host !== 'string' ||
+      !host ||
+      typeof pairingPassword !== 'string' ||
+      !pairingPassword
+    ) {
+      res
+        .status(400)
+        .json({
+          error: 'invalid_request',
+          message: 'Enter the Master address and pairing password',
+        });
       return;
     }
 
@@ -192,7 +212,8 @@ export function createApp(): Express {
         host,
         port: Number(port) || 4100,
         pairingPassword,
-        masterUniqueId: typeof masterUniqueId === 'string' && masterUniqueId ? masterUniqueId : undefined,
+        masterUniqueId:
+          typeof masterUniqueId === 'string' && masterUniqueId ? masterUniqueId : undefined,
         panelName: typeof panelName === 'string' && panelName ? panelName : undefined,
       });
       await refreshAfterPairing();
@@ -214,7 +235,9 @@ export function createApp(): Express {
       const { username, password } = req.body ?? {};
 
       if (typeof username !== 'string' || typeof password !== 'string') {
-        res.status(400).json({ error: 'invalid_request', message: 'Enter your username and password' });
+        res
+          .status(400)
+          .json({ error: 'invalid_request', message: 'Enter your username and password' });
         return;
       }
 
@@ -328,7 +351,14 @@ export function createApp(): Express {
       try {
         const form = new FormData();
         form.append('file', new Blob([req.file!.buffer]), req.file!.originalname || 'image');
-        for (const field of ['cropX', 'cropY', 'cropWidth', 'cropHeight', 'rotationDeg', 'caption']) {
+        for (const field of [
+          'cropX',
+          'cropY',
+          'cropWidth',
+          'cropHeight',
+          'rotationDeg',
+          'caption',
+        ]) {
           const value = (req.body as Record<string, unknown>)[field];
           if (value !== undefined && value !== null) form.append(field, String(value));
         }
@@ -352,7 +382,10 @@ export function createApp(): Express {
     forward(res, 'product:image:update', { id: req.params.imageId, input: req.body }),
   );
   app.post('/api/products/:productId/images/reorder', (req, res) =>
-    forward(res, 'product:image:reorder', { productId: req.params.productId, ids: req.body.ids ?? [] }),
+    forward(res, 'product:image:reorder', {
+      productId: req.params.productId,
+      ids: req.body.ids ?? [],
+    }),
   );
   app.delete('/api/products/:productId/images/:imageId', (req, res) =>
     forward(res, 'product:image:delete', req.params.imageId),
@@ -559,6 +592,38 @@ export function createApp(): Express {
     })();
   });
 
+  /*
+   * The assistant, forwarded like everything else.
+   *
+   * Master-online-only and deliberately not queued: an answer to a question
+   * asked an hour ago, delivered when the link returns, is not something
+   * anybody wants. Offline these produce the ordinary 503 `error.unavailable`
+   * that `forward` already gives every other Master-only path.
+   */
+  app.get(
+    '/api/ai/status',
+    (_req, res) =>
+      void (async () => {
+        try {
+          res.json(await masterConnection.command('ai:status' as never));
+        } catch {
+          // Never an error. A panel that cannot reach the Master renders the same
+          // "not available" as one whose Master has no model configured.
+          res.json({ enabled: false });
+        }
+      })(),
+  );
+  app.get('/api/ai/runs', (_req, res) => forward(res, 'ai:listRuns'));
+  app.post('/api/ai/runs', (req, res) => forward(res, 'ai:start', req.body));
+  app.delete('/api/ai/runs/:id', (req, res) => forward(res, 'ai:cancel', String(req.params.id)));
+  app.get('/api/ai/insights', (_req, res) => forward(res, 'ai:insights'));
+  app.post('/api/ai/proposals/:runId/apply', (req, res) =>
+    forward(res, 'ai:apply', {
+      runId: String(req.params.runId),
+      fields: Array.isArray(req.body?.fields) ? req.body.fields : [],
+    }),
+  );
+
   app.get('/api/conflicts', (_req, res) => forward(res, 'conflict:list'));
   app.post('/api/conflicts/:id/resolve', (req, res) =>
     forward(res, 'conflict:resolve', {
@@ -579,7 +644,11 @@ export function createApp(): Express {
 
   app.get('/api/recycle-bin', (req, res) => {
     const rawTypes = req.query.types;
-    const types = Array.isArray(rawTypes) ? rawTypes.map(String) : rawTypes ? [String(rawTypes)] : undefined;
+    const types = Array.isArray(rawTypes)
+      ? rawTypes.map(String)
+      : rawTypes
+        ? [String(rawTypes)]
+        : undefined;
 
     return forward(res, 'recycleBin:list', {
       types,
@@ -666,13 +735,19 @@ export function createApp(): Express {
       includeUnlisted: req.query.includeUnlisted === 'true',
     }),
   );
-  app.get('/api/fields/usage', (req, res) => forward(res, 'fields:usage', { listKey: req.query.listKey }));
+  app.get('/api/fields/usage', (req, res) =>
+    forward(res, 'fields:usage', { listKey: req.query.listKey }),
+  );
   app.post('/api/fields/values', (req, res) => forward(res, 'fields:createValue', req.body));
   app.put('/api/fields/values/:id', (req, res) =>
     forward(res, 'fields:updateValue', { id: req.params.id, input: req.body }),
   );
-  app.delete('/api/fields/values/:id', (req, res) => forward(res, 'fields:deleteValue', req.params.id));
-  app.post('/api/fields/values/reorder', (req, res) => forward(res, 'fields:reorderValues', req.body));
+  app.delete('/api/fields/values/:id', (req, res) =>
+    forward(res, 'fields:deleteValue', req.params.id),
+  );
+  app.post('/api/fields/values/reorder', (req, res) =>
+    forward(res, 'fields:reorderValues', req.body),
+  );
 
   app.get('/api/fields/definitions', (req, res) =>
     forward(res, 'fields:definitions', {
@@ -680,7 +755,9 @@ export function createApp(): Express {
       includeDeleted: req.query.includeDeleted === 'true',
     }),
   );
-  app.post('/api/fields/definitions', (req, res) => forward(res, 'fields:createDefinition', req.body));
+  app.post('/api/fields/definitions', (req, res) =>
+    forward(res, 'fields:createDefinition', req.body),
+  );
   app.put('/api/fields/definitions/:id', (req, res) =>
     forward(res, 'fields:updateDefinition', { id: req.params.id, input: req.body }),
   );
@@ -695,7 +772,9 @@ export function createApp(): Express {
   app.put('/api/fields/stages/:id', (req, res) =>
     forward(res, 'fields:updateStage', { id: req.params.id, input: req.body }),
   );
-  app.post('/api/fields/stages/reorder', (req, res) => forward(res, 'fields:reorderStages', req.body));
+  app.post('/api/fields/stages/reorder', (req, res) =>
+    forward(res, 'fields:reorderStages', req.body),
+  );
   app.post('/api/fields/stages/:id/archive', (req, res) =>
     forward(res, 'fields:archiveStage', req.params.id),
   );
@@ -708,7 +787,8 @@ export function createApp(): Express {
   function parseLogQuery(query: Record<string, unknown>): Record<string, unknown> {
     return {
       cursor: typeof query.cursor === 'string' ? query.cursor : undefined,
-      direction: query.direction === 'newer' ? 'newer' : query.direction === 'older' ? 'older' : undefined,
+      direction:
+        query.direction === 'newer' ? 'newer' : query.direction === 'older' ? 'older' : undefined,
       limit: query.limit ? Number(query.limit) : undefined,
       actorType: typeof query.actorType === 'string' ? query.actorType : undefined,
       actorId: typeof query.actorId === 'string' ? query.actorId : undefined,
@@ -846,12 +926,8 @@ export function createApp(): Express {
     forward(res, 'document:restoreTemplate', req.params.id),
   );
 
-  app.post('/api/documents/assets', (req, res) =>
-    forward(res, 'document:uploadAsset', req.body),
-  );
-  app.get('/api/documents/assets', (_req, res) =>
-    forward(res, 'document:listAssets'),
-  );
+  app.post('/api/documents/assets', (req, res) => forward(res, 'document:uploadAsset', req.body));
+  app.get('/api/documents/assets', (_req, res) => forward(res, 'document:listAssets'));
   app.get('/api/documents/assets/:id/file', (req, res) =>
     forwardFile(res, 'document:assetFile', req.params.id, 'inline'),
   );
@@ -892,7 +968,9 @@ export function createApp(): Express {
 
   app.post('/api/storage/export', async (req, res) => {
     if (!userSession.can('storage.manage')) {
-      res.status(403).json({ error: 'permission_denied', message: 'You do not have permission to do that' });
+      res
+        .status(403)
+        .json({ error: 'permission_denied', message: 'You do not have permission to do that' });
       return;
     }
 
@@ -922,7 +1000,9 @@ export function createApp(): Express {
 
   app.post('/api/storage/restore/preview', backupUpload.single('file'), (req, res) => {
     if (!userSession.can('storage.manage')) {
-      res.status(403).json({ error: 'permission_denied', message: 'You do not have permission to do that' });
+      res
+        .status(403)
+        .json({ error: 'permission_denied', message: 'You do not have permission to do that' });
       return;
     }
     if (!req.file) {
@@ -938,7 +1018,9 @@ export function createApp(): Express {
 
   app.post('/api/storage/restore', backupUpload.single('file'), async (req, res) => {
     if (!userSession.can('storage.manage')) {
-      res.status(403).json({ error: 'permission_denied', message: 'You do not have permission to do that' });
+      res
+        .status(403)
+        .json({ error: 'permission_denied', message: 'You do not have permission to do that' });
       return;
     }
     if (!req.file) {
@@ -1001,14 +1083,22 @@ export function createApp(): Express {
 function notFoundHandler(_req: Request, res: Response): void {
   res
     .status(404)
-    .json({ error: 'not_found', message: 'Endpoint not found', messageKey: 'error.generic.notFound' });
+    .json({
+      error: 'not_found',
+      message: 'Endpoint not found',
+      messageKey: 'error.generic.notFound',
+    });
 }
 
 function errorHandler(error: unknown, _req: Request, res: Response, _next: NextFunction): void {
   log.error('Unhandled request error', error);
   res
     .status(500)
-    .json({ error: 'internal_error', message: 'Something went wrong', messageKey: 'error.generic.internal' });
+    .json({
+      error: 'internal_error',
+      message: 'Something went wrong',
+      messageKey: 'error.generic.internal',
+    });
 }
 
 /**
@@ -1468,7 +1558,9 @@ const RESTORE_ERROR_STATUS: Record<string, number> = {
 
 function respondToRestoreError(res: Response, error: unknown): void {
   if (error instanceof RestoreError || error instanceof BackupValidationError) {
-    res.status(RESTORE_ERROR_STATUS[error.code] ?? 500).json({ error: error.code, message: error.message });
+    res
+      .status(RESTORE_ERROR_STATUS[error.code] ?? 500)
+      .json({ error: error.code, message: error.message });
     return;
   }
   log.error('Storage export/restore failed', error);
@@ -1492,10 +1584,7 @@ function respondToRestoreError(res: Response, error: unknown): void {
  */
 // `globalThis.Response`, not Express's `Response` — both names are in scope
 // in this file and the wrong one is a very confusing error.
-async function masterFetch(
-  pathSuffix: string,
-  init?: RequestInit,
-): Promise<globalThis.Response> {
+async function masterFetch(pathSuffix: string, init?: RequestInit): Promise<globalThis.Response> {
   const credentials = await loadCredentials();
   if (!credentials) throw new Error('This panel is not paired with a Master');
 
@@ -1542,7 +1631,9 @@ function schedulePushView(): void {
         for (const send of streams) send('snapshot', payload);
       })
       .catch((error: unknown) => {
-        log.warn(`Could not push the view: ${error instanceof Error ? error.message : String(error)}`);
+        log.warn(
+          `Could not push the view: ${error instanceof Error ? error.message : String(error)}`,
+        );
       });
   }, VIEW_PUSH_DEBOUNCE_MS);
 
@@ -1576,6 +1667,10 @@ masterConnection.on('change', (event: DataChangedEvent) =>
   broadcast('change', maskChangeEvent(event)),
 );
 masterConnection.on('conflict', (value: unknown) => broadcast('conflict', value));
+// The assistant's tokens, on the stream the browser already has open. One more
+// event type rather than one more stream: a second one would mean a second
+// keep-alive, a second reconnect and a second teardown.
+masterConnection.on('ai', (value: unknown) => broadcast('ai', value));
 sync.onSyncEvent(schedulePushView);
 
 /**
