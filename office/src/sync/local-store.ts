@@ -24,6 +24,7 @@ import type {
   Mutation,
   Party,
   Product,
+  SyncDeltaCursor,
   SyncSnapshot,
 } from '@orderbook/shared';
 
@@ -34,16 +35,69 @@ import { pending } from './outbox.store.js';
 const log = createLogger('local-store');
 
 let snapshot: SyncSnapshot | null = null;
+let cursor: SyncDeltaCursor | null = null;
 let loaded = false;
 
-export async function setSnapshot(next: SyncSnapshot): Promise<void> {
+/**
+ * Bumped whenever the snapshot changes at all, including in place.
+ *
+ * `setSnapshot` stores the object it is handed and `applyChange` mutates that
+ * same object, so identity is useless as a change signal — a memo keyed on the
+ * reference would never invalidate. This counter is what the view memo keys on
+ * instead.
+ */
+let revision = 0;
+
+export function snapshotRevision(): number {
+  return revision;
+}
+
+/**
+ * Store the snapshot, and — in the **same disk write** — the cursor that
+ * describes it.
+ *
+ * The pair has to be written together. A cursor saved separately can survive a
+ * crash that the snapshot it refers to did not, and the panel would then ask
+ * for the changes after a position it never actually reached: it would look
+ * caught up while silently missing every row in between.
+ */
+export async function setSnapshot(
+  next: SyncSnapshot,
+  nextCursor: SyncDeltaCursor | null = null,
+): Promise<void> {
   snapshot = next;
+  cursor = nextCursor;
   loaded = true;
-  await persist(next);
+  revision += 1;
+  await persist();
 }
 
 export function getRawSnapshot(): SyncSnapshot | null {
   return snapshot;
+}
+
+/** What this panel already has, for the Master to answer with a delta. */
+export function getCursor(): SyncDeltaCursor | null {
+  return cursor;
+}
+
+/**
+ * Note that the in-memory snapshot moved on, without writing to disk yet.
+ *
+ * Replayed and live changes mutate the snapshot object in place, so memory is
+ * current while disk is stale — `persistCurrent` is what closes that, on a
+ * trailing edge rather than once per row.
+ */
+export function noteApplied(seq: number | undefined, bootId: string): void {
+  revision += 1;
+  if (seq === undefined) return;
+  cursor = { bootId, lastSeq: seq };
+}
+
+/** Write whatever is in memory now. Debounced by the caller, not here. */
+export async function persistCurrent(): Promise<void> {
+  if (!snapshot) return;
+  await persist();
 }
 
 /** Restore the last snapshot from disk, so an offline start still has data. */
@@ -53,13 +107,38 @@ export async function restore(): Promise<SyncSnapshot | null> {
 
   try {
     const raw = await fs.readFile(paths().snapshotFile, 'utf8');
-    snapshot = JSON.parse(raw) as SyncSnapshot;
+    const parsed = JSON.parse(raw) as StoredSnapshot | SyncSnapshot;
+
+    // A file written before the cursor existed is a bare snapshot. Reading it
+    // as one — rather than failing, or worse, treating its absent cursor as
+    // position zero — is what lets a panel upgrade without re-syncing.
+    if (isStored(parsed)) {
+      snapshot = parsed.snapshot;
+      cursor = parsed.cursor;
+    } else {
+      snapshot = parsed;
+      cursor = null;
+    }
+
+    revision += 1;
     log.info('Restored the last snapshot from disk');
   } catch {
     snapshot = null;
+    cursor = null;
   }
 
   return snapshot;
+}
+
+/** The on-disk shape. `version` is what tells it apart from a bare snapshot. */
+interface StoredSnapshot {
+  version: 2;
+  snapshot: SyncSnapshot;
+  cursor: SyncDeltaCursor | null;
+}
+
+function isStored(value: StoredSnapshot | SyncSnapshot): value is StoredSnapshot {
+  return (value as StoredSnapshot).version === 2;
 }
 
 /**
@@ -339,13 +418,18 @@ function findStage(view: SyncSnapshot, stageId: string) {
   return null;
 }
 
-async function persist(value: SyncSnapshot): Promise<void> {
+async function persist(): Promise<void> {
+  if (!snapshot) return;
+
+  const stored: StoredSnapshot = { version: 2, snapshot, cursor };
   await fs.mkdir(path.dirname(paths().snapshotFile), { recursive: true });
-  await fs.writeFile(paths().snapshotFile, JSON.stringify(value), { mode: 0o600 });
+  await fs.writeFile(paths().snapshotFile, JSON.stringify(stored), { mode: 0o600 });
 }
 
 /** Test seam. */
 export function resetLocalStore(): void {
   snapshot = null;
+  cursor = null;
   loaded = false;
+  revision += 1;
 }

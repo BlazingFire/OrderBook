@@ -1,0 +1,127 @@
+/**
+ * Fold one change event into a snapshot, in place.
+ *
+ * Pure and free of the socket, the disk and the connection, for one reason
+ * worth the file: this is the function a reconnect *replay* runs, and the only
+ * way to know a replayed panel ends up holding the same rows as one that took a
+ * fresh snapshot is to drive this exact code from a test rather than a
+ * lookalike written beside it.
+ *
+ * It answers what it did. `'refresh'` means the change touched something the
+ * snapshot does not hold as a flat id-keyed list — an option list, a custom
+ * field, a pipeline — where there is no single row to upsert or filter out and
+ * one fresh pull covers create, update, restore and delete alike. It is no more
+ * expensive than a bespoke merge, for data this small and this rarely changed.
+ *
+ * **Entity is settled before action.** Reading the action first would send an
+ * option-list delete into the removal path, which has no row to find and would
+ * drop it silently.
+ */
+
+import type {
+  DataChangedEvent,
+  InventoryStockLevel,
+  Lead,
+  Order,
+  Party,
+  Product,
+  ProductCategory,
+  SyncSnapshot,
+} from '@orderbook/shared';
+
+export type ApplyOutcome = 'applied' | 'refresh' | 'ignored';
+
+export function applyChangeToSnapshot(
+  snapshot: SyncSnapshot,
+  event: DataChangedEvent,
+): ApplyOutcome {
+  if (
+    event.entity === 'option_list' ||
+    event.entity === 'custom_field' ||
+    event.entity === 'pipeline'
+  ) {
+    return 'refresh';
+  }
+
+  /*
+   * The `'deleted'` branch exists for the Recycle Bin, the first module to emit
+   * it for `lead`/`order`/`party`/`product` — entities that actually reach a
+   * panel. Every earlier `'deleted'` emission was for `role` or `user`, both
+   * withheld from panels outright. Left as a blind upsert, a soft-deleted lead
+   * would reappear on the panel's board seconds after somebody removed it and
+   * stay there until the next full reconnect.
+   */
+  if (event.action === 'deleted') return removeFromSnapshot(snapshot, event);
+
+  // 'created', 'updated' and 'restored' all converge on the same upsert.
+  switch (event.entity) {
+    case 'lead':
+      snapshot.leads = upsert(snapshot.leads, event.payload as Lead);
+      return 'applied';
+    case 'party':
+      snapshot.parties = upsert(snapshot.parties, event.payload as Party);
+      return 'applied';
+    case 'product':
+      snapshot.products = upsert(snapshot.products, event.payload as Product);
+      return 'applied';
+    case 'product_category':
+      snapshot.categories = upsert(snapshot.categories, event.payload as ProductCategory);
+      return 'applied';
+    case 'order':
+      snapshot.orders = upsert(snapshot.orders, event.payload as Order);
+      return 'applied';
+    case 'stock':
+      snapshot.stock = upsertStock(snapshot.stock, event.payload as InventoryStockLevel);
+      return 'applied';
+    default:
+      // A Master running a newer version may broadcast entities this panel does
+      // not track. Ignoring one is right; invalidating everything is not.
+      return 'ignored';
+  }
+}
+
+function removeFromSnapshot(snapshot: SyncSnapshot, event: DataChangedEvent): ApplyOutcome {
+  const { id } = event;
+
+  switch (event.entity) {
+    case 'lead':
+      snapshot.leads = snapshot.leads.filter((row) => row.id !== id);
+      return 'applied';
+    case 'party':
+      snapshot.parties = snapshot.parties.filter((row) => row.id !== id);
+      return 'applied';
+    case 'product':
+      snapshot.products = snapshot.products.filter((row) => row.id !== id);
+      return 'applied';
+    case 'order':
+      snapshot.orders = snapshot.orders.filter((row) => row.id !== id);
+      return 'applied';
+    default:
+      return 'ignored';
+  }
+}
+
+function upsert<T extends { id: string }>(list: T[], item: T): T[] {
+  return upsertBy(list, item, 'id');
+}
+
+function upsertBy<T, K extends keyof T>(list: T[], item: T, key: K): T[] {
+  const index = list.findIndex((entry) => entry[key] === item[key]);
+  if (index === -1) return [item, ...list];
+
+  const next = [...list];
+  next[index] = item;
+  return next;
+}
+
+/** Stock rows have no id of their own — a row is one (product, colour) pair. */
+function upsertStock(list: InventoryStockLevel[], item: InventoryStockLevel): InventoryStockLevel[] {
+  const index = list.findIndex(
+    (entry) => entry.productId === item.productId && entry.colour === item.colour,
+  );
+  if (index === -1) return [item, ...list];
+
+  const next = [...list];
+  next[index] = item;
+  return next;
+}

@@ -14,21 +14,16 @@ import type {
   CommandAck,
   CommandResult,
   DataChangedEvent,
-  InventoryStockLevel,
-  Lead,
   MessageKey,
   MessageParams,
   OfficePanelReportInput,
-  Order,
-  Party,
-  Product,
   KnownPanelUser,
   PanelSessionResolution,
   PanelStoragePathInput,
   PanelStoragePathResult,
-  ProductCategory,
   ServerToClientEvents,
   SessionRejection,
+  SyncDeltaCursor,
   SyncSnapshot,
 } from '@orderbook/shared';
 
@@ -40,6 +35,7 @@ import {
   saveCredentials,
 } from '../services/credentials.store.js';
 import { buildReport, moveStorage } from '../services/panel-report.service.js';
+import { applyChangeToSnapshot } from '../sync/apply-change.js';
 import { observe } from '../sync/clock.js';
 import * as localStore from '../sync/local-store.js';
 import { flush, setTransport, stopSync } from '../sync/sync.service.js';
@@ -92,6 +88,12 @@ export interface ConnectionStatus {
 
 type MasterSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
+/** How long a burst of non-upsertable changes is allowed to coalesce. */
+const REFRESH_DEBOUNCE_MS = 500;
+
+/** How long the in-memory snapshot may run ahead of the disk copy. */
+const PERSIST_DEBOUNCE_MS = 2_000;
+
 class MasterConnection extends EventEmitter {
   private socket: MasterSocket | null = null;
   private snapshot: SyncSnapshot | null = null;
@@ -106,6 +108,17 @@ class MasterConnection extends EventEmitter {
   private actingToken: string | null = null;
   /** Repeats the self-description while the link is up. Cleared on disconnect. */
   private reportTimer: NodeJS.Timeout | null = null;
+  /**
+   * Which run of the Master the sequence numbers on `data:changed` belong to.
+   *
+   * Null until a snapshot or a delta says. A `seq` with no boot id is a
+   * position in a ring nobody can name, so it is not stored as a cursor.
+   */
+  private bootId: string | null = null;
+  /** Trailing write of the in-memory snapshot; see `schedulePersist`. */
+  private persistTimer: NodeJS.Timeout | null = null;
+  /** Coalesces the pull that non-upsertable entities trigger. */
+  private refreshTimer: NodeJS.Timeout | null = null;
 
   async connect(): Promise<void> {
     const credentials = await loadCredentials();
@@ -121,11 +134,26 @@ class MasterConnection extends EventEmitter {
     this.companyName = credentials.companyName;
     this.setState('connecting');
 
+    /*
+     * Hydrate before connecting, not after.
+     *
+     * `applyChange` returns early when there is no snapshot in memory, so a
+     * panel that has just restarted would take a delta and discard every event
+     * in it, then serve a disk snapshot missing all of them. Reading the disk
+     * copy first is also what produces the cursor — and the cursor is only
+     * offered when both halves are present, because a position with nothing to
+     * apply it to is worse than no position at all.
+     */
+    this.snapshot ??= await localStore.restore();
+    const cursor = this.snapshot ? localStore.getCursor() : null;
+    if (cursor) this.bootId = cursor.bootId;
+
     const socket: MasterSocket = io(masterBaseUrl(credentials), {
       auth: {
         kind: 'office-panel',
         panelId: credentials.panelId,
         panelSecret: credentials.panelSecret,
+        ...(cursor ? { syncCursor: cursor } : {}),
       },
       transports: ['websocket'],
       // Retry forever: the Master PC may simply be switched off overnight, and
@@ -180,6 +208,7 @@ class MasterConnection extends EventEmitter {
       this.snapshot = snapshot;
       this.lastSyncedAt = snapshot.serverTime;
       this.masterVersion = snapshot.serverVersion ?? this.masterVersion;
+      this.bootId = snapshot.bootId ?? null;
       this.emit('snapshot', snapshot);
       log.info(
         `Synced: ${snapshot.parties.length} parties, ${snapshot.products.length} products, ${snapshot.leads.length} leads`,
@@ -188,11 +217,50 @@ class MasterConnection extends EventEmitter {
       void (async () => {
         // Persist before flushing: if the push crashes the process, the panel
         // still restarts holding what the Master last told it.
-        await localStore.setSnapshot(snapshot);
+        await localStore.setSnapshot(snapshot, this.cursorFrom(snapshot.seq));
         if (snapshot.serverHlc) await observe(snapshot.serverHlc);
 
         // Anything saved while the link was down goes up now. This is the
         // moment the panel stops being behind.
+        await flush();
+      })();
+    });
+
+    /*
+     * The cheap answer to a reconnect: the handful of changes this panel
+     * missed, instead of the whole snapshot.
+     *
+     * Arrives in `sync:snapshot`'s place, never as well as it, and only when
+     * the Master could prove the range was complete — the fallback is the
+     * snapshot, so there is no case here where the panel ends up short.
+     */
+    socket.on('sync:delta', (delta) => {
+      if (!this.snapshot) return;
+
+      this.bootId = delta.bootId;
+      this.lastSyncedAt = delta.serverTime;
+      this.masterVersion = delta.serverVersion ?? this.masterVersion;
+
+      for (const event of delta.events) this.applyChange(event);
+
+      // A role edit and a grant change do not arrive as replayable events —
+      // `role` and `user` are withheld from panels outright — so the delta
+      // carries them and they are folded in here.
+      this.snapshot.permissions = delta.permissions;
+      this.snapshot.partyGrants = delta.partyGrants;
+      this.snapshot.dashboard = delta.dashboard;
+      this.snapshot.serverHlc = delta.serverHlc;
+      this.snapshot.serverTime = delta.serverTime;
+
+      this.emit('snapshot', this.snapshot);
+      log.info(`Caught up with ${delta.events.length} change(s) from the Master`);
+
+      void (async () => {
+        await localStore.setSnapshot(this.snapshot as SyncSnapshot, {
+          bootId: delta.bootId,
+          lastSeq: delta.seq,
+        });
+        if (delta.serverHlc) await observe(delta.serverHlc);
         await flush();
       })();
     });
@@ -274,6 +342,22 @@ class MasterConnection extends EventEmitter {
   disconnect(): void {
     stopSync();
     this.stopReporting();
+
+    // A pending refresh would ask a socket that is about to be replaced. A
+    // pending persist is different and is flushed rather than dropped: the
+    // whole point of it is that the disk copy is behind memory.
+    if (this.refreshTimer) clearTimeout(this.refreshTimer);
+    this.refreshTimer = null;
+
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+      void localStore.persistCurrent().catch(() => {
+        // Already logged where it matters; a failed write here costs one
+        // reconnect's worth of replay, not data.
+      });
+    }
+
     if (!this.socket) return;
     this.socket.removeAllListeners();
     this.socket.disconnect();
@@ -462,133 +546,84 @@ class MasterConnection extends EventEmitter {
   }
 
   /**
-   * Keeps the cached snapshot current without a refetch. Unknown entity types
-   * are ignored rather than invalidating everything — a Master running a newer
-   * version may broadcast entities this panel does not track yet.
+   * Keep the cached snapshot current without a refetch.
    *
-   * Entity is settled before action. `'deleted'` means "drop a row" only for
-   * the entities the snapshot holds as flat id-keyed lists; for the rest it
-   * means the same thing every other action means — pull again. Reading the
-   * action first would send an option-list or custom-field delete into
-   * `removeFromSnapshot`, which has no row to find and would silently drop it.
-   *
-   * The `'deleted'` branch itself exists for the Recycle Bin, the first module
-   * to emit it for `lead`/`order`/`party`/`product`, entities that reach a
-   * panel. Every earlier `'deleted'` emission was for `role` or `user`, both
-   * withheld from panels by `DIRECTORY_ENTITIES`. Left as a blind upsert, a
-   * soft-deleted lead would reappear on the panel's board seconds after
-   * somebody removed it and stay until the next full reconnect.
+   * The merge itself lives in `sync/apply-change.ts`, pure and free of this
+   * class, so a test can drive the exact code a reconnect replay runs rather
+   * than a lookalike written beside it. What stays here is the part that is
+   * about *this connection*: the cursor, the trailing write, and the pull that
+   * covers the entities a single event cannot merge.
    */
   private applyChange(event: DataChangedEvent): void {
     if (!this.snapshot) return;
 
-    // `option_list`, `custom_field` and `pipeline` are not stored as flat
-    // id-keyed lists in the snapshot, so there is no single row to upsert or
-    // filter out — one fresh pull covers create, update, restore and delete
-    // alike, and is no more expensive than a bespoke merge for data this small
-    // and this rarely changed.
-    if (event.entity === 'option_list' || event.entity === 'custom_field' || event.entity === 'pipeline') {
+    // Recorded even for the entities handled by a fresh pull below: the cursor
+    // is about what this panel has *seen*, not about what it managed to merge
+    // in place.
+    this.schedulePersist(event.seq);
+
+    if (applyChangeToSnapshot(this.snapshot, event) === 'refresh') {
       this.requestFreshSnapshot();
-      return;
-    }
-
-    if (event.action === 'deleted') {
-      this.removeFromSnapshot(event);
-      return;
-    }
-
-    // 'created', 'updated' and 'restored' all converge on the same upsert.
-    switch (event.entity) {
-      case 'lead':
-        this.snapshot.leads = upsert(this.snapshot.leads, event.payload as Lead);
-        break;
-      case 'party':
-        this.snapshot.parties = upsert(this.snapshot.parties, event.payload as Party);
-        break;
-      case 'product':
-        this.snapshot.products = upsert(this.snapshot.products, event.payload as Product);
-        break;
-      case 'product_category':
-        this.snapshot.categories = upsert(this.snapshot.categories, event.payload as ProductCategory);
-        break;
-      case 'order':
-        this.snapshot.orders = upsert(this.snapshot.orders, event.payload as Order);
-        break;
-      case 'stock':
-        // Keyed by the (product, colour) pair now that stock is per colour —
-        // matching on productId alone would collapse every colour into one row.
-        this.snapshot.stock = upsertStock(
-          this.snapshot.stock,
-          event.payload as InventoryStockLevel,
-        );
-        break;
-      default:
-        break;
     }
   }
 
-  private removeFromSnapshot(event: DataChangedEvent): void {
-    if (!this.snapshot) return;
-
-    const { id } = event;
-
-    switch (event.entity) {
-      case 'lead':
-        this.snapshot.leads = this.snapshot.leads.filter((row) => row.id !== id);
-        break;
-      case 'party':
-        this.snapshot.parties = this.snapshot.parties.filter((row) => row.id !== id);
-        break;
-      case 'product':
-        this.snapshot.products = this.snapshot.products.filter((row) => row.id !== id);
-        break;
-      case 'order':
-        this.snapshot.orders = this.snapshot.orders.filter((row) => row.id !== id);
-        break;
-      default:
-        break;
-    }
-  }
-
-  /** Pulled on demand for the entities the snapshot does not hold as a flat, upsertable list. */
+  /**
+   * Pulled on demand for the entities the snapshot does not hold as a flat,
+   * upsertable list — and debounced, because they arrive in bursts.
+   *
+   * Editing a twenty-value option list publishes twenty changes, and this used
+   * to pull a full snapshot for each one. Per panel.
+   */
   private requestFreshSnapshot(): void {
-    void this.command<'sync:request', SyncSnapshot>('sync:request')
-      .then((snapshot) => {
-        this.snapshot = snapshot;
-        this.lastSyncedAt = snapshot.serverTime;
-        this.masterVersion = snapshot.serverVersion ?? this.masterVersion;
-        this.emit('snapshot', snapshot);
-        void localStore.setSnapshot(snapshot);
-      })
-      .catch((error: unknown) => {
-        log.warn(`Could not refresh the snapshot: ${(error as Error).message}`);
-      });
+    if (this.refreshTimer) return;
+
+    this.refreshTimer = setTimeout(() => {
+      this.refreshTimer = null;
+
+      void this.command<'sync:request', SyncSnapshot>('sync:request')
+        .then((snapshot) => {
+          this.snapshot = snapshot;
+          this.lastSyncedAt = snapshot.serverTime;
+          this.masterVersion = snapshot.serverVersion ?? this.masterVersion;
+          this.bootId = snapshot.bootId ?? this.bootId;
+          this.emit('snapshot', snapshot);
+          void localStore.setSnapshot(snapshot, this.cursorFrom(snapshot.seq));
+        })
+        .catch((error: unknown) => {
+          log.warn(`Could not refresh the snapshot: ${(error as Error).message}`);
+        });
+    }, REFRESH_DEBOUNCE_MS);
+
+    this.refreshTimer.unref?.();
   }
-}
 
-function upsert<T extends { id: string }>(list: T[], item: T): T[] {
-  return upsertBy(list, item, 'id');
-}
+  /** A cursor, or null when there is no boot id to pair the sequence with. */
+  private cursorFrom(seq: number | undefined): SyncDeltaCursor | null {
+    if (!this.bootId || seq === undefined) return null;
+    return { bootId: this.bootId, lastSeq: seq };
+  }
 
-function upsertBy<T, K extends keyof T>(list: T[], item: T, key: K): T[] {
-  const index = list.findIndex((entry) => entry[key] === item[key]);
-  if (index === -1) return [item, ...list];
+  /**
+   * Note that the snapshot moved on, and write it out shortly.
+   *
+   * Trailing rather than per event: `setSnapshot` stores the object it is
+   * handed and `applyChange` mutates that same object, so memory is current
+   * while disk is stale — which is fine for two seconds and not fine across a
+   * restart. `unref`'d, so a pending write never holds the process open.
+   */
+  private schedulePersist(seq: number | undefined): void {
+    if (this.bootId) localStore.noteApplied(seq, this.bootId);
+    if (this.persistTimer) return;
 
-  const next = [...list];
-  next[index] = item;
-  return next;
-}
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      void localStore.persistCurrent().catch((error: unknown) => {
+        log.warn(`Could not persist the snapshot: ${(error as Error).message}`);
+      });
+    }, PERSIST_DEBOUNCE_MS);
 
-/** Stock rows have no id of their own — a row is one (product, colour) pair. */
-function upsertStock(list: InventoryStockLevel[], item: InventoryStockLevel): InventoryStockLevel[] {
-  const index = list.findIndex(
-    (entry) => entry.productId === item.productId && entry.colour === item.colour,
-  );
-  if (index === -1) return [item, ...list];
-
-  const next = [...list];
-  next[index] = item;
-  return next;
+    this.persistTimer.unref?.();
+  }
 }
 
 /** A sentence for whoever is standing at the Master, never a stack trace. */

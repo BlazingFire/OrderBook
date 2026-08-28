@@ -10,6 +10,8 @@
 import { EventEmitter } from 'node:events';
 import type { DataChangedEvent, SyncConflict } from '@orderbook/shared';
 
+import * as changeRing from '../realtime/change-ring.js';
+
 const emitter = new EventEmitter();
 const CHANGE_EVENT = 'change';
 const CONFLICT_EVENT = 'conflict';
@@ -17,6 +19,19 @@ const CONFLICT_EVENT = 'conflict';
 emitter.setMaxListeners(50);
 
 export function publishChange(event: DataChangedEvent): void {
+  /*
+   * Recorded here rather than in the hub's subscription, and the difference is
+   * not cosmetic: the ring is a record of what *changed*, not of what was
+   * broadcast. Recording on the broadcast side would mean a change published
+   * with no hub running — every integration suite, and the window between a
+   * service writing and the realtime layer starting — was never in the ring,
+   * and a panel's cursor would then skip it in silence.
+   *
+   * It also stamps `event.seq` in place before anything is emitted, so the
+   * number the ring holds and the number every recipient sees are the same by
+   * construction.
+   */
+  changeRing.record(event);
   emitter.emit(CHANGE_EVENT, event);
 }
 

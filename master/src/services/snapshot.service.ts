@@ -29,6 +29,7 @@ import * as inventoryService from './inventory.service.js';
 import * as leadService from './lead.service.js';
 import * as orderService from './order.service.js';
 import { appVersion } from '../lib/app-version.js';
+import { BOOT_ID, currentSeq } from '../realtime/change-ring.js';
 
 /** One page, deliberately generous: LAN-local and small-business sized. */
 const SNAPSHOT_LIMIT = 500;
@@ -95,6 +96,12 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
   );
 
   return {
+    bootId: BOOT_ID,
+    // Where the ring stands as this snapshot is built. A change that lands
+    // *while* it is being built is replayed on the next reconnect rather than
+    // missed — the cost of a duplicate upsert is nothing, and the cost of the
+    // other rounding is a lost row.
+    seq: currentSeq(),
     parties,
     products,
     categories,

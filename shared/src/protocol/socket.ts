@@ -123,6 +123,17 @@ export interface PanelAuthPayload {
   kind: 'office-panel';
   panelId: Uuid;
   panelSecret: string;
+  /**
+   * What this panel already has, so the Master can answer a reconnect with the
+   * handful of changes it missed instead of the whole snapshot.
+   *
+   * In the **handshake** rather than as a command sent afterwards, and that is
+   * not a stylistic choice: the Master pushes a snapshot the moment a panel
+   * connects, so a cursor that arrives one round trip later arrives after the
+   * work it was meant to avoid. Absent means "send me everything", which is
+   * every first connection and every panel built before this field.
+   */
+  syncCursor?: SyncDeltaCursor;
 }
 
 /** Handshake `auth` payload sent by a Master Panel browser. */
@@ -259,7 +270,102 @@ export interface DataChangedEvent {
   id: string;
   /** Full current row, so clients can update in place without a refetch. */
   payload: unknown;
+  /**
+   * Where this change sits in the Master's change ring, so a panel that was
+   * offline can ask for everything after the last one it saw.
+   *
+   * Optional because a panel built against this field must still read events
+   * from a Master that predates it — and because the number only means anything
+   * paired with the Master's `bootId`. The ring is in memory: a Master restart
+   * mints a new boot id and every cursor from before it is worthless, which is
+   * correct rather than unfortunate.
+   */
+  seq?: number;
 }
+
+/**
+ * What a reconnecting panel says it already has.
+ *
+ * The pair is inseparable: a sequence number from a previous boot of the Master
+ * names a position in a ring that no longer exists, and acting on it would
+ * replay the wrong events. Persisted in the same disk write as the snapshot it
+ * describes, so the two can never disagree.
+ */
+export interface SyncDeltaCursor {
+  bootId: string;
+  lastSeq: number;
+}
+
+/**
+ * The Master's answer to a cursor: either the changes since it, or — whenever
+ * the delta cannot be trusted — the whole snapshot, exactly as before.
+ */
+export interface SyncDelta {
+  bootId: string;
+  /** The cursor to store after applying these. */
+  seq: number;
+  events: DataChangedEvent[];
+  /** A role can be edited while a panel is off; these ride along. */
+  permissions: string[];
+  partyGrants?: Array<{ partyId: string; level: PartyAccessLevel }>;
+  dashboard: DashboardSummary;
+  serverHlc: string;
+  serverTime: string;
+  serverVersion?: string;
+}
+
+/**
+ * The entities a panel can apply from a replayed event — exactly the ones
+ * `master-connection.ts#applyChange` has a case for.
+ *
+ * Kept here, in the shared protocol, rather than beside `applyChange`: the
+ * Master decides whether a delta is safe and the panel decides what to do with
+ * one, and two lists that had to agree would eventually not.
+ */
+export const REPLAYABLE_ENTITIES: readonly ChangedEntity[] = [
+  'lead',
+  'order',
+  'party',
+  'product',
+  'product_category',
+  'stock',
+];
+
+/**
+ * In the snapshot, but not as a flat id-keyed list a single event can upsert.
+ *
+ * A replayed change to one of these would be dropped on the floor and never
+ * covered by anything — `partyVariants` is the sharp one, because those are
+ * per-party negotiated rates and staff would quote from stale prices with no
+ * error anywhere. So the presence of any of these in a buffered range forces
+ * the full snapshot instead.
+ */
+export const SNAPSHOT_FORCING_ENTITIES: readonly ChangedEntity[] = [
+  'party_variant',
+  'sync_conflict',
+  'reservation',
+  'pipeline',
+  'option_list',
+  'custom_field',
+];
+
+/**
+ * Not in a panel's snapshot at all, so nothing about them can go stale on one.
+ *
+ * `role`, `user` and `document_export` are additionally withheld from panels
+ * outright (`DIRECTORY_ENTITIES` in the hub). `office_panel` is the one that
+ * makes this third bucket worth having rather than folding into the one above:
+ * every panel's periodic self-report publishes one, so treating it as
+ * snapshot-forcing would mean a reconnecting panel almost always found a
+ * non-replayable event and the delta would never be used.
+ */
+export const PANEL_IRRELEVANT_ENTITIES: readonly ChangedEntity[] = [
+  'office_panel',
+  'role',
+  'user',
+  'document_template',
+  'document_export',
+];
 
 /**
  * Sent to an Office Panel the moment it connects or reconnects.
@@ -309,6 +415,15 @@ export interface SyncSnapshot {
    * bypass of the whole feature there is. `null` for an unattended panel.
    */
   builtForUserId?: string | null;
+  /**
+   * Which run of the Master built this, and where its change ring stood.
+   *
+   * The pair is what lets the *next* reconnect be a delta rather than another
+   * snapshot. Optional, because a panel reading a snapshot from an older Master
+   * simply has no cursor to offer and gets the full snapshot it always got.
+   */
+  bootId?: string;
+  seq?: number;
   /** The Master's current HLC, folded into the panel's clock on receipt. */
   serverHlc: string;
   serverTime: string;
@@ -589,6 +704,11 @@ export interface ClientToServerEvents {
 /** Master → clients. */
 export interface ServerToClientEvents {
   'sync:snapshot': (snapshot: SyncSnapshot) => void;
+  /**
+   * The answer to a reconnecting panel's cursor: the changes it missed, rather
+   * than the whole snapshot. Sent in `sync:snapshot`'s place, never as well.
+   */
+  'sync:delta': (delta: SyncDelta) => void;
   'data:changed': (event: DataChangedEvent) => void;
   'panels:changed': (panels: OfficePanelWithPresence[]) => void;
   'dashboard:changed': (summary: DashboardSummary) => void;

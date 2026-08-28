@@ -322,14 +322,27 @@ export function partyScopeLogSql(
 export async function grantsForUser(
   tenantId: string,
   userId: string | null,
-  partyIds: readonly string[],
+  /**
+   * Which parties to report on. **Omit** it for all of this person's own
+   * grants — that is not a widening, because every row returned is already one
+   * naming them; an explicitly empty array still means "none of them".
+   *
+   * The delta path needs the unbounded form: it has no snapshot to take a party
+   * list from, and a panel reconnecting after a grant changed must be told
+   * about the grant it now holds.
+   */
+  partyIds?: readonly string[],
 ): Promise<Array<{ partyId: string; level: PartyAccessLevel }>> {
-  if (!userId || partyIds.length === 0) return [];
+  if (!userId) return [];
+  if (partyIds && partyIds.length === 0) return [];
 
-  const rows = await db()(TABLE)
-    .where({ tenant_id: tenantId, user_id: userId })
-    .whereIn('party_id', [...partyIds])
-    .select<Array<{ party_id: string; access_level: PartyAccessLevel }>>('party_id', 'access_level');
+  const query = db()(TABLE).where({ tenant_id: tenantId, user_id: userId });
+  if (partyIds) query.whereIn('party_id', [...partyIds]);
+
+  const rows = await query.select<Array<{ party_id: string; access_level: PartyAccessLevel }>>(
+    'party_id',
+    'access_level',
+  );
 
   return rows.map((row) => ({ partyId: row.party_id, level: row.access_level }));
 }

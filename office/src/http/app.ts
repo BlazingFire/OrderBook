@@ -1012,6 +1012,11 @@ function filterDashboardForCurrentUser(
 export type SnapshotPolicy = 'mask-rates' | 'replace' | 'gate' | 'passthrough';
 
 export const SNAPSHOT_POLICY: Record<keyof SyncSnapshot, SnapshotPolicy> = {
+  // The Master's boot id and change-ring position. Neither is company data —
+  // they are how this panel asks for a delta next time — and both are already
+  // on this panel's disk.
+  bootId: 'passthrough',
+  seq: 'passthrough',
   parties: 'passthrough',
   products: 'mask-rates',
   categories: 'passthrough',

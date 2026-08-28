@@ -17,6 +17,7 @@ import {
   type CommandAck,
   type CommandResult,
   type DashboardSummary,
+  type SyncDeltaCursor,
   type DataChangedEvent,
   type ServerToClientEvents,
   type SocketAuthPayload,
@@ -24,7 +25,14 @@ import {
 } from '@orderbook/shared';
 
 import type { ActorContext } from '../domain/actor.js';
-import { levelFor, resolvePartyScope } from '../domain/party-scope.js';
+import { resolvePartyScope } from '../domain/party-scope.js';
+import {
+  DASHBOARD_ENTITIES,
+  DIRECTORY_ENTITIES,
+  PARTY_SCOPED_ENTITIES,
+  mayReceive,
+  partyIdOfChange,
+} from './fan-out.js';
 import * as partyAccessRepo from '../repositories/party-access.repository.js';
 import { MAX_SOURCE_BYTES } from '../domain/images.js';
 import { AppError, ForbiddenError, toErrorMessage } from '../lib/errors.js';
@@ -52,6 +60,7 @@ import * as panelService from '../services/panel.service.js';
 import * as partyAccessService from '../services/party-access.service.js';
 import * as recycleBinService from '../services/recycle-bin.service.js';
 import * as searchService from '../services/search.service.js';
+import { buildDelta } from '../services/delta.service.js';
 import { buildSnapshot } from '../services/snapshot.service.js';
 import * as syncService from '../services/sync.service.js';
 
@@ -197,22 +206,6 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
  * template is configuration gated by `documents.view` and carries no record
  * data at all.
  */
-const DIRECTORY_ENTITIES = new Set<string>(['role', 'user', 'document_export']);
-
-/**
- * Entities whose rows hang off one party, and therefore cannot be broadcast to
- * a room — each recipient's own party scope decides whether the row is theirs.
- *
- * The other direction is what makes this necessary rather than tidy: an
- * unassigned party is open to everyone, so a blanket "never broadcast these"
- * would stop live updates working for the ordinary case the product has always
- * had. `emitPartyScopedChange` broadcasts exactly then, and fans out per socket
- * only when the party is actually restricted.
- */
-const PARTY_SCOPED_ENTITIES = new Set<string>(['lead', 'order', 'party', 'party_variant']);
-
-/** Changes that move a number on the dashboard. */
-const DASHBOARD_ENTITIES = new Set(['lead', 'order', 'party', 'product', 'stock', 'sync_conflict']);
 
 async function authenticate(socket: PanelSocket): Promise<void> {
   const auth = socket.handshake.auth as SocketAuthPayload | undefined;
@@ -278,9 +271,25 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
   registerCommands(socket, actorFor);
   registerAuthCommands(socket, sendSnapshot);
 
-  // A snapshot on connect means a panel that was offline catches up in one
-  // round trip before incremental changes resume.
-  socket.emit('sync:snapshot', await buildSnapshot(await actorFor()));
+  /*
+   * Catch the panel up in one round trip before incremental changes resume.
+   *
+   * A cursor in the handshake — rather than a command the panel sends after
+   * connecting — is what lets this be a delta at all: a command arrives one
+   * round trip later, by which time the snapshot it was meant to avoid has
+   * already been built and emitted. Without a usable cursor this is exactly the
+   * unconditional snapshot it always was.
+   */
+  const actor = await actorFor();
+  const cursor = socket.handshake.auth?.syncCursor as SyncDeltaCursor | undefined;
+  const delta = cursor ? await buildDelta(cursor, actor) : null;
+
+  if (delta) {
+    socket.emit('sync:delta', delta);
+    log.info(`Office panel ${panelId} caught up with ${delta.events.length} change(s)`);
+  } else {
+    socket.emit('sync:snapshot', await buildSnapshot(actor));
+  }
 
   socket.on('disconnect', () => {
     void (async () => {
@@ -740,13 +749,6 @@ async function adminActor(socket: PanelSocket): Promise<ActorContext | null> {
 }
 
 /** The party a change event is about, or `null` if it cannot be told. */
-function partyIdOfChange(event: DataChangedEvent): string | null {
-  if (event.entity === 'party') return event.id;
-
-  const payload = event.payload as { partyId?: unknown } | null;
-  return typeof payload?.partyId === 'string' ? payload.partyId : null;
-}
-
 /**
  * Deliver a party-scoped change to the sockets entitled to it.
  *
@@ -784,7 +786,7 @@ async function emitPartyScopedChange(
       try {
         const actor = await actorForRecipient(socket);
         if (!actor) return;
-        if (levelFor(resolvePartyScope(actor), grants) === 'none') return;
+        if (!mayReceive(actor, event, grants)) return;
 
         socket.emit('data:changed', event);
       } catch (error: unknown) {
