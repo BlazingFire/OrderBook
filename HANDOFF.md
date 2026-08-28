@@ -88,11 +88,22 @@ grows its own `ui/` again.
 - **React 19.2.8**, with the three predicted type breakages fixed, plus the
   `<Activity>` spike that Stage 5 depends on. **The bet paid off** — see below.
 
+- **Stage 5 — screen keep-alive** (requirement 4). Visited screens stay mounted
+  and hidden via `<Activity>`; a tab now holds its filters, scroll and
+  half-typed forms. Reset is a per-screen nonce in the topbar.
+
+**Owed: a manual pass on a signed-in panel.** Stage 5's behaviour is covered by
+five `ui/tests/screen-host.test.tsx` cases, but it was never exercised in a
+running panel — the Master needed credentials the session did not have and the
+Office panel was unpaired, so both sat behind their gates. Walk the 14 master
+tabs and 9 office ones: filters, scroll position, open drawers and half-typed
+forms should all survive a round trip, Escape should close the visible overlay
+(not a hidden screen's), and Reset should clear exactly one screen.
+
 Next, in order:
 
-1. **Stage 5** — screen keep-alive, which is requirement 4 (a tab keeping its
-   state). Read workstream B part B first: three separate things in the repo
-   depend on effect teardown meaning *unmount*, and each needs its own fix.
+1. **Stage 6** — UI scale and the 1024×768-to-4K responsive work. Note it
+   depends on Stage 5's DataTable change, which is already in.
 2. **Stage 4** — settings table and the password vault, which unblocks the AI
    config and the connector secrets. Independent of the UI stages.
 
