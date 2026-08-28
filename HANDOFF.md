@@ -23,7 +23,6 @@ of truth.
 
 Full database schema (every table, columns, indexes, and rationale):
 **`docs/schema/`**, starting at `docs/schema/00-overview.md`.
-
 ## Current work: the overhaul programme (started 2026-08-28)
 
 The owner asked, in one message, for a stability fix plus fourteen further
@@ -33,109 +32,127 @@ product attributes, searchable pickers everywhere, 1024×768-to-4K layouts, an
 AI section, an external API in both directions, and Miracle-style dense forms,
 grid entry and report exports.
 
-That work is planned in **`docs/overhaul/`**. Read `README.md` first (the
-executive plan), then `00-sequenced-plan.md` for the thirteen stages, then the
-per-workstream file for whatever you are about to build. Each workstream was
-designed and then adversarially reviewed against the real code; the reviewers
-raised 218 findings, 51 of them blockers, and every design in there is the
-*corrected* version. The findings are listed at the top of each file — read
-them, because several are "the obvious approach silently leaks masked data".
+### Start here
 
-**Stage order is not advisory.** `docs/overhaul/00-sequenced-plan.md` §1 gives
-the dependency graph and §2 says which stage owns which contended file. The
-short version: Stage 3 (extracting the hand-duplicated `web/src/ui/` into one
-package) blocks every UI stage, and Stage 4 (the settings table) blocks the AI
-config, the connector secrets and the password toggle.
+1. Read **`docs/overhaul/README.md`** — the executive plan.
+2. Read **`docs/overhaul/00-sequenced-plan.md` §1** for the stage dependency
+   graph and **§2** for which stage owns which contended file.
+3. Read the **per-workstream file** for whatever you are about to build
+   (`workstream-A.md` … `workstream-J.md`).
 
-Done so far:
+Each workstream was designed and then adversarially reviewed against the real
+code. The reviewers raised 218 findings, 51 of them blockers, and **the file
+contains the corrected design** — the findings are listed at the top. Read
+them: several are "the obvious approach silently leaks masked data". Several
+others have since proved wrong about the current tree (see "Verify before you
+trust the designs" below).
 
-- **Stage 0 — repo safety.** 26 untracked paths committed, including two
-  migrations already in the `SHIPPED` list. Both web workspaces gained the
-  `typecheck` script they never had. See the traps below.
-- **Stage 1 (core) — the whole-record-replace data-loss bug**, plus the two
-  drifted copies of the column map that were hiding beside it. See the traps.
-  What remains of Stage 1 — `validateProductInput`, purchase-rate masking and
-  the `setStockLevels` partial upsert — validates columns that do not exist
-  until Stage 8's migration, so it lands there rather than being written
-  against nothing.
-- **Stage 2 — the Electron shell.** One `electron/` at the repo root, two thin
-  entrypoints, ~640 lines of duplication deleted. The panels-close-by-themselves
-  bug, the stuck `updating` flag, shutdown handlers registering 60–90 s too
-  late, the Windows `TerminateProcess` problem, the unrestricted installer
-  path, missing crash handlers, and logs going nowhere. `PanelHealth` in
-  `shared` is now the one contract both panels answer with.
+**Stage order is not advisory.** Stage 3 (one UI package) blocked every UI
+stage; Stage 4 (the settings table) blocks the AI config, the connector
+secrets and the password toggle.
 
-- **Stage 3 — one UI package and one string catalogue.** The two forked
-  dictionaries (1029 + 501 keys) folded into `shared/src/i18n/`, and the
-  hand-duplicated `web/src/ui/` extracted into `@orderbook/ui`. Net deletion of
-  ~4,300 lines. React 19 is deliberately *not* done yet — see below.
+### Stage status
 
-**Running the shell from source:** `npm run build:shell` compiles it and copies
-the output into `master/electron/dist` and `office/electron/dist` (the shell
-locates its server by walking up two levels, and electron-builder packages
-`electron/dist/**` from inside the panel folder). Then
-`npx electron master/electron/dist/master.main.js`.
+| Stage | State |
+|---|---|
+| 0 — repo safety | **done** |
+| 1 — data-integrity core | **done** (part; rest folds into Stage 8) |
+| 2 — Electron shell | **done** |
+| 3 — `@orderbook/ui` + i18n fold + React 19 | **done** |
+| 4 — settings table + password vault | **next** |
+| 5 — screen keep-alive | **done** (manual pass owed) |
+| 6 — UI scale + responsive | **mostly done** (five items deferred) |
+| 7 — performance and memory | not started |
+| 8 — product & party attributes | not started |
+| 9 — picker, dense forms, grid, exports | not started |
+| 10 — keyboard system | not started |
+| 11 — public API + connectors | not started |
+| 12 — AI section | not started |
 
-**Where the UI lives now:** all 44 shared modules are in `ui/src`, exported
-through one barrel, and consumed as *source* — Vite must not pre-bundle it
-(`optimizeDeps.exclude`), because `assetsInlineLimit: 0` has to own font
-emission. The three things that genuinely differ per panel (panel name,
-default theme, theme storage key) are declared by `configureUi()` in each
-`main.tsx` before `initAppearance()`. Adding a component means adding a file
-and a barrel line; `master/tests/no-duplicate-ui.test.ts` fails if a panel
-grows its own `ui/` again.
+Everything through Stage 6 is pushed to **both `dev` and `main`** (they are at
+the same commit as of 2026-08-28).
 
-- **React 19.2.8**, with the three predicted type breakages fixed, plus the
-  `<Activity>` spike that Stage 5 depends on. **The bet paid off** — see below.
+What Stage 1 deliberately left: `validateProductInput`, purchase-rate masking
+and the `setStockLevels` partial upsert all validate columns that do not exist
+until Stage 8's migration, so they land there rather than being written
+against nothing.
 
-- **Stage 5 — screen keep-alive** (requirement 4). Visited screens stay mounted
-  and hidden via `<Activity>`; a tab now holds its filters, scroll and
-  half-typed forms. Reset is a per-screen nonce in the topbar.
-
-**Owed: a manual pass on a signed-in panel.** Stage 5's behaviour is covered by
-five `ui/tests/screen-host.test.tsx` cases, but it was never exercised in a
-running panel — the Master needed credentials the session did not have and the
-Office panel was unpaired, so both sat behind their gates. Walk the 14 master
-tabs and 9 office ones: filters, scroll position, open drawers and half-typed
-forms should all survive a round trip, Escape should close the visible overlay
-(not a hidden screen's), and Reset should clear exactly one screen.
-
-- **Stage 6, first half — UI scale** (requirement 3). `--root-size` is a
-  continuous 11–22px slider in Settings; density now governs only row and
-  control heights. Spacing, shell dimensions and every text-measured length are
-  rem, so one number resizes the interface.
-
-**How scale and density relate now.** They used to be one control: density set
-the root font size *and* the heights. They are orthogonal. Density's rem ratios
-are the old absolute values over the old per-density root, so Compact at scale
-13 still computes to exactly 28px rows. `ob.density` is not cleared on
-migration. Hairlines and radii stay px on purpose — a 1px border scaled to
-1.14px renders blurry, and a radius is a visual constant, not a measurement
-against text. If you add a length that is measured against text, use rem.
-
-- **Stage 6, second half — responsive** (requirement 10). Three breakpoints,
-  sidebar auto-collapse, and a 192-literal `rem()` sweep across the JSX.
-
-**Breakpoints are physical px on purpose.** Scale changes how big things are;
-it must not change what is on screen, so a layout that reorganised mid-drag
-would read as a bug. `em` in `@media` also resolves against the browser default
-rather than `html { font-size }`, so it could not track the scale anyway.
-`master/tests/ui-conventions.test.ts` fails if one is written in rem or em, if
-a text-measured token stops being rem, if a hairline or radius becomes rem, if
-a density block sets `--root-size`, or if a raw pixel size appears in a JSX
-style object. Zero and 1–3px hairlines are exempt, matching the CSS rule.
-
-Next, in order:
-
-1. **Stage 4** — settings table and the password vault, which unblocks the AI
-   config and the connector secrets. Independent of the UI stages.
-2. **Stage 7** — performance and memory.
-
-Still unfinished in Stage 6, deliberately deferred rather than forgotten:
-DataTable column priority (dropping low-priority columns below 1180px), the
+What Stage 6 deliberately left, none of it blocking another stage: DataTable
+column priority (dropping low-priority columns below 1180px), the
 drawer-to-modal conversion for the four record-detail screens, `SkeletonTable`,
-the Retina variant picking, and the `styles.css` trim. None blocks another
-stage.
+Retina variant picking, and the `styles.css` trim.
+
+### Owed work
+
+- **A manual pass on a signed-in panel.** Stage 5's keep-alive is covered by
+  five `ui/tests/screen-host.test.tsx` cases but was never exercised in a
+  running panel — the Master needed credentials the session did not have (the
+  ones in older session notes return 401) and the Office panel was unpaired,
+  so both sat behind their gates. Walk the 14 master tabs and 9 office ones:
+  filters, scroll position, open drawers and half-typed forms should survive a
+  round trip; Escape should close the *visible* overlay, not a hidden screen's;
+  Reset should clear exactly one screen.
+- **A code review of the session's 286-file diff.** A five-agent adversarial
+  review was launched and **all five agents died on a usage limit**, so it
+  returned "0 findings" without having reviewed anything. Do not read that as a
+  pass. Only the `rem()` sweep was checked by hand afterwards.
+
+### How to run things
+
+```
+npm run verify        # lint + typecheck (6 workspaces) + 885 tests
+npm run build         # shared, master, office, both web bundles
+npm run build:shell   # compiles electron/ and copies it into both panels
+npx electron master/electron/dist/master.main.js
+npx electron office/electron/dist/office.main.js
+```
+
+Both panels can run side by side. `npm test` has **one known failure**:
+`office/tests/storage-path.test.ts:138` asserts POSIX permission bits on
+Windows and predates this work. 884/885 is green.
+
+### Where things live now
+
+**The UI.** All 49 shared modules are in `ui/src`, exported through one barrel
+and consumed as *source* — Vite must not pre-bundle it (`optimizeDeps.exclude`),
+because `assetsInlineLimit: 0` has to own font emission and the shop network
+has no internet. The three things that genuinely differ per panel (panel name,
+default theme, theme storage key) are declared by `configureUi()` in each
+`main.tsx`, before `initAppearance()`. Adding a component is a file plus a
+barrel line; `master/tests/no-duplicate-ui.test.ts` fails if a panel grows its
+own `ui/` again.
+
+**Strings.** One catalogue, `shared/src/i18n/en.ts`, with a Hindi mirror kept
+total by `npm run i18n:sync`. The twelve keys that legitimately differ between
+panels are namespaced `master.*` / `office.*` and resolved by `ui/src/i18n.ts`
+from `uiConfig().panel`. `master/tests/i18n-call-sites.test.ts` fails if a
+literal `t('…')` names a key the catalogue lacks.
+
+**The desktop shell.** One `electron/` at the repo root; `master.main.ts` and
+`office.main.ts` are thin config objects over `shell.ts`. `PanelHealth` in
+`shared/src/protocol/desktop.ts` is the one contract both panels answer with.
+
+### Scale, density and breakpoints
+
+Scale and density used to be one control; they are now orthogonal.
+`--root-size` (11–22px, a Settings slider) is the continuous knob; density
+governs only row and control heights, as rem *ratios*. Those ratios are the old
+absolute values over the old per-density root, so Compact at scale 13 still
+computes to exactly 28px rows, and `ob.density` is not cleared on migration.
+
+Hairlines and radii stay px on purpose — a 1px border scaled to 1.14px renders
+blurry, and a radius is a visual constant rather than a measurement against
+text. **If you add a length measured against text, use rem** (or `rem()` in
+JSX).
+
+Breakpoints are **physical px, never rem or em**. Scale changes how big things
+are; it must not change what is on screen, so a layout that reorganised
+mid-drag would read as a bug. `em` in `@media` also resolves against the
+browser default rather than `html { font-size }`, so it could not track the
+scale anyway. `master/tests/ui-conventions.test.ts` enforces all of this: rem
+tokens, px hairlines, no `--root-size` in a density block, no rem/em
+breakpoint, and no raw pixel size in a JSX style object (zero and 1–3px
+hairlines exempt).
 
 ### What the `<Activity>` spike established
 
@@ -148,17 +165,33 @@ before anything was scheduled around it (`ui/tests/activity-spike.test.tsx`):
   precise behaviour the design needs. Re-showing re-runs the effect, so a
   screen can still refetch on show.
 - A hidden pane's DOM **stays in the document**. That is why `useOverlay`'s
-  Escape arbitration is wrong today: it takes the last `[role="dialog"]` in
-  document order, so a hidden pane's open Drawer sitting later in the screens
-  array steals Escape from the visible one.
+  Escape arbitration had to start filtering by visibility: it takes the last
+  `[role="dialog"]` in document order, so a hidden pane's open Drawer sitting
+  later in the screens array stole Escape from the visible one.
 
 **jsdom cannot test the fix for that last one.** jsdom 25 does not implement
 `Element.checkVisibility` at all — it is `undefined`, not merely inaccurate —
 and `getComputedStyle().display` returns `''` for an element hidden by an
-ancestor. The visibility filter was therefore verified by hand in Chromium,
-where the bug reproduces (`querySelectorAll` picks the hidden dialog) and the
-filter corrects it. Do not write a jsdom assertion on visibility: it would be
-asserting on a stub that always says "visible".
+ancestor. The visibility filter was verified by hand in Chromium, where the bug
+reproduces (`querySelectorAll` picks the hidden dialog) and the filter corrects
+it. Do not write a jsdom assertion on visibility: it would be asserting on a
+stub that always says "visible".
+
+### Verify before you trust the designs
+
+The workstream files are good but were written against a tree that has since
+moved, and several of their stated facts did not survive contact:
+
+- Workstream C called `permissionLabels.ts` dead — it has two importers.
+- It required replacing `var(--muted)` and hoisting bare `.num`; neither was
+  needed (the `--muted` consumer was in a file deleted in Stage 3, and all six
+  `.num` sites are inside `.ob-table`, which `base.css` already covers).
+- Workstream B counted 13 conflicting i18n keys; there are 12.
+- It named four strings with forbidden digit runs; the coverage suite's actual
+  `/\d{3,}/` catches five.
+
+Check a design's claim against the code before acting on it. Most of the
+duplication-related findings are also now moot, since `ui/` is one copy.
 
 ## Key decisions made so far (do not re-decide these without a reason)
 
@@ -261,22 +294,40 @@ asserting on a stub that always says "visible".
 
 ## Open questions (still unresolved — confirm with the user before finalizing)
 
+Several of these were **answered on 2026-08-28** and are marked below; the
+rest still stand.
+
 From `docs/PROJECT_PLAN.md` §12:
-- Exact product attribute set for ceramics (size, finish/glaze, series, box
-  quantity, price tiers, etc.) beyond the placeholder columns already in the
-  schema — the `parameters` JSONB column is the escape hatch until this is
-  nailed down.
+- ~~Exact product attribute set for ceramics.~~ **Answered.** The owner chose
+  trade fields (MRP, purchase rate, min/max stock, reorder point, GST rate,
+  unit of measure, barcode, brand) and ceramic/tile fields (batch or lot,
+  shade, calibre, water absorption, PEI rating, edge type, surface texture,
+  application, origin plant). Stage 8 implements them; see
+  `docs/overhaul/workstream-E.md` for which become columns, which become
+  option lists, and why batch/lot deliberately does **not** become a product
+  column.
 - Party fields needed for this business (GST/tax ID, credit terms, multiple
   contacts?) beyond what's already in `parties`.
 - Whether more than one Office Panel can edit the same lead concurrently, and
   how conflicts should be resolved (last-write-wins is the current default
   assumption, not yet confirmed).
 - Desired app name/branding (currently just "OrderBook" per the repo name).
-- **How a new build should actually reach the machines.** Both panels now have
-  an App update screen that reports versions, but nothing installs anything:
-  the copy says builds are installed by hand, Master first. Making it real
-  means deciding a package format and how a panel applies one and restarts —
-  which is why it was not guessed at. See the App update Status entry.
+- ~~How a new build should reach the machines.~~ **Answered and built.**
+  NSIS installers, published to a releases folder by `tools/release.mjs`, with
+  the Master serving the office build over the LAN. The shell runs a verified
+  setup file and quits. It now refuses any path outside the panel's own
+  updates directory, which it learns from that panel's loopback health route.
+
+Added on 2026-08-28, from the overhaul brief:
+- **The password vault's residual risk has been accepted, not solved.** The
+  owner asked for a plaintext password view on the Master and was told plainly
+  what that costs (see `docs/overhaul/workstream-F.md`, and the Risk section of
+  `00-sequenced-plan.md`). Do not quietly re-scope it; do not quietly ship it
+  without the guards that design lists.
+- **TLS is a decision the owner has not made.** The Master binds `0.0.0.0`
+  with no certificate, so a Stage 11 API key is exactly as confidential as the
+  session cookie already is — which is to say not at all against a passive LAN
+  sniffer. Raise it before Stage 11 ships.
 
 ## Repo layout
 
