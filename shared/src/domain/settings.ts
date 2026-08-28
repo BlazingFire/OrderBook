@@ -54,21 +54,6 @@ export type AiProviderSetting =
   | { kind: 'off' }
   | { kind: 'openaiCompatible'; baseUrl: string; model: string };
 
-/**
- * One outbound REST integration, as configuration rather than code.
- *
- * Deliberately the smallest shape that identifies an endpoint: the field maps,
- * schedules and run history that make a connector useful are per-row data and
- * belong in their own tables, not inside a single JSONB value that every save
- * rewrites wholesale.
- */
-export interface ExternalConnectorSetting {
-  slug: string;
-  label: string;
-  baseUrl: string;
-  enabled: boolean;
-}
-
 function asBoolean(raw: unknown): boolean {
   if (typeof raw !== 'boolean') throw new TypeError('expected a boolean');
   return raw;
@@ -100,20 +85,6 @@ function asAiProvider(raw: unknown): AiProviderSetting {
   }
 
   throw new TypeError('unknown AI provider kind');
-}
-
-function asConnectors(raw: unknown): ExternalConnectorSetting[] {
-  if (!Array.isArray(raw)) throw new TypeError('expected an array');
-
-  return raw.map((entry) => {
-    const value = asRecord(entry);
-    return {
-      slug: asString(value.slug),
-      label: asString(value.label),
-      baseUrl: asString(value.baseUrl),
-      enabled: asBoolean(value.enabled),
-    };
-  });
 }
 
 /**
@@ -152,6 +123,15 @@ export const SETTINGS = {
     secret: true,
   },
 
+  /**
+   * The public API's master switch.
+   *
+   * There was a second key beside this one — a list of `{slug, label, baseUrl}`
+   * declarations for outbound connections — which Stage 11 replaced with real
+   * tables carrying resources, field maps, links and runs. Two homes for one
+   * concept is how they drift, so the settings-level list was deleted rather
+   * than left as a shadow copy nothing reads.
+   */
   'externalApi.enabled': {
     labelToken: 'setting.externalApi.enabled.label',
     descriptionToken: 'setting.externalApi.enabled.help',
@@ -159,12 +139,6 @@ export const SETTINGS = {
     parse: (raw: unknown): boolean => asBoolean(raw),
   },
 
-  'externalApi.connectors': {
-    labelToken: 'setting.externalApi.connectors.label',
-    descriptionToken: 'setting.externalApi.connectors.help',
-    fallback: [] as ExternalConnectorSetting[],
-    parse: (raw: unknown): ExternalConnectorSetting[] => asConnectors(raw),
-  },
 } satisfies Record<string, SettingDefinition<unknown>>;
 
 export type SettingKey = keyof typeof SETTINGS;

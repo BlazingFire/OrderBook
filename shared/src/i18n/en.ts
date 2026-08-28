@@ -139,8 +139,6 @@ export const EN_MESSAGES = {
   'setting.externalApi.enabled.label': 'Allow other software to connect',
   'setting.externalApi.enabled.help':
     'Opens this Master to keyed requests from other programs on the network.',
-  'setting.externalApi.connectors.label': 'Outbound connections',
-  'setting.externalApi.connectors.help': 'The other systems this Master sends data to.',
 
   // --- error.* — one per AppError subclass and per stable code ---
   'error.notFound': '{what} not found',

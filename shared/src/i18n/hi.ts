@@ -123,8 +123,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'setting.externalApi.enabled.label': 'अन्य सॉफ़्टवेयर को जुड़ने दें',
   'setting.externalApi.enabled.help':
     'नेटवर्क के अन्य प्रोग्रामों से कुंजी-युक्त अनुरोधों के लिए इस मास्टर को खोलता है।',
-  'setting.externalApi.connectors.label': 'बाहर जाने वाले कनेक्शन',
-  'setting.externalApi.connectors.help': 'वे अन्य सिस्टम जिन्हें यह मास्टर डेटा भेजता है।',
 
   'error.notFound': '{what} नहीं मिला',
   'error.forbidden.missingPermission': 'अनुमति नहीं है: {permission}',

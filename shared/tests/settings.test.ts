@@ -38,7 +38,6 @@ describe('every parser rejects a wrong shape', () => {
     'ai.provider': { kind: 'anthropic' },
     'ai.apiKey': 42,
     'externalApi.enabled': 1,
-    'externalApi.connectors': [{ slug: 'hermes' }],
   };
 
   it.each(SETTING_KEYS)('%s throws on a value it cannot mean', (key) => {
