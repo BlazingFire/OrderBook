@@ -447,6 +447,11 @@ export const EN_MESSAGES = {
   'activity.document_export.rendered': '{actor} rendered {documentType} for {subject}',
 
   // --- common.* ---
+  'picker.searching': 'Searching…',
+  'picker.truncated': 'More matches — keep typing to narrow it',
+  'picker.offline': 'Offline — showing what this panel has cached',
+  'picker.empty': 'Nothing matches',
+  'picker.create': 'Ctrl+Enter to add a new one',
   'common.save': 'Save',
   'common.cancel': 'Cancel',
   'common.delete': 'Delete',

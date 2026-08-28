@@ -635,6 +635,19 @@ export const api = {
    *  feature was switched on. */
   vaultStatus: () => request<VaultStatus>('/api/settings/vault-status'),
 
+  /** One page of a searchable dropdown — see `/api/pick/:kind`. */
+  pick: <T>(
+    kind: 'product' | 'party',
+    query: { term: string; include?: string[]; signal?: AbortSignal },
+  ) => {
+    const params = new URLSearchParams({ q: query.term });
+    if (query.include?.length) params.set('include', query.include.join(','));
+    return request<{ items: T[]; truncated: boolean }>(
+      `/api/pick/${kind}?${params.toString()}`,
+      query.signal ? { signal: query.signal } : undefined,
+    );
+  },
+
   conflicts: (includeResolved = false) =>
     request<SyncConflict[]>(`/api/conflicts${includeResolved ? '?includeResolved=true' : ''}`),
   resolveConflict: (id: number, action: 'keepWinner' | 'restoreLoser') =>

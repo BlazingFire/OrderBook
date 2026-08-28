@@ -20,7 +20,7 @@
  * data flow above is unchanged.
  */
 
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type {
   CustomFieldDefinition,
   LineItemInput,
@@ -37,13 +37,13 @@ import {
   Button,
   Card,
   ColourQuantityGrid,
-  Combobox,
   ConflictBanner,
   DateField,
   FormField,
   IconButton,
   Input,
   NumberInput,
+  Picker,
   Select,
   StatusPill,
   Switch,
@@ -55,7 +55,6 @@ import {
   useResetGuard,
   useSaveShortcut,
   type ColourQuantity,
-  type ComboboxOption,
 } from '@orderbook/ui';
 
 /** Illustrative only — shows the shape of a product code in the lookup box. */
@@ -102,12 +101,24 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
 
   const [codeEntry, setCodeEntry] = useState('');
   const [lines, setLines] = useState<DraftLine[]>([]);
+
+  /*
+   * The rows behind the picker's options, kept so a choice can hand back the
+   * whole record. A picker deals in ids and labels; a line item needs the
+   * product, and the party card needs the party — which online may be a row
+   * this panel's cached snapshot has never held.
+   */
+  const partyRows = useRef(new Map<string, Party>());
+  const productRows = useRef(new Map<string, Product>());
+
+  /** Focused when the last colour on a line is filled — "next product". */
   const productSearchRef = useRef<HTMLInputElement>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const selectedParty = view.parties.find((party) => party.id === partyId) ?? null;
+  const selectedParty =
+    view.parties.find((party) => party.id === partyId) ?? partyRows.current.get(partyId) ?? null;
 
   const leadFieldDefinitions = view.customFields.filter(
     (definition: CustomFieldDefinition) => definition.entity === 'lead',
@@ -137,38 +148,64 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
    * picker does not walk somebody into a refusal for a party they are looking
    * straight at.
    */
-  const partyOptions = useMemo<ComboboxOption<Party>[]>(() => {
-    const readOnly = new Set(
-      (view.partyGrants ?? [])
-        .filter((grant) => grant.level === 'view')
-        .map((grant) => grant.partyId),
-    );
-
-    return view.parties
-      .filter((party) => !readOnly.has(party.id))
-      .map((party) => ({
-        key: party.id,
-        label: [party.partyCode, party.name, party.phone, party.city].filter(Boolean).join(' · '),
-        value: party,
-      }));
-  }, [view.parties, view.partyGrants]);
-
-  const productOptions = useMemo<ComboboxOption<Product>[]>(
+  /**
+   * Parties this person may actually put a lead against.
+   *
+   * A view-only grant is dropped from the list. The Master refuses the save
+   * either way — a lead against a view-only party is a 403 naming why — so this
+   * is not the enforcement; it exists so the picker does not walk somebody into
+   * a refusal for a party they are looking straight at.
+   */
+  const readOnlyParties = useMemo(
     () =>
-      view.products.map((product) => ({
-        key: product.id,
-        label: [
-          product.productCode,
-          product.name,
-          product.alias,
-          product.series,
-          product.categoryName,
-        ]
-          .filter(Boolean)
-          .join(' · '),
-        value: product,
-      })),
-    [view.products],
+      new Set(
+        (view.partyGrants ?? [])
+          .filter((grant) => grant.level === 'view')
+          .map((grant) => grant.partyId),
+      ),
+    [view.partyGrants],
+  );
+
+  /*
+   * The rows behind the options, kept so a choice can hand back the whole
+   * record. A picker deals in ids and labels; a line item needs the product.
+   */
+  const fetchParties = useCallback(
+    async ({ term, include, signal }: { term: string; include: string[]; signal: AbortSignal }) => {
+      const page = await api.pick<Party>('party', { term, include, signal });
+      for (const row of page.items) partyRows.current.set(row.id, row);
+
+      return {
+        items: page.items
+          .filter((party) => !readOnlyParties.has(party.id))
+          .map((party) => ({
+            id: party.id,
+            label: party.name,
+            hint: [party.partyCode, party.phone, party.city].filter(Boolean).join(' · ') || null,
+          })),
+        truncated: page.truncated,
+        offline: page.offline,
+      };
+    },
+    [readOnlyParties],
+  );
+
+  const fetchProducts = useCallback(
+    async ({ term, include, signal }: { term: string; include: string[]; signal: AbortSignal }) => {
+      const page = await api.pick<Product>('product', { term, include, signal });
+      for (const row of page.items) productRows.current.set(row.id, row);
+
+      return {
+        items: page.items.map((product) => ({
+          id: product.id,
+          label: [product.productCode, product.name].filter(Boolean).join(' · '),
+          hint: [product.series, product.categoryName].filter(Boolean).join(' · ') || null,
+        })),
+        truncated: page.truncated,
+        offline: page.offline,
+      };
+    },
+    [],
   );
 
   /**
@@ -392,10 +429,16 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
           <>
             <FormField label={t('lead.add.party.search')}>
               {() => (
-                <Combobox
-                  options={partyOptions}
+                <Picker
+                  // Always null here: this branch only renders while nothing is
+                  // chosen — the card above replaces it the moment one is.
+                  value={null}
+                  onChange={(option) => setPartyId(option?.id ?? '')}
+                  fetchPage={fetchParties}
+                  label={t('lead.add.party.search')}
                   placeholder={t('lead.add.party.searchPlaceholder')}
-                  onSelect={(option) => setPartyId(option.value.id)}
+                  storageKey="ob.pick.party"
+                  onCreate={() => setPartyDrawerOpen(true)}
                 />
               )}
             </FormField>
@@ -585,11 +628,19 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
 
           <FormField label={t('lead.add.products.searchLabel')}>
             {() => (
-              <Combobox
-                options={productOptions}
+              <Picker
+                // A product picker is an *add* action, not a standing
+                // selection: the chosen row goes onto the voucher and the field
+                // clears itself for the next one.
+                value={null}
+                onChange={(option) => {
+                  const product = option ? productRows.current.get(option.id) : null;
+                  if (product) addProduct(product);
+                }}
+                fetchPage={fetchProducts}
+                label={t('lead.add.products.searchLabel')}
                 placeholder={t('lead.add.products.searchPlaceholder')}
-                inputRef={productSearchRef}
-                onSelect={(option) => addProduct(option.value)}
+                storageKey="ob.pick.product"
               />
             )}
           </FormField>

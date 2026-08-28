@@ -407,6 +407,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'activity.document_template.restored': '{actor} ने दस्तावेज़ टेम्पलेट {name} पुनर्स्थापित किया',
   'activity.document_export.rendered': '{actor} ने {subject} के लिए {documentType} बनाया',
 
+  'picker.searching': 'खोजा जा रहा है…',
+  'picker.truncated': 'और मिलान हैं — इसे सीमित करने के लिए टाइप करते रहें',
+  'picker.offline': 'ऑफ़लाइन — यह पैनल जो सहेजे है वही दिखा रहा है',
+  'picker.empty': 'कुछ भी मेल नहीं खाता',
+  'picker.create': 'नया जोड़ने के लिए Ctrl+Enter',
   'common.save': 'सहेजें',
   'common.cancel': 'रद्द करें',
   'common.delete': 'हटाएँ',

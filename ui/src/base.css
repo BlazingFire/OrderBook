@@ -1696,6 +1696,94 @@ html[data-window-blur='true'] .ob-busy rect {
 }
 
 /* ===========================================================================
+ * Picker — the combobox's server-backed sibling
+ *
+ * Same visual language deliberately: the two are the same control to a reader,
+ * and the difference — one filters a list it already has, the other asks the
+ * Master as you type — is not something the eye should have to notice. What it
+ * adds is the second line under an option, and a footer that says what the list
+ * is *not* showing.
+ * ======================================================================== */
+
+.ob-picker {
+  position: relative;
+}
+
+.ob-picker-list {
+  position: absolute;
+  z-index: var(--z-popover);
+  top: calc(100% + var(--s-4));
+  left: 0;
+  right: 0;
+  max-height: min(17.1429rem, 40vh);
+  overflow-y: auto;
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-2);
+  animation: ob-pop-in var(--d-base) var(--e-standard);
+  padding: var(--s-4);
+}
+
+.ob-picker-option {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  width: 100%;
+  padding: var(--s-6) var(--s-8);
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: var(--fg-primary);
+}
+
+.ob-picker-option[data-active] {
+  background: var(--bg-hover);
+}
+
+/* A pin is a standing choice, so it reads as one at rest rather than only on
+   hover — that is the whole reason somebody pinned it. */
+.ob-picker-option[data-pinned]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  width: 2px;
+  height: var(--ctl-h-sm);
+  background: var(--accent);
+}
+
+.ob-picker-label {
+  font-size: var(--t-small-size);
+}
+
+.ob-picker-hint {
+  font-size: var(--t-micro-size);
+  color: var(--fg-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.ob-picker-note,
+.ob-picker-foot {
+  display: flex;
+  gap: var(--s-8);
+  padding: var(--s-6) var(--s-8);
+  font-size: var(--t-micro-size);
+  color: var(--fg-tertiary);
+}
+
+.ob-picker-foot:empty {
+  display: none;
+}
+
+.ob-picker-offline {
+  color: var(--state-offline);
+}
+
+/* ===========================================================================
  * Modal (elevation 3, centred — the drawer's non-anchored sibling)
  * ======================================================================== */
 

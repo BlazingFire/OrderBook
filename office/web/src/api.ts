@@ -465,6 +465,25 @@ export const api = {
   deleteOrder: (id: string) =>
     request<{ id: string; deletedAt: string }>(`/api/orders/${id}`, { method: 'DELETE' }),
 
+  /**
+   * One page of a searchable dropdown.
+   *
+   * Answered by the Master when the link is up and from this panel's own cached
+   * snapshot when it is not — the response carries `offline` so the listbox can
+   * say which of the two it is showing.
+   */
+  pick: <T>(
+    kind: 'product' | 'party',
+    query: { term: string; include?: string[]; signal?: AbortSignal },
+  ) => {
+    const params = new URLSearchParams({ q: query.term });
+    if (query.include?.length) params.set('include', query.include.join(','));
+    return request<{ items: T[]; truncated: boolean; offline?: boolean }>(
+      `/api/pick/${kind}?${params.toString()}`,
+      query.signal ? { signal: query.signal } : undefined,
+    );
+  },
+
   recycleBin: (query: RecycleBinQuery = {}) => {
     const params = new URLSearchParams();
     if (query.types?.length) params.set('types', query.types.join(','));
