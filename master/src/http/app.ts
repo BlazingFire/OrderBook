@@ -15,10 +15,12 @@ import { dataRoutes } from './routes/data.routes.js';
 import { documentRoutes } from './routes/document.routes.js';
 import { fieldsRoutes } from './routes/fields.routes.js';
 import { imageFilesRoutes, imagesRoutes } from './routes/images.routes.js';
+import { integrationRoutes } from './routes/integration.routes.js';
 import { logRoutes } from './routes/log.routes.js';
 import { panelImageRoutes } from './routes/panel-image.routes.js';
 import { panelRoutes, pairingRoutes } from './routes/panel.routes.js';
 import { partyAccessRoutes } from './routes/party-access.routes.js';
+import { publicApiRoutes } from './routes/public-api.routes.js';
 import { recycleBinRoutes } from './routes/recycle-bin.routes.js';
 import { reportRoutes } from './routes/report.routes.js';
 import { settingsRoutes } from './routes/settings.routes.js';
@@ -43,6 +45,15 @@ export function createApp(): Express {
     res.json(liveHealth(req));
   });
 
+  /*
+   * The public API, mounted before the cookie-guarded half.
+   *
+   * `app.use('/api', dataRoutes)` below would otherwise catch `/api/v1/*` and
+   * its `requireAuth` would answer 401 to a request that carries a key and no
+   * cookie.
+   */
+  app.use('/api/v1', publicApiRoutes);
+
   app.use('/api/setup', setupRoutes);
   app.use('/api/auth', authRoutes);
   app.use('/api/pairing', pairingRoutes);
@@ -66,6 +77,7 @@ export function createApp(): Express {
   app.use('/api/access/users/:userId/avatar', avatarRoutes);
   app.use('/api/avatars', avatarFilesRoutes);
   // Before the catch-all below, which would otherwise swallow `/api/settings`.
+  app.use('/api/integrations', integrationRoutes);
   app.use('/api/settings', settingsRoutes);
   app.use('/api', dataRoutes);
 

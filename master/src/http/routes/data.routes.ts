@@ -10,7 +10,6 @@
 
 import { Router } from 'express';
 import multer from 'multer';
-import type { ListQuery } from '@orderbook/shared';
 import { isPickKind } from '@orderbook/shared';
 
 import { ValidationError } from '../../lib/errors.js';
@@ -26,6 +25,7 @@ import * as orderService from '../../services/order.service.js';
 import * as searchService from '../../services/search.service.js';
 import * as storageService from '../../services/storage.service.js';
 import { asyncHandler } from '../async-handler.js';
+import { idList, paging } from '../query.js';
 import {
   actorFromRequest,
   requireAuth,
@@ -54,23 +54,6 @@ const needs = requirePermissionMiddleware;
  */
 const backupUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024 * 1024 } });
 
-function paging(query: Record<string, unknown>): ListQuery {
-  return {
-    search: typeof query.search === 'string' && query.search ? query.search : undefined,
-    limit: query.limit ? Number(query.limit) : undefined,
-    offset: query.offset ? Number(query.offset) : undefined,
-    // The "All parties / My parties" toggle. Anything other than the literal
-    // `assigned` means "all", so a stray value widens to the caller's normal
-    // view rather than silently narrowing it to nothing.
-    scope: query.scope === 'assigned' ? 'assigned' : undefined,
-  };
-}
-
-function idList(raw: unknown): string[] | undefined {
-  if (typeof raw !== 'string' || !raw) return undefined;
-  const parsed = raw.split(',').filter(Boolean);
-  return parsed.length ? parsed : undefined;
-}
 
 // --- Overview --------------------------------------------------------------
 

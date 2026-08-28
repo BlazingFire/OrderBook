@@ -28,10 +28,7 @@ import { closeDatabase, db, initDatabase, runMigrations } from './db/knex.js';
 import { startDiscoveryResponder, type DiscoveryResponder } from './discovery/responder.js';
 import { createApp } from './http/app.js';
 import { createBootApp } from './http/boot-app.js';
-import {
-  ensureDocumentDirectories,
-  sweepOrphanTemporaries,
-} from './lib/document-files.js';
+import { ensureDocumentDirectories, sweepOrphanTemporaries } from './lib/document-files.js';
 import { createLogger } from './lib/logger.js';
 import { toErrorMessage } from './lib/errors.js';
 import { loadOrCreateKey } from './lib/secret-box.js';
@@ -40,6 +37,7 @@ import { assertFontsPresent } from './pdf/fonts.js';
 import { listLanAddresses } from './lib/network.js';
 import { createRealtimeHub, type RealtimeHub } from './realtime/hub.js';
 import { purgeExpiredSessions } from './services/auth.service.js';
+import { startConnectorScheduler } from './services/connector-scheduler.js';
 import { isSetupComplete, refreshStoredLanIp } from './services/setup.service.js';
 
 const log = createLogger('master');
@@ -167,7 +165,9 @@ async function main(): Promise<void> {
     server.listen(config.http.port, config.http.host, resolve);
   });
 
-  log.info(`Master Panel starting — open http://localhost:${config.http.port} to watch its progress`);
+  log.info(
+    `Master Panel starting — open http://localhost:${config.http.port} to watch its progress`,
+  );
 
   try {
     bootStep('Preparing folders');
@@ -222,6 +222,10 @@ async function main(): Promise<void> {
     sessionSweep = setInterval(purgeExpiredSessions, SESSION_SWEEP_INTERVAL_MS);
     sessionSweep.unref?.();
 
+    // One disposable, per this file's rule: the scheduler owns its own timer
+    // and hands back the way to stop it.
+    disposables.push(startConnectorScheduler());
+
     bootReady();
     bootSucceeded = true;
 
@@ -238,7 +242,9 @@ async function main(): Promise<void> {
      */
     bootFailed(error);
     log.error('Failed to start', error);
-    log.error(`The Master Panel is not usable. Open http://localhost:${config.http.port} to see why.`);
+    log.error(
+      `The Master Panel is not usable. Open http://localhost:${config.http.port} to see why.`,
+    );
 
     /*
      * Deliberately still running. `shutdown()` is already registered and will

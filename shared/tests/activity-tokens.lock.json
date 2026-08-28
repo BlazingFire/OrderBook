@@ -1,4 +1,10 @@
 [
+  "activity.api_key.created",
+  "activity.api_key.revoked",
+  "activity.connector.created",
+  "activity.connector.deleted",
+  "activity.connector.ran",
+  "activity.connector.updated",
   "activity.custom_field_definition.deleted",
   "activity.custom_field_definition.restored",
   "activity.document_export.rendered",

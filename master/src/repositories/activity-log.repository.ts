@@ -40,7 +40,7 @@ const log = createLogger('activity');
 
 type Runner = Knex | Knex.Transaction;
 
-export type ActorType = 'user' | 'office_panel' | 'system';
+export type ActorType = 'user' | 'office_panel' | 'system' | 'api_key' | 'connector';
 
 export interface ActivityEntry {
   tenantId: string;

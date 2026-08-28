@@ -15,7 +15,7 @@ import { ForbiddenError } from '../lib/errors.js';
 
 export interface ActorContext {
   tenantId: string;
-  actorType: 'user' | 'office_panel' | 'system';
+  actorType: 'user' | 'office_panel' | 'system' | 'api_key' | 'connector';
   actorId: string | null;
   /** The signed-in user, even when the action arrived over a panel's socket. */
   userId: string | null;

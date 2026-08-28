@@ -28,6 +28,15 @@ const DATA_TABLES = [
   'sync_conflicts',
   'applied_mutations',
   'id_map',
+  // The integration tables, children first: every one has a cascading FK, but
+  // truncating in dependency order keeps the intent readable.
+  'api_connector_runs',
+  'api_connector_links',
+  'api_connector_field_maps',
+  'api_connector_resources',
+  'api_connectors',
+  'api_key_scopes',
+  'api_keys',
   // The PDF Designer's three tables are pure test data — `20260308` seeds
   // nothing, and the renderer's fallback is the in-memory `TEMPLATE_DEFAULTS`.
   // Listed exports-first so the FKs into templates and assets are gone before

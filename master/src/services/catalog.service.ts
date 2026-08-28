@@ -60,6 +60,23 @@ export async function listParties(
   });
 }
 
+/**
+ * One party, masked and party-scoped.
+ *
+ * Scoped at the query like `getLead`, so a party this caller may not see is a
+ * 404 and not a 403 — on a read, confirming the record exists is itself the
+ * leak. Added for the public API, which needs a read-one that is not the list.
+ */
+export async function getParty(id: string, actor: ActorContext): Promise<Party> {
+  requirePermission(actor, 'parties.view');
+  await requirePartyAccess(id, 'view', actor);
+
+  const party = await partyRepo.findPartyById(actor.tenantId, id);
+  if (!party) throw new NotFoundError('Party');
+
+  return party;
+}
+
 export async function createParty(input: PartyInput, actor: ActorContext): Promise<Party> {
   requirePermission(actor, 'parties.create');
 
@@ -255,6 +272,15 @@ export async function listProducts(
 
   const visible = productVisibility(actor);
   return { ...page, items: page.items.map((product) => maskProduct(product, visible)) };
+}
+
+export async function getProduct(id: string, actor: ActorContext): Promise<Product> {
+  requirePermission(actor, 'products.view');
+
+  const product = await productRepo.findProductById(actor.tenantId, id);
+  if (!product) throw new NotFoundError('Product');
+
+  return maskProduct(product, productVisibility(actor));
 }
 
 export async function listCategories(actor: ActorContext): Promise<ProductCategory[]> {

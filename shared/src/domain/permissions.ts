@@ -150,6 +150,13 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
   { key: 'settings.manage', group: 'admin', labelToken: 'permission.settings.manage' },
   { key: 'storage.manage', group: 'admin', labelToken: 'permission.storage.manage' },
   { key: 'fields.manage', group: 'admin', labelToken: 'permission.fields.manage' },
+  /*
+   * Minting a credential another program acts under, and pointing this Master
+   * at another system. Not folded into `settings.manage`: changing a timezone
+   * and issuing a key that can read the whole catalogue over the LAN are not
+   * the same trust.
+   */
+  { key: 'api.manage', group: 'admin', labelToken: 'permission.api.manage' },
   // No `MINIMUM_TIER` entry — office tier by default, same as `logs.view`/`logs.export`.
   { key: 'logs.verifyChain', group: 'admin', labelToken: 'permission.logs.verifyChain' },
   {
@@ -234,6 +241,7 @@ const MINIMUM_TIER: Record<string, RoleTier> = {
   'panels.manage': 'admin',
   'settings.manage': 'admin',
   'storage.manage': 'admin',
+  'api.manage': 'admin',
   'sync.resolveConflicts': 'admin',
   'roles.view': 'admin',
   'roles.create': 'admin',

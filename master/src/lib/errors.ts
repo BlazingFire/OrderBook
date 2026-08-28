@@ -104,6 +104,20 @@ export class ConflictError extends AppError {
   }
 }
 
+/**
+ * A caller hit its own rate limit.
+ *
+ * `Retry-After` is set from `seconds` by the route layer. The seconds travel as
+ * a parameter rather than in the sentence because the i18n coverage suite
+ * refuses any catalogue string with three consecutive digits — a rule that
+ * exists so a number in a message is always data somebody can localise.
+ */
+export class TooManyRequestsError extends AppError {
+  constructor(readonly seconds: number) {
+    super('error.rateLimited', { seconds }, 429, 'rate_limited', { seconds });
+  }
+}
+
 export type BackupFailureReason =
   | 'wrong_passphrase'
   | 'corrupt_file'

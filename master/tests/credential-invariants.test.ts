@@ -19,6 +19,13 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'src');
+const SHARED = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  'shared',
+  'src',
+);
 
 function read(relative: string): string {
   return readFileSync(path.join(SRC, relative), 'utf8');
@@ -74,7 +81,9 @@ describe('the two-layer permission check', () => {
   it('guards every access route, not just the service behind it', () => {
     const routes = read('http/routes/access.routes.ts');
 
-    const handlers = routes.split('\n').filter((line) => /accessRoutes\.(get|post|put|delete)\(/.test(line));
+    const handlers = routes
+      .split('\n')
+      .filter((line) => /accessRoutes\.(get|post|put|delete)\(/.test(line));
     const guards = routes.split('\n').filter((line) => line.includes('needs('));
 
     // `requirePermissionMiddleware` was defined, exported and mounted nowhere,
@@ -91,8 +100,12 @@ describe('the two-layer permission check', () => {
   it('guards every Recycle Bin route (Stage 2 extends the pattern to its own router)', () => {
     const routes = read('http/routes/recycle-bin.routes.ts');
 
-    const handlers = routes.split('\n').filter((line) => /recycleBinRoutes\.(get|post|put|delete)\(/.test(line));
-    const guards = routes.split('\n').filter((line) => !line.trim().startsWith('*') && line.includes('needs('));
+    const handlers = routes
+      .split('\n')
+      .filter((line) => /recycleBinRoutes\.(get|post|put|delete)\(/.test(line));
+    const guards = routes
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('*') && line.includes('needs('));
 
     // Zero exemptions here — including the `POST /restore` route, whose guard
     // is deliberately the weaker `recycleBin.view` because the entity type
@@ -111,13 +124,11 @@ describe('the two-layer permission check', () => {
     const handlers = routes
       .split('\n')
       .filter((line) => /fieldsRoutes\.(get|post|put|delete)\(/.test(line));
-    const guards = routes
-      .split('\n')
-      .filter((line) => {
-        const trimmed = line.trim();
-        if (trimmed.startsWith('//') || trimmed.startsWith('*')) return false;
-        return line.includes('needs(');
-      });
+    const guards = routes.split('\n').filter((line) => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('//') || trimmed.startsWith('*')) return false;
+      return line.includes('needs(');
+    });
 
     // Every Fields endpoint is gated by `fields.view` or `fields.manage` — the
     // `- 2` exemption above is specific to `access.routes.ts`'s two genuinely
@@ -131,8 +142,12 @@ describe('the two-layer permission check', () => {
   it('guards every Logs route (Stage 4 extends the pattern to its own router)', () => {
     const routes = read('http/routes/log.routes.ts');
 
-    const handlers = routes.split('\n').filter((line) => /logRoutes\.(get|post|put|delete)\(/.test(line));
-    const guards = routes.split('\n').filter((line) => !line.trim().startsWith('*') && line.includes('needs('));
+    const handlers = routes
+      .split('\n')
+      .filter((line) => /logRoutes\.(get|post|put|delete)\(/.test(line));
+    const guards = routes
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('*') && line.includes('needs('));
 
     // Zero exemptions — `logs.export` gates a route of its own precisely so
     // the key covers a distinct code path rather than a flag on the list route.
@@ -142,8 +157,12 @@ describe('the two-layer permission check', () => {
   it('guards every Reports route (Stage 5 extends the pattern to its own router)', () => {
     const routes = read('http/routes/report.routes.ts');
 
-    const handlers = routes.split('\n').filter((line) => /reportRoutes\.(get|post|put|delete)\(/.test(line));
-    const guards = routes.split('\n').filter((line) => !line.trim().startsWith('*') && line.includes('needs('));
+    const handlers = routes
+      .split('\n')
+      .filter((line) => /reportRoutes\.(get|post|put|delete)\(/.test(line));
+    const guards = routes
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('*') && line.includes('needs('));
 
     // Zero exemptions — `reports.view` and `reports.export` gate distinct
     // routes, the first enforcement site either key has ever had.
@@ -180,13 +199,59 @@ describe('the two-layer permission check', () => {
     const handlers = routes
       .split('\n')
       .filter((line) => /panelRoutes\.(get|post|put|delete|patch)\(/.test(line));
-    const guards = routes.split('\n').filter((line) => !line.trim().startsWith('*') && line.includes('needs('));
+    const guards = routes
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('*') && line.includes('needs('));
 
     // Two exemptions, both read-only and both documented at the router's own
     // header: `GET /` (the shell's presence rail, for every signed-in session
     // regardless of what it administers) and `GET /pairing-window` (this
     // Master's own transient state, not company data).
     expect(guards.length).toBe(handlers.length - 2);
+  });
+
+  /*
+   * The API key's digest is the third credential in this codebase, and it gets
+   * the same greppable treatment as the first two: a rule stated in a comment
+   * stops being true quietly, so something mechanical checks it.
+   */
+  it('never declares an API key token on the shape the browser receives', () => {
+    // Comments stripped first: this file's header explains at length what it
+    // does not declare, and a test that read prose would fail on the
+    // explanation rather than on the code.
+    const shape = readFileSync(path.join(SHARED, 'domain', 'api-keys.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/.*$/gm, '');
+
+    // Not the value and not the digest. The plaintext exists for exactly one
+    // response, and `IssuedApiKey` — a separate type, in the service — is where
+    // that one response is typed.
+    expect(shape).not.toMatch(/\btoken\s*[?]?:/);
+    expect(shape).not.toMatch(/tokenHash/);
+  });
+
+  it('strips the digest in the mapper rather than trusting the type to hide it', () => {
+    const repository = read('repositories/api-key.repository.ts');
+
+    // Destructured away, so adding a column to the row type cannot silently
+    // start returning it — the same discipline as the panel secret above.
+    expect(repository).toContain('const { token_hash: _hash, ...rest } = row;');
+  });
+
+  it('guards every integration route (`api.manage` gates keys and connections)', () => {
+    const routes = read('http/routes/integration.routes.ts');
+
+    const handlers = routes
+      .split('\n')
+      .filter((line) => /integrationRoutes\.(get|post|put|patch|delete)\(/.test(line));
+    const guards = routes
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('*') && line.includes('needs('));
+
+    // No exemptions. Every one of these either mints a credential, points this
+    // Master at another system, or reads what those did.
+    expect(handlers.length).toBeGreaterThan(0);
+    expect(guards.length).toBe(handlers.length);
   });
 
   it('guards the identity route (`settings.manage`); leaves first-run and restore open', () => {
@@ -196,7 +261,9 @@ describe('the two-layer permission check', () => {
     // so only `GET /identity` — re-readable later, once a session exists — is
     // gated. Matched by name rather than by counting `setupRoutes.` calls,
     // since most of this router is deliberately unauthenticated.
-    const identityRoute = routes.split(/(?=setupRoutes\.)/).find((block) => block.includes("'/identity'"));
+    const identityRoute = routes
+      .split(/(?=setupRoutes\.)/)
+      .find((block) => block.includes("'/identity'"));
     expect(identityRoute).toBeDefined();
     expect(identityRoute).toContain("needs('settings.manage')");
   });

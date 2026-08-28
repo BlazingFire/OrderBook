@@ -12,7 +12,7 @@
 import type { IsoTimestamp, RecordId, Uuid } from './entities.js';
 import type { CursorQuery } from './inputs.js';
 
-export type ActivityActorType = 'user' | 'office_panel' | 'system';
+export type ActivityActorType = 'user' | 'office_panel' | 'system' | 'api_key' | 'connector';
 
 export interface ActivityActor {
   type: ActivityActorType;
