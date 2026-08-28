@@ -4,8 +4,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { config } from '../../config/index.js';
 import type { ActorContext } from '../../domain/actor.js';
 import { ForbiddenError, UnauthorizedError } from '../../lib/errors.js';
-import { permissionSetForRole } from '../../repositories/role.repository.js';
-import { resolveSession } from '../../services/auth.service.js';
+import { resolveSessionWithPermissions } from '../../services/auth.service.js';
 
 declare module 'express-serve-static-core' {
   interface Request {
@@ -30,16 +29,18 @@ export function attachSession(req: Request, _res: Response, next: NextFunction):
   // rather than after a timeout (docs/ROLES_AND_USERS.md §4).
   void (async () => {
     try {
-      const user = await resolveSession(token);
+      // One query, not three: the user, their role's permissions and that
+      // role's version all come out of the same join.
+      const resolved = await resolveSessionWithPermissions(token);
 
-      if (!user) {
+      if (!resolved) {
         next();
         return;
       }
 
-      req.user = user;
+      req.user = resolved.user;
       req.sessionToken = token;
-      req.permissions = await permissionSetForRole(user.tenantId, user.roleId);
+      req.permissions = resolved.permissions;
       next();
     } catch (error) {
       next(error);

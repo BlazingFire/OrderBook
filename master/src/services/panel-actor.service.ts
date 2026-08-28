@@ -21,8 +21,7 @@
 import type { SessionRejection } from '@orderbook/shared';
 
 import type { ActorContext } from '../domain/actor.js';
-import { permissionSetForRole } from '../repositories/role.repository.js';
-import { resolveSessionDetailed } from './auth.service.js';
+import { resolveSessionDetailedWithPermissions } from './auth.service.js';
 import * as panelService from './panel.service.js';
 
 export interface PanelActorRequest {
@@ -57,7 +56,7 @@ export async function resolvePanelActor(
   let rejection: SessionRejection | undefined;
 
   if (actingUserToken) {
-    const resolution = await resolveSessionDetailed(actingUserToken);
+    const resolution = await resolveSessionDetailedWithPermissions(actingUserToken);
 
     // The tenant check is not paranoia about our own code: it is the one place
     // a token from another company could otherwise be spent against this one.
@@ -69,7 +68,7 @@ export async function resolvePanelActor(
           actorType: 'user',
           actorId: resolution.user.id,
           userId: resolution.user.id,
-          permissions: await permissionSetForRole(tenantId, resolution.user.roleId),
+          permissions: resolution.permissions,
           // Still the panel's device code: a temporary id and an HLC timestamp
           // identify the machine that minted them, not the person at it.
           deviceCode,

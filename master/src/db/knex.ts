@@ -2,6 +2,7 @@ import knexFactory, { type Knex } from 'knex';
 
 import { createLogger } from '../lib/logger.js';
 import { RegistryMigrationSource } from './migrations/index.js';
+import { attachQueryCounter } from './query-counter.js';
 
 const log = createLogger('db');
 
@@ -11,9 +12,26 @@ export function buildKnexConfig(connectionUrl: string): Knex.Config {
   return {
     client: 'pg',
     connection: connectionUrl,
-    // A small fixed pool: one application process, but concurrent socket
-    // commands still benefit from more than a single connection.
-    pool: { min: 2, max: 10 },
+    /*
+     * A small fixed pool: one application process, but concurrent socket
+     * commands still benefit from more than a single connection.
+     *
+     * `acquireTimeoutMillis` is the one that changes what an operator sees. A
+     * pool with no acquire timeout answers a leak or a deadlock by hanging
+     * forever, which reaches the shop floor as "the panel froze" and reaches
+     * the log as nothing at all. Ten seconds turns it into a
+     * `TimeoutAcquiringConnection` with a stack.
+     *
+     * The idle/reap pair returns connections the Master is not using — it sits
+     * open all day between bursts — without churning them mid-burst.
+     */
+    pool: {
+      min: 2,
+      max: 10,
+      acquireTimeoutMillis: 10_000,
+      idleTimeoutMillis: 30_000,
+      reapIntervalMillis: 5_000,
+    },
     migrations: {
       // Migrations come from an explicit registry rather than a directory scan
       // — see migrations/index.ts for why.
@@ -26,6 +44,7 @@ export function buildKnexConfig(connectionUrl: string): Knex.Config {
 export function initDatabase(connectionUrl: string): Knex {
   if (instance) return instance;
   instance = knexFactory(buildKnexConfig(connectionUrl));
+  attachQueryCounter(instance);
   return instance;
 }
 

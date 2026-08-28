@@ -19,6 +19,7 @@ import type { Knex } from 'knex';
 import { db } from '../db/knex.js';
 import { allocatePermanentId } from './identity.repository.js';
 import { mapUser } from './mappers.js';
+import type { RolePermissionRow } from './role.repository.js';
 import type { TransactionContext } from './transaction.js';
 
 const TABLE = 'users';
@@ -103,6 +104,64 @@ export async function findById(
 
   const row = await query.first();
   return row ? mapUser(row) : null;
+}
+
+/**
+ * A user and the role row that decides what they may do, in **one** query.
+ *
+ * Three queries used to answer this on every HTTP request, every socket
+ * connect, and once per admin socket per dashboard flush: the user, then the
+ * role for its permissions, then the same role again for its version. Two of
+ * the three read the same row.
+ *
+ * Written as its own query rather than by extending `baseQuery`, and both
+ * halves of that matter. `baseQuery` joins `roles` on id alone; the tenant
+ * predicate here is the one `permissionSetForRole` documents as mandatory
+ * (matching on id alone is safety from a schema quirk, not from the query).
+ * And adding these columns to `baseQuery` would put every role's full
+ * permission array into every row of `listUsers` — exactly the blast radius
+ * `USER_COLUMNS` exists to avoid.
+ */
+export async function findByIdWithRole(
+  tenantId: string,
+  id: string,
+  runner: Runner = db(),
+): Promise<{ user: User; role: RolePermissionRow | null } | null> {
+  const row = await runner(`${TABLE} as u`)
+    .leftJoin('roles as r', function join() {
+      this.on('r.id', '=', 'u.role_id').andOn('r.tenant_id', '=', 'u.tenant_id');
+    })
+    .where({ 'u.tenant_id': tenantId, 'u.id': id })
+    .whereNull('u.deleted_at')
+    .first(
+      ...USER_COLUMNS,
+      'r.name as role_name',
+      'r.tier as role_tier',
+      'r.permissions as role_permissions',
+      'r.version as role_version',
+      'r.deleted_at as role_deleted_at',
+    );
+
+  if (!row) return null;
+
+  const raw = row as Record<string, unknown>;
+
+  // `role: null` for a deleted role reproduces `permissionSetForRole`'s
+  // `whereNull('deleted_at')` exactly — a user whose role is in the Recycle Bin
+  // resolves to no permissions, and their session is dropped rather than
+  // silently continuing on the old set.
+  const role =
+    raw.role_id && raw.role_deleted_at === null
+      ? {
+          id: String(raw.role_id),
+          name: String(raw.role_name ?? ''),
+          tier: (raw.role_tier as RolePermissionRow['tier']) ?? 'office',
+          permissions: raw.role_permissions,
+          version: Number(raw.role_version ?? 0),
+        }
+      : null;
+
+  return { user: mapUser(row as never), role };
 }
 
 export interface CredentialRow {

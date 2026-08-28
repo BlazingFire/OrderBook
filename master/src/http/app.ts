@@ -4,6 +4,7 @@ import express, { type Express } from 'express';
 import cookieParser from 'cookie-parser';
 
 import { config } from '../config/index.js';
+import { queryCountMiddleware } from '../db/query-counter.js';
 import { liveHealth } from './health.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { attachSession } from './middleware/require-auth.js';
@@ -32,6 +33,9 @@ export function createApp(): Express {
 
   app.use(express.json({ limit: '2mb' }));
   app.use(cookieParser());
+  // Before `attachSession`, so the session resolution is inside the count —
+  // it used to be three of the queries a request paid for.
+  app.use(queryCountMiddleware);
   app.use(attachSession);
 
   app.get('/api/health', (req, res) => {

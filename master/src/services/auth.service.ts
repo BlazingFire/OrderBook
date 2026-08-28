@@ -15,7 +15,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import type { ChangeOwnPasswordInput, SignedInUser, User } from '@orderbook/shared';
+import type { ChangeOwnPasswordInput, PermissionSet, SignedInUser, User } from '@orderbook/shared';
 import { effectivePermissions } from '@orderbook/shared';
 
 import { config } from '../config/index.js';
@@ -47,10 +47,22 @@ interface Session {
 const sessions = new Map<string, Session>();
 
 /** Failed attempts per username, for the lockout below. */
-const failures = new Map<string, { count: number; lockedUntil: number }>();
+const failures = new Map<string, { count: number; lockedUntil: number; lastFailureAt: number }>();
 
 const MAX_FAILURES = 3;
 const LOCKOUT_MS = 60_000;
+
+/**
+ * How long a failure record survives with nothing further happening to it.
+ *
+ * This map is keyed by the *attempted* username, so a password-spraying run
+ * against invented names grows it without bound — `failures.delete` fires only
+ * on a successful sign-in for that exact username, and an invented username
+ * never has one. A day is far longer than any real person's gap between typing
+ * their own password wrong twice, so nothing an operator would notice changes;
+ * what changes is that the map has a ceiling.
+ */
+const FAILURE_TTL_MS = 24 * 60 * 60 * 1000;
 
 export async function signIn(
   username: string,
@@ -162,32 +174,55 @@ export async function signIn(
  * staring at an app where every button silently fails.
  */
 export async function resolveSession(token: string | undefined): Promise<User | null> {
+  return (await resolveSessionWithPermissions(token))?.user ?? null;
+}
+
+/**
+ * The same resolution, handing back the permission set it already computed.
+ *
+ * This is one query. It used to be three — the user, the role for its
+ * permissions, and the same role again for its version — on every HTTP
+ * request, every socket connect, once per recipient socket on a party-scoped
+ * change, and once per admin socket per dashboard flush. Two of the three read
+ * the same row.
+ *
+ * Every caller that needs both the person and their permissions must use this
+ * rather than calling `resolveSession` and then `permissionSetForRole`: fixing
+ * one of the five sites and leaving four would have been the same defect with
+ * a smaller blast radius.
+ */
+export async function resolveSessionWithPermissions(
+  token: string | undefined,
+): Promise<{ user: User; permissions: PermissionSet } | null> {
   const session = tokenSession(token);
   if (!session) return null;
 
-  const user = await userRepo.findById(session.tenantId, session.userId);
-  if (!user || !user.isActive) {
+  const found = await userRepo.findByIdWithRole(session.tenantId, session.userId);
+  if (!found || !found.user.isActive) {
     if (token) sessions.delete(token);
     return null;
   }
 
-  const permissionSet = await roleRepo.permissionSetForRole(session.tenantId, user.roleId);
+  const permissionSet = found.role
+    ? roleRepo.permissionSetFromRow(session.tenantId, found.role)
+    : null;
+
   if (!permissionSet) {
     if (token) sessions.delete(token);
     return null;
   }
 
-  const currentVersion = (await roleRepo.roleVersion(session.tenantId, user.roleId ?? '')) ?? 0;
+  const currentVersion = found.role?.version ?? 0;
 
   // The role moved (edited, or the user was reassigned): rebuild in place, so
   // the very next permission check uses the new set.
-  if (currentVersion !== session.roleVersion || user.roleId !== session.roleId) {
-    session.roleId = user.roleId;
+  if (currentVersion !== session.roleVersion || found.user.roleId !== session.roleId) {
+    session.roleId = found.user.roleId;
     session.roleVersion = currentVersion;
     session.permissions = effectivePermissions(permissionSet.permissions, permissionSet.tier);
   }
 
-  return user;
+  return { user: found.user, permissions: permissionSet };
 }
 
 /**
@@ -206,14 +241,27 @@ export async function resolveSessionDetailed(
 ): Promise<
   { status: 'active'; user: User } | { status: 'rejected'; reason: 'revoked' | 'expired' }
 > {
+  const resolution = await resolveSessionDetailedWithPermissions(token);
+  return resolution.status === 'active'
+    ? { status: 'active', user: resolution.user }
+    : resolution;
+}
+
+/** `resolveSessionDetailed`, carrying the permission set the same query found. */
+export async function resolveSessionDetailedWithPermissions(
+  token: string | undefined,
+): Promise<
+  | { status: 'active'; user: User; permissions: PermissionSet }
+  | { status: 'rejected'; reason: 'revoked' | 'expired' }
+> {
   const session = tokenSession(token);
 
   // Not in the map: expired, or this process restarted. Not a statement about
   // the account, so it must not be reported as one.
   if (!session) return { status: 'rejected', reason: 'expired' };
 
-  const user = await resolveSession(token);
-  if (user) return { status: 'active', user };
+  const resolved = await resolveSessionWithPermissions(token);
+  if (resolved) return { status: 'active', ...resolved };
 
   // The session existed and no longer resolves, which is a fact about the
   // account: deleted, deactivated, or its role removed.
@@ -319,9 +367,15 @@ export function purgeExpiredSessions(): void {
     if (session.expiresAt <= now) sessions.delete(token);
   }
 
-  // The reveal's re-authentication window rides the same sweep. An unswept map
-  // keyed by session token is exactly the defect `failures` above still has.
+  // The reveal's re-authentication window rides the same sweep.
   sweepRecentReauth();
+
+  // …and so does the lockout map, which used to be the one nothing swept.
+  for (const [username, record] of failures) {
+    if (record.lockedUntil > now) continue;
+    if (now - record.lastFailureAt < FAILURE_TTL_MS) continue;
+    failures.delete(username);
+  }
 }
 
 /** Attach the caller's own resolved permissions, for the UI to render from. */
@@ -357,8 +411,9 @@ function assertNotLockedOut(username: string): void {
 }
 
 function recordFailure(username: string): void {
-  const record = failures.get(username) ?? { count: 0, lockedUntil: 0 };
+  const record = failures.get(username) ?? { count: 0, lockedUntil: 0, lastFailureAt: 0 };
   record.count += 1;
+  record.lastFailureAt = Date.now();
 
   if (record.count >= MAX_FAILURES) {
     record.lockedUntil = Date.now() + LOCKOUT_MS;

@@ -124,19 +124,42 @@ export async function permissionSetForRole(
       { id: string; name: string; tier: RoleTier; permissions: string[]; version: number } | undefined
     >('id', 'name', 'tier', 'permissions', 'version');
 
-  const cacheKey = `${tenantId}:${roleId}`;
-
   if (!row) {
-    cache.delete(cacheKey);
+    cache.delete(`${tenantId}:${roleId}`);
     return null;
   }
+
+  return permissionSetFromRow(tenantId, row);
+}
+
+/** The row shape `permissionSetFromRow` needs, whoever selected it. */
+export interface RolePermissionRow {
+  id: string;
+  name: string;
+  tier: RoleTier;
+  permissions: unknown;
+  version: number;
+}
+
+/**
+ * Turn an already-read role row into a permission set, through the same cache.
+ *
+ * Extracted so a caller that has *already* joined the role — `findByIdWithRole`,
+ * which collapses a request's three auth queries into one — does not have to
+ * re-read the row just to get the tier intersection applied. This is the single
+ * place that intersection happens, and it must stay that way: it is what strips
+ * an admin key off an office-tier role that arrived over sync from a tampered
+ * replica.
+ */
+export function permissionSetFromRow(tenantId: string, row: RolePermissionRow): PermissionSet {
+  const cacheKey = `${tenantId}:${row.id}`;
 
   const cached = cache.get(cacheKey);
   if (cached && cached.version === row.version) return cached.set;
 
-  const stored = Array.isArray(row.permissions) ? row.permissions : [];
+  const stored = Array.isArray(row.permissions) ? (row.permissions as unknown[]) : [];
   const set: PermissionSet = {
-    roleId,
+    roleId: row.id,
     roleName: row.name,
     tier: row.tier,
     // Filtered through the frozen catalogue *and* the tier ceiling: a key left

@@ -16,6 +16,7 @@ import {
   type ClientToServerEvents,
   type CommandAck,
   type CommandResult,
+  type DashboardSummary,
   type DataChangedEvent,
   type ServerToClientEvents,
   type SocketAuthPayload,
@@ -29,7 +30,6 @@ import { MAX_SOURCE_BYTES } from '../domain/images.js';
 import { AppError, ForbiddenError, toErrorMessage } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import { setPanelLink, type PanelRequest } from './panel-link.js';
-import { permissionSetForRole } from '../repositories/role.repository.js';
 import * as pipelineRepo from '../repositories/pipeline.repository.js';
 import * as authService from '../services/auth.service.js';
 import { resolveSession } from '../services/auth.service.js';
@@ -133,7 +133,7 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
     // user cannot open — the request path would have refused the same row.
     if (PARTY_SCOPED_ENTITIES.has(event.entity)) {
       void emitPartyScopedChange(io, event);
-      if (DASHBOARD_ENTITIES.has(event.entity)) void broadcastDashboard(io);
+      if (DASHBOARD_ENTITIES.has(event.entity)) scheduleDashboard(io);
       return;
     }
 
@@ -165,17 +165,18 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
       }
     }
 
-    if (DASHBOARD_ENTITIES.has(event.entity)) void broadcastDashboard(io);
+    if (DASHBOARD_ENTITIES.has(event.entity)) scheduleDashboard(io);
   });
 
   const unsubscribeConflicts = onConflict((conflict) => {
     io.to(ROOM_OFFICE_PANELS).to(ROOM_MASTER_ADMINS).emit('sync:conflict', conflict);
-    void broadcastDashboard(io);
+    scheduleDashboard(io);
   });
 
   return {
     io,
     stop: async () => {
+      cancelScheduledDashboard();
       unsubscribeChanges();
       unsubscribeConflicts();
       setPanelLink(null);
@@ -724,17 +725,17 @@ async function adminActor(socket: PanelSocket): Promise<ActorContext | null> {
   const tenantId = socket.data.tenantId;
   if (!tenantId) throw new AppError('error.internal.sessionNoTenant', {}, 500, 'internal');
 
-  const user = await authService.resolveSession(socket.data.sessionToken);
-  if (!user || user.tenantId !== tenantId) return null;
+  const resolved = await authService.resolveSessionWithPermissions(socket.data.sessionToken);
+  if (!resolved || resolved.user.tenantId !== tenantId) return null;
 
   return {
     tenantId,
     actorType: 'user',
-    actorId: user.id,
-    userId: user.id,
-    permissions: await permissionSetForRole(tenantId, user.roleId),
+    actorId: resolved.user.id,
+    userId: resolved.user.id,
+    permissions: resolved.permissions,
     deviceCode: null,
-    actorName: user.displayName,
+    actorName: resolved.user.displayName,
   };
 }
 
@@ -807,17 +808,27 @@ async function actorForRecipient(socket: {
   if (!tenantId) return null;
 
   if (socket.data.kind === 'master-admin') {
-    const user = await authService.resolveSession(socket.data.sessionToken);
-    if (!user || user.tenantId !== tenantId) return null;
+    /*
+     * One query, and deliberately still a query.
+     *
+     * An in-memory read of the session's permissions would be zero queries and
+     * wrong: `sessionPermissions` answers `[]` for a token that is absent or
+     * expired, and nothing can tell that apart from a real empty permission
+     * set. A signed-out, deactivated or post-restart admin socket would keep
+     * receiving `data:changed` for every restricted party it holds a grant on —
+     * a disclosure on the exact path party scoping exists to protect.
+     */
+    const resolved = await authService.resolveSessionWithPermissions(socket.data.sessionToken);
+    if (!resolved || resolved.user.tenantId !== tenantId) return null;
 
     return {
       tenantId,
       actorType: 'user',
-      actorId: user.id,
-      userId: user.id,
-      permissions: await permissionSetForRole(tenantId, user.roleId),
+      actorId: resolved.user.id,
+      userId: resolved.user.id,
+      permissions: resolved.permissions,
       deviceCode: null,
-      actorName: user.displayName,
+      actorName: resolved.user.displayName,
     };
   }
 
@@ -843,8 +854,47 @@ async function broadcastPanels(io: RealtimeHub['io']): Promise<void> {
   }
 }
 
+/**
+ * Coalesce dashboard broadcasts onto one trailing 250 ms edge.
+ *
+ * `broadcastDashboard` is the hottest thing in the process: ten aggregates per
+ * admin socket, and it used to run once per changed row. A sync flush of a
+ * hundred leads ran it a hundred times. A dashboard is a *sampled summary* —
+ * trailing-edge sampling is not an approximation of what it means, it is what
+ * it means — so the last change in a burst is the only one whose figures anyone
+ * was ever going to read.
+ *
+ * `unref`'d so a pending flush never holds the process open at shutdown, and
+ * `.catch`'d because nothing in this project installs an `unhandledRejection`
+ * handler.
+ */
+const DASHBOARD_DEBOUNCE_MS = 250;
+let dashboardTimer: NodeJS.Timeout | null = null;
+
+function scheduleDashboard(io: RealtimeHub['io']): void {
+  if (dashboardTimer) return;
+
+  dashboardTimer = setTimeout(() => {
+    dashboardTimer = null;
+    void broadcastDashboard(io).catch((error: unknown) => {
+      log.warn(`Dashboard broadcast failed: ${toErrorMessage(error)}`);
+    });
+  }, DASHBOARD_DEBOUNCE_MS);
+
+  dashboardTimer.unref?.();
+}
+
+/** Test seam: drop a pending flush so a suite does not leak a timer. */
+export function cancelScheduledDashboard(): void {
+  if (dashboardTimer) clearTimeout(dashboardTimer);
+  dashboardTimer = null;
+}
+
 async function broadcastDashboard(io: RealtimeHub['io']): Promise<void> {
   const adminSockets = await io.in(ROOM_MASTER_ADMINS).fetchSockets();
+
+  /** One set of aggregates per distinct scope, for the length of this flush. */
+  const summaries = new Map<string, DashboardSummary>();
 
   for (const socket of adminSockets) {
     const tenantId = socket.data.tenantId;
@@ -854,21 +904,41 @@ async function broadcastDashboard(io: RealtimeHub['io']): Promise<void> {
     // id: a dashboard is permission-filtered, so pushing one to somebody whose
     // account or role has since changed would show them figures their current
     // role does not entitle them to.
-    const user = await authService.resolveSession(socket.data.sessionToken);
-    if (!user || user.tenantId !== tenantId) {
+    const resolved = await authService.resolveSessionWithPermissions(socket.data.sessionToken);
+    if (!resolved || resolved.user.tenantId !== tenantId) {
       socket.disconnect(true);
       continue;
     }
 
-    const summary = await dashboardService.getDashboardSummary({
+    const actor: ActorContext = {
       tenantId,
       actorType: 'user',
-      actorId: user.id,
-      userId: user.id,
-      permissions: await permissionSetForRole(tenantId, user.roleId),
+      actorId: resolved.user.id,
+      userId: resolved.user.id,
+      permissions: resolved.permissions,
       deviceCode: null,
-      actorName: user.displayName,
-    });
+      actorName: resolved.user.displayName,
+    };
+
+    /*
+     * Memoised for the length of this flush.
+     *
+     * The aggregate is permission- and party-scoped, so two sockets that
+     * resolve to the same scope get the same ten aggregates — which is the
+     * common case: one administrator with the app open in two tabs, or two
+     * people on the same role. Keyed on everything the summary actually varies
+     * by, with the null guard because `permissions` can be null.
+     */
+    const scope = resolvePartyScope(actor);
+    const key = `${tenantId}|${scope.seesAll}|${scope.userId ?? ''}|${
+      actor.permissions?.permissions.join(',') ?? ''
+    }`;
+
+    let summary = summaries.get(key);
+    if (!summary) {
+      summary = await dashboardService.getDashboardSummary(actor);
+      summaries.set(key, summary);
+    }
 
     socket.emit('dashboard:changed', summary);
   }
