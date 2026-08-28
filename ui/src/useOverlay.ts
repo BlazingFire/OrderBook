@@ -24,7 +24,9 @@ const FOCUSABLE =
 export function useOverlay(
   open: boolean,
   onClose: () => void,
-  containerRef: RefObject<HTMLElement>,
+  // `| null` because React 19 types `useRef<T>(null)` as `RefObject<T | null>`,
+  // which is what every caller passes.
+  containerRef: RefObject<HTMLElement | null>,
 ) {
   const restoreFocus = useRef<HTMLElement | null>(null);
   const closeRef = useRef(onClose);

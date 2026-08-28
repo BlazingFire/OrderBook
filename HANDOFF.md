@@ -85,19 +85,39 @@ default theme, theme storage key) are declared by `configureUi()` in each
 and a barrel line; `master/tests/no-duplicate-ui.test.ts` fails if a panel
 grows its own `ui/` again.
 
+- **React 19.2.8**, with the three predicted type breakages fixed, plus the
+  `<Activity>` spike that Stage 5 depends on. **The bet paid off** — see below.
+
 Next, in order:
 
-1. **React 19.2** — three known type breakages, all in files that now live in
-   `ui/src`, so one edit each: `Tooltip.tsx`'s zero-argument `useRef`, and the
-   `RefObject<T>` → `RefObject<T | null>` widening in `useOverlay.ts` and
-   `Combobox.tsx`. Stage 5 depends on `<Activity>` existing, so verify
-   `!!require('react').Activity` immediately after upgrading, before anything
-   is scheduled around it.
-2. **Stage 5** — screen keep-alive, which is requirement 4 (a tab keeping its
+1. **Stage 5** — screen keep-alive, which is requirement 4 (a tab keeping its
    state). Read workstream B part B first: three separate things in the repo
    depend on effect teardown meaning *unmount*, and each needs its own fix.
-3. **Stage 4** — settings table and the password vault, which unblocks the AI
+2. **Stage 4** — settings table and the password vault, which unblocks the AI
    config and the connector secrets. Independent of the UI stages.
+
+### What the `<Activity>` spike established
+
+Requirement 4 rested entirely on one unverified assumption, so it was tested
+before anything was scheduled around it (`ui/tests/activity-spike.test.tsx`):
+
+- `Activity` is a **stable** export in React 19.2 — not `unstable_Activity`,
+  and typed in `@types/react`'s `index.d.ts`, not `experimental.d.ts`.
+- A hidden pane **keeps its state and tears its effects down**, which is the
+  precise behaviour the design needs. Re-showing re-runs the effect, so a
+  screen can still refetch on show.
+- A hidden pane's DOM **stays in the document**. That is why `useOverlay`'s
+  Escape arbitration is wrong today: it takes the last `[role="dialog"]` in
+  document order, so a hidden pane's open Drawer sitting later in the screens
+  array steals Escape from the visible one.
+
+**jsdom cannot test the fix for that last one.** jsdom 25 does not implement
+`Element.checkVisibility` at all — it is `undefined`, not merely inaccurate —
+and `getComputedStyle().display` returns `''` for an element hidden by an
+ancestor. The visibility filter was therefore verified by hand in Chromium,
+where the bug reproduces (`querySelectorAll` picks the hidden dialog) and the
+filter corrects it. Do not write a jsdom assertion on visibility: it would be
+asserting on a stub that always says "visible".
 
 ## Key decisions made so far (do not re-decide these without a reason)
 

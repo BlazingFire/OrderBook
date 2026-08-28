@@ -7,7 +7,11 @@ export default defineConfig({
     // `electron/` is not a workspace, but its `lib/` is pure or node:fs-only
     // and never imports `electron` — so the decisions that used to be
     // untestable inside a 300-line main process now run here like anything else.
-    include: ['{shared,master,office,electron}/tests/**/*.test.ts'],
+    include: ['{shared,master,office,electron}/tests/**/*.test.ts', 'ui/tests/**/*.test.tsx'],
+    // The only tests here that need a DOM. Vitest 2.1 has no `test.projects`
+    // (that is Vitest 3), and widening `environment` globally would hand DOM
+    // globals to the server suites.
+    environmentMatchGlobs: [['ui/tests/**', 'jsdom']],
     environment: 'node',
     // Integration tests share one database, so files must not run in parallel.
     fileParallelism: false,

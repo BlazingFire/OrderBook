@@ -10,7 +10,9 @@ const HOVER_DELAY_MS = 400;
 
 export function Tooltip({ text, children }: { text: string; children: ReactElement }) {
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  // Explicitly initialised: React 19's types dropped the zero-argument
+  // `useRef` overload.
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const wrapRef = useRef<HTMLSpanElement>(null);
 
   function place() {

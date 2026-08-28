@@ -29,7 +29,8 @@ export function Combobox<T>({
   onSelect: (option: ComboboxOption<T>) => void;
   placeholder?: string;
   autoFocus?: boolean;
-  inputRef?: RefObject<HTMLInputElement>;
+  /** `| null` — see the note in `useOverlay.ts`. */
+  inputRef?: RefObject<HTMLInputElement | null>;
 }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
