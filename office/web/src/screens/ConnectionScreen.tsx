@@ -20,6 +20,7 @@ import {
   Input,
   Segmented,
   StatusPill,
+  rem,
   t,
   type DataTableColumn,
 } from '@orderbook/ui';
@@ -137,7 +138,7 @@ export function ConnectionScreen({ connection, onConnected }: Props) {
     {
       key: 'address',
       header: t('connection.scan.col.address'),
-      width: '160px',
+      width: rem(160),
       render: (master) => (
         <span className="ob-mono">
           {master.lanIp}:{master.httpPort}
@@ -147,7 +148,7 @@ export function ConnectionScreen({ connection, onConnected }: Props) {
     {
       key: 'accepting',
       header: t('connection.scan.col.accepting'),
-      width: '130px',
+      width: rem(130),
       render: (master) => (
         <StatusPill tone={master.acceptingPairing ? 'ok' : 'default'}>
           {master.acceptingPairing
@@ -159,7 +160,7 @@ export function ConnectionScreen({ connection, onConnected }: Props) {
   ];
 
   return (
-    <div style={{ maxWidth: 620, margin: 'var(--s-40) auto', padding: '0 var(--s-16)' }}>
+    <div style={{ maxWidth: rem(620), margin: 'var(--s-40) auto', padding: '0 var(--s-16)' }}>
       <h1 className="ob-display" style={{ marginBottom: 'var(--s-16)' }}>
         {t('connection.title')}
       </h1>

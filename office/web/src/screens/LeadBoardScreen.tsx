@@ -28,6 +28,7 @@ import {
   Segmented,
   StatusPill,
   formatMoney,
+  rem,
   t,
   useColourHex,
   useFilterBar,
@@ -174,9 +175,9 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
     {
       key: 'id',
       header: t('lead.list.col.lead'),
-      width: '130px',
+      width: rem(130),
       render: (lead) => (
-        <span className="ob-mono" style={{ fontSize: 12 }}>
+        <span className="ob-mono" style={{ fontSize: rem(12) }}>
           {lead.id}
         </span>
       ),
@@ -185,39 +186,39 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
     {
       key: 'stage',
       header: t('lead.list.col.stage'),
-      width: '110px',
+      width: rem(110),
       render: (lead) => lead.stageName,
     },
     {
       key: 'source',
       header: t('lead.list.col.source'),
-      width: '110px',
+      width: rem(110),
       render: (lead) => lead.sourcePlatform ?? '—',
     },
     {
       key: 'boxes',
       header: t('lead.list.col.boxes'),
-      width: '80px',
+      width: rem(80),
       align: 'right',
       render: (lead) => String(leadBoxes(lead)),
     },
     {
       key: 'amount',
       header: t('lead.list.col.amount'),
-      width: '110px',
+      width: rem(110),
       align: 'right',
       render: (lead) => (lead.totalAmount !== undefined ? formatMoney(lead.totalAmount) : '—'),
     },
     {
       key: 'followUp',
       header: t('lead.list.col.followUp'),
-      width: '100px',
+      width: rem(100),
       render: (lead) => lead.followUpDate ?? '—',
     },
     {
       key: 'sync',
       header: t('lead.list.col.sync'),
-      width: '90px',
+      width: rem(90),
       render: (lead) => (
         <span
           className="ob-micro"
@@ -258,7 +259,7 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
             return (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-6)' }}>
-                  <span className="ob-body-strong" style={{ fontSize: 13 }}>
+                  <span className="ob-body-strong" style={{ fontSize: rem(13) }}>
                     {lead.partyName}
                   </span>
                   <span style={{ flex: 1 }} />
@@ -341,7 +342,10 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
                     marginTop: 'var(--s-4)',
                   }}
                 >
-                  <span className="ob-mono" style={{ fontSize: 11.5, color: 'var(--fg-tertiary)' }}>
+                  <span
+                    className="ob-mono"
+                    style={{ fontSize: rem(11.5), color: 'var(--fg-tertiary)' }}
+                  >
                     {lead.id}
                   </span>
                   <span className="ob-small">

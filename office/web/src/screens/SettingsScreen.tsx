@@ -33,6 +33,7 @@ import {
   loadScale,
   loadTheme,
   motionDisabled,
+  rem,
   t,
   type Density,
   type Theme,
@@ -122,14 +123,16 @@ export function SettingsScreen({ connection, session, pendingCount, openConflict
   ];
 
   return (
-    <div style={{ maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
+    <div
+      style={{ maxWidth: rem(720), display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}
+    >
       <Card>
         <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-12)' }}>
           {t('settings.appearance.title')}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
-            <span className="ob-body" style={{ width: 140 }}>
+            <span className="ob-body" style={{ width: rem(140) }}>
               {t('settings.appearance.theme')}
             </span>
             <Segmented
@@ -143,7 +146,7 @@ export function SettingsScreen({ connection, session, pendingCount, openConflict
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
-            <span className="ob-body" style={{ width: 140 }}>
+            <span className="ob-body" style={{ width: rem(140) }}>
               {t('settings.appearance.scale')}
             </span>
             <Slider
@@ -171,7 +174,7 @@ export function SettingsScreen({ connection, session, pendingCount, openConflict
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
-            <span className="ob-body" style={{ width: 140 }}>
+            <span className="ob-body" style={{ width: rem(140) }}>
               {t('settings.appearance.density')}
             </span>
             <Segmented
@@ -192,7 +195,7 @@ export function SettingsScreen({ connection, session, pendingCount, openConflict
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
-            <span className="ob-body" style={{ width: 140 }}>
+            <span className="ob-body" style={{ width: rem(140) }}>
               {t('settings.appearance.motion')}
             </span>
             <Switch

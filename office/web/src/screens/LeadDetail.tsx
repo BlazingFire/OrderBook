@@ -28,6 +28,7 @@ import {
   Timeline,
   formatDateTime,
   formatMoney,
+  rem,
   t,
   useColourHex,
 } from '@orderbook/ui';
@@ -104,7 +105,7 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
           {lead.items.map((item) => (
             <div key={item.id} className="ob-card ob-card--pad">
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
-                <span className="ob-body-strong" style={{ fontSize: 13.5 }}>
+                <span className="ob-body-strong" style={{ fontSize: rem(13.5) }}>
                   {item.productName}
                 </span>
                 <span className="ob-small">

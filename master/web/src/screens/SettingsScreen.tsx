@@ -35,6 +35,7 @@ import {
   loadScale,
   loadTheme,
   motionDisabled,
+  rem,
   t,
   type Density,
   type Theme,
@@ -97,7 +98,9 @@ export function SettingsScreen() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)', maxWidth: 720 }}>
+    <div
+      style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)', maxWidth: rem(720) }}
+    >
       <Card>
         <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-4)' }}>
           {t('settings.appearance.title')}
@@ -244,7 +247,7 @@ export function SettingsScreen() {
 function SettingRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
-      <span className="ob-body" style={{ width: 140, flex: 'none' }}>
+      <span className="ob-body" style={{ width: rem(140), flex: 'none' }}>
         {label}
       </span>
       {children}

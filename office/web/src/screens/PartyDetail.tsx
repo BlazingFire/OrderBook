@@ -33,6 +33,7 @@ import {
   StatusPill,
   formatDateTime,
   formatMoney,
+  rem,
   t,
   type DataTableColumn,
 } from '@orderbook/ui';
@@ -88,7 +89,7 @@ export function PartyDetail({
     {
       key: 'catalogue',
       header: t('party.detail.rates.catalogue'),
-      width: '110px',
+      width: rem(110),
       align: 'right',
       render: (row) => (
         <span style={{ color: 'var(--fg-tertiary)', textDecoration: 'line-through' }}>
@@ -100,7 +101,7 @@ export function PartyDetail({
     {
       key: 'own',
       header: t('party.detail.rates.own'),
-      width: '110px',
+      width: rem(110),
       align: 'right',
       render: (row) => <span className="ob-body-strong">{formatMoney(row.ownRate ?? null)}</span>,
       redactedReason: (row) => (row.ownRate === undefined ? RATE_PERMISSION : undefined),
@@ -196,7 +197,10 @@ export function PartyDetail({
                   padding: 'var(--s-6) var(--s-8)',
                 }}
               >
-                <span className="ob-mono" style={{ fontSize: 11.5, color: 'var(--fg-secondary)' }}>
+                <span
+                  className="ob-mono"
+                  style={{ fontSize: rem(11.5), color: 'var(--fg-secondary)' }}
+                >
                   {lead.id}
                 </span>
                 <span className="ob-small">{lead.stageName}</span>

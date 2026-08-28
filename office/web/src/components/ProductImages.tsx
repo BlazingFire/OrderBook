@@ -15,7 +15,7 @@ import { useRef, useState } from 'react';
 import type { Product, ProductImage } from '@orderbook/shared';
 
 import { api } from '../api';
-import { IconButton, ImageCropModal, ProgressiveImage, type CropResult } from '@orderbook/ui';
+import { IconButton, ImageCropModal, ProgressiveImage, rem, type CropResult } from '@orderbook/ui';
 
 export function ProductImages({
   product,
@@ -112,7 +112,7 @@ export function ProductImages({
         {images.map((image, index) => (
           <div
             key={image.id}
-            style={{ width: 96, display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}
+            style={{ width: rem(96), display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}
           >
             <ProgressiveImage
               imageId={image.id}
@@ -184,7 +184,7 @@ export function ProductImages({
           type="button"
           onClick={() => fileInputRef.current?.click()}
           style={{
-            width: 96,
+            width: rem(96),
             aspectRatio: '1 / 1',
             display: 'flex',
             alignItems: 'center',

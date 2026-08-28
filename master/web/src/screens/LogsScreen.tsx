@@ -44,6 +44,7 @@ import {
   SkeletonRows,
   StatusPill,
   formatDateTime,
+  rem,
   t,
   useFilterBar,
   type DataTableColumn,
@@ -392,7 +393,7 @@ export function LogsScreen({ permissions }: Props) {
     {
       key: 'when',
       header: t('logs.table.when'),
-      width: '160px',
+      width: rem(160),
       render: (entry) => <span className="ob-small">{formatDateTime(entry.createdAt)}</span>,
     },
     {
@@ -419,7 +420,7 @@ export function LogsScreen({ permissions }: Props) {
     {
       key: 'who',
       header: t('logs.table.who'),
-      width: '150px',
+      width: rem(150),
       render: (entry) => {
         const who = actorLabel(entry);
         return (
@@ -441,7 +442,7 @@ export function LogsScreen({ permissions }: Props) {
     {
       key: 'record',
       header: t('logs.table.record'),
-      width: '210px',
+      width: rem(210),
       render: (entry) => (
         <span
           className="ob-mono"
@@ -462,7 +463,7 @@ export function LogsScreen({ permissions }: Props) {
     {
       key: 'sequence',
       header: t('logs.table.sequence'),
-      width: '110px',
+      width: rem(110),
       align: 'right',
       render: (entry) =>
         entry.chained ? (

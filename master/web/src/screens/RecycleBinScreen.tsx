@@ -38,6 +38,7 @@ import {
   SkeletonRows,
   StatusPill,
   formatDateTime,
+  rem,
   t,
   useFilterBar,
   useToast,
@@ -332,7 +333,7 @@ export function RecycleBinScreen({ permissions, revision }: Props) {
     {
       key: 'type',
       header: t('recycleBin.column.type'),
-      width: '170px',
+      width: rem(170),
       render: (entry) => <StatusPill>{t(`recycleBin.entity.${entry.entityType}`)}</StatusPill>,
     },
     {
@@ -348,13 +349,13 @@ export function RecycleBinScreen({ permissions, revision }: Props) {
     {
       key: 'deletedAt',
       header: t('recycleBin.column.deletedAt'),
-      width: '170px',
+      width: rem(170),
       render: (entry) => <span className="ob-small">{formatDateTime(entry.deletedAt)}</span>,
     },
     {
       key: 'deletedBy',
       header: t('recycleBin.column.deletedBy'),
-      width: '170px',
+      width: rem(170),
       // An unattended Office Panel deletes with nobody attached, which is a
       // different fact from a name this screen could not resolve.
       render: (entry) =>
@@ -368,7 +369,7 @@ export function RecycleBinScreen({ permissions, revision }: Props) {
     {
       key: 'actions',
       header: '',
-      width: '120px',
+      width: rem(120),
       render: (entry) =>
         canRestore(entry.entityType) ? (
           <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>

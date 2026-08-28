@@ -534,6 +534,9 @@ table.ob-table {
  * header instead of ellipsing.
  */
 .ob-table tbody td {
+  /* Row hover and selection currently snap. A token duration means both motion
+     switches clamp it for free. */
+  transition: background-color var(--d-fast) var(--e-standard);
   height: var(--row-h);
   padding: 0 var(--s-12);
   border-bottom: 1px solid var(--line);
@@ -849,7 +852,11 @@ table.ob-table {
 .ob-board {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(17.1429rem, 1fr);
+  /* Upper bound as well as lower: on a wide screen a `1fr` column grows to a
+     third of a 4K display, and a card of that width is unreadable. Columns
+     stop growing and the board sits left instead. */
+  grid-auto-columns: minmax(17.1429rem, 27rem);
+  justify-content: start;
   gap: var(--s-12);
   overflow-x: auto;
   align-items: start;
@@ -2374,4 +2381,45 @@ html[data-window-blur='true'] .ob-busy rect {
 .ob-slider:focus-visible {
   outline: 2px solid var(--line-focus);
   outline-offset: 2px;
+}
+
+/* --- Responsive ------------------------------------------------------------
+   Three breakpoints, in physical px. See `ui/src/breakpoints.ts` for why they
+   are not rem: scale changes how big things are, and must not change what is
+   on screen. There is deliberately no upper breakpoint — at 4K the app shows
+   more, rather than the same thing enlarged. */
+
+@media (max-width: 1180px) {
+  /* One column: two columns of definition list below this width give each
+     value about twelve characters. */
+  .ob-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ob-search {
+    width: 12rem;
+  }
+}
+
+@media (max-width: 1080px) {
+  /* Reclaim horizontal room from chrome before taking it from content. */
+  .ob-pane {
+    padding: var(--s-12);
+  }
+
+  .ob-modal-wrap {
+    padding: var(--s-12);
+  }
+}
+
+@media (max-height: 800px) {
+  /* A 768-tall screen with a taskbar has no vertical slack. Popovers that
+     assume a tall window push their own actions off-screen. */
+  .ob-combobox-listbox {
+    max-height: 30vh;
+  }
+
+  .ob-boardcol {
+    min-height: 8rem;
+  }
 }

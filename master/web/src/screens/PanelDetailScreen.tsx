@@ -42,6 +42,7 @@ import {
   Textarea,
   formatBytes,
   formatDateTime,
+  rem,
   t,
   useToast,
   type DataTableColumn,
@@ -224,7 +225,7 @@ function PanelHeader({
       <div
         style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--s-12)', flexWrap: 'wrap' }}
       >
-        <div style={{ flex: 1, minWidth: 220 }}>
+        <div style={{ flex: 1, minWidth: rem(220) }}>
           <button
             type="button"
             className="ob-btn ob-btn--ghost ob-btn--sm"
@@ -902,7 +903,7 @@ export function ActivityTable({ entries }: { entries: ActivityLogEntry[] | null 
     {
       key: 'when',
       header: t('panels.activity.column.when'),
-      width: '170px',
+      width: rem(170),
       render: (entry) => <span className="ob-small">{formatDateTime(entry.createdAt)}</span>,
     },
     {
@@ -921,7 +922,7 @@ export function ActivityTable({ entries }: { entries: ActivityLogEntry[] | null 
     {
       key: 'who',
       header: t('panels.activity.column.who'),
-      width: '180px',
+      width: rem(180),
       render: (entry) => <span className="ob-small">{entry.actor.name ?? entry.actor.type}</span>,
     },
   ];

@@ -134,10 +134,7 @@ export function DataTable<T>({
   }
 
   return (
-    <div
-      ref={wrapRef}
-      className="ob-tablewrap"
-    >
+    <div ref={wrapRef} className="ob-tablewrap">
       <table className="ob-table" style={{ tableLayout: 'fixed' }}>
         <colgroup>
           {columns.map((c) => (

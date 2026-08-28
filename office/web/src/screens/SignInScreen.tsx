@@ -22,6 +22,7 @@ import {
   Input,
   LogoLockup,
   OfflineBanner,
+  rem,
   t,
 } from '@orderbook/ui';
 
@@ -61,7 +62,7 @@ export function SignInScreen({ connection, onSignedIn }: Props) {
         flexDirection: 'column',
         alignItems: 'center',
         gap: 'var(--s-24)',
-        maxWidth: 420,
+        maxWidth: rem(420),
         margin: '0 auto',
         padding: 'var(--s-56) var(--s-16)',
       }}

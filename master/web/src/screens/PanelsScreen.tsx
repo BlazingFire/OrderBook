@@ -21,6 +21,7 @@ import {
   Modal,
   StatusPill,
   formatDateTime,
+  rem,
   t,
   type DataTableColumn,
 } from '@orderbook/ui';
@@ -106,7 +107,7 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
     {
       key: 'status',
       header: t('panels.table.status'),
-      width: '120px',
+      width: rem(120),
       render: (panel) =>
         panel.status === 'revoked' ? (
           <StatusPill tone="default">{t('panels.status.removed')}</StatusPill>
@@ -125,31 +126,31 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
     {
       key: 'deviceCode',
       header: t('panels.table.deviceCode'),
-      width: '110px',
+      width: rem(110),
       render: (panel) => <span className="ob-mono">{panel.deviceCode}</span>,
     },
     {
       key: 'address',
       header: t('panels.table.address'),
-      width: '140px',
+      width: rem(140),
       render: (panel) => <span className="ob-small">{panel.lanIp ?? '—'}</span>,
     },
     {
       key: 'paired',
       header: t('panels.table.paired'),
-      width: '150px',
+      width: rem(150),
       render: (panel) => <span className="ob-small">{formatDateTime(panel.pairedAt)}</span>,
     },
     {
       key: 'lastSeen',
       header: t('panels.table.lastSeen'),
-      width: '150px',
+      width: rem(150),
       render: (panel) => <span className="ob-small">{formatDateTime(panel.lastSeenAt)}</span>,
     },
     {
       key: 'actions',
       header: '',
-      width: '110px',
+      width: rem(110),
       render: (panel) => (
         <div
           style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}

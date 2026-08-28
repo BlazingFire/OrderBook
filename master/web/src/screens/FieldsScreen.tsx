@@ -49,6 +49,7 @@ import {
   Switch,
   Tabs,
   Textarea,
+  rem,
   t,
   type DataTableColumn,
   type TabItem,
@@ -350,7 +351,7 @@ function ValuesTab({
           {
             key: 'order',
             header: t('fields.col.order'),
-            width: '72px',
+            width: rem(72),
             render: (item: OptionListItem) => {
               const index = items.indexOf(item);
               return (
@@ -378,7 +379,7 @@ function ValuesTab({
           {
             key: 'colour',
             header: t('fields.values.col.colour'),
-            width: '80px',
+            width: rem(80),
             render: (item: OptionListItem) => (
               <ColourChip hex={item.hex ?? undefined} name={item.label} />
             ),
@@ -388,7 +389,7 @@ function ValuesTab({
     {
       key: 'value',
       header: t('fields.values.col.value'),
-      width: '200px',
+      width: rem(200),
       render: (item) => <span className="ob-mono">{item.value}</span>,
     },
     {
@@ -399,7 +400,7 @@ function ValuesTab({
     {
       key: 'status',
       header: t('fields.values.col.status'),
-      width: '110px',
+      width: rem(110),
       render: (item) =>
         item.isActive ? (
           <StatusPill tone="ok">{t('fields.status.active')}</StatusPill>
@@ -410,7 +411,7 @@ function ValuesTab({
     {
       key: 'usage',
       header: t('fields.values.col.usage'),
-      width: '110px',
+      width: rem(110),
       align: 'right',
       render: (item) => {
         const entry = usageFor(item.value);
@@ -429,7 +430,7 @@ function ValuesTab({
           {
             key: 'actions',
             header: '',
-            width: '170px',
+            width: rem(170),
             render: (item: OptionListItem) => (
               <div
                 style={{
@@ -813,7 +814,7 @@ function DefinitionsTab({
           {
             key: 'order',
             header: t('fields.col.order'),
-            width: '72px',
+            width: rem(72),
             render: (definition: CustomFieldDefinition) => {
               const index = definitions.indexOf(definition);
               return (
@@ -839,7 +840,7 @@ function DefinitionsTab({
     {
       key: 'key',
       header: t('fields.definitions.col.key'),
-      width: '180px',
+      width: rem(180),
       render: (definition) => <span className="ob-mono">{definition.key}</span>,
     },
     {
@@ -850,13 +851,13 @@ function DefinitionsTab({
     {
       key: 'type',
       header: t('fields.definitions.col.type'),
-      width: '110px',
+      width: rem(110),
       render: (definition) => t(`fields.type.${definition.fieldType}`),
     },
     {
       key: 'required',
       header: t('fields.definitions.col.required'),
-      width: '100px',
+      width: rem(100),
       render: (definition) =>
         definition.isRequired ? (
           <StatusPill tone="accent">{t('fields.definitions.requiredYes')}</StatusPill>
@@ -886,7 +887,7 @@ function DefinitionsTab({
     {
       key: 'status',
       header: t('fields.values.col.status'),
-      width: '110px',
+      width: rem(110),
       render: (definition) =>
         definition.isActive ? (
           <StatusPill tone="ok">{t('fields.status.active')}</StatusPill>
@@ -899,7 +900,7 @@ function DefinitionsTab({
           {
             key: 'actions',
             header: '',
-            width: '170px',
+            width: rem(170),
             render: (definition: CustomFieldDefinition) => (
               <div
                 style={{
@@ -1319,7 +1320,7 @@ function StagesTab({ canManage, revision }: { canManage: boolean; revision: numb
             {
               key: 'order',
               header: t('fields.col.order'),
-              width: '72px',
+              width: rem(72),
               render: (stage: PipelineStage) => {
                 const index = stages.indexOf(stage);
                 return (
@@ -1366,7 +1367,7 @@ function StagesTab({ canManage, revision }: { canManage: boolean; revision: numb
       {
         key: 'colour',
         header: t('fields.stages.col.colour'),
-        width: '80px',
+        width: rem(80),
         render: (stage) => <ColourChip hex={stage.colour ?? undefined} name={stage.name} />,
       },
       {
@@ -1377,7 +1378,7 @@ function StagesTab({ canManage, revision }: { canManage: boolean; revision: numb
       {
         key: 'flags',
         header: t('fields.stages.col.flags'),
-        width: '260px',
+        width: rem(260),
         render: (stage) => (
           <span style={{ display: 'flex', gap: 'var(--s-6)' }}>
             {stage.isDefault && (
@@ -1397,7 +1398,7 @@ function StagesTab({ canManage, revision }: { canManage: boolean; revision: numb
             {
               key: 'actions',
               header: '',
-              width: '300px',
+              width: rem(300),
               render: (stage: PipelineStage) => (
                 <div
                   style={{

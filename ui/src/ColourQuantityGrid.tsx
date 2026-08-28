@@ -1,3 +1,4 @@
+import { rem } from './rem.js';
 /**
  * ColourQuantityGrid (§9.2) — the most-used control in the product; a
  * salesperson enters a full line item here on a phone call. One row per
@@ -229,7 +230,7 @@ export function ColourQuantityGrid({
         <Input
           value={customDraft}
           placeholder="Add another colour"
-          style={{ width: 160 }}
+          style={{ width: rem(160) }}
           onChange={(e) => setCustomDraft(e.target.value)}
         />
         <Button

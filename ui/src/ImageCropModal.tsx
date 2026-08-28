@@ -1,3 +1,4 @@
+import { rem } from './rem.js';
 /**
  * The crop/rotate editor (`7-IMAGE-PIPELINE.md` §3), ported from the source
  * spec's Electron `BrowserWindow` onto a web `Modal` — this app has no
@@ -364,7 +365,7 @@ export function ImageCropModal({
             onChange={(event) => setFineRotation(Number(event.target.value))}
             style={{ flex: 1 }}
           />
-          <span className="ob-small ob-mono" style={{ width: 40, textAlign: 'right' }}>
+          <span className="ob-small ob-mono" style={{ width: rem(40), textAlign: 'right' }}>
             {fineRotation.toFixed(1)}°
           </span>
         </label>

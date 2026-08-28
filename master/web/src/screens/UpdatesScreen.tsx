@@ -43,6 +43,7 @@ import {
   Section,
   StatusPill,
   formatDateTime,
+  rem,
   t,
   type DataTableColumn,
 } from '@orderbook/ui';
@@ -115,7 +116,7 @@ export function UpdatesScreen({
     {
       key: 'status',
       header: t('panels.table.status'),
-      width: '120px',
+      width: rem(120),
       render: (panel) =>
         panel.isConnected ? (
           <StatusPill tone="ok">{t('panels.status.connected')}</StatusPill>
@@ -127,7 +128,7 @@ export function UpdatesScreen({
     {
       key: 'version',
       header: t('updates.table.version'),
-      width: '140px',
+      width: rem(140),
       render: (panel) =>
         panel.device.appVersion === null ? (
           <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
@@ -140,13 +141,13 @@ export function UpdatesScreen({
     {
       key: 'match',
       header: '',
-      width: '160px',
+      width: rem(160),
       render: (panel) => <StandingPill version={panel.device.appVersion} reference={master} />,
     },
     {
       key: 'lastSeen',
       header: t('panels.table.lastSeen'),
-      width: '170px',
+      width: rem(170),
       render: (panel) => <span className="ob-small">{formatDateTime(panel.lastSeenAt)}</span>,
     },
   ];

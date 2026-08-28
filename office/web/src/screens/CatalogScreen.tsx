@@ -43,6 +43,7 @@ import {
   ProgressiveImage,
   StatusPill,
   formatMoney,
+  rem,
   t,
   useColourHex,
   useFilterBar,
@@ -145,7 +146,7 @@ export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' |
           onChange={(event) => setPartySearch(event.target.value)}
           placeholder={t('catalog.parties.searchPlaceholder')}
           aria-label={t('catalog.parties.searchLabel')}
-          style={{ width: 240 }}
+          style={{ width: rem(240) }}
         />
         <FilterChip
           active={cityFilter === null}
@@ -176,7 +177,7 @@ export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' |
           onChange={(event) => setProductSearch(event.target.value)}
           placeholder={t('catalog.products.searchPlaceholder')}
           aria-label={t('catalog.products.searchLabel')}
-          style={{ width: 240 }}
+          style={{ width: rem(240) }}
         />
         <FilterChip
           active={typeFilter === null}
@@ -208,9 +209,9 @@ export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' |
       {
         key: 'code',
         header: t('catalog.parties.column.code'),
-        width: '100px',
+        width: rem(100),
         render: (party) => (
-          <span className="ob-mono" style={{ fontSize: 12, color: 'var(--fg-secondary)' }}>
+          <span className="ob-mono" style={{ fontSize: rem(12), color: 'var(--fg-secondary)' }}>
             {party.partyCode}
           </span>
         ),
@@ -222,7 +223,7 @@ export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' |
           <span
             style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-8)', minWidth: 0 }}
           >
-            <span className="ob-body-strong" style={{ fontSize: 13.5 }}>
+            <span className="ob-body-strong" style={{ fontSize: rem(13.5) }}>
               {party.name}
             </span>
             {!party.sync.hlc && (
@@ -234,19 +235,19 @@ export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' |
       {
         key: 'phone',
         header: t('catalog.parties.column.phone'),
-        width: '130px',
+        width: rem(130),
         render: (party) => <span className="ob-data">{party.phone ?? '—'}</span>,
       },
       {
         key: 'city',
         header: t('catalog.parties.column.city'),
-        width: '110px',
+        width: rem(110),
         render: (party) => party.city ?? '—',
       },
       {
         key: 'variants',
         header: t('catalog.parties.column.variants'),
-        width: '140px',
+        width: rem(140),
         render: (party) => {
           const count = view.partyVariants.filter((variant) => variant.partyId === party.id).length;
           return count > 0
@@ -261,7 +262,7 @@ export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' |
         // would put a badge on almost every row and say nothing.
         key: 'access',
         header: t('catalog.parties.column.access'),
-        width: '110px',
+        width: rem(110),
         render: (party) => {
           const grant = (view.partyGrants ?? []).find((entry) => entry.partyId === party.id);
           if (!grant) return '';
@@ -340,12 +341,12 @@ export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' |
     {
       key: 'photo',
       header: '',
-      width: '40px',
+      width: rem(40),
       render: (product) => {
         const primary = product.images.find((image) => image.isPrimary) ?? product.images[0];
         if (!primary) return null;
         return (
-          <span style={{ width: 28, height: 28 }}>
+          <span style={{ width: rem(28), height: rem(28) }}>
             <ProgressiveImage
               imageId={primary.id}
               variant="micro"
@@ -361,9 +362,9 @@ export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' |
     {
       key: 'code',
       header: t('catalog.products.column.code'),
-      width: '100px',
+      width: rem(100),
       render: (product) => (
-        <span className="ob-mono" style={{ fontSize: 12, color: 'var(--fg-secondary)' }}>
+        <span className="ob-mono" style={{ fontSize: rem(12), color: 'var(--fg-secondary)' }}>
           {product.productCode}
         </span>
       ),
@@ -373,7 +374,7 @@ export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' |
       header: t('catalog.products.column.name'),
       render: (product) => (
         <span style={{ minWidth: 0 }}>
-          <span className="ob-body-strong" style={{ fontSize: 13.5 }}>
+          <span className="ob-body-strong" style={{ fontSize: rem(13.5) }}>
             {product.name}
           </span>
           {product.alias && (
@@ -390,25 +391,25 @@ export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' |
     {
       key: 'type',
       header: t('catalog.products.column.type'),
-      width: '90px',
+      width: rem(90),
       render: (product) => product.productType ?? product.categoryName ?? '—',
     },
     {
       key: 'size',
       header: t('catalog.products.column.size'),
-      width: '110px',
+      width: rem(110),
       render: (product) => product.size ?? '—',
     },
     {
       key: 'grade',
       header: t('catalog.products.column.grade'),
-      width: '80px',
+      width: rem(80),
       render: (product) => product.grade ?? '—',
     },
     {
       key: 'rate',
       header: t('catalog.products.column.rate'),
-      width: '100px',
+      width: rem(100),
       align: 'right',
       // `rate` is absent, not null, when the role cannot see it (UI-11).
       render: (product) => formatMoney(product.rate ?? null),

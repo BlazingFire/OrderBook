@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import type { SignedInUser } from '@orderbook/shared';
 import { api } from '../api';
-import { Button, Card, FieldError, FormField, Input, LogoLockup, t } from '@orderbook/ui';
+import { Button, Card, FieldError, FormField, Input, LogoLockup, rem, t } from '@orderbook/ui';
 
 interface Props {
   onSignedIn: (user: SignedInUser, sessionToken: string) => void;
@@ -35,7 +35,7 @@ export function SignInScreen({ onSignedIn }: Props) {
         flexDirection: 'column',
         alignItems: 'center',
         gap: 'var(--s-24)',
-        maxWidth: 420,
+        maxWidth: rem(420),
         margin: '0 auto',
         padding: 'var(--s-56) var(--s-16)',
       }}

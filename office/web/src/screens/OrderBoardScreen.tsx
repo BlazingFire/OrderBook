@@ -40,6 +40,7 @@ import {
   Timeline,
   formatDateTime,
   formatMoney,
+  rem,
   t,
   useColourHex,
   useFilterBar,
@@ -171,7 +172,7 @@ export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
     {
       key: 'id',
       header: t('orders.column.order'),
-      width: '120px',
+      width: rem(120),
       render: (order) => (
         <span className="ob-mono" style={{ color: 'var(--fg-secondary)' }}>
           {order.id}
@@ -186,7 +187,7 @@ export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
     {
       key: 'lead',
       header: t('orders.column.fromLead'),
-      width: '150px',
+      width: rem(150),
       render: (order) =>
         order.leadId ? (
           <span className="ob-mono" style={{ color: 'var(--fg-tertiary)' }}>
@@ -199,14 +200,14 @@ export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
     {
       key: 'boxes',
       header: t('orders.column.boxes'),
-      width: '80px',
+      width: rem(80),
       align: 'right',
       render: (order) => totalBoxes(order).toLocaleString('en-IN'),
     },
     {
       key: 'weight',
       header: t('orders.column.weight'),
-      width: '100px',
+      width: rem(100),
       align: 'right',
       render: (order) => (
         <span
@@ -222,7 +223,7 @@ export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
     {
       key: 'amount',
       header: t('orders.column.amount'),
-      width: '110px',
+      width: rem(110),
       align: 'right',
       render: (order) => formatMoney(order.totalAmount ?? null),
       redactedReason: (order) =>
@@ -231,13 +232,13 @@ export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
     {
       key: 'stage',
       header: t('orders.column.stage'),
-      width: '110px',
+      width: rem(110),
       render: (order) => <StatusPill tone={stageTone(order, stages)}>{order.stageName}</StatusPill>,
     },
     {
       key: 'sync',
       header: t('orders.column.sync'),
-      width: '90px',
+      width: rem(90),
       render: (order) => (
         <span
           className="ob-micro"

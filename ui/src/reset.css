@@ -74,6 +74,12 @@ a:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* `scroll-behavior` is the one thing the `*` clamp below cannot reach — it
+     is not a duration, so a smooth scroll survives both switches. */
+  html {
+    scroll-behavior: auto !important;
+  }
+
   *,
   *::before,
   *::after {
@@ -81,6 +87,10 @@ a:hover {
     transition-duration: 1ms !important;
     animation-iteration-count: 1 !important;
   }
+}
+
+html[data-motion='off'] {
+  scroll-behavior: auto !important;
 }
 
 html[data-motion='off'] *,

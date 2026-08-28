@@ -39,6 +39,7 @@ import {
   Select,
   StatusPill,
   formatMoney,
+  rem,
   t,
   useColourHex,
   type DataTableColumn,
@@ -87,21 +88,21 @@ export function ProductDetail({
     {
       key: 'onHand',
       header: t('product.detail.stock.onHand'),
-      width: '84px',
+      width: rem(84),
       align: 'right',
       render: (level) => level.quantityBoxes,
     },
     {
       key: 'reserved',
       header: t('product.detail.stock.reserved'),
-      width: '84px',
+      width: rem(84),
       align: 'right',
       render: (level) => level.reservedBoxes,
     },
     {
       key: 'free',
       header: t('product.detail.stock.free'),
-      width: '84px',
+      width: rem(84),
       align: 'right',
       render: (level) => (
         <span

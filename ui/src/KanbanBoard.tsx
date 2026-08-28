@@ -1,3 +1,4 @@
+import { rem } from './rem.js';
 /**
  * KanbanBoard (§9.3) — the stage board shared by leads and orders. Generic
  * over the record because leads and orders differ only in what a card says;
@@ -80,8 +81,8 @@ export function KanbanBoard<T extends BoardItem>({
               <span
                 aria-hidden="true"
                 style={{
-                  width: 8,
-                  height: 8,
+                  width: rem(8),
+                  height: rem(8),
                   borderRadius: '50%',
                   background: stage.colour ?? 'var(--line-strong)',
                   flex: 'none',

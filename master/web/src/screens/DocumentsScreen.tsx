@@ -56,6 +56,7 @@ import {
   Textarea,
   formatBytes,
   formatDateTime,
+  rem,
   t,
   useToast,
   type DataTableColumn,
@@ -239,20 +240,20 @@ function TemplatesTab({
     {
       key: 'type',
       header: t('documents.templates.colType'),
-      width: '190px',
+      width: rem(190),
       render: (template) => t(DOCUMENT_TYPE_KEY[template.documentType]),
     },
     {
       key: 'paper',
       header: t('documents.templates.colPaper'),
-      width: '150px',
+      width: rem(150),
       render: (template) =>
         `${template.paperSize} · ${t(`documents.orientation.${template.orientation}`)}`,
     },
     {
       key: 'rates',
       header: t('documents.templates.colRates'),
-      width: '110px',
+      width: rem(110),
       render: (template) =>
         template.showRates ? (
           <StatusPill tone="ok">{t('documents.templates.ratesShown')}</StatusPill>
@@ -263,13 +264,13 @@ function TemplatesTab({
     {
       key: 'updated',
       header: t('documents.templates.colUpdated'),
-      width: '170px',
+      width: rem(170),
       render: (template) => formatDateTime(template.updatedAt),
     },
     {
       key: 'actions',
       header: '',
-      width: '110px',
+      width: rem(110),
       align: 'right',
       render: (template) =>
         canDelete ? (
@@ -989,7 +990,7 @@ function ExportsTab({ revision }: { revision: number }) {
     {
       key: 'when',
       header: t('documents.exports.colWhen'),
-      width: '170px',
+      width: rem(170),
       render: (row) => formatDateTime(row.createdAt),
     },
     {
@@ -1004,19 +1005,19 @@ function ExportsTab({ revision }: { revision: number }) {
     {
       key: 'type',
       header: t('documents.exports.colType'),
-      width: '170px',
+      width: rem(170),
       render: (row) => t(DOCUMENT_TYPE_KEY[row.documentType]),
     },
     {
       key: 'subject',
       header: t('documents.exports.colSubject'),
-      width: '200px',
+      width: rem(200),
       render: (row) => row.subjectLabel,
     },
     {
       key: 'template',
       header: t('documents.exports.colTemplate'),
-      width: '160px',
+      width: rem(160),
       // Denormalised on the export row, so this still reads correctly after
       // the template was renamed or deleted.
       render: (row) => row.templateName,
@@ -1024,7 +1025,7 @@ function ExportsTab({ revision }: { revision: number }) {
     {
       key: 'rates',
       header: t('documents.exports.colRates'),
-      width: '110px',
+      width: rem(110),
       render: (row) =>
         row.ratesIncluded ? (
           <StatusPill tone="accent">{t('documents.exports.withRates')}</StatusPill>
@@ -1035,27 +1036,27 @@ function ExportsTab({ revision }: { revision: number }) {
     {
       key: 'pages',
       header: t('documents.exports.colPages'),
-      width: '80px',
+      width: rem(80),
       align: 'right',
       render: (row) => String(row.pageCount),
     },
     {
       key: 'size',
       header: t('documents.exports.colSize'),
-      width: '90px',
+      width: rem(90),
       align: 'right',
       render: (row) => formatBytes(row.byteSize),
     },
     {
       key: 'by',
       header: t('documents.exports.colRenderedBy'),
-      width: '150px',
+      width: rem(150),
       render: (row) => row.renderedByName ?? t('documents.exports.renderedByPanel'),
     },
     {
       key: 'download',
       header: '',
-      width: '120px',
+      width: rem(120),
       align: 'right',
       render: (row) => (
         <ButtonLink href={api.documentExportUrl(row.id)} variant="secondary" size="sm">

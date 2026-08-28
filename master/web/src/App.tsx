@@ -25,27 +25,33 @@ import { ApiError, api } from './api';
 import {
   AppShell,
   Avatar,
+  BP_NARROW,
   Clock,
   FilterBarOutlet,
   FilterBarProvider,
   GalleryScreen,
   Icon,
-  SaveShortcutProvider,
-  Splash,
   IconButton,
   ResetProvider,
+  SaveShortcutProvider,
   ScreenHost,
-  type ScreenSpec,
+  Splash,
   SubNavProvider,
   ToastProvider,
   TopbarActionsOutlet,
   TopbarActionsProvider,
+  loadSidebarMode,
+  rem,
+  storeSidebarMode,
   t,
   useClearSubNav,
+  useMediaQuery,
   useResetGate,
   useSubNavState,
   type NavGroup,
   type NavItem,
+  type ScreenSpec,
+  type SidebarMode,
 } from '@orderbook/ui';
 import { SearchBox } from './components/SearchBox';
 import { AccessScreen } from './screens/AccessScreen';
@@ -154,7 +160,24 @@ function MasterPanel() {
   const [bootError, setBootError] = useState<string | null>(null);
   const [bootAttempt, setBootAttempt] = useState(0);
   const [route, setRoute] = useState<Route>(readHash() === 'gallery' ? 'gallery' : '');
-  const [collapsed, setCollapsed] = useState(false);
+  /*
+   * Three states, not two. 'auto' follows the window — which is what makes
+   * 1024x768 usable without the operator having to do anything — while 'open'
+   * and 'closed' are a deliberate override that sticks across restarts. The
+   * shell still takes a plain boolean; resolving it here keeps `AppShell`
+   * unaware that any of this exists.
+   */
+  const narrow = useMediaQuery(BP_NARROW);
+  const [sidebarMode, setSidebarMode] = useState<SidebarMode>(() => loadSidebarMode());
+  const collapsed = sidebarMode === 'auto' ? narrow : sidebarMode === 'closed';
+
+  function toggleSidebar(): void {
+    // Toggling from 'auto' commits to the opposite of what auto currently
+    // shows, which is what the click appears to promise.
+    const next: SidebarMode = collapsed ? 'open' : 'closed';
+    setSidebarMode(next);
+    storeSidebarMode(next);
+  }
   const [syncPopover, setSyncPopover] = useState(false);
 
   // Cold start. Each step reports itself to the splash on the way past, and a
@@ -533,7 +556,7 @@ function MasterPanel() {
       >
         {t('footer.designSystem')}
       </a>
-      <span className="ob-mono" style={{ fontSize: '10.5px', color: 'var(--fg-tertiary)' }}>
+      <span className="ob-mono" style={{ fontSize: rem(10.5), color: 'var(--fg-tertiary)' }}>
         v{__APP_VERSION__}
       </span>
       <Clock />
@@ -552,7 +575,7 @@ function MasterPanel() {
         style={{
           left: 'var(--s-12)',
           bottom: 'calc(var(--shell-footer-h) + var(--s-8))',
-          width: 300,
+          width: rem(300),
           padding: 'var(--s-16)',
         }}
       >
@@ -666,7 +689,10 @@ function MasterPanel() {
         />
       ),
     },
-    { id: 'updates', render: () => <UpdatesScreen panels={panels} permissions={user.permissions} /> },
+    {
+      id: 'updates',
+      render: () => <UpdatesScreen panels={panels} permissions={user.permissions} />,
+    },
     { id: 'settings', render: () => <SettingsScreen /> },
   ];
 
@@ -692,7 +718,7 @@ function MasterPanel() {
           activeId={activeId}
           onNavigate={navigate}
           collapsed={collapsed}
-          onToggleCollapsed={() => setCollapsed((value) => !value)}
+          onToggleCollapsed={toggleSidebar}
           topbar={topbar}
           filterbar={<FilterBarOutlet />}
           footer={footer}

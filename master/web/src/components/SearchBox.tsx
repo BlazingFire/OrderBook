@@ -14,6 +14,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { SearchHit, SearchHitKind } from '@orderbook/shared';
 
+import { rem } from '@orderbook/ui';
+
 import { api } from '../api';
 
 const KIND_LABEL: Record<SearchHitKind, string> = {
@@ -61,7 +63,7 @@ export function SearchBox({ onOpen }: { onOpen: (hit: SearchHit) => void }) {
   }, []);
 
   return (
-    <div ref={container} style={{ position: 'relative', width: 320 }}>
+    <div ref={container} style={{ position: 'relative', width: rem(320) }}>
       <input
         value={term}
         placeholder="Search everything…"
@@ -81,7 +83,7 @@ export function SearchBox({ onOpen }: { onOpen: (hit: SearchHit) => void }) {
             zIndex: 20,
             marginTop: 4,
             padding: 6,
-            maxHeight: 360,
+            maxHeight: rem(360),
             overflowY: 'auto',
           }}
         >

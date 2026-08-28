@@ -1,3 +1,4 @@
+import { rem } from './rem.js';
 /**
  * Form foundation (§9): Input, NumberInput, Select, Textarea, DateField,
  * Checkbox, Radio, Switch, Label, HelperText, FieldError, and FormField — the
@@ -164,7 +165,7 @@ export function Checkbox({
           </svg>
         )}
         {indeterminate && (
-          <span style={{ width: 8, height: 2, background: 'currentColor', borderRadius: 1 }} />
+          <span style={{ width: rem(8), height: 2, background: 'currentColor', borderRadius: 1 }} />
         )}
       </span>
       {label != null && <span>{label}</span>}

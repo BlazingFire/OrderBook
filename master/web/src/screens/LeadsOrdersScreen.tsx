@@ -23,6 +23,7 @@ import {
   Tabs,
   formatDateTime,
   formatMoney,
+  rem,
   t,
   useFilterBar,
   type DataTableColumn,
@@ -152,7 +153,7 @@ export function LeadsOrdersScreen({ revision }: Props) {
     {
       key: 'id',
       header: t('leadsOrders.orders.column.order'),
-      width: '120px',
+      width: rem(120),
       render: (order) => (
         <span className="ob-mono" style={{ color: 'var(--fg-secondary)' }}>
           {order.id}
@@ -167,7 +168,7 @@ export function LeadsOrdersScreen({ revision }: Props) {
     {
       key: 'lead',
       header: t('leadsOrders.orders.column.fromLead'),
-      width: '130px',
+      width: rem(130),
       render: (order) =>
         order.leadId ? (
           <span className="ob-mono" style={{ color: 'var(--fg-tertiary)' }}>
@@ -202,7 +203,7 @@ export function LeadsOrdersScreen({ revision }: Props) {
     {
       key: 'weight',
       header: t('leadsOrders.orders.column.weight'),
-      width: '110px',
+      width: rem(110),
       align: 'right',
       // Same convention as the Office Panel's order board: a manually entered
       // weight is marked, because it is the one number here nobody derived.
@@ -222,14 +223,14 @@ export function LeadsOrdersScreen({ revision }: Props) {
     {
       key: 'amount',
       header: t('leadsOrders.orders.column.amount'),
-      width: '120px',
+      width: rem(120),
       align: 'right',
       render: (order) => formatMoney(order.totalAmount ?? null),
     },
     {
       key: 'stage',
       header: t('leadsOrders.orders.column.stage'),
-      width: '170px',
+      width: rem(170),
       render: (order) => (
         <Select
           value={order.stageId}
@@ -254,7 +255,7 @@ export function LeadsOrdersScreen({ revision }: Props) {
     {
       key: 'actions',
       header: '',
-      width: '240px',
+      width: rem(240),
       render: (order) => (
         <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
           {order.dispatchedAt ? (
@@ -286,7 +287,7 @@ export function LeadsOrdersScreen({ revision }: Props) {
     {
       key: 'id',
       header: t('leadsOrders.leads.column.lead'),
-      width: '190px',
+      width: rem(190),
       render: (lead) => (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-6)' }}>
           <span className="ob-mono" style={{ color: 'var(--fg-secondary)' }}>
@@ -328,14 +329,14 @@ export function LeadsOrdersScreen({ revision }: Props) {
     {
       key: 'amount',
       header: t('leadsOrders.leads.column.amount'),
-      width: '120px',
+      width: rem(120),
       align: 'right',
       render: (lead) => formatMoney(lead.totalAmount ?? null),
     },
     {
       key: 'stage',
       header: t('leadsOrders.leads.column.stage'),
-      width: '170px',
+      width: rem(170),
       render: (lead) =>
         lead.convertedOrderId ? (
           <StatusPill tone="ok">{t('leadsOrders.leads.converted')}</StatusPill>
@@ -363,13 +364,13 @@ export function LeadsOrdersScreen({ revision }: Props) {
     {
       key: 'created',
       header: t('leadsOrders.leads.column.created'),
-      width: '160px',
+      width: rem(160),
       render: (lead) => <span className="ob-small">{formatDateTime(lead.createdAt)}</span>,
     },
     {
       key: 'actions',
       header: '',
-      width: '200px',
+      width: rem(200),
       render: (lead) => {
         const missingPackaging = lead.items.some((item) => !item.packaging?.trim());
         return (

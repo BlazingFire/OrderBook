@@ -1,3 +1,4 @@
+import { rem } from './rem.js';
 /**
  * Token gallery (6-UI-DESIGN.md §12 step 1–2): renders every token and every
  * foundation component state in one place. Reached at #/gallery — a developer
@@ -239,7 +240,7 @@ export function GalleryScreen() {
               key={name}
               className="ob-mono"
               style={{
-                fontSize: '11px',
+                fontSize: rem(11),
                 padding: '4px 10px',
                 borderRadius: 'var(--r-sm)',
                 border: '1px solid var(--line)',
@@ -288,7 +289,7 @@ export function GalleryScreen() {
               borderBottom: '1px solid var(--line)',
             }}
           >
-            <span className="ob-mono" style={{ color: 'var(--accent)', fontSize: '11px' }}>
+            <span className="ob-mono" style={{ color: 'var(--accent)', fontSize: rem(11) }}>
               {row.name}
             </span>
             <span className={row.className}>{row.sample}</span>
@@ -302,7 +303,7 @@ export function GalleryScreen() {
             padding: 'var(--s-12) 0',
           }}
         >
-          <span className="ob-mono" style={{ color: 'var(--accent)', fontSize: '11px' }}>
+          <span className="ob-mono" style={{ color: 'var(--accent)', fontSize: rem(11) }}>
             fingerprint
           </span>
           <span className="ob-fingerprint">
@@ -325,7 +326,7 @@ export function GalleryScreen() {
             >
               <span
                 style={{
-                  width: 14,
+                  width: rem(14),
                   height: `var(--s-${step})`,
                   background: 'var(--accent-tint)',
                   border: '1px solid var(--accent)',
@@ -344,8 +345,8 @@ export function GalleryScreen() {
                 key={radius}
                 className="ob-micro"
                 style={{
-                  width: 44,
-                  height: 28,
+                  width: rem(44),
+                  height: rem(28),
                   border: '1px solid var(--line-strong)',
                   borderRadius: `var(--r-${radius === 10 ? 'lg' : radius === 6 ? 'md' : 'sm'})`,
                   display: 'inline-flex',
@@ -369,7 +370,7 @@ export function GalleryScreen() {
               className={`ob-card ${elevation.cls}`}
               style={{
                 flex: '0 0 140px',
-                height: 64,
+                height: rem(64),
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -509,7 +510,7 @@ export function GalleryScreen() {
                   >
                     <td
                       className="ob-mono"
-                      style={{ fontSize: '12px', color: 'var(--fg-secondary)' }}
+                      style={{ fontSize: rem(12), color: 'var(--fg-secondary)' }}
                     >
                       {row.code}
                     </td>
@@ -566,7 +567,7 @@ export function GalleryScreen() {
           <p>Leads you create appear here, online or off.</p>
           <button className="ob-btn ob-btn--primary ob-btn--sm">New lead</button>
         </div>
-        <ul className="ob-timeline" style={{ maxWidth: 380 }}>
+        <ul className="ob-timeline" style={{ maxWidth: rem(380) }}>
           <li>
             <span className="dot dot--ok" />
             <div>

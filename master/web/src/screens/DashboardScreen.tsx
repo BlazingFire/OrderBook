@@ -8,7 +8,7 @@
 import type { ReactNode } from 'react';
 import type { DashboardSummary, OfficePanelWithPresence } from '@orderbook/shared';
 
-import { Card, EmptyState, Skeleton, t } from '@orderbook/ui';
+import { Card, EmptyState, Skeleton, rem, t } from '@orderbook/ui';
 
 interface Props {
   summary: DashboardSummary | null;
@@ -118,8 +118,8 @@ export function DashboardScreen({ summary, panels, onOpenConflicts }: Props) {
                 <span
                   aria-hidden="true"
                   style={{
-                    width: 6,
-                    height: 6,
+                    width: rem(6),
+                    height: rem(6),
                     borderRadius: '50%',
                     flex: 'none',
                     background: panel.isConnected ? 'var(--state-ok)' : 'var(--line-strong)',

@@ -42,6 +42,7 @@ import {
   SkeletonRows,
   StatusPill,
   formatDateTime,
+  rem,
   t,
   useColourHex,
   useFilterBar,
@@ -210,7 +211,7 @@ export function InventoryScreen({ revision }: Props) {
     {
       key: 'code',
       header: t('inventory.table.code'),
-      width: '110px',
+      width: rem(110),
       render: (level) => <span className="ob-mono">{level.productCode}</span>,
     },
     {
@@ -221,27 +222,27 @@ export function InventoryScreen({ revision }: Props) {
     {
       key: 'colour',
       header: t('inventory.table.colour'),
-      width: '150px',
+      width: rem(150),
       render: (level) => <ColourName name={level.colour} hex={colourHex(level.colour)} />,
     },
     {
       key: 'onHand',
       header: t('inventory.table.onHand'),
-      width: '90px',
+      width: rem(90),
       align: 'right',
       render: (level) => level.quantityBoxes,
     },
     {
       key: 'reserved',
       header: t('inventory.table.reserved'),
-      width: '90px',
+      width: rem(90),
       align: 'right',
       render: (level) => String(level.reservedBoxes),
     },
     {
       key: 'free',
       header: t('inventory.table.free'),
-      width: '90px',
+      width: rem(90),
       align: 'right',
       render: (level) => (
         <span
@@ -255,7 +256,7 @@ export function InventoryScreen({ revision }: Props) {
     {
       key: 'reorder',
       header: t('inventory.table.reorder'),
-      width: '110px',
+      width: rem(110),
       align: 'right',
       render: (level) => (
         <NumberInput
@@ -282,7 +283,7 @@ export function InventoryScreen({ revision }: Props) {
     {
       key: 'status',
       header: t('inventory.table.status'),
-      width: '100px',
+      width: rem(100),
       render: (level) =>
         level.isLow ? (
           <StatusPill tone="offline">{t('inventory.status.low')}</StatusPill>
@@ -296,7 +297,7 @@ export function InventoryScreen({ revision }: Props) {
     {
       key: 'when',
       header: t('inventory.movements.table.when'),
-      width: '150px',
+      width: rem(150),
       render: (movement) => formatDateTime(movement.createdAt),
     },
     {
@@ -307,19 +308,19 @@ export function InventoryScreen({ revision }: Props) {
     {
       key: 'colour',
       header: t('inventory.movements.table.colour'),
-      width: '130px',
+      width: rem(130),
       render: (movement) => <ColourName name={movement.colour} hex={colourHex(movement.colour)} />,
     },
     {
       key: 'type',
       header: t('inventory.movements.table.type'),
-      width: '110px',
+      width: rem(110),
       render: (movement) => t(MOVEMENT_TYPE_KEY[movement.movementType]),
     },
     {
       key: 'change',
       header: t('inventory.movements.table.change'),
-      width: '90px',
+      width: rem(90),
       align: 'right',
       render: (movement) => (
         <span
@@ -335,7 +336,7 @@ export function InventoryScreen({ revision }: Props) {
     {
       key: 'reference',
       header: t('inventory.movements.table.reference'),
-      width: '170px',
+      width: rem(170),
       render: (movement) => (
         <span className="ob-small">
           {movement.referenceType}
@@ -356,19 +357,19 @@ export function InventoryScreen({ revision }: Props) {
     {
       key: 'when',
       header: t('inventory.movements.table.when'),
-      width: '112px',
+      width: rem(112),
       render: (movement) => formatDateTime(movement.createdAt),
     },
     {
       key: 'type',
       header: t('inventory.movements.table.type'),
-      width: '86px',
+      width: rem(86),
       render: (movement) => t(MOVEMENT_TYPE_KEY[movement.movementType]),
     },
     {
       key: 'change',
       header: t('inventory.movements.table.change'),
-      width: '72px',
+      width: rem(72),
       align: 'right',
       render: (movement) => (
         <span
@@ -384,7 +385,7 @@ export function InventoryScreen({ revision }: Props) {
     {
       key: 'reference',
       header: t('inventory.movements.table.reference'),
-      width: '112px',
+      width: rem(112),
       render: (movement) => (
         <span className="ob-small">
           {movement.referenceType}

@@ -35,6 +35,7 @@ import {
   SkeletonRows,
   StatusPill,
   formatDateTime,
+  rem,
   t,
   useFilterBar,
   useSubNav,
@@ -473,7 +474,7 @@ function UsersTab({
           aria-label={t('access.users.filterRoleLabel')}
           value={roleFilter}
           onChange={(event) => setRoleFilter(event.target.value)}
-          style={{ width: 160 }}
+          style={{ width: rem(160) }}
         >
           <option value="">{t('access.users.filterRoleAll')}</option>
           {roles.map((role) => (
@@ -501,7 +502,7 @@ function UsersTab({
           aria-label={t('access.users.sortLabel')}
           value={sort}
           onChange={(event) => setSort(event.target.value as typeof sort)}
-          style={{ width: 150 }}
+          style={{ width: rem(150) }}
         >
           <option value="created">{t('access.users.sortCreated')}</option>
           <option value="name">{t('access.users.sortName')}</option>
@@ -516,7 +517,7 @@ function UsersTab({
     {
       key: 'avatar',
       header: '',
-      width: '44px',
+      width: rem(44),
       render: (user) => <Avatar name={user.displayName} avatar={user.avatar} size="sm" />,
     },
     {
@@ -537,13 +538,13 @@ function UsersTab({
     {
       key: 'username',
       header: t('access.users.colUsername'),
-      width: '150px',
+      width: rem(150),
       render: (user) => <span className="ob-small">{user.username}</span>,
     },
     {
       key: 'id',
       header: t('access.users.colId'),
-      width: '180px',
+      width: rem(180),
       render: (user) => <IdField value={user.id} />,
     },
     {
@@ -557,13 +558,13 @@ function UsersTab({
        */
       key: 'role',
       header: t('access.users.colRole'),
-      width: '160px',
+      width: rem(160),
       render: (user) => <span>{user.roleName}</span>,
     },
     {
       key: 'status',
       header: t('access.users.colStatus'),
-      width: '110px',
+      width: rem(110),
       render: (user) => (
         <StatusPill tone={user.isActive ? 'ok' : 'default'}>
           {user.isActive ? t('access.users.statusActive') : t('access.users.statusInactive')}
@@ -573,7 +574,7 @@ function UsersTab({
     {
       key: 'lastSignIn',
       header: t('access.users.colLastSignIn'),
-      width: '160px',
+      width: rem(160),
       render: (user) => <span className="ob-small">{formatDateTime(user.lastSignInAt)}</span>,
     },
     {
@@ -584,7 +585,7 @@ function UsersTab({
        */
       key: 'actions',
       header: '',
-      width: '110px',
+      width: rem(110),
       render: (user) => (
         <div
           style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}
@@ -1207,27 +1208,27 @@ function RolesTab({
     {
       key: 'tier',
       header: t('access.roles.colTier'),
-      width: '130px',
+      width: rem(130),
       render: (role) => <StatusPill tone={tierTone(role.tier)}>{role.tier}</StatusPill>,
     },
     {
       key: 'permissions',
       header: t('access.roles.colPermissions'),
-      width: '130px',
+      width: rem(130),
       align: 'right',
       render: (role) => <span className="ob-data">{role.permissions.length}</span>,
     },
     {
       key: 'users',
       header: t('access.roles.colUsers'),
-      width: '100px',
+      width: rem(100),
       align: 'right',
       render: (role) => <span className="ob-data">{role.userCount}</span>,
     },
     {
       key: 'actions',
       header: '',
-      width: '110px',
+      width: rem(110),
       render: (role) => (
         <div
           style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}

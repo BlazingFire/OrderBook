@@ -49,6 +49,7 @@ import {
   Switch,
   Textarea,
   formatMoney,
+  rem,
   t,
   useColourHex,
   useResetGuard,
@@ -335,7 +336,9 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
   );
 
   return (
-    <div style={{ maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
+    <div
+      style={{ maxWidth: rem(720), display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h1 className="ob-title" style={{ margin: 0 }}>
           {t('lead.add.title')}
@@ -358,7 +361,10 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-16)' }}>
               <span className="ob-body-strong">{selectedParty.name}</span>
-              <span className="ob-mono" style={{ fontSize: 11.5, color: 'var(--fg-tertiary)' }}>
+              <span
+                className="ob-mono"
+                style={{ fontSize: rem(11.5), color: 'var(--fg-tertiary)' }}
+              >
                 {selectedParty.partyCode}
               </span>
               {selectedParty.phone && <span className="ob-small">{selectedParty.phone}</span>}
@@ -419,11 +425,14 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
           {lines.map((line, index) => (
             <Card key={`${line.productId}-${index}`}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
-                <span className="ob-body-strong" style={{ fontSize: 13.5 }}>
+                <span className="ob-body-strong" style={{ fontSize: rem(13.5) }}>
                   {line.productName}
                 </span>
                 {line.code && (
-                  <span className="ob-mono" style={{ fontSize: 11, color: 'var(--fg-tertiary)' }}>
+                  <span
+                    className="ob-mono"
+                    style={{ fontSize: rem(11), color: 'var(--fg-tertiary)' }}
+                  >
                     {line.code}
                   </span>
                 )}

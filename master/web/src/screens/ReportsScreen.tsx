@@ -44,6 +44,7 @@ import {
   SkeletonRows,
   Tabs,
   formatMoney,
+  rem,
   t,
   type DataTableColumn,
   type TabItem,
@@ -181,7 +182,7 @@ export function ReportsScreen({ revision, permissions }: Props) {
 
       <Card>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--s-16)' }}>
-          <div style={{ width: '200px' }}>
+          <div style={{ width: rem(200) }}>
             <FormField label={t('reports.range.period')}>
               {(id) => (
                 <Select
@@ -203,7 +204,7 @@ export function ReportsScreen({ revision, permissions }: Props) {
               are resolved against the Master's own calendar, not the browser's. */}
           {period === 'custom' && (
             <>
-              <div style={{ width: '190px' }}>
+              <div style={{ width: rem(190) }}>
                 <FormField
                   label={t('reports.range.fromMonth')}
                   required
@@ -220,7 +221,7 @@ export function ReportsScreen({ revision, permissions }: Props) {
                   )}
                 </FormField>
               </div>
-              <div style={{ width: '190px' }}>
+              <div style={{ width: rem(190) }}>
                 <FormField
                   label={t('reports.range.toMonth')}
                   hint={t('reports.range.toMonthHint')}
@@ -324,7 +325,12 @@ function DispatchesView({ report }: { report: DispatchesReport }) {
   }
 
   const monthColumns: DataTableColumn<DispatchMonthBucket>[] = [
-    { key: 'month', header: t('reports.column.month'), width: '140px', render: (row) => row.month },
+    {
+      key: 'month',
+      header: t('reports.column.month'),
+      width: rem(140),
+      render: (row) => row.month,
+    },
     // Only the month is pinned: DataTable turns a column with no width into a
     // `1fr` track, and a table whose every track is fixed leaves the rest of
     // the row as dead space when the money column is dropped.
@@ -357,7 +363,7 @@ function DispatchesView({ report }: { report: DispatchesReport }) {
     {
       key: 'boxes',
       header: t('reports.column.boxes'),
-      width: '120px',
+      width: rem(120),
       align: 'right',
       render: (row) => row.boxCount,
     },
@@ -411,7 +417,12 @@ function LeadOutcomesView({ report }: { report: LeadOutcomesReport }) {
   }
 
   const columns: DataTableColumn<LeadOutcomeMonthBucket>[] = [
-    { key: 'month', header: t('reports.column.month'), width: '140px', render: (row) => row.month },
+    {
+      key: 'month',
+      header: t('reports.column.month'),
+      width: rem(140),
+      render: (row) => row.month,
+    },
     {
       key: 'converted',
       header: t('reports.column.converted'),
@@ -459,19 +470,19 @@ function TopPartiesView({ report }: { report: TopPartiesReport }) {
     {
       key: 'code',
       header: t('reports.column.code'),
-      width: '120px',
+      width: rem(120),
       render: (row) => <span className="ob-mono">{row.partyCode ?? '—'}</span>,
     },
     {
       key: 'city',
       header: t('reports.column.city'),
-      width: '180px',
+      width: rem(180),
       render: (row) => row.city ?? '—',
     },
     {
       key: 'orders',
       header: t('reports.column.orders'),
-      width: '120px',
+      width: rem(120),
       align: 'right',
       render: (row) => row.orderCount,
     },
@@ -480,7 +491,7 @@ function TopPartiesView({ report }: { report: TopPartiesReport }) {
           {
             key: 'value',
             header: t('reports.column.value'),
-            width: '160px',
+            width: rem(160),
             align: 'right' as const,
             render: (row: TopPartyRow) => formatMoney(row.totalValue ?? null),
           },
@@ -493,14 +504,14 @@ function TopPartiesView({ report }: { report: TopPartiesReport }) {
     {
       key: 'parties',
       header: t('reports.column.parties'),
-      width: '120px',
+      width: rem(120),
       align: 'right',
       render: (row) => row.partyCount,
     },
     {
       key: 'orders',
       header: t('reports.column.orders'),
-      width: '120px',
+      width: rem(120),
       align: 'right',
       render: (row) => row.orderCount,
     },
@@ -509,7 +520,7 @@ function TopPartiesView({ report }: { report: TopPartiesReport }) {
           {
             key: 'value',
             header: t('reports.column.value'),
-            width: '160px',
+            width: rem(160),
             align: 'right' as const,
             render: (row: TopCityRow) => formatMoney(row.totalValue ?? null),
           },

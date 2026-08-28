@@ -19,6 +19,7 @@ import type { MutationResult, SearchHit } from '@orderbook/shared';
 import { ApiError, api, type ConnectionInfo, type LocalView, type PanelSession } from './api';
 import {
   AppShell,
+  BP_NARROW,
   BusyMark,
   Clock,
   FilterBarOutlet,
@@ -29,14 +30,19 @@ import {
   ResetProvider,
   SaveShortcutProvider,
   ScreenHost,
-  type ScreenSpec,
   Splash,
   ToastProvider,
-  useResetGate,
+  loadSidebarMode,
+  rem,
+  storeSidebarMode,
   t,
+  useMediaQuery,
+  useResetGate,
   useToast,
   type NavGroup,
   type NavItem,
+  type ScreenSpec,
+  type SidebarMode,
 } from '@orderbook/ui';
 import { AddLeadScreen } from './screens/AddLeadScreen';
 import { CatalogScreen } from './screens/CatalogScreen';
@@ -114,7 +120,24 @@ function OfficePanel() {
 
   // Shell chrome state.
   const [route, setRoute] = useState(readHash);
-  const [collapsed, setCollapsed] = useState(false);
+  /*
+   * Three states, not two. 'auto' follows the window — which is what makes
+   * 1024x768 usable without the operator having to do anything — while 'open'
+   * and 'closed' are a deliberate override that sticks across restarts. The
+   * shell still takes a plain boolean; resolving it here keeps `AppShell`
+   * unaware that any of this exists.
+   */
+  const narrow = useMediaQuery(BP_NARROW);
+  const [sidebarMode, setSidebarMode] = useState<SidebarMode>(() => loadSidebarMode());
+  const collapsed = sidebarMode === 'auto' ? narrow : sidebarMode === 'closed';
+
+  function toggleSidebar(): void {
+    // Toggling from 'auto' commits to the opposite of what auto currently
+    // shows, which is what the click appears to promise.
+    const next: SidebarMode = collapsed ? 'open' : 'closed';
+    setSidebarMode(next);
+    storeSidebarMode(next);
+  }
   const [splashDone, setSplashDone] = useState(false);
   const [syncPopover, setSyncPopover] = useState(false);
   // Cold start: how many boot steps are behind us, and why we stopped if we did.
@@ -650,7 +673,7 @@ function OfficePanel() {
       >
         {t('footer.designSystem')}
       </a>
-      <span className="ob-mono" style={{ fontSize: '10.5px', color: 'var(--fg-tertiary)' }}>
+      <span className="ob-mono" style={{ fontSize: rem(10.5), color: 'var(--fg-tertiary)' }}>
         v{__APP_VERSION__}
       </span>
       <Clock />
@@ -671,7 +694,7 @@ function OfficePanel() {
             style={{
               left: 'var(--s-12)',
               bottom: 'calc(var(--shell-footer-h) + var(--s-8))',
-              width: 300,
+              width: rem(300),
               padding: 'var(--s-16)',
             }}
           >
@@ -702,7 +725,7 @@ function OfficePanel() {
               <dt>{t('sync.lastSuccessful')}</dt>
               <dd>{lastSynced}</dd>
               <dt>{t('sync.pairedServer')}</dt>
-              <dd className="ob-mono" style={{ fontSize: '11.5px' }}>
+              <dd className="ob-mono" style={{ fontSize: rem(11.5) }}>
                 {connection.masterHost ?? '—'}
               </dd>
             </dl>
@@ -887,7 +910,7 @@ function OfficePanel() {
           activeId={activeId}
           onNavigate={goToTab}
           collapsed={collapsed}
-          onToggleCollapsed={() => setCollapsed((value) => !value)}
+          onToggleCollapsed={toggleSidebar}
           topbar={topbar}
           filterbar={<FilterBarOutlet />}
           footer={footer}

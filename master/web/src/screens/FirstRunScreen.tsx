@@ -20,6 +20,7 @@ import {
   Input,
   Logo,
   OfflineBanner,
+  rem,
   t,
 } from '@orderbook/ui';
 
@@ -50,7 +51,7 @@ export function FirstRunScreen({ onComplete }: Props) {
       <div
         style={{
           width: '100%',
-          maxWidth: 420,
+          maxWidth: rem(420),
           display: 'flex',
           flexDirection: 'column',
           gap: 'var(--s-20)',
@@ -110,7 +111,7 @@ function SetupFlow({ onBack, onComplete }: { onBack: () => void; onComplete: () 
     return (
       <div
         style={{
-          maxWidth: 640,
+          maxWidth: rem(640),
           margin: '0 auto',
           padding: 'var(--s-40) var(--s-16)',
           display: 'flex',
@@ -191,7 +192,7 @@ function SetupFlow({ onBack, onComplete }: { onBack: () => void; onComplete: () 
       <div
         style={{
           width: '100%',
-          maxWidth: 420,
+          maxWidth: rem(420),
           display: 'flex',
           flexDirection: 'column',
           gap: 'var(--s-20)',
@@ -294,7 +295,7 @@ function RestoreFlow({ onBack, onComplete }: { onBack: () => void; onComplete: (
       <div
         style={{
           width: '100%',
-          maxWidth: 480,
+          maxWidth: rem(480),
           display: 'flex',
           flexDirection: 'column',
           gap: 'var(--s-20)',
