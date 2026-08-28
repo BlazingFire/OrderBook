@@ -65,15 +65,39 @@ Done so far:
   path, missing crash handlers, and logs going nowhere. `PanelHealth` in
   `shared` is now the one contract both panels answer with.
 
+- **Stage 3 — one UI package and one string catalogue.** The two forked
+  dictionaries (1029 + 501 keys) folded into `shared/src/i18n/`, and the
+  hand-duplicated `web/src/ui/` extracted into `@orderbook/ui`. Net deletion of
+  ~4,300 lines. React 19 is deliberately *not* done yet — see below.
+
 **Running the shell from source:** `npm run build:shell` compiles it and copies
 the output into `master/electron/dist` and `office/electron/dist` (the shell
 locates its server by walking up two levels, and electron-builder packages
 `electron/dist/**` from inside the panel folder). Then
 `npx electron master/electron/dist/master.main.js`.
 
-Next: **Stage 3**, extracting the hand-duplicated `web/src/ui/` into one
-package and folding the two forked string dictionaries. It is the largest and
-riskiest stage and it blocks every other UI stage.
+**Where the UI lives now:** all 44 shared modules are in `ui/src`, exported
+through one barrel, and consumed as *source* — Vite must not pre-bundle it
+(`optimizeDeps.exclude`), because `assetsInlineLimit: 0` has to own font
+emission. The three things that genuinely differ per panel (panel name,
+default theme, theme storage key) are declared by `configureUi()` in each
+`main.tsx` before `initAppearance()`. Adding a component means adding a file
+and a barrel line; `master/tests/no-duplicate-ui.test.ts` fails if a panel
+grows its own `ui/` again.
+
+Next, in order:
+
+1. **React 19.2** — three known type breakages, all in files that now live in
+   `ui/src`, so one edit each: `Tooltip.tsx`'s zero-argument `useRef`, and the
+   `RefObject<T>` → `RefObject<T | null>` widening in `useOverlay.ts` and
+   `Combobox.tsx`. Stage 5 depends on `<Activity>` existing, so verify
+   `!!require('react').Activity` immediately after upgrading, before anything
+   is scheduled around it.
+2. **Stage 5** — screen keep-alive, which is requirement 4 (a tab keeping its
+   state). Read workstream B part B first: three separate things in the repo
+   depend on effect teardown meaning *unmount*, and each needs its own fix.
+3. **Stage 4** — settings table and the password vault, which unblocks the AI
+   config and the connector secrets. Independent of the UI stages.
 
 ## Key decisions made so far (do not re-decide these without a reason)
 
