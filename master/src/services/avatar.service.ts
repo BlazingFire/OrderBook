@@ -35,6 +35,7 @@ import * as activityLog from '../repositories/activity-log.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
 import { nextHlc } from '../repositories/identity.repository.js';
 import { publishChange } from './change-bus.js';
+import { throughRasterGate } from './image.service.js';
 
 /**
  * Three square sizes, and no more. `full` is what a profile screen shows,
@@ -88,7 +89,12 @@ export async function uploadAvatar(
   if (!existing) throw new NotFoundError('User');
 
   const avatarId = randomUUID();
-  const stored = await normalizeAndStore(actor.tenantId, avatarId, input.fileBuffer);
+  // Through the same one-at-a-time gate as product images: both pipelines
+  // contend for one libvips heap, so gating them separately would bound each
+  // at one and the pair at two.
+  const stored = await throughRasterGate(() =>
+    normalizeAndStore(actor.tenantId, avatarId, input.fileBuffer),
+  );
 
   await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);

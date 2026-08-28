@@ -9,15 +9,14 @@
  * rows are rate-masked per actor while a `data:changed` payload is raw. What
  * has to match is *which records, at which versions*.
  *
- * The replay runs the panel's own `applyChangeToSnapshot`, imported across the
- * package boundary on purpose: a lookalike written here would pass while the
- * panel diverged.
+ * The replay runs the panel's own `applyChangeToSnapshot` — the same shared
+ * function the panel's server and browser both call. A lookalike written here
+ * would pass while the panel diverged.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { applyChangeToSnapshot } from '../../office/src/sync/apply-change.js';
-import type { SyncSnapshot } from '@orderbook/shared';
+import { applyChangeToSnapshot, type SyncSnapshot } from '@orderbook/shared';
 
 import type { ActorContext } from '../src/domain/actor.js';
 import { BOOT_ID, currentSeq, resetChangeRing } from '../src/realtime/change-ring.js';

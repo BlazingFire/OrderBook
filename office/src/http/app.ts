@@ -1329,6 +1329,80 @@ function respondToRestoreError(res: Response, error: unknown): void {
 }
 
 /**
+ * Every browser currently watching this panel.
+ *
+ * Module-level, with **one** set of listeners on the connection rather than one
+ * per stream. The listeners are what makes this worth restructuring: `pushView`
+ * used to build and stringify the whole masked snapshot once per open stream
+ * per event, and a panel with the app open in two tabs paid for it twice.
+ */
+const streams = new Set<(type: string, data: unknown) => void>();
+
+/** How long a burst of view-changing events is allowed to coalesce. */
+const VIEW_PUSH_DEBOUNCE_MS = 120;
+
+let viewPushTimer: NodeJS.Timeout | null = null;
+
+/**
+ * Push the merged view to every open stream, at most once per 120 ms.
+ *
+ * Built **once** and written to every stream: `forCurrentUser` reads the one
+ * signed-in session this panel has, so the payload is identical for all of
+ * them. Returns immediately with nothing open, so a panel with no browser on it
+ * does not serialise a snapshot every time the outbox moves.
+ */
+function schedulePushView(): void {
+  if (streams.size === 0 || viewPushTimer) return;
+
+  viewPushTimer = setTimeout(() => {
+    viewPushTimer = null;
+    if (streams.size === 0) return;
+
+    void localStore
+      .getView()
+      .then((view) => {
+        if (!view) return;
+        const payload = forCurrentUser(view);
+        for (const send of streams) send('snapshot', payload);
+      })
+      .catch((error: unknown) => {
+        log.warn(`Could not push the view: ${error instanceof Error ? error.message : String(error)}`);
+      });
+  }, VIEW_PUSH_DEBOUNCE_MS);
+
+  viewPushTimer.unref?.();
+}
+
+function broadcast(type: string, data: unknown): void {
+  for (const send of streams) send(type, data);
+}
+
+/*
+ * Registered once, at module load, rather than per stream.
+ *
+ * `change` deliberately keeps sending the small masked per-record frame rather
+ * than being folded into `schedulePushView`: routing it into a whole-view push
+ * would replace a few hundred bytes with the entire snapshot, which is the
+ * amplifier this file is removing.
+ *
+ * Masked here because this is the last point that knows who is signed in: the
+ * Master publishes the raw record to every paired panel, nothing else on that
+ * connection being permission-scoped to one person. Without it, editing any
+ * lead or order pushed `rate`/`lineTotal`/`totalAmount` into the event stream
+ * of a browser whose own `/api/snapshot` had gone to the trouble of hiding them.
+ */
+// Optional-called: the office suites mock this module with a partial object,
+// and a belt-and-braces listener cap is not worth making them all fuller.
+masterConnection.setMaxListeners?.(0);
+masterConnection.on('status', (status: unknown) => broadcast('status', status));
+masterConnection.on('snapshot', schedulePushView);
+masterConnection.on('change', (event: DataChangedEvent) =>
+  broadcast('change', maskChangeEvent(event)),
+);
+masterConnection.on('conflict', (value: unknown) => broadcast('conflict', value));
+sync.onSyncEvent(schedulePushView);
+
+/**
  * Server-sent events rather than another Socket.IO hop: the browser only ever
  * listens here, and SSE reconnects on its own with no extra client library.
  */
@@ -1343,35 +1417,14 @@ function streamEvents(req: Request, res: Response): void {
     res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
   };
 
+  streams.add(send);
+
   send('status', masterConnection.getStatus());
-
-  // Both a fresh snapshot and a local queue change alter what the browser
-  // should render, so both re-send the merged view rather than the raw one.
-  const pushView = (): void => {
-    void localStore.getView().then((view) => {
-      // Masked for whoever is signed in now, exactly as /api/snapshot is — this
-      // is the same payload arriving by a different door.
-      if (view) send('snapshot', forCurrentUser(view));
-    });
-  };
-
-  pushView();
-
-  const onStatus = (status: unknown): void => send('status', status);
-  // Masked the same way `forCurrentUser` masks a snapshot: the Master publishes
-  // the raw record to every paired panel (nothing else on that connection is
-  // permission-scoped to one signed-in person), so this is the last point that
-  // knows who is actually signed in here. Without it, editing any lead or order
-  // pushed `rate`/`lineTotal`/`totalAmount` into the event stream of a browser
-  // whose own `/api/snapshot` had gone to the trouble of hiding them.
-  const onChange = (event: DataChangedEvent): void => send('change', maskChangeEvent(event));
-  const onConflict = (value: unknown): void => send('conflict', value);
-
-  masterConnection.on('status', onStatus);
-  masterConnection.on('snapshot', pushView);
-  masterConnection.on('change', onChange);
-  masterConnection.on('conflict', onConflict);
-  const offSync = sync.onSyncEvent(pushView);
+  // This stream's own first view, not the shared push: a browser that connects
+  // between bursts must not wait for the next one.
+  void localStore.getView().then((view) => {
+    if (view) send('snapshot', forCurrentUser(view));
+  });
 
   // Proxies and some browsers drop an idle event stream; a periodic comment
   // keeps it open without sending meaningful traffic.
@@ -1379,11 +1432,7 @@ function streamEvents(req: Request, res: Response): void {
 
   req.on('close', () => {
     clearInterval(keepAlive);
-    offSync();
-    masterConnection.off('status', onStatus);
-    masterConnection.off('snapshot', pushView);
-    masterConnection.off('change', onChange);
-    masterConnection.off('conflict', onConflict);
+    streams.delete(send);
   });
 }
 

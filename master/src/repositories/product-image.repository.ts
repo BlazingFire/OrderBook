@@ -145,3 +145,9 @@ export async function imageIdsForProduct(tenantId: string, productId: string, ru
 export async function deleteImage(tenantId: string, imageId: string, trx: TransactionContext): Promise<void> {
   await trx(TABLE).where({ tenant_id: tenantId, id: imageId }).delete();
 }
+
+/** Every image id this installation still has a row for, across all tenants. */
+export async function allImageIds(runner: Runner = db()): Promise<Set<string>> {
+  const rows = await runner(TABLE).select<Array<{ id: string }>>('id');
+  return new Set(rows.map((row) => row.id));
+}

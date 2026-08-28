@@ -26,6 +26,7 @@ import type {
   SyncDeltaCursor,
   SyncSnapshot,
 } from '@orderbook/shared';
+import { applyChangeToSnapshot } from '@orderbook/shared';
 
 import { createLogger } from '../lib/logger.js';
 import {
@@ -35,7 +36,6 @@ import {
   saveCredentials,
 } from '../services/credentials.store.js';
 import { buildReport, moveStorage } from '../services/panel-report.service.js';
-import { applyChangeToSnapshot } from '../sync/apply-change.js';
 import { observe } from '../sync/clock.js';
 import * as localStore from '../sync/local-store.js';
 import { flush, setTransport, stopSync } from '../sync/sync.service.js';
@@ -87,6 +87,9 @@ export interface ConnectionStatus {
 }
 
 type MasterSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
+
+/** How long the Master has to acknowledge a command before it counts as silence. */
+const ACK_TIMEOUT_MS = 15_000;
 
 /** How long a burst of non-upsertable changes is allowed to coalesce. */
 const REFRESH_DEBOUNCE_MS = 500;
@@ -427,39 +430,42 @@ class MasterConnection extends EventEmitter {
       throw new MasterCommandError('Not connected to the Master Panel', undefined, undefined, true);
     }
 
-    return new Promise<T>((resolve, reject) => {
-      const timeout = setTimeout(
-        () =>
-          reject(
-            new MasterCommandError('The Master Panel did not respond', undefined, undefined, true),
-          ),
-        15_000,
-      );
-
-      const ack = (result: CommandResult<T>): void => {
-        clearTimeout(timeout);
-        if (result.ok) {
-          resolve(result.data);
-          return;
+    /*
+     * Socket.IO's own ack timeout, not a hand-rolled one.
+     *
+     * The library already cancels the pending ack, drops the callback and
+     * rejects — a `setTimeout` beside it had to keep those three things in step
+     * by hand, and the same call is what `requestFromPanel` uses on the Master.
+     * Silence still has to be told apart from a refusal: a timeout means the
+     * Master may not be reachable and callers may retry, while an ack carrying
+     * an error means it answered and they must not.
+     */
+    let result: CommandResult<T>;
+    try {
+      result = (await (
+        socket as unknown as {
+          timeout: (ms: number) => { emitWithAck: (event: string, ...args: unknown[]) => Promise<CommandResult<T>> };
         }
+      )
+        .timeout(ACK_TIMEOUT_MS)
+        .emitWithAck(event as string, ...args)) as CommandResult<T>;
+    } catch {
+      throw new MasterCommandError('The Master Panel did not respond', undefined, undefined, true);
+    }
 
-        // The Master answered. Whatever it said, it was reachable — so this is a
-        // refusal, never silence, and callers must not treat it as an outage.
-        reject(
-          new MasterCommandError(
-            result.error,
-            result.code,
-            result.missingPermission,
-            false,
-            result.details,
-            result.messageKey,
-            result.params,
-          ),
-        );
-      };
+    if (result.ok) return result.data;
 
-      (socket.emit as (event: string, ...args: unknown[]) => void)(event as string, ...args, ack);
-    });
+    // The Master answered. Whatever it said, it was reachable — so this is a
+    // refusal, never silence, and callers must not treat it as an outage.
+    throw new MasterCommandError(
+      result.error,
+      result.code,
+      result.missingPermission,
+      false,
+      result.details,
+      result.messageKey,
+      result.params,
+    );
   }
 
   /**
@@ -612,7 +618,7 @@ class MasterConnection extends EventEmitter {
    * restart. `unref`'d, so a pending write never holds the process open.
    */
   private schedulePersist(seq: number | undefined): void {
-    if (this.bootId) localStore.noteApplied(seq, this.bootId);
+    localStore.noteApplied(seq, this.bootId);
     if (this.persistTimer) return;
 
     this.persistTimer = setTimeout(() => {

@@ -20,7 +20,7 @@
 
 import { createHash } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
-import { mkdir, rm, stat } from 'node:fs/promises';
+import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -131,6 +131,7 @@ export async function downloadUpdate(): Promise<{ path: string; manifest: Releas
     const existing = await stat(target);
     if (existing.size === available.sizeBytes) {
       log.info(`Reusing already-downloaded ${available.file}`);
+      await pruneOldDownloads(path.basename(target));
       return { path: target, manifest: available };
     }
   } catch {
@@ -159,5 +160,34 @@ export async function downloadUpdate(): Promise<{ path: string; manifest: Releas
   }
 
   log.info(`Downloaded ${available.file} (${available.version})`);
+  await pruneOldDownloads(path.basename(target));
   return { path: target, manifest: available };
+}
+
+/**
+ * Delete every installer in the updates folder except the one just proved good.
+ *
+ * These are ~100 MB each and nothing else ever removes them, so a panel that
+ * has taken four updates is holding 400 MB of files it will never open again.
+ * Run **after** the checksum passes, and on the already-intact early return
+ * too — the reuse path is the common one on a retry, and pruning only on a
+ * fresh download would mean the folder is tidied on exactly the runs where
+ * there was nothing stale to tidy.
+ *
+ * Failures are swallowed on purpose: on Windows a running installer holds a
+ * lock on its own file, and refusing to complete an update because last
+ * month's setup file is busy would be a worse outcome than the disk space.
+ *
+ * The Master needs no equivalent — its own update service reads a releases
+ * folder somebody else fills and downloads nothing.
+ */
+async function pruneOldDownloads(keep: string): Promise<void> {
+  try {
+    for (const entry of await readdir(updatesDir())) {
+      if (entry === keep) continue;
+      await rm(path.join(updatesDir(), entry), { force: true, recursive: true }).catch(() => {});
+    }
+  } catch {
+    // No folder, or unreadable. Nothing to prune either way.
+  }
 }

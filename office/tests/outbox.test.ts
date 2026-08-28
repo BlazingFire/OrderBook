@@ -333,3 +333,115 @@ describe('local view', () => {
     expect(await localStore.getView()).toBeNull();
   });
 });
+
+/**
+ * The merged view is built and stringified on every SSE push and on every
+ * `/api/snapshot`, so it is memoised — and the memo has to be keyed on
+ * something that actually moves. `setSnapshot` stores the object it is handed
+ * and a replayed change mutates that same object, so identity is useless: a
+ * memo keyed on the reference would hand back a stale view forever.
+ */
+describe('the view memo', () => {
+  const bare = {
+    parties: [],
+    products: [],
+    categories: [],
+    partyVariants: [],
+    leads: [],
+    orders: [],
+    stock: [],
+    pipelines: [],
+    optionLists: [],
+    customFields: [],
+    conflicts: [],
+    dashboard: { asOf: '2026-08-01T00:00:00.000Z' },
+    permissions: [],
+    serverHlc: '0000001700000000000-00000-MASTER',
+    serverTime: '2026-08-01T00:00:00.000Z',
+  };
+
+  it('returns the same object while nothing has changed', async () => {
+    const { localStore } = await loadModules();
+    await localStore.setSnapshot(bare);
+
+    expect(await localStore.getView()).toBe(await localStore.getView());
+  });
+
+  it('rebuilds when a change is applied in place', async () => {
+    const { localStore } = await loadModules();
+    await localStore.setSnapshot(bare);
+
+    const before = await localStore.getView();
+    // What a replayed or live change does: mutate the stored object and say so.
+    localStore.noteApplied(7, 'boot-1');
+
+    expect(await localStore.getView()).not.toBe(before);
+  });
+
+  it('rebuilds when the outbox moves', async () => {
+    const { localStore, outbox } = await loadModules();
+    await localStore.setSnapshot(bare);
+
+    const before = await localStore.getView();
+    await outbox.enqueue({
+      kind: 'party.create',
+      entity: 'party',
+      entityId: 'A3F9K2000000009',
+      payload: { name: 'Memo Traders' },
+    });
+
+    expect(await localStore.getView()).not.toBe(before);
+    expect(outbox.outboxRevision()).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The cursor and the snapshot are written together, on purpose: a cursor that
+ * survived a crash the snapshot did not would have the panel ask for changes
+ * after a position it never reached, looking caught up while missing every row
+ * in between.
+ */
+describe('the sync cursor', () => {
+  const bare = {
+    parties: [],
+    products: [],
+    categories: [],
+    partyVariants: [],
+    leads: [],
+    orders: [],
+    stock: [],
+    pipelines: [],
+    optionLists: [],
+    customFields: [],
+    conflicts: [],
+    dashboard: { asOf: '2026-08-01T00:00:00.000Z' },
+    permissions: [],
+    serverHlc: '0000001700000000000-00000-MASTER',
+    serverTime: '2026-08-01T00:00:00.000Z',
+  };
+
+  it('comes back from disk beside the snapshot it describes', async () => {
+    const first = await loadModules();
+    await first.localStore.setSnapshot(bare, { bootId: 'boot-1', lastSeq: 42 });
+
+    const { vi } = await import('vitest');
+    vi.resetModules();
+    const second = await loadModules();
+
+    expect(await second.localStore.restore()).not.toBeNull();
+    expect(second.localStore.getCursor()).toEqual({ bootId: 'boot-1', lastSeq: 42 });
+  });
+
+  it('reads a snapshot written before the cursor existed, rather than failing', async () => {
+    const { localStore } = await loadModules();
+    const paths = await import('../src/config/paths.js');
+
+    // Exactly what an older build left on disk: the bare snapshot, no envelope.
+    await fs.mkdir(path.dirname(paths.paths().snapshotFile), { recursive: true });
+    await fs.writeFile(paths.paths().snapshotFile, JSON.stringify(bare));
+
+    expect(await localStore.restore()).not.toBeNull();
+    // No cursor means "send me everything", which is what it always did.
+    expect(localStore.getCursor()).toBeNull();
+  });
+});

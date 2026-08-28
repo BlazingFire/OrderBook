@@ -1,11 +1,12 @@
 /**
  * Fold one change event into a snapshot, in place.
  *
- * Pure and free of the socket, the disk and the connection, for one reason
- * worth the file: this is the function a reconnect *replay* runs, and the only
- * way to know a replayed panel ends up holding the same rows as one that took a
- * fresh snapshot is to drive this exact code from a test rather than a
- * lookalike written beside it.
+ * Pure and free of the socket, the disk and the connection, and in `shared/`
+ * rather than beside the office server, because three places have to agree on
+ * it: the panel's server folding a replayed or live change into its cached
+ * snapshot, the panel's browser folding the same change into what it is
+ * rendering, and the test that proves a replaying panel ends up holding what a
+ * snapshot-taking one holds. Three implementations would drift; one cannot.
  *
  * It answers what it did. `'refresh'` means the change touched something the
  * snapshot does not hold as a flat id-keyed list — an option list, a custom
@@ -19,15 +20,14 @@
  */
 
 import type {
-  DataChangedEvent,
   InventoryStockLevel,
   Lead,
   Order,
   Party,
   Product,
   ProductCategory,
-  SyncSnapshot,
-} from '@orderbook/shared';
+} from '../domain/entities.js';
+import type { DataChangedEvent, SyncSnapshot } from '../protocol/socket.js';
 
 export type ApplyOutcome = 'applied' | 'refresh' | 'ignored';
 

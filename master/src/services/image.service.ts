@@ -17,7 +17,7 @@
 
 import type { ImageCropInput, Product, ProductImageReorderInput, ProductImageUpdateInput } from '@orderbook/shared';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { encode as encodeBlurhash } from 'blurhash';
@@ -28,16 +28,54 @@ import { assertCropRect, assertRotation, IMAGE_VARIANT_SPECS, MAX_SOURCE_BYTES, 
 import { config } from '../config/index.js';
 import { db } from '../db/knex.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
+import { createLogger } from '../lib/logger.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as imageRepo from '../repositories/product-image.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
 import { publishChange } from './change-bus.js';
+
+const log = createLogger('images');
 
 export interface UploadImageRequest {
   productId: string;
   fileBuffer: Buffer;
   crop: ImageCropInput;
 }
+
+/*
+ * One raster pipeline at a time, across this module and `avatar.service.ts`.
+ *
+ * The memory problem is not libvips' thread count, it is unbounded *concurrent
+ * uploads*: each one holds a source of up to `MAX_SOURCE_BYTES` plus the
+ * decoded raster plus the variant being encoded, and four people dragging
+ * photos in at once on a 4 GB shop PC is what runs it out. Serialising the
+ * pipelines bounds that at one.
+ *
+ * A promise chain rather than a semaphore class: the permit count is always
+ * one, and `createGate(permits)` would be a general mechanism for a case that
+ * has never had a second.
+ *
+ * `sharp.concurrency` is deliberately left alone. Pinning it to 1 would make
+ * each upload single-threaded *as well as* serial, which costs the person
+ * waiting and saves nothing — the gate is what bounds the memory.
+ */
+let rasterChain: Promise<unknown> = Promise.resolve();
+
+export function throughRasterGate<T>(work: () => Promise<T>): Promise<T> {
+  const result = rasterChain.then(work, work);
+  // Swallowed on the chain only: the caller still gets the rejection, but one
+  // failed upload must not poison every upload after it.
+  rasterChain = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+// Bound the decode cache. The default grows with whatever has been opened, and
+// on this machine the interesting number is resident memory, not cache hits on
+// files nobody will re-encode.
+sharp.cache({ memory: 64, files: 0 });
 
 function imageDir(tenantId: string, imageId: string): string {
   return path.join(config.imagesDir, tenantId, imageId);
@@ -98,6 +136,8 @@ async function normalizeAndStore(
   await mkdir(dir, { recursive: true });
 
   let masterMeta: { width: number; height: number; byteSize: number } | null = null;
+  let masterBytes: Buffer | null = null;
+
   for (const spec of IMAGE_VARIANT_SPECS) {
     const dims = variantDimensions(rect.width, rect.height, spec.longEdge);
     const { data, info } = await cropped
@@ -107,21 +147,21 @@ async function normalizeAndStore(
       .toBuffer({ resolveWithObject: true });
 
     await writeFile(path.join(dir, `${spec.name}.webp`), data);
-    if (spec.name === 'master') masterMeta = { width: info.width, height: info.height, byteSize: data.length };
+    if (spec.name === 'master') {
+      masterMeta = { width: info.width, height: info.height, byteSize: data.length };
+      masterBytes = data;
+    }
   }
-  if (!masterMeta) throw new Error('master variant was not generated');
+  if (!masterMeta || !masterBytes) throw new Error('master variant was not generated');
 
-  const checksum = createHash('sha256').update(await readBackMaster(dir)).digest('hex');
+  // Checksummed from the buffer that was just written, not by reading the file
+  // back. A ≤2048px WebP is a few megabytes and this runs while somebody
+  // watches a spinner; the re-read bought nothing but a second copy in memory
+  // and a second trip to the disk.
+  const checksum = createHash('sha256').update(masterBytes).digest('hex');
   const blurhash = await encodeBlurhashFrom(cropped);
 
   return { width: masterMeta.width, height: masterMeta.height, checksum, blurhash, byteSize: masterMeta.byteSize };
-}
-
-async function readBackMaster(dir: string): Promise<Buffer> {
-  // Re-read rather than thread the in-memory buffer through the loop above —
-  // keeps `normalizeAndStore` reading as "write four files, then checksum the
-  // one that was written" rather than needing a special case in the loop.
-  return readFile(path.join(dir, 'master.webp'));
 }
 
 async function encodeBlurhashFrom(cropped: sharp.Sharp): Promise<string> {
@@ -142,7 +182,9 @@ export async function uploadImage(request: UploadImageRequest, actor: ActorConte
   if (!product) throw new NotFoundError('Product');
 
   const imageId = randomUUID();
-  const derived = await normalizeAndStore(actor.tenantId, imageId, request.fileBuffer, request.crop);
+  const derived = await throughRasterGate(() =>
+    normalizeAndStore(actor.tenantId, imageId, request.fileBuffer, request.crop),
+  );
 
   await db().transaction(async (trx) => {
     // The product row is locked before the gallery is read, so two uploads
@@ -366,4 +408,52 @@ export async function imageFileBytes(
 ): Promise<{ data: Buffer; checksum: string }> {
   const file = await resolveImageFile(imageId, variant, actor);
   return { data: await readFile(file.path), checksum: file.checksum };
+}
+
+/**
+ * Delete variant folders that no `product_images` row names.
+ *
+ * **At startup only, and that is a correctness requirement rather than a
+ * scheduling preference.** `normalizeAndStore` writes four `.webp` files
+ * *before* the caller inserts the row, so a sweep that anti-joins the directory
+ * against `product_images.id` while somebody is uploading deletes a completed
+ * upload's files and leaves a row pointing at nothing. At startup nothing else
+ * is writing — the same reason `sweepOrphanTemporaries` gives for running
+ * where it does.
+ *
+ * Orphans come from a crash between the files and the commit, and from a
+ * restore that reinstated an older `product_images` than the disk holds.
+ */
+export async function sweepOrphanImageVariants(): Promise<number> {
+  let removed = 0;
+
+  let tenants: string[];
+  try {
+    tenants = await readdir(config.imagesDir);
+  } catch {
+    // No images directory yet. Nothing to sweep.
+    return 0;
+  }
+
+  const known = await imageRepo.allImageIds();
+
+  for (const tenantId of tenants) {
+    const tenantDir = path.join(config.imagesDir, tenantId);
+
+    let entries: string[];
+    try {
+      entries = await readdir(tenantDir);
+    } catch {
+      continue;
+    }
+
+    for (const imageId of entries) {
+      if (known.has(imageId)) continue;
+      await rm(path.join(tenantDir, imageId), { recursive: true, force: true }).catch(() => {});
+      removed += 1;
+    }
+  }
+
+  if (removed > 0) log.info(`Removed ${removed} orphaned image folder(s)`);
+  return removed;
 }

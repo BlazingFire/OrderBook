@@ -125,10 +125,23 @@ function mutate(update: (current: Mutation[]) => Mutation[]): Promise<void> {
   writeChain = writeChain.then(async () => {
     const next = update(await load());
     cached = next;
+    revision += 1;
     await persist(next);
   });
 
   return writeChain;
+}
+
+/**
+ * Bumped on every write to the queue.
+ *
+ * The merged view is the snapshot with the outbox laid over it, so a memo of
+ * that view has to invalidate when either half moves. This is the outbox half.
+ */
+let revision = 0;
+
+export function outboxRevision(): number {
+  return revision;
 }
 
 async function persist(mutations: Mutation[]): Promise<void> {
@@ -141,6 +154,7 @@ async function persist(mutations: Mutation[]): Promise<void> {
 
 /** Test seam. */
 export function resetOutboxCache(): void {
+  revision += 1;
   cached = null;
   writeChain = Promise.resolve();
 }

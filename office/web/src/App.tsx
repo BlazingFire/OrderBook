@@ -14,7 +14,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { MutationResult, SearchHit } from '@orderbook/shared';
+import { applyChangeToSnapshot } from '@orderbook/shared';
+import type { DataChangedEvent, MutationResult, SearchHit } from '@orderbook/shared';
 
 import { ApiError, api, type ConnectionInfo, type LocalView, type PanelSession } from './api';
 import {
@@ -271,6 +272,29 @@ function OfficePanel() {
     source.addEventListener('snapshot', (event) => {
       setView(JSON.parse((event as MessageEvent).data) as LocalView);
       void refreshSyncState();
+    });
+
+    /*
+     * The small per-record frame, applied in place.
+     *
+     * The server has been sending this since the Office panel got a change
+     * feed; nothing here listened for it, so a lead somebody else edited did
+     * not appear until the next whole-view push. Applying it here is what makes
+     * the frame worth sending — routing it into a full snapshot push instead
+     * would put back the amplifier the server side just removed.
+     */
+    source.addEventListener('change', (event) => {
+      const change = JSON.parse((event as MessageEvent).data) as DataChangedEvent;
+      setView((current) => {
+        if (!current) return current;
+
+        // A shallow copy is enough: `applyChangeToSnapshot` replaces whole
+        // arrays rather than pushing into them, so React sees a new reference
+        // for exactly the collections that moved.
+        const next = { ...current };
+        applyChangeToSnapshot(next, change);
+        return next;
+      });
     });
 
     source.addEventListener('conflict', () => {

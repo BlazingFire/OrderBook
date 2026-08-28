@@ -30,7 +30,7 @@ import type {
 
 import { paths } from '../config/paths.js';
 import { createLogger } from '../lib/logger.js';
-import { pending } from './outbox.store.js';
+import { outboxRevision, pending } from './outbox.store.js';
 
 const log = createLogger('local-store');
 
@@ -88,9 +88,13 @@ export function getCursor(): SyncDeltaCursor | null {
  * current while disk is stale — `persistCurrent` is what closes that, on a
  * trailing edge rather than once per row.
  */
-export function noteApplied(seq: number | undefined, bootId: string): void {
+export function noteApplied(seq: number | undefined, bootId: string | null): void {
+  // Always bumped, even with no cursor to record: the view memo keys on this,
+  // and a change applied against a Master too old to send a boot id still
+  // changed what the browser should be shown.
   revision += 1;
-  if (seq === undefined) return;
+
+  if (seq === undefined || !bootId) return;
   cursor = { bootId, lastSeq: seq };
 }
 
@@ -150,8 +154,31 @@ export async function getView(): Promise<(SyncSnapshot & { pendingCount: number 
   if (!base) return null;
 
   const queued = await pending();
-  if (queued.length === 0) return { ...base, pendingCount: 0 };
 
+  /*
+   * Memoised on the two revisions the view is derived from.
+   *
+   * This is built and stringified on every SSE push and on every
+   * `/api/snapshot`, and rebuilding it is a full copy of three collections plus
+   * a replay of the queue. Keyed on counters rather than on object identity
+   * because `setSnapshot` stores the object it is handed and `applyChange`
+   * mutates that same object — a memo keyed on the reference would never
+   * invalidate.
+   */
+  const key = `${revision}:${outboxRevision()}`;
+  if (memo && memo.key === key) return memo.view;
+
+  const view = queued.length === 0 ? { ...base, pendingCount: 0 } : buildView(base, queued);
+  memo = { key, view };
+  return view;
+}
+
+let memo: { key: string; view: SyncSnapshot & { pendingCount: number } } | null = null;
+
+function buildView(
+  base: SyncSnapshot,
+  queued: Mutation[],
+): SyncSnapshot & { pendingCount: number } {
   const view: SyncSnapshot = {
     ...base,
     leads: [...base.leads],
@@ -432,4 +459,5 @@ export function resetLocalStore(): void {
   cursor = null;
   loaded = false;
   revision += 1;
+  memo = null;
 }

@@ -16,6 +16,7 @@ export * from './protocol/desktop.js';
 export * from './protocol/discovery.js';
 export * from './protocol/pairing.js';
 export * from './protocol/socket.js';
+export * from './sync/apply-change.js';
 export * from './sync/hlc.js';
 export * from './sync/ids.js';
 export * from './sync/merge.js';

@@ -33,7 +33,9 @@ import {
   sweepOrphanTemporaries,
 } from './lib/document-files.js';
 import { createLogger } from './lib/logger.js';
+import { toErrorMessage } from './lib/errors.js';
 import { loadOrCreateKey } from './lib/secret-box.js';
+import { sweepOrphanImageVariants } from './services/image.service.js';
 import { assertFontsPresent } from './pdf/fonts.js';
 import { listLanAddresses } from './lib/network.js';
 import { createRealtimeHub, type RealtimeHub } from './realtime/hub.js';
@@ -201,12 +203,24 @@ async function main(): Promise<void> {
       log.info('No configuration found — the browser will show the first-run setup screen');
     }
 
+    /*
+     * Startup only, beside `sweepOrphanTemporaries` above and for the same
+     * reason: `normalizeAndStore` writes four variant files before the row that
+     * names them is inserted, so a sweep running while somebody uploads would
+     * delete a completed upload and leave a row pointing at nothing. Here,
+     * nothing else is writing.
+     */
+    await sweepOrphanImageVariants().catch((error: unknown) => {
+      log.warn(`Could not sweep orphaned image folders: ${toErrorMessage(error)}`);
+    });
+
     bootStep('Starting the panel');
     handler = createApp();
     hub = createRealtimeHub(server);
 
     discovery = await startDiscoveryResponder();
     sessionSweep = setInterval(purgeExpiredSessions, SESSION_SWEEP_INTERVAL_MS);
+    sessionSweep.unref?.();
 
     bootReady();
     bootSucceeded = true;
