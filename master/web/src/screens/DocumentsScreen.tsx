@@ -49,7 +49,7 @@ import {
   NumberInput,
   Section,
   Select,
-  SkeletonRows,
+  SkeletonTable,
   StatusPill,
   Switch,
   Tabs,
@@ -246,6 +246,7 @@ function TemplatesTab({
     {
       key: 'paper',
       header: t('documents.templates.colPaper'),
+      priority: 3,
       width: rem(150),
       render: (template) =>
         `${template.paperSize} · ${t(`documents.orientation.${template.orientation}`)}`,
@@ -253,6 +254,7 @@ function TemplatesTab({
     {
       key: 'rates',
       header: t('documents.templates.colRates'),
+      priority: 2,
       width: rem(110),
       render: (template) =>
         template.showRates ? (
@@ -264,6 +266,7 @@ function TemplatesTab({
     {
       key: 'updated',
       header: t('documents.templates.colUpdated'),
+      priority: 3,
       width: rem(170),
       render: (template) => formatDateTime(template.updatedAt),
     },
@@ -334,7 +337,7 @@ function TemplatesTab({
 
       <Card padded={false}>
         {loading ? (
-          <SkeletonRows rows={5} columns={5} />
+          <SkeletonTable columns={columns} rows={5} />
         ) : failure && templates.length === 0 ? (
           <ErrorState
             title={t('documents.templates.loadFailed')}
@@ -1078,7 +1081,7 @@ function ExportsTab({ revision }: { revision: number }) {
 
       <Card padded={false}>
         {loading ? (
-          <SkeletonRows rows={6} columns={6} />
+          <SkeletonTable columns={columns} rows={6} />
         ) : failure && exports.length === 0 ? (
           <ErrorState
             title={t('documents.exports.loadFailed')}

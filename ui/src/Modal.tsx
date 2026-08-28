@@ -21,8 +21,13 @@ import type { ReactNode } from 'react';
 import { IconButton } from './Button';
 import { useOverlay } from './useOverlay';
 
-/** Confirmations stay narrow; a record's detail needs room for two columns. */
-export type ModalSize = 'sm' | 'md' | 'lg';
+/**
+ * Confirmations stay narrow; a record's detail needs room for two columns; `xl`
+ * is the near-full-width state a lead or an order can be expanded into, which
+ * is the one thing the retired right-hand drawer could do that a modal could
+ * not.
+ */
+export type ModalSize = 'sm' | 'md' | 'lg' | 'xl';
 
 export function Modal({
   open,
@@ -31,6 +36,8 @@ export function Modal({
   label,
   subtitle,
   size = 'sm',
+  expanded,
+  onToggleExpand,
   footer,
   children,
 }: {
@@ -44,6 +51,16 @@ export function Modal({
   /** What the record is, under its name — the line that keeps a reader placed. */
   subtitle?: ReactNode;
   size?: ModalSize;
+  /**
+   * Widen this dialog to `xl`, and show the toggle that does it.
+   *
+   * Only meaningful together with `onToggleExpand` — the button is what makes
+   * the state reachable, and a dialog stuck expanded with no way back is worse
+   * than one that never expands. Lead and Order detail are the two records big
+   * enough to want it.
+   */
+  expanded?: boolean;
+  onToggleExpand?: () => void;
   footer?: ReactNode;
   children: ReactNode;
 }) {
@@ -51,12 +68,15 @@ export function Modal({
   useOverlay(open, onClose, ref);
 
   if (!open) return null;
+
+  const width = expanded ? 'xl' : size;
+
   return (
     <>
       <div className="ob-overlay" onClick={onClose} />
       <div className="ob-modal-wrap">
         <div
-          className={size === 'sm' ? 'ob-modal' : `ob-modal ob-modal--${size}`}
+          className={width === 'sm' ? 'ob-modal' : `ob-modal ob-modal--${width}`}
           role="dialog"
           aria-modal="true"
           aria-label={label ?? (typeof title === 'string' ? title : undefined)}
@@ -68,6 +88,13 @@ export function Modal({
               <h2 className="ob-modal-title">{title}</h2>
               {subtitle && <div className="ob-modal-sub">{subtitle}</div>}
             </div>
+            {onToggleExpand && (
+              <IconButton
+                icon={expanded ? 'collapse' : 'expand'}
+                label={expanded ? 'Shrink' : 'Open full width'}
+                onClick={onToggleExpand}
+              />
+            )}
             <IconButton icon="close" label="Close" onClick={onClose} />
           </div>
           <div className="ob-modal-body">{children}</div>

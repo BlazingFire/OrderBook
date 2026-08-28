@@ -36,10 +36,10 @@ import { StockByColour } from '../components/StockCell';
 import {
   Button,
   DataTable,
-  Drawer,
   EmptyState,
   FilterChip,
   Input,
+  Modal,
   ProgressiveImage,
   StatusPill,
   formatMoney,
@@ -235,18 +235,21 @@ export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' |
       {
         key: 'phone',
         header: t('catalog.parties.column.phone'),
+        priority: 2,
         width: rem(130),
         render: (party) => <span className="ob-data">{party.phone ?? '—'}</span>,
       },
       {
         key: 'city',
         header: t('catalog.parties.column.city'),
+        priority: 3,
         width: rem(110),
         render: (party) => party.city ?? '—',
       },
       {
         key: 'variants',
         header: t('catalog.parties.column.variants'),
+        priority: 3,
         width: rem(140),
         render: (party) => {
           const count = view.partyVariants.filter((variant) => variant.partyId === party.id).length;
@@ -302,10 +305,11 @@ export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' |
           }
         />
 
-        <Drawer
+        <Modal
           open={openParty !== null}
           onClose={() => setOpenPartyId(null)}
-          title={openParty?.name}
+          size="lg"
+          title={openParty?.name ?? ''}
           subtitle={openParty && <span className="ob-mono">{openParty.partyCode}</span>}
         >
           {openParty && (
@@ -318,7 +322,7 @@ export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' |
               }}
             />
           )}
-        </Drawer>
+        </Modal>
 
         <PartyDrawer
           open={partyDrawerOpen}
@@ -350,6 +354,7 @@ export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' |
             <ProgressiveImage
               imageId={primary.id}
               variant="micro"
+              slotPx={28}
               blurhash={primary.blurhash}
               width={primary.width}
               height={primary.height}
@@ -391,18 +396,21 @@ export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' |
     {
       key: 'type',
       header: t('catalog.products.column.type'),
+      priority: 3,
       width: rem(90),
       render: (product) => product.productType ?? product.categoryName ?? '—',
     },
     {
       key: 'size',
       header: t('catalog.products.column.size'),
+      priority: 2,
       width: rem(110),
       render: (product) => product.size ?? '—',
     },
     {
       key: 'grade',
       header: t('catalog.products.column.grade'),
+      priority: 3,
       width: rem(80),
       render: (product) => product.grade ?? '—',
     },
@@ -450,10 +458,11 @@ export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' |
         }
       />
 
-      <Drawer
+      <Modal
         open={openProduct !== null}
         onClose={() => setOpenProductId(null)}
-        title={openProduct?.name}
+        size="lg"
+        title={openProduct?.name ?? ''}
         subtitle={
           openProduct && (
             <span className="ob-mono">
@@ -475,7 +484,7 @@ export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' |
             onError={onDrawerError}
           />
         )}
-      </Drawer>
+      </Modal>
 
       <ProductDrawer
         open={productDrawerOpen}

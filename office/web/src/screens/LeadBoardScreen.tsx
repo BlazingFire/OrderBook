@@ -6,8 +6,8 @@
  * the workflow from that point.
  *
  * Board/List/filters are published into the shell's filter strip (§8); the
- * open lead renders in a 520px Drawer over the board so the list keeps its
- * scroll position, and can expand full-screen from the Drawer's own header
+ * open lead renders in a centred modal over the board so the list keeps its
+ * scroll position, and can widen to `xl` from the dialog's own header
  * control (§8 — Lead and Order detail are the two screens allowed to).
  */
 
@@ -18,7 +18,7 @@ import { api, type LocalView } from '../api';
 import {
   ColourChip,
   DataTable,
-  Drawer,
+  Modal,
   EmptyState,
   FilterChip,
   FilterDivider,
@@ -166,7 +166,7 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
     }
   }
 
-  function closeDrawer(): void {
+  function closeDetail(): void {
     setOpenId(null);
     setExpanded(false);
   }
@@ -192,12 +192,14 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
     {
       key: 'source',
       header: t('lead.list.col.source'),
+      priority: 3,
       width: rem(110),
       render: (lead) => lead.sourcePlatform ?? '—',
     },
     {
       key: 'boxes',
       header: t('lead.list.col.boxes'),
+      priority: 2,
       width: rem(80),
       align: 'right',
       render: (lead) => String(leadBoxes(lead)),
@@ -212,6 +214,7 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
     {
       key: 'followUp',
       header: t('lead.list.col.followUp'),
+      priority: 3,
       width: rem(100),
       render: (lead) => lead.followUpDate ?? '—',
     },
@@ -419,11 +422,13 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
         />
       )}
 
-      <Drawer
+      <Modal
         open={Boolean(openLead)}
-        onClose={closeDrawer}
+        onClose={closeDetail}
+        size="lg"
         expanded={expanded}
         onToggleExpand={() => setExpanded((value) => !value)}
+        label={openLead?.partyName}
         title={
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-8)' }}>
             {openLead?.partyName}
@@ -442,11 +447,11 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
             lead={openLead}
             view={view}
             canConvert={canConvert}
-            onClose={closeDrawer}
+            onClose={closeDetail}
             onError={onError}
           />
         )}
-      </Drawer>
+      </Modal>
     </>
   );
 }

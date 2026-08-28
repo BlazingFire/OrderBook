@@ -1745,6 +1745,15 @@ html[data-window-blur='true'] .ob-busy rect {
 .ob-modal--lg {
   width: 60rem;
 }
+/*
+ * The expanded state a lead or an order can be toggled into — the one thing the
+ * retired right-hand drawer did that a modal did not. `min()` rather than a
+ * plain width so it still fits the 1024px floor, where `max-width: 100%` would
+ * otherwise be doing the clamping and the padding around it would vanish.
+ */
+.ob-modal--xl {
+  width: min(76rem, 100%);
+}
 
 .ob-modal-head {
   flex: none;

@@ -20,7 +20,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import type { ImageVariant } from '@orderbook/shared';
+import { variantForSlot, type ImageVariant } from '@orderbook/shared';
 import { decode } from 'blurhash';
 
 const placeholderCache = new Map<string, string>();
@@ -50,6 +50,7 @@ function placeholderDataUrl(hash: string): string | null {
 export function ProgressiveImage({
   imageId,
   variant,
+  slotPx,
   blurhash,
   width,
   height,
@@ -58,7 +59,18 @@ export function ProgressiveImage({
   style,
 }: {
   imageId: string;
+  /** The variant to fetch when `slotPx` is not given. */
   variant: ImageVariant;
+  /**
+   * How wide this image renders, in CSS pixels, so the right variant can be
+   * chosen for a retina screen.
+   *
+   * The design px of the slot, not a measured one: at every scale this product
+   * offers, a slot stays inside the same variant's long edge, so measuring
+   * would add a layout read and change nothing. Deliberately **not** `srcset` —
+   * see `variantForSlot`.
+   */
+  slotPx?: number;
   blurhash: string;
   width: number;
   height: number;
@@ -66,6 +78,11 @@ export function ProgressiveImage({
   className?: string;
   style?: React.CSSProperties;
 }) {
+  const chosen =
+    slotPx === undefined
+      ? variant
+      : variantForSlot(slotPx, typeof window === 'undefined' ? 1 : window.devicePixelRatio);
+
   const [loaded, setLoaded] = useState(false);
   const placeholder = useMemo(() => placeholderDataUrl(blurhash), [blurhash]);
 
@@ -89,7 +106,7 @@ export function ProgressiveImage({
       }}
     >
       <img
-        src={`/uploads/images/${imageId}/${variant}`}
+        src={`/uploads/images/${imageId}/${chosen}`}
         alt={alt}
         loading="lazy"
         decoding="async"

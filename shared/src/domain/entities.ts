@@ -434,6 +434,46 @@ export type ImageVariant = 'master' | 'large' | 'thumb' | 'micro';
 /** Fetch priority order — cheap/most-needed first (`7-IMAGE-PIPELINE.md` §4.3). */
 export const IMAGE_VARIANTS: readonly ImageVariant[] = ['thumb', 'micro', 'large', 'master'];
 
+/**
+ * The long edge each variant is generated at, in pixels.
+ *
+ * Here rather than in `master/src/domain/images.ts` because a browser has to
+ * answer "which of these is the right file for a 28-pixel slot on a retina
+ * screen", and that module is a **server** module `office/web` cannot import.
+ * The Master's `IMAGE_VARIANT_SPECS` builds its `longEdge` from this table, so
+ * there is one set of numbers rather than two that can drift.
+ */
+export const IMAGE_VARIANT_LONG_EDGES: Record<ImageVariant, number> = {
+  micro: 64,
+  thumb: 240,
+  large: 800,
+  master: 2048,
+};
+
+/**
+ * The variant to request for a slot of `slotCssPx`, on a screen with this
+ * device pixel ratio.
+ *
+ * **Deliberately not `srcset`.** The Office Panel serves images from a local
+ * cache and forwards a miss to the Master, answering **503 while offline** —
+ * and a 503 on the candidate the browser picked does not fall back to `src`.
+ * `srcset` would also have the browser choose among four files rather than the
+ * one that normal browsing has already warmed. Choosing here keeps the request
+ * count exactly what it was.
+ *
+ * `master` is never chosen: it is the archival original, kept so a crop can be
+ * re-derived, not a file to put in a list.
+ */
+export function variantForSlot(slotCssPx: number, devicePixelRatio = 1): ImageVariant {
+  const needed = slotCssPx * (devicePixelRatio > 0 ? devicePixelRatio : 1);
+
+  for (const variant of ['micro', 'thumb', 'large'] as const) {
+    if (IMAGE_VARIANT_LONG_EDGES[variant] >= needed) return variant;
+  }
+
+  return 'large';
+}
+
 /** No file-size limit at import (§2.1); this is a sanity ceiling against a bad drag-drop, shared so Office's own upload multipart parser rejects the same oversized file the Master would. */
 export const MAX_IMAGE_SOURCE_BYTES = 60 * 1024 * 1024;
 

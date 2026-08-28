@@ -41,7 +41,7 @@ import {
   NewerOlderPager,
   Section,
   Select,
-  SkeletonRows,
+  SkeletonTable,
   StatusPill,
   formatDateTime,
   rem,
@@ -442,6 +442,7 @@ export function LogsScreen({ permissions }: Props) {
     {
       key: 'record',
       header: t('logs.table.record'),
+      priority: 2,
       width: rem(210),
       render: (entry) => (
         <span
@@ -463,6 +464,7 @@ export function LogsScreen({ permissions }: Props) {
     {
       key: 'sequence',
       header: t('logs.table.sequence'),
+      priority: 3,
       width: rem(110),
       align: 'right',
       render: (entry) =>
@@ -507,7 +509,7 @@ export function LogsScreen({ permissions }: Props) {
         </p>
 
         {loading ? (
-          <SkeletonRows columns={5} />
+          <SkeletonTable columns={columns} />
         ) : error ? (
           <ErrorState
             title={t('logs.error.title')}

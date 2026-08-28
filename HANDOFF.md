@@ -59,10 +59,10 @@ secrets and the password toggle.
 | 1 — data-integrity core | **done** (part; rest folds into Stage 8) |
 | 2 — Electron shell | **done** |
 | 3 — `@orderbook/ui` + i18n fold + React 19 | **done** |
-| 4 — settings table + password vault | **next** |
+| 4 — settings table + password vault | **done** |
 | 5 — screen keep-alive | **done** (manual pass owed) |
-| 6 — UI scale + responsive | **mostly done** (five items deferred) |
-| 7 — performance and memory | not started |
+| 6 — UI scale + responsive | **done** |
+| 7 — performance and memory | **next** |
 | 8 — product & party attributes | not started |
 | 9 — picker, dense forms, grid, exports | not started |
 | 10 — keyboard system | not started |
@@ -77,10 +77,17 @@ and the `setStockLevels` partial upsert all validate columns that do not exist
 until Stage 8's migration, so they land there rather than being written
 against nothing.
 
-What Stage 6 deliberately left, none of it blocking another stage: DataTable
-column priority (dropping low-priority columns below 1180px), the
-drawer-to-modal conversion for the four record-detail screens, `SkeletonTable`,
-Retina variant picking, and the `styles.css` trim.
+Stage 6's five deferred items all landed on 2026-08-29. Two of them were
+already moot, exactly as the note below about stale designs predicts: the
+`var(--muted)` consumer had been deleted in Stage 3, and every bare `.num` site
+turned out to be inside an `.ob-table`, which `base.css` already covers.
+
+One piece of Stage 6's design is genuinely still owed: `SearchBox.tsx` was to be
+rewritten onto `.ob-search`. It still renders a bare `<input>` styled by the
+legacy element rule. It is deliberately left for Stage 10, which deletes the
+component outright once the command palette exists — rewriting it first and
+deleting it a stage later is churn. `.card` and `.row` survive in the Master's
+`styles.css` only because that component still uses them.
 
 ### Owed work
 

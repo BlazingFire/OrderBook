@@ -136,3 +136,61 @@ describe('JSX size literals', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+/**
+ * The standing rule the owner set, written down where a change trips over it:
+ * **an Open on a table row shows the record's detail in a centred modal** — not
+ * a right-hand drawer, and not a row that expands inline. Large editors still
+ * get a screen of their own.
+ *
+ * This matters beyond taste now: `fitColumns` drops columns on a narrow screen,
+ * and that is only defensible because the whole record is one click away.
+ */
+describe('record detail is a modal', () => {
+  function screenFiles(dir: string): string[] {
+    const out: string[] = [];
+    for (const entry of readdirSync(dir)) {
+      const full = path.join(dir, entry);
+      if (statSync(full).isDirectory()) out.push(...screenFiles(full));
+      else if (/\.tsx$/.test(entry)) out.push(full);
+    }
+    return out;
+  }
+
+  it('opens no Drawer from a screen', () => {
+    const offenders: string[] = [];
+
+    for (const app of ['master/web/src/screens', 'office/web/src/screens']) {
+      for (const file of screenFiles(path.join(ROOT, app))) {
+        if (readFileSync(file, 'utf8').includes('<Drawer')) {
+          offenders.push(path.relative(ROOT, file));
+        }
+      }
+    }
+
+    // The two remaining `<Drawer>` sites are `PartyDrawer` and `ProductDrawer`
+    // under `office/web/src/components/` — creation and edit *forms*, not
+    // record detail. They go with the drawer itself when the forms workstream
+    // lands; until then they are deliberately out of this assertion's reach.
+    expect(offenders).toEqual([]);
+  });
+
+  it('only lets a column be dropped on a table whose rows open', () => {
+    const offenders: string[] = [];
+
+    for (const app of ['master/web/src/screens', 'office/web/src/screens']) {
+      for (const file of screenFiles(path.join(ROOT, app))) {
+        const text = readFileSync(file, 'utf8');
+        // A file that tags priorities must also open its rows. Per-file rather
+        // than per-table: a screen with several tables would need a parser to
+        // pair them, and a screen that opens no row at all is the case worth
+        // catching.
+        if (/^\s*priority: [23],$/m.test(text) && !text.includes('onRowOpen')) {
+          offenders.push(path.relative(ROOT, file));
+        }
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+});

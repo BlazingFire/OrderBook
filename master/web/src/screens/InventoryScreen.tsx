@@ -39,7 +39,7 @@ import {
   NumberInput,
   Section,
   Select,
-  SkeletonRows,
+  SkeletonTable,
   StatusPill,
   formatDateTime,
   rem,
@@ -211,6 +211,7 @@ export function InventoryScreen({ revision }: Props) {
     {
       key: 'code',
       header: t('inventory.table.code'),
+      priority: 2,
       width: rem(110),
       render: (level) => <span className="ob-mono">{level.productCode}</span>,
     },
@@ -256,6 +257,7 @@ export function InventoryScreen({ revision }: Props) {
     {
       key: 'reorder',
       header: t('inventory.table.reorder'),
+      priority: 3,
       width: rem(110),
       align: 'right',
       render: (level) => (
@@ -450,7 +452,7 @@ export function InventoryScreen({ revision }: Props) {
         <section className="ob-detail-section">
           <div className="ob-eyebrow">{t('inventory.drawer.ledgerTitle')}</div>
           {lineMovementsLoading ? (
-            <SkeletonRows rows={4} columns={4} />
+            <SkeletonTable columns={lineMovementColumns} rows={4} />
           ) : (
             <DataTable
               columns={lineMovementColumns}

@@ -33,6 +33,7 @@ import {
   Segmented,
   Select,
   SkeletonRows,
+  SkeletonTable,
   StatusPill,
   formatDateTime,
   rem,
@@ -563,12 +564,14 @@ function UsersTab({
     {
       key: 'username',
       header: t('access.users.colUsername'),
+      priority: 2,
       width: rem(150),
       render: (user) => <span className="ob-small">{user.username}</span>,
     },
     {
       key: 'id',
       header: t('access.users.colId'),
+      priority: 3,
       width: rem(180),
       render: (user) => <IdField value={user.id} />,
     },
@@ -599,6 +602,7 @@ function UsersTab({
     {
       key: 'lastSignIn',
       header: t('access.users.colLastSignIn'),
+      priority: 3,
       width: rem(160),
       render: (user) => <span className="ob-small">{formatDateTime(user.lastSignInAt)}</span>,
     },
@@ -880,7 +884,7 @@ function UsersTab({
       )}
 
       {loading ? (
-        <SkeletonRows columns={6} />
+        <SkeletonTable columns={columns} />
       ) : (
         <DataTable
           columns={columns}
@@ -1305,6 +1309,7 @@ function RolesTab({
     {
       key: 'permissions',
       header: t('access.roles.colPermissions'),
+      priority: 2,
       width: rem(130),
       align: 'right',
       render: (role) => <span className="ob-data">{role.permissions.length}</span>,
@@ -1312,6 +1317,7 @@ function RolesTab({
     {
       key: 'users',
       header: t('access.roles.colUsers'),
+      priority: 3,
       width: rem(100),
       align: 'right',
       render: (role) => <span className="ob-data">{role.userCount}</span>,
@@ -1454,7 +1460,7 @@ function RolesTab({
       </div>
 
       {loading ? (
-        <SkeletonRows columns={5} />
+        <SkeletonTable columns={columns} />
       ) : (
         <DataTable
           columns={columns}

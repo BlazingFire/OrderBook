@@ -50,7 +50,7 @@ import {
   Input,
   Modal,
   Segmented,
-  SkeletonRows,
+  SkeletonTable,
   StatusPill,
   t,
   type DataTableColumn,
@@ -124,6 +124,7 @@ export function PartyAccessScreen({ permissions, revision }: Props) {
       {
         key: 'city',
         header: t('partyAccess.column.city'),
+        priority: 3,
         width: '11rem',
         render: (row) => row.city ?? '—',
       },
@@ -192,7 +193,7 @@ export function PartyAccessScreen({ permissions, revision }: Props) {
       </div>
 
       {loading ? (
-        <SkeletonRows rows={8} columns={5} />
+        <SkeletonTable columns={columns} />
       ) : failure ? (
         <ErrorState
           title={t('partyAccess.error.load')}

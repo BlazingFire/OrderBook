@@ -32,6 +32,7 @@ export * from './DataTable.js';
 export * from './Drawer.js';
 export * from './ErrorBoundary.js';
 export * from './Field.js';
+export * from './fitColumns.js';
 export * from './FilterBar.js';
 export * from './FilterBarSlot.js';
 export * from './Form.js';

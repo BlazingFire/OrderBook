@@ -44,6 +44,17 @@
  *
  * When a screen migrates to `.ob-*` classes its remaining rules here can be
  * deleted.
+ *
+ * Trimmed on 2026-08-29 to the rules that still have a call site. Everything
+ * removed was checked the same mechanical way — every `className` expression in
+ * this panel and in `ui/` was collected and any rule whose anchor class appeared
+ * in none of them went. Two of them looked alive and were not: `.right` matched
+ * only `c.align === 'right'`, a comparison, and `.badge.order` outlived the
+ * `.badge` it modified. The Kanban board rules died when the board moved into
+ * `ui/` as `.ob-board`.
+ *
+ * The 165-site className migration is still a separate piece of work with no
+ * owner; this was only the part that could be proved safe.
  */
 
 /* Legacy variable aliases (some screens reference these directly).
@@ -137,34 +148,6 @@ label:not(:where([class*='ob-'])),
   margin-bottom: var(--s-12);
 }
 
-.card {
-  background: var(--bg-surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  padding: var(--s-20);
-  margin-bottom: var(--s-16);
-}
-
-.grid {
-  display: grid;
-  gap: var(--s-12);
-}
-
-.grid.cols-2 {
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-}
-
-.grid.cols-4 {
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-}
-
-.row {
-  display: flex;
-  gap: var(--s-12);
-  align-items: center;
-  flex-wrap: wrap;
-}
-
 table:not(:where([class*='ob-'])) {
   width: 100%;
   border-collapse: collapse;
@@ -207,20 +190,10 @@ table:not(:where([class*='ob-'])) td {
   font-size: var(--t-small-size);
 }
 
-.notice {
-  background: var(--state-ok-tint);
-  border: 1px solid var(--state-ok);
-  color: var(--fg-primary);
-  padding: var(--s-12);
-  border-radius: var(--r-md);
-  margin-bottom: var(--s-12);
-  font-size: var(--t-small-size);
-}
-
 .dot {
   display: inline-block;
-  width: 9px;
-  height: 9px;
+  width: 0.6429rem;
+  height: 0.6429rem;
   border-radius: 50%;
   margin-right: var(--s-6);
   background: var(--fg-disabled);
@@ -234,154 +207,11 @@ table:not(:where([class*='ob-'])) td {
   background: var(--state-conflict);
 }
 
-.badge {
-  display: inline-block;
-  padding: 1px 7px;
-  border-radius: var(--r-sm);
-  font-size: var(--t-micro-size);
-  line-height: var(--t-micro-line);
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  background: var(--bg-sunken);
-  color: var(--fg-secondary);
-}
-
-.badge.order {
-  background: var(--state-ok-tint);
-  color: var(--state-ok);
-}
-
-.badge.verified {
-  background: var(--state-offline-tint);
-  color: var(--state-offline);
-}
-
-.badge.cancelled {
-  background: var(--state-conflict-tint);
-  color: var(--state-conflict);
-}
-
 /* Credentials shown exactly once must be easy to copy by hand. */
-.secret-box {
-  font-family: var(--font-mono);
-  font-size: var(--t-title-size);
-  letter-spacing: 0.06em;
-  background: var(--bg-sunken);
-  border: 1px dashed var(--line-strong);
-  padding: var(--s-12);
-  border-radius: var(--r-md);
-  word-break: break-all;
-}
 
 /* ---------------------------------------------------------------------------
  * Lead & order boards (docs/LEAD_GENERATION_FLOW.md §4.2)
  * ------------------------------------------------------------------------- */
-
-.board {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(260px, 1fr);
-  gap: var(--s-12);
-  overflow-x: auto;
-  padding-bottom: var(--s-8);
-  align-items: start;
-}
-
-.board-column {
-  background: var(--bg-sunken);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  min-height: 140px;
-  display: flex;
-  flex-direction: column;
-  transition: background-color var(--d-base) var(--e-standard),
-    border-color var(--d-base) var(--e-standard);
-}
-
-.board-column.drop-target {
-  background: var(--accent-tint);
-  border-color: var(--accent);
-}
-
-.board-column-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s-8);
-  padding: var(--s-8) var(--s-12);
-  border-bottom: 1px solid var(--line);
-  font-weight: 600;
-  font-size: var(--t-small-size);
-}
-
-.board-column-header .count {
-  color: var(--fg-tertiary);
-  font-weight: 400;
-  font-size: var(--t-small-size);
-  font-variant-numeric: tabular-nums;
-}
-
-.board-column-body {
-  padding: var(--s-12);
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-12);
-}
-
-.board-column-empty {
-  color: var(--fg-tertiary);
-  font-size: var(--t-small-size);
-  padding: var(--s-6) var(--s-2) var(--s-12);
-}
-
-.stage-swatch {
-  width: 10px;
-  height: 10px;
-  border-radius: var(--r-sm);
-  flex: 0 0 auto;
-}
-
-.board-card {
-  position: relative;
-  background: var(--bg-surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  padding: var(--s-12);
-  cursor: grab;
-  text-align: left;
-  width: 100%;
-  font: inherit;
-  color: inherit;
-  display: block;
-  transition: background-color var(--d-fast) var(--e-standard);
-  contain: layout paint;
-}
-
-.board-card:hover:not(.dragging) {
-  background: var(--bg-hover);
-}
-
-.board-card.dragging {
-  opacity: 0.8;
-  outline: 2px solid var(--accent); /* never a drop shadow while dragging (§9.3) */
-  pointer-events: none;
-}
-
-.board-card-title {
-  font-weight: 550;
-  font-size: var(--t-small-size);
-  display: flex;
-  align-items: center;
-  gap: var(--s-6);
-  flex-wrap: wrap;
-}
-
-.board-card-meta {
-  color: var(--fg-tertiary);
-  font-size: var(--t-small-size);
-  line-height: var(--t-small-line);
-  margin-top: var(--s-4);
-}
 
 /* --- Chips ---------------------------------------------------------------- */
 
@@ -422,28 +252,6 @@ table:not(:where([class*='ob-'])) td {
 
 /* --- Colour quantity rows -------------------------------------------------- */
 
-.colour-row {
-  display: grid;
-  grid-template-columns: 1fr 120px auto;
-  gap: var(--s-8);
-  align-items: center;
-  margin-bottom: var(--s-6);
-}
-
-.line-card {
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  padding: var(--s-12);
-  margin-bottom: var(--s-12);
-  background: var(--bg-surface);
-}
-
-.line-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: var(--s-12);
-}
-
 /* --- Sync bar ---------------------------------------------------------------*/
 
 .sync-bar {
@@ -470,68 +278,7 @@ table:not(:where([class*='ob-'])) td {
 
 /* --- Timeline ---------------------------------------------------------------- */
 
-.timeline {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  border-left: 2px solid var(--line);
-}
-
-.timeline li {
-  position: relative;
-  padding: 0 0 var(--s-16) var(--s-16);
-}
-
-.timeline li::before {
-  content: '';
-  position: absolute;
-  left: -5px;
-  top: 5px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--line-strong);
-}
-
-.timeline li.remark::before {
-  background: var(--accent);
-}
-
-.timeline .when {
-  color: var(--fg-tertiary);
-  font-size: var(--t-micro-size);
-}
-
 /* --- Misc --------------------------------------------------------------------- */
-
-.section-title {
-  margin: 0 0 var(--s-12);
-  font-size: var(--t-title-size);
-  line-height: var(--t-title-line);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-.split {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-  gap: var(--s-16);
-  align-items: start;
-}
-
-@media (max-width: 900px) {
-  .split {
-    grid-template-columns: 1fr;
-  }
-}
-
-.stack > * + * {
-  margin-top: var(--s-12);
-}
-
-.right {
-  text-align: right;
-}
 
 .num {
   font-variant-numeric: tabular-nums;

@@ -117,6 +117,7 @@ export function ProductImages({
             <ProgressiveImage
               imageId={image.id}
               variant="thumb"
+              slotPx={96}
               blurhash={image.blurhash}
               width={image.width}
               height={image.height}

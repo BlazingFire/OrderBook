@@ -35,7 +35,7 @@ import {
   LoadMorePager,
   Modal,
   Select,
-  SkeletonRows,
+  SkeletonTable,
   StatusPill,
   formatDateTime,
   rem,
@@ -417,7 +417,7 @@ export function RecycleBinScreen({ permissions, revision }: Props) {
       {actionError && <ConflictBanner>{actionError}</ConflictBanner>}
 
       {loading ? (
-        <SkeletonRows columns={6} />
+        <SkeletonTable columns={columns} />
       ) : error ? (
         <ErrorState
           title={t('recycleBin.error.title')}

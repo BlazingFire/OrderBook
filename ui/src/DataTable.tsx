@@ -8,6 +8,8 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
+import { fitColumns, gridTemplateFor } from './fitColumns.js';
+
 export interface DataTableColumn<T> {
   key: string;
   header: string;
@@ -16,6 +18,14 @@ export interface DataTableColumn<T> {
   render: (row: T) => ReactNode;
   /** Returns the missing-permission name when this cell is redacted for this row. */
   redactedReason?: (row: T) => string | undefined;
+  /**
+   * How willingly this column is dropped when the table runs out of room:
+   * `3` first, then `2`, and `1` (or absent) never.
+   *
+   * Only set this on a table whose rows open a full record — see
+   * `fitColumns.ts`. On a table that is the record, every column stays at 1.
+   */
+  priority?: 1 | 2 | 3;
 }
 
 const VIRTUALIZE_ABOVE = 100;
@@ -50,6 +60,9 @@ export function DataTable<T>({
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportH, setViewportH] = useState(0);
   const [rowH, setRowH] = useState(DEFAULT_ROW_H);
+  /** The table's own width, and the root size the rem column widths resolve against. */
+  const [viewportW, setViewportW] = useState(0);
+  const [rootPx, setRootPx] = useState(0);
 
   /*
    * Measure against the pane that actually scrolls.
@@ -79,6 +92,8 @@ export function DataTable<T>({
       const row = wrap.querySelector('tbody tr[data-row]') as HTMLElement | null;
       if (row && row.offsetHeight > 0) setRowH(row.offsetHeight);
       setViewportH(scroller ? scroller.clientHeight : wrap.clientHeight);
+      setViewportW(wrap.clientWidth);
+      setRootPx(parseFloat(getComputedStyle(document.documentElement).fontSize) || 0);
       setScrollTop(scroller ? Math.max(0, scroller.scrollTop - wrap.offsetTop) : 0);
     };
 
@@ -113,21 +128,13 @@ export function DataTable<T>({
   }
 
   /*
-   * A table whose columns are all fixed widths sums to less than the space it
-   * is given on a wide screen, and the leftover would sit past the last column
-   * as bare canvas — the row stripes and the header band would stop mid-table
-   * and read as a rendering fault. Appending one flexible track absorbs the
-   * slack into an empty trailing cell instead, so every column keeps exactly
-   * the width its screen asked for while the table's chrome still reaches the
-   * right edge. A table that already has a flexible column needs no filler:
-   * that column is what the slack is meant for, and a second `1fr` would halve
-   * it.
+   * Which columns survive this width. Recomputed from the full set on every
+   * measure — see `fitColumns.ts` for why that matters and why it is only safe
+   * given the rule that a row opens its whole record in a modal.
    */
-  const columnTracks = columns.map((c) => c.width ?? '1fr');
-  const hasFlexibleColumn = columnTracks.some((w) => /(\bauto\b|fr|%)/.test(w));
-  const gridTemplate = [...columnTracks, ...(hasFlexibleColumn ? [] : ['minmax(0, 1fr)'])].join(
-    ' ',
-  );
+  const visible = fitColumns(columns, viewportW, rootPx);
+
+  const gridTemplate = gridTemplateFor(visible);
 
   if (rows.length === 0) {
     return <div className="ob-tablewrap">{empty}</div>;
@@ -137,13 +144,13 @@ export function DataTable<T>({
     <div ref={wrapRef} className="ob-tablewrap">
       <table className="ob-table" style={{ tableLayout: 'fixed' }}>
         <colgroup>
-          {columns.map((c) => (
+          {visible.map((c) => (
             <col key={c.key} style={{ width: c.width }} />
           ))}
         </colgroup>
         <thead>
           <tr style={{ display: 'grid', gridTemplateColumns: gridTemplate }}>
-            {columns.map((c) => (
+            {visible.map((c) => (
               <th
                 key={c.key}
                 className={c.align === 'right' ? 'num' : undefined}
@@ -189,7 +196,7 @@ export function DataTable<T>({
                     : undefined
                 }
               >
-                {columns.map((c) => {
+                {visible.map((c) => {
                   const reason = c.redactedReason?.(row);
                   return (
                     <td

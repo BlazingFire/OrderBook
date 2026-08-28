@@ -18,7 +18,7 @@ import {
   EmptyState,
   Segmented,
   Select,
-  SkeletonRows,
+  SkeletonTable,
   StatusPill,
   Tabs,
   formatDateTime,
@@ -411,7 +411,14 @@ export function LeadsOrdersScreen({ revision }: Props) {
       {error && <ConflictBanner>{error}</ConflictBanner>}
 
       {loading ? (
-        <SkeletonRows columns={view === 'orders' ? 8 : 7} />
+        // Two column arrays, two element types: a ternary between them has no
+        // single `T` for TypeScript to infer, so the branch happens outside the
+        // prop rather than inside it.
+        view === 'orders' ? (
+          <SkeletonTable columns={orderColumns} />
+        ) : (
+          <SkeletonTable columns={leadColumns} />
+        )
       ) : view === 'orders' ? (
         <DataTable
           columns={orderColumns}

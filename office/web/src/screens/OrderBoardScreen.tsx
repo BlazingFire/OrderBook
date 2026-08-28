@@ -26,7 +26,7 @@ import {
   Card,
   ColourName,
   DataTable,
-  Drawer,
+  Modal,
   EmptyState,
   FilterChip,
   FilterDivider,
@@ -151,7 +151,7 @@ export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
     ) : null,
   );
 
-  function closeDrawer(): void {
+  function closeDetail(): void {
     setOpenId(null);
     setExpanded(false);
   }
@@ -187,6 +187,7 @@ export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
     {
       key: 'lead',
       header: t('orders.column.fromLead'),
+      priority: 3,
       width: rem(150),
       render: (order) =>
         order.leadId ? (
@@ -200,6 +201,7 @@ export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
     {
       key: 'boxes',
       header: t('orders.column.boxes'),
+      priority: 2,
       width: rem(80),
       align: 'right',
       render: (order) => totalBoxes(order).toLocaleString('en-IN'),
@@ -207,6 +209,7 @@ export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
     {
       key: 'weight',
       header: t('orders.column.weight'),
+      priority: 3,
       width: rem(100),
       align: 'right',
       render: (order) => (
@@ -271,11 +274,13 @@ export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
         }
       />
 
-      <Drawer
+      <Modal
         open={Boolean(openOrder)}
-        onClose={closeDrawer}
+        onClose={closeDetail}
+        size="lg"
         expanded={expanded}
         onToggleExpand={() => setExpanded((value) => !value)}
+        label={openOrder?.partyName}
         title={
           openOrder ? (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-8)' }}>
@@ -297,21 +302,21 @@ export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
         }
       >
         {openOrder && (
-          <OrderDrawerBody
+          <OrderDetailBody
             order={openOrder}
             stages={stages}
             canDispatch={canDispatch}
-            onClose={closeDrawer}
+            onClose={closeDetail}
             onError={onError}
             colourHex={colourHex}
           />
         )}
-      </Drawer>
+      </Modal>
     </>
   );
 }
 
-function OrderDrawerBody({
+function OrderDetailBody({
   order,
   stages,
   canDispatch,

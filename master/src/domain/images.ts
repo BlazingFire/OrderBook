@@ -5,7 +5,11 @@
  * computes.
  */
 
-import { MAX_IMAGE_SOURCE_BYTES, type ImageVariant } from '@orderbook/shared';
+import {
+  IMAGE_VARIANT_LONG_EDGES,
+  MAX_IMAGE_SOURCE_BYTES,
+  type ImageVariant,
+} from '@orderbook/shared';
 
 import { ValidationError } from '../lib/errors.js';
 
@@ -20,12 +24,14 @@ export interface ImageVariantSpec {
  * first). Names match `IMAGE_VARIANTS` in `shared/src/domain/entities.ts`
  * (which office/web consults without needing this file's size/quality specs).
  */
-export const IMAGE_VARIANT_SPECS: readonly ImageVariantSpec[] = [
-  { name: 'thumb', longEdge: 240, quality: 78 },
-  { name: 'micro', longEdge: 64, quality: 60 },
-  { name: 'large', longEdge: 800, quality: 82 },
-  { name: 'master', longEdge: 2048, quality: 90 },
-];
+export const IMAGE_VARIANT_SPECS: readonly ImageVariantSpec[] = (
+  [
+    ['thumb', 78],
+    ['micro', 60],
+    ['large', 82],
+    ['master', 90],
+  ] as const
+).map(([name, quality]) => ({ name, longEdge: IMAGE_VARIANT_LONG_EDGES[name], quality }));
 
 export const MAX_SOURCE_BYTES = MAX_IMAGE_SOURCE_BYTES;
 

@@ -126,18 +126,21 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
     {
       key: 'deviceCode',
       header: t('panels.table.deviceCode'),
+      priority: 3,
       width: rem(110),
       render: (panel) => <span className="ob-mono">{panel.deviceCode}</span>,
     },
     {
       key: 'address',
       header: t('panels.table.address'),
+      priority: 2,
       width: rem(140),
       render: (panel) => <span className="ob-small">{panel.lanIp ?? '—'}</span>,
     },
     {
       key: 'paired',
       header: t('panels.table.paired'),
+      priority: 3,
       width: rem(150),
       render: (panel) => <span className="ob-small">{formatDateTime(panel.pairedAt)}</span>,
     },
