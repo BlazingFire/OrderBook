@@ -100,10 +100,24 @@ tabs and 9 office ones: filters, scroll position, open drawers and half-typed
 forms should all survive a round trip, Escape should close the visible overlay
 (not a hidden screen's), and Reset should clear exactly one screen.
 
+- **Stage 6, first half — UI scale** (requirement 3). `--root-size` is a
+  continuous 11–22px slider in Settings; density now governs only row and
+  control heights. Spacing, shell dimensions and every text-measured length are
+  rem, so one number resizes the interface.
+
+**How scale and density relate now.** They used to be one control: density set
+the root font size *and* the heights. They are orthogonal. Density's rem ratios
+are the old absolute values over the old per-density root, so Compact at scale
+13 still computes to exactly 28px rows. `ob.density` is not cleared on
+migration. Hairlines and radii stay px on purpose — a 1px border scaled to
+1.14px renders blurry, and a radius is a visual constant, not a measurement
+against text. If you add a length that is measured against text, use rem.
+
 Next, in order:
 
-1. **Stage 6** — UI scale and the 1024×768-to-4K responsive work. Note it
-   depends on Stage 5's DataTable change, which is already in.
+1. **Stage 6, second half** — responsive breakpoints for 1024×768 through 4K,
+   and the fluency pass. Three breakpoints in *physical* px, deliberately: a
+   layout that reorganises while you drag the scale slider reads as a bug.
 2. **Stage 4** — settings table and the password vault, which unblocks the AI
    config and the connector secrets. Independent of the UI stages.
 
