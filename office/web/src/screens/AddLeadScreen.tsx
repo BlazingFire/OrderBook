@@ -44,6 +44,9 @@ import { ConflictBanner } from '../ui/States';
 import { StatusPill, useColourHex } from '../ui/DataDisplay';
 import { useSaveShortcut } from '../ui/SaveShortcutSlot';
 
+/** Illustrative only — shows the shape of a product code in the lookup box. */
+const PRODUCT_CODE_EXAMPLE = 'PRD-0042';
+
 interface Props {
   view: LocalView;
   /** From the signed-in person's own resolved set, not the snapshot's. */
@@ -495,7 +498,7 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
                 <Input
                   id={id}
                   value={codeEntry}
-                  placeholder={t('lead.add.products.byCodePlaceholder')}
+                  placeholder={t('lead.add.products.byCodePlaceholder', { example: PRODUCT_CODE_EXAMPLE })}
                   onChange={(event) => setCodeEntry(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') {

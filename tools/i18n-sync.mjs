@@ -26,22 +26,83 @@ const repoRoot = path.resolve(here, '..');
 const enPath = path.join(repoRoot, 'shared/src/i18n/en.ts');
 const hiPath = path.join(repoRoot, 'shared/src/i18n/hi.ts');
 
-const KEY_LINE = /^\s*'([^']+)':\s*'((?:[^'\\]|\\.)*)'/;
+/**
+ * Read a catalogue by evaluating its object literal.
+ *
+ * This was a per-line regex over `'key': 'value'`, which was wrong three ways
+ * and quietly so: it missed every value wrapped onto a second line, it missed
+ * every double-quoted value — including the ones this script writes itself, so
+ * a second run re-appended keys it had already added and produced duplicates —
+ * and it returned values still carrying their source escapes, so a `\'` became
+ * a literal backslash in the Hindi stub.
+ *
+ * Still dependency-free and still needs no build step: the file is scanned for
+ * the literal's extent and evaluated, rather than parsed by hand.
+ */
+function readKeys(text, opener) {
+  const start = text.indexOf(opener);
+  if (start < 0) throw new Error(`could not find ${opener}`);
+  const from = text.indexOf('{', start);
 
-function readKeys(text) {
-  const keys = new Map();
-  for (const line of text.split('\n')) {
-    const match = KEY_LINE.exec(line);
-    if (match) keys.set(match[1], match[2]);
+  let depth = 0;
+  let end = -1;
+  let inString = null;
+  let inComment = null;
+
+  for (let i = from; i < text.length; i += 1) {
+    const char = text[i];
+
+    if (inComment === 'line') {
+      if (char === '\n') inComment = null;
+      continue;
+    }
+    if (inComment === 'block') {
+      if (char === '*' && text[i + 1] === '/') {
+        inComment = null;
+        i += 1;
+      }
+      continue;
+    }
+    if (inString) {
+      if (char === '\\') i += 1;
+      else if (char === inString) inString = null;
+      continue;
+    }
+
+    // Comments before quotes: an apostrophe in `// don't` would otherwise open
+    // a string that swallows the rest of the file.
+    if (char === '/' && text[i + 1] === '/') {
+      inComment = 'line';
+      i += 1;
+      continue;
+    }
+    if (char === '/' && text[i + 1] === '*') {
+      inComment = 'block';
+      i += 1;
+      continue;
+    }
+
+    if (char === "'" || char === '"' || char === '`') inString = char;
+    else if (char === '{') depth += 1;
+    else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        end = i;
+        break;
+      }
+    }
   }
-  return keys;
+
+  if (end < 0) throw new Error(`unbalanced object literal after ${opener}`);
+  const literal = text.slice(from, end + 1);
+  return new Map(Object.entries(new Function(`return (${literal});`)()));
 }
 
 const enText = readFileSync(enPath, 'utf8');
 const hiText = readFileSync(hiPath, 'utf8');
 
-const enKeys = readKeys(enText);
-const hiKeys = readKeys(hiText);
+const enKeys = readKeys(enText, 'EN_MESSAGES');
+const hiKeys = readKeys(hiText, 'HI_MESSAGES');
 
 const missing = [...enKeys.keys()].filter((key) => !hiKeys.has(key));
 

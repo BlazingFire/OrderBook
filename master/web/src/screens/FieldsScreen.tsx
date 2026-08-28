@@ -50,6 +50,8 @@ type Tab = 'values' | 'definitions' | 'stages';
 
 /** The server's own rule (`master/src/domain/field-values.ts`), checked here to save a round trip. */
 const HEX_PATTERN = /^#[0-9A-Fa-f]{6}$/;
+/** Illustrative only — shown in the hint and the error, so they agree. */
+const HEX_EXAMPLE = '#c8a165';
 
 /**
  * Declared locally rather than imported from the shared package: every other
@@ -230,7 +232,7 @@ function HexField({
   const invalid = trimmed !== '' && !HEX_PATTERN.test(trimmed);
 
   return (
-    <FormField label={label} hint={hint} error={invalid ? t('fields.values.field.hexInvalid') : undefined}>
+    <FormField label={label} hint={hint} error={invalid ? t('fields.values.field.hexInvalid', { example: HEX_EXAMPLE }) : undefined}>
       {(id) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
           <Input
@@ -680,7 +682,7 @@ function ValueDialog({
       {set.hasHex && (
         <HexField
           label={t('fields.values.field.hex')}
-          hint={t('fields.values.field.hexHint')}
+          hint={t('fields.values.field.hexHint', { example: HEX_EXAMPLE })}
           value={hex}
           name={label || value || set.listKey}
           onChange={setHex}
@@ -1501,7 +1503,7 @@ function StageDialog({
 
       <HexField
         label={t('fields.stages.field.colour')}
-        hint={t('fields.values.field.hexHint')}
+        hint={t('fields.values.field.hexHint', { example: HEX_EXAMPLE })}
         value={colour}
         name={name || stage.name}
         onChange={setColour}

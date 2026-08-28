@@ -27,6 +27,7 @@ import type {
 } from '@orderbook/shared';
 import {
   DOCUMENT_TYPES,
+  MAX_TERMS_LENGTH,
   PAGE_ORIENTATIONS,
   PAPER_SIZES,
   TEMPLATE_DEFAULTS,
@@ -715,7 +716,7 @@ function TemplateEditor({
           )}
 
           {draft.showTerms && (
-            <FormField label={t('documents.editor.termsText')} hint={t('documents.editor.termsHint')}>
+            <FormField label={t('documents.editor.termsText')} hint={t('documents.editor.termsHint', { max: MAX_TERMS_LENGTH })}>
               {(id) => (
                 <Textarea
                   id={id}

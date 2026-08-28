@@ -10,7 +10,7 @@
  */
 
 import { useRef, useState } from 'react';
-import { MAX_AVATAR_SOURCE_BYTES, type User } from '@orderbook/shared';
+import { AVATAR_LONG_EDGE, MAX_AVATAR_SOURCE_BYTES, type User } from '@orderbook/shared';
 
 import { t } from '../i18n/strings';
 import { Avatar } from './Avatar';
@@ -89,7 +89,7 @@ export function AvatarPicker({
         )}
 
         <p className="ob-small" style={{ margin: 0, color: 'var(--fg-tertiary)' }}>
-          {t('avatar.hint')}
+          {t('avatar.hint', { px: AVATAR_LONG_EDGE, max: `${MAX_AVATAR_SOURCE_BYTES / (1024 * 1024)} MB` })}
         </p>
         {failure && (
           <p className="ob-small" style={{ margin: 0, color: 'var(--state-conflict)' }} role="alert">
