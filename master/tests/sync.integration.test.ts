@@ -470,3 +470,107 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
     });
   });
 });
+
+/**
+ * The merge path writes columns directly — it is documented as bypassing the
+ * services — so every constrained column added to it is a new way for offline
+ * work to be permanently destroyed. A CHECK violation there is caught, recorded
+ * as a `rejected` result, and replayed as that rejection forever.
+ *
+ * The mitigation is that the same validator the service runs also runs here, so
+ * a bad value comes back as a sentence rather than as a Postgres error nobody
+ * can act on.
+ */
+describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)', () => {
+  beforeAll(setupDatabase);
+  afterAll(teardownDatabase);
+  beforeEach(async () => {
+    await resetData();
+    actor = await testActor({ deviceCode: PANEL_A, actorType: 'office_panel' });
+  });
+
+  async function existingProduct() {
+    return catalog.createProduct(
+      { productCode: 'MRG-01', name: 'Merge Tile', rate: 20_000, uom: 'box' },
+      actor,
+    );
+  }
+
+  it('accepts a valid attribute edit made offline', async () => {
+    const product = await existingProduct();
+
+    const response = await sync.applyPush(
+      {
+        mutations: [
+          mutation({
+            kind: 'product.update',
+            entity: 'product',
+            entityId: product.id,
+            fields: ['brand', 'shade'],
+            payload: { brand: 'Somany', shade: 'Beige Dark' },
+            baseFieldHlc: product.sync.fieldHlc,
+          }),
+        ],
+      },
+      actor,
+    );
+
+    expect(response.results[0]?.status).not.toBe('rejected');
+    expect((await catalog.findProductByCode(product.productCode, actor)).brand).toBe('Somany');
+  });
+
+  it('refuses a value the column could never hold, with a reason', async () => {
+    const product = await existingProduct();
+
+    const response = await sync.applyPush(
+      {
+        mutations: [
+          mutation({
+            kind: 'product.update',
+            entity: 'product',
+            entityId: product.id,
+            fields: ['uom'],
+            payload: { uom: 'crate' },
+            baseFieldHlc: product.sync.fieldHlc,
+          }),
+        ],
+      },
+      actor,
+    );
+
+    const result = response.results[0];
+    expect(result?.status).toBe('rejected');
+    // A sentence, not `new row for relation "products" violates check
+    // constraint "products_uom_check"`.
+    expect(result?.error ?? '').toMatch(/unit of measure/i);
+
+    // …and nothing was written.
+    expect((await catalog.findProductByCode(product.productCode, actor)).uom).toBe('box');
+  });
+
+  it('does not merge a category assignment', async () => {
+    const product = await existingProduct();
+
+    const response = await sync.applyPush(
+      {
+        mutations: [
+          mutation({
+            kind: 'product.update',
+            entity: 'product',
+            entityId: product.id,
+            fields: ['categoryId'],
+            payload: { categoryId: 'CT0000000099' },
+            baseFieldHlc: product.sync.fieldHlc,
+          }),
+        ],
+      },
+      actor,
+    );
+
+    // Category is deliberately absent from `MERGEABLE_PRODUCT_COLUMNS`. The
+    // merge cannot run `resolveCategoryId`, so a stale id would be a foreign
+    // key error rather than a rename — assignment stays an online operation.
+    expect(response.results[0]?.status).not.toBe('rejected');
+    expect((await catalog.findProductByCode(product.productCode, actor)).categoryId).toBeNull();
+  });
+});

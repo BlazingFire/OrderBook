@@ -385,6 +385,22 @@ export function mapProduct(row: Row, images: ProductImage[] = []): Product {
     rate: toNumber(row.rate),
     pricePerSqft: toNumber(row.price_per_sqft),
     hsnCode: (row.hsn_code as string | null) ?? null,
+    mrp: toNumber(row.mrp),
+    purchaseRate: toNumber(row.purchase_rate),
+    gstRatePct: toNumber(row.gst_rate_pct),
+    // NOT NULL with a default in the database, so the fallback is a belt for a
+    // row read through a projection that did not select it.
+    uom: String(row.uom ?? 'box'),
+    barcode: (row.barcode as string | null) ?? null,
+    brand: (row.brand as string | null) ?? null,
+    shade: (row.shade as string | null) ?? null,
+    calibre: (row.calibre as string | null) ?? null,
+    waterAbsorptionPct: toNumber(row.water_absorption_pct),
+    peiRating: toNumber(row.pei_rating),
+    edgeType: (row.edge_type as string | null) ?? null,
+    surfaceTexture: (row.surface_texture as string | null) ?? null,
+    application: (row.application as string | null) ?? null,
+    originPlant: (row.origin_plant as string | null) ?? null,
     parameters: toJsonObject(row.parameters),
     customFields: toJsonObject(row.custom_fields),
     isActive: Boolean(row.is_active),
@@ -588,8 +604,12 @@ export function mapStockLevel(row: Row): InventoryStockLevel {
     availableBoxes: available,
     quantitySqft: coverage === null ? 0 : Math.round(quantityBoxes * coverage * 100) / 100,
     reorderLevel,
+    minStockLevel: toNumber(row.min_stock_level),
+    maxStockLevel: toNumber(row.max_stock_level),
     // Judged on what is actually free to sell, not on what is on the floor —
-    // stock already committed to an order cannot answer the next one.
+    // stock already committed to an order cannot answer the next one. And on
+    // the reorder level *alone*: a second low-stock rule would make the
+    // dashboard's figure ambiguous.
     isLow: reorderLevel !== null && available <= reorderLevel,
     updatedAt: toIso(row.updated_at),
   };
@@ -608,6 +628,9 @@ export function mapStockMovement(row: Row): StockMovement {
     referenceType: (row.reference_type as string | null) ?? null,
     referenceId: (row.reference_id as string | null) ?? null,
     note: (row.note as string | null) ?? null,
+    batchNo: (row.batch_no as string | null) ?? null,
+    shade: (row.shade as string | null) ?? null,
+    calibre: (row.calibre as string | null) ?? null,
     createdAt: toRequiredIso(row.created_at),
   };
 }

@@ -413,6 +413,53 @@ export interface Product {
   rate?: number | null;
   pricePerSqft?: number | null;
   hsnCode: string | null;
+
+  // --- Trade fields ---------------------------------------------------------
+
+  /**
+   * Maximum retail price, in the smallest currency unit.
+   *
+   * **Readable by everyone and never masked; writable only under
+   * `field.saleRate.edit`.** Both halves of that are deliberate: an MRP is
+   * printed on the box, so hiding it would be theatre — but it is still a price
+   * on the product record, and setting it is a pricing decision.
+   */
+  mrp: number | null;
+  /**
+   * What the company pays, in the smallest currency unit.
+   *
+   * Optional because it is gated by `field.purchaseRate.view` and masked by
+   * **key absence** — the `?` is what makes that legal. Anything writing
+   * `purchaseRate ?? 0` is reading "may not see cost" as "cost is zero", so
+   * margin arithmetic belongs on the server.
+   */
+  purchaseRate?: number | null;
+  gstRatePct: number | null;
+  /** `box` | `sqft` | `piece`. Not null: every row asserts a unit. */
+  uom: string;
+  barcode: string | null;
+  brand: string | null;
+
+  // --- Ceramic and tile spec ------------------------------------------------
+
+  /**
+   * The production shade. **Not the batch or lot** — one product receives many
+   * lots, so a lot column would be false the second inbound. Which lot a
+   * particular quantity came from is answered by `stock_movements`.
+   */
+  shade: string | null;
+  /** Free-form: plant codes vary by manufacturer and are not a closed set. */
+  calibre: string | null;
+  waterAbsorptionPct: number | null;
+  /** Abrasion resistance, 0–5. */
+  peiRating: number | null;
+  /** `rectified` | `non_rectified`. */
+  edgeType: string | null;
+  surfaceTexture: string | null;
+  /** `floor` | `wall` | `floor_wall` | `outdoor`. */
+  application: string | null;
+  originPlant: string | null;
+
   /** Free-form ceramic specs that have no dedicated column yet. */
   parameters: Record<string, unknown>;
   customFields: Record<string, unknown>;
@@ -725,6 +772,13 @@ export interface InventoryStockLevel {
   availableBoxes: number;
   quantitySqft: number;
   reorderLevel: number | null;
+  /**
+   * The band a buyer works to. Advisory: nothing refuses a movement for
+   * crossing them, and `isLow` is still driven by `reorderLevel` alone — a
+   * second low-stock rule would make the dashboard's figure ambiguous.
+   */
+  minStockLevel: number | null;
+  maxStockLevel: number | null;
   /** True when available stock is at or below the reorder level. */
   isLow: boolean;
   updatedAt: IsoTimestamp | null;
@@ -745,6 +799,17 @@ export interface StockMovement {
   referenceType: string | null;
   referenceId: RecordId | null;
   note: string | null;
+  /**
+   * Which lot this quantity came from.
+   *
+   * On the movement, not on the product, and that is the whole design: one
+   * product receives many lots, so a `batch_no` column on `products` would be
+   * false the second time stock arrives. "Which lot is this" is a question
+   * about a movement, and the ledger is where the answer lives.
+   */
+  batchNo: string | null;
+  shade: string | null;
+  calibre: string | null;
   createdAt: IsoTimestamp;
 }
 

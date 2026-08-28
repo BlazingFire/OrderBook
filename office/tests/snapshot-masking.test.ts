@@ -73,6 +73,23 @@ const FIXTURE: SyncSnapshot = {
       rate: 1250,
       pricePerSqft: 50,
       hsnCode: null,
+      mrp: 1500,
+      // Present in the fixture on purpose: this suite exists to prove what
+      // *leaves* the panel, and a field that is never set cannot be shown to
+      // have been withheld.
+      purchaseRate: 900,
+      gstRatePct: 18,
+      uom: 'box',
+      barcode: null,
+      brand: null,
+      shade: null,
+      calibre: null,
+      waterAbsorptionPct: null,
+      peiRating: null,
+      edgeType: null,
+      surfaceTexture: null,
+      application: null,
+      originPlant: null,
       parameters: {},
       customFields: {},
       isActive: true,
@@ -178,6 +195,8 @@ const FIXTURE: SyncSnapshot = {
       reservedBoxes: 2,
       availableBoxes: 8,
       quantitySqft: 100,
+      minStockLevel: null,
+      maxStockLevel: null,
       reorderLevel: 5,
       isLow: false,
       updatedAt: NOW,
@@ -286,6 +305,37 @@ describe('snapshot masking (DSH-1, DSH-2)', () => {
     expect(response.status).toBe(200);
     expect(response.body.products[0].rate).toBe(1250);
     expect(response.body.leads[0].totalAmount).toBe(2500);
+  });
+
+  /**
+   * The two prices are separate secrets with separate audiences: a sales desk
+   * quotes the sale rate all day and must never see the margin. They used to be
+   * one boolean, which is how the purchase rate reached everybody holding
+   * `field.saleRate.view`.
+   */
+  it('withholds the purchase rate from a session that may only see the sale rate', async () => {
+    vi.spyOn(userSession, 'sessionPermissions').mockReturnValue(['leads.create', 'field.saleRate.view']);
+
+    const response = await request(createApp()).get('/api/snapshot');
+
+    expect(response.status).toBe(200);
+    expect(response.body.products[0].rate).toBe(1250);
+    expect('purchaseRate' in response.body.products[0]).toBe(false);
+    // Printed on the box; hiding it would be theatre.
+    expect(response.body.products[0].mrp).toBe(1500);
+  });
+
+  it('keeps the purchase rate for a session that holds its own key', async () => {
+    vi.spyOn(userSession, 'sessionPermissions').mockReturnValue([
+      'leads.create',
+      'field.saleRate.view',
+      'field.purchaseRate.view',
+    ]);
+
+    const response = await request(createApp()).get('/api/snapshot');
+
+    expect(response.status).toBe(200);
+    expect(response.body.products[0].purchaseRate).toBe(900);
   });
 
   /**

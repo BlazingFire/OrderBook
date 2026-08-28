@@ -411,6 +411,23 @@ function provisionalProduct(mutation: Mutation): Product {
     rate: payload.rate ?? null,
     pricePerSqft: null,
     hsnCode: null,
+    // The attributes a person can actually type into the offline Add Product
+    // form. The rest stay null until the Master answers — a provisional row is
+    // what was typed, not a guess at what the catalogue will hold.
+    mrp: payload.mrp ?? null,
+    purchaseRate: payload.purchaseRate ?? null,
+    gstRatePct: payload.gstRatePct ?? null,
+    uom: String(payload.uom ?? 'box'),
+    barcode: payload.barcode ?? null,
+    brand: payload.brand ?? null,
+    shade: payload.shade ?? null,
+    calibre: payload.calibre ?? null,
+    waterAbsorptionPct: null,
+    peiRating: null,
+    edgeType: payload.edgeType ?? null,
+    surfaceTexture: payload.surfaceTexture ?? null,
+    application: payload.application ?? null,
+    originPlant: payload.originPlant ?? null,
     parameters: {},
     customFields: {},
     isActive: true,

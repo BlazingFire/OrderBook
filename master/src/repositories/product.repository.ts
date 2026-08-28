@@ -47,6 +47,8 @@ export async function listProducts(
         .orWhereILike('p.product_code', pattern)
         .orWhereILike('p.alias', pattern)
         .orWhereILike('p.series', pattern)
+        .orWhereILike('p.barcode', pattern)
+        .orWhereILike('p.brand', pattern)
         .orWhereILike('c.name', pattern),
     );
   }
@@ -114,6 +116,22 @@ export async function findProductByCode(
 ): Promise<Product | null> {
   const row = await baseQuery(tenantId, runner)
     .andWhereRaw('lower(p.product_code) = lower(?)', [code])
+    .first();
+  return row ? mapProduct(row) : null;
+}
+
+/**
+ * The barcode lookup, mirroring `findProductByCode` including its live-only
+ * filter — a scanner should find the product on the shelf, not one somebody
+ * moved to the Recycle Bin last month.
+ */
+export async function findProductByBarcode(
+  tenantId: string,
+  barcode: string,
+  runner: Runner = db(),
+): Promise<Product | null> {
+  const row = await baseQuery(tenantId, runner)
+    .andWhereRaw('lower(p.barcode) = lower(?)', [barcode])
     .first();
   return row ? mapProduct(row) : null;
 }

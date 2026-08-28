@@ -5,6 +5,7 @@ export * from './domain/entities.js';
 export * from './domain/fields.js';
 export * from './domain/inputs.js';
 export * from './domain/permissions.js';
+export * from './domain/product-validation.js';
 export * from './domain/recycle-bin.js';
 export * from './domain/reports.js';
 export * from './domain/settings.js';

@@ -17,6 +17,10 @@ export const FIELD_LIST_KEYS = [
   'lead.sourcePlatform',
   'stock.colour',
   'product.productType',
+  'product.brand',
+  'product.shade',
+  'product.surfaceTexture',
+  'product.originPlant',
   'line.packaging',
 ] as const;
 
@@ -51,6 +55,35 @@ const FIELD_SETS: readonly FieldSetDefinition[] = [
   {
     listKey: 'product.productType',
     labelToken: 'fieldSet.product.productType',
+    hasHex: false,
+    usedBy: ['products'],
+  },
+  // The four ceramic vocabularies. Lists rather than columns with a CHECK,
+  // because these are sets staff extend — a new brand or a new surface arrives
+  // with a new supplier, and that must not need a migration. Deliberately not
+  // seeded: `unlisted` already surfaces the values present in the data, so the
+  // company's own catalogue fills the list the first time somebody looks.
+  {
+    listKey: 'product.brand',
+    labelToken: 'fieldSet.product.brand',
+    hasHex: false,
+    usedBy: ['products'],
+  },
+  {
+    listKey: 'product.shade',
+    labelToken: 'fieldSet.product.shade',
+    hasHex: false,
+    usedBy: ['products'],
+  },
+  {
+    listKey: 'product.surfaceTexture',
+    labelToken: 'fieldSet.product.surfaceTexture',
+    hasHex: false,
+    usedBy: ['products'],
+  },
+  {
+    listKey: 'product.originPlant',
+    labelToken: 'fieldSet.product.originPlant',
     hasHex: false,
     usedBy: ['products'],
   },

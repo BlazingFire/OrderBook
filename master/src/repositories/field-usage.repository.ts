@@ -86,6 +86,48 @@ const SOURCES: Record<FieldListKey, readonly SourceDefinition[]> = {
              GROUP BY product_type`,
     },
   ],
+  /*
+   * The four ceramic vocabularies. Each has exactly one source — the products
+   * table — because unlike `product_type` these are not snapshotted onto a line
+   * item: a lead's line carries the size and grade it was quoted at, not the
+   * brand.
+   */
+  'product.brand': [
+    {
+      source: 'products',
+      sql: `SELECT brand AS value, count(*) AS count
+              FROM products
+             WHERE tenant_id = ? AND deleted_at IS NULL AND brand IS NOT NULL
+             GROUP BY brand`,
+    },
+  ],
+  'product.shade': [
+    {
+      source: 'products',
+      sql: `SELECT shade AS value, count(*) AS count
+              FROM products
+             WHERE tenant_id = ? AND deleted_at IS NULL AND shade IS NOT NULL
+             GROUP BY shade`,
+    },
+  ],
+  'product.surfaceTexture': [
+    {
+      source: 'products',
+      sql: `SELECT surface_texture AS value, count(*) AS count
+              FROM products
+             WHERE tenant_id = ? AND deleted_at IS NULL AND surface_texture IS NOT NULL
+             GROUP BY surface_texture`,
+    },
+  ],
+  'product.originPlant': [
+    {
+      source: 'products',
+      sql: `SELECT origin_plant AS value, count(*) AS count
+              FROM products
+             WHERE tenant_id = ? AND deleted_at IS NULL AND origin_plant IS NOT NULL
+             GROUP BY origin_plant`,
+    },
+  ],
   'line.packaging': [
     {
       source: 'line_items',

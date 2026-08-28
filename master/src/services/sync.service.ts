@@ -42,6 +42,8 @@ import type {
 } from '@orderbook/shared';
 import {
   columnPatch,
+  ProductValidationError,
+  validateProductInput,
   compareForIdAssignment,
   isSyncableEntity,
   isTemporaryId,
@@ -56,7 +58,7 @@ import { actorCan, type ActorContext } from '../domain/actor.js';
 import { UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
 import { requirePartyAccess } from './party-access.service.js';
 import { db } from '../db/knex.js';
-import { ForbiddenError, NotFoundError, toErrorMessage } from '../lib/errors.js';
+import { ForbiddenError, NotFoundError, toErrorMessage, ValidationError } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import * as identityRepo from '../repositories/identity.repository.js';
 import * as leadRepo from '../repositories/lead.repository.js';
@@ -333,6 +335,25 @@ async function mergeUpdate(
       deviceCode: mutation.deviceCode,
     },
   );
+
+  /*
+   * Validate before writing, on the one path that has no validation layer.
+   *
+   * This function writes columns directly — it is documented as bypassing the
+   * services — so a CHECK violation here is caught by `applyOne`, recorded as a
+   * permanent `rejected` result, and replayed as that rejection forever. An
+   * Office panel's offline edit would be destroyed rather than bounced. The
+   * same `validateProductInput` the catalogue service runs turns that into a
+   * refusal somebody can read and act on.
+   */
+  if (entity === 'product') {
+    try {
+      validateProductInput(outcome.accepted as unknown as ProductInput);
+    } catch (error) {
+      if (error instanceof ProductValidationError) throw new ValidationError(error.messageKey);
+      throw error;
+    }
+  }
 
   const patch = columnPatch(outcome.accepted, columns);
 

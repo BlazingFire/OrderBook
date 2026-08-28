@@ -98,6 +98,60 @@ list with the user (see `PROJECT_PLAN.md` §12) and promote anything used often 
 of `parameters` into a typed column in a follow-up migration; that's a cheap,
 additive change and not a reason to block Phase 1 on a perfect field list.
 
+### The trade and ceramic attributes (2026-08-29)
+
+`20260315000000_product_trade_and_ceramic_attributes` did exactly the promotion
+the paragraph above describes, once the owner named the field set:
+
+```sql
+ALTER TABLE products
+  ADD COLUMN mrp                  INTEGER,      -- smallest currency unit
+  ADD COLUMN purchase_rate        INTEGER,      -- smallest currency unit
+  ADD COLUMN gst_rate_pct         NUMERIC(5,2),
+  ADD COLUMN uom                  TEXT NOT NULL DEFAULT 'box',  -- box | sqft | piece
+  ADD COLUMN barcode              TEXT,         -- partial-unique among live rows
+  ADD COLUMN brand                TEXT,         -- option list `product.brand`
+  ADD COLUMN shade                TEXT,         -- option list `product.shade`
+  ADD COLUMN calibre              TEXT,         -- free-form: plant codes vary
+  ADD COLUMN water_absorption_pct NUMERIC(5,2),
+  ADD COLUMN pei_rating           SMALLINT,     -- 0–5
+  ADD COLUMN edge_type            TEXT,         -- rectified | non_rectified
+  ADD COLUMN surface_texture      TEXT,         -- option list `product.surfaceTexture`
+  ADD COLUMN application          TEXT,         -- floor | wall | floor_wall | outdoor
+  ADD COLUMN origin_plant         TEXT;         -- option list `product.originPlant`
+```
+
+The rule it followed: **columns** for anything indexed, constrained, arithmetic
+or standard-defined; **option lists** for vocabularies staff extend; **custom
+fields** for neither. So `pei_rating` is a constrained column while `brand` is
+plain TEXT backed by an option list — a new brand arrives with a new supplier
+and must not need a migration. Option-list-backed values are not seeded:
+`unlisted` already surfaces the values present in the data, so the company's own
+catalogue fills the list the first time somebody looks at it.
+
+Two prices, two permissions. `mrp` is readable by everyone and never masked — it
+is printed on the box, so hiding it would be theatre — but writable only under
+`field.saleRate.edit`. `purchase_rate` is gated by `field.purchaseRate.view` and
+masked by **key absence**, which is why `Product.purchaseRate` is declared
+optional: anything writing `purchaseRate ?? 0` would read "may not see cost" as
+"cost is zero", so margin arithmetic stays server-side.
+
+**Batch or lot is deliberately not a product column**, and that is a refusal of
+the requirement as literally written. One product receives many lots, so the
+column is false the second time stock arrives. `stock_movements` gained
+`batch_no`, `shade` and `calibre` instead, which answers "which lot is this"
+from the ledger — and is the data a true lot-level on-hand model would be built
+from. That model means re-keying `inventory_stock` from
+`(tenant_id, product_id, colour)` and following it through reservations, line
+item quantities, dispatch settlement and the document renderer: a workstream,
+not a column.
+
+`inventory_stock` gained `min_stock_level` and `max_stock_level`, both advisory.
+The reorder point was **not** renamed — `reorder_level` already carries
+`countLowStock`, `mapStockLevel`, a route and a mutation kind — and `isLow` is
+still driven by it alone, because a second low-stock rule would make the
+dashboard's figure ambiguous.
+
 ## `product_images`
 
 ```sql

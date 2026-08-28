@@ -16,6 +16,7 @@ import type {
   StockListQuery,
   StockMovement,
 } from '@orderbook/shared';
+import { ProductValidationError, validateStockLevels } from '@orderbook/shared';
 
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { clampLimit, clampPaging } from '../domain/paging.js';
@@ -152,6 +153,22 @@ export async function recordAdjustment(
   return level;
 }
 
+/**
+ * The shared stock-level validator, re-thrown in this codebase's currency.
+ *
+ * Same arrangement as `assertProductInput` in the catalogue service, and for
+ * the same reason: the rules live in `shared` because the offline merge path
+ * needs them too, and `shared` cannot import the Master's error hierarchy.
+ */
+function assertStockLevels(input: ReorderLevelInput): void {
+  try {
+    validateStockLevels(input);
+  } catch (error) {
+    if (error instanceof ProductValidationError) throw new ValidationError(error.messageKey);
+    throw error;
+  }
+}
+
 export async function setReorderLevel(
   input: ReorderLevelInput,
   actor: ActorContext,
@@ -161,16 +178,17 @@ export async function setReorderLevel(
   const colour = requireColour(input.colour);
   await assertProductExists(actor.tenantId, input.productId);
 
-  if (input.reorderLevel !== null && input.reorderLevel < 0) {
-    throw new ValidationError('validation.stock.reorderLevelNegative');
-  }
+  // The band, checked here as well as by the database's own CHECK — a person
+  // waiting on a form deserves a sentence, not a constraint name.
+  assertStockLevels(input);
 
-  const level = await inventoryRepo.setReorderLevel(
-    actor.tenantId,
-    input.productId,
-    colour,
-    input.reorderLevel,
-  );
+  const level = await inventoryRepo.setStockLevels(actor.tenantId, input.productId, colour, {
+    // Passed through as-is, `undefined` included: absent means untouched, and
+    // the repository writes only what was asserted.
+    reorderLevel: input.reorderLevel,
+    minStockLevel: input.minStockLevel,
+    maxStockLevel: input.maxStockLevel,
+  });
   if (!level) throw new NotFoundError('Stock level');
 
   publishChange({ entity: 'stock', action: 'updated', id: stockKey(input.productId, colour), payload: level });
@@ -237,6 +255,8 @@ function emptyLevel(productId: string, colour: string): InventoryStockLevel {
     availableBoxes: 0,
     quantitySqft: 0,
     reorderLevel: null,
+    minStockLevel: null,
+    maxStockLevel: null,
     isLow: false,
     updatedAt: null,
   };

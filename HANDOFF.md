@@ -63,8 +63,8 @@ secrets and the password toggle.
 | 5 — screen keep-alive | **done** (manual pass owed) |
 | 6 — UI scale + responsive | **done** |
 | 7 — performance and memory | **done** |
-| 8 — product & party attributes | **next** |
-| 9 — picker, dense forms, grid, exports | not started |
+| 8 — product & party attributes | **done** (product half; party fields still open) |
+| 9 — picker, dense forms, grid, exports | **next** |
 | 10 — keyboard system | not started |
 | 11 — public API + connectors | not started |
 | 12 — AI section | not started |
@@ -72,10 +72,18 @@ secrets and the password toggle.
 Everything through Stage 6 is pushed to **both `dev` and `main`** (they are at
 the same commit as of 2026-08-28).
 
-What Stage 1 deliberately left: `validateProductInput`, purchase-rate masking
-and the `setStockLevels` partial upsert all validate columns that do not exist
-until Stage 8's migration, so they land there rather than being written
-against nothing.
+What Stage 1 deliberately left — `validateProductInput`, purchase-rate masking
+and the `setStockLevels` partial upsert — landed with Stage 8's migration, which
+is the point at which the columns they validate exist.
+
+What Stage 8 deliberately left: **the party fields.** The owner's answer named
+the product attribute set and nothing else; `PROJECT_PLAN.md` §12's question
+about party fields (GST/tax ID, credit terms, multiple contacts) is still open
+and unanswered, so there is nothing to build against. Also left, and stated as a
+refusal rather than an omission: batch/lot is not a product column — see
+`docs/schema/02-parties-and-products.md`. And no UI for the new attributes; the
+Office panel's ProductDetail keeps showing its five fields until Stage 9's dense
+form.
 
 Stage 6's five deferred items all landed on 2026-08-29. Two of them were
 already moot, exactly as the note below about stale designs predicts: the

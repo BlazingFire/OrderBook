@@ -340,14 +340,33 @@ dataRoutes.post(
 dataRoutes.post(
   '/stock/reorder-level',
   asyncHandler(async (req, res) => {
-    const { productId, colour, reorderLevel } = req.body ?? {};
+    const { productId, colour } = req.body ?? {};
     if (typeof productId !== 'string') throw new ValidationError('validation.stock.productRequired');
     if (typeof colour !== 'string') throw new ValidationError('validation.stock.colourSelectRequired');
 
-    const level = reorderLevel === null || reorderLevel === '' ? null : Number(reorderLevel);
+    /*
+     * Three distinct meanings, and the route has to keep them apart:
+     * **absent** is "leave it alone", **empty string or null** is "clear it",
+     * and a number is a number. Collapsing the first two would make the
+     * existing reorder-level screen wipe the min and max every time it saved.
+     */
+    const level = (value: unknown): number | null | undefined => {
+      if (value === undefined) return undefined;
+      if (value === null || value === '') return null;
+      return Number(value);
+    };
+
+    const body = req.body as Record<string, unknown>;
+
     res.json(
       await inventoryService.setReorderLevel(
-        { productId, colour, reorderLevel: level },
+        {
+          productId,
+          colour,
+          reorderLevel: level(body.reorderLevel),
+          minStockLevel: level(body.minStockLevel),
+          maxStockLevel: level(body.maxStockLevel),
+        },
         actorFromRequest(req),
       ),
     );

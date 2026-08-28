@@ -53,6 +53,8 @@ function stockQuery(tenantId: string, runner: Runner = db()) {
       'c.name as category_name',
       's.quantity_boxes',
       's.reorder_level',
+      's.min_stock_level',
+      's.max_stock_level',
       's.updated_at',
     );
 }
@@ -254,23 +256,59 @@ export async function applyMovement(
   return existingTrx ? run(existingTrx) : db().transaction(run);
 }
 
-export async function setReorderLevel(
+/**
+ * Set whichever of the three stock levels the caller actually asserted.
+ *
+ * **The subset is the whole point.** A single upsert with
+ * `SET reorder_level = EXCLUDED.reorder_level, min_stock_level = …, max_stock_level = …`
+ * would null min and max every time somebody used the existing "set the
+ * reorder level" screen — which knows nothing about them and never will. That
+ * is the same whole-record-replace defect the partial patch on products exists
+ * to kill, and it would be reintroduced here by writing the obvious upsert.
+ *
+ * `undefined` is never bound, either: a knex positional binding of `undefined`
+ * throws "Undefined binding(s)" rather than meaning anything.
+ */
+export async function setStockLevels(
   tenantId: string,
   productId: string,
   colour: string,
-  reorderLevel: number | null,
+  levels: {
+    reorderLevel?: number | null;
+    minStockLevel?: number | null;
+    maxStockLevel?: number | null;
+  },
 ): Promise<InventoryStockLevel | null> {
+  const asserted: Array<[column: string, value: number | null]> = [];
+
+  if (levels.reorderLevel !== undefined) asserted.push(['reorder_level', levels.reorderLevel]);
+  if (levels.minStockLevel !== undefined) asserted.push(['min_stock_level', levels.minStockLevel]);
+  if (levels.maxStockLevel !== undefined) asserted.push(['max_stock_level', levels.maxStockLevel]);
+
+  // Nothing asserted is not an error and not a write — it is a read.
+  if (asserted.length === 0) return findStockLevel(tenantId, productId, colour);
+
+  const columns = asserted.map(([column]) => column);
+  const values = asserted.map(([, value]) => value);
+
   await db().raw(
-    `INSERT INTO inventory_stock (id, tenant_id, product_id, colour, quantity_boxes, reorder_level, updated_at)
-          VALUES (?, ?, ?, ?, 0, ?, now())
+    `INSERT INTO inventory_stock
+       (id, tenant_id, product_id, colour, quantity_boxes, ${columns.join(', ')}, updated_at)
+     VALUES (?, ?, ?, ?, 0, ${columns.map(() => '?').join(', ')}, now())
      ON CONFLICT (tenant_id, product_id, colour) DO UPDATE
-            SET reorder_level = EXCLUDED.reorder_level,
-                updated_at    = now()`,
-    [uuid(), tenantId, productId, colour, reorderLevel],
+            SET ${columns.map((column) => `${column} = EXCLUDED.${column}`).join(', ')},
+                updated_at = now()`,
+    [uuid(), tenantId, productId, colour, ...values],
   );
 
   return findStockLevel(tenantId, productId, colour);
 }
+
+/**
+ * The old name, kept so nothing above has to be renamed for a change that is
+ * about what a caller may leave out, not about what the operation means.
+ */
+export const setReorderLevel = setStockLevels;
 
 /** Which colours a product currently has stock rows for. */
 export async function coloursFor(

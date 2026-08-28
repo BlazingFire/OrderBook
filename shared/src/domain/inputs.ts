@@ -63,6 +63,26 @@ export interface ProductInput {
   rate?: number | null;
   pricePerSqft?: number | null;
   hsnCode?: string | null;
+
+  // Trade and ceramic attributes. Every one optional, because an update is a
+  // **partial patch**: an absent key means "leave it alone", and a present
+  // `null` means "clear it". A client that sends only what it changed cannot
+  // wipe a column it never showed the person.
+  mrp?: number | null;
+  purchaseRate?: number | null;
+  gstRatePct?: number | null;
+  uom?: string | null;
+  barcode?: string | null;
+  brand?: string | null;
+  shade?: string | null;
+  calibre?: string | null;
+  waterAbsorptionPct?: number | null;
+  peiRating?: number | null;
+  edgeType?: string | null;
+  surfaceTexture?: string | null;
+  application?: string | null;
+  originPlant?: string | null;
+
   parameters?: Record<string, unknown>;
   customFields?: Record<string, unknown>;
 }
@@ -218,11 +238,28 @@ export interface StockAdjustmentInput {
   note?: string | null;
 }
 
-export interface ReorderLevelInput {
+/**
+ * The stock band for one (product, colour).
+ *
+ * Every level is optional and **absent means untouched** — the same partial
+ * patch rule the product columns follow. That is what stops the existing
+ * "set the reorder level" screen, which knows nothing about min and max, from
+ * clearing them every time somebody uses it.
+ */
+export interface StockLevelsInput {
   productId: RecordId;
   colour: string;
-  reorderLevel: number | null;
+  reorderLevel?: number | null;
+  minStockLevel?: number | null;
+  maxStockLevel?: number | null;
 }
+
+/**
+ * The old name, kept so `MUTATION_PERMISSIONS` and the `stock.setReorderLevel`
+ * mutation kind need no rename — the wire contract has not changed, only what
+ * a caller is allowed to leave out.
+ */
+export type ReorderLevelInput = StockLevelsInput;
 
 /**
  * Which slice of the party book a list is asking for.

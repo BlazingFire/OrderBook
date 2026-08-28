@@ -16,6 +16,7 @@ import {
   maskLead,
   maskOrder,
   maskProduct,
+  type ProductVisibility,
   maskVariant,
   MAX_IMAGE_SOURCE_BYTES,
   MUTATION_PERMISSIONS,
@@ -1110,17 +1111,30 @@ function withoutAnotherPersonsParties(view: LocalView): LocalView {
 
 function forCurrentUser(view: LocalView): LocalView {
   const permissions = userSession.sessionPermissions();
-  const allowed = permissions.includes('field.saleRate.view');
+  const visible = productVisibilityOf(permissions);
   const scoped = withoutAnotherPersonsParties(view);
 
   return {
     ...scoped,
     permissions,
-    leads: scoped.leads.map((lead) => maskLead(lead, allowed)),
-    orders: scoped.orders.map((order) => maskOrder(order, allowed)),
-    products: scoped.products.map((product) => maskProduct(product, allowed)),
-    partyVariants: scoped.partyVariants.map((variant) => maskVariant(variant, allowed)),
+    leads: scoped.leads.map((lead) => maskLead(lead, visible.rates)),
+    orders: scoped.orders.map((order) => maskOrder(order, visible.rates)),
+    products: scoped.products.map((product) => maskProduct(product, visible)),
+    partyVariants: scoped.partyVariants.map((variant) => maskVariant(variant, visible.rates)),
     dashboard: filterDashboardForCurrentUser(scoped.dashboard, permissions),
+  };
+}
+
+/**
+ * What this panel's signed-in person may see of a product's two prices.
+ *
+ * Two axes, not one: a sales desk quotes the sale rate all day and must never
+ * see what the company paid.
+ */
+function productVisibilityOf(permissions: readonly string[]): ProductVisibility {
+  return {
+    rates: permissions.includes('field.saleRate.view'),
+    cost: permissions.includes('field.purchaseRate.view'),
   };
 }
 
@@ -1132,18 +1146,29 @@ function forCurrentUser(view: LocalView): LocalView {
  * else through untouched.
  */
 function maskChangeEvent(event: DataChangedEvent): DataChangedEvent {
-  const allowed = userSession.sessionPermissions().includes('field.saleRate.view');
-  if (allowed) return event;
+  const visible = productVisibilityOf(userSession.sessionPermissions());
+
+  /*
+   * **Both** axes, and this line is the reason the whole two-dimension change
+   * exists. It used to short-circuit on the sale-rate key alone, which is not a
+   * `maskProduct` call site — so it kept compiling when the signature changed,
+   * and every Office user holding `field.saleRate.view` received the raw
+   * `purchaseRate` on every live product change.
+   */
+  if (visible.rates && visible.cost) return event;
 
   switch (event.entity) {
     case 'lead':
-      return { ...event, payload: maskLead(event.payload as Lead, false) };
+      return { ...event, payload: maskLead(event.payload as Lead, visible.rates) };
     case 'order':
-      return { ...event, payload: maskOrder(event.payload as Order, false) };
+      return { ...event, payload: maskOrder(event.payload as Order, visible.rates) };
     case 'product':
-      return { ...event, payload: maskProduct(event.payload as Product, false) };
+      return { ...event, payload: maskProduct(event.payload as Product, visible) };
     case 'party_variant':
-      return { ...event, payload: maskVariant(event.payload as PartyProductVariant, false) };
+      return {
+        ...event,
+        payload: maskVariant(event.payload as PartyProductVariant, visible.rates),
+      };
     default:
       return event;
   }

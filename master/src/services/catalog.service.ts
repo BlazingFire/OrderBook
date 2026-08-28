@@ -17,16 +17,20 @@ import type {
   ProductCategory,
   ProductInput,
 } from '@orderbook/shared';
+import { ProductValidationError, validateProductInput } from '@orderbook/shared';
 
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { clampPaging } from '../domain/paging.js';
 import { resolvePartyScope } from '../domain/party-scope.js';
 import { suggestRestoredName } from '../domain/recycle-bin.js';
 import {
+  canEditCost,
   canEditRates,
   canSeeRates,
   maskProduct,
   maskVariant,
+  productVisibility,
+  withPermittedPurchaseRate,
   withPermittedRate,
 } from '../domain/visibility.js';
 import { db } from '../db/knex.js';
@@ -249,8 +253,8 @@ export async function listProducts(
     ...clampPaging(query, PAGING),
   });
 
-  const allowed = canSeeRates(actor);
-  return { ...page, items: page.items.map((product) => maskProduct(product, allowed)) };
+  const visible = productVisibility(actor);
+  return { ...page, items: page.items.map((product) => maskProduct(product, visible)) };
 }
 
 export async function listCategories(actor: ActorContext): Promise<ProductCategory[]> {
@@ -266,7 +270,23 @@ export async function findProductByCode(
   requirePermission(actor, 'products.view');
 
   const product = await productRepo.findProductByCode(actor.tenantId, code);
-  return product ? maskProduct(product, canSeeRates(actor)) : null;
+  return product ? maskProduct(product, productVisibility(actor)) : null;
+}
+
+/**
+ * Run the shared product validator and re-throw in this codebase's currency.
+ *
+ * The validator lives in `shared` because the offline merge path needs it too,
+ * and `shared` cannot import the Master's `AppError` hierarchy — it is consumed
+ * by the browser bundles. So it throws a token and this translates it once.
+ */
+function assertProductInput(input: ProductInput): void {
+  try {
+    validateProductInput(input);
+  } catch (error) {
+    if (error instanceof ProductValidationError) throw new ValidationError(error.messageKey);
+    throw error;
+  }
 }
 
 export async function createProduct(
@@ -277,6 +297,11 @@ export async function createProduct(
 
   const name = input.name?.trim();
   if (!name) throw new ValidationError('validation.product.nameRequired');
+
+  // The closed sets and ranges, checked before the database gets to. The same
+  // function runs on the offline merge path, where a CHECK violation would be
+  // recorded as a permanent rejection and replayed forever.
+  assertProductInput(input);
 
   // Staff who do not have a code to hand get one generated rather than being
   // blocked on inventing one at the counter.
@@ -291,11 +316,15 @@ export async function createProduct(
     return productRepo.insertProduct(
       {
         tenantId: actor.tenantId,
-        // The rate is a permissioned field in its own right: `products.create`
-        // says you may add a product, `field.saleRate.edit` says you may price
-        // it. Without the second, the rate falls back to whatever the catalogue
-        // default is rather than to what the caller asked for.
-        input: withPermittedRate({ ...input, name, productCode }, canEditRates(actor)),
+        // Two permissioned prices, two independent gates. `products.create`
+        // says you may add a product; `field.saleRate.edit` says you may price
+        // it; `field.purchaseRate.edit` says you may record what it cost.
+        // Without one, that value falls back to the catalogue default rather
+        // than to whatever the caller sent.
+        input: withPermittedPurchaseRate(
+          withPermittedRate({ ...input, name, productCode }, canEditRates(actor)),
+          canEditCost(actor),
+        ),
         hlc,
         fieldHlc: {},
         temporaryId: null,
@@ -314,7 +343,7 @@ export async function createProduct(
   }, actor, db());
   publishChange({ entity: 'product', action: 'created', id: product.id, payload: product });
 
-  return maskProduct(product, canSeeRates(actor));
+  return maskProduct(product, productVisibility(actor));
 }
 
 export async function updateProduct(
@@ -326,6 +355,8 @@ export async function updateProduct(
 
   const name = input.name?.trim();
   if (!name) throw new ValidationError('validation.product.nameRequired');
+
+  assertProductInput(input);
 
   const productCode = input.productCode?.trim();
   if (!productCode) throw new ValidationError('validation.product.codeRequired');
@@ -340,7 +371,10 @@ export async function updateProduct(
     return productRepo.updateProduct(
       actor.tenantId,
       id,
-      withPermittedRate({ ...input, name, productCode }, canEditRates(actor)),
+      withPermittedPurchaseRate(
+        withPermittedRate({ ...input, name, productCode }, canEditRates(actor)),
+        canEditCost(actor),
+      ),
       { hlc, fieldHlc: {} },
       trx,
     );
@@ -358,7 +392,7 @@ export async function updateProduct(
   }, actor, db());
   publishChange({ entity: 'product', action: 'updated', id: product.id, payload: product });
 
-  return maskProduct(product, canSeeRates(actor));
+  return maskProduct(product, productVisibility(actor));
 }
 
 /**

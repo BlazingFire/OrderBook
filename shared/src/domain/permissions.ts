@@ -111,6 +111,23 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
 
   { key: 'field.saleRate.view', group: 'pricing', labelToken: 'permission.field.saleRate.view' },
   { key: 'field.saleRate.edit', group: 'pricing', labelToken: 'permission.field.saleRate.edit' },
+  /*
+   * What the company pays is more sensitive than what it charges: a sale rate
+   * is quoted to customers all day, while a purchase rate is the margin. Both
+   * are `management` at minimum, which is safe against the tier ceiling by
+   * construction — any role holding `field.saleRate.edit` is already management
+   * or above.
+   */
+  {
+    key: 'field.purchaseRate.view',
+    group: 'pricing',
+    labelToken: 'permission.field.purchaseRate.view',
+  },
+  {
+    key: 'field.purchaseRate.edit',
+    group: 'pricing',
+    labelToken: 'permission.field.purchaseRate.edit',
+  },
 
   { key: 'stock.adjust', group: 'stock', labelToken: 'permission.stock.adjust' },
 
@@ -191,7 +208,12 @@ export function isPermission(value: unknown): value is Permission {
 }
 
 /** Permissions that gate a *field* rather than an action. */
-export const FIELD_PERMISSIONS = ['field.saleRate.view', 'field.saleRate.edit'] as const;
+export const FIELD_PERMISSIONS = [
+  'field.saleRate.view',
+  'field.saleRate.edit',
+  'field.purchaseRate.view',
+  'field.purchaseRate.edit',
+] as const;
 
 // --- The tier ceiling ------------------------------------------------------
 
@@ -232,6 +254,8 @@ const MINIMUM_TIER: Record<string, RoleTier> = {
   'products.bulk': 'management',
   'record.reassignOwner': 'management',
   'field.saleRate.edit': 'management',
+  'field.purchaseRate.view': 'management',
+  'field.purchaseRate.edit': 'management',
 
   // Recycle Bin: viewing your own deletions is office tier; seeing everyone
   // else's is management — a wider disclosure than the delete key itself.

@@ -26,11 +26,35 @@ export function maskLineItem(line: LineItem, allowed: boolean): LineItem {
   return visible as LineItem;
 }
 
-export function maskProduct(product: Product, allowed: boolean): Product {
-  if (allowed) return product;
+/**
+ * A product is masked along **two** independent axes.
+ *
+ * What the company charges and what it pays are different secrets with
+ * different audiences: a sales desk quotes the sale rate all day and must never
+ * see the margin. Collapsing them into one boolean is what let `purchaseRate`
+ * ride out to anybody holding `field.saleRate.view`.
+ */
+export interface ProductVisibility {
+  rates: boolean;
+  cost: boolean;
+}
 
-  const { rate: _rate, pricePerSqft: _pricePerSqft, ...visible } = product;
-  return visible as Product;
+export function maskProduct(product: Product, visible: ProductVisibility): Product {
+  let masked = product;
+
+  if (!visible.rates) {
+    const { rate: _rate, pricePerSqft: _pricePerSqft, ...rest } = masked;
+    masked = rest as Product;
+  }
+
+  if (!visible.cost) {
+    const { purchaseRate: _purchaseRate, ...rest } = masked;
+    masked = rest as Product;
+  }
+
+  // `mrp` is deliberately never masked: it is printed on the box, so hiding it
+  // would be theatre. Setting it is still gated, on `field.saleRate.edit`.
+  return masked;
 }
 
 export function maskVariant(
@@ -73,5 +97,22 @@ export function withPermittedRate<T extends { rate?: number | null }>(
   if (allowed || draft.rate === undefined) return draft;
 
   const { rate: _rate, ...rest } = draft;
+  return rest as T;
+}
+
+/**
+ * The same courtesy for the purchase rate, and for the same reason.
+ *
+ * Dropped rather than rejected: a panel replaying a day-old draft legitimately
+ * carries whatever the catalogue held then, and refusing the whole mutation
+ * would throw away work somebody did in good faith.
+ */
+export function withPermittedPurchaseRate<T extends { purchaseRate?: number | null }>(
+  draft: T,
+  allowed: boolean,
+): T {
+  if (allowed || draft.purchaseRate === undefined) return draft;
+
+  const { purchaseRate: _purchaseRate, ...rest } = draft;
   return rest as T;
 }
