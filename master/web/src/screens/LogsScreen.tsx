@@ -27,17 +27,27 @@ import type {
 import { createTranslator, renderActivity } from '@orderbook/shared';
 
 import { api } from '../api';
-import { formatDateTime } from '../format';
-import { t } from '../i18n/strings';
-import { Button, ButtonLink } from '../ui/Button';
-import { Section } from '../ui/Card';
-import { NewerOlderPager } from '../ui/CursorPager';
-import { KeyValueList, StatusPill } from '../ui/DataDisplay';
-import { DataTable, type DataTableColumn } from '../ui/DataTable';
-import { useFilterBar } from '../ui/FilterBarSlot';
-import { DateField, Input, Select } from '../ui/Form';
-import { Modal } from '../ui/Modal';
-import { ConflictBanner, EmptyState, ErrorState, SkeletonRows } from '../ui/States';
+import {
+  Button,
+  ButtonLink,
+  ConflictBanner,
+  DataTable,
+  DateField,
+  EmptyState,
+  ErrorState,
+  Input,
+  KeyValueList,
+  Modal,
+  NewerOlderPager,
+  Section,
+  Select,
+  SkeletonRows,
+  StatusPill,
+  formatDateTime,
+  t,
+  useFilterBar,
+  type DataTableColumn,
+} from '@orderbook/ui';
 
 interface Props {
   /** The signed-in user's resolved permissions, as the shell already holds them. */
@@ -103,7 +113,9 @@ export function LogsScreen({ permissions }: Props) {
   const [facetsFailed, setFacetsFailed] = useState(false);
 
   // `null` is the head of the feed — the page you get with no cursor at all.
-  const [cursor, setCursor] = useState<{ value: string; direction: 'older' | 'newer' } | null>(null);
+  const [cursor, setCursor] = useState<{ value: string; direction: 'older' | 'newer' } | null>(
+    null,
+  );
   const [page, setPage] = useState<CursorPage<ActivityLogEntry> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -125,7 +137,11 @@ export function LogsScreen({ permissions }: Props) {
 
     void (async () => {
       try {
-        const result = await api.logs({ ...query, cursor: cursor?.value, direction: cursor?.direction });
+        const result = await api.logs({
+          ...query,
+          cursor: cursor?.value,
+          direction: cursor?.direction,
+        });
         if (cancelled) return;
         setPage(result);
         setError(null);
@@ -223,7 +239,10 @@ export function LogsScreen({ permissions }: Props) {
               actors can both arrive with a null id, and two such rows would
               otherwise collide on one React key. */}
           {(facets?.actors ?? []).map((actor, index) => (
-            <option key={`${index}-${actorKey(actor.type, actor.id)}`} value={actorKey(actor.type, actor.id)}>
+            <option
+              key={`${index}-${actorKey(actor.type, actor.id)}`}
+              value={actorKey(actor.type, actor.id)}
+            >
               {actor.name ?? t(`logs.actorType.${actor.type}`)}
             </option>
           ))}
@@ -406,7 +425,13 @@ export function LogsScreen({ permissions }: Props) {
         return (
           <span
             title={who}
-            style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
           >
             {who}
           </span>
@@ -459,7 +484,12 @@ export function LogsScreen({ permissions }: Props) {
         action={
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
             {canVerify && (
-              <Button variant="secondary" size="sm" busy={verifying} onClick={() => void runVerify()}>
+              <Button
+                variant="secondary"
+                size="sm"
+                busy={verifying}
+                onClick={() => void runVerify()}
+              >
                 {t('logs.action.verify')}
               </Button>
             )}
@@ -515,7 +545,6 @@ export function LogsScreen({ permissions }: Props) {
           </>
         )}
       </Section>
-
 
       <Modal
         open={openEntry !== null}
@@ -593,7 +622,10 @@ function VerificationVerdict({ result }: { result: ChainVerification }) {
               </span>
             ),
           },
-          { label: t('logs.verify.checked'), value: <span className="ob-data">{result.checkedCount}</span> },
+          {
+            label: t('logs.verify.checked'),
+            value: <span className="ob-data">{result.checkedCount}</span>,
+          },
           {
             label: t('logs.verify.skipped'),
             value: <span className="ob-data">{result.skippedPreChainCount}</span>,

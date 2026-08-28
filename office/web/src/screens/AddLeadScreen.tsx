@@ -33,16 +33,28 @@ import type {
 import { api, type LocalView } from '../api';
 import { CustomFields } from '../components/CustomFields';
 import { PartyDrawer, type CreatedParty } from '../components/PartyDrawer';
-import { formatMoney } from '../format';
-import { t } from '../i18n/strings';
-import { Button, IconButton } from '../ui/Button';
-import { Card } from '../ui/Card';
-import { Combobox, type ComboboxOption } from '../ui/Combobox';
-import { ColourQuantityGrid, type ColourQuantity } from '../ui/ColourQuantityGrid';
-import { DateField, FormField, Input, NumberInput, Select, Switch, Textarea } from '../ui/Form';
-import { ConflictBanner } from '../ui/States';
-import { StatusPill, useColourHex } from '../ui/DataDisplay';
-import { useSaveShortcut } from '../ui/SaveShortcutSlot';
+import {
+  Button,
+  Card,
+  ColourQuantityGrid,
+  Combobox,
+  ConflictBanner,
+  DateField,
+  FormField,
+  IconButton,
+  Input,
+  NumberInput,
+  Select,
+  StatusPill,
+  Switch,
+  Textarea,
+  formatMoney,
+  t,
+  useColourHex,
+  useSaveShortcut,
+  type ColourQuantity,
+  type ComboboxOption,
+} from '@orderbook/ui';
 
 /** Illustrative only — shows the shape of a product code in the lookup box. */
 const PRODUCT_CODE_EXAMPLE = 'PRD-0042';
@@ -125,7 +137,9 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
    */
   const partyOptions = useMemo<ComboboxOption<Party>[]>(() => {
     const readOnly = new Set(
-      (view.partyGrants ?? []).filter((grant) => grant.level === 'view').map((grant) => grant.partyId),
+      (view.partyGrants ?? [])
+        .filter((grant) => grant.level === 'view')
+        .map((grant) => grant.partyId),
     );
 
     return view.parties
@@ -141,7 +155,13 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
     () =>
       view.products.map((product) => ({
         key: product.id,
-        label: [product.productCode, product.name, product.alias, product.series, product.categoryName]
+        label: [
+          product.productCode,
+          product.name,
+          product.alias,
+          product.series,
+          product.categoryName,
+        ]
           .filter(Boolean)
           .join(' · '),
         value: product,
@@ -363,7 +383,12 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
             </FormField>
 
             <div style={{ marginTop: 'var(--s-8)' }}>
-              <Button variant="ghost" size="sm" icon="plus" onClick={() => setPartyDrawerOpen(true)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                icon="plus"
+                onClick={() => setPartyDrawerOpen(true)}
+              >
                 {t('lead.add.party.newParty')}
               </Button>
             </div>
@@ -390,7 +415,9 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
                     {line.code}
                   </span>
                 )}
-                {line.fromPartyVariant && <StatusPill tone="accent">{t('lead.add.products.partyRate')}</StatusPill>}
+                {line.fromPartyVariant && (
+                  <StatusPill tone="accent">{t('lead.add.products.partyRate')}</StatusPill>
+                )}
                 <span style={{ flex: 1 }} />
                 <IconButton
                   icon="trash"
@@ -399,7 +426,14 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-12) var(--s-16)', marginTop: 'var(--s-12)' }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: 'var(--s-12) var(--s-16)',
+                  marginTop: 'var(--s-12)',
+                }}
+              >
                 <FormField label={t('lead.add.products.packagingRequired')}>
                   {(id) => (
                     <>
@@ -415,7 +449,9 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
                           variant="ghost"
                           size="sm"
                           style={{ marginTop: 'var(--s-4)' }}
-                          onClick={() => updateLine(index, { packaging: line.suggestedPackaging ?? '' })}
+                          onClick={() =>
+                            updateLine(index, { packaging: line.suggestedPackaging ?? '' })
+                          }
                         >
                           {t('lead.add.products.useSuggested', { value: line.suggestedPackaging })}
                         </Button>
@@ -476,7 +512,10 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
                   onEnterLast={() => productSearchRef.current?.focus()}
                   colourHex={colourHex}
                 />
-                <p className="ob-small" style={{ marginTop: 'var(--s-4)', color: 'var(--fg-tertiary)' }}>
+                <p
+                  className="ob-small"
+                  style={{ marginTop: 'var(--s-4)', color: 'var(--fg-tertiary)' }}
+                >
                   {t('lead.add.products.keyboardHint')}
                 </p>
               </div>
@@ -491,14 +530,23 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
           ))}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-12) var(--s-16)', marginTop: 'var(--s-12)' }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 'var(--s-12) var(--s-16)',
+            marginTop: 'var(--s-12)',
+          }}
+        >
           <FormField label={t('lead.add.products.byCode')}>
             {(id) => (
               <div style={{ display: 'flex', gap: 'var(--s-6)' }}>
                 <Input
                   id={id}
                   value={codeEntry}
-                  placeholder={t('lead.add.products.byCodePlaceholder', { example: PRODUCT_CODE_EXAMPLE })}
+                  placeholder={t('lead.add.products.byCodePlaceholder', {
+                    example: PRODUCT_CODE_EXAMPLE,
+                  })}
                   onChange={(event) => setCodeEntry(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') {
@@ -534,10 +582,20 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
           {t('lead.add.details.title')}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-12) var(--s-16)' }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 'var(--s-12) var(--s-16)',
+          }}
+        >
           <FormField label={t('lead.add.details.source')}>
             {(id) => (
-              <Select id={id} value={sourcePlatform} onChange={(event) => setSourcePlatform(event.target.value)}>
+              <Select
+                id={id}
+                value={sourcePlatform}
+                onChange={(event) => setSourcePlatform(event.target.value)}
+              >
                 <option value="">—</option>
                 {sourceOptions.map((option) => (
                   <option key={option.id} value={option.value}>
@@ -549,22 +607,47 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
           </FormField>
 
           <FormField label={t('lead.add.details.followUp')}>
-            {(id) => <DateField id={id} value={followUpDate} onChange={(event) => setFollowUpDate(event.target.value)} />}
+            {(id) => (
+              <DateField
+                id={id}
+                value={followUpDate}
+                onChange={(event) => setFollowUpDate(event.target.value)}
+              />
+            )}
           </FormField>
         </div>
 
         <FormField label={t('lead.add.details.notes')}>
-          {(id) => <Textarea id={id} rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} />}
+          {(id) => (
+            <Textarea
+              id={id}
+              rows={3}
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+            />
+          )}
         </FormField>
 
-        <CustomFields definitions={leadFieldDefinitions} values={customFields} onChange={setCustomFields} />
+        <CustomFields
+          definitions={leadFieldDefinitions}
+          values={customFields}
+          onChange={setCustomFields}
+        />
       </Card>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <strong className="ob-body-strong">{t('lead.add.total', { amount: formatMoney(total) })}</strong>
+        <strong className="ob-body-strong">
+          {t('lead.add.total', { amount: formatMoney(total) })}
+        </strong>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
           <span className="ob-small">{t('lead.add.savingHint')}</span>
-          <Button variant="primary" size="lg" busy={busy} title="Ctrl+S" onClick={() => void save()}>
+          <Button
+            variant="primary"
+            size="lg"
+            busy={busy}
+            title="Ctrl+S"
+            onClick={() => void save()}
+          >
             {busy ? t('lead.add.saving') : t('lead.add.save')}
           </Button>
         </div>

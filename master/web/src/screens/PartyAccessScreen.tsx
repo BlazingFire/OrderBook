@@ -38,16 +38,23 @@ import type {
 } from '@orderbook/shared';
 
 import { api, ApiError } from '../api';
-import { t } from '../i18n/strings';
-import { Avatar } from '../ui/Avatar';
-import { Button, ButtonLink } from '../ui/Button';
-import { Combobox } from '../ui/Combobox';
-import { StatusPill } from '../ui/DataDisplay';
-import { DataTable, type DataTableColumn } from '../ui/DataTable';
-import { Input } from '../ui/Form';
-import { Modal } from '../ui/Modal';
-import { ConflictBanner, EmptyState, ErrorState, SkeletonRows } from '../ui/States';
-import { Segmented } from '../ui/Tabs';
+import {
+  Avatar,
+  Button,
+  ButtonLink,
+  Combobox,
+  ConflictBanner,
+  DataTable,
+  EmptyState,
+  ErrorState,
+  Input,
+  Modal,
+  Segmented,
+  SkeletonRows,
+  StatusPill,
+  t,
+  type DataTableColumn,
+} from '@orderbook/ui';
 
 interface Props {
   permissions: string[];
@@ -147,7 +154,9 @@ export function PartyAccessScreen({ permissions, revision }: Props) {
           {t('partyAccess.title')}
         </h1>
         {permissions.includes('parties.export') ? (
-          <ButtonLink href={api.partyAccessExportUrl()}>{t('partyAccess.action.export')}</ButtonLink>
+          <ButtonLink href={api.partyAccessExportUrl()}>
+            {t('partyAccess.action.export')}
+          </ButtonLink>
         ) : null}
       </div>
 
@@ -209,7 +218,9 @@ export function PartyAccessScreen({ permissions, revision }: Props) {
           canAssign={canAssign}
           onClose={() => setOpenParty(null)}
           onSaved={(row) => {
-            setRows((current) => current.map((item) => (item.partyId === row.partyId ? row : item)));
+            setRows((current) =>
+              current.map((item) => (item.partyId === row.partyId ? row : item)),
+            );
             setOpenParty(null);
           }}
         />
@@ -307,7 +318,9 @@ function AccessEditor({
     setSaving(true);
     setFailure(null);
     try {
-      onSaved(await api.savePartyAccess(party.partyId, { entries, expectedVersion: party.version }));
+      onSaved(
+        await api.savePartyAccess(party.partyId, { entries, expectedVersion: party.version }),
+      );
     } catch (caught) {
       if (caught instanceof ApiError && caught.isConflict) setStale(true);
       setFailure(caught instanceof Error ? caught.message : t('partyAccess.error.save'));
@@ -325,7 +338,14 @@ function AccessEditor({
       subtitle={party.partyCode}
       footer={
         canAssign ? (
-          <div style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}>
+          <div
+            style={{
+              display: 'flex',
+              gap: 'var(--s-6)',
+              justifyContent: 'flex-end',
+              width: '100%',
+            }}
+          >
             <Button variant="ghost" onClick={onClose}>
               {t('partyAccess.action.cancel')}
             </Button>
@@ -355,7 +375,9 @@ function AccessEditor({
           </ConflictBanner>
         ) : null}
 
-        {failure && !stale ? <ErrorState title={t('partyAccess.error.save')} description={failure} /> : null}
+        {failure && !stale ? (
+          <ErrorState title={t('partyAccess.error.save')} description={failure} />
+        ) : null}
 
         <p className="ob-small" style={{ margin: 0 }}>
           {entries.length === 0 ? t('partyAccess.explainOpen') : t('partyAccess.explainRestricted')}
@@ -364,7 +386,16 @@ function AccessEditor({
         {entries.length === 0 ? (
           <EmptyState title={t('partyAccess.noAssignees')} />
         ) : (
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 'var(--s-6)' }}>
+          <ul
+            style={{
+              listStyle: 'none',
+              margin: 0,
+              padding: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 'var(--s-6)',
+            }}
+          >
             {entries.map((entry) => (
               <li key={entry.userId} style={ROW}>
                 <Avatar name={nameFor(entry.userId)} avatar={avatarFor(entry.userId)} size="sm" />

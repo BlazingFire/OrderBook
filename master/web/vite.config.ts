@@ -11,6 +11,11 @@ const { version } = JSON.parse(readFileSync(new URL('./package.json', import.met
 export default defineConfig({
   define: { __APP_VERSION__: JSON.stringify(version) },
   plugins: [react()],
+  // A symlinked workspace package: leave it as source so its .tsx, .css and
+  // .woff2 graph is transpiled like local code. Pre-bundling would take font
+  // emission away from `assetsInlineLimit: 0` below, and this app must never
+  // reach for a CDN — the shop network has no internet.
+  optimizeDeps: { exclude: ['@orderbook/ui'] },
   build: {
     outDir: 'dist',
     emptyOutDir: true,

@@ -29,15 +29,30 @@ import type {
 } from '@orderbook/shared';
 
 import { api, ApiError, type FieldDifference } from '../api';
-import { t } from '../i18n/strings';
-import { Button, IconButton } from '../ui/Button';
-import { Card, Section } from '../ui/Card';
-import { ColourChip, StatusPill } from '../ui/DataDisplay';
-import { DataTable, type DataTableColumn } from '../ui/DataTable';
-import { FormField, Input, Select, Switch, Textarea } from '../ui/Form';
-import { Modal } from '../ui/Modal';
-import { ConflictBanner, EmptyState, ErrorState, SkeletonRows } from '../ui/States';
-import { Segmented, Tabs, type TabItem } from '../ui/Tabs';
+import {
+  Button,
+  Card,
+  ColourChip,
+  ConflictBanner,
+  DataTable,
+  EmptyState,
+  ErrorState,
+  FormField,
+  IconButton,
+  Input,
+  Modal,
+  Section,
+  Segmented,
+  Select,
+  SkeletonRows,
+  StatusPill,
+  Switch,
+  Tabs,
+  Textarea,
+  t,
+  type DataTableColumn,
+  type TabItem,
+} from '@orderbook/ui';
 
 interface Props {
   /** The signed-in caller's own resolved permissions. */
@@ -232,7 +247,11 @@ function HexField({
   const invalid = trimmed !== '' && !HEX_PATTERN.test(trimmed);
 
   return (
-    <FormField label={label} hint={hint} error={invalid ? t('fields.values.field.hexInvalid', { example: HEX_EXAMPLE }) : undefined}>
+    <FormField
+      label={label}
+      hint={hint}
+      error={invalid ? t('fields.values.field.hexInvalid', { example: HEX_EXAMPLE }) : undefined}
+    >
       {(id) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
           <Input
@@ -412,7 +431,14 @@ function ValuesTab({
             header: '',
             width: '170px',
             render: (item: OptionListItem) => (
-              <div style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 'var(--s-6)',
+                  justifyContent: 'flex-end',
+                  width: '100%',
+                }}
+              >
                 <Button variant="secondary" size="sm" onClick={() => setEditing(item)}>
                   {t('fields.action.edit')}
                 </Button>
@@ -449,7 +475,12 @@ function ValuesTab({
               })}
             </span>
             {canManage && (
-              <Button variant="primary" size="sm" icon="plus" onClick={() => setCreating({ value: '' })}>
+              <Button
+                variant="primary"
+                size="sm"
+                icon="plus"
+                onClick={() => setCreating({ value: '' })}
+              >
                 {t('fields.values.add')}
               </Button>
             )}
@@ -544,7 +575,8 @@ function ValuesTab({
               onClick={() => {
                 const target = confirmRemove;
                 setConfirmRemove(null);
-                if (target) void run(() => api.deleteFieldValue(target.id), t('fields.error.delete'));
+                if (target)
+                  void run(() => api.deleteFieldValue(target.id), t('fields.error.delete'));
               }}
             >
               {t('fields.action.remove')}
@@ -584,9 +616,10 @@ function ValueDialog({
   const [isActive, setIsActive] = useState(item?.isActive ?? true);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
-  const [conflict, setConflict] = useState<{ message: string; diff: Record<string, FieldDifference> } | null>(
-    null,
-  );
+  const [conflict, setConflict] = useState<{
+    message: string;
+    diff: Record<string, FieldDifference>;
+  } | null>(null);
   // Re-based only by an explicit Overwrite — see `ConflictNotice`.
   const [baseVersion, setBaseVersion] = useState(item?.version ?? 0);
 
@@ -660,7 +693,10 @@ function ValueDialog({
       )}
 
       {item ? (
-        <FormField label={t('fields.values.field.value')} hint={t('fields.values.field.valueLocked')}>
+        <FormField
+          label={t('fields.values.field.value')}
+          hint={t('fields.values.field.valueLocked')}
+        >
           {(id) => (
             <p id={id} className="ob-mono" style={{ margin: 0 }}>
               {item.value}
@@ -668,9 +704,18 @@ function ValueDialog({
           )}
         </FormField>
       ) : (
-        <FormField label={t('fields.values.field.value')} hint={t('fields.values.field.valueHint')} required>
+        <FormField
+          label={t('fields.values.field.value')}
+          hint={t('fields.values.field.valueHint')}
+          required
+        >
           {(id) => (
-            <Input id={id} value={value} autoFocus onChange={(event) => setValue(event.target.value)} />
+            <Input
+              id={id}
+              value={value}
+              autoFocus
+              onChange={(event) => setValue(event.target.value)}
+            />
           )}
         </FormField>
       )}
@@ -690,7 +735,10 @@ function ValueDialog({
       )}
 
       {item && (
-        <FormField label={t('fields.values.field.active')} hint={t('fields.values.field.activeHint')}>
+        <FormField
+          label={t('fields.values.field.active')}
+          hint={t('fields.values.field.activeHint')}
+        >
           {() => (
             <Switch
               checked={isActive}
@@ -824,7 +872,12 @@ function DefinitionsTab({
         // title rather than wrapping into a height the cell does not have.
         <span
           title={definition.options.join('\n')}
-          style={{ minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+          style={{
+            minWidth: 0,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
         >
           {definition.options.join(', ') || '—'}
         </span>
@@ -848,7 +901,14 @@ function DefinitionsTab({
             header: '',
             width: '170px',
             render: (definition: CustomFieldDefinition) => (
-              <div style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 'var(--s-6)',
+                  justifyContent: 'flex-end',
+                  width: '100%',
+                }}
+              >
                 <Button variant="secondary" size="sm" onClick={() => setEditing(definition)}>
                   {t('fields.action.edit')}
                 </Button>
@@ -981,9 +1041,10 @@ function DefinitionDialog({
   const [optionText, setOptionText] = useState((definition?.options ?? []).join('\n'));
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
-  const [conflict, setConflict] = useState<{ message: string; diff: Record<string, FieldDifference> } | null>(
-    null,
-  );
+  const [conflict, setConflict] = useState<{
+    message: string;
+    diff: Record<string, FieldDifference>;
+  } | null>(null);
   const [baseVersion, setBaseVersion] = useState(definition?.version ?? 0);
 
   const options = optionText
@@ -1066,7 +1127,10 @@ function DefinitionDialog({
       )}
 
       {definition ? (
-        <FormField label={t('fields.definitions.field.key')} hint={t('fields.definitions.field.keyLocked')}>
+        <FormField
+          label={t('fields.definitions.field.key')}
+          hint={t('fields.definitions.field.keyLocked')}
+        >
           {(id) => (
             <p id={id} className="ob-mono" style={{ margin: 0 }}>
               {definition.key}
@@ -1074,8 +1138,14 @@ function DefinitionDialog({
           )}
         </FormField>
       ) : (
-        <FormField label={t('fields.definitions.field.key')} hint={t('fields.definitions.field.keyHint')} required>
-          {(id) => <Input id={id} value={key} autoFocus onChange={(event) => setKey(event.target.value)} />}
+        <FormField
+          label={t('fields.definitions.field.key')}
+          hint={t('fields.definitions.field.keyHint')}
+          required
+        >
+          {(id) => (
+            <Input id={id} value={key} autoFocus onChange={(event) => setKey(event.target.value)} />
+          )}
         </FormField>
       )}
 
@@ -1109,7 +1179,10 @@ function DefinitionDialog({
       </FormField>
 
       {(definition ? definition.fieldType === 'select' : needsOptions) && (
-        <FormField label={t('fields.definitions.field.options')} hint={t('fields.definitions.field.optionsHint')}>
+        <FormField
+          label={t('fields.definitions.field.options')}
+          hint={t('fields.definitions.field.optionsHint')}
+        >
           {(id) => (
             <Textarea
               id={id}
@@ -1121,7 +1194,10 @@ function DefinitionDialog({
         </FormField>
       )}
 
-      <FormField label={t('fields.definitions.field.required')} hint={t('fields.definitions.field.requiredHint')}>
+      <FormField
+        label={t('fields.definitions.field.required')}
+        hint={t('fields.definitions.field.requiredHint')}
+      >
         {() => (
           <Switch
             checked={isRequired}
@@ -1304,8 +1380,12 @@ function StagesTab({ canManage, revision }: { canManage: boolean; revision: numb
         width: '260px',
         render: (stage) => (
           <span style={{ display: 'flex', gap: 'var(--s-6)' }}>
-            {stage.isDefault && <StatusPill tone="accent">{t('fields.stages.flag.default')}</StatusPill>}
-            {stage.isTerminal && <StatusPill tone="ok">{t('fields.stages.flag.terminal')}</StatusPill>}
+            {stage.isDefault && (
+              <StatusPill tone="accent">{t('fields.stages.flag.default')}</StatusPill>
+            )}
+            {stage.isTerminal && (
+              <StatusPill tone="ok">{t('fields.stages.flag.terminal')}</StatusPill>
+            )}
             {stage.isArchived && (
               <StatusPill tone="offline">{t('fields.stages.flag.archived')}</StatusPill>
             )}
@@ -1319,7 +1399,14 @@ function StagesTab({ canManage, revision }: { canManage: boolean; revision: numb
               header: '',
               width: '300px',
               render: (stage: PipelineStage) => (
-                <div style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 'var(--s-6)',
+                    justifyContent: 'flex-end',
+                    width: '100%',
+                  }}
+                >
                   <Button variant="secondary" size="sm" onClick={() => setEditing(stage)}>
                     {t('fields.action.edit')}
                   </Button>
@@ -1498,7 +1585,9 @@ function StageDialog({
       {failure && <ConflictBanner>{failure}</ConflictBanner>}
 
       <FormField label={t('fields.stages.field.name')}>
-        {(id) => <Input id={id} value={name} autoFocus onChange={(event) => setName(event.target.value)} />}
+        {(id) => (
+          <Input id={id} value={name} autoFocus onChange={(event) => setName(event.target.value)} />
+        )}
       </FormField>
 
       <HexField
@@ -1509,7 +1598,10 @@ function StageDialog({
         onChange={setColour}
       />
 
-      <FormField label={t('fields.stages.field.terminal')} hint={t('fields.stages.field.terminalHint')}>
+      <FormField
+        label={t('fields.stages.field.terminal')}
+        hint={t('fields.stages.field.terminalHint')}
+      >
         {() => (
           <Switch
             checked={isTerminal}

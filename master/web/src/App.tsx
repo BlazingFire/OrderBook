@@ -22,7 +22,25 @@ import type {
 } from '@orderbook/shared';
 
 import { ApiError, api } from './api';
-import { t } from './i18n/strings';
+import {
+  AppShell,
+  Avatar,
+  Clock,
+  FilterBarOutlet,
+  FilterBarProvider,
+  GalleryScreen,
+  Icon,
+  SaveShortcutProvider,
+  Splash,
+  SubNavProvider,
+  ToastProvider,
+  TopbarActionsOutlet,
+  TopbarActionsProvider,
+  t,
+  useSubNavState,
+  type NavGroup,
+  type NavItem,
+} from '@orderbook/ui';
 import { SearchBox } from './components/SearchBox';
 import { AccessScreen } from './screens/AccessScreen';
 import { ConflictsScreen } from './screens/ConflictsScreen';
@@ -40,17 +58,6 @@ import { ReportsScreen } from './screens/ReportsScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { UpdatesScreen } from './screens/UpdatesScreen';
 import { SignInScreen } from './screens/SignInScreen';
-import { AppShell, type NavGroup, type NavItem } from './ui/AppShell';
-import { Avatar } from './ui/Avatar';
-import { Clock } from './ui/Clock';
-import { FilterBarOutlet, FilterBarProvider } from './ui/FilterBarSlot';
-import { SaveShortcutProvider } from './ui/SaveShortcutSlot';
-import { SubNavProvider, useSubNavState } from './ui/SubNavSlot';
-import { TopbarActionsOutlet, TopbarActionsProvider } from './ui/TopbarSlot';
-import { GalleryScreen } from './ui/GalleryScreen';
-import { Icon } from './ui/icons';
-import { Splash } from './ui/Splash';
-import { ToastProvider } from './ui/Toast';
 
 type Phase = 'loading' | 'first-run' | 'signed-out' | 'ready';
 type Tab =
@@ -71,7 +78,14 @@ type Tab =
 type Route = '' | 'gallery';
 
 /** Entities whose changes should make the data screens refetch. */
-const REFRESHING_ENTITIES = new Set(['lead', 'order', 'party', 'stock', 'reservation', 'sync_conflict']);
+const REFRESHING_ENTITIES = new Set([
+  'lead',
+  'order',
+  'party',
+  'stock',
+  'reservation',
+  'sync_conflict',
+]);
 
 /** The cold-start steps the splash reports, in the order they run. */
 const BOOT_STEPS = ['server', 'session', 'assets'] as const;
@@ -295,7 +309,8 @@ function MasterPanel() {
   const openConflicts = summary?.openConflictCount ?? 0;
   const pendingSync = summary?.pendingSyncCount ?? 0;
   const offlinePanels = panels.filter((panel) => !panel.isConnected).length;
-  const canManageRoles = user.permissions.includes('roles.view') || user.permissions.includes('users.manage');
+  const canManageRoles =
+    user.permissions.includes('roles.view') || user.permissions.includes('users.manage');
   const canManagePanels = user.permissions.includes('panels.manage');
   const canManageSettings = user.permissions.includes('settings.manage');
   const canViewFields = user.permissions.includes('fields.view');
@@ -354,7 +369,8 @@ function MasterPanel() {
       id: 'inventory',
       label: t('nav.master.inventory'),
       icon: 'inventory',
-      count: summary?.lowStockCount && summary.lowStockCount > 0 ? summary.lowStockCount : undefined,
+      count:
+        summary?.lowStockCount && summary.lowStockCount > 0 ? summary.lowStockCount : undefined,
     },
     // Reports and Documents sit under Work rather than Admin: both are things
     // a manager produces during the day, not settings anyone administers.
@@ -376,8 +392,12 @@ function MasterPanel() {
       : null,
     canViewFields ? { id: 'fields', label: t('nav.master.fields'), icon: 'filter' } : null,
     canViewLogs ? { id: 'logs', label: t('nav.master.logs'), icon: 'eye' } : null,
-    canViewRecycleBin ? { id: 'recycleBin', label: t('nav.master.recycleBin'), icon: 'trash' } : null,
-    canManageSettings ? { id: 'settings', label: t('nav.master.settings'), icon: 'settings' } : null,
+    canViewRecycleBin
+      ? { id: 'recycleBin', label: t('nav.master.recycleBin'), icon: 'trash' }
+      : null,
+    canManageSettings
+      ? { id: 'settings', label: t('nav.master.settings'), icon: 'settings' }
+      : null,
     // Visible to everyone: which version a machine runs is not privileged
     // information, and the person asked to read it out is rarely an admin.
     { id: 'updates', label: t('nav.updates'), icon: 'sync' },
@@ -394,7 +414,9 @@ function MasterPanel() {
   const nest = (items: Array<NavItem | null>): NavItem[] =>
     items
       .filter((item): item is NavItem => item !== null)
-      .map((item) => (subNav && subNav.parentId === item.id ? { ...item, children: subNav.items } : item));
+      .map((item) =>
+        subNav && subNav.parentId === item.id ? { ...item, children: subNav.items } : item,
+      );
 
   const groups: NavGroup[] = [
     { label: t('nav.master.work'), items: nest(workItems) },
@@ -402,7 +424,10 @@ function MasterPanel() {
   ];
 
   const activeId = subNav ? subNav.activeId : route === 'gallery' ? 'gallery' : tab;
-  const flatItems = groups.flatMap((group) => [...group.items, ...(group.items.flatMap((item) => item.children ?? []))]);
+  const flatItems = groups.flatMap((group) => [
+    ...group.items,
+    ...group.items.flatMap((item) => item.children ?? []),
+  ]);
   const activeLabel =
     route === 'gallery' && !subNav
       ? t('footer.designSystem')
@@ -419,7 +444,8 @@ function MasterPanel() {
     if (subNav?.items.some((item) => item.id === id)) return;
     if (subNav && !subNav.onExit()) return;
     if (id === 'gallery') return;
-    if (readHash()) window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    if (readHash())
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
     setRoute('');
     setTab(id as Tab);
   }
@@ -449,7 +475,12 @@ function MasterPanel() {
 
   const footer = (
     <>
-      <button type="button" className="ob-footer-sync" style={{ color: 'inherit' }} onClick={() => setSyncPopover((open) => !open)}>
+      <button
+        type="button"
+        className="ob-footer-sync"
+        style={{ color: 'inherit' }}
+        onClick={() => setSyncPopover((open) => !open)}
+      >
         <span className="dot" style={{ background: railDotColour }} />
         {syncLabel}
       </button>
@@ -458,7 +489,11 @@ function MasterPanel() {
         <Avatar name={user.displayName} avatar={user.avatar} size="xs" />
         {t('footer.signedInAs', { name: user.username, role: user.roleName })}
       </span>
-      <a href="#/gallery" onClick={() => setRoute('gallery')} style={{ color: 'var(--fg-tertiary)' }}>
+      <a
+        href="#/gallery"
+        onClick={() => setRoute('gallery')}
+        style={{ color: 'var(--fg-tertiary)' }}
+      >
         {t('footer.designSystem')}
       </a>
       <span className="ob-mono" style={{ fontSize: '10.5px', color: 'var(--fg-tertiary)' }}>
@@ -471,15 +506,29 @@ function MasterPanel() {
   const overlays = syncPopover && (
     <>
       {/* Click-away shim keeps the popover honest without a portal. */}
-      <div style={{ position: 'absolute', inset: 0, zIndex: 'var(--z-popover)' }} onClick={() => setSyncPopover(false)} />
+      <div
+        style={{ position: 'absolute', inset: 0, zIndex: 'var(--z-popover)' }}
+        onClick={() => setSyncPopover(false)}
+      />
       <div
         className="ob-popover"
-        style={{ left: 'var(--s-12)', bottom: 'calc(var(--shell-footer-h) + var(--s-8))', width: 300, padding: 'var(--s-16)' }}
+        style={{
+          left: 'var(--s-12)',
+          bottom: 'calc(var(--shell-footer-h) + var(--s-8))',
+          width: 300,
+          padding: 'var(--s-16)',
+        }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
           <span className="ob-body-strong">{t(popoverTitleKey)}</span>
           <span style={{ flex: 1 }} />
-          <button type="button" className="ob-icon-btn" aria-label={t('action.close')} title={t('action.close')} onClick={() => setSyncPopover(false)}>
+          <button
+            type="button"
+            className="ob-icon-btn"
+            aria-label={t('action.close')}
+            title={t('action.close')}
+            onClick={() => setSyncPopover(false)}
+          >
             <Icon name="close" size={10} />
           </button>
         </div>
@@ -494,7 +543,13 @@ function MasterPanel() {
           <dd className="ob-data">{summary?.lowStockCount ?? 0}</dd>
         </dl>
         {openConflicts > 0 && (
-          <div style={{ marginTop: 'var(--s-12)', paddingTop: 'var(--s-8)', borderTop: '1px solid var(--line)' }}>
+          <div
+            style={{
+              marginTop: 'var(--s-12)',
+              paddingTop: 'var(--s-8)',
+              borderTop: '1px solid var(--line)',
+            }}
+          >
             <button
               className="ob-btn ob-btn--ghost ob-btn--sm"
               style={{ color: 'var(--accent)' }}
@@ -552,7 +607,10 @@ function MasterPanel() {
         return <RecycleBinScreen permissions={user.permissions} revision={dataRevision} />;
       case 'conflicts':
         return (
-          <ConflictsScreen revision={dataRevision} canResolve={user.permissions.includes('sync.resolveConflicts')} />
+          <ConflictsScreen
+            revision={dataRevision}
+            canResolve={user.permissions.includes('sync.resolveConflicts')}
+          />
         );
       case 'updates':
         return <UpdatesScreen panels={panels} permissions={user.permissions} />;

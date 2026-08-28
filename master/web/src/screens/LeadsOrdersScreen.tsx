@@ -11,15 +11,23 @@ import { useEffect, useState } from 'react';
 import type { Lead, LineItem, Order, PartyScopeFilter, Pipeline } from '@orderbook/shared';
 
 import { api } from '../api';
-import { formatDateTime, formatMoney } from '../format';
-import { t } from '../i18n/strings';
-import { Button } from '../ui/Button';
-import { StatusPill } from '../ui/DataDisplay';
-import { DataTable, type DataTableColumn } from '../ui/DataTable';
-import { Select } from '../ui/Form';
-import { ConflictBanner, EmptyState, SkeletonRows } from '../ui/States';
-import { useFilterBar } from '../ui/FilterBarSlot';
-import { Segmented, Tabs, type TabItem } from '../ui/Tabs';
+import {
+  Button,
+  ConflictBanner,
+  DataTable,
+  EmptyState,
+  Segmented,
+  Select,
+  SkeletonRows,
+  StatusPill,
+  Tabs,
+  formatDateTime,
+  formatMoney,
+  t,
+  useFilterBar,
+  type DataTableColumn,
+  type TabItem,
+} from '@orderbook/ui';
 
 type View = 'leads' | 'orders' | 'converted';
 
@@ -63,7 +71,10 @@ export function LeadsOrdersScreen({ revision }: Props) {
   const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
-    void api.pipelines().then(setPipelines).catch(() => setPipelines([]));
+    void api
+      .pipelines()
+      .then(setPipelines)
+      .catch(() => setPipelines([]));
   }, []);
 
   useEffect(() => {
@@ -86,7 +97,8 @@ export function LeadsOrdersScreen({ revision }: Props) {
           }
         }
       } catch (caught) {
-        if (!cancelled) setError(caught instanceof Error ? caught.message : t('leadsOrders.error.load'));
+        if (!cancelled)
+          setError(caught instanceof Error ? caught.message : t('leadsOrders.error.load'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -174,7 +186,13 @@ export function LeadsOrdersScreen({ revision }: Props) {
           <span
             className="ob-small"
             title={summary.title}
-            style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
           >
             {summary.text}
           </span>
@@ -193,7 +211,9 @@ export function LeadsOrdersScreen({ revision }: Props) {
           title={order.weightSource === 'manual' ? t('leadsOrders.orders.weightManual') : undefined}
           style={{ color: order.weightSource === 'manual' ? 'var(--fg-secondary)' : undefined }}
         >
-          {order.weightSource === 'manual' ? (order.totalWeightKgOverride ?? 0) : order.totalWeightKg}{' '}
+          {order.weightSource === 'manual'
+            ? (order.totalWeightKgOverride ?? 0)
+            : order.totalWeightKg}{' '}
           {t('leadsOrders.unit.kg')}
           {order.weightSource === 'manual' ? '*' : ''}
         </span>
@@ -292,7 +312,13 @@ export function LeadsOrdersScreen({ revision }: Props) {
           <span
             className="ob-small"
             title={summary.title}
-            style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
           >
             {summary.text}
           </span>

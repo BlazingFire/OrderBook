@@ -8,9 +8,7 @@
 import type { ReactNode } from 'react';
 import type { DashboardSummary, OfficePanelWithPresence } from '@orderbook/shared';
 
-import { t } from '../i18n/strings';
-import { Card } from '../ui/Card';
-import { EmptyState, Skeleton } from '../ui/States';
+import { Card, EmptyState, Skeleton, t } from '@orderbook/ui';
 
 interface Props {
   summary: DashboardSummary | null;
@@ -29,7 +27,10 @@ export function DashboardScreen({ summary, panels, onOpenConflicts }: Props) {
   const offlineCount = active.length - connected;
 
   return (
-    <div className="ob-measure-wide" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
+    <div
+      className="ob-measure-wide"
+      style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}
+    >
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--s-12)' }}>
         {loading ? (
           <>
@@ -99,9 +100,21 @@ export function DashboardScreen({ summary, panels, onOpenConflicts }: Props) {
             description={t('dashboard.panels.empty.description')}
           />
         ) : (
-          <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}>
+          <ul
+            style={{
+              margin: 0,
+              padding: 0,
+              listStyle: 'none',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 'var(--s-8)',
+            }}
+          >
             {active.map((panel) => (
-              <li key={panel.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
+              <li
+                key={panel.id}
+                style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}
+              >
                 <span
                   aria-hidden="true"
                   style={{
@@ -142,7 +155,12 @@ function StatCard({
   tone?: 'conflict' | 'offline';
   onClick?: () => void;
 }) {
-  const toneColour = tone === 'conflict' ? 'var(--state-conflict)' : tone === 'offline' ? 'var(--state-offline)' : undefined;
+  const toneColour =
+    tone === 'conflict'
+      ? 'var(--state-conflict)'
+      : tone === 'offline'
+        ? 'var(--state-offline)'
+        : undefined;
   const body = (
     <>
       <div className="ob-eyebrow">{label}</div>
@@ -165,7 +183,13 @@ function StatCard({
       <button
         type="button"
         className="ob-card ob-card--pad"
-        style={{ textAlign: 'left', width: '100%', font: 'inherit', color: 'inherit', cursor: 'pointer' }}
+        style={{
+          textAlign: 'left',
+          width: '100%',
+          font: 'inherit',
+          color: 'inherit',
+          cursor: 'pointer',
+        }}
         onClick={onClick}
       >
         {body}

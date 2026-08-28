@@ -34,18 +34,33 @@ import {
 } from '@orderbook/shared';
 
 import { api, ApiError, type FieldDifference } from '../api';
-import { formatBytes, formatDateTime } from '../format';
-import { t } from '../i18n/strings';
-import { Button, ButtonLink } from '../ui/Button';
-import { Card, Section } from '../ui/Card';
-import { LoadMorePager } from '../ui/CursorPager';
-import { StatusPill } from '../ui/DataDisplay';
-import { DataTable, type DataTableColumn } from '../ui/DataTable';
-import { FormField, Input, NumberInput, Select, Switch, Textarea } from '../ui/Form';
-import { Modal } from '../ui/Modal';
-import { ConflictBanner, EmptyState, ErrorState, SkeletonRows } from '../ui/States';
-import { Tabs, type TabItem } from '../ui/Tabs';
-import { useToast } from '../ui/Toast';
+import {
+  Button,
+  ButtonLink,
+  Card,
+  ConflictBanner,
+  DataTable,
+  EmptyState,
+  ErrorState,
+  FormField,
+  Input,
+  LoadMorePager,
+  Modal,
+  NumberInput,
+  Section,
+  Select,
+  SkeletonRows,
+  StatusPill,
+  Switch,
+  Tabs,
+  Textarea,
+  formatBytes,
+  formatDateTime,
+  t,
+  useToast,
+  type DataTableColumn,
+  type TabItem,
+} from '@orderbook/ui';
 
 interface Props {
   revision: number;
@@ -294,7 +309,9 @@ function TemplatesTab({
         onClose={closeEditor}
         size="lg"
         title={editing === 'new' ? t('documents.editor.newTitle') : (editing?.name ?? '')}
-        subtitle={editing && editing !== 'new' ? t(DOCUMENT_TYPE_KEY[editing.documentType]) : undefined}
+        subtitle={
+          editing && editing !== 'new' ? t(DOCUMENT_TYPE_KEY[editing.documentType]) : undefined
+        }
       >
         {editing && (
           <TemplateEditor
@@ -355,7 +372,6 @@ function TemplatesTab({
         label={t('documents.loadMore')}
       />
 
-
       <Modal
         open={confirmDelete !== null}
         onClose={() => setConfirmDelete(null)}
@@ -395,8 +411,14 @@ type ToggleKey =
   | 'showPartyBlock';
 
 const TOGGLE_GROUPS: { titleKey: string; keys: ToggleKey[] }[] = [
-  { titleKey: 'documents.editor.group.content', keys: ['showRates', 'showColourChips', 'showPartyBlock'] },
-  { titleKey: 'documents.editor.group.branding', keys: ['showLogo', 'showWatermark', 'showSignature'] },
+  {
+    titleKey: 'documents.editor.group.content',
+    keys: ['showRates', 'showColourChips', 'showPartyBlock'],
+  },
+  {
+    titleKey: 'documents.editor.group.branding',
+    keys: ['showLogo', 'showWatermark', 'showSignature'],
+  },
   { titleKey: 'documents.editor.group.pageFurniture', keys: ['showTerms', 'showPageNumbers'] },
 ];
 
@@ -626,7 +648,10 @@ function TemplateEditor({
             )}
           </FormField>
 
-          <FormField label={t('documents.editor.accentColour')} hint={t('documents.editor.accentHint')}>
+          <FormField
+            label={t('documents.editor.accentColour')}
+            hint={t('documents.editor.accentHint')}
+          >
             {(id) => (
               <Input
                 id={id}
@@ -682,7 +707,10 @@ function TemplateEditor({
       <Card className="ob-measure-form">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
           {TOGGLE_GROUPS.map((group) => (
-            <div key={group.titleKey} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}>
+            <div
+              key={group.titleKey}
+              style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}
+            >
               <span className="ob-small" style={{ color: 'var(--fg-secondary)' }}>
                 {t(group.titleKey)}
               </span>
@@ -716,7 +744,10 @@ function TemplateEditor({
           )}
 
           {draft.showTerms && (
-            <FormField label={t('documents.editor.termsText')} hint={t('documents.editor.termsHint', { max: MAX_TERMS_LENGTH })}>
+            <FormField
+              label={t('documents.editor.termsText')}
+              hint={t('documents.editor.termsHint', { max: MAX_TERMS_LENGTH })}
+            >
               {(id) => (
                 <Textarea
                   id={id}
@@ -824,7 +855,8 @@ function PreviewPanel({ draft }: { draft: DocumentTemplateInput }) {
 
   // Derived rather than seeded, so switching the document type out from under
   // a chosen lead falls back to a subject that is still on offer.
-  const subject = subjects?.find((option) => subjectKey(option) === chosen) ?? subjects?.[0] ?? null;
+  const subject =
+    subjects?.find((option) => subjectKey(option) === chosen) ?? subjects?.[0] ?? null;
 
   async function preview(): Promise<void> {
     if (!subject) return;

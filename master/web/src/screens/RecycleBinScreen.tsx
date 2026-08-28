@@ -17,20 +17,32 @@
 
 import { useEffect, useState } from 'react';
 import type { BinBlocker, BinCounts, BinEntry, RecycleBinEntityType } from '@orderbook/shared';
-import { isRecycleBinEntityType, RECYCLE_BIN_ENTITIES, RESTORE_PERMISSION } from '@orderbook/shared';
+import {
+  isRecycleBinEntityType,
+  RECYCLE_BIN_ENTITIES,
+  RESTORE_PERMISSION,
+} from '@orderbook/shared';
 
 import { api, ApiError } from '../api';
-import { formatDateTime } from '../format';
-import { t } from '../i18n/strings';
-import { Button } from '../ui/Button';
-import { LoadMorePager } from '../ui/CursorPager';
-import { StatusPill } from '../ui/DataDisplay';
-import { DataTable, type DataTableColumn } from '../ui/DataTable';
-import { useFilterBar } from '../ui/FilterBarSlot';
-import { FormField, Input, Select } from '../ui/Form';
-import { Modal } from '../ui/Modal';
-import { ConflictBanner, EmptyState, ErrorState, SkeletonRows } from '../ui/States';
-import { useToast } from '../ui/Toast';
+import {
+  Button,
+  ConflictBanner,
+  DataTable,
+  EmptyState,
+  ErrorState,
+  FormField,
+  Input,
+  LoadMorePager,
+  Modal,
+  Select,
+  SkeletonRows,
+  StatusPill,
+  formatDateTime,
+  t,
+  useFilterBar,
+  useToast,
+  type DataTableColumn,
+} from '@orderbook/ui';
 
 interface Props {
   /** The signed-in caller's own resolved permissions. */
@@ -88,7 +100,13 @@ function Truncated({ children, className }: { children: string; className?: stri
     <span
       className={className}
       title={children}
-      style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+      style={{
+        flex: 1,
+        minWidth: 0,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}
     >
       {children}
     </span>
@@ -161,7 +179,10 @@ export function RecycleBinScreen({ permissions, revision }: Props) {
   useEffect(() => {
     if (!canView) return;
     // A counts failure is not a set of zeroes either — the numbers just stay off.
-    void api.recycleBinCounts().then(setCounts).catch(() => setCounts(null));
+    void api
+      .recycleBinCounts()
+      .then(setCounts)
+      .catch(() => setCounts(null));
   }, [canView, revision, refresh]);
 
   async function loadMore(): Promise<void> {
@@ -238,7 +259,9 @@ export function RecycleBinScreen({ permissions, revision }: Props) {
         await api.restoreFromBin({ entityType: parent.entityType, id: parent.id });
       }
     } catch (caught) {
-      setActionError(caught instanceof Error ? caught.message : t('recycleBin.error.restoreParent'));
+      setActionError(
+        caught instanceof Error ? caught.message : t('recycleBin.error.restoreParent'),
+      );
       return;
     } finally {
       setBusyId(null);
@@ -271,7 +294,9 @@ export function RecycleBinScreen({ permissions, revision }: Props) {
             const count = counts?.[branch];
             return (
               <option key={branch} value={branch}>
-                {count === undefined ? label : t('recycleBin.filter.typeWithCount', { type: label, count })}
+                {count === undefined
+                  ? label
+                  : t('recycleBin.filter.typeWithCount', { type: label, count })}
               </option>
             );
           })}
@@ -364,7 +389,14 @@ export function RecycleBinScreen({ permissions, revision }: Props) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 'var(--s-12)' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 'var(--s-12)',
+        }}
+      >
         <div>
           <h1 className="ob-title" style={{ margin: 0 }}>
             {t('recycleBin.title')}
@@ -400,7 +432,9 @@ export function RecycleBinScreen({ permissions, revision }: Props) {
             rowKey={rowKey}
             empty={
               <EmptyState
-                title={filtered ? t('recycleBin.empty.filtered.title') : t('recycleBin.empty.title')}
+                title={
+                  filtered ? t('recycleBin.empty.filtered.title') : t('recycleBin.empty.title')
+                }
                 description={filtered ? undefined : t('recycleBin.empty.description')}
               />
             }
@@ -494,7 +528,10 @@ function RefusalDialog({
       </p>
 
       {refusal.suggestion !== undefined && (
-        <FormField label={t('recycleBin.refusal.nameLabel')} hint={t('recycleBin.refusal.nameHint')}>
+        <FormField
+          label={t('recycleBin.refusal.nameLabel')}
+          hint={t('recycleBin.refusal.nameHint')}
+        >
           {(id) => <Input id={id} value={name} onChange={(event) => setName(event.target.value)} />}
         </FormField>
       )}

@@ -9,7 +9,7 @@
 
 import type { CustomFieldDefinition } from '@orderbook/shared';
 
-import { Checkbox, FormField, Input, Select } from '../ui/Form';
+import { Checkbox, FormField, Input, Select } from '@orderbook/ui';
 
 interface Props {
   definitions: CustomFieldDefinition[];
@@ -26,7 +26,9 @@ export function CustomFields({ definitions, values, onChange }: Props) {
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-12) var(--s-16)' }}>
+    <div
+      style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-12) var(--s-16)' }}
+    >
       {active.map((definition) => {
         const value = values[definition.key];
 
@@ -35,7 +37,11 @@ export function CustomFields({ definitions, values, onChange }: Props) {
             {(id) => {
               if (definition.fieldType === 'select') {
                 return (
-                  <Select id={id} value={String(value ?? '')} onChange={(event) => set(definition.key, event.target.value)}>
+                  <Select
+                    id={id}
+                    value={String(value ?? '')}
+                    onChange={(event) => set(definition.key, event.target.value)}
+                  >
                     <option value="">—</option>
                     {definition.options.map((option) => (
                       <option key={option} value={option}>
@@ -48,7 +54,10 @@ export function CustomFields({ definitions, values, onChange }: Props) {
 
               if (definition.fieldType === 'boolean') {
                 return (
-                  <Checkbox checked={value === true} onChange={(checked) => set(definition.key, checked)} />
+                  <Checkbox
+                    checked={value === true}
+                    onChange={(checked) => set(definition.key, checked)}
+                  />
                 );
               }
 

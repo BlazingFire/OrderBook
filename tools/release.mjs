@@ -84,6 +84,7 @@ async function setVersion(version) {
   const files = [
     'package.json',
     'shared/package.json',
+    'ui/package.json',
     'master/package.json',
     'master/web/package.json',
     'office/package.json',

@@ -11,13 +11,17 @@ import { useState } from 'react';
 import type { BackupRestorePreview } from '@orderbook/shared';
 
 import { api, ApiError, type FirstRunCredentials } from '../api';
-import { t } from '../i18n/strings';
-import { Button } from '../ui/Button';
-import { Card } from '../ui/Card';
-import { IdField } from '../ui/DataDisplay';
-import { FieldError, FormField, Input } from '../ui/Form';
-import { Logo } from '../ui/Logo';
-import { OfflineBanner } from '../ui/States';
+import {
+  Button,
+  Card,
+  FieldError,
+  FormField,
+  IdField,
+  Input,
+  Logo,
+  OfflineBanner,
+  t,
+} from '@orderbook/ui';
 
 interface Props {
   onComplete: () => void;
@@ -28,8 +32,10 @@ type Mode = 'choose' | 'setup' | 'restore';
 export function FirstRunScreen({ onComplete }: Props) {
   const [mode, setMode] = useState<Mode>('choose');
 
-  if (mode === 'restore') return <RestoreFlow onBack={() => setMode('choose')} onComplete={onComplete} />;
-  if (mode === 'setup') return <SetupFlow onBack={() => setMode('choose')} onComplete={onComplete} />;
+  if (mode === 'restore')
+    return <RestoreFlow onBack={() => setMode('choose')} onComplete={onComplete} />;
+  if (mode === 'setup')
+    return <SetupFlow onBack={() => setMode('choose')} onComplete={onComplete} />;
 
   return (
     <div
@@ -41,8 +47,23 @@ export function FirstRunScreen({ onComplete }: Props) {
         padding: 'var(--s-20)',
       }}
     >
-      <div style={{ width: '100%', maxWidth: 420, display: 'flex', flexDirection: 'column', gap: 'var(--s-20)' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--s-8)' }}>
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 420,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 'var(--s-20)',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 'var(--s-8)',
+          }}
+        >
           <Logo size={32} />
           <h1 className="ob-title" style={{ margin: 0 }}>
             {t('firstRun.setup.title')}
@@ -97,7 +118,14 @@ function SetupFlow({ onBack, onComplete }: { onBack: () => void; onComplete: () 
           gap: 'var(--s-20)',
         }}
       >
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--s-8)' }}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 'var(--s-8)',
+          }}
+        >
           <Logo size={32} />
           <h1 className="ob-display" style={{ margin: 0 }}>
             {t('firstRun.ready.title')}
@@ -132,7 +160,10 @@ function SetupFlow({ onBack, onComplete }: { onBack: () => void; onComplete: () 
               }
               value={addressValue}
             />
-            <LabeledValue label={t('firstRun.ready.masterIdLabel')} value={credentials.masterUniqueId} />
+            <LabeledValue
+              label={t('firstRun.ready.masterIdLabel')}
+              value={credentials.masterUniqueId}
+            />
             <LabeledValue
               label={t('firstRun.ready.pairingPasswordLabel')}
               value={credentials.pairingPassword}
@@ -157,8 +188,23 @@ function SetupFlow({ onBack, onComplete }: { onBack: () => void; onComplete: () 
         padding: 'var(--s-20)',
       }}
     >
-      <div style={{ width: '100%', maxWidth: 420, display: 'flex', flexDirection: 'column', gap: 'var(--s-20)' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--s-8)' }}>
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 420,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 'var(--s-20)',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 'var(--s-8)',
+          }}
+        >
           <Logo size={32} />
           <h1 className="ob-title" style={{ margin: 0 }}>
             {t('firstRun.setup.title')}
@@ -245,8 +291,23 @@ function RestoreFlow({ onBack, onComplete }: { onBack: () => void; onComplete: (
         padding: 'var(--s-20)',
       }}
     >
-      <div style={{ width: '100%', maxWidth: 480, display: 'flex', flexDirection: 'column', gap: 'var(--s-20)' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--s-8)' }}>
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 480,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 'var(--s-20)',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 'var(--s-8)',
+          }}
+        >
           <Logo size={32} />
           <h1 className="ob-title" style={{ margin: 0 }}>
             {t('backup.restore.title')}
@@ -291,7 +352,12 @@ function RestoreFlow({ onBack, onComplete }: { onBack: () => void; onComplete: (
                     />
                   )}
                 </FormField>
-                <Button variant="primary" busy={busy} disabled={!passphrase} onClick={() => void handleRestore()}>
+                <Button
+                  variant="primary"
+                  busy={busy}
+                  disabled={!passphrase}
+                  onClick={() => void handleRestore()}
+                >
                   {t('backup.restore.confirm')}
                 </Button>
               </>
@@ -299,7 +365,9 @@ function RestoreFlow({ onBack, onComplete }: { onBack: () => void; onComplete: (
 
             {step === 'done' && newPairingPassword && (
               <>
-                <OfflineBanner>{t('backup.restore.newPairingPassword', { password: newPairingPassword })}</OfflineBanner>
+                <OfflineBanner>
+                  {t('backup.restore.newPairingPassword', { password: newPairingPassword })}
+                </OfflineBanner>
                 <Button variant="primary" size="lg" onClick={onComplete}>
                   {t('firstRun.ready.continue')}
                 </Button>

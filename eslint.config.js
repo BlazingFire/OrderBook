@@ -34,7 +34,7 @@ export default tseslint.config(
     // screen in the UI phase (`docs/backend-modules/05-EXISTING-CODE-CHANGES.md`
     // §8.1) — this registration proves the plugin wiring now, without
     // failing the batch for work that belongs to a later phase.
-    files: ['{master,office}/web/src/**/*.tsx'],
+    files: ['{master,office}/web/src/**/*.tsx', 'ui/src/**/*.tsx'],
     plugins: { 'orderbook-i18n': orderbookI18n },
     rules: {
       'orderbook-i18n/no-untranslated-jsx-text': 'off',

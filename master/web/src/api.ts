@@ -150,15 +150,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     // `body.permission`, which the server never sent at the top level — so
     // `missingPermission` was permanently undefined and every branch on it was
     // dead code.
-    const detail = body as
-      | {
-          error?: string;
-          message?: string;
-          details?: Record<string, unknown>;
-          messageKey?: MessageKey;
-          params?: MessageParams;
-        }
-      | null;
+    const detail = body as {
+      error?: string;
+      message?: string;
+      details?: Record<string, unknown>;
+      messageKey?: MessageKey;
+      params?: MessageParams;
+    } | null;
 
     throw new ApiError(
       detail?.message ?? 'Request failed',
@@ -178,8 +176,16 @@ const post = <T>(path: string, body?: unknown) =>
 async function throwIfNotOk(response: Response): Promise<void> {
   if (response.ok) return;
   const body = await response.json().catch(() => null);
-  const detail = body as { error?: string; message?: string; details?: Record<string, unknown> } | null;
-  throw new ApiError(detail?.message ?? 'Request failed', detail?.error ?? 'internal_error', detail?.details ?? {});
+  const detail = body as {
+    error?: string;
+    message?: string;
+    details?: Record<string, unknown>;
+  } | null;
+  throw new ApiError(
+    detail?.message ?? 'Request failed',
+    detail?.error ?? 'internal_error',
+    detail?.details ?? {},
+  );
 }
 
 /** A binary download, for storage export — the response is the file itself, not JSON. */
@@ -225,7 +231,8 @@ export function desktopBridge(): DesktopBridge | null {
 
 export const api = {
   setupStatus: () => request<{ setupComplete: boolean }>('/api/setup/status'),
-  initialize: (companyName: string) => post<FirstRunCredentials>('/api/setup/initialize', { companyName }),
+  initialize: (companyName: string) =>
+    post<FirstRunCredentials>('/api/setup/initialize', { companyName }),
   identity: () => request<MasterIdentity>('/api/setup/identity'),
 
   previewRestoreSetup: (file: File) => {
@@ -237,7 +244,10 @@ export const api = {
     const form = new FormData();
     form.append('file', file);
     form.append('passphrase', passphrase);
-    return requestForm<{ manifest: BackupManifest; newPairingPassword: string }>('/api/setup/restore', form);
+    return requestForm<{ manifest: BackupManifest; newPairingPassword: string }>(
+      '/api/setup/restore',
+      form,
+    );
   },
 
   signIn: (username: string, password: string) =>
@@ -250,7 +260,8 @@ export const api = {
   dashboard: () => request<DashboardSummary>('/api/dashboard'),
   storage: () => request<StorageUsage>('/api/storage'),
 
-  exportStorage: (passphrase: string) => requestBlob('/api/storage/export', { scope: 'whole', passphrase }),
+  exportStorage: (passphrase: string) =>
+    requestBlob('/api/storage/export', { scope: 'whole', passphrase }),
   previewRestoreStorage: (file: File) => {
     const form = new FormData();
     form.append('file', file);
@@ -261,7 +272,10 @@ export const api = {
     form.append('file', file);
     form.append('passphrase', passphrase);
     form.append('confirmWipe', String(confirmWipe));
-    return requestForm<{ manifest: BackupManifest; newPairingPassword: string }>('/api/storage/restore', form);
+    return requestForm<{ manifest: BackupManifest; newPairingPassword: string }>(
+      '/api/storage/restore',
+      form,
+    );
   },
 
   pipelines: () => request<Pipeline[]>('/api/pipelines'),
@@ -302,17 +316,26 @@ export const api = {
   // --- Fields (management surface — the three reads above stay ungated) ----
 
   fieldsCatalogue: () => request<FieldCatalogue>('/api/fields/catalogue'),
-  fieldValues: (listKey: string, options: { includeDeleted?: boolean; includeUnlisted?: boolean } = {}) => {
+  fieldValues: (
+    listKey: string,
+    options: { includeDeleted?: boolean; includeUnlisted?: boolean } = {},
+  ) => {
     const params = new URLSearchParams({ listKey });
     if (options.includeDeleted) params.set('includeDeleted', 'true');
     if (options.includeUnlisted) params.set('includeUnlisted', 'true');
-    return request<{ items: OptionListItem[]; unlisted?: string[] }>(`/api/fields/values?${params}`);
+    return request<{ items: OptionListItem[]; unlisted?: string[] }>(
+      `/api/fields/values?${params}`,
+    );
   },
   fieldUsage: (listKey: string) =>
     request<FieldUsageBreakdown>(`/api/fields/usage?listKey=${encodeURIComponent(listKey)}`),
-  createFieldValue: (input: OptionListItemInput) => post<OptionListItem>('/api/fields/values', input),
+  createFieldValue: (input: OptionListItemInput) =>
+    post<OptionListItem>('/api/fields/values', input),
   updateFieldValue: (id: string, input: OptionListItemUpdateInput) =>
-    request<OptionListItem>(`/api/fields/values/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+    request<OptionListItem>(`/api/fields/values/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
   deleteFieldValue: (id: string) =>
     request<{ id: string; deletedAt: string }>(`/api/fields/values/${id}`, { method: 'DELETE' }),
   reorderFieldValues: (input: OptionListReorderInput) =>
@@ -333,13 +356,18 @@ export const api = {
       body: JSON.stringify(input),
     }),
   deleteFieldDefinition: (id: string) =>
-    request<{ id: string; deletedAt: string }>(`/api/fields/definitions/${id}`, { method: 'DELETE' }),
+    request<{ id: string; deletedAt: string }>(`/api/fields/definitions/${id}`, {
+      method: 'DELETE',
+    }),
   reorderFieldDefinitions: (input: CustomFieldReorderInput) =>
     post<CustomFieldDefinition[]>('/api/fields/definitions/reorder', input),
 
   fieldStages: () => request<Pipeline[]>('/api/fields/stages'),
   updateFieldStage: (id: string, input: PipelineStageInput) =>
-    request<PipelineStage>(`/api/fields/stages/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+    request<PipelineStage>(`/api/fields/stages/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
   reorderFieldStages: (input: StageReorderInput) =>
     post<PipelineStage[]>('/api/fields/stages/reorder', input),
   archiveFieldStage: (id: string) => post<PipelineStage>(`/api/fields/stages/${id}/archive`),
@@ -371,14 +399,19 @@ export const api = {
     request<{ entries: ActivityLogEntry[] }>(`/api/panels/${id}/activity?limit=${limit}`),
 
   parties: (search?: string) =>
-    request<Paginated<Party>>(`/api/parties${search ? `?search=${encodeURIComponent(search)}` : ''}`),
+    request<Paginated<Party>>(
+      `/api/parties${search ? `?search=${encodeURIComponent(search)}` : ''}`,
+    ),
   createParty: (input: PartyInput) => post<Party>('/api/parties', input),
   partyVariants: (partyId: string) =>
     request<PartyProductVariant[]>(`/api/parties/${partyId}/variants`),
 
   products: (search?: string) =>
-    request<Paginated<Product>>(`/api/products${search ? `?search=${encodeURIComponent(search)}` : ''}`),
-  productByCode: (code: string) => request<Product>(`/api/products/by-code/${encodeURIComponent(code)}`),
+    request<Paginated<Product>>(
+      `/api/products${search ? `?search=${encodeURIComponent(search)}` : ''}`,
+    ),
+  productByCode: (code: string) =>
+    request<Product>(`/api/products/by-code/${encodeURIComponent(code)}`),
   createProduct: (input: ProductInput) => post<Product>('/api/products', input),
   categories: () => request<ProductCategory[]>('/api/categories'),
 
@@ -392,16 +425,26 @@ export const api = {
   stockColours: (productId: string) => request<string[]>(`/api/stock/colours/${productId}`),
   stockMovements: (productId?: string) =>
     request<StockMovement[]>(`/api/stock/movements${productId ? `?productId=${productId}` : ''}`),
-  stockInbound: (input: { productId: string; colour: string; quantityBoxes: number; note?: string }) =>
-    post<InventoryStockLevel>('/api/stock/inbound', input),
-  stockAdjust: (input: { productId: string; colour: string; quantityBoxes: number; note?: string }) =>
-    post<InventoryStockLevel>('/api/stock/adjust', input),
+  stockInbound: (input: {
+    productId: string;
+    colour: string;
+    quantityBoxes: number;
+    note?: string;
+  }) => post<InventoryStockLevel>('/api/stock/inbound', input),
+  stockAdjust: (input: {
+    productId: string;
+    colour: string;
+    quantityBoxes: number;
+    note?: string;
+  }) => post<InventoryStockLevel>('/api/stock/adjust', input),
   setReorderLevel: (input: { productId: string; colour: string; reorderLevel: number | null }) =>
     post<InventoryStockLevel>('/api/stock/reorder-level', input),
 
   // Leads are read-only here: they are raised in the Office Panel, and the
   // Master's API has no create endpoint at all (docs/LEAD_GENERATION_FLOW.md §2).
-  leads: (options: { stageIds?: string[]; includeConverted?: boolean; scope?: PartyScopeFilter } = {}) => {
+  leads: (
+    options: { stageIds?: string[]; includeConverted?: boolean; scope?: PartyScopeFilter } = {},
+  ) => {
     const params = new URLSearchParams();
     if (options.stageIds?.length) params.set('stageIds', options.stageIds.join(','));
     if (options.includeConverted) params.set('includeConverted', 'true');
@@ -412,7 +455,8 @@ export const api = {
   lead: (id: string) => request<Lead>(`/api/leads/${id}`),
   setLeadStage: (id: string, stageId: string, remark?: string | null) =>
     post<Lead>(`/api/leads/${id}/stage`, { stageId, remark }),
-  addLeadRemark: (id: string, message: string) => post<Lead>(`/api/leads/${id}/remarks`, { message }),
+  addLeadRemark: (id: string, message: string) =>
+    post<Lead>(`/api/leads/${id}/remarks`, { message }),
   convertLead: (
     id: string,
     input: { dispatchAddressLabel?: string | null; expectedDispatchDate?: string | null } = {},
@@ -430,7 +474,8 @@ export const api = {
     request<Order>(`/api/orders/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   setOrderStage: (id: string, stageId: string, remark?: string | null) =>
     post<Order>(`/api/orders/${id}/stage`, { stageId, remark }),
-  dispatchOrder: (id: string, note?: string | null) => post<Order>(`/api/orders/${id}/dispatch`, { note }),
+  dispatchOrder: (id: string, note?: string | null) =>
+    post<Order>(`/api/orders/${id}/dispatch`, { note }),
 
   // --- Roles & users -------------------------------------------------------
 
@@ -459,7 +504,8 @@ export const api = {
    *  way an administrator can tell somebody what theirs is. */
   resetPassword: (id: string, password?: string) =>
     post<OneTimeSecret>(`/api/access/users/${id}/reset-password`, password ? { password } : {}),
-  changeOwnPassword: (input: ChangeOwnPasswordInput) => post<void>('/api/access/me/password', input),
+  changeOwnPassword: (input: ChangeOwnPasswordInput) =>
+    post<void>('/api/access/me/password', input),
 
   /** Sent as-is; the Master squares and resizes it. Your own always; somebody
    *  else's needs `users.manage`. */
@@ -478,10 +524,14 @@ export const api = {
 
   // --- Recycle Bin (docs/backend-modules/04-API-CONTRACT.md §4) -----------
 
-  deleteParty: (id: string) => request<{ id: string; deletedAt: string }>(`/api/parties/${id}`, { method: 'DELETE' }),
-  deleteProduct: (id: string) => request<{ id: string; deletedAt: string }>(`/api/products/${id}`, { method: 'DELETE' }),
-  deleteLead: (id: string) => request<{ id: string; deletedAt: string }>(`/api/leads/${id}`, { method: 'DELETE' }),
-  deleteOrder: (id: string) => request<{ id: string; deletedAt: string }>(`/api/orders/${id}`, { method: 'DELETE' }),
+  deleteParty: (id: string) =>
+    request<{ id: string; deletedAt: string }>(`/api/parties/${id}`, { method: 'DELETE' }),
+  deleteProduct: (id: string) =>
+    request<{ id: string; deletedAt: string }>(`/api/products/${id}`, { method: 'DELETE' }),
+  deleteLead: (id: string) =>
+    request<{ id: string; deletedAt: string }>(`/api/leads/${id}`, { method: 'DELETE' }),
+  deleteOrder: (id: string) =>
+    request<{ id: string; deletedAt: string }>(`/api/orders/${id}`, { method: 'DELETE' }),
 
   recycleBin: (query: RecycleBinQuery = {}) => {
     const params = new URLSearchParams();
@@ -494,7 +544,8 @@ export const api = {
     return request<CursorPage<BinEntry>>(`/api/recycle-bin${qs ? `?${qs}` : ''}`);
   },
   recycleBinCounts: () => request<BinCounts>('/api/recycle-bin/counts'),
-  restoreFromBin: (input: RestoreInput) => post<BinRestoreResult>('/api/recycle-bin/restore', input),
+  restoreFromBin: (input: RestoreInput) =>
+    post<BinRestoreResult>('/api/recycle-bin/restore', input),
 
   // --- Logs (docs/backend-modules/04-API-CONTRACT.md §2) --------------------
 
@@ -520,7 +571,8 @@ export const api = {
     const qs = params.toString();
     return request<ActivityLogFacets>(`/api/logs/facets${qs ? `?${qs}` : ''}`);
   },
-  verifyLogChain: (input: ChainVerifyInput = {}) => post<ChainVerification>('/api/logs/verify', input),
+  verifyLogChain: (input: ChainVerifyInput = {}) =>
+    post<ChainVerification>('/api/logs/verify', input),
   logsExportUrl: (query: ActivityLogQuery = {}) => {
     const params = new URLSearchParams();
     if (query.actorType) params.set('actorType', query.actorType);
@@ -574,7 +626,10 @@ export const api = {
   documentTemplate: (id: string) => request<DocumentTemplate>(`/api/documents/templates/${id}`),
   createDocumentTemplate: (input: DocumentTemplateInput) =>
     post<DocumentTemplate>('/api/documents/templates', input),
-  updateDocumentTemplate: (id: string, input: DocumentTemplateInput & { expectedVersion: number }) =>
+  updateDocumentTemplate: (
+    id: string,
+    input: DocumentTemplateInput & { expectedVersion: number },
+  ) =>
     request<DocumentTemplate>(`/api/documents/templates/${id}`, {
       method: 'PUT',
       body: JSON.stringify(input),
@@ -602,9 +657,11 @@ export const api = {
       body: JSON.stringify(input),
     });
     if (!response.ok) {
-      const detail = (await response.json().catch(() => null)) as
-        | { error?: string; message?: string; details?: Record<string, unknown> }
-        | null;
+      const detail = (await response.json().catch(() => null)) as {
+        error?: string;
+        message?: string;
+        details?: Record<string, unknown>;
+      } | null;
       throw new ApiError(
         detail?.message ?? 'Preview failed',
         detail?.error ?? 'internal_error',

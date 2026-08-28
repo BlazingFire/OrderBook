@@ -13,24 +13,34 @@ import type { ReactNode } from 'react';
 import type { OneTimeSecret, PermissionCatalogue, Role, RoleTier, User } from '@orderbook/shared';
 
 import { api, ApiError, type FieldDifference } from '../api';
-import { formatDateTime } from '../format';
-import { t } from '../i18n/strings';
-import { Avatar } from '../ui/Avatar';
-import { AvatarPicker } from '../ui/AvatarPicker';
-import { Button } from '../ui/Button';
-import { Card } from '../ui/Card';
-import { IdField, StatusPill } from '../ui/DataDisplay';
-import { DataTable, type DataTableColumn } from '../ui/DataTable';
-import { FilterChip, FilterDivider } from '../ui/FilterBar';
-import { useFilterBar } from '../ui/FilterBarSlot';
-import { FormField, Input, Select } from '../ui/Form';
-import { Modal } from '../ui/Modal';
-import { PermissionGrid } from '../ui/PermissionGrid';
-import { PermissionSummary } from '../ui/PermissionSummary';
-import { useSubNav } from '../ui/SubNavSlot';
-import { ConflictBanner, EmptyState, OfflineBanner, SkeletonRows } from '../ui/States';
-import { Segmented } from '../ui/Tabs';
-import { useTopbarActions } from '../ui/TopbarSlot';
+import {
+  Avatar,
+  AvatarPicker,
+  Button,
+  Card,
+  ConflictBanner,
+  DataTable,
+  EmptyState,
+  FilterChip,
+  FilterDivider,
+  FormField,
+  IdField,
+  Input,
+  Modal,
+  OfflineBanner,
+  PermissionGrid,
+  PermissionSummary,
+  Segmented,
+  Select,
+  SkeletonRows,
+  StatusPill,
+  formatDateTime,
+  t,
+  useFilterBar,
+  useSubNav,
+  useTopbarActions,
+  type DataTableColumn,
+} from '@orderbook/ui';
 
 interface Props {
   /** The signed-in caller's own resolved permissions. */
@@ -87,7 +97,10 @@ export function AccessScreen({ permissions, currentUserId, currentUserTier }: Pr
   }, [can]);
 
   useEffect(() => {
-    void api.permissionCatalogue().then(setCatalogue).catch(() => setCatalogue(null));
+    void api
+      .permissionCatalogue()
+      .then(setCatalogue)
+      .catch(() => setCatalogue(null));
   }, []);
 
   useEffect(() => {
@@ -187,10 +200,20 @@ export function AccessScreen({ permissions, currentUserId, currentUserTier }: Pr
         meta={
           editing === 'new' ? null : (
             <>
-              <StatusPill tone={editing.tier === 'admin' ? 'conflict' : editing.tier === 'management' ? 'accent' : 'default'}>
+              <StatusPill
+                tone={
+                  editing.tier === 'admin'
+                    ? 'conflict'
+                    : editing.tier === 'management'
+                      ? 'accent'
+                      : 'default'
+                }
+              >
                 {editing.tier}
               </StatusPill>
-              {editing.isSystem && <StatusPill tone="default">{t('access.roles.systemBadge')}</StatusPill>}
+              {editing.isSystem && (
+                <StatusPill tone="default">{t('access.roles.systemBadge')}</StatusPill>
+              )}
               <span className="ob-small">
                 {t('access.roles.detail.metaCounts', {
                   permissions: editing.permissions.length,
@@ -238,7 +261,9 @@ export function AccessScreen({ permissions, currentUserId, currentUserTier }: Pr
           <>
             <span className="ob-mono ob-small">{editingUser.username}</span>
             <StatusPill tone={editingUser.isActive ? 'ok' : 'default'}>
-              {editingUser.isActive ? t('access.users.statusActive') : t('access.users.statusInactive')}
+              {editingUser.isActive
+                ? t('access.users.statusActive')
+                : t('access.users.statusInactive')}
             </StatusPill>
             <span className="ob-small">{editingUser.roleName}</span>
           </>
@@ -465,7 +490,9 @@ function UsersTab({
         </FilterChip>
         <FilterChip
           active={statusFilter === 'inactive'}
-          onClick={() => setStatusFilter((current) => (current === 'inactive' ? 'all' : 'inactive'))}
+          onClick={() =>
+            setStatusFilter((current) => (current === 'inactive' ? 'all' : 'inactive'))
+          }
         >
           {t('access.users.filterStatusInactive')}
         </FilterChip>
@@ -559,8 +586,15 @@ function UsersTab({
       header: '',
       width: '110px',
       render: (user) => (
-        <div style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}>
-          <Button variant="secondary" size="sm" icon="expand" onClick={() => setOpenUserId(user.id)}>
+        <div
+          style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}
+        >
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="expand"
+            onClick={() => setOpenUserId(user.id)}
+          >
             {t('access.users.open')}
           </Button>
         </div>
@@ -655,7 +689,9 @@ function UsersTab({
             </div>
             <div>
               <dt>{t('access.users.colStatus')}</dt>
-              <dd>{user.isActive ? t('access.users.statusActive') : t('access.users.statusInactive')}</dd>
+              <dd>
+                {user.isActive ? t('access.users.statusActive') : t('access.users.statusInactive')}
+              </dd>
             </div>
           </dl>
         </section>
@@ -683,7 +719,6 @@ function UsersTab({
             </div>
           </dl>
         </section>
-
       </div>
     );
   }
@@ -698,7 +733,9 @@ function UsersTab({
             <Button
               variant="danger"
               disabled={Boolean(blocked) || user.id === currentUserId}
-              title={blocked ?? (user.id === currentUserId ? t('access.users.thisIsYou') : undefined)}
+              title={
+                blocked ?? (user.id === currentUserId ? t('access.users.thisIsYou') : undefined)
+              }
               onClick={() => {
                 // One dialog at a time: a confirmation stacked on the detail
                 // buries the person it is asking about (HIG, Modality).
@@ -779,7 +816,9 @@ function UsersTab({
         <h2 className="ob-title" style={{ margin: 0 }}>
           {/* Not "0 people" before the first response — that is a false claim
               about the company, and a worse one than the spinner §7 forbids. */}
-          {loading ? t('access.users.titleLoading') : t('access.users.title', { count: users.length })}
+          {loading
+            ? t('access.users.titleLoading')
+            : t('access.users.title', { count: users.length })}
         </h2>
         {canManage && (
           <Button variant="primary" icon="plus" onClick={() => setAdding(true)}>
@@ -847,16 +886,20 @@ function UsersTab({
       </Modal>
 
       {/*
-        * There is no "show this person's password" anywhere in this screen, and
-        * there cannot be: `password_hash` holds a scrypt digest, the repository
-        * strips it from every `User` it returns, and the type has no field for
-        * it. Setting a known one is the nearest thing that actually exists —
-        * and unlike a stored plaintext, it leaves nothing readable behind.
-        */}
+       * There is no "show this person's password" anywhere in this screen, and
+       * there cannot be: `password_hash` holds a scrypt digest, the repository
+       * strips it from every `User` it returns, and the type has no field for
+       * it. Setting a known one is the nearest thing that actually exists —
+       * and unlike a stored plaintext, it leaves nothing readable behind.
+       */}
       <Modal
         open={Boolean(settingPassword)}
         onClose={() => setSettingPassword(null)}
-        title={settingPassword ? t('access.users.setPasswordTitle', { name: settingPassword.displayName }) : ''}
+        title={
+          settingPassword
+            ? t('access.users.setPasswordTitle', { name: settingPassword.displayName })
+            : ''
+        }
         subtitle={t('access.users.setPasswordSubtitle')}
         footer={
           <>
@@ -956,7 +999,11 @@ function UsersTab({
       <Modal
         open={Boolean(confirmDelete)}
         onClose={() => setConfirmDelete(null)}
-        title={confirmDelete ? t('access.users.deleteConfirmTitle', { name: confirmDelete.displayName }) : ''}
+        title={
+          confirmDelete
+            ? t('access.users.deleteConfirmTitle', { name: confirmDelete.displayName })
+            : ''
+        }
         footer={
           <>
             <Button variant="secondary" onClick={() => setConfirmDelete(null)}>
@@ -967,7 +1014,8 @@ function UsersTab({
               onClick={() => {
                 const target = confirmDelete;
                 setConfirmDelete(null);
-                if (target) void onRun(() => api.deleteUser(target.id), t('access.users.deleteFailed'));
+                if (target)
+                  void onRun(() => api.deleteUser(target.id), t('access.users.deleteFailed'));
               }}
             >
               {t('access.users.delete')}
@@ -1008,7 +1056,11 @@ function UserForm({
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--s-12)' }}>
         <FormField label={t('access.userForm.displayName')} required>
           {(id) => (
-            <Input id={id} value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
+            <Input
+              id={id}
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+            />
           )}
         </FormField>
         <FormField label={t('access.userForm.username')} required>
@@ -1064,13 +1116,7 @@ function UserForm({
  * The only moment in the product where losing focus loses information, so the
  * dialog says plainly that closing it is irreversible.
  */
-function OneTimeSecretDialog({
-  secret,
-  onClose,
-}: {
-  secret: OneTimeSecret;
-  onClose: () => void;
-}) {
+function OneTimeSecretDialog({ secret, onClose }: { secret: OneTimeSecret; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
 
   return (
@@ -1183,8 +1229,15 @@ function RolesTab({
       header: '',
       width: '110px',
       render: (role) => (
-        <div style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}>
-          <Button variant="secondary" size="sm" icon="expand" onClick={() => setOpenRoleId(role.id)}>
+        <div
+          style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}
+        >
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="expand"
+            onClick={() => setOpenRoleId(role.id)}
+          >
             {t('access.roles.open')}
           </Button>
         </div>
@@ -1242,7 +1295,6 @@ function RolesTab({
           <div className="ob-eyebrow">{t('access.roles.detail.grants')}</div>
           <PermissionSummary catalogue={catalogue} permissions={role.permissions} />
         </section>
-
       </div>
     );
   }
@@ -1298,7 +1350,9 @@ function RolesTab({
         }}
       >
         <h2 className="ob-title" style={{ margin: 0 }}>
-          {loading ? t('access.roles.titleLoading') : t('access.roles.title', { count: roles.length })}
+          {loading
+            ? t('access.roles.titleLoading')
+            : t('access.roles.title', { count: roles.length })}
         </h2>
         {canCreate && (
           <Button variant="primary" icon="plus" onClick={() => onEdit('new')}>
@@ -1347,7 +1401,9 @@ function RolesTab({
       <Modal
         open={Boolean(confirmDelete)}
         onClose={() => setConfirmDelete(null)}
-        title={confirmDelete ? t('access.roles.deleteConfirmTitle', { name: confirmDelete.name }) : ''}
+        title={
+          confirmDelete ? t('access.roles.deleteConfirmTitle', { name: confirmDelete.name }) : ''
+        }
         footer={
           <>
             <Button variant="secondary" onClick={() => setConfirmDelete(null)}>
@@ -1358,7 +1414,8 @@ function RolesTab({
               onClick={() => {
                 const target = confirmDelete;
                 setConfirmDelete(null);
-                if (target) void onRun(() => api.deleteRole(target.id), t('access.roles.deleteFailed'));
+                if (target)
+                  void onRun(() => api.deleteRole(target.id), t('access.roles.deleteFailed'));
               }}
             >
               {t('access.roles.delete')}
@@ -1485,7 +1542,8 @@ function RoleEditor({
         setBaseVersion(caught.storedVersion);
         setConflict({ message: caught.message, diff: caught.diff });
       } else {
-        const message = caught instanceof Error ? caught.message : t('access.roleEditor.saveFailedDefault');
+        const message =
+          caught instanceof Error ? caught.message : t('access.roleEditor.saveFailedDefault');
         setFailure(message);
         onError(message);
       }
@@ -1537,7 +1595,9 @@ function RoleEditor({
       <Card className="ob-measure-form">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-16)' }}>
           <FormField label={t('access.roleEditor.nameLabel')}>
-            {(id) => <Input id={id} value={name} onChange={(event) => setName(event.target.value)} />}
+            {(id) => (
+              <Input id={id} value={name} onChange={(event) => setName(event.target.value)} />
+            )}
           </FormField>
 
           <FormField label={t('access.roleEditor.tierLabel')}>
@@ -1620,7 +1680,11 @@ function RoleEditor({
       </Card>
 
       <div style={{ display: 'flex', gap: 'var(--s-8)' }}>
-        <Button variant="primary" disabled={busy || !dirty || !name.trim()} onClick={() => void save()}>
+        <Button
+          variant="primary"
+          disabled={busy || !dirty || !name.trim()}
+          onClick={() => void save()}
+        >
           {busy ? t('access.roleEditor.saving') : t('access.roleEditor.save')}
         </Button>
         <Button variant="secondary" onClick={() => cancel()}>
@@ -1737,7 +1801,9 @@ function RecycleBin({
               {roles.map((role) => (
                 <li key={role.id}>
                   <span className="ob-body-strong">{role.name}</span>{' '}
-                  <span className="ob-small">{t('access.recycleBin.roleMeta', { tier: role.tier })}</span>{' '}
+                  <span className="ob-small">
+                    {t('access.recycleBin.roleMeta', { tier: role.tier })}
+                  </span>{' '}
                   <Button
                     variant="secondary"
                     size="sm"
@@ -1755,7 +1821,9 @@ function RecycleBin({
               {users.map((user) => (
                 <li key={user.id}>
                   <span className="ob-body-strong">{user.displayName}</span>{' '}
-                  <span className="ob-small">{t('access.recycleBin.userMeta', { username: user.username })}</span>{' '}
+                  <span className="ob-small">
+                    {t('access.recycleBin.userMeta', { username: user.username })}
+                  </span>{' '}
                   <Button
                     variant="secondary"
                     size="sm"
@@ -1809,7 +1877,11 @@ function UserEditForm({
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-12)' }}>
         <FormField label={t('access.userEdit.displayName')}>
           {(id) => (
-            <Input id={id} value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
+            <Input
+              id={id}
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+            />
           )}
         </FormField>
         <FormField label={t('access.userEdit.username')}>

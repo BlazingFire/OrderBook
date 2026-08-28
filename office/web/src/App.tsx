@@ -17,7 +17,22 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MutationResult, SearchHit } from '@orderbook/shared';
 
 import { ApiError, api, type ConnectionInfo, type LocalView, type PanelSession } from './api';
-import { t } from './i18n/strings';
+import {
+  AppShell,
+  BusyMark,
+  Clock,
+  FilterBarOutlet,
+  FilterBarProvider,
+  GalleryScreen,
+  Icon,
+  SaveShortcutProvider,
+  Splash,
+  ToastProvider,
+  t,
+  useToast,
+  type NavGroup,
+  type NavItem,
+} from '@orderbook/ui';
 import { AddLeadScreen } from './screens/AddLeadScreen';
 import { CatalogScreen } from './screens/CatalogScreen';
 import { PartyAccessScreen } from './screens/PartyAccessScreen';
@@ -29,15 +44,6 @@ import { OrderBoardScreen } from './screens/OrderBoardScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { UpdatesScreen } from './screens/UpdatesScreen';
 import { SignInScreen } from './screens/SignInScreen';
-import { AppShell, type NavGroup, type NavItem } from './ui/AppShell';
-import { BusyMark } from './ui/BusyMark';
-import { Clock } from './ui/Clock';
-import { FilterBarOutlet, FilterBarProvider } from './ui/FilterBarSlot';
-import { SaveShortcutProvider } from './ui/SaveShortcutSlot';
-import { GalleryScreen } from './ui/GalleryScreen';
-import { Icon } from './ui/icons';
-import { Splash } from './ui/Splash';
-import { ToastProvider, useToast } from './ui/Toast';
 
 type Tab =
   | 'dashboard'
@@ -418,10 +424,10 @@ function OfficePanel() {
           // what the screens below already show, so it needs no permission of
           // its own beyond being signed in.
           { id: 'dashboard', label: t('nav.dashboard'), icon: 'dashboard' as const },
-          can('leads.view')
-            ? { id: 'leads', label: t('nav.leads'), icon: 'leads' as const }
+          can('leads.view') ? { id: 'leads', label: t('nav.leads'), icon: 'leads' as const } : null,
+          can('orders.view')
+            ? { id: 'orders', label: t('nav.orders'), icon: 'orders' as const }
             : null,
-          can('orders.view') ? { id: 'orders', label: t('nav.orders'), icon: 'orders' as const } : null,
           can('sync.resolveConflicts')
             ? {
                 id: 'conflicts',
@@ -440,7 +446,9 @@ function OfficePanel() {
           can('products.view')
             ? { id: 'products', label: t('nav.products'), icon: 'products' as const }
             : null,
-          can('parties.view') ? { id: 'parties', label: t('nav.parties'), icon: 'parties' as const } : null,
+          can('parties.view')
+            ? { id: 'parties', label: t('nav.parties'), icon: 'parties' as const }
+            : null,
           // Either key opens it: `party.assign` to redraw the map,
           // `party.accessAll` to read it. Both are admin/management tier, so
           // this never appears for the office-tier role an unattended panel
@@ -479,7 +487,8 @@ function OfficePanel() {
   function goToTab(id: string): void {
     // Clear a stale #/gallery so the hash and the state agree; replaceState
     // does not fire hashchange, the setRoute below is the source of truth.
-    if (readHash()) window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    if (readHash())
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
     setRoute('');
     setAddingLead(false);
     if (idToTab[id]) setTab(idToTab[id]);
@@ -495,9 +504,12 @@ function OfficePanel() {
   const activeLabel =
     route === 'gallery'
       ? t('footer.designSystem')
-      : (groups.flatMap((group) => group.items).find((item) => item.id === activeId)?.label ?? t('app.panel'));
+      : (groups.flatMap((group) => group.items).find((item) => item.id === activeId)?.label ??
+        t('app.panel'));
 
-  const lastSynced = connection.lastSyncedAt ? new Date(connection.lastSyncedAt).toLocaleString() : '—';
+  const lastSynced = connection.lastSyncedAt
+    ? new Date(connection.lastSyncedAt).toLocaleString()
+    : '—';
 
   const topbar = (
     <>
@@ -519,7 +531,15 @@ function OfficePanel() {
         />
         <kbd>/</kbd>
         {term.trim() !== '' && (hits !== null || searchFailedOffline) && (
-          <div className="ob-popover" style={{ left: 0, right: 0, top: 'calc(var(--ctl-h-md) + var(--s-4))', padding: 'var(--s-4)' }}>
+          <div
+            className="ob-popover"
+            style={{
+              left: 0,
+              right: 0,
+              top: 'calc(var(--ctl-h-md) + var(--s-4))',
+              padding: 'var(--s-4)',
+            }}
+          >
             {searchFailedOffline ? (
               <p className="ob-small" style={{ padding: 'var(--s-8)' }}>
                 {t('search.failedOffline')}
@@ -542,7 +562,13 @@ function OfficePanel() {
                   style={{ borderRadius: 'var(--r-sm)' }}
                 >
                   <Icon
-                    name={hit.kind === 'product' ? 'products' : hit.kind === 'party' ? 'parties' : 'orders'}
+                    name={
+                      hit.kind === 'product'
+                        ? 'products'
+                        : hit.kind === 'party'
+                          ? 'parties'
+                          : 'orders'
+                    }
                   />
                   <span>{hit.title}</span>
                   {hit.subtitle && <span className="count">{hit.subtitle}</span>}
@@ -571,12 +597,19 @@ function OfficePanel() {
 
   const footer = (
     <>
-      <button type="button" className="ob-footer-sync" style={{ color: 'inherit' }} onClick={() => setSyncPopover((open) => !open)}>
+      <button
+        type="button"
+        className="ob-footer-sync"
+        style={{ color: 'inherit' }}
+        onClick={() => setSyncPopover((open) => !open)}
+      >
         <span className="dot" style={{ background: railDotColour }} />
         {syncLabel}
       </button>
       <span style={{ flex: 1 }} />
-      {connection.companyName && <span>{`${t('footer.company')} · ${connection.companyName}`}</span>}
+      {connection.companyName && (
+        <span>{`${t('footer.company')} · ${connection.companyName}`}</span>
+      )}
       <span>
         {t('footer.signedInAs', { name: session.displayName, role: session.roleName })}
         {session.offline ? ` · ${t('footer.offlineSignIn')}` : ''}
@@ -600,12 +633,29 @@ function OfficePanel() {
       {syncPopover && (
         <>
           {/* Click-away shim keeps the popover honest without a portal. */}
-          <div style={{ position: 'absolute', inset: 0, zIndex: 'var(--z-popover)' }} onClick={() => setSyncPopover(false)} />
-          <div className="ob-popover" style={{ left: 'var(--s-12)', bottom: 'calc(var(--shell-footer-h) + var(--s-8))', width: 300, padding: 'var(--s-16)' }}>
+          <div
+            style={{ position: 'absolute', inset: 0, zIndex: 'var(--z-popover)' }}
+            onClick={() => setSyncPopover(false)}
+          />
+          <div
+            className="ob-popover"
+            style={{
+              left: 'var(--s-12)',
+              bottom: 'calc(var(--shell-footer-h) + var(--s-8))',
+              width: 300,
+              padding: 'var(--s-16)',
+            }}
+          >
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
               <span className="ob-body-strong">{syncLabel}</span>
               <span style={{ flex: 1 }} />
-              <button type="button" className="ob-icon-btn" aria-label={t('action.close')} title={t('action.close')} onClick={() => setSyncPopover(false)}>
+              <button
+                type="button"
+                className="ob-icon-btn"
+                aria-label={t('action.close')}
+                title={t('action.close')}
+                onClick={() => setSyncPopover(false)}
+              >
                 <Icon name="close" size={10} />
               </button>
             </div>
@@ -627,8 +677,21 @@ function OfficePanel() {
                 {connection.masterHost ?? '—'}
               </dd>
             </dl>
-            <div style={{ display: 'flex', gap: 'var(--s-8)', marginTop: 'var(--s-12)', paddingTop: 'var(--s-8)', borderTop: '1px solid var(--line)' }}>
-              <button className="ob-btn ob-btn--secondary ob-btn--sm" disabled={flushing || pendingCount === 0} aria-busy={flushing} onClick={() => void flush()}>
+            <div
+              style={{
+                display: 'flex',
+                gap: 'var(--s-8)',
+                marginTop: 'var(--s-12)',
+                paddingTop: 'var(--s-8)',
+                borderTop: '1px solid var(--line)',
+              }}
+            >
+              <button
+                className="ob-btn ob-btn--secondary ob-btn--sm"
+                disabled={flushing || pendingCount === 0}
+                aria-busy={flushing}
+                onClick={() => void flush()}
+              >
                 {flushing ? <BusyMark size={12} label="" /> : null}
                 {flushing ? t('sync.flushing') : t('sync.flushNow')}
               </button>
@@ -651,10 +714,24 @@ function OfficePanel() {
       )}
 
       {error && (
-        <div className="ob-banner ob-banner--conflict" role="alert" style={{ position: 'absolute', right: 'var(--s-20)', bottom: 'calc(var(--shell-footer-h) + var(--s-8))', zIndex: 'var(--z-toast)' }}>
+        <div
+          className="ob-banner ob-banner--conflict"
+          role="alert"
+          style={{
+            position: 'absolute',
+            right: 'var(--s-20)',
+            bottom: 'calc(var(--shell-footer-h) + var(--s-8))',
+            zIndex: 'var(--z-toast)',
+          }}
+        >
           <span>{error}</span>
           <span style={{ flex: 1 }} />
-          <button className="ob-icon-btn" aria-label={t('action.dismiss')} title={t('action.dismiss')} onClick={() => setError(null)}>
+          <button
+            className="ob-icon-btn"
+            aria-label={t('action.dismiss')}
+            title={t('action.dismiss')}
+            onClick={() => setError(null)}
+          >
             <Icon name="close" size={10} />
           </button>
         </div>
@@ -722,7 +799,9 @@ function OfficePanel() {
           />
         );
       case 'orders':
-        return <OrderBoardScreen view={view} canDispatch={can('orders.dispatch')} onError={setError} />;
+        return (
+          <OrderBoardScreen view={view} canDispatch={can('orders.dispatch')} onError={setError} />
+        );
       case 'conflicts':
         return (
           <ConflictsScreen

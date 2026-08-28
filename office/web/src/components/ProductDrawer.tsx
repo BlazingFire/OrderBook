@@ -38,10 +38,7 @@ import { useEffect, useState } from 'react';
 import type { Product } from '@orderbook/shared';
 
 import { api } from '../api';
-import { t } from '../i18n/strings';
-import { Button } from '../ui/Button';
-import { Drawer } from '../ui/Drawer';
-import { FormField, Input, NumberInput } from '../ui/Form';
+import { Button, Drawer, FormField, Input, NumberInput, t } from '@orderbook/ui';
 import { ProductImages } from './ProductImages';
 
 export interface CreatedProduct {
@@ -59,7 +56,14 @@ interface ProductDrawerProps {
   onError: (message: string) => void;
 }
 
-export function ProductDrawer({ open, product, onClose, onCreated, onUpdated, onError }: ProductDrawerProps) {
+export function ProductDrawer({
+  open,
+  product,
+  onClose,
+  onCreated,
+  onUpdated,
+  onError,
+}: ProductDrawerProps) {
   const editing = product ?? null;
 
   const [productCode, setProductCode] = useState('');
@@ -152,7 +156,11 @@ export function ProductDrawer({ open, product, onClose, onCreated, onUpdated, on
   }
 
   return (
-    <Drawer open={open} onClose={close} title={editing ? t('product.edit.title') : t('product.new.title')}>
+    <Drawer
+      open={open}
+      onClose={close}
+      title={editing ? t('product.edit.title') : t('product.new.title')}
+    >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-12)' }}>
           <FormField label={t('product.field.code')} required>
@@ -181,23 +189,33 @@ export function ProductDrawer({ open, product, onClose, onCreated, onUpdated, on
         </div>
 
         <FormField label={t('product.field.alias')}>
-          {(id) => <Input id={id} value={alias} onChange={(event) => setAlias(event.target.value)} />}
+          {(id) => (
+            <Input id={id} value={alias} onChange={(event) => setAlias(event.target.value)} />
+          )}
         </FormField>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-12)' }}>
           <FormField label={t('product.field.type')}>
             {(id) => (
-              <Input id={id} value={productType} onChange={(event) => setProductType(event.target.value)} />
+              <Input
+                id={id}
+                value={productType}
+                onChange={(event) => setProductType(event.target.value)}
+              />
             )}
           </FormField>
           <FormField label={t('product.field.size')}>
-            {(id) => <Input id={id} value={size} onChange={(event) => setSize(event.target.value)} />}
+            {(id) => (
+              <Input id={id} value={size} onChange={(event) => setSize(event.target.value)} />
+            )}
           </FormField>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-12)' }}>
           <FormField label={t('product.field.grade')}>
-            {(id) => <Input id={id} value={grade} onChange={(event) => setGrade(event.target.value)} />}
+            {(id) => (
+              <Input id={id} value={grade} onChange={(event) => setGrade(event.target.value)} />
+            )}
           </FormField>
           <FormField label={t('product.field.weight')}>
             {(id) => (
@@ -228,7 +246,14 @@ export function ProductDrawer({ open, product, onClose, onCreated, onUpdated, on
           </FormField>
         )}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)', marginTop: 'var(--s-4)' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--s-8)',
+            marginTop: 'var(--s-4)',
+          }}
+        >
           <Button variant="primary" busy={busy} onClick={() => void save()}>
             {busy ? t('product.saving') : editing ? t('product.saveChanges') : t('product.save')}
           </Button>

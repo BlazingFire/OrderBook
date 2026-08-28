@@ -9,15 +9,21 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { OfficePanelWithPresence } from '@orderbook/shared';
 
 import { api } from '../api';
-import { formatDateTime } from '../format';
-import { t } from '../i18n/strings';
-import { Button } from '../ui/Button';
-import { Card } from '../ui/Card';
-import { IdField, StatusPill } from '../ui/DataDisplay';
-import { DataTable, type DataTableColumn } from '../ui/DataTable';
-import { FormField, Input } from '../ui/Form';
-import { Modal } from '../ui/Modal';
-import { ConflictBanner, EmptyState } from '../ui/States';
+import {
+  Button,
+  Card,
+  ConflictBanner,
+  DataTable,
+  EmptyState,
+  FormField,
+  IdField,
+  Input,
+  Modal,
+  StatusPill,
+  formatDateTime,
+  t,
+  type DataTableColumn,
+} from '@orderbook/ui';
 
 interface Props {
   panels: OfficePanelWithPresence[];
@@ -145,8 +151,15 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
       header: '',
       width: '110px',
       render: (panel) => (
-        <div style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}>
-          <Button variant="secondary" size="sm" icon="expand" onClick={() => setOpenPanelId(panel.id)}>
+        <div
+          style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}
+        >
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="expand"
+            onClick={() => setOpenPanelId(panel.id)}
+          >
             {t('panels.action.open')}
           </Button>
         </div>
@@ -194,7 +207,9 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
             <div>
               <dt>{t('panels.detail.connection')}</dt>
               <dd>
-                {panel.isConnected ? t('panels.detail.connectionLive') : t('panels.detail.connectionDown')}
+                {panel.isConnected
+                  ? t('panels.detail.connectionLive')
+                  : t('panels.detail.connectionDown')}
               </dd>
             </div>
             <div>
@@ -253,7 +268,11 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
               <span className="ob-body-strong">{t('panels.add.waitingTitle')}</span>
               <span className="ob-small">{t('panels.add.waitingBody')}</span>
             </div>
-            <Button variant="secondary" style={{ marginTop: 'var(--s-12)' }} onClick={() => void stopWaiting()}>
+            <Button
+              variant="secondary"
+              style={{ marginTop: 'var(--s-12)' }}
+              onClick={() => void stopWaiting()}
+            >
               {t('panels.add.cancel')}
             </Button>
           </>
@@ -355,7 +374,11 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
             <Button variant="secondary" onClick={() => setRenaming(null)}>
               {t('panels.rename.cancel')}
             </Button>
-            <Button variant="primary" disabled={!renameValue.trim()} onClick={() => void submitRename()}>
+            <Button
+              variant="primary"
+              disabled={!renameValue.trim()}
+              onClick={() => void submitRename()}
+            >
               {t('panels.rename.save')}
             </Button>
           </>

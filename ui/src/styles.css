@@ -1,0 +1,18 @@
+/*
+ * The package's whole stylesheet, in the order the cascade needs.
+ *
+ * Each panel used to import these four files individually from its own copy
+ * of `ui/`, which meant the import order was restated in two `main.tsx` files
+ * and `base.css` — 2,300 lines — existed twice. Getting the order wrong is
+ * silent: tokens must be declared before anything reads them, and the reset
+ * must land before the components that assume it.
+ *
+ * Each panel's own `styles.css` — the legacy compatibility layer — is still
+ * imported separately by that panel, after this, because it deliberately
+ * overrides.
+ */
+
+@import './fonts.css';
+@import './tokens.css';
+@import './reset.css';
+@import './base.css';

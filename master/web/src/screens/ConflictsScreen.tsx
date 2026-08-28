@@ -10,12 +10,15 @@ import { useCallback, useEffect, useState } from 'react';
 import type { SyncConflict } from '@orderbook/shared';
 
 import { api } from '../api';
-import { formatDateTime } from '../format';
-import { t } from '../i18n/strings';
-import { Button } from '../ui/Button';
-import { Card } from '../ui/Card';
-import { Checkbox } from '../ui/Form';
-import { EmptyState, ConflictBanner } from '../ui/States';
+import {
+  Button,
+  Card,
+  Checkbox,
+  ConflictBanner,
+  EmptyState,
+  formatDateTime,
+  t,
+} from '@orderbook/ui';
 
 interface Props {
   revision: number;
@@ -58,7 +61,10 @@ export function ConflictsScreen({ revision, canResolve }: Props) {
   const visible = showResolved ? conflicts : conflicts.filter((conflict) => !conflict.resolvedAt);
 
   return (
-    <div className="ob-measure-wide" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
+    <div
+      className="ob-measure-wide"
+      style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <p className="ob-small" style={{ margin: 0 }}>
           {t('conflicts.description')}
@@ -80,14 +86,18 @@ export function ConflictsScreen({ revision, canResolve }: Props) {
 
       {visible.length === 0 ? (
         <Card>
-          <EmptyState title={t('conflicts.empty.title')} description={t('conflicts.empty.description')} />
+          <EmptyState
+            title={t('conflicts.empty.title')}
+            description={t('conflicts.empty.description')}
+          />
         </Card>
       ) : (
         visible.map((conflict) => (
           <Card key={conflict.id}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <h2 className="ob-title" style={{ margin: 0 }}>
-                {conflict.entity} {conflict.entityId} — <code className="ob-mono">{conflict.field}</code>
+                {conflict.entity} {conflict.entityId} —{' '}
+                <code className="ob-mono">{conflict.field}</code>
               </h2>
               <span className="ob-small">{formatDateTime(conflict.createdAt)}</span>
             </div>

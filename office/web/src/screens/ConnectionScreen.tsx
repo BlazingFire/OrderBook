@@ -10,14 +10,19 @@ import { useState, type FormEvent } from 'react';
 import type { BackupRestorePreview } from '@orderbook/shared';
 
 import { api, ApiError, type ConnectionInfo, type DiscoveredMaster } from '../api';
-import { t } from '../i18n/strings';
-import { Button } from '../ui/Button';
-import { Card } from '../ui/Card';
-import { StatusPill } from '../ui/DataDisplay';
-import { DataTable, type DataTableColumn } from '../ui/DataTable';
-import { FieldError, FormField, Input } from '../ui/Form';
-import { EmptyState } from '../ui/States';
-import { Segmented } from '../ui/Tabs';
+import {
+  Button,
+  Card,
+  DataTable,
+  EmptyState,
+  FieldError,
+  FormField,
+  Input,
+  Segmented,
+  StatusPill,
+  t,
+  type DataTableColumn,
+} from '@orderbook/ui';
 
 interface Props {
   connection: ConnectionInfo;
@@ -145,7 +150,9 @@ export function ConnectionScreen({ connection, onConnected }: Props) {
       width: '130px',
       render: (master) => (
         <StatusPill tone={master.acceptingPairing ? 'ok' : 'default'}>
-          {master.acceptingPairing ? t('connection.scan.acceptingYes') : t('connection.scan.acceptingNo')}
+          {master.acceptingPairing
+            ? t('connection.scan.acceptingYes')
+            : t('connection.scan.acceptingNo')}
         </StatusPill>
       ),
     },
@@ -272,7 +279,13 @@ export function ConnectionScreen({ connection, onConnected }: Props) {
           </ol>
 
           <FormField label={t('connection.panelName')}>
-            {(id) => <Input id={id} value={panelName} onChange={(event) => setPanelName(event.target.value)} />}
+            {(id) => (
+              <Input
+                id={id}
+                value={panelName}
+                onChange={(event) => setPanelName(event.target.value)}
+              />
+            )}
           </FormField>
 
           <div style={{ display: 'flex', gap: 'var(--s-8)', marginTop: 'var(--s-16)' }}>
@@ -339,7 +352,9 @@ export function ConnectionScreen({ connection, onConnected }: Props) {
                 )}
               </FormField>
               <FormField label={t('connection.manual.port')}>
-                {(id) => <Input id={id} value={port} onChange={(event) => setPort(event.target.value)} />}
+                {(id) => (
+                  <Input id={id} value={port} onChange={(event) => setPort(event.target.value)} />
+                )}
               </FormField>
             </div>
 
@@ -359,12 +374,21 @@ export function ConnectionScreen({ connection, onConnected }: Props) {
             <div style={{ marginTop: 'var(--s-16)' }}>
               <FormField label={t('connection.panelName')}>
                 {(id) => (
-                  <Input id={id} value={panelName} onChange={(event) => setPanelName(event.target.value)} />
+                  <Input
+                    id={id}
+                    value={panelName}
+                    onChange={(event) => setPanelName(event.target.value)}
+                  />
                 )}
               </FormField>
             </div>
 
-            <Button type="submit" variant="primary" busy={busy} style={{ marginTop: 'var(--s-16)' }}>
+            <Button
+              type="submit"
+              variant="primary"
+              busy={busy}
+              style={{ marginTop: 'var(--s-16)' }}
+            >
               {busy ? t('connection.manual.connecting') : t('connection.manual.connect')}
             </Button>
           </form>

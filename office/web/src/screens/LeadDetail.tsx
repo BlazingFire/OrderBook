@@ -14,13 +14,23 @@ import { useState } from 'react';
 import type { Lead } from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
-import { formatDateTime, formatMoney } from '../format';
-import { t } from '../i18n/strings';
-import { Button } from '../ui/Button';
-import { Card } from '../ui/Card';
-import { ColourChip, KeyValueList, StatusPill, Timeline, useColourHex } from '../ui/DataDisplay';
-import { DateField, FormField, Input, Select } from '../ui/Form';
-import { ConflictBanner } from '../ui/States';
+import {
+  Button,
+  Card,
+  ColourChip,
+  ConflictBanner,
+  DateField,
+  FormField,
+  Input,
+  KeyValueList,
+  Select,
+  StatusPill,
+  Timeline,
+  formatDateTime,
+  formatMoney,
+  t,
+  useColourHex,
+} from '@orderbook/ui';
 
 interface Props {
   lead: Lead;
@@ -116,7 +126,14 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
                 )}
               </div>
 
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s-8) var(--s-16)', marginTop: 'var(--s-8)' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 'var(--s-8) var(--s-16)',
+                  marginTop: 'var(--s-8)',
+                }}
+              >
                 {item.quantities.map((quantity) => (
                   <span key={quantity.id} className="ob-colourname">
                     <ColourChip name={quantity.colour} hex={colourHex(quantity.colour)} />
@@ -137,7 +154,14 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
         </div>
 
         {lead.totalAmount !== undefined && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--s-16)', marginTop: 'var(--s-8)' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 'var(--s-16)',
+              marginTop: 'var(--s-8)',
+            }}
+          >
             <span className="ob-small">{t('lead.detail.total')}</span>
             <span className="ob-body-strong" style={{ fontVariantNumeric: 'tabular-nums' }}>
               {formatMoney(lead.totalAmount)}
@@ -153,7 +177,10 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
         <KeyValueList
           items={[
             { label: t('lead.detail.name'), value: lead.partyName },
-            { label: t('lead.detail.code'), value: <span className="ob-mono">{party?.partyCode ?? '—'}</span> },
+            {
+              label: t('lead.detail.code'),
+              value: <span className="ob-mono">{party?.partyCode ?? '—'}</span>,
+            },
             { label: t('lead.detail.phone'), value: party?.phone ?? '—' },
             { label: t('lead.detail.city'), value: party?.city ?? '—' },
             { label: t('lead.detail.source'), value: lead.sourcePlatform ?? '—' },
@@ -168,7 +195,10 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
         <KeyValueList
           items={[
             { label: t('lead.detail.followUp'), value: lead.followUpDate ?? '—' },
-            { label: t('lead.detail.partyRates'), value: lead.partyWiseMode ? t('lead.detail.yes') : t('lead.detail.no') },
+            {
+              label: t('lead.detail.partyRates'),
+              value: lead.partyWiseMode ? t('lead.detail.yes') : t('lead.detail.no'),
+            },
             { label: t('lead.detail.created'), value: formatDateTime(lead.createdAt) },
           ]}
         />
@@ -246,21 +276,43 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
             </ConflictBanner>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px', gap: 'var(--s-12)', marginTop: 'var(--s-8)' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 160px',
+              gap: 'var(--s-12)',
+              marginTop: 'var(--s-8)',
+            }}
+          >
             <FormField label={t('lead.detail.dispatchLabel')}>
               {(id) => (
-                <Input id={id} value={dispatchLabel} onChange={(event) => setDispatchLabel(event.target.value)} />
+                <Input
+                  id={id}
+                  value={dispatchLabel}
+                  onChange={(event) => setDispatchLabel(event.target.value)}
+                />
               )}
             </FormField>
 
             <FormField label={t('lead.detail.expectedDate')}>
               {(id) => (
-                <DateField id={id} value={expectedDate} onChange={(event) => setExpectedDate(event.target.value)} />
+                <DateField
+                  id={id}
+                  value={expectedDate}
+                  onChange={(event) => setExpectedDate(event.target.value)}
+                />
               )}
             </FormField>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)', marginTop: 'var(--s-12)' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--s-12)',
+              marginTop: 'var(--s-12)',
+            }}
+          >
             <Button
               variant="primary"
               disabled={busy || !canConvert || missingPackaging.length > 0}

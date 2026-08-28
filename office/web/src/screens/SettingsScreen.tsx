@@ -13,22 +13,22 @@ import { useState } from 'react';
 
 import type { ConnectionInfo, PanelSession } from '../api';
 import { StorageBackupActions } from '../components/StorageBackup';
-import { formatDateTime } from '../format';
-import { t } from '../i18n/strings';
-import { Card } from '../ui/Card';
-import { KeyValueList } from '../ui/DataDisplay';
-import { Switch } from '../ui/Form';
-import { Segmented } from '../ui/Tabs';
 import {
+  Card,
+  KeyValueList,
+  Segmented,
+  Switch,
   applyDensity,
   applyMotion,
   applyTheme,
+  formatDateTime,
   loadDensity,
   loadTheme,
   motionDisabled,
+  t,
   type Density,
   type Theme,
-} from '../ui/theme';
+} from '@orderbook/ui';
 
 interface Props {
   connection: ConnectionInfo;
@@ -91,7 +91,10 @@ export function SettingsScreen({ connection, session, pendingCount, openConflict
     {
       label: t('settings.machine.signedInAs'),
       value: session.offline
-        ? t('settings.machine.signedInAsOffline', { name: session.displayName, role: session.roleName })
+        ? t('settings.machine.signedInAsOffline', {
+            name: session.displayName,
+            role: session.roleName,
+          })
         : t('footer.signedInAs', { name: session.displayName, role: session.roleName }),
     },
   ];
@@ -132,7 +135,10 @@ export function SettingsScreen({ connection, session, pendingCount, openConflict
             <Segmented
               options={[
                 { value: 'compact' as const, label: t('settings.appearance.densityCompact') },
-                { value: 'comfortable' as const, label: t('settings.appearance.densityComfortable') },
+                {
+                  value: 'comfortable' as const,
+                  label: t('settings.appearance.densityComfortable'),
+                },
                 { value: 'large' as const, label: t('settings.appearance.densityLarge') },
               ]}
               value={density}
@@ -147,7 +153,11 @@ export function SettingsScreen({ connection, session, pendingCount, openConflict
             <span className="ob-body" style={{ width: 140 }}>
               {t('settings.appearance.motion')}
             </span>
-            <Switch checked={!motionOn} onChange={toggleMotion} label={t('settings.appearance.motionLabel')} />
+            <Switch
+              checked={!motionOn}
+              onChange={toggleMotion}
+              label={t('settings.appearance.motionLabel')}
+            />
             <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
               {t('settings.appearance.motionHint')}
             </span>

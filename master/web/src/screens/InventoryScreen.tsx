@@ -17,20 +17,36 @@
  */
 
 import { useCallback, useEffect, useId, useState } from 'react';
-import type { InventoryStockLevel, OptionListItem, Product, StockMovement } from '@orderbook/shared';
+import type {
+  InventoryStockLevel,
+  OptionListItem,
+  Product,
+  StockMovement,
+} from '@orderbook/shared';
 
 import { api } from '../api';
-import { formatDateTime } from '../format';
-import { t } from '../i18n/strings';
-import { Button } from '../ui/Button';
-import { Card, Section } from '../ui/Card';
-import { DataTable, type DataTableColumn } from '../ui/DataTable';
-import { ColourChip, ColourName, StatusPill, useColourHex } from '../ui/DataDisplay';
-import { FilterChip } from '../ui/FilterBar';
-import { useFilterBar } from '../ui/FilterBarSlot';
-import { FormField, Input, NumberInput, Select } from '../ui/Form';
-import { Modal } from '../ui/Modal';
-import { EmptyState, SkeletonRows } from '../ui/States';
+import {
+  Button,
+  Card,
+  ColourChip,
+  ColourName,
+  DataTable,
+  EmptyState,
+  FilterChip,
+  FormField,
+  Input,
+  Modal,
+  NumberInput,
+  Section,
+  Select,
+  SkeletonRows,
+  StatusPill,
+  formatDateTime,
+  t,
+  useColourHex,
+  useFilterBar,
+  type DataTableColumn,
+} from '@orderbook/ui';
 
 interface Props {
   revision: number;
@@ -306,7 +322,11 @@ export function InventoryScreen({ revision }: Props) {
       width: '90px',
       align: 'right',
       render: (movement) => (
-        <span style={{ color: movement.quantityBoxes < 0 ? 'var(--state-conflict)' : 'var(--state-ok)' }}>
+        <span
+          style={{
+            color: movement.quantityBoxes < 0 ? 'var(--state-conflict)' : 'var(--state-ok)',
+          }}
+        >
           {movement.quantityBoxes > 0 ? '+' : ''}
           {movement.quantityBoxes}
         </span>
@@ -351,7 +371,11 @@ export function InventoryScreen({ revision }: Props) {
       width: '72px',
       align: 'right',
       render: (movement) => (
-        <span style={{ color: movement.quantityBoxes < 0 ? 'var(--state-conflict)' : 'var(--state-ok)' }}>
+        <span
+          style={{
+            color: movement.quantityBoxes < 0 ? 'var(--state-conflict)' : 'var(--state-ok)',
+          }}
+        >
           {movement.quantityBoxes > 0 ? '+' : ''}
           {movement.quantityBoxes}
         </span>
@@ -386,16 +410,24 @@ export function InventoryScreen({ revision }: Props) {
   function renderLineDetail(level: InventoryStockLevel) {
     return (
       <div className="ob-detail">
-        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--s-8)' }}>
+        <section
+          style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--s-8)' }}
+        >
           <Card>
             <div className="ob-eyebrow">{t('inventory.table.onHand')}</div>
-            <div className="ob-display" style={{ marginTop: 'var(--s-6)', fontVariantNumeric: 'tabular-nums' }}>
+            <div
+              className="ob-display"
+              style={{ marginTop: 'var(--s-6)', fontVariantNumeric: 'tabular-nums' }}
+            >
               {level.quantityBoxes}
             </div>
           </Card>
           <Card>
             <div className="ob-eyebrow">{t('inventory.table.reserved')}</div>
-            <div className="ob-display" style={{ marginTop: 'var(--s-6)', fontVariantNumeric: 'tabular-nums' }}>
+            <div
+              className="ob-display"
+              style={{ marginTop: 'var(--s-6)', fontVariantNumeric: 'tabular-nums' }}
+            >
               {level.reservedBoxes}
             </div>
           </Card>
@@ -432,7 +464,6 @@ export function InventoryScreen({ revision }: Props) {
             />
           )}
         </section>
-
       </div>
     );
   }
@@ -506,7 +537,6 @@ export function InventoryScreen({ revision }: Props) {
         />
       </Section>
 
-
       <Modal
         open={Boolean(openLevel)}
         onClose={() => setOpenLineKey(null)}
@@ -515,13 +545,19 @@ export function InventoryScreen({ revision }: Props) {
           openLevel && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-8)' }}>
               <ColourChip hex={colourHex(openLevel.colour)} name={openLevel.colour} />
-              {t('inventory.drawer.title', { product: openLevel.productName, colour: openLevel.colour })}
+              {t('inventory.drawer.title', {
+                product: openLevel.productName,
+                colour: openLevel.colour,
+              })}
             </span>
           )
         }
         label={
           openLevel
-            ? t('inventory.drawer.title', { product: openLevel.productName, colour: openLevel.colour })
+            ? t('inventory.drawer.title', {
+                product: openLevel.productName,
+                colour: openLevel.colour,
+              })
             : ''
         }
         subtitle={openLevel && <span className="ob-mono">{openLevel.productCode}</span>}
@@ -566,7 +602,10 @@ export function InventoryScreen({ revision }: Props) {
         }}
         title={
           lineLock
-            ? t('inventory.stockIn.titleForLine', { product: lineLock.productName, colour: lineLock.colour })
+            ? t('inventory.stockIn.titleForLine', {
+                product: lineLock.productName,
+                colour: lineLock.colour,
+              })
             : t('inventory.stockIn.title')
         }
       >
@@ -602,7 +641,10 @@ export function InventoryScreen({ revision }: Props) {
         }}
         title={
           lineLock
-            ? t('inventory.physicalCount.titleForLine', { product: lineLock.productName, colour: lineLock.colour })
+            ? t('inventory.physicalCount.titleForLine', {
+                product: lineLock.productName,
+                colour: lineLock.colour,
+              })
             : t('inventory.physicalCount.title')
         }
       >
@@ -685,7 +727,11 @@ function MovementForm({
               {lock.productCode} — {lock.productName}
             </p>
           ) : (
-            <Select id={id} value={productId} onChange={(event) => setProductId(event.target.value)}>
+            <Select
+              id={id}
+              value={productId}
+              onChange={(event) => setProductId(event.target.value)}
+            >
               <option value="">{t('inventory.field.productPlaceholder')}</option>
               {products.map((product) => (
                 <option key={product.id} value={product.id}>
@@ -724,7 +770,11 @@ function MovementForm({
 
       <FormField label={t('inventory.field.boxes')}>
         {(id) => (
-          <NumberInput id={id} value={quantity} onChange={(event) => setQuantity(event.target.value)} />
+          <NumberInput
+            id={id}
+            value={quantity}
+            onChange={(event) => setQuantity(event.target.value)}
+          />
         )}
       </FormField>
 

@@ -31,14 +31,23 @@ import type {
 } from '@orderbook/shared';
 
 import { api, ApiError } from '../api';
-import { formatMoney } from '../format';
-import { t } from '../i18n/strings';
-import { ButtonLink } from '../ui/Button';
-import { Card, Section } from '../ui/Card';
-import { DataTable, type DataTableColumn } from '../ui/DataTable';
-import { FormField, Input, Select } from '../ui/Form';
-import { EmptyState, ErrorState, SkeletonRows } from '../ui/States';
-import { Tabs, type TabItem } from '../ui/Tabs';
+import {
+  ButtonLink,
+  Card,
+  DataTable,
+  EmptyState,
+  ErrorState,
+  FormField,
+  Input,
+  Section,
+  Select,
+  SkeletonRows,
+  Tabs,
+  formatMoney,
+  t,
+  type DataTableColumn,
+  type TabItem,
+} from '@orderbook/ui';
 
 interface Props {
   /** Bumped by the live socket whenever lead, order or stock data changes. */
@@ -297,7 +306,10 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
     <Card>
       <div className="ob-eyebrow">{label}</div>
-      <div className="ob-display" style={{ marginTop: 'var(--s-6)', fontVariantNumeric: 'tabular-nums' }}>
+      <div
+        className="ob-display"
+        style={{ marginTop: 'var(--s-6)', fontVariantNumeric: 'tabular-nums' }}
+      >
         {value}
       </div>
     </Card>
@@ -316,8 +328,18 @@ function DispatchesView({ report }: { report: DispatchesReport }) {
     // Only the month is pinned: DataTable turns a column with no width into a
     // `1fr` track, and a table whose every track is fixed leaves the rest of
     // the row as dead space when the money column is dropped.
-    { key: 'orders', header: t('reports.column.orders'), align: 'right', render: (row) => row.orderCount },
-    { key: 'boxes', header: t('reports.column.boxes'), align: 'right', render: (row) => row.boxCount },
+    {
+      key: 'orders',
+      header: t('reports.column.orders'),
+      align: 'right',
+      render: (row) => row.orderCount,
+    },
+    {
+      key: 'boxes',
+      header: t('reports.column.boxes'),
+      align: 'right',
+      render: (row) => row.boxCount,
+    },
     ...(report.ratesIncluded
       ? [
           {
@@ -347,7 +369,10 @@ function DispatchesView({ report }: { report: DispatchesReport }) {
         <StatCard label={t('reports.stat.orders')} value={report.totals.orderCount} />
         <StatCard label={t('reports.stat.boxes')} value={report.totals.boxCount} />
         {report.ratesIncluded && (
-          <StatCard label={t('reports.stat.value')} value={formatMoney(report.totals.totalValue ?? null)} />
+          <StatCard
+            label={t('reports.stat.value')}
+            value={formatMoney(report.totals.totalValue ?? null)}
+          />
         )}
       </div>
 
@@ -437,7 +462,12 @@ function TopPartiesView({ report }: { report: TopPartiesReport }) {
       width: '120px',
       render: (row) => <span className="ob-mono">{row.partyCode ?? '—'}</span>,
     },
-    { key: 'city', header: t('reports.column.city'), width: '180px', render: (row) => row.city ?? '—' },
+    {
+      key: 'city',
+      header: t('reports.column.city'),
+      width: '180px',
+      render: (row) => row.city ?? '—',
+    },
     {
       key: 'orders',
       header: t('reports.column.orders'),

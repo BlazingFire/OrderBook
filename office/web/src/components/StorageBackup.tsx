@@ -10,12 +10,7 @@ import { useState } from 'react';
 import type { BackupRestorePreview } from '@orderbook/shared';
 
 import { api, ApiError } from '../api';
-import { t } from '../i18n/strings';
-import { Button } from '../ui/Button';
-import { FormField, Input } from '../ui/Form';
-import { Modal } from '../ui/Modal';
-import { Segmented } from '../ui/Tabs';
-import { useToast } from '../ui/Toast';
+import { Button, FormField, Input, Modal, Segmented, t, useToast } from '@orderbook/ui';
 
 export function StorageBackupActions() {
   const [exportOpen, setExportOpen] = useState(false);
@@ -72,7 +67,12 @@ function ExportModal({ onClose }: { onClose: () => void }) {
           <Button variant="ghost" onClick={onClose}>
             {t('backup.restore.cancel')}
           </Button>
-          <Button variant="primary" busy={busy} onClick={() => void handleExport()} disabled={passphrase.length < 10}>
+          <Button
+            variant="primary"
+            busy={busy}
+            onClick={() => void handleExport()}
+            disabled={passphrase.length < 10}
+          >
             {t('backup.export.confirm')}
           </Button>
         </>
@@ -91,7 +91,11 @@ function ExportModal({ onClose }: { onClose: () => void }) {
             />
           )}
         </FormField>
-        <FormField label={t('backup.export.passphraseLabel')} hint={t('backup.export.passphraseHint')} error={error ?? undefined}>
+        <FormField
+          label={t('backup.export.passphraseLabel')}
+          hint={t('backup.export.passphraseHint')}
+          error={error ?? undefined}
+        >
           {(id) => (
             <Input
               id={id}
@@ -202,9 +206,7 @@ function RestoreModal({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
-      {step === 'done' && (
-        <p className="ob-body">{t('backup.restore.donePairAgain')}</p>
-      )}
+      {step === 'done' && <p className="ob-body">{t('backup.restore.donePairAgain')}</p>}
     </Modal>
   );
 

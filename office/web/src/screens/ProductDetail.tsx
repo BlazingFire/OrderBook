@@ -27,13 +27,22 @@ import { useState } from 'react';
 import type { InventoryStockLevel, Product } from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
-import { formatMoney } from '../format';
-import { t } from '../i18n/strings';
-import { Button } from '../ui/Button';
-import { Card } from '../ui/Card';
-import { ColourName, KeyValueList, StatusPill, useColourHex } from '../ui/DataDisplay';
-import { DataTable, type DataTableColumn } from '../ui/DataTable';
-import { FormField, Input, NumberInput, Select } from '../ui/Form';
+import {
+  Button,
+  Card,
+  ColourName,
+  DataTable,
+  FormField,
+  Input,
+  KeyValueList,
+  NumberInput,
+  Select,
+  StatusPill,
+  formatMoney,
+  t,
+  useColourHex,
+  type DataTableColumn,
+} from '@orderbook/ui';
 
 const RATE_PERMISSION = 'field.saleRate.view';
 
@@ -57,7 +66,11 @@ export function ProductDetail({
 
   const levels = view.stock.filter((level) => level.productId === product.id);
   const colours = Array.from(
-    new Set(view.optionLists.filter((option) => option.listKey === 'stock.colour' && option.isActive).map((option) => option.label)),
+    new Set(
+      view.optionLists
+        .filter((option) => option.listKey === 'stock.colour' && option.isActive)
+        .map((option) => option.label),
+    ),
   ).sort();
 
   const columns: DataTableColumn<InventoryStockLevel>[] = [
@@ -113,10 +126,16 @@ export function ProductDetail({
       <Card>
         <KeyValueList
           items={[
-            { label: t('product.detail.type'), value: product.productType ?? product.categoryName ?? '—' },
+            {
+              label: t('product.detail.type'),
+              value: product.productType ?? product.categoryName ?? '—',
+            },
             { label: t('product.detail.size'), value: product.size ?? '—' },
             { label: t('product.detail.grade'), value: product.grade ?? '—' },
-            { label: t('product.detail.weight'), value: product.weightKg != null ? `${product.weightKg} kg` : '—' },
+            {
+              label: t('product.detail.weight'),
+              value: product.weightKg != null ? `${product.weightKg} kg` : '—',
+            },
             {
               label: t('product.detail.rate'),
               value:
@@ -143,7 +162,10 @@ export function ProductDetail({
           rows={levels}
           rowKey={(level) => level.colour}
           empty={
-            <p className="ob-small" style={{ margin: 0, padding: 'var(--s-16)', color: 'var(--fg-tertiary)' }}>
+            <p
+              className="ob-small"
+              style={{ margin: 0, padding: 'var(--s-16)', color: 'var(--fg-tertiary)' }}
+            >
               {t('product.detail.stock.none')}
             </p>
           }
@@ -157,10 +179,16 @@ export function ProductDetail({
         <Button variant="primary" size="sm" icon="edit" onClick={onEdit}>
           {t('product.detail.editAction')}
         </Button>
-        <Button size="sm" onClick={() => setMode((current) => (current === 'inbound' ? 'none' : 'inbound'))}>
+        <Button
+          size="sm"
+          onClick={() => setMode((current) => (current === 'inbound' ? 'none' : 'inbound'))}
+        >
           {t('product.detail.stockInAction')}
         </Button>
-        <Button size="sm" onClick={() => setMode((current) => (current === 'adjust' ? 'none' : 'adjust'))}>
+        <Button
+          size="sm"
+          onClick={() => setMode((current) => (current === 'adjust' ? 'none' : 'adjust'))}
+        >
           {t('product.detail.adjustAction')}
         </Button>
       </div>
@@ -203,7 +231,9 @@ function StockMovementForm({
   onError: (message: string) => void;
 }) {
   const [colour, setColour] = useState(colours[0] ?? '');
-  const [quantity, setQuantity] = useState(mode === 'adjust' ? String(levels.get(colours[0] ?? '') ?? 0) : '');
+  const [quantity, setQuantity] = useState(
+    mode === 'adjust' ? String(levels.get(colours[0] ?? '') ?? 0) : '',
+  );
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -225,7 +255,9 @@ function StockMovementForm({
     // counted total (never negative) and the server derives the delta
     // itself — see inventory.service.ts's recordAdjustment.
     const valid =
-      quantity.trim() !== '' && Number.isFinite(parsed) && (mode === 'inbound' ? parsed > 0 : parsed >= 0);
+      quantity.trim() !== '' &&
+      Number.isFinite(parsed) &&
+      (mode === 'inbound' ? parsed > 0 : parsed >= 0);
     if (!valid) {
       onError(t('product.detail.stockForm.quantityInvalid'));
       return;
@@ -233,7 +265,12 @@ function StockMovementForm({
 
     setBusy(true);
     try {
-      const input = { productId, colour: trimmedColour, quantityBoxes: parsed, note: note.trim() || undefined };
+      const input = {
+        productId,
+        colour: trimmedColour,
+        quantityBoxes: parsed,
+        note: note.trim() || undefined,
+      };
       if (mode === 'inbound') await api.stockInbound(input);
       else await api.stockAdjust(input);
       onDone(
@@ -266,7 +303,11 @@ function StockMovementForm({
           )}
         </FormField>
         <FormField
-          label={mode === 'inbound' ? t('product.detail.stockForm.quantity') : t('product.detail.stockForm.counted')}
+          label={
+            mode === 'inbound'
+              ? t('product.detail.stockForm.quantity')
+              : t('product.detail.stockForm.counted')
+          }
         >
           {(id) => (
             <NumberInput
@@ -278,7 +319,10 @@ function StockMovementForm({
           )}
         </FormField>
       </div>
-      <FormField label={t('product.detail.stockForm.note')} hint={t('product.detail.stockForm.noteHint')}>
+      <FormField
+        label={t('product.detail.stockForm.note')}
+        hint={t('product.detail.stockForm.noteHint')}
+      >
         {(id) => <Input id={id} value={note} onChange={(event) => setNote(event.target.value)} />}
       </FormField>
       <div style={{ display: 'flex', gap: 'var(--s-8)', marginTop: 'var(--s-8)' }}>

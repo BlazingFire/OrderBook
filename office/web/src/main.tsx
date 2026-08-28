@@ -2,13 +2,13 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { App } from './App';
-import './ui/fonts.css';
-import './ui/tokens.css';
-import './ui/reset.css';
-import './ui/base.css';
+import '@orderbook/ui/styles.css';
 import './styles.css';
-import { ErrorBoundary } from './ui/ErrorBoundary';
-import { initAppearance } from './ui/theme';
+import { configureUi, ErrorBoundary, initAppearance } from '@orderbook/ui';
+
+// Which panel this is, and the two appearance defaults that genuinely differ
+// from the Master's. Must run before `initAppearance()`, which reads them.
+configureUi({ panel: 'office', defaultTheme: 'light', themeStorageKey: 'ob.theme' });
 
 // Before first paint, so there is no flash of the wrong theme or density.
 initAppearance();

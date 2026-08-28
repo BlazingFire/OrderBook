@@ -1,12 +1,14 @@
 /**
  * The Party Access screen exists twice, and must stay identical.
  *
- * The two panels keep separate copies of `ui/` and of their `api` client
- * (`docs/UI_REDESIGN.md` §7 proposes a shared workspace that does not exist),
- * so a screen can only be shared between them by being duplicated. That is
- * survivable; what is not is the copies quietly diverging, because the next
- * edit then lands on one of them and nobody notices until a person on the
- * other panel reports that a control is missing.
+ * The shared components now live in `@orderbook/ui`, but each panel still
+ * owns its own `api` client and the two differ — Office's writes queue into
+ * an outbox and return a `QueuedResult`, the Master's do not. A *screen* that
+ * imports `{ api, ApiError }` therefore cannot move into the package, so this
+ * one is shared between the panels by being duplicated. That is survivable;
+ * what is not is the copies quietly diverging, because the next edit then
+ * lands on one of them and nobody notices until a person on the other panel
+ * reports that a control is missing.
  *
  * This is not hypothetical. Within a day of Party Access landing, the two
  * files had already drifted in four places — an export button on one side

@@ -33,18 +33,22 @@ import type { LocalView } from '../api';
 import { PartyDrawer, type CreatedParty } from '../components/PartyDrawer';
 import { ProductDrawer, type CreatedProduct } from '../components/ProductDrawer';
 import { StockByColour } from '../components/StockCell';
-import { formatMoney } from '../format';
-import { t } from '../i18n/strings';
-import { Button } from '../ui/Button';
-import { StatusPill, useColourHex } from '../ui/DataDisplay';
-import { DataTable, type DataTableColumn } from '../ui/DataTable';
-import { Drawer } from '../ui/Drawer';
-import { FilterChip } from '../ui/FilterBar';
-import { useFilterBar } from '../ui/FilterBarSlot';
-import { Input } from '../ui/Form';
-import { ProgressiveImage } from '../ui/ProgressiveImage';
-import { EmptyState } from '../ui/States';
-import { useToast } from '../ui/Toast';
+import {
+  Button,
+  DataTable,
+  Drawer,
+  EmptyState,
+  FilterChip,
+  Input,
+  ProgressiveImage,
+  StatusPill,
+  formatMoney,
+  t,
+  useColourHex,
+  useFilterBar,
+  useToast,
+  type DataTableColumn,
+} from '@orderbook/ui';
 import { PartyDetail } from './PartyDetail';
 import { ProductDetail } from './ProductDetail';
 
@@ -54,13 +58,7 @@ function distinctSorted(values: (string | null)[]): string[] {
   return Array.from(new Set(values.filter((value): value is string => Boolean(value)))).sort();
 }
 
-export function CatalogScreen({
-  view,
-  tab,
-}: {
-  view: LocalView;
-  tab: 'parties' | 'products';
-}) {
+export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' | 'products' }) {
   const toast = useToast();
   const colourHex = useColourHex(view.optionLists);
 
@@ -79,8 +77,14 @@ export function CatalogScreen({
   const partyTerm = partySearch.trim().toLowerCase();
   const productTerm = productSearch.trim().toLowerCase();
 
-  const cities = useMemo(() => distinctSorted(view.parties.map((party) => party.city)), [view.parties]);
-  const types = useMemo(() => distinctSorted(view.products.map((product) => product.productType)), [view.products]);
+  const cities = useMemo(
+    () => distinctSorted(view.parties.map((party) => party.city)),
+    [view.parties],
+  );
+  const types = useMemo(
+    () => distinctSorted(view.products.map((product) => product.productType)),
+    [view.products],
+  );
 
   const parties = useMemo(
     () =>
@@ -143,7 +147,11 @@ export function CatalogScreen({
           aria-label={t('catalog.parties.searchLabel')}
           style={{ width: 240 }}
         />
-        <FilterChip active={cityFilter === null} count={view.parties.length} onClick={() => setCityFilter(null)}>
+        <FilterChip
+          active={cityFilter === null}
+          count={view.parties.length}
+          onClick={() => setCityFilter(null)}
+        >
           {t('catalog.filter.all')}
         </FilterChip>
         {cities.map((city) => (
@@ -170,7 +178,11 @@ export function CatalogScreen({
           aria-label={t('catalog.products.searchLabel')}
           style={{ width: 240 }}
         />
-        <FilterChip active={typeFilter === null} count={view.products.length} onClick={() => setTypeFilter(null)}>
+        <FilterChip
+          active={typeFilter === null}
+          count={view.products.length}
+          onClick={() => setTypeFilter(null)}
+        >
           {t('catalog.filter.all')}
         </FilterChip>
         {types.map((type) => (
@@ -207,11 +219,15 @@ export function CatalogScreen({
         key: 'name',
         header: t('catalog.parties.column.name'),
         render: (party) => (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-8)', minWidth: 0 }}>
+          <span
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-8)', minWidth: 0 }}
+          >
             <span className="ob-body-strong" style={{ fontSize: 13.5 }}>
               {party.name}
             </span>
-            {!party.sync.hlc && <StatusPill tone="offline">{t('catalog.parties.notSynced')}</StatusPill>}
+            {!party.sync.hlc && (
+              <StatusPill tone="offline">{t('catalog.parties.notSynced')}</StatusPill>
+            )}
           </span>
         ),
       },
@@ -233,7 +249,9 @@ export function CatalogScreen({
         width: '140px',
         render: (party) => {
           const count = view.partyVariants.filter((variant) => variant.partyId === party.id).length;
-          return count > 0 ? `${count} ${count === 1 ? t('unit.product') : t('unit.products')}` : '—';
+          return count > 0
+            ? `${count} ${count === 1 ? t('unit.product') : t('unit.products')}`
+            : '—';
         },
       },
       {
@@ -249,7 +267,9 @@ export function CatalogScreen({
           if (!grant) return '';
           return (
             <StatusPill tone={grant.level === 'manage' ? 'accent' : 'default'}>
-              {grant.level === 'manage' ? t('partyAccess.level.manage') : t('partyAccess.level.view')}
+              {grant.level === 'manage'
+                ? t('partyAccess.level.manage')
+                : t('partyAccess.level.view')}
             </StatusPill>
           );
         },
@@ -357,7 +377,10 @@ export function CatalogScreen({
             {product.name}
           </span>
           {product.alias && (
-            <span className="ob-small" style={{ marginLeft: 'var(--s-8)', color: 'var(--fg-tertiary)' }}>
+            <span
+              className="ob-small"
+              style={{ marginLeft: 'var(--s-8)', color: 'var(--fg-tertiary)' }}
+            >
               {product.alias}
             </span>
           )}
@@ -395,7 +418,9 @@ export function CatalogScreen({
       key: 'stock',
       header: t('catalog.products.column.stock'),
       width: '1.3fr',
-      render: (product) => <StockByColour productId={product.id} stock={view.stock} colourHex={colourHex} />,
+      render: (product) => (
+        <StockByColour productId={product.id} stock={view.stock} colourHex={colourHex} />
+      ),
     },
   ];
 

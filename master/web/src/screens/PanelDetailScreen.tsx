@@ -22,17 +22,31 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ActivityLogEntry, OfficePanelDetail, Role } from '@orderbook/shared';
 
 import { api, ApiError } from '../api';
-import { formatBytes, formatDateTime } from '../format';
-import { t } from '../i18n/strings';
-import { Button } from '../ui/Button';
-import { Card, Section } from '../ui/Card';
-import { IdField, KeyValueList, StatusPill } from '../ui/DataDisplay';
-import { DataTable, type DataTableColumn } from '../ui/DataTable';
-import { FormField, Input, Switch, Textarea, Select } from '../ui/Form';
-import { Modal } from '../ui/Modal';
-import { ConflictBanner, EmptyState, SkeletonRows } from '../ui/States';
-import { Tabs, type TabItem } from '../ui/Tabs';
-import { useToast } from '../ui/Toast';
+import {
+  Button,
+  Card,
+  ConflictBanner,
+  DataTable,
+  EmptyState,
+  FormField,
+  IdField,
+  Input,
+  KeyValueList,
+  Modal,
+  Section,
+  Select,
+  SkeletonRows,
+  StatusPill,
+  Switch,
+  Tabs,
+  Textarea,
+  formatBytes,
+  formatDateTime,
+  t,
+  useToast,
+  type DataTableColumn,
+  type TabItem,
+} from '@orderbook/ui';
 
 type Tab = 'overview' | 'credentials' | 'storage' | 'access' | 'activity';
 
@@ -61,7 +75,13 @@ function bytesOrUnknown(value: number | null): string {
 function platformName(platform: string | null, osVersion: string | null): string {
   if (!platform) return t('panel.field.unknown');
   const friendly =
-    platform === 'win32' ? 'Windows' : platform === 'darwin' ? 'macOS' : platform === 'linux' ? 'Linux' : platform;
+    platform === 'win32'
+      ? 'Windows'
+      : platform === 'darwin'
+        ? 'macOS'
+        : platform === 'linux'
+          ? 'Linux'
+          : platform;
   return osVersion ? `${friendly} · ${osVersion}` : friendly;
 }
 
@@ -150,13 +170,19 @@ export function PanelDetailScreen({ panelId, permissions, revision, onBack, onCh
 
       <Tabs tabs={tabs} activeId={tab} onChange={(id) => setTab(id as Tab)} />
 
-      {tab === 'overview' && <OverviewTab panel={panel} canManage={canManage} busy={busy} run={run} />}
+      {tab === 'overview' && (
+        <OverviewTab panel={panel} canManage={canManage} busy={busy} run={run} />
+      )}
       {tab === 'credentials' && (
         <CredentialsTab panel={panel} canManage={canManage} busy={busy} run={run} />
       )}
-      {tab === 'storage' && <StorageTab panel={panel} canManage={canManage} busy={busy} run={run} />}
+      {tab === 'storage' && (
+        <StorageTab panel={panel} canManage={canManage} busy={busy} run={run} />
+      )}
       {tab === 'access' && <AccessTab panel={panel} canManage={canManage} busy={busy} run={run} />}
-      {tab === 'activity' && <ActivityTab panelId={panel.id} canViewLogs={canViewLogs} revision={revision} />}
+      {tab === 'activity' && (
+        <ActivityTab panelId={panel.id} canViewLogs={canViewLogs} revision={revision} />
+      )}
     </div>
   );
 }
@@ -186,14 +212,18 @@ function PanelHeader({
     );
 
   const since = panel.isConnected
-    ? t('panel.status.connectedSince', { when: formatDateTime(panel.runtime?.connectedSince ?? null) })
+    ? t('panel.status.connectedSince', {
+        when: formatDateTime(panel.runtime?.connectedSince ?? null),
+      })
     : panel.lastSeenAt
       ? t('panel.status.lastSeen', { when: formatDateTime(panel.lastSeenAt) })
       : t('panel.status.neverSeen');
 
   return (
     <Card>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--s-12)', flexWrap: 'wrap' }}>
+      <div
+        style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--s-12)', flexWrap: 'wrap' }}
+      >
         <div style={{ flex: 1, minWidth: 220 }}>
           <button
             type="button"
@@ -206,7 +236,9 @@ function PanelHeader({
           <h2 className="ob-title" style={{ margin: 'var(--s-4) 0 var(--s-4)' }}>
             {panel.name}
           </h2>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)', flexWrap: 'wrap' }}>
+          <div
+            style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)', flexWrap: 'wrap' }}
+          >
             {presence}
             <span className="ob-small">{since}</span>
             <span className="ob-small ob-mono">{panel.deviceCode}</span>
@@ -284,7 +316,8 @@ function OverviewTab({
                 disabled={!dirty || !name.trim()}
                 onClick={() =>
                   void run(
-                    () => api.updatePanel(panel.id, { name: name.trim(), notes: notes.trim() || null }),
+                    () =>
+                      api.updatePanel(panel.id, { name: name.trim(), notes: notes.trim() || null }),
                     t('panel.save.failed'),
                   )
                 }
@@ -347,7 +380,9 @@ function OverviewTab({
               { label: t('panel.field.address'), value: panel.lanIp ?? t('panel.field.unknown') },
               {
                 label: t('panel.field.localPort'),
-                value: device.localPort ? `http://localhost:${device.localPort}` : t('panel.field.unknown'),
+                value: device.localPort
+                  ? `http://localhost:${device.localPort}`
+                  : t('panel.field.unknown'),
               },
               {
                 label: t('panel.field.pendingMutations'),
@@ -372,9 +407,18 @@ function OverviewTab({
         <Section title={t('panel.overview.work')}>
           <KeyValueList
             items={[
-              { label: t('panel.field.leads'), value: <span className="ob-data">{panel.work.leads}</span> },
-              { label: t('panel.field.orders'), value: <span className="ob-data">{panel.work.orders}</span> },
-              { label: t('panel.field.lastAction'), value: formatDateTime(panel.work.lastActionAt) },
+              {
+                label: t('panel.field.leads'),
+                value: <span className="ob-data">{panel.work.leads}</span>,
+              },
+              {
+                label: t('panel.field.orders'),
+                value: <span className="ob-data">{panel.work.orders}</span>,
+              },
+              {
+                label: t('panel.field.lastAction'),
+                value: formatDateTime(panel.work.lastActionAt),
+              },
             ]}
           />
         </Section>
@@ -415,14 +459,17 @@ function CredentialsTab({
                 label: t('panel.credentials.secretLabel'),
                 value: (
                   <span className="ob-small">
-                    <span className="ob-mono">••••••••••••••••</span> — {t('panel.credentials.secretStored')}
+                    <span className="ob-mono">••••••••••••••••</span> —{' '}
+                    {t('panel.credentials.secretStored')}
                   </span>
                 ),
               },
               {
                 label: t('panel.field.paired'),
                 value: panel.secretRotatedAt
-                  ? t('panel.credentials.rotatedAt', { when: formatDateTime(panel.secretRotatedAt) })
+                  ? t('panel.credentials.rotatedAt', {
+                      when: formatDateTime(panel.secretRotatedAt),
+                    })
                   : t('panel.credentials.neverRotated'),
               },
             ]}
@@ -560,7 +607,11 @@ function StorageTab({
             items={[
               {
                 label: t('panel.storage.path'),
-                value: device.dataDir ? <IdField value={device.dataDir} /> : t('panel.field.unknown'),
+                value: device.dataDir ? (
+                  <IdField value={device.dataDir} />
+                ) : (
+                  t('panel.field.unknown')
+                ),
               },
               {
                 label: t('panel.storage.images'),
@@ -705,7 +756,11 @@ function AccessTab({
                 hint={panel.role.isFallback ? t('panel.access.fallbackHint') : undefined}
               >
                 {(id) => (
-                  <Select id={id} value={roleId} onChange={(event) => setRoleId(event.target.value)}>
+                  <Select
+                    id={id}
+                    value={roleId}
+                    onChange={(event) => setRoleId(event.target.value)}
+                  >
                     <option value="">{t('panel.access.fallback')}</option>
                     {roles.map((role) => (
                       <option key={role.id} value={role.id}>

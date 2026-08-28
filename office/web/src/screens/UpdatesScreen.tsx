@@ -27,11 +27,7 @@ import type { UpdateAvailability } from '@orderbook/shared';
 import { standing } from '@orderbook/shared';
 
 import { api, ApiError, desktopBridge, type ConnectionInfo } from '../api';
-import { formatDateTime } from '../format';
-import { t } from '../i18n/strings';
-import { Button } from '../ui/Button';
-import { Card, Section } from '../ui/Card';
-import { StatusPill } from '../ui/DataDisplay';
+import { Button, Card, Section, StatusPill, formatDateTime, t } from '@orderbook/ui';
 
 type Phase = 'idle' | 'downloading' | 'launching' | 'failed';
 

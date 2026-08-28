@@ -25,12 +25,17 @@
 import type { Party } from '@orderbook/shared';
 
 import type { LocalView } from '../api';
-import { formatDateTime, formatMoney } from '../format';
-import { t } from '../i18n/strings';
-import { Button } from '../ui/Button';
-import { Card } from '../ui/Card';
-import { KeyValueList, StatusPill } from '../ui/DataDisplay';
-import { DataTable, type DataTableColumn } from '../ui/DataTable';
+import {
+  Button,
+  Card,
+  DataTable,
+  KeyValueList,
+  StatusPill,
+  formatDateTime,
+  formatMoney,
+  t,
+  type DataTableColumn,
+} from '@orderbook/ui';
 
 const RATE_PERMISSION = 'field.saleRate.view';
 
@@ -110,10 +115,16 @@ export function PartyDetail({
         </div>
         <KeyValueList
           items={[
-            { label: t('party.detail.phone'), value: <span className="ob-data">{party.phone ?? '—'}</span> },
+            {
+              label: t('party.detail.phone'),
+              value: <span className="ob-data">{party.phone ?? '—'}</span>,
+            },
             { label: t('party.detail.city'), value: party.city ?? '—' },
             { label: t('party.detail.email'), value: party.email ?? '—' },
-            { label: t('party.detail.taxId'), value: <span className="ob-mono">{party.gstNumber ?? '—'}</span> },
+            {
+              label: t('party.detail.taxId'),
+              value: <span className="ob-mono">{party.gstNumber ?? '—'}</span>,
+            },
             { label: t('party.detail.since'), value: formatDateTime(party.createdAt) },
           ]}
         />
@@ -155,7 +166,10 @@ export function PartyDetail({
           rows={rateRows}
           rowKey={(row) => row.key}
           empty={
-            <p className="ob-small" style={{ margin: 0, padding: 'var(--s-16)', color: 'var(--fg-tertiary)' }}>
+            <p
+              className="ob-small"
+              style={{ margin: 0, padding: 'var(--s-16)', color: 'var(--fg-tertiary)' }}
+            >
               {t('party.detail.rates.none')}
             </p>
           }
@@ -175,14 +189,21 @@ export function PartyDetail({
             {recentLeads.map((lead) => (
               <div
                 key={lead.id}
-                style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-10)', padding: 'var(--s-6) var(--s-8)' }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--s-10)',
+                  padding: 'var(--s-6) var(--s-8)',
+                }}
               >
                 <span className="ob-mono" style={{ fontSize: 11.5, color: 'var(--fg-secondary)' }}>
                   {lead.id}
                 </span>
                 <span className="ob-small">{lead.stageName}</span>
                 <span style={{ flex: 1 }} />
-                <span className="ob-data">{lead.totalAmount !== undefined ? formatMoney(lead.totalAmount) : '—'}</span>
+                <span className="ob-data">
+                  {lead.totalAmount !== undefined ? formatMoney(lead.totalAmount) : '—'}
+                </span>
               </div>
             ))}
           </div>

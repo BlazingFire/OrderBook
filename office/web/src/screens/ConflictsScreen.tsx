@@ -11,11 +11,7 @@ import { useState } from 'react';
 import type { SyncConflict } from '@orderbook/shared';
 
 import { api } from '../api';
-import { formatDateTime } from '../format';
-import { t } from '../i18n/strings';
-import { Button } from '../ui/Button';
-import { Card } from '../ui/Card';
-import { EmptyState } from '../ui/States';
+import { Button, Card, EmptyState, formatDateTime, t } from '@orderbook/ui';
 
 interface Props {
   conflicts: SyncConflict[];
@@ -33,7 +29,10 @@ export function ConflictsScreen({ conflicts, canResolve, onError, onResolved }: 
 
   if (open.length === 0) {
     return (
-      <EmptyState title={t('conflicts.empty.title')} description={t('conflicts.empty.description')} />
+      <EmptyState
+        title={t('conflicts.empty.title')}
+        description={t('conflicts.empty.description')}
+      />
     );
   }
 
@@ -50,7 +49,10 @@ export function ConflictsScreen({ conflicts, canResolve, onError, onResolved }: 
   }
 
   return (
-    <div className="ob-measure-wide" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
+    <div
+      className="ob-measure-wide"
+      style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}
+    >
       {open.map((conflict) => {
         const rowBusy = busy?.id === conflict.id;
         return (
@@ -64,7 +66,8 @@ export function ConflictsScreen({ conflicts, canResolve, onError, onResolved }: 
               }}
             >
               <h3 className="ob-title" style={{ margin: 0 }}>
-                {conflict.entity} {conflict.entityId} — <span className="ob-mono">{conflict.field}</span>
+                {conflict.entity} {conflict.entityId} —{' '}
+                <span className="ob-mono">{conflict.field}</span>
               </h3>
               <span className="ob-small" style={{ whiteSpace: 'nowrap' }}>
                 {formatDateTime(conflict.createdAt)}
@@ -92,7 +95,11 @@ export function ConflictsScreen({ conflicts, canResolve, onError, onResolved }: 
                 </div>
                 <pre
                   className="ob-data"
-                  style={{ margin: 'var(--s-6) 0 0', whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}
+                  style={{
+                    margin: 'var(--s-6) 0 0',
+                    whiteSpace: 'pre-wrap',
+                    fontFamily: 'inherit',
+                  }}
                 >
                   {stringify(conflict.winningValue)}
                 </pre>
@@ -111,7 +118,11 @@ export function ConflictsScreen({ conflicts, canResolve, onError, onResolved }: 
                 </div>
                 <pre
                   className="ob-data"
-                  style={{ margin: 'var(--s-6) 0 0', whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}
+                  style={{
+                    margin: 'var(--s-6) 0 0',
+                    whiteSpace: 'pre-wrap',
+                    fontFamily: 'inherit',
+                  }}
                 >
                   {stringify(conflict.losingValue)}
                 </pre>

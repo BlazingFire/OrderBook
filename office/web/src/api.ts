@@ -187,15 +187,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const body = await response.json().catch(() => null);
   if (!response.ok) {
-    const detail = body as
-      | {
-          error?: string;
-          message?: string;
-          details?: Record<string, unknown>;
-          messageKey?: MessageKey;
-          params?: MessageParams;
-        }
-      | null;
+    const detail = body as {
+      error?: string;
+      message?: string;
+      details?: Record<string, unknown>;
+      messageKey?: MessageKey;
+      params?: MessageParams;
+    } | null;
 
     throw new ApiError(
       detail?.message ?? 'Request failed',
@@ -222,8 +220,16 @@ async function postFile<T>(path: string, form: FormData): Promise<T> {
   const response = await fetch(path, { method: 'POST', body: form });
   const body = await response.json().catch(() => null);
   if (!response.ok) {
-    const detail = body as { error?: string; message?: string; details?: Record<string, unknown> } | null;
-    throw new ApiError(detail?.message ?? 'Request failed', detail?.error ?? 'internal_error', detail?.details ?? {});
+    const detail = body as {
+      error?: string;
+      message?: string;
+      details?: Record<string, unknown>;
+    } | null;
+    throw new ApiError(
+      detail?.message ?? 'Request failed',
+      detail?.error ?? 'internal_error',
+      detail?.details ?? {},
+    );
   }
   return body as T;
 }
@@ -236,10 +242,16 @@ async function postForBlob(path: string, body: unknown): Promise<{ blob: Blob; f
     body: JSON.stringify(body),
   });
   if (!response.ok) {
-    const detail = (await response.json().catch(() => null)) as
-      | { error?: string; message?: string; details?: Record<string, unknown> }
-      | null;
-    throw new ApiError(detail?.message ?? 'Request failed', detail?.error ?? 'internal_error', detail?.details ?? {});
+    const detail = (await response.json().catch(() => null)) as {
+      error?: string;
+      message?: string;
+      details?: Record<string, unknown>;
+    } | null;
+    throw new ApiError(
+      detail?.message ?? 'Request failed',
+      detail?.error ?? 'internal_error',
+      detail?.details ?? {},
+    );
   }
   const match = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') ?? '');
   return { blob: await response.blob(), fileName: match?.[1] ?? 'orderbook-backup.obbackup' };
@@ -341,10 +353,18 @@ export const api = {
   // Stock and search need the Master, so these still fail when it is offline —
   // which is correct: a stale stock figure presented as current is worse than
   // an honest "cannot reach the Master right now".
-  stockInbound: (input: { productId: string; colour: string; quantityBoxes: number; note?: string }) =>
-    post('/api/stock/inbound', input),
-  stockAdjust: (input: { productId: string; colour: string; quantityBoxes: number; note?: string }) =>
-    post('/api/stock/adjust', input),
+  stockInbound: (input: {
+    productId: string;
+    colour: string;
+    quantityBoxes: number;
+    note?: string;
+  }) => post('/api/stock/inbound', input),
+  stockAdjust: (input: {
+    productId: string;
+    colour: string;
+    quantityBoxes: number;
+    note?: string;
+  }) => post('/api/stock/adjust', input),
 
   search: (term: string) => request<SearchHit[]>(`/api/search?q=${encodeURIComponent(term)}`),
 
@@ -357,10 +377,14 @@ export const api = {
   // rather than queueing, so a delete never applies later against data that
   // has since changed underneath it.
 
-  deleteParty: (id: string) => request<{ id: string; deletedAt: string }>(`/api/parties/${id}`, { method: 'DELETE' }),
-  deleteProduct: (id: string) => request<{ id: string; deletedAt: string }>(`/api/products/${id}`, { method: 'DELETE' }),
-  deleteLead: (id: string) => request<{ id: string; deletedAt: string }>(`/api/leads/${id}`, { method: 'DELETE' }),
-  deleteOrder: (id: string) => request<{ id: string; deletedAt: string }>(`/api/orders/${id}`, { method: 'DELETE' }),
+  deleteParty: (id: string) =>
+    request<{ id: string; deletedAt: string }>(`/api/parties/${id}`, { method: 'DELETE' }),
+  deleteProduct: (id: string) =>
+    request<{ id: string; deletedAt: string }>(`/api/products/${id}`, { method: 'DELETE' }),
+  deleteLead: (id: string) =>
+    request<{ id: string; deletedAt: string }>(`/api/leads/${id}`, { method: 'DELETE' }),
+  deleteOrder: (id: string) =>
+    request<{ id: string; deletedAt: string }>(`/api/orders/${id}`, { method: 'DELETE' }),
 
   recycleBin: (query: RecycleBinQuery = {}) => {
     const params = new URLSearchParams();
@@ -373,7 +397,8 @@ export const api = {
     return request<CursorPage<BinEntry>>(`/api/recycle-bin${qs ? `?${qs}` : ''}`);
   },
   recycleBinCounts: () => request<BinCounts>('/api/recycle-bin/counts'),
-  restoreFromBin: (input: RestoreInput) => post<BinRestoreResult>('/api/recycle-bin/restore', input),
+  restoreFromBin: (input: RestoreInput) =>
+    post<BinRestoreResult>('/api/recycle-bin/restore', input),
 
   // --- App update ----------------------------------------------------------
 
@@ -409,15 +434,21 @@ export const api = {
   // fall back on (option_lists/custom_field_definitions carry no hlc/field_hlc).
 
   fieldsCatalogue: () => request<FieldCatalogue>('/api/fields/catalogue'),
-  fieldValues: (listKey: string, options: { includeDeleted?: boolean; includeUnlisted?: boolean } = {}) => {
+  fieldValues: (
+    listKey: string,
+    options: { includeDeleted?: boolean; includeUnlisted?: boolean } = {},
+  ) => {
     const params = new URLSearchParams({ listKey });
     if (options.includeDeleted) params.set('includeDeleted', 'true');
     if (options.includeUnlisted) params.set('includeUnlisted', 'true');
-    return request<{ items: OptionListItem[]; unlisted?: string[] }>(`/api/fields/values?${params}`);
+    return request<{ items: OptionListItem[]; unlisted?: string[] }>(
+      `/api/fields/values?${params}`,
+    );
   },
   fieldUsage: (listKey: string) =>
     request<FieldUsageBreakdown>(`/api/fields/usage?listKey=${encodeURIComponent(listKey)}`),
-  createFieldValue: (input: OptionListItemInput) => post<OptionListItem>('/api/fields/values', input),
+  createFieldValue: (input: OptionListItemInput) =>
+    post<OptionListItem>('/api/fields/values', input),
   updateFieldValue: (id: string, input: OptionListItemUpdateInput) =>
     put<OptionListItem>(`/api/fields/values/${id}`, input),
   deleteFieldValue: (id: string) =>
@@ -437,14 +468,17 @@ export const api = {
   updateFieldDefinition: (id: string, input: CustomFieldDefinitionUpdateInput) =>
     put<CustomFieldDefinition>(`/api/fields/definitions/${id}`, input),
   deleteFieldDefinition: (id: string) =>
-    request<{ id: string; deletedAt: string }>(`/api/fields/definitions/${id}`, { method: 'DELETE' }),
+    request<{ id: string; deletedAt: string }>(`/api/fields/definitions/${id}`, {
+      method: 'DELETE',
+    }),
   reorderFieldDefinitions: (input: CustomFieldReorderInput) =>
     post<CustomFieldDefinition[]>('/api/fields/definitions/reorder', input),
 
   fieldStages: () => request<Pipeline[]>('/api/fields/stages'),
   updateFieldStage: (id: string, input: PipelineStageInput) =>
     put<PipelineStage>(`/api/fields/stages/${id}`, input),
-  reorderFieldStages: (input: StageReorderInput) => post<PipelineStage[]>('/api/fields/stages/reorder', input),
+  reorderFieldStages: (input: StageReorderInput) =>
+    post<PipelineStage[]>('/api/fields/stages/reorder', input),
   archiveFieldStage: (id: string) => post<PipelineStage>(`/api/fields/stages/${id}/archive`),
   restoreFieldStage: (id: string) => post<PipelineStage>(`/api/fields/stages/${id}/restore`),
 
@@ -474,7 +508,8 @@ export const api = {
     const qs = params.toString();
     return request<ActivityLogFacets>(`/api/logs/facets${qs ? `?${qs}` : ''}`);
   },
-  verifyLogChain: (input: ChainVerifyInput = {}) => post<ChainVerification>('/api/logs/verify', input),
+  verifyLogChain: (input: ChainVerifyInput = {}) =>
+    post<ChainVerification>('/api/logs/verify', input),
   logsExportUrl: (query: ActivityLogQuery = {}) => {
     const params = new URLSearchParams();
     if (query.actorType) params.set('actorType', query.actorType);
@@ -528,8 +563,10 @@ export const api = {
   documentTemplate: (id: string) => request<DocumentTemplate>(`/api/documents/templates/${id}`),
   createDocumentTemplate: (input: DocumentTemplateInput) =>
     post<DocumentTemplate>('/api/documents/templates', input),
-  updateDocumentTemplate: (id: string, input: DocumentTemplateInput & { expectedVersion: number }) =>
-    put<DocumentTemplate>(`/api/documents/templates/${id}`, input),
+  updateDocumentTemplate: (
+    id: string,
+    input: DocumentTemplateInput & { expectedVersion: number },
+  ) => put<DocumentTemplate>(`/api/documents/templates/${id}`, input),
   deleteDocumentTemplate: (id: string, expectedVersion: number) =>
     request<{ id: string; deletedAt: string }>(`/api/documents/templates/${id}`, {
       method: 'DELETE',
@@ -553,9 +590,11 @@ export const api = {
       body: JSON.stringify(input),
     });
     if (!response.ok) {
-      const detail = (await response.json().catch(() => null)) as
-        | { error?: string; message?: string; details?: Record<string, unknown> }
-        | null;
+      const detail = (await response.json().catch(() => null)) as {
+        error?: string;
+        message?: string;
+        details?: Record<string, unknown>;
+      } | null;
       throw new ApiError(
         detail?.message ?? 'Preview failed',
         detail?.error ?? 'internal_error',
@@ -590,7 +629,14 @@ export const api = {
   uploadProductImage: (
     productId: string,
     file: Blob,
-    crop: { cropX: number; cropY: number; cropWidth: number; cropHeight: number; rotationDeg: number; caption?: string | null },
+    crop: {
+      cropX: number;
+      cropY: number;
+      cropWidth: number;
+      cropHeight: number;
+      rotationDeg: number;
+      caption?: string | null;
+    },
   ) => {
     const form = new FormData();
     form.set('file', file, 'image');

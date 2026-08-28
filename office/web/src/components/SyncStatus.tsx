@@ -63,7 +63,10 @@ export function SyncStatus({ connection, pendingCount, rejections, onFlush, busy
               <li key={rejection.mutationId}>
                 {rejection.error ?? 'No reason given'}
                 {rejection.missingPermission && (
-                  <> — your role does not include <code>{rejection.missingPermission}</code></>
+                  <>
+                    {' '}
+                    — your role does not include <code>{rejection.missingPermission}</code>
+                  </>
                 )}
               </li>
             ))}

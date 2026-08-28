@@ -11,10 +11,7 @@
 import type { ReactNode } from 'react';
 
 import type { LocalView } from '../api';
-import { formatMoney } from '../format';
-import { t } from '../i18n/strings';
-import { Card } from '../ui/Card';
-import { EmptyState } from '../ui/States';
+import { Card, EmptyState, formatMoney, t } from '@orderbook/ui';
 
 type DashboardTab = 'leads' | 'orders' | 'conflicts';
 
@@ -87,11 +84,7 @@ function StatCard({
     );
   }
 
-  return (
-    <Card style={{ borderColor }}>
-      {body}
-    </Card>
-  );
+  return <Card style={{ borderColor }}>{body}</Card>;
 }
 
 export function DashboardScreen({ view, onNavigate }: Props) {
@@ -101,7 +94,12 @@ export function DashboardScreen({ view, onNavigate }: Props) {
 
   const nothingYet = view.leads.length === 0 && view.orders.length === 0 && view.stock.length === 0;
   if (nothingYet) {
-    return <EmptyState title={t('dashboard.empty.title')} description={t('dashboard.empty.description')} />;
+    return (
+      <EmptyState
+        title={t('dashboard.empty.title')}
+        description={t('dashboard.empty.description')}
+      />
+    );
   }
 
   const today = todayIso();
@@ -134,7 +132,9 @@ export function DashboardScreen({ view, onNavigate }: Props) {
     ? undefined
     : dispatchedThisWeek.reduce((sum, order) => sum + (order.totalAmount ?? 0), 0);
   const dispatchedUnit =
-    dispatchedThisWeek.length === 1 ? t('dashboard.dispatched.unitOne') : t('dashboard.dispatched.unitMany');
+    dispatchedThisWeek.length === 1
+      ? t('dashboard.dispatched.unitOne')
+      : t('dashboard.dispatched.unitMany');
 
   const openConflicts = view.conflicts.filter((conflict) => !conflict.resolvedAt).length;
   const pendingCount = view.pendingCount;
@@ -152,10 +152,17 @@ export function DashboardScreen({ view, onNavigate }: Props) {
         ? t('dashboard.sync.pendingNote')
         : t('dashboard.sync.allSyncedNote');
   const syncColor =
-    openConflicts > 0 ? 'var(--state-conflict)' : pendingCount > 0 ? 'var(--state-offline)' : undefined;
+    openConflicts > 0
+      ? 'var(--state-conflict)'
+      : pendingCount > 0
+        ? 'var(--state-offline)'
+        : undefined;
 
   return (
-    <div className="ob-measure-wide" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--s-12)' }}>
+    <div
+      className="ob-measure-wide"
+      style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--s-12)' }}
+    >
       {canViewLeads && (
         <StatCard
           label={t('dashboard.leads.title')}
@@ -175,7 +182,9 @@ export function DashboardScreen({ view, onNavigate }: Props) {
           value={openOrders.length.toLocaleString('en-IN')}
           note={
             boxesReserved > 0
-              ? t('dashboard.orders.boxesReserved', { count: boxesReserved.toLocaleString('en-IN') })
+              ? t('dashboard.orders.boxesReserved', {
+                  count: boxesReserved.toLocaleString('en-IN'),
+                })
               : t('dashboard.orders.noneReserved')
           }
           onClick={() => onNavigate('orders')}

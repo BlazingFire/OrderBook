@@ -15,19 +15,25 @@ import { useState } from 'react';
 import type { Lead, PartyScopeFilter, SyncSnapshot } from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
-import { formatMoney } from '../format';
-import { t } from '../i18n/strings';
-import { IconButton } from '../ui/Button';
-import { ColourChip, StatusPill, useColourHex } from '../ui/DataDisplay';
-import { DataTable, type DataTableColumn } from '../ui/DataTable';
-import { Drawer } from '../ui/Drawer';
-import { FilterChip, FilterDivider } from '../ui/FilterBar';
-import { useFilterBar } from '../ui/FilterBarSlot';
-import { KanbanBoard } from '../ui/KanbanBoard';
-import { Popover } from '../ui/Popover';
-import { EmptyState } from '../ui/States';
-import { Segmented } from '../ui/Tabs';
-import { useToast } from '../ui/Toast';
+import {
+  ColourChip,
+  DataTable,
+  Drawer,
+  EmptyState,
+  FilterChip,
+  FilterDivider,
+  IconButton,
+  KanbanBoard,
+  Popover,
+  Segmented,
+  StatusPill,
+  formatMoney,
+  t,
+  useColourHex,
+  useFilterBar,
+  useToast,
+  type DataTableColumn,
+} from '@orderbook/ui';
 import { LeadDetail } from './LeadDetail';
 
 interface Props {
@@ -46,7 +52,6 @@ function leadBoxes(lead: Lead): number {
 function leadColours(lead: Lead): string[] {
   return Array.from(new Set(lead.items.flatMap((item) => item.quantities.map((q) => q.colour))));
 }
-
 
 /**
  * "My parties" — the leads or orders on parties explicitly assigned to the
@@ -106,7 +111,11 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
           onChange={setScope}
         />
         <FilterDivider />
-        <FilterChip active={stageFilter === null} count={open.length} onClick={() => setStageFilter(null)}>
+        <FilterChip
+          active={stageFilter === null}
+          count={open.length}
+          onClick={() => setStageFilter(null)}
+        >
           {t('lead.board.filter.all')}
         </FilterChip>
         {stages.map((stage) => (
@@ -126,7 +135,12 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
   );
 
   if (!pipeline) {
-    return <EmptyState title={t('lead.board.noPipelineTitle')} description={t('lead.board.noPipelineDesc')} />;
+    return (
+      <EmptyState
+        title={t('lead.board.noPipelineTitle')}
+        description={t('lead.board.noPipelineDesc')}
+      />
+    );
   }
 
   async function move(lead: Lead, stageId: string): Promise<void> {
@@ -168,7 +182,12 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
       ),
     },
     { key: 'party', header: t('lead.list.col.party'), render: (lead) => lead.partyName },
-    { key: 'stage', header: t('lead.list.col.stage'), width: '110px', render: (lead) => lead.stageName },
+    {
+      key: 'stage',
+      header: t('lead.list.col.stage'),
+      width: '110px',
+      render: (lead) => lead.stageName,
+    },
     {
       key: 'source',
       header: t('lead.list.col.source'),
@@ -233,7 +252,8 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
             const boxes = leadBoxes(lead);
             const colours = leadColours(lead);
             const stageIndex = stages.findIndex((stage) => stage.id === lead.stageId);
-            const nextStage = stageIndex >= 0 && stageIndex < stages.length - 1 ? stages[stageIndex + 1] : null;
+            const nextStage =
+              stageIndex >= 0 && stageIndex < stages.length - 1 ? stages[stageIndex + 1] : null;
             const missingPackaging = lead.items.some((item) => !item.packaging?.trim());
             return (
               <>
@@ -243,8 +263,12 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
                   </span>
                   <span style={{ flex: 1 }} />
                   {/* An empty hlc means the Master has not acknowledged it yet. */}
-                  {!lead.sync.hlc && <StatusPill tone="offline">{t('lead.badge.notSynced')}</StatusPill>}
-                  {lead.incomplete && <StatusPill tone="conflict">{t('lead.badge.incomplete')}</StatusPill>}
+                  {!lead.sync.hlc && (
+                    <StatusPill tone="offline">{t('lead.badge.notSynced')}</StatusPill>
+                  )}
+                  {lead.incomplete && (
+                    <StatusPill tone="conflict">{t('lead.badge.incomplete')}</StatusPill>
+                  )}
                   <IconButton
                     icon="more"
                     label={t('lead.board.cardMenu')}
@@ -256,7 +280,10 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
                   <Popover
                     open={menuId === lead.id}
                     onClose={() => setMenuId(null)}
-                    anchorStyle={{ right: 'var(--s-8)', top: 'calc(var(--s-12) + var(--ctl-h-sm))' }}
+                    anchorStyle={{
+                      right: 'var(--s-8)',
+                      top: 'calc(var(--s-12) + var(--ctl-h-sm))',
+                    }}
                   >
                     <div className="ob-menu">
                       <button
@@ -306,19 +333,42 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
                   </Popover>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-6)', marginTop: 'var(--s-4)' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--s-6)',
+                    marginTop: 'var(--s-4)',
+                  }}
+                >
                   <span className="ob-mono" style={{ fontSize: 11.5, color: 'var(--fg-tertiary)' }}>
                     {lead.id}
                   </span>
                   <span className="ob-small">
-                    · {lead.items.length} {lead.items.length === 1 ? t('unit.product') : t('unit.products')} ·{' '}
-                    {boxes} {t('unit.boxes')}
+                    · {lead.items.length}{' '}
+                    {lead.items.length === 1 ? t('unit.product') : t('unit.products')} · {boxes}{' '}
+                    {t('unit.boxes')}
                   </span>
                 </div>
 
                 {colours.length > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)', marginTop: 'var(--s-6)' }}>
-                    <span style={{ display: 'inline-flex', gap: 'var(--s-8)', overflow: 'hidden', flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 'var(--s-8)',
+                      marginTop: 'var(--s-6)',
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        gap: 'var(--s-8)',
+                        overflow: 'hidden',
+                        flex: 1,
+                        minWidth: 0,
+                      }}
+                    >
                       {colours.map((colour) => (
                         <ColourChip key={colour} name={colour} hex={colourHex(colour)} />
                       ))}
@@ -329,8 +379,13 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
                   </div>
                 )}
 
-                <div style={{ display: 'flex', gap: 'var(--s-8)', marginTop: 'var(--s-6)' }} className="ob-micro">
-                  {lead.sourcePlatform && <span style={{ color: 'var(--fg-tertiary)' }}>via {lead.sourcePlatform}</span>}
+                <div
+                  style={{ display: 'flex', gap: 'var(--s-8)', marginTop: 'var(--s-6)' }}
+                  className="ob-micro"
+                >
+                  {lead.sourcePlatform && (
+                    <span style={{ color: 'var(--fg-tertiary)' }}>via {lead.sourcePlatform}</span>
+                  )}
                   <span style={{ flex: 1 }} />
                   {lead.followUpDate && (
                     <span style={{ color: 'var(--fg-tertiary)' }}>
@@ -368,14 +423,24 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
         title={
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-8)' }}>
             {openLead?.partyName}
-            {openLead && !openLead.sync.hlc && <StatusPill tone="offline">{t('lead.badge.notSynced')}</StatusPill>}
-            {openLead?.convertedOrderId && <StatusPill tone="ok">{t('lead.badge.converted')}</StatusPill>}
+            {openLead && !openLead.sync.hlc && (
+              <StatusPill tone="offline">{t('lead.badge.notSynced')}</StatusPill>
+            )}
+            {openLead?.convertedOrderId && (
+              <StatusPill tone="ok">{t('lead.badge.converted')}</StatusPill>
+            )}
           </span>
         }
         subtitle={openLead && <span className="ob-mono">{openLead.id}</span>}
       >
         {openLead && (
-          <LeadDetail lead={openLead} view={view} canConvert={canConvert} onClose={closeDrawer} onError={onError} />
+          <LeadDetail
+            lead={openLead}
+            view={view}
+            canConvert={canConvert}
+            onClose={closeDrawer}
+            onError={onError}
+          />
         )}
       </Drawer>
     </>

@@ -12,23 +12,25 @@ import type { MasterIdentity, StorageUsage } from '@orderbook/shared';
 
 import { api } from '../api';
 import { StorageBackupActions } from '../components/StorageBackup';
-import { formatBytes, formatDateTime } from '../format';
-import { t } from '../i18n/strings';
-import { Card } from '../ui/Card';
-import { IdField, KeyValueList } from '../ui/DataDisplay';
-import { Switch } from '../ui/Form';
-import { Skeleton } from '../ui/States';
-import { Segmented } from '../ui/Tabs';
 import {
+  Card,
+  IdField,
+  KeyValueList,
+  Segmented,
+  Skeleton,
+  Switch,
   applyDensity,
   applyMotion,
   applyTheme,
+  formatBytes,
+  formatDateTime,
   loadDensity,
   loadTheme,
   motionDisabled,
+  t,
   type Density,
   type Theme,
-} from '../ui/theme';
+} from '@orderbook/ui';
 
 function currentRootSize(): string {
   return getComputedStyle(document.documentElement).getPropertyValue('--root-size').trim();
@@ -43,8 +45,14 @@ export function SettingsScreen() {
   const [canManageStorage, setCanManageStorage] = useState(false);
 
   useEffect(() => {
-    void api.identity().then(setIdentity).catch(() => setIdentity(null));
-    void api.storage().then(setStorage).catch(() => setStorage(null));
+    void api
+      .identity()
+      .then(setIdentity)
+      .catch(() => setIdentity(null));
+    void api
+      .storage()
+      .then(setStorage)
+      .catch(() => setStorage(null));
     // The usage figures are readable by anyone, but export and restore are
     // `storage.manage` at the route — so the session's own permissions decide
     // whether the actions appear, rather than offering two buttons whose only
@@ -111,7 +119,11 @@ export function SettingsScreen() {
           </SettingRow>
 
           <SettingRow label={t('settings.motion.label')}>
-            <Switch checked={!motionOn} onChange={handleMotionChange} label={t('settings.motion.turnOff')} />
+            <Switch
+              checked={!motionOn}
+              onChange={handleMotionChange}
+              label={t('settings.motion.turnOff')}
+            />
             <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
               {t('settings.motion.hint')}
             </span>
@@ -144,8 +156,14 @@ export function SettingsScreen() {
                     t('settings.connection.noAddress', { port: identity.port })
                   ),
                 },
-                { label: t('settings.connection.masterId'), value: <IdField value={identity.masterUniqueId} /> },
-                { label: t('settings.connection.setupCompleted'), value: formatDateTime(identity.setupCompletedAt) },
+                {
+                  label: t('settings.connection.masterId'),
+                  value: <IdField value={identity.masterUniqueId} />,
+                },
+                {
+                  label: t('settings.connection.setupCompleted'),
+                  value: formatDateTime(identity.setupCompletedAt),
+                },
               ]}
             />
             <p className="ob-small" style={{ marginTop: 'var(--s-12)', marginBottom: 0 }}>
@@ -197,7 +215,10 @@ function SkeletonKeyValueRows({ rows }: { rows: number }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }} aria-hidden="true">
       {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--s-16)' }}>
+        <div
+          key={i}
+          style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--s-16)' }}
+        >
           <Skeleton width="30%" height="var(--t-small-line)" />
           <Skeleton width="45%" height="var(--t-small-line)" />
         </div>

@@ -15,9 +15,7 @@ import { useRef, useState } from 'react';
 import type { Product, ProductImage } from '@orderbook/shared';
 
 import { api } from '../api';
-import { ImageCropModal, type CropResult } from '../ui/ImageCropModal';
-import { ProgressiveImage } from '../ui/ProgressiveImage';
-import { IconButton } from '../ui/Button';
+import { IconButton, ImageCropModal, ProgressiveImage, type CropResult } from '@orderbook/ui';
 
 export function ProductImages({
   product,
@@ -32,7 +30,9 @@ export function ProductImages({
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const images = [...product.images].sort((a, b) => (a.isPrimary === b.isPrimary ? a.sequence - b.sequence : a.isPrimary ? -1 : 1));
+  const images = [...product.images].sort((a, b) =>
+    a.isPrimary === b.isPrimary ? a.sequence - b.sequence : a.isPrimary ? -1 : 1,
+  );
 
   // The arrows swap only among the non-primary photos, so the first movable one
   // is not gallery index 0 whenever a primary is pinned ahead of it. The down
@@ -89,7 +89,10 @@ export function ProductImages({
     if (!swapWith) return;
 
     const reordered = [...nonPrimary];
-    [reordered[index], reordered[index + direction]] = [reordered[index + direction], reordered[index]];
+    [reordered[index], reordered[index + direction]] = [
+      reordered[index + direction],
+      reordered[index],
+    ];
 
     // The server validates the id list as a *complete* permutation of every
     // image on the product (`imageRepo.imageIdsForProduct`), primary included
@@ -107,7 +110,10 @@ export function ProductImages({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s-12)' }}>
         {images.map((image, index) => (
-          <div key={image.id} style={{ width: 96, display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}>
+          <div
+            key={image.id}
+            style={{ width: 96, display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}
+          >
             <ProgressiveImage
               imageId={image.id}
               variant="thumb"
@@ -116,7 +122,14 @@ export function ProductImages({
               height={image.height}
               alt={image.caption ?? product.name}
             />
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 2,
+              }}
+            >
               {image.isPrimary ? (
                 <span className="ob-small" style={{ color: 'var(--fg-secondary)' }}>
                   Primary
@@ -125,7 +138,13 @@ export function ProductImages({
                 <button
                   type="button"
                   className="ob-small"
-                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline' }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                  }}
                   onClick={() => void setPrimary(image)}
                 >
                   Set primary
@@ -150,7 +169,12 @@ export function ProductImages({
                     />
                   </>
                 )}
-                <IconButton icon="trash" label="Remove image" size={14} onClick={() => void remove(image)} />
+                <IconButton
+                  icon="trash"
+                  label="Remove image"
+                  size={14}
+                  onClick={() => void remove(image)}
+                />
               </div>
             </div>
           </div>

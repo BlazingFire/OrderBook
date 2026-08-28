@@ -21,19 +21,31 @@ import type {
 } from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
-import { formatDateTime, formatMoney } from '../format';
-import { t } from '../i18n/strings';
-import { Button } from '../ui/Button';
-import { Card, Section } from '../ui/Card';
-import type { DataTableColumn } from '../ui/DataTable';
-import { DataTable } from '../ui/DataTable';
-import { ColourName, StatusPill, Timeline, useColourHex, type PillTone } from '../ui/DataDisplay';
-import { Drawer } from '../ui/Drawer';
-import { FilterChip, FilterDivider } from '../ui/FilterBar';
-import { useFilterBar } from '../ui/FilterBarSlot';
-import { FormField, NumberInput, Input, Select } from '../ui/Form';
-import { EmptyState } from '../ui/States';
-import { Segmented } from '../ui/Tabs';
+import {
+  Button,
+  Card,
+  ColourName,
+  DataTable,
+  Drawer,
+  EmptyState,
+  FilterChip,
+  FilterDivider,
+  FormField,
+  Input,
+  NumberInput,
+  Section,
+  Segmented,
+  Select,
+  StatusPill,
+  Timeline,
+  formatDateTime,
+  formatMoney,
+  t,
+  useColourHex,
+  useFilterBar,
+  type PillTone,
+} from '@orderbook/ui';
+import type { DataTableColumn } from '@orderbook/ui';
 
 interface Props {
   view: LocalView;
@@ -71,7 +83,6 @@ const RESERVATION_TONE: Record<ReservationStatus, PillTone> = {
   consumed: 'ok',
   released: 'default',
 };
-
 
 /**
  * "My parties" — the leads or orders on parties explicitly assigned to the
@@ -115,7 +126,11 @@ export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
           onChange={setScope}
         />
         <FilterDivider />
-        <FilterChip active={stageFilter === null} count={orders.length} onClick={() => setStageFilter(null)}>
+        <FilterChip
+          active={stageFilter === null}
+          count={orders.length}
+          onClick={() => setStageFilter(null)}
+        >
           {t('orders.filter.allStages')}
         </FilterChip>
         {stages.map((stage) => (
@@ -148,7 +163,9 @@ export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
     );
   }
 
-  const filteredOrders = stageFilter ? orders.filter((order) => order.stageId === stageFilter) : orders;
+  const filteredOrders = stageFilter
+    ? orders.filter((order) => order.stageId === stageFilter)
+    : orders;
 
   const columns: DataTableColumn<Order>[] = [
     {
@@ -192,7 +209,11 @@ export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
       width: '100px',
       align: 'right',
       render: (order) => (
-        <span style={{ color: order.weightSource === 'manual' ? 'var(--fg-secondary)' : 'var(--fg-primary)' }}>
+        <span
+          style={{
+            color: order.weightSource === 'manual' ? 'var(--fg-secondary)' : 'var(--fg-primary)',
+          }}
+        >
           {displayWeightKg(order).toLocaleString('en-IN')} {t('orders.unit.kg')}
           {order.weightSource === 'manual' ? '*' : ''}
         </span>
@@ -204,7 +225,8 @@ export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
       width: '110px',
       align: 'right',
       render: (order) => formatMoney(order.totalAmount ?? null),
-      redactedReason: (order) => (order.totalAmount === undefined ? SALE_RATE_PERMISSION : undefined),
+      redactedReason: (order) =>
+        order.totalAmount === undefined ? SALE_RATE_PERMISSION : undefined,
     },
     {
       key: 'stage',
@@ -217,7 +239,10 @@ export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
       header: t('orders.column.sync'),
       width: '90px',
       render: (order) => (
-        <span className="ob-micro" style={{ color: order.sync.hlc ? 'var(--fg-tertiary)' : 'var(--state-offline)' }}>
+        <span
+          className="ob-micro"
+          style={{ color: order.sync.hlc ? 'var(--fg-tertiary)' : 'var(--state-offline)' }}
+        >
           {order.sync.hlc ? t('orders.sync.synced') : t('orders.sync.pending')}
         </span>
       ),
@@ -235,7 +260,10 @@ export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
         selectedId={openOrder?.id}
         empty={
           orders.length === 0 ? (
-            <EmptyState title={t('orders.empty.title')} description={t('orders.empty.description')} />
+            <EmptyState
+              title={t('orders.empty.title')}
+              description={t('orders.empty.description')}
+            />
           ) : (
             <EmptyState title={t('orders.empty.filteredTitle')} />
           )
@@ -251,7 +279,9 @@ export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
           openOrder ? (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-8)' }}>
               {openOrder.partyName}
-              {openOrder.dispatchedAt && <StatusPill tone="ok">{t('orders.badge.dispatched')}</StatusPill>}
+              {openOrder.dispatchedAt && (
+                <StatusPill tone="ok">{t('orders.badge.dispatched')}</StatusPill>
+              )}
             </span>
           ) : (
             ''
@@ -347,7 +377,11 @@ function OrderDrawerBody({
                     <td className="num">{item.totalQuantity.toLocaleString('en-IN')}</td>
                     <td className="num">
                       {item.lineTotal === undefined ? (
-                        <span className="ob-redacted" title={`Missing permission: ${SALE_RATE_PERMISSION}`} aria-label="Hidden" />
+                        <span
+                          className="ob-redacted"
+                          title={`Missing permission: ${SALE_RATE_PERMISSION}`}
+                          aria-label="Hidden"
+                        />
                       ) : (
                         formatMoney(item.lineTotal)
                       )}
@@ -400,7 +434,9 @@ function OrderDrawerBody({
       <Card>
         <Section title={t('orders.detail.weight')}>
           <p className="ob-small" style={{ marginTop: 0 }}>
-            {t('orders.detail.weightComputed', { value: order.totalWeightKg.toLocaleString('en-IN') })}
+            {t('orders.detail.weightComputed', {
+              value: order.totalWeightKg.toLocaleString('en-IN'),
+            })}
           </p>
 
           <FormField label={t('orders.detail.weightOverrideLabel')}>
@@ -438,7 +474,10 @@ function OrderDrawerBody({
                 value={order.stageId}
                 disabled={busy || Boolean(order.dispatchedAt)}
                 onChange={(event) =>
-                  void run(() => api.setOrderStage(order.id, event.target.value), 'Could not move the order')
+                  void run(
+                    () => api.setOrderStage(order.id, event.target.value),
+                    'Could not move the order',
+                  )
                 }
               >
                 {stages.map((stage) => (

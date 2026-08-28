@@ -14,12 +14,16 @@
 import { useState, type FormEvent } from 'react';
 
 import { api, type ConnectionInfo, type PanelSession } from '../api';
-import { t } from '../i18n/strings';
-import { Button } from '../ui/Button';
-import { Card } from '../ui/Card';
-import { FieldError, FormField, Input } from '../ui/Form';
-import { LogoLockup } from '../ui/Logo';
-import { OfflineBanner } from '../ui/States';
+import {
+  Button,
+  Card,
+  FieldError,
+  FormField,
+  Input,
+  LogoLockup,
+  OfflineBanner,
+  t,
+} from '@orderbook/ui';
 
 interface Props {
   connection: ConnectionInfo;

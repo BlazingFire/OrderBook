@@ -40,10 +40,7 @@ import { useEffect, useState } from 'react';
 import type { Party } from '@orderbook/shared';
 
 import { api } from '../api';
-import { t } from '../i18n/strings';
-import { Button } from '../ui/Button';
-import { Drawer } from '../ui/Drawer';
-import { FormField, Input, Textarea } from '../ui/Form';
+import { Button, Drawer, FormField, Input, Textarea, t } from '@orderbook/ui';
 
 export interface CreatedParty {
   id: string;
@@ -61,7 +58,14 @@ interface PartyDrawerProps {
   onError: (message: string) => void;
 }
 
-export function PartyDrawer({ open, party, onClose, onCreated, onUpdated, onError }: PartyDrawerProps) {
+export function PartyDrawer({
+  open,
+  party,
+  onClose,
+  onCreated,
+  onUpdated,
+  onError,
+}: PartyDrawerProps) {
   const editing = party ?? null;
 
   const [name, setName] = useState('');
@@ -132,7 +136,11 @@ export function PartyDrawer({ open, party, onClose, onCreated, onUpdated, onErro
   }
 
   return (
-    <Drawer open={open} onClose={close} title={editing ? t('party.edit.title') : t('party.new.title')}>
+    <Drawer
+      open={open}
+      onClose={close}
+      title={editing ? t('party.edit.title') : t('party.new.title')}
+    >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}>
         <FormField label={t('party.field.name')} required>
           {(id) => (
@@ -161,7 +169,9 @@ export function PartyDrawer({ open, party, onClose, onCreated, onUpdated, onErro
             )}
           </FormField>
           <FormField label={t('party.field.city')}>
-            {(id) => <Input id={id} value={city} onChange={(event) => setCity(event.target.value)} />}
+            {(id) => (
+              <Input id={id} value={city} onChange={(event) => setCity(event.target.value)} />
+            )}
           </FormField>
         </div>
 
@@ -178,11 +188,23 @@ export function PartyDrawer({ open, party, onClose, onCreated, onUpdated, onErro
 
         <FormField label={t('party.field.notes')}>
           {(id) => (
-            <Textarea id={id} rows={2} value={notes} onChange={(event) => setNotes(event.target.value)} />
+            <Textarea
+              id={id}
+              rows={2}
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+            />
           )}
         </FormField>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)', marginTop: 'var(--s-4)' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--s-8)',
+            marginTop: 'var(--s-4)',
+          }}
+        >
           <Button variant="primary" busy={busy} onClick={() => void save()}>
             {busy ? t('party.saving') : editing ? t('party.saveChanges') : t('party.save')}
           </Button>

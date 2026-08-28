@@ -27,17 +27,25 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import type { OfficePanelWithPresence, ReleaseManifest, UpdateAvailability } from '@orderbook/shared';
+import type {
+  OfficePanelWithPresence,
+  ReleaseManifest,
+  UpdateAvailability,
+} from '@orderbook/shared';
 import { standing } from '@orderbook/shared';
 
 import { api, desktopBridge } from '../api';
-import { formatDateTime } from '../format';
-import { t } from '../i18n/strings';
-import { Button } from '../ui/Button';
-import { Card, Section } from '../ui/Card';
-import { StatusPill } from '../ui/DataDisplay';
-import { DataTable, type DataTableColumn } from '../ui/DataTable';
-import { EmptyState } from '../ui/States';
+import {
+  Button,
+  Card,
+  DataTable,
+  EmptyState,
+  Section,
+  StatusPill,
+  formatDateTime,
+  t,
+  type DataTableColumn,
+} from '@orderbook/ui';
 
 type Phase = 'idle' | 'verifying' | 'launching' | 'failed';
 
@@ -53,9 +61,10 @@ export function UpdatesScreen({
   const behind = live.filter((panel) => standing(panel.device.appVersion, master) === 'behind');
   const unknown = live.filter((panel) => panel.device.appVersion === null);
 
-  const [status, setStatus] = useState<{ master: UpdateAvailability; office: UpdateAvailability } | null>(
-    null,
-  );
+  const [status, setStatus] = useState<{
+    master: UpdateAvailability;
+    office: UpdateAvailability;
+  } | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
   const [failure, setFailure] = useState<string | null>(null);
   const [readyPath, setReadyPath] = useState<string | null>(null);
@@ -194,7 +203,12 @@ export function UpdatesScreen({
           columns={columns}
           rows={live}
           rowKey={(panel) => panel.id}
-          empty={<EmptyState title={t('panels.empty.title')} description={t('panels.empty.description')} />}
+          empty={
+            <EmptyState
+              title={t('panels.empty.title')}
+              description={t('panels.empty.description')}
+            />
+          }
         />
       </Section>
 
@@ -262,7 +276,14 @@ export function UpdateOffer({
   }
 
   return (
-    <div style={{ marginTop: 'var(--s-12)', display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}>
+    <div
+      style={{
+        marginTop: 'var(--s-12)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 'var(--s-8)',
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
         <StatusPill tone="accent">{t('updates.readyLabel')}</StatusPill>
         <span className="ob-body-strong ob-mono">{offer.version}</span>
