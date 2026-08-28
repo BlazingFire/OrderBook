@@ -21,7 +21,7 @@ import type {
   SignedInUser,
 } from '@orderbook/shared';
 
-import { ApiError, api } from './api';
+import { ApiError, api, desktopBridge } from './api';
 import {
   AppShell,
   Avatar,
@@ -32,8 +32,10 @@ import {
   GalleryScreen,
   Icon,
   IconButton,
+  KeyboardOverlays,
+  KeyboardProvider,
+  PaletteButton,
   ResetProvider,
-  SaveShortcutProvider,
   ScreenHost,
   Splash,
   SubNavProvider,
@@ -53,7 +55,6 @@ import {
   type ScreenSpec,
   type SidebarMode,
 } from '@orderbook/ui';
-import { SearchBox } from './components/SearchBox';
 import { AccessScreen } from './screens/AccessScreen';
 import { ConflictsScreen } from './screens/ConflictsScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
@@ -112,7 +113,10 @@ const SCREEN_ENTITIES: Record<string, readonly string[]> = {
 
 /** One number that moves when any of the named entities does. */
 function revisionOf(revisions: Record<string, number>, key: string): number {
-  return (SCREEN_ENTITIES[key] ?? []).reduce((total, entity) => total + (revisions[entity] ?? 0), 0);
+  return (SCREEN_ENTITIES[key] ?? []).reduce(
+    (total, entity) => total + (revisions[entity] ?? 0),
+    0,
+  );
 }
 
 /** The cold-start steps the splash reports, in the order they run. */
@@ -519,14 +523,7 @@ function MasterPanel() {
         title={t('screen.resetHint')}
         onClick={resetActiveScreen}
       />
-      <SearchBox
-        onOpen={(hit) => {
-          // Route the hit to the screen that owns it — which is exactly what
-          // `parent_type`/`parent_id` on a line-item hit are for.
-          if (hit.kind === 'lead_line' || hit.kind === 'order_line') setTab('orders');
-          else if (hit.kind === 'product') setTab('inventory');
-        }}
-      />
+      <PaletteButton />
       <button className="ob-btn ob-btn--ghost" onClick={() => void signOut()}>
         {t('action.signOut')}
       </button>
@@ -563,7 +560,7 @@ function MasterPanel() {
     </>
   );
 
-  const overlays = syncPopover && (
+  const syncOverlay = syncPopover && (
     <>
       {/* Click-away shim keeps the popover honest without a portal. */}
       <div
@@ -647,15 +644,28 @@ function MasterPanel() {
       ),
     },
     { id: 'panels', render: () => <PanelsScreen panels={panels} onRefresh={refreshPanels} /> },
-    { id: 'orders', render: () => <LeadsOrdersScreen revision={revisionOf(revisions, 'records')} /> },
-    { id: 'inventory', render: () => <InventoryScreen revision={revisionOf(revisions, 'inventory')} /> },
+    {
+      id: 'orders',
+      render: () => <LeadsOrdersScreen revision={revisionOf(revisions, 'records')} />,
+    },
+    {
+      id: 'inventory',
+      render: () => <InventoryScreen revision={revisionOf(revisions, 'inventory')} />,
+    },
     {
       id: 'reports',
-      render: () => <ReportsScreen revision={revisionOf(revisions, 'reports')} permissions={user.permissions} />,
+      render: () => (
+        <ReportsScreen revision={revisionOf(revisions, 'reports')} permissions={user.permissions} />
+      ),
     },
     {
       id: 'documents',
-      render: () => <DocumentsScreen revision={revisionOf(revisions, 'documents')} permissions={user.permissions} />,
+      render: () => (
+        <DocumentsScreen
+          revision={revisionOf(revisions, 'documents')}
+          permissions={user.permissions}
+        />
+      ),
     },
     {
       id: 'access',
@@ -669,16 +679,28 @@ function MasterPanel() {
     },
     {
       id: 'partyAccess',
-      render: () => <PartyAccessScreen permissions={user.permissions} revision={revisionOf(revisions, 'partyAccess')} />,
+      render: () => (
+        <PartyAccessScreen
+          permissions={user.permissions}
+          revision={revisionOf(revisions, 'partyAccess')}
+        />
+      ),
     },
     {
       id: 'fields',
-      render: () => <FieldsScreen permissions={user.permissions} revision={revisionOf(revisions, 'fields')} />,
+      render: () => (
+        <FieldsScreen permissions={user.permissions} revision={revisionOf(revisions, 'fields')} />
+      ),
     },
     { id: 'logs', render: () => <LogsScreen permissions={user.permissions} /> },
     {
       id: 'recycleBin',
-      render: () => <RecycleBinScreen permissions={user.permissions} revision={revisionOf(revisions, 'recycleBin')} />,
+      render: () => (
+        <RecycleBinScreen
+          permissions={user.permissions}
+          revision={revisionOf(revisions, 'recycleBin')}
+        />
+      ),
     },
     {
       id: 'conflicts',
@@ -710,8 +732,24 @@ function MasterPanel() {
       <ScreenHost screens={screens} activeId={tab} resetNonce={resetNonce} />
     );
 
+  const overlays = (
+    <>
+      <KeyboardOverlays
+        subscribeMenu={(handler) => desktopBridge()?.onMenuCommand?.(handler)}
+        searchRecords={async (term) => ({ hits: await api.search(term) })}
+        onOpenRecord={(hit) => {
+          // Route the hit to the screen that owns it — which is exactly what
+          // `parent_type`/`parent_id` on a line-item hit are for.
+          if (hit.kind === 'lead_line' || hit.kind === 'order_line') setTab('orders');
+          else if (hit.kind === 'product') setTab('inventory');
+        }}
+      />
+      {syncOverlay}
+    </>
+  );
+
   return (
-    <SaveShortcutProvider>
+    <KeyboardProvider panel="master" userId={user?.id ?? null} onNavigate={navigate}>
       <FilterBarProvider>
         <AppShell
           groups={groups}
@@ -730,6 +768,6 @@ function MasterPanel() {
           {content}
         </AppShell>
       </FilterBarProvider>
-    </SaveShortcutProvider>
+    </KeyboardProvider>
   );
 }

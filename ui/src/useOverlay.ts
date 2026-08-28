@@ -18,7 +18,11 @@
 import { useEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 
-const FOCUSABLE =
+/**
+ * Shared with `useEnterToAdvance`, which walks the same set in the same order.
+ * Two lists would drift the first time somebody made a control focusable.
+ */
+export const FOCUSABLE =
   'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
 export function useOverlay(
@@ -44,31 +48,46 @@ export function useOverlay(
       (focusables?.[0] ?? container)?.focus();
     }
 
+    /*
+     * Escape at the **bubble** phase, Tab at capture.
+     *
+     * They differ because they want opposite things. Tab has to beat the
+     * browser's own focus move, so it must run before anything else sees the
+     * key. Escape has to run *after* whatever is nearer the keystroke: an open
+     * `Combobox` list, a `Picker` with a selection to clear. At capture this
+     * closed the whole Modal on the first Escape and left the listbox open
+     * underneath — a live bug in both panels.
+     *
+     * `defaultPrevented` is how the inner control says it consumed the key.
+     * Anything that calls `preventDefault()` on Escape keeps this closed.
+     */
+    function onEscape(e: KeyboardEvent) {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+
+      // `stopPropagation` shields the window-level handler, but it cannot stop
+      // the *other* listeners already bound to `document` itself — and the
+      // outer overlay bound its one first, so it would run first and close
+      // too. Deciding from document order instead lets only the topmost open
+      // dialog act: a stacked Modal is either a descendant of the Drawer that
+      // opened it or rendered after it in the same subtree, so in both cases
+      // the innermost overlay is the last `[role="dialog"]` in the document.
+      //
+      // Visible ones only. Screens are now kept mounted and hidden by
+      // `<Activity>`, which leaves their DOM in the document — so a hidden
+      // pane's open Drawer, sitting later in the screens array, became the
+      // "last dialog" and the visible overlay silently refused Escape.
+      // Verified in Chromium: `checkVisibility()` is false inside a
+      // `display:none` subtree. (jsdom does not implement it at all, so this
+      // line cannot be unit-tested — see `ui/tests/activity-spike.test.tsx`.)
+      const dialogs = [...document.querySelectorAll('[role="dialog"]')].filter((dialog) =>
+        dialog.checkVisibility(),
+      );
+      if (container && dialogs[dialogs.length - 1] !== container) return;
+      e.stopPropagation();
+      closeRef.current();
+    }
+
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        // `stopPropagation` shields the window-level handler, but it cannot stop
-        // the *other* listeners already bound to `document` itself — and the
-        // outer overlay bound its one first, so it would run first and close
-        // too. Deciding from document order instead lets only the topmost open
-        // dialog act: a stacked Modal is either a descendant of the Drawer that
-        // opened it or rendered after it in the same subtree, so in both cases
-        // the innermost overlay is the last `[role="dialog"]` in the document.
-        //
-        // Visible ones only. Screens are now kept mounted and hidden by
-        // `<Activity>`, which leaves their DOM in the document — so a hidden
-        // pane's open Drawer, sitting later in the screens array, became the
-        // "last dialog" and the visible overlay silently refused Escape.
-        // Verified in Chromium: `checkVisibility()` is false inside a
-        // `display:none` subtree. (jsdom does not implement it at all, so this
-        // line cannot be unit-tested — see `ui/tests/activity-spike.test.tsx`.)
-        const dialogs = [...document.querySelectorAll('[role="dialog"]')].filter((dialog) =>
-          dialog.checkVisibility(),
-        );
-        if (container && dialogs[dialogs.length - 1] !== container) return;
-        e.stopPropagation();
-        closeRef.current();
-        return;
-      }
       if (e.key !== 'Tab' || !container) return;
       const items = Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE));
       if (items.length === 0) return;
@@ -84,9 +103,12 @@ export function useOverlay(
         first.focus();
       }
     }
+
     document.addEventListener('keydown', onKeyDown, true);
+    document.addEventListener('keydown', onEscape);
     return () => {
       document.removeEventListener('keydown', onKeyDown, true);
+      document.removeEventListener('keydown', onEscape);
       /*
        * Restore focus only to something still on screen.
        *

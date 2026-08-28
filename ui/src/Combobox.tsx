@@ -76,7 +76,12 @@ export function Combobox<T>({
       e.preventDefault();
       const option = filtered[activeIndex];
       if (option) choose(option);
-    } else if (e.key === 'Escape') {
+    } else if (e.key === 'Escape' && open) {
+      // Claim the key only when there is a list to close. `useOverlay` reads
+      // `defaultPrevented` to decide whether the surrounding Modal should also
+      // close, so an unconditional `preventDefault` here would make a combobox
+      // that is merely focused swallow every Escape in the dialog.
+      e.preventDefault();
       setOpen(false);
     }
   }

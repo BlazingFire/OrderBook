@@ -2050,7 +2050,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'master.backup.restore.confirmWipe': "This installation already has data. Restoring will replace it completely. Type CONFIRM to proceed.",
   // TODO(i18n-hi)
-  'master.search.failedOffline': "Can't search right now — try again in a moment.",
   // TODO(i18n-hi)
   'master.settings.storage.title': "Storage on this PC",
   // TODO(i18n-hi)
@@ -2068,6 +2067,21 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'master.sync.popoverTitle.synced': "Everything synced",
   // TODO(i18n-hi)
+  'keys.command.palette': 'कमांड पैलेट',
+  'keys.command.search': 'खोज',
+  'keys.command.save': 'सहेजें',
+  'keys.command.new': 'नया रिकॉर्ड',
+  'keys.command.reset': 'यह स्क्रीन रीसेट करें',
+  'keys.command.refresh': 'ताज़ा करें',
+  'keys.command.help': 'कीबोर्ड शॉर्टकट',
+  'keys.palette.placeholder': 'कोई कमांड लिखें, या रिकॉर्ड खोजें',
+  'keys.palette.commands': 'कमांड',
+  'keys.palette.records': 'रिकॉर्ड',
+  'keys.palette.empty': 'कुछ भी मेल नहीं खाता',
+  'keys.palette.offline': 'यह पैनल जो सहेजे है उसी में खोज — मास्टर उपलब्ध नहीं',
+  'keys.help.title': 'कीबोर्ड शॉर्टकट',
+  'keys.help.unbound': 'बाध्य नहीं',
+  'keys.help.conflict': 'किसी अन्य कमांड के साथ साझा',
   'nav.catalogue': "Catalogue",
   // TODO(i18n-hi)
   'nav.conflicts': "Conflicts",
@@ -2132,7 +2146,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'office.backup.restore.confirmWipe': "This device already has data. Restoring will replace it completely. Type CONFIRM to proceed.",
   // TODO(i18n-hi)
-  'office.search.failedOffline': "Can't search while the Master is unreachable — try again once it's back.",
   // TODO(i18n-hi)
   'office.settings.storage.title': "Storage on this device",
   // TODO(i18n-hi)
@@ -3056,9 +3069,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'reports.topParties.parties': "Parties",
   // TODO(i18n-hi)
-  'search.noResults': "Nothing matches “{term}”.",
   // TODO(i18n-hi)
-  'search.placeholder': "Search…",
   // TODO(i18n-hi)
   'settings.appearance.density': "Density",
   // TODO(i18n-hi)

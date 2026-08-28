@@ -1,0 +1,165 @@
+/**
+ * The three matching rules, and the reason each exists.
+ *
+ * Every one of them is a bug that appears only on somebody else's keyboard, so
+ * a browser test would not have found any of them — which is exactly why the
+ * matcher is DOM-free and tested here instead.
+ */
+
+import { describe, expect, it } from 'vitest';
+
+import {
+  COMMANDS,
+  COMMANDS_BY_ID,
+  chordFor,
+  defaultBindings,
+  findConflicts,
+  formatChord,
+  isReservedChord,
+  matchesChord,
+  parseBindings,
+  parseChord,
+  type KeyEventLike,
+} from '../src/index.js';
+
+function press(overrides: Partial<KeyEventLike>): KeyEventLike {
+  return {
+    key: '',
+    code: '',
+    ctrlKey: false,
+    altKey: false,
+    shiftKey: false,
+    metaKey: false,
+    ...overrides,
+  };
+}
+
+describe('parsing a chord', () => {
+  it('reads modifiers in any order and any spelling', () => {
+    expect(parseChord('Ctrl+Shift+K')).toEqual({ key: 'k', ctrl: true, shift: true });
+    expect(parseChord('Shift+Control+K')).toEqual({ key: 'k', ctrl: true, shift: true });
+    expect(parseChord('Cmd+S')).toEqual({ key: 's', meta: true });
+  });
+
+  it('keeps a named key as written and lower-cases a letter', () => {
+    expect(parseChord('F2')).toEqual({ key: 'F2' });
+    expect(parseChord('A')).toEqual({ key: 'a' });
+  });
+
+  it('refuses a modifier it does not know rather than guessing', () => {
+    expect(parseChord('Hyper+K')).toBeNull();
+  });
+
+  it('round-trips through its canonical form', () => {
+    expect(formatChord(parseChord('shift+ctrl+k')!)).toBe('Ctrl+Shift+K');
+  });
+});
+
+describe('rule one — digits and function keys match on the physical key', () => {
+  it('matches Alt+1 on a Mac, where the character is not "1"', () => {
+    const chord = parseChord('Alt+1')!;
+    // macOS Option+1 delivers `key === '¡'`. Matching on `key` would mean this
+    // shortcut worked on Windows and silently did nothing on a Mac — and the
+    // Master binds 0.0.0.0, so a Mac browser on the shop LAN is a real client.
+    expect(matchesChord(press({ key: '¡', code: 'Digit1', altKey: true }), chord)).toBe(true);
+  });
+
+  it('matches F5 by code', () => {
+    expect(matchesChord(press({ key: 'F5', code: 'F5' }), parseChord('F5')!)).toBe(true);
+  });
+});
+
+describe('rule two — a letter is the key with that letter on it', () => {
+  it('matches on the character, not the physical position', () => {
+    // A French layout puts `KeyQ` where a US board has A. Somebody pressing the
+    // key labelled S is what Ctrl+S means.
+    expect(
+      matchesChord(press({ key: 's', code: 'KeyO', ctrlKey: true }), parseChord('Ctrl+S')!),
+    ).toBe(true);
+  });
+
+  it('falls back to the physical key when Alt is held', () => {
+    // macOS Alt+K is `˚`.
+    expect(
+      matchesChord(press({ key: '˚', code: 'KeyK', altKey: true }), parseChord('Alt+K')!),
+    ).toBe(true);
+  });
+});
+
+describe('rule three — AltGr is not Alt', () => {
+  it('does not fire an Alt chord while somebody types an accented character', () => {
+    // AltGr on a European layout reports as Ctrl+Alt. Without this check every
+    // Alt+N binding would fire mid-word.
+    expect(
+      matchesChord(
+        press({ key: 'ñ', code: 'KeyN', altKey: true, ctrlKey: true }),
+        parseChord('Alt+N')!,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('reserved chords', () => {
+  it('refuses Escape and Tab', () => {
+    // Not taste: they are what the overlay layer uses to close a dialog and to
+    // move focus. Keeping them out of the index entirely is what lets the
+    // keyboard provider and the overlay coexist without knowing each other's
+    // listener phase.
+    expect(isReservedChord(parseChord('Escape')!)).toBe(true);
+    expect(isReservedChord(parseChord('Tab')!)).toBe(true);
+    expect(isReservedChord(parseChord('Ctrl+K')!)).toBe(false);
+  });
+
+  it('will not bind one even if somebody edits localStorage by hand', () => {
+    expect(parseBindings({ 'palette.open': 'Escape' })).toEqual({});
+  });
+});
+
+describe('bindings', () => {
+  it('ships every command that has a default bound', () => {
+    const defaults = defaultBindings();
+    for (const command of COMMANDS) {
+      if (command.defaultChord) expect(defaults[command.id]).toBe(command.defaultChord);
+    }
+  });
+
+  it('treats an explicit null as unbound, not as absent', () => {
+    // Somebody who deliberately cleared Ctrl+S must not have it handed back by
+    // the next upgrade that changes the default.
+    expect(chordFor('record.save', {})).not.toBeNull();
+    expect(chordFor('record.save', { 'record.save': null })).toBeNull();
+  });
+
+  it('drops an override for a command that no longer exists', () => {
+    expect(parseBindings({ 'command.that.went.away': 'Ctrl+J' })).toEqual({});
+  });
+
+  it('reports a clash rather than refusing the edit', () => {
+    // Somebody swapping two shortcuts passes through a state where both share a
+    // chord; refusing the first edit would make the swap impossible.
+    const conflicts = findConflicts('office', { 'record.new': 'Ctrl+S' });
+    expect(conflicts.map((conflict) => conflict.chord)).toContain('Ctrl+S');
+  });
+
+  it('ships no conflicting defaults on either panel', () => {
+    // Per panel, not across the catalogue: Alt+1 opens the Master's dashboard
+    // and the Office panel's, and no running panel has both registered.
+    expect(findConflicts('master', {})).toEqual([]);
+    expect(findConflicts('office', {})).toEqual([]);
+  });
+});
+
+describe('the command catalogue', () => {
+  it('numbers each panel nav from one, in that panel own sidebar order', () => {
+    const office = COMMANDS.filter((command) => command.panel === 'office' && command.navOrder);
+    // Conflicts is fourth on the office sidebar and nowhere near fourth on the
+    // Master's. Copying the Master's order would put Alt+4 on a screen the
+    // office sidebar shows somewhere else.
+    expect(office[3]?.tab).toBe('conflicts');
+    expect(office.map((command) => command.navOrder)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  });
+
+  it('has a unique id for every command', () => {
+    expect(COMMANDS_BY_ID.size).toBe(COMMANDS.length);
+  });
+});

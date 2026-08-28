@@ -53,7 +53,7 @@ import {
   t,
   useColourHex,
   useResetGuard,
-  useSaveShortcut,
+  useCommand,
   type ColourQuantity,
 } from '@orderbook/ui';
 
@@ -461,7 +461,7 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
   // Global Ctrl+S (§10) — same action the Save button below calls, withheld
   // only while a save is already in flight, mirroring the button's own
   // `busy` gate (it has no other disabled condition to mirror).
-  useSaveShortcut(busy ? null : () => void save());
+  useCommand('record.save', busy ? null : () => void save());
 
   /*
    * Resetting this screen throws away a lead somebody is part-way through

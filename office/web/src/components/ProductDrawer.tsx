@@ -21,7 +21,7 @@
  * a gate here would be a courtesy — and this screen is not handed a `can()`.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Product } from '@orderbook/shared';
 import { PRODUCT_APPLICATIONS, PRODUCT_EDGE_TYPES, PRODUCT_UOMS } from '@orderbook/shared';
 
@@ -35,6 +35,8 @@ import {
   NumberInput,
   Select,
   t,
+  useCommand,
+  useEnterToAdvance,
 } from '@orderbook/ui';
 import { ProductImages } from './ProductImages';
 
@@ -161,8 +163,7 @@ export function ProductDrawer({
             brand: editing.brand ?? '',
             weightKg: editing.weightKg != null ? String(editing.weightKg) : '',
             piecesPerBox: editing.piecesPerBox != null ? String(editing.piecesPerBox) : '',
-            boxCoverageSqft:
-              editing.boxCoverageSqft != null ? String(editing.boxCoverageSqft) : '',
+            boxCoverageSqft: editing.boxCoverageSqft != null ? String(editing.boxCoverageSqft) : '',
             thicknessMm: editing.thicknessMm != null ? String(editing.thicknessMm) : '',
             shade: editing.shade ?? '',
             calibre: editing.calibre ?? '',
@@ -181,6 +182,14 @@ export function ProductDrawer({
     // Keyed on the record's identity, not the record: an unrelated field
     // arriving through the event stream must not wipe a half-typed draft.
   }, [open, editing?.id]);
+
+  const fields = useRef<HTMLDivElement>(null);
+
+  // Enter walks the fields and saves on the last one; Ctrl+S saves from
+  // anywhere in the dialog. Registered here rather than on the screen behind
+  // the scrim, which is what puts this above it on the command stack.
+  useEnterToAdvance(fields, () => void save(), open);
+  useCommand('record.save', open && !busy ? () => void save() : null);
 
   function close(): void {
     setDraft(EMPTY);
@@ -320,86 +329,94 @@ export function ProductDrawer({
         </>
       }
     >
-      <FieldGroup title={t('product.group.identity')}>
-        <Field label={t('product.field.code')} required>
-          {(id) => (
-            <Input
-              id={id}
-              value={draft.productCode}
-              autoFocus
-              className="ob-mono"
-              onChange={(event) => set('productCode', event.target.value)}
-            />
-          )}
-        </Field>
-        <Field label={t('product.field.name')} required span={2}>
-          {(id) => (
-            <Input
-              id={id}
-              value={draft.name}
-              onChange={(event) => set('name', event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') void save();
-              }}
-            />
-          )}
-        </Field>
-        {text('alias', t('product.field.alias'))}
-        {text('brand', t('product.field.brand'))}
-        {text('productType', t('product.field.type'))}
-        {text('series', t('product.field.series'))}
-        {text('barcode', t('product.field.barcode'), { className: 'ob-mono' })}
-      </FieldGroup>
-
-      <FieldGroup title={t('product.group.pricing')}>
-        {numeric('rate', t('product.field.rate'), t('product.field.rateHint'))}
-        {numeric('mrp', t('product.field.mrp'))}
-        {canSeeCost &&
-          numeric(
-            'purchaseRate',
-            t('product.field.purchaseRate'),
-            t('product.field.purchaseRateHint'),
-          )}
-        {numeric('gstRatePct', t('product.field.gstRate'))}
-        {text('hsnCode', t('product.field.hsnCode'), { className: 'ob-mono' })}
-      </FieldGroup>
-
-      <FieldGroup title={t('product.group.packing')}>
-        {choice('uom', t('product.field.uom'), PRODUCT_UOMS, (value) => t(`product.uom.${value}` as never), false)}
-        {numeric('piecesPerBox', t('product.field.piecesPerBox'))}
-        {numeric('boxCoverageSqft', t('product.field.boxCoverage'))}
-        {numeric('weightKg', t('product.field.weight'))}
-      </FieldGroup>
-
-      <FieldGroup title={t('product.group.spec')}>
-        {text('size', t('product.field.size'))}
-        {numeric('thicknessMm', t('product.field.thickness'))}
-        {text('grade', t('product.field.grade'))}
-        {text('finish', t('product.field.finish'))}
-        {text('color', t('product.field.color'))}
-        {text('shade', t('product.field.shade'))}
-        {text('surfaceTexture', t('product.field.surfaceTexture'))}
-        {text('calibre', t('product.field.calibre'))}
-        {numeric('waterAbsorptionPct', t('product.field.waterAbsorption'))}
-        {numeric('peiRating', t('product.field.peiRating'))}
-        {choice('edgeType', t('product.field.edgeType'), PRODUCT_EDGE_TYPES, (value) =>
-          t(`product.edge.${value}` as never),
-        )}
-        {choice('application', t('product.field.application'), PRODUCT_APPLICATIONS, (value) =>
-          t(`product.application.${value}` as never),
-        )}
-        {text('originPlant', t('product.field.originPlant'))}
-      </FieldGroup>
-
-      {liveProduct && (
-        <FieldGroup title={t('product.group.photos')}>
-          <Field label={t('product.field.images')} span={3}>
-            {() => (
-              <ProductImages product={liveProduct} onChanged={setLiveProduct} onError={onError} />
+      <div ref={fields}>
+        <FieldGroup title={t('product.group.identity')}>
+          <Field label={t('product.field.code')} required>
+            {(id) => (
+              <Input
+                id={id}
+                value={draft.productCode}
+                autoFocus
+                className="ob-mono"
+                onChange={(event) => set('productCode', event.target.value)}
+              />
             )}
           </Field>
+          <Field label={t('product.field.name')} required span={2}>
+            {(id) => (
+              <Input
+                id={id}
+                value={draft.name}
+                onChange={(event) => set('name', event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') void save();
+                }}
+              />
+            )}
+          </Field>
+          {text('alias', t('product.field.alias'))}
+          {text('brand', t('product.field.brand'))}
+          {text('productType', t('product.field.type'))}
+          {text('series', t('product.field.series'))}
+          {text('barcode', t('product.field.barcode'), { className: 'ob-mono' })}
         </FieldGroup>
-      )}
+
+        <FieldGroup title={t('product.group.pricing')}>
+          {numeric('rate', t('product.field.rate'), t('product.field.rateHint'))}
+          {numeric('mrp', t('product.field.mrp'))}
+          {canSeeCost &&
+            numeric(
+              'purchaseRate',
+              t('product.field.purchaseRate'),
+              t('product.field.purchaseRateHint'),
+            )}
+          {numeric('gstRatePct', t('product.field.gstRate'))}
+          {text('hsnCode', t('product.field.hsnCode'), { className: 'ob-mono' })}
+        </FieldGroup>
+
+        <FieldGroup title={t('product.group.packing')}>
+          {choice(
+            'uom',
+            t('product.field.uom'),
+            PRODUCT_UOMS,
+            (value) => t(`product.uom.${value}` as never),
+            false,
+          )}
+          {numeric('piecesPerBox', t('product.field.piecesPerBox'))}
+          {numeric('boxCoverageSqft', t('product.field.boxCoverage'))}
+          {numeric('weightKg', t('product.field.weight'))}
+        </FieldGroup>
+
+        <FieldGroup title={t('product.group.spec')}>
+          {text('size', t('product.field.size'))}
+          {numeric('thicknessMm', t('product.field.thickness'))}
+          {text('grade', t('product.field.grade'))}
+          {text('finish', t('product.field.finish'))}
+          {text('color', t('product.field.color'))}
+          {text('shade', t('product.field.shade'))}
+          {text('surfaceTexture', t('product.field.surfaceTexture'))}
+          {text('calibre', t('product.field.calibre'))}
+          {numeric('waterAbsorptionPct', t('product.field.waterAbsorption'))}
+          {numeric('peiRating', t('product.field.peiRating'))}
+          {choice('edgeType', t('product.field.edgeType'), PRODUCT_EDGE_TYPES, (value) =>
+            t(`product.edge.${value}` as never),
+          )}
+          {choice('application', t('product.field.application'), PRODUCT_APPLICATIONS, (value) =>
+            t(`product.application.${value}` as never),
+          )}
+          {text('originPlant', t('product.field.originPlant'))}
+        </FieldGroup>
+
+        {liveProduct && (
+          <FieldGroup title={t('product.group.photos')}>
+            <Field label={t('product.field.images')} span={3}>
+              {() => (
+                <ProductImages product={liveProduct} onChanged={setLiveProduct} onError={onError} />
+              )}
+            </Field>
+          </FieldGroup>
+        )}
+      </div>
     </Modal>
   );
 }

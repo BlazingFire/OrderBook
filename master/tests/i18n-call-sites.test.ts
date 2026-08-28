@@ -33,7 +33,6 @@ const PANEL_SCOPED = [
   'app.panel',
   'backup.export.title',
   'backup.restore.confirmWipe',
-  'search.failedOffline',
   'settings.storage.title',
   'sync.conflictReview',
   'sync.offline',

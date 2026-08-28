@@ -279,11 +279,19 @@ export function Picker({
       }
 
       case 'Escape': {
-        event.preventDefault();
         // Closes first, clears second. One Escape should not throw away a
         // selection somebody only wanted to stop looking at.
-        if (open) setOpen(false);
-        else onChange(null);
+        //
+        // `preventDefault` only when one of those actually happened:
+        // `useOverlay` reads it to decide whether the surrounding Modal closes,
+        // so an empty picker that claimed Escape would strand the dialog.
+        if (open) {
+          event.preventDefault();
+          setOpen(false);
+        } else if (value) {
+          event.preventDefault();
+          onChange(null);
+        }
         return;
       }
 

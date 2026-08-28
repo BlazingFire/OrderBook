@@ -13,11 +13,18 @@
  * gating on it.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { applyChangeToSnapshot } from '@orderbook/shared';
-import type { DataChangedEvent, MutationResult, SearchHit } from '@orderbook/shared';
+import type { DataChangedEvent, MutationResult } from '@orderbook/shared';
 
-import { ApiError, api, type ConnectionInfo, type LocalView, type PanelSession } from './api';
+import {
+  ApiError,
+  api,
+  desktopBridge,
+  type ConnectionInfo,
+  type LocalView,
+  type PanelSession,
+} from './api';
 import {
   AppShell,
   BP_NARROW,
@@ -28,8 +35,10 @@ import {
   GalleryScreen,
   Icon,
   IconButton,
+  KeyboardOverlays,
+  KeyboardProvider,
+  PaletteButton,
   ResetProvider,
-  SaveShortcutProvider,
   ScreenHost,
   Splash,
   ToastProvider,
@@ -45,6 +54,7 @@ import {
   type ScreenSpec,
   type SidebarMode,
 } from '@orderbook/ui';
+import { searchLocalView } from './localSearch';
 import { AddLeadScreen } from './screens/AddLeadScreen';
 import { CatalogScreen } from './screens/CatalogScreen';
 import { PartyAccessScreen } from './screens/PartyAccessScreen';
@@ -145,13 +155,6 @@ function OfficePanel() {
   const [bootStep, setBootStep] = useState(0);
   const [bootError, setBootError] = useState<string | null>(null);
   const [bootAttempt, setBootAttempt] = useState(0);
-
-  // Universal search ('/', 180ms debounce, FTS-backed on the Master).
-  const [term, setTerm] = useState('');
-  const [hits, setHits] = useState<SearchHit[] | null>(null);
-  const [searchFailedOffline, setSearchFailedOffline] = useState(false);
-  const searchRef = useRef<HTMLInputElement | null>(null);
-  const debounceRef = useRef<number | undefined>(undefined);
 
   // Stable, or every boot-step render would hand Splash a new callback and
   // restart its hold timer.
@@ -354,52 +357,23 @@ function OfficePanel() {
     setSession(null);
     setView(null);
     setTab('dashboard');
-    setHits(null);
-    setTerm('');
   }
 
-  function runSearch(next: string): void {
-    setTerm(next);
-    window.clearTimeout(debounceRef.current);
-    if (!next.trim()) {
-      setHits(null);
-      setSearchFailedOffline(false);
-      return;
-    }
-    debounceRef.current = window.setTimeout(async () => {
-      try {
-        setHits(await api.search(next.trim()));
-        setSearchFailedOffline(false);
-      } catch {
-        setHits(null);
-        setSearchFailedOffline(true);
-      }
-    }, 180);
-  }
-
-  // Global keys: `/` focuses search; Esc closes innermost overlay first (§10).
+  /*
+   * Escape closes the sync popover.
+   *
+   * `/` used to live here too, focusing a topbar search box; it is
+   * `palette.search` now, resolved by `KeyboardProvider` against the same
+   * bindings as every other chord. The popover keeps its own Escape because it
+   * is not a `[role="dialog"]` and so `useOverlay` never sees it.
+   */
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      const typingTarget =
-        document.activeElement instanceof HTMLElement &&
-        (/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) ||
-          document.activeElement.isContentEditable);
-      if (event.key === '/' && !typingTarget) {
-        event.preventDefault();
-        searchRef.current?.focus();
-      }
-      if (event.key === 'Escape') {
-        if (hits !== null || term !== '') {
-          setHits(null);
-          setTerm('');
-        } else if (syncPopover) {
-          setSyncPopover(false);
-        }
-      }
+      if (event.key === 'Escape' && syncPopover) setSyncPopover(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [hits, term, syncPopover]);
+  }, [syncPopover]);
 
   // The splash owns the whole cold start now — the minimum hold, the boot
   // itself, and anything that went wrong with it. There is no second
@@ -588,65 +562,7 @@ function OfficePanel() {
 
       <span style={{ flex: 1 }} />
 
-      <div className="ob-search">
-        <input
-          ref={searchRef}
-          className="ob-input"
-          value={term}
-          onChange={(event) => runSearch(event.target.value)}
-          placeholder={t('search.placeholder')}
-          aria-label={t('search.placeholder')}
-          autoComplete="off"
-        />
-        <kbd>/</kbd>
-        {term.trim() !== '' && (hits !== null || searchFailedOffline) && (
-          <div
-            className="ob-popover"
-            style={{
-              left: 0,
-              right: 0,
-              top: 'calc(var(--ctl-h-md) + var(--s-4))',
-              padding: 'var(--s-4)',
-            }}
-          >
-            {searchFailedOffline ? (
-              <p className="ob-small" style={{ padding: 'var(--s-8)' }}>
-                {t('search.failedOffline')}
-              </p>
-            ) : hits !== null && hits.length === 0 ? (
-              <p className="ob-small" style={{ padding: 'var(--s-8)' }}>
-                {t('search.noResults', { term })}
-              </p>
-            ) : (
-              (hits ?? []).map((hit) => (
-                <button
-                  key={`${hit.kind}:${hit.id}`}
-                  type="button"
-                  onClick={() => {
-                    setHits(null);
-                    setTerm('');
-                    searchRef.current?.blur();
-                  }}
-                  className="ob-navitem"
-                  style={{ borderRadius: 'var(--r-sm)' }}
-                >
-                  <Icon
-                    name={
-                      hit.kind === 'product'
-                        ? 'products'
-                        : hit.kind === 'party'
-                          ? 'parties'
-                          : 'orders'
-                    }
-                  />
-                  <span>{hit.title}</span>
-                  {hit.subtitle && <span className="count">{hit.subtitle}</span>}
-                </button>
-              ))
-            )}
-          </div>
-        )}
-      </div>
+      <PaletteButton />
 
       {tab !== 'addLead' && route !== 'gallery' && can('leads.create') && (
         <button
@@ -706,6 +622,25 @@ function OfficePanel() {
 
   const overlays = (
     <>
+      <KeyboardOverlays
+        subscribeMenu={(handler) => desktopBridge()?.onMenuCommand?.(handler)}
+        searchRecords={async (term) => {
+          try {
+            return { hits: await api.search(term) };
+          } catch {
+            // Offline is this panel's normal state, not an error path: fall back
+            // to the snapshot in memory and say on screen that that is what
+            // these results are.
+            return { hits: view ? searchLocalView(view, term) : [], offline: true };
+          }
+        }}
+        onOpenRecord={(hit) => {
+          if (hit.kind === 'product') goToTab('products');
+          else if (hit.kind === 'party') goToTab('parties');
+          else if (hit.kind === 'lead_line') goToTab('leads');
+          else goToTab('orders');
+        }}
+      />
       {syncPopover && (
         <>
           {/* Click-away shim keeps the popover honest without a portal. */}
@@ -927,7 +862,7 @@ function OfficePanel() {
     );
 
   return (
-    <SaveShortcutProvider>
+    <KeyboardProvider panel="office" userId={session?.userId ?? null} onNavigate={goToTab}>
       <FilterBarProvider>
         <AppShell
           groups={groups}
@@ -946,6 +881,6 @@ function OfficePanel() {
           {content}
         </AppShell>
       </FilterBarProvider>
-    </SaveShortcutProvider>
+    </KeyboardProvider>
   );
 }

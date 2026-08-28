@@ -26,7 +26,7 @@
  * that reads them.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Party } from '@orderbook/shared';
 
 import { api } from '../api';
@@ -38,6 +38,8 @@ import {
   Modal,
   Textarea,
   t,
+  useCommand,
+  useEnterToAdvance,
 } from '@orderbook/ui';
 
 export interface CreatedParty {
@@ -85,6 +87,10 @@ export function PartyDrawer({
 
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [busy, setBusy] = useState(false);
+  const fields = useRef<HTMLDivElement>(null);
+
+  useEnterToAdvance(fields, () => void save(), open);
+  useCommand('record.save', open && !busy ? () => void save() : null);
 
   const set = (field: keyof Draft, value: string): void =>
     setDraft((current) => ({ ...current, [field]: value }));
@@ -191,77 +197,79 @@ export function PartyDrawer({
         </>
       }
     >
-      <FieldGroup title={t('party.group.identity')}>
-        <Field label={t('party.field.name')} required span={2}>
-          {(id) => (
-            <Input
-              id={id}
-              value={draft.name}
-              autoFocus
-              onChange={(event) => set('name', event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') void save();
-              }}
-            />
-          )}
-        </Field>
-      </FieldGroup>
+      {/* Enter walks the fields and saves on the last one; Ctrl+S saves from
+          anywhere in the dialog, which is what registering `record.save` here
+          rather than on the screen behind the scrim buys. */}
+      <div ref={fields}>
+        <FieldGroup title={t('party.group.identity')}>
+          <Field label={t('party.field.name')} required span={2}>
+            {(id) => (
+              <Input
+                id={id}
+                value={draft.name}
+                autoFocus
+                onChange={(event) => set('name', event.target.value)}
+              />
+            )}
+          </Field>
+        </FieldGroup>
 
-      <FieldGroup title={t('party.group.contact')}>
-        {text('phone', t('party.field.phone'), { inputMode: 'tel', className: 'ob-numinput' })}
-        {text('altPhone', t('party.field.altPhone'), {
-          inputMode: 'tel',
-          className: 'ob-numinput',
-        })}
-        {text('email', t('party.field.email'), { type: 'email' })}
-      </FieldGroup>
+        <FieldGroup title={t('party.group.contact')}>
+          {text('phone', t('party.field.phone'), { inputMode: 'tel', className: 'ob-numinput' })}
+          {text('altPhone', t('party.field.altPhone'), {
+            inputMode: 'tel',
+            className: 'ob-numinput',
+          })}
+          {text('email', t('party.field.email'), { type: 'email' })}
+        </FieldGroup>
 
-      <FieldGroup title={t('party.group.address')}>
-        <Field label={t('party.field.addressLine1')} span={2}>
-          {(id) => (
-            <Input
-              id={id}
-              value={draft.addressLine1}
-              onChange={(event) => set('addressLine1', event.target.value)}
-            />
-          )}
-        </Field>
-        <Field label={t('party.field.addressLine2')} span={2}>
-          {(id) => (
-            <Input
-              id={id}
-              value={draft.addressLine2}
-              onChange={(event) => set('addressLine2', event.target.value)}
-            />
-          )}
-        </Field>
-        {text('city', t('party.field.city'))}
-        {text('state', t('party.field.state'))}
-        {text('pincode', t('party.field.pincode'), { className: 'ob-numinput' })}
-      </FieldGroup>
+        <FieldGroup title={t('party.group.address')}>
+          <Field label={t('party.field.addressLine1')} span={2}>
+            {(id) => (
+              <Input
+                id={id}
+                value={draft.addressLine1}
+                onChange={(event) => set('addressLine1', event.target.value)}
+              />
+            )}
+          </Field>
+          <Field label={t('party.field.addressLine2')} span={2}>
+            {(id) => (
+              <Input
+                id={id}
+                value={draft.addressLine2}
+                onChange={(event) => set('addressLine2', event.target.value)}
+              />
+            )}
+          </Field>
+          {text('city', t('party.field.city'))}
+          {text('state', t('party.field.state'))}
+          {text('pincode', t('party.field.pincode'), { className: 'ob-numinput' })}
+        </FieldGroup>
 
-      <FieldGroup title={t('party.group.tax')}>
-        <Field label={t('party.field.taxId')} hint={t('party.field.taxIdHint')}>
-          {(id) => (
-            <Input
-              id={id}
-              value={draft.gstNumber}
-              className="ob-mono"
-              onChange={(event) => set('gstNumber', event.target.value)}
-            />
-          )}
-        </Field>
-        <Field label={t('party.field.notes')} span={3}>
-          {(id) => (
-            <Textarea
-              id={id}
-              rows={2}
-              value={draft.notes}
-              onChange={(event) => set('notes', event.target.value)}
-            />
-          )}
-        </Field>
-      </FieldGroup>
+        <FieldGroup title={t('party.group.tax')}>
+          <Field label={t('party.field.taxId')} hint={t('party.field.taxIdHint')}>
+            {(id) => (
+              <Input
+                id={id}
+                value={draft.gstNumber}
+                className="ob-mono"
+                onChange={(event) => set('gstNumber', event.target.value)}
+              />
+            )}
+          </Field>
+          <Field label={t('party.field.notes')} span={3}>
+            {(id) => (
+              <Textarea
+                id={id}
+                rows={2}
+                value={draft.notes}
+                onChange={(event) => set('notes', event.target.value)}
+              />
+            )}
+          </Field>
+        </FieldGroup>
+      </div>
     </Modal>
   );
 }

@@ -100,7 +100,12 @@ export function ColourQuantityGrid({
   const columns = mode === 'entry' ? '1fr 90px 90px 28px' : '1fr 90px 70px 70px 28px';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}>
+    /*
+     * `data-keys-grid` marks this as two-dimensional to `useEnterToAdvance`,
+     * which otherwise walks DOM order and would send Enter across the row
+     * instead of down the column somebody is filling in.
+     */
+    <div data-keys-grid style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}>
       <div
         style={{
           display: 'grid',
