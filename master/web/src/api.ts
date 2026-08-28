@@ -19,6 +19,15 @@ import type {
   CustomFieldDefinitionUpdateInput,
   CustomFieldReorderInput,
   DashboardSummary,
+  ApiKey,
+  ApiKeyInput,
+  Connector,
+  ConnectorFieldMapInput,
+  ConnectorInput,
+  ConnectorProfile,
+  ConnectorResourceInput,
+  ConnectorRun,
+  ConnectorTestResult,
   DispatchesReport,
   FieldCatalogue,
   FieldUsageBreakdown,
@@ -176,7 +185,11 @@ function release(key: string): void {
   inFlight.delete(key);
 }
 
-async function send<T>(path: string, init: RequestInit | undefined, signal: AbortSignal): Promise<T> {
+async function send<T>(
+  path: string,
+  init: RequestInit | undefined,
+  signal: AbortSignal,
+): Promise<T> {
   const response = await fetch(path, {
     ...init,
     signal,
@@ -226,9 +239,7 @@ function request<T>(path: string, init?: RequestInit): Promise<T> {
     // A caller with its own signal opts out of sharing: it wants a fetch it
     // alone can cancel, and joining a shared one would make its abort somebody
     // else's problem.
-    const own = init?.signal
-      ? AbortSignal.any([init.signal, timeout])
-      : timeout;
+    const own = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
     return send<T>(path, init, own).catch(asFailure);
   }
 
@@ -817,4 +828,37 @@ export const api = {
   },
   documentExport: (id: string) => request<DocumentExport>(`/api/documents/exports/${id}`),
   documentExportUrl: (id: string) => `/api/documents/exports/${id}/file`,
+
+  // --- Integrations (Stage 11) ---------------------------------------------
+
+  apiKeys: () => request<ApiKey[]>('/api/integrations/keys'),
+  /** The only call that ever sees a token. It is not stored anywhere else. */
+  issueApiKey: (input: ApiKeyInput) =>
+    post<{ key: ApiKey; token: string }>('/api/integrations/keys', input),
+  revokeApiKey: (id: string) => post<ApiKey>(`/api/integrations/keys/${id}/revoke`),
+
+  connectors: () => request<Connector[]>('/api/integrations/connectors'),
+  connectorProfiles: () => request<ConnectorProfile[]>('/api/integrations/connectors/profiles'),
+  createConnector: (input: ConnectorInput & { fromProfile?: string }) =>
+    post<Connector>('/api/integrations/connectors', input),
+  updateConnector: (id: string, input: ConnectorInput) =>
+    request<Connector>(`/api/integrations/connectors/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    }),
+  deleteConnector: (id: string) =>
+    request<void>(`/api/integrations/connectors/${id}`, { method: 'DELETE' }),
+  setConnectorMapping: (
+    id: string,
+    resources: Array<ConnectorResourceInput & { fieldMaps: ConnectorFieldMapInput[] }>,
+  ) =>
+    request<Connector>(`/api/integrations/connectors/${id}/mapping`, {
+      method: 'PUT',
+      body: JSON.stringify({ resources }),
+    }),
+  testConnector: (id: string, entity: 'party' | 'product') =>
+    post<ConnectorTestResult>(`/api/integrations/connectors/${id}/test`, { entity }),
+  runConnector: (id: string, mode: 'dry_run' | 'import') =>
+    post<ConnectorRun & { runId: number }>(`/api/integrations/connectors/${id}/run`, { mode }),
+  connectorRuns: (id: string) => request<ConnectorRun[]>(`/api/integrations/connectors/${id}/runs`),
 };

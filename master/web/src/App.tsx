@@ -62,6 +62,7 @@ import { DocumentsScreen } from './screens/DocumentsScreen';
 import { FieldsScreen } from './screens/FieldsScreen';
 import { PartyAccessScreen } from './screens/PartyAccessScreen';
 import { FirstRunScreen } from './screens/FirstRunScreen';
+import { IntegrationsScreen } from './screens/IntegrationsScreen';
 import { InventoryScreen } from './screens/InventoryScreen';
 import { LeadsOrdersScreen } from './screens/LeadsOrdersScreen';
 import { LogsScreen } from './screens/LogsScreen';
@@ -83,6 +84,7 @@ type Tab =
   | 'access'
   | 'partyAccess'
   | 'fields'
+  | 'integrations'
   | 'logs'
   | 'recycleBin'
   | 'conflicts'
@@ -348,6 +350,7 @@ function MasterPanel() {
     user.permissions.includes('roles.view') || user.permissions.includes('users.manage');
   const canManagePanels = user.permissions.includes('panels.manage');
   const canManageSettings = user.permissions.includes('settings.manage');
+  const canManageApi = user.permissions.includes('api.manage');
   const canViewFields = user.permissions.includes('fields.view');
   // Either key opens the screen: `party.assign` to redraw the map,
   // `party.accessAll` to read it. Somebody trusted with the whole book should
@@ -429,6 +432,9 @@ function MasterPanel() {
     canViewLogs ? { id: 'logs', label: t('nav.master.logs'), icon: 'eye' } : null,
     canViewRecycleBin
       ? { id: 'recycleBin', label: t('nav.master.recycleBin'), icon: 'trash' }
+      : null,
+    canManageApi
+      ? { id: 'integrations', label: t('nav.master.integrations'), icon: 'server' }
       : null,
     canManageSettings
       ? { id: 'settings', label: t('nav.master.settings'), icon: 'settings' }
@@ -715,6 +721,7 @@ function MasterPanel() {
       id: 'updates',
       render: () => <UpdatesScreen panels={panels} permissions={user.permissions} />,
     },
+    { id: 'integrations', render: () => <IntegrationsScreen canManage={canManageApi} /> },
     { id: 'settings', render: () => <SettingsScreen /> },
   ];
 
