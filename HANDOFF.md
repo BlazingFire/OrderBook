@@ -65,12 +65,18 @@ secrets and the password toggle.
 | 7 — performance and memory | **done** |
 | 8 — product & party attributes | **done** (product half; party fields still open) |
 | 9 — picker, dense forms, grid, exports | **done** (three items deferred, below) |
-| 10 — keyboard system | **next** |
-| 11 — public API + connectors | not started |
-| 12 — AI section | not started |
+| 10 — keyboard system | **done** |
+| 11 — public API + connectors | **done** |
+| 12 — AI section | **done** |
+
+**Every stage of the programme is now implemented.** The suite is at
+**1141 passing across 92 files**, lint and typecheck are clean in every
+workspace, and both panels build. What is still owed is listed under "Owed
+work" below and is manual verification, not code.
 
 Everything through Stage 6 is pushed to **both `dev` and `main`** (they are at
-the same commit as of 2026-08-28).
+the same commit as of 2026-08-28). Stages 7–12 are on `dev` only, awaiting the
+owner's word to push.
 
 What Stage 1 deliberately left — `validateProductInput`, purchase-rate masking
 and the `setStockLevels` partial upsert — landed with Stage 8's migration, which
@@ -133,6 +139,66 @@ matters" — is delivered.
 ship here. Excel opens CSV; xlsx buys number formats and a frozen header row.
 It is a dependency decision worth making deliberately rather than in passing.
 
+### What Stage 10 deliberately did not do
+
+Nothing was deferred, but three things landed differently from the design and
+the difference is worth knowing.
+
+**`SearchBox.tsx` was deleted rather than rewritten**, as the Stage 6 note above
+predicted — and so was the Office panel's own topbar search box, which the
+design did not mention. Both were replaced by one palette button. Two search
+affordances in one topbar is a question about which is the real one, and the
+office one could not even open what it found: its result buttons cleared the
+query and did nothing else.
+
+**Conflicts are reported per panel, not across the catalogue.** The Master's
+Alt+1 and the Office panel's Alt+1 are not a clash — no running panel has both
+registered — and reporting them would have shipped nine conflicts out of the
+box and taught people to ignore the warning.
+
+**`record.new` is Office-only.** It means one thing there, a lead, and nothing
+in particular on the Master where every screen has its own new-record action. A
+palette entry that does nothing on half the installation is worse than an
+absent one.
+
+### What Stage 11 deliberately did not do
+
+**Per-key party pinning**, as the workstream's own review required: a key's
+party scope is its owner's. The design's version widened only the three list
+predicates, so a key "pinned" to party A would still have passed
+`requirePartyAccess` on any party nobody had claimed.
+
+**`credential_ref` into a secret store.** The design assumed a store keyed by
+arbitrary string; settings keys are a closed union, so there is nothing to point
+at. The credential is sealed by `secret-box` with the connector row's own AAD
+and lives on the row. Same guarantee, one less indirection.
+
+`externalApi.connectors` — the settings-level list of connections Stage 4
+shipped — was **deleted**, because the tables replaced it and two homes for one
+concept is how they drift.
+
+### What Stage 12 deliberately did not do
+
+**No `ai.enabled` setting.** `ai.provider.kind === 'off'` is the off switch, and
+one source of truth is better than two that can disagree. `GET /api/ai/status`
+always answers so a panel can tell "off" from "older Master"; every other
+`/api/ai/*` route 404s.
+
+**No provider profile enum.** Whether a model is local is derived from the
+address rather than stored, so there is no second setting to contradict the
+first, and Ollama, LM Studio and a cloud gateway are all just a base URL.
+
+**No duplicate detection and no `pg_trgm` migration.** The plan left that
+"orphaned — assign it here or drop it". It is dropped: it belongs to search, not
+to the assistant, and the assistant was only ever going to narrate a duplicate
+somebody else's code decided.
+
+**No vision run yet.** The kind exists in the schema and the prompt, and the
+gallery pipeline it would read through is in place, but nothing calls it: the
+honest reason is that it cannot be verified here without a vision model to point
+at, and shipping an unexercised path that reads image bytes is not worth the
+line count. The text half is complete and tested.
+
 ### Owed work
 
 - **A manual pass on a signed-in panel.** Stage 5's keep-alive is covered by
@@ -143,24 +209,64 @@ It is a dependency decision worth making deliberately rather than in passing.
   filters, scroll position, open drawers and half-typed forms should survive a
   round trip; Escape should close the *visible* overlay, not a hidden screen's;
   Reset should clear exactly one screen.
+- **A manual pass on the keyboard system.** `useOverlay`'s Escape moved from
+  capture to bubble, and `Combobox`/`Picker` now claim the key only when they
+  consumed it. There is no jsdom for screens, so walk every Modal in both
+  panels: Escape inside an open combobox must close the list and leave the
+  dialog open; a second Escape must close the dialog.
+- **A manual pass on the assistant against a real model.** Every guard is
+  tested without one — that is deliberate, a test needing Ollama running is a
+  test nobody runs — but the tool loop itself has only been exercised against
+  the stream parser. Point `ai.provider` at an Ollama instance, ask something,
+  and check the provenance footer names the tools it actually used.
 - **A code review of the session's 286-file diff.** A five-agent adversarial
   review was launched and **all five agents died on a usage limit**, so it
   returned "0 findings" without having reviewed anything. Do not read that as a
   pass. Only the `rem()` sweep was checked by hand afterwards.
 
+### Verify before you trust the designs — what this pass found
+
+The programme's designs were written against a tree that has moved. Every one
+of these was believed true, checked, and was not:
+
+- `searchKind` no longer exists (Stage 9a deleted it), so the palette's Records
+  section calls `search()` — which already filters by permission rather than
+  refusing the whole query, exactly the behaviour the design wanted from a
+  different function.
+- `readJson`/`writeJson` were never exported from `ui/`; the keyboard bindings
+  store reads `localStorage` directly.
+- `master/web/src/i18n/strings.ts` does not exist — Stage 3 folded both panel
+  dictionaries into `shared`. Every "put this in the master fork" instruction in
+  workstreams I and J is void.
+- `users.id` and `roles.id` are **TEXT**, not UUID, and carry no default. A
+  `table.uuid(...).references('id').inTable('users')` fails at migration time;
+  every user reference added this pass is TEXT with no FK, matching
+  `party_access.user_id` and for the same reason — people are soft-deleted and
+  restorable.
+- `inventory_stock` has no `created_at`, which the slow-moving-stock query
+  assumed. It is keyed per (product, colour) too, so the design's `GROUP BY`
+  would have reported one product once per colour.
+
+And one defect this pass introduced and its own tests caught, worth recording
+because the class of it recurs: an API token was minted as
+`obk_<base64url>_<base64url>`, and base64url's alphabet contains `_`, so roughly
+one token in five split into the wrong pieces and failed to authenticate. The
+prefix is hex now, and `parseToken` rejoins everything after the second
+separator.
+
 ### How to run things
 
 ```
-npm run verify        # lint + typecheck (6 workspaces) + 885 tests
+npm run verify        # lint + typecheck (6 workspaces) + 1141 tests
 npm run build         # shared, master, office, both web bundles
 npm run build:shell   # compiles electron/ and copies it into both panels
 npx electron master/electron/dist/master.main.js
 npx electron office/electron/dist/office.main.js
 ```
 
-Both panels can run side by side. `npm test` has **one known failure**:
-`office/tests/storage-path.test.ts:138` asserts POSIX permission bits on
-Windows and predates this work. 884/885 is green.
+Both panels can run side by side. `npm test` is fully green on Windows —
+`office/tests/storage-path.test.ts`'s POSIX permission assertion was gated in
+Stage 4, so the long-standing "one known failure" is gone.
 
 ### Where things live now
 
@@ -375,10 +481,16 @@ Added on 2026-08-28, from the overhaul brief:
   what that costs (see `docs/overhaul/workstream-F.md`, and the Risk section of
   `00-sequenced-plan.md`). Do not quietly re-scope it; do not quietly ship it
   without the guards that design lists.
-- **TLS is a decision the owner has not made.** The Master binds `0.0.0.0`
-  with no certificate, so a Stage 11 API key is exactly as confidential as the
-  session cookie already is — which is to say not at all against a passive LAN
-  sniffer. Raise it before Stage 11 ships.
+- **TLS is a decision the owner has not made, and Stage 11 shipped anyway.**
+  The Master binds `0.0.0.0` with no certificate, so an API key is exactly as
+  confidential as the session cookie already is — which is to say not at all
+  against a passive LAN sniffer. It was raised and not answered, so the work
+  proceeded on the stated assumption that a keyed API on a ten-metre shop LAN
+  carries the same risk the existing session cookie already does, and adds no
+  new one: it opens no port, and the API is **off by default**
+  (`externalApi.enabled`). If the owner wants TLS, it is a separate piece of
+  work covering both the browser session and the key, not something to bolt on
+  to the API alone.
 
 ## Repo layout
 

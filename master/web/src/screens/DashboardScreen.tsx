@@ -8,7 +8,9 @@
 import type { ReactNode } from 'react';
 import type { DashboardSummary, OfficePanelWithPresence } from '@orderbook/shared';
 
-import { Card, EmptyState, Skeleton, rem, t } from '@orderbook/ui';
+import { Card, EmptyState, InsightCards, Skeleton, rem, t } from '@orderbook/ui';
+
+import { api } from '../api';
 
 interface Props {
   summary: DashboardSummary | null;
@@ -31,6 +33,10 @@ export function DashboardScreen({ summary, panels, onOpenConflicts }: Props) {
       className="ob-measure-wide"
       style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}
     >
+      {/* Above the figures, because it is the thing worth reading first — and
+          it renders nothing at all on a quiet day. */}
+      <InsightCards load={api.aiInsights} />
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--s-12)' }}>
         {loading ? (
           <>

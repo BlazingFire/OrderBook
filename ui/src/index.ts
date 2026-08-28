@@ -39,6 +39,7 @@ export * from './FilterBarSlot.js';
 export * from './Form.js';
 export * from './GalleryScreen.js';
 export * from './ImageCropModal.js';
+export * from './InsightCards.js';
 export * from './KanbanBoard.js';
 export * from './KeyboardProvider.js';
 export * from './Logo.js';

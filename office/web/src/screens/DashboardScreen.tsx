@@ -11,7 +11,9 @@
 import type { ReactNode } from 'react';
 
 import type { LocalView } from '../api';
-import { Card, EmptyState, formatMoney, t } from '@orderbook/ui';
+import { Card, EmptyState, InsightCards, formatMoney, t } from '@orderbook/ui';
+
+import { api } from '../api';
 
 type DashboardTab = 'leads' | 'orders' | 'conflicts';
 
@@ -161,72 +163,78 @@ export function DashboardScreen({ view, onNavigate }: Props) {
   return (
     <div
       className="ob-measure-wide"
-      style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--s-12)' }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}
     >
-      {canViewLeads && (
-        <StatCard
-          label={t('dashboard.leads.title')}
-          value={openLeads.length.toLocaleString('en-IN')}
-          note={
-            dueToday > 0
-              ? t('dashboard.leads.dueToday', { count: dueToday })
-              : t('dashboard.leads.noneDueToday')
-          }
-          onClick={() => onNavigate('leads')}
-        />
-      )}
+      {/* Nothing at all on a quiet day, and the figures on it are SQL rather
+          than anything a model produced. */}
+      <InsightCards load={api.aiInsights} />
 
-      {canViewOrders && (
-        <StatCard
-          label={t('dashboard.orders.title')}
-          value={openOrders.length.toLocaleString('en-IN')}
-          note={
-            boxesReserved > 0
-              ? t('dashboard.orders.boxesReserved', {
-                  count: boxesReserved.toLocaleString('en-IN'),
-                })
-              : t('dashboard.orders.noneReserved')
-          }
-          onClick={() => onNavigate('orders')}
-        />
-      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--s-12)' }}>
+        {canViewLeads && (
+          <StatCard
+            label={t('dashboard.leads.title')}
+            value={openLeads.length.toLocaleString('en-IN')}
+            note={
+              dueToday > 0
+                ? t('dashboard.leads.dueToday', { count: dueToday })
+                : t('dashboard.leads.noneDueToday')
+            }
+            onClick={() => onNavigate('leads')}
+          />
+        )}
 
-      {canViewOrders && (
-        <StatCard
-          label={t('dashboard.dispatched.title')}
-          value={
-            <>
-              {dispatchedBoxes.toLocaleString('en-IN')}{' '}
-              <span className="ob-data" style={{ color: 'var(--fg-secondary)' }}>
-                {t('unit.boxes')}
-              </span>
-            </>
-          }
-          note={
-            dispatchedThisWeek.length === 0
-              ? t('dashboard.dispatched.none')
-              : dispatchedAmount === undefined
-                ? t('dashboard.dispatched.countOnly', {
-                    count: dispatchedThisWeek.length,
-                    unit: dispatchedUnit,
+        {canViewOrders && (
+          <StatCard
+            label={t('dashboard.orders.title')}
+            value={openOrders.length.toLocaleString('en-IN')}
+            note={
+              boxesReserved > 0
+                ? t('dashboard.orders.boxesReserved', {
+                    count: boxesReserved.toLocaleString('en-IN'),
                   })
-                : t('dashboard.dispatched.summary', {
-                    amount: formatMoney(dispatchedAmount),
-                    count: dispatchedThisWeek.length,
-                    unit: dispatchedUnit,
-                  })
-          }
-        />
-      )}
+                : t('dashboard.orders.noneReserved')
+            }
+            onClick={() => onNavigate('orders')}
+          />
+        )}
 
-      <StatCard
-        label={t('dashboard.sync.title')}
-        value={syncValue}
-        valueColor={syncColor}
-        note={syncNote}
-        borderColor={syncColor}
-        onClick={canViewConflicts ? () => onNavigate('conflicts') : undefined}
-      />
+        {canViewOrders && (
+          <StatCard
+            label={t('dashboard.dispatched.title')}
+            value={
+              <>
+                {dispatchedBoxes.toLocaleString('en-IN')}{' '}
+                <span className="ob-data" style={{ color: 'var(--fg-secondary)' }}>
+                  {t('unit.boxes')}
+                </span>
+              </>
+            }
+            note={
+              dispatchedThisWeek.length === 0
+                ? t('dashboard.dispatched.none')
+                : dispatchedAmount === undefined
+                  ? t('dashboard.dispatched.countOnly', {
+                      count: dispatchedThisWeek.length,
+                      unit: dispatchedUnit,
+                    })
+                  : t('dashboard.dispatched.summary', {
+                      amount: formatMoney(dispatchedAmount),
+                      count: dispatchedThisWeek.length,
+                      unit: dispatchedUnit,
+                    })
+            }
+          />
+        )}
+
+        <StatCard
+          label={t('dashboard.sync.title')}
+          value={syncValue}
+          valueColor={syncColor}
+          note={syncNote}
+          borderColor={syncColor}
+          onClick={canViewConflicts ? () => onNavigate('conflicts') : undefined}
+        />
+      </div>
     </div>
   );
 }
