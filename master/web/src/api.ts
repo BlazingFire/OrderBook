@@ -138,9 +138,48 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+/**
+ * How long any one request may take before it counts as silence.
+ *
+ * The Master is on loopback or one LAN hop, so fifteen seconds is not a
+ * latency budget — it is the difference between "the panel is thinking" and a
+ * screen that waits forever on a Master whose database is wedged. That was the
+ * live failure: `/api/setup/status` reads the database, so a Master with
+ * Postgres down accepted the socket and never answered.
+ */
+const REQUEST_TIMEOUT_MS = 15_000;
+
+/**
+ * GETs already in flight, so N screens asking the same question ask once.
+ *
+ * **Refcounted, and that is not an optimisation.** Two screens sharing one
+ * promise means the first to unmount would otherwise abort the fetch out from
+ * under the second, which — since a cancelled request is swallowed by design —
+ * renders as loading forever with no data and no error. The shared controller
+ * fires only when the last waiter has gone.
+ *
+ * POSTs never dedup: two identical writes are two writes.
+ */
+const inFlight = new Map<
+  string,
+  { promise: Promise<unknown>; controller: AbortController; waiters: number }
+>();
+
+function release(key: string): void {
+  const entry = inFlight.get(key);
+  if (!entry) return;
+
+  entry.waiters -= 1;
+  if (entry.waiters > 0) return;
+
+  entry.controller.abort();
+  inFlight.delete(key);
+}
+
+async function send<T>(path: string, init: RequestInit | undefined, signal: AbortSignal): Promise<T> {
   const response = await fetch(path, {
     ...init,
+    signal,
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
     credentials: 'same-origin',
   });
@@ -170,6 +209,59 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     );
   }
   return body as T;
+}
+
+function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = (init?.method ?? 'GET').toUpperCase();
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+
+  /** Silence and a refusal are different facts; a caller may retry only one. */
+  const asFailure = (error: unknown): never => {
+    if (error instanceof ApiError) throw error;
+    if (timeout.aborted) throw new ApiError('The panel did not answer in time', 'timeout');
+    throw new ApiError('Request cancelled', 'aborted');
+  };
+
+  if (method !== 'GET' || init?.signal) {
+    // A caller with its own signal opts out of sharing: it wants a fetch it
+    // alone can cancel, and joining a shared one would make its abort somebody
+    // else's problem.
+    const own = init?.signal
+      ? AbortSignal.any([init.signal, timeout])
+      : timeout;
+    return send<T>(path, init, own).catch(asFailure);
+  }
+
+  let entry = inFlight.get(path);
+
+  if (!entry) {
+    const controller = new AbortController();
+    const created = {
+      controller,
+      waiters: 0,
+      promise: send<unknown>(path, init, AbortSignal.any([controller.signal, timeout])),
+    };
+
+    // Cleared on settle either way; the `catch` is only to stop an unhandled
+    // rejection warning on the shared promise itself.
+    void created.promise.catch(() => undefined).finally(() => inFlight.delete(path));
+
+    inFlight.set(path, created);
+    entry = created;
+  }
+
+  entry.waiters += 1;
+
+  return entry.promise.then(
+    (value) => {
+      release(path);
+      return value as T;
+    },
+    (error: unknown) => {
+      release(path);
+      return asFailure(error);
+    },
+  );
 }
 
 const post = <T>(path: string, body?: unknown) =>

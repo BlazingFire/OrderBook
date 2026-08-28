@@ -417,6 +417,18 @@ class MasterConnection extends EventEmitter {
   }
 
   /**
+   * The signed-in person's Master token, for the HTTP routes that carry image
+   * bytes instead of the command socket.
+   *
+   * Exposed rather than duplicated: those routes have to run as the *person*,
+   * not as the panel, or an upload changes who may do it and lands the
+   * machine's name in the audit trail instead of theirs.
+   */
+  getActingToken(): string | null {
+    return this.actingToken;
+  }
+
+  /**
    * Issues a command to the Master and unwraps its acknowledgement. Rejects
    * with the Master's own message so the UI can show a real explanation rather
    * than a generic failure.

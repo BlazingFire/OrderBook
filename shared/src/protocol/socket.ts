@@ -27,7 +27,6 @@ import type {
   PartyProductVariant,
   Pipeline,
   PipelineStage,
-  ImageVariant,
   Product,
   ProductCategory,
   RecordId,
@@ -70,7 +69,6 @@ import type {
   DocumentExportQuery,
   DocumentTemplateInput,
   DocumentTemplateQuery,
-  ImageCropInput,
   LeadConvertInput,
   LeadInput,
   LeadListQuery,
@@ -474,30 +472,25 @@ export interface ClientToServerEvents {
     ack: CommandAck<Product>,
   ) => void;
 
-  /**
-   * §4.3's `GET /sync/v1/image/{imageId}/{variant}`, ported onto this
-   * repo's existing command channel instead of a second HTTP surface — an
-   * Office Panel already holds a live, authenticated socket to the Master,
-   * and every other Office→Master write already travels this way (Fields,
-   * Recycle Bin, Stock). `file`/`data` are transmitted as Socket.IO binary
-   * attachments, not base64, so a 40 MB source photo does not bloat by a
-   * third in transit.
+  /*
+   * Image **bytes** deliberately do not travel here.
+   *
+   * They used to: `product:image:upload` and `image:fetch` carried them as
+   * Socket.IO binary attachments, which meant `maxHttpBufferSize` had to be
+   * `MAX_SOURCE_BYTES` — a per-frame ceiling set by the largest photo anybody
+   * might drag in, applied to every sync push and every command on the
+   * connection. They are now `POST /api/panel/products/:id/images` and
+   * `GET /api/panel/images/:id/:variant`, authenticated by the panel's pairing
+   * credentials plus the acting user's token so the permission checks and the
+   * audit trail are unchanged. Metadata still travels here, because it is
+   * small and it is a mutation like any other.
    */
-  'product:image:upload': (
-    payload: { productId: RecordId; file: Uint8Array; crop: ImageCropInput },
-    ack: CommandAck<Product>,
-  ) => void;
   'product:image:update': (
     payload: { id: Uuid; input: ProductImageUpdateInput },
     ack: CommandAck<Product>,
   ) => void;
   'product:image:reorder': (input: ProductImageReorderInput, ack: CommandAck<Product>) => void;
   'product:image:delete': (id: Uuid, ack: CommandAck<Product>) => void;
-  /** Serves one already-derived variant's bytes — never triggers a resize (§5.6). */
-  'image:fetch': (
-    payload: { imageId: Uuid; variant: ImageVariant },
-    ack: CommandAck<{ data: Uint8Array; checksum: string }>,
-  ) => void;
 
   'category:list': (ack: CommandAck<ProductCategory[]>) => void;
 

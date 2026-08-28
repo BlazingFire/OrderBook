@@ -16,6 +16,7 @@ import { documentRoutes } from './routes/document.routes.js';
 import { fieldsRoutes } from './routes/fields.routes.js';
 import { imageFilesRoutes, imagesRoutes } from './routes/images.routes.js';
 import { logRoutes } from './routes/log.routes.js';
+import { panelImageRoutes } from './routes/panel-image.routes.js';
 import { panelRoutes, pairingRoutes } from './routes/panel.routes.js';
 import { partyAccessRoutes } from './routes/party-access.routes.js';
 import { recycleBinRoutes } from './routes/recycle-bin.routes.js';
@@ -58,6 +59,9 @@ export function createApp(): Express {
   app.use('/api/reports', reportRoutes);
   app.use('/api/documents', documentRoutes);
   app.use('/api/products/:productId/images', imagesRoutes);
+  // An Office Panel's server, not a browser: pairing credentials plus the
+  // acting user's token, so image bytes stop riding the command socket.
+  app.use('/api/panel', panelImageRoutes);
   app.use('/api/images', imageFilesRoutes);
   app.use('/api/access/users/:userId/avatar', avatarRoutes);
   app.use('/api/avatars', avatarFilesRoutes);

@@ -89,39 +89,34 @@ type Tab =
   | 'updates';
 type Route = '' | 'gallery';
 
-/** Entities whose changes should make the data screens refetch. */
-const REFRESHING_ENTITIES = new Set([
-  'lead',
-  'order',
-  'party',
-  'stock',
-  'reservation',
-  'sync_conflict',
-]);
+/**
+ * Which entities each screen's data is derived from.
+ *
+ * There used to be one counter and a six-entity allow-list in front of it, so
+ * a change to an option list, a custom field, a document template or an export
+ * moved nothing — those screens simply never refetched — while a change to a
+ * lead made the Fields screen refetch for no reason. A counter per entity fixes
+ * both directions at once.
+ */
+const SCREEN_ENTITIES: Record<string, readonly string[]> = {
+  records: ['lead', 'order', 'party', 'product', 'stock', 'reservation'],
+  inventory: ['stock', 'product', 'reservation'],
+  reports: ['lead', 'order', 'party', 'stock'],
+  documents: ['document_template', 'document_export'],
+  fields: ['option_list', 'custom_field', 'pipeline'],
+  access: ['user', 'role'],
+  partyAccess: ['party'],
+  recycleBin: ['lead', 'order', 'party', 'product', 'role', 'user', 'document_template'],
+  conflicts: ['sync_conflict'],
+};
+
+/** One number that moves when any of the named entities does. */
+function revisionOf(revisions: Record<string, number>, key: string): number {
+  return (SCREEN_ENTITIES[key] ?? []).reduce((total, entity) => total + (revisions[entity] ?? 0), 0);
+}
 
 /** The cold-start steps the splash reports, in the order they run. */
 const BOOT_STEPS = ['server', 'session', 'assets'] as const;
-
-/**
- * A ceiling on every boot call.
- *
- * `/api/setup/status` reads the database, so a Master whose Postgres is down
- * answers the socket and then never replies. Without this the panel sat on
- * "Starting…" indefinitely with nothing on screen to act on; now the wait ends
- * in a reason and a Retry.
- *
- * ponytail: races rather than aborts, so the original request stays in flight
- * until it settles. Harmless for boot reads; thread an `AbortSignal` through
- * `api` if a boot step ever writes.
- */
-function withTimeout<T>(work: Promise<T>, ms = 10_000): Promise<T> {
-  return Promise.race([
-    work,
-    new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new ApiError(t('splash.error.timeout'), 'timeout')), ms);
-    }),
-  ]);
-}
 
 function readHash(): string {
   return window.location.hash.replace(/^#/, '');
@@ -151,7 +146,7 @@ function MasterPanel() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   // Incremented on every relevant change so screens that fetch their own data
   // know to refetch, without this shell having to model their state for them.
-  const [dataRevision, setDataRevision] = useState(0);
+  const [revisions, setRevisions] = useState<Record<string, number>>({});
 
   // Shell chrome state.
   const [splashDone, setSplashDone] = useState(false);
@@ -192,7 +187,7 @@ function MasterPanel() {
       setBootStep(0);
 
       try {
-        const { setupComplete } = await withTimeout(api.setupStatus());
+        const { setupComplete } = await api.setupStatus();
         if (cancelled) return;
         setBootStep(1);
 
@@ -200,7 +195,7 @@ function MasterPanel() {
           setPhase('first-run');
         } else {
           try {
-            const me = await withTimeout(api.me());
+            const me = await api.me();
             if (cancelled) return;
             setUser(me.user);
             setSessionToken(me.sessionToken);
@@ -250,12 +245,17 @@ function MasterPanel() {
 
     socket.on('panels:changed', setPanels);
     socket.on('dashboard:changed', setSummary);
-    socket.on('data:changed', (event) => {
-      if (REFRESHING_ENTITIES.has(event.entity)) setDataRevision((value) => value + 1);
-    });
+    const bump = (entity: string): void =>
+      setRevisions((current) => ({ ...current, [entity]: (current[entity] ?? 0) + 1 }));
+
+    // Every entity, unconditionally. The old allow-list is what made a per-entity
+    // counter pointless for exactly the screens that most needed one.
+    socket.on('data:changed', (event) => bump(event.entity));
+
     // A merge shadowed somebody's value; the conflicts screen and the dashboard
-    // counter both need to move.
-    socket.on('sync:conflict', () => setDataRevision((value) => value + 1));
+    // counter both need to move. It arrives on its own channel, so it gets a
+    // synthetic key rather than riding on some other entity's counter.
+    socket.on('sync:conflict', () => bump('sync_conflict'));
 
     return () => {
       socket.close();
@@ -647,15 +647,15 @@ function MasterPanel() {
       ),
     },
     { id: 'panels', render: () => <PanelsScreen panels={panels} onRefresh={refreshPanels} /> },
-    { id: 'orders', render: () => <LeadsOrdersScreen revision={dataRevision} /> },
-    { id: 'inventory', render: () => <InventoryScreen revision={dataRevision} /> },
+    { id: 'orders', render: () => <LeadsOrdersScreen revision={revisionOf(revisions, 'records')} /> },
+    { id: 'inventory', render: () => <InventoryScreen revision={revisionOf(revisions, 'inventory')} /> },
     {
       id: 'reports',
-      render: () => <ReportsScreen revision={dataRevision} permissions={user.permissions} />,
+      render: () => <ReportsScreen revision={revisionOf(revisions, 'reports')} permissions={user.permissions} />,
     },
     {
       id: 'documents',
-      render: () => <DocumentsScreen revision={dataRevision} permissions={user.permissions} />,
+      render: () => <DocumentsScreen revision={revisionOf(revisions, 'documents')} permissions={user.permissions} />,
     },
     {
       id: 'access',
@@ -669,22 +669,22 @@ function MasterPanel() {
     },
     {
       id: 'partyAccess',
-      render: () => <PartyAccessScreen permissions={user.permissions} revision={dataRevision} />,
+      render: () => <PartyAccessScreen permissions={user.permissions} revision={revisionOf(revisions, 'partyAccess')} />,
     },
     {
       id: 'fields',
-      render: () => <FieldsScreen permissions={user.permissions} revision={dataRevision} />,
+      render: () => <FieldsScreen permissions={user.permissions} revision={revisionOf(revisions, 'fields')} />,
     },
     { id: 'logs', render: () => <LogsScreen permissions={user.permissions} /> },
     {
       id: 'recycleBin',
-      render: () => <RecycleBinScreen permissions={user.permissions} revision={dataRevision} />,
+      render: () => <RecycleBinScreen permissions={user.permissions} revision={revisionOf(revisions, 'recycleBin')} />,
     },
     {
       id: 'conflicts',
       render: () => (
         <ConflictsScreen
-          revision={dataRevision}
+          revision={revisionOf(revisions, 'conflicts')}
           canResolve={user.permissions.includes('sync.resolveConflicts')}
         />
       ),

@@ -38,7 +38,7 @@ import { BackupValidationError } from '../domain/backup.js';
 import * as backupExportService from '../services/backup-export.service.js';
 import * as backupRestoreService from '../services/backup-restore.service.js';
 import { RestoreError } from '../services/backup-restore.service.js';
-import { loadCredentials } from '../services/credentials.store.js';
+import { loadCredentials, masterBaseUrl } from '../services/credentials.store.js';
 import { PairingError, pairAutomatically, pairManually, scanForMasters } from '../services/pairing.service.js';
 import * as updateService from '../services/update.service.js';
 import { UpdateError } from '../services/update.service.js';
@@ -313,18 +313,37 @@ export function createApp(): Express {
       res.status(400).json({ error: 'validation_error', message: 'Choose an image file' });
       return;
     }
-    return forward(res, 'product:image:upload', {
-      productId: req.params.productId,
-      file: req.file.buffer,
-      crop: {
-        cropX: Number(req.body.cropX),
-        cropY: Number(req.body.cropY),
-        cropWidth: Number(req.body.cropWidth),
-        cropHeight: Number(req.body.cropHeight),
-        rotationDeg: Number(req.body.rotationDeg ?? 0),
-        caption: typeof req.body.caption === 'string' ? req.body.caption : null,
-      },
-    });
+    /*
+     * Over HTTP, not the command socket.
+     *
+     * A photo is up to `MAX_SOURCE_BYTES`, and carrying it as a socket frame
+     * forced `maxHttpBufferSize` to that size — a ceiling set by the largest
+     * image anybody might drag in, applied to every sync push and every
+     * command on the connection.
+     */
+    void (async () => {
+      try {
+        const form = new FormData();
+        form.append('file', new Blob([req.file!.buffer]), req.file!.originalname || 'image');
+        for (const field of ['cropX', 'cropY', 'cropWidth', 'cropHeight', 'rotationDeg', 'caption']) {
+          const value = (req.body as Record<string, unknown>)[field];
+          if (value !== undefined && value !== null) form.append(field, String(value));
+        }
+
+        const response = await masterFetch(
+          `/api/panel/products/${encodeURIComponent(String(req.params.productId))}/images`,
+          { method: 'POST', body: form },
+        );
+
+        const body = await response.json().catch(() => null);
+        res.status(response.status).json(body);
+      } catch (error) {
+        res.status(503).json({
+          error: 'unavailable',
+          message: error instanceof Error ? error.message : 'The Master Panel is not reachable',
+        });
+      }
+    })();
   });
   app.patch('/api/products/:productId/images/:imageId', (req, res) =>
     forward(res, 'product:image:update', { id: req.params.imageId, input: req.body }),
@@ -361,22 +380,30 @@ export function createApp(): Express {
     }
 
     try {
-      const result = await masterConnection.command<'image:fetch', { data: Uint8Array; checksum: string }>(
-        'image:fetch',
-        { imageId, variant },
+      const response = await masterFetch(
+        `/api/panel/images/${encodeURIComponent(imageId)}/${encodeURIComponent(variant)}`,
       );
-      const buffer = Buffer.from(result.data);
+
+      if (!response.ok) {
+        // The Master answered and refused — a 404 for a product this person
+        // may not see, which is the translation `resolveImageFile` makes.
+        res.status(response.status === 401 ? 401 : 404).json({ error: 'not_found' });
+        return;
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
       await mkdir(path.dirname(localPath), { recursive: true });
       await writeFile(localPath, buffer);
       res.set('Cache-Control', 'private, max-age=31536000, immutable');
       res.type('image/webp');
       res.send(buffer);
     } catch (error) {
-      if (error instanceof MasterCommandError && error.unreachable) {
-        res.status(503).json({ error: 'unavailable', message: error.message });
-        return;
-      }
-      res.status(404).json({ error: 'not_found' });
+      // No answer at all: the Master is off, which is a 503 the browser can
+      // retry, not a 404 that says the image does not exist.
+      res.status(503).json({
+        error: 'unavailable',
+        message: error instanceof Error ? error.message : 'The Master Panel is not reachable',
+      });
     }
   });
 
@@ -1336,6 +1363,35 @@ function respondToRestoreError(res: Response, error: unknown): void {
  * used to build and stringify the whole masked snapshot once per open stream
  * per event, and a panel with the app open in two tabs paid for it twice.
  */
+/**
+ * A request to the Master's panel-authenticated HTTP surface.
+ *
+ * Carries the pairing credentials **and** the acting user's token, because the
+ * routes behind it run as the person, not as the machine: uploading an image
+ * needs `products.edit`, and the audit trail has to name whoever did it.
+ */
+// `globalThis.Response`, not Express's `Response` — both names are in scope
+// in this file and the wrong one is a very confusing error.
+async function masterFetch(
+  pathSuffix: string,
+  init?: RequestInit,
+): Promise<globalThis.Response> {
+  const credentials = await loadCredentials();
+  if (!credentials) throw new Error('This panel is not paired with a Master');
+
+  const actingToken = masterConnection.getActingToken();
+
+  return fetch(`${masterBaseUrl(credentials)}${pathSuffix}`, {
+    ...init,
+    headers: {
+      ...(init?.headers ?? {}),
+      'x-orderbook-panel-id': credentials.panelId,
+      'x-orderbook-panel-secret': credentials.panelSecret,
+      ...(actingToken ? { 'x-orderbook-acting-token': actingToken } : {}),
+    },
+  });
+}
+
 const streams = new Set<(type: string, data: unknown) => void>();
 
 /** How long a burst of view-changing events is allowed to coalesce. */

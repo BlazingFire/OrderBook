@@ -62,8 +62,8 @@ secrets and the password toggle.
 | 4 — settings table + password vault | **done** |
 | 5 — screen keep-alive | **done** (manual pass owed) |
 | 6 — UI scale + responsive | **done** |
-| 7 — performance and memory | **next** |
-| 8 — product & party attributes | not started |
+| 7 — performance and memory | **done** |
+| 8 — product & party attributes | **next** |
 | 9 — picker, dense forms, grid, exports | not started |
 | 10 — keyboard system | not started |
 | 11 — public API + connectors | not started |
@@ -88,6 +88,22 @@ legacy element rule. It is deliberately left for Stage 10, which deletes the
 component outright once the command palette exists — rewriting it first and
 deleting it a stage later is churn. `.card` and `.row` survive in the Master's
 `styles.css` only because that component still uses them.
+
+### What Stage 7 deliberately did not do
+
+`useResource` was designed as a replacement for "every `let cancelled = false`
+block — a net deletion". There are seven such blocks in the current tree and two
+of them are boot sequences that the hook does not fit, so the deletion is not
+net and the remaining benefit — aborting a GET on unmount, on loopback — did not
+justify restructuring four screens' state. The parts of H1 that were about
+correctness all landed: the request timeout, the `aborted`/`timeout` codes, and
+the refcounted GET dedup.
+
+Per-entity revisions landed as counters plus a `SCREEN_ENTITIES` map in the
+Master's `App.tsx`, not as a React context. The defect the design named — an
+allow-list in front of one counter, so the Fields, Documents and Recycle Bin
+screens never refetched at all — is fixed; a context would only have removed
+prop-threading that already works.
 
 ### Owed work
 

@@ -17,7 +17,7 @@
 
 import type { ImageCropInput, Product, ProductImageReorderInput, ProductImageUpdateInput } from '@orderbook/shared';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { encode as encodeBlurhash } from 'blurhash';
@@ -393,21 +393,6 @@ export async function resolveImageFile(imageId: string, variant: string, actor: 
   if (!filePath) throw new NotFoundError('Image');
 
   return { path: filePath, variant, checksum: image.checksum };
-}
-
-/**
- * The `image:fetch` socket command's implementation — same permission-to-404
- * translation as `resolveImageFile`, but returns bytes rather than a path,
- * since the caller here is an Office Panel server on the other end of a
- * socket, not a browser `<img>` tag that can be pointed at a local route.
- */
-export async function imageFileBytes(
-  imageId: string,
-  variant: string,
-  actor: ActorContext,
-): Promise<{ data: Buffer; checksum: string }> {
-  const file = await resolveImageFile(imageId, variant, actor);
-  return { data: await readFile(file.path), checksum: file.checksum };
 }
 
 /**

@@ -177,9 +177,43 @@ export interface FlushOutcome {
   remaining: number;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+/** See the master panel's copy: silence has to be told apart from a refusal. */
+const REQUEST_TIMEOUT_MS = 15_000;
+
+/**
+ * GETs already in flight, so N screens asking the same question ask once.
+ *
+ * **Refcounted.** Two screens sharing one promise means the first to unmount
+ * would otherwise abort the fetch out from under the second, which renders as
+ * loading forever with no data and no error. The shared controller fires only
+ * when the last waiter has gone. POSTs never dedup: two identical writes are
+ * two writes.
+ *
+ * Duplicated from `master/web/src/api.ts` on purpose, the same way the panels
+ * already duplicate their API clients. It dies when the shared web package
+ * arrives; sharing it before then would mean sharing the two `ApiError` classes
+ * as well, which are not the same class.
+ */
+const inFlight = new Map<
+  string,
+  { promise: Promise<unknown>; controller: AbortController; waiters: number }
+>();
+
+function release(key: string): void {
+  const entry = inFlight.get(key);
+  if (!entry) return;
+
+  entry.waiters -= 1;
+  if (entry.waiters > 0) return;
+
+  entry.controller.abort();
+  inFlight.delete(key);
+}
+
+async function send<T>(path: string, init: RequestInit | undefined, signal: AbortSignal): Promise<T> {
   const response = await fetch(path, {
     ...init,
+    signal,
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   });
 
@@ -204,6 +238,51 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     );
   }
   return body as T;
+}
+
+function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = (init?.method ?? 'GET').toUpperCase();
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+
+  const asFailure = (error: unknown): never => {
+    if (error instanceof ApiError) throw error;
+    if (timeout.aborted) throw new ApiError('The panel did not answer in time', 'timeout');
+    throw new ApiError('Request cancelled', 'aborted');
+  };
+
+  if (method !== 'GET' || init?.signal) {
+    const own = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+    return send<T>(path, init, own).catch(asFailure);
+  }
+
+  let entry = inFlight.get(path);
+
+  if (!entry) {
+    const controller = new AbortController();
+    const created = {
+      controller,
+      waiters: 0,
+      promise: send<unknown>(path, init, AbortSignal.any([controller.signal, timeout])),
+    };
+
+    void created.promise.catch(() => undefined).finally(() => inFlight.delete(path));
+
+    inFlight.set(path, created);
+    entry = created;
+  }
+
+  entry.waiters += 1;
+
+  return entry.promise.then(
+    (value) => {
+      release(path);
+      return value as T;
+    },
+    (error: unknown) => {
+      release(path);
+      return asFailure(error);
+    },
+  );
 }
 
 const post = <T>(path: string, body?: unknown) =>

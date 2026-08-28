@@ -52,6 +52,22 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       expect(response.body.status).toBe('ok');
       expect(typeof response.body.hasNetworkLink).toBe('boolean');
     });
+
+    it('tells a loopback caller what the process is holding right now', async () => {
+      // Supertest connects over loopback, which is the only caller these are
+      // answered to — how much memory the shop's Master is holding is not
+      // something the LAN needs told.
+      const response = await request(app).get('/api/health').expect(200);
+
+      expect(response.body.runtime).toMatchObject({
+        rssBytes: expect.any(Number),
+        heapUsedBytes: expect.any(Number),
+        sessions: expect.any(Number),
+        panelSockets: expect.any(Number),
+        adminSockets: expect.any(Number),
+        changeRingSeq: expect.any(Number),
+      });
+    });
   });
 
   describe('the data directory is not served statically', () => {

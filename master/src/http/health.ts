@@ -22,6 +22,9 @@ import { bootStatus } from '../boot-status.js';
 import { config } from '../config/index.js';
 import { appVersion } from '../lib/app-version.js';
 import { hasNetworkLink, listLanInterfaces } from '../lib/network.js';
+import { currentSeq } from '../realtime/change-ring.js';
+import { socketCounts } from '../realtime/hub.js';
+import { sessionCount } from '../services/auth.service.js';
 import { releaseDirFor } from '../services/update.service.js';
 
 /**
@@ -37,12 +40,27 @@ function isLoopback(req: Request): boolean {
   return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
 }
 
-function localOnly(req: Request): Pick<PanelHealth, 'dataDir' | 'logFile' | 'installerDir'> {
+function localOnly(
+  req: Request,
+): Pick<PanelHealth, 'dataDir' | 'logFile' | 'installerDir' | 'runtime'> {
   if (!isLoopback(req)) return {};
+
+  const memory = process.memoryUsage();
+
   return {
     dataDir: config.dataDir,
     logFile: process.env.ORDERBOOK_LOG_FILE ?? null,
     installerDir: releaseDirFor('master'),
+    // The figures somebody wants *while* a panel feels slow. Loopback only,
+    // like the paths above: how much memory the shop's Master is holding is
+    // not something the LAN needs told.
+    runtime: {
+      rssBytes: memory.rss,
+      heapUsedBytes: memory.heapUsed,
+      sessions: sessionCount(),
+      changeRingSeq: currentSeq(),
+      ...socketCounts(),
+    },
   };
 }
 

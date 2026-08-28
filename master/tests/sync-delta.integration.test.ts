@@ -25,7 +25,7 @@ import { buildDelta } from '../src/services/delta.service.js';
 import * as leads from '../src/services/lead.service.js';
 import { buildSnapshot } from '../src/services/snapshot.service.js';
 import { canRunIntegrationTests } from './helpers/db.js';
-import { resetData, setupDatabase, stageIdByName, teardownDatabase, testActor } from './helpers/fixtures.js';
+import { resetData, setupDatabase, teardownDatabase, testActor } from './helpers/fixtures.js';
 
 let admin: ActorContext;
 
@@ -51,7 +51,6 @@ async function seedLead(partyId: string, productId: string) {
   return leads.createLead(
     {
       partyId,
-      stageId: await stageIdByName('lead', 'New'),
       items: [
         { productId, packaging: 'carton', quantities: [{ colour: 'Ivory', quantity: 3 }] },
       ],

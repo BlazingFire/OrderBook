@@ -335,6 +335,11 @@ export async function changeOwnPassword(
   invalidateSessionsForUser(userId, { except: undefined });
 }
 
+/** How many sign-in sessions this process is holding, for the health route. */
+export function sessionCount(): number {
+  return sessions.size;
+}
+
 export function signOut(token: string | undefined): void {
   if (token) sessions.delete(token);
 }

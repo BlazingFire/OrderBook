@@ -105,4 +105,23 @@ export interface PanelHealth {
   dataDir?: string;
   logFile?: string | null;
   installerDir?: string;
+  /**
+   * What the process is holding right now. Loopback only, like the paths above.
+   *
+   * Here rather than in a log because these are the figures somebody wants
+   * *while* a panel feels slow, and a log tells them what it was holding an
+   * hour ago. Optional so an older panel answering this route still parses.
+   */
+  runtime?: PanelRuntimeHealth;
+}
+
+export interface PanelRuntimeHealth {
+  rssBytes: number;
+  heapUsedBytes: number;
+  /** In-memory sign-in sessions. Master only; 0 on the Office panel. */
+  sessions: number;
+  panelSockets: number;
+  adminSockets: number;
+  /** How many changes this run of the Master has published. */
+  changeRingSeq: number;
 }

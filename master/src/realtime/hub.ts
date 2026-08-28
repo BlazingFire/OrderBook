@@ -34,7 +34,6 @@ import {
   partyIdOfChange,
 } from './fan-out.js';
 import * as partyAccessRepo from '../repositories/party-access.repository.js';
-import { MAX_SOURCE_BYTES } from '../domain/images.js';
 import { AppError, ForbiddenError, toErrorMessage } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import { setPanelLink, type PanelRequest } from './panel-link.js';
@@ -80,6 +79,19 @@ type PanelSocket = Socket<ClientToServerEvents, ServerToClientEvents, never, Soc
  */
 const panelSockets = new Map<string, PanelSocket>();
 
+/**
+ * Admin browser sockets currently joined, counted here rather than asked of
+ * Socket.IO: `fetchSockets()` is async and the health route answers
+ * synchronously, and a figure a person reads while a panel feels slow is not
+ * worth an await.
+ */
+let adminSocketCount = 0;
+
+/** For the health route. Zero before the hub starts, which is honest. */
+export function socketCounts(): { panelSockets: number; adminSockets: number } {
+  return { panelSockets: panelSockets.size, adminSockets: adminSocketCount };
+}
+
 /** How long the Master waits for a panel to answer an administrative request. */
 const PANEL_REQUEST_TIMEOUT_MS = 20_000;
 
@@ -93,10 +105,24 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
     // Same-origin for the Master's own UI; Office Panel servers connect from
     // another host on the LAN, so their origin is allowed explicitly.
     cors: { origin: true, credentials: true },
-    // Default is 1 MB, far below a source photo (`domain/images.ts`'s
-    // `MAX_SOURCE_BYTES`) — `product:image:upload`/`image:fetch` carry raw
-    // image bytes as binary attachments over this same command channel.
-    maxHttpBufferSize: MAX_SOURCE_BYTES,
+    /*
+     * This is a ceiling on **every inbound frame**, so it used to be set by the
+     * largest photo anybody might drag in: image bytes rode this same channel
+     * as binary attachments, which meant every sync push and every command was
+     * budgeted for 60 MB.
+     *
+     * Image traffic moved to `/api/panel/...` over HTTP, so this can be what
+     * the command channel actually needs. `flush` batches at
+     * `config.sync.batchSize` mutations and a document asset is capped at
+     * 512 KB, both comfortably inside 4 MB.
+     *
+     * Acks travel server→client and are **not** capped by this, so the
+     * document preview and the report export are unaffected.
+     */
+    maxHttpBufferSize: 4 * 1024 * 1024,
+    // Snapshots and command acks are JSON and compress well; below a kilobyte
+    // the framing costs more than it saves.
+    perMessageDeflate: { threshold: 1024 },
   });
 
   io.use(async (socket, next) => {
@@ -242,6 +268,11 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
     }
 
     await socket.join(ROOM_MASTER_ADMINS);
+    adminSocketCount += 1;
+    socket.on('disconnect', () => {
+      adminSocketCount = Math.max(0, adminSocketCount - 1);
+    });
+
     socket.emit('panels:changed', await panelService.listPanelsWithPresence(actor.tenantId));
     socket.emit('dashboard:changed', await dashboardService.getDashboardSummary(actor));
     return;
@@ -355,11 +386,6 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   );
   socket.on('product:delete', (id, ack) => run(ack, (actor) => catalogService.deleteProduct(id, actor)));
 
-  socket.on('product:image:upload', ({ productId, file, crop }, ack) =>
-    run(ack, (actor) =>
-      imageService.uploadImage({ productId, fileBuffer: Buffer.from(file), crop }, actor),
-    ),
-  );
   socket.on('product:image:update', ({ id, input }, ack) =>
     run(ack, (actor) => imageService.updateImageCaption(id, input, actor)),
   );
@@ -367,9 +393,6 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
     run(ack, (actor) => imageService.reorderImages(input, actor)),
   );
   socket.on('product:image:delete', (id, ack) => run(ack, (actor) => imageService.deleteImage(id, actor)));
-  socket.on('image:fetch', ({ imageId, variant }, ack) =>
-    run(ack, (actor) => imageService.imageFileBytes(imageId, variant, actor)),
-  );
 
   socket.on('category:list', (ack) => run(ack, (actor) => catalogService.listCategories(actor)));
 
