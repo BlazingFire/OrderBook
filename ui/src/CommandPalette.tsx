@@ -111,6 +111,10 @@ function CommandPalette({
       .filter((row) => !needle || row.label.toLowerCase().includes(needle));
     // `close` and `keyboard` are stable enough for this list; `term` is what
     // actually changes it.
+    // `close` is a new function every render, so listing it would rebuild this
+    // list every render; it and `keyboard.run` only reach stable targets — a
+    // useState setter and a useCallback([]).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [term, keyboard.panel, keyboard.bindings]);
 
   const recordRows: Row[] = records.hits.map((hit) => ({

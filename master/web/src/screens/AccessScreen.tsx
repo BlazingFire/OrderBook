@@ -1557,7 +1557,10 @@ function RoleEditor({
   /** What the server says is stored, once a conflict has told us. */
   const [baseVersion, setBaseVersion] = useState<number | undefined>(role?.sync.version);
 
-  const rank = (value: RoleTier) => catalogue.tiers.indexOf(value);
+  // `useCallback` rather than a plain function, because `wouldDrop` below lists
+  // it as a dependency: declared in the render body it had a new identity every
+  // render, which made that memo recompute every render and defeat itself.
+  const rank = useCallback((value: RoleTier) => catalogue.tiers.indexOf(value), [catalogue]);
 
   /** Keys the draft holds that the *proposed* tier could not. */
   const wouldDrop = useMemo(() => {
@@ -1565,7 +1568,7 @@ function RoleEditor({
     return [...selected].filter(
       (key) => rank(pendingTier) < rank(catalogue.minimumTier[key] ?? 'office'),
     );
-  }, [pendingTier, selected, catalogue]);
+  }, [pendingTier, selected, catalogue, rank]);
 
   // Save stays disabled until the draft actually differs — and the array is
   // compared sorted, so a reorder is not a change.

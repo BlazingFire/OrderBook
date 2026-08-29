@@ -104,9 +104,29 @@ async function shutdown(reason: string): Promise<void> {
       .catch(() => {});
   }
 
+  /*
+   * End the sockets the HTTP server is still holding, before anything awaits it.
+   *
+   * This has to come first — ahead of `hub.stop()` — because Socket.IO's
+   * `io.close()` closes the *underlying HTTP server* and waits for it too. A
+   * browser keep-alive connection never ends on its own, so that await hung,
+   * and everything after it never ran: the pool stayed open and, on an
+   * installation using the bundled database, **`postgres.stop()` was never
+   * reached**. The shell then hit its ten-second grace period and hard-killed
+   * the process, leaving a cluster listening for the next launch to adopt.
+   */
+  httpServer?.closeAllConnections();
+
   await discovery?.stop().catch(() => {});
   await hub?.stop().catch(() => {});
-  if (httpServer) await new Promise<void>((resolve) => httpServer?.close(() => resolve()));
+  if (httpServer) {
+    const server = httpServer;
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+      // Again, for anything that connected while the teardown above ran.
+      server.closeAllConnections();
+    });
+  }
   await closeDatabase().catch(() => {});
   await postgres?.stop().catch(() => {});
 

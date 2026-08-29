@@ -327,5 +327,8 @@ export function useCommand(commandId: string, run: (() => void) | null): void {
     return () => api.pop(registration);
     // `run` is deliberately absent: its identity changes every render, and the
     // ref above is what carries the current one.
+    // Only the null/non-null flip may re-register: `run` itself lives in the
+    // ref, and re-pushing per render would reorder the stack.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, commandId, run === null]);
 }

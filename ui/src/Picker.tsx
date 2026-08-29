@@ -140,7 +140,8 @@ export function Picker({
     const controller = new AbortController();
     setLoading(true);
 
-    void fetchPageRef.current({ term: settled, include, signal: controller.signal })
+    void fetchPageRef
+      .current({ term: settled, include, signal: controller.signal })
       .then((next) => {
         // The slow answer to "gl" must not overwrite the fast answer to
         // "glazed".
@@ -162,6 +163,7 @@ export function Picker({
      * at most call sites, so depending on them would refetch on every keystroke
      * of an unrelated field on the same form.
      */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, settled, includeKey, fetchPageRef]);
 
   /** Pinned first, then recent, then everything else in the server's order. */
@@ -188,9 +190,7 @@ export function Picker({
   const togglePin = useCallback(
     (id: string) => {
       if (!storageKey) return;
-      const next = pinned.includes(id)
-        ? pinned.filter((entry) => entry !== id)
-        : [...pinned, id];
+      const next = pinned.includes(id) ? pinned.filter((entry) => entry !== id) : [...pinned, id];
       setPinned(next);
       store(`${storageKey}.pinned`, JSON.stringify(next));
     },
@@ -302,9 +302,12 @@ export function Picker({
   const listboxId = `${label.replace(/\s+/g, '-').toLowerCase()}-listbox`;
 
   return (
-    <div className="ob-picker" onBlur={(event) => {
-      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
-    }}>
+    <div
+      className="ob-picker"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
+      }}
+    >
       <Input
         ref={inputRef}
         role="combobox"
@@ -346,7 +349,12 @@ export function Picker({
             <div className="ob-picker-note">{emptyLabel ?? t('picker.empty')}</div>
           )}
 
-          <PickerFooter page={page} loading={loading} onCreate={onCreate} createLabel={createLabel} />
+          <PickerFooter
+            page={page}
+            loading={loading}
+            onCreate={onCreate}
+            createLabel={createLabel}
+          />
         </div>
       )}
     </div>
@@ -376,9 +384,7 @@ function PickerFooter({
     <div className="ob-picker-foot">
       {loading && <span className="ob-small">{t('picker.searching')}</span>}
       {!loading && page.truncated && <span className="ob-small">{t('picker.truncated')}</span>}
-      {page.offline && (
-        <span className="ob-small ob-picker-offline">{t('picker.offline')}</span>
-      )}
+      {page.offline && <span className="ob-small ob-picker-offline">{t('picker.offline')}</span>}
       {onCreate && <span className="ob-small">{createLabel ?? t('picker.create')}</span>}
     </div>
   );

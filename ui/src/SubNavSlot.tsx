@@ -82,6 +82,9 @@ export function SubNavProvider({ children }: { children: ReactNode }) {
     // `version` is the dependency that matters; the ref's contents changed
     // under it.
     () => ({ publish, entries: entriesRef.current }),
+    // `version` is unread on purpose: it is the only signal that the ref's
+    // contents changed, and without it consumers never re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [publish, version],
   );
 

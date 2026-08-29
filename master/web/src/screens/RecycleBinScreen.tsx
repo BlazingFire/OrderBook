@@ -173,6 +173,9 @@ export function RecycleBinScreen({ permissions, revision }: Props) {
     return () => {
       cancelled = true;
     };
+    // `filters` is rebuilt every render; the three values it reads are listed
+    // individually, so depending on it would refetch in a loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canView, type, search, deletedBy, revision, refresh]);
 
   useEffect(() => {

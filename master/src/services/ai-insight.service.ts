@@ -81,8 +81,17 @@ export async function listInsights(actor: ActorContext): Promise<Insight[]> {
       insights.push({
         code: 'order.unusualSize',
         severity: 'info',
-        subjectKind: 'party',
-        subjectId: row.partyId,
+        /*
+         * The **order**, not the party it belongs to.
+         *
+         * One party can place two unusually large orders in the same thirty
+         * days, and a party-keyed subject made those two cards identical to
+         * React — the list keys on `code:subjectId`, so it collapsed them with
+         * a duplicate-key warning and showed one. It is also the truer subject:
+         * the thing worth opening is the order.
+         */
+        subjectKind: 'order',
+        subjectId: row.orderId,
         figures: {
           party: row.partyName,
           value: row.value,

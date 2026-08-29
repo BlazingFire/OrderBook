@@ -181,6 +181,7 @@ export function ProductDrawer({
     setLiveProduct(editing);
     // Keyed on the record's identity, not the record: an unrelated field
     // arriving through the event stream must not wipe a half-typed draft.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editing?.id]);
 
   const fields = useRef<HTMLDivElement>(null);

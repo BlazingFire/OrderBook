@@ -41,7 +41,16 @@ async function shutdown(reason: string): Promise<void> {
   }
 
   masterConnection.disconnect();
-  if (httpServer) await new Promise<void>((resolve) => httpServer?.close(() => resolve()));
+  if (httpServer) {
+    // See `master/src/index.ts`: `close()` waits for open connections, and a
+    // browser keep-alive never ends, so the callback needs the sockets ended
+    // for it to fire at all.
+    const server = httpServer;
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+      server.closeAllConnections();
+    });
+  }
 
   log.info('Shutdown complete');
   process.exit(0);
@@ -100,7 +109,6 @@ async function main(): Promise<void> {
   } else {
     log.info('Not paired yet — open the panel in a browser to connect to a Master');
   }
-
 }
 
 main().catch((error) => {

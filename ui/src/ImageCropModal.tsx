@@ -138,7 +138,9 @@ export function ImageCropModal({
   useEffect(() => {
     if (!img || boundsPx.w === 0) return;
     setCrop(centeredRect(boundsPx.w, boundsPx.h, aspect, img.naturalWidth / img.naturalHeight));
-  }, [img, rotationStep, fineRotation, aspect]);
+    // `rotationStep` and `fineRotation` stay: a 180° flip changes them without
+    // changing the bounds, and the rect still has to be re-centred.
+  }, [img, rotationStep, fineRotation, aspect, boundsPx.w, boundsPx.h]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

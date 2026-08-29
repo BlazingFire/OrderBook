@@ -134,7 +134,7 @@ export interface AiHardware {
 export interface Insight {
   code: InsightCode;
   severity: 'info' | 'warn';
-  subjectKind: 'product' | 'party' | 'lead' | null;
+  subjectKind: 'product' | 'party' | 'lead' | 'order' | null;
   subjectId: string | null;
   /** Named numbers, so the card renders with or without a model. */
   figures: Record<string, number | string>;
