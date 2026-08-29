@@ -161,6 +161,29 @@ describe.skipIf(!canRunIntegrationTests)('the audit trail', () => {
       expect(entries.some((entry) => entry.action === 'sign_in_failed')).toBe(true);
     });
 
+    it('tells a wrong password on a real account apart from an unknown name', async () => {
+      const role = await roleService.createRole(
+        { name: 'Owner', tier: 'admin', permissions: allPermissions() },
+        actor,
+      );
+      const { user } = await userService.createUser(
+        { username: 'meera', displayName: 'Meera Rao', roleId: role.id },
+        actor,
+      );
+
+      await authService.signIn('meera', 'not-her-password').catch(() => undefined);
+
+      // The whole point of the flag, and it had never once been right: the
+      // failure branch passed no user id, so every wrong password against a
+      // real account was filed as an unknown username, with a null actor and
+      // the typed name as the entity. Password spraying and one person
+      // mistyping their own password looked identical in the trail.
+      const failure = (await signInEntries()).find((row) => row.action === 'sign_in_failed');
+      expect(failure).toMatchObject({ entity_id: user.id, actor_id: user.id });
+      expect(failure?.details).toMatchObject({ username: 'meera' });
+      expect(failure?.details).not.toHaveProperty('unknownUsername');
+    });
+
     it('names the machine an attempt came from', async () => {
       await authService.signIn('nobody-at-all', 'guess', 'K7M2QX').catch(() => undefined);
 

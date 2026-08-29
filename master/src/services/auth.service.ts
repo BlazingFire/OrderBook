@@ -78,9 +78,16 @@ export async function signIn(
 
   if (!credential || !matches) {
     recordFailure(key);
-    await recordSignInAttempt(credential?.tenantId ?? null, key, false, undefined, source);
-    // Deliberately generic. "No such user" versus "wrong password" is a
-    // username oracle.
+    // `credential?.id`, not `undefined`: the trail records which of the two
+    // this was, and passing nothing here filed every wrong password against a
+    // real account as an unknown username — the one distinction the entry
+    // exists to make. It also left `actorId` null and the entity id set to the
+    // typed name, so a person's failed attempts never joined up with the rest
+    // of their history.
+    await recordSignInAttempt(credential?.tenantId ?? null, key, false, credential?.id, source);
+    // The *response* stays deliberately generic. "No such user" versus "wrong
+    // password" is a username oracle for the caller; the auditor is not the
+    // caller.
     throw new UnauthorizedError('error.unauthorized.signInFailed');
   }
 
