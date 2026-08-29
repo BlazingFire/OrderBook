@@ -1119,7 +1119,8 @@ export const EN_MESSAGES = {
   'firstRun.choose.back': 'Back',
   'firstRun.choose.newSite': 'Set up new site',
   'firstRun.dataDir.title': 'Where this Master keeps its data',
-  'firstRun.dataDir.help': 'Choose the drive now, while it is still empty. Afterwards, moving it is a backup and a restore.',
+  'firstRun.dataDir.help':
+    'Choose the drive now, while it is still empty. Afterwards, moving it is a backup and a restore.',
   'firstRun.dataDir.change': 'Choose another folder and restart',
   'firstRun.dataDir.failed': 'Could not change the folder',
   'firstRun.choose.restore': 'Restore from backup',
@@ -2215,12 +2216,16 @@ export const EN_MESSAGES = {
   'signin.chooseProfile': 'Who is using this panel?',
   'signin.notYou': 'Not you?',
   'signin.forgetProfile': 'Remove {name} from this panel',
+  'signin.forgetConfirm':
+    'Remove {name} from this panel? While the Master Panel is unreachable they will not be able to sign in here until it is back.',
+  'signin.forgetFailed': 'Could not remove that person from this panel',
   'storage.title': 'Where this panel keeps its files',
   'storage.change': 'Change',
   'storage.folder': 'Folder',
   'storage.browse': 'Browse…',
   'storage.move': 'Move the files here',
-  'storage.help': 'Everything this panel has saved is copied to the new folder. Queued work that has not reached the Master goes with it.',
+  'storage.help':
+    'Everything this panel has saved is copied to the new folder. Queued work that has not reached the Master goes with it.',
   'storage.moved': 'Moved {count} files.',
   'storage.failed': 'Could not move this panel’s files',
   'signin.username': 'Username',

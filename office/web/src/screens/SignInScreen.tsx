@@ -83,9 +83,25 @@ export function SignInScreen({ connection, onSignedIn }: Props) {
   }
 
   async function forget(profile: PanelProfile) {
-    // Their verifier and cached picture go with them, which is the point when
-    // somebody leaves. They can still sign in again with a username.
-    await api.forgetProfile(profile.userId).catch(() => undefined);
+    // Asked, and asked with the consequence named.
+    //
+    // The × sits a few pixels from the button that picks a face, on a machine
+    // people use in a hurry. Removing somebody takes their offline verifier
+    // with them, so while the Master is unreachable — the state this list
+    // exists for — the person removed cannot sign in here at all until it
+    // comes back. That is right when somebody leaves and wrong as a slip, and
+    // nothing else on this screen can undo it.
+    if (!window.confirm(t('signin.forgetConfirm', { name: profile.displayName }))) return;
+
+    try {
+      await api.forgetProfile(profile.userId);
+    } catch (caught) {
+      // The row used to disappear whatever happened, so a failed delete left
+      // the list claiming a removal the panel had not made.
+      setError(caught instanceof Error ? caught.message : t('signin.forgetFailed'));
+      return;
+    }
+
     setProfiles((current) => current.filter((entry) => entry.userId !== profile.userId));
     if (chosen?.userId === profile.userId) setChosen(null);
   }

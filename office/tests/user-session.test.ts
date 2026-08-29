@@ -93,7 +93,10 @@ const MASTER_USER = {
 };
 
 /** A successful online sign-in, which is what leaves a verifier behind. */
-async function signInOnline(password = 'correct-horse', fingerprint = 'fp-original'): Promise<void> {
+async function signInOnline(
+  password = 'correct-horse',
+  fingerprint = 'fp-original',
+): Promise<void> {
   link.state = 'connected';
   link.signIn.mockResolvedValue({
     token: 'token-abc',
@@ -256,6 +259,39 @@ describe('signing in on an Office Panel', () => {
     link.state = 'disconnected';
     const session = await userSession.signIn('sunita', 'correct-horse');
     expect(session.offline).toBe(true);
+  });
+
+  it('lets a reused username belong to the new person, not the one who left', async () => {
+    // The Master's uniqueness index is partial on live rows, on purpose, so a
+    // username freed by somebody leaving can be given to the next person.
+    await signInOnline('her-old-password');
+    userSession.resetSession();
+
+    link.state = 'connected';
+    link.signIn.mockResolvedValue({
+      token: 'token-def',
+      user: { ...MASTER_USER, id: 'US000000000D', displayName: 'Sunita Patel' },
+      credentialFingerprint: 'fp-new-hire',
+    });
+    await userSession.signIn('sunita', 'his-new-password');
+    userSession.resetSession();
+
+    link.state = 'disconnected';
+
+    // The store resolves a sign-in by username, and it kept both records —
+    // the leaver's first, so the leaver's is the one it found. The new hire was
+    // refused against a verifier that was never hers.
+    const session = await userSession.signIn('sunita', 'his-new-password');
+    expect(session.offline).toBe(true);
+    expect(session.userId).toBe('US000000000D');
+
+    // And the worse half: the person the company deleted could sign in here by
+    // pulling the network cable.
+    userSession.resetSession();
+    attempts.resetSignInAttempts();
+    await expect(userSession.signIn('sunita', 'her-old-password')).rejects.toThrow(
+      /Sign-in failed/,
+    );
   });
 
   describe('throttling guesses', () => {

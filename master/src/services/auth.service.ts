@@ -46,6 +46,29 @@ interface Session {
 
 const sessions = new Map<string, Session>();
 
+/**
+ * Tokens whose session was destroyed *because the account lost access*, and
+ * when that session would have expired on its own.
+ *
+ * Without this, "revoked" was inferred from the token still being in
+ * `sessions` while no longer resolving — and every action that revokes access
+ * calls `invalidateSessionsForUser`, which removes it. The evidence was
+ * destroyed before anything asked, so the answer was always `expired`, and
+ * `revoked` was unreachable in practice.
+ *
+ * That mattered off this machine: only `revoked` tells an Office panel to
+ * destroy the offline verifier it holds for that person. Reported as `expired`,
+ * a panel keeps it — so somebody the company had just deactivated could go on
+ * signing in there by pulling the network cable, which is the one hole the
+ * offline path is not allowed to open. A reconnect's `auth:reconcile` would
+ * eventually catch it, but a panel that never drops its socket never
+ * reconnects.
+ *
+ * Entries are bounded by the session lifetime they inherit: past that, the
+ * token could not have been used anyway.
+ */
+const revokedTokens = new Map<string, number>();
+
 /** Failed attempts per username, for the lockout below. */
 const failures = new Map<string, { count: number; lockedUntil: number; lastFailureAt: number }>();
 
@@ -74,7 +97,10 @@ export async function signIn(
   assertNotLockedOut(key);
 
   const credential = await userRepo.readCredentialForVerification(key);
-  const { matches, needsUpgrade } = await verifyPassword(password, credential?.passwordHash ?? null);
+  const { matches, needsUpgrade } = await verifyPassword(
+    password,
+    credential?.passwordHash ?? null,
+  );
 
   if (!credential || !matches) {
     recordFailure(key);
@@ -108,6 +134,11 @@ export async function signIn(
 
   const permissionSet = await roleRepo.permissionSetForRole(credential.tenantId, credential.roleId);
   if (!permissionSet) {
+    // The last terminal branch that wrote nothing. Somebody holding the right
+    // password and getting nowhere is exactly what an administrator is trying
+    // to see when they open the trail to find out why a person cannot sign in,
+    // and this was the one refusal that left no trace of itself.
+    await recordSignInAttempt(credential.tenantId, key, false, credential.id, source);
     throw new UnauthorizedError('error.unauthorized.noRole');
   }
 
@@ -132,7 +163,8 @@ export async function signIn(
   await recordSignInAttempt(credential.tenantId, key, true, credential.id, source);
 
   const token = randomBytes(32).toString('base64url');
-  const roleVersion = (await roleRepo.roleVersion(credential.tenantId, credential.roleId ?? '')) ?? 0;
+  const roleVersion =
+    (await roleRepo.roleVersion(credential.tenantId, credential.roleId ?? '')) ?? 0;
 
   sessions.set(token, {
     userId: credential.id,
@@ -249,9 +281,7 @@ export async function resolveSessionDetailed(
   { status: 'active'; user: User } | { status: 'rejected'; reason: 'revoked' | 'expired' }
 > {
   const resolution = await resolveSessionDetailedWithPermissions(token);
-  return resolution.status === 'active'
-    ? { status: 'active', user: resolution.user }
-    : resolution;
+  return resolution.status === 'active' ? { status: 'active', user: resolution.user } : resolution;
 }
 
 /** `resolveSessionDetailed`, carrying the permission set the same query found. */
@@ -263,9 +293,13 @@ export async function resolveSessionDetailedWithPermissions(
 > {
   const session = tokenSession(token);
 
-  // Not in the map: expired, or this process restarted. Not a statement about
-  // the account, so it must not be reported as one.
-  if (!session) return { status: 'rejected', reason: 'expired' };
+  // Not in the map: revoked a moment ago, expired, or this process restarted.
+  // Only the first is a statement about the account, and it is a statement we
+  // have to have kept — by the time anyone asks, the session it would have been
+  // read from is gone.
+  if (!session) {
+    return { status: 'rejected', reason: wasRevoked(token) ? 'revoked' : 'expired' };
+  }
 
   const resolved = await resolveSessionWithPermissions(token);
   if (resolved) return { status: 'active', ...resolved };
@@ -351,14 +385,42 @@ export function signOut(token: string | undefined): void {
   if (token) sessions.delete(token);
 }
 
-/** Drop every session for a user — after a reset, a deactivation, or a delete. */
+/**
+ * Drop every session for a user — after a reset, a deactivation, or a delete.
+ *
+ * `reason` is not decoration. It travels to the Office panels, and only
+ * `revoked` licenses one to destroy the offline verifier it is holding. Pass it
+ * when the account itself lost access — deactivated, deleted, moved off its
+ * role. Leave it `expired` for a password change: the verifier is stale rather
+ * than illegitimate, and `auth:reconcile` retires it by credential fingerprint,
+ * which is the mechanism built for exactly that.
+ */
 export function invalidateSessionsForUser(
   userId: string,
-  options: { except?: string } = {},
+  options: { except?: string; reason?: 'revoked' | 'expired' } = {},
 ): void {
   for (const [token, session] of sessions) {
-    if (session.userId === userId && token !== options.except) sessions.delete(token);
+    if (session.userId !== userId || token === options.except) continue;
+
+    sessions.delete(token);
+    if (options.reason === 'revoked') revokedTokens.set(token, session.expiresAt);
   }
+}
+
+/**
+ * Was this token's session destroyed because the account lost access?
+ *
+ * Prunes on the way past, in the style of the failure records above: an entry
+ * older than the session it replaced answers nothing a live caller could act
+ * on, because the token had expired regardless.
+ */
+function wasRevoked(token: string | undefined): boolean {
+  const now = Date.now();
+  for (const [entry, expiresAt] of revokedTokens) {
+    if (expiresAt <= now) revokedTokens.delete(entry);
+  }
+
+  return token !== undefined && revokedTokens.has(token);
 }
 
 /**
@@ -369,6 +431,7 @@ export function invalidateSessionsForUser(
  */
 export function resetAuthState(): void {
   sessions.clear();
+  revokedTokens.clear();
   failures.clear();
   clearRecentReauth();
 }

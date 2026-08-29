@@ -1599,10 +1599,15 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'firstRun.choose.newSite': 'Set up new site',
   // TODO(i18n-hi)
-  'firstRun.dataDir.title': "Where this Master keeps its data",
-  'firstRun.dataDir.help': "Choose the drive now, while it is still empty. Afterwards, moving it is a backup and a restore.",
-  'firstRun.dataDir.change': "Choose another folder and restart",
-  'firstRun.dataDir.failed': "Could not change the folder",
+  // TODO(i18n-hi)
+  'firstRun.dataDir.title': 'Where this Master keeps its data',
+  // TODO(i18n-hi)
+  'firstRun.dataDir.help':
+    'Choose the drive now, while it is still empty. Afterwards, moving it is a backup and a restore.',
+  // TODO(i18n-hi)
+  'firstRun.dataDir.change': 'Choose another folder and restart',
+  // TODO(i18n-hi)
+  'firstRun.dataDir.failed': 'Could not change the folder',
   'firstRun.choose.restore': 'Restore from backup',
   // TODO(i18n-hi)
   'firstRun.error.default': 'Setup failed',
@@ -3506,17 +3511,34 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'signin.subtitleFallback': 'Sign in to continue',
   // TODO(i18n-hi)
-  'signin.chooseProfile': "Who is using this panel?",
-  'signin.notYou': "Not you?",
-  'signin.forgetProfile': "Remove {name} from this panel",
-  'storage.title': "Where this panel keeps its files",
-  'storage.change': "Change",
-  'storage.folder': "Folder",
-  'storage.browse': "Browse…",
-  'storage.move': "Move the files here",
-  'storage.help': "Everything this panel has saved is copied to the new folder. Queued work that has not reached the Master goes with it.",
-  'storage.moved': "Moved {count} files.",
-  'storage.failed': "Could not move this panel’s files",
+  // TODO(i18n-hi)
+  'signin.chooseProfile': 'Who is using this panel?',
+  // TODO(i18n-hi)
+  'signin.notYou': 'Not you?',
+  // TODO(i18n-hi)
+  'signin.forgetProfile': 'Remove {name} from this panel',
+  // TODO(i18n-hi)
+  'signin.forgetConfirm':
+    'Remove {name} from this panel? While the Master Panel is unreachable they will not be able to sign in here until it is back.',
+  // TODO(i18n-hi)
+  'signin.forgetFailed': 'Could not remove that person from this panel',
+  // TODO(i18n-hi)
+  'storage.title': 'Where this panel keeps its files',
+  // TODO(i18n-hi)
+  'storage.change': 'Change',
+  // TODO(i18n-hi)
+  'storage.folder': 'Folder',
+  // TODO(i18n-hi)
+  'storage.browse': 'Browse…',
+  // TODO(i18n-hi)
+  'storage.move': 'Move the files here',
+  // TODO(i18n-hi)
+  'storage.help':
+    'Everything this panel has saved is copied to the new folder. Queued work that has not reached the Master goes with it.',
+  // TODO(i18n-hi)
+  'storage.moved': 'Moved {count} files.',
+  // TODO(i18n-hi)
+  'storage.failed': 'Could not move this panel’s files',
   'signin.username': 'Username',
   // TODO(i18n-hi)
   'splash.error.timeout': 'The server did not answer in time.',

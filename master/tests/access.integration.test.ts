@@ -129,7 +129,11 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
 
     it('a management-tier role can now be saved holding fields.manage', async () => {
       const role = await roleService.createRole(
-        { name: 'Field Curator', tier: 'management', permissions: ['fields.view', 'fields.manage'] },
+        {
+          name: 'Field Curator',
+          tier: 'management',
+          permissions: ['fields.view', 'fields.manage'],
+        },
         admin,
       );
       expect(role.permissions).toContain('fields.manage');
@@ -210,9 +214,7 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
       const administrator = roles.find((role) => role.isSystem);
       expect(administrator).toBeDefined();
 
-      await expect(roleService.deleteRole(administrator!.id, admin)).rejects.toThrow(
-        /system role/,
-      );
+      await expect(roleService.deleteRole(administrator!.id, admin)).rejects.toThrow(/system role/);
       await expect(
         roleService.updateRole(
           administrator!.id,
@@ -238,11 +240,13 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
         admin,
       );
 
-      await expect(roleService.deleteRole(dispatch.id, admin)).rejects.toThrow(
-        /still assigned/,
-      );
+      await expect(roleService.deleteRole(dispatch.id, admin)).rejects.toThrow(/still assigned/);
 
-      await userService.updateUser(user.id, { roleId: packing.id, expectedVersion: user.sync.version }, admin);
+      await userService.updateUser(
+        user.id,
+        { roleId: packing.id, expectedVersion: user.sync.version },
+        admin,
+      );
       await expect(roleService.deleteRole(dispatch.id, admin)).resolves.toBeDefined();
     });
 
@@ -335,7 +339,10 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
 
       // Somebody who left and came back must be re-creatable.
       await expect(
-        userService.createUser({ username: 'imran', displayName: 'Imran Q', roleId: role.id }, admin),
+        userService.createUser(
+          { username: 'imran', displayName: 'Imran Q', roleId: role.id },
+          admin,
+        ),
       ).resolves.toBeDefined();
     });
   });
@@ -353,7 +360,11 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
       const { user } = await seedSecondAdmin();
 
       await expect(
-        userService.updateUser(user.id, { isActive: false, expectedVersion: user.sync.version }, admin),
+        userService.updateUser(
+          user.id,
+          { isActive: false, expectedVersion: user.sync.version },
+          admin,
+        ),
       ).rejects.toThrow(/at least one active administrator/i);
     });
 
@@ -370,7 +381,11 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
       const office = await officeRole();
 
       await expect(
-        userService.updateUser(user.id, { roleId: office.id, expectedVersion: user.sync.version }, admin),
+        userService.updateUser(
+          user.id,
+          { roleId: office.id, expectedVersion: user.sync.version },
+          admin,
+        ),
       ).rejects.toThrow(/at least one active administrator/i);
     });
 
@@ -383,7 +398,11 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
       );
 
       await expect(
-        userService.updateUser(first.id, { isActive: false, expectedVersion: first.sync.version }, admin),
+        userService.updateUser(
+          first.id,
+          { isActive: false, expectedVersion: first.sync.version },
+          admin,
+        ),
       ).resolves.toMatchObject({ isActive: false });
     });
 
@@ -435,7 +454,9 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
     it('answers a wrong password and an unknown user identically', async () => {
       await seedSignIn();
 
-      const wrongPassword = await authService.signIn('ramesh', 'nope').catch((e: Error) => e.message);
+      const wrongPassword = await authService
+        .signIn('ramesh', 'nope')
+        .catch((e: Error) => e.message);
       const unknownUser = await authService.signIn('nobody', 'nope').catch((e: Error) => e.message);
 
       // Anything else is a username oracle.
@@ -449,7 +470,11 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
         { username: 'spare', displayName: 'Spare', roleId: (await adminRole('Spare 2')).id },
         admin,
       );
-      await userService.updateUser(user.id, { isActive: false, expectedVersion: user.sync.version }, admin);
+      await userService.updateUser(
+        user.id,
+        { isActive: false, expectedVersion: user.sync.version },
+        admin,
+      );
 
       await expect(authService.signIn('ramesh', password)).rejects.toThrow(/deactivated/i);
     });
@@ -484,6 +509,49 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
       roleRepo.invalidateRoleCache();
 
       expect(await authService.resolveSession(token)).toBeNull();
+    });
+
+    it('says a deactivation was a revocation, not an expiry', async () => {
+      const { user, password } = await seedSignIn();
+      await userService.createUser(
+        { username: 'spare', displayName: 'Spare', roleId: (await adminRole('Spare 2')).id },
+        admin,
+      );
+      const { token } = await authService.signIn('ramesh', password);
+
+      await userService.updateUser(
+        user.id,
+        { isActive: false, expectedVersion: user.sync.version },
+        admin,
+      );
+
+      // This answer leaves the machine. Only `revoked` tells an Office panel to
+      // destroy the offline verifier it holds, and the reason was read from the
+      // session map *after* the deactivation had emptied it — so it always said
+      // `expired`, and a panel kept letting the deactivated person in whenever
+      // the network was down.
+      const resolution = await authService.resolveSessionDetailed(token);
+      expect(resolution).toEqual({ status: 'rejected', reason: 'revoked' });
+    });
+
+    it('says a password reset was an expiry, so the panel keeps the person', async () => {
+      const { user, password } = await seedSignIn();
+      const { token } = await authService.signIn('ramesh', password);
+
+      await userService.resetPassword({ userId: user.id, password: 'a-new-password' }, admin);
+
+      // The person still works here. Their panel's record is stale rather than
+      // illegitimate, and `auth:reconcile` retires it by credential fingerprint
+      // — telling the panel to destroy it here would take offline sign-in away
+      // from somebody who simply changed their password.
+      const resolution = await authService.resolveSessionDetailed(token);
+      expect(resolution).toEqual({ status: 'rejected', reason: 'expired' });
+    });
+
+    it('says an unknown token expired rather than accusing the account', async () => {
+      // A Master restart empties the map, so every live token reads as unknown.
+      const resolution = await authService.resolveSessionDetailed('never-issued-by-anyone');
+      expect(resolution).toEqual({ status: 'rejected', reason: 'expired' });
     });
 
     it('upgrades a legacy bcrypt hash to scrypt on the next successful sign-in', async () => {

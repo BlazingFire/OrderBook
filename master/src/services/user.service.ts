@@ -264,8 +264,13 @@ export async function updateUser(
     );
   });
 
-  // A changed role or a deactivation must not survive in an open session.
-  invalidateSessionsForUser(id);
+  // A changed role or a deactivation must not survive in an open session — and
+  // those two are revocations, which is what tells an Office panel to destroy
+  // the offline verifier it holds. A rename is not: the person still works
+  // here, so their panel keeps them.
+  invalidateSessionsForUser(id, {
+    reason: patch.is_active === false || patch.role_id !== undefined ? 'revoked' : 'expired',
+  });
 
   const user = await userRepo.findById(actor.tenantId, id);
   if (!user) throw new NotFoundError('User');
@@ -309,7 +314,7 @@ export async function deleteUser(id: string, actor: ActorContext): Promise<User>
     );
   });
 
-  invalidateSessionsForUser(id);
+  invalidateSessionsForUser(id, { reason: 'revoked' });
 
   const user = await userRepo.findById(actor.tenantId, id, { includeDeleted: true });
   if (!user) throw new NotFoundError('User');
@@ -427,7 +432,12 @@ export async function resetPassword(
   await rememberPassword(actor.tenantId, input.userId, password, actorUserId(actor));
 
   // Whoever was signed in as them is signed out; the old password is gone.
-  invalidateSessionsForUser(input.userId);
+  //
+  // Not a revocation: the person still works here, so their Office panels keep
+  // the record that lets them sign in offline. What that record now holds is a
+  // verifier for the old password, and `auth:reconcile` retires it on the next
+  // reconnect by credential fingerprint — the mechanism built for this.
+  invalidateSessionsForUser(input.userId, { reason: 'expired' });
 
   return { userId: input.userId, username: existing.username, password };
 }

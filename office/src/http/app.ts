@@ -202,12 +202,10 @@ export function createApp(): Express {
       typeof pairingPassword !== 'string' ||
       !pairingPassword
     ) {
-      res
-        .status(400)
-        .json({
-          error: 'invalid_request',
-          message: 'Enter the Master address and pairing password',
-        });
+      res.status(400).json({
+        error: 'invalid_request',
+        message: 'Enter the Master address and pairing password',
+      });
       return;
     }
 
@@ -277,7 +275,8 @@ export function createApp(): Express {
   app.post('/api/storage/path', (req, res) => {
     void (async () => {
       const body: unknown = req.body;
-      const target = typeof body === 'object' && body !== null ? (body as { path?: unknown }).path : undefined;
+      const target =
+        typeof body === 'object' && body !== null ? (body as { path?: unknown }).path : undefined;
 
       if (typeof target !== 'string' || !target.trim()) {
         res.status(400).json({ error: 'invalid_request', message: 'Choose a folder first' });
@@ -349,8 +348,13 @@ export function createApp(): Express {
    *
    * Not merely cosmetic: forgetting a person also drops the offline verifier
    * and the cached permissions this panel was holding for them, which is what
-   * you want when somebody leaves. It cannot be used to lock anyone out — they
-   * sign in again with a username and password as they did the first time.
+   * you want when somebody leaves.
+   *
+   * It **can** lock somebody out, and the screen says so before it calls this.
+   * With the Master reachable they simply sign in again with a username and a
+   * password; with it unreachable — the state the face list exists for — the
+   * verifier this drops is the only thing that would have let them in, and
+   * nothing on the panel can put it back until the Master answers again.
    */
   app.delete('/api/session/profiles/:userId', (req, res) => {
     void (async () => {
@@ -1215,24 +1219,20 @@ export function createApp(): Express {
 }
 
 function notFoundHandler(_req: Request, res: Response): void {
-  res
-    .status(404)
-    .json({
-      error: 'not_found',
-      message: 'Endpoint not found',
-      messageKey: 'error.generic.notFound',
-    });
+  res.status(404).json({
+    error: 'not_found',
+    message: 'Endpoint not found',
+    messageKey: 'error.generic.notFound',
+  });
 }
 
 function errorHandler(error: unknown, _req: Request, res: Response, _next: NextFunction): void {
   log.error('Unhandled request error', error);
-  res
-    .status(500)
-    .json({
-      error: 'internal_error',
-      message: 'Something went wrong',
-      messageKey: 'error.generic.internal',
-    });
+  res.status(500).json({
+    error: 'internal_error',
+    message: 'Something went wrong',
+    messageKey: 'error.generic.internal',
+  });
 }
 
 /**

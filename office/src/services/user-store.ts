@@ -102,7 +102,13 @@ export async function findByUsername(username: string): Promise<KnownUser | null
   const file = await load();
   const key = username.trim().toLowerCase();
 
-  return file.users.find((user) => user.username === key) ?? null;
+  // The **last** match, not the first. `remember` keeps one record per username
+  // so there should never be two, but a file written before it did will still
+  // hold the pair — and there the newest is the only defensible answer, because
+  // it came from the most recent successful sign-in against the Master.
+  // `findLast` would say this in one word, but it needs a newer `lib` than the
+  // package targets and this list is a handful of people.
+  return [...file.users].reverse().find((user) => user.username === key) ?? null;
 }
 
 export async function findByUserId(userId: string): Promise<KnownUser | null> {
@@ -115,12 +121,26 @@ export async function listKnown(): Promise<KnownUser[]> {
   return [...(await load()).users];
 }
 
-/** Insert or replace a person's record after a successful online sign-in. */
+/**
+ * Insert or replace a person's record after a successful online sign-in.
+ *
+ * Replaces on **username as well as user id**, which is not the same thing: the
+ * Master's uniqueness index is partial on live rows, deliberately, so that a
+ * username freed by somebody leaving can be given to the next person. Two
+ * records could therefore hold one username under different ids, and this file
+ * resolves a sign-in by username — so the leaver's record shadowed the new
+ * hire's. The new hire was refused offline against a verifier that was never
+ * hers, and the person the company had deleted could still sign in here by
+ * pulling the network cable. A panel holds at most one record per name.
+ */
 export async function remember(user: KnownUser): Promise<void> {
   const file = await load();
-  const others = file.users.filter((existing) => existing.userId !== user.userId);
+  const username = user.username.trim().toLowerCase();
+  const others = file.users.filter(
+    (existing) => existing.userId !== user.userId && existing.username !== username,
+  );
 
-  cache = { users: [...others, { ...user, username: user.username.trim().toLowerCase() }] };
+  cache = { users: [...others, { ...user, username }] };
   await persist(cache);
 }
 
