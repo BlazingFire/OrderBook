@@ -201,7 +201,18 @@ line count. The text half is complete and tested.
 
 ### Owed work
 
-- **A manual pass on a signed-in panel.** Stage 5's keep-alive is covered by
+- ~~A manual pass on a signed-in panel.~~ **Done 2026-08-29**, in a real
+  browser and in both Electron shells. It found a `rules-of-hooks` violation
+  that made **both panels unusable the moment anybody signed in**, a toast
+  context value that could loop a screen's loader, eight Activity-log entries
+  rendering a literal `{name}`, two duplicate React keys, and a shutdown that
+  hung and orphaned the bundled PostgreSQL cluster. All fixed.
+  `eslint-plugin-react-hooks` is installed now, which is what should have
+  caught the first one. **Still owed from this item:** the responsive gate —
+  1024x768, 1366x768, 1920x1080 and 3840x2160, each at 79% / 100% / 157%,
+  sidebar in all three modes. The browser pass ran at one size only. The
+  original wording follows, for the detail it carries.
+- **A manual pass on a signed-in panel (superseded).** Stage 5's keep-alive is covered by
   five `ui/tests/screen-host.test.tsx` cases but was never exercised in a
   running panel — the Master needed credentials the session did not have (the
   ones in older session notes return 401) and the Office panel was unpaired,
@@ -209,7 +220,14 @@ line count. The text half is complete and tested.
   filters, scroll position, open drawers and half-typed forms should survive a
   round trip; Escape should close the *visible* overlay, not a hidden screen's;
   Reset should clear exactly one screen.
-- **A manual pass on the keyboard system.** `useOverlay`'s Escape moved from
+- ~~A manual pass on the keyboard system.~~ **Done 2026-08-29**: verified on
+  Party access, where a Combobox sits inside a Modal. The first Escape closed
+  the listbox and left the dialog open (`aria-expanded` false, one
+  `[role="dialog"]` still present); the second closed the dialog. Alt+2/3/1
+  navigate, the palette lists every chord in the Master's own sidebar order,
+  and F1 in the Electron window reaches the renderer and opens the shortcut
+  sheet. Original wording follows.
+- **A manual pass on the keyboard system (superseded).** `useOverlay`'s Escape moved from
   capture to bubble, and `Combobox`/`Picker` now claim the key only when they
   consumed it. There is no jsdom for screens, so walk every Modal in both
   panels: Escape inside an open combobox must close the list and leave the
@@ -481,6 +499,16 @@ Added on 2026-08-28, from the overhaul brief:
   what that costs (see `docs/overhaul/workstream-F.md`, and the Risk section of
   `00-sequenced-plan.md`). Do not quietly re-scope it; do not quietly ship it
   without the guards that design lists.
+- **The bundled-PostgreSQL shutdown is fixed, and now actually verified.**
+  `io.close()` closes the *underlying HTTP server* and waits for it, and a
+  browser keep-alive connection never ends — so the whole teardown hung there,
+  `postgres.stop()` was never reached, the shell's ten-second grace period
+  expired, and every quit hard-killed the process and left a cluster listening
+  on 55432. The sockets are ended before that await now. Confirmed on a virgin
+  data directory: all 21 migrations apply from scratch, and a normal window
+  close logs "Database stopped" and frees both ports. The comment in
+  `electron/shell.ts` about the hard-kill path leaving `postgres.exe` behind is
+  still true of a *hard* kill; it is no longer what a normal quit does.
 - **TLS is a decision the owner has not made, and Stage 11 shipped anyway.**
   The Master binds `0.0.0.0` with no certificate, so an API key is exactly as
   confidential as the session cookie already is — which is to say not at all
