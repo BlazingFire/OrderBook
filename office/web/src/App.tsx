@@ -159,6 +159,20 @@ function OfficePanel() {
   const [bootError, setBootError] = useState<string | null>(null);
   const [bootAttempt, setBootAttempt] = useState(0);
 
+  /*
+   * One counter per screen, and the visible screen's veto over being reset.
+   *
+   * Declared **here**, above every early return, because that is what the rules
+   * of hooks require: this component returns early for the splash, for an
+   * unpaired panel and for a signed-out one, so a hook below those returns is
+   * called on some renders and not others. React counts them, and the render
+   * after signing in threw "rendered more hooks than during the previous
+   * render" — which the error boundary caught, so the whole panel showed
+   * "Something went wrong" the instant anybody signed in.
+   */
+  const [resetNonce, setResetNonce] = useState<Record<string, number>>({});
+  const askReset = useResetGate();
+
   // Stable, or every boot-step render would hand Splash a new callback and
   // restart its hold timer.
   const markSplashDone = useCallback(() => setSplashDone(true), []);
@@ -539,8 +553,6 @@ function OfficePanel() {
    * `ScreenHost` and React remounts it. The deliberate way to throw away a
    * draft, now that navigating away no longer does.
    */
-  const [resetNonce, setResetNonce] = useState<Record<string, number>>({});
-  const askReset = useResetGate();
 
   function resetActiveScreen(): void {
     if (route === 'gallery') return;

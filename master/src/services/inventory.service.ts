@@ -10,6 +10,7 @@
 
 import type {
   InventoryStockLevel,
+  Product,
   ReorderLevelInput,
   StockAdjustmentInput,
   StockInboundInput,
@@ -64,7 +65,7 @@ export async function recordInbound(
   requirePermission(actor, 'inventory.edit');
 
   const colour = requireColour(input.colour);
-  await assertProductExists(actor.tenantId, input.productId);
+  const product = await assertProductExists(actor.tenantId, input.productId);
 
   if (!Number.isFinite(input.quantityBoxes) || input.quantityBoxes <= 0) {
     throw new ValidationError('validation.stock.boxesArrivedRequired');
@@ -81,16 +82,25 @@ export async function recordInbound(
     createdByUserId: actorUserId(actor),
   });
 
-  await activityLog.recordDetachedActivity({
-    tenantId: actor.tenantId,
-    entityType: 'stock',
-    entityId: input.productId,
-    action: 'inbound',
-    actorType: actor.actorType,
-    actorId: actor.actorId,
-    details: { colour, quantityBoxes: input.quantityBoxes },
-  }, actor, db());
-  publishChange({ entity: 'stock', action: 'updated', id: stockKey(input.productId, colour), payload: level });
+  await activityLog.recordDetachedActivity(
+    {
+      tenantId: actor.tenantId,
+      entityType: 'stock',
+      entityId: input.productId,
+      action: 'inbound',
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      details: { product: product.name, quantity: input.quantityBoxes, colour },
+    },
+    actor,
+    db(),
+  );
+  publishChange({
+    entity: 'stock',
+    action: 'updated',
+    id: stockKey(input.productId, colour),
+    payload: level,
+  });
 
   return level;
 }
@@ -111,7 +121,7 @@ export async function recordAdjustment(
   requirePermission(actor, 'stock.adjust');
 
   const colour = requireColour(input.colour);
-  await assertProductExists(actor.tenantId, input.productId);
+  const product = await assertProductExists(actor.tenantId, input.productId);
 
   if (!Number.isFinite(input.quantityBoxes) || input.quantityBoxes < 0) {
     throw new ValidationError('validation.stock.countedBoxesRequired');
@@ -139,16 +149,25 @@ export async function recordAdjustment(
     createdByUserId: actorUserId(actor),
   });
 
-  await activityLog.recordDetachedActivity({
-    tenantId: actor.tenantId,
-    entityType: 'stock',
-    entityId: input.productId,
-    action: 'adjusted',
-    actorType: actor.actorType,
-    actorId: actor.actorId,
-    details: { colour, countedBoxes: input.quantityBoxes, delta },
-  }, actor, db());
-  publishChange({ entity: 'stock', action: 'updated', id: stockKey(input.productId, colour), payload: level });
+  await activityLog.recordDetachedActivity(
+    {
+      tenantId: actor.tenantId,
+      entityType: 'stock',
+      entityId: input.productId,
+      action: 'adjusted',
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      details: { product: product.name, colour, countedBoxes: input.quantityBoxes, delta },
+    },
+    actor,
+    db(),
+  );
+  publishChange({
+    entity: 'stock',
+    action: 'updated',
+    id: stockKey(input.productId, colour),
+    payload: level,
+  });
 
   return level;
 }
@@ -191,7 +210,12 @@ export async function setReorderLevel(
   });
   if (!level) throw new NotFoundError('Stock level');
 
-  publishChange({ entity: 'stock', action: 'updated', id: stockKey(input.productId, colour), payload: level });
+  publishChange({
+    entity: 'stock',
+    action: 'updated',
+    id: stockKey(input.productId, colour),
+    payload: level,
+  });
   return level;
 }
 
@@ -236,10 +260,17 @@ function requireColour(colour: string | undefined): string {
   return trimmed;
 }
 
-async function assertProductExists(tenantId: string, productId: string): Promise<void> {
-  if (!(await productRepo.findProductById(tenantId, productId))) {
-    throw new NotFoundError('Product');
-  }
+/**
+ * The product this movement is against, or a 404.
+ *
+ * Returns it rather than merely asserting, because the audit entry needs its
+ * name: the catalogue renders "recorded {quantity} boxes in for {product}", and
+ * with nothing to fill `{product}` the Activity log printed the placeholder.
+ */
+async function assertProductExists(tenantId: string, productId: string): Promise<Product> {
+  const product = await productRepo.findProductById(tenantId, productId);
+  if (!product) throw new NotFoundError('Product');
+  return product;
 }
 
 function emptyLevel(productId: string, colour: string): InventoryStockLevel {

@@ -98,14 +98,23 @@ export async function createParty(input: PartyInput, actor: ActorContext): Promi
     );
   });
 
-  await activityLog.recordDetachedActivity({
-    tenantId: actor.tenantId,
-    entityType: 'party',
-    entityId: party.id,
-    action: 'created',
-    actorType: actor.actorType,
-    actorId: actor.actorId,
-  }, actor, db());
+  await activityLog.recordDetachedActivity(
+    {
+      tenantId: actor.tenantId,
+      entityType: 'party',
+      entityId: party.id,
+      action: 'created',
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      // The catalogue's tokens read "{actor} added the party {name}", so an entry
+      // without a name renders the placeholder to the reader. The delete and
+      // restore paths always carried one; create and update did not, and the
+      // Activity log showed a literal `{name}` on every one of them.
+      details: { name: party.name },
+    },
+    actor,
+    db(),
+  );
   publishChange({ entity: 'party', action: 'created', id: party.id, payload: party });
 
   return party;
@@ -124,19 +133,30 @@ export async function updateParty(
 
   const party = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
-    return partyRepo.updateParty(actor.tenantId, id, { ...input, name }, { hlc, fieldHlc: {} }, trx);
+    return partyRepo.updateParty(
+      actor.tenantId,
+      id,
+      { ...input, name },
+      { hlc, fieldHlc: {} },
+      trx,
+    );
   });
 
   if (!party) throw new NotFoundError('Party');
 
-  await activityLog.recordDetachedActivity({
-    tenantId: actor.tenantId,
-    entityType: 'party',
-    entityId: party.id,
-    action: 'updated',
-    actorType: actor.actorType,
-    actorId: actor.actorId,
-  }, actor, db());
+  await activityLog.recordDetachedActivity(
+    {
+      tenantId: actor.tenantId,
+      entityType: 'party',
+      entityId: party.id,
+      action: 'updated',
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      details: { name: party.name },
+    },
+    actor,
+    db(),
+  );
   publishChange({ entity: 'party', action: 'updated', id: party.id, payload: party });
 
   return party;
@@ -159,17 +179,30 @@ export async function deleteParty(
 
   const blockers = await partyRepo.liveReferencesToParty(actor.tenantId, id);
   if (blockers.length > 0) {
-    throw new ConflictError('error.conflict.blockedByLiveReferences', {}, {
-      blockedBy: blockers.map(
-        (b): BinBlocker => ({ entityType: b.entityType, id: b.id, label: b.label, reason: 'live_reference' }),
-      ),
-    });
+    throw new ConflictError(
+      'error.conflict.blockedByLiveReferences',
+      {},
+      {
+        blockedBy: blockers.map((b): BinBlocker => ({
+          entityType: b.entityType,
+          id: b.id,
+          label: b.label,
+          reason: 'live_reference',
+        })),
+      },
+    );
   }
 
   const party = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
     const fieldHlc = { ...existing.sync.fieldHlc, deletedAt: hlc };
-    const row = await partyRepo.softDeleteParty(actor.tenantId, id, actorUserId(actor), { hlc, fieldHlc }, trx);
+    const row = await partyRepo.softDeleteParty(
+      actor.tenantId,
+      id,
+      actorUserId(actor),
+      { hlc, fieldHlc },
+      trx,
+    );
 
     await activityLog.recordActivity(
       {
@@ -207,7 +240,9 @@ export async function restoreParty(
   // else's party back into your own screens.
   await requirePartyAccess(id, 'manage', actor);
 
-  const existing = await partyRepo.findPartyById(actor.tenantId, id, db(), { includeDeleted: true });
+  const existing = await partyRepo.findPartyById(actor.tenantId, id, db(), {
+    includeDeleted: true,
+  });
   if (!existing) throw new NotFoundError('Party');
 
   const desiredCode = renameTo ?? existing.partyCode;
@@ -226,13 +261,7 @@ export async function restoreParty(
   const party = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
     const fieldHlc = { ...existing.sync.fieldHlc, deletedAt: hlc };
-    const row = await partyRepo.restoreParty(
-      actor.tenantId,
-      id,
-      { hlc, fieldHlc },
-      trx,
-      renameTo,
-    );
+    const row = await partyRepo.restoreParty(actor.tenantId, id, { hlc, fieldHlc }, trx, renameTo);
 
     await activityLog.recordActivity(
       {
@@ -315,10 +344,7 @@ function assertProductInput(input: ProductInput): void {
   }
 }
 
-export async function createProduct(
-  input: ProductInput,
-  actor: ActorContext,
-): Promise<Product> {
+export async function createProduct(input: ProductInput, actor: ActorContext): Promise<Product> {
   requirePermission(actor, 'products.create');
 
   const name = input.name?.trim();
@@ -359,14 +385,19 @@ export async function createProduct(
     );
   });
 
-  await activityLog.recordDetachedActivity({
-    tenantId: actor.tenantId,
-    entityType: 'product',
-    entityId: product.id,
-    action: 'created',
-    actorType: actor.actorType,
-    actorId: actor.actorId,
-  }, actor, db());
+  await activityLog.recordDetachedActivity(
+    {
+      tenantId: actor.tenantId,
+      entityType: 'product',
+      entityId: product.id,
+      action: 'created',
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      details: { name: product.name },
+    },
+    actor,
+    db(),
+  );
   publishChange({ entity: 'product', action: 'created', id: product.id, payload: product });
 
   return maskProduct(product, productVisibility(actor));
@@ -408,14 +439,19 @@ export async function updateProduct(
 
   if (!product) throw new NotFoundError('Product');
 
-  await activityLog.recordDetachedActivity({
-    tenantId: actor.tenantId,
-    entityType: 'product',
-    entityId: product.id,
-    action: 'updated',
-    actorType: actor.actorType,
-    actorId: actor.actorId,
-  }, actor, db());
+  await activityLog.recordDetachedActivity(
+    {
+      tenantId: actor.tenantId,
+      entityType: 'product',
+      entityId: product.id,
+      action: 'updated',
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      details: { name: product.name },
+    },
+    actor,
+    db(),
+  );
   publishChange({ entity: 'product', action: 'updated', id: product.id, payload: product });
 
   return maskProduct(product, productVisibility(actor));
@@ -438,12 +474,16 @@ export async function deleteProduct(
 
   const blockers = await productRepo.liveReferencesToProduct(actor.tenantId, id);
   if (blockers.length > 0) {
-    throw new ConflictError('error.conflict.blockedByLiveReferences', {}, {
-      blockedBy: blockers.map((b): BinBlocker => {
-        const reason = b.entityType === 'line_item' ? 'live_reference' : 'stock_on_hand';
-        return { entityType: b.entityType, id: b.id, label: b.label, reason };
-      }),
-    });
+    throw new ConflictError(
+      'error.conflict.blockedByLiveReferences',
+      {},
+      {
+        blockedBy: blockers.map((b): BinBlocker => {
+          const reason = b.entityType === 'line_item' ? 'live_reference' : 'stock_on_hand';
+          return { entityType: b.entityType, id: b.id, label: b.label, reason };
+        }),
+      },
+    );
   }
 
   const product = await db().transaction(async (trx) => {
@@ -487,7 +527,9 @@ export async function restoreProduct(
 ): Promise<BinRestoreResult> {
   requirePermission(actor, 'products.delete');
 
-  const existing = await productRepo.findProductById(actor.tenantId, id, db(), { includeDeleted: true });
+  const existing = await productRepo.findProductById(actor.tenantId, id, db(), {
+    includeDeleted: true,
+  });
   if (!existing) throw new NotFoundError('Product');
 
   const desiredCode = renameTo ?? existing.productCode;
@@ -507,7 +549,13 @@ export async function restoreProduct(
   const product = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
     const fieldHlc = { ...existing.sync.fieldHlc, deletedAt: hlc };
-    const row = await productRepo.restoreProduct(actor.tenantId, id, { hlc, fieldHlc }, trx, renameTo);
+    const row = await productRepo.restoreProduct(
+      actor.tenantId,
+      id,
+      { hlc, fieldHlc },
+      trx,
+      renameTo,
+    );
 
     await activityLog.recordActivity(
       {

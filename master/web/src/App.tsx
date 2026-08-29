@@ -184,6 +184,29 @@ function MasterPanel() {
   }
   const [syncPopover, setSyncPopover] = useState(false);
 
+  /*
+   * A screen that has opened a large operation — the role editor, a person's
+   * editor — publishes it here, and it hangs off its own module in the sidebar
+   * (§8). The shell does not need to know what the operation *is*, only where
+   * it belongs and how to leave it.
+   *
+   * One counter per screen sits beside it. Bumping it changes that screen's key
+   * inside `ScreenHost`, so React remounts it — a total reset with no
+   * cooperation needed from the screen itself.
+   *
+   * All four are declared **here**, above every early return, because that is
+   * what the rules of hooks require. This component returns early for the
+   * splash, for first run and for a signed-out session, so hooks below those
+   * returns are called on some renders and not others: signing in went from N
+   * hooks to N+4 and React threw "rendered more hooks than during the previous
+   * render". The error boundary caught it, so the Master showed "Something went
+   * wrong on this screen" the moment anybody signed in.
+   */
+  const subNav = useSubNavState(route === 'gallery' ? null : tab);
+  const [resetNonce, setResetNonce] = useState<Record<string, number>>({});
+  const askReset = useResetGate();
+  const clearSubNav = useClearSubNav();
+
   // Cold start. Each step reports itself to the splash on the way past, and a
   // step that fails leaves a message there rather than an endless wait — which
   // is what "stuck on the starting screen" was: an unhandled rejection here
@@ -453,23 +476,6 @@ function MasterPanel() {
     // information, and the person asked to read it out is rarely an admin.
     { id: 'updates', label: t('nav.updates'), icon: 'sync' },
   ];
-
-  /*
-   * A screen that has opened a large operation — the role editor, a person's
-   * editor — publishes it here, and it hangs off its own module in the sidebar
-   * (§8). The shell does not need to know what the operation *is*, only where
-   * it belongs and how to leave it.
-   */
-  const subNav = useSubNavState(route === 'gallery' ? null : tab);
-
-  /*
-   * One counter per screen. Bumping it changes that screen's key inside
-   * `ScreenHost`, so React remounts it — a total reset with no cooperation
-   * needed from the screen itself.
-   */
-  const [resetNonce, setResetNonce] = useState<Record<string, number>>({});
-  const askReset = useResetGate();
-  const clearSubNav = useClearSubNav();
 
   function resetActiveScreen(): void {
     if (route === 'gallery') return;

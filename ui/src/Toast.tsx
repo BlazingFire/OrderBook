@@ -4,7 +4,7 @@
  * "Saved" toast, never a generic "Success".
  */
 
-import { createContext, useCallback, useContext, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 export type ToastTone = 'ok' | 'error' | 'info';
@@ -63,8 +63,27 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     [remove],
   );
 
+  /*
+   * Memoised, and it is load-bearing rather than tidy.
+   *
+   * As an inline `{{ push }}` this object had a new identity on every render of
+   * this provider — and this provider re-renders on every toast pushed *and*
+   * again four seconds later when that toast auto-dismisses. Every
+   * `useToast()` consumer therefore saw a changed value, so any of their
+   * callbacks listing `toast` as a dependency was rebuilt, and any effect
+   * depending on such a callback refired.
+   *
+   * On the Integrations screen that closed a cycle with no fixed point: a
+   * failed load pushed a toast, the toast re-rendered this provider, the new
+   * identity rebuilt the loader, the effect refired, the load failed again.
+   * `push` is already stable, so memoising the wrapper fixes every consumer at
+   * once — the alternative, editing one screen's dependency array, patches only
+   * the caller that happened to notice.
+   */
+  const api = useMemo<ToastApi>(() => ({ push }), [push]);
+
   return (
-    <ToastContext.Provider value={{ push }}>
+    <ToastContext.Provider value={api}>
       {children}
       <div className="ob-toasts">
         {toasts.map((toast) => (

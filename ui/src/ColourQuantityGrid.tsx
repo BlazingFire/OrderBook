@@ -57,6 +57,15 @@ export function ColourQuantityGrid({
     .sort((a, b) => a.colour.localeCompare(b.colour));
 
   const knownColours = new Set(known.map((level) => level.colour));
+  /*
+   * Every colour already on this line, stock or not.
+   *
+   * `knownColours` holds only the colours this product has stock rows for, so
+   * on its own it cannot tell whether a *custom* colour has already been added
+   * — and adding "Teal" twice produced two rows keyed `Teal`, which React
+   * collapses with a duplicate-key warning while the total still counts both.
+   */
+  const usedColours = new Set([...knownColours, ...quantities.map((q) => q.colour)]);
   const extra = quantities.filter((q) => !knownColours.has(q.colour));
   const rows = [
     ...known.map((level) => ({ colour: level.colour, stock: level })),
@@ -242,7 +251,7 @@ export function ColourQuantityGrid({
           variant="ghost"
           size="sm"
           icon="plus"
-          disabled={!customDraft.trim() || knownColours.has(customDraft.trim())}
+          disabled={!customDraft.trim() || usedColours.has(customDraft.trim())}
           onClick={() => {
             onChange([...quantities, { colour: customDraft.trim(), quantity: 0 }]);
             setCustomDraft('');

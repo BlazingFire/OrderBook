@@ -111,16 +111,20 @@ export async function createUser(
       trx,
     );
 
-    await activityLog.recordActivity({
-      tenantId: actor.tenantId,
-      entityType: 'user',
-      entityId: userId,
-      action: 'created',
-      actorType: actor.actorType,
-      actorId: actor.actorId,
-      // Username, display name and role. Never the password or its hash.
-      details: { username, displayName, roleId: role.id, roleName: role.name },
-    }, actor, trx);
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'user',
+        entityId: userId,
+        action: 'created',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        // Username, display name and role. Never the password or its hash.
+        details: { username, displayName, roleId: role.id, roleName: role.name },
+      },
+      actor,
+      trx,
+    );
 
     return userId;
   });
@@ -168,7 +172,13 @@ export async function updateUser(
   );
 
   const patch: Record<string, unknown> = {};
-  const details: Record<string, unknown> = {};
+  /*
+   * Seeded with the person's name, because that is what the sentence renders:
+   * "{actor} updated {name}". Everything added below is the *diff* — a
+   * from/to per changed field — and a diff alone left the placeholder to reach
+   * the Activity log verbatim.
+   */
+  const details: Record<string, unknown> = { name: existing.displayName };
 
   if (input.displayName !== undefined) {
     const displayName = input.displayName.trim();
@@ -239,15 +249,19 @@ export async function updateUser(
       await accessGuard.readAdministrativeCapability(actor.tenantId, trx),
     );
 
-    await activityLog.recordActivity({
-      tenantId: actor.tenantId,
-      entityType: 'user',
-      entityId: id,
-      action: input.isActive === false ? 'deactivated' : 'updated',
-      actorType: actor.actorType,
-      actorId: actor.actorId,
-      details,
-    }, actor, trx);
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'user',
+        entityId: id,
+        action: input.isActive === false ? 'deactivated' : 'updated',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details,
+      },
+      actor,
+      trx,
+    );
   });
 
   // A changed role or a deactivation must not survive in an open session.
@@ -280,15 +294,19 @@ export async function deleteUser(id: string, actor: ActorContext): Promise<User>
       await accessGuard.readAdministrativeCapability(actor.tenantId, trx),
     );
 
-    await activityLog.recordActivity({
-      tenantId: actor.tenantId,
-      entityType: 'user',
-      entityId: id,
-      action: 'deleted',
-      actorType: actor.actorType,
-      actorId: actor.actorId,
-      details: { username: existing.username },
-    }, actor, trx);
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'user',
+        entityId: id,
+        action: 'deleted',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: { name: existing.displayName, username: existing.username },
+      },
+      actor,
+      trx,
+    );
   });
 
   invalidateSessionsForUser(id);
@@ -340,15 +358,23 @@ export async function restoreUser(
   await db().transaction(async (trx) => {
     await userRepo.restoreUser(actor.tenantId, id, trx, renameTo);
 
-    await activityLog.recordActivity({
-      tenantId: actor.tenantId,
-      entityType: 'user',
-      entityId: id,
-      action: 'restored',
-      actorType: actor.actorType,
-      actorId: actor.actorId,
-      details: { username: existing.username, ...(renameTo ? { renamedTo: renameTo } : {}) },
-    }, actor, trx);
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'user',
+        entityId: id,
+        action: 'restored',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: {
+          name: existing.displayName,
+          username: existing.username,
+          ...(renameTo ? { renamedTo: renameTo } : {}),
+        },
+      },
+      actor,
+      trx,
+    );
   });
 
   const user = await userRepo.findById(actor.tenantId, id);
@@ -382,16 +408,20 @@ export async function resetPassword(
       trx,
     );
 
-    await activityLog.recordActivity({
-      tenantId: actor.tenantId,
-      entityType: 'user',
-      entityId: input.userId,
-      action: 'password_reset',
-      actorType: actor.actorType,
-      actorId: actor.actorId,
-      // That a reset happened, by whom, for whom. No password material, no hash.
-      details: { username: existing.username },
-    }, actor, trx);
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'user',
+        entityId: input.userId,
+        action: 'password_reset',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        // That a reset happened, by whom, for whom. No password material, no hash.
+        details: { name: existing.displayName, username: existing.username },
+      },
+      actor,
+      trx,
+    );
   });
 
   await rememberPassword(actor.tenantId, input.userId, password, actorUserId(actor));

@@ -1,4 +1,5 @@
 import js from '@eslint/js';
+import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
@@ -26,6 +27,31 @@ export default tseslint.config(
     // `process` read as undefined names to the linter.
     files: ['tools/**/*.{js,mjs}'],
     languageOptions: { globals: globals.node },
+  },
+  {
+    /*
+     * The rules of hooks, enforced rather than assumed.
+     *
+     * Added after a `rules-of-hooks` violation shipped and made **both panels
+     * unusable**: `App()` in each declared four hooks *below* its
+     * signed-out early return, so the render after signing in produced more
+     * hooks than the one before it, React threw, and the error boundary
+     * replaced the whole panel with "Something went wrong on this screen".
+     * Nothing caught it — this plugin was never installed, and the type
+     * checker and the 1143-test suite cannot see it. A browser found it in
+     * seconds.
+     *
+     * `rules-of-hooks` is an error, because every violation of it is a real
+     * crash. `exhaustive-deps` stays a warning: this codebase deliberately
+     * holds rebuilt-every-render callbacks in refs, and that pattern reads as
+     * a missing dependency to the rule.
+     */
+    files: ['{master,office}/web/src/**/*.{ts,tsx}', 'ui/src/**/*.{ts,tsx}'],
+    plugins: { 'react-hooks': reactHooks },
+    rules: {
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
+    },
   },
   {
     // Scoped to the web packages' JSX, where the rule is meaningful. Severity
