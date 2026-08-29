@@ -241,6 +241,73 @@ describe.skipIf(!canRunIntegrationTests)('public API (integration)', () => {
     });
   });
 
+  describe('writing a money field', () => {
+    it('refuses a key that may read the rate but not edit it, rather than dropping it', async () => {
+      // Found by driving a running Master, not by a unit test: the guard used to
+      // check `field.saleRate.view`, so a key with view-but-not-edit passed it
+      // and `withPermittedRate` then discarded the price downstream. The caller
+      // got a 201 and believed the price was set. A refusal is the only honest
+      // answer — a silent no-op is the worst one available.
+      const { userId } = await seedOwner('owner-viewonly', [
+        'products.view',
+        'products.create',
+        'products.edit',
+        'field.saleRate.view',
+      ]);
+      const token = await issue(userId, [
+        'products.view',
+        'products.create',
+        'products.edit',
+        'field.saleRate.view',
+      ]);
+
+      await request(app)
+        .post('/api/v1/products')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ productCode: 'VIEW-1', name: 'View only', rate: 12_500 })
+        .expect(403);
+
+      const actor = await testActor();
+      const product = await catalogService.createProduct(
+        { productCode: 'VIEW-2', name: 'View only two', rate: 9_900 } as never,
+        actor,
+      );
+
+      await request(app)
+        .patch(`/api/v1/products/${product.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ rate: 1 })
+        .expect(403);
+
+      // And the price it was not allowed to touch is still there.
+      expect((await catalogService.getProduct(product.id, actor)).rate).toBe(9_900);
+    });
+
+    it('lets a key holding the edit permission through', async () => {
+      const { userId } = await seedOwner('owner-editrate', [
+        'products.view',
+        'products.create',
+        'field.saleRate.view',
+        'field.saleRate.edit',
+      ]);
+      const token = await issue(userId, [
+        'products.view',
+        'products.create',
+        'field.saleRate.view',
+        'field.saleRate.edit',
+      ]);
+
+      const response = await request(app)
+        .post('/api/v1/products')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ productCode: 'EDIT-1', name: 'Edit rate', rate: 12_500 })
+        .expect(201);
+
+      // The figure actually landed, which is the half a silent drop hid.
+      expect(response.body.rate).toBe(12_500);
+    });
+  });
+
   describe('audit', () => {
     it('records the key as its own principal, and the chain still verifies', async () => {
       const actor = await testActor();

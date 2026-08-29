@@ -325,22 +325,32 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
   registerAuthCommands(socket, sendSnapshot);
 
   /*
-   * One `ai:event` listener per panel socket, resolved against whoever is
-   * signed in on that panel at the moment the event arrives.
+   * One `ai:event` listener per panel socket, filtered by the runs this socket
+   * actually started.
    *
-   * Not per run: a listener added and removed per run would grow this socket's
-   * listener count with every question somebody asks, and a panel is a
-   * long-lived connection.
+   * Membership in a `Set`, deliberately, and not "resolve the actor and compare
+   * the user id": `actorFor()` reads a session and its role, so comparing that
+   * way would have cost a database round trip **per streamed token, per paired
+   * panel** — a five-hundred-token answer with three panels open is fifteen
+   * hundred role queries for one question. That is the amplifier class of
+   * defect this file has already had removed twice.
+   *
+   * Filtering by run rather than by person is also the more correct rule: a
+   * panel should receive the answer to the question asked *at it*, not to one
+   * the same person happened to ask at the Master.
    */
+  const ownRuns = new Set<string>();
   const stopPanelAi = onAiEvent((event) => {
-    void actorFor()
-      .then((current) => {
-        if (current.userId === event.userId) {
-          socket.emit('ai:event', { ...event.payload, runId: event.runId });
-        }
-      })
-      .catch(() => undefined);
+    if (!ownRuns.has(event.runId)) return;
+
+    socket.emit('ai:event', { ...event.payload, runId: event.runId });
+    // A finished run is never spoken of again, so the set stays the size of
+    // what is in flight rather than growing for the life of the connection.
+    if (event.payload.type === 'done' || event.payload.type === 'error') {
+      ownRuns.delete(event.runId);
+    }
   });
+  socket.data.aiRuns = ownRuns;
 
   /*
    * Catch the panel up in one round trip before incremental changes resume.
@@ -407,7 +417,15 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
    * `MasterConnection.command` gives up after fifteen seconds and would report
    * this Master unreachable while the model was still answering.
    */
-  socket.on('ai:start', (input, ack) => run(ack, (actor) => aiService.startRun(actor, input)));
+  socket.on('ai:start', (input, ack) =>
+    run(ack, async (actor) => {
+      const started = await aiService.startRun(actor, input);
+      // Claimed here so the listener above knows this socket is the one
+      // waiting for it.
+      socket.data.aiRuns?.add(started.runId);
+      return started;
+    }),
+  );
   socket.on('ai:cancel', (runId, ack) =>
     run(ack, async (actor) => {
       await aiService.cancelRun(actor, runId);

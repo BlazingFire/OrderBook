@@ -801,6 +801,11 @@ export interface SocketData {
   userId?: Uuid;
   permissions?: string[];
   /**
+   * Assistant runs this socket started, so its `ai:event` listener can filter
+   * on set membership rather than resolving an actor per streamed token.
+   */
+  aiRuns?: Set<Uuid>;
+  /**
    * Set by `auth:assume` when a person is signed in on this panel. Stored as the
    * token rather than the resolved permissions so every command re-resolves it —
    * caching the permissions here would let a revoked one survive until the

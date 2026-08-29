@@ -19,7 +19,8 @@
  * PATCH cannot reach them unmerged; and merging against a *masked* read would
  * let a key without `field.saleRate.view` silently write the catalogue price to
  * nothing, because the mask removes the key and the writer would treat it as
- * cleared. A body that names a field the key may not see is refused outright.
+ * cleared. A body that names a money field the key may not **edit** is refused
+ * outright — see `WRITE_GUARDS` for why that verb, and not `view`.
  */
 
 import { Router, type Request, type Response } from 'express';
@@ -50,27 +51,30 @@ import { paging } from '../query.js';
 type Handler = (req: Request, res: Response, actor: ActorContext) => Promise<void>;
 
 /**
- * The fields a key may not write because it may not see them.
+ * The money fields a key may not write, and the permission each one needs.
  *
- * Masking works by key absence, so the check has to be about the *request*
- * naming a field, not about the value being null — a caller who cannot read the
- * rate must be told no rather than quietly having their `rate: null` written.
+ * **The gate is the `edit` permission, not `view`, and the difference was a
+ * live defect.** `withPermittedRate` in the service layer *drops* a rate the
+ * caller may not edit — deliberately, so an offline panel replaying a day-old
+ * draft is not refused outright — so a key holding `field.saleRate.view` but
+ * not `field.saleRate.edit` sent a price, got a 201, and had it silently
+ * discarded. A silent no-op is the worst answer available: the caller is told
+ * it worked.
+ *
+ * Two permissions per field, because they are two questions. `view` still
+ * matters on the way out, where masking removes the key entirely.
  */
-const RATE_FIELDS = ['rate', 'pricePerSqft'] as const;
-const COST_FIELDS = ['purchaseRate'] as const;
+const WRITE_GUARDS = [
+  { fields: ['rate', 'pricePerSqft'], permission: 'field.saleRate.edit' },
+  { fields: ['purchaseRate'], permission: 'field.purchaseRate.edit' },
+] as const;
 
 function refuseMaskedFields(body: Record<string, unknown>, actor: ActorContext): void {
-  const named = (fields: readonly string[]): string | undefined =>
-    fields.find((field) => Object.prototype.hasOwnProperty.call(body, field));
-
-  const rate = named(RATE_FIELDS);
-  if (rate && !hasPermission(actor.permissions, 'field.saleRate.view')) {
-    throw new ForbiddenError('field.saleRate.view');
-  }
-
-  const cost = named(COST_FIELDS);
-  if (cost && !hasPermission(actor.permissions, 'field.purchaseRate.view')) {
-    throw new ForbiddenError('field.purchaseRate.view');
+  for (const guard of WRITE_GUARDS) {
+    const named = guard.fields.find((field) => Object.prototype.hasOwnProperty.call(body, field));
+    if (named && !hasPermission(actor.permissions, guard.permission)) {
+      throw new ForbiddenError(guard.permission);
+    }
   }
 }
 

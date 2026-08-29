@@ -58,16 +58,29 @@ export function AssistantScreen({ transport }: { transport: AssistantTransport }
   const [steps, setSteps] = useState<AiToolCall[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  /*
+   * The transport is held in a ref and loaded exactly once.
+   *
+   * Every call site passes an object literal, so depending on its identity made
+   * this effect run on every render — and each run set state, which caused the
+   * next render, which built another literal. That is an unbounded loop that
+   * hammers `/api/ai/status` and `/api/ai/runs` for as long as the screen is
+   * open. The ref is the same shape `useOverlay` and `useEnterToAdvance` use
+   * for a rebuilt-every-render callback, and for the same reason.
+   */
+  const transportRef = useRef(transport);
+  transportRef.current = transport;
+
   useEffect(() => {
-    void transport
+    void transportRef.current
       .status()
       .then(setStatus)
       .catch(() => setStatus({ enabled: false }));
-    void transport
+    void transportRef.current
       .listRuns()
       .then(setRuns)
       .catch(() => setRuns([]));
-  }, [transport]);
+  }, []);
 
   /*
    * The live channel, held in a ref so the subscription is not re-made on every
@@ -106,7 +119,7 @@ export function AssistantScreen({ transport }: { transport: AssistantTransport }
     setSteps([]);
 
     try {
-      const { runId } = await transport.ask({ kind: 'ask', prompt: question });
+      const { runId } = await transportRef.current.ask({ kind: 'ask', prompt: question });
       setActiveRunId(runId);
       setPrompt('');
     } catch (caught) {
@@ -157,7 +170,7 @@ export function AssistantScreen({ transport }: { transport: AssistantTransport }
             <Button
               variant="secondary"
               onClick={() => {
-                void transport.cancel(activeRunId).catch(() => undefined);
+                void transportRef.current.cancel(activeRunId).catch(() => undefined);
                 setActiveRunId(null);
               }}
             >
