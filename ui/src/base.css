@@ -1104,6 +1104,28 @@ html[data-window-blur='true'] .ob-busy rect {
   white-space: nowrap;
 }
 
+/*
+ * The same rule, for every other child of the two chrome rows.
+ *
+ * Both rows are a fixed height and neither scrolls, so a flex child that
+ * refuses to shrink is not squeezed — it is pushed past the right edge and
+ * clipped away. At the 1024-wide floor with the sidebar pinned open and the
+ * scale at 157%, that was Sign out and the whole clock: still in the DOM,
+ * off the screen, unreachable. Flex items default to `min-width: auto`;
+ * these two rows opt out so the long labels give way instead.
+ */
+.ob-topbar > *,
+.ob-footer > * {
+  min-width: 0;
+}
+.ob-topbar .ob-btn > span,
+.ob-footer > span,
+.ob-footer > a {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ob-filterbar {
   height: var(--shell-filterbar-h);
   flex: none;
@@ -1173,6 +1195,17 @@ html[data-window-blur='true'] .ob-busy rect {
   align-items: baseline;
   gap: var(--s-8);
   white-space: nowrap;
+  min-width: 0;
+}
+/* The date gives way before the time does: a truncated date is still a date,
+ * a truncated clock is a wrong number. */
+.ob-footer-clock > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ob-footer-clock time {
+  flex: none;
 }
 
 /* Tabular, or the whole footer shifts sideways once a second as the digits
@@ -2460,4 +2493,55 @@ html[data-window-blur='true'] .ob-busy rect {
 .ob-ai-provenance ul {
   margin: var(--s-4) 0 0;
   padding-left: var(--s-16);
+}
+
+/* ===========================================================================
+ * The sign-in profile list (Office panel)
+ *
+ * A scrolling column of faces, capped so a panel used by a dozen people does
+ * not push the password field off the screen — the list is the shortcut, the
+ * form underneath is still the way in.
+ * ======================================================================== */
+
+.ob-profile-list {
+  list-style: none;
+  margin: var(--s-8) 0 0;
+  padding: 0;
+  max-height: 15rem;
+  overflow-y: auto;
+}
+
+.ob-profile-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+}
+
+.ob-profile-pick {
+  display: flex;
+  align-items: center;
+  gap: var(--s-12);
+  flex: 1;
+  min-width: 0;
+  padding: var(--s-6) var(--s-8);
+  border-radius: var(--r-sm);
+  text-align: left;
+  transition: background-color var(--d-fast) var(--e-standard);
+}
+
+.ob-profile-pick:hover {
+  background: var(--bg-hover);
+}
+
+.ob-profile-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* A long name truncates rather than wrapping the row to two lines. */
+.ob-profile-name > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

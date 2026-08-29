@@ -21,6 +21,18 @@ contextBridge.exposeInMainWorld('orderbook', {
   applyUpdate: (filePath: string): Promise<boolean> =>
     ipcRenderer.invoke('orderbook:applyUpdate', filePath) as Promise<boolean>,
 
+  /** Where this installation keeps its data, and whether that is the default. */
+  getDataDir: (): Promise<{ dataDir: string; isDefault: boolean }> =>
+    ipcRenderer.invoke('orderbook:getDataDir') as Promise<{ dataDir: string; isDefault: boolean }>,
+
+  /** Point this installation at another folder and restart the server into it. */
+  setDataDir: (dataDir: string): Promise<boolean> =>
+    ipcRenderer.invoke('orderbook:setDataDir', dataDir) as Promise<boolean>,
+
+  /** A native folder chooser, for picking where the panel's data lives. */
+  chooseDirectory: (): Promise<string | null> =>
+    ipcRenderer.invoke('orderbook:chooseDirectory') as Promise<string | null>,
+
   getShellSettings: (): Promise<{ openAtLogin: boolean; logFile: string }> =>
     ipcRenderer.invoke('orderbook:getShellSettings') as Promise<{
       openAtLogin: boolean;

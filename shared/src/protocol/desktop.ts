@@ -43,6 +43,27 @@ export interface DesktopBridge {
    * the bridge being absent altogether in a browser tab.
    */
 
+  /**
+   * Ask the shell to open a native folder chooser, for the storage path.
+   *
+   * A browser cannot offer one for an arbitrary path, so a plain tab falls back
+   * to a text field and this stays undefined — which is why the caller checks
+   * for the method rather than only for the bridge.
+   */
+  chooseDirectory?(): Promise<string | null>;
+
+  /** Where this installation keeps its data, and whether that is still the default. */
+  getDataDir?(): Promise<{ dataDir: string; isDefault: boolean }>;
+
+  /**
+   * Point this installation at another folder and restart the server into it.
+   *
+   * Offered on the **first-run screen only**. After setup the Master's folder
+   * holds a live database and its page is reachable from the whole LAN, so
+   * moving it is a backup and a restore rather than a button.
+   */
+  setDataDir?(dataDir: string): Promise<boolean>;
+
   /** Whether the panel starts with the PC, and where the shell's log lives. */
   getShellSettings?(): Promise<{ openAtLogin: boolean; logFile: string }>;
   setShellSettings?(value: { openAtLogin: boolean }): Promise<boolean>;

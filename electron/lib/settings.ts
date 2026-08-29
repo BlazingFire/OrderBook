@@ -54,3 +54,31 @@ export function writeShellSettings(file: string, settings: ShellSettings): void 
     // A setting that will not persist is not worth failing a launch over.
   }
 }
+
+/**
+ * Where the operator asked us to keep the data, if they have said.
+ *
+ * A separate file from `shell.json` for one structural reason: `shell.json`
+ * lives *inside* the data directory, so it cannot be where the data
+ * directory's own location is recorded. This one sits one level up, beside the
+ * per-panel folders rather than in them.
+ *
+ * Absent, unreadable or blank all mean "the default", which is what a fresh
+ * install has and what a corrupted file should fall back to — never a refusal
+ * to start.
+ */
+export function readDataDirOverride(file: string): string | null {
+  try {
+    const parsed: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const value = (parsed as { dataDir?: unknown } | null)?.dataDir;
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeDataDirOverride(file: string, dataDir: string | null): void {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `${JSON.stringify({ dataDir }, null, 2)}
+`, 'utf8');
+}

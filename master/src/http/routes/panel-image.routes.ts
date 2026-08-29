@@ -17,10 +17,12 @@
  * the audit trail are unchanged.
  */
 
+import { existsSync } from 'node:fs';
 import { Router } from 'express';
 import multer from 'multer';
 
 import { MAX_SOURCE_BYTES } from '../../domain/images.js';
+import * as avatarService from '../../services/avatar.service.js';
 import * as imageService from '../../services/image.service.js';
 import { asyncHandler } from '../async-handler.js';
 import { panelActorFromRequest, requirePanel } from '../middleware/require-panel.js';
@@ -70,6 +72,44 @@ panelImageRoutes.post(
  * `7-IMAGE-PIPELINE.md` §4.3 asks for and which a route-level gate cannot
  * express.
  */
+/**
+ * A profile picture, for the panel's own sign-in screen.
+ *
+ * Fetched once, at the moment somebody signs in on that panel, and cached
+ * there — because the screen that needs it renders with **nobody signed in**
+ * and the Master often switched off, which is exactly when neither this route
+ * nor `avatarFilesRoutes` can be called.
+ *
+ * No permission check beyond `requirePanel`'s: the caller is a paired panel
+ * acting for a signed-in person, and a face is already on every screen that
+ * person can open. `avatarFilePath` returns null for a variant that does not
+ * exist, which is the only untrusted half of the path.
+ */
+panelImageRoutes.get(
+  '/avatars/:avatarId/:variant',
+  asyncHandler(async (req, res, next) => {
+    const actor = panelActorFromRequest(req);
+    const file = avatarService.avatarFilePath(
+      actor.tenantId,
+      String(req.params.avatarId),
+      String(req.params.variant),
+    );
+
+    if (!file || !existsSync(file)) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+
+    // The id is minted per upload and never reused, so the bytes behind a URL
+    // can never change — the same reasoning `avatarFilesRoutes` gives.
+    res.set('Cache-Control', 'private, max-age=31536000, immutable');
+    res.type('image/webp');
+    res.sendFile(file, (error) => {
+      if (error) next(error);
+    });
+  }),
+);
+
 panelImageRoutes.get(
   '/images/:imageId/:variant',
   asyncHandler(async (req, res, next) => {

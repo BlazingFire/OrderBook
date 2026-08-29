@@ -31,7 +31,7 @@ import {
 } from '@orderbook/shared';
 
 import { config } from '../config/index.js';
-import { paths } from '../config/paths.js';
+import { freeDiskBytes, paths } from '../config/paths.js';
 import { appVersion } from '../lib/app-version.js';
 import { createLogger } from '../lib/logger.js';
 import { hasNetworkLink, listLanInterfaces } from '../lib/network.js';
@@ -40,7 +40,11 @@ import { BackupValidationError } from '../domain/backup.js';
 import * as backupExportService from '../services/backup-export.service.js';
 import * as backupRestoreService from '../services/backup-restore.service.js';
 import { RestoreError } from '../services/backup-restore.service.js';
-import { loadCredentials, masterBaseUrl } from '../services/credentials.store.js';
+import { loadCredentials } from '../services/credentials.store.js';
+import { masterFetch } from '../lib/master-fetch.js';
+import { avatarFile, forgetAvatar, isCached } from '../services/avatar-cache.js';
+import { moveStorage } from '../services/panel-report.service.js';
+import * as userStore from '../services/user-store.js';
 import { OfflinePickForbidden, pickFromView } from '../services/offline-pick.js';
 import {
   PairingError,
@@ -228,6 +232,136 @@ export function createApp(): Express {
 
   app.get('/api/session', (_req, res) => {
     res.json({ session: userSession.currentSession(), defaultLocale: config.locale.defaultLocale });
+  });
+
+  /*
+   * The people who have signed in on this panel before.
+   *
+   * The sign-in screen shows them as a list of faces so somebody at the counter
+   * picks themselves and types only a password. It is deliberately **this
+   * panel's own** list, not the company roster: a machine shows the handful of
+   * people who actually use it, and a panel nobody has used yet shows nothing
+   * and asks for a username as it always did.
+   *
+   * Unauthenticated, and that is the point — it renders before anybody signs
+   * in. What it discloses is a display name and a picture to whoever is already
+   * sitting at this PC, which is the same thing the screen behind it shows. The
+   * panel binds loopback, so "whoever can call this" is "whoever is at the
+   * keyboard".
+   *
+   * No verifier, no token, no permissions, no fingerprint: everything the store
+   * holds that could help somebody sign in stays on the server.
+   */
+  /*
+   * Where this panel keeps its files, and a way to move them.
+   *
+   * On the sign-in screen deliberately: choosing a drive is something an
+   * operator does when setting a machine up, before there is anybody to sign in
+   * as — and until now it could only be done from the Master, by an
+   * administrator, over the socket, which is no help at all while you are
+   * standing at the new PC.
+   *
+   * Unauthenticated for the same reason the profile list is, and with the same
+   * bound: this server binds loopback, so the caller is whoever is at this
+   * keyboard — and that person can already move the folder in Explorer. The
+   * Master's equivalent is *not* offered this way, because its page is
+   * reachable from every machine on the LAN.
+   */
+  app.get('/api/storage/path', (_req, res) => {
+    void (async () => {
+      const current = paths().dataDir;
+      res.json({ dataDir: current, freeBytes: await freeDiskBytes(current) });
+    })();
+  });
+
+  app.post('/api/storage/path', (req, res) => {
+    void (async () => {
+      const body: unknown = req.body;
+      const target = typeof body === 'object' && body !== null ? (body as { path?: unknown }).path : undefined;
+
+      if (typeof target !== 'string' || !target.trim()) {
+        res.status(400).json({ error: 'invalid_request', message: 'Choose a folder first' });
+        return;
+      }
+
+      const moveExisting =
+        typeof body === 'object' && body !== null
+          ? (body as { moveExisting?: unknown }).moveExisting !== false
+          : true;
+
+      try {
+        res.json(await moveStorage({ path: target.trim(), moveExisting }));
+      } catch (error) {
+        // A refusal names its reason — the path is inside the old one, the disk
+        // is full, the folder is not writable — and the screen shows it.
+        res.status(400).json({
+          error: 'storage_refused',
+          message: error instanceof Error ? error.message : 'Could not move this panel’s files',
+        });
+      }
+    })();
+  });
+
+  app.get('/api/session/profiles', (_req, res) => {
+    void (async () => {
+      const known = await userStore.listKnown();
+
+      res.json(
+        known
+          .slice()
+          .sort((a, b) => b.lastSignInAt.localeCompare(a.lastSignInAt))
+          .map((user) => ({
+            userId: user.userId,
+            username: user.username,
+            displayName: user.displayName,
+            roleName: user.roleName,
+            lastSignInAt: user.lastSignInAt,
+            // `?? null` because a record written before this field existed has
+            // neither key, and the browser's type says null rather than absent.
+            blurhash: user.blurhash ?? null,
+            // Whether there is a file to draw, so the browser does not request
+            // a picture that is certainly not there.
+            hasAvatar: Boolean(user.avatarId) && isCached(user.avatarId as string),
+          })),
+      );
+    })();
+  });
+
+  app.get('/api/session/profiles/:userId/avatar', (req, res) => {
+    void (async () => {
+      const user = await userStore.findByUserId(String(req.params.userId));
+      const file = user?.avatarId ? avatarFile(user.avatarId, 'thumb') : null;
+
+      if (!file || !existsSync(file)) {
+        res.status(404).json({ error: 'not_found' });
+        return;
+      }
+
+      // Minted per upload and never reused, so these bytes cannot change.
+      res.set('Cache-Control', 'private, max-age=31536000, immutable');
+      res.type('image/webp');
+      res.sendFile(file);
+    })();
+  });
+
+  /*
+   * Take somebody off this panel's list.
+   *
+   * Not merely cosmetic: forgetting a person also drops the offline verifier
+   * and the cached permissions this panel was holding for them, which is what
+   * you want when somebody leaves. It cannot be used to lock anyone out — they
+   * sign in again with a username and password as they did the first time.
+   */
+  app.delete('/api/session/profiles/:userId', (req, res) => {
+    void (async () => {
+      const userId = String(req.params.userId);
+      const user = await userStore.findByUserId(userId);
+
+      if (user?.avatarId) await forgetAvatar(user.avatarId);
+      await userStore.forget(userId);
+
+      res.status(204).end();
+    })();
   });
 
   app.post('/api/auth/sign-in', (req, res) => {
@@ -1575,31 +1709,6 @@ function respondToRestoreError(res: Response, error: unknown): void {
  * used to build and stringify the whole masked snapshot once per open stream
  * per event, and a panel with the app open in two tabs paid for it twice.
  */
-/**
- * A request to the Master's panel-authenticated HTTP surface.
- *
- * Carries the pairing credentials **and** the acting user's token, because the
- * routes behind it run as the person, not as the machine: uploading an image
- * needs `products.edit`, and the audit trail has to name whoever did it.
- */
-// `globalThis.Response`, not Express's `Response` — both names are in scope
-// in this file and the wrong one is a very confusing error.
-async function masterFetch(pathSuffix: string, init?: RequestInit): Promise<globalThis.Response> {
-  const credentials = await loadCredentials();
-  if (!credentials) throw new Error('This panel is not paired with a Master');
-
-  const actingToken = masterConnection.getActingToken();
-
-  return fetch(`${masterBaseUrl(credentials)}${pathSuffix}`, {
-    ...init,
-    headers: {
-      ...(init?.headers ?? {}),
-      'x-orderbook-panel-id': credentials.panelId,
-      'x-orderbook-panel-secret': credentials.panelSecret,
-      ...(actingToken ? { 'x-orderbook-acting-token': actingToken } : {}),
-    },
-  });
-}
 
 const streams = new Set<(type: string, data: unknown) => void>();
 

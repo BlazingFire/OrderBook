@@ -24,18 +24,34 @@ const NOW = 1_700_000_000_000;
 
 describe('deciding what a server exit means', () => {
   it('expects the exit when we asked the server to stop', () => {
-    expect(isExpectedExit({ quitting: true, updatingSince: null, now: NOW })).toBe(true);
+    expect(
+      isExpectedExit({ quitting: true, relocating: false, updatingSince: null, now: NOW }),
+    ).toBe(true);
   });
 
   it('treats a clean exit nobody asked for as a crash', () => {
     // The exit code is deliberately not consulted anywhere. The server has no
     // reason to stop on its own, and reading `0` as fine is what left a live
     // window sitting over a dead backend with no message.
-    expect(isExpectedExit({ quitting: false, updatingSince: null, now: NOW })).toBe(false);
+    expect(
+      isExpectedExit({ quitting: false, relocating: false, updatingSince: null, now: NOW }),
+    ).toBe(false);
+  });
+
+  it('expects the exit while the server is being restarted into another folder', () => {
+    // Choosing a data directory on the first-run screen stops the server and
+    // starts it again. Read as a crash, the supervisor starts its own second
+    // server, the two race for the port, and the loser's `EADDRINUSE` counts
+    // as one more crash — the shell died on the third.
+    expect(
+      isExpectedExit({ quitting: false, relocating: true, updatingSince: null, now: NOW }),
+    ).toBe(true);
   });
 
   it('expects the exit while an installer is replacing us', () => {
-    expect(isExpectedExit({ quitting: false, updatingSince: NOW - 1_000, now: NOW })).toBe(true);
+    expect(
+      isExpectedExit({ quitting: false, relocating: false, updatingSince: NOW - 1_000, now: NOW }),
+    ).toBe(true);
   });
 
   it('stops suppressing once the update window has passed', () => {
@@ -43,8 +59,14 @@ describe('deciding what a server exit means', () => {
     // started and then died — or a UAC prompt the operator cancelled — hid
     // every crash for the life of the process.
     expect(isUpdating(NOW - UPDATE_WINDOW_MS - 1, NOW)).toBe(false);
-    expect(isExpectedExit({ quitting: false, updatingSince: NOW - UPDATE_WINDOW_MS - 1, now: NOW }))
-      .toBe(false);
+    expect(
+      isExpectedExit({
+        quitting: false,
+        relocating: false,
+        updatingSince: NOW - UPDATE_WINDOW_MS - 1,
+        now: NOW,
+      }),
+    ).toBe(false);
   });
 
   it('never suppresses when no installer was launched', () => {

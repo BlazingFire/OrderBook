@@ -193,7 +193,12 @@ function OfficePanel() {
     try {
       setSession((await api.session()).session);
     } catch {
-      setSession(null);
+      // A round trip that did not complete is not a sign-out. This runs on
+      // every reconnect, and reading a dropped request as "nobody is signed
+      // in" threw a working panel back to the sign-in screen while its own
+      // server still held the session — the same mistake `refreshConnection`
+      // above already avoids. `/api/session` always answers, so only an answer
+      // of `null` signs anybody out.
     } finally {
       setSessionChecked(true);
     }

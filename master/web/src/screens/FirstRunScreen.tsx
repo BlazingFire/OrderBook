@@ -11,6 +11,7 @@ import { useState } from 'react';
 import type { BackupRestorePreview } from '@orderbook/shared';
 
 import { api, ApiError, type FirstRunCredentials } from '../api';
+import { DataDirCard } from '../components/DataDirCard';
 import {
   Button,
   Card,
@@ -80,6 +81,10 @@ export function FirstRunScreen({ onComplete }: Props) {
             </Button>
           </div>
         </Card>
+
+        {/* Before the company exists is the one moment this folder can be moved
+            by pressing a button: it is empty, so there is nothing to lose. */}
+        <DataDirCard />
       </div>
     </div>
   );

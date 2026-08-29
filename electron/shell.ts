@@ -35,13 +35,13 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, shell as electronShell } fro
 import { interpretHealth, type HealthOutcome } from './lib/health.js';
 import { installerExtension, resolveInstaller } from './lib/installer.js';
 import { openLogFile, type LogFile } from './lib/log-file.js';
-import { readShellSettings, writeShellSettings } from './lib/settings.js';
 import {
-  canRestart,
-  isExpectedExit,
-  pruneRestarts,
-  RESTART_LIMIT,
-} from './lib/supervisor.js';
+  readDataDirOverride,
+  readShellSettings,
+  writeDataDirOverride,
+  writeShellSettings,
+} from './lib/settings.js';
+import { canRestart, isExpectedExit, pruneRestarts, RESTART_LIMIT } from './lib/supervisor.js';
 
 export interface PanelShellConfig {
   readonly panel: 'master' | 'office';
@@ -70,6 +70,8 @@ export function runPanelShell(config: PanelShellConfig): void {
   let mainWindow: BrowserWindow | null = null;
   let log: LogFile | null = null;
   let quitting = false;
+  /** Set while `orderbook:setDataDir` stops the server on purpose. */
+  let relocating = false;
   let draining = false;
   let updatingSince: number | null = null;
   let restarts: number[] = [];
@@ -82,7 +84,17 @@ export function runPanelShell(config: PanelShellConfig): void {
    * be hunting through an Electron cache directory for their company's
    * database.
    */
-  const dataDir = (): string => path.join(app.getPath('appData'), 'OrderBook', config.panel);
+  /**
+   * Where the panel's own folder sits, unless the operator moved it.
+   *
+   * Read fresh rather than captured, because a first-run relocation rewrites
+   * the pointer and restarts the server underneath us — a value snapshotted at
+   * launch would send the restarted child back to the old folder.
+   */
+  const defaultDataDir = (): string => path.join(app.getPath('appData'), 'OrderBook', config.panel);
+  const locationPath = (): string =>
+    path.join(app.getPath('appData'), 'OrderBook', `${config.panel}-location.json`);
+  const dataDir = (): string => readDataDirOverride(locationPath()) ?? defaultDataDir();
   const logPath = (): string => path.join(dataDir(), 'logs', `${config.panel}.log`);
   const settingsPath = (): string => path.join(dataDir(), 'shell.json');
 
@@ -143,7 +155,7 @@ export function runPanelShell(config: PanelShellConfig): void {
   }
 
   async function onServerExit(code: number | null): Promise<void> {
-    if (isExpectedExit({ quitting, updatingSince, now: Date.now() })) return;
+    if (isExpectedExit({ quitting, relocating, updatingSince, now: Date.now() })) return;
 
     say(`Server exited unexpectedly (code ${code ?? 'unknown'})`);
     restarts = pruneRestarts(restarts, Date.now());
@@ -442,6 +454,64 @@ export function runPanelShell(config: PanelShellConfig): void {
       say(`Could not launch the installer: ${String(error)}`);
       return false;
     }
+  });
+
+  /*
+   * A native folder chooser, for the storage-path control on the sign-in screen.
+   *
+   * The dialog is the shell's to open — the renderer is sandboxed and has no
+   * filesystem of its own — and it returns a path, never a handle: the server
+   * is what moves the files, and it does that through its own
+   * `relocateDataDir`, which refuses the cases that would lose work.
+   */
+  ipcMain.handle('orderbook:getDataDir', () => ({
+    dataDir: dataDir(),
+    isDefault: readDataDirOverride(locationPath()) === null,
+  }));
+
+  /*
+   * Point this installation at another folder, and restart into it.
+   *
+   * Offered on the **first-run screen only**, and the renderer is what enforces
+   * that. The reason is the Master's: its data directory holds a running
+   * PostgreSQL cluster, so moving it is a stop-and-restart rather than a file
+   * copy, and its own page is reachable from every machine on the LAN. Before
+   * setup there is nothing to protect and nothing to move; afterwards there is
+   * both, and the answer is a backup and a restore.
+   *
+   * The pointer is written first and the server restarted second, so a crash
+   * between the two lands on "next launch uses the new folder", which is the
+   * outcome the operator asked for.
+   */
+  ipcMain.handle('orderbook:setDataDir', async (_event, value: unknown) => {
+    const target = typeof value === 'string' ? value.trim() : '';
+    if (!target) return false;
+
+    writeDataDirOverride(locationPath(), target);
+    say(`Data directory set to ${target}; restarting the server`);
+
+    // Held across the stop *and* the start: the supervisor must not read this
+    // stop as a crash and race a second server onto the same port, and the
+    // window between the two is exactly where it would.
+    relocating = true;
+    try {
+      await stopServer();
+      serverProcess = startServer();
+    } finally {
+      relocating = false;
+    }
+
+    await waitForServerThenShow();
+    return true;
+  });
+
+  ipcMain.handle('orderbook:chooseDirectory', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory', 'createDirectory'],
+      title: 'Choose where OrderBook keeps its files',
+    });
+
+    return result.canceled ? null : (result.filePaths[0] ?? null);
   });
 
   ipcMain.handle('orderbook:getShellSettings', () => ({

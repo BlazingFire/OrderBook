@@ -35,6 +35,8 @@ export interface PanelPaths {
   usersFile: string;
   signInAttemptsFile: string;
   imagesDir: string;
+  /** Cached profile pictures, so the sign-in screen has faces while offline. */
+  avatarsDir: string;
 }
 
 /** Files the panel owns, by the name they keep inside the data folder. */
@@ -73,6 +75,7 @@ export function paths(): PanelPaths {
     usersFile: path.join(dataDir, FILE_NAMES.usersFile),
     signInAttemptsFile: path.join(dataDir, FILE_NAMES.signInAttemptsFile),
     imagesDir: path.join(dataDir, 'images'),
+    avatarsDir: path.join(dataDir, 'avatars'),
   };
 }
 

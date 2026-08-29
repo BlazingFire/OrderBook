@@ -57,6 +57,18 @@ export interface KnownUser {
    */
   masterToken: string | null;
   lastSignInAt: string;
+  /**
+   * The person's profile picture, so the sign-in screen can show a face.
+   *
+   * The id only — the bytes are cached separately under `avatarsDir`, keyed by
+   * this id, because the sign-in screen has to render them with nobody signed
+   * in and the Master very possibly switched off. `null` means either no
+   * picture or one this panel has never been online to fetch; the screen falls
+   * back to initials either way.
+   */
+  avatarId: string | null;
+  /** Colour placeholder for the picture, painted before the bytes decode. */
+  blurhash: string | null;
 }
 
 interface StoredFile {

@@ -1599,6 +1599,10 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'firstRun.choose.newSite': 'Set up new site',
   // TODO(i18n-hi)
+  'firstRun.dataDir.title': "Where this Master keeps its data",
+  'firstRun.dataDir.help': "Choose the drive now, while it is still empty. Afterwards, moving it is a backup and a restore.",
+  'firstRun.dataDir.change': "Choose another folder and restart",
+  'firstRun.dataDir.failed': "Could not change the folder",
   'firstRun.choose.restore': 'Restore from backup',
   // TODO(i18n-hi)
   'firstRun.error.default': 'Setup failed',
@@ -3502,6 +3506,17 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'signin.subtitleFallback': 'Sign in to continue',
   // TODO(i18n-hi)
+  'signin.chooseProfile': "Who is using this panel?",
+  'signin.notYou': "Not you?",
+  'signin.forgetProfile': "Remove {name} from this panel",
+  'storage.title': "Where this panel keeps its files",
+  'storage.change': "Change",
+  'storage.folder': "Folder",
+  'storage.browse': "Browse…",
+  'storage.move': "Move the files here",
+  'storage.help': "Everything this panel has saved is copied to the new folder. Queued work that has not reached the Master goes with it.",
+  'storage.moved': "Moved {count} files.",
+  'storage.failed': "Could not move this panel’s files",
   'signin.username': 'Username',
   // TODO(i18n-hi)
   'splash.error.timeout': 'The server did not answer in time.',

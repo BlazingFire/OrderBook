@@ -142,6 +142,23 @@ export interface DiscoveredMaster {
 /** The panel's view: the Master's snapshot plus anything still queued here. */
 export type LocalView = SyncSnapshot & { pendingCount: number };
 
+/**
+ * One remembered face on the sign-in screen.
+ *
+ * Deliberately thin: a name, a role and whether there is a picture. Nothing the
+ * panel holds that could help somebody sign in — no verifier, no token, no
+ * permission set — crosses to the browser.
+ */
+export interface PanelProfile {
+  userId: string;
+  username: string;
+  displayName: string;
+  roleName: string;
+  lastSignInAt: string;
+  blurhash: string | null;
+  hasAvatar: boolean;
+}
+
 /** Who is signed in on this panel. Held by the panel's server, not the browser. */
 export interface PanelSession {
   userId: string;
@@ -457,6 +474,23 @@ export const api = {
 
   // --- The assistant (Stage 12). Master-online-only, never queued: an answer
   // to an hour-old question delivered when the link returns helps nobody.
+  // --- The sign-in screen's own reads --------------------------------------
+
+  /** People who have signed in on this panel before, newest first. */
+  profiles: () => request<PanelProfile[]>('/api/session/profiles'),
+  /** Take somebody off this panel: their verifier and cached picture go too. */
+  forgetProfile: (userId: string) =>
+    request<void>(`/api/session/profiles/${encodeURIComponent(userId)}`, { method: 'DELETE' }),
+  profileAvatarUrl: (userId: string) =>
+    `/api/session/profiles/${encodeURIComponent(userId)}/avatar`,
+
+  storagePath: () => request<{ dataDir: string; freeBytes: number | null }>('/api/storage/path'),
+  setStoragePath: (path: string, moveExisting = true) =>
+    post<{ dataDir: string; previousDataDir: string; filesMoved: number; bytesMoved: number }>(
+      '/api/storage/path',
+      { path, moveExisting },
+    ),
+
   aiStatus: () => request<AiStatus>('/api/ai/status'),
   aiRuns: () => request<AiRun[]>('/api/ai/runs'),
   aiAsk: (input: AiStartInput) => post<{ runId: string }>('/api/ai/runs', input),

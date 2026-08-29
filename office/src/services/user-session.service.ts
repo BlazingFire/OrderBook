@@ -30,6 +30,8 @@ import { createLogger } from '../lib/logger.js';
 import { mintVerifier, verifyAgainst } from '../lib/password.js';
 import { MasterCommandError, masterConnection } from '../realtime/master-connection.js';
 import * as attempts from './sign-in-attempts.store.js';
+import { cacheAvatar } from './avatar-cache.js';
+import { masterFetch } from '../lib/master-fetch.js';
 import * as userStore from './user-store.js';
 
 const log = createLogger('user-session');
@@ -153,9 +155,23 @@ async function signInAgainstMaster(username: string, password: string): Promise<
     roleVersion: user.roleVersion,
     masterToken: token,
     lastSignInAt: new Date().toISOString(),
+    avatarId: user.avatar?.id ?? null,
+    blurhash: user.avatar?.blurhash ?? null,
   });
 
   await masterConnection.assume(token);
+
+  /*
+   * Pull the profile picture down while we are certainly online and certainly
+   * authorised, which is only true right here.
+   *
+   * The screen that shows it — the panel's own sign-in list — renders with
+   * nobody signed in and the Master very possibly off, so it can only ever read
+   * a local file. Awaited rather than fired and forgotten so a fast second
+   * sign-in cannot race the write, and it never throws: a missing picture costs
+   * the list a face and nothing else.
+   */
+  if (user.avatar) await cacheAvatar(user.avatar.id, masterFetch);
 
   current = {
     userId: user.id,

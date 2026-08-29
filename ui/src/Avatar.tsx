@@ -34,6 +34,7 @@ export function Avatar({
   name,
   avatar,
   size = 'sm',
+  src,
 }: {
   name: string;
   /**
@@ -46,12 +47,22 @@ export function Avatar({
    */
   avatar: UserAvatar | null | undefined;
   size?: AvatarSize;
+  /**
+   * Where the picture actually is, when it is not on the Master.
+   *
+   * The Office panel's sign-in screen draws faces from its own cache, because
+   * it renders with nobody signed in and the Master often switched off — the
+   * Master's `/api/avatars` route cannot serve that. Everything else about this
+   * component is the same: the initials, the tint, and the fall back to them
+   * when the bytes will not load.
+   */
+  src?: string;
 }) {
   const [failed, setFailed] = useState(false);
   const { px, variant } = SIZES[size];
 
   const initials = initialsOf(name);
-  const showImage = Boolean(avatar) && !failed;
+  const showImage = Boolean(avatar ?? src) && !failed;
 
   return (
     <span
@@ -60,12 +71,12 @@ export function Avatar({
       style={{ width: px, height: px, fontSize: Math.round(px * 0.4) }}
       title={name}
     >
-      {showImage && avatar ? (
+      {showImage ? (
         <img
-          // Keyed on the avatar id so replacing a picture swaps the element
-          // rather than leaving a failed `img` in its error state.
-          key={avatar.id}
-          src={`/api/avatars/${avatar.id}/${variant}`}
+          // Keyed on the source so replacing a picture swaps the element rather
+          // than leaving a failed `img` in its error state.
+          key={src ?? avatar?.id}
+          src={src ?? `/api/avatars/${avatar?.id}/${variant}`}
           alt=""
           width={px}
           height={px}

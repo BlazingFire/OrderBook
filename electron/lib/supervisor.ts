@@ -23,6 +23,14 @@ export interface ExitContext {
   quitting: boolean;
   /** When we launched an installer, if we have. */
   updatingSince: number | null;
+  /**
+   * A relocation is under way: the server was stopped on purpose so it can be
+   * started again against a different data directory. Without this the
+   * supervisor reads that stop as a crash and starts a *second* server, and
+   * the two race for the port — the first one to bind wins and the other dies
+   * with `EADDRINUSE`, which then counts as another crash.
+   */
+  relocating: boolean;
   now: number;
 }
 
@@ -34,7 +42,7 @@ export interface ExitContext {
  * treating `0` as fine is what left a live window over a dead backend.
  */
 export function isExpectedExit(context: ExitContext): boolean {
-  if (context.quitting) return true;
+  if (context.quitting || context.relocating) return true;
   return isUpdating(context.updatingSince, context.now);
 }
 
