@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   DocumentExport,
   DocumentTemplate,
+  DocumentLayoutV2,
   DocumentTemplateInput,
   DocumentSubjectKind,
   DocumentType,
@@ -47,7 +48,9 @@ import {
   Input,
   LoadMorePager,
   Modal,
+  PageDesigner,
   PageDesignerCanvas,
+  bindingChoices,
   NumberInput,
   Section,
   Select,
@@ -780,7 +783,11 @@ function TemplateEditor({
         </div>
       </Card>
 
-      <LayoutCard draft={draft} />
+      <LayoutCard
+        draft={draft}
+        canEdit={canSave}
+        onLayout={(layout) => setDraft((current) => ({ ...current, layout }))}
+      />
 
       {canRender && <PreviewPanel draft={draft} />}
 
@@ -812,7 +819,15 @@ function TemplateEditor({
  * any drag code exists to blame. A discrepancy here is a static picture beside
  * a preview PDF rather than a mystery mid-drag.
  */
-function LayoutCard({ draft }: { draft: DocumentTemplateInput }) {
+function LayoutCard({
+  draft,
+  onLayout,
+  canEdit,
+}: {
+  draft: DocumentTemplateInput;
+  onLayout: (layout: DocumentLayoutV2) => void;
+  canEdit: boolean;
+}) {
   // Memoised, not merely built. A fresh object every render would re-run the
   // conversion below on every keystroke in the form above it — the same trap
   // an `exhaustive-deps` fix walks into when the dependency is a literal.
@@ -843,6 +858,61 @@ function LayoutCard({ draft }: { draft: DocumentTemplateInput }) {
     [draft.layout, geometry, draft.showLogo, draft.showSignature],
   );
 
+  // The catalogue the palette offers. Built here rather than fetched: these are
+  // the bindings this product has, and a list that arrived over the wire could
+  // disagree with the one the renderer will actually resolve.
+  const bindings = useMemo(
+    () =>
+      bindingChoices(
+        [
+          { binding: 'company.name', label: t('designer.binding.companyName'), group: 'Company' },
+          { binding: 'document.title', label: t('designer.binding.title'), group: 'Document' },
+          {
+            binding: 'document.reference',
+            label: t('designer.binding.reference'),
+            group: 'Document',
+          },
+          {
+            binding: 'document.issuedOn',
+            label: t('designer.binding.issuedOn'),
+            group: 'Document',
+          },
+          { binding: 'document.terms', label: t('designer.binding.terms'), group: 'Document' },
+          { binding: 'document.footer', label: t('designer.binding.footer'), group: 'Document' },
+          {
+            binding: 'document.boxCount',
+            label: t('designer.binding.boxCount'),
+            group: 'Document',
+          },
+          {
+            binding: 'document.grandTotal',
+            label: t('designer.binding.grandTotal'),
+            group: 'Document',
+          },
+          {
+            binding: 'document.lineCount',
+            label: t('designer.binding.lineCount'),
+            group: 'Document',
+          },
+          { binding: 'party.name', label: t('designer.binding.partyName'), group: 'Party' },
+          { binding: 'party.code', label: t('designer.binding.partyCode'), group: 'Party' },
+          {
+            binding: 'party.addressLines',
+            label: t('designer.binding.partyAddress'),
+            group: 'Party',
+          },
+          { binding: 'party.city', label: t('designer.binding.partyCity'), group: 'Party' },
+          { binding: 'party.state', label: t('designer.binding.partyState'), group: 'Party' },
+          { binding: 'party.pincode', label: t('designer.binding.partyPincode'), group: 'Party' },
+          { binding: 'party.phone', label: t('designer.binding.partyPhone'), group: 'Party' },
+          { binding: 'party.email', label: t('designer.binding.partyEmail'), group: 'Party' },
+          { binding: 'party.gstNumber', label: t('designer.binding.partyGst'), group: 'Party' },
+        ],
+        [],
+      ),
+    [],
+  );
+
   if (layout.elements.length === 0) return null;
 
   return (
@@ -850,9 +920,13 @@ function LayoutCard({ draft }: { draft: DocumentTemplateInput }) {
       <div className="ob-eyebrow">{t('documents.layout.title')}</div>
       <p className="ob-small">{t('documents.layout.help')}</p>
 
-      <div style={{ maxWidth: rem(420), margin: '0 auto' }}>
-        <PageDesignerCanvas geometry={geometry} elements={layout.elements} />
-      </div>
+      {canEdit ? (
+        <PageDesigner geometry={geometry} layout={layout} bindings={bindings} onChange={onLayout} />
+      ) : (
+        <div style={{ maxWidth: rem(420), margin: '0 auto' }}>
+          <PageDesignerCanvas geometry={geometry} elements={layout.elements} />
+        </div>
+      )}
     </Card>
   );
 }

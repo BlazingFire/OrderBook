@@ -2669,3 +2669,54 @@ html[data-window-blur='true'] .ob-busy rect {
 .ob-designer-guide[data-axis='y'] {
   height: 1px;
 }
+
+/* The designer's chrome: a toolbar over a stage with an inspector beside it.
+   Lengths here are rem, because this is interface rather than paper. */
+.ob-designer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+}
+
+.ob-designer-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-4);
+}
+
+.ob-designer-body {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-16);
+}
+
+.ob-designer-stage {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+}
+
+.ob-designer-side {
+  flex: none;
+  width: 17.1429rem;
+}
+
+/* Below the tight breakpoint the inspector goes under the page rather than
+   squeezing it — a page narrower than a postcard is not a design surface. */
+@media (max-width: 1100px) {
+  .ob-designer-body {
+    flex-direction: column;
+  }
+
+  .ob-designer-side {
+    width: 100%;
+  }
+}
+
+/* Grabbing is the whole interaction, so it has to look grabbable. */
+.ob-designer-element[data-selected='true'] {
+  cursor: move;
+}

@@ -101,18 +101,27 @@ export type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'move';
  * thumbnail and comically large in a zoomed editor.
  */
 export function handleAt(rect: Rect, x: number, y: number, grip: number): Handle | null {
-  const nearLeft = Math.abs(x - rect.x) <= grip;
-  const nearRight = Math.abs(x - (rect.x + rect.w)) <= grip;
-  const nearTop = Math.abs(y - rect.y) <= grip;
-  const nearBottom = Math.abs(y - (rect.y + rect.h)) <= grip;
+  /*
+   * A grip may never be wider than a third of the side it sits on.
+   *
+   * Without this the two edge zones meet in the middle of anything thin — a
+   * five-millimetre field against a two-millimetre grip has no interior left —
+   * and the element becomes impossible to *move*, because every point on it
+   * reports as a resize. Most fields on a real document are that thin.
+   */
+  const limited = Math.min(grip, rect.w / 3, rect.h / 3);
+  const nearLeft = Math.abs(x - rect.x) <= limited;
+  const nearRight = Math.abs(x - (rect.x + rect.w)) <= limited;
+  const nearTop = Math.abs(y - rect.y) <= limited;
+  const nearBottom = Math.abs(y - (rect.y + rect.h)) <= limited;
 
   if (nearTop && nearLeft) return 'nw';
   if (nearTop && nearRight) return 'ne';
   if (nearBottom && nearLeft) return 'sw';
   if (nearBottom && nearRight) return 'se';
 
-  const withinX = x >= rect.x - grip && x <= rect.x + rect.w + grip;
-  const withinY = y >= rect.y - grip && y <= rect.y + rect.h + grip;
+  const withinX = x >= rect.x - limited && x <= rect.x + rect.w + limited;
+  const withinY = y >= rect.y - limited && y <= rect.y + rect.h + limited;
 
   if (nearTop && withinX) return 'n';
   if (nearBottom && withinX) return 's';

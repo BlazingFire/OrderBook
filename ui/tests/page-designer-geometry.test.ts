@@ -104,6 +104,20 @@ describe('page designer geometry', () => {
     expect(handleAt(rect, 90, 90, 1.5)).toBeNull();
   });
 
+  it('leaves a thin element something to grab, so it can still be moved', () => {
+    // A field on a real document is a few millimetres tall. With a fixed grip
+    // the top and bottom zones meet in the middle and every point reports as a
+    // resize — the element becomes impossible to move, only to stretch. Found
+    // by dragging one in the browser and watching it refuse.
+    const thin: Rect = { x: 15, y: 40, w: 90, h: 5 };
+
+    expect(handleAt(thin, 60, 42.5, 2.4)).toBe('move');
+
+    // The corners still work, because the clamp is a third of each side.
+    expect(handleAt(thin, 15, 40, 2.4)).toBe('nw');
+    expect(handleAt(thin, 105, 45, 2.4)).toBe('se');
+  });
+
   it('resizes from the grip being held, and refuses to vanish', () => {
     const rect: Rect = { x: 10, y: 10, w: 40, h: 20 };
 

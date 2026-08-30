@@ -1230,6 +1230,150 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'documents.layout.help':
     'Where each piece sits on the paper. The table grows with the number of lines, and anything set to follow it moves down.',
   // TODO(i18n-hi)
+  // TODO(i18n-hi)
+  'designer.binding.companyName': 'Company name',
+  // TODO(i18n-hi)
+  'designer.binding.title': 'Document title',
+  // TODO(i18n-hi)
+  'designer.binding.reference': 'Reference',
+  // TODO(i18n-hi)
+  'designer.binding.issuedOn': 'Date',
+  // TODO(i18n-hi)
+  'designer.binding.terms': 'Terms',
+  // TODO(i18n-hi)
+  'designer.binding.footer': 'Footer text',
+  // TODO(i18n-hi)
+  'designer.binding.boxCount': 'Total boxes',
+  // TODO(i18n-hi)
+  'designer.binding.grandTotal': 'Grand total',
+  // TODO(i18n-hi)
+  'designer.binding.lineCount': 'Number of lines',
+  // TODO(i18n-hi)
+  'designer.binding.partyName': 'Party name',
+  // TODO(i18n-hi)
+  'designer.binding.partyCode': 'Party code',
+  // TODO(i18n-hi)
+  'designer.binding.partyAddress': 'Party address',
+  // TODO(i18n-hi)
+  'designer.binding.partyCity': 'Party city',
+  // TODO(i18n-hi)
+  'designer.binding.partyState': 'Party state',
+  // TODO(i18n-hi)
+  'designer.binding.partyPincode': 'Party pincode',
+  // TODO(i18n-hi)
+  'designer.binding.partyPhone': 'Party phone',
+  // TODO(i18n-hi)
+  'designer.binding.partyEmail': 'Party email',
+  // TODO(i18n-hi)
+  'designer.binding.partyGst': 'Party GST number',
+  'designer.inspector.empty': 'Pick something on the page to change it.',
+  // TODO(i18n-hi)
+  'designer.kind.text': 'Text',
+  // TODO(i18n-hi)
+  'designer.kind.field': 'Field',
+  // TODO(i18n-hi)
+  'designer.kind.image': 'Image',
+  // TODO(i18n-hi)
+  'designer.kind.rule': 'Line',
+  // TODO(i18n-hi)
+  'designer.kind.box': 'Box',
+  // TODO(i18n-hi)
+  'designer.kind.table': 'Line items',
+  // TODO(i18n-hi)
+  'designer.add.text': 'Add text',
+  // TODO(i18n-hi)
+  'designer.add.field': 'Add field',
+  // TODO(i18n-hi)
+  'designer.add.image': 'Add image',
+  // TODO(i18n-hi)
+  'designer.add.rule': 'Add line',
+  // TODO(i18n-hi)
+  'designer.add.box': 'Add box',
+  // TODO(i18n-hi)
+  'designer.field.x': 'Left (mm)',
+  // TODO(i18n-hi)
+  'designer.field.y': 'Top (mm)',
+  // TODO(i18n-hi)
+  'designer.field.width': 'Width (mm)',
+  // TODO(i18n-hi)
+  'designer.field.height': 'Height (mm)',
+  // TODO(i18n-hi)
+  'designer.field.text': 'Text',
+  // TODO(i18n-hi)
+  'designer.field.binding': 'Shows',
+  // TODO(i18n-hi)
+  'designer.field.label': 'Label',
+  // TODO(i18n-hi)
+  'designer.field.labelHelp': 'Printed before the value, on the same line. Leave empty for none.',
+  // TODO(i18n-hi)
+  'designer.field.size': 'Size (pt)',
+  // TODO(i18n-hi)
+  'designer.field.face': 'Typeface',
+  // TODO(i18n-hi)
+  'designer.field.align': 'Alignment',
+  // TODO(i18n-hi)
+  'designer.field.fit': 'If it does not fit',
+  // TODO(i18n-hi)
+  'designer.field.fitHelp': 'What to do when the text is longer than the box.',
+  // TODO(i18n-hi)
+  'designer.field.maxChars': 'Character limit',
+  // TODO(i18n-hi)
+  'designer.field.maxCharsHelp':
+    'Longer values are cut to this before they are measured. Zero means no limit.',
+  // TODO(i18n-hi)
+  'designer.field.bold': 'Bold',
+  // TODO(i18n-hi)
+  'designer.field.followsTable': 'Move down as the table grows',
+  // TODO(i18n-hi)
+  'designer.field.band': 'Repeats on',
+  // TODO(i18n-hi)
+  'designer.field.bandHelp': 'Header and footer are drawn on every page. Body is drawn once.',
+  // TODO(i18n-hi)
+  'designer.face.body': 'Text',
+  // TODO(i18n-hi)
+  'designer.face.mono': 'Code',
+  // TODO(i18n-hi)
+  'designer.align.left': 'Left',
+  // TODO(i18n-hi)
+  'designer.align.centre': 'Centre',
+  // TODO(i18n-hi)
+  'designer.align.right': 'Right',
+  // TODO(i18n-hi)
+  'designer.fit.wrap': 'Wrap onto more lines',
+  // TODO(i18n-hi)
+  'designer.fit.shrink': 'Shrink to fit the box',
+  // TODO(i18n-hi)
+  'designer.fit.truncate': 'Cut with an ellipsis',
+  // TODO(i18n-hi)
+  'designer.fit.clip': 'Keep whole lines only',
+  // TODO(i18n-hi)
+  'designer.band.header': 'Every page, at the top',
+  // TODO(i18n-hi)
+  'designer.band.body': 'Once',
+  // TODO(i18n-hi)
+  'designer.band.footer': 'Every page, at the foot',
+  // TODO(i18n-hi)
+  'designer.order.front': 'To front',
+  // TODO(i18n-hi)
+  'designer.order.forward': 'Forward',
+  // TODO(i18n-hi)
+  'designer.order.backward': 'Backward',
+  // TODO(i18n-hi)
+  'designer.order.back': 'To back',
+  // TODO(i18n-hi)
+  'designer.remove': 'Remove',
+  // TODO(i18n-hi)
+  'designer.distribute': 'Space evenly',
+  // TODO(i18n-hi)
+  'designer.undo': 'Undo',
+  // TODO(i18n-hi)
+  'designer.newText': 'New text',
+  // TODO(i18n-hi)
+  'designer.group.custom': 'Your fields',
+  // TODO(i18n-hi)
+  'designer.hint':
+    'Drag to move, or drag an edge to resize. Arrow keys nudge, Alt turns off snapping.',
+  // TODO(i18n-hi)
   'documents.editor.saveFailed': 'Could not save the template',
   // TODO(i18n-hi)
   'documents.editor.saved': 'Saved “{name}”',
