@@ -5,6 +5,7 @@ export * from './domain/columns.js';
 export * from './domain/connectors.js';
 export * from './domain/document-layout.js';
 export * from './domain/document-starters.js';
+export * from './domain/release-signature.js';
 export * from './domain/documents.js';
 export * from './domain/entities.js';
 export * from './domain/fields.js';

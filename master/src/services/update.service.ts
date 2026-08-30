@@ -28,7 +28,12 @@ import { createReadStream } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 
-import type { PanelKind, ReleaseManifest, UpdateAvailability } from '@orderbook/shared';
+import type {
+  PanelKind,
+  PreparedInstaller,
+  ReleaseManifest,
+  UpdateAvailability,
+} from '@orderbook/shared';
 import { isNewer } from '@orderbook/shared';
 
 import { config } from '../config/index.js';
@@ -114,10 +119,7 @@ export async function readManifest(panel: PanelKind): Promise<ReleaseManifest | 
 }
 
 /** What one panel kind should do, against a version already running. */
-export async function availability(
-  panel: PanelKind,
-  running: string,
-): Promise<UpdateAvailability> {
+export async function availability(panel: PanelKind, running: string): Promise<UpdateAvailability> {
   const manifest = await readManifest(panel);
 
   if (!manifest) {
@@ -170,6 +172,25 @@ export async function verifyRelease(panel: PanelKind, manifest: ReleaseManifest)
 }
 
 /**
+ * The last setup file this process verified, for the shell to ask about.
+ *
+ * Held in memory rather than written down on purpose: it is a statement about
+ * what *this run* checked, and a restart should forget it. The shell reads it
+ * over loopback and re-hashes the file before running anything, so this is a
+ * pointer, never a permission.
+ */
+let prepared: PreparedInstaller | null = null;
+
+export function preparedInstaller(): PreparedInstaller | null {
+  return prepared;
+}
+
+/** Test seam — the module lives as long as the process does. */
+export function forgetPreparedInstaller(): void {
+  prepared = null;
+}
+
+/**
  * The verified path of the Master's own setup file, for the desktop shell to
  * run and quit behind.
  *
@@ -182,5 +203,13 @@ export async function prepareMasterUpdate(): Promise<{ path: string; manifest: R
   if (!available) throw new ValidationError('validation.updates.noneAvailable');
 
   await verifyRelease('master', available);
-  return { path: releaseFileFor('master', available), manifest: available };
+
+  const file = releaseFileFor('master', available);
+  prepared = {
+    path: file,
+    sha256: available.sha256.toLowerCase(),
+    version: available.version,
+  };
+
+  return { path: file, manifest: available };
 }

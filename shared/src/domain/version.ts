@@ -32,7 +32,10 @@ export function parseVersion(value: string | null | undefined): [number, number,
 }
 
 /** Negative when `a` is older, positive when newer, `0` when the same build. */
-export function compareVersions(a: string | null | undefined, b: string | null | undefined): number {
+export function compareVersions(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): number {
   const left = parseVersion(a);
   const right = parseVersion(b);
 
@@ -97,6 +100,18 @@ export interface ReleaseManifest {
   releasedAt: IsoTimestamp;
   /** Plain sentences for the person deciding whether to install now. */
   notes?: string;
+
+  /**
+   * Base64 Ed25519 signature over `canonicalManifestPayload`, and the id of the
+   * key that made it.
+   *
+   * Optional because the local-folder source predates them: a site that copies
+   * builds in on a USB stick has no signing machine, and its manifests stay
+   * legal unsigned. A manifest that arrived over the internet is held to a
+   * stricter rule — see `release-signature.ts`.
+   */
+  signature?: string;
+  keyId?: string;
 }
 
 /** One machine's answer to "should I update, and to what?". */

@@ -113,6 +113,8 @@ export function createApp(): Express {
             dataDir: paths().dataDir,
             logFile: process.env.ORDERBOOK_LOG_FILE ?? null,
             installerDir: updateService.updatesDir(),
+            // What the shell may run, and what it must still hash to.
+            installer: updateService.preparedInstaller(),
           }
         : {}),
     } satisfies PanelHealth);

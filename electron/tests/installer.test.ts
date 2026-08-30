@@ -7,11 +7,19 @@
  * check moved out of the main process and into a pure function.
  */
 
+import { createHash } from 'node:crypto';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { installerExtension, resolveInstaller } from '../lib/installer.js';
+import {
+  approveInstaller,
+  digestOf,
+  installerExtension,
+  resolveInstaller,
+} from '../lib/installer.js';
 
 const UPDATES = path.resolve('/data/OrderBook/office/updates');
 
@@ -22,7 +30,9 @@ describe('resolving an installer path', () => {
   });
 
   it('refuses a path outside the folder', () => {
-    expect(resolveInstaller(path.resolve('/windows/system32/cmd.exe'), UPDATES, 'win32')).toBeNull();
+    expect(
+      resolveInstaller(path.resolve('/windows/system32/cmd.exe'), UPDATES, 'win32'),
+    ).toBeNull();
   });
 
   it('refuses traversal back out of the folder', () => {
@@ -57,5 +67,76 @@ describe('resolving an installer path', () => {
     expect(installerExtension('darwin')).toBe('.dmg');
     expect(resolveInstaller(path.join(UPDATES, 'OrderBook.dmg'), UPDATES, 'darwin')).not.toBeNull();
     expect(resolveInstaller(path.join(UPDATES, 'OrderBook.exe'), UPDATES, 'darwin')).toBeNull();
+  });
+});
+
+/**
+ * Containment says *where* a file is. It cannot say *what* it is — and the
+ * folder it guards is on disk, writable by whoever can write it. So the shell
+ * hashes the bytes itself, in the process that is about to run them, with
+ * nothing happening in between.
+ */
+describe('approving an installer before it is launched', () => {
+  let dir: string;
+  let good: string;
+  let digest: string;
+
+  beforeAll(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), 'orderbook-installer-'));
+    good = path.join(dir, 'OrderBook-Office-1.0.3-Setup.exe');
+
+    const bytes = Buffer.from('pretend this is a hundred megabytes of installer');
+    await writeFile(good, bytes);
+    digest = createHash('sha256').update(bytes).digest('hex');
+  });
+
+  afterAll(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('accepts a contained file whose bytes hash to what the panel said', async () => {
+    expect(await approveInstaller(good, digest, dir, 'win32')).toEqual({ path: good });
+  });
+
+  it('accepts the digest whatever case it is written in', async () => {
+    expect(await approveInstaller(good, digest.toUpperCase(), dir, 'win32')).toEqual({
+      path: good,
+    });
+  });
+
+  it('refuses bytes that changed after the panel checked them', async () => {
+    // The whole point. The panel hashed this file when it downloaded it; the
+    // file has been sitting in a writable folder since, and something swapped
+    // it. Size is not consulted, so padding to match buys nothing.
+    const swapped = path.join(dir, 'OrderBook-Office-1.0.4-Setup.exe');
+    await writeFile(swapped, Buffer.from('pretend this is somebody else s installer........'));
+
+    const verdict = await approveInstaller(swapped, digest, dir, 'win32');
+    expect('refused' in verdict && verdict.refused).toMatch(/hashes to/);
+  });
+
+  it('refuses when no digest was supplied at all', async () => {
+    // An older panel that does not report one must not be the reason an
+    // unverified installer runs. Absent is a refusal, never a pass.
+    for (const missing of [undefined, null, '', 'not-a-digest']) {
+      const verdict = await approveInstaller(good, missing, dir, 'win32');
+      expect('refused' in verdict, String(missing)).toBe(true);
+    }
+  });
+
+  it('still refuses anything outside the folder, digest or not', async () => {
+    const outside = path.resolve('/windows/system32/cmd.exe');
+    const verdict = await approveInstaller(outside, digest, dir, 'win32');
+    expect('refused' in verdict && verdict.refused).toMatch(/outside/);
+  });
+
+  it('refuses a file that is not there', async () => {
+    const missing = path.join(dir, 'OrderBook-Office-9.9.9-Setup.exe');
+    const verdict = await approveInstaller(missing, digest, dir, 'win32');
+    expect('refused' in verdict && verdict.refused).toMatch(/could not be read/);
+  });
+
+  it('hashes a file the same way the panel does', async () => {
+    expect(await digestOf(good)).toBe(digest);
   });
 });

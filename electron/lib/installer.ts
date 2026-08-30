@@ -12,6 +12,8 @@
  * Pure, so the traversal vectors can be tested without a window.
  */
 
+import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import path from 'node:path';
 
 /** The setup-file extension for each platform we build for. */
@@ -48,4 +50,65 @@ export function resolveInstaller(
   if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) return null;
 
   return resolved;
+}
+
+/**
+ * Hash a setup file, for the process that is about to run it.
+ *
+ * The panel checksummed these bytes when it downloaded them. That is a
+ * different process, at a different time, and the file has been sitting in a
+ * folder on disk in between — so the digest it reported is a statement about
+ * the past. This is the one that decides whether anything runs, taken by the
+ * process doing the running, with nothing happening in between.
+ *
+ * Streamed because these files are 100–200 MB and the shell is holding a
+ * window open while it works.
+ */
+export async function digestOf(file: string): Promise<string> {
+  const hash = createHash('sha256');
+
+  await new Promise<void>((resolve, reject) => {
+    createReadStream(file)
+      .on('data', (chunk) => hash.update(chunk))
+      .on('error', reject)
+      .on('end', resolve);
+  });
+
+  return hash.digest('hex');
+}
+
+/**
+ * Everything that has to be true before a setup file is launched.
+ *
+ * Returns the resolved path, or `null` having said why. The order matters and
+ * is the reverse of how it reads: containment is cheap and rejects the obvious,
+ * the digest is expensive and rejects the deliberate.
+ */
+export async function approveInstaller(
+  candidate: unknown,
+  expectedSha256: unknown,
+  allowedDir: string | null,
+  platform: NodeJS.Platform,
+): Promise<{ path: string } | { refused: string }> {
+  const resolved = resolveInstaller(candidate, allowedDir, platform);
+  if (!resolved) return { refused: `outside ${allowedDir ?? 'an unknown folder'}` };
+
+  if (typeof expectedSha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(expectedSha256)) {
+    // No digest is a refusal, never a pass. An older panel that does not report
+    // one must not be the reason an unverified installer runs.
+    return { refused: 'the panel did not say what it should hash to' };
+  }
+
+  let actual: string;
+  try {
+    actual = await digestOf(resolved);
+  } catch (error) {
+    return { refused: `it could not be read: ${String(error)}` };
+  }
+
+  if (actual !== expectedSha256.toLowerCase()) {
+    return { refused: `it hashes to ${actual}, not ${expectedSha256.toLowerCase()}` };
+  }
+
+  return { path: resolved };
 }

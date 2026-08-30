@@ -19,13 +19,13 @@
  */
 
 import { createHash } from 'node:crypto';
-import { createWriteStream } from 'node:fs';
+import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
-import type { ReleaseManifest, UpdateAvailability } from '@orderbook/shared';
+import type { PreparedInstaller, ReleaseManifest, UpdateAvailability } from '@orderbook/shared';
 import { isNewer } from '@orderbook/shared';
 
 import { paths } from '../config/paths.js';
@@ -76,14 +76,12 @@ export async function availableUpdate(): Promise<UpdateAvailability> {
     payload = (await response.json()) as UpdateAvailability;
   } catch (error) {
     if (error instanceof UpdateError) throw error;
-    throw new UpdateError(
-      'Could not reach the Master Panel to ask about updates',
-      'unreachable',
-    );
+    throw new UpdateError('Could not reach the Master Panel to ask about updates', 'unreachable');
   }
 
   const manifest = payload.available;
-  if (!manifest) return { current: running, available: null, reason: payload.reason ?? 'noRelease' };
+  if (!manifest)
+    return { current: running, available: null, reason: payload.reason ?? 'noRelease' };
   if (!isNewer(manifest.version, running)) {
     return { current: running, available: null, reason: 'upToDate' };
   }
@@ -125,17 +123,30 @@ export async function downloadUpdate(): Promise<{ path: string; manifest: Releas
   const target = downloadPath(available);
   await mkdir(path.dirname(target), { recursive: true });
 
-  // Already downloaded and still intact — a retry after a failed install, or a
-  // second click, should not re-pull 100 MB over the office network.
+  /*
+   * Already downloaded and still intact — a retry after a failed install, or a
+   * second click, should not re-pull 100 MB over the office network.
+   *
+   * The size is only the cheap half of that question. This folder is writable
+   * by the signed-in operator, the filename is deterministic, and the byte
+   * count is published alongside the release — so "right size" was a test
+   * anything could pass on purpose. Reuse costs a hash of a local file; being
+   * wrong costs an installer of somebody else's choosing running with the
+   * elevation the operator is about to grant.
+   */
   try {
     const existing = await stat(target);
-    if (existing.size === available.sizeBytes) {
+    if (
+      existing.size === available.sizeBytes &&
+      (await digestOf(target)) === available.sha256.toLowerCase()
+    ) {
       log.info(`Reusing already-downloaded ${available.file}`);
       await pruneOldDownloads(path.basename(target));
+      remember(target, available);
       return { path: target, manifest: available };
     }
   } catch {
-    // Not there yet. Fall through and fetch it.
+    // Not there yet, or unreadable. Fall through and fetch it.
   }
 
   const response = await fetch(await masterUrl('/api/updates/office/download'));
@@ -161,7 +172,43 @@ export async function downloadUpdate(): Promise<{ path: string; manifest: Releas
 
   log.info(`Downloaded ${available.file} (${available.version})`);
   await pruneOldDownloads(path.basename(target));
+  remember(target, available);
   return { path: target, manifest: available };
+}
+
+/**
+ * Hash a file already on disk.
+ *
+ * Separate from the streaming hash above because that one checks bytes as they
+ * arrive off the wire, and this one checks bytes that have been sitting in a
+ * writable folder since.
+ */
+async function digestOf(file: string): Promise<string> {
+  const hash = createHash('sha256');
+
+  await new Promise<void>((resolve, reject) => {
+    createReadStream(file)
+      .on('data', (chunk) => hash.update(chunk))
+      .on('error', reject)
+      .on('end', resolve);
+  });
+
+  return hash.digest('hex');
+}
+
+/**
+ * The last setup file this process verified, for the shell to ask about over
+ * loopback. In memory on purpose: it describes this run, and a restart should
+ * forget it. The shell re-hashes before running anything regardless.
+ */
+let prepared: PreparedInstaller | null = null;
+
+function remember(file: string, manifest: ReleaseManifest): void {
+  prepared = { path: file, sha256: manifest.sha256.toLowerCase(), version: manifest.version };
+}
+
+export function preparedInstaller(): PreparedInstaller | null {
+  return prepared;
 }
 
 /**

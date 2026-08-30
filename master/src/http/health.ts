@@ -25,7 +25,7 @@ import { hasNetworkLink, listLanInterfaces } from '../lib/network.js';
 import { currentSeq } from '../realtime/change-ring.js';
 import { socketCounts } from '../realtime/hub.js';
 import { sessionCount } from '../services/auth.service.js';
-import { releaseDirFor } from '../services/update.service.js';
+import { preparedInstaller, releaseDirFor } from '../services/update.service.js';
 
 /**
  * Absolute paths are served to loopback callers only.
@@ -42,7 +42,7 @@ function isLoopback(req: Request): boolean {
 
 function localOnly(
   req: Request,
-): Pick<PanelHealth, 'dataDir' | 'logFile' | 'installerDir' | 'runtime'> {
+): Pick<PanelHealth, 'dataDir' | 'logFile' | 'installerDir' | 'installer' | 'runtime'> {
   if (!isLoopback(req)) return {};
 
   const memory = process.memoryUsage();
@@ -51,6 +51,9 @@ function localOnly(
     dataDir: config.dataDir,
     logFile: process.env.ORDERBOOK_LOG_FILE ?? null,
     installerDir: releaseDirFor('master'),
+    // What the shell is allowed to run, and what it must hash to. Loopback
+    // only, like the paths above.
+    installer: preparedInstaller(),
     // The figures somebody wants *while* a panel feels slow. Loopback only,
     // like the paths above: how much memory the shop's Master is holding is
     // not something the LAN needs told.

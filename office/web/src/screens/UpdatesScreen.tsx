@@ -75,7 +75,7 @@ export function UpdatesScreen({
       }
 
       setPhase('launching');
-      if (!(await shell.applyUpdate(path))) {
+      if (!(await shell.applyUpdate())) {
         setPhase('failed');
         setFailure(t('updates.launchRefused'));
       }

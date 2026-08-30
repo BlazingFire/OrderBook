@@ -18,8 +18,14 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('orderbook', {
   shellVersion: process.versions.electron,
 
-  applyUpdate: (filePath: string): Promise<boolean> =>
-    ipcRenderer.invoke('orderbook:applyUpdate', filePath) as Promise<boolean>,
+  /**
+   * Ask the shell to install the update the panel has already prepared.
+   *
+   * Takes no path on purpose. The window does not get to say what runs — the
+   * shell asks the panel over loopback and hashes the bytes itself.
+   */
+  applyUpdate: (): Promise<boolean> =>
+    ipcRenderer.invoke('orderbook:applyUpdate') as Promise<boolean>,
 
   /** Where this installation keeps its data, and whether that is the default. */
   getDataDir: (): Promise<{ dataDir: string; isDefault: boolean }> =>

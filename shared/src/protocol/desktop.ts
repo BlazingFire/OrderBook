@@ -29,7 +29,14 @@ export interface DesktopBridge {
    * should be, or a launch the operating system blocked — so the screen can say
    * so rather than waiting for a quit that never comes.
    */
-  applyUpdate(filePath: string): Promise<boolean>;
+  /**
+   * Install the update the panel has already prepared and verified.
+   *
+   * Deliberately takes no path: the renderer does not choose what executes.
+   * The shell asks the panel over loopback and hashes the file itself before
+   * spawning it.
+   */
+  applyUpdate(): Promise<boolean>;
 
   readonly shellVersion: string;
 
@@ -127,6 +134,19 @@ export interface PanelHealth {
   logFile?: string | null;
   installerDir?: string;
   /**
+   * The setup file this panel is prepared to install, and the digest it must
+   * match. Loopback only, like the paths above.
+   *
+   * The shell reads this rather than being handed a path by the renderer.
+   * Until it did, `applyUpdate(path)` took the path *from the window* and the
+   * shell checked only that it sat inside `installerDir` — so anything that
+   * could write that folder chose what ran with the operator's elevation, and
+   * the checksum the comment claimed had been verified was verified by a
+   * different process, minutes earlier, against a file free to change since.
+   * The shell now hashes the bytes itself, immediately before it spawns them.
+   */
+  installer?: PreparedInstaller | null;
+  /**
    * What the process is holding right now. Loopback only, like the paths above.
    *
    * Here rather than in a log because these are the figures somebody wants
@@ -134,6 +154,15 @@ export interface PanelHealth {
    * hour ago. Optional so an older panel answering this route still parses.
    */
   runtime?: PanelRuntimeHealth;
+}
+
+/** A setup file a panel has downloaded, verified, and is willing to have run. */
+export interface PreparedInstaller {
+  /** Absolute path, inside the panel's own installer directory. */
+  path: string;
+  /** Lowercase hex SHA-256 the bytes must still hash to at the moment of launch. */
+  sha256: string;
+  version: string;
 }
 
 export interface PanelRuntimeHealth {

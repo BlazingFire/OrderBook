@@ -33,7 +33,7 @@ import path from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell as electronShell } from 'electron';
 
 import { interpretHealth, type HealthOutcome } from './lib/health.js';
-import { installerExtension, resolveInstaller } from './lib/installer.js';
+import { approveInstaller, installerExtension } from './lib/installer.js';
 import { openLogFile, type LogFile } from './lib/log-file.js';
 import {
   readDataDirOverride,
@@ -420,19 +420,48 @@ export function runPanelShell(config: PanelShellConfig): void {
     );
   }
 
-  /*
-   * Run a verified setup file and quit.
+  /**
+   * Launch the setup file **this panel says it prepared**, after hashing it here.
    *
-   * The renderer has already downloaded and checksummed it. This only launches
-   * it, detached, and gets out of the way — an installer cannot replace files
-   * a running process holds open. The path must be inside the directory the
-   * panel itself reported over loopback; the old check accepted any path on
-   * the machine ending in `.exe`.
+   * The renderer used to pass the path in and this handler checked only that it
+   * sat inside `installerDir`. Two things were wrong with that. The folder is
+   * on disk and writable by whoever can write it, so "inside the folder" is not
+   * a statement about *what* the file is; and the checksum the old comment
+   * relied on was taken by a different process, minutes earlier, against bytes
+   * that were free to change afterwards.
+   *
+   * So the renderer no longer says what runs. The shell asks its own server
+   * over loopback — the same channel it already learned `installerDir` from,
+   * refused to anything off this machine — and then hashes the bytes itself
+   * immediately before spawning them. A window that has been taken over can
+   * still ask for an update; it cannot choose what gets installed.
    */
-  ipcMain.handle('orderbook:applyUpdate', (_event, filePath: unknown): boolean => {
-    const resolved = resolveInstaller(filePath, installerDir, process.platform);
-    if (!resolved) {
-      say(`Refused to run an update from outside ${installerDir ?? 'an unknown folder'}`);
+  ipcMain.handle('orderbook:applyUpdate', async (): Promise<boolean> => {
+    const outcome = await pollHealth();
+    if (outcome.kind !== 'ready') {
+      say('Refused to update: the panel did not answer its own health check');
+      return false;
+    }
+
+    const prepared = outcome.health.installer ?? null;
+    if (!prepared) {
+      say('Refused to update: the panel has no verified installer ready');
+      return false;
+    }
+
+    // Re-read rather than trusting the value captured at boot: a panel that has
+    // relocated its data directory since then reports a different folder.
+    installerDir = outcome.health.installerDir ?? installerDir;
+
+    const verdict = await approveInstaller(
+      prepared.path,
+      prepared.sha256,
+      installerDir,
+      process.platform,
+    );
+
+    if ('refused' in verdict) {
+      say(`Refused to run ${prepared.path}: ${verdict.refused}`);
       return false;
     }
 
@@ -440,10 +469,12 @@ export function runPanelShell(config: PanelShellConfig): void {
       updatingSince = Date.now();
 
       if (process.platform === 'darwin') {
-        void electronShell.openPath(resolved);
+        void electronShell.openPath(verdict.path);
       } else {
-        spawn(resolved, [], { detached: true, stdio: 'ignore' }).unref();
+        spawn(verdict.path, [], { detached: true, stdio: 'ignore' }).unref();
       }
+
+      say(`Installing ${prepared.version} from ${verdict.path}`);
 
       // Give the installer a moment to take hold before this process — and the
       // server it owns — release the files it is about to replace.
@@ -456,14 +487,6 @@ export function runPanelShell(config: PanelShellConfig): void {
     }
   });
 
-  /*
-   * A native folder chooser, for the storage-path control on the sign-in screen.
-   *
-   * The dialog is the shell's to open — the renderer is sandboxed and has no
-   * filesystem of its own — and it returns a path, never a handle: the server
-   * is what moves the files, and it does that through its own
-   * `relocateDataDir`, which refuses the cases that would lose work.
-   */
   ipcMain.handle('orderbook:getDataDir', () => ({
     dataDir: dataDir(),
     isDefault: readDataDirOverride(locationPath()) === null,
