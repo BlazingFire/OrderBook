@@ -248,3 +248,62 @@ export async function prepareMasterUpdate(): Promise<{ path: string; manifest: R
 
   return { path: file, manifest: available };
 }
+
+/** First poll two minutes after boot, so a shop PC starts up before it downloads. */
+const FIRST_POLL_MS = 2 * 60_000;
+
+/**
+ * Keep the releases folder in step with GitHub in the background.
+ *
+ * Without this the Master only learns about a build when somebody opens the
+ * Updates screen — and then waits for 150 MB with the screen open. Polling
+ * means the setup file is usually already on disk by the time anybody presses
+ * Update, which is the difference between "it updated" and "it downloaded for
+ * ten minutes and then updated".
+ *
+ * Both panels' folders are filled, one after the other rather than at once:
+ * the Master serves the office build to every panel over the LAN, so it has to
+ * hold a copy it never installs itself.
+ *
+ * Returns the way to stop it, per this codebase's disposable convention.
+ * Configuring no repository, or `ORDERBOOK_RELEASES_POLL_MINUTES=0`, makes it a
+ * no-op — the folder alone still works, which is the air-gapped case.
+ */
+export function startReleasePolling(): () => void {
+  const minutes = config.releases.pollMinutes;
+  if (!config.releases.githubRepo || !Number.isFinite(minutes) || minutes <= 0) {
+    return () => undefined;
+  }
+
+  // A slow poll must not overlap the next one: two of these running together
+  // would have both writing the same `.part` file.
+  let running = false;
+
+  const poll = async (): Promise<void> => {
+    if (running) return;
+    running = true;
+    try {
+      for (const panel of ['master', 'office'] as const) {
+        await syncFromGitHub(panel, releaseDirFor(panel)).catch((error: unknown) => {
+          log.warn(`Could not sync the ${panel} release: ${String(error)}`);
+          return null;
+        });
+      }
+    } finally {
+      running = false;
+    }
+  };
+
+  const first = setTimeout(() => void poll(), FIRST_POLL_MS);
+  first.unref?.();
+
+  const timer = setInterval(() => void poll(), minutes * 60_000);
+  timer.unref?.();
+
+  log.info(`Watching ${config.releases.githubRepo} for releases every ${minutes} minutes`);
+
+  return () => {
+    clearTimeout(first);
+    clearInterval(timer);
+  };
+}

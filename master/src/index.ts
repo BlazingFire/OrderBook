@@ -38,6 +38,7 @@ import { listLanAddresses } from './lib/network.js';
 import { createRealtimeHub, type RealtimeHub } from './realtime/hub.js';
 import { purgeExpiredSessions } from './services/auth.service.js';
 import { startConnectorScheduler } from './services/connector-scheduler.js';
+import { startReleasePolling } from './services/update.service.js';
 import { failStaleAiRuns, sweepExpiredAiRuns } from './services/ai.service.js';
 import { isSetupComplete, refreshStoredLanIp } from './services/setup.service.js';
 
@@ -255,6 +256,10 @@ async function main(): Promise<void> {
     // One disposable, per this file's rule: the scheduler owns its own timer
     // and hands back the way to stop it.
     disposables.push(startConnectorScheduler());
+
+    // Same shape: the poller owns its timers and hands back the way to stop
+    // them. A no-op unless a releases repository is configured.
+    disposables.push(startReleasePolling());
 
     // Anything still `running` belonged to the process that just died.
     await failStaleAiRuns().catch(() => 0);

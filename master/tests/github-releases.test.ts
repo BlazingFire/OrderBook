@@ -397,3 +397,65 @@ describe('syncing a release from GitHub', () => {
     await expect(syncFromGitHub('master', dir)).resolves.toBeNull();
   });
 });
+
+describe('polling for releases in the background', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    delete process.env.ORDERBOOK_RELEASES_POLL_MINUTES;
+    delete process.env.ORDERBOOK_RELEASES_DIR;
+  });
+
+  it('UPD-39: does nothing at all when no repository is configured', async () => {
+    // The air-gapped case, which is still the default. A folder on a USB stick
+    // must not start a timer that talks to the internet every three hours.
+    vi.resetModules();
+    delete process.env.ORDERBOOK_RELEASES_GITHUB_REPO;
+    serve({});
+
+    const { startReleasePolling } = await import('../src/services/update.service.js');
+    const stop = startReleasePolling();
+
+    vi.useFakeTimers();
+    await vi.advanceTimersByTimeAsync(6 * 60 * 60_000);
+
+    expect(requested).toEqual([]);
+    expect(() => stop()).not.toThrow();
+  });
+
+  it('UPD-39: fills both panels folders, and stops when disposed', async () => {
+    // The Master downloads the office build it will never install: every panel
+    // on the LAN asks the Master for it, so the Master has to be holding one.
+    const manifest = signed();
+    serve({
+      [API]: () => json(listing(manifest)),
+      [MANIFEST_URL]: () => json(manifest),
+      [SETUP_URL]: () => stream(PAYLOAD),
+    });
+
+    await loadService({
+      ORDERBOOK_RELEASES_POLL_MINUTES: '60',
+      ORDERBOOK_RELEASES_DIR: dir,
+    });
+    const { startReleasePolling } = await import('../src/services/update.service.js');
+
+    vi.useFakeTimers();
+    const stop = startReleasePolling();
+
+    const asks = () => requested.filter((url) => url === API).length;
+
+    // Nothing at boot: a shop PC starts up before it downloads 150 MB.
+    expect(requested).toEqual([]);
+
+    // `waitFor` rather than a bare assertion after advancing: the poll writes
+    // to disk, and file I/O is not something advancing a timer flushes.
+    await vi.advanceTimersByTimeAsync(3 * 60_000);
+    await vi.waitFor(() => expect(asks()).toBe(2)); // one ask per panel
+
+    await vi.advanceTimersByTimeAsync(61 * 60_000);
+    await vi.waitFor(() => expect(asks()).toBe(4));
+
+    stop();
+    await vi.advanceTimersByTimeAsync(6 * 60 * 60_000);
+    expect(asks()).toBe(4);
+  });
+});
