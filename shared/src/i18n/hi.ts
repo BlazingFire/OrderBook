@@ -354,6 +354,31 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.documents.layout.signatureNotLast': 'हस्ताक्षर सबसे अंत में आना चाहिए',
   'validation.documents.layout.termsTooLong': 'शर्तें {max} अक्षरों से लंबी नहीं हो सकतीं',
   'validation.documents.layout.blockKindUnknown': 'यह अनुभाग दस्तावेज़ में नहीं हो सकता',
+  // TODO(i18n-hi)
+  'validation.documents.layout.duplicateTable': 'A document can only have one line-items table',
+  // TODO(i18n-hi)
+  'validation.documents.layout.elementKindUnknown': 'That is not something a page can contain',
+  // TODO(i18n-hi)
+  'validation.documents.layout.duplicateElementId': 'Two items on the page share one identifier',
+  // TODO(i18n-hi)
+  'validation.documents.layout.elementEmpty': 'An item on the page has no width or height',
+  // TODO(i18n-hi)
+  'validation.documents.layout.elementOffPage':
+    'An item falls outside this paper size. Move it, or use Fit to page.',
+  // TODO(i18n-hi)
+  'validation.documents.layout.tooManyElements': 'A page can hold at most {max} items',
+  // TODO(i18n-hi)
+  'validation.documents.layout.textTooLong': 'That text is longer than {max} characters',
+  // TODO(i18n-hi)
+  'validation.documents.layout.placeholderInLiteral':
+    'Use a field for that, rather than typing it in braces',
+  // TODO(i18n-hi)
+  'validation.documents.layout.fontSizeOutOfRange': 'Choose a readable text size',
+  // TODO(i18n-hi)
+  'validation.documents.layout.maxCharsOutOfRange':
+    'A character limit must be between zero and {max}',
+  // TODO(i18n-hi)
+  'validation.documents.layout.colourInvalid': 'A colour looks like #2F6FEB',
   'validation.documents.subjectKind.unknown': 'दस्तावेज़ किसी लीड या ऑर्डर के लिए बनाया जाता है',
   'validation.documents.templateType.mismatch':
     'वह टेम्पलेट {documentType} बनाता है, जो इस रिकॉर्ड पर लागू नहीं होता',

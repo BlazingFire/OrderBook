@@ -13,6 +13,7 @@
  * eight BOOLEAN columns and one JSONB (`03-DATABASE.md` §5.2).
  */
 
+import type { DocumentLayoutV1, DocumentLayoutV2 } from './document-layout.js';
 import type { IsoTimestamp, RecordId, Uuid } from './entities.js';
 
 /**
@@ -51,13 +52,7 @@ export const DOCUMENT_SUBJECT_KINDS: readonly DocumentSubjectKind[] = ['lead', '
 
 // --- The layout grammar ----------------------------------------------------
 
-export type DocumentBlockKind =
-  | 'header'
-  | 'party'
-  | 'lines'
-  | 'totals'
-  | 'terms'
-  | 'signature';
+export type DocumentBlockKind = 'header' | 'party' | 'lines' | 'totals' | 'terms' | 'signature';
 
 export type DocumentBlock =
   | { kind: 'header'; align: 'left' | 'centre' }
@@ -74,11 +69,7 @@ export interface DocumentLayout {
 
 /** The five ways a `layout` can be ill-formed, as `details.reason` on a 400. */
 export type LayoutViolation =
-  | 'duplicate_kind'
-  | 'missing_lines'
-  | 'header_not_first'
-  | 'signature_not_last'
-  | 'terms_too_long';
+  'duplicate_kind' | 'missing_lines' | 'header_not_first' | 'signature_not_last' | 'terms_too_long';
 
 /** `terms.text` ceiling, in characters. */
 export const MAX_TERMS_LENGTH = 500;
@@ -112,8 +103,16 @@ export interface DocumentTemplate {
   accentColour: string | null;
   locale: string | null;
 
-  /** Block order and per-block options only. */
-  layout: DocumentLayout;
+  /**
+   * The page, as placed elements.
+   *
+   * Always version 2 by the time anything reads a `DocumentTemplate`: the
+   * repository mapper narrows it, converting the ordered blocks a row written
+   * before the page designer carries. `TEMPLATE_DEFAULTS` below still declares
+   * blocks, because a default is a description of a document rather than a
+   * stored row, and it is converted at the same boundary.
+   */
+  layout: DocumentLayoutV2;
 
   logoAssetId: Uuid | null;
   signatureAssetId: Uuid | null;
@@ -200,7 +199,19 @@ export type TemplateDefaults = Omit<
   | 'logoAssetId'
   | 'signatureAssetId'
   | 'isDefault'
->;
+  | 'layout'
+> & {
+  /**
+   * Described as ordered blocks, not as placed elements.
+   *
+   * A default says what a quotation *is* — a header, a party, some lines, a
+   * total — and that description is independent of the paper it lands on.
+   * `blocksToElements` turns it into geometry at the moment a page size is
+   * known, which is also what keeps these three defaults from drifting away
+   * from the converter that every existing customer's template goes through.
+   */
+  layout: DocumentLayoutV1;
+};
 
 const SHARED_DEFAULTS = {
   paperSize: 'A4',

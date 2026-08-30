@@ -474,7 +474,7 @@ function draftFrom(template: DocumentTemplate | null, documentType: DocumentType
   return {
     ...defaults,
     margins: { ...defaults.margins },
-    layout: { blocks: [...defaults.layout.blocks] },
+    layout: { blocks: defaults.layout.blocks.map((block) => ({ ...block })) },
   };
 }
 

@@ -8,9 +8,9 @@
  * identity, never from the body — a client must not be able to name a tenant).
  */
 
+import type { StoredDocumentLayout } from './document-layout.js';
 import type {
   DocumentAssetKind,
-  DocumentLayout,
   DocumentSubjectKind,
   DocumentType,
   PageOrientation,
@@ -526,7 +526,15 @@ export interface DocumentTemplateInput {
   accentColour?: string | null;
   locale?: string | null;
 
-  layout?: DocumentLayout;
+  /**
+   * Either shape.
+   *
+   * The designer sends placed elements; an older client — or an Office panel
+   * that has not been updated — sends the ordered blocks it has always sent.
+   * `normaliseLayout` converts on the way in, so both are accepted and only one
+   * is ever stored.
+   */
+  layout?: StoredDocumentLayout;
   logoAssetId?: Uuid | null;
   signatureAssetId?: Uuid | null;
   isDefault?: boolean;

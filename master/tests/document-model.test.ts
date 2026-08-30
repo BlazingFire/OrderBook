@@ -19,7 +19,7 @@ import {
   formatMinorUnits,
   splitByScript,
 } from '../src/domain/document-text.js';
-import { TEMPLATE_DEFAULTS } from '@orderbook/shared';
+import { TEMPLATE_DEFAULTS, normaliseLayout, textStyle } from '@orderbook/shared';
 
 const IDENTITY: MasterIdentity = {
   masterUniqueId: 'm1',
@@ -104,8 +104,18 @@ function lead(overrides: Partial<Lead> = {}): Lead {
   };
 }
 
+const GEOMETRY = {
+  paperSize: TEMPLATE_DEFAULTS.quotation.paperSize,
+  orientation: TEMPLATE_DEFAULTS.quotation.orientation,
+  margins: TEMPLATE_DEFAULTS.quotation.margins,
+};
+
+/** The shipped default, converted to placed elements the way the mapper does. */
+const LAYOUT = normaliseLayout(TEMPLATE_DEFAULTS.quotation.layout, GEOMETRY);
+
 const TEMPLATE = {
   ...TEMPLATE_DEFAULTS.quotation,
+  layout: LAYOUT,
   logoAssetId: null,
   signatureAssetId: null,
 };
@@ -120,6 +130,7 @@ function build(ratesIncluded: boolean, subject = lead()) {
     ratesIncluded,
     colourHex: new Map([['Ivory', '#F5F0E1']]),
     issuedOn: '2026-08-20',
+    layout: LAYOUT,
   });
 }
 
@@ -139,7 +150,12 @@ describe('document model — rate redaction is a layout fact', () => {
     const model = build(false);
 
     expect(model.totals).toBeNull();
-    expect(model.blocks.some((block) => block.kind === 'totals')).toBe(false);
+    // The totals block used to be filtered out of a list of blocks. It is now
+    // a pair of elements that were never built, because the binding they name
+    // is money and this reader is not seeing money.
+    expect(
+      model.elements.some((element) => element.kind === 'text' && element.label === 'Total'),
+    ).toBe(false);
   });
 
   it('PDF-8: both columns and the totals block are present when rates are included', () => {
@@ -149,7 +165,9 @@ describe('document model — rate redaction is a layout fact', () => {
     expect(keys).toContain('rate');
     expect(keys).toContain('lineTotal');
     expect(model.totals?.grandTotal).toBe('15,000.00');
-    expect(model.blocks.some((block) => block.kind === 'totals')).toBe(true);
+    expect(
+      model.elements.some((element) => element.kind === 'text' && element.label === 'Total'),
+    ).toBe(true);
   });
 
   it('PDF-9: a template with showRates=false drops rates even for a rate-permitted actor', () => {
@@ -164,6 +182,7 @@ describe('document model — rate redaction is a layout fact', () => {
       ratesIncluded: false,
       colourHex: new Map(),
       issuedOn: '2026-08-20',
+      layout: LAYOUT,
     });
 
     expect(model.columns.map((c) => c.key)).not.toContain('rate');
@@ -213,10 +232,76 @@ describe('document model — rate redaction is a layout fact', () => {
       ratesIncluded: true,
       colourHex: new Map(),
       issuedOn: '2026-08-20',
+      layout: LAYOUT,
     });
 
     expect(model.party).toBeNull();
-    expect(model.blocks.some((block) => block.kind === 'party')).toBe(false);
+
+    // The switch used to filter a block out of the list; it now stops every
+    // element bound to the party from being built at all. Same guarantee, one
+    // level finer — the text is not on the page because it was never resolved.
+    const text = model.elements
+      .filter((element) => element.kind === 'text')
+      .map((element) => (element.kind === 'text' ? element.text : ''));
+
+    expect(text).not.toContain(PARTY.name);
+  });
+
+  it('PDF-78: an element bound to money is ABSENT for a rate-blind reader', () => {
+    const withRates = build(true);
+    const withoutRates = build(false);
+
+    const totalOf = (model: ReturnType<typeof build>): string[] =>
+      model.elements
+        .filter((element) => element.kind === 'text')
+        .map((element) => (element.kind === 'text' ? element.text : ''))
+        .filter((value) => value.includes('₹'));
+
+    expect(totalOf(withRates).length).toBeGreaterThan(0);
+
+    // Absent, not blanked and not zeroed. There is no element in the list for
+    // the renderer to draw, which is the same guarantee the rate column has.
+    expect(totalOf(withoutRates)).toEqual([]);
+    expect(
+      withoutRates.elements.some((element) => element.kind === 'text' && element.label === 'Total'),
+    ).toBe(false);
+  });
+
+  it('PDF-81: a character limit is applied before anything measures the text', () => {
+    const model = buildDocumentModel({
+      subject: lead(),
+      subjectKind: 'lead',
+      party: { ...PARTY, name: 'A very long trading name that would burst its box' },
+      template: TEMPLATE,
+      identity: IDENTITY,
+      ratesIncluded: true,
+      colourHex: new Map(),
+      issuedOn: '2026-08-20',
+      layout: {
+        version: 2,
+        elements: [
+          ...LAYOUT.elements.filter((element) => element.kind === 'table'),
+          {
+            id: 'capped',
+            kind: 'field',
+            binding: { source: 'catalogue', binding: 'party.name' },
+            label: null,
+            labelPlacement: 'none',
+            x: 15,
+            y: 40,
+            w: 40,
+            h: 10,
+            z: 1,
+            band: 'body',
+            flow: 'fixed',
+            style: { ...textStyle(), maxChars: 10 },
+          },
+        ],
+      },
+    });
+
+    const capped = model.elements.find((element) => element.id === 'capped');
+    expect(capped?.kind === 'text' && capped.text).toBe('A very lon');
   });
 });
 

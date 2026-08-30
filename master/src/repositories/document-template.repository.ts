@@ -7,13 +7,8 @@
  * change and its `activity_log` entry must commit together.
  */
 
-import type {
-  DocumentLayout,
-  DocumentTemplate,
-  DocumentType,
-  PageOrientation,
-  PaperSize,
-} from '@orderbook/shared';
+import type { DocumentTemplate, DocumentType, PageOrientation, PaperSize } from '@orderbook/shared';
+import { normaliseLayout } from '@orderbook/shared';
 import type { Knex } from 'knex';
 
 import { db } from '../db/knex.js';
@@ -52,9 +47,28 @@ export function mapDocumentTemplate(row: Row): DocumentTemplate {
     footerText: (row.footer_text as string | null) ?? null,
     accentColour: (row.accent_colour as string | null) ?? null,
     locale: (row.locale as string | null) ?? null,
-    // JSONB comes back parsed from `pg`; the column is NOT NULL with a legal
-    // default, so a row can never carry a layout the grammar would reject.
-    layout: row.layout as DocumentLayout,
+    // JSONB comes back parsed from `pg`. Narrowed to version 2 here and only
+    // here: a row written before the page designer existed carries ordered
+    // blocks, and converting at the boundary means nothing above this mapper
+    // has to know that version 1 was ever a thing — including a row restored
+    // from a backup taken before the change.
+    layout: normaliseLayout(
+      row.layout,
+      {
+        paperSize: (row.paper_size as PaperSize) ?? 'A4',
+        orientation: (row.orientation as PageOrientation) ?? 'portrait',
+        margins: {
+          top: toRequiredNumber(row.margin_top_mm),
+          right: toRequiredNumber(row.margin_right_mm),
+          bottom: toRequiredNumber(row.margin_bottom_mm),
+          left: toRequiredNumber(row.margin_left_mm),
+        },
+      },
+      {
+        hasLogo: Boolean(row.show_logo) && Boolean(row.logo_asset_id),
+        hasSignature: Boolean(row.show_signature) && Boolean(row.signature_asset_id),
+      },
+    ),
     logoAssetId: (row.logo_asset_id as string | null) ?? null,
     signatureAssetId: (row.signature_asset_id as string | null) ?? null,
     isDefault: Boolean(row.is_default),
@@ -187,10 +201,7 @@ export async function lockTemplate(
   id: string,
   trx: TransactionContext,
 ): Promise<DocumentTemplate | null> {
-  const row = await trx(TABLE)
-    .where({ tenant_id: tenantId, id })
-    .forUpdate()
-    .first<Row>('*');
+  const row = await trx(TABLE).where({ tenant_id: tenantId, id }).forUpdate().first<Row>('*');
 
   return row ? mapDocumentTemplate(row) : null;
 }

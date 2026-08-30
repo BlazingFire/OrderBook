@@ -158,21 +158,21 @@ async function prepare(
   // A document about a record in the recycle bin would be a statement about
   // something the company has decided is gone.
   if ((subject as { deletedAt?: string | null }).deletedAt) {
-    throw new ConflictError(
-      'error.conflict.subjectDeleted',
-      {},
-      { reason: 'subject_deleted' },
-    );
+    throw new ConflictError('error.conflict.subjectDeleted', {}, { reason: 'subject_deleted' });
   }
 
   const ratesIncluded = template.showRates && canSeeRates(actor);
 
-  const [party, colourHex, identity, logo, signature] = await Promise.all([
+  const [party, colourHex, identity, logo, signature, definitions] = await Promise.all([
     partyRepo.findPartyById(actor.tenantId, subject.partyId),
     colourHexMap(actor.tenantId),
     setupService.getIdentity(),
     template.showLogo ? loadAsset(actor.tenantId, template.logoAssetId ?? null) : null,
     template.showSignature ? loadAsset(actor.tenantId, template.signatureAssetId ?? null) : null,
+    // Already tenant-cached in the repository, so this costs nothing on the
+    // second render and lets an element name a field somebody defined on the
+    // Fields screen.
+    customFieldRepo.definitionsFor(actor.tenantId, subjectKind),
   ]);
 
   const model = buildDocumentModel({
@@ -184,10 +184,19 @@ async function prepare(
     ratesIncluded,
     colourHex,
     forceWatermark,
+    // Narrowed to version 2 at the mapper, so a template stored before the
+    // designer existed arrives here as elements like any other.
+    layout: template.layout,
+    customFields: {
+      values: (subject as { customFields?: Record<string, unknown> }).customFields ?? {},
+      definitions,
+    },
     // The business's own configured timezone, never the host machine's — a
     // PDF rendered near midnight must show the same date to a signed-in
     // operator regardless of which OS clock the Master happens to run under.
-    issuedOn: new Intl.DateTimeFormat('en-CA', { timeZone: config.locale.timeZone }).format(new Date()),
+    issuedOn: new Intl.DateTimeFormat('en-CA', { timeZone: config.locale.timeZone }).format(
+      new Date(),
+    ),
   });
 
   const { bytes, pageCount } = await renderPdf(model, {
@@ -448,6 +457,7 @@ export async function pruneExports(tenantId: string): Promise<number> {
 
   for (const relativePath of paths) await removeStoredFile(relativePath);
 
-  if (paths.length > 0) log.info(`Pruned ${paths.length} rendered document(s) older than ${retainDays} days`);
+  if (paths.length > 0)
+    log.info(`Pruned ${paths.length} rendered document(s) older than ${retainDays} days`);
   return paths.length;
 }

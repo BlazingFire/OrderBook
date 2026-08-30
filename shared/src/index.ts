@@ -3,6 +3,7 @@ export * from './domain/ai.js';
 export * from './domain/api-keys.js';
 export * from './domain/columns.js';
 export * from './domain/connectors.js';
+export * from './domain/document-layout.js';
 export * from './domain/documents.js';
 export * from './domain/entities.js';
 export * from './domain/fields.js';

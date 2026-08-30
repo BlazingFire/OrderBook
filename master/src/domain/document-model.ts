@@ -18,23 +18,23 @@
  */
 
 import type { Lead, LineItem, MasterIdentity, Order, Party } from '@orderbook/shared';
+import type {
+  CustomFieldDefinition,
+  DocumentElement,
+  DocumentLayoutV2,
+  ElementBand,
+  ElementFlow,
+  ElementTextStyle,
+  TableColumnSpec,
+} from '@orderbook/shared';
 
-import {
-  formatDateForDocument,
-  formatMinorUnits,
-  type ScriptTag,
-} from './document-text.js';
+import { resolveBinding, type BindingContext } from './document-bindings.js';
+
+import { formatDateForDocument, formatMinorUnits, type ScriptTag } from './document-text.js';
 import type { TemplateShape } from './document-template.js';
 
 export type DocumentColumnKey =
-  | 'sequence'
-  | 'product'
-  | 'code'
-  | 'size'
-  | 'colours'
-  | 'quantity'
-  | 'rate'
-  | 'lineTotal';
+  'sequence' | 'product' | 'code' | 'size' | 'colours' | 'quantity' | 'rate' | 'lineTotal';
 
 export interface DocumentColumn {
   key: DocumentColumnKey;
@@ -65,6 +65,95 @@ export interface DocumentTotals {
   grandTotal?: string;
 }
 
+/**
+ * A placed element with nothing left to decide.
+ *
+ * The parallel of `DocumentColumn`: by the time one of these exists its text
+ * has been resolved, its permission has been checked and its character limit
+ * has been applied. An element the reader may not see is **not in the list** —
+ * there is no `hidden` flag here for the same reason there is no zeroed total,
+ * because a value on the page behind a flag is a value on the page.
+ *
+ * The renderer draws these and nothing else. It has no access to a binding, a
+ * subject or a template, which is what makes a leak require deleting code
+ * rather than forgetting a check.
+ */
+export type ResolvedElement =
+  | {
+      kind: 'text';
+      id: string;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      z: number;
+      band: ElementBand;
+      flow: ElementFlow;
+      /** Already resolved, already truncated to the element's character limit. */
+      text: string;
+      label: string | null;
+      labelPlacement: 'none' | 'before' | 'above';
+      style: ElementTextStyle;
+    }
+  | {
+      kind: 'image';
+      id: string;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      z: number;
+      band: ElementBand;
+      flow: ElementFlow;
+      slot: 'logo' | 'signature';
+    }
+  | {
+      kind: 'rule';
+      id: string;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      z: number;
+      band: ElementBand;
+      flow: ElementFlow;
+      colour: string | null;
+      thickness: number;
+    }
+  | {
+      kind: 'box';
+      id: string;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      z: number;
+      band: ElementBand;
+      flow: ElementFlow;
+      fill: string | null;
+      stroke: string | null;
+      radius: number;
+    }
+  | {
+      kind: 'table';
+      id: string;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      z: number;
+      band: ElementBand;
+      flow: ElementFlow;
+      columns: TableColumnSpec[];
+      rowHeightMm: number;
+      headingHeightMm: number;
+      repeatHeadingOnBreak: boolean;
+      headingFill: string | null;
+      groupByProduct: boolean;
+      headingStyle: ElementTextStyle;
+      cellStyle: ElementTextStyle;
+    };
+
 export interface DocumentModel {
   /** What the page says it is. */
   title: string;
@@ -89,8 +178,11 @@ export interface DocumentModel {
   footer: string | null;
   accentColour: string | null;
 
-  /** Which blocks to draw, in order, already filtered by the eight switches. */
-  blocks: TemplateShape['layout']['blocks'];
+  /**
+   * What to draw, in paint order, already resolved and already filtered.
+   * An element the reader may not see never reached this list.
+   */
+  elements: ResolvedElement[];
 
   /**
    * Recorded on the export row, and the single source of truth for whether
@@ -137,10 +229,21 @@ export interface BuildDocumentModelInput {
   issuedOn: string;
   /** Forced on for a preview regardless of the template. */
   forceWatermark?: string | null;
+  /** Already narrowed to version 2 by `normaliseLayout` at the mapper. */
+  layout: DocumentLayoutV2;
+  /**
+   * The subject's own `custom_fields` blob and the tenant's definitions, so an
+   * element may name a field somebody defined on the Fields screen. A
+   * definition that has been deleted resolves to nothing and its element drops.
+   */
+  customFields?: {
+    values: Record<string, unknown>;
+    definitions: readonly CustomFieldDefinition[];
+  };
 }
 
 export function buildDocumentModel(input: BuildDocumentModelInput): DocumentModel {
-  const { subject, subjectKind, party, template, identity, ratesIncluded, colourHex } = input;
+  const { subject, party, template, identity, ratesIncluded, colourHex } = input;
 
   const columns = buildColumns(ratesIncluded);
   const rows = subject.items.map((line, index) => buildRow(line, index, ratesIncluded, colourHex));
@@ -167,14 +270,13 @@ export function buildDocumentModel(input: BuildDocumentModelInput): DocumentMode
       ? { boxCount, grandTotal: formatMinorUnits(totalAmountOf(subject)) }
       : null,
 
-    terms: template.showTerms ? (template.termsText?.trim() || null) : null,
+    terms: template.showTerms ? template.termsText?.trim() || null : null,
     signatureLabel: template.showSignature ? signatureLabelFrom(template) : null,
-    watermark:
-      input.forceWatermark ?? (template.showWatermark ? template.watermarkText : null),
+    watermark: input.forceWatermark ?? (template.showWatermark ? template.watermarkText : null),
     footer: template.footerText?.trim() || null,
     accentColour: template.accentColour,
 
-    blocks: filterBlocks(template, ratesIncluded, subjectKind),
+    elements: resolveElements(input, boxCount, ratesIncluded),
 
     ratesIncluded,
     showColourChips: template.showColourChips,
@@ -260,35 +362,166 @@ function partyAddressLines(party: Party): string[] {
   return lines.map((line) => line?.trim() ?? '').filter((line) => line.length > 0);
 }
 
+/**
+ * The signature caption.
+ *
+ * It used to be dug out of the `signature` block. Conversion turns that block
+ * into a `text` element carrying the same words, so the label now travels as
+ * part of the layout like every other piece of static text — this stays only
+ * because the model still reports whether a signature line is expected at all.
+ */
 function signatureLabelFrom(template: TemplateShape): string | null {
-  const block = template.layout.blocks.find((candidate) => candidate.kind === 'signature');
-  return block && block.kind === 'signature' ? block.label : null;
+  void template;
+  return null;
 }
 
 /**
- * Drop blocks the switches have turned off, and the totals block when rates
- * are out — the model must not hand the renderer a block whose content it
- * deliberately did not build.
+ * Turn placed elements into drawable ones, dropping every element this reader
+ * is not entitled to.
+ *
+ * The one rule: **null means gone.** A binding that is money to a reader
+ * without the rate permission, a binding behind a switch the operator turned
+ * off, a custom field whose definition was deleted, a value the record simply
+ * does not have — all four collapse into the same answer, and the answer is
+ * that the element is not built. That is the same decision `buildColumns` makes
+ * about the rate column, applied to geometry.
  */
-function filterBlocks(
-  template: BuildDocumentModelInput['template'],
+function resolveElements(
+  input: BuildDocumentModelInput,
+  boxCount: number,
   ratesIncluded: boolean,
-  subjectKind: 'lead' | 'order',
-): TemplateShape['layout']['blocks'] {
-  void subjectKind;
+): ResolvedElement[] {
+  const { template } = input;
 
-  return template.layout.blocks.filter((block) => {
-    switch (block.kind) {
-      case 'party':
-        return template.showPartyBlock;
-      case 'totals':
-        return ratesIncluded;
-      case 'terms':
-        return template.showTerms && (template.termsText?.trim().length ?? 0) > 0;
-      case 'signature':
-        return template.showSignature;
-      default:
-        return true;
+  const context: BindingContext = {
+    subject: input.subject,
+    party: input.party,
+    identity: input.identity,
+    title: TITLES[template.documentType] ?? template.name,
+    issuedOn: input.issuedOn,
+    termsText: template.termsText,
+    footerText: template.footerText,
+    boxCount,
+    grandTotal: ratesIncluded ? formatMinorUnits(totalAmountOf(input.subject)) : null,
+  };
+
+  const switches = {
+    showPartyBlock: template.showPartyBlock,
+    showTerms: template.showTerms,
+    showSignature: template.showSignature,
+    showRates: ratesIncluded,
+  };
+
+  const customFields = input.customFields ?? { values: {}, definitions: [] };
+  const resolved: ResolvedElement[] = [];
+
+  for (const element of [...input.layout.elements].sort((a, b) => a.z - b.z)) {
+    const placed = resolveElement(
+      element,
+      context,
+      switches,
+      ratesIncluded,
+      customFields,
+      template,
+    );
+    if (placed) resolved.push(placed);
+  }
+
+  return resolved;
+}
+
+function resolveElement(
+  element: DocumentElement,
+  context: BindingContext,
+  switches: {
+    showPartyBlock: boolean;
+    showTerms: boolean;
+    showSignature: boolean;
+    showRates: boolean;
+  },
+  ratesIncluded: boolean,
+  customFields: {
+    values: Record<string, unknown>;
+    definitions: readonly CustomFieldDefinition[];
+  },
+  template: BuildDocumentModelInput['template'],
+): ResolvedElement | null {
+  const base = {
+    id: element.id,
+    x: element.x,
+    y: element.y,
+    w: element.w,
+    h: element.h,
+    z: element.z,
+    band: element.band,
+    flow: element.flow,
+  };
+
+  switch (element.kind) {
+    case 'text':
+      return element.text.trim().length === 0
+        ? null
+        : {
+            ...base,
+            kind: 'text',
+            text: applyCharacterLimit(element.text, element.style.maxChars),
+            label: null,
+            labelPlacement: 'none',
+            style: element.style,
+          };
+
+    case 'field': {
+      const value = resolveBinding(element.binding, context, switches, ratesIncluded, customFields);
+      if (value === null) return null;
+
+      return {
+        ...base,
+        kind: 'text',
+        // Truncated here, before anything measures it, so a sixty-character
+        // party name cannot burst a forty-millimetre box.
+        text: applyCharacterLimit(value, element.style.maxChars),
+        label: element.label,
+        labelPlacement: element.labelPlacement,
+        style: element.style,
+      };
     }
-  });
+
+    case 'image':
+      // A signature is behind its own switch; a logo is behind `showLogo`, and
+      // both are behind actually having the bytes, which the renderer checks.
+      if (element.slot === 'signature' && !template.showSignature) return null;
+      return { ...base, kind: 'image', slot: element.slot };
+
+    case 'rule':
+      return { ...base, kind: 'rule', colour: element.colour, thickness: element.thickness };
+
+    case 'box':
+      return {
+        ...base,
+        kind: 'box',
+        fill: element.fill,
+        stroke: element.stroke,
+        radius: element.radius,
+      };
+
+    case 'table':
+      return {
+        ...base,
+        kind: 'table',
+        columns: element.columns,
+        rowHeightMm: element.rowHeightMm,
+        headingHeightMm: element.headingHeightMm,
+        repeatHeadingOnBreak: element.repeatHeadingOnBreak,
+        headingFill: element.headingFill,
+        groupByProduct: element.groupByProduct,
+        headingStyle: element.headingStyle,
+        cellStyle: element.cellStyle,
+      };
+  }
+}
+
+/** 0 means no limit. An ellipsis is not appended here — the renderer's fit mode
+ *  owns how overflow looks, and this owns how much data leaves the model. */
+function applyCharacterLimit(value: string, maxChars: number): string {
+  return maxChars > 0 && value.length > maxChars ? value.slice(0, maxChars) : value;
 }

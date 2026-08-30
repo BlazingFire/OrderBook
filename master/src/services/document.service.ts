@@ -19,7 +19,7 @@ import type {
   DocumentTemplateQuery,
   DocumentType,
 } from '@orderbook/shared';
-import { TEMPLATE_DEFAULTS, isDocumentType, isLocale } from '@orderbook/shared';
+import { TEMPLATE_DEFAULTS, isDocumentType, isLocale, normaliseLayout } from '@orderbook/shared';
 
 import { assertVersionMatches, fieldDiff } from '../domain/access.js';
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
@@ -98,8 +98,26 @@ export async function resolveTemplateForRender(
   const stored = await templateRepo.defaultTemplateFor(tenantId, documentType);
   if (stored) return { template: stored, id: stored.id, name: stored.name };
 
+  // The in-memory default is described as blocks, because a default says what
+  // a quotation *is* rather than where it sits on a particular sheet. It gains
+  // geometry here, against the paper it is about to be printed on.
   const fallback = TEMPLATE_DEFAULTS[documentType];
-  return { template: fallback, id: null, name: fallback.name };
+  return {
+    template: {
+      ...fallback,
+      layout: normaliseLayout(
+        fallback.layout,
+        {
+          paperSize: fallback.paperSize,
+          orientation: fallback.orientation,
+          margins: fallback.margins,
+        },
+        { hasLogo: fallback.showLogo, hasSignature: fallback.showSignature },
+      ),
+    },
+    id: null,
+    name: fallback.name,
+  };
 }
 
 /** The switch fields the model builder needs alongside the geometry. */
@@ -145,12 +163,18 @@ export function materialise(
     throw new ValidationError('validation.documents.locale.unknown', {}, { field: 'locale' });
   }
 
+  // Resolved before the return, because the layout has to be converted against
+  // the paper it will actually be printed on.
+  const paperSize = input.paperSize ?? fallback.paperSize;
+  const orientation = input.orientation ?? fallback.orientation;
+  const margins = input.margins ?? fallback.margins;
+
   return {
     name: input.name ?? fallback.name,
     documentType,
-    paperSize: input.paperSize ?? fallback.paperSize,
-    orientation: input.orientation ?? fallback.orientation,
-    margins: input.margins ?? fallback.margins,
+    paperSize,
+    orientation,
+    margins,
     showRates: input.showRates ?? fallback.showRates,
     showColourChips: input.showColourChips ?? fallback.showColourChips,
     showTerms: input.showTerms ?? fallback.showTerms,
@@ -164,7 +188,16 @@ export function materialise(
     footerText: input.footerText ?? fallback.footerText,
     accentColour: input.accentColour ?? fallback.accentColour,
     locale,
-    layout: input.layout ?? fallback.layout,
+    // A draft arriving from the designer is already version 2; a caller sending
+    // no layout at all falls back to the default's blocks, which convert here.
+    layout: normaliseLayout(
+      input.layout ?? base?.layout ?? fallback.layout,
+      { paperSize, orientation, margins },
+      {
+        hasLogo: (input.showLogo ?? fallback.showLogo) === true,
+        hasSignature: (input.showSignature ?? fallback.showSignature) === true,
+      },
+    ),
     logoAssetId: input.logoAssetId ?? base?.logoAssetId ?? null,
     signatureAssetId: input.signatureAssetId ?? base?.signatureAssetId ?? null,
   };
@@ -340,12 +373,7 @@ export async function deleteTemplate(
 
     assertVersionMatches(existing.version, expectedVersion);
 
-    const row = await templateRepo.softDeleteTemplate(
-      actor.tenantId,
-      id,
-      actorUserId(actor),
-      trx,
-    );
+    const row = await templateRepo.softDeleteTemplate(actor.tenantId, id, actorUserId(actor), trx);
     if (!row) throw new NotFoundError('Document template');
 
     await activityLog.recordActivity(
@@ -373,10 +401,7 @@ export async function deleteTemplate(
  * Restore reuses the **delete** key. No `documents.restore` exists, so restore
  * can never be a back door onto a template somebody may not remove.
  */
-export async function restoreTemplate(
-  id: string,
-  actor: ActorContext,
-): Promise<DocumentTemplate> {
+export async function restoreTemplate(id: string, actor: ActorContext): Promise<DocumentTemplate> {
   requirePermission(actor, 'documents.delete');
 
   const restored = await db().transaction(async (trx) => {

@@ -380,6 +380,20 @@ export const EN_MESSAGES = {
   'validation.documents.layout.signatureNotLast': 'The signature must come last',
   'validation.documents.layout.termsTooLong': 'Terms cannot be longer than {max} characters',
   'validation.documents.layout.blockKindUnknown': 'That is not a section a document can contain',
+  'validation.documents.layout.duplicateTable': 'A document can only have one line-items table',
+  'validation.documents.layout.elementKindUnknown': 'That is not something a page can contain',
+  'validation.documents.layout.duplicateElementId': 'Two items on the page share one identifier',
+  'validation.documents.layout.elementEmpty': 'An item on the page has no width or height',
+  'validation.documents.layout.elementOffPage':
+    'An item falls outside this paper size. Move it, or use Fit to page.',
+  'validation.documents.layout.tooManyElements': 'A page can hold at most {max} items',
+  'validation.documents.layout.textTooLong': 'That text is longer than {max} characters',
+  'validation.documents.layout.placeholderInLiteral':
+    'Use a field for that, rather than typing it in braces',
+  'validation.documents.layout.fontSizeOutOfRange': 'Choose a readable text size',
+  'validation.documents.layout.maxCharsOutOfRange':
+    'A character limit must be between zero and {max}',
+  'validation.documents.layout.colourInvalid': 'A colour looks like #2F6FEB',
   'validation.documents.subjectKind.unknown': 'A document is rendered for a lead or an order',
   'validation.documents.templateType.mismatch':
     'That template produces a {documentType}, which does not apply to this record',

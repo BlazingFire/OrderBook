@@ -12,7 +12,13 @@ import type { ActorContext } from '../src/domain/actor.js';
 import { db } from '../src/db/knex.js';
 import * as documentService from '../src/services/document.service.js';
 import { canRunIntegrationTests } from './helpers/db.js';
-import { actorWith, resetData, setupDatabase, teardownDatabase, testActor } from './helpers/fixtures.js';
+import {
+  actorWith,
+  resetData,
+  setupDatabase,
+  teardownDatabase,
+  testActor,
+} from './helpers/fixtures.js';
 
 let actor: ActorContext;
 
@@ -58,8 +64,24 @@ describe.skipIf(!canRunIntegrationTests)('Document templates (integration)', () 
     expect(fetched.showColourChips).toBe(false);
     expect(fetched.showSignature).toBe(true);
     expect(fetched.accentColour).toBe('#0F766E');
-    expect(fetched.layout.blocks).toHaveLength(3);
-    expect(fetched.layout.blocks[0]).toMatchObject({ kind: 'header', align: 'centre' });
+    // A caller may still send the old block shape — an Office panel holding a
+    // stale client does — and it comes back converted, which is the promise
+    // `normaliseLayout` makes at the mapper.
+    expect(fetched.layout.version).toBe(2);
+    expect(fetched.layout.elements.some((element) => element.kind === 'table')).toBe(true);
+
+    // The centred header survived the conversion as a centred element.
+    const title = fetched.layout.elements.find(
+      (element) => element.kind === 'field' && element.style.align === 'centre',
+    );
+    expect(title).toBeDefined();
+
+    // And the signature caption is carried as the text it prints.
+    const caption = fetched.layout.elements.find(
+      (element) => element.kind === 'text' && element.text === 'For Sharma Tiles',
+    );
+    expect(caption).toBeDefined();
+
     expect(fetched.version).toBe(1);
   });
 

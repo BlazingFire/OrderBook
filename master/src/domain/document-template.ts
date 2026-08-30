@@ -14,13 +14,16 @@
 import {
   DOCUMENT_ASSET_KINDS,
   DOCUMENT_TYPES,
-  MAX_TERMS_LENGTH,
   PAGE_ORIENTATIONS,
   PAPER_SIZES,
   type DocumentAssetKind,
-  type DocumentBlock,
-  type DocumentBlockKind,
-  type DocumentLayout,
+  type DocumentLayoutV2,
+  type ElementTextStyle,
+  type PageGeometry,
+  DOCUMENT_ELEMENT_KINDS,
+  MAX_ELEMENTS,
+  MAX_ELEMENT_CHARS,
+  pageSizeMm,
   type DocumentType,
   type PageOrientation,
   type PaperSize,
@@ -44,15 +47,6 @@ const MIN_BODY_HEIGHT_MM = 100;
 /** A5 portrait height in millimetres — the tightest page the geometry has to fit. */
 const SHORTEST_PAGE_MM = 148;
 
-const BLOCK_KINDS: readonly DocumentBlockKind[] = [
-  'header',
-  'party',
-  'lines',
-  'totals',
-  'terms',
-  'signature',
-];
-
 export interface TemplateShape {
   name: string;
   documentType: DocumentType;
@@ -62,7 +56,7 @@ export interface TemplateShape {
   showWatermark: boolean;
   watermarkText: string | null;
   accentColour: string | null;
-  layout: DocumentLayout;
+  layout: DocumentLayoutV2;
 }
 
 export function isDocumentAssetKind(value: unknown): value is DocumentAssetKind {
@@ -130,7 +124,12 @@ export function assertTemplateValid(template: TemplateShape): void {
   assertLayoutValid(template.layout);
 }
 
-function assertMargins(margins: { top: number; right: number; bottom: number; left: number }): void {
+function assertMargins(margins: {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}): void {
   for (const [edge, value] of Object.entries(margins)) {
     if (!Number.isInteger(value) || value < MIN_MARGIN_MM || value > MAX_MARGIN_MM) {
       throw new ValidationError(
@@ -151,79 +150,163 @@ function assertMargins(margins: { top: number; right: number; bottom: number; le
 }
 
 /**
- * The block grammar's five rules. `details.block` is the zero-based index of
- * the offending block, or `null` for the one rule with no single offender
- * (a missing `lines` block is a property of the whole array).
+ * Every rule a placed layout has to satisfy.
+ *
+ * Version 1's five block rules survive in spirit rather than in form. "Each
+ * kind at most once" becomes "exactly one table", because that is the rule
+ * that was actually load-bearing — a second table has no defined behaviour when
+ * rows flow. "A lines block is mandatory" survives unchanged: a document with
+ * nowhere to put line items is a letterhead. "Header first" and "signature
+ * last" do not survive, and should not: they were ordering rules for a flow
+ * renderer, and the signature's own draw code had already stopped honouring the
+ * second one.
+ *
+ * `details.element` is the offending element's id, or `null` for a rule that is
+ * a property of the whole layout.
  */
-export function assertLayoutValid(layout: DocumentLayout): void {
-  const blocks: DocumentBlock[] = layout?.blocks ?? [];
+export function assertLayoutValid(layout: DocumentLayoutV2, geometry?: PageGeometry): void {
+  const elements = layout?.elements ?? [];
 
-  const seen = new Set<DocumentBlockKind>();
-
-  blocks.forEach((block, index) => {
-    if (!block || !(BLOCK_KINDS as readonly string[]).includes(block.kind)) {
-      throw new ValidationError(
-        'validation.documents.layout.blockKindUnknown',
-        {},
-        { field: 'layout', block: index, reason: 'unknown_kind', allowed: [...BLOCK_KINDS] },
-      );
-    }
-
-    // Rule 1 — every kind at most once. Two totals blocks is not a layout.
-    if (seen.has(block.kind)) {
-      throw new ValidationError(
-        'validation.documents.layout.duplicateKind',
-        { kind: block.kind },
-        { field: 'layout', block: index, reason: 'duplicate_kind' },
-      );
-    }
-    seen.add(block.kind);
-
-    // Rule 3 — header first if present.
-    if (block.kind === 'header' && index !== 0) {
-      throw new ValidationError(
-        'validation.documents.layout.headerNotFirst',
-        {},
-        { field: 'layout', block: index, reason: 'header_not_first' },
-      );
-    }
-
-    // Rule 4 — signature last if present.
-    if (block.kind === 'signature' && index !== blocks.length - 1) {
-      throw new ValidationError(
-        'validation.documents.layout.signatureNotLast',
-        {},
-        { field: 'layout', block: index, reason: 'signature_not_last' },
-      );
-    }
-
-    // Rule 5 — terms are a paragraph, not an essay.
-    if (block.kind === 'terms' && block.text.length > MAX_TERMS_LENGTH) {
-      throw new ValidationError(
-        'validation.documents.layout.termsTooLong',
-        { max: MAX_TERMS_LENGTH },
-        { field: 'layout', block: index, reason: 'terms_too_long', max: MAX_TERMS_LENGTH },
-      );
-    }
-  });
-
-  // Rule 2 — a document with no line items is a letterhead.
-  if (!seen.has('lines')) {
+  if (elements.length > MAX_ELEMENTS) {
     throw new ValidationError(
-      'validation.documents.layout.missingLines',
+      'validation.documents.layout.tooManyElements',
+      { max: MAX_ELEMENTS },
+      { field: 'layout', element: null, reason: 'too_many_elements', max: MAX_ELEMENTS },
+    );
+  }
+
+  const page = geometry ? pageSizeMm(geometry.paperSize, geometry.orientation) : null;
+  const ids = new Set<string>();
+  let tables = 0;
+
+  for (const element of elements) {
+    if (!element || !(DOCUMENT_ELEMENT_KINDS as readonly string[]).includes(element.kind)) {
+      throw new ValidationError(
+        'validation.documents.layout.elementKindUnknown',
+        {},
+        {
+          field: 'layout',
+          element: element?.id ?? null,
+          reason: 'unknown_kind',
+          allowed: [...DOCUMENT_ELEMENT_KINDS],
+        },
+      );
+    }
+
+    if (ids.has(element.id)) {
+      throw new ValidationError(
+        'validation.documents.layout.duplicateElementId',
+        {},
+        { field: 'layout', element: element.id, reason: 'duplicate_id' },
+      );
+    }
+    ids.add(element.id);
+
+    if (element.kind === 'table') tables += 1;
+
+    // A rule is a line, so it is allowed no height. Everything else needs to
+    // occupy the page it claims to be on.
+    const needsHeight = element.kind !== 'rule';
+    if (element.w <= 0 || (needsHeight && element.h <= 0)) {
+      throw new ValidationError(
+        'validation.documents.layout.elementEmpty',
+        {},
+        { field: 'layout', element: element.id, reason: 'element_empty' },
+      );
+    }
+
+    if (page) {
+      // Refused rather than nudged. Changing paper size can push a design off
+      // the sheet, and moving somebody's elements for them without saying so is
+      // worse than telling them the page got smaller.
+      const offPage =
+        element.x < -0.001 ||
+        element.y < -0.001 ||
+        element.x + element.w > page.width + 0.001 ||
+        element.y + element.h > page.height + 0.001;
+
+      if (offPage) {
+        throw new ValidationError(
+          'validation.documents.layout.elementOffPage',
+          {},
+          { field: 'layout', element: element.id, reason: 'element_off_page' },
+        );
+      }
+    }
+
+    if (element.kind === 'text' || element.kind === 'field') {
+      assertTextStyleValid(element.style, element.id);
+    }
+
+    if (element.kind === 'text' && element.text.length > MAX_ELEMENT_CHARS) {
+      throw new ValidationError(
+        'validation.documents.layout.textTooLong',
+        { max: MAX_ELEMENT_CHARS },
+        { field: 'layout', element: element.id, reason: 'text_too_long', max: MAX_ELEMENT_CHARS },
+      );
+    }
+
+    /*
+     * A literal that looks like a merge token.
+     *
+     * Nothing substitutes into static text today, so `{party.name}` typed into
+     * a text box prints verbatim and is merely odd. The day somebody adds
+     * substitution it becomes a way to name data the binding catalogue would
+     * have permission-checked. Refusing it now costs an operator nothing and
+     * closes the hole before it exists.
+     */
+    if (element.kind === 'text' && /\{[A-Za-z][A-Za-z.]*\}/.test(element.text)) {
+      throw new ValidationError(
+        'validation.documents.layout.placeholderInLiteral',
+        {},
+        { field: 'layout', element: element.id, reason: 'placeholder_in_literal' },
+      );
+    }
+  }
+
+  // A document with nowhere to put its line items is a letterhead, and the one
+  // table is what the flow region is built around.
+  if (tables !== 1) {
+    throw new ValidationError(
+      tables === 0
+        ? 'validation.documents.layout.missingLines'
+        : 'validation.documents.layout.duplicateTable',
       {},
-      { field: 'layout', block: null, reason: 'missing_lines' },
+      {
+        field: 'layout',
+        element: null,
+        reason: tables === 0 ? 'missing_lines' : 'duplicate_table',
+      },
     );
   }
 }
 
-/**
- * A template's `documentType` decides which records it can be rendered for.
- *
- * A dispatch note for a lead is not a rendering mistake to be tidied up in the
- * layout — nothing has been dispatched, so the document would be a statement
- * about goods that have not moved.
- */
+function assertTextStyleValid(style: ElementTextStyle, id: string): void {
+  if (!(style.size > 0) || style.size > 200) {
+    throw new ValidationError(
+      'validation.documents.layout.fontSizeOutOfRange',
+      {},
+      { field: 'layout', element: id, reason: 'font_size_out_of_range' },
+    );
+  }
+
+  if (style.maxChars < 0 || style.maxChars > MAX_ELEMENT_CHARS) {
+    throw new ValidationError(
+      'validation.documents.layout.maxCharsOutOfRange',
+      { max: MAX_ELEMENT_CHARS },
+      { field: 'layout', element: id, reason: 'max_chars_out_of_range', max: MAX_ELEMENT_CHARS },
+    );
+  }
+
+  if (style.colour !== null && !HEX_PATTERN.test(style.colour)) {
+    throw new ValidationError(
+      'validation.documents.layout.colourInvalid',
+      {},
+      { field: 'layout', element: id, reason: 'colour_invalid' },
+    );
+  }
+}
+
 export function assertTemplateAppliesTo(
   documentType: DocumentType,
   subjectKind: 'lead' | 'order',

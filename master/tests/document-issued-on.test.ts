@@ -7,15 +7,25 @@
 
 import { describe, expect, it } from 'vitest';
 import type { Lead } from '@orderbook/shared';
-import { TEMPLATE_DEFAULTS } from '@orderbook/shared';
+import { TEMPLATE_DEFAULTS, normaliseLayout } from '@orderbook/shared';
 
 import { buildDocumentModel } from '../src/domain/document-model.js';
 
 /** Only the three fields the model reads off a subject; the rest is not in play here. */
 const SUBJECT = { id: 'LD0000000001', totalAmount: null, items: [] } as unknown as Lead;
 
+const GEOMETRY = {
+  paperSize: TEMPLATE_DEFAULTS.quotation.paperSize,
+  orientation: TEMPLATE_DEFAULTS.quotation.orientation,
+  margins: TEMPLATE_DEFAULTS.quotation.margins,
+};
+
+/** Converted the way the mapper converts it, so the model gets what it expects. */
+const LAYOUT = normaliseLayout(TEMPLATE_DEFAULTS.quotation.layout, GEOMETRY);
+
 const TEMPLATE = {
   ...TEMPLATE_DEFAULTS.quotation,
+  layout: LAYOUT,
   logoAssetId: null,
   signatureAssetId: null,
 };
@@ -31,6 +41,7 @@ describe('document model — the issue date arrives from the caller', () => {
       ratesIncluded: false,
       colourHex: new Map(),
       issuedOn: '2026-08-20',
+      layout: LAYOUT,
     });
 
     expect(model.issuedOn).toBe('20 Aug 2026');

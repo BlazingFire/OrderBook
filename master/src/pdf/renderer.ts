@@ -12,21 +12,25 @@
 
 import PDFDocument from 'pdfkit';
 
-import type { DocumentColumn, DocumentModel, DocumentRow } from '../domain/document-model.js';
+import type {
+  DocumentColumn,
+  DocumentModel,
+  DocumentRow,
+  ResolvedElement,
+} from '../domain/document-model.js';
 import { registerFonts } from './fonts.js';
 import {
   colourChip,
+  filledBox,
   horizontalRule,
-  keyValueBlock,
-  measureRuns,
   mm,
   pageFooter,
   runText,
   runTextRight,
   truncateToWidth,
   watermark,
-  wrappedRunText,
 } from './primitives.js';
+import { drawElement } from './elements.js';
 
 /** PDFKit's own point sizes, so a page size never has to be computed from millimetres. */
 const PAGE_SIZES = {
@@ -48,9 +52,6 @@ export interface RenderedDocument {
   bytes: Buffer;
   pageCount: number;
 }
-
-const ROW_HEIGHT = 16;
-const HEADER_ROW_HEIGHT = 18;
 
 export async function renderPdf(
   model: DocumentModel,
@@ -86,62 +87,82 @@ export async function renderPdf(
   const width = right - left;
   const bottomLimit = size[1] - mm(options.margins.bottom) - 24;
 
-  doc.addPage();
-  if (model.watermark) watermark(doc, model.watermark, size[0], size[1]);
-
-  let y = mm(options.margins.top);
-
-  const newPage = (): void => {
-    doc.addPage();
-    if (model.watermark) watermark(doc, model.watermark, size[0], size[1]);
-    y = mm(options.margins.top);
+  const elementContext = {
+    offsetY: 0,
+    accentColour: model.accentColour,
+    logo: options.logo,
+    signature: options.signature,
   };
 
-  const columns = layOutColumns(model.columns, width);
-
-  for (const block of model.blocks) {
-    switch (block.kind) {
-      case 'header':
-        y = drawHeader(doc, model, { left, right, width, y, logo: options.logo, align: block.align });
-        break;
-
-      case 'party':
-        if (model.party) y = drawParty(doc, model, left, y);
-        break;
-
-      case 'lines':
-        y = drawTable(doc, model, columns, {
-          left,
-          width,
-          y,
-          bottomLimit,
-          onPageBreak: () => {
-            newPage();
-            return y;
-          },
-          setY: (next) => {
-            y = next;
-          },
-        });
-        break;
-
-      case 'totals':
-        // The model omits this block entirely when rates are out, so reaching
-        // here means totals exist. The optional chain is for the compiler.
-        if (model.totals) y = drawTotals(doc, model, right, y, block.showBoxCount);
-        break;
-
-      case 'terms':
-        if (model.terms) y = drawTerms(doc, model.terms, left, y, width);
-        break;
-
-      case 'signature':
-        y = drawSignature(doc, model, options.signature, right, y, bottomLimit);
-        break;
+  const drawBand = (band: 'header' | 'footer'): void => {
+    for (const element of model.elements) {
+      if (element.band === band) drawElement(doc, element, elementContext);
     }
+  };
+
+  const startPage = (): void => {
+    doc.addPage();
+    if (model.watermark) watermark(doc, model.watermark, size[0], size[1]);
+    // Page furniture, drawn before the body so the body sits on top of it.
+    drawBand('header');
+  };
+
+  startPage();
+
+  const table = model.elements.find((element) => element.kind === 'table');
+  const body = model.elements.filter((element) => element.band === 'body');
+
+  // The table's top edge is the horizon: above it is page-one furniture, below
+  // it is what may ride the table's growth.
+  const tableTop = table ? mm(table.y) : Number.POSITIVE_INFINITY;
+  const above = body.filter((element) => element !== table && mm(element.y) < tableTop);
+  const below = body.filter((element) => element !== table && mm(element.y) >= tableTop);
+
+  for (const element of above) drawElement(doc, element, elementContext);
+
+  let tableBottom = tableTop;
+
+  if (table && table.kind === 'table') {
+    const columns = layOutColumns(model.columns, mm(table.w));
+
+    tableBottom = drawTable(doc, model, table, columns, {
+      left: mm(table.x),
+      width: mm(table.w),
+      y: tableTop,
+      bottomLimit,
+      onPageBreak: () => {
+        startPage();
+        return mm(options.margins.top);
+      },
+    });
   }
 
-  const pageCount = writeFooters(doc, model, { left, width, height: size[1], margins: options.margins });
+  /*
+   * One delta, applied once.
+   *
+   * An element that asked to stay put stays put; one that asked to follow the
+   * table moves by however far the table's real bottom landed from the height
+   * it was designed at — which is negative when the order has fewer rows than
+   * the design assumed. This is deliberately not a reflow engine: two
+   * independently growing regions is a second feature, and nothing has asked
+   * for one.
+   */
+  const declaredBottom = table ? mm(table.y) + mm(table.h) : tableBottom;
+  const delta = tableBottom - declaredBottom;
+
+  for (const element of below) {
+    drawElement(doc, element, {
+      ...elementContext,
+      offsetY: element.flow === 'after-table' ? delta : 0,
+    });
+  }
+
+  const pageCount = writeFooters(doc, model, {
+    left,
+    width,
+    height: size[1],
+    margins: options.margins,
+  });
 
   doc.end();
   await finished;
@@ -167,71 +188,10 @@ function layOutColumns(columns: DocumentColumn[], width: number): PlacedColumn[]
   });
 }
 
-function drawHeader(
-  doc: typeof PDFDocument.prototype,
-  model: DocumentModel,
-  layout: {
-    left: number;
-    right: number;
-    width: number;
-    y: number;
-    logo: Buffer | null;
-    align: 'left' | 'centre';
-  },
-): number {
-  const { left, right, y, logo } = layout;
-  let textLeft = left;
-
-  if (logo) {
-    try {
-      doc.image(logo, left, y, { fit: [90, 36] });
-      textLeft = left + 100;
-    } catch {
-      // A logo that PDFKit cannot decode must not fail the whole render — the
-      // document is still correct without it, and the alternative is a
-      // customer's quotation blocked by a bad upload from months ago.
-    }
-  }
-
-  if (model.companyName) {
-    runText(doc, model.companyName, textLeft, y, { size: 15, bold: true });
-  }
-
-  runTextRight(doc, model.title, right, y, { size: 13, bold: true, colour: model.accentColour ?? '#111111' });
-
-  keyValueBlock(
-    doc,
-    [
-      { label: 'Ref', value: model.reference },
-      { label: 'Date', value: model.issuedOn },
-    ],
-    right - 150,
-    y + 20,
-  );
-
-  const bottom = y + 52;
-  horizontalRule(doc, left, bottom - 8, layout.width, model.accentColour ?? '#DDDDDD');
-  return bottom;
-}
-
-function drawParty(doc: typeof PDFDocument.prototype, model: DocumentModel, left: number, y: number): number {
-  if (!model.party) return y;
-
-  runText(doc, 'To', left, y, { size: 7.5, colour: '#777777' });
-  runText(doc, model.party.name, left, y + 10, { size: 10.5, bold: true });
-
-  let cursor = y + 24;
-  for (const line of model.party.lines) {
-    runText(doc, line, left, cursor, { size: 8 });
-    cursor += 10;
-  }
-
-  return cursor + 8;
-}
-
 function drawTable(
   doc: typeof PDFDocument.prototype,
   model: DocumentModel,
+  table: Extract<ResolvedElement, { kind: 'table' }>,
   columns: PlacedColumn[],
   layout: {
     left: number;
@@ -239,43 +199,68 @@ function drawTable(
     y: number;
     bottomLimit: number;
     onPageBreak: () => number;
-    setY: (next: number) => void;
   },
 ): number {
   const { left, width, bottomLimit } = layout;
+  const rowHeight = mm(table.rowHeightMm);
+  const headingHeight = mm(table.headingHeightMm);
   let y = layout.y;
 
-  const drawHeaderRow = (): void => {
-    doc.save().rect(left, y, width, HEADER_ROW_HEIGHT).fillColor('#F4F4F5').fill().restore();
+  const drawHeadingRow = (): void => {
+    if (table.headingFill) filledBox(doc, left, y, width, headingHeight, table.headingFill);
 
     for (const column of columns) {
-      const style = { size: 7.5, bold: true, colour: '#444444' as string };
+      const style = {
+        size: table.headingStyle.size,
+        bold: table.headingStyle.bold,
+        colour: table.headingStyle.colour ?? '#444444',
+      };
+
       if (column.align === 'right') {
-        runTextRight(doc, column.heading, left + column.x + column.width - 4, y + 5.5, style);
+        runTextRight(
+          doc,
+          headingFor(table, column),
+          left + column.x + column.width - 4,
+          y + 5.5,
+          style,
+        );
       } else {
-        runText(doc, column.heading, left + column.x + 4, y + 5.5, style);
+        runText(doc, headingFor(table, column), left + column.x + 4, y + 5.5, style);
       }
     }
 
-    y += HEADER_ROW_HEIGHT;
+    y += headingHeight;
   };
 
-  drawHeaderRow();
+  drawHeadingRow();
 
   for (const row of model.rows) {
-    if (y + ROW_HEIGHT > bottomLimit) {
-      layout.setY(y);
+    if (y + rowHeight > bottomLimit) {
       y = layout.onPageBreak();
-      drawHeaderRow();
+      if (table.repeatHeadingOnBreak) drawHeadingRow();
     }
 
-    drawRow(doc, model, row, columns, left, y);
-    y += ROW_HEIGHT;
+    drawRow(doc, model, row, columns, left, y, table.cellStyle.size);
+    y += rowHeight;
     horizontalRule(doc, left, y, width, '#EEEEEE');
   }
 
-  layout.setY(y + 10);
   return y + 10;
+}
+
+/**
+ * The designer's own heading, or the model's translated one.
+ *
+ * A renamed heading is text the operator typed, and it can no more leak a rate
+ * than any other literal: the column it names had to survive `buildColumns`
+ * before there was anything to head.
+ */
+function headingFor(
+  table: Extract<ResolvedElement, { kind: 'table' }>,
+  column: PlacedColumn,
+): string {
+  const spec = table.columns.find((candidate) => candidate.key === column.key);
+  return spec?.heading?.trim() || column.heading;
 }
 
 function drawRow(
@@ -285,6 +270,7 @@ function drawRow(
   columns: PlacedColumn[],
   left: number,
   y: number,
+  cellSize: number,
 ): void {
   for (const column of columns) {
     // A cell the model did not build is not drawn. This is the only place a
@@ -293,7 +279,7 @@ function drawRow(
     const raw = row.cells[column.key];
     if (raw === undefined) continue;
 
-    const style = { size: 8, script: column.script };
+    const style = { size: cellSize, script: column.script };
     const inner = column.width - 8;
 
     if (column.key === 'colours' && model.showColourChips && row.chips.length > 0) {
@@ -313,97 +299,6 @@ function drawRow(
       runText(doc, text, left + column.x + 4, y + 4, style);
     }
   }
-}
-
-function drawTotals(
-  doc: typeof PDFDocument.prototype,
-  model: DocumentModel,
-  right: number,
-  y: number,
-  showBoxCount: boolean,
-): number {
-  if (!model.totals) return y;
-
-  let cursor = y + 4;
-
-  if (showBoxCount) {
-    runTextRight(doc, `Boxes  ${model.totals.boxCount}`, right, cursor, {
-      size: 8.5,
-      colour: '#555555',
-      script: 'mono',
-    });
-    cursor += 14;
-  }
-
-  if (model.totals.grandTotal !== undefined) {
-    const label = 'Total  ';
-    const value = `₹${model.totals.grandTotal}`;
-    const valueWidth = measureRuns(doc, value, { size: 11, bold: true, script: 'mono' });
-
-    runTextRight(doc, label, right - valueWidth, cursor, { size: 9, colour: '#555555' });
-    runTextRight(doc, value, right, cursor - 1, {
-      size: 11,
-      bold: true,
-      script: 'mono',
-      colour: model.accentColour ?? '#111111',
-    });
-    cursor += 18;
-  }
-
-  return cursor;
-}
-
-function drawTerms(
-  doc: typeof PDFDocument.prototype,
-  terms: string,
-  left: number,
-  y: number,
-  width: number,
-): number {
-  runText(doc, 'Terms', left, y + 6, { size: 7.5, colour: '#777777' });
-
-  // The one place wrapping is wanted: terms are a paragraph, and the domain
-  // already caps them at 500 characters so the height stays bounded.
-  //
-  // Wrapped through `wrappedRunText`, never PDFKit's own `text(…, { width })`
-  // — that binds one font for the whole call, so a Hindi clause would be
-  // dropped silently while the English around it rendered fine.
-  const bottom = wrappedRunText(doc, terms, left, y + 18, width * 0.7, {
-    size: 8,
-    colour: '#333333',
-  });
-
-  return bottom + 10;
-}
-
-function drawSignature(
-  doc: typeof PDFDocument.prototype,
-  model: DocumentModel,
-  signature: Buffer | null,
-  right: number,
-  y: number,
-  bottomLimit: number,
-): number {
-  const blockHeight = 62;
-  const top = Math.min(Math.max(y + 12, bottomLimit - blockHeight), bottomLimit - blockHeight);
-  const boxLeft = right - 160;
-
-  if (signature) {
-    try {
-      doc.image(signature, boxLeft, top, { fit: [150, 34] });
-    } catch {
-      // Same reasoning as the logo: an undecodable image loses the signature,
-      // not the document.
-    }
-  }
-
-  horizontalRule(doc, boxLeft, top + 40, 160, '#999999');
-
-  if (model.signatureLabel) {
-    runText(doc, model.signatureLabel, boxLeft, top + 44, { size: 7.5, colour: '#666666' });
-  }
-
-  return top + blockHeight;
 }
 
 /**
