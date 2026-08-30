@@ -98,9 +98,12 @@
   font-size: var(--t-small-size);
   font-weight: 550;
   white-space: nowrap;
-  transition: background-color var(--d-fast) var(--e-standard),
-    border-color var(--d-fast) var(--e-standard), color var(--d-fast) var(--e-standard),
-    transform var(--d-fast) var(--e-standard), opacity var(--d-fast) var(--e-standard);
+  transition:
+    background-color var(--d-fast) var(--e-standard),
+    border-color var(--d-fast) var(--e-standard),
+    color var(--d-fast) var(--e-standard),
+    transform var(--d-fast) var(--e-standard),
+    opacity var(--d-fast) var(--e-standard);
 }
 
 .ob-btn--primary {
@@ -249,12 +252,30 @@
 
 /* Six tints. Deliberately not the accent: a column of accent discs would
  * compete with every real control on the screen. */
-.ob-avatar[data-tint='0'] { background: var(--glaze-05); color: var(--glaze-50); }
-.ob-avatar[data-tint='1'] { background: var(--kiln-green-05); color: var(--kiln-green); }
-.ob-avatar[data-tint='2'] { background: var(--kiln-amber-05); color: var(--kiln-amber); }
-.ob-avatar[data-tint='3'] { background: var(--kiln-red-05); color: var(--kiln-red); }
-.ob-avatar[data-tint='4'] { background: var(--bg-sunken); color: var(--fg-secondary); }
-.ob-avatar[data-tint='5'] { background: var(--accent-tint); color: var(--accent-hover); }
+.ob-avatar[data-tint='0'] {
+  background: var(--glaze-05);
+  color: var(--glaze-50);
+}
+.ob-avatar[data-tint='1'] {
+  background: var(--kiln-green-05);
+  color: var(--kiln-green);
+}
+.ob-avatar[data-tint='2'] {
+  background: var(--kiln-amber-05);
+  color: var(--kiln-amber);
+}
+.ob-avatar[data-tint='3'] {
+  background: var(--kiln-red-05);
+  color: var(--kiln-red);
+}
+.ob-avatar[data-tint='4'] {
+  background: var(--bg-sunken);
+  color: var(--fg-secondary);
+}
+.ob-avatar[data-tint='5'] {
+  background: var(--accent-tint);
+  color: var(--accent-hover);
+}
 
 .ob-avatarpicker {
   display: flex;
@@ -869,7 +890,8 @@ table.ob-table {
   display: flex;
   flex-direction: column;
   min-height: 12.8571rem;
-  transition: background-color var(--d-base) var(--e-standard),
+  transition:
+    background-color var(--d-base) var(--e-standard),
     border-color var(--d-base) var(--e-standard);
 }
 .ob-boardcol--drop {
@@ -1458,7 +1480,8 @@ html[data-window-blur='true'] .ob-busy rect {
   align-items: center;
   justify-content: center;
   color: var(--fg-on-accent);
-  transition: background-color var(--d-fast) var(--e-standard),
+  transition:
+    background-color var(--d-fast) var(--e-standard),
     border-color var(--d-fast) var(--e-standard);
 }
 .ob-check-row input:checked + .ob-checkbox-box {
@@ -1522,7 +1545,8 @@ html[data-window-blur='true'] .ob-busy rect {
   background: var(--bg-sunken);
   border: 1px solid var(--line-strong);
   position: relative;
-  transition: background-color var(--d-fast) var(--e-standard),
+  transition:
+    background-color var(--d-fast) var(--e-standard),
     border-color var(--d-fast) var(--e-standard);
 }
 .ob-switch::after {
@@ -2005,7 +2029,13 @@ html[data-window-blur='true'] .ob-busy rect {
 
 .ob-permgrid td.ob-cell-na {
   color: var(--line-strong);
-  background: repeating-linear-gradient(45deg, transparent, transparent 4px, var(--bg-canvas) 4px, var(--bg-canvas) 8px);
+  background: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 4px,
+    var(--bg-canvas) 4px,
+    var(--bg-canvas) 8px
+  );
 }
 
 /* The key exists but this tier may not hold it — different from "cannot exist",
@@ -2135,7 +2165,13 @@ html[data-window-blur='true'] .ob-busy rect {
 .ob-capability--blocked {
   opacity: 0.45;
   cursor: not-allowed;
-  background: repeating-linear-gradient(45deg, transparent, transparent 4px, var(--bg-canvas) 4px, var(--bg-canvas) 8px);
+  background: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 4px,
+    var(--bg-canvas) 4px,
+    var(--bg-canvas) 8px
+  );
 }
 
 /* ===========================================================================
@@ -2544,4 +2580,92 @@ html[data-window-blur='true'] .ob-busy rect {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ===========================================================================
+ * Page designer — a sheet of paper on screen.
+ *
+ * Lengths inside the page itself are computed from the measured width by
+ * `PageDesignerCanvas`, so they scale with the space the canvas is given.
+ * Everything here is the chrome around that: the paper's shadow, the margin
+ * guide, and how an element reads at a glance.
+ * ======================================================================== */
+
+.ob-designer-host {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.ob-designer-page {
+  position: relative;
+  flex: none;
+  background: #ffffff;
+  /* A page is white on every theme — it is paper, not surface. The border is
+     what separates it from a light background. */
+  border: 1px solid var(--line);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
+  overflow: hidden;
+}
+
+.ob-designer-margins {
+  position: absolute;
+  border: 1px dashed var(--line);
+  pointer-events: none;
+}
+
+.ob-designer-element {
+  position: absolute;
+  overflow: hidden;
+  color: #111111;
+  line-height: 1.2;
+  white-space: pre-wrap;
+  border: 1px solid transparent;
+}
+
+/* A field shows the name of what it will print, in the mono face, so it cannot
+   be mistaken for literal text somebody typed. */
+.ob-designer-element[data-mono='true'] {
+  font-family: var(--font-mono);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.ob-designer-element[data-kind='table'] {
+  border-style: dashed;
+  border-color: var(--accent);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.ob-designer-element[data-kind='image'] {
+  border-style: dashed;
+  border-color: var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ob-designer-element[data-kind='box'] {
+  border-style: solid;
+}
+
+.ob-designer-element[data-selected='true'] {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.ob-designer-guide {
+  position: absolute;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.ob-designer-guide[data-axis='x'] {
+  width: 1px;
+}
+
+.ob-designer-guide[data-axis='y'] {
+  height: 1px;
 }

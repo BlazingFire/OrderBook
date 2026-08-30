@@ -31,6 +31,7 @@ import {
   PAGE_ORIENTATIONS,
   PAPER_SIZES,
   TEMPLATE_DEFAULTS,
+  normaliseLayout,
 } from '@orderbook/shared';
 
 import { api, ApiError, type FieldDifference } from '../api';
@@ -46,6 +47,7 @@ import {
   Input,
   LoadMorePager,
   Modal,
+  PageDesignerCanvas,
   NumberInput,
   Section,
   Select,
@@ -778,6 +780,8 @@ function TemplateEditor({
         </div>
       </Card>
 
+      <LayoutCard draft={draft} />
+
       {canRender && <PreviewPanel draft={draft} />}
 
       <div style={{ display: 'flex', gap: 'var(--s-8)', justifyContent: 'flex-end' }}>
@@ -796,6 +800,60 @@ function TemplateEditor({
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * The page, drawn to scale.
+ *
+ * Read-only for now, and that is the point of shipping it on its own: the
+ * canvas converts millimetres to pixels, the renderer converts the same
+ * millimetres to points, and the two agreeing is a thing worth seeing before
+ * any drag code exists to blame. A discrepancy here is a static picture beside
+ * a preview PDF rather than a mystery mid-drag.
+ */
+function LayoutCard({ draft }: { draft: DocumentTemplateInput }) {
+  // Memoised, not merely built. A fresh object every render would re-run the
+  // conversion below on every keystroke in the form above it — the same trap
+  // an `exhaustive-deps` fix walks into when the dependency is a literal.
+  const geometry = useMemo(
+    () => ({
+      paperSize: draft.paperSize ?? 'A4',
+      orientation: draft.orientation ?? 'portrait',
+      margins: draft.margins ?? { top: 18, right: 15, bottom: 18, left: 15 },
+    }),
+    [draft.paperSize, draft.orientation, draft.margins],
+  );
+
+  /*
+   * Normalised for display, not merely read.
+   *
+   * A stored template arrives as elements — the mapper converts on read. A
+   * *new* one is seeded from `TEMPLATE_DEFAULTS`, which describes a document as
+   * ordered blocks because a default says what a quotation is rather than where
+   * it sits on a particular sheet. Converting here is what makes the card show
+   * the same page the server is about to store, instead of nothing at all.
+   */
+  const layout = useMemo(
+    () =>
+      normaliseLayout(draft.layout, geometry, {
+        hasLogo: draft.showLogo ?? true,
+        hasSignature: draft.showSignature ?? false,
+      }),
+    [draft.layout, geometry, draft.showLogo, draft.showSignature],
+  );
+
+  if (layout.elements.length === 0) return null;
+
+  return (
+    <Card>
+      <div className="ob-eyebrow">{t('documents.layout.title')}</div>
+      <p className="ob-small">{t('documents.layout.help')}</p>
+
+      <div style={{ maxWidth: rem(420), margin: '0 auto' }}>
+        <PageDesignerCanvas geometry={geometry} elements={layout.elements} />
+      </div>
+    </Card>
   );
 }
 

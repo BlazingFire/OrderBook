@@ -921,6 +921,9 @@ export const EN_MESSAGES = {
   'documents.editor.paperSize': 'Paper size',
   'documents.editor.reloadTheirs': 'Reload theirs',
   'documents.editor.save': 'Save',
+  'documents.layout.title': 'Page layout',
+  'documents.layout.help':
+    'Where each piece sits on the paper. The table grows with the number of lines, and anything set to follow it moves down.',
   'documents.editor.saveFailed': 'Could not save the template',
   'documents.editor.saved': 'Saved “{name}”',
   'documents.editor.showColourChips': 'Colour swatches beside each line',

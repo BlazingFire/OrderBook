@@ -1225,6 +1225,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'documents.editor.save': 'Save',
   // TODO(i18n-hi)
+  'documents.layout.title': 'Page layout',
+  // TODO(i18n-hi)
+  'documents.layout.help':
+    'Where each piece sits on the paper. The table grows with the number of lines, and anything set to follow it moves down.',
+  // TODO(i18n-hi)
   'documents.editor.saveFailed': 'Could not save the template',
   // TODO(i18n-hi)
   'documents.editor.saved': 'Saved “{name}”',
