@@ -92,6 +92,36 @@ export const config = {
     ? path.resolve(process.env.ORDERBOOK_RELEASES_DIR)
     : path.join(path.parse(process.cwd()).root, 'OrderBook-Releases'),
 
+  releases: {
+    /**
+     * `owner/repo` to fetch published builds from, or null to stay on the
+     * folder alone.
+     *
+     * Point this at a **public** repository that holds nothing but release
+     * assets. The source repository is private, and release assets on a private
+     * repository need an `Authorization` header — so a token would have to ship
+     * to every shop PC, where it would generally also be able to read the whole
+     * source. A separate public releases repository costs nothing and means no
+     * secret ever leaves this machine.
+     */
+    githubRepo: process.env.ORDERBOOK_RELEASES_GITHUB_REPO?.trim() || null,
+
+    /**
+     * A token, if the releases repository really must be private.
+     *
+     * Named for what it is rather than `GITHUB_TOKEN`, because anybody setting
+     * it should have to think about the sentence above. It is read on the
+     * Master only and never travels to a panel.
+     */
+    githubToken: process.env.ORDERBOOK_RELEASES_GITHUB_TOKEN?.trim() || null,
+
+    /**
+     * How often the Master asks GitHub, in minutes. Zero switches polling off
+     * and leaves the Updates screen's own check as the only trigger.
+     */
+    pollMinutes: Number(process.env.ORDERBOOK_RELEASES_POLL_MINUTES ?? '180'),
+  },
+
   documents: {
     dir: path.join(dataDir, 'documents'),
     /** `<exportsDir>/<storageKey>.pdf` — the rendered files themselves. */

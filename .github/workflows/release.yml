@@ -1,0 +1,153 @@
+name: Release
+
+# Push a version bump to main and the fleet updates itself.
+#
+# The trigger is deliberately a *version change*, not any push to main: a
+# README fix should not rebuild 200 MB of installers and offer every shop PC an
+# update that is byte-for-byte what it is already running. So this builds only
+# when `package.json`'s version names a tag that does not exist yet — which
+# makes `npm version` (or editing that one field) the publish gesture.
+#
+#   1. Bump the version and push to main.
+#   2. This builds both Windows installers, signs the manifests, and publishes
+#      a GitHub Release with four assets.
+#   3. Each Master polls that release, verifies the signature, downloads into
+#      its releases folder, and serves the office build to its panels over the
+#      LAN exactly as it does for a USB stick today.
+#
+# ## Where releases are published
+#
+# `master/src/services/github-releases.ts` explains why the assets should live
+# in their own **public** repository: assets on a private repository need an
+# `Authorization` header, and shipping a token that can read them ships a
+# credential that can generally read the source. Set the `RELEASES_REPO`
+# variable (e.g. `you/orderbook-releases`) and a `RELEASES_TOKEN` secret with
+# `contents: write` on it. With neither set, this publishes to this repository,
+# which is correct only while this repository is public.
+#
+# ## Signing
+#
+# `RELEASE_KEY` holds the private PEM from `npm run release:keygen`. Without it
+# the release is still built but published as a **draft**, and
+# `latestRelease()` ignores drafts — so an unsigned build cannot reach a single
+# machine by accident. That is the fail-safe: no key, no fleet update.
+#
+# Note the tradeoff the keygen script warns about — a key in Actions secrets
+# can be used by anybody who can push a workflow file here. For a private
+# repository with one owner that is the same person; for anything wider, drop
+# the secret and sign on the release machine instead.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # Windows, because the artefact is an NSIS setup file and the Master
+    # vendors Windows PostgreSQL binaries into it.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Decide whether this version is new
+        id: version
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "v$version is already released — nothing to do."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        if: steps.version.outputs.publish == 'true'
+        # No `install-scripts approve` step: the runner's npm 10 does not block
+        # postinstall the way npm 12 does locally, so the embedded-postgres
+        # binaries this release vendors are downloaded by `npm ci` itself.
+        run: npm ci
+
+      - name: Write the release key
+        if: steps.version.outputs.publish == 'true'
+        id: key
+        shell: bash
+        env:
+          RELEASE_KEY: ${{ secrets.RELEASE_KEY }}
+        run: |
+          if [ -z "$RELEASE_KEY" ]; then
+            echo "No RELEASE_KEY secret — this build will publish as an unsigned DRAFT."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Outside the workspace, so no later step can package it by accident.
+          key_file="$RUNNER_TEMP/release.pem"
+          printf '%s' "$RELEASE_KEY" > "$key_file"
+          echo "::add-mask::$key_file"
+          echo "key_file=$key_file" >> "$GITHUB_OUTPUT"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build and sign both installers
+        if: steps.version.outputs.publish == 'true'
+        shell: bash
+        env:
+          ORDERBOOK_RELEASES_DIR: ${{ runner.temp }}\release-out
+          ORDERBOOK_RELEASE_KEY: ${{ steps.key.outputs.key_file }}
+          ORDERBOOK_RELEASE_KEY_ID: ${{ vars.RELEASE_KEY_ID }}
+          ORDERBOOK_RELEASE_NOTES: ${{ github.event.head_commit.message }}
+        run: npm run release
+
+      - name: Name the manifests for a flat asset list
+        if: steps.version.outputs.publish == 'true'
+        shell: bash
+        run: |
+          # A GitHub Release has one namespace for every asset, so two files
+          # both called `latest.json` cannot coexist. `MANIFEST_ASSET` in
+          # `github-releases.ts` is the other half of this rename.
+          out='${{ runner.temp }}/release-out'
+          cp "$out/master-panel/latest.json" "$out/latest-master.json"
+          cp "$out/office-panel/latest.json" "$out/latest-office.json"
+
+      - name: Publish the release
+        if: steps.version.outputs.publish == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
+          REPO: ${{ vars.RELEASES_REPO || github.repository }}
+        run: |
+          version='${{ steps.version.outputs.version }}'
+          out='${{ runner.temp }}/release-out'
+
+          # Unsigned stays a draft. `latestRelease()` skips drafts and
+          # pre-releases, so nothing here reaches a shop PC until a human
+          # publishes it deliberately.
+          draft=''
+          if [ '${{ steps.key.outputs.signed }}' != 'true' ]; then
+            draft='--draft'
+            echo "::warning::Published as a draft: no RELEASE_KEY, so the manifests are unsigned."
+          fi
+
+          gh release create "v$version" \
+            --repo "$REPO" \
+            --title "OrderBook $version" \
+            --notes "${{ github.event.head_commit.message }}" \
+            $draft \
+            "$out/master-panel/OrderBook-Master-$version-Setup.exe" \
+            "$out/office-panel/OrderBook-Office-$version-Setup.exe" \
+            "$out/latest-master.json" \
+            "$out/latest-office.json"

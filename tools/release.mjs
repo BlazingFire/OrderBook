@@ -29,9 +29,9 @@
  *    USB stick is exactly the file that arrives truncated.
  */
 
-import { createHash } from 'node:crypto';
+import { createHash, createPrivateKey, sign as nodeSign } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { createReadStream } from 'node:fs';
+import { createReadStream, readFileSync } from 'node:fs';
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -103,6 +103,52 @@ async function setVersion(version) {
 
 async function currentVersion() {
   return (await readJson(path.join(ROOT, 'package.json'))).version;
+}
+
+/**
+ * Sign a manifest with the release key, if this machine has one.
+ *
+ * The signature is what tells an installed copy that *we* published this build,
+ * which a SHA-256 published beside its own file cannot say. Panels refuse an
+ * unsigned release by default, so in practice a machine without the key can
+ * still produce a folder for an air-gapped site and cannot produce one anybody
+ * will install over the network — which is the right way round.
+ *
+ * The private key never leaves the release machine. `ORDERBOOK_RELEASE_KEY`
+ * points at the PEM written by `npm run release:keygen`.
+ */
+function sign(manifest) {
+  const keyPath = process.env.ORDERBOOK_RELEASE_KEY;
+  const keyId = process.env.ORDERBOOK_RELEASE_KEY_ID;
+
+  if (!keyPath) {
+    console.warn(
+      '  ! ORDERBOOK_RELEASE_KEY is not set — publishing UNSIGNED.\n' +
+        '    Panels refuse unsigned releases unless a machine sets\n' +
+        '    ORDERBOOK_ALLOW_UNSIGNED_RELEASES=1. Run: npm run release:keygen',
+    );
+    return manifest;
+  }
+
+  if (!keyId) throw new Error('ORDERBOOK_RELEASE_KEY is set but ORDERBOOK_RELEASE_KEY_ID is not');
+
+  const privateKey = createPrivateKey(readFileSync(path.resolve(keyPath), 'utf8'));
+
+  // The exact bytes `shared/src/domain/release-signature.ts` defines. Kept in
+  // step by hand here because this script must run before anything is built —
+  // `signed-fields.test.ts` pins the two against each other.
+  const SIGNED_FIELDS = ['panel', 'version', 'file', 'sizeBytes', 'sha256', 'releasedAt'];
+  const payload = SIGNED_FIELDS.map((field) =>
+    field === 'sha256'
+      ? `${field}=${String(manifest[field]).toLowerCase()}`
+      : `${field}=${String(manifest[field])}`,
+  ).join('\n');
+
+  return {
+    ...manifest,
+    keyId,
+    signature: nodeSign(null, Buffer.from(payload, 'utf8'), privateKey).toString('base64'),
+  };
 }
 
 async function sha256(file) {
@@ -306,7 +352,7 @@ async function publish(panel, version, setupPath, notes) {
   await cp(setupPath, path.join(target, file));
 
   const { size } = await stat(setupPath);
-  const manifest = {
+  const manifest = sign({
     panel,
     version,
     file,
@@ -314,7 +360,7 @@ async function publish(panel, version, setupPath, notes) {
     sha256: await sha256(setupPath),
     releasedAt: new Date().toISOString(),
     ...(notes ? { notes } : {}),
-  };
+  });
 
   // Written last, on purpose. It is the file both panels look for, so a build
   // interrupted halfway leaves the previous release intact rather than a

@@ -41,7 +41,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "verify": "npm run lint && npm run typecheck && npm run test",
-    "release": "node tools/release.mjs"
+    "release": "node tools/release.mjs",
+    "release:keygen": "node tools/make-release-key.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",

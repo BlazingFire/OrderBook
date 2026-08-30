@@ -40,6 +40,7 @@ import { config } from '../config/index.js';
 import { appVersion } from '../lib/app-version.js';
 import { createLogger } from '../lib/logger.js';
 import { verifyManifest } from '../lib/release-signature.js';
+import { syncFromGitHub } from './github-releases.js';
 import { ValidationError } from '../lib/errors.js';
 
 const log = createLogger('updates');
@@ -142,6 +143,18 @@ export async function readManifest(panel: PanelKind): Promise<ReleaseManifest | 
 
 /** What one panel kind should do, against a version already running. */
 export async function availability(panel: PanelKind, running: string): Promise<UpdateAvailability> {
+  /*
+   * Ask GitHub first, when a repository is configured.
+   *
+   * This only ever *fills the folder* — everything below is unchanged and still
+   * reads from disk, so a release fetched from the internet goes through the
+   * same digest check, the same signature check, and the same shell that hashes
+   * the bytes again before running them. It fails soft: no connection, a rate
+   * limit or a half-published release all leave the folder as it was, which is
+   * the honest answer rather than an error on a screen.
+   */
+  await syncFromGitHub(panel, releaseDirFor(panel)).catch(() => null);
+
   const manifest = await readManifest(panel);
 
   if (!manifest) {
