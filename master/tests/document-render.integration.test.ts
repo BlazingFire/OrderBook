@@ -16,13 +16,22 @@ import { config } from '../src/config/index.js';
 import { db } from '../src/db/knex.js';
 import { absoluteFromData } from '../src/lib/document-files.js';
 import * as catalogService from '../src/services/catalog.service.js';
+import * as fieldsService from '../src/services/fields.service.js';
 import * as documentService from '../src/services/document.service.js';
 import * as inventoryService from '../src/services/inventory.service.js';
 import * as leadService from '../src/services/lead.service.js';
 import * as orderService from '../src/services/order.service.js';
 import * as renderService from '../src/services/document-render.service.js';
+import { textStyle } from '@orderbook/shared';
+
 import { canRunIntegrationTests } from './helpers/db.js';
-import { actorWith, resetData, setupDatabase, teardownDatabase, testActor } from './helpers/fixtures.js';
+import {
+  actorWith,
+  resetData,
+  setupDatabase,
+  teardownDatabase,
+  testActor,
+} from './helpers/fixtures.js';
 
 let actor: ActorContext;
 
@@ -76,7 +85,11 @@ async function seedLead(): Promise<{ leadId: string; partyId: string }> {
     {
       partyId: party.id,
       items: [
-        { productId: product.id, packaging: 'Box', quantities: [{ colour: 'White', quantity: 12 }] },
+        {
+          productId: product.id,
+          packaging: 'Box',
+          quantities: [{ colour: 'White', quantity: 12 }],
+        },
       ],
     },
     actor,
@@ -105,6 +118,149 @@ describe.skipIf(!canRunIntegrationTests)('Document rendering (integration)', () 
     actor = await testActor();
   });
 
+  it('PDF-87: a custom field defined on the Fields screen prints its value', async () => {
+    // The whole chain the owner asked for: define a field, put a value in a
+    // record, place the field on a page, and see it in the bytes.
+    const definition = await fieldsService.createDefinition(
+      { entity: 'lead', key: 'siteName', label: 'Site name', fieldType: 'text' },
+      actor,
+    );
+    expect(definition.key).toBe('siteName');
+
+    const { leadId } = await seedLead();
+    await leadService.updateLead(
+      leadId,
+      { customFields: { siteName: 'Plot 4, Kiln Road' } } as never,
+      actor,
+    );
+
+    const template = await quotationTemplate({
+      showTerms: false,
+      layout: {
+        version: 2,
+        elements: [
+          {
+            id: 'table',
+            kind: 'table',
+            columns: [],
+            rowHeightMm: 5.6444,
+            headingHeightMm: 6.35,
+            repeatHeadingOnBreak: true,
+            headingFill: '#F4F4F5',
+            groupByProduct: false,
+            headingStyle: textStyle({ size: 7.5, bold: true }),
+            cellStyle: textStyle({ size: 8 }),
+            x: 15,
+            y: 120,
+            w: 180,
+            h: 60,
+            z: 0,
+            band: 'body',
+            flow: 'fixed',
+          },
+          {
+            id: 'site',
+            kind: 'field',
+            binding: { source: 'custom', entity: 'lead', key: 'siteName' },
+            label: null,
+            labelPlacement: 'none',
+            x: 15,
+            y: 40,
+            w: 120,
+            h: 8,
+            z: 1,
+            band: 'body',
+            flow: 'fixed',
+            style: textStyle({ size: 10 }),
+          },
+        ],
+      },
+    });
+
+    const rendered = await renderService.renderDocument(
+      { templateId: template.id, subjectKind: 'lead', subjectId: leadId },
+      actor,
+    );
+
+    const file = await renderService.fetchExportFile(rendered.exportId, actor);
+    expect(await extractText(Buffer.from(file.bytes))).toContain('Plot 4, Kiln Road');
+  });
+
+  it('PDF-79: an element bound to a deleted custom field prints nothing at all', async () => {
+    const definition = await fieldsService.createDefinition(
+      { entity: 'lead', key: 'siteName', label: 'Site name', fieldType: 'text' },
+      actor,
+    );
+
+    const { leadId } = await seedLead();
+    await leadService.updateLead(
+      leadId,
+      { customFields: { siteName: 'Plot 4, Kiln Road' } } as never,
+      actor,
+    );
+
+    // Deleted after the value was written, which is the case that matters: the
+    // blob still holds it, and nothing but the definition says it is gone.
+    await fieldsService.deleteDefinition(definition.id, actor);
+
+    const template = await quotationTemplate({
+      showTerms: false,
+      layout: {
+        version: 2,
+        elements: [
+          {
+            id: 'table',
+            kind: 'table',
+            columns: [],
+            rowHeightMm: 5.6444,
+            headingHeightMm: 6.35,
+            repeatHeadingOnBreak: true,
+            headingFill: '#F4F4F5',
+            groupByProduct: false,
+            headingStyle: textStyle({ size: 7.5, bold: true }),
+            cellStyle: textStyle({ size: 8 }),
+            x: 15,
+            y: 120,
+            w: 180,
+            h: 60,
+            z: 0,
+            band: 'body',
+            flow: 'fixed',
+          },
+          {
+            id: 'site',
+            kind: 'field',
+            binding: { source: 'custom', entity: 'lead', key: 'siteName' },
+            label: 'Site',
+            labelPlacement: 'before',
+            x: 15,
+            y: 40,
+            w: 120,
+            h: 8,
+            z: 1,
+            band: 'body',
+            flow: 'fixed',
+            style: textStyle({ size: 10 }),
+          },
+        ],
+      },
+    });
+
+    const rendered = await renderService.renderDocument(
+      { templateId: template.id, subjectKind: 'lead', subjectId: leadId },
+      actor,
+    );
+
+    const text = await extractText(
+      Buffer.from((await renderService.fetchExportFile(rendered.exportId, actor)).bytes),
+    );
+
+    // The value is gone, and so is its label — an empty box under a stale
+    // caption is a worse lie than a missing one.
+    expect(text).not.toContain('Plot 4, Kiln Road');
+    expect(text).not.toContain('Site');
+  });
+
   it('PDF-55: a render by an actor without field.saleRate.view produces a PDF whose TEXT carries no rate or total', async () => {
     const { leadId } = await seedLead();
     // Terms off, because the default quotation terms are the sentence "Rates
@@ -114,11 +270,7 @@ describe.skipIf(!canRunIntegrationTests)('Document rendering (integration)', () 
     const template = await quotationTemplate({ showTerms: false });
 
     // Holds everything the render needs — except the rate key.
-    const rateBlind = await actorWith([
-      'documents.view',
-      'documents.render',
-      'leads.view',
-    ]);
+    const rateBlind = await actorWith(['documents.view', 'documents.render', 'leads.view']);
 
     const result = await renderService.renderDocument(
       { templateId: template.id, subjectKind: 'lead', subjectId: leadId },
@@ -230,7 +382,10 @@ describe.skipIf(!canRunIntegrationTests)('Document rendering (integration)', () 
     const quotation = await quotationTemplate();
     const order = await orderService.convertLead({ leadId }, actor);
     const confirmation = await documentService.createTemplate(
-      { name: `Conf ${Math.random().toString(36).slice(2, 8)}`, documentType: 'order_confirmation' },
+      {
+        name: `Conf ${Math.random().toString(36).slice(2, 8)}`,
+        documentType: 'order_confirmation',
+      },
       actor,
     );
 
@@ -361,9 +516,9 @@ describe.skipIf(!canRunIntegrationTests)('Document rendering (integration)', () 
     await expect(renderService.getExport(result.exportId, otherTenant)).rejects.toMatchObject({
       statusCode: 404,
     });
-    await expect(
-      renderService.fetchExportFile(result.exportId, otherTenant),
-    ).rejects.toMatchObject({ statusCode: 404 });
+    await expect(renderService.fetchExportFile(result.exportId, otherTenant)).rejects.toMatchObject(
+      { statusCode: 404 },
+    );
   });
 
   it('PDF-67: a stored export is not reachable under uploadsDir', async () => {
@@ -388,7 +543,10 @@ describe.skipIf(!canRunIntegrationTests)('Document rendering (integration)', () 
     const quotation = await quotationTemplate();
     const order = await orderService.convertLead({ leadId }, actor);
     const confirmation = await documentService.createTemplate(
-      { name: `Conf ${Math.random().toString(36).slice(2, 8)}`, documentType: 'order_confirmation' },
+      {
+        name: `Conf ${Math.random().toString(36).slice(2, 8)}`,
+        documentType: 'order_confirmation',
+      },
       actor,
     );
 
@@ -482,7 +640,11 @@ describe.skipIf(!canRunIntegrationTests)('Document rendering (integration)', () 
       {
         partyId: party.id,
         items: [
-          { productId: product.id, packaging: 'Box', quantities: [{ colour: 'White', quantity: 2 }] },
+          {
+            productId: product.id,
+            packaging: 'Box',
+            quantities: [{ colour: 'White', quantity: 2 }],
+          },
         ],
       },
       actor,

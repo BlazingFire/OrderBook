@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   DocumentExport,
   DocumentTemplate,
+  CustomFieldDefinition,
   DocumentLayoutV2,
   DocumentTemplateInput,
   DocumentSubjectKind,
@@ -507,6 +508,24 @@ function TemplateEditor({
   } | null>(null);
   const [baseVersion, setBaseVersion] = useState<number | undefined>(template?.version);
 
+  /*
+   * Fetched once as the editor opens, not per render.
+   *
+   * The palette needs the tenant's own field definitions so a field added on
+   * the Fields screen can be placed on a page. A failure is not worth
+   * surfacing: the catalogue bindings still work, and the palette is simply
+   * shorter — an error banner over a template editor because a secondary list
+   * did not load would be noise.
+   */
+  const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
+
+  useEffect(() => {
+    void api
+      .customFields()
+      .then(setCustomFields)
+      .catch(() => setCustomFields([]));
+  }, []);
+
   function set<K extends keyof Draft>(key: K, value: Draft[K]): void {
     setDraft((current) => {
       // Annotated rather than inferred: the eight switches write through a
@@ -786,6 +805,7 @@ function TemplateEditor({
       <LayoutCard
         draft={draft}
         canEdit={canSave}
+        customFields={customFields}
         onLayout={(layout) => setDraft((current) => ({ ...current, layout }))}
       />
 
@@ -823,10 +843,12 @@ function LayoutCard({
   draft,
   onLayout,
   canEdit,
+  customFields,
 }: {
   draft: DocumentTemplateInput;
   onLayout: (layout: DocumentLayoutV2) => void;
   canEdit: boolean;
+  customFields: CustomFieldDefinition[];
 }) {
   // Memoised, not merely built. A fresh object every render would re-run the
   // conversion below on every keystroke in the form above it — the same trap
@@ -908,9 +930,32 @@ function LayoutCard({
           { binding: 'party.email', label: t('designer.binding.partyEmail'), group: 'Party' },
           { binding: 'party.gstNumber', label: t('designer.binding.partyGst'), group: 'Party' },
         ],
-        [],
+        /*
+         * The fields somebody defined on the Fields screen, so adding one there
+         * makes it available here — which is what the owner asked for.
+         *
+         * Only the three entities a document can reach: a `product` field is
+         * per line item, and a line item is a table column, and the column set
+         * is a closed union precisely so a rate cannot be invented into it.
+         * Inactive definitions are left out because the resolver drops them
+         * anyway, and offering a field that will silently not print is worse
+         * than not offering it.
+         */
+        customFields
+          .filter(
+            (definition) =>
+              definition.isActive &&
+              (definition.entity === 'lead' ||
+                definition.entity === 'order' ||
+                definition.entity === 'party'),
+          )
+          .map((definition) => ({
+            entity: definition.entity as 'lead' | 'order' | 'party',
+            key: definition.key,
+            label: definition.label,
+          })),
       ),
-    [],
+    [customFields],
   );
 
   if (layout.elements.length === 0) return null;
