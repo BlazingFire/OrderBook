@@ -8,7 +8,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -78,11 +78,16 @@ describe('resolving an installer path', () => {
  */
 describe('approving an installer before it is launched', () => {
   let dir: string;
+  let staging: string;
   let good: string;
   let digest: string;
 
+  /** Where the approved copy lands. Per-user in the shell; a temp dir here. */
+  const stagedName = 'OrderBook-Office-1.0.3-Setup.exe';
+
   beforeAll(async () => {
     dir = await mkdtemp(path.join(os.tmpdir(), 'orderbook-installer-'));
+    staging = await mkdtemp(path.join(os.tmpdir(), 'orderbook-staging-'));
     good = path.join(dir, 'OrderBook-Office-1.0.3-Setup.exe');
 
     const bytes = Buffer.from('pretend this is a hundred megabytes of installer');
@@ -92,16 +97,37 @@ describe('approving an installer before it is launched', () => {
 
   afterAll(async () => {
     await rm(dir, { recursive: true, force: true });
+    await rm(staging, { recursive: true, force: true });
   });
 
-  it('accepts a contained file whose bytes hash to what the panel said', async () => {
-    expect(await approveInstaller(good, digest, dir, 'win32')).toEqual({ path: good });
+  it('accepts a contained file, and runs the staged copy rather than the original', async () => {
+    // The path returned is deliberately not the one passed in. The releases
+    // folder stays writable by whoever is logged in, so the bytes that were
+    // hashed there could be swapped before they are spawned; the copy in the
+    // per-user staging folder cannot.
+    expect(await approveInstaller(good, digest, dir, 'win32', staging)).toEqual({
+      path: path.join(staging, stagedName),
+    });
+
+    expect(await digestOf(path.join(staging, stagedName))).toBe(digest);
   });
 
   it('accepts the digest whatever case it is written in', async () => {
-    expect(await approveInstaller(good, digest.toUpperCase(), dir, 'win32')).toEqual({
-      path: good,
+    expect(await approveInstaller(good, digest.toUpperCase(), dir, 'win32', staging)).toEqual({
+      path: path.join(staging, stagedName),
     });
+  });
+
+  it('leaves nothing staged when the bytes do not match', async () => {
+    // A refused installer that stayed on disk would be a file the next attempt
+    // could find already there.
+    const wrong = path.join(dir, 'OrderBook-Office-2.0.0-Setup.exe');
+    await writeFile(wrong, Buffer.from('not what the manifest describes'));
+
+    const verdict = await approveInstaller(wrong, digest, dir, 'win32', staging);
+
+    expect('refused' in verdict).toBe(true);
+    await expect(stat(path.join(staging, 'OrderBook-Office-2.0.0-Setup.exe'))).rejects.toThrow();
   });
 
   it('refuses bytes that changed after the panel checked them', async () => {
@@ -111,7 +137,7 @@ describe('approving an installer before it is launched', () => {
     const swapped = path.join(dir, 'OrderBook-Office-1.0.4-Setup.exe');
     await writeFile(swapped, Buffer.from('pretend this is somebody else s installer........'));
 
-    const verdict = await approveInstaller(swapped, digest, dir, 'win32');
+    const verdict = await approveInstaller(swapped, digest, dir, 'win32', staging);
     expect('refused' in verdict && verdict.refused).toMatch(/hashes to/);
   });
 
@@ -119,20 +145,20 @@ describe('approving an installer before it is launched', () => {
     // An older panel that does not report one must not be the reason an
     // unverified installer runs. Absent is a refusal, never a pass.
     for (const missing of [undefined, null, '', 'not-a-digest']) {
-      const verdict = await approveInstaller(good, missing, dir, 'win32');
+      const verdict = await approveInstaller(good, missing, dir, 'win32', staging);
       expect('refused' in verdict, String(missing)).toBe(true);
     }
   });
 
   it('still refuses anything outside the folder, digest or not', async () => {
     const outside = path.resolve('/windows/system32/cmd.exe');
-    const verdict = await approveInstaller(outside, digest, dir, 'win32');
+    const verdict = await approveInstaller(outside, digest, dir, 'win32', staging);
     expect('refused' in verdict && verdict.refused).toMatch(/outside/);
   });
 
   it('refuses a file that is not there', async () => {
     const missing = path.join(dir, 'OrderBook-Office-9.9.9-Setup.exe');
-    const verdict = await approveInstaller(missing, digest, dir, 'win32');
+    const verdict = await approveInstaller(missing, digest, dir, 'win32', staging);
     expect('refused' in verdict && verdict.refused).toMatch(/could not be read/);
   });
 

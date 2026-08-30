@@ -202,6 +202,13 @@ export function runPanelShell(config: PanelShellConfig): void {
    * starts the postmaster detached. That is survivable: `startCluster` returns
    * early when the cluster is already running, so the next launch adopts the
    * orphan rather than failing on it.
+   *
+   * Do **not** "fix" that with `taskkill /IM postgres.exe`. Plenty of these
+   * machines run an unrelated PostgreSQL of their own, and killing by image
+   * name would take a company database down to tidy up after ourselves. The
+   * orphan only matters when an installer wants to replace the binary it is
+   * running from, and the update path avoids that by taking the graceful route
+   * and waiting for it.
    */
   async function stopServer(): Promise<void> {
     const child = serverProcess;
@@ -458,6 +465,10 @@ export function runPanelShell(config: PanelShellConfig): void {
       prepared.sha256,
       installerDir,
       process.platform,
+      // Staged where only this account can write, and hashed there. The
+      // releases folder has to stay writable for USB copies and downloads, so
+      // it is not somewhere a file can be trusted to sit still.
+      path.join(app.getPath('userData'), 'pending-update'),
     );
 
     if ('refused' in verdict) {
@@ -465,9 +476,26 @@ export function runPanelShell(config: PanelShellConfig): void {
       return false;
     }
 
-    try {
-      updatingSince = Date.now();
+    /*
+     * Stop the server *before* the installer starts, and wait for it.
+     *
+     * This used to spawn the installer and then give it "a moment to take
+     * hold" — one second — before quitting. That is backwards. The files NSIS
+     * is about to replace are the ones the running server has open, and
+     * `postgres.exe` under the install directory has its own image locked
+     * while the cluster is up. An installer that reaches those files first
+     * cannot write them, and the result is a half-applied install on a machine
+     * that was told the update was under way.
+     *
+     * `stopServer` sends the shutdown message and waits for the child to exit,
+     * which is what closes the PostgreSQL cluster properly rather than leaving
+     * an orphan holding the binary. Only then is there nothing left to lock.
+     */
+    updatingSince = Date.now();
+    say(`Stopping the server before installing ${prepared.version}`);
+    await stopServer();
 
+    try {
       if (process.platform === 'darwin') {
         void electronShell.openPath(verdict.path);
       } else {
@@ -475,13 +503,14 @@ export function runPanelShell(config: PanelShellConfig): void {
       }
 
       say(`Installing ${prepared.version} from ${verdict.path}`);
-
-      // Give the installer a moment to take hold before this process — and the
-      // server it owns — release the files it is about to replace.
-      setTimeout(() => app.quit(), 1_000);
+      app.quit();
       return true;
     } catch (error) {
+      // The server is already down at this point, so put it back rather than
+      // leaving a window attached to nothing because an installer would not
+      // start.
       updatingSince = null;
+      serverProcess = startServer();
       say(`Could not launch the installer: ${String(error)}`);
       return false;
     }

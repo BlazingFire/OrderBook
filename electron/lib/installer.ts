@@ -9,11 +9,12 @@
  * that directory over its own loopback health route rather than the renderer
  * supplying it.
  *
- * Pure, so the traversal vectors can be tested without a window.
+ * The traversal vectors are testable without a window.
  */
 
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
+import { copyFile, mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 
 /** The setup-file extension for each platform we build for. */
@@ -80,15 +81,32 @@ export async function digestOf(file: string): Promise<string> {
 /**
  * Everything that has to be true before a setup file is launched.
  *
- * Returns the resolved path, or `null` having said why. The order matters and
+ * Returns the path to run, or refuses having said why. The order matters and
  * is the reverse of how it reads: containment is cheap and rejects the obvious,
  * the digest is expensive and rejects the deliberate.
+ *
+ * ### Why it copies before hashing
+ *
+ * The releases folder is writable by whoever is logged in — it has to be, since
+ * an operator copies a build there from a USB stick and the panel downloads
+ * into it. That leaves a gap between hashing a file and spawning it, in which
+ * another account on the same PC can swap the bytes: the digest that was
+ * checked and the bytes that run are two different reads of a folder anybody
+ * can write.
+ *
+ * So the file is copied into `stagingDir` first — a per-user directory nobody
+ * else can write — and it is the **copy** that is hashed and the copy that
+ * runs. Swapping the original mid-copy produces a copy that fails its digest,
+ * and after the copy the original no longer matters. This is the cheapest fix
+ * that does not require the releases folder to become unwritable, which would
+ * break both the USB stick and the download.
  */
 export async function approveInstaller(
   candidate: unknown,
   expectedSha256: unknown,
   allowedDir: string | null,
   platform: NodeJS.Platform,
+  stagingDir: string,
 ): Promise<{ path: string } | { refused: string }> {
   const resolved = resolveInstaller(candidate, allowedDir, platform);
   if (!resolved) return { refused: `outside ${allowedDir ?? 'an unknown folder'}` };
@@ -99,16 +117,23 @@ export async function approveInstaller(
     return { refused: 'the panel did not say what it should hash to' };
   }
 
+  const staged = path.join(path.resolve(stagingDir), path.basename(resolved));
+
   let actual: string;
   try {
-    actual = await digestOf(resolved);
+    await mkdir(path.dirname(staged), { recursive: true });
+    await rm(staged, { force: true });
+    await copyFile(resolved, staged);
+    actual = await digestOf(staged);
   } catch (error) {
+    await rm(staged, { force: true }).catch(() => undefined);
     return { refused: `it could not be read: ${String(error)}` };
   }
 
   if (actual !== expectedSha256.toLowerCase()) {
+    await rm(staged, { force: true }).catch(() => undefined);
     return { refused: `it hashes to ${actual}, not ${expectedSha256.toLowerCase()}` };
   }
 
-  return { path: resolved };
+  return { path: staged };
 }
