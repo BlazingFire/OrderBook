@@ -35,6 +35,7 @@ import * as settingsAndPasswordVault from './20260314000000_settings_and_passwor
 import * as productTradeAttributes from './20260315000000_product_trade_and_ceramic_attributes.js';
 import * as publicApiAndConnectors from './20260316000000_public_api_and_connectors.js';
 import * as aiAssistant from './20260317000000_ai_assistant.js';
+import * as documentLayoutV2 from './20260318000000_document_layout_v2.js';
 
 export interface Migration {
   name: string;
@@ -93,6 +94,10 @@ export const migrations: Migration[] = [
   {
     name: '20260317000000_ai_assistant',
     ...aiAssistant,
+  },
+  {
+    name: '20260318000000_document_layout_v2',
+    ...documentLayoutV2,
   },
   // Stage 7 of `docs/backend-modules/` — last in the array, not last by
   // timestamp. Its `20260309` slot was reserved before `20260310`/`20260311`

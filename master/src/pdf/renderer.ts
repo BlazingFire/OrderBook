@@ -162,6 +162,8 @@ export async function renderPdf(
     width,
     height: size[1],
     margins: options.margins,
+    logo: options.logo,
+    signature: options.signature,
   });
 
   doc.end();
@@ -313,13 +315,31 @@ function writeFooters(
     width: number;
     height: number;
     margins: { top: number; right: number; bottom: number; left: number };
+    logo: Buffer | null;
+    signature: Buffer | null;
   },
 ): number {
   const range = doc.bufferedPageRange();
   const y = layout.height - mm(layout.margins.bottom) - 10;
 
+  // Footer-band elements ride this same pass rather than being drawn as each
+  // page opens. They are page furniture like the built-in footer line, and
+  // drawing them here means a designer's footer and "Page 2 of 5" cannot
+  // disagree about how many pages there turned out to be.
+  const footerBand = model.elements.filter((element) => element.band === 'footer');
+
   for (let index = 0; index < range.count; index += 1) {
     doc.switchToPage(range.start + index);
+
+    for (const element of footerBand) {
+      drawElement(doc, element, {
+        offsetY: 0,
+        accentColour: model.accentColour,
+        logo: layout.logo,
+        signature: layout.signature,
+      });
+    }
+
     pageFooter(doc, {
       text: model.footer,
       pageNumber: model.showPageNumbers ? index + 1 : null,
