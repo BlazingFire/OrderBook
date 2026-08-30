@@ -1661,6 +1661,7 @@ export const EN_MESSAGES = {
   'nav.catalogue': 'Catalogue',
   'nav.conflicts': 'Conflicts',
   'nav.dashboard': 'Dashboard',
+  'nav.documents': 'Documents',
   'nav.leads': 'Leads',
   'nav.master.access': 'Roles & users',
   'nav.master.admin': 'Admin',

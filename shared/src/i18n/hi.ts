@@ -2519,6 +2519,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'nav.dashboard': 'Dashboard',
   // TODO(i18n-hi)
+  'nav.documents': 'Documents',
+  // TODO(i18n-hi)
   'nav.leads': 'Leads',
   // TODO(i18n-hi)
   'nav.master.access': 'Roles & users',

@@ -46,6 +46,7 @@ export * from './Logo.js';
 export * from './Modal.js';
 export * from './PermissionGrid.js';
 export * from './PermissionSummary.js';
+export * from './DocumentsScreen.js';
 export * from './PageDesigner.js';
 export * from './PageDesignerCanvas.js';
 export * from './PageDesignerInspector.js';
