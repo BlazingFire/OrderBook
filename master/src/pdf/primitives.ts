@@ -100,6 +100,53 @@ export function runTextRight(
 }
 
 /**
+ * Word-wraps a mixed-script paragraph into lines, without drawing anything.
+ *
+ * Split out of `wrappedRunText` so that measuring and drawing cannot disagree.
+ * Anything that decides whether text *fits* — the shrink-to-fit search below,
+ * a caller sizing a box — has to break the text into exactly the lines that
+ * will be drawn, and a second implementation that is nearly the same is how
+ * "the last line got cut off" happens.
+ *
+ * A blank line is preserved as an empty entry, so `
+
+` between paragraphs
+ * costs a line rather than vanishing. Callers that want the older behaviour,
+ * where every run of whitespace was one space, collapse it before calling.
+ */
+export function wrapLines(doc: Doc, text: string, maxWidth: number, style: TextStyle): string[] {
+  const lines: string[] = [];
+
+  // Hard breaks first: a newline the operator typed is a decision, and
+  // re-flowing across it would silently join two paragraphs.
+  for (const paragraph of text.split(/\r?\n/)) {
+    const words = paragraph.split(/\s+/).filter((word) => word.length > 0);
+
+    if (words.length === 0) {
+      lines.push('');
+      continue;
+    }
+
+    let line = '';
+
+    for (const word of words) {
+      const candidate = line.length === 0 ? word : `${line} ${word}`;
+
+      if (measureRuns(doc, candidate, style) > maxWidth && line.length > 0) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = candidate;
+      }
+    }
+
+    lines.push(line);
+  }
+
+  return lines;
+}
+
+/**
  * Word-wraps a mixed-script paragraph and draws each line through `runText`.
  *
  * PDFKit's own `text(…, { width })` cannot be used for anything that might
@@ -121,29 +168,91 @@ export function wrappedRunText(
   style: TextStyle,
   lineHeight = style.size * 1.45,
 ): number {
-  const words = text.split(/\s+/).filter((word) => word.length > 0);
-  let line = '';
+  // Whitespace collapsed on the way in, which is what this function has always
+  // done: `split(/\s+/)` treated a newline as a space. `wrapLines` honours
+  // newlines, so preserving that behaviour here is deliberate rather than an
+  // oversight — changing how every existing terms block prints is not this
+  // function's business.
+  const lines = wrapLines(doc, text.replace(/\s+/g, ' ').trim(), maxWidth, style);
   let cursor = y;
 
-  const flush = (): void => {
-    if (line.length === 0) return;
-    runText(doc, line, x, cursor, style);
+  for (const line of lines) {
+    if (line.length > 0) runText(doc, line, x, cursor, style);
     cursor += lineHeight;
-    line = '';
-  };
-
-  for (const word of words) {
-    const candidate = line.length === 0 ? word : `${line} ${word}`;
-    if (measureRuns(doc, candidate, style) > maxWidth && line.length > 0) {
-      flush();
-      line = word;
-    } else {
-      line = candidate;
-    }
   }
 
-  flush();
   return cursor;
+}
+
+/**
+ * The largest size at or below `style.size` whose wrapped text fits `maxHeight`.
+ *
+ * Steps down rather than solving, because the wrap points move as the size
+ * changes and the relationship between size and height is a step function, not
+ * a line. A quarter of a point is finer than anybody can see and coarse enough
+ * to terminate quickly; the floor stops a runaway box from producing text
+ * nobody could read anyway.
+ *
+ * Wrapping goes through `wrapLines`, the same function the drawing path uses.
+ * That shared call is the whole point of this function existing here rather
+ * than in a caller.
+ */
+export function shrinkToFit(
+  doc: Doc,
+  text: string,
+  maxWidth: number,
+  maxHeight: number,
+  style: TextStyle,
+  lineHeightRatio = 1.45,
+  floor = 5,
+): number {
+  for (let size = style.size; size >= floor; size -= 0.25) {
+    const lines = wrapLines(doc, text, maxWidth, { ...style, size });
+    if (lines.length * size * lineHeightRatio <= maxHeight) return size;
+  }
+
+  return floor;
+}
+
+/** Centres a mixed-script string on `centreX`. The measuring twin of `runTextRight`. */
+export function runTextCentre(
+  doc: Doc,
+  text: string,
+  centreX: number,
+  y: number,
+  style: TextStyle,
+): void {
+  runText(doc, text, centreX - measureRuns(doc, text, style) / 2, y, style);
+}
+
+/**
+ * A filled and/or stroked rectangle.
+ *
+ * `save`/`restore` around it because PDFKit's fill colour is document state:
+ * without them the next `runText` inherits whatever this painted, and the
+ * symptom is a table heading that turns the rest of the page grey.
+ */
+export function filledBox(
+  doc: Doc,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  fill: string | null,
+  stroke: string | null = null,
+  radius = 0,
+): void {
+  if (!fill && !stroke) return;
+
+  doc.save();
+  if (radius > 0) doc.roundedRect(x, y, width, height, radius);
+  else doc.rect(x, y, width, height);
+
+  if (fill && stroke) doc.fillColor(fill).strokeColor(stroke).lineWidth(0.5).fillAndStroke();
+  else if (fill) doc.fillColor(fill).fill();
+  else if (stroke) doc.strokeColor(stroke).lineWidth(0.5).stroke();
+
+  doc.restore();
 }
 
 export function horizontalRule(doc: Doc, x: number, y: number, width: number, colour = '#DDDDDD'): void {
