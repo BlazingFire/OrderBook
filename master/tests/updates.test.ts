@@ -24,10 +24,19 @@ import type * as UpdateService from '../src/services/update.service.js';
 
 let root: string;
 
-/** Fresh module graph per test, so `config` re-reads the env var. */
+/**
+ * Fresh module graph per test, so `config` re-reads the env var.
+ *
+ * These manifests are unsigned, and that is the case under test: this suite is
+ * the air-gapped site that copies a build in on a USB stick, which is the one
+ * situation where a folder full of unsigned releases is legitimate. Signing is
+ * covered by `release-signature.test.ts`, and the default — refuse anything
+ * unsigned — is asserted there rather than opted out of here by accident.
+ */
 async function loadService(): Promise<typeof UpdateService> {
   vi.resetModules();
   process.env.ORDERBOOK_RELEASES_DIR = root;
+  process.env.ORDERBOOK_ALLOW_UNSIGNED_RELEASES = '1';
   return import('../src/services/update.service.js');
 }
 

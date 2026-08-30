@@ -7,13 +7,21 @@
  * the whole reason an office PC can update over the LAN instead of by USB
  * stick.
  *
- * The office routes are reachable by a paired panel's *server*, which holds no
- * user session: it forwards on behalf of whoever is signed in at that panel,
- * and the panel checks `settings.manage` on its own side before asking. They
- * are readable without a session for the same reason `GET /api/health` is —
- * "which build is on offer" is not privileged, the file is one an operator
- * deliberately published to the LAN, and refusing it would mean a panel could
- * never discover an update before somebody signs in to it.
+ * The office routes are reachable by a **paired panel**, authenticated on its
+ * pairing credentials rather than on a user session.
+ *
+ * They used to be reachable by anyone, and the reason given was that a panel
+ * "holds no user session" — true, and beside the point: `requirePanel`
+ * authenticates on the panel id and secret, and treats the acting-user token as
+ * optional. So a panel with nobody signed in at it authenticates perfectly
+ * well, and the routes were open for a reason that never applied.
+ *
+ * What that cost: an Office panel took its manifest from whoever answered on
+ * the Master's address, then checked the downloaded file against a `sha256`
+ * from that same answer. Whoever wrote the bytes wrote the digest they had to
+ * match, so anything holding that IP on the shop LAN could hand every office PC
+ * an installer. The signature check on the panel side is the other half of
+ * closing that; this half means an unpaired stranger cannot even ask.
  */
 
 import { createReadStream } from 'node:fs';
@@ -29,9 +37,12 @@ import {
   requireAuth,
   requirePermissionMiddleware,
 } from '../middleware/require-auth.js';
+import { requirePanel } from '../middleware/require-panel.js';
 
-/** Reachable by a paired panel, which carries no user session. See the header. */
+/** Reachable by a paired panel, on its pairing credentials. See the header. */
 export const publicUpdateRoutes: Router = Router();
+
+publicUpdateRoutes.use(requirePanel);
 
 publicUpdateRoutes.get(
   '/office/latest',

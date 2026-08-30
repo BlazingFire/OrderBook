@@ -39,6 +39,7 @@ import { isNewer } from '@orderbook/shared';
 import { config } from '../config/index.js';
 import { appVersion } from '../lib/app-version.js';
 import { createLogger } from '../lib/logger.js';
+import { verifyManifest } from '../lib/release-signature.js';
 import { ValidationError } from '../lib/errors.js';
 
 const log = createLogger('updates');
@@ -100,7 +101,28 @@ export async function readManifest(panel: PanelKind): Promise<ReleaseManifest | 
     return null;
   }
 
-  const manifest: ReleaseManifest = { ...parsed, panel };
+  /*
+   * `panel` comes from the manifest, not from the folder it was found in.
+   *
+   * It used to be overwritten here — `{ ...parsed, panel }` — which quietly
+   * defeated the point of signing it: a Master manifest dropped into the office
+   * folder would be relabelled 'office' before anything checked, and the
+   * signature would then verify against a payload this code had just rewritten.
+   * A manifest that says which panel it is for is only useful if that is the
+   * field we read.
+   */
+  const manifest = parsed as ReleaseManifest;
+
+  if (manifest.panel && manifest.panel !== panel) {
+    log.warn(`Ignoring ${manifestPath}: it is a ${manifest.panel} release, in the ${panel} folder`);
+    return null;
+  }
+
+  const verdict = verifyManifest(manifest);
+  if (!verdict.ok) {
+    log.error(`Ignoring ${manifestPath}: ${verdict.reason}`);
+    return null;
+  }
 
   try {
     const stats = await stat(releaseFileFor(panel, manifest));

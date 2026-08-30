@@ -31,7 +31,9 @@ import { isNewer } from '@orderbook/shared';
 import { paths } from '../config/paths.js';
 import { appVersion } from '../lib/app-version.js';
 import { createLogger } from '../lib/logger.js';
-import { loadCredentials, masterBaseUrl } from './credentials.store.js';
+import { loadCredentials } from './credentials.store.js';
+import { masterFetch } from '../lib/master-fetch.js';
+import { verifyManifest } from '../lib/release-signature.js';
 
 const log = createLogger('updates');
 
@@ -41,18 +43,17 @@ const METADATA_TIMEOUT_MS = 10_000;
 export class UpdateError extends Error {
   constructor(
     message: string,
-    readonly code: 'unpaired' | 'unreachable' | 'noRelease' | 'checksum',
+    readonly code: 'unpaired' | 'unreachable' | 'noRelease' | 'checksum' | 'untrusted',
   ) {
     super(message);
   }
 }
 
-async function masterUrl(suffix: string): Promise<string> {
-  const credentials = await loadCredentials();
-  if (!credentials) {
+/** Refuse early and by name, so "not paired" never reads as "no update". */
+async function assertPaired(): Promise<void> {
+  if (!(await loadCredentials())) {
     throw new UpdateError('This panel is not paired with a Master yet', 'unpaired');
   }
-  return `${masterBaseUrl(credentials)}${suffix}`;
 }
 
 /**
@@ -67,9 +68,14 @@ async function masterUrl(suffix: string): Promise<string> {
 export async function availableUpdate(): Promise<UpdateAvailability> {
   const running = appVersion();
 
+  await assertPaired();
+
   let payload: UpdateAvailability;
   try {
-    const response = await fetch(await masterUrl('/api/updates/office/latest'), {
+    // `masterFetch`, so the request carries this panel's pairing credentials.
+    // The route refuses a stranger now, which is half of why the answer below
+    // is worth anything.
+    const response = await masterFetch('/api/updates/office/latest', {
       signal: AbortSignal.timeout(METADATA_TIMEOUT_MS),
     });
     if (!response.ok) throw new Error(`Master answered ${response.status}`);
@@ -82,6 +88,25 @@ export async function availableUpdate(): Promise<UpdateAvailability> {
   const manifest = payload.available;
   if (!manifest)
     return { current: running, available: null, reason: payload.reason ?? 'noRelease' };
+
+  /*
+   * Verified here, on the panel, not merely at the Master.
+   *
+   * The Master relays this manifest; it does not vouch for it, and a panel that
+   * trusted the relay would be trusting whoever is answering on that address.
+   * The signature is checked against keys compiled into *this* build, before
+   * the version comparison and long before anything is written to disk — so a
+   * forged manifest cannot even get as far as looking newer.
+   */
+  const verdict = verifyManifest(manifest);
+  if (!verdict.ok) {
+    log.error(`Refusing office release ${manifest.version}: ${verdict.reason}`);
+    throw new UpdateError(
+      'The update the Master offered is not signed by a key this panel trusts',
+      'untrusted',
+    );
+  }
+
   if (!isNewer(manifest.version, running)) {
     return { current: running, available: null, reason: 'upToDate' };
   }
@@ -149,7 +174,7 @@ export async function downloadUpdate(): Promise<{ path: string; manifest: Releas
     // Not there yet, or unreadable. Fall through and fetch it.
   }
 
-  const response = await fetch(await masterUrl('/api/updates/office/download'));
+  const response = await masterFetch('/api/updates/office/download');
   if (!response.ok || !response.body) {
     throw new UpdateError('The Master would not send the update file', 'unreachable');
   }
