@@ -1230,6 +1230,44 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'documents.layout.help':
     'Where each piece sits on the paper. The table grows with the number of lines, and anything set to follow it moves down.',
   // TODO(i18n-hi)
+  'documents.starter.quotationClassic.name': 'Quotation — Classic',
+  // TODO(i18n-hi)
+  'documents.starter.quotationClassic.description':
+    'The standard layout: header, party, line items and a total.',
+  // TODO(i18n-hi)
+  'documents.starter.quotationCompact.name': 'Quotation — Compact',
+  // TODO(i18n-hi)
+  'documents.starter.quotationCompact.description':
+    'A tighter page with a centred header and products grouped together.',
+  // TODO(i18n-hi)
+  'documents.starter.orderConfirmation.name': 'Order Confirmation',
+  // TODO(i18n-hi)
+  'documents.starter.orderConfirmation.description':
+    'A quotation with a signature line, for an order the party has agreed to.',
+  // TODO(i18n-hi)
+  'documents.starter.dispatchNote.name': 'Dispatch Note',
+  // TODO(i18n-hi)
+  'documents.starter.dispatchNote.description':
+    'No rates — what travels with the goods, for a driver and a storeman to read.',
+  // TODO(i18n-hi)
+  'documents.starter.proforma.name': 'Proforma Invoice',
+  // TODO(i18n-hi)
+  'documents.starter.proforma.description':
+    'A quotation marked as a proforma, watermarked and signed for reference.',
+  // TODO(i18n-hi)
+  'documents.starter.letterhead.name': 'Letterhead',
+  // TODO(i18n-hi)
+  'documents.starter.letterhead.description':
+    'Company stationery with a small table — no rates, no party block.',
+  // TODO(i18n-hi)
+  'documents.gallery.title': 'Start from a design',
+  // TODO(i18n-hi)
+  'documents.gallery.blank': 'Start blank',
+  // TODO(i18n-hi)
+  'documents.gallery.blankDescription': 'An empty {type} with nothing filled in.',
+  // TODO(i18n-hi)
+  'documents.gallery.use': 'Use this design',
+  // TODO(i18n-hi)
   // TODO(i18n-hi)
   'designer.binding.companyName': 'Company name',
   // TODO(i18n-hi)

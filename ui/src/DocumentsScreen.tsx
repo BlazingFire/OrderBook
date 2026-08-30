@@ -34,12 +34,14 @@ import type {
   DocumentType,
   PageOrientation,
   PaperSize,
+  TemplateDefaults,
 } from '@orderbook/shared';
 import {
   DOCUMENT_TYPES,
   MAX_TERMS_LENGTH,
   PAGE_ORIENTATIONS,
   PAPER_SIZES,
+  STARTER_DESIGNS,
   TEMPLATE_DEFAULTS,
   normaliseLayout,
 } from '@orderbook/shared';
@@ -198,6 +200,21 @@ function TemplatesTab({
   const [editing, setEditing] = useState<DocumentTemplate | 'new' | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<DocumentTemplate | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // Whether the "start from a design" gallery is open, and what got picked in
+  // it. `starter` is read once, when `TemplateEditor` mounts — picking again
+  // reopens a fresh editor under a new `key`, so it is never stale there.
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [starter, setStarter] = useState<TemplateDefaults | null>(null);
+
+  function openNew(): void {
+    setGalleryOpen(true);
+  }
+
+  function pick(design: TemplateDefaults | null): void {
+    setStarter(design);
+    setGalleryOpen(false);
+    setEditing('new');
+  }
 
   // `loading` is only ever cleared here, never re-raised: this reloads after
   // every save, delete and editor close, and re-raising it would replace the
@@ -240,6 +257,7 @@ function TemplatesTab({
    */
   function closeEditor(): void {
     setEditing(null);
+    setStarter(null);
     void load();
   }
 
@@ -337,7 +355,7 @@ function TemplatesTab({
       title={t('documents.templates.sectionTitle')}
       action={
         canCreate ? (
-          <Button variant="primary" onClick={() => setEditing('new')}>
+          <Button variant="primary" onClick={openNew}>
             {t('documents.templates.create')}
           </Button>
         ) : null
@@ -348,6 +366,8 @@ function TemplatesTab({
           looking at. A failure with nothing on screen takes the list's place
           below, because "no templates" would be a claim, not a report. */}
       {failure && templates.length > 0 && <ConflictBanner>{failure}</ConflictBanner>}
+
+      <StarterGalleryModal open={galleryOpen} onClose={() => setGalleryOpen(false)} onPick={pick} />
 
       <Modal
         open={editing !== null}
@@ -365,6 +385,7 @@ function TemplatesTab({
             // a different template, which is what opening another row means.
             key={editing === 'new' ? 'new' : editing.id}
             template={editing === 'new' ? null : editing}
+            starter={editing === 'new' ? starter : null}
             canSave={editing === 'new' ? canCreate : canEdit}
             canRender={canRender}
             onSaved={(name) => {
@@ -404,7 +425,7 @@ function TemplatesTab({
                 title={t('documents.templates.empty.title')}
                 description={t('documents.templates.empty.description')}
                 actionLabel={canCreate ? t('documents.templates.create') : undefined}
-                onAction={canCreate ? () => setEditing('new') : undefined}
+                onAction={canCreate ? openNew : undefined}
               />
             }
           />
@@ -481,7 +502,11 @@ const TOGGLE_LABEL_KEY: Record<ToggleKey, string> = {
 
 type Draft = DocumentTemplateInput & Required<Pick<DocumentTemplateInput, 'margins'>>;
 
-function draftFrom(template: DocumentTemplate | null, documentType: DocumentType): Draft {
+function draftFrom(
+  template: DocumentTemplate | null,
+  documentType: DocumentType,
+  starter?: TemplateDefaults | null,
+): Draft {
   if (template) {
     return {
       name: template.name,
@@ -509,10 +534,11 @@ function draftFrom(template: DocumentTemplate | null, documentType: DocumentType
     };
   }
 
-  // Copied, not referenced: `TEMPLATE_DEFAULTS` is a module-level constant
-  // shared by every draft this session opens, and a draft that edited it in
-  // place would change what the *next* new template starts from.
-  const defaults = TEMPLATE_DEFAULTS[documentType];
+  // Copied, not referenced: `TEMPLATE_DEFAULTS` — and a starter design is the
+  // same kind of module-level constant — is shared by every draft this session
+  // opens, and a draft that edited it in place would change what the *next*
+  // new template starts from, starter or no starter.
+  const defaults = starter ?? TEMPLATE_DEFAULTS[documentType];
   return {
     ...defaults,
     margins: { ...defaults.margins },
@@ -520,9 +546,91 @@ function draftFrom(template: DocumentTemplate | null, documentType: DocumentType
   };
 }
 
+/**
+ * A small gallery of ready-made designs, offered before the blank editor
+ * rather than instead of it.
+ *
+ * "Use this design" is nothing more than seeding the same draft the editor
+ * always builds from `TEMPLATE_DEFAULTS` — a starter is a `TemplateDefaults`
+ * with a name, and picking one is indistinguishable from a normal new
+ * template the moment the editor opens. Renaming, moving elements, or
+ * changing the document type afterwards is editing, the same as it would be
+ * for a blank one.
+ */
+function StarterGalleryModal({
+  open,
+  onClose,
+  onPick,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onPick: (design: TemplateDefaults | null) => void;
+}) {
+  return (
+    <Modal open={open} onClose={onClose} size="lg" title={t('documents.gallery.title')}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(15rem, 1fr))',
+          gap: 'var(--s-12)',
+        }}
+      >
+        <StarterCard
+          name={t('documents.gallery.blank')}
+          description={t('documents.gallery.blankDescription', {
+            type: t(DOCUMENT_TYPE_KEY.quotation),
+          })}
+          typeLabel={t(DOCUMENT_TYPE_KEY.quotation)}
+          onUse={() => onPick(null)}
+        />
+
+        {STARTER_DESIGNS.map((design) => (
+          <StarterCard
+            key={design.id}
+            name={t(design.nameToken)}
+            description={t(design.descriptionToken)}
+            typeLabel={t(DOCUMENT_TYPE_KEY[design.documentType])}
+            onUse={() => onPick(design.template)}
+          />
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+function StarterCard({
+  name,
+  description,
+  typeLabel,
+  onUse,
+}: {
+  name: string;
+  description: string;
+  typeLabel: string;
+  onUse: () => void;
+}) {
+  return (
+    <Card>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-8)', height: '100%' }}>
+        <div>
+          <div className="ob-body-strong">{name}</div>
+          <StatusPill tone="default">{typeLabel}</StatusPill>
+        </div>
+        <p className="ob-small" style={{ flex: 1 }}>
+          {description}
+        </p>
+        <Button variant="secondary" onClick={onUse}>
+          {t('documents.gallery.use')}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
 function TemplateEditor({
   transport,
   template,
+  starter,
   canSave,
   canRender,
   onSaved,
@@ -530,13 +638,15 @@ function TemplateEditor({
 }: {
   transport: DocumentsTransport;
   template: DocumentTemplate | null;
+  /** Only read for a brand-new template — ignored once one exists to edit. */
+  starter?: TemplateDefaults | null;
   canSave: boolean;
   canRender: boolean;
   onSaved: (name: string) => void;
   onCancel: () => void;
 }) {
   const [draft, setDraft] = useState<Draft>(() =>
-    draftFrom(template, template?.documentType ?? 'quotation'),
+    draftFrom(template, template?.documentType ?? starter?.documentType ?? 'quotation', starter),
   );
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);

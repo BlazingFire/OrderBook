@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { TEMPLATE_DEFAULTS } from '@orderbook/shared';
+import { STARTER_DESIGNS, TEMPLATE_DEFAULTS } from '@orderbook/shared';
 
 import {
   assertDefaultSwap,
@@ -255,6 +255,44 @@ describe('layout element rules', () => {
 
       expect(() => assertLayoutValid(converted, GEOMETRY), documentType).not.toThrow();
     }
+  });
+
+  it('PDF-88: every starter design is a legal, saveable template', () => {
+    // "Add templates" turned into six of these — ready-made designs a company
+    // duplicates and edits rather than starting from a blank page. Each one
+    // has to pass the same gates a hand-built template would, on its own
+    // paper and its own margins rather than the quotation default's.
+    for (const design of STARTER_DESIGNS) {
+      const geometry = {
+        paperSize: design.template.paperSize,
+        orientation: design.template.orientation,
+        margins: design.template.margins,
+      };
+      const converted = normaliseLayout(design.template.layout, geometry, {
+        hasLogo: design.template.showLogo,
+        hasSignature: design.template.showSignature,
+      });
+
+      expect(() => assertLayoutValid(converted, geometry), design.id).not.toThrow();
+      expect(
+        () => assertTemplateValid({ ...design.template, layout: converted }),
+        design.id,
+      ).not.toThrow();
+
+      // Every document type here applies to an order; only `quotation` also
+      // has to apply to a lead.
+      expect(() => assertTemplateAppliesTo(design.documentType, 'order'), design.id).not.toThrow();
+      if (design.documentType === 'quotation') {
+        expect(() => assertTemplateAppliesTo('quotation', 'lead'), design.id).not.toThrow();
+      }
+    }
+
+    // Each has to read as its own thing in a list of six.
+    const names = STARTER_DESIGNS.map((design) => design.template.name);
+    expect(new Set(names).size).toBe(names.length);
+
+    const ids = STARTER_DESIGNS.map((design) => design.id);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   it('PDF-34: a version 1 blob still validates once the normaliser has seen it', () => {

@@ -22,7 +22,7 @@ import * as inventoryService from '../src/services/inventory.service.js';
 import * as leadService from '../src/services/lead.service.js';
 import * as orderService from '../src/services/order.service.js';
 import * as renderService from '../src/services/document-render.service.js';
-import { textStyle } from '@orderbook/shared';
+import { STARTER_DESIGNS, textStyle } from '@orderbook/shared';
 
 import { canRunIntegrationTests } from './helpers/db.js';
 import {
@@ -259,6 +259,64 @@ describe.skipIf(!canRunIntegrationTests)('Document rendering (integration)', () 
     // caption is a worse lie than a missing one.
     expect(text).not.toContain('Plot 4, Kiln Road');
     expect(text).not.toContain('Site');
+  });
+
+  it('PDF-89: every starter design actually renders, not just validates', async () => {
+    // PDF-88 proves each starter satisfies the layout grammar. This is the
+    // half that matters more: fed to the real renderer against a real
+    // subject, none of the six may throw, and each has to produce a document
+    // with the party name on it somewhere a party block exists at all.
+    const { leadId, partyId } = await seedLead();
+    const order = await orderService.convertLead({ leadId }, actor);
+    const party = await catalogService.getParty(partyId, actor);
+
+    for (const design of STARTER_DESIGNS) {
+      const created = await documentService.createTemplate(
+        {
+          name: `${design.template.name} ${Math.random().toString(36).slice(2, 8)}`,
+          documentType: design.documentType,
+          layout: design.template.layout,
+          paperSize: design.template.paperSize,
+          orientation: design.template.orientation,
+          margins: design.template.margins,
+          showRates: design.template.showRates,
+          showColourChips: design.template.showColourChips,
+          showTerms: design.template.showTerms,
+          showLogo: design.template.showLogo,
+          showSignature: design.template.showSignature,
+          showPageNumbers: design.template.showPageNumbers,
+          showWatermark: design.template.showWatermark,
+          showPartyBlock: design.template.showPartyBlock,
+          watermarkText: design.template.watermarkText,
+          termsText: design.template.termsText,
+          footerText: design.template.footerText,
+          accentColour: design.template.accentColour,
+        } as never,
+        actor,
+      );
+
+      // `quotation` reads for a lead too; the other two only apply to an
+      // order, which `assertTemplateAppliesTo` would otherwise refuse.
+      const subject =
+        design.documentType === 'quotation'
+          ? { subjectKind: 'lead' as const, subjectId: leadId }
+          : { subjectKind: 'order' as const, subjectId: order.id };
+
+      const rendered = await renderService.renderDocument(
+        { templateId: created.id, ...subject },
+        actor,
+      );
+
+      expect(rendered.pageCount, design.id).toBeGreaterThan(0);
+
+      const file = await renderService.fetchExportFile(rendered.exportId, actor);
+      expect(file.bytes.length, design.id).toBeGreaterThan(500);
+
+      if (design.template.showPartyBlock) {
+        const text = await extractText(Buffer.from(file.bytes));
+        expect(text, design.id).toContain(party.name);
+      }
+    }
   });
 
   it('PDF-55: a render by an actor without field.saleRate.view produces a PDF whose TEXT carries no rate or total', async () => {

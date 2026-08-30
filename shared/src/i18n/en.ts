@@ -924,6 +924,28 @@ export const EN_MESSAGES = {
   'documents.layout.title': 'Page layout',
   'documents.layout.help':
     'Where each piece sits on the paper. The table grows with the number of lines, and anything set to follow it moves down.',
+  'documents.starter.quotationClassic.name': 'Quotation — Classic',
+  'documents.starter.quotationClassic.description':
+    'The standard layout: header, party, line items and a total.',
+  'documents.starter.quotationCompact.name': 'Quotation — Compact',
+  'documents.starter.quotationCompact.description':
+    'A tighter page with a centred header and products grouped together.',
+  'documents.starter.orderConfirmation.name': 'Order Confirmation',
+  'documents.starter.orderConfirmation.description':
+    'A quotation with a signature line, for an order the party has agreed to.',
+  'documents.starter.dispatchNote.name': 'Dispatch Note',
+  'documents.starter.dispatchNote.description':
+    'No rates — what travels with the goods, for a driver and a storeman to read.',
+  'documents.starter.proforma.name': 'Proforma Invoice',
+  'documents.starter.proforma.description':
+    'A quotation marked as a proforma, watermarked and signed for reference.',
+  'documents.starter.letterhead.name': 'Letterhead',
+  'documents.starter.letterhead.description':
+    'Company stationery with a small table — no rates, no party block.',
+  'documents.gallery.title': 'Start from a design',
+  'documents.gallery.blank': 'Start blank',
+  'documents.gallery.blankDescription': 'An empty {type} with nothing filled in.',
+  'documents.gallery.use': 'Use this design',
   'designer.binding.companyName': 'Company name',
   'designer.binding.title': 'Document title',
   'designer.binding.reference': 'Reference',
