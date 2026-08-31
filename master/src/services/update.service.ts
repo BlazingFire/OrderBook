@@ -93,7 +93,15 @@ export async function readManifest(panel: PanelKind): Promise<ReleaseManifest | 
   let parsed: unknown;
   try {
     parsed = JSON.parse(await readFile(manifestPath, 'utf8'));
-  } catch {
+  } catch (error) {
+    // A missing file is the ordinary state on a machine nobody has published a
+    // build to, and says nothing worth logging. A file that is there but will
+    // not parse is the opposite: every other refusal in this function explains
+    // itself, and this one used to report "no update available" with a good
+    // 150 MB build sitting in the folder and nothing anywhere saying why.
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      log.warn(`Ignoring ${manifestPath}: it could not be read (${String(error)})`);
+    }
     return null;
   }
 
@@ -153,7 +161,7 @@ export async function availability(panel: PanelKind, running: string): Promise<U
    * limit or a half-published release all leave the folder as it was, which is
    * the honest answer rather than an error on a screen.
    */
-  await syncFromGitHub(panel, releaseDirFor(panel)).catch(() => null);
+  await syncFromGitHub(panel, releaseDirFor(panel), pinnedInstaller()).catch(() => null);
 
   const manifest = await readManifest(panel);
 
@@ -216,6 +224,18 @@ export async function verifyRelease(panel: PanelKind, manifest: ReleaseManifest)
  */
 let prepared: PreparedInstaller | null = null;
 
+/**
+ * The filename a sweep must not remove, or null.
+ *
+ * `prepareMasterUpdate` verifies a build and holds its path while the shell
+ * polls health, the operator reads a dialog, and somebody finally clicks. Setup
+ * filenames carry their version, so a newer release landing in that gap would
+ * otherwise make the pinned file "superseded" and delete it mid-gesture.
+ */
+function pinnedInstaller(): string | null {
+  return prepared ? path.basename(prepared.path) : null;
+}
+
 export function preparedInstaller(): PreparedInstaller | null {
   return prepared;
 }
@@ -275,8 +295,10 @@ export function startReleasePolling(): () => void {
     return () => undefined;
   }
 
-  // A slow poll must not overlap the next one: two of these running together
-  // would have both writing the same `.part` file.
+  // A slow poll must not overlap the next one. `syncFromGitHub` also shares an
+  // in-flight run per panel, which is what covers the poll-versus-request case
+  // this flag cannot see; this one just stops the timer queueing up behind a
+  // download that is taking longer than the interval.
   let running = false;
 
   const poll = async (): Promise<void> => {
@@ -284,7 +306,7 @@ export function startReleasePolling(): () => void {
     running = true;
     try {
       for (const panel of ['master', 'office'] as const) {
-        await syncFromGitHub(panel, releaseDirFor(panel)).catch((error: unknown) => {
+        await syncFromGitHub(panel, releaseDirFor(panel), pinnedInstaller()).catch((error: unknown) => {
           log.warn(`Could not sync the ${panel} release: ${String(error)}`);
           return null;
         });

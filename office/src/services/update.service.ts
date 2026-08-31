@@ -20,7 +20,7 @@
 
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, readdir, rm, stat } from 'node:fs/promises';
+import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -148,6 +148,11 @@ export async function downloadUpdate(): Promise<{ path: string; manifest: Releas
   const target = downloadPath(available);
   await mkdir(path.dirname(target), { recursive: true });
 
+  // Debris from an attempt that died, cleared before this one starts. Finished
+  // installers wait until there is a verified replacement — see the two
+  // functions at the bottom of this file.
+  await pruneDebris();
+
   /*
    * Already downloaded and still intact — a retry after a failed install, or a
    * second click, should not re-pull 100 MB over the office network.
@@ -179,21 +184,47 @@ export async function downloadUpdate(): Promise<{ path: string; manifest: Releas
     throw new UpdateError('The Master would not send the update file', 'unreachable');
   }
 
+  /*
+   * Download to `.part` and rename, rather than writing the final name.
+   *
+   * Two faults, one fix. This used to stream straight into the name the shell's
+   * allowlist accepts, so a process killed mid-download left a truncated 100 MB
+   * file that looks in every way like a finished installer — only the digest
+   * check at launch stood between it and being run, and nothing removed it. And
+   * because `createWriteStream` truncates before the first byte arrives, a
+   * re-download that then failed destroyed a perfectly good installer that was
+   * already on disk.
+   *
+   * A rename is atomic, so the final name only ever exists once the bytes are
+   * all there and have been checked. This is the same temp-then-rename the
+   * Master uses for its own downloads and `writeDurable` uses for documents.
+   */
+  const partial = `${target}.part`;
+  await rm(partial, { force: true }).catch(() => undefined);
+
   const hash = createHash('sha256');
   const source = Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]);
   source.on('data', (chunk: Buffer) => hash.update(chunk));
 
-  await pipeline(source, createWriteStream(target));
+  try {
+    await pipeline(source, createWriteStream(partial));
+  } catch (error) {
+    await rm(partial, { force: true }).catch(() => undefined);
+    log.error(`Could not download ${available.file}: ${String(error)}`);
+    throw new UpdateError('The update file did not download completely', 'unreachable');
+  }
 
   const digest = hash.digest('hex');
   if (digest !== available.sha256.toLowerCase()) {
-    await rm(target, { force: true });
+    await rm(partial, { force: true });
     log.error(`Discarded ${available.file}: expected ${available.sha256}, got ${digest}`);
     throw new UpdateError(
       'The downloaded file did not match its checksum, so it was discarded',
       'checksum',
     );
   }
+
+  await rename(partial, target);
 
   log.info(`Downloaded ${available.file} (${available.version})`);
   await pruneOldDownloads(path.basename(target));
@@ -241,18 +272,40 @@ export function preparedInstaller(): PreparedInstaller | null {
  *
  * These are ~100 MB each and nothing else ever removes them, so a panel that
  * has taken four updates is holding 400 MB of files it will never open again.
- * Run **after** the checksum passes, and on the already-intact early return
- * too — the reuse path is the common one on a retry, and pruning only on a
- * fresh download would mean the folder is tidied on exactly the runs where
- * there was nothing stale to tidy.
+ *
+ * Runs only once there is a **verified** installer to keep, because until then
+ * the old one is the only thing on this panel anybody could still install. The
+ * debris a failed attempt leaves is a different question with a different
+ * answer — see `pruneDebris`, which runs first and unconditionally.
  *
  * Failures are swallowed on purpose: on Windows a running installer holds a
  * lock on its own file, and refusing to complete an update because last
  * month's setup file is busy would be a worse outcome than the disk space.
- *
- * The Master needs no equivalent — its own update service reads a releases
- * folder somebody else fills and downloads nothing.
  */
+/**
+ * Delete half-written downloads before starting a new one.
+ *
+ * A `.part` is by definition the residue of an attempt that did not finish:
+ * this panel never reads one, never installs one, and never serves one. So
+ * unlike a finished installer it can be removed at any time, and it has to be
+ * removed by *something* — the failure path that created it may have been a
+ * power cut, which runs no cleanup at all.
+ *
+ * Keyed to the suffix rather than the filename on purpose. Every name in this
+ * folder carries a version, so a `.part` left by 1.9.9 is invisible to any
+ * cleanup that only knows about the version being fetched today.
+ */
+async function pruneDebris(): Promise<void> {
+  try {
+    for (const entry of await readdir(updatesDir())) {
+      if (!entry.endsWith('.part')) continue;
+      await rm(path.join(updatesDir(), entry), { force: true }).catch(() => {});
+    }
+  } catch {
+    // No folder, or unreadable. Nothing to prune either way.
+  }
+}
+
 async function pruneOldDownloads(keep: string): Promise<void> {
   try {
     for (const entry of await readdir(updatesDir())) {

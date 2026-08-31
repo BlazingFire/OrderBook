@@ -8,7 +8,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -116,6 +116,20 @@ describe('approving an installer before it is launched', () => {
     expect(await approveInstaller(good, digest.toUpperCase(), dir, 'win32', staging)).toEqual({
       path: path.join(staging, stagedName),
     });
+  });
+
+  it('clears a staged copy left by a different version', async () => {
+    // The case the old cleanup could not see. It removed only the exact
+    // basename it was about to write, and setup filenames carry their version —
+    // so a refused or successful install stranded its own 150 MB copy the
+    // moment the next release had a different number. Nothing else ever
+    // removed one: the app quits at the point of a successful install.
+    const stranded = path.join(staging, 'OrderBook-Office-0.9.0-Setup.exe');
+    await writeFile(stranded, Buffer.from('last month s installer'));
+
+    await approveInstaller(good, digest, dir, 'win32', staging);
+
+    expect(await readdir(staging)).toEqual([stagedName]);
   });
 
   it('leaves nothing staged when the bytes do not match', async () => {

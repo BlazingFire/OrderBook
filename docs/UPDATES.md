@@ -146,6 +146,44 @@ Roughly in the order an attacker meets them:
 The setup files themselves are not code-signed — that is a certificate purchase,
 not a code change — so Windows SmartScreen will still warn on first run.
 
+## Leftovers from a failed download
+
+A download that fails — a dropped connection, a full disk, a power cut — leaves
+whatever reached the disk behind, and the next attempt clears it before it
+starts. There are two kinds of leftover and they are treated differently on
+purpose:
+
+- **Half-written files** (`.part`, `.tmp`) are removed *before* each download.
+  Nothing ever reads one, so removing one cannot take anything away from
+  anybody. They are matched by suffix rather than by name, because every
+  filename here carries a version — and a cleanup keyed to a filename stops
+  working the moment the version moves, which is exactly when a failed download
+  is most likely to have left something.
+- **Superseded installers** are removed only *after* a verified replacement has
+  landed and `latest.json` has been rewritten. Until that moment the old file
+  **is** the release: it is what the manifest names, what the shell would
+  install, and what every Office panel on the LAN is asking the Master to
+  stream. Deleting it first and then failing the download would leave a manifest
+  pointing at a file that no longer exists — a worse state than the disk space
+  it saves.
+
+The sweep only removes files it could have written itself: anything named
+`OrderBook-Master-<version>-Setup.exe` or `OrderBook-Office-<version>-Setup.exe`,
+plus the two debris suffixes. Notes, subfolders and anything else an operator
+puts in the releases folder are left alone. An installer that is part-way
+through being applied is protected too, so a new release landing between the
+Update button appearing and somebody pressing it cannot delete the file out from
+under the click.
+
+Office panels keep the same guarantee for `<data>/updates`, and the desktop
+shell's staging folder holds one installer at a time rather than one for every
+version ever installed.
+
+A leftover that cannot be removed — on Windows, a file still being streamed to a
+panel is locked — is left for the next run rather than failing the update. An
+update that refused to proceed because last month's build was busy would be a
+worse outcome than the disk space.
+
 ## Turning it off
 
 Unset `ORDERBOOK_RELEASES_GITHUB_REPO`, or set

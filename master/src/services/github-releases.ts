@@ -26,7 +26,7 @@
  */
 
 import { createWriteStream } from 'node:fs';
-import { mkdir, rename, rm, stat } from 'node:fs/promises';
+import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -35,6 +35,7 @@ import type { PanelKind, ReleaseManifest } from '@orderbook/shared';
 
 import { config } from '../config/index.js';
 import { createLogger } from '../lib/logger.js';
+import { writeDurable } from '../lib/document-files.js';
 import { verifyManifest } from '../lib/release-signature.js';
 
 const log = createLogger('github-releases');
@@ -148,9 +149,32 @@ async function latestRelease(): Promise<GitHubRelease | null> {
  * first and checking afterwards would let anyone who can answer for GitHub
  * spend a shop's bandwidth and disk at will.
  */
-export async function syncFromGitHub(
+export function syncFromGitHub(
   panel: PanelKind,
   releaseDir: string,
+  pinned: string | null = null,
+): Promise<ReleaseManifest | null> {
+  // One sync per panel at a time, shared rather than started twice.
+  //
+  // The background poller has its own guard, but it only covers poll-vs-poll:
+  // `availability()` syncs on every request, so an Office panel polling
+  // `/office/latest` and a browser sitting on the Updates screen can each start
+  // one at any moment. Two runs on the same folder write the same `.part` file,
+  // and the loser corrupts the winner.
+  const existing = inFlight.get(panel);
+  if (existing) return existing;
+
+  const run = runSync(panel, releaseDir, pinned).finally(() => inFlight.delete(panel));
+  inFlight.set(panel, run);
+  return run;
+}
+
+const inFlight = new Map<PanelKind, Promise<ReleaseManifest | null>>();
+
+async function runSync(
+  panel: PanelKind,
+  releaseDir: string,
+  pinned: string | null,
 ): Promise<ReleaseManifest | null> {
   if (!isConfigured()) return null;
 
@@ -209,12 +233,17 @@ export async function syncFromGitHub(
 
   const target = path.join(releaseDir, path.basename(manifest.file));
 
+  // Debris from an earlier attempt, cleared before this one starts. Only the
+  // half-written files: see `sweep` for why the finished ones have to wait.
+  await sweep(releaseDir, isDebris);
+
   // Already here at the right size — the digest is checked by `verifyRelease`
   // before anything runs it, so there is nothing to gain from re-downloading
   // a hundred megabytes to find out.
   try {
     if ((await stat(target)).size === manifest.sizeBytes) {
       await writeManifest(releaseDir, manifest);
+      await sweep(releaseDir, supersededBy(path.basename(manifest.file), pinned));
       return manifest;
     }
   } catch {
@@ -224,12 +253,21 @@ export async function syncFromGitHub(
   try {
     await download(asset, target, manifest.sizeBytes);
   } catch (error) {
+    // Deliberately no `rm(target)` here. `download` deletes its own partial
+    // file, so the only thing this could remove is a complete setup file from
+    // an earlier run — which `latest.json` may still be naming and an Office
+    // panel may still be asking for. A transient network failure must not cost
+    // a shop the build it already had.
     log.warn(`Could not download ${manifest.file}: ${String(error)}`);
-    await rm(target, { force: true }).catch(() => undefined);
     return null;
   }
 
   await writeManifest(releaseDir, manifest);
+
+  // Only now. Until `latest.json` names the new file, the old one is the
+  // release, and something on the LAN is very likely still asking for it.
+  await sweep(releaseDir, supersededBy(path.basename(manifest.file), pinned));
+
   log.info(`Fetched ${manifest.file} (${manifest.version}) from GitHub`);
   return manifest;
 }
@@ -278,8 +316,121 @@ async function download(asset: GitHubAsset, target: string, expectedBytes: numbe
   await rename(partial, target);
 }
 
-/** Write `latest.json` last, so the folder never names a file that is not there. */
+/**
+ * Write `latest.json` last, so the folder never names a file that is not there.
+ *
+ * `writeDurable` rather than `writeFile`, and it is worth saying why for eight
+ * hundred bytes of JSON. This is the file both panels look for, and a torn or
+ * empty one is answered by `readManifest` returning null — so the shop would
+ * report "no update available" indefinitely, with a perfectly good build
+ * sitting in the folder and nothing anywhere saying what went wrong. The
+ * temp-fsync-rename this shares with `writeExportFile` and the Office outbox is
+ * exactly the guard against that: without the fsync the rename can be visible
+ * while the contents are still in the page cache, which is how a power cut
+ * produces a correctly-named empty file every later read believes.
+ *
+ * A `latest.json.tmp` stranded by a crash is swept by `sweepReleaseDir` on the
+ * next run, since it is neither the manifest nor the current setup file.
+ */
 async function writeManifest(releaseDir: string, manifest: ReleaseManifest): Promise<void> {
-  const { writeFile } = await import('node:fs/promises');
-  await writeFile(path.join(releaseDir, 'latest.json'), JSON.stringify(manifest, null, 2), 'utf8');
+  await writeDurable(
+    path.join(releaseDir, 'latest.json'),
+    Buffer.from(JSON.stringify(manifest, null, 2), 'utf8'),
+  );
+}
+
+/**
+ * Half-written files: a download that died, or a manifest write that was cut
+ * off partway. Nothing reads either, so they can go at any moment.
+ */
+const isDebris = (entry: string): boolean => entry.endsWith('.part') || entry.endsWith('.tmp');
+
+/**
+ * A setup file this code could have written.
+ *
+ * The sweep is an allowlist of things to *delete*, not of things to keep, and
+ * that distinction is the whole safety argument. `docs/UPDATES.md` promises an
+ * operator can copy a build into this folder by hand, and a Master that also
+ * polls GitHub would otherwise delete their notes, their subfolders, and any
+ * file whose name it did not recognise. Anything not matching this pattern is
+ * somebody else's and is left exactly where it is.
+ */
+const isOurArtefact = (entry: string): boolean =>
+  /^OrderBook-(Master|Office)-.+-Setup\.(exe|dmg)$/i.test(entry);
+
+/**
+ * Finished setup files that are not the one `latest.json` now names, and are
+ * not the one an operator is part-way through installing.
+ *
+ * `pinned` closes a window that is otherwise wide open for as long as a person
+ * takes to click a button. `prepareMasterUpdate` verifies a build and pins its
+ * path in memory; the shell then polls health, asks the operator, and only then
+ * copies the file. Setup filenames carry their version, so a newer release
+ * landing in that gap makes the pinned file "superseded" and sweeps it out from
+ * under the click. The install then fails safe — the shell re-hashes what it
+ * copies — but it fails, and for no reason anybody could see.
+ */
+const supersededBy =
+  (keep: string, pinned: string | null) =>
+  (entry: string): boolean =>
+    isOurArtefact(entry) && entry !== keep && entry !== pinned;
+
+/**
+ * Delete what earlier runs left in the releases folder.
+ *
+ * Everything written here carries a version in its filename, so any cleanup
+ * keyed to a filename stops working the moment the version moves — which is
+ * exactly when a failed download is most likely to have left something. A
+ * download of 1.4.3 that died halfway leaves
+ * `OrderBook-Master-1.4.3-Setup.exe.part`, and once 1.4.4 is published nothing
+ * ever looks at that name again: the folder grows by one dead file per failure,
+ * at 150 MB each, on a shop PC that also holds the company database. Successful
+ * downloads accumulate the same way, since nothing has ever removed a
+ * superseded setup file.
+ *
+ * **Timing is the whole design here, and the two kinds are not the same.**
+ *
+ *  - **Debris** (`.part`, `.tmp`) is swept *before* a download. Nothing reads
+ *    it, so removing it can never take something away from somebody.
+ *  - **Superseded setup files** are swept *after* `latest.json` has been
+ *    rewritten, never before. Until that moment the old file **is** the
+ *    release: it is what the manifest names, what the shell would install, and
+ *    what every Office panel on the LAN is asking the Master to stream. Sweeping
+ *    it first and then failing the download would leave a manifest pointing at
+ *    a file that no longer exists, which is a worse state than the disk space
+ *    it saves.
+ *
+ * Per-entry failures are swallowed. On Windows a file being streamed to an
+ * Office panel is locked, and an update that refused to proceed because last
+ * month's build was busy would be a worse outcome than the disk space. A locked
+ * file is simply swept on the next run.
+ *
+ * @returns how many entries were removed, so the log can say so rather than
+ * being a silent sweep somebody has to trust.
+ */
+async function sweep(
+  releaseDir: string,
+  doomed: (entry: string) => boolean,
+): Promise<number> {
+  let entries: string[];
+  try {
+    entries = await readdir(releaseDir);
+  } catch {
+    return 0; // No folder. Nothing to sweep.
+  }
+
+  let removed = 0;
+  for (const entry of entries) {
+    if (!doomed(entry)) continue;
+
+    try {
+      await rm(path.join(releaseDir, entry), { force: true, recursive: true });
+      removed += 1;
+    } catch (error) {
+      log.warn(`Could not remove the leftover ${entry}: ${String(error)}`);
+    }
+  }
+
+  if (removed > 0) log.info(`Cleared ${removed} leftover file(s) from ${releaseDir}`);
+  return removed;
 }

@@ -14,7 +14,7 @@
 
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { copyFile, mkdir, rm } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 
 /** The setup-file extension for each platform we build for. */
@@ -79,6 +79,37 @@ export async function digestOf(file: string): Promise<string> {
 }
 
 /**
+ * Empty the staging folder before a new installer is copied into it.
+ *
+ * Two leftovers accumulate here and nothing else ever removes either. A copy
+ * that was refused — wrong digest, a download that died halfway, a disk that
+ * filled — used to be deleted only when the *next* attempt happened to have
+ * the same filename, so a version bump between a failure and a retry stranded
+ * 150 MB permanently. And a copy that installed successfully is never cleaned
+ * up at all, because the app quits at that moment: a machine that has taken
+ * four updates is holding four setup files it will never open again.
+ *
+ * So the whole folder goes, rather than one name. It holds exactly one file
+ * that matters and only for the seconds between approving an installer and
+ * spawning it; anything else in there is from a run that is over.
+ *
+ * Per-entry failures are swallowed on purpose. On Windows a running installer
+ * holds a lock on its own file, and refusing to update because last month's
+ * setup file is busy would be a worse outcome than the disk space.
+ */
+async function emptyStaging(stagingDir: string): Promise<void> {
+  try {
+    for (const entry of await readdir(stagingDir)) {
+      await rm(path.join(stagingDir, entry), { force: true, recursive: true }).catch(
+        () => undefined,
+      );
+    }
+  } catch {
+    // No folder yet, or unreadable. Nothing to empty either way.
+  }
+}
+
+/**
  * Everything that has to be true before a setup file is launched.
  *
  * Returns the path to run, or refuses having said why. The order matters and
@@ -122,7 +153,7 @@ export async function approveInstaller(
   let actual: string;
   try {
     await mkdir(path.dirname(staged), { recursive: true });
-    await rm(staged, { force: true });
+    await emptyStaging(path.dirname(staged));
     await copyFile(resolved, staged);
     actual = await digestOf(staged);
   } catch (error) {

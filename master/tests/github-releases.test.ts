@@ -459,3 +459,213 @@ describe('polling for releases in the background', () => {
     expect(asks()).toBe(4);
   });
 });
+
+describe('clearing out what an earlier run left behind', () => {
+  /**
+   * Every filename in the releases folder carries a version, so cleanup keyed
+   * to a filename stops working the moment the version moves — which is
+   * precisely when a failed download is most likely to have left something.
+   */
+  it('UPD-40: removes a .part stranded by a crashed download of another version', async () => {
+    const stranded = path.join(dir, 'OrderBook-Master-1.9.9-Setup.exe.part');
+    await writeFile(stranded, Buffer.alloc(4096, 0x41));
+
+    const manifest = signed();
+    serve({
+      [API]: () => json(listing(manifest)),
+      [MANIFEST_URL]: () => json(manifest),
+      [SETUP_URL]: () => stream(PAYLOAD),
+    });
+
+    const { syncFromGitHub } = await loadService();
+    await syncFromGitHub('master', dir);
+
+    expect(await readdir(dir)).not.toContain('OrderBook-Master-1.9.9-Setup.exe.part');
+  });
+
+  it('UPD-40: removes a superseded setup file', async () => {
+    // 150 MB per release, and nothing has ever deleted one.
+    const old = path.join(dir, 'OrderBook-Master-1.9.9-Setup.exe');
+    await writeFile(old, Buffer.alloc(2048, 0x42));
+
+    const manifest = signed();
+    serve({
+      [API]: () => json(listing(manifest)),
+      [MANIFEST_URL]: () => json(manifest),
+      [SETUP_URL]: () => stream(PAYLOAD),
+    });
+
+    const { syncFromGitHub } = await loadService();
+    await syncFromGitHub('master', dir);
+
+    expect((await readdir(dir)).sort()).toEqual([manifest.file, 'latest.json'].sort());
+  });
+
+  it('UPD-41: keeps the current release, and does not re-download it', async () => {
+    // The sweep runs before the reuse check, so a sweep that took the current
+    // file would turn every poll into a fresh hundred megabytes.
+    const manifest = signed();
+    await writeFile(path.join(dir, manifest.file), PAYLOAD);
+    await writeFile(path.join(dir, 'latest.json'), JSON.stringify(manifest));
+
+    serve({
+      [API]: () => json(listing(manifest)),
+      [MANIFEST_URL]: () => json(manifest),
+      [SETUP_URL]: () => stream(PAYLOAD),
+    });
+
+    const { syncFromGitHub } = await loadService();
+    await syncFromGitHub('master', dir);
+
+    expect(requested).not.toContain(SETUP_URL);
+    expect(await readFile(path.join(dir, manifest.file))).toEqual(PAYLOAD);
+  });
+
+  it('UPD-42: a failed download leaves the build already on disk intact', async () => {
+    // The one that decides where the superseded sweep goes. Until `latest.json`
+    // names the new file, the old one IS the release — it is what the manifest
+    // names, what the shell would install, and what every Office panel on the
+    // LAN is asking the Master to stream. Sweeping it before a download that
+    // then fails would leave a manifest pointing at nothing, which is worse
+    // than the 150 MB it saves.
+    const manifest = signed();
+    const held = signed({ version: '1.0.0', file: 'OrderBook-Master-1.0.0-Setup.exe' });
+
+    await writeFile(path.join(dir, held.file), PAYLOAD);
+    await writeFile(path.join(dir, 'latest.json'), JSON.stringify(held));
+
+    serve({
+      [API]: () => json(listing(manifest)),
+      [MANIFEST_URL]: () => json(manifest),
+      [SETUP_URL]: () => stream(PAYLOAD.subarray(0, 3)), // truncated: the download fails
+    });
+
+    const { syncFromGitHub } = await loadService();
+    expect(await syncFromGitHub('master', dir)).toBeNull();
+
+    const left = await readdir(dir);
+    expect(left).toContain(held.file); // still installable, still servable
+    expect(left).not.toContain(`${manifest.file}.part`); // and no half-file
+    expect(JSON.parse(await readFile(path.join(dir, 'latest.json'), 'utf8')).version).toBe('1.0.0');
+  });
+
+  it('UPD-42: the superseded build goes once the new one has landed', async () => {
+    // The other half: keeping it forever is the disk leak this started as.
+    const manifest = signed();
+    const held = signed({ version: '1.0.0', file: 'OrderBook-Master-1.0.0-Setup.exe' });
+
+    await writeFile(path.join(dir, held.file), PAYLOAD);
+    await writeFile(path.join(dir, 'latest.json'), JSON.stringify(held));
+
+    serve({
+      [API]: () => json(listing(manifest)),
+      [MANIFEST_URL]: () => json(manifest),
+      [SETUP_URL]: () => stream(PAYLOAD),
+    });
+
+    const { syncFromGitHub } = await loadService();
+    expect(await syncFromGitHub('master', dir)).not.toBeNull();
+
+    expect((await readdir(dir)).sort()).toEqual([manifest.file, 'latest.json'].sort());
+  });
+
+  it('UPD-43: sweeps a latest.json.tmp stranded by a crash mid-write', async () => {
+    // `writeDurable` writes through `.tmp` and renames. A power cut between the
+    // two leaves the temporary behind, and it is neither the manifest nor the
+    // setup file, so the sweep takes it.
+    await writeFile(path.join(dir, 'latest.json.tmp'), '{"tor');
+
+    const manifest = signed();
+    serve({
+      [API]: () => json(listing(manifest)),
+      [MANIFEST_URL]: () => json(manifest),
+      [SETUP_URL]: () => stream(PAYLOAD),
+    });
+
+    const { syncFromGitHub } = await loadService();
+    await syncFromGitHub('master', dir);
+
+    expect(await readdir(dir)).not.toContain('latest.json.tmp');
+    // And the manifest that did land is readable, not torn.
+    expect(JSON.parse(await readFile(path.join(dir, 'latest.json'), 'utf8')).version).toBe('2.0.0');
+  });
+
+  it('UPD-44: sweeps nothing when there is nothing stale', async () => {
+    const manifest = signed();
+    serve({
+      [API]: () => json(listing(manifest)),
+      [MANIFEST_URL]: () => json(manifest),
+      [SETUP_URL]: () => stream(PAYLOAD),
+    });
+
+    const { syncFromGitHub } = await loadService();
+    await syncFromGitHub('master', dir);
+
+    expect((await readdir(dir)).sort()).toEqual([manifest.file, 'latest.json'].sort());
+  });
+
+  it('UPD-45: leaves alone anything it did not write', async () => {
+    // docs/UPDATES.md promises an operator can copy a build into this folder by
+    // hand. A Master that also polls GitHub must not answer that by deleting
+    // their notes, their subfolders, or a file whose name it does not know.
+    const manifest = signed();
+    await writeFile(path.join(dir, 'READ ME FIRST.txt'), 'do not delete');
+    await writeFile(path.join(dir, 'vendor-tool.exe'), 'not ours');
+
+    serve({
+      [API]: () => json(listing(manifest)),
+      [MANIFEST_URL]: () => json(manifest),
+      [SETUP_URL]: () => stream(PAYLOAD),
+    });
+
+    const { syncFromGitHub } = await loadService();
+    await syncFromGitHub('master', dir);
+
+    const left = await readdir(dir);
+    expect(left).toContain('READ ME FIRST.txt');
+    expect(left).toContain('vendor-tool.exe');
+  });
+
+  it('UPD-46: does not sweep the installer an operator is part-way through', async () => {
+    // `prepareMasterUpdate` pins a verified build while the shell polls health
+    // and a person reads a dialog. A newer release landing in that gap must not
+    // delete the file out from under the click.
+    const pinned = 'OrderBook-Master-1.0.0-Setup.exe';
+    await writeFile(path.join(dir, pinned), PAYLOAD);
+
+    const manifest = signed();
+    serve({
+      [API]: () => json(listing(manifest)),
+      [MANIFEST_URL]: () => json(manifest),
+      [SETUP_URL]: () => stream(PAYLOAD),
+    });
+
+    const { syncFromGitHub } = await loadService();
+    await syncFromGitHub('master', dir, pinned);
+
+    expect(await readdir(dir)).toContain(pinned);
+  });
+
+  it('UPD-47: two syncs at once are one sync', async () => {
+    // The poller has its own guard, but `availability()` syncs on every
+    // request — so an office panel and an open Updates screen can each start
+    // one. Two runs on the same folder write the same `.part`, and the loser
+    // corrupts the winner.
+    const manifest = signed();
+    serve({
+      [API]: () => json(listing(manifest)),
+      [MANIFEST_URL]: () => json(manifest),
+      [SETUP_URL]: () => stream(PAYLOAD),
+    });
+
+    const { syncFromGitHub } = await loadService();
+    const [a, b] = await Promise.all([
+      syncFromGitHub('master', dir),
+      syncFromGitHub('master', dir),
+    ]);
+
+    expect(a).toEqual(b);
+    expect(requested.filter((url) => url === API).length).toBe(1);
+    expect(await readFile(path.join(dir, manifest.file))).toEqual(PAYLOAD);
+  });
+});
