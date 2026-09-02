@@ -21,6 +21,7 @@
 
 import { AVATAR_LONG_EDGE, MAX_AVATAR_SOURCE_BYTES, type User } from '@orderbook/shared';
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -50,14 +51,37 @@ const VARIANT_SPECS = [
 
 export type AvatarVariantName = (typeof VARIANT_SPECS)[number]['name'];
 
+/**
+ * Every legitimate avatarId is minted by `randomUUID()` at upload time
+ * (below) — nothing else ever produces one. Format-validating a route param
+ * against that shape before it reaches `path.join` is what stops it carrying
+ * `..` or an encoded separator: Express URL-decodes params before matching,
+ * so an encoded `/` arrives here as a real one and would walk the join
+ * outside `imagesDir` (and, since `avatarDir` is scoped by `tenantId`,
+ * outside this tenant's own folder). Mirrors the identical guard in
+ * `office/src/services/avatar-cache.ts`.
+ */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function avatarDir(tenantId: string, avatarId: string): string {
   return path.join(config.imagesDir, tenantId, 'avatars', avatarId);
 }
 
-/** `variant` is untrusted input — this is the only place a filename is built from it. */
+/**
+ * `avatarId` and `variant` are both untrusted route params — this is the one
+ * place a filename is built from either, and the one place both routes that
+ * serve avatar bytes resolve a path through. Returns null for a syntactically
+ * impossible id, an unrecognised variant, or a file that is not actually on
+ * disk — the caller's job is only to turn that into a 404, and to do so
+ * *before* setting any caching header, since a header set ahead of this check
+ * would tell the browser to remember a 404 as if it were permanent.
+ */
 export function avatarFilePath(tenantId: string, avatarId: string, variant: string): string | null {
+  if (!UUID_PATTERN.test(avatarId)) return null;
   if (!VARIANT_SPECS.some((spec) => spec.name === variant)) return null;
-  return path.join(avatarDir(tenantId, avatarId), `${variant}.webp`);
+
+  const file = path.join(avatarDir(tenantId, avatarId), `${variant}.webp`);
+  return existsSync(file) ? file : null;
 }
 
 /**

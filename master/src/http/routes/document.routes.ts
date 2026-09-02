@@ -146,6 +146,14 @@ documentRoutes.get(
   }),
 );
 
+documentRoutes.delete(
+  '/assets/:id',
+  needs('documents.edit'),
+  asyncHandler(async (req, res) => {
+    res.json(await documentService.deleteAsset(req.params.id!, actorFromRequest(req)));
+  }),
+);
+
 // --- Rendering -------------------------------------------------------------
 
 documentRoutes.post(

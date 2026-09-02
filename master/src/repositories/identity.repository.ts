@@ -165,7 +165,15 @@ export async function observeAndNextHlc(
   return hlc;
 }
 
-export async function currentHlc(runner: Runner = db()): Promise<string> {
+/**
+ * A preview of what `nextHlc`/`observeAndNextHlc` would stamp right now —
+ * unlocked and never persisted, so calling it does not advance the real
+ * clock. Safe only as an advisory value folded into a panel's own clock
+ * (`SyncPushResponse.serverHlc` and friends); it must never be used to stamp
+ * a row, because two calls made close together (or one followed immediately
+ * by a real `nextHlc`) can return colliding or non-monotonic values.
+ */
+export async function peekHlc(runner: Runner = db()): Promise<string> {
   const row = await runner('master_clock')
     .where({ id: 1 })
     .first<{ device_code: string; physical: string; counter: number } | undefined>();

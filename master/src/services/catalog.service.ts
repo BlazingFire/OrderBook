@@ -17,7 +17,14 @@ import type {
   ProductCategory,
   ProductInput,
 } from '@orderbook/shared';
-import { ProductValidationError, validateProductInput } from '@orderbook/shared';
+import {
+  columnPatch,
+  fieldFor,
+  PARTY_COLUMNS,
+  PRODUCT_COLUMNS,
+  ProductValidationError,
+  validateProductInput,
+} from '@orderbook/shared';
 
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { clampPaging } from '../domain/paging.js';
@@ -131,15 +138,28 @@ export async function updateParty(
   const name = input.name?.trim();
   if (!name) throw new ValidationError('validation.party.nameRequired');
 
+  // Read first so the write below can *merge* field_hlc rather than replace
+  // it wholesale. A bare `{}` here used to discard every previously recorded
+  // per-field clock — `mergeFields` treats a field with no stored clock as
+  // unconditionally acceptable from an incoming edit and does not even record
+  // a conflict for it (it only compares clocks it has one for), so an Office
+  // Panel replaying a stale offline edit after this ran would silently
+  // overwrite whatever this write just set, with no trace that anything
+  // changed. `updateLead`/`updateOrder` already merge for the same reason.
+  const existing = await partyRepo.findPartyById(actor.tenantId, id);
+  if (!existing) throw new NotFoundError('Party');
+
+  const merged = { ...input, name };
+  const touchedColumns = Object.keys(columnPatch(merged, PARTY_COLUMNS));
+
   const party = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
-    return partyRepo.updateParty(
-      actor.tenantId,
-      id,
-      { ...input, name },
-      { hlc, fieldHlc: {} },
-      trx,
-    );
+    // Keyed by wire field, not column — `mergeFields` looks these up by wire
+    // field (see `order.service.ts`'s identical comment on the same bug).
+    const fieldHlc = { ...existing.sync.fieldHlc };
+    for (const column of touchedColumns) fieldHlc[fieldFor(PARTY_COLUMNS, column)] = hlc;
+
+    return partyRepo.updateParty(actor.tenantId, id, merged, { hlc, fieldHlc }, trx);
   });
 
   if (!party) throw new NotFoundError('Party');
@@ -423,18 +443,25 @@ export async function updateProduct(
     throw new ConflictError('error.conflict.productCodeTaken', { productCode });
   }
 
+  // Read first so the write below can *merge* field_hlc rather than replace
+  // it wholesale — see the identical comment on `updateParty`. Without this,
+  // an offline edit to any field replayed after this write would silently
+  // overwrite it with no conflict ever recorded.
+  const existing = await productRepo.findProductById(actor.tenantId, id);
+  if (!existing) throw new NotFoundError('Product');
+
+  const permitted = withPermittedPurchaseRate(
+    withPermittedRate({ ...input, name, productCode }, canEditRates(actor)),
+    canEditCost(actor),
+  );
+  const touchedColumns = Object.keys(columnPatch(permitted, PRODUCT_COLUMNS));
+
   const product = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
-    return productRepo.updateProduct(
-      actor.tenantId,
-      id,
-      withPermittedPurchaseRate(
-        withPermittedRate({ ...input, name, productCode }, canEditRates(actor)),
-        canEditCost(actor),
-      ),
-      { hlc, fieldHlc: {} },
-      trx,
-    );
+    const fieldHlc = { ...existing.sync.fieldHlc };
+    for (const column of touchedColumns) fieldHlc[fieldFor(PRODUCT_COLUMNS, column)] = hlc;
+
+    return productRepo.updateProduct(actor.tenantId, id, permitted, { hlc, fieldHlc }, trx);
   });
 
   if (!product) throw new NotFoundError('Product');

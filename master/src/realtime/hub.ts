@@ -22,14 +22,16 @@ import {
   type ServerToClientEvents,
   type SocketAuthPayload,
   type SocketData,
+  type SyncConflict,
 } from '@orderbook/shared';
 
-import type { ActorContext } from '../domain/actor.js';
+import { actorCan, type ActorContext } from '../domain/actor.js';
 import { resolvePartyScope } from '../domain/party-scope.js';
 import {
   DASHBOARD_ENTITIES,
   DIRECTORY_ENTITIES,
   PARTY_SCOPED_ENTITIES,
+  REQUIRED_PERMISSION,
   mayReceive,
   partyIdOfChange,
 } from './fan-out.js';
@@ -176,18 +178,30 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
       return;
     }
 
-    // The Master's own screens are the only ones that manage roles and users, and
-    // the only ones entitled to the payload. Broadcasting a `user` row to every
-    // paired panel handed each of them the whole staff list — username, display
-    // name, role, tier, active flag, last sign-in — and every role's complete
-    // permission array, with no per-recipient check, while the equivalent
-    // *request* path correctly requires `users.manage`. No panel consumes these
-    // events, so withholding them costs nothing.
-    if (!DIRECTORY_ENTITIES.has(event.entity)) {
+    if (DIRECTORY_ENTITIES.has(event.entity)) {
+      // The Master's own screens are the only ones that manage roles and users,
+      // and the only ones entitled to the payload. Broadcasting a `user` row to
+      // every paired panel handed each of them the whole staff list — username,
+      // display name, role, tier, active flag, last sign-in — and every role's
+      // complete permission array, with no per-recipient check, while the
+      // equivalent *request* path correctly requires `users.manage`. No panel
+      // consumes these events, so withholding them costs nothing. Still sent to
+      // the admin room unconditionally — every Master browser session is
+      // already trusted with this, and narrowing that is a separate question
+      // from what this fix is about.
+      io.to(ROOM_MASTER_ADMINS).emit('data:changed', event);
+    } else if (REQUIRED_PERMISSION[event.entity]) {
+      // A module gate applies (`product`/`product_category`/`stock`/
+      // `sync_conflict`) and this entity is not party-scoped, so
+      // `emitPartyScopedChange` never runs for it — this is the only place
+      // that would otherwise have broadcast it unconditionally.
+      void emitGatedChange(io, event);
+    } else {
+      // Shared reference data with no module gate of its own (pipelines,
+      // option lists, custom field definitions, panel presence).
       io.to(ROOM_OFFICE_PANELS).emit('data:changed', event);
+      io.to(ROOM_MASTER_ADMINS).emit('data:changed', event);
     }
-
-    io.to(ROOM_MASTER_ADMINS).emit('data:changed', event);
 
     // Panel membership changes also change what the Master's panel screen and
     // dashboard should show, so those are refreshed as a pair.
@@ -208,7 +222,7 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
   });
 
   const unsubscribeConflicts = onConflict((conflict) => {
-    io.to(ROOM_OFFICE_PANELS).to(ROOM_MASTER_ADMINS).emit('sync:conflict', conflict);
+    void emitGatedConflict(io, conflict);
     scheduleDashboard(io);
   });
 
@@ -682,6 +696,9 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
     run(ack, (actor) => documentService.uploadAsset(input, actor)),
   );
   socket.on('document:listAssets', (ack) => run(ack, (actor) => documentService.listAssets(actor)));
+  socket.on('document:deleteAsset', (id, ack) =>
+    run(ack, (actor) => documentService.deleteAsset(id, actor)),
+  );
   socket.on('document:assetFile', (id, ack) =>
     run(ack, (actor) => documentRenderService.fetchAssetFile(id, actor)),
   );
@@ -913,11 +930,12 @@ async function emitPartyScopedChange(
 
   const grants = await partyAccessRepo.grantsForParty(tenantId, partyId);
 
-  if (grants.length === 0) {
-    io.to(ROOM_OFFICE_PANELS).to(ROOM_MASTER_ADMINS).emit('data:changed', event);
-    return;
-  }
-
+  // No fast path for an unrestricted party (`grants.length === 0`) anymore:
+  // `levelFor` already reads that as `manage` for everybody inside
+  // `mayReceive`, but the flat broadcast this used to take skipped
+  // `mayReceive` — and with it the module permission check — entirely. A
+  // role without `leads.view`/`parties.view`/etc. must still be refused the
+  // row even when nobody has restricted the party it belongs to.
   const recipients = [
     ...panelSockets.values(),
     ...(await io.in(ROOM_MASTER_ADMINS).fetchSockets()),
@@ -933,6 +951,63 @@ async function emitPartyScopedChange(
         socket.emit('data:changed', event);
       } catch (error: unknown) {
         log.warn(`Could not scope a change for a socket: ${toErrorMessage(error)}`);
+      }
+    }),
+  );
+}
+
+/**
+ * A change gated purely by module permission — no party to scope it by, but
+ * still not everyone's to see (`product`, `product_category`, `stock`,
+ * `sync_conflict`; see `REQUIRED_PERMISSION`). Every connected panel and
+ * admin socket is resolved to its current actor and checked individually,
+ * the same as `emitPartyScopedChange` already does for party-scoped rows —
+ * a flat room broadcast has no way to ask "may *this* recipient see it".
+ */
+async function emitGatedChange(io: RealtimeHub['io'], event: DataChangedEvent): Promise<void> {
+  const recipients = [
+    ...panelSockets.values(),
+    ...(await io.in(ROOM_MASTER_ADMINS).fetchSockets()),
+  ];
+
+  await Promise.all(
+    recipients.map(async (socket) => {
+      try {
+        const actor = await actorForRecipient(socket);
+        if (!actor) return;
+        if (!mayReceive(actor, event, [])) return;
+
+        socket.emit('data:changed', event);
+      } catch (error: unknown) {
+        log.warn(`Could not gate a change for a socket: ${toErrorMessage(error)}`);
+      }
+    }),
+  );
+}
+
+/**
+ * A resolved conflict, gated by `sync.resolveConflicts` — the same
+ * permission `listConflicts`/`resolveConflict` already require on the
+ * request path. The unconditional room broadcast this replaced handed every
+ * paired panel and every admin socket the conflict's losing and winning
+ * values regardless of whether that recipient's role could ever open the
+ * Conflicts screen.
+ */
+async function emitGatedConflict(io: RealtimeHub['io'], conflict: SyncConflict): Promise<void> {
+  const recipients = [
+    ...panelSockets.values(),
+    ...(await io.in(ROOM_MASTER_ADMINS).fetchSockets()),
+  ];
+
+  await Promise.all(
+    recipients.map(async (socket) => {
+      try {
+        const actor = await actorForRecipient(socket);
+        if (!actor || !actorCan(actor, 'sync.resolveConflicts')) return;
+
+        socket.emit('sync:conflict', conflict);
+      } catch (error: unknown) {
+        log.warn(`Could not gate a conflict for a socket: ${toErrorMessage(error)}`);
       }
     }),
   );

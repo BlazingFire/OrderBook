@@ -114,6 +114,15 @@ export async function convertLead(
   const reservationPlan = planReservations(orderLines);
 
   const orderId = await db().transaction(async (trx) => {
+    // Re-check under the row's lock: the read above and `assertConvertible`
+    // are both outside this transaction, so a second `convertLead` (or a
+    // `deleteLead`) racing this one could otherwise commit between that read
+    // and this write. The lock makes the second caller through this door
+    // wait for the first to finish, then see the lead already converted.
+    const locked = await leadRepo.lockLead(actor.tenantId, lead.id, trx);
+    if (!locked) throw new NotFoundError('Lead');
+    if (locked.convertedOrderId) throw new ValidationError('validation.lead.alreadyConverted');
+
     const hlc = await nextHlc(trx);
 
     const { id, lineItemIds } = await orderRepo.insertOrder(
@@ -360,8 +369,19 @@ export async function dispatchOrder(
   const movements = planDispatchMovements(active);
 
   await db().transaction(async (trx) => {
-    // The ledger is the idempotency check: an order that somehow reaches this
-    // path twice cannot double-count, because the first pass left a record.
+    // Row-lock first, before anything else in this transaction: the
+    // `existing.dispatchedAt` check above ran outside any transaction, so two
+    // dispatch calls that overlap before either commits would otherwise both
+    // read it as null and both write stock movements. The lock serialises
+    // them — the second caller waits for the first to commit, then sees the
+    // order already dispatched here and stops before touching stock.
+    const locked = await orderRepo.lockOrder(actor.tenantId, input.orderId, trx);
+    if (!locked) throw new NotFoundError('Order');
+    if (locked.dispatchedAt) throw new ValidationError('validation.order.alreadyDispatched');
+
+    // The ledger is a second, independent idempotency check: an order that
+    // somehow reaches this path twice cannot double-count, because the first
+    // pass left a record.
     if (await inventoryRepo.hasMovementForOrder(actor.tenantId, input.orderId, trx)) {
       throw new ValidationError('validation.order.stockAlreadyMoved');
     }
@@ -571,10 +591,21 @@ export async function restoreOrder(id: string, actor: ActorContext): Promise<Bin
       : []),
   ]);
 
+  let reactivatedTargets: Array<{ productId: string; colour: string }> = [];
+
   const order = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
     const fieldHlc = { ...existing.sync.fieldHlc, deletedAt: hlc };
     const row = await orderRepo.restoreOrder(actor.tenantId, id, { hlc, fieldHlc }, trx);
+
+    // The mirror image of `deleteOrder` releasing these reservations. An
+    // order can only be soft-deleted while `dispatchedAt` is null, so any
+    // `released` rows on it can only have come from that same delete —
+    // reactivating them here is what lets a later dispatch have something to
+    // consume, instead of silently shipping stock with zero ledger movements.
+    if (row) {
+      reactivatedTargets = await reservationRepo.reactivateForOrder(actor.tenantId, id, trx);
+    }
 
     await activityLog.recordActivity(
       {
@@ -595,5 +626,8 @@ export async function restoreOrder(id: string, actor: ActorContext): Promise<Bin
   if (!order) throw new NotFoundError('Order');
 
   publishChange({ entity: 'order', action: 'restored', id, payload: order });
+  // Reactivating changes what the next order can draw on, same as a fresh
+  // reservation does — every panel's stock view has to move.
+  await publishStockFor(actor.tenantId, reactivatedTargets);
   return { entityType: 'order', id, alsoRestored: [] };
 }

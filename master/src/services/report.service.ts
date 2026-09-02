@@ -319,8 +319,19 @@ export async function exportReport(
    */
   let totals: unknown[] | undefined;
   if (input.totals) {
+    // The label goes in the first column that cannot hold a number, not
+    // unconditionally in position 0 — `?columns=` can narrow and reorder the
+    // list, and a caller who puts a numeric or money column first would
+    // otherwise have its grand total silently replaced with the word
+    // "Totals". Computed once, outside the map, so exactly one cell gets the
+    // label even when several columns qualify; -1 (no safe column at all)
+    // leaves every cell to fall through to the sum/blank logic below.
+    const labelIndex = columns.findIndex(
+      (column) => !column.money && !rows.some((row) => typeof row[column.key] === 'number'),
+    );
+
     totals = columns.map((column, index) => {
-      if (index === 0) return label('reports.export.totals');
+      if (index === labelIndex) return label('reports.export.totals');
       if (column.money && !allowed) return '';
 
       const sum = rows.reduce((running, row) => {

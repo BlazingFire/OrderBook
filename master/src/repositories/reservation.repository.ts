@@ -119,6 +119,29 @@ export async function releaseForOrder(
 }
 
 /**
+ * Restoring a deleted order: the reservations `releaseForOrder` let go of
+ * become active again, so a later dispatch has something to consume.
+ *
+ * Scoped to `status = 'released'` rather than the whole order, so restoring
+ * an order a second time (or one that was never deleted) cannot resurrect a
+ * reservation that was released for some other reason. `.returning(...)`
+ * hands back exactly the (product, colour) pairs that moved, so the caller
+ * can publish stock for them without a second query racing this one.
+ */
+export async function reactivateForOrder(
+  tenantId: string,
+  orderId: string,
+  trx: TransactionContext,
+): Promise<Array<{ productId: string; colour: string }>> {
+  const rows = await trx(TABLE)
+    .where({ tenant_id: tenantId, order_id: orderId, status: 'released' })
+    .update({ status: 'active', settled_at: null })
+    .returning<Array<{ product_id: string; colour: string }>>(['product_id', 'colour']);
+
+  return rows.map((row) => ({ productId: row.product_id, colour: row.colour }));
+}
+
+/**
  * How much of each (product, colour) is currently held.
  *
  * Feeds the `reservedBoxes` figure on every stock level, which is what turns

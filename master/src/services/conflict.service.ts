@@ -8,6 +8,7 @@
  */
 
 import type { ConflictResolutionInput, SyncConflict } from '@orderbook/shared';
+import { MERGEABLE_COLUMNS } from '@orderbook/shared';
 
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { resolvePartyScope, UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
@@ -21,28 +22,18 @@ import { nextHlc } from '../repositories/identity.repository.js';
 import * as syncRepo from '../repositories/sync.repository.js';
 import { publishChange } from './change-bus.js';
 
-/** Wire field → column, mirroring the map the merge writes through. */
-const COLUMNS: Record<string, Record<string, string>> = {
-  lead: {
-    partyId: 'party_id',
-    ownerId: 'owner_id',
-    stageId: 'stage_id',
-    sourcePlatform: 'source_platform',
-    followUpDate: 'follow_up_date',
-    partyWiseMode: 'party_wise_mode',
-    notes: 'notes',
-    customFields: 'custom_fields',
-  },
-  order: {
-    dispatchAddressLabel: 'dispatch_address_label',
-    expectedDispatchDate: 'expected_dispatch_date',
-    totalWeightKgOverride: 'total_weight_kg_override',
-    notes: 'notes',
-    customFields: 'custom_fields',
-  },
-  party: { name: 'name', phone: 'phone', notes: 'notes', customFields: 'custom_fields' },
-  product: { name: 'name', alias: 'alias', rate: 'rate', customFields: 'custom_fields' },
-};
+/**
+ * Wire field → column, for restoring a losing value. Reuses the merge's own
+ * map rather than a second, hand-maintained copy — this one used to list
+ * only 4 of `product`'s ~19 mergeable fields, so restoring the losing value
+ * of anything else (weightKg, mrp, purchaseRate, grade, ...) threw
+ * `cannotRestoreField` even though the merge itself had correctly detected
+ * the clash and the losing value really was recoverable. `conflict.entity`
+ * is a plain `string` (not `MergeableEntity`), so the wider `Record` type
+ * keeps the existing `?.` runtime guard for an entity this map has no entry
+ * for.
+ */
+const COLUMNS: Record<string, Record<string, string>> = MERGEABLE_COLUMNS;
 
 export async function listConflicts(
   actor: ActorContext,

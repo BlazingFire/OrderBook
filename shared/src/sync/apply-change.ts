@@ -9,10 +9,12 @@
  * snapshot-taking one holds. Three implementations would drift; one cannot.
  *
  * It answers what it did. `'refresh'` means the change touched something the
- * snapshot does not hold as a flat id-keyed list — an option list, a custom
- * field, a pipeline — where there is no single row to upsert or filter out and
- * one fresh pull covers create, update, restore and delete alike. It is no more
- * expensive than a bespoke merge, for data this small and this rarely changed.
+ * snapshot does not hold as a flat id-keyed list — every entity in
+ * `SNAPSHOT_FORCING_ENTITIES` (an option list, a custom field, a pipeline, a
+ * party's negotiated rate, a sync conflict, a reservation) — where there is
+ * no single row to upsert or filter out and one fresh pull covers create,
+ * update, restore and delete alike. It is no more expensive than a bespoke
+ * merge, for data this small and this rarely changed.
  *
  * **Entity is settled before action.** Reading the action first would send an
  * option-list delete into the removal path, which has no row to find and would
@@ -27,7 +29,7 @@ import type {
   Product,
   ProductCategory,
 } from '../domain/entities.js';
-import type { DataChangedEvent, SyncSnapshot } from '../protocol/socket.js';
+import { SNAPSHOT_FORCING_ENTITIES, type DataChangedEvent, type SyncSnapshot } from '../protocol/socket.js';
 
 export type ApplyOutcome = 'applied' | 'refresh' | 'ignored';
 
@@ -35,13 +37,14 @@ export function applyChangeToSnapshot(
   snapshot: SyncSnapshot,
   event: DataChangedEvent,
 ): ApplyOutcome {
-  if (
-    event.entity === 'option_list' ||
-    event.entity === 'custom_field' ||
-    event.entity === 'pipeline'
-  ) {
-    return 'refresh';
-  }
+  // The full set the snapshot cannot fold a single event into (an option
+  // list, a custom field, a pipeline, a party's negotiated rate, a conflict
+  // being resolved) — not just the three this used to hand-list. A live
+  // `party_variant`/`sync_conflict` change fell through to 'ignored' here
+  // even though the reconnect/delta path already treats both as
+  // refresh-triggering, so a connected panel could keep quoting a
+  // superseded rate with no error anywhere.
+  if (SNAPSHOT_FORCING_ENTITIES.includes(event.entity)) return 'refresh';
 
   /*
    * The `'deleted'` branch exists for the Recycle Bin, the first module to emit

@@ -89,7 +89,15 @@ export async function listLeads(
 
   const rows = await base
     .clone()
-    .orderBy('l.created_at', 'desc')
+    // A tiebreaker, not decoration: two leads created in the same instant
+    // have no guaranteed relative order otherwise, and offset pagination
+    // relies on that order staying identical between the count query above
+    // and every subsequent page — without one, a page boundary landing on a
+    // tie can skip or repeat a row.
+    .orderBy([
+      { column: 'l.created_at', order: 'desc' },
+      { column: 'l.id', order: 'desc' },
+    ])
     .limit(options.limit)
     .offset(options.offset);
 
@@ -234,17 +242,46 @@ export async function replaceLeadLines(
     .update({ total_amount: orderTotalAmount(lines), updated_at: trx.fn.now() });
 }
 
+/**
+ * Row-locks the lead within the caller's transaction, before checking
+ * whether it may still be converted or deleted — mirrors
+ * `party.repository.ts`'s `lockParty`. Without it, two `convertLead` calls
+ * (or a `convertLead` and a `deleteLead`) that overlap before either commits
+ * both read `converted_order_id` as null under READ COMMITTED and both
+ * proceed. `null` means the lead does not exist or is already soft-deleted.
+ */
+export async function lockLead(
+  tenantId: string,
+  id: string,
+  trx: TransactionContext,
+): Promise<{ convertedOrderId: string | null } | null> {
+  const row = await trx(TABLE)
+    .where({ tenant_id: tenantId, id })
+    .whereNull('deleted_at')
+    .forUpdate()
+    .first<{ converted_order_id: string | null } | undefined>('converted_order_id');
+
+  if (!row) return null;
+  return { convertedOrderId: row.converted_order_id };
+}
+
 export async function markConverted(
   tenantId: string,
   id: string,
   orderId: string,
   trx: TransactionContext,
 ): Promise<void> {
-  await trx(TABLE).where({ tenant_id: tenantId, id }).update({
-    converted_order_id: orderId,
-    converted_at: trx.fn.now(),
-    updated_at: trx.fn.now(),
-  });
+  // Defense in depth alongside the caller's `lockLead` re-check: harmless
+  // once the row is locked for the transaction's duration, but cheap enough
+  // to keep even if a future caller ever calls this without the lock.
+  await trx(TABLE)
+    .where({ tenant_id: tenantId, id })
+    .whereNull('converted_order_id')
+    .update({
+      converted_order_id: orderId,
+      converted_at: trx.fn.now(),
+      updated_at: trx.fn.now(),
+    });
 }
 
 /**

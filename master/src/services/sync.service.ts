@@ -56,6 +56,7 @@ import {
 
 import { actorCan, type ActorContext } from '../domain/actor.js';
 import { UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
+import { canEditCost, canEditRates } from '../domain/visibility.js';
 import { requirePartyAccess } from './party-access.service.js';
 import { db } from '../db/knex.js';
 import { ForbiddenError, NotFoundError, toErrorMessage, ValidationError } from '../lib/errors.js';
@@ -66,6 +67,7 @@ import * as orderRepo from '../repositories/order.repository.js';
 import * as partyRepo from '../repositories/party.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
 import * as syncRepo from '../repositories/sync.repository.js';
+import type { TransactionContext } from '../repositories/transaction.js';
 import { publishChange, publishConflict } from './change-bus.js';
 import * as catalogService from './catalog.service.js';
 import * as inventoryService from './inventory.service.js';
@@ -131,9 +133,18 @@ export async function applyPush(
       deviceCode: actor.deviceCode ?? '',
       createdAt: new Date().toISOString(),
     })),
-    serverHlc: await identityRepo.currentHlc(),
+    serverHlc: await identityRepo.peekHlc(),
   };
 }
+
+/**
+ * Two-argument advisory-lock namespace for serialising concurrent applications
+ * of the *same* mutation id — distinct from `access-guard.repository.ts`'s
+ * `ACCESS_GUARD_NAMESPACE` (4711) and the single-argument space the
+ * `activity_log` chain triggers use, so this never serialises against either
+ * of those for no reason.
+ */
+const SYNC_MUTATION_NAMESPACE = 4712;
 
 async function applyOne(mutation: Mutation, actor: ActorContext): Promise<MutationResult> {
   const permission = REQUIRED_PERMISSION[mutation.kind];
@@ -153,22 +164,74 @@ async function applyOne(mutation: Mutation, actor: ActorContext): Promise<Mutati
     return record(mutation, actor, reject(mutation, `Missing permission: ${permission}`, permission));
   }
 
-  try {
-    // Fold the panel's clock into the Master's before anything is stamped, so
-    // Master-side writes that follow this batch sort after it.
-    await db().transaction(async (trx) => {
-      await identityRepo.observeAndNextHlc(trx, mutation.hlc);
-    });
+  /*
+   * Fold the panel's clock into the Master's before anything is stamped, so
+   * Master-side writes that follow this batch sort after it. A short,
+   * separate transaction on purpose, committed before the advisory-locked one
+   * below even opens: `observeAndNextHlc` takes `master_clock`'s own row lock
+   * (`FOR UPDATE`), and every write `route()` makes below stamps a fresh HLC
+   * of its own — on a *different* connection, via the very same lock. Holding
+   * this transaction open across `route()` would have this call deadlock
+   * against itself: the outer transaction waiting for `route()` to finish
+   * while `route()` waits for a clock lock the outer transaction is still
+   * holding.
+   */
+  await db().transaction(async (trx) => {
+    await identityRepo.observeAndNextHlc(trx, mutation.hlc);
+  });
 
-    return record(mutation, actor, await route(mutation, actor));
-  } catch (error) {
-    log.warn(`Mutation ${mutation.mutationId} (${mutation.kind}) rejected: ${toErrorMessage(error)}`);
+  /*
+   * `alreadyApplied` in `applyPush` only catches a duplicate mutation id
+   * *within one batch*. Two separate `applyPush` calls for the same mutation
+   * — an old socket's still-running push racing a reconnected socket's resend
+   * of the same unsettled outbox — read `applied_mutations` before either has
+   * written it, and both proceeded to `route()` before this lock existed.
+   *
+   * The advisory lock is taken on this transaction's own connection and held
+   * for its whole life, so a second caller for the same mutation id blocks
+   * here until the first commits — including its `recordAppliedMutation`
+   * write below — and then finds the row on its own re-check. `route()` is
+   * left free to open its own separate transactions for the actual writes
+   * (exactly as it already does for creates and merges); the lock only needs
+   * this outer transaction to stay open, not the writes to run inside it.
+   * Holding one pooled connection idle for a mutation's full `route()` is an
+   * accepted cost at this product's LAN, one-panel-batch-at-a-time scale.
+   */
+  return db().transaction(async (trx) => {
+    await trx.raw('SELECT pg_advisory_xact_lock(?, hashtext(?))', [
+      SYNC_MUTATION_NAMESPACE,
+      `${actor.tenantId}:${mutation.mutationId}`,
+    ]);
 
-    const missing = error instanceof ForbiddenError ? error.permission : undefined;
-    // Recorded even though it failed: a panel replaying the batch must get the
-    // same refusal rather than a second attempt with different data around it.
-    return record(mutation, actor, reject(mutation, toErrorMessage(error), missing));
-  }
+    const already = await syncRepo.findAppliedMutations(actor.tenantId, [mutation.mutationId], trx);
+    const previous = already.get(mutation.mutationId);
+    if (previous) return { ...previous, status: 'duplicate' };
+
+    let result: MutationResult;
+    try {
+      result = await route(mutation, actor);
+    } catch (error) {
+      log.warn(`Mutation ${mutation.mutationId} (${mutation.kind}) rejected: ${toErrorMessage(error)}`);
+      const missing = error instanceof ForbiddenError ? error.permission : undefined;
+      // Recorded even though it failed: a panel replaying the batch must get
+      // the same refusal rather than a second attempt with different data
+      // around it.
+      result = reject(mutation, toErrorMessage(error), missing);
+    }
+
+    await syncRepo.recordAppliedMutation(
+      {
+        tenantId: actor.tenantId,
+        mutationId: mutation.mutationId,
+        entity: mutation.entity,
+        entityId: result.entityId,
+      },
+      result,
+      trx,
+    );
+
+    return result;
+  });
 }
 
 /** Persist a mutation's outcome so a replay returns it instead of re-running. */
@@ -311,65 +374,104 @@ async function mergeUpdate(
   actor: ActorContext,
 ): Promise<MutationResult> {
   const id = await identityRepo.resolveId(actor.tenantId, mutation.entityId);
-  const current = await loadMergeTarget(entity, actor.tenantId, id);
-
-  if (!current) throw new NotFoundError(entity);
-
-  // Party Access, on the one write path that does not go through a service.
-  // `route()` delegates every other mutation kind to `leadService` /
-  // `orderService` / `catalogService`, which check for themselves; a merge
-  // writes columns directly, so without this an offline panel would be the way
-  // around the whole feature.
-  await assertMergeTargetAccessible(entity, current.values, id, actor);
-
-  const columns = MERGEABLE_COLUMNS[entity] as Record<string, string>;
-  const fields = mutation.fields.filter((field) => field in columns);
-
-  const outcome = mergeFields(
-    { values: current.values, fieldHlc: current.fieldHlc },
-    {
-      fields,
-      values: mutation.payload,
-      baseFieldHlc: mutation.baseFieldHlc ?? {},
-      hlc: mutation.hlc,
-      deviceCode: mutation.deviceCode,
-    },
-  );
 
   /*
-   * Validate before writing, on the one path that has no validation layer.
+   * Read, decide and write inside one locked transaction — not a plain SELECT
+   * followed by a separate write transaction, which is what let two
+   * concurrent merges of the same record (two panels offline-editing the same
+   * field, or a retried push racing an in-flight one) both read the same
+   * pre-edit `fieldHlc`, both take the "ordinary sequential edit" branch, and
+   * have whichever committed last silently discard the other's change with no
+   * conflict ever recorded.
    *
-   * This function writes columns directly — it is documented as bypassing the
-   * services — so a CHECK violation here is caught by `applyOne`, recorded as a
-   * permanent `rejected` result, and replayed as that rejection forever. An
-   * Office panel's offline edit would be destroyed rather than bounced. The
-   * same `validateProductInput` the catalogue service runs turns that into a
-   * refusal somebody can read and act on.
+   * `lockMergeTarget` takes the row's `FOR UPDATE` lock first; a `FOR UPDATE`
+   * taken outside this same transaction would be released before the write
+   * ever happened, so the read, the merge decision and the write all have to
+   * share this one `trx`.
    */
-  if (entity === 'product') {
-    try {
-      validateProductInput(outcome.accepted as unknown as ProductInput);
-    } catch (error) {
-      if (error instanceof ProductValidationError) throw new ValidationError(error.messageKey);
-      throw error;
+  const { outcome, storedConflicts } = await db().transaction(async (trx) => {
+    await lockMergeTarget(entity, actor.tenantId, id, trx);
+
+    const current = await loadMergeTarget(entity, actor.tenantId, id, trx);
+    if (!current) throw new NotFoundError(entity);
+
+    // Party Access, on the one write path that does not go through a service.
+    // `route()` delegates every other mutation kind to `leadService` /
+    // `orderService` / `catalogService`, which check for themselves; a merge
+    // writes columns directly, so without this an offline panel would be the
+    // way around the whole feature.
+    await assertMergeTargetAccessible(entity, current.values, id, actor);
+
+    const columns = MERGEABLE_COLUMNS[entity] as Record<string, string>;
+    let fields = mutation.fields.filter((field) => field in columns);
+
+    /*
+     * Money fields need the same permission every other product write path
+     * already enforces (`catalog.service.ts`'s createProduct/updateProduct,
+     * `upsertVariant`, and the public API's `WRITE_GUARDS`) — this merge path
+     * wrote `rate`/`pricePerSqft`/`purchaseRate` unconditionally, so a role
+     * with `products.edit` but not `field.saleRate.edit`/
+     * `field.purchaseRate.edit` could change a product's price or cost
+     * through an offline sync push. Dropped from the field list rather than
+     * rejected outright: `mergeFields` only ever reads `incoming.values[field]`
+     * for a field present in this list, so filtering it here is what actually
+     * withholds the value, matching how an offline replay silently drops any
+     * other field the actor did not need to touch.
+     */
+    if (entity === 'product') {
+      if (!canEditRates(actor)) {
+        fields = fields.filter((field) => field !== 'rate' && field !== 'pricePerSqft');
+      }
+      if (!canEditCost(actor)) {
+        fields = fields.filter((field) => field !== 'purchaseRate');
+      }
     }
-  }
 
-  const patch = columnPatch(outcome.accepted, columns);
+    const outcome = mergeFields(
+      { values: current.values, fieldHlc: current.fieldHlc },
+      {
+        fields,
+        values: mutation.payload,
+        baseFieldHlc: mutation.baseFieldHlc ?? {},
+        hlc: mutation.hlc,
+        deviceCode: mutation.deviceCode,
+      },
+    );
 
-  // A merge that moves a lead or order onto another party has to clear that
-  // party too, or the move itself becomes the escape hatch.
-  if (typeof patch.party_id === 'string') {
-    await requirePartyAccess(patch.party_id, 'manage', actor);
-  }
+    /*
+     * Validate before writing, on the one path that has no validation layer.
+     *
+     * This function writes columns directly — it is documented as bypassing
+     * the services — so a CHECK violation here is caught by `applyOne`,
+     * recorded as a permanent `rejected` result, and replayed as that
+     * rejection forever. An Office panel's offline edit would be destroyed
+     * rather than bounced. The same `validateProductInput` the catalogue
+     * service runs turns that into a refusal somebody can read and act on.
+     */
+    if (entity === 'product') {
+      try {
+        validateProductInput(outcome.accepted as unknown as ProductInput);
+      } catch (error) {
+        if (error instanceof ProductValidationError) throw new ValidationError(error.messageKey);
+        throw error;
+      }
+    }
 
-  await db().transaction(async (trx) => {
+    const patch = columnPatch(outcome.accepted, columns);
+
+    // A merge that moves a lead or order onto another party has to clear that
+    // party too, or the move itself becomes the escape hatch.
+    if (typeof patch.party_id === 'string') {
+      await requirePartyAccess(patch.party_id, 'manage', actor);
+    }
+
     if (Object.keys(patch).length > 0) {
       await writeMergedColumns(entity, actor.tenantId, id, patch, outcome.fieldHlc, trx);
     }
 
+    let storedConflicts: Awaited<ReturnType<typeof syncRepo.recordConflicts>> = [];
     if (outcome.conflicts.length > 0) {
-      const stored = await syncRepo.recordConflicts(
+      storedConflicts = await syncRepo.recordConflicts(
         outcome.conflicts.map((conflict) => ({
           tenantId: actor.tenantId,
           entity,
@@ -384,11 +486,14 @@ async function mergeUpdate(
         })),
         trx,
       );
-
-      for (const conflict of stored) publishConflict(conflict);
     }
+
+    return { outcome, storedConflicts };
   });
 
+  // Published only after the transaction has committed, so a panel never
+  // learns about a conflict or a row change that could still have rolled back.
+  for (const conflict of storedConflicts) publishConflict(conflict);
   await republish(entity, actor.tenantId, id);
 
   return {
@@ -397,6 +502,29 @@ async function mergeUpdate(
     entityId: id,
     conflicts: outcome.conflicts as MutationFieldConflict[],
   };
+}
+
+/** Row-locks the merge target within the caller's transaction — see `mergeUpdate`. */
+async function lockMergeTarget(
+  entity: MergeableEntity,
+  tenantId: string,
+  id: string,
+  trx: TransactionContext,
+): Promise<void> {
+  switch (entity) {
+    case 'lead':
+      await leadRepo.lockLead(tenantId, id, trx);
+      return;
+    case 'order':
+      await orderRepo.lockOrder(tenantId, id, trx);
+      return;
+    case 'party':
+      await partyRepo.lockParty(tenantId, id, trx);
+      return;
+    case 'product':
+      await productRepo.lockProduct(tenantId, id, trx);
+      return;
+  }
 }
 
 /**
@@ -426,22 +554,23 @@ async function loadMergeTarget(
   entity: MergeableEntity,
   tenantId: string,
   id: string,
+  runner: TransactionContext,
 ): Promise<{ values: Record<string, unknown>; fieldHlc: Record<string, string> } | null> {
   switch (entity) {
     case 'lead': {
-      const lead = await leadRepo.findLeadById(tenantId, id, UNSCOPED_PARTY_ACCESS);
+      const lead = await leadRepo.findLeadById(tenantId, id, UNSCOPED_PARTY_ACCESS, runner);
       return lead ? { values: lead as unknown as Record<string, unknown>, fieldHlc: lead.sync.fieldHlc } : null;
     }
     case 'order': {
-      const order = await orderRepo.findOrderById(tenantId, id, UNSCOPED_PARTY_ACCESS);
+      const order = await orderRepo.findOrderById(tenantId, id, UNSCOPED_PARTY_ACCESS, runner);
       return order ? { values: order as unknown as Record<string, unknown>, fieldHlc: order.sync.fieldHlc } : null;
     }
     case 'party': {
-      const party = await partyRepo.findPartyById(tenantId, id);
+      const party = await partyRepo.findPartyById(tenantId, id, runner);
       return party ? { values: party as unknown as Record<string, unknown>, fieldHlc: party.sync.fieldHlc } : null;
     }
     case 'product': {
-      const product = await productRepo.findProductById(tenantId, id);
+      const product = await productRepo.findProductById(tenantId, id, runner);
       return product
         ? { values: product as unknown as Record<string, unknown>, fieldHlc: product.sync.fieldHlc }
         : null;

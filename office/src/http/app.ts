@@ -7,7 +7,7 @@
  */
 
 import { existsSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import multer from 'multer';
@@ -583,6 +583,54 @@ export function createApp(): Express {
     }
   });
 
+  /**
+   * The same same-origin, cache-then-fetch pattern as `/uploads/images`
+   * above, for a face rather than a product photo. `ui/src/Avatar.tsx`'s
+   * default `src` points here rather than at a Master-only absolute URL —
+   * this panel has its own sign-in-time cache (`avatar-cache.ts`) for the one
+   * variant that screen needs, but any other avatar (a co-worker's picture on
+   * the Party Access roster, say) falls through to the Master exactly like a
+   * product image does.
+   */
+  app.get('/uploads/avatars/:avatarId/:variant', async (req, res) => {
+    const { avatarId, variant } = req.params;
+    const localPath = avatarFile(avatarId, variant);
+    if (!localPath) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+
+    if (existsSync(localPath)) {
+      res.set('Cache-Control', 'private, max-age=31536000, immutable');
+      res.type('image/webp');
+      res.sendFile(localPath);
+      return;
+    }
+
+    try {
+      const response = await masterFetch(
+        `/api/panel/avatars/${encodeURIComponent(avatarId)}/${encodeURIComponent(variant)}`,
+      );
+
+      if (!response.ok) {
+        res.status(response.status === 401 ? 401 : 404).json({ error: 'not_found' });
+        return;
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+      await mkdir(path.dirname(localPath), { recursive: true });
+      await writeFile(localPath, buffer);
+      res.set('Cache-Control', 'private, max-age=31536000, immutable');
+      res.type('image/webp');
+      res.send(buffer);
+    } catch (error) {
+      res.status(503).json({
+        error: 'unavailable',
+        message: error instanceof Error ? error.message : 'The Master Panel is not reachable',
+      });
+    }
+  });
+
   app.post('/api/party-variants', (req, res) =>
     queue(res, { kind: 'partyVariant.upsert', entity: 'party_variant', payload: req.body }),
   );
@@ -1068,6 +1116,9 @@ export function createApp(): Express {
 
   app.post('/api/documents/assets', (req, res) => forward(res, 'document:uploadAsset', req.body));
   app.get('/api/documents/assets', (_req, res) => forward(res, 'document:listAssets'));
+  app.delete('/api/documents/assets/:id', (req, res) =>
+    forward(res, 'document:deleteAsset', req.params.id),
+  );
   app.get('/api/documents/assets/:id/file', (req, res) =>
     forwardFile(res, 'document:assetFile', req.params.id, 'inline'),
   );
@@ -1229,6 +1280,19 @@ function notFoundHandler(_req: Request, res: Response): void {
 }
 
 function errorHandler(error: unknown, _req: Request, res: Response, _next: NextFunction): void {
+  // A file that slipped past the client-side size check (an older browser
+  // build, or a direct API caller) hit multer's own limit instead — a real,
+  // actionable refusal, not an unexpected server failure. Without this branch
+  // it fell into the generic 500 below with no indication of what went wrong.
+  if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+    res.status(400).json({
+      error: 'validation_error',
+      message: 'That file is too large',
+      messageKey: 'validation.image.tooLarge',
+    });
+    return;
+  }
+
   log.error('Unhandled request error', error);
   res.status(500).json({
     error: 'internal_error',
@@ -1769,11 +1833,56 @@ function broadcast(type: string, data: unknown): void {
  * lead or order pushed `rate`/`lineTotal`/`totalAmount` into the event stream
  * of a browser whose own `/api/snapshot` had gone to the trouble of hiding them.
  */
+/**
+ * Reconcile this panel's local product-image cache against what the Master's
+ * own snapshot still lists, whenever a full snapshot arrives.
+ *
+ * Every variant a product photo ever displayed here gets written to
+ * `paths().imagesDir` and kept — there was no equivalent of
+ * `avatar-cache.ts`'s `forgetAvatar` for product images on this side, and the
+ * Master's own delete already removes only its copy. Over a year of ordinary
+ * catalogue churn (photos replaced, products removed) across several office
+ * PCs, each accumulates unbounded dead image bytes with no reclaim path short
+ * of deleting the data folder by hand.
+ *
+ * A full snapshot, not every delta: image ids are minted once per upload and
+ * never reused (a new picture is a new id, the same reasoning
+ * `avatar-cache.ts` already documents), so the snapshot's own `products`
+ * collection is the complete, current answer to "what should still be on
+ * disk". Reacting only to `product`/`updated` deltas would miss the case a
+ * long-offline panel most needs this for: the Master's change ring wrapped,
+ * so this panel fell back to a snapshot instead of replayed deltas, and a
+ * delta-only sweep would never run at all. A snapshot is infrequent enough (a
+ * fresh connect, or a ring miss) that a directory scan on every one of them
+ * costs nothing worth measuring.
+ */
+async function sweepImageCache(snapshot: SyncSnapshot): Promise<void> {
+  const known = new Set<string>();
+  for (const product of snapshot.products) {
+    for (const image of product.images) known.add(image.id);
+  }
+
+  let entries: string[];
+  try {
+    entries = await readdir(paths().imagesDir);
+  } catch {
+    return; // No cache yet.
+  }
+
+  for (const entry of entries) {
+    if (known.has(entry)) continue;
+    await rm(path.join(paths().imagesDir, entry), { recursive: true, force: true }).catch(
+      () => undefined,
+    );
+  }
+}
+
 // Optional-called: the office suites mock this module with a partial object,
 // and a belt-and-braces listener cap is not worth making them all fuller.
 masterConnection.setMaxListeners?.(0);
 masterConnection.on('status', (status: unknown) => broadcast('status', status));
 masterConnection.on('snapshot', schedulePushView);
+masterConnection.on('snapshot', (snapshot: SyncSnapshot) => void sweepImageCache(snapshot));
 masterConnection.on('change', (event: DataChangedEvent) =>
   broadcast('change', maskChangeEvent(event)),
 );

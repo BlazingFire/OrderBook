@@ -151,7 +151,10 @@ export function PartyDrawer({
     setBusy(true);
     try {
       if (editing) {
-        await api.updateParty(editing.id, input);
+        // What this screen last saw for each field — lets the Master's merge
+        // tell an ordinary sequential edit apart from a real clash against
+        // whatever changed elsewhere since.
+        await api.updateParty(editing.id, { ...input, baseFieldHlc: editing.sync.fieldHlc });
         onUpdated?.(name);
       } else {
         const result = await api.createParty(input);

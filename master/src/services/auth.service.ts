@@ -87,6 +87,36 @@ const LOCKOUT_MS = 60_000;
  */
 const FAILURE_TTL_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Serialises sign-in attempts for one username.
+ *
+ * `assertNotLockedOut` runs synchronously, but `recordFailure` only fires
+ * after two awaited steps (the credential read, the password verify) — so
+ * several concurrent requests for the same username (a brute-force burst, or
+ * just a flaky client retrying) could all pass the lockout check before any
+ * of them recorded a failure, and `MAX_FAILURES` per minute became
+ * `MAX_FAILURES` per *wave*. Chaining every attempt for a username through
+ * one promise makes the Nth request genuinely wait for the (N-1)th to finish
+ * — including its `recordFailure`/`failures.delete` — before it starts, which
+ * closes the race without touching the counting logic itself or risking a
+ * false lockout on legitimate concurrent traffic the way stamping a
+ * reservation before verification would.
+ */
+const signInChains = new Map<string, Promise<unknown>>();
+
+function withSignInLock<T>(key: string, run: () => Promise<T>): Promise<T> {
+  const previous = signInChains.get(key) ?? Promise.resolve();
+  const result = previous.then(run, run);
+  // Never rejects: a failed attempt must still let the next one in line run,
+  // and a map entry that stayed on a rejected promise would wedge every
+  // later sign-in for that username behind an error nothing is awaiting.
+  signInChains.set(key, result.then(
+    () => undefined,
+    () => undefined,
+  ));
+  return result;
+}
+
 export async function signIn(
   username: string,
   password: string,
@@ -94,6 +124,14 @@ export async function signIn(
   source?: string,
 ): Promise<{ token: string; user: SignedInUser; credentialFingerprint: string }> {
   const key = username?.trim().toLowerCase() ?? '';
+  return withSignInLock(key, () => attemptSignIn(key, password, source));
+}
+
+async function attemptSignIn(
+  key: string,
+  password: string,
+  source?: string,
+): Promise<{ token: string; user: SignedInUser; credentialFingerprint: string }> {
   assertNotLockedOut(key);
 
   const credential = await userRepo.readCredentialForVerification(key);

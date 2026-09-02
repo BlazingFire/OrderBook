@@ -79,7 +79,15 @@ export async function listOrders(
 
   const rows = await base
     .clone()
-    .orderBy('o.created_at', 'desc')
+    // A tiebreaker, not decoration: two orders created in the same instant
+    // have no guaranteed relative order otherwise, and offset pagination
+    // relies on that order staying identical between the count query above
+    // and every subsequent page — without one, a page boundary landing on a
+    // tie can skip or repeat a row.
+    .orderBy([
+      { column: 'o.created_at', order: 'desc' },
+      { column: 'o.id', order: 'desc' },
+    ])
     .limit(options.limit)
     .offset(options.offset);
 
@@ -204,6 +212,31 @@ export async function updateOrderColumns(
       version: trx.raw('version + 1'),
       updated_at: trx.fn.now(),
     });
+}
+
+/**
+ * Row-locks the order within the caller's transaction, before checking
+ * whether it may still be dispatched — mirrors `product.repository.ts`'s
+ * `lockProduct`/`party.repository.ts`'s `lockParty`. Without it, two
+ * `dispatchOrder` calls that overlap before either commits both read
+ * `dispatched_at` as null under READ COMMITTED and both write stock
+ * movements. `null` means the order does not exist (or is soft-deleted);
+ * the returned `dispatchedAt` is the caller's authoritative, freshly-locked
+ * answer to "has this already been dispatched?".
+ */
+export async function lockOrder(
+  tenantId: string,
+  id: string,
+  trx: TransactionContext,
+): Promise<{ dispatchedAt: string | null } | null> {
+  const row = await trx(TABLE)
+    .where({ tenant_id: tenantId, id })
+    .whereNull('deleted_at')
+    .forUpdate()
+    .first<{ dispatched_at: string | null } | undefined>('dispatched_at');
+
+  if (!row) return null;
+  return { dispatchedAt: row.dispatched_at };
 }
 
 export async function markDispatched(

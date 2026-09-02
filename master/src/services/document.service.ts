@@ -10,6 +10,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import sharp from 'sharp';
 import type {
   CursorPage,
   DocumentAsset,
@@ -37,8 +38,8 @@ import {
 } from '../domain/document-template.js';
 import { config } from '../config/index.js';
 import { db } from '../db/knex.js';
-import { NotFoundError, ValidationError } from '../lib/errors.js';
-import { sha256Of, writeAssetFile } from '../lib/document-files.js';
+import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
+import { removeStoredFile, sha256Of, writeAssetFile } from '../lib/document-files.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as assetRepo from '../repositories/document-asset.repository.js';
 import * as templateRepo from '../repositories/document-template.repository.js';
@@ -518,6 +519,24 @@ export async function uploadAsset(
   }
 
   const { bytes, mimeType } = decodeDataUrl(input.dataUrl);
+
+  // The magic-byte check above only proves the first few bytes; the product
+  // and avatar image pipelines both additionally decode the whole file
+  // through sharp before trusting it, and this path did not. Without it, a
+  // minimal valid PNG/JPEG header followed by arbitrary attacker-chosen bytes
+  // — a polyglot — would be written to disk unmodified and later served back
+  // with an image Content-Type and fed into PDFKit's own image loader.
+  // Decode-and-discard: the result is never used, only whether it throws.
+  try {
+    await sharp(bytes, { failOn: 'error' }).toBuffer();
+  } catch {
+    throw new ValidationError(
+      'validation.documents.asset.malformed',
+      {},
+      { field: 'dataUrl', reason: 'undecodable' },
+    );
+  }
+
   const sha256 = sha256Of(bytes);
 
   // `(tenant_id, sha256)` is unique, so re-uploading the same logo returns the
@@ -550,4 +569,38 @@ export async function uploadAsset(
 export async function listAssets(actor: ActorContext): Promise<DocumentAsset[]> {
   requirePermission(actor, 'documents.view');
   return assetRepo.listAssets(actor.tenantId);
+}
+
+/**
+ * The repository function this wraps has existed since the assets table was
+ * added, with no route ever calling it: uploading a wrong logo, or replacing
+ * one while iterating on a template, left every distinct file on disk and in
+ * `listAssets` forever. Hard delete, matching this table's own doc comment —
+ * there is no Recycle Bin branch for an asset.
+ *
+ * The row is deleted before the file, mirroring `document-render.service.ts`'s
+ * `pruneExports`: a crash between the two leaves at worst a stray file, never
+ * a database row pointing at bytes that are no longer there.
+ */
+export async function deleteAsset(id: string, actor: ActorContext): Promise<{ id: string }> {
+  requirePermission(actor, 'documents.edit');
+
+  const existing = await assetRepo.findAssetPath(actor.tenantId, id);
+  if (!existing) throw new NotFoundError('Asset');
+
+  try {
+    await db().transaction((trx) => assetRepo.deleteAsset(actor.tenantId, id, trx));
+  } catch (error) {
+    // `document_templates.logo_asset_id`/`signature_asset_id` reference this
+    // table with no ON DELETE action, on purpose (see the migration) — a
+    // template quietly losing its logo is worse than a refusal naming why.
+    if ((error as { code?: string } | null)?.code === '23503') {
+      throw new ConflictError('error.conflict.assetInUse');
+    }
+    throw error;
+  }
+
+  await removeStoredFile(existing.storagePath);
+
+  return { id };
 }

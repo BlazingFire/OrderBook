@@ -26,6 +26,22 @@ import { broadcastTargets } from '../lib/network.js';
 
 const log = createLogger('discovery');
 
+/**
+ * How long to keep listening after the first qualifying reply, before
+ * deciding the search is done.
+ *
+ * Resolving on the very first HELLO meant a second reply — a genuine second
+ * Master, or a rogue device on the LAN answering every DISCOVER with a forged
+ * one — could never even be read: the socket was already closed by the time
+ * it arrived. `pairAutomatically`'s own "more than one Master answered, use
+ * Manual Connection" refusal existed to catch exactly that case and could
+ * only ever fire if two replies happened to already be queued in the same
+ * tick. A short window after the first reply gives a second responder on the
+ * same LAN a real chance to be heard before this panel commits to pairing
+ * with whichever one spoke first.
+ */
+const SETTLE_MS = 500;
+
 export interface DiscoveredMaster {
   masterUniqueId: string;
   companyName: string | null;
@@ -58,12 +74,14 @@ export async function discoverMasters(options: DiscoverOptions = {}): Promise<Di
     let settled = false;
     let broadcastTimer: NodeJS.Timeout | undefined;
     let timeoutTimer: NodeJS.Timeout | undefined;
+    let settleTimer: NodeJS.Timeout | undefined;
 
     const finish = (): void => {
       if (settled) return;
       settled = true;
       if (broadcastTimer) clearInterval(broadcastTimer);
       if (timeoutTimer) clearTimeout(timeoutTimer);
+      if (settleTimer) clearTimeout(settleTimer);
       socket.close(() => resolve([...found.values()]));
     };
 
@@ -72,6 +90,7 @@ export async function discoverMasters(options: DiscoverOptions = {}): Promise<Di
       settled = true;
       if (broadcastTimer) clearInterval(broadcastTimer);
       if (timeoutTimer) clearTimeout(timeoutTimer);
+      if (settleTimer) clearTimeout(settleTimer);
       socket.close();
       reject(error);
     });
@@ -98,8 +117,10 @@ export async function discoverMasters(options: DiscoverOptions = {}): Promise<Di
           `(accepting pairing: ${hello.acceptingPairing})`,
       );
 
-      if (options.requireAcceptingPairing && hello.acceptingPairing) finish();
-      else if (!options.requireAcceptingPairing) finish();
+      const qualifies = options.requireAcceptingPairing ? hello.acceptingPairing : true;
+      // Only the *first* qualifying reply starts the settle window — a second
+      // one just adds to `found` before it fires.
+      if (qualifies && !settleTimer) settleTimer = setTimeout(finish, SETTLE_MS);
     });
 
     // Port 0: the OS picks a free source port, so several panels can search at

@@ -712,6 +712,7 @@ export interface ClientToServerEvents {
    * but no way to discover what a tenant already has — a gap, not a decision.
    */
   'document:listAssets': (ack: CommandAck<DocumentAsset[]>) => void;
+  'document:deleteAsset': (id: Uuid, ack: CommandAck<{ id: Uuid }>) => void;
   /**
    * Binary travels as `Uint8Array`. Socket.IO's default parser sends it as a
    * separate attachment rather than inline JSON, which avoids base64's 33%

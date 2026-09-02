@@ -34,8 +34,14 @@ type Runner = Knex | Knex.Transaction;
  */
 const cache = new Map<string, { version: number; set: PermissionSet }>();
 
-export function invalidateRoleCache(roleId?: string): void {
-  if (roleId) cache.delete(roleId);
+export function invalidateRoleCache(tenantId?: string, roleId?: string): void {
+  // Entries are stored under `${tenantId}:${roleId}` (see below) — deleting
+  // by the bare role id never matched anything actually in the map, so every
+  // call site below was dead code. Harmless today only because every reader
+  // separately compares the cached `version` against a fresh row before
+  // trusting a hit; a future caller that skips that comparison would trust a
+  // permission set that should have been evicted.
+  if (tenantId && roleId) cache.delete(`${tenantId}:${roleId}`);
   else cache.clear();
 }
 
@@ -234,7 +240,7 @@ export async function updateRoleColumns(
       updated_at: trx.fn.now(),
     });
 
-  invalidateRoleCache(id);
+  invalidateRoleCache(tenantId, id);
 }
 
 export async function softDeleteRole(
@@ -250,7 +256,7 @@ export async function softDeleteRole(
     updated_at: trx.fn.now(),
   });
 
-  invalidateRoleCache(id);
+  invalidateRoleCache(tenantId, id);
 }
 
 export async function restoreRole(
@@ -269,7 +275,7 @@ export async function restoreRole(
       updated_at: trx.fn.now(),
     });
 
-  invalidateRoleCache(id);
+  invalidateRoleCache(tenantId, id);
 }
 
 /** Guard G5 — is this role held by anyone live? */

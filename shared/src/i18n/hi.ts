@@ -318,6 +318,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.cursor.malformed': 'परिणामों के इस पृष्ठ का लिंक अब मान्य नहीं है',
   'error.conflict.parentDeleted': 'एक या अधिक संबंधित रिकॉर्ड अभी भी रीसायकल बिन में हैं',
   'error.conflict.restoreCollision': 'एक मौजूदा रिकॉर्ड पहले से ही इस {field} का उपयोग कर रहा है',
+  'error.conflict.assetInUse': 'यह छवि एक दस्तावेज़ टेम्पलेट पर उपयोग हो रही है — पहले उसे वहाँ से हटाएँ',
   'error.conflict.passwordNotStored':
     'इस व्यक्ति के लिए अभी कोई पासवर्ड संग्रहीत नहीं है। अगली बार जब वे इस नेटवर्क पर साइन इन करेंगे तब वह याद रखा जाएगा।',
   'error.conflict.vaultUnreadable':

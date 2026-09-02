@@ -16,7 +16,7 @@ import type { SyncSnapshot } from '@orderbook/shared';
 
 import { actorCan, type ActorContext } from '../domain/actor.js';
 import * as customFieldRepo from '../repositories/custom-field.repository.js';
-import { currentHlc } from '../repositories/identity.repository.js';
+import { peekHlc } from '../repositories/identity.repository.js';
 import * as partyAccessRepo from '../repositories/party-access.repository.js';
 import * as variantRepo from '../repositories/party-variant.repository.js';
 import * as pipelineRepo from '../repositories/pipeline.repository.js';
@@ -78,7 +78,7 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
     customFieldRepo.listOptions(actor.tenantId),
     customFieldRepo.listDefinitions(actor.tenantId),
     syncRepo.listConflicts(actor.tenantId, { limit: 100, scope: partyScope }),
-    currentHlc(),
+    peekHlc(),
     dashboardService.getDashboardSummary(actor),
   ]);
 

@@ -185,12 +185,15 @@ describe('the two-layer permission check', () => {
     // guard count is necessary but not by itself sufficient, and the
     // second half is pinned by `document-render.integration.test.ts`.
     expect(guards.length).toBe(handlers.length);
-    // Fourteen, not the thirteen `04-API-CONTRACT.md` §9.3 lists: the
+    // Fifteen, not the thirteen `04-API-CONTRACT.md` §9.3 lists: the
     // contract gives the designer asset upload and fetch-by-id but no way to
     // discover what a tenant already has, so `GET /api/documents/assets` was
     // added alongside a matching `document:listAssets` command and Office
-    // forwarding route. All three surfaces agree at fourteen.
-    expect(handlers.length).toBe(14);
+    // forwarding route — and no way to remove a wrong upload, so
+    // `DELETE /api/documents/assets/:id` was added the same way, alongside
+    // `document:deleteAsset` and its own Office forwarding route. All three
+    // surfaces agree at fifteen.
+    expect(handlers.length).toBe(15);
   });
 
   it('guards every panel-management route (`panels.manage` gates admission, revoke and rename)', () => {

@@ -121,7 +121,14 @@ export function assertTemplateValid(template: TemplateShape): void {
     );
   }
 
-  assertLayoutValid(template.layout);
+  // Without geometry, the off-page check inside assertLayoutValid never runs
+  // at all — a template edited to a smaller paper size or bigger margins
+  // would save with elements the render will silently clip.
+  assertLayoutValid(template.layout, {
+    paperSize: template.paperSize,
+    orientation: template.orientation,
+    margins: template.margins,
+  });
 }
 
 function assertMargins(margins: {

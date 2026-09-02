@@ -427,11 +427,20 @@ export const api = {
   },
 
   createParty: (input: PartyInput) => post<QueuedResult>('/api/parties', input),
-  updateParty: (id: string, input: PartyInput) => put<QueuedResult>(`/api/parties/${id}`, input),
+  // `baseFieldHlc` is transport for the offline merge, not part of the input
+  // shape itself — the server strips it before building the mutation. Without
+  // it, an edit's per-field clock is always "unknown to me", which the merge
+  // (correctly) treats as a possible clash against whatever the Master's own
+  // screens most recently touched, and records a conflict that never really
+  // happened.
+  updateParty: (id: string, input: PartyInput & { baseFieldHlc?: Record<string, string> }) =>
+    put<QueuedResult>(`/api/parties/${id}`, input),
 
   createProduct: (input: ProductInput) => post<QueuedResult>('/api/products', input),
-  updateProduct: (id: string, input: ProductInput) =>
-    put<QueuedResult>(`/api/products/${id}`, input),
+  updateProduct: (
+    id: string,
+    input: ProductInput & { baseFieldHlc?: Record<string, string> },
+  ) => put<QueuedResult>(`/api/products/${id}`, input),
 
   upsertVariant: (input: PartyProductVariantInput) =>
     post<QueuedResult>('/api/party-variants', input),

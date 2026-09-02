@@ -54,7 +54,29 @@ const EXCLUDED_TABLES = new Set([
   'knex_migrations',
   'knex_migrations_lock',
   'user_password_vault',
+  // Local per-installation HLC state, seeded unconditionally by migration and
+  // self-healing if missing (`identity.repository.ts#lockClock`) — not
+  // portable data. Carrying it in an export means every restore onto a Master
+  // that already has its own row (which every Master does, from the moment
+  // migrations finish) hits a unique-violation on `id = 1` and rolls the
+  // whole restore back. Same reasoning as `user_password_vault`: excluded
+  // rather than "fixed", because the live row is correct for *this*
+  // installation and a restored one would not be.
+  'master_clock',
 ]);
+
+/**
+ * Tenant data that has no `tenant_id` column of its own — reached only through
+ * one foreign key into a table that does. `tenantScopedTables()` (a literal
+ * `information_schema` column scan) cannot see these, so a `selected` export
+ * dumped them in full across every tenant, and a `selected` restore left them
+ * untouched rather than replaced. Both `dumpTable` and `loadTables` special-case
+ * this small map explicitly.
+ */
+const TRANSITIVELY_SCOPED: Record<string, { via: string; foreignKey: string }> = {
+  pipeline_stages: { via: 'pipelines', foreignKey: 'pipeline_id' },
+  line_item_quantities: { via: 'line_items', foreignKey: 'line_item_id' },
+};
 
 export async function listUserTables(runner: Runner = db()): Promise<string[]> {
   const { rows } = await runner.raw<{ rows: Array<{ table_name: string }> }>(`
@@ -82,8 +104,19 @@ export async function dumpTable(
 ): Promise<Record<string, unknown>[]> {
   let query = runner(table).select('*');
   if (tenantIds) {
-    if (isTenantScoped) query = query.whereIn('tenant_id', tenantIds);
-    else if (table === 'tenants') query = query.whereIn('id', tenantIds);
+    if (isTenantScoped) {
+      query = query.whereIn('tenant_id', tenantIds);
+    } else if (table === 'tenants') {
+      query = query.whereIn('id', tenantIds);
+    } else {
+      const transitive = TRANSITIVELY_SCOPED[table];
+      if (transitive) {
+        query = query.whereIn(
+          transitive.foreignKey,
+          runner(transitive.via).select('id').whereIn('tenant_id', tenantIds),
+        );
+      }
+    }
   }
   return query;
 }
@@ -112,11 +145,22 @@ export async function loadTables(
           await trx(table).whereIn('tenant_id', tenantIds).delete();
         } else if (table === 'tenants') {
           await trx(table).whereIn('id', tenantIds).delete();
+        } else {
+          const transitive = TRANSITIVELY_SCOPED[table];
+          if (transitive) {
+            await trx(table)
+              .whereIn(
+                transitive.foreignKey,
+                trx(transitive.via).select('id').whereIn('tenant_id', tenantIds),
+              )
+              .delete();
+          }
+          // Anything else is neither tenant-scoped, `tenants` itself, nor
+          // transitively scoped, so it has no selected-scope meaning (there
+          // is nothing to select it *by*) — a `selected` restore leaves it
+          // untouched, matching the export side, which only ever dumps such
+          // a table in full.
         }
-        // A table that is neither tenant-scoped nor `tenants` itself has no
-        // selected-scope meaning (there is nothing to select it *by*), so a
-        // `selected` restore leaves it untouched — matching the export side,
-        // which only ever dumps such a table in full.
       }
     }
 

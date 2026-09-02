@@ -48,13 +48,16 @@ export function Avatar({
   avatar: UserAvatar | null | undefined;
   size?: AvatarSize;
   /**
-   * Where the picture actually is, when it is not on the Master.
+   * Where the picture actually is, for the one case the default cannot cover.
    *
    * The Office panel's sign-in screen draws faces from its own cache, because
-   * it renders with nobody signed in and the Master often switched off — the
-   * Master's `/api/avatars` route cannot serve that. Everything else about this
-   * component is the same: the initials, the tint, and the fall back to them
-   * when the bytes will not load.
+   * it renders with nobody signed in — before this panel's server can proxy
+   * anything to a Master it may not even be able to reach yet. Everything
+   * else uses the default: `/uploads/avatars/:id/:variant` is a same-origin
+   * relative path that each panel's own server answers locally (the Master
+   * reads its disk directly; the Office Panel serves from its own cache and
+   * fetches from the Master on a miss, the same pattern `ProgressiveImage`
+   * uses for product photos), so one URL works unmodified on both.
    */
   src?: string;
 }) {
@@ -76,7 +79,7 @@ export function Avatar({
           // Keyed on the source so replacing a picture swaps the element rather
           // than leaving a failed `img` in its error state.
           key={src ?? avatar?.id}
-          src={src ?? `/api/avatars/${avatar?.id}/${variant}`}
+          src={src ?? `/uploads/avatars/${avatar?.id}/${variant}`}
           alt=""
           width={px}
           height={px}

@@ -77,6 +77,12 @@ export function createApp(): Express {
   app.use('/api/images', imageFilesRoutes);
   app.use('/api/access/users/:userId/avatar', avatarRoutes);
   app.use('/api/avatars', avatarFilesRoutes);
+  // The same router, mounted a second time. `ui/src/Avatar.tsx`'s default
+  // `src` is a same-origin relative path so it resolves on either panel — the
+  // Office Panel serves it from `office/src/http/app.ts`'s own cache-and-proxy
+  // route, and this is the Master resolving the identical path locally,
+  // exactly like `/api/avatars` already does.
+  app.use('/uploads/avatars', avatarFilesRoutes);
   // Before the catch-all below, which would otherwise swallow `/api/settings`.
   app.use('/api/ai', aiRoutes);
   app.use('/api/integrations', integrationRoutes);

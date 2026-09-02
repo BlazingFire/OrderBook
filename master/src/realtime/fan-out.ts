@@ -9,10 +9,10 @@
  * name.
  */
 
-import type { ChangedEntity, DataChangedEvent, PartyAccessLevel } from '@orderbook/shared';
+import type { ChangedEntity, DataChangedEvent, Permission, PartyAccessLevel } from '@orderbook/shared';
 
+import { actorCan, type ActorContext } from '../domain/actor.js';
 import { levelFor, resolvePartyScope } from '../domain/party-scope.js';
-import type { ActorContext } from '../domain/actor.js';
 
 /**
  * Never sent to an Office Panel.
@@ -55,12 +55,41 @@ export function partyIdOfChange(event: DataChangedEvent): string | null {
 }
 
 /**
+ * The ordinary module permission a change requires, on top of any party
+ * scoping — the same permission the request path for that entity already
+ * enforces (`leadService.listLeads` needs `leads.view`, `snapshot.service.ts`
+ * returns an empty collection without it, and so on).
+ *
+ * Without this, a role built from the shipped office-tier templates
+ * (`shared/src/domain/permissions.ts`'s `roleTemplate.dispatch`, for
+ * instance, which deliberately omits `leads.view`/`parties.view`) still
+ * received every live `lead`/`product`/`stock` change over the socket: party
+ * scoping alone says nothing about whether the *module* is visible at all,
+ * and an unrestricted party (the common case — no grants recorded) used to
+ * skip every check and broadcast unconditionally. Entities absent from this
+ * map (`pipeline`, `option_list`, `custom_field`, `office_panel`,
+ * `reservation`) carry no such module gate — they are shared reference data
+ * every signed-in actor may see.
+ */
+export const REQUIRED_PERMISSION: Partial<Record<ChangedEntity, Permission>> = {
+  lead: 'leads.view',
+  order: 'orders.view',
+  party: 'parties.view',
+  party_variant: 'parties.view',
+  product: 'products.view',
+  product_category: 'products.view',
+  stock: 'inventory.view',
+  sync_conflict: 'sync.resolveConflicts',
+};
+
+/**
  * Whether one recipient is entitled to one change.
  *
  * `grants` is the party's grant rows, and is ignored for anything that does not
  * hang off a party. An empty list means the party is unrestricted, which
  * `levelFor` reads as `manage` for everybody — the rule the whole Party Access
- * feature turns on.
+ * feature turns on. Party scoping and the module permission above are both
+ * checked; either one refusing is a refusal.
  */
 export function mayReceive(
   actor: ActorContext,
@@ -68,6 +97,10 @@ export function mayReceive(
   grants: ReadonlyArray<{ userId: string; level: PartyAccessLevel }>,
 ): boolean {
   if (DIRECTORY_ENTITIES.has(event.entity)) return false;
+
+  const required = REQUIRED_PERMISSION[event.entity];
+  if (required && !actorCan(actor, required)) return false;
+
   if (!PARTY_SCOPED_ENTITIES.has(event.entity)) return true;
 
   return levelFor(resolvePartyScope(actor), grants) !== 'none';

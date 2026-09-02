@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
+import multer from 'multer';
 
-import { AppError, TenantViolationError } from '../../lib/errors.js';
+import { AppError, TenantViolationError, TooManyRequestsError } from '../../lib/errors.js';
 import { createLogger } from '../../lib/logger.js';
 
 const log = createLogger('http');
@@ -27,12 +28,32 @@ export function errorHandler(
       log.error(`Tenant violation: ${error.message}`);
     }
 
+    // The standard header, not just `details.seconds` — a client backing off
+    // the documented way (rather than reading this product's own JSON shape)
+    // otherwise sees no `Retry-After` at all and either hammers the limit
+    // again immediately or gives up instead of waiting the computed window.
+    if (error instanceof TooManyRequestsError) {
+      res.setHeader('Retry-After', String(error.seconds));
+    }
+
     res.status(error.statusCode).json({
       error: error.code,
       message: error.message,
       messageKey: error.messageKey,
       params: error.params,
       ...(error.details ? { details: error.details } : {}),
+    });
+    return;
+  }
+
+  // Defense in depth for this process's own direct multer routes (avatars,
+  // panel images, setup/data uploads) — an oversized file otherwise fell into
+  // the generic 500 below with no indication it was a size problem.
+  if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+    res.status(400).json({
+      error: 'validation_error',
+      message: 'That file is too large',
+      messageKey: 'validation.image.tooLarge',
     });
     return;
   }

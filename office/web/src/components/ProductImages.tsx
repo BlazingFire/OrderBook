@@ -13,6 +13,7 @@
 
 import { useRef, useState } from 'react';
 import type { Product, ProductImage } from '@orderbook/shared';
+import { MAX_IMAGE_SOURCE_BYTES } from '@orderbook/shared';
 
 import { api } from '../api';
 import { IconButton, ImageCropModal, ProgressiveImage, rem, type CropResult } from '@orderbook/ui';
@@ -46,6 +47,13 @@ export function ProductImages({
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       onError('Choose an image file');
+      return;
+    }
+    // Caught here, before the crop editor ever opens on it — the server would
+    // refuse the same file too, but only after a full decode/crop/rotate pass
+    // and an upload, with a generic 500 rather than a reason.
+    if (file.size > MAX_IMAGE_SOURCE_BYTES) {
+      onError(`Choose an image under ${Math.round(MAX_IMAGE_SOURCE_BYTES / (1024 * 1024))} MB`);
       return;
     }
     setPendingFile(file);

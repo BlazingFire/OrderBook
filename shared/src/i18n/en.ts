@@ -341,6 +341,7 @@ export const EN_MESSAGES = {
   'validation.cursor.malformed': 'This link to a page of results is no longer valid',
   'error.conflict.parentDeleted': 'One or more related records are still in the Recycle Bin',
   'error.conflict.restoreCollision': 'A live record already uses this {field}',
+  'error.conflict.assetInUse': 'This image is used on a document template — remove it there first',
   'error.conflict.passwordNotStored':
     'No password is stored for this person yet. It is remembered the next time they sign in on this network.',
   'error.conflict.vaultUnreadable':

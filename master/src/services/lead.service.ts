@@ -525,6 +525,22 @@ export async function deleteLead(
   }
 
   const lead = await db().transaction(async (trx) => {
+    // Re-check under the row's lock: the `convertedOrderId` check above ran
+    // outside any transaction, so a concurrent `convertLead` could otherwise
+    // commit between that read and this delete, leaving a live order
+    // pointing at a now-tombstoned lead. The lock makes the second caller
+    // through this door (delete or convert) wait for the first, then see the
+    // lead already converted.
+    const locked = await leadRepo.lockLead(actor.tenantId, id, trx);
+    if (!locked) throw new NotFoundError('Lead');
+    if (locked.convertedOrderId) {
+      throw new ConflictError('error.conflict.blockedByLiveReferences', {}, {
+        blockedBy: [
+          { entityType: 'order', id: locked.convertedOrderId, label: locked.convertedOrderId, reason: 'converted' },
+        ] satisfies BinBlocker[],
+      });
+    }
+
     const hlc = await nextHlc(trx);
     const fieldHlc = { ...existing.sync.fieldHlc, deletedAt: hlc };
     const row = await leadRepo.softDeleteLead(actor.tenantId, id, actorUserId(actor), { hlc, fieldHlc }, trx);

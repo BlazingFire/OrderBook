@@ -249,7 +249,10 @@ export function ProductDrawer({
     setBusy(true);
     try {
       if (editing) {
-        await api.updateProduct(editing.id, input);
+        // What this screen last saw for each field — lets the Master's merge
+        // tell an ordinary sequential edit apart from a real clash against
+        // whatever changed elsewhere since.
+        await api.updateProduct(editing.id, { ...input, baseFieldHlc: editing.sync.fieldHlc });
         onUpdated?.(name);
       } else {
         const result = await api.createProduct(input);

@@ -116,10 +116,10 @@ describe.skipIf(!canRunIntegrationTests)('reconnect delta (integration)', () => 
       admin,
     );
 
-    // A party variant is a per-party negotiated rate. It is in the snapshot,
-    // `applyChangeToSnapshot` has no case for it, and replaying one would drop
-    // it silently — staff would quote from a stale price with no error
-    // anywhere. So its presence forces the full snapshot.
+    // A party variant is a per-party negotiated rate. It is in the snapshot
+    // but not as a flat id-keyed list a replayed delta can upsert into, so
+    // its presence forces the full snapshot instead — this is `buildDelta`'s
+    // own REPLAYABLE_ENTITIES gate, not `applyChangeToSnapshot`'s.
     await catalog.upsertVariant({ partyId: party.id, productId: product.id, rate: 9_000 }, admin);
 
     expect(await buildDelta(cursor, admin)).toBeNull();

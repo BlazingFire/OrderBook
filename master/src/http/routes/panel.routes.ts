@@ -4,7 +4,29 @@ import type { OfficePanelUpdateInput, PairingRequest } from '@orderbook/shared';
 import { ValidationError } from '../../lib/errors.js';
 import * as panelService from '../../services/panel.service.js';
 import { asyncHandler } from '../async-handler.js';
+import { consume } from '../middleware/api-key-rate-limit.js';
 import { actorFromRequest, requireAuth, requirePermissionMiddleware } from '../middleware/require-auth.js';
+
+/**
+ * How many manual-mode pairing attempts one source IP may make per minute.
+ *
+ * Every other credential check in this codebase locks out after repeated
+ * failures — the Master's own sign-in (`auth.service.ts`), the Office
+ * Panel's offline sign-in (`sign-in-attempts.store.ts`) — but the pairing
+ * password, which hands a brand-new device full panel-level access, had
+ * none: `/api/pairing/request` carries no rate-limit middleware and
+ * `verifyPairingPassword` is a bare `bcrypt.compare`. Generous enough that a
+ * shop provisioning several tills from one PC in a row never trips it —
+ * `generateReadableSecret()`'s ~50 bits of entropy already makes brute force
+ * impractical over the network, this is defense in depth for the day that
+ * assumption is weakened. Auto-mode pairing is deliberately not limited here:
+ * it has no password to guess, and the open-pairing-window check already
+ * bounds it.
+ */
+const MANUAL_PAIRING_LIMIT_PER_MIN = 10;
+
+/** Namespaced so an IP-keyed window can never collide with an API key id. */
+const rateLimitKeyFor = (ip: string): string => `pairing:${ip}`;
 
 /**
  * Unauthenticated: an Office Panel has no credentials yet at this point. The
@@ -19,6 +41,12 @@ pairingRoutes.post(
     const body = req.body as Partial<PairingRequest> | undefined;
     if (!body || (body.mode !== 'auto' && body.mode !== 'manual')) {
       throw new ValidationError('validation.pairing.invalidRequest');
+    }
+
+    if (body.mode === 'manual') {
+      // A request with no discernible source IP is rare enough to lump into
+      // one shared bucket rather than skip the check entirely.
+      consume(rateLimitKeyFor(normalizeIp(req.ip) ?? 'unknown'), MANUAL_PAIRING_LIMIT_PER_MIN);
     }
 
     const result = await panelService.pairPanel(

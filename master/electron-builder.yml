@@ -34,6 +34,10 @@ extraResources:
   - from: staging
     to: panel
 
+# One 1024px PNG per panel, rendered by `node tools/make-icons.mjs` from the
+# logo lattice; electron-builder derives the .ico and .icns from it.
+icon: installer/icon.png
+
 win:
   target:
     - target: nsis
@@ -53,3 +57,42 @@ nsis:
   deleteAppDataOnUninstall: false
   include: installer/installer.nsh
   artifactName: OrderBook-Master-${version}-Setup.${ext}
+
+# macOS. Built only on a Mac (`npm run release` picks the host platform), so
+# the Windows workflow is unaffected. Two artefacts: the .dmg is what a person
+# installs from, the .zip is what the update path downloads and unpacks.
+mac:
+  category: public.app-category.business
+  target:
+    - target: dmg
+      arch: [universal]
+    - target: zip
+      arch: [universal]
+  # Hardened runtime is required for notarisation; the entitlements let the
+  # Electron renderer JIT and let the vendored PostgreSQL binaries, signed with
+  # the same identity, load their own dylibs.
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: installer/entitlements.mac.plist
+  entitlementsInherit: installer/entitlements.mac.plist
+  # An identity is picked up from the keychain when one is present; without
+  # one electron-builder ad-hoc signs, which runs locally but not on another
+  # Mac without a right-click Open. Notarisation needs APPLE_ID,
+  # APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID in the environment — an
+  # account and a purchase, not a code change.
+  notarize: false
+  extendInfo:
+    # macOS 14+ asks before an app may talk to the local network. Without this
+    # string the prompt has no explanation and LAN discovery silently fails.
+    NSLocalNetworkUsageDescription: OrderBook finds and talks to the other OrderBook panels on this network.
+  artifactName: OrderBook-Master-${version}-Setup.${ext}
+
+dmg:
+  # Drag-to-Applications layout; the defaults put the two icons on top of each other.
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications

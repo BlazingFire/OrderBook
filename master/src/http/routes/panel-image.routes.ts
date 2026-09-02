@@ -17,7 +17,6 @@
  * the audit trail are unchanged.
  */
 
-import { existsSync } from 'node:fs';
 import { Router } from 'express';
 import multer from 'multer';
 
@@ -95,7 +94,7 @@ panelImageRoutes.get(
       String(req.params.variant),
     );
 
-    if (!file || !existsSync(file)) {
+    if (!file) {
       res.status(404).json({ error: 'not_found' });
       return;
     }

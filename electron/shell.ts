@@ -399,32 +399,78 @@ export function runPanelShell(config: PanelShellConfig): void {
     ];
     if (!app.isPackaged) viewSubmenu.push({ role: 'toggleDevTools' });
 
-    Menu.setApplicationMenu(
-      Menu.buildFromTemplate([
-        { label: '&File', submenu: [{ role: 'quit' }] },
-        { label: '&View', submenu: viewSubmenu },
-        {
-          label: '&Help',
-          submenu: [
-            {
-              label: 'Check for updates',
-              // Sends a command rather than navigating: the previous version
-              // did `loadURL('#/updates')`, and the panel's hash router only
-              // recognises `gallery`, so it silently reloaded the dashboard.
-              click: () => mainWindow?.webContents.send('orderbook:menuCommand', 'nav.updates'),
-            },
-            {
-              label: 'Keyboard shortcuts',
-              accelerator: 'F1',
-              click: () => mainWindow?.webContents.send('orderbook:menuCommand', 'help.shortcuts'),
-            },
-            { type: 'separator' },
-            { label: 'Open log folder', click: () => electronShell.showItemInFolder(logPath()) },
-            { label: `Version ${app.getVersion()}`, enabled: false },
-          ],
-        },
-      ]),
-    );
+    const isMac = process.platform === 'darwin';
+
+    /*
+     * Without this, every text field in the app is missing Copy, Paste, Cut
+     * and Select All on macOS specifically. `Cmd+C`/`Cmd+V`/`Cmd+X`/`Cmd+A`
+     * are not handled by Chromium's default input behaviour the way they are
+     * on Windows — they route through the application menu's `role: 'copy'`
+     * etc., which only exist if an Edit menu defines them. An app with no
+     * Edit menu is an app where an operator cannot paste a party's GST number
+     * into a field on a Mac, and there is no error: the keys just do nothing.
+     */
+    const editSubmenu: Electron.MenuItemConstructorOptions[] = [
+      { role: 'undo' },
+      { role: 'redo' },
+      { type: 'separator' },
+      { role: 'cut' },
+      { role: 'copy' },
+      { role: 'paste' },
+      ...(isMac
+        ? ([{ role: 'pasteAndMatchStyle' }, { role: 'delete' }, { role: 'selectAll' }] as const)
+        : ([{ role: 'delete' }, { type: 'separator' }, { role: 'selectAll' }] as const)),
+    ];
+
+    const template: Electron.MenuItemConstructorOptions[] = [
+      // The macOS application menu — named after the app, holds About/Hide/Quit.
+      // Its absence is why `Cmd+Q` and `Cmd+H` feel "missing" on a Mac even
+      // though the rest of the app works: those live here, not in File.
+      ...(isMac ? ([{ role: 'appMenu' as const }] as Electron.MenuItemConstructorOptions[]) : []),
+      { label: '&File', submenu: [isMac ? { role: 'close' as const } : { role: 'quit' as const }] },
+      { label: '&Edit', submenu: editSubmenu },
+      { label: '&View', submenu: viewSubmenu },
+      // Standard on every native Mac app: lets `Cmd+M` minimise and groups
+      // multiple windows under one menu. Windows/Linux have no equivalent.
+      ...(isMac ? ([{ role: 'windowMenu' as const }] as Electron.MenuItemConstructorOptions[]) : []),
+      {
+        label: '&Help',
+        submenu: [
+          {
+            label: 'Check for updates',
+            // Sends a command rather than navigating: the previous version
+            // did `loadURL('#/updates')`, and the panel's hash router only
+            // recognises `gallery`, so it silently reloaded the dashboard.
+            click: () => mainWindow?.webContents.send('orderbook:menuCommand', 'nav.updates'),
+          },
+          {
+            label: 'Keyboard shortcuts',
+            accelerator: 'F1',
+            click: () => mainWindow?.webContents.send('orderbook:menuCommand', 'help.shortcuts'),
+          },
+          { type: 'separator' },
+          { label: 'Open log folder', click: () => electronShell.showItemInFolder(logPath()) },
+          ...(isMac ? [] : [{ label: `Version ${app.getVersion()}`, enabled: false }]),
+        ],
+      },
+    ];
+
+    Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+
+    /*
+     * The native About panel (Apple menu → About OrderBook…), rather than the
+     * disabled "Version x.y.z" menu item Windows uses. macOS already reserves
+     * this slot in the application menu `role: 'appMenu'` builds — leaving it
+     * on Electron's default means it shows "Electron" and no version, which is
+     * the kind of detail that makes an app feel unfinished on a Mac.
+     */
+    if (isMac) {
+      app.setAboutPanelOptions({
+        applicationName: config.productName,
+        applicationVersion: app.getVersion(),
+        copyright: 'OrderBook',
+      });
+    }
   }
 
   /**

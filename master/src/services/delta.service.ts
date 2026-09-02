@@ -34,7 +34,7 @@ import {
 
 import type { ActorContext } from '../domain/actor.js';
 import { appVersion } from '../lib/app-version.js';
-import { currentHlc } from '../repositories/identity.repository.js';
+import { peekHlc } from '../repositories/identity.repository.js';
 import * as partyAccessRepo from '../repositories/party-access.repository.js';
 import { BOOT_ID, currentSeq, since } from '../realtime/change-ring.js';
 import { mayReceive, partyIdOfChange } from '../realtime/fan-out.js';
@@ -83,7 +83,7 @@ export async function buildDelta(
   // as they ride along on every snapshot.
   const [grants, serverHlc, dashboard] = await Promise.all([
     partyAccessRepo.grantsForUser(actor.tenantId, actor.userId),
-    currentHlc(),
+    peekHlc(),
     dashboardService.getDashboardSummary(actor),
   ]);
 

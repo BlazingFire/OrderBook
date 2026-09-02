@@ -30,3 +30,9 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Per-tool local state for the AI agents that work on this repo (see
+# docs/AI_COLLABORATION.md) — learned preferences and session scratch, not
+# project source. Each agent's own state stays local; coordination happens
+# through files already tracked in the repo (HANDOFF.md, docs/ai-handoffs/).
+.commandcode/
