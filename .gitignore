@@ -35,4 +35,8 @@ Thumbs.db
 # docs/AI_COLLABORATION.md) — learned preferences and session scratch, not
 # project source. Each agent's own state stays local; coordination happens
 # through files already tracked in the repo (HANDOFF.md, docs/ai-handoffs/).
-.commandcode/
+# The skills/ subdirectory is the exception: Command Code project skills are
+# shared with the team and tracked like any other convention (see AGENTS.md).
+.commandcode/*
+!.commandcode/skills/
+!.commandcode/skills/**

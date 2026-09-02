@@ -24,6 +24,19 @@ two agents don't pick up the same work.
 Several briefs depend on each other, so this order is not arbitrary. Work down
 it unless the owner says otherwise.
 
+**Release-blocking — v1.0.3 is already on `main` and must not be built into
+installers until these land:**
+
+0. `v103-release-blockers.md` — four confirmed blockers in `d52bdef`, found by a
+   46-agent adversarial audit. Two ordinary budget refusals permanently disable
+   AI installation-wide; an Office panel on a different version than its Master
+   crashes entirely; the "RAM cap" lowers V8's ceiling on small machines and
+   raises it on large ones while its monitor cannot fire; and the new screen
+   refetches on every sync delta. Also fixes the wrong `HANDOFF.md` entry.
+1. `guardrails-for-autonomous-commits.md` — the seven small tests that would have
+   caught almost all of it. Merge item 3 with
+   `web-reachability-and-dead-api-tests.md`; they are the same file.
+
 **Blocking — the owner cannot use these features at all:**
 
 1. `fix-office-new-lead-unreachable.md` — the Office panel cannot create a lead.

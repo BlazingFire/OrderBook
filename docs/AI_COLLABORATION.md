@@ -187,6 +187,45 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-02 — Command Code GUI extension setup: memory, project skills, global skills (Command Code)
+
+Scope: set up Command Code's extension layer for best performance in the GUI —
+project memory, project-level skills, and user-global skills. Per the owner's
+choices: allow one-time GitHub fetches for skill installs; track the project
+layer in git.
+
+**What was added.**
+1. **`AGENTS.md`** (repo root, tracked) — Command Code project memory. Loaded
+   every turn; captures what this project is, the source-of-truth docs, the
+   `npm run verify` gate, standing conventions, and the Command Code project
+   skills location.
+2. **`.commandcode/skills/`** (tracked) — three Command Code project skills:
+   `verify-gate`, `handoff-protocol`, `repo-conventions`. Each is a
+   spec-compliant `SKILL.md`. `.gitignore` now ignores `.commandcode/*`
+   (taste/settings stay local) but re-includes `.commandcode/skills/**`.
+3. **Global skills** in `~/.commandcode/skills/` (personal, outside the repo) —
+   installed via `cmd skills add <owner/repo> --global`:
+   `improve` (shadcn/improve), `improve-codebase-architecture`
+   (mattpocock/skills), `writing-plans` (obra/superpowers), `apple-design`
+   (dickwu/apple-design-skill). One-time GitHub fetches.
+
+**What was deliberately not done.** No copy of the 4 vendored skills
+(`.claude/skills/` / `.agents/skills/`) into `.commandcode/skills/` — Command
+Code already auto-discovers `.agents/skills/`, and duplicating ~100 files
+would create shadowing and drift. No MCP servers and no mods: nothing here
+needs external data or a custom plugin, and the project stays runtime-offline.
+
+**Shadowing note.** The 4 global skills duplicate the 4 vendored project
+skills by name, so in this project the vendored `.agents/skills/` copies win
+(project > global) and the globals are reported as "shadowed / skipped" —
+correct and intended. In projects without the vendored copies, the globals
+apply.
+
+**Verified.** `cmd skills list` shows 7 project + 4 global + 6 bundled skills;
+`--debug` reports the 4 "skipped" are duplicate-name shadowing only, no load
+errors. `git status` shows the intended tracked additions. Application code
+unchanged.
+
 ### 2026-09-02 — Bloatware audit and cleanup (Command Code)
 
 Scope: remove provably unused code/files without breaking function
