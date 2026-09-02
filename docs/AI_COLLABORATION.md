@@ -179,3 +179,54 @@ For OrderBook specifically: `npm run typecheck` covers the web workspaces and
 
 *Template note: to reuse this doc in another project, replace the paths in the
 tables with that project's layout and keep the rules in §1–§6 unchanged.*
+
+---
+
+## Change log
+
+Newest first. Each entry records what an agent changed on the repo and what
+was verified, so the next agent can trust the state without re-auditing.
+
+### 2026-09-02 — Bloatware audit and cleanup (Command Code)
+
+Scope: remove provably unused code/files without breaking function
+(`npm run verify` must stay green).
+
+**What was found.** The tracked tree is already aggressively lean — the repo
+keeps no dead modules (its own `HANDOFF.md` documents a culture of deleting
+"an abstraction extracted for no second caller"). Every tracked file is
+load-bearing: routes/services/repositories are wired through `index.ts`
+barrels and the HTTP/socket layers; migrations are pinned by
+`migration-registry.test.ts`; UI exports are pinned by
+`no-duplicate-ui.test.ts`; i18n keys by `i18n-tokens.test.ts`; every
+Socket.IO event by `socket-contract.test.ts`. A grep for zero-reference files
+over 516 source files flagged 309, but every one resolved to a real wiring
+(barrel export, dynamic registration, build config, or test import) — the
+basename scan is a poor dead-code detector in a codebase this connected.
+Dependencies are likewise lean: every package in every workspace
+`package.json` has a consumer (e.g. `uuid` is imported in four Master
+services).
+
+**What was removed.** Two confirmed-dead screen files, left on disk after an
+earlier `git rm` (they were untracked, referenced by nothing — their names
+appear only in docs and their own bodies):
+
+- `master/web/src/screens/PanelDetailScreen.tsx` (superseded by a
+  Modal-based detail view)
+- `office/web/src/components/SyncStatus.tsx` (superseded by the presence
+  rail)
+
+Both deletions were already scoped by the open brief
+`docs/ai-handoffs/dead-screens-cleanup.md`.
+
+**What was deliberately left.** Everything whose deletion could not be proven
+safe, or which is load-bearing: build artifacts (`shared/dist/`,
+`*/build/`, `*.tsbuildinfo`) and runtime data (`node_modules/`, `data/`) are
+gitignored and never ship; `.bat` launchers and installer resources are
+referenced by the packaging config; migrations, docs, and the vendored
+skills (`.claude/skills/`, `.agents/skills/`) are pinned by tests/workflow;
+`.claude/scheduled_tasks.lock` is a live runtime lock owned by the Claude
+tool, not repo source.
+
+**Verified.** `npm run verify` is green: lint clean, typecheck clean in every
+workspace, **102 test files / 1336 tests passing**.
