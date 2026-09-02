@@ -182,7 +182,25 @@ export function assertLayoutValid(layout: DocumentLayoutV2, geometry?: PageGeome
     );
   }
 
-  const page = geometry ? pageSizeMm(geometry.paperSize, geometry.orientation) : null;
+  // The printable area, not the raw sheet: `pdf/renderer.ts` and the
+  // auto-layout converter both treat element coordinates as page-relative
+  // (x=0 is the sheet edge, not the margin) and clip drawing to
+  // `margins.left .. width - margins.right` / `margins.top .. height -
+  // margins.bottom`. Checking elements against the full sheet instead of
+  // this box is what let a template saved with generous margins clip
+  // silently — geometry was being passed in but the margins inside it were
+  // never read.
+  const page = geometry
+    ? (() => {
+        const size = pageSizeMm(geometry.paperSize, geometry.orientation);
+        return {
+          minX: geometry.margins.left,
+          minY: geometry.margins.top,
+          maxX: size.width - geometry.margins.right,
+          maxY: size.height - geometry.margins.bottom,
+        };
+      })()
+    : null;
   const ids = new Set<string>();
   let tables = 0;
 
@@ -227,10 +245,10 @@ export function assertLayoutValid(layout: DocumentLayoutV2, geometry?: PageGeome
       // the sheet, and moving somebody's elements for them without saying so is
       // worse than telling them the page got smaller.
       const offPage =
-        element.x < -0.001 ||
-        element.y < -0.001 ||
-        element.x + element.w > page.width + 0.001 ||
-        element.y + element.h > page.height + 0.001;
+        element.x < page.minX - 0.001 ||
+        element.y < page.minY - 0.001 ||
+        element.x + element.w > page.maxX + 0.001 ||
+        element.y + element.h > page.maxY + 0.001;
 
       if (offPage) {
         throw new ValidationError(

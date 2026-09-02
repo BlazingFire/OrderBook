@@ -1474,6 +1474,11 @@ export const SNAPSHOT_POLICY: Record<keyof SyncSnapshot, SnapshotPolicy> = {
   // signed in — see `withoutAnotherPersonsParties` below.
   partyGrants: 'gate',
   builtForUserId: 'passthrough',
+  // Not company data — just says whether `products` above is the complete
+  // catalogue or one clamped/permission-emptied page. Re-masking `products`
+  // for the current user does not change whether the *Master's* build of
+  // this snapshot was complete, so this passes through unchanged.
+  productsComplete: 'passthrough',
 };
 
 /**
@@ -1847,16 +1852,26 @@ function broadcast(type: string, data: unknown): void {
  *
  * A full snapshot, not every delta: image ids are minted once per upload and
  * never reused (a new picture is a new id, the same reasoning
- * `avatar-cache.ts` already documents), so the snapshot's own `products`
- * collection is the complete, current answer to "what should still be on
- * disk". Reacting only to `product`/`updated` deltas would miss the case a
- * long-offline panel most needs this for: the Master's change ring wrapped,
- * so this panel fell back to a snapshot instead of replayed deltas, and a
- * delta-only sweep would never run at all. A snapshot is infrequent enough (a
- * fresh connect, or a ring miss) that a directory scan on every one of them
- * costs nothing worth measuring.
+ * `avatar-cache.ts` already documents), so a *complete* snapshot's `products`
+ * collection is the current answer to "what should still be on disk" — see
+ * `productsComplete` below for the case it is not. Reacting only to
+ * `product`/`updated` deltas would miss the case a long-offline panel most
+ * needs this for: the Master's change ring wrapped, so this panel fell back
+ * to a snapshot instead of replayed deltas, and a delta-only sweep would
+ * never run at all. A snapshot is infrequent enough (a fresh connect, or a
+ * ring miss) that a directory scan on every one of them costs nothing worth
+ * measuring.
  */
 async function sweepImageCache(snapshot: SyncSnapshot): Promise<void> {
+  // `products` is a clamped page, not the catalogue, whenever the snapshot
+  // was built for an actor without `products.view` or the catalogue exceeds
+  // the snapshot's page limit. Either way it is not a trustworthy "what
+  // should still be on disk" answer, and sweeping against it would delete
+  // cached images for every product past the first page (or the entire
+  // cache for a products-denied actor) only to have them refetched and
+  // deleted again on the next snapshot.
+  if (!snapshot.productsComplete) return;
+
   const known = new Set<string>();
   for (const product of snapshot.products) {
     for (const image of product.images) known.add(image.id);

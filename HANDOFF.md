@@ -5,6 +5,16 @@ was decided and why, so work can resume without re-litigating settled
 questions. Update it whenever a session makes a decision or finishes a chunk
 of work — it should always reflect current reality, not just history.
 
+**Multiple AI agents now work this repo side by side** — read
+`docs/AI_COLLABORATION.md` before starting anything. As of 2026-09-02,
+**Claude's role on this project is planning and auditing, not hands-on
+implementation**: Claude reads the whole codebase, designs, and writes
+findings/plans; a local Command Code (DeepSeek) session and a local Qwen 3
+session (via OpenCode) do the file-editing work. Write task briefs to
+`docs/ai-handoffs/<task>.md` (goal, exact files, done-criteria, constraints)
+rather than editing implementation files directly — see
+`docs/AI_COLLABORATION.md` §5 for the handoff protocol.
+
 ## What this project is
 
 **OrderBook** — an offline, LAN-only order & inventory management web app for a
@@ -2364,17 +2374,14 @@ in the order the plan lists them:
 
 ## Working agreements for this repo
 
-- **Branching:** all work lands on `dev`. The long-standing default was that
-  `main` is never pushed to directly and reaches it only through a pull
-  request, sitting *behind* `dev` by design. That default has now been
-  overridden twice at the owner's explicit request — a fast-forward on
-  2026-08-25, and on 2026-08-26 a real merge (`cb92a02`) reconciling two
-  branches that had diverged after parallel sessions rebuilt overlapping parts
-  of the app. **`main` and `dev` are currently identical.** Two overrides in
-  two days is no longer plausibly a one-time exception, so ask which the owner
-  wants for a given session rather than assuming either; what must not happen
-  is `main` silently drifting far enough behind that reconciling it needs
-  another ten-file conflict resolution.
+- **Branching:** all work lands on `dev`. `main` used to be reachable only
+  through a pull request, sitting behind `dev` by design — that default was
+  overridden enough times (2026-08-25, 2026-08-26, 2026-08-28, 2026-09-02) that
+  it is no longer the working rule. Current rule, confirmed by the owner: work
+  on `dev`, and fast-forward `dev` onto `main` when the owner says so (e.g.
+  "commit all to main"). Don't ask each time; do check `git log
+  origin/main..dev` first so a push is a clean fast-forward, never a force.
+  **`main` and `dev` are identical as of `10ddc68` (2026-09-02).**
   Historical feature branches (`claude/ceramic-offline-web-app-6wjqq5` for
   Phases 1–2, `claude/refactor-production-codebase-7gbz9v` for the
   clean-architecture refactor) are all merged into `dev`; new work branches

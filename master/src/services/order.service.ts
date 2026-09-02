@@ -114,6 +114,14 @@ export async function convertLead(
   const reservationPlan = planReservations(orderLines);
 
   const orderId = await db().transaction(async (trx) => {
+    // Stamped before the row lock, not after: every other write path takes
+    // `master_clock`'s lock before the entity row's lock
+    // (`catalog.service.ts`, ordinary lead/order updates), and taking them
+    // in the opposite order here would deadlock (`40P01`) against one of
+    // those the moment both race the same row. Safe to take unconditionally
+    // — a throw below rolls this stamp back with the rest of the transaction.
+    const hlc = await nextHlc(trx);
+
     // Re-check under the row's lock: the read above and `assertConvertible`
     // are both outside this transaction, so a second `convertLead` (or a
     // `deleteLead`) racing this one could otherwise commit between that read
@@ -122,8 +130,6 @@ export async function convertLead(
     const locked = await leadRepo.lockLead(actor.tenantId, lead.id, trx);
     if (!locked) throw new NotFoundError('Lead');
     if (locked.convertedOrderId) throw new ValidationError('validation.lead.alreadyConverted');
-
-    const hlc = await nextHlc(trx);
 
     const { id, lineItemIds } = await orderRepo.insertOrder(
       {

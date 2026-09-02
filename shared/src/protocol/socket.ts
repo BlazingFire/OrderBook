@@ -434,6 +434,15 @@ export interface SyncSnapshot {
    * still reads a snapshot from an older Master.
    */
   serverVersion?: string;
+  /**
+   * Whether `products` above is the whole catalogue, not one clamped page.
+   * The Office image cache sweep needs this: `products` is capped at the
+   * snapshot's page limit, and a truncated or permission-emptied list is not
+   * a trustworthy "what should still be on disk" answer. Optional so a panel
+   * reading a snapshot from an older Master treats it as unknown and skips
+   * the sweep rather than trusting an absent flag.
+   */
+  productsComplete?: boolean;
 }
 
 /** Office Panel → Master. Each carries an ack callback. */

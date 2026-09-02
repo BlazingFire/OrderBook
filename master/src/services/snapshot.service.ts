@@ -122,5 +122,9 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
     serverHlc,
     serverTime: new Date().toISOString(),
     serverVersion: appVersion(),
+    // False whenever `products` was denied by permission or clamped by
+    // SNAPSHOT_LIMIT — either way it is not the complete catalogue, and the
+    // Office image cache sweep must not treat it as one.
+    productsComplete: canProducts && products.length < SNAPSHOT_LIMIT,
   };
 }

@@ -101,6 +101,14 @@ const FAILURE_TTL_MS = 24 * 60 * 60 * 1000;
  * closes the race without touching the counting logic itself or risking a
  * false lockout on legitimate concurrent traffic the way stamping a
  * reservation before verification would.
+ *
+ * Keyed the same way `failures` is — by the attempted username — so it has
+ * the same unbounded-growth exposure against a spraying run of invented
+ * names, and `failures` already keeps its own ceiling with `FAILURE_TTL_MS`.
+ * This map needs no TTL of its own: a chain has nothing left to serialise
+ * once the attempt it was holding settles, so the entry is deleted the
+ * moment its own settled promise lands, provided nothing newer queued behind
+ * it in the meantime.
  */
 const signInChains = new Map<string, Promise<unknown>>();
 
@@ -110,10 +118,14 @@ function withSignInLock<T>(key: string, run: () => Promise<T>): Promise<T> {
   // Never rejects: a failed attempt must still let the next one in line run,
   // and a map entry that stayed on a rejected promise would wedge every
   // later sign-in for that username behind an error nothing is awaiting.
-  signInChains.set(key, result.then(
+  const settled = result.then(
     () => undefined,
     () => undefined,
-  ));
+  );
+  signInChains.set(key, settled);
+  void settled.then(() => {
+    if (signInChains.get(key) === settled) signInChains.delete(key);
+  });
   return result;
 }
 

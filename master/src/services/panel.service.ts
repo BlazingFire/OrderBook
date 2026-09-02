@@ -157,15 +157,19 @@ export async function revokePanel(panelId: string, actor?: ActorContext): Promis
   if (!panel) throw new ValidationError('error.notFound', { what: 'Panel' });
 
   forgetPanelConnection(panelId);
-  // Close the live socket rather than only asking it to leave: the
-  // cooperative `panel:revoked` push (hub.ts's onChange listener) only works
-  // on a well-behaved client, and until the socket is actually closed a
-  // revoked panel keeps issuing fully-authorized commands over the
-  // connection it already has, no matter what the admin screen shows.
-  disconnectPanel(panelId);
 
   await recordPanelActivity(panel, actor, { status: 'revoked' });
+  // Publish before closing the socket: hub.ts's onChange listener delivers
+  // `panel:revoked` to sockets still in the office-panels room, so emitting
+  // it after the socket is gone sends the cooperative notice to nobody and
+  // the panel sits on "disconnected" forever instead of dropping to the
+  // pairing screen. Close the live socket rather than only asking it to
+  // leave: the cooperative push only works on a well-behaved client, and
+  // until the socket is actually closed a revoked panel keeps issuing
+  // fully-authorized commands over the connection it already has, no matter
+  // what the admin screen shows.
   publishChange({ entity: 'office_panel', action: 'updated', id: panelId, payload: panel });
+  disconnectPanel(panelId);
 
   return panel;
 }

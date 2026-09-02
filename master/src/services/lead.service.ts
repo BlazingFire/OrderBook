@@ -525,6 +525,14 @@ export async function deleteLead(
   }
 
   const lead = await db().transaction(async (trx) => {
+    // Stamped before the row lock, not after: every other write path takes
+    // `master_clock`'s lock before the entity row's lock, and taking them in
+    // the opposite order here would deadlock (`40P01`) against one of those
+    // the moment both race the same row — most concretely `convertLead`
+    // above, which locks this same lead. Safe to take unconditionally — a
+    // throw below rolls this stamp back with the rest of the transaction.
+    const hlc = await nextHlc(trx);
+
     // Re-check under the row's lock: the `convertedOrderId` check above ran
     // outside any transaction, so a concurrent `convertLead` could otherwise
     // commit between that read and this delete, leaving a live order
@@ -541,7 +549,6 @@ export async function deleteLead(
       });
     }
 
-    const hlc = await nextHlc(trx);
     const fieldHlc = { ...existing.sync.fieldHlc, deletedAt: hlc };
     const row = await leadRepo.softDeleteLead(actor.tenantId, id, actorUserId(actor), { hlc, fieldHlc }, trx);
 

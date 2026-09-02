@@ -8,7 +8,7 @@
  */
 
 import type { ConflictResolutionInput, SyncConflict } from '@orderbook/shared';
-import { MERGEABLE_COLUMNS } from '@orderbook/shared';
+import { JSON_COLUMNS, MERGEABLE_COLUMNS } from '@orderbook/shared';
 
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { resolvePartyScope, UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
@@ -66,10 +66,9 @@ export async function resolveConflict(
       }
 
       const hlc = await nextHlc(trx);
-      const value =
-        column === 'custom_fields'
-          ? JSON.stringify(conflict.losingValue ?? {})
-          : (conflict.losingValue as unknown);
+      const value = JSON_COLUMNS.has(column)
+        ? JSON.stringify(conflict.losingValue ?? {})
+        : (conflict.losingValue as unknown);
 
       // Written as a fresh edit with a new HLC, not by rewinding the clock.
       // Restoring is a decision made now; back-dating it would let the value it

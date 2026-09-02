@@ -146,6 +146,13 @@ export async function applyPush(
  */
 const SYNC_MUTATION_NAMESPACE = 4712;
 
+/** Postgres serialization failure / deadlock, or a pool-acquire timeout — see `applyOne`'s catch. */
+function isRetryableDatabaseError(error: unknown): boolean {
+  const code = (error as { code?: string } | null)?.code;
+  if (code === '40001' || code === '40P01') return true;
+  return (error as { name?: string } | null)?.name === 'TimeoutAcquiringConnection';
+}
+
 async function applyOne(mutation: Mutation, actor: ActorContext): Promise<MutationResult> {
   const permission = REQUIRED_PERMISSION[mutation.kind];
 
@@ -211,6 +218,16 @@ async function applyOne(mutation: Mutation, actor: ActorContext): Promise<Mutati
     try {
       result = await route(mutation, actor);
     } catch (error) {
+      // A transient failure — a serialization/deadlock abort from crossing
+      // another transaction's lock order, or a pool-acquire timeout under a
+      // burst — is not this mutation's fault and is not permanent the way a
+      // validation or permission refusal is. Recording it below would make
+      // `applied_mutations` replay the same rejection forever and destroy an
+      // offline edit that only needed a retry. Rethrown instead, so it
+      // propagates out of `applyPush` and the panel's own push retry (not a
+      // recorded refusal) is what runs next.
+      if (isRetryableDatabaseError(error)) throw error;
+
       log.warn(`Mutation ${mutation.mutationId} (${mutation.kind}) rejected: ${toErrorMessage(error)}`);
       const missing = error instanceof ForbiddenError ? error.permission : undefined;
       // Recorded even though it failed: a panel replaying the batch must get
@@ -390,6 +407,24 @@ async function mergeUpdate(
    * share this one `trx`.
    */
   const { outcome, storedConflicts } = await db().transaction(async (trx) => {
+    /*
+     * `nextHlc` takes `master_clock`'s row lock and holds it to commit
+     * (`identity.repository.ts#lockClock`) — every other write path stamps
+     * its HLC before locking the entity row it is about to change
+     * (`catalog.service.ts`, `lead.service.ts`'s ordinary updates, etc.).
+     * Taking the entity lock first here and `master_clock`'s lock second
+     * would put this transaction in the opposite order from those siblings:
+     * two transactions racing the same row from opposite lock orders is a
+     * textbook Postgres deadlock (`40P01`), and `applyOne` below records any
+     * exception out of this function as a *permanent* rejection — a
+     * transient deadlock would destroy the panel's offline edit rather than
+     * let it retry. Stamped unconditionally, even on the branch that never
+     * writes: a transaction that throws after this point rolls the stamp
+     * back too, so there is no cost to taking it before the checks below
+     * decide whether a write happens at all.
+     */
+    const hlc = await identityRepo.nextHlc(trx);
+
     await lockMergeTarget(entity, actor.tenantId, id, trx);
 
     const current = await loadMergeTarget(entity, actor.tenantId, id, trx);
@@ -466,7 +501,7 @@ async function mergeUpdate(
     }
 
     if (Object.keys(patch).length > 0) {
-      await writeMergedColumns(entity, actor.tenantId, id, patch, outcome.fieldHlc, trx);
+      await writeMergedColumns(entity, actor.tenantId, id, patch, outcome.fieldHlc, hlc, trx);
     }
 
     let storedConflicts: Awaited<ReturnType<typeof syncRepo.recordConflicts>> = [];
@@ -586,9 +621,9 @@ async function writeMergedColumns(
   id: string,
   patch: Record<string, unknown>,
   fieldHlc: Record<string, string>,
+  hlc: string,
   trx: Parameters<typeof leadRepo.updateLeadColumns>[4],
 ): Promise<void> {
-  const hlc = await identityRepo.nextHlc(trx);
   const meta = { hlc, fieldHlc };
 
   switch (entity) {
