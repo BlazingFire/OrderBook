@@ -141,16 +141,12 @@ export function AssistantScreen({ transport }: { transport: AssistantTransport }
         <div className="ob-eyebrow">{t('ai.title')}</div>
         <p className="ob-small">{t('ai.help')}</p>
 
-        {status?.hardware?.tier === 'marginal' && status.local && (
-          <p className="ob-small">
-            {t('ai.hardware.marginal', { gb: status.hardware.totalMemoryGb })}
-          </p>
+        {status?.hardware && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-4)', marginTop: 'var(--s-8)' }}>
+            <HardwareInfo hardware={status.hardware} />
+          </div>
         )}
-        {status?.hardware?.tier === 'unsupported' && status.local && (
-          <p className="ob-small">
-            {t('ai.hardware.unsupported', { gb: status.hardware.totalMemoryGb })}
-          </p>
-        )}
+
         {status?.budget !== undefined && (
           <p className="ob-small">
             {t('ai.budget', { spent: status.spentToday ?? 0, budget: status.budget })}
@@ -210,6 +206,56 @@ export function AssistantScreen({ transport }: { transport: AssistantTransport }
         ))
       )}
     </div>
+  );
+}
+
+type AiHardwareInfo = AiStatus['hardware'];
+
+/** Compact hardware summary for the assistant card. */
+function HardwareInfo({ hardware }: { hardware: NonNullable<AiHardwareInfo> }) {
+  const tierColors: Record<string, string> = {
+    supported: 'var(--state-ok)',
+    marginal: 'var(--state-offline)',
+    unsupported: 'var(--state-conflict)',
+  };
+  const tierColor = tierColors[hardware.tier] ?? 'var(--fg-tertiary)';
+
+  return (
+    <>
+      <div style={{ display: 'flex', gap: 'var(--s-12)', alignItems: 'center' }}>
+        <span className="ob-mono ob-small">{hardware.totalMemoryGb} GB RAM</span>
+        <span className="ob-mono ob-small">{hardware.cpus} CPUs</span>
+        {hardware.platform && (
+          <span className="ob-small">
+            {hardware.platform === 'darwin' ? 'macOS' : hardware.platform === 'win32' ? 'Windows' : hardware.platform}
+          </span>
+        )}
+        {hardware.hasUnifiedMemory && (
+          <span className="ob-micro" style={{ color: 'var(--state-ok)' }}>
+            Apple Silicon
+          </span>
+        )}
+      </div>
+
+      {hardware.tier === 'marginal' && (
+        <p className="ob-small" style={{ color: tierColor }}>
+          {t('ai.hardware.marginal', { gb: hardware.totalMemoryGb })}
+        </p>
+      )}
+      {hardware.tier === 'unsupported' && (
+        <p className="ob-small" style={{ color: tierColor }}>
+          {t('ai.hardware.unsupported', { gb: hardware.totalMemoryGb })}
+        </p>
+      )}
+
+      {hardware.recommendedModels.length > 0 && (
+        <div style={{ marginTop: 'var(--s-4)' }}>
+          <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
+            Recommended: {hardware.recommendedModels.slice(0, 3).map((m) => m.name).join(', ')}
+          </span>
+        </div>
+      )}
+    </>
   );
 }
 

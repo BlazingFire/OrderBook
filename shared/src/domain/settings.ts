@@ -172,6 +172,22 @@ export const SETTINGS = {
   },
 
   /**
+   * How many AI runs may execute simultaneously.
+   *
+   * Keeps a burst of questions from exhausting memory on a shop PC that also
+   * runs PostgreSQL. Zero is not allowed — the server needs at least one.
+   */
+  'ai.maxConcurrentRuns': {
+    labelToken: 'setting.ai.maxConcurrentRuns.label',
+    descriptionToken: 'setting.ai.maxConcurrentRuns.help',
+    fallback: 2,
+    parse: (raw: unknown): number => {
+      const n = asPositiveNumber(raw);
+      return n < 1 ? 1 : Math.min(n, 8);
+    },
+  },
+
+  /**
    * The public API's master switch.
    *
    * There was a second key beside this one — a list of `{slug, label, baseUrl}`

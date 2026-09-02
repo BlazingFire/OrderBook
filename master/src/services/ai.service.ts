@@ -47,6 +47,7 @@ import {
 import { actorCan, actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { db } from '../db/knex.js';
 import { ForbiddenError, NotFoundError, ValidationError } from '../lib/errors.js';
+import { getMemoryStatus } from '../lib/memory-monitor.js';
 import { createLogger } from '../lib/logger.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as aiRunRepo from '../repositories/ai-run.repository.js';
@@ -64,6 +65,30 @@ const RUN_TIMEOUT_MS = 180_000;
 
 /** Live runs, so a cancel — or a dropped socket — can abort one. */
 const running = new Map<string, AbortController>();
+
+/** Concurrent run counter — refused when over the limit or under memory pressure. */
+let activeRunCount = 0;
+
+async function checkCanStartRun(tenantId: string): Promise<void> {
+  const maxConcurrent = await getSetting(tenantId, 'ai.maxConcurrentRuns');
+  if (activeRunCount >= maxConcurrent) {
+    throw new ValidationError('error.ai.tooManyConcurrent');
+  }
+
+  const mem = getMemoryStatus();
+  if (mem.isOverCap) {
+    log.warn(
+      `AI run refused: memory over cap (RSS ${mem.rssMb}MB > ${mem.capMb}MB)`,
+    );
+    throw new ValidationError('error.ai.memoryPressure');
+  }
+
+  activeRunCount++;
+}
+
+function releaseRunSlot(): void {
+  activeRunCount = Math.max(0, activeRunCount - 1);
+}
 
 /**
  * Where a run's events go.
@@ -293,6 +318,8 @@ export async function startRun(
   const prompt = input.prompt?.trim();
   if (!prompt) throw new ValidationError('validation.ai.promptRequired');
 
+  await checkCanStartRun(actor.tenantId);
+
   const budget = await getSetting(actor.tenantId, 'ai.dailyTokenBudget');
   // The budget guards a bill, so it does not apply to a model running in the
   // building — there is nothing there to spend.
@@ -327,6 +354,7 @@ export async function startRun(
       clearTimeout(timeout);
       running.delete(runId);
       ownerOf.delete(runId);
+      releaseRunSlot();
     });
 
   return { runId };

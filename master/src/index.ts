@@ -41,6 +41,7 @@ import { startConnectorScheduler } from './services/connector-scheduler.js';
 import { startReleasePolling } from './services/update.service.js';
 import { failStaleAiRuns, sweepExpiredAiRuns } from './services/ai.service.js';
 import { isSetupComplete, refreshStoredLanIp } from './services/setup.service.js';
+import { startMemoryMonitor } from './lib/memory-monitor.js';
 
 const log = createLogger('master');
 
@@ -271,6 +272,14 @@ async function main(): Promise<void> {
     }, AI_SWEEP_INTERVAL_MS);
     aiSweep.unref?.();
     disposables.push(() => clearInterval(aiSweep));
+
+    // Start memory pressure monitoring — warns at 75%, critical at 90% of
+    // the heap ceiling. GC hints are triggered automatically.
+    const stopMemoryMonitor = startMemoryMonitor({
+      onWarn: () => log.warn('Memory pressure warning — heap usage above 75%'),
+      onCritical: () => log.error('Memory pressure critical — heap usage above 90%'),
+    });
+    disposables.push(stopMemoryMonitor);
 
     bootReady();
     bootSucceeded = true;

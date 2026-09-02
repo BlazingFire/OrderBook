@@ -88,6 +88,86 @@ Everything through Stage 6 is pushed to **both `dev` and `main`** (they are at
 the same commit as of 2026-08-28). Stages 7–12 are on `dev` only, awaiting the
 owner's word to push.
 
+### Post-overhaul: Mac shortcuts, animations, LLM support, RAM management (2026-09-02)
+
+A Command Code session implemented four cross-cutting features after the
+overhaul programme completed.
+
+**Mac shortcut keys.** The keyboard system now detects macOS and uses
+platform-specific defaults: `⌘+K` opens the palette, `⌘+S` saves, `⌘+1-9`
+navigates, `⌘+,` opens settings. Seven new commands were added: undo, duplicate,
+toggle sidebar, find, previous/next record, and settings. The command palette
+and shortcut sheet render Mac glyphs (`⌘⌥⇧⌃`) on macOS instead of text labels
+(`Ctrl+Alt+Shift+Meta`). The binding resolution in `chordFor()` checks
+`navigator.userAgent` for Mac and picks `platformDefaultChord.darwin` over the
+generic default. All existing nav commands (`Alt+1-9`) now also carry
+`Meta+1-9` as the Mac default.
+
+**New animations.** Six missing `@keyframes` definitions were added to
+`ui/src/base.css`: `ob-pop-in` (combobox/picker entrance), `ob-toast-in` and
+`ob-toast-out` (toast slide in/out), `ob-modal-out` (modal exit), and
+`ob-card-in` (screen content entrance). Two new motion tokens in
+`ui/src/tokens.css`: `--d-exit: 140ms` and `--e-spring` (bounce easing).
+Staggered card entrance animation applies to `.ob-pane > .ob-card` with 40ms
+increments. The existing `prefers-reduced-motion` and `data-motion='off'` kill
+switches still clamp everything to 1ms.
+
+**Local LLM support screen.** A dedicated `AiSupportScreen` in `ui/src/`
+shows hardware detection (total/available RAM, CPU cores, Apple Silicon unified
+memory badge), supported software (Ollama and LM Studio with install commands),
+recommended models by RAM tier (3B at 8GB, 7-8B at 16GB, 13B at 24GB, 34B at
+32GB), and setup instructions. The hardware detection in
+`master/src/ai/hardware.ts` now reports `os.freemem()`, `process.platform`,
+Apple Silicon detection via `process.arch === 'arm64'`, and builds the
+`recommendedModels` array. The Assistant screen also shows a compact hardware
+summary with platform, RAM, and model recommendations. A new sidebar entry
+"Check AI Support" appears when AI is enabled. The `AiHardware` type in
+`shared/src/domain/ai.ts` gained `availableMemoryGb`, `platform`,
+`hasUnifiedMemory`, and `recommendedModels` fields. A `RecommendedModel` type
+was added with `name`, `sizeLabel`, `ramRequiredGb`, `provider`, and `command`.
+
+**RAM management — Office 40% cap, Master adjusts.** The Electron shell in
+`electron/shell.ts` now calculates memory limits at spawn time: Office gets
+40% of total RAM, Master gets 60%. The heap ceiling (`--max-old-space-size`)
+is 70% of the panel's share, leaving room for PostgreSQL buffers and overhead.
+Environment variables `ORDERBOOK_PANEL` and `ORDERBOOK_RAM_CAP_MB` are passed
+to the child process. A new `master/src/lib/memory-monitor.ts` checks
+`process.memoryUsage()` every 30 seconds, triggers `global.gc?.()` at 75%
+heap usage, and logs critical warnings at 90%. The health endpoint now includes
+a `memory` object (loopback only) with RSS, heap, system free RAM, and cap
+status. The AI service in `master/src/services/ai.service.ts` gained a
+concurrent run limiter (configurable via `ai.maxConcurrentRuns` setting,
+default 2, range 1-8) and a memory gate that refuses new AI runs when RSS
+exceeds the RAM cap. The memory monitor is initialized at Master boot.
+
+**Files modified (20 files):**
+- `shared/src/keys/commands.ts` — `platformDefaultChord` field, 7 new commands
+- `shared/src/keys/chord.ts` — `formatChordMac()` function
+- `shared/src/keys/bindings.ts` — platform-aware `chordFor()` and `defaultBindings()`
+- `shared/src/domain/ai.ts` — extended `AiHardware`, added `RecommendedModel`
+- `shared/src/domain/settings.ts` — added `ai.maxConcurrentRuns`
+- `shared/src/protocol/desktop.ts` — extended `PanelRuntimeHealth` with `memory`
+- `shared/src/i18n/en.ts` — ~40 new message keys
+- `shared/src/i18n/hi.ts` — matching Hindi stubs
+- `shared/tests/settings.test.ts` — added `ai.maxConcurrentRuns` to wrong-value test
+- `master/src/ai/hardware.ts` — live freemem, platform detect, model recommendations
+- `master/src/services/ai.service.ts` — concurrent run limiter, memory gate
+- `master/src/http/health.ts` — memory status in health response
+- `master/src/lib/memory-monitor.ts` — **new** — periodic memory monitoring
+- `master/src/index.ts` — initialize memory monitor at boot
+- `master/web/src/App.tsx` — `aiSupport` tab and route
+- `electron/shell.ts` — `--max-old-space-size`, `ORDERBOOK_RAM_CAP_MB`
+- `ui/src/base.css` — 6 new `@keyframes`, staggered card entrance
+- `ui/src/tokens.css` — `--d-exit`, `--e-spring`
+- `ui/src/AiSupportScreen.tsx` — **new** — dedicated AI support screen
+- `ui/src/AssistantScreen.tsx` — hardware details, model recommendations
+- `ui/src/CommandPalette.tsx` — Mac glyph display
+- `ui/src/KeyboardProvider.tsx` — sidebar toggle, find dispatch
+- `ui/src/index.ts` — export `AiSupportScreen`
+
+**Verified.** All 140 shared tests pass. All 23 keyboard tests pass. All three
+package-level tsconfigs (shared, master, office) typecheck clean.
+
 What Stage 1 deliberately left — `validateProductInput`, purchase-rate masking
 and the `setStockLevels` partial upsert — landed with Stage 8's migration, which
 is the point at which the columns they validate exist.

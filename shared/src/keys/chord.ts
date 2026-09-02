@@ -105,6 +105,17 @@ export function formatChord(chord: Chord): string {
   return parts.join('+');
 }
 
+/** Mac glyph display for chords — ⌘⌥⇧⌃ symbols. */
+export function formatChordMac(chord: Chord): string {
+  const parts: string[] = [];
+  if (chord.ctrl) parts.push('\u2303');
+  if (chord.alt) parts.push('\u2325');
+  if (chord.shift) parts.push('\u21E7');
+  if (chord.meta) parts.push('\u2318');
+  parts.push(chord.key.length === 1 ? chord.key.toUpperCase() : chord.key);
+  return parts.join('');
+}
+
 function isLetter(key: string): boolean {
   return key.length === 1 && key >= 'a' && key <= 'z';
 }

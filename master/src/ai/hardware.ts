@@ -16,7 +16,7 @@
  */
 
 import os from 'node:os';
-import type { AiHardware, AiHardwareTier } from '@orderbook/shared';
+import type { AiHardware, AiHardwareTier, RecommendedModel } from '@orderbook/shared';
 
 const GB = 1024 ** 3;
 
@@ -29,6 +29,77 @@ export function tierFor(totalMemoryGb: number): AiHardwareTier {
   if (totalMemoryGb < UNSUPPORTED_GB) return 'unsupported';
   if (totalMemoryGb < MARGINAL_GB) return 'marginal';
   return 'supported';
+}
+
+/**
+ * Recommend models based on total RAM and whether the machine has unified
+ * memory (Apple Silicon). Each tier assumes ~40% of RAM is available for the
+ * model after the OS, PostgreSQL and the Node process take their share.
+ */
+function recommendModels(totalMemoryGb: number, hasUnifiedMemory: boolean): RecommendedModel[] {
+  const models: RecommendedModel[] = [];
+
+  if (totalMemoryGb >= 8) {
+    models.push({
+      name: 'llama-3.2-3b',
+      sizeLabel: '3B Q4_K_M (~2.4 GB)',
+      ramRequiredGb: 4,
+      provider: 'ollama',
+      command: 'ollama run llama3.2:3b',
+    });
+  }
+
+  if (totalMemoryGb >= 16) {
+    models.push(
+      {
+        name: 'llama-3.1-8b',
+        sizeLabel: '8B Q4_K_M (~4.7 GB)',
+        ramRequiredGb: 8,
+        provider: 'ollama',
+        command: 'ollama run llama3.1:8b',
+      },
+      {
+        name: 'qwen-2.5-7b',
+        sizeLabel: '7B Q4_K_M (~4.4 GB)',
+        ramRequiredGb: 7,
+        provider: 'ollama',
+        command: 'ollama run qwen2.5:7b',
+      },
+    );
+  }
+
+  if (totalMemoryGb >= 24) {
+    models.push({
+      name: 'llama-3.1-13b',
+      sizeLabel: '13B Q4_K_M (~7.4 GB)',
+      ramRequiredGb: 12,
+      provider: 'ollama',
+      command: 'ollama run llama3.1:13b',
+    });
+  }
+
+  if (totalMemoryGb >= 32) {
+    models.push({
+      name: 'llama-3.1-34b',
+      sizeLabel: '34B Q4_K_M (~19 GB)',
+      ramRequiredGb: 24,
+      provider: 'ollama',
+      command: 'ollama run llama3.1:34b',
+    });
+  }
+
+  // On Apple Silicon, note that Metal acceleration is available — models run
+  // faster because the GPU shares the same RAM pool.
+  if (hasUnifiedMemory && totalMemoryGb >= 16) {
+    models.push({
+      name: 'qwen-2.5-14b',
+      sizeLabel: '14B Q4_K_M (~8.5 GB, Metal accelerated)',
+      ramRequiredGb: 10,
+      provider: 'lm-studio',
+    });
+  }
+
+  return models;
 }
 
 let cached: AiHardware | null = null;
@@ -44,10 +115,18 @@ export function hardwareFacts(): AiHardware {
   if (cached) return cached;
 
   const totalMemoryGb = Math.round((os.totalmem() / GB) * 10) / 10;
+  const availableMemoryGb = Math.round((os.freemem() / GB) * 10) / 10;
+  const isDarwin = process.platform === 'darwin';
+  const hasUnifiedMemory = isDarwin && process.arch === 'arm64';
+
   cached = {
     totalMemoryGb,
+    availableMemoryGb,
     cpus: os.availableParallelism?.() ?? os.cpus().length,
     tier: tierFor(totalMemoryGb),
+    platform: process.platform,
+    hasUnifiedMemory,
+    recommendedModels: recommendModels(totalMemoryGb, hasUnifiedMemory),
   };
 
   return cached;

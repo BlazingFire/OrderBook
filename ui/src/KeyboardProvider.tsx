@@ -224,6 +224,17 @@ export function KeyboardProvider({
           setHelpOpen(true);
           return;
         }
+        if (command.id === 'view.toggleSidebar') {
+          event.preventDefault();
+          const root = document.documentElement;
+          root.dataset.sidebarCollapsed = root.dataset.sidebarCollapsed === 'true' ? 'false' : 'true';
+          return;
+        }
+        if (command.id === 'view.find') {
+          event.preventDefault();
+          setPaletteOpen(true);
+          return;
+        }
 
         if (runRef.current(command.id)) event.preventDefault();
         return;

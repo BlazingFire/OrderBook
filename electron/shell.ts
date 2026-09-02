@@ -28,6 +28,7 @@
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
+import os from 'node:os';
 import path from 'node:path';
 
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell as electronShell } from 'electron';
@@ -119,10 +120,20 @@ export function runPanelShell(config: PanelShellConfig): void {
         path.resolve(here, '..', '..');
 
   function startServer(): ChildProcess {
+    const totalRamMb = Math.round(os.totalmem() / (1024 * 1024));
+    // Office gets 40% of total RAM; Master gets up to 60%.
+    const ramCapMb =
+      config.panel === 'office' ? Math.round(totalRamMb * 0.4) : Math.round(totalRamMb * 0.6);
+    // 70% of the cap for the heap, the rest for Postgres buffers and overhead.
+    const maxOldSpaceMb = Math.round(ramCapMb * 0.7);
+
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       // Reuse Electron's own Node rather than shipping a second runtime.
       ELECTRON_RUN_AS_NODE: '1',
+      NODE_OPTIONS: `--max-old-space-size=${maxOldSpaceMb}`,
+      ORDERBOOK_PANEL: config.panel,
+      ORDERBOOK_RAM_CAP_MB: String(ramCapMb),
       ...config.serverEnv({ dataDir: dataDir(), port: config.port, logFile: logPath() }),
     };
 

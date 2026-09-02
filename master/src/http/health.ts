@@ -21,6 +21,7 @@ import type { PanelHealth } from '@orderbook/shared';
 import { bootStatus } from '../boot-status.js';
 import { config } from '../config/index.js';
 import { appVersion } from '../lib/app-version.js';
+import { getMemoryStatus } from '../lib/memory-monitor.js';
 import { hasNetworkLink, listLanInterfaces } from '../lib/network.js';
 import { currentSeq } from '../realtime/change-ring.js';
 import { socketCounts } from '../realtime/hub.js';
@@ -63,6 +64,7 @@ function localOnly(
       sessions: sessionCount(),
       changeRingSeq: currentSeq(),
       ...socketCounts(),
+      memory: getMemoryStatus(),
     },
   };
 }

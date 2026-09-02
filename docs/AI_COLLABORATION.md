@@ -230,3 +230,38 @@ tool, not repo source.
 
 **Verified.** `npm run verify` is green: lint clean, typecheck clean in every
 workspace, **102 test files / 1336 tests passing**.
+
+### 2026-09-02 — Mac shortcuts, animations, LLM support, RAM management (Command Code)
+
+Scope: four cross-cutting features touching shared types, server logic, Electron
+shell, and UI.
+
+**What was done.**
+1. **Mac shortcut keys** — Added `platformDefaultChord` to `CommandDef` for
+   platform-aware defaults (⌘ on Mac, Ctrl on Windows/Linux). Seven new
+   commands: undo, duplicate, toggle sidebar, find, prev/next record, settings.
+   `formatChordMac()` renders ⌘⌥⇧⌃ glyphs. `chordFor()` and
+   `defaultBindings()` detect macOS via `navigator.userAgent`. CommandPalette
+   uses `displayChord()` that picks the right formatter. KeyboardProvider
+   gained dispatch for sidebar toggle and find.
+2. **New animations** — Added 6 missing `@keyframes` (pop-in, toast-in/out,
+   modal-out, card-in). New motion tokens `--d-exit` and `--e-spring`.
+   Staggered card entrance for `.ob-pane > .ob-card`. All existing reduced-
+   motion kill switches still work.
+3. **Local LLM support screen** — New `AiSupportScreen` showing hardware
+   summary (RAM, CPUs, Apple Silicon badge), Ollama/LM Studio info, recommended
+   models by RAM tier, setup instructions. Extended `AiHardware` with
+   `availableMemoryGb`, `platform`, `hasUnifiedMemory`, `recommendedModels`.
+   Hardware detection now reports live freemem, platform, and Apple Silicon.
+   Assistant screen shows compact hardware info.
+4. **RAM management** — Electron shell sets `--max-old-space-size` (Office 40%
+   of total RAM, Master 60%). New `memory-monitor.ts` checks heap every 30s,
+   GC at 75%, critical at 90%. Health endpoint includes memory status.
+   AI service gained concurrent run limiter (configurable, default 2) and
+   memory gate refusing runs over cap. `ai.maxConcurrentRuns` setting added.
+
+**Files modified:** 20 files across shared/, master/, electron/, ui/.
+New files: `master/src/lib/memory-monitor.ts`, `ui/src/AiSupportScreen.tsx`.
+
+**Verified.** All 140 shared tests pass. All 23 keyboard tests pass. All three
+package-level tsconfigs (shared, master, office) typecheck clean.

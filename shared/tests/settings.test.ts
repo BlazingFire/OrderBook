@@ -40,6 +40,7 @@ describe('every parser rejects a wrong shape', () => {
     'ai.allowWrites': 'yes',
     'ai.retentionDays': -1,
     'ai.dailyTokenBudget': 'lots',
+    'ai.maxConcurrentRuns': -1,
     'externalApi.enabled': 1,
   };
 

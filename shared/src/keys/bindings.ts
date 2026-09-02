@@ -20,11 +20,31 @@ export type BindingMap = Record<string, string | null>;
 
 export const BINDINGS_STORAGE_KEY = 'ob.keys.v1';
 
-/** Every command's shipped chord, as text. */
+/**
+ * Detect macOS from the browser's user agent or platform string.
+ * Safe to call from any context — returns false on the server.
+ */
+function isMacPlatform(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  if (ua.includes('Mac')) return true;
+  // navigator.userAgentData is available in Chromium-based browsers
+  const data = (navigator as { userAgentData?: { platform?: string } }).userAgentData;
+  return data?.platform === 'macOS';
+}
+
+/**
+ * Every command's shipped chord, as text.
+ * On macOS, uses the platform-specific default when available.
+ */
 export function defaultBindings(): BindingMap {
   const map: BindingMap = {};
+  const mac = isMacPlatform();
   for (const command of COMMANDS) {
-    if (command.defaultChord) map[command.id] = command.defaultChord;
+    const chord = mac && command.platformDefaultChord?.darwin
+      ? command.platformDefaultChord.darwin
+      : command.defaultChord;
+    if (chord) map[command.id] = chord;
   }
   return map;
 }
@@ -32,14 +52,28 @@ export function defaultBindings(): BindingMap {
 /**
  * The chord a command answers to, given a person's overrides.
  *
+ * Resolution order:
+ * 1. User override from localStorage
+ * 2. Platform-specific default (if macOS and platformDefaultChord exists)
+ * 3. Generic default (defaultChord)
+ *
  * An override of `null` is "unbound", which is different from absent — somebody
  * who deliberately cleared Ctrl+S must not have it handed back by the next
  * upgrade that changes the default.
  */
 export function chordFor(commandId: string, overrides: BindingMap): Chord | null {
-  const override = Object.prototype.hasOwnProperty.call(overrides, commandId)
-    ? overrides[commandId]
-    : COMMANDS_BY_ID.get(commandId)?.defaultChord;
+  const hasOwn = Object.prototype.hasOwnProperty.call(overrides, commandId);
+  const command = COMMANDS_BY_ID.get(commandId);
+
+  let override: string | null | undefined;
+  if (hasOwn) {
+    override = overrides[commandId];
+  } else if (command) {
+    const mac = isMacPlatform();
+    override = mac && command.platformDefaultChord?.darwin
+      ? command.platformDefaultChord.darwin
+      : command.defaultChord;
+  }
 
   if (!override) return null;
 

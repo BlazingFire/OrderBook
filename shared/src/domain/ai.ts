@@ -124,10 +124,32 @@ export interface AiStatus {
 
 export type AiHardwareTier = 'unsupported' | 'marginal' | 'supported';
 
+/** One model the hardware can run, with size and install details. */
+export interface RecommendedModel {
+  /** Short identifier, e.g. 'llama-3.2-3b'. */
+  name: string;
+  /** Human-readable size, e.g. '3B Q4_K_M (~2.4 GB)'. */
+  sizeLabel: string;
+  /** Minimum RAM in GB to run this model. */
+  ramRequiredGb: number;
+  /** Which local LLM software runs this model. */
+  provider: 'ollama' | 'lm-studio';
+  /** Shell command to pull/run the model, if applicable. */
+  command?: string;
+}
+
 export interface AiHardware {
   tier: AiHardwareTier;
   totalMemoryGb: number;
+  /** Live system free memory in GB. */
+  availableMemoryGb: number;
   cpus: number;
+  /** 'darwin' | 'win32' | 'linux' */
+  platform: string;
+  /** True on Apple Silicon where GPU and CPU share the same RAM pool. */
+  hasUnifiedMemory: boolean;
+  /** Models recommended for this hardware configuration. */
+  recommendedModels: RecommendedModel[];
 }
 
 /** One computed observation. The figures are SQL; the sentence is the model's. */

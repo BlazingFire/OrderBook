@@ -1759,6 +1759,61 @@ html[data-window-blur='true'] .ob-busy rect {
   }
 }
 
+@keyframes ob-modal-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+@keyframes ob-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes ob-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes ob-toast-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+@keyframes ob-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .ob-modal-wrap {
   position: absolute;
   inset: 0;
@@ -2719,4 +2774,28 @@ html[data-window-blur='true'] .ob-busy rect {
 /* Grabbing is the whole interaction, so it has to look grabbable. */
 .ob-designer-element[data-selected='true'] {
   cursor: move;
+}
+
+/* ===========================================================================
+ * Screen entrance animations — staggered card entrance
+ * ======================================================================== */
+
+.ob-pane > .ob-card {
+  animation: ob-card-in var(--d-base) var(--e-standard) both;
+}
+
+.ob-pane > .ob-card:nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.ob-pane > .ob-card:nth-child(3) {
+  animation-delay: 80ms;
+}
+
+.ob-pane > .ob-card:nth-child(4) {
+  animation-delay: 120ms;
+}
+
+.ob-pane > .ob-card:nth-child(5) {
+  animation-delay: 160ms;
 }

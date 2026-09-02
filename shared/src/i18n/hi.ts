@@ -3914,4 +3914,102 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'settings.scale.reset': 'Reset',
   // TODO(i18n-hi)
   'settings.scale.note': 'Root {size} — this screen resizes live',
+  // TODO(i18n-hi)
+  'keys.command.undo': 'Undo',
+  // TODO(i18n-hi)
+  'keys.command.duplicate': 'Duplicate',
+  // TODO(i18n-hi)
+  'keys.command.toggleSidebar': 'Toggle sidebar',
+  // TODO(i18n-hi)
+  'keys.command.find': 'Find',
+  // TODO(i18n-hi)
+  'keys.command.prev': 'Previous',
+  // TODO(i18n-hi)
+  'keys.command.next': 'Next',
+  // TODO(i18n-hi)
+  'ai.support.title': 'Local AI Support',
+  // TODO(i18n-hi)
+  'ai.support.subtitle': 'Hardware detection, software options and model recommendations',
+  // TODO(i18n-hi)
+  'ai.support.hardware': 'Hardware Summary',
+  // TODO(i18n-hi)
+  'ai.support.totalRam': 'Total RAM',
+  // TODO(i18n-hi)
+  'ai.support.availableRam': 'Available RAM',
+  // TODO(i18n-hi)
+  'ai.support.cpus': 'CPU Cores',
+  // TODO(i18n-hi)
+  'ai.support.platform': 'Platform',
+  // TODO(i18n-hi)
+  'ai.support.platform.darwin': 'macOS',
+  // TODO(i18n-hi)
+  'ai.support.platform.win32': 'Windows',
+  // TODO(i18n-hi)
+  'ai.support.platform.linux': 'Linux',
+  // TODO(i18n-hi)
+  'ai.support.unifiedMemory': 'Apple Silicon — Unified Memory (GPU shares system RAM)',
+  // TODO(i18n-hi)
+  'ai.support.software': 'Supported Local LLM Software',
+  // TODO(i18n-hi)
+  'ai.support.ollama.title': 'Ollama',
+  // TODO(i18n-hi)
+  'ai.support.ollama.desc': 'Run local LLMs with a simple command-line API. Best for most setups.',
+  // TODO(i18n-hi)
+  'ai.support.ollama.install': 'Install with: curl -fsSL https://ollama.com/install.sh | sh',
+  // TODO(i18n-hi)
+  'ai.support.ollama.download': 'Download from: https://ollama.com',
+  // TODO(i18n-hi)
+  'ai.support.lmstudio.title': 'LM Studio',
+  // TODO(i18n-hi)
+  'ai.support.lmstudio.desc': 'GUI-based model management with a built-in server. Good for testing.',
+  // TODO(i18n-hi)
+  'ai.support.lmstudio.download': 'Download from: https://lmstudio.ai',
+  // TODO(i18n-hi)
+  'ai.support.models': 'Recommended Models',
+  // TODO(i18n-hi)
+  'ai.support.models.note': 'Models that fit on this machine based on available RAM',
+  // TODO(i18n-hi)
+  'ai.support.model.name': 'Model',
+  // TODO(i18n-hi)
+  'ai.support.model.size': 'Size',
+  // TODO(i18n-hi)
+  'ai.support.model.ram': 'RAM Needed',
+  // TODO(i18n-hi)
+  'ai.support.model.provider': 'Provider',
+  // TODO(i18n-hi)
+  'ai.support.model.install': 'Command',
+  // TODO(i18n-hi)
+  'ai.support.model.fits': 'Fits on this machine',
+  // TODO(i18n-hi)
+  'ai.support.model.marginal': 'May be slow — close other apps',
+  // TODO(i18n-hi)
+  'ai.support.model.tooLarge': 'Not enough RAM',
+  // TODO(i18n-hi)
+  'ai.support.setup': 'Setup Steps',
+  // TODO(i18n-hi)
+  'ai.support.setup.step1': '1. Install Ollama using the command above',
+  // TODO(i18n-hi)
+  'ai.support.setup.step2': '2. Pull a model: {command}',
+  // TODO(i18n-hi)
+  'ai.support.setup.step3':
+    '3. In OrderBook Settings, set the AI provider URL to localhost with port from Ollama',
+  // TODO(i18n-hi)
+  'ai.support.status': 'Current Status',
+  // TODO(i18n-hi)
+  'ai.support.status.reachable': 'Local model detected and reachable',
+  // TODO(i18n-hi)
+  'ai.support.status.unreachable':
+    'No local model detected — install Ollama and pull a model to get started',
+  // TODO(i18n-hi)
+  'ai.support.checkSupport': 'Check AI Support',
+  // TODO(i18n-hi)
+  'error.ai.tooManyConcurrent': 'Too many AI requests are running. Try again in a moment.',
+  // TODO(i18n-hi)
+  'error.ai.memoryPressure':
+    'The server is under memory pressure. Close other applications and try again.',
+  // TODO(i18n-hi)
+  'setting.ai.maxConcurrentRuns.label': 'Maximum concurrent AI runs',
+  // TODO(i18n-hi)
+  'setting.ai.maxConcurrentRuns.help':
+    'How many AI requests can run at the same time. Lower this if the server becomes slow.',
 };

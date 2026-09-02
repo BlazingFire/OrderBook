@@ -21,6 +21,7 @@ import {
   commandsFor,
   findConflicts,
   formatChord,
+  formatChordMac,
 } from '@orderbook/shared';
 
 import { Input } from './Form';
@@ -28,6 +29,15 @@ import { Modal } from './Modal';
 import { useDebounced } from './useDebounced';
 import { useKeyboard } from './KeyboardProvider';
 import { t } from './i18n';
+
+const IS_MAC =
+  typeof navigator !== 'undefined' &&
+  (navigator.userAgent.includes('Mac') ||
+    (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform === 'macOS');
+
+function displayChord(chord: { key: string; ctrl?: boolean; alt?: boolean; shift?: boolean; meta?: boolean }): string {
+  return IS_MAC ? formatChordMac(chord) : formatChord(chord);
+}
 
 export interface PaletteRecords {
   hits: SearchHit[];
@@ -101,7 +111,7 @@ function CommandPalette({
         return {
           key: command.id,
           label: t(command.titleToken),
-          hint: chord ? formatChord(chord) : undefined,
+          hint: chord ? displayChord(chord) : undefined,
           run: () => {
             close();
             keyboard.run(command.id);
@@ -242,7 +252,7 @@ function KeyboardHelp() {
           return [
             <dt key={`${command.id}-name`}>{t(command.titleToken)}</dt>,
             <dd key={`${command.id}-chord`}>
-              {chord ? formatChord(chord) : t('keys.help.unbound')}
+              {chord ? displayChord(chord) : t('keys.help.unbound')}
               {conflicts.has(command.id) && ` · ${t('keys.help.conflict')}`}
             </dd>,
           ];
@@ -334,11 +344,11 @@ export function PaletteButton() {
       type="button"
       className="ob-btn ob-btn--ghost"
       aria-label={label}
-      title={chord ? `${label} · ${formatChord(chord)}` : label}
+      title={chord ? `${label} · ${displayChord(chord)}` : label}
       onClick={() => keyboard.setPaletteOpen(true)}
     >
       <span>{t('keys.palette.placeholder')}</span>
-      {chord && <span className="ob-small">{formatChord(chord)}</span>}
+      {chord && <span className="ob-small">{displayChord(chord)}</span>}
     </button>
   );
 }

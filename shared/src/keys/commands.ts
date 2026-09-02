@@ -41,6 +41,8 @@ export interface CommandDef {
   navOrder?: number;
   /** The chord this ships bound to, in `parseChord` form. */
   defaultChord?: string;
+  /** Platform-specific override. When present and the platform matches, takes precedence over defaultChord. */
+  platformDefaultChord?: { darwin: string };
 }
 
 /**
@@ -100,6 +102,7 @@ function navCommands(
     tab,
     navOrder: index + 1,
     defaultChord: index < 9 ? `Alt+${index + 1}` : undefined,
+    platformDefaultChord: index < 9 ? { darwin: `Meta+${index + 1}` } : undefined,
   }));
 }
 
@@ -110,6 +113,7 @@ export const COMMANDS: readonly CommandDef[] = [
     scope: 'global',
     panel: 'both',
     defaultChord: 'Ctrl+K',
+    platformDefaultChord: { darwin: 'Meta+K' },
   },
   {
     id: 'palette.search',
@@ -126,6 +130,7 @@ export const COMMANDS: readonly CommandDef[] = [
     scope: 'global',
     panel: 'both',
     defaultChord: 'Ctrl+S',
+    platformDefaultChord: { darwin: 'Meta+S' },
   },
   {
     id: 'record.new',
@@ -137,6 +142,7 @@ export const COMMANDS: readonly CommandDef[] = [
     // worse than an absent one.
     panel: 'office',
     defaultChord: 'Ctrl+Shift+N',
+    platformDefaultChord: { darwin: 'Meta+Shift+N' },
   },
   {
     id: 'view.reset',
@@ -144,6 +150,7 @@ export const COMMANDS: readonly CommandDef[] = [
     scope: 'screen',
     panel: 'both',
     defaultChord: 'Ctrl+Shift+R',
+    platformDefaultChord: { darwin: 'Meta+Shift+R' },
   },
   {
     id: 'view.refresh',
@@ -158,6 +165,55 @@ export const COMMANDS: readonly CommandDef[] = [
     scope: 'global',
     panel: 'both',
     defaultChord: 'Ctrl+/',
+    platformDefaultChord: { darwin: 'Meta+/' },
+  },
+  {
+    id: 'edit.undo',
+    titleToken: 'keys.command.undo',
+    scope: 'screen',
+    panel: 'both',
+    defaultChord: 'Ctrl+Z',
+    platformDefaultChord: { darwin: 'Meta+Z' },
+  },
+  {
+    id: 'edit.duplicate',
+    titleToken: 'keys.command.duplicate',
+    scope: 'screen',
+    panel: 'both',
+    defaultChord: 'Ctrl+D',
+    platformDefaultChord: { darwin: 'Meta+D' },
+  },
+  {
+    id: 'view.toggleSidebar',
+    titleToken: 'keys.command.toggleSidebar',
+    scope: 'screen',
+    panel: 'both',
+    defaultChord: 'Ctrl+\\',
+    platformDefaultChord: { darwin: 'Meta+\\' },
+  },
+  {
+    id: 'view.find',
+    titleToken: 'keys.command.find',
+    scope: 'screen',
+    panel: 'both',
+    defaultChord: 'Ctrl+F',
+    platformDefaultChord: { darwin: 'Meta+F' },
+  },
+  {
+    id: 'nav.prev',
+    titleToken: 'keys.command.prev',
+    scope: 'screen',
+    panel: 'both',
+    defaultChord: 'Alt+ArrowLeft',
+    platformDefaultChord: { darwin: 'Meta+ArrowLeft' },
+  },
+  {
+    id: 'nav.next',
+    titleToken: 'keys.command.next',
+    scope: 'screen',
+    panel: 'both',
+    defaultChord: 'Alt+ArrowRight',
+    platformDefaultChord: { darwin: 'Meta+ArrowRight' },
   },
   ...navCommands('master', MASTER_NAV),
   ...navCommands('office', OFFICE_NAV),

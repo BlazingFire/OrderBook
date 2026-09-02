@@ -74,6 +74,7 @@ import { ReportsScreen } from './screens/ReportsScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { UpdatesScreen } from './screens/UpdatesScreen';
 import { SignInScreen } from './screens/SignInScreen';
+import { AiSupportScreen } from '@orderbook/ui';
 
 type Phase = 'loading' | 'first-run' | 'signed-out' | 'ready';
 type Tab =
@@ -86,6 +87,7 @@ type Tab =
   | 'access'
   | 'partyAccess'
   | 'assistant'
+  | 'aiSupport'
   | 'fields'
   | 'integrations'
   | 'logs'
@@ -466,6 +468,9 @@ function MasterPanel() {
       ? { id: 'recycleBin', label: t('nav.master.recycleBin'), icon: 'trash' }
       : null,
     canUseAi ? { id: 'assistant', label: t('nav.master.assistant'), icon: 'eye' } : null,
+    canUseAi
+      ? { id: 'aiSupport', label: t('ai.support.checkSupport'), icon: 'settings' }
+      : null,
     canManageApi
       ? { id: 'integrations', label: t('nav.master.integrations'), icon: 'server' }
       : null,
@@ -751,6 +756,14 @@ function MasterPanel() {
       ),
     },
     { id: 'integrations', render: () => <IntegrationsScreen canManage={canManageApi} /> },
+    {
+      id: 'aiSupport',
+      render: () => (
+        <AiSupportScreen
+          transport={{ status: api.aiStatus }}
+        />
+      ),
+    },
     { id: 'settings', render: () => <SettingsScreen /> },
   ];
 
