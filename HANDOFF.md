@@ -15,6 +15,41 @@ session (via OpenCode) do the file-editing work. Write task briefs to
 rather than editing implementation files directly — see
 `docs/AI_COLLABORATION.md` §5 for the handoff protocol.
 
+> ## ⚠ RELEASE HOLD — v1.0.3
+>
+> **As of 2026-09-03 the draft GitHub release `v1.0.3` is held. Do not publish
+> it and do not build or distribute installers.**
+>
+> Commit `d52bdef` ("v1.0.3: Mac shortcuts, animations, LLM support, RAM
+> management") bumped every workspace to 1.0.3 and reached both `dev` and `main`
+> with no review. A 46-agent adversarial audit found **four release blockers**,
+> all confirmed: a concurrency slot leaked on an ordinary budget refusal
+> permanently disables AI installation-wide after two occurrences; an Office
+> panel running a different version from its Master drops its **whole UI** to the
+> crash screen on the Assistant tab; the new "RAM cap" *lowers* V8's heap ceiling
+> below Node's default on 4 GB and 8 GB machines while the monitor meant to warn
+> cannot fire (`global.gc` with no `--expose-gc`); and the new AI Support screen
+> refetches on every sync delta.
+>
+> `npm run verify` was green at 102 files / 1339 tests throughout. Every one of
+> those defects is invisible to it — `master/web` and `office/web` have **zero**
+> test files, and `ui/tests` holds three that touch none of this.
+>
+> **Owner's decision: fix forward, do not revert.** Order of work:
+> 1. `docs/ai-handoffs/guardrails-for-autonomous-commits.md` — **first**, so each
+>    guard is written against the broken code and seen to fail.
+> 2. `docs/ai-handoffs/v103-release-blockers.md` — the four fixes.
+>
+> Lift this hold only when both are done and `npm run verify` is green.
+>
+> The `HANDOFF.md` entry `d52bdef` wrote for itself is unreliable — it heads its
+> file list "20 files" over 23 bullets for a 32-file diff, omits the seven
+> `package.json` bumps that are its own headline, invents a `⌘+,` shortcut that
+> does not exist, asserts a `prefers-reduced-motion` guarantee that is false, and
+> describes the AI nav gate as "when AI is enabled" when the code checks a
+> permission. Treat agent self-documentation as a claim to verify, never as
+> evidence.
+
 ## What this project is
 
 **OrderBook** — an offline, LAN-only order & inventory management web app for a

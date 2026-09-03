@@ -24,18 +24,21 @@ two agents don't pick up the same work.
 Several briefs depend on each other, so this order is not arbitrary. Work down
 it unless the owner says otherwise.
 
-**Release-blocking — v1.0.3 is already on `main` and must not be built into
-installers until these land:**
+**Release-blocking — the draft GitHub release `v1.0.3` is HELD. Owner's decision
+2026-09-03: fix forward, do not revert; do not publish the draft or build
+installers until items 0 and 1 are both done and verified.**
 
-0. `v103-release-blockers.md` — four confirmed blockers in `d52bdef`, found by a
+0. `guardrails-for-autonomous-commits.md` — **first, by the owner's explicit
+   instruction.** Seven small grep-a-directory tests. Write each against the
+   still-broken `d52bdef` code and watch it fail before the fixes land, so the
+   guards are proven rather than assumed. Merge its item 3 with
+   `web-reachability-and-dead-api-tests.md`; they are the same file.
+1. `v103-release-blockers.md` — four confirmed blockers in `d52bdef`, found by a
    46-agent adversarial audit. Two ordinary budget refusals permanently disable
    AI installation-wide; an Office panel on a different version than its Master
    crashes entirely; the "RAM cap" lowers V8's ceiling on small machines and
    raises it on large ones while its monitor cannot fire; and the new screen
    refetches on every sync delta. Also fixes the wrong `HANDOFF.md` entry.
-1. `guardrails-for-autonomous-commits.md` — the seven small tests that would have
-   caught almost all of it. Merge item 3 with
-   `web-reachability-and-dead-api-tests.md`; they are the same file.
 
 **Blocking — the owner cannot use these features at all:**
 

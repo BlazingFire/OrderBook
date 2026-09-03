@@ -4,6 +4,15 @@
 **Size:** S–M. Every item is in the grep-a-directory style this repo already
 uses. No new framework, no jsdom, no React Testing Library.
 
+> **Owner's decision, 2026-09-03: this brief goes FIRST — ahead of the v1.0.3
+> blocker fixes and ahead of all other queued work.**
+>
+> That ordering is the point, not a formality. Items 1, 2, 4, 6 and 7 each
+> correspond to a live defect in `d52bdef` that has not been fixed yet, so every
+> one of them can be **written against the broken code and watched to fail**,
+> then watched to pass as `v103-release-blockers.md` lands. A guard written
+> after the fix proves nothing about whether it would have caught anything.
+
 ## Why
 
 `d52bdef` added 258 lines of screen, a keydown dispatcher, a wire-format change

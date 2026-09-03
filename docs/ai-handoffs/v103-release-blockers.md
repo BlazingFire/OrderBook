@@ -3,6 +3,17 @@
 **Owner:** Command Code (it wrote the commit; it fixes it). **Reviewer:** Claude.
 **Size:** M. **Nothing about 1.0.3 ships until these four land.**
 
+> **Owner's decision, 2026-09-03: fix forward, do not revert.** `d52bdef` stays
+> on `main`. The **draft GitHub release `v1.0.3` (created 2026-09-02) is held —
+> do not publish it, and do not build or distribute installers** until all four
+> blockers below are fixed and verified.
+>
+> **Sequencing: do `guardrails-for-autonomous-commits.md` FIRST.** The owner
+> asked for the seven guardrail tests before this work, so each test can be
+> written against the unfixed code, watched to fail, and then watched to pass as
+> the fix lands. Blockers 1, 2 and 3 each have a named test in that brief; write
+> the test, see it red, then fix.
+
 `d52bdef` bumped every workspace to **1.0.3** and is `HEAD` on **both `dev` and
 `main`**. It was written by an autonomous agent, self-documented by the same
 agent, and merged with no review. A 46-agent adversarial audit across seven
