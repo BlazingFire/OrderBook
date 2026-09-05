@@ -187,6 +187,88 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-06 — v1.0.3 blocker repair, guardrail rewrite, designer and photo work (Claude)
+
+Scope: audit the uncommitted work from the two implementation sessions, repair
+it, then carry out the owner's request — improve the PDF designer, add templates,
+and improve the product-photo add flow.
+
+**Method.** A 121-agent workflow across seven audit dimensions plus three
+read-only scouts, with every finding put to three independent verifiers (a
+correctness lens, a reachability lens and a taste/duplication lens) before it was
+allowed to stand. 33 findings survived; 4 were refuted and dropped.
+
+**Headline.** `npm run verify` was **red**, not green — the `AiHardware`
+widening left three unguarded reads in `ui/src/AiSupportScreen.tsx` and broke
+`tsc` in three workspaces. And **all five guardrail tests passed against the code
+they were written to catch**; each has been rewritten and each was watched to
+fail against that code before being accepted.
+
+**Files touched.** `master/src/services/ai.service.ts`,
+`master/src/lib/memory-monitor.ts`, `master/src/index.ts`,
+`master/src/http/health.ts`, `master/src/ai/hardware.ts`,
+`master/src/domain/images.ts`, `master/src/services/image.service.ts`,
+`master/src/pdf/primitives.ts`, `master/src/pdf/elements.ts`,
+`shared/src/domain/ai.ts`, `shared/src/protocol/desktop.ts`,
+`shared/src/keys/commands.ts`, `shared/src/domain/document-starters.ts`,
+`shared/src/i18n/en.ts`, `shared/src/i18n/hi.ts`, `ui/src/AiSupportScreen.tsx`,
+`ui/src/AssistantScreen.tsx`, `ui/src/DocumentsScreen.tsx`,
+`ui/src/KeyboardProvider.tsx`, `ui/src/ImageCropModal.tsx`,
+`ui/src/PageDesigner.tsx`, `ui/src/PageDesignerCanvas.tsx`,
+`ui/src/PageDesignerInspector.tsx`, `ui/src/pageDesignerGeometry.ts`,
+`ui/src/base.css`, `ui/src/reset.css`,
+`office/web/src/components/ProductImages.tsx`, `eslint.config.js`, and the five
+guardrail test files plus a new `master/tests/image-domain.test.ts`.
+
+**Verified.** `npm run lint`, `npm run typecheck` and `npm run test` each run
+separately and each exit 0 — the full `npm run verify` gate §6 requires, not a
+single-project `tsc`. The integration suites ran against a live PostgreSQL.
+
+**The lesson worth carrying.** Three of the five guardrails failed the same way:
+they restated a rule instead of asking the code. An allowlist that contains every
+command, a copy of a private key table with the broken entries added, a regex
+never run against the string it was written for. A guard nobody has watched fail
+is not a guard, and the cheapest way to earn that is to break the code on
+purpose, run the test, and put it back — which is what was done for every one of
+them here.
+
+### 2026-09-05 — Splash & busy-mark motion refinement (Qwen / OpenCode)
+
+Scope: tighten the cold-start splash choreography and the busy indicator so the
+two read as one asset, soften their edges, and add a few finishing touches.
+Purely cosmetic — no logic, data, or protocol change.
+
+**Files touched.** `ui/src/Splash.tsx`, `ui/src/BusyMark.tsx`,
+`ui/src/base.css`.
+
+**What changed.**
+1. **Re-timed the splash** to a slower, more deliberate beat: outline draw
+   0–280ms (`--e-standard`), ink-in 280–700ms (150ms eased cells, 42ms
+   stagger), wordmark 700–980ms, bar + caption at 800ms. `SPLASH_MS` 950→1020.
+2. **Grew the mark** 96→104px and gave it its own entrance (`ob-mark-in`,
+   320ms): a soft rise that settles at 0.98 scale, so the lattice rests a hair
+   inside its outline — precision, not a crop. Outline `rx` 1→2.5; cell `rx`
+   0.75 for rounded edges.
+3. **Matched the busy mark to the splash** so the two jobs share one rhythm:
+   loop 700→780ms, easing `--e-standard` (was linear), stagger 58→42ms, peak
+   opacity 0.25→0.42.
+4. **New keyframes**: `ob-mark-in` (whole-mark settle), `ob-label-in` (120ms
+   fade, keyed to the `label` prop so caption changes re-fire), `ob-rise-in`
+   (error-state entrance), and a 1px `::after` glint on the fill bar
+   (`--rail-glint`).
+5. **Error state** gets a distinct `ob-splash-status--error` class and its own
+   rise-in instead of sharing the progress status's fade.
+
+**Verified — with two corrections, see the 2026-09-06 entry.** The check run was
+`npx tsc -p ui/tsconfig.json --noEmit` on the touched files only, which is
+narrower than the gate §6 requires: the workspace typecheck was red. Those three
+`AiSupportScreen.tsx` errors were recorded here as "pre-existing at HEAD and
+unrelated"; all four `AiHardware` fields are required at HEAD, so the same
+working tree introduced them. Motion did **not** fully collapse under
+`prefers-reduced-motion` / `data-motion='off'`: both switches clamped
+`animation-duration` and left `animation-delay` alone, and this change lengthened
+every delay in the sequence.
+
 ### 2026-09-02 — Command Code GUI extension setup: memory, project skills, global skills (Command Code)
 
 Scope: set up Command Code's extension layer for best performance in the GUI —

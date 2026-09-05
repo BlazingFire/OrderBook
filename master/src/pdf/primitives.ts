@@ -255,8 +255,30 @@ export function filledBox(
   doc.restore();
 }
 
-export function horizontalRule(doc: Doc, x: number, y: number, width: number, colour = '#DDDDDD'): void {
-  doc.save().moveTo(x, y).lineTo(x + width, y).lineWidth(0.5).strokeColor(colour).stroke().restore();
+/**
+ * `lineWidth` is a parameter because `rule.thickness` is a real, stored field.
+ *
+ * It was declared on the element type, carried through `resolveElement`, and
+ * then dropped: `drawElement` called this without it and this hardcoded 0.5, so
+ * a thickness the operator set had no effect on the page. The table's own row
+ * separators keep the default by omitting the argument.
+ */
+export function horizontalRule(
+  doc: Doc,
+  x: number,
+  y: number,
+  width: number,
+  colour = '#DDDDDD',
+  lineWidth = 0.5,
+): void {
+  doc
+    .save()
+    .moveTo(x, y)
+    .lineTo(x + width, y)
+    .lineWidth(lineWidth)
+    .strokeColor(colour)
+    .stroke()
+    .restore();
 }
 
 /**

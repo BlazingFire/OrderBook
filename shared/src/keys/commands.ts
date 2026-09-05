@@ -167,22 +167,26 @@ export const COMMANDS: readonly CommandDef[] = [
     defaultChord: 'Ctrl+/',
     platformDefaultChord: { darwin: 'Meta+/' },
   },
-  {
-    id: 'edit.undo',
-    titleToken: 'keys.command.undo',
-    scope: 'screen',
-    panel: 'both',
-    defaultChord: 'Ctrl+Z',
-    platformDefaultChord: { darwin: 'Meta+Z' },
-  },
-  {
-    id: 'edit.duplicate',
-    titleToken: 'keys.command.duplicate',
-    scope: 'screen',
-    panel: 'both',
-    defaultChord: 'Ctrl+D',
-    platformDefaultChord: { darwin: 'Meta+D' },
-  },
+  /*
+   * `edit.undo` (Ctrl+Z) and `edit.duplicate` (Ctrl+D) were here and are gone.
+   *
+   * Nothing ever handled either one: no `useCommand` registration, no shell
+   * command, no `tab`. They reached the palette and the help sheet, advertised
+   * a chord, and did nothing when pressed. Ctrl+Z was worse than inert — it
+   * shadowed the Electron Edit menu's own undo accelerator, so pressing it
+   * while typing into a lead cancelled the browser's undo and did not
+   * substitute one.
+   *
+   * The page designer's own Ctrl+Z and Ctrl+D are unaffected: it listens on its
+   * own surface (`ui/src/PageDesigner.tsx`) and never went through this
+   * registry.
+   *
+   * `nav.prev` / `nav.next` (Alt+Arrow) went with them. They additionally bound
+   * a chord `matchesChord` can never match, because `codeFor` has no entry for
+   * an arrow key — so they could not have fired even with a handler.
+   *
+   * `shared/tests/keys-implemented.test.ts` is what keeps this list honest.
+   */
   {
     id: 'view.toggleSidebar',
     titleToken: 'keys.command.toggleSidebar',
@@ -198,22 +202,6 @@ export const COMMANDS: readonly CommandDef[] = [
     panel: 'both',
     defaultChord: 'Ctrl+F',
     platformDefaultChord: { darwin: 'Meta+F' },
-  },
-  {
-    id: 'nav.prev',
-    titleToken: 'keys.command.prev',
-    scope: 'screen',
-    panel: 'both',
-    defaultChord: 'Alt+ArrowLeft',
-    platformDefaultChord: { darwin: 'Meta+ArrowLeft' },
-  },
-  {
-    id: 'nav.next',
-    titleToken: 'keys.command.next',
-    scope: 'screen',
-    panel: 'both',
-    defaultChord: 'Alt+ArrowRight',
-    platformDefaultChord: { darwin: 'Meta+ArrowRight' },
   },
   ...navCommands('master', MASTER_NAV),
   ...navCommands('office', OFFICE_NAV),

@@ -6,7 +6,7 @@
  * database and no AI subsystem, so this screen has nothing to show there.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AiHardware, AiStatus, RecommendedModel } from '@orderbook/shared';
 
 import { Card } from './Card';
@@ -53,9 +53,17 @@ export interface AiSupportTransport {
 export function AiSupportScreen({ transport }: { transport: AiSupportTransport }) {
   const [status, setStatus] = useState<AiStatus | null>(null);
 
+  // The transport is held in a ref and loaded exactly once.
+  // Every call site passes an object literal, so depending on its identity made
+  // this effect run on every render — and each run set state, which caused the
+  // next render, which built another literal. That is an unbounded loop that
+  // hammers the status endpoint for as long as the screen is open.
+  const transportRef = useRef(transport);
+  transportRef.current = transport;
+
   useEffect(() => {
-    void transport.status().then(setStatus).catch(() => setStatus(null));
-  }, [transport]);
+    void transportRef.current.status().then(setStatus).catch(() => setStatus(null));
+  }, []);
 
   const hw = status?.hardware;
 
@@ -86,13 +94,28 @@ function HardwareCard({ hardware }: { hardware: AiHardware }) {
         {t('ai.support.hardware')}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}>
-        <Row label={t('ai.support.totalRam')} value={`${hardware.totalMemoryGb} GB`} />
-        <Row label={t('ai.support.availableRam')} value={`${hardware.availableMemoryGb} GB`} />
-        <Row label={t('ai.support.cpus')} value={String(hardware.cpus)} />
+        {/* Four of these fields arrive only from a 1.0.3-or-newer Master. A
+            panel talking to an older one gets `undefined`, and a row reading
+            "undefined GB" is worse than no row — so an absent field is an
+            absent row, the same rule the document model applies to a value the
+            reader may not see. */}
         <Row
-          label={t('ai.support.platform')}
-          value={PLATFORM_LABELS[hardware.platform] ?? hardware.platform}
+          label={t('ai.support.totalRam')}
+          value={t('ai.support.gb', { gb: hardware.totalMemoryGb })}
         />
+        {hardware.availableMemoryGb !== undefined && (
+          <Row
+            label={t('ai.support.availableRam')}
+            value={t('ai.support.gb', { gb: hardware.availableMemoryGb })}
+          />
+        )}
+        <Row label={t('ai.support.cpus')} value={String(hardware.cpus)} />
+        {hardware.platform !== undefined && (
+          <Row
+            label={t('ai.support.platform')}
+            value={PLATFORM_LABELS[hardware.platform] ?? hardware.platform}
+          />
+        )}
         {hardware.hasUnifiedMemory && (
           <div
             className="ob-micro"
@@ -112,6 +135,15 @@ function HardwareCard({ hardware }: { hardware: AiHardware }) {
   );
 }
 
+/**
+ * The two local runners, named — not linked.
+ *
+ * This card used to carry `https://ollama.com` and `https://lmstudio.ai` as
+ * `target="_blank"` links, plus a `curl -fsSL … | sh` install line. The product
+ * runs offline on a LAN with no internet route, so all three were dead on the
+ * machine they were shown on. A link that cannot resolve is worse than a plain
+ * name: it tells the reader the software is one click away.
+ */
 function SoftwareCard() {
   return (
     <Card>
@@ -122,29 +154,16 @@ function SoftwareCard() {
         <div>
           <div className="ob-body-strong">{t('ai.support.ollama.title')}</div>
           <p className="ob-small">{t('ai.support.ollama.desc')}</p>
-          <code className="ob-mono ob-small" style={{ display: 'block', marginTop: 'var(--s-4)' }}>
-            {t('ai.support.ollama.install')}
-          </code>
-          <a
-            className="ob-small"
-            href="https://ollama.com"
-            target="_blank"
-            rel="noreferrer"
-          >
+          <p className="ob-small" style={{ color: 'var(--fg-secondary)' }}>
             {t('ai.support.ollama.download')}
-          </a>
+          </p>
         </div>
         <div>
           <div className="ob-body-strong">{t('ai.support.lmstudio.title')}</div>
           <p className="ob-small">{t('ai.support.lmstudio.desc')}</p>
-          <a
-            className="ob-small"
-            href="https://lmstudio.ai"
-            target="_blank"
-            rel="noreferrer"
-          >
+          <p className="ob-small" style={{ color: 'var(--fg-secondary)' }}>
             {t('ai.support.lmstudio.download')}
-          </a>
+          </p>
         </div>
       </div>
     </Card>
@@ -152,7 +171,10 @@ function SoftwareCard() {
 }
 
 function ModelsCard({ hardware }: { hardware: AiHardware }) {
-  if (hardware.recommendedModels.length === 0) return null;
+  // Narrowed once, so the table below reads a plain array rather than repeating
+  // a `?.` the next edit can drop. An older Master sends no list at all.
+  const models = hardware.recommendedModels ?? [];
+  if (models.length === 0) return null;
 
   return (
     <Card>
@@ -178,22 +200,18 @@ function ModelsCard({ hardware }: { hardware: AiHardware }) {
               <th className="ob-small" style={{ textAlign: 'left', padding: 'var(--s-4)' }}>
                 {t('ai.support.model.provider')}
               </th>
-              <th className="ob-small" style={{ textAlign: 'left', padding: 'var(--s-4)' }}>
-                {t('ai.support.model.install')}
-              </th>
               <th className="ob-small" style={{ textAlign: 'left', padding: 'var(--s-4)' }} />
             </tr>
           </thead>
           <tbody>
-            {hardware.recommendedModels.map((model) => (
+            {models.map((model) => (
               <tr key={model.name} style={{ borderTop: '1px solid var(--line)' }}>
                 <td className="ob-small" style={{ padding: 'var(--s-4)' }}>{model.name}</td>
                 <td className="ob-small" style={{ padding: 'var(--s-4)' }}>{model.sizeLabel}</td>
-                <td className="ob-small" style={{ padding: 'var(--s-4)' }}>{model.ramRequiredGb} GB</td>
-                <td className="ob-small" style={{ padding: 'var(--s-4)' }}>{model.provider}</td>
-                <td className="ob-mono ob-small" style={{ padding: 'var(--s-4)' }}>
-                  {model.command ?? '—'}
+                <td className="ob-small" style={{ padding: 'var(--s-4)' }}>
+                  {t('ai.support.gb', { gb: model.ramRequiredGb })}
                 </td>
+                <td className="ob-small" style={{ padding: 'var(--s-4)' }}>{model.provider}</td>
                 <td style={{ padding: 'var(--s-4)' }}>
                   <FitBadge fit={modelFit(model, hardware.totalMemoryGb)} />
                 </td>
@@ -214,9 +232,7 @@ function SetupCard() {
       </div>
       <ol className="ob-small" style={{ paddingLeft: 'var(--s-16)', display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}>
         <li>{t('ai.support.setup.step1')}</li>
-        <li>
-          {t('ai.support.setup.step2', { command: 'ollama run llama3.1:8b' })}
-        </li>
+        <li>{t('ai.support.setup.step2')}</li>
         <li>{t('ai.support.setup.step3')}</li>
       </ol>
     </Card>

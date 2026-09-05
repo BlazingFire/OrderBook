@@ -135,4 +135,214 @@ export const STARTER_DESIGNS: readonly StarterDesign[] = [
       },
     },
   },
+  {
+    id: 'tax-invoice',
+    nameToken: 'documents.starter.taxInvoice.name',
+    descriptionToken: 'documents.starter.taxInvoice.description',
+    // `quotation` is the type that carries rates and renders against a lead or
+    // an order, which is what an invoice needs. The product raises no invoices
+    // of its own — this is the priced sheet a buyer files, not a ledger entry.
+    documentType: 'quotation',
+    template: {
+      ...QUOTATION,
+      name: 'Tax Invoice',
+      accentColour: '#B45309',
+      showSignature: true,
+      termsText:
+        'Payment due within 30 days. Interest at 18% per annum on overdue amounts. E. & O.E.',
+      footerText: 'GSTIN and place of supply as registered.',
+      layout: {
+        blocks: [
+          { kind: 'header', align: 'left' },
+          { kind: 'party' },
+          { kind: 'lines', groupByProduct: false },
+          { kind: 'totals', showBoxCount: true },
+          { kind: 'terms', text: '' },
+          { kind: 'signature', label: 'Authorised Signatory' },
+        ],
+      },
+    },
+  },
+  {
+    id: 'quotation-counter-a5',
+    nameToken: 'documents.starter.counterQuote.name',
+    descriptionToken: 'documents.starter.counterQuote.description',
+    documentType: 'quotation',
+    template: {
+      ...QUOTATION,
+      name: 'Counter Quote — A5',
+      // Half a sheet, written across a showroom counter while somebody waits.
+      // A5 is 148mm tall, so the margins have to leave the 100mm of body the
+      // template validator insists on: 10 + 10 is well inside that.
+      paperSize: 'A5',
+      margins: { top: 10, right: 8, bottom: 10, left: 8 },
+      showTerms: false,
+      termsText: null,
+      showColourChips: false,
+      showPageNumbers: false,
+      layout: {
+        blocks: [
+          { kind: 'header', align: 'centre' },
+          { kind: 'party' },
+          { kind: 'lines', groupByProduct: true },
+          { kind: 'totals', showBoxCount: true },
+        ],
+      },
+    },
+  },
+  {
+    id: 'credit-note',
+    nameToken: 'documents.starter.creditNote.name',
+    descriptionToken: 'documents.starter.creditNote.description',
+    documentType: 'quotation',
+    template: {
+      ...QUOTATION,
+      name: 'Credit Note',
+      // Breakage and returns are ordinary in ceramics, and the paper that
+      // records them has to be unmistakable at a glance — hence the watermark
+      // and the red accent rather than a differently-worded quotation.
+      accentColour: '#B91C1C',
+      showWatermark: true,
+      watermarkText: 'CREDIT NOTE',
+      showSignature: true,
+      termsText: 'Credit issued against goods returned or short-supplied. Not a demand for payment.',
+      layout: {
+        blocks: [
+          { kind: 'header', align: 'left' },
+          { kind: 'party' },
+          { kind: 'lines', groupByProduct: false },
+          { kind: 'totals', showBoxCount: true },
+          { kind: 'terms', text: '' },
+          { kind: 'signature', label: 'Authorised Signatory' },
+        ],
+      },
+    },
+  },
+  {
+    id: 'order-confirmation-wide',
+    nameToken: 'documents.starter.orderConfirmationWide.name',
+    descriptionToken: 'documents.starter.orderConfirmationWide.description',
+    documentType: 'order_confirmation',
+    template: {
+      ...ORDER_CONFIRMATION,
+      name: 'Order Confirmation — Wide',
+      // Landscape, for an order whose lines carry many colours: the chips run
+      // along the row, and portrait runs out of width before it runs out of
+      // page.
+      orientation: 'landscape',
+      margins: { top: 14, right: 16, bottom: 14, left: 16 },
+      showColourChips: true,
+      layout: {
+        blocks: [
+          { kind: 'header', align: 'left' },
+          { kind: 'party' },
+          { kind: 'lines', groupByProduct: true },
+          { kind: 'totals', showBoxCount: true },
+          { kind: 'signature', label: 'Authorised Signatory' },
+        ],
+      },
+    },
+  },
+  {
+    id: 'work-order',
+    nameToken: 'documents.starter.workOrder.name',
+    descriptionToken: 'documents.starter.workOrder.description',
+    documentType: 'order_confirmation',
+    template: {
+      ...ORDER_CONFIRMATION,
+      name: 'Production Work Order',
+      // What goes to the kiln floor. Rates are off deliberately: the sheet is
+      // handled by people who need the sizes and the colours and have no
+      // business seeing what the customer paid.
+      accentColour: '#0369A1',
+      showRates: false,
+      showColourChips: true,
+      showTerms: false,
+      termsText: null,
+      layout: {
+        blocks: [
+          { kind: 'header', align: 'left' },
+          { kind: 'party' },
+          { kind: 'lines', groupByProduct: true },
+          { kind: 'signature', label: 'Supervisor' },
+        ],
+      },
+    },
+  },
+  {
+    id: 'packing-list',
+    nameToken: 'documents.starter.packingList.name',
+    descriptionToken: 'documents.starter.packingList.description',
+    documentType: 'dispatch_note',
+    template: {
+      ...DISPATCH_NOTE,
+      name: 'Packing List',
+      // Grouped by product and showing the colour chips, because this is the
+      // sheet somebody ticks off against the boxes as they go on the truck.
+      // No totals block: rates are off, and the renderer drops totals whenever
+      // they are.
+      showColourChips: true,
+      layout: {
+        blocks: [
+          { kind: 'header', align: 'left' },
+          { kind: 'party' },
+          { kind: 'lines', groupByProduct: true },
+          { kind: 'signature', label: 'Packed by' },
+        ],
+      },
+    },
+  },
+  {
+    id: 'delivery-challan',
+    nameToken: 'documents.starter.deliveryChallan.name',
+    descriptionToken: 'documents.starter.deliveryChallan.description',
+    documentType: 'dispatch_note',
+    template: {
+      ...DISPATCH_NOTE,
+      name: 'Delivery Challan',
+      // The document that travels with goods in transit. Unpriced, signed at
+      // the far end, and named the way a transporter and a checkpoint expect
+      // to see it named.
+      accentColour: '#334155',
+      showTerms: true,
+      termsText:
+        'Goods described above are sent on delivery challan and remain the property of the consignor until accepted.',
+      layout: {
+        blocks: [
+          { kind: 'header', align: 'left' },
+          { kind: 'party' },
+          { kind: 'lines', groupByProduct: false },
+          { kind: 'terms', text: '' },
+          { kind: 'signature', label: 'Received in good condition' },
+        ],
+      },
+    },
+  },
+  {
+    id: 'sample-dispatch',
+    nameToken: 'documents.starter.sampleDispatch.name',
+    descriptionToken: 'documents.starter.sampleDispatch.description',
+    documentType: 'dispatch_note',
+    template: {
+      ...DISPATCH_NOTE,
+      name: 'Sample Dispatch Note',
+      // Samples leave the building constantly and must never be mistaken for
+      // a priced consignment — the watermark is the whole point of this one.
+      accentColour: '#15803D',
+      showWatermark: true,
+      watermarkText: 'SAMPLE',
+      showColourChips: true,
+      showTerms: true,
+      termsText: 'Samples issued free of charge for approval. Not for resale.',
+      layout: {
+        blocks: [
+          { kind: 'header', align: 'left' },
+          { kind: 'party' },
+          { kind: 'lines', groupByProduct: true },
+          { kind: 'terms', text: '' },
+          { kind: 'signature', label: 'Issued by' },
+        ],
+      },
+    },
+  },
 ] as const;

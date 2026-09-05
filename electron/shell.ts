@@ -125,7 +125,11 @@ export function runPanelShell(config: PanelShellConfig): void {
     const ramCapMb =
       config.panel === 'office' ? Math.round(totalRamMb * 0.4) : Math.round(totalRamMb * 0.6);
     // 70% of the cap for the heap, the rest for Postgres buffers and overhead.
-    const maxOldSpaceMb = Math.round(ramCapMb * 0.7);
+    // Clamped between 2048 MB (minimum usable) and 4096 MB (Node's default).
+    // On a 4 GB machine the unclamped value was ~1720 MB, lower than Node's
+    // default and a fresh OOM risk. On a 64 GB machine the unclamped value was
+    // ~26 GB, which is meaningless — V8 does not use that much.
+    const maxOldSpaceMb = Math.max(2048, Math.min(4096, Math.round(ramCapMb * 0.7)));
 
     const env: NodeJS.ProcessEnv = {
       ...process.env,

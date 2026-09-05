@@ -1323,18 +1323,62 @@ html[data-window-blur='true'] .ob-busy rect {
   }
 }
 
-@keyframes ob-ink {
+/* The mark settles in as one body: a soft rise and a settle from 1.04 to 0.98
+ * — the lattice ends a hair inside its outline, which reads as precision
+ * rather than a crop. */
+@keyframes ob-mark-in {
   from {
     opacity: 0;
-    transform: scale(0.88);
+    transform: translateY(3px) scale(1.04);
   }
   to {
     opacity: 1;
-    transform: scale(1);
+    transform: translateY(0) scale(0.98);
+  }
+}
+
+/* Each square eases in from a half-step below its final seat. The origin is
+ * set per-cell in Splash.tsx; the 0.94 start is a settle, not a pop. */
+@keyframes ob-ink {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(0.5px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
   }
 }
 
 @keyframes ob-word {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+    letter-spacing: 0.01em;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    letter-spacing: -0.02em;
+  }
+}
+
+/* The caption under the bar re-announces itself when the boot step changes:
+ * a 120ms fade, not a hard swap. */
+@keyframes ob-label-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* The error state replaces the bar: it rises in instead of appearing, so the
+ * failure reads as a transition rather than a cut. */
+@keyframes ob-rise-in {
   from {
     opacity: 0;
     transform: translateY(4px);
@@ -1347,21 +1391,21 @@ html[data-window-blur='true'] .ob-busy rect {
 
 @keyframes ob-busy-loop {
   0% {
-    opacity: 0.06;
+    opacity: 0.08;
   }
-  22% {
-    opacity: 0.4;
+  25% {
+    opacity: 0.42;
   }
   60% {
-    opacity: 0.06;
+    opacity: 0.08;
   }
   100% {
-    opacity: 0.06;
+    opacity: 0.08;
   }
 }
 
 .ob-busy rect {
-  animation: ob-busy-loop 700ms linear infinite;
+  animation: ob-busy-loop 780ms var(--e-standard) infinite;
 }
 
 .ob-splash {
@@ -1376,16 +1420,23 @@ html[data-window-blur='true'] .ob-busy rect {
   gap: var(--s-20);
 }
 
+.ob-splash-mark {
+  overflow: visible;
+  opacity: 0;
+  animation: ob-mark-in 320ms var(--e-standard) both;
+}
+
 .ob-splash-word {
   font-size: 2rem;
   font-weight: 600;
   letter-spacing: -0.02em;
   opacity: 0;
-  animation: ob-word 280ms var(--e-standard) 620ms both;
+  animation: ob-word 300ms var(--e-standard) 700ms both;
 }
 
-/* The bar and its caption ride in with the wordmark, not before it: the mark
- * is the first thing on screen, the machinery underneath it is the second. */
+/* The bar and its caption ride in a beat behind the wordmark, not before it:
+ * the mark is the first thing on screen, the machinery underneath it is the
+ * second. */
 .ob-splash-status {
   display: flex;
   flex-direction: column;
@@ -1393,7 +1444,18 @@ html[data-window-blur='true'] .ob-busy rect {
   gap: var(--s-8);
   width: 18.5714rem;
   opacity: 0;
-  animation: ob-word 280ms var(--e-standard) 700ms both;
+  /* `ob-rise-in`, not `ob-word`. The wordmark keyframe tracks letter-spacing
+     from 0.01em to -0.02em because the wordmark is set that tight — and with
+     `both` fill that end state sticks, so borrowing it here squeezed the boot
+     caption and the tabular percentage under the bar for the rest of the
+     splash. This block only ever wanted the rise. */
+  animation: ob-rise-in 280ms var(--e-standard) 800ms both;
+}
+
+/* The error variant arrives later than the bar would have — the boot is
+ * already stalled — and it is a rise, not the same entrance as the bar. */
+.ob-splash-status--error {
+  animation: ob-rise-in 280ms var(--e-standard) 500ms both;
 }
 
 .ob-splash-track {
@@ -1406,11 +1468,27 @@ html[data-window-blur='true'] .ob-busy rect {
 
 /* Determinate, and only ever forwards. The width is eased frame by frame in
  * Splash.tsx alongside the figure, so a CSS transition on top would only lag
- * behind it. */
+ * behind it. The glint is a 1px light line riding the fill's top edge — the
+ * bar reads as a liquid surface, not a flat block. */
 .ob-splash-fill {
+  position: relative;
   height: 100%;
   border-radius: inherit;
   background: var(--accent);
+}
+
+.ob-splash-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--rail-glint),
+    transparent
+  );
+  opacity: 0.7;
 }
 
 .ob-splash-label {
@@ -1421,6 +1499,7 @@ html[data-window-blur='true'] .ob-busy rect {
   font-size: var(--t-small-size);
   line-height: var(--t-small-line);
   color: var(--fg-secondary);
+  animation: ob-label-in 120ms var(--e-standard) both;
 }
 
 /* Tabular so the percentage does not shuffle the label sideways as it counts. */
@@ -2646,9 +2725,20 @@ html[data-window-blur='true'] .ob-busy rect {
  * guide, and how an element reads at a glance.
  * ======================================================================== */
 
+/*
+ * A definite height, not a maximum.
+ *
+ * `PageDesignerCanvas` measures this box and scales the sheet to the smaller of
+ * its two axes, so the height has to be settled before the page is drawn — a
+ * `max-height` would leave the host sized by the very content it is sizing, and
+ * the two would chase each other on every resize.
+ */
 .ob-designer-host {
   width: 100%;
+  height: calc(100vh - 22rem);
+  min-height: 18rem;
   display: flex;
+  align-items: flex-start;
   justify-content: center;
 }
 
@@ -2669,11 +2759,13 @@ html[data-window-blur='true'] .ob-busy rect {
   pointer-events: none;
 }
 
+/* `line-height` is set per element in PageDesignerCanvas.tsx from the element's
+   own `style.lineHeight`, because the PDF renderer uses that number and a
+   stylesheet constant here made the preview disagree with the print. */
 .ob-designer-element {
   position: absolute;
   overflow: hidden;
   color: #111111;
-  line-height: 1.2;
   white-space: pre-wrap;
   border: 1px solid transparent;
 }
@@ -2759,17 +2851,23 @@ html[data-window-blur='true'] .ob-busy rect {
   width: 17.1429rem;
 }
 
-/* Below the tight breakpoint the inspector goes under the page rather than
-   squeezing it — a page narrower than a postcard is not a design surface. */
-@media (max-width: 1100px) {
-  .ob-designer-body {
-    flex-direction: column;
-  }
+/*
+ * The stage is bounded in height so the canvas can fit the whole sheet.
+ *
+ * `PageDesignerCanvas` scales to the smaller of its host's two axes, so this
+ * is what lets an A4 page be visible end to end instead of running past the
+ * bottom of the modal body.
+ *
+ * There is no viewport breakpoint here any more. There was a
+ * `@media (max-width: 1100px)` rule that stacked the inspector under the page,
+ * but the thing squeezing the stage was never the viewport — it was the
+ * editor modal's own fixed width. So the rule never fired for the real
+ * squeeze, and at exactly the 1024px design floor, where it did fire, it made
+ * matters worse: the page grew to fill the width and the inspector landed a
+ * full page-height below the toolbar. The modal is `xl` now and the two sit
+ * side by side at the floor.
+ */
 
-  .ob-designer-side {
-    width: 100%;
-  }
-}
 
 /* Grabbing is the whole interaction, so it has to look grabbable. */
 .ob-designer-element[data-selected='true'] {

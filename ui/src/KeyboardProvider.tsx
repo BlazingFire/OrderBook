@@ -210,6 +210,14 @@ export function KeyboardProvider({
         // can be true at once.
         if (typing && !chord.ctrl && !chord.alt && !chord.meta) continue;
 
+        // `Ctrl+F` is the exception the modifier test above cannot see. It
+        // carries a modifier, so it survives that check — and then swallows the
+        // find somebody just pressed while typing a party name into a search
+        // box, replacing their browser's find with a palette they did not ask
+        // for. A screen-level command has no business firing inside a field;
+        // `record.save` is `global` precisely so Ctrl+S still does.
+        if (typing && command.scope === 'screen') continue;
+
         // Modality. `F5` behind a scrim would refresh the screen somebody
         // cannot see, and `Alt+3` would move the pane under an open editor.
         if (modal && command.scope === 'screen') continue;

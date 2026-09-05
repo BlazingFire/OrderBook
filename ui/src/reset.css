@@ -86,6 +86,12 @@ a:hover {
     animation-duration: 1ms !important;
     transition-duration: 1ms !important;
     animation-iteration-count: 1 !important;
+    /* Delays too, not only durations. A staggered entrance built from delays
+       survives a duration clamp untouched — the splash still took most of a
+       second to assemble itself for somebody who asked for no motion, because
+       each piece was waiting on its own `animation-delay`. */
+    animation-delay: 0s !important;
+    transition-delay: 0s !important;
   }
 }
 
@@ -99,6 +105,8 @@ html[data-motion='off'] *::after {
   animation-duration: 1ms !important;
   transition-duration: 1ms !important;
   animation-iteration-count: 1 !important;
+  animation-delay: 0s !important;
+  transition-delay: 0s !important;
 }
 
 .sr-only {

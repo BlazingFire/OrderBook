@@ -148,6 +148,51 @@ describe('page designer geometry', () => {
     expect(clampToPage({ x: 0, y: 0, w: 400, h: 10 }, PAGE)).toMatchObject({ w: 210, x: 0 });
   });
 
+  /**
+   * The designer clamps to the *printable box*, which is what the server
+   * validates against.
+   *
+   * `assertLayoutValid` builds its bounds from `margins.left` to
+   * `width - margins.right` and throws `elementOffPage` outside them. While
+   * this clamped to the sheet instead, a drag toward the paper edge — which
+   * `snap` actively latched onto — produced a layout the designer had just
+   * accepted and the save then refused, naming no element.
+   */
+  it('clamps into a margin box, not just a page starting at the origin', () => {
+    const { margins } = pageFrame(A4);
+
+    // Above and left of the box: pushed down to its origin, not to 0,0.
+    expect(clampToPage({ x: -5, y: -5, w: 40, h: 10 }, margins)).toMatchObject({
+      x: margins.x,
+      y: margins.y,
+    });
+
+    // Past the far edge: the element's far side lands on the box's, not the
+    // sheet's.
+    const far = clampToPage({ x: 500, y: 500, w: 40, h: 10 }, margins);
+    expect(far.x + far.w).toBe(margins.x + margins.w);
+    expect(far.y + far.h).toBe(margins.y + margins.h);
+
+    // Wider than the box: shrunk to it and seated at its origin.
+    expect(clampToPage({ x: 0, y: 0, w: 400, h: 10 }, margins)).toMatchObject({
+      w: margins.w,
+      x: margins.x,
+    });
+  });
+
+  it('never offers a sheet edge as a snap target', () => {
+    const { page, margins } = pageFrame(A4);
+
+    // A rect a hair off the left edge of the paper. Nothing should pull it to
+    // x=0, because x=0 is a position the server refuses.
+    const { rect } = snap({ x: 0.4, y: 100, w: 30, h: 10 }, [], page, margins);
+    expect(rect.x).not.toBe(0);
+
+    // The margin, on the other hand, is a target.
+    const atMargin = snap({ x: margins.x + 0.4, y: 100, w: 30, h: 10 }, [], page, margins);
+    expect(atMargin.rect.x).toBe(margins.x);
+  });
+
   it('snaps to the closest competing edge, and reports the guide it used', () => {
     const { page, margins } = pageFrame(A4);
     const other: Rect = { x: 100, y: 50, w: 40, h: 20 };

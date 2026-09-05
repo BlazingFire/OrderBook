@@ -98,6 +98,20 @@ async function reloadProduct(tenantId: string, productId: string): Promise<Produ
  * crop, then derive every size from that single rotated-and-cropped raster.
  * Nothing here re-reads a previously-encoded WebP, so repeated edits in one
  * session never compound quality loss (IMG-3).
+ *
+ * **The two passes hand off as raw pixels, not as an image.** sharp 0.33 cannot
+ * chain `.rotate().rotate(deg)` — the second call resets the first — so the
+ * auto-orient and the editor's rotation have to be separate pipelines. What is
+ * *not* forced is the format between them: `toBuffer()` on a JPEG source emits
+ * JPEG at sharp's default quality 80 with 4:2:0 chroma subsampling, so a phone
+ * photo used to be re-encoded lossily **twice** before the archival 2048px
+ * master was derived from it. On a catalogue where the photograph is the
+ * product, that gave away the whole point of the pipeline in two lines, while
+ * this comment claimed the opposite.
+ *
+ * `.raw()` costs memory — width × height × channels, uncompressed — which is
+ * affordable here precisely because `throughRasterGate` admits one of these at
+ * a time.
  */
 async function normalizeAndStore(
   tenantId: string,
@@ -108,17 +122,28 @@ async function normalizeAndStore(
   if (fileBuffer.length === 0) throw new ValidationError('validation.image.fileRequired');
   if (fileBuffer.length > MAX_SOURCE_BYTES) throw new ValidationError('validation.image.tooLarge');
 
-  let oriented: Buffer;
+  let oriented: { data: Buffer; info: sharp.OutputInfo };
   try {
     // Bakes EXIF orientation into pixels — no renderer ever reads EXIF (§2.2).
-    oriented = await sharp(fileBuffer, { failOn: 'none' }).rotate().toBuffer();
+    // Raw, so nothing is encoded on the way to the rotation below.
+    oriented = await sharp(fileBuffer, { failOn: 'none' })
+      .rotate()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
   } catch (error) {
     throw new ValidationError('validation.image.unreadable', { reason: (error as Error).message });
   }
 
   const rotationDeg = assertRotation(crop.rotationDeg);
-  const rotatedInfo = await sharp(oriented)
+  const rotatedInfo = await sharp(oriented.data, {
+    raw: {
+      width: oriented.info.width,
+      height: oriented.info.height,
+      channels: oriented.info.channels,
+    },
+  })
     .rotate(rotationDeg, { background: '#ffffff' })
+    .raw()
     .toBuffer({ resolveWithObject: true });
   const rotated = rotatedInfo.data;
   const rotatedWidth = rotatedInfo.info.width;
@@ -130,7 +155,14 @@ async function normalizeAndStore(
     rotatedHeight,
   );
 
-  const cropped = sharp(rotated).extract({ left: rect.x, top: rect.y, width: rect.width, height: rect.height });
+  // Still raw, so the extract and every resize below work from the one decode.
+  const cropped = sharp(rotated, {
+    raw: {
+      width: rotatedWidth,
+      height: rotatedHeight,
+      channels: rotatedInfo.info.channels,
+    },
+  }).extract({ left: rect.x, top: rect.y, width: rect.width, height: rect.height });
 
   const dir = imageDir(tenantId, imageId);
   await mkdir(dir, { recursive: true });

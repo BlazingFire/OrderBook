@@ -201,4 +201,128 @@ describe('the command catalogue', () => {
   it('has a unique id for every command', () => {
     expect(COMMANDS_BY_ID.size).toBe(COMMANDS.length);
   });
+
+  it('round-trips every default chord through parseChord → formatChord', () => {
+    const failures: string[] = [];
+
+    for (const command of COMMANDS) {
+      const chords = [command.defaultChord, command.platformDefaultChord?.darwin].filter(
+        Boolean,
+      ) as string[];
+
+      for (const chordText of chords) {
+        const parsed = parseChord(chordText);
+        if (!parsed) {
+          failures.push(`${command.id}: "${chordText}" failed to parse`);
+        } else {
+          // formatChord normalizes modifier order (Ctrl, Alt, Shift, Meta),
+          // so we compare the canonical form rather than the original text.
+          const formatted = formatChord(parsed);
+          const reparsed = parseChord(formatted);
+          if (!reparsed) {
+            failures.push(`${command.id}: canonical "${formatted}" failed to re-parse`);
+          } else if (formatChord(reparsed) !== formatted) {
+            failures.push(`${command.id}: "${formatted}" did not round-trip through re-parse`);
+          }
+        }
+      }
+    }
+
+    expect(failures).toEqual([]);
+  });
+
+  /**
+   * Every chord in the catalogue must be reachable from a real keypress.
+   *
+   * `matchesChord` resolves a non-letter key through a private `codeFor`, and a
+   * key it has no entry for can never match — the binding parses, formats,
+   * prints in the help sheet, and then does nothing when pressed. `nav.prev`
+   * and `nav.next` shipped bound to `Alt+ArrowLeft` / `Alt+ArrowRight`, which
+   * `codeFor` returns null for.
+   *
+   * The check asks `matchesChord` itself rather than restating its table. An
+   * earlier version of this test re-declared the punctuation list *and added
+   * the four arrow names to it* — so it asserted that the broken chords were
+   * fine. A copy of a table is not a test of the table; the only honest
+   * question is whether some keypress can fire the binding, so that is the
+   * question this asks.
+   */
+  it('can be fired by an actual keypress, for every chord in the catalogue', () => {
+    // A generous universe of plausible events. Nothing here claims to be the
+    // supported set — `matchesChord` decides. It is wide enough that a failure
+    // means the key is genuinely unreachable rather than merely unlisted.
+    const codes = [
+      ...'abcdefghijklmnopqrstuvwxyz'.split('').map((letter) => ({
+        key: letter,
+        code: `Key${letter.toUpperCase()}`,
+      })),
+      ...'0123456789'.split('').map((digit) => ({ key: digit, code: `Digit${digit}` })),
+      ...Array.from({ length: 24 }, (_, i) => ({ key: `F${i + 1}`, code: `F${i + 1}` })),
+      { key: '/', code: 'Slash' },
+      { key: '.', code: 'Period' },
+      { key: ',', code: 'Comma' },
+      { key: ';', code: 'Semicolon' },
+      { key: "'", code: 'Quote' },
+      { key: '[', code: 'BracketLeft' },
+      { key: ']', code: 'BracketRight' },
+      { key: '\\', code: 'Backslash' },
+      { key: '-', code: 'Minus' },
+      { key: '=', code: 'Equal' },
+      { key: '`', code: 'Backquote' },
+      { key: ' ', code: 'Space' },
+      { key: 'Enter', code: 'Enter' },
+      { key: 'ArrowLeft', code: 'ArrowLeft' },
+      { key: 'ArrowRight', code: 'ArrowRight' },
+      { key: 'ArrowUp', code: 'ArrowUp' },
+      { key: 'ArrowDown', code: 'ArrowDown' },
+      { key: 'Home', code: 'Home' },
+      { key: 'End', code: 'End' },
+    ];
+
+    const failures: string[] = [];
+
+    for (const command of COMMANDS) {
+      const chords = [command.defaultChord, command.platformDefaultChord?.darwin].filter(
+        Boolean,
+      ) as string[];
+
+      for (const chordText of chords) {
+        const chord = parseChord(chordText);
+        if (!chord) continue;
+
+        const fired = codes.some((candidate) =>
+          matchesChord(
+            {
+              key: candidate.key,
+              code: candidate.code,
+              ctrlKey: Boolean(chord.ctrl),
+              altKey: Boolean(chord.alt),
+              shiftKey: Boolean(chord.shift),
+              metaKey: Boolean(chord.meta),
+            },
+            chord,
+          ),
+        );
+
+        if (!fired) {
+          failures.push(`${command.id}: no keypress can match "${chordText}"`);
+        }
+      }
+    }
+
+    expect(failures).toEqual([]);
+  });
+
+  it('would report an arrow-key chord as unreachable', () => {
+    // The guard's own guard. If `codeFor` ever grows arrow support this goes
+    // red, which is the right moment to revisit `nav.prev` / `nav.next`.
+    const chord = parseChord('Alt+ArrowLeft');
+    expect(chord).not.toBeNull();
+    expect(
+      matchesChord(
+        { key: 'ArrowLeft', code: 'ArrowLeft', ctrlKey: false, altKey: true, shiftKey: false, metaKey: false },
+        chord!,
+      ),
+    ).toBe(false);
+  });
 });

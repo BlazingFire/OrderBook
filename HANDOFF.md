@@ -42,6 +42,16 @@ rather than editing implementation files directly — see
 >
 > Lift this hold only when both are done and `npm run verify` is green.
 >
+> **Status, 2026-09-06: both conditions are now met — the hold is still yours to
+> lift.** All four blockers are fixed and all five guardrails have been rewritten
+> and each individually watched to fail against the broken code before being
+> accepted; `npm run lint`, `npm run typecheck` and `npm run test` each exit 0.
+> Note that the first attempt at these fixes did **not** clear the bar: it left
+> the typecheck red in three workspaces, moved the slot leak from the counter
+> into the `ai_runs` table, and shipped five guardrail tests that all passed
+> against the code they were written to catch. See the 2026-09-06 entry below.
+> Nothing here decides the release — say the word and it goes out.
+>
 > The `HANDOFF.md` entry `d52bdef` wrote for itself is unreliable — it heads its
 > file list "20 files" over 23 bullets for a 32-file diff, omits the seven
 > `package.json` bumps that are its own headline, invents a `⌘+,` shortcut that
@@ -122,6 +132,197 @@ work" below and is manual verification, not code.
 Everything through Stage 6 is pushed to **both `dev` and `main`** (they are at
 the same commit as of 2026-08-28). Stages 7–12 are on `dev` only, awaiting the
 owner's word to push.
+
+### v1.0.3 blockers fixed, guardrails rewritten, designer and photo flow improved (2026-09-06)
+
+A Claude session audited the uncommitted work from the Qwen/OpenCode and
+Command Code sessions, repaired it, and then did the designer and product-photo
+work the owner asked for. `npm run verify` is green.
+
+**The audit.** 121 agents across seven dimensions, each finding refuted by three
+independent verifiers before it was allowed to stand. **33 findings survived; 4
+were refuted.** The headline result: the four blocker fixes were partial or
+wrong, and **all five guardrail tests passed against the code they were written
+to catch.**
+
+- **`npm run verify` was red, not green.** Widening `AiHardware`'s four fields
+  to optional left three reads unguarded in `ui/src/AiSupportScreen.tsx`
+  (`:102`, `:163`, `:196`), which failed `tsc` in three workspaces. The previous
+  HANDOFF entry recorded these as "pre-existing at HEAD, unrelated to this
+  work"; `git show HEAD:shared/src/domain/ai.ts` shows all four fields required
+  at HEAD, so the errors were introduced by that same change. **That claim has
+  been removed from this file and from `docs/AI_COLLABORATION.md`.**
+- **The concurrency-slot fix moved the acquire too far.** Putting
+  `checkCanStartRun` *after* `insertRun` traded the counter leak for a row leak:
+  an ordinary `tooManyConcurrent` or `memoryPressure` refusal left a committed
+  `ai_runs` row at `status='running'`, in neither the `running` nor the
+  `ownerOf` map, uncancellable and unfinishable until the next boot. The acquire
+  now sits above the insert, with a `.catch` that releases the slot if the write
+  fails.
+- **All five guardrail tests were vacuous.** Each has been rewritten and each
+  was then *watched to fail* against the exact broken code before being accepted:
+  - `ui/tests/no-transport-dep.test.ts` — its regex `useEffect\([^)]*\[…\]` could
+    not cross the `)` in `() => {`, so it matched **zero** of the 87 `useEffect`
+    calls in `ui/src`, the pre-fix `AiSupportScreen` included. Replaced with a
+    bracket-matching scanner that also covers `useCallback`/`useMemo` and scans
+    `master/web/src` and `office/web/src`, which have no tests of their own. It
+    found four real violations in `DocumentsScreen.tsx`, now on `transportRef`.
+  - `shared/tests/keys-implemented.test.ts` — its `SHELL_DISPATCHED` allowlist
+    contained every id in the catalogue, the four dead commands included, and
+    seeded the "implemented" set from it before reading any source. Rewritten to
+    derive handling from evidence: `command.tab`, a `useCommand` call, a
+    `command.id ===` comparison in the provider, or a key in a `shellCommands`
+    literal.
+  - `shared/tests/keys.test.ts` — re-declared `chord.ts`'s private key table
+    *and added the four arrow names to it*, so it asserted the broken chords were
+    fine. Now asks `matchesChord` itself whether any keypress can fire each chord.
+  - `master/tests/ai-limiter.test.ts` — two bare `rejects.toThrow()` with
+    `maxConcurrentRuns` stubbed to 3, so a leaked slot satisfied it exactly as
+    well as a budget refusal. Confirmed by re-running it against the pre-fix
+    service: `1 passed`. Now three cases naming their errors, red against both
+    wrong orderings.
+  - `master/tests/screen-reachability.test.ts` — collected screen ids with a
+    file-wide `/id:\s*'…'/`, which also matched every nav item, so it compared a
+    set with itself. Now classifies object literals by `icon:` versus `render:`,
+    and every screen only one panel has carries a written reason — including the
+    Office panel's absent AI Support route, which is now a decision rather than
+    an omission.
+- **The motion kill switches clamp `animation-duration` but not
+  `animation-delay`**, and the splash diff lengthened every delay. Both switches
+  in `ui/src/reset.css` now clamp delays too. The previous entry's claim that
+  they "still collapse the animations" was wrong in the same commit that made it
+  wronger.
+- **Four dead commands deleted** (`edit.undo`, `edit.duplicate`, `nav.prev`,
+  `nav.next`). None had a handler anywhere; `Ctrl+Z` additionally shadowed the
+  Electron Edit menu's undo while typing into a lead, and the two arrow chords
+  bound a key `codeFor` cannot resolve. The page designer's own Ctrl+Z/Ctrl+D are
+  unaffected — they never went through the registry. **`Ctrl+F` no longer fires
+  while the caret is in a field**: screen-scoped commands are now skipped there.
+- **Deleted rather than documented:** the `memory` object on the health endpoint
+  (zero consumers), the two non-existent Ollama models and every `ollama run`
+  install command, the `curl … | sh` line and the two dead external links on an
+  offline-only product, and three prose claims that GC hints were being fired.
+  The memory monitor's fallback ceiling was `os.totalmem() * 0.75` — one V8 heap
+  against three quarters of the machine — so it could never fire outside
+  Electron; it is Node's own 4096 MB default now.
+
+**PDF designer.** The canvas was lying about the print in two independent ways
+and the designer was producing layouts the server refuses:
+
+- The canvas ignored `fit` — and `DEFAULT_TEXT_STYLE.fit` is `truncate`, which
+  the PDF draws as one ellipsised line while the canvas wrapped it over several
+  and hid the rest. It also hardcoded `line-height: 1.2` against the renderer's
+  1.45, fitting about a fifth more lines into a box than would print. Both fixed.
+- `clampToPage` and `snap` worked against the **sheet**, while
+  `assertLayoutValid` validates against the **printable box** — so dragging
+  toward the paper edge actively latched an element into a position the save
+  would refuse. Both now use the margin box.
+- **"Fit to page" exists.** `validation.documents.layout.elementOffPage` has
+  always told the operator to "use Fit to page"; there was no such control.
+- Colour, box fill/stroke/radius, rule colour and thickness, and the image slot
+  are all editable — every one of those fields was typed, validated and rendered,
+  with no way to set it. `rule.thickness` was also being dropped by the renderer;
+  it is drawn now.
+- The editor modal is `xl` (was `lg`), and the canvas fits the sheet to the
+  **smaller of both axes** rather than to width alone, so the whole page is
+  visible. The `@media (max-width: 1100px)` rule that stacked the inspector is
+  gone: it keyed on the viewport when the constraint was the modal's own width,
+  so it never fired for the real squeeze and made things worse at the 1024px
+  floor.
+- Undo takes its snapshot on the first *movement*, not on every click, and the
+  inspector's number boxes no longer collapse to 0 when cleared to retype.
+
+**Templates.** Eight new starter designs, taking the gallery from six to
+fourteen: Tax Invoice, Counter Quote (A5), Credit Note, Order Confirmation
+(landscape), Production Work Order, Packing List, Delivery Challan and Sample
+Dispatch Note. The gallery groups them under their document type. Every one is
+covered by the existing `assertTemplateValid` sweep in
+`master/tests/document-template.test.ts`, and both locale catalogues carry real
+Hindi, not `TODO(i18n-hi)`.
+
+**Product photos.** One proven crash and one silent output corruption:
+
+- **HTTP 500, reproduced.** `assertCropRect` tolerated half a pixel of overhang
+  and then rounded `x` and `width` independently, so it could hand
+  `sharp.extract` a rect a pixel wider than the image — a plain `Error`, so the
+  shop saw "Something went wrong" after the upload. Reachable by straightening
+  and dragging the crop to an edge. The rounding is clamped now, and
+  `master/tests/image-domain.test.ts` is the **first unit test this module has
+  had** — the only prior coverage was PostgreSQL-gated, which is why the gate was
+  green.
+- **Straighten baked white wedges.** The server fills the rotation background
+  `#ffffff`; the preview left it transparent over a near-black canvas in dark
+  mode, and the default crop was 86% of the *bounding box*, always larger than
+  the wedge-free region. The canvas now paints the wedges the colour they will
+  be, and the default crop is sized to the inscribed rectangle.
+- **"Decode once" was false.** Both rotation passes emitted JPEG at sharp's
+  default quality for a JPEG source, so a phone photo was lossily re-encoded
+  twice before the archival 2048px master. They hand off as raw pixels now.
+- The add flow takes **several files at once** and walks them through the editor
+  as a queue, accepts **dropped files** (native, no library), and the editor
+  gained six aspect presets, a Reset, eight resize grips instead of four, a live
+  output-size readout that warns below the stored long edge, and an aspect lock
+  that actually holds its ratio.
+- **Captions are reachable.** `updateImageCaption` has been shipped and
+  unreachable since it was written, so every photo on a product carried the same
+  alt text. Deleting a photo now asks first — it is a hard delete of the row and
+  every derived file, with no Recycle Bin behind it.
+- 20 hardcoded English strings across the two files are tokenised, and
+  `orderbook-i18n/no-untranslated-jsx-text` is **`'error'` for the swept files**
+  in `eslint.config.js`. That rule already existed and was switched off; turning
+  it on for finished files is what stops the next agent re-introducing literals,
+  which is exactly how `AssistantScreen.tsx` gained eight of them.
+
+**Still open.** The Office relay still drops `messageKey` from error bodies
+(`office/src/http/app.ts:513-517`, `office/web/src/api.ts:328-338`), `postFile`
+has no timeout, `reloadProduct` returns an unmasked `Product` to all four image
+mutations, and `office/web/vite.config.ts` proxies only `/api` so `/uploads/…`
+404s in dev. All four are already specified in
+`docs/ai-handoffs/office-product-image-flow.md` and were left there rather than
+re-litigated. The renderer still partitions body elements above/below the table
+rather than painting in z order; a rendering test should come before that change.
+
+**The Hindi catalogue is still unreachable, and that is now a bigger waste than
+it was.** `ui/src/i18n.ts:45` reads `ob.locale` out of `localStorage`, and
+**nothing anywhere writes it** — there is no language picker in either panel, so
+`hi.ts` has never been displayed to anybody. This session added real Hindi for
+every new token rather than another `TODO(i18n-hi)`, which means the translation
+is now good and still invisible. The fix is small in shape — a `<Select>` beside
+Theme and Motion in both Settings screens, writing the key through the existing
+`store()` helper in `theme.ts` — but not as small as it looks: several modules
+call `t()` at import time (`ui/src/AiSupportScreen.tsx:15` builds
+`PLATFORM_LABELS` at module scope, and `ImageCropModal.tsx` does the same for its
+aspect labels), so switching locale needs a reload rather than a re-render, and
+that decision belongs to the owner. **Left undone deliberately** — it is a
+feature in two Settings screens, not part of the designer or photo work asked
+for here.
+
+### Splash & busy-mark motion refinement (2026-09-05)
+
+A Qwen/OpenCode session refined the cold-start splash (§6 "The Fill") and the
+busy indicator so the two read as one asset. Cosmetic only — no logic, data, or
+protocol change. Files: `ui/src/Splash.tsx`, `ui/src/BusyMark.tsx`,
+`ui/src/base.css`.
+
+- **Re-timed the splash** to a slower beat: outline draw 0–280ms, ink-in
+  280–700ms (150ms eased cells, 42ms stagger), wordmark 700–980ms, bar +
+  caption at 800ms. `SPLASH_MS` 950→1020.
+- **Grew the mark** 96→104px with its own `ob-mark-in` entrance (320ms settle to
+  0.98 scale). Outline `rx` 1→2.5; cell `rx` 0.75.
+- **Matched the busy mark to the splash**: loop 700→780ms, `--e-standard` easing
+  (was linear), stagger 58→42ms, peak opacity 0.25→0.42.
+- **New keyframes**: `ob-mark-in`, `ob-label-in` (keyed to `label` so caption
+  changes re-fire), `ob-rise-in` (error entrance), and a `::after` glint on the
+  fill bar (`--rail-glint`). The error state now gets a distinct
+  `ob-splash-status--error` class.
+
+**Two claims made here were wrong and are corrected in the entry above.** The
+three `AiSupportScreen.tsx` typecheck errors were recorded as "pre-existing at
+HEAD"; `git show HEAD:shared/src/domain/ai.ts` shows all four `AiHardware` fields
+required at HEAD, so they were introduced by the same working tree. And the
+`prefers-reduced-motion` / `data-motion="off"` switches clamped
+`animation-duration` but **not** `animation-delay`, so the choreography this
+entry lengthened survived both of them until it was fixed.
 
 ### Post-overhaul: Mac shortcuts, animations, LLM support, RAM management (2026-09-02)
 

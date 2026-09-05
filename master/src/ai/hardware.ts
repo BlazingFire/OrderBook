@@ -32,9 +32,30 @@ export function tierFor(totalMemoryGb: number): AiHardwareTier {
 }
 
 /**
- * Recommend models based on total RAM and whether the machine has unified
- * memory (Apple Silicon). Each tier assumes ~40% of RAM is available for the
- * model after the OS, PostgreSQL and the Node process take their share.
+ * Which local models are worth listing on a machine with this much RAM.
+ *
+ * **The gate is not the fit.** A tier here decides whether a model is worth
+ * *showing*; whether it will actually run well on the machine in front of you is
+ * `modelFit` in `ui/src/AiSupportScreen.tsx`, which compares `ramRequiredGb`
+ * against 40% and 60% of total RAM and badges each row accordingly. Keeping the
+ * two apart is deliberate: an 8 GB shop PC should see the 3B model marked
+ * honestly as marginal, not be shown an empty table.
+ *
+ * The previous version of this comment claimed each tier "assumes ~40% of RAM is
+ * available for the model", which was true of none of them — the 8 GB tier
+ * listed a model wanting 4 GB (50%), the 24 GB tier one wanting 12 GB (50%), and
+ * the 32 GB tier one wanting 24 GB (75%).
+ *
+ * **No install commands.** Every entry used to carry `ollama run <model>`, which
+ * is a download. This product runs offline on a LAN with no internet route, so
+ * an instruction that only works on a machine that has one is worse than no
+ * instruction: it reads as the supported path and fails in the shop. Getting a
+ * model onto a Master is a job for whoever set the machine up, and it happens
+ * before the software is ever opened.
+ *
+ * **Real models only.** `llama-3.1-13b` and `llama-3.1-34b` were listed with
+ * pull commands. Neither exists — Llama 3.1 shipped 8B, 70B and 405B — so both
+ * commands failed for anyone who tried them.
  */
 function recommendModels(totalMemoryGb: number, hasUnifiedMemory: boolean): RecommendedModel[] {
   const models: RecommendedModel[] = [];
@@ -45,7 +66,6 @@ function recommendModels(totalMemoryGb: number, hasUnifiedMemory: boolean): Reco
       sizeLabel: '3B Q4_K_M (~2.4 GB)',
       ramRequiredGb: 4,
       provider: 'ollama',
-      command: 'ollama run llama3.2:3b',
     });
   }
 
@@ -56,43 +76,39 @@ function recommendModels(totalMemoryGb: number, hasUnifiedMemory: boolean): Reco
         sizeLabel: '8B Q4_K_M (~4.7 GB)',
         ramRequiredGb: 8,
         provider: 'ollama',
-        command: 'ollama run llama3.1:8b',
       },
       {
         name: 'qwen-2.5-7b',
         sizeLabel: '7B Q4_K_M (~4.4 GB)',
         ramRequiredGb: 7,
         provider: 'ollama',
-        command: 'ollama run qwen2.5:7b',
       },
     );
   }
 
   if (totalMemoryGb >= 24) {
     models.push({
-      name: 'llama-3.1-13b',
-      sizeLabel: '13B Q4_K_M (~7.4 GB)',
-      ramRequiredGb: 12,
+      name: 'qwen-2.5-14b',
+      sizeLabel: '14B Q4_K_M (~8.5 GB)',
+      ramRequiredGb: 10,
       provider: 'ollama',
-      command: 'ollama run llama3.1:13b',
     });
   }
 
-  if (totalMemoryGb >= 32) {
+  if (totalMemoryGb >= 48) {
     models.push({
-      name: 'llama-3.1-34b',
-      sizeLabel: '34B Q4_K_M (~19 GB)',
+      name: 'qwen-2.5-32b',
+      sizeLabel: '32B Q4_K_M (~19 GB)',
       ramRequiredGb: 24,
       provider: 'ollama',
-      command: 'ollama run llama3.1:34b',
     });
   }
 
-  // On Apple Silicon, note that Metal acceleration is available — models run
-  // faster because the GPU shares the same RAM pool.
+  // On Apple Silicon the GPU shares the same RAM pool, so a model of a given
+  // size is usable on less total memory than it would be elsewhere.
   if (hasUnifiedMemory && totalMemoryGb >= 16) {
     models.push({
-      name: 'qwen-2.5-14b',
+      name: 'qwen-2.5-14b-metal',
       sizeLabel: '14B Q4_K_M (~8.5 GB, Metal accelerated)',
       ramRequiredGb: 10,
       provider: 'lm-studio',

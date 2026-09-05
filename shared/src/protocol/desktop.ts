@@ -174,15 +174,4 @@ export interface PanelRuntimeHealth {
   adminSockets: number;
   /** How many changes this run of the Master has published. */
   changeRingSeq: number;
-  /** Live memory status — only on loopback, never exposed to the LAN. */
-  memory?: {
-    rssMb: number;
-    heapUsedMb: number;
-    heapTotalMb: number;
-    totalSystemMb: number;
-    freeSystemMb: number;
-    panel: string;
-    capMb: number;
-    isOverCap: boolean;
-  };
 }

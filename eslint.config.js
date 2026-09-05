@@ -66,4 +66,36 @@ export default tseslint.config(
       'orderbook-i18n/no-untranslated-jsx-text': 'off',
     },
   },
+  {
+    /*
+     * The swept files, where the rule is `'error'`.
+     *
+     * The blanket `'off'` above is right for ~4,000 unswept lines and wrong for
+     * a file somebody has just finished translating: without this block a
+     * sweep lasts exactly until the next agent adds a `<span>Primary</span>`,
+     * which is what happened to `AssistantScreen.tsx` — it gained eight English
+     * literals, two of them duplicating tokens added twelve lines away, in the
+     * same commit that added the tokens.
+     *
+     * A guardrail brief asked for a test that catches this. The rule that
+     * catches it already existed and was switched off; turning it on for the
+     * files it now passes on is the smaller change, and unlike a test it names
+     * the offending line.
+     *
+     * Add a file here as you finish translating it. Never remove one.
+     */
+    files: [
+      'ui/src/AiSupportScreen.tsx',
+      'ui/src/AssistantScreen.tsx',
+      'ui/src/DocumentsScreen.tsx',
+      'ui/src/ImageCropModal.tsx',
+      'ui/src/PageDesigner.tsx',
+      'ui/src/PageDesignerInspector.tsx',
+      'office/web/src/components/ProductImages.tsx',
+    ],
+    plugins: { 'orderbook-i18n': orderbookI18n },
+    rules: {
+      'orderbook-i18n/no-untranslated-jsx-text': 'error',
+    },
+  },
 );

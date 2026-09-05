@@ -62,6 +62,21 @@ export function variantDimensions(
  * Validates a crop rect against the (already-rotated) source dimensions. The
  * editor sends pixel coordinates in that rotated space — see
  * `ImageCropInput` in `shared/src/domain/inputs.ts`.
+ *
+ * **The rounding is clamped, not blind.** The bounds check tolerates half a
+ * pixel of overhang, because the browser computes the rotated frame with
+ * trigonometry while sharp rounds it to whole pixels — for any angle that is
+ * not a multiple of 90° the two disagree by a fraction. Rounding `x` and
+ * `width` independently could then push their sum back over the edge: a
+ * 1000×750 source at 45° gives sharp 1237 and the browser 1237.437, so
+ * `x = 500.9` and `width = 736.537` pass the ≤ 1237.5 check and round to
+ * 501 + 737 = 1238. `sharp.extract` rejects that with a plain
+ * `extract_area: bad extract area`, which is not a `ValidationError`, so the
+ * shop saw **HTTP 500 "Something went wrong"** — after the upload, and leaving
+ * an empty variant directory behind.
+ *
+ * Reachable by using the Straighten slider and dragging the crop flush against
+ * an edge, which is what the editor's own clamp does.
  */
 export function assertCropRect(rect: CropRect, rotatedWidth: number, rotatedHeight: number): CropRect {
   const { x, y, width, height } = rect;
@@ -76,11 +91,15 @@ export function assertCropRect(rect: CropRect, rotatedWidth: number, rotatedHeig
     throw new ValidationError('validation.image.crop.outOfBounds');
   }
 
+  // The origin first, so there is always at least one pixel left to take.
+  const left = Math.min(Math.round(x), Math.max(0, rotatedWidth - 1));
+  const top = Math.min(Math.round(y), Math.max(0, rotatedHeight - 1));
+
   return {
-    x: Math.round(x),
-    y: Math.round(y),
-    width: Math.round(width),
-    height: Math.round(height),
+    x: left,
+    y: top,
+    width: Math.max(1, Math.min(Math.round(width), rotatedWidth - left)),
+    height: Math.max(1, Math.min(Math.round(height), rotatedHeight - top)),
   };
 }
 

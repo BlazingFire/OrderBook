@@ -76,7 +76,7 @@ export function PageDesignerCanvas({
   children,
 }: PageDesignerCanvasProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const [widthPx, setWidthPx] = useState(0);
+  const [box, setBox] = useState({ width: 0, height: 0 });
 
   // Measured rather than assumed: the same canvas serves a narrow preview pane
   // and a full-width editor, and the scale is the only thing that differs.
@@ -85,18 +85,34 @@ export function PageDesignerCanvas({
     if (!host) return;
 
     const observer = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width ?? 0;
-      setWidthPx(width);
+      const rect = entries[0]?.contentRect;
+      setBox({ width: rect?.width ?? 0, height: rect?.height ?? 0 });
     });
 
     observer.observe(host);
-    setWidthPx(host.clientWidth);
+    setBox({ width: host.clientWidth, height: host.clientHeight });
 
     return () => observer.disconnect();
   }, []);
 
   const { page, margins } = pageFrame(geometry);
-  const pxPerMm = scaleFor(widthPx, page.w);
+
+  /*
+   * Fitted to the *smaller* of the two axes, not to the width alone.
+   *
+   * Scaling to width meant an A4 page drew 769px tall in a modal body capped
+   * near 660px, so the bottom of every design was below the fold and the only
+   * way to see it was to scroll the sheet — which moves the thing you are
+   * trying to place. Taking the height into account when the host has one
+   * bounded makes the whole page visible, which is the point of drawing a page.
+   *
+   * The height is only honoured when the host actually constrains it; the
+   * read-only preview pane sizes itself from its content, so `height` is 0
+   * there and the width still decides.
+   */
+  const byWidth = scaleFor(box.width, page.w);
+  const byHeight = box.height > 0 ? scaleFor(box.height, page.h) : Infinity;
+  const pxPerMm = Math.min(byWidth, byHeight);
   const px = (mm: number): string => `${(mm * pxPerMm).toFixed(2)}px`;
 
   const ordered = [...elements].sort((a, b) => a.z - b.z);
@@ -137,6 +153,36 @@ export function PageDesignerCanvas({
             style.fontSize = `${(element.style.size * (pxPerMm / 2.8346)).toFixed(2)}px`;
             style.textAlign = element.style.align === 'centre' ? 'center' : element.style.align;
             style.fontWeight = element.style.bold ? 600 : 400;
+
+            /*
+             * The element's own line height, not the stylesheet's.
+             *
+             * `.ob-designer-element` hardcoded `1.2` while `ElementTextStyle`
+             * defaults to `1.45` — which is what `drawFitted` uses. The canvas
+             * therefore fitted about a fifth more lines into a box than the PDF
+             * would, and it was optimistic in the direction that hurts: text
+             * that looked like it fit came back clipped.
+             */
+            style.lineHeight = String(element.style.lineHeight);
+            if (element.style.colour) style.color = element.style.colour;
+
+            /*
+             * And the element's `fit`, which the canvas ignored entirely.
+             *
+             * `DEFAULT_TEXT_STYLE.fit` is `'truncate'`, so *every* element the
+             * palette creates is one — and the PDF draws a truncate as a single
+             * line ending in an ellipsis while the canvas wrapped it over as
+             * many lines as the box allowed and hid the rest. Three lines on
+             * screen, one line in the print. `wrap` was the mirror image: the
+             * PDF is the only mode allowed to overflow its box, and the canvas
+             * was the only one clipping.
+             */
+            if (element.style.fit === 'truncate') {
+              style.whiteSpace = 'nowrap';
+              style.textOverflow = 'ellipsis';
+            } else if (element.style.fit === 'wrap') {
+              style.overflow = 'visible';
+            }
           }
 
           if (element.kind === 'box') {

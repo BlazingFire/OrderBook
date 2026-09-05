@@ -1260,6 +1260,30 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'documents.starter.letterhead.description':
     'Company stationery with a small table — no rates, no party block.',
+  'documents.starter.taxInvoice.name': 'टैक्स इनवॉइस',
+  'documents.starter.taxInvoice.description':
+    'दरों सहित वह पर्चा जो खरीदार अपने रिकॉर्ड में रखता है, हस्ताक्षर सहित।',
+  'documents.starter.counterQuote.name': 'काउंटर कोटेशन — A5',
+  'documents.starter.counterQuote.description':
+    'आधे पन्ने का छोटा कोटेशन, शोरूम काउंटर पर तुरंत बनाने के लिए।',
+  'documents.starter.creditNote.name': 'क्रेडिट नोट',
+  'documents.starter.creditNote.description':
+    'लौटाए गए या कम भेजे गए माल के बदले जारी, वॉटरमार्क और हस्ताक्षर सहित।',
+  'documents.starter.orderConfirmationWide.name': 'ऑर्डर पुष्टि — चौड़ा',
+  'documents.starter.orderConfirmationWide.description':
+    'लैंडस्केप पन्ना, जब एक लाइन में इतने रंग हों कि चौड़ाई कम पड़ जाए।',
+  'documents.starter.workOrder.name': 'उत्पादन वर्क ऑर्डर',
+  'documents.starter.workOrder.description':
+    'भट्ठी तक जाने वाला पर्चा — नाप और रंग दिखते हैं, दरें नहीं।',
+  'documents.starter.packingList.name': 'पैकिंग सूची',
+  'documents.starter.packingList.description':
+    'गाड़ी में चढ़ते डिब्बों से मिलान का पर्चा, उत्पाद के अनुसार समूहित।',
+  'documents.starter.deliveryChallan.name': 'डिलीवरी चालान',
+  'documents.starter.deliveryChallan.description':
+    'माल के साथ चलने वाला बिना दर का दस्तावेज़, दूसरे छोर पर हस्ताक्षर के लिए।',
+  'documents.starter.sampleDispatch.name': 'सैंपल डिस्पैच नोट',
+  'documents.starter.sampleDispatch.description':
+    'नमूनों के लिए, SAMPLE वॉटरमार्क सहित — बिक्री का पर्चा नहीं।',
   // TODO(i18n-hi)
   'documents.gallery.title': 'Start from a design',
   // TODO(i18n-hi)
@@ -1354,6 +1378,16 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'designer.field.fit': 'If it does not fit',
   // TODO(i18n-hi)
   'designer.field.fitHelp': 'What to do when the text is longer than the box.',
+  'designer.field.colour': 'रंग',
+  'designer.field.colourHelp': '#1F2A3B जैसा हेक्स रंग। खाली छोड़ने पर टेम्पलेट का एक्सेंट रंग लगेगा।',
+  'designer.field.fill': 'भराव',
+  'designer.field.stroke': 'किनारा',
+  'designer.field.radius': 'कोने की त्रिज्या (mm)',
+  'designer.field.thickness': 'मोटाई (mm)',
+  'designer.field.slot': 'कौन-सी छवि',
+  'designer.slot.logo': 'कंपनी लोगो',
+  'designer.slot.signature': 'हस्ताक्षर',
+  'designer.field.colourInvalid': '#1F2A3B जैसा हेक्स रंग लिखें, या खाली छोड़ दें।',
   // TODO(i18n-hi)
   'designer.field.maxChars': 'Character limit',
   // TODO(i18n-hi)
@@ -1404,6 +1438,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'designer.distribute': 'Space evenly',
   // TODO(i18n-hi)
+  'designer.fitToPage': 'पन्ने में समाएँ',
   'designer.undo': 'Undo',
   // TODO(i18n-hi)
   'designer.newText': 'New text',
@@ -2280,6 +2315,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'ai.provenance': 'What this looked at ({count} steps)',
   'ai.provenance.step': '{tool} — {rows} records',
   'ai.budget': '{spent} of {budget} tokens used today',
+  'ai.support.gb': '{gb} GB',
+  'ai.hardware.ram': '{gb} GB RAM',
+  'ai.hardware.cpus': '{count} CPU',
+  'ai.hardware.appleSilicon': 'Apple Silicon',
+  'ai.hardware.recommended': 'सुझाए गए: {models}',
   'ai.hardware.marginal':
     'This machine has {gb} GB. A local model will run, slowly, with little else open.',
   'ai.hardware.unsupported':
@@ -3343,6 +3383,46 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'product.field.grade': 'Grade',
   // TODO(i18n-hi)
+  // --- Product photos: the strip and the crop editor -----------------------
+  'photo.add': 'फ़ोटो जोड़ें',
+  'photo.primary': 'मुख्य',
+  'photo.setPrimary': 'मुख्य बनाएँ',
+  'photo.moveEarlier': 'पहले करें',
+  'photo.moveLater': 'बाद में करें',
+  'photo.remove': 'फ़ोटो हटाएँ',
+  'photo.removeConfirm.title': 'यह फ़ोटो हटाएँ?',
+  'photo.removeConfirm.body':
+    'फ़ोटो और उससे बने सभी आकार मिट जाएँगे। इसे वापस नहीं लाया जा सकता।',
+  'photo.dropHint': 'फ़ोटो यहाँ छोड़ें',
+  'photo.saving': 'फ़ोटो सहेजी जा रही है…',
+  'photo.caption.edit': 'विवरण',
+  'photo.caption.title': 'फ़ोटो का विवरण',
+  'photo.caption.placeholder': 'यह फ़ोटो क्या दिखाती है',
+  'photo.caption.help':
+    'स्क्रीन रीडर इसे पढ़कर सुनाते हैं, और जहाँ भी फ़ोटो दिखती है वहाँ यही वैकल्पिक पाठ बनता है।',
+  'photo.error.notAnImage': 'कोई इमेज फ़ाइल चुनें',
+  'photo.error.tooLarge': '{maxMb} MB से छोटी इमेज चुनें',
+  'photo.error.uploadFailed': 'फ़ोटो सहेजी नहीं जा सकी',
+  'photo.error.updateFailed': 'फ़ोटो बदली नहीं जा सकी',
+  'photo.error.removeFailed': 'फ़ोटो हटाई नहीं जा सकी',
+  'photo.error.reorderFailed': 'फ़ोटो का क्रम बदला नहीं जा सका',
+  'photo.editor.title': 'फ़ोटो संपादित करें',
+  'photo.editor.titleQueued': 'फ़ोटो {index} / {total} संपादित करें',
+  'photo.editor.loading': 'लोड हो रही है…',
+  'photo.editor.aspect': 'आकार',
+  'photo.editor.aspect.free': 'मुक्त',
+  'photo.editor.aspect.original': 'मूल',
+  'photo.editor.aspect.square': 'वर्ग',
+  'photo.editor.aspect.landscape43': '4:3',
+  'photo.editor.aspect.landscape32': '3:2',
+  'photo.editor.aspect.portrait45': '4:5',
+  'photo.editor.rotateLeft': 'बाएँ घुमाएँ',
+  'photo.editor.rotateRight': 'दाएँ घुमाएँ',
+  'photo.editor.straighten': 'सीधा करें',
+  'photo.editor.reset': 'रीसेट',
+  'photo.editor.output': 'परिणाम {width} × {height} px',
+  'photo.editor.outputSmall':
+    'परिणाम {width} × {height} px — इस उत्पाद के लिए संग्रहित {longEdge} px से छोटा, इसलिए सबसे बड़ा आकार पूरा नहीं भरेगा',
   'product.field.images': 'Photos',
   // TODO(i18n-hi)
   'product.field.name': 'Product name',
@@ -3915,17 +3995,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'settings.scale.note': 'Root {size} — this screen resizes live',
   // TODO(i18n-hi)
-  'keys.command.undo': 'Undo',
-  // TODO(i18n-hi)
-  'keys.command.duplicate': 'Duplicate',
-  // TODO(i18n-hi)
   'keys.command.toggleSidebar': 'Toggle sidebar',
   // TODO(i18n-hi)
   'keys.command.find': 'Find',
-  // TODO(i18n-hi)
-  'keys.command.prev': 'Previous',
-  // TODO(i18n-hi)
-  'keys.command.next': 'Next',
   // TODO(i18n-hi)
   'ai.support.title': 'Local AI Support',
   // TODO(i18n-hi)
@@ -3953,17 +4025,15 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'ai.support.ollama.title': 'Ollama',
   // TODO(i18n-hi)
-  'ai.support.ollama.desc': 'Run local LLMs with a simple command-line API. Best for most setups.',
+  'ai.support.ollama.desc': 'इसी मशीन पर छोटे HTTP API के पीछे लोकल मॉडल चलाता है। आम तौर पर यही चुना जाता है।',
   // TODO(i18n-hi)
-  'ai.support.ollama.install': 'Install with: curl -fsSL https://ollama.com/install.sh | sh',
-  // TODO(i18n-hi)
-  'ai.support.ollama.download': 'Download from: https://ollama.com',
+  'ai.support.ollama.download': 'इसे अपनी मीडिया से इसी मशीन पर इंस्टॉल करें — चलाने के लिए दुकान का ऑनलाइन होना ज़रूरी नहीं।',
   // TODO(i18n-hi)
   'ai.support.lmstudio.title': 'LM Studio',
   // TODO(i18n-hi)
-  'ai.support.lmstudio.desc': 'GUI-based model management with a built-in server. Good for testing.',
+  'ai.support.lmstudio.desc': 'कमांड लाइन के बजाय एक विंडो, अपने सर्वर के साथ। मॉडल आज़माने के लिए आसान।',
   // TODO(i18n-hi)
-  'ai.support.lmstudio.download': 'Download from: https://lmstudio.ai',
+  'ai.support.lmstudio.download': 'यह भी इसी मशीन पर इंस्टॉल होता है; यह भी localhost पर ही चलता है।',
   // TODO(i18n-hi)
   'ai.support.models': 'Recommended Models',
   // TODO(i18n-hi)
@@ -3977,8 +4047,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'ai.support.model.provider': 'Provider',
   // TODO(i18n-hi)
-  'ai.support.model.install': 'Command',
-  // TODO(i18n-hi)
   'ai.support.model.fits': 'Fits on this machine',
   // TODO(i18n-hi)
   'ai.support.model.marginal': 'May be slow — close other apps',
@@ -3987,12 +4055,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'ai.support.setup': 'Setup Steps',
   // TODO(i18n-hi)
-  'ai.support.setup.step1': '1. Install Ollama using the command above',
+  'ai.support.setup.step1': 'इसी मास्टर मशीन पर Ollama या LM Studio इंस्टॉल करें।',
   // TODO(i18n-hi)
-  'ai.support.setup.step2': '2. Pull a model: {command}',
+  'ai.support.setup.step2': 'ऊपर दिए मॉडलों में से एक उसमें लोड करें। वही चुनें जिसके लिए इस मशीन में RAM हो — हर पंक्ति का बैज यही बताता है।',
   // TODO(i18n-hi)
-  'ai.support.setup.step3':
-    '3. In OrderBook Settings, set the AI provider URL to localhost with port from Ollama',
+  'ai.support.setup.step3': 'सेटिंग्स में AI प्रोवाइडर को localhost पर उसी सर्वर की ओर लगाएँ। कुछ भी इस मशीन से बाहर नहीं जाता।',
   // TODO(i18n-hi)
   'ai.support.status': 'Current Status',
   // TODO(i18n-hi)

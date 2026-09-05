@@ -212,6 +212,20 @@ export function AssistantScreen({ transport }: { transport: AssistantTransport }
 type AiHardwareInfo = AiStatus['hardware'];
 
 /** Compact hardware summary for the assistant card. */
+/**
+ * The OS name, from the tokens the AI Support screen already defines.
+ *
+ * These were spelled out inline here as `'macOS'` / `'Windows'` twelve lines
+ * from tokens that say the same thing — the duplication is what made them look
+ * harmless enough to hardcode.
+ */
+function platformLabel(platform: string): string {
+  if (platform === 'darwin') return t('ai.support.platform.darwin');
+  if (platform === 'win32') return t('ai.support.platform.win32');
+  if (platform === 'linux') return t('ai.support.platform.linux');
+  return platform;
+}
+
 function HardwareInfo({ hardware }: { hardware: NonNullable<AiHardwareInfo> }) {
   const tierColors: Record<string, string> = {
     supported: 'var(--state-ok)',
@@ -223,16 +237,16 @@ function HardwareInfo({ hardware }: { hardware: NonNullable<AiHardwareInfo> }) {
   return (
     <>
       <div style={{ display: 'flex', gap: 'var(--s-12)', alignItems: 'center' }}>
-        <span className="ob-mono ob-small">{hardware.totalMemoryGb} GB RAM</span>
-        <span className="ob-mono ob-small">{hardware.cpus} CPUs</span>
+        <span className="ob-mono ob-small">
+          {t('ai.hardware.ram', { gb: hardware.totalMemoryGb })}
+        </span>
+        <span className="ob-mono ob-small">{t('ai.hardware.cpus', { count: hardware.cpus })}</span>
         {hardware.platform && (
-          <span className="ob-small">
-            {hardware.platform === 'darwin' ? 'macOS' : hardware.platform === 'win32' ? 'Windows' : hardware.platform}
-          </span>
+          <span className="ob-small">{platformLabel(hardware.platform)}</span>
         )}
         {hardware.hasUnifiedMemory && (
           <span className="ob-micro" style={{ color: 'var(--state-ok)' }}>
-            Apple Silicon
+            {t('ai.hardware.appleSilicon')}
           </span>
         )}
       </div>
@@ -248,10 +262,15 @@ function HardwareInfo({ hardware }: { hardware: NonNullable<AiHardwareInfo> }) {
         </p>
       )}
 
-      {hardware.recommendedModels.length > 0 && (
+      {(hardware.recommendedModels?.length ?? 0) > 0 && (
         <div style={{ marginTop: 'var(--s-4)' }}>
           <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-            Recommended: {hardware.recommendedModels.slice(0, 3).map((m) => m.name).join(', ')}
+            {t('ai.hardware.recommended', {
+              models: (hardware.recommendedModels ?? [])
+                .slice(0, 3)
+                .map((model) => model.name)
+                .join(', '),
+            })}
           </span>
         </div>
       )}

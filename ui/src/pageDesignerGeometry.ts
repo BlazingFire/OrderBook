@@ -165,17 +165,29 @@ export function applyHandle(rect: Rect, handle: Handle, dx: number, dy: number):
   return next;
 }
 
-/** Keep a rect on the paper. A layout whose elements have wandered off the
- *  sheet is refused on save, so the canvas never lets one get there. */
-export function clampToPage(rect: Rect, page: Rect): Rect {
-  const w = Math.min(rect.w, page.w);
-  const h = Math.min(rect.h, page.h);
+/**
+ * Keep a rect inside `bounds`.
+ *
+ * **`bounds` is the printable box, not the sheet.** This used to take the whole
+ * page and clamp against `0 .. page.w`, while `assertLayoutValid` on the server
+ * builds its box from `margins.left .. width - margins.right` and refuses
+ * anything outside it. The two disagreed, and the server won at save time: an
+ * element dragged to the paper's edge — which `snap` actively latched onto —
+ * produced a layout the designer had just told the operator was fine, refused
+ * with `elementOffPage` and no indication of which element.
+ *
+ * The comment this replaces claimed "the canvas never lets one get there". It
+ * did, on every drag toward an edge.
+ */
+export function clampToPage(rect: Rect, bounds: Rect): Rect {
+  const w = Math.min(rect.w, bounds.w);
+  const h = Math.min(rect.h, bounds.h);
 
   return {
     w,
     h,
-    x: Math.min(Math.max(rect.x, 0), page.w - w),
-    y: Math.min(Math.max(rect.y, 0), page.h - h),
+    x: Math.min(Math.max(rect.x, bounds.x), bounds.x + bounds.w - w),
+    y: Math.min(Math.max(rect.y, bounds.y), bounds.y + bounds.h - h),
   };
 }
 
@@ -202,20 +214,22 @@ export function snap(
   margins: Rect,
   tolerance = SNAP_MM,
 ): { rect: Rect; guides: Guide[] } {
+  // No `0` and no `page.w`: those are the sheet's edges, and an element there is
+  // outside the printable box the server validates against. The page centre
+  // stays — it is inside the box for any symmetric margins, and centring on the
+  // sheet is what somebody centring a heading means.
   const targetsX = [
-    0,
-    page.w,
     page.w / 2,
     margins.x,
     margins.x + margins.w,
+    margins.x + margins.w / 2,
     ...others.flatMap((other) => [other.x, other.x + other.w / 2, other.x + other.w]),
   ];
   const targetsY = [
-    0,
-    page.h,
     page.h / 2,
     margins.y,
     margins.y + margins.h,
+    margins.y + margins.h / 2,
     ...others.flatMap((other) => [other.y, other.y + other.h / 2, other.y + other.h]),
   ];
 

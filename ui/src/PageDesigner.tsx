@@ -58,6 +58,8 @@ interface Drag {
   startY: number;
   rect: Rect;
   id: string;
+  /** Whether this drag has already taken its single undo snapshot. */
+  pushed: boolean;
   /*
    * The page's own box and scale, captured once as the drag begins.
    *
@@ -83,13 +85,12 @@ const UNDO_DEPTH = 50;
 export function PageDesigner({ geometry, layout, bindings, onChange, aside }: PageDesignerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [guides, setGuides] = useState<Guide[]>([]);
-  const [pxPerMm, setPxPerMm] = useState(1);
 
   const dragRef = useRef<Drag | null>(null);
   const undoRef = useRef<DocumentLayoutV2[]>([]);
   const surfaceRef = useRef<HTMLDivElement | null>(null);
 
-  const { page } = pageFrame(geometry);
+  const { page, margins } = pageFrame(geometry);
   const elements = layout.elements;
   const selected = elements.find((element) => element.id === selectedId) ?? null;
 
@@ -130,7 +131,6 @@ export function PageDesigner({ geometry, layout, bindings, onChange, aside }: Pa
       .closest('.ob-designer-page')
       ?.getBoundingClientRect();
     const scale = box ? scaleFor(box.width, page.w) : 1;
-    setPxPerMm(scale);
 
     if (!id || !box) {
       setSelectedId(null);
@@ -156,6 +156,7 @@ export function PageDesigner({ geometry, layout, bindings, onChange, aside }: Pa
       startY: point.y,
       rect: rectOf(element),
       id,
+      pushed: false,
       originX: box.left,
       originY: box.top,
       scale,
@@ -177,15 +178,24 @@ export function PageDesigner({ geometry, layout, bindings, onChange, aside }: Pa
     // Alt suspends snapping, which is the only way to place something one
     // millimetre from an edge it wants to latch onto.
     const others = elements.filter((element) => element.id !== drag.id).map(rectOf);
-    const { page: pageRect, margins } = pageFrame(geometry);
+    const pageRect = page;
 
     const snapped = event.altKey
       ? { rect: moved, guides: [] as Guide[] }
       : snap(moved, others, pageRect, margins);
 
     setGuides(snapped.guides);
-    // Not remembered: a drag is one undo step, taken when it started.
-    patch(drag.id, tidyRect(clampToPage(snapped.rect, pageRect)), false);
+
+    // The undo entry is pushed on the first *movement*, not on pointer-down:
+    // clicking five elements to look at them used to fill the history with five
+    // identical snapshots, and Ctrl+Z then appeared to do nothing five times.
+    if (!drag.pushed) {
+      undoRef.current = [layout, ...undoRef.current].slice(0, UNDO_DEPTH);
+      drag.pushed = true;
+    }
+
+    // Clamped to the printable box, which is what the server validates against.
+    patch(drag.id, tidyRect(clampToPage(snapped.rect, margins)), false);
   };
 
   const onPointerUp = (): void => {
@@ -193,10 +203,9 @@ export function PageDesigner({ geometry, layout, bindings, onChange, aside }: Pa
     setGuides([]);
   };
 
-  // The undo entry is pushed once, as the drag begins, rather than on every
-  // move — otherwise one drag fills the whole history.
+  // One undo entry per drag, taken on the first move — see `onPointerMove`. A
+  // click that only selects leaves the history alone.
   const beginDrag = (id: string | null, event: React.PointerEvent): void => {
-    if (id) undoRef.current = [layout, ...undoRef.current].slice(0, UNDO_DEPTH);
     onPointerDown(id, event);
   };
 
@@ -255,14 +264,14 @@ export function PageDesigner({ geometry, layout, bindings, onChange, aside }: Pa
       event.preventDefault();
       const moved = clampToPage(
         { ...rectOf(selected), x: selected.x + delta[0], y: selected.y + delta[1] },
-        page,
+        margins,
       );
       patch(selected.id, tidyRect(moved));
     };
 
     surface.addEventListener('keydown', onKeyDown);
     return () => surface.removeEventListener('keydown', onKeyDown);
-  }, [commit, elements, page, patch, selected, undo]);
+  }, [commit, elements, margins, patch, selected, undo]);
 
   // --- palette ---------------------------------------------------------
 
@@ -301,10 +310,18 @@ export function PageDesigner({ geometry, layout, bindings, onChange, aside }: Pa
     setSelectedId(id);
   };
 
+  /**
+   * Align against the printable box, not the sheet.
+   *
+   * `align` uses its reference rect directly, so passing the page meant "align
+   * left" put the element at x=0 — on the paper's cut edge, outside the box
+   * `assertLayoutValid` accepts, and refused at save. Nobody laying out a
+   * quotation means the sheet edge by "left" anyway; they mean the margin.
+   */
   const alignSelected = (edge: AlignEdge): void => {
     if (!selected) return;
-    const [rect] = align([rectOf(selected)], edge, page);
-    if (rect) patch(selected.id, tidyRect(rect));
+    const [rect] = align([rectOf(selected)], edge, margins);
+    if (rect) patch(selected.id, tidyRect(clampToPage(rect, margins)));
   };
 
   const spread = (axis: 'x' | 'y'): void => {
@@ -324,6 +341,27 @@ export function PageDesigner({ geometry, layout, bindings, onChange, aside }: Pa
         const moved = byIndex.get(`${element.x},${element.y}`);
         return moved ? ({ ...element, ...tidyRect(moved) } as DocumentElement) : element;
       }),
+    );
+  };
+
+  /**
+   * Pull every element back inside the printable box.
+   *
+   * `validation.documents.layout.elementOffPage` reads "Move it, or use Fit to
+   * page." — and until now there was no such control anywhere in the product.
+   * An operator who narrowed the paper or widened a margin was simply stuck:
+   * the save was refused, the message named a remedy that did not exist, and
+   * nothing said which element was at fault.
+   *
+   * It is one pass of the same clamp a drag already goes through, so it cannot
+   * put an element anywhere a drag could not.
+   */
+  const fitToPage = (): void => {
+    commit(
+      elements.map(
+        (element) =>
+          ({ ...element, ...tidyRect(clampToPage(rectOf(element), margins)) }) as DocumentElement,
+      ),
     );
   };
 
@@ -362,6 +400,9 @@ export function PageDesigner({ geometry, layout, bindings, onChange, aside }: Pa
         <Button variant="ghost" onClick={() => spread('y')}>
           {t('designer.distribute')}
         </Button>
+        <Button variant="ghost" onClick={fitToPage}>
+          {t('designer.fitToPage')}
+        </Button>
         <Button variant="ghost" disabled={!canUndo} onClick={undo}>
           {t('designer.undo')}
         </Button>
@@ -376,7 +417,7 @@ export function PageDesigner({ geometry, layout, bindings, onChange, aside }: Pa
             guides={guides}
             onPointerDownElement={beginDrag}
           />
-          <p className="ob-small">{t('designer.hint', { grip: Math.round(GRIP_PX / pxPerMm) })}</p>
+          <p className="ob-small">{t('designer.hint')}</p>
         </div>
 
         <aside className="ob-designer-side">

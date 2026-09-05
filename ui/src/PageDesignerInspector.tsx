@@ -44,6 +44,28 @@ const FITS: readonly TextFit[] = ['wrap', 'shrink', 'truncate', 'clip'];
 const bindingValue = (ref: DocumentBindingRef): string =>
   ref.source === 'catalogue' ? `catalogue:${ref.binding}` : `custom:${ref.entity}:${ref.key}`;
 
+/**
+ * A number box's value, or the value it already had.
+ *
+ * `Number('')` is 0, so clearing a width box to retype it used to snap the
+ * element to zero width in the corner of the page before the first digit
+ * arrived. Holding the current value until something parses keeps the box
+ * usable without adding a draft-string-per-field.
+ */
+const num = (raw: string, fallback: number): number => {
+  if (raw.trim() === '') return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : fallback;
+};
+
+/** `#RRGGBB` is what the server validates; an empty box means "no colour". */
+const HEX = /^#[0-9A-Fa-f]{6}$/;
+const hexOrNull = (raw: string): string | null => {
+  const trimmed = raw.trim();
+  return trimmed === '' || HEX.test(trimmed) ? (trimmed === '' ? null : trimmed) : null;
+};
+const hexIsValid = (raw: string): boolean => raw.trim() === '' || HEX.test(raw.trim());
+
 export function PageDesignerInspector({
   element,
   bindings,
@@ -77,7 +99,7 @@ export function PageDesignerInspector({
             <NumberInput
               id={id}
               value={element.x}
-              onChange={(event) => onChange({ x: Number(event.target.value) })}
+              onChange={(event) => onChange({ x: num(event.target.value, element.x) })}
             />
           )}
         </FormField>
@@ -86,7 +108,7 @@ export function PageDesignerInspector({
             <NumberInput
               id={id}
               value={element.y}
-              onChange={(event) => onChange({ y: Number(event.target.value) })}
+              onChange={(event) => onChange({ y: num(event.target.value, element.y) })}
             />
           )}
         </FormField>
@@ -95,7 +117,7 @@ export function PageDesignerInspector({
             <NumberInput
               id={id}
               value={element.w}
-              onChange={(event) => onChange({ w: Number(event.target.value) })}
+              onChange={(event) => onChange({ w: num(event.target.value, element.w) })}
             />
           )}
         </FormField>
@@ -104,7 +126,7 @@ export function PageDesignerInspector({
             <NumberInput
               id={id}
               value={element.h}
-              onChange={(event) => onChange({ h: Number(event.target.value) })}
+              onChange={(event) => onChange({ h: num(event.target.value, element.h) })}
             />
           )}
         </FormField>
@@ -172,7 +194,7 @@ export function PageDesignerInspector({
                 <NumberInput
                   id={id}
                   value={style.size}
-                  onChange={(event) => patchStyle({ size: Number(event.target.value) })}
+                  onChange={(event) => patchStyle({ size: num(event.target.value, style.size) })}
                 />
               )}
             </FormField>
@@ -229,7 +251,31 @@ export function PageDesignerInspector({
               <NumberInput
                 id={id}
                 value={style.maxChars}
-                onChange={(event) => patchStyle({ maxChars: Number(event.target.value) })}
+                onChange={(event) => patchStyle({ maxChars: num(event.target.value, style.maxChars) })}
+              />
+            )}
+          </FormField>
+
+          {/* There was no way to set a colour anywhere in the designer, though
+              `ElementTextStyle.colour`, `box.fill`, `box.stroke` and
+              `rule.colour` are all typed, all validated as `#RRGGBB` and all
+              drawn. A plain hex box, the same control the template's accent
+              colour already uses — this codebase has no colour picker and does
+              not need one for four fields. */}
+          <FormField
+            label={t('designer.field.colour')}
+            hint={
+              hexIsValid(style.colour ?? '')
+                ? t('designer.field.colourHelp')
+                : t('designer.field.colourInvalid')
+            }
+          >
+            {(id) => (
+              <Input
+                id={id}
+                value={style.colour ?? ''}
+                placeholder="#1F2A3B"
+                onChange={(event) => patchStyle({ colour: hexOrNull(event.target.value) })}
               />
             )}
           </FormField>
@@ -240,6 +286,85 @@ export function PageDesignerInspector({
             onChange={(bold) => patchStyle({ bold })}
           />
         </>
+      )}
+
+      {element.kind === 'box' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-8)' }}>
+          <FormField label={t('designer.field.fill')}>
+            {(id) => (
+              <Input
+                id={id}
+                value={element.fill ?? ''}
+                placeholder="#F3F4F6"
+                onChange={(event) => onChange({ fill: hexOrNull(event.target.value) })}
+              />
+            )}
+          </FormField>
+          <FormField label={t('designer.field.stroke')}>
+            {(id) => (
+              <Input
+                id={id}
+                value={element.stroke ?? ''}
+                placeholder="#DDDDDD"
+                onChange={(event) => onChange({ stroke: hexOrNull(event.target.value) })}
+              />
+            )}
+          </FormField>
+          <FormField label={t('designer.field.radius')}>
+            {(id) => (
+              <NumberInput
+                id={id}
+                value={element.radius}
+                onChange={(event) => onChange({ radius: num(event.target.value, element.radius) })}
+              />
+            )}
+          </FormField>
+        </div>
+      )}
+
+      {element.kind === 'rule' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-8)' }}>
+          <FormField label={t('designer.field.colour')}>
+            {(id) => (
+              <Input
+                id={id}
+                value={element.colour ?? ''}
+                placeholder="#DDDDDD"
+                onChange={(event) => onChange({ colour: hexOrNull(event.target.value) })}
+              />
+            )}
+          </FormField>
+          <FormField label={t('designer.field.thickness')}>
+            {(id) => (
+              <NumberInput
+                id={id}
+                value={element.thickness}
+                onChange={(event) =>
+                  onChange({ thickness: num(event.target.value, element.thickness) })
+                }
+              />
+            )}
+          </FormField>
+        </div>
+      )}
+
+      {/* An image element was created as a logo and stayed one: `slot` is
+          stored and drawn but nothing could change it. */}
+      {element.kind === 'image' && (
+        <FormField label={t('designer.field.slot')}>
+          {(id) => (
+            <Select
+              id={id}
+              value={element.slot}
+              onChange={(event) =>
+                onChange({ slot: event.target.value as 'logo' | 'signature' })
+              }
+            >
+              <option value="logo">{t('designer.slot.logo')}</option>
+              <option value="signature">{t('designer.slot.signature')}</option>
+            </Select>
+          )}
+        </FormField>
       )}
 
       {/* --- Whether it rides the table -------------------------------- */}

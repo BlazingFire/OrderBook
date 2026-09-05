@@ -134,22 +134,20 @@ export interface RecommendedModel {
   ramRequiredGb: number;
   /** Which local LLM software runs this model. */
   provider: 'ollama' | 'lm-studio';
-  /** Shell command to pull/run the model, if applicable. */
-  command?: string;
 }
 
 export interface AiHardware {
   tier: AiHardwareTier;
   totalMemoryGb: number;
-  /** Live system free memory in GB. */
-  availableMemoryGb: number;
+  /** Live system free memory in GB. Optional for backwards compat with 1.0.2. */
+  availableMemoryGb?: number;
   cpus: number;
-  /** 'darwin' | 'win32' | 'linux' */
-  platform: string;
-  /** True on Apple Silicon where GPU and CPU share the same RAM pool. */
-  hasUnifiedMemory: boolean;
-  /** Models recommended for this hardware configuration. */
-  recommendedModels: RecommendedModel[];
+  /** 'darwin' | 'win32' | 'linux'. Optional for backwards compat with 1.0.2. */
+  platform?: string;
+  /** True on Apple Silicon where GPU and CPU share the same RAM pool. Optional for backwards compat with 1.0.2. */
+  hasUnifiedMemory?: boolean;
+  /** Models recommended for this hardware configuration. Optional for backwards compat with 1.0.2. */
+  recommendedModels?: RecommendedModel[];
 }
 
 /** One computed observation. The figures are SQL; the sentence is the model's. */

@@ -1,16 +1,24 @@
 /**
  * Periodic memory pressure detection.
  *
- * Checks heap usage against the `--max-old-space-size` ceiling every 30 seconds.
- * At 75% it triggers a GC hint; at 90% it logs a critical warning. The AI
- * service reads `getMemoryStatus()` to refuse new runs when the process is over
- * its RAM cap.
+ * Checks heap usage against the `--max-old-space-size` ceiling every 30 seconds
+ * and logs at 75% and 90%. **It does nothing else.** There was a `global.gc?.()`
+ * on both branches; `--expose-gc` is passed nowhere, so `global.gc` was always
+ * `undefined` and both calls were no-ops in dev and in the packaged app alike.
+ * Deleting them was the fix — this comment says so because three separate places
+ * used to claim a GC hint that never happened.
  *
- * Does not kill or restart anything — that is the supervisor's job. This file
- * only observes and suggests.
+ * The one real consumer is `ai.service.ts`, which reads `getMemoryStatus()` to
+ * refuse a new AI run when the process is over its RAM cap.
+ *
+ * Does not kill or restart anything — that is the supervisor's job.
  */
 
 import os from 'node:os';
+
+/** Node's own default old-space ceiling on 64-bit, in bytes. The fallback
+ *  when the Electron shell has not set `--max-old-space-size`. */
+const DEFAULT_MAX_OLD_SPACE_BYTES = 4096 * 1024 * 1024;
 
 const CHECK_INTERVAL_MS = 30_000;
 const CRITICAL_THRESHOLD = 0.9;
@@ -35,17 +43,24 @@ export function startMemoryMonitor(options: {
   timer = setInterval(() => {
     const { heapUsed } = process.memoryUsage();
 
-    // If NODE_OPTIONS did not set a limit, fall back to total system memory
-    // as the ceiling — heap can grow to 1.5× that before the OS intervenes.
-    const ceiling = maxHeapBytes || os.totalmem() * 0.75;
+    // If NODE_OPTIONS did not set a limit, fall back to Node's own default
+    // old-space ceiling rather than to system memory.
+    //
+    // The previous fallback was `os.totalmem() * 0.75`, justified as "heap can
+    // grow to 1.5× that before the OS intervenes" — which confuses a V8 heap
+    // limit with system RAM. NODE_OPTIONS is only ever set by the Electron
+    // shell, so every dev run and every CI run took that branch and compared
+    // one process's heap against three quarters of the machine: on a 16 GB box,
+    // a ~4 GB heap against a 12 GB ceiling. The monitor could not fire in the
+    // only environment anyone tests in. 4096 MB is what V8 actually defaults to
+    // on 64-bit, so the ratio now means the same thing in both environments.
+    const ceiling = maxHeapBytes || DEFAULT_MAX_OLD_SPACE_BYTES;
     const ratio = heapUsed / ceiling;
 
     if (ratio >= CRITICAL_THRESHOLD) {
       criticalCallback?.();
-      global.gc?.();
     } else if (ratio >= WARN_THRESHOLD) {
       warnCallback?.();
-      global.gc?.();
     }
   }, CHECK_INTERVAL_MS);
 

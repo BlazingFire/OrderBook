@@ -318,8 +318,6 @@ export async function startRun(
   const prompt = input.prompt?.trim();
   if (!prompt) throw new ValidationError('validation.ai.promptRequired');
 
-  await checkCanStartRun(actor.tenantId);
-
   const budget = await getSetting(actor.tenantId, 'ai.dailyTokenBudget');
   // The budget guards a bill, so it does not apply to a model running in the
   // building — there is nothing there to spend.
@@ -328,16 +326,36 @@ export async function startRun(
     if (spent >= budget) throw new ValidationError('validation.ai.budgetSpent');
   }
 
-  const runId = await aiRunRepo.insertRun({
-    tenantId: actor.tenantId,
-    userId,
-    kind: input.kind,
-    model: provider.model,
-    subjectKind: input.subjectKind ?? null,
-    subjectId: input.subjectId ?? null,
-    prompt,
-    ratesVisible: actorCan(actor, 'field.saleRate.view'),
-  });
+  // The slot is acquired here — after the validation that does not need one,
+  // and *before* the row exists.
+  //
+  // Both edges matter and they pull in opposite directions. Acquiring above the
+  // budget check leaked the counter on an ordinary `budgetSpent` refusal, which
+  // is what permanently disabled the assistant after two refusals. Acquiring
+  // below `insertRun` instead trades that for the mirror bug: a refusal here
+  // would leave a committed `ai_runs` row stuck at `status='running'`, in
+  // neither `running` nor `ownerOf`, so nothing can abort or finish it and only
+  // `failStaleAiRuns` at the next boot ever touches it again.
+  //
+  // So: acquire first, then release explicitly if the one remaining throwing
+  // call between here and `generate`'s `.finally()` fails.
+  await checkCanStartRun(actor.tenantId);
+
+  const runId = await aiRunRepo
+    .insertRun({
+      tenantId: actor.tenantId,
+      userId,
+      kind: input.kind,
+      model: provider.model,
+      subjectKind: input.subjectKind ?? null,
+      subjectId: input.subjectId ?? null,
+      prompt,
+      ratesVisible: actorCan(actor, 'field.saleRate.view'),
+    })
+    .catch((error: unknown) => {
+      releaseRunSlot();
+      throw error;
+    });
 
   const controller = new AbortController();
   running.set(runId, controller);

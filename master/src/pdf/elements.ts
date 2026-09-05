@@ -80,7 +80,14 @@ export function drawElement(doc: Doc, element: ResolvedElement, context: Element
       return y + height;
 
     case 'rule':
-      horizontalRule(doc, x, y, width, element.colour ?? context.accentColour ?? '#DDDDDD');
+      horizontalRule(
+        doc,
+        x,
+        y,
+        width,
+        element.colour ?? context.accentColour ?? '#DDDDDD',
+        mm(element.thickness),
+      );
       return y;
 
     case 'image': {

@@ -23,7 +23,7 @@
  * stay typed columns rather than moving into the layout JSON.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   DocumentExport,
   DocumentTemplate,
@@ -206,6 +206,19 @@ function TemplatesTab({
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [starter, setStarter] = useState<TemplateDefaults | null>(null);
 
+  /*
+   * The transport behind a ref, and an empty dependency list.
+   *
+   * A caller is free to build this object inline — `AiSupportScreen` did, and
+   * turned one status read into one per sync delta. Depending on the object's
+   * identity makes that caller's ordinary React idiom into a refetch loop in
+   * *this* file, which is the wrong place to discover it. The ref keeps the
+   * reads current without making the identity load-bearing.
+   * (`ui/tests/no-transport-dep.test.ts` enforces this.)
+   */
+  const transportRef = useRef(transport);
+  transportRef.current = transport;
+
   function openNew(): void {
     setGalleryOpen(true);
   }
@@ -222,7 +235,7 @@ function TemplatesTab({
   const load = useCallback(async () => {
     setFailure(null);
     try {
-      const page = await transport.templates();
+      const page = await transportRef.current.templates();
       setTemplates(page.items);
       setCursor(page.nextCursor);
     } catch (caught) {
@@ -230,7 +243,7 @@ function TemplatesTab({
     } finally {
       setLoading(false);
     }
-  }, [transport]);
+  }, []);
 
   useEffect(() => {
     void load();
@@ -369,10 +382,17 @@ function TemplatesTab({
 
       <StarterGalleryModal open={galleryOpen} onClose={() => setGalleryOpen(false)} onPick={pick} />
 
+      {/* `xl`, not `lg`. The editor holds a sheet of paper and an inspector side
+          by side: at `lg` (60rem) the fixed 240px inspector left the stage about
+          544px wide on every monitor from a 1366px laptop to a 4K panel, so an
+          A4 page drew 769px tall inside a modal body capped near 660px and the
+          whole page was never visible at once. `.ob-modal--xl` is
+          `min(76rem, 100%)`, written for exactly this and still inside the
+          1024px design floor. */}
       <Modal
         open={editing !== null}
         onClose={closeEditor}
-        size="lg"
+        size="xl"
         title={editing === 'new' ? t('documents.editor.newTitle') : (editing?.name ?? '')}
         subtitle={
           editing && editing !== 'new' ? t(DOCUMENT_TYPE_KEY[editing.documentType]) : undefined
@@ -566,35 +586,66 @@ function StarterGalleryModal({
   onClose: () => void;
   onPick: (design: TemplateDefaults | null) => void;
 }) {
+  // Grouped under the document type rather than listed flat. Somebody opening
+  // this knows which *kind* of paper they need before they know which design,
+  // and a flat grid of fourteen makes them read all fourteen to find out which
+  // three are dispatch notes. Headings, not a filter: there is no state to get
+  // wrong and nothing to reset.
   return (
     <Modal open={open} onClose={onClose} size="lg" title={t('documents.gallery.title')}>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(15rem, 1fr))',
-          gap: 'var(--s-12)',
-        }}
-      >
-        <StarterCard
-          name={t('documents.gallery.blank')}
-          description={t('documents.gallery.blankDescription', {
-            type: t(DOCUMENT_TYPE_KEY.quotation),
-          })}
-          typeLabel={t(DOCUMENT_TYPE_KEY.quotation)}
-          onUse={() => onPick(null)}
-        />
-
-        {STARTER_DESIGNS.map((design) => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
+        <StarterGrid>
           <StarterCard
-            key={design.id}
-            name={t(design.nameToken)}
-            description={t(design.descriptionToken)}
-            typeLabel={t(DOCUMENT_TYPE_KEY[design.documentType])}
-            onUse={() => onPick(design.template)}
+            name={t('documents.gallery.blank')}
+            description={t('documents.gallery.blankDescription', {
+              type: t(DOCUMENT_TYPE_KEY.quotation),
+            })}
+            typeLabel={t(DOCUMENT_TYPE_KEY.quotation)}
+            onUse={() => onPick(null)}
           />
-        ))}
+        </StarterGrid>
+
+        {DOCUMENT_TYPES.map((documentType) => {
+          const designs = STARTER_DESIGNS.filter(
+            (design) => design.documentType === documentType,
+          );
+          if (designs.length === 0) return null;
+
+          return (
+            <section key={documentType}>
+              <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
+                {t(DOCUMENT_TYPE_KEY[documentType])}
+              </div>
+              <StarterGrid>
+                {designs.map((design) => (
+                  <StarterCard
+                    key={design.id}
+                    name={t(design.nameToken)}
+                    description={t(design.descriptionToken)}
+                    typeLabel={t(DOCUMENT_TYPE_KEY[design.documentType])}
+                    onUse={() => onPick(design.template)}
+                  />
+                ))}
+              </StarterGrid>
+            </section>
+          );
+        })}
       </div>
     </Modal>
+  );
+}
+
+function StarterGrid({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(15rem, 1fr))',
+        gap: 'var(--s-12)',
+      }}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -645,6 +696,11 @@ function TemplateEditor({
   onSaved: (name: string) => void;
   onCancel: () => void;
 }) {
+  // The transport behind a ref, never in a dependency array — see the note in
+  // `TemplatesTab`, and `ui/tests/no-transport-dep.test.ts`.
+  const transportRef = useRef(transport);
+  transportRef.current = transport;
+
   const [draft, setDraft] = useState<Draft>(() =>
     draftFrom(template, template?.documentType ?? starter?.documentType ?? 'quotation', starter),
   );
@@ -668,11 +724,11 @@ function TemplateEditor({
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
 
   useEffect(() => {
-    void transport
+    void transportRef.current
       .customFields()
       .then(setCustomFields)
       .catch(() => setCustomFields([]));
-  }, [transport]);
+  }, []);
 
   function set<K extends keyof Draft>(key: K, value: Draft[K]): void {
     setDraft((current) => {
@@ -1139,6 +1195,11 @@ function PreviewPanel({
   draft: DocumentTemplateInput;
   transport: DocumentsTransport;
 }) {
+  // The transport behind a ref, never in a dependency array — see the note in
+  // `TemplatesTab`, and `ui/tests/no-transport-dep.test.ts`.
+  const transportRef = useRef(transport);
+  transportRef.current = transport;
+
   const [fetched, setFetched] = useState<PreviewSubject[] | null>(null);
   const [unreadable, setUnreadable] = useState(false);
   const [chosen, setChosen] = useState('');
@@ -1150,7 +1211,7 @@ function PreviewPanel({
     try {
       // Each panel finds these its own way: the Master reads leads and orders
       // over HTTP, an Office panel has them in the snapshot it already holds.
-      setFetched(await transport.subjects());
+      setFetched(await transportRef.current.subjects());
     } catch {
       // A refusal is a failure, not an absence. A caller who may not open leads
       // or orders would otherwise be told this company has none, which is a
@@ -1158,7 +1219,7 @@ function PreviewPanel({
       setUnreadable(true);
       setFetched([]);
     }
-  }, [transport]);
+  }, []);
 
   useEffect(() => {
     void loadSubjects();
@@ -1271,6 +1332,11 @@ function PreviewPanel({
 // --- Export history ---------------------------------------------------------
 
 function ExportsTab({ revision, transport }: { revision: number; transport: DocumentsTransport }) {
+  // The transport behind a ref, never in a dependency array — see the note in
+  // `TemplatesTab`, and `ui/tests/no-transport-dep.test.ts`.
+  const transportRef = useRef(transport);
+  transportRef.current = transport;
+
   const [exports, setExports] = useState<DocumentExport[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1280,7 +1346,7 @@ function ExportsTab({ revision, transport }: { revision: number; transport: Docu
   const load = useCallback(async () => {
     setFailure(null);
     try {
-      const page = await transport.exports();
+      const page = await transportRef.current.exports();
       setExports(page.items);
       setCursor(page.nextCursor);
     } catch (caught) {
@@ -1288,7 +1354,7 @@ function ExportsTab({ revision, transport }: { revision: number; transport: Docu
     } finally {
       setLoading(false);
     }
-  }, [transport]);
+  }, []);
 
   useEffect(() => {
     void load();

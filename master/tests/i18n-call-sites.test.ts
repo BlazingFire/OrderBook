@@ -85,12 +85,15 @@ const catalogue = EN_MESSAGES as Record<string, string>;
 describe.each([
   ['master/web', 'master'],
   ['office/web', 'office'],
+  ['ui', null],
 ])('%s message keys', (webDir, panel) => {
   it('are all present in the shared catalogue', () => {
     const missing: string[] = [];
 
     for (const [key, files] of keysUsedIn(webDir)) {
-      const resolved = PANEL_SCOPED.includes(key) ? `${panel}.${key}` : key;
+      // ui/ is shared between panels, so panel-scoped keys are checked under
+      // both prefixes — the same key will appear in both panels' catalogues.
+      const resolved = panel && PANEL_SCOPED.includes(key) ? `${panel}.${key}` : key;
       if (!(resolved in catalogue)) missing.push(`${key} (${files[0]})`);
     }
 

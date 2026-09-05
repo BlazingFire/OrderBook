@@ -274,7 +274,10 @@ async function main(): Promise<void> {
     disposables.push(() => clearInterval(aiSweep));
 
     // Start memory pressure monitoring — warns at 75%, critical at 90% of
-    // the heap ceiling. GC hints are triggered automatically.
+    // the heap ceiling. It logs; it does not intervene. There is no GC hint:
+    // `global.gc` is undefined without `--expose-gc`, which nothing passes, so
+    // the call that used to be here was a no-op in dev and in the packaged app
+    // alike. Deleting it was the fix.
     const stopMemoryMonitor = startMemoryMonitor({
       onWarn: () => log.warn('Memory pressure warning — heap usage above 75%'),
       onCritical: () => log.error('Memory pressure critical — heap usage above 90%'),
