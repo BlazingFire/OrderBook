@@ -11,6 +11,16 @@
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// The bulk-import routes reach the Master over `masterFetch`, not the
+// `masterConnection.command` socket the rest of this suite mocks — and
+// `masterFetch` reads pairing credentials off real disk (`config.dataDir`,
+// which nothing here overrides). Mocked at the module boundary so these
+// tests exercise "not paired" cleanly rather than whatever this machine's
+// real Office panel data directory happens to hold.
+vi.mock('../src/lib/master-fetch.js', () => ({
+  masterFetch: vi.fn().mockRejectedValue(new Error('This panel is not paired with a Master')),
+}));
+
 import { createApp } from '../src/http/app.js';
 import { MasterCommandError, masterConnection } from '../src/realtime/master-connection.js';
 import * as userSession from '../src/services/user-session.service.js';

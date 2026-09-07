@@ -587,9 +587,15 @@ function OfficePanel() {
   const activeId =
     route === 'gallery'
       ? 'gallery'
-      : groups.some((group) => group.items.some((item) => item.id === idToTab[tab]))
-        ? tab
-        : (groups.flatMap((group) => group.items)[0]?.id ?? '');
+      : // `addLead` is deliberately absent from the sidebar (reached only via
+        // the "New lead" button), so it can never satisfy the sidebar-membership
+        // check below — that used to fall through to the first sidebar item
+        // (Dashboard) and silently discard the switch to Add Lead.
+        tab === 'addLead'
+        ? 'addLead'
+        : groups.some((group) => group.items.some((item) => item.id === idToTab[tab]))
+          ? tab
+          : (groups.flatMap((group) => group.items)[0]?.id ?? '');
 
   const activeLabel =
     route === 'gallery'
