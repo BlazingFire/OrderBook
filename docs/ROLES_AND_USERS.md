@@ -433,6 +433,22 @@ matters: it is why §5's conflict banner does not exist, and why the Office Pane
 
 ---
 
+## 15a. Developer mode sits outside the role model
+
+Two actions — erasing an installation back to first run, and seeding the
+documented test accounts — are guarded by a **developer password** rather than by
+any key in the catalogue above. Nothing in §5 grants them, and no role can be
+given them, deliberately: the person who needs them is usually not a user of this
+company at all, and a permission would have to be granted by exactly the
+administrator account that is locked out.
+
+They are not a hole in this model either. Every developer route requires a
+signed-in session *as well as* the password, unlocking grants no permission of any
+kind, and the two tools it opens are the only things the token can reach.
+
+Full behaviour, the password itself, and the honest statement of what that shared
+secret costs: `docs/DEVELOPER_MODE.md`.
+
 ## 16. Where this deliberately differs from the supplied documents
 
 | Document says | Here | Why |

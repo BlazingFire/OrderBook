@@ -1,43 +1,40 @@
 /**
- * Settings (6-UI-DESIGN.md §10, Settings.dc.html) — appearance controls and
- * read-only device info.
+ * Settings (6-UI-DESIGN.md §10, Settings.dc.html) — as tabs, on the skeleton
+ * both panels share (`@orderbook/ui`'s `SettingsLayout`).
  *
  * Theme, density and motion are per-machine and never synced (§10): they live
- * entirely in `ui/theme.ts`'s `localStorage` + `<html>` dataset pair, which
- * until now was only reachable from the dev-only token gallery. This screen
- * is the first real, permanent home for them. Everything else on the screen
- * is read-only — pairing and sign-in changes happen on their own screens.
+ * entirely in `ui/theme.ts`'s `localStorage` + `<html>` dataset pair, and the
+ * controls for them are now the same component the Master uses rather than a
+ * second copy that drifted from it.
+ *
+ * Everything on the machine and sync tabs is read-only — pairing and sign-in
+ * changes happen on their own screens. The exceptions are the storage tab,
+ * where the data folder can be moved, and the Developer tab, which is the only
+ * way to reach this panel's reset. That tab is shown to everybody signed in:
+ * the developer password is the door, not a permission
+ * (`shared/src/domain/developer.ts`).
  */
 
-import { useState } from 'react';
+import { DEVELOPER_RESET_CONFIRMATION } from '@orderbook/shared';
 
 import type { ConnectionInfo, PanelSession } from '../api';
+import { api, desktopBridge } from '../api';
 import { StorageBackupActions } from '../components/StorageBackup';
+import { StoragePathCard } from '../components/StoragePathCard';
 import {
-  Button,
-  Card,
+  AppearanceSettings,
+  DeveloperPanel,
   KeyValueList,
-  SCALE_DEFAULT,
-  SCALE_MAX,
-  SCALE_MIN,
-  SCALE_STEP,
-  Segmented,
-  Slider,
-  Switch,
-  applyDensity,
-  applyMotion,
-  applyScale,
-  applyTheme,
-  formatDateTime,
-  loadDensity,
-  loadScale,
-  loadTheme,
-  motionDisabled,
-  rem,
-  t,
-  type Density,
-  type Theme,
+  SettingsPage,
+  SettingsSection,
   ShortcutSettings,
+  formatDateTime,
+  t,
+  useDeveloperSession,
+  useUninstallTool,
+  useSettingsTab,
+  type DeveloperTool,
+  type SettingsTab,
 } from '@orderbook/ui';
 
 interface Props {
@@ -47,10 +44,6 @@ interface Props {
   openConflicts: number;
 }
 
-function currentRootSize(): string {
-  return getComputedStyle(document.documentElement).getPropertyValue('--root-size').trim();
-}
-
 const CONNECTION_STATE_KEY: Record<ConnectionInfo['state'], string> = {
   unpaired: 'settings.connection.state.unpaired',
   connecting: 'settings.connection.state.connecting',
@@ -58,32 +51,10 @@ const CONNECTION_STATE_KEY: Record<ConnectionInfo['state'], string> = {
   disconnected: 'settings.connection.state.disconnected',
 };
 
+const TAB_IDS = ['appearance', 'shortcuts', 'machine', 'storage', 'developer'] as const;
+
 export function SettingsScreen({ connection, session, pendingCount, openConflicts }: Props) {
-  const [theme, setTheme] = useState<Theme>(loadTheme);
-  const [density, setDensity] = useState<Density>(loadDensity);
-  const [scale, setScale] = useState<number>(loadScale);
-  const [motionOn, setMotionOn] = useState<boolean>(() => !motionDisabled());
-
-  function pickTheme(next: Theme): void {
-    applyTheme(next);
-    setTheme(next);
-  }
-
-  function pickDensity(next: Density): void {
-    applyDensity(next);
-    setDensity(next);
-  }
-
-  function pickScale(next: number): void {
-    applyScale(next);
-    setScale(next);
-  }
-
-  function toggleMotion(motionOff: boolean): void {
-    const nextMotionOn = !motionOff;
-    applyMotion(nextMotionOn);
-    setMotionOn(nextMotionOn);
-  }
+  const [tab, setTab] = useSettingsTab('ob.settings.tab.office', TAB_IDS, 'appearance');
 
   const machineItems = [
     { label: t('settings.machine.panel'), value: connection.panelName },
@@ -123,126 +94,124 @@ export function SettingsScreen({ connection, session, pendingCount, openConflict
       : []),
   ];
 
+  const tabs: SettingsTab[] = [
+    { id: 'appearance', label: t('settings.tab.appearance'), render: () => <AppearanceSettings /> },
+    {
+      id: 'shortcuts',
+      label: t('settings.tab.shortcuts'),
+      render: () => (
+        <SettingsSection title={t('keys.settings.title')}>
+          <ShortcutSettings />
+        </SettingsSection>
+      ),
+    },
+    {
+      id: 'machine',
+      label: t('settings.tab.machine'),
+      render: () => (
+        <>
+          <SettingsSection title={t('settings.machine.title')}>
+            <KeyValueList items={machineItems} />
+          </SettingsSection>
+          <SettingsSection title={t('settings.sync.title')}>
+            <KeyValueList items={syncItems} />
+            <p className="ob-small" style={{ marginTop: 'var(--s-12)', marginBottom: 0 }}>
+              {t('settings.sync.note')}
+            </p>
+          </SettingsSection>
+        </>
+      ),
+    },
+    {
+      id: 'storage',
+      label: t('settings.tab.storage'),
+      render: () => (
+        <>
+          {/* Its own card, and its own eyebrow — it stays the collapsed
+              one-liner it is on the sign-in screen rather than growing a
+              second heading here. */}
+          <StoragePathCard />
+          {session.permissions.includes('storage.manage') && (
+            <SettingsSection title={t('settings.storage.title')}>
+              <StorageBackupActions />
+            </SettingsSection>
+          )}
+        </>
+      ),
+    },
+    { id: 'developer', label: t('settings.tab.developer'), render: () => <DeveloperTab /> },
+  ];
+
   return (
-    <div
-      style={{ maxWidth: rem(720), display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}
-    >
-      <Card>
-        <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-12)' }}>
-          {t('settings.appearance.title')}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
-            <span className="ob-body" style={{ width: rem(140) }}>
-              {t('settings.appearance.theme')}
-            </span>
-            <Segmented
-              options={[
-                { value: 'light' as const, label: t('settings.appearance.themeLight') },
-                { value: 'dark' as const, label: t('settings.appearance.themeDark') },
-              ]}
-              value={theme}
-              onChange={pickTheme}
-            />
-          </div>
+    <SettingsPage
+      title={t('settings.title')}
+      subtitle={t('settings.subtitle')}
+      tabs={tabs}
+      activeId={tab}
+      onChange={setTab}
+    />
+  );
+}
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
-            <span className="ob-body" style={{ width: rem(140) }}>
-              {t('settings.appearance.scale')}
-            </span>
-            <Slider
-              value={scale}
-              min={SCALE_MIN}
-              max={SCALE_MAX}
-              step={SCALE_STEP}
-              label={t('settings.appearance.scale')}
-              onChange={pickScale}
-            />
-            <span className="ob-mono ob-small" style={{ minWidth: '3.5rem', textAlign: 'right' }}>
-              {Math.round((scale / SCALE_DEFAULT) * 100)}%
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => pickScale(SCALE_DEFAULT)}
-              disabled={scale === SCALE_DEFAULT}
-            >
-              {t('settings.appearance.scaleReset')}
-            </Button>
-            <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
-              {t('settings.appearance.scaleNote', { size: currentRootSize() })}
-            </span>
-          </div>
+/**
+ * Long enough for the "reset" toast to be read, short enough that nobody
+ * starts clicking around a panel that is no longer paired with anything.
+ */
+const RELOAD_AFTER_RESET_MS = 1500;
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
-            <span className="ob-body" style={{ width: rem(140) }}>
-              {t('settings.appearance.density')}
-            </span>
-            <Segmented
-              options={[
-                { value: 'compact' as const, label: t('settings.appearance.densityCompact') },
-                {
-                  value: 'comfortable' as const,
-                  label: t('settings.appearance.densityComfortable'),
-                },
-                { value: 'large' as const, label: t('settings.appearance.densityLarge') },
-              ]}
-              value={density}
-              onChange={pickDensity}
-            />
-            <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
-              {t('settings.appearance.densityNote')}
-            </span>
-          </div>
+/**
+ * This panel's one developer tool.
+ *
+ * Its own component so the unlock lives and dies with the tab: mounting it is
+ * what asks the panel for a status, and nothing here is fetched while somebody
+ * is on Appearance.
+ */
+function DeveloperTab() {
+  const developer = useDeveloperSession(api.developer);
+  const { token } = developer;
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
-            <span className="ob-body" style={{ width: rem(140) }}>
-              {t('settings.appearance.motion')}
-            </span>
-            <Switch
-              checked={!motionOn}
-              onChange={toggleMotion}
-              label={t('settings.appearance.motionLabel')}
-            />
-            <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
-              {t('settings.appearance.motionHint')}
-            </span>
-          </div>
-        </div>
-      </Card>
+  // Built unconditionally: it owns the "delete the data too?" switch, and a
+  // hook cannot be called only when a token exists.
+  const uninstall = useUninstallTool(desktopBridge());
 
-      <Card>
-        <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-12)' }}>
-          {t('keys.settings.title')}
-        </div>
-        <ShortcutSettings />
-      </Card>
+  const tools: DeveloperTool[] = token
+    ? [
+        {
+          id: 'reset-panel',
+          danger: true,
+          title: t('developer.tool.resetPanel.title'),
+          description: t('developer.tool.resetPanel.description'),
+          action: t('developer.tool.resetPanel.action'),
+          confirmWord: DEVELOPER_RESET_CONFIRMATION,
+          confirmTitle: t('developer.tool.resetPanel.confirmTitle'),
+          confirmHint: t('developer.tool.resetPanel.confirmHint'),
+          confirmDetails: [
+            t('developer.tool.resetPanel.detail.pairing'),
+            t('developer.tool.resetPanel.detail.users'),
+            t('developer.tool.resetPanel.detail.queue'),
+            t('developer.tool.resetPanel.detail.snapshot'),
+          ],
+          done: t('developer.tool.resetPanel.done'),
+          run: async () => {
+            await api.developer.resetAll(token);
+            // The session, the cached screens and the event stream all describe
+            // a pairing that no longer exists. Reloading is the only honest way
+            // back to the connection screen.
+            setTimeout(() => window.location.reload(), RELOAD_AFTER_RESET_MS);
+          },
+        },
+        uninstall,
+      ]
+    : [];
 
-      <Card>
-        <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-12)' }}>
-          {t('settings.machine.title')}
-        </div>
-        <KeyValueList items={machineItems} />
-      </Card>
-
-      <Card>
-        <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-12)' }}>
-          {t('settings.sync.title')}
-        </div>
-        <KeyValueList items={syncItems} />
-        <p className="ob-small" style={{ marginTop: 'var(--s-12)', marginBottom: 0 }}>
-          {t('settings.sync.note')}
-        </p>
-      </Card>
-
-      {session.permissions.includes('storage.manage') && (
-        <Card>
-          <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-12)' }}>
-            {t('settings.storage.title')}
-          </div>
-          <StorageBackupActions />
-        </Card>
-      )}
-    </div>
+  return (
+    <DeveloperPanel
+      status={developer.status}
+      busy={developer.busy}
+      error={developer.error}
+      onUnlock={developer.unlock}
+      onLock={developer.lock}
+      tools={tools}
+    />
   );
 }

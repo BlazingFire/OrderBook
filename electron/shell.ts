@@ -28,6 +28,7 @@
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
+import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -43,6 +44,7 @@ import {
   writeShellSettings,
 } from './lib/settings.js';
 import { canRestart, isExpectedExit, pruneRestarts, RESTART_LIMIT } from './lib/supervisor.js';
+import { uninstallCommand, uninstallScriptsDir } from './lib/uninstall.js';
 
 export interface PanelShellConfig {
   readonly panel: 'master' | 'office';
@@ -465,6 +467,14 @@ export function runPanelShell(config: PanelShellConfig): void {
           },
           { type: 'separator' },
           { label: 'Open log folder', click: () => electronShell.showItemInFolder(logPath()) },
+          {
+            label: 'Uninstall OrderBook',
+            // Navigates, and nothing more. The page owns the choice that
+            // matters — whether the company's database goes with the program —
+            // and a menu item that started the uninstall itself would put that
+            // choice one stray click away with no screen in between.
+            click: () => mainWindow?.webContents.send('orderbook:menuCommand', 'settings.developer'),
+          },
           ...(isMac ? [] : [{ label: `Version ${app.getVersion()}`, enabled: false }]),
         ],
       },
@@ -641,6 +651,96 @@ export function runPanelShell(config: PanelShellConfig): void {
   ipcMain.handle('orderbook:openLogFolder', () => {
     electronShell.showItemInFolder(logPath());
     return true;
+  });
+
+  /*
+   * Remove this panel from the machine.
+   *
+   * The page decides only one thing — whether the data survives — and it is
+   * not trusted to have asked: the confirmation below is native, so a window
+   * that has been taken over still cannot delete a company's records without
+   * somebody reading a dialog and clicking Uninstall. Everything else about
+   * the removal is the script's, in `tools/uninstall/`.
+   */
+  ipcMain.handle('orderbook:uninstall', async (_event, value: unknown): Promise<boolean> => {
+    const keepData = (value as { keepData?: unknown } | null)?.keepData;
+    // Not `!== true`: a missing or mistyped field must not quietly mean "and
+    // delete the database", which is what the falsy reading of it would be.
+    if (typeof keepData !== 'boolean') {
+      say('Refused to uninstall: the request did not say whether to keep the data');
+      return false;
+    }
+
+    const scriptsDir = uninstallScriptsDir(app.isPackaged, process.resourcesPath, here);
+    const command = uninstallCommand({
+      platform: process.platform,
+      panel: config.panel,
+      keepData,
+      scriptsDir,
+    });
+
+    if (!command) {
+      say(`Refused to uninstall: no uninstaller ships for ${process.platform}`);
+      return false;
+    }
+
+    const choice = await dialog.showMessageBox({
+      type: 'warning',
+      buttons: ['Uninstall', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      title: `Uninstall ${config.productName}?`,
+      message: `${config.productName} will be removed from this computer.`,
+      detail: keepData
+        ? 'The database, the uploaded photos and the settings stay on this computer, so installing the panel again picks them up where they were.'
+        : 'The database, the uploaded photos and the settings will be deleted as well. Every party, lead and order kept on this computer goes with them. This cannot be undone.',
+    });
+
+    if (choice.response !== 0) return false;
+
+    /*
+     * The script's own name, repeated here rather than exported, because this
+     * is the only place that needs to know a file is there *before* the point
+     * of no return. `uninstallCommand` builds a command line; asking it what
+     * file that line names would mean parsing the AppleScript back out.
+     */
+    const script = path.join(
+      scriptsDir,
+      process.platform === 'win32' ? 'uninstall-orderbook.ps1' : 'uninstall-orderbook.sh',
+    );
+    if (!existsSync(script)) {
+      say(`Refused to uninstall: ${script} is not in this build`);
+      return false;
+    }
+
+    /*
+     * Stop the server first, for the reason `orderbook:applyUpdate` gives: the
+     * files about to be deleted are the ones the running server has open, and
+     * `postgres.exe` under the install directory holds its own image locked
+     * while the cluster is up. A removal that trips over that leaves half a
+     * program folder behind on a machine that was told it was gone.
+     *
+     * `quitting` is set across the stop so the supervisor does not read it as a
+     * crash and start a second server into a folder being deleted.
+     */
+    quitting = true;
+    say(`Uninstalling; stopping the server first (data will be ${keepData ? 'kept' : 'deleted'})`);
+    await stopServer();
+
+    try {
+      spawn(command.file, command.args, { detached: true, stdio: 'ignore' }).unref();
+      say('Uninstaller started');
+      app.quit();
+      return true;
+    } catch (error) {
+      // Nothing has been deleted yet — the script is what deletes — so put the
+      // server back rather than leaving a window over a dead backend because a
+      // command would not start.
+      quitting = false;
+      serverProcess = startServer();
+      say(`Could not start the uninstaller: ${String(error)}`);
+      return false;
+    }
   });
 
   /*

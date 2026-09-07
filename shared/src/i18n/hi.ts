@@ -153,6 +153,10 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.connector.urlInvalid': 'That is not a web address',
   'validation.connector.urlScheme': 'A connection address must start with http or https',
   'validation.connector.urlSelf': 'A connection cannot point back at this Master',
+  // TODO(i18n-hi)
+  'validation.developer.passwordRequired': 'Enter the developer password',
+  // TODO(i18n-hi)
+  'validation.developer.confirmationRequired': 'Type RESET to confirm',
   'validation.request.bodyRequired': 'That request needs a JSON body',
   'validation.ai.notConfigured': 'The assistant has no model configured yet',
   'validation.ai.promptRequired': 'Ask a question first',
@@ -186,6 +190,10 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'error.unauthorized.differentMaster': 'यह उस मास्टर पैनल से अलग है जिसे आपने दर्ज किया था',
   'error.unauthorized.panelNotPaired': 'यह पैनल जोड़ा नहीं गया है',
   'error.unauthorized.panelCredentialsInvalid': 'पैनल क्रेडेंशियल मान्य नहीं हैं',
+  // TODO(i18n-hi)
+  'error.unauthorized.developerPassword': 'That is not the developer password',
+  // TODO(i18n-hi)
+  'error.unauthorized.developerMode': 'Developer mode is not unlocked',
   'error.forbidden.partyNotAssigned': 'वह पार्टी आपको नहीं सौंपी गई है',
   'error.forbidden.partyViewOnly': 'आप वह पार्टी देख सकते हैं, पर उसके रिकॉर्ड बदल नहीं सकते',
   'error.tenantViolation': '{what} इस कंपनी से संबंधित नहीं है',
@@ -3772,6 +3780,27 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'settings.theme.label': 'Theme',
   // TODO(i18n-hi)
   'settings.theme.light': 'Light',
+
+  // --- The Settings screen's frame.
+  // TODO(i18n-hi)
+  'settings.title': 'Settings',
+  // TODO(i18n-hi)
+  'settings.subtitle':
+    'Per-machine preferences, this installation’s details, and the maintenance tools.',
+  // TODO(i18n-hi)
+  'settings.tab.appearance': 'Appearance',
+  // TODO(i18n-hi)
+  'settings.tab.shortcuts': 'Shortcuts',
+  // TODO(i18n-hi)
+  'settings.tab.company': 'Company',
+  // TODO(i18n-hi)
+  'settings.tab.connection': 'Connection',
+  // TODO(i18n-hi)
+  'settings.tab.machine': 'This machine',
+  // TODO(i18n-hi)
+  'settings.tab.storage': 'Storage',
+  // TODO(i18n-hi)
+  'settings.tab.developer': 'Developer',
   // TODO(i18n-hi)
   'shell.noModules':
     "Your role does not include access to any of this panel's screens. Ask an administrator if you think that is wrong.",
@@ -4079,4 +4108,128 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'setting.ai.maxConcurrentRuns.help':
     'How many AI requests can run at the same time. Lower this if the server becomes slow.',
+
+  // --- Developer mode ---
+  // TODO(i18n-hi)
+  'developer.unlockFailed': 'Unlock failed',
+  // TODO(i18n-hi)
+  'developer.unlocked.title': 'Developer mode is active',
+  // TODO(i18n-hi)
+  'developer.unlocked.locksIn': 'Locks in {time}',
+  // TODO(i18n-hi)
+  'developer.lock': 'Lock',
+  // TODO(i18n-hi)
+  'developer.locked.title': 'Developer Mode',
+  // TODO(i18n-hi)
+  'developer.locked.description':
+    'Enter the developer password to access maintenance tools. This is not a user account — it is a shared key documented with the software.',
+  // TODO(i18n-hi)
+  'developer.locked.passwordLabel': 'Developer password',
+  // TODO(i18n-hi)
+  'developer.locked.hint': 'Found in docs/DEVELOPER_MODE.md',
+  // TODO(i18n-hi)
+  'developer.unlock': 'Unlock',
+  // TODO(i18n-hi)
+  'developer.confirm.typeWord': 'Type {word} to confirm',
+
+  // --- The tools themselves.
+  // TODO(i18n-hi)
+  'developer.tool.seed.title': 'Test users',
+  // TODO(i18n-hi)
+  'developer.tool.seed.description':
+    'Creates three sign-ins — admin, management and office — with the fixed passwords documented beside the software, and re-arms them with those passwords if they already exist. If a user called admin is already here, its password and its display name are overwritten and everyone signed in as it is signed out.',
+  // TODO(i18n-hi)
+  'developer.tool.seed.action': 'Seed test users',
+  // TODO(i18n-hi)
+  'developer.tool.seed.done': 'Test users are ready',
+  // TODO(i18n-hi)
+  'developer.tool.seed.username': 'Username',
+  // TODO(i18n-hi)
+  'developer.tool.seed.password': 'Password',
+  // TODO(i18n-hi)
+  'developer.tool.seed.tier': 'Tier',
+  // TODO(i18n-hi)
+  'developer.tool.seed.outcome': 'Outcome',
+  // TODO(i18n-hi)
+  'developer.tool.seed.outcomeCreated': 'Created',
+  // TODO(i18n-hi)
+  'developer.tool.seed.outcomeReset': 'Password reset',
+  // TODO(i18n-hi)
+  'developer.tool.seed.pairingPassword':
+    'This seed had to run first-time setup itself. The pairing password it generated is shown once, here, and cannot be shown again:',
+  // TODO(i18n-hi)
+  'developer.tool.resetAll.title': 'Erase everything',
+  // TODO(i18n-hi)
+  'developer.tool.resetAll.description':
+    'Returns this Master to the state it was in before it was ever set up. There is no undo, and no backup is taken on the way.',
+  // TODO(i18n-hi)
+  'developer.tool.resetAll.action': 'Erase everything',
+  // TODO(i18n-hi)
+  'developer.tool.resetAll.confirmTitle': 'Erase this installation?',
+  // TODO(i18n-hi)
+  'developer.tool.resetAll.confirmHint':
+    'What stays: the database server itself, the log files, and the data-folder location.',
+  // TODO(i18n-hi)
+  'developer.tool.resetAll.detail.records': 'Every record — parties, products, leads and orders',
+  // TODO(i18n-hi)
+  'developer.tool.resetAll.detail.files': 'Uploads and generated documents',
+  // TODO(i18n-hi)
+  'developer.tool.resetAll.detail.people': 'Users and roles',
+  // TODO(i18n-hi)
+  'developer.tool.resetAll.detail.settings': 'Company settings',
+  // TODO(i18n-hi)
+  'developer.tool.resetAll.detail.pairings': 'Office Panel pairings',
+  // TODO(i18n-hi)
+  'developer.tool.resetAll.detail.vault': 'The password vault key',
+  // TODO(i18n-hi)
+  'developer.tool.resetAll.done': 'Erased — going back to first-run setup',
+  // TODO(i18n-hi)
+  'developer.tool.resetPanel.title': 'Reset this panel',
+  // TODO(i18n-hi)
+  'developer.tool.resetPanel.description':
+    'Unpairs this Office Panel and throws away everything it holds. The Master and its data are untouched.',
+  // TODO(i18n-hi)
+  'developer.tool.resetPanel.action': 'Reset this panel',
+  // TODO(i18n-hi)
+  'developer.tool.resetPanel.confirmTitle': 'Reset this panel?',
+  // TODO(i18n-hi)
+  'developer.tool.resetPanel.confirmHint':
+    'What stays: the data-folder location. Everything else comes back from the Master once this panel is paired again.',
+  // TODO(i18n-hi)
+  'developer.tool.resetPanel.detail.pairing': 'The pairing with the Master',
+  // TODO(i18n-hi)
+  'developer.tool.resetPanel.detail.users': 'Cached users and remembered faces',
+  // TODO(i18n-hi)
+  'developer.tool.resetPanel.detail.queue':
+    'The offline queue — anything saved here and not yet sent',
+  // TODO(i18n-hi)
+  'developer.tool.resetPanel.detail.snapshot': 'The cached snapshot and product images',
+  // TODO(i18n-hi)
+  'developer.tool.resetPanel.done': 'Panel reset — going back to the connection screen',
+
+  // TODO(i18n-hi)
+  'developer.tool.uninstall.title': 'Uninstall OrderBook',
+  // TODO(i18n-hi)
+  'developer.tool.uninstall.description':
+    'Removes this panel from this computer: the program, its shortcuts, its registry entries and the firewall rules its installer added. The window closes and the rest happens without it.',
+  // TODO(i18n-hi)
+  'developer.tool.uninstall.action': 'Uninstall',
+  // TODO(i18n-hi)
+  'developer.tool.uninstall.deleteData': 'Also delete all OrderBook data on this computer',
+  // TODO(i18n-hi)
+  'developer.tool.uninstall.confirmWord': 'DELETE',
+  // TODO(i18n-hi)
+  'developer.tool.uninstall.confirmTitle': 'Uninstall and delete the data?',
+  // TODO(i18n-hi)
+  'developer.tool.uninstall.confirmHint':
+    'This computer will keep nothing. Take a backup first if anybody still needs these records.',
+  // TODO(i18n-hi)
+  'developer.tool.uninstall.detail.program': 'The program, its shortcuts and its firewall rules',
+  // TODO(i18n-hi)
+  'developer.tool.uninstall.detail.data': 'The database, uploads, documents and settings',
+  // TODO(i18n-hi)
+  'developer.tool.uninstall.browserOnly':
+    'Open this panel in its desktop app to uninstall it — a browser tab cannot remove a program from the computer it is looking at.',
+  // TODO(i18n-hi)
+  'developer.tool.uninstall.refused': 'Uninstall cancelled — nothing was removed',
 };

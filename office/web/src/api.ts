@@ -9,6 +9,7 @@
  * hidden behind an optimistic fake.
  */
 
+import { DEVELOPER_RESET_CONFIRMATION, DEVELOPER_TOKEN_HEADER } from '@orderbook/shared';
 import type {
   ActivityLogEntry,
   DesktopBridge,
@@ -27,6 +28,9 @@ import type {
   CustomFieldDefinitionUpdateInput,
   CustomFieldReorderInput,
   DashboardSummary,
+  DeveloperStatus,
+  DeveloperUnlock,
+  ResetAllResult,
   DispatchesReport,
   FieldCatalogue,
   FieldUsageBreakdown,
@@ -280,7 +284,15 @@ function request<T>(path: string, init?: RequestInit): Promise<T> {
     return send<T>(path, init, own).catch(asFailure);
   }
 
-  let entry = inFlight.get(path);
+  /*
+   * The dedupe key is the path *plus* whatever headers the caller set. A GET
+   * carrying `x-developer-token` is a different question from the same GET
+   * without one, and sharing the two would answer "still locked" to the status
+   * call made immediately after an unlock.
+   */
+  const key = init?.headers ? JSON.stringify([path, init.headers]) : path;
+
+  let entry = inFlight.get(key);
 
   if (!entry) {
     const controller = new AbortController();
@@ -290,9 +302,9 @@ function request<T>(path: string, init?: RequestInit): Promise<T> {
       promise: send<unknown>(path, init, AbortSignal.any([controller.signal, timeout])),
     };
 
-    void created.promise.catch(() => undefined).finally(() => inFlight.delete(path));
+    void created.promise.catch(() => undefined).finally(() => inFlight.delete(key));
 
-    inFlight.set(path, created);
+    inFlight.set(key, created);
     entry = created;
   }
 
@@ -300,11 +312,11 @@ function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   return entry.promise.then(
     (value) => {
-      release(path);
+      release(key);
       return value as T;
     },
     (error: unknown) => {
-      release(path);
+      release(key);
       return asFailure(error);
     },
   );
@@ -312,6 +324,14 @@ function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 const post = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) });
+
+/** `post`, plus the developer unlock token the route checks instead of a permission. */
+const postAsDeveloper = <T>(path: string, token: string, body?: unknown) =>
+  request<T>(path, {
+    method: 'POST',
+    body: JSON.stringify(body ?? {}),
+    headers: { [DEVELOPER_TOKEN_HEADER]: token },
+  });
 
 const put = <T>(path: string, body: unknown) =>
   request<T>(path, { method: 'PUT', body: JSON.stringify(body) });
@@ -811,4 +831,22 @@ export const api = {
     post<Product>(`/api/products/${productId}/images/reorder`, { ids }),
   deleteProductImage: (productId: string, imageId: string) =>
     request<Product>(`/api/products/${productId}/images/${imageId}`, { method: 'DELETE' }),
+
+  // --- Developer mode (`shared/src/domain/developer.ts`) --------------------
+  // The unlock token rides in a header, never in the path: these URLs reach
+  // the shell's console, and a token written down there outlives the fifteen
+  // minutes it is supposed to live. `reset-all` is this panel's own reset —
+  // the Master's data is not involved.
+  developer: {
+    status: (token: string | null) =>
+      request<DeveloperStatus>('/api/developer/status', {
+        headers: token ? { [DEVELOPER_TOKEN_HEADER]: token } : undefined,
+      }),
+    unlock: (password: string) => post<DeveloperUnlock>('/api/developer/unlock', { password }),
+    lock: (token: string) => postAsDeveloper<{ ok: true }>('/api/developer/lock', token),
+    resetAll: (token: string) =>
+      postAsDeveloper<ResetAllResult>('/api/developer/reset-all', token, {
+        confirmation: DEVELOPER_RESET_CONFIRMATION,
+      }),
+  },
 };

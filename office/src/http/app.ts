@@ -12,6 +12,8 @@ import path from 'node:path';
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import multer from 'multer';
 import {
+  DEVELOPER_RESET_CONFIRMATION,
+  DEVELOPER_TOKEN_HEADER,
   IMAGE_VARIANTS,
   isPickKind,
   maskLead,
@@ -40,6 +42,8 @@ import { BackupValidationError } from '../domain/backup.js';
 import * as backupExportService from '../services/backup-export.service.js';
 import * as backupRestoreService from '../services/backup-restore.service.js';
 import { RestoreError } from '../services/backup-restore.service.js';
+import * as developerService from '../services/developer.service.js';
+import { DeveloperError } from '../services/developer.service.js';
 import { loadCredentials } from '../services/credentials.store.js';
 import { masterFetch } from '../lib/master-fetch.js';
 import { avatarFile, forgetAvatar, isCached } from '../services/avatar-cache.js';
@@ -1240,6 +1244,63 @@ export function createApp(): Express {
     }
   });
 
+  // --- Developer mode (`shared/src/domain/developer.ts`): a signed-in person
+  // gets to the door, the password opens it, and the token in
+  // `x-developer-token` — not a permission — is what guards the one tool
+  // behind it. No `userSession.can` here on purpose: there is no permission
+  // that grants developer mode, and inventing one would let an administrator
+  // hand it out. The session itself is already required by the `/api`
+  // `requireUser` gate above, as it is for the storage routes. ---
+
+  app.post('/api/developer/unlock', (req, res) => {
+    void (async () => {
+      const { password } = req.body ?? {};
+      if (typeof password !== 'string' || !password) {
+        res
+          .status(400)
+          .json({ error: 'validation_error', message: 'Enter the developer password' });
+        return;
+      }
+
+      try {
+        res.status(201).json(await developerService.unlock(password));
+      } catch (error) {
+        respondToDeveloperError(res, error);
+      }
+    })();
+  });
+
+  app.get('/api/developer/status', (req, res) => {
+    res.json(developerService.status(req.header(DEVELOPER_TOKEN_HEADER)));
+  });
+
+  app.post('/api/developer/lock', (req, res) => {
+    developerService.lock(req.header(DEVELOPER_TOKEN_HEADER));
+    res.json({ ok: true });
+  });
+
+  app.post('/api/developer/reset-all', (req, res) => {
+    void (async () => {
+      if (!developerService.isUnlocked(req.header(DEVELOPER_TOKEN_HEADER))) {
+        res.status(401).json({ error: 'developer_locked', message: 'Unlock developer mode first' });
+        return;
+      }
+      if (req.body?.confirmation !== DEVELOPER_RESET_CONFIRMATION) {
+        res.status(400).json({
+          error: 'validation_error',
+          message: `Type ${DEVELOPER_RESET_CONFIRMATION} to confirm`,
+        });
+        return;
+      }
+
+      try {
+        res.json(await developerService.resetPanel());
+      } catch (error) {
+        respondToDeveloperError(res, error);
+      }
+    })();
+  });
+
   // --- Live updates to this panel's browser ---
   app.get('/api/events', (req, res) => streamEvents(req, res));
 
@@ -1769,6 +1830,21 @@ function respondToRestoreError(res: Response, error: unknown): void {
     return;
   }
   log.error('Storage export/restore failed', error);
+  res.status(500).json({ error: 'internal_error', message: 'Something went wrong' });
+}
+
+function respondToDeveloperError(res: Response, error: unknown): void {
+  if (error instanceof DeveloperError) {
+    // `details.seconds` is how long the lockout has left — the screen counts
+    // it down, so it must survive the trip.
+    res.status(error.status).json({
+      error: error.code,
+      message: error.message,
+      ...(error.details ? { details: error.details } : {}),
+    });
+    return;
+  }
+  log.error('Developer mode failed', error);
   res.status(500).json({ error: 'internal_error', message: 'Something went wrong' });
 }
 

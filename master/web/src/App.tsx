@@ -45,6 +45,7 @@ import {
   TopbarActionsProvider,
   loadSidebarMode,
   publishAiEvent,
+  requestSettingsTab,
   rem,
   storeSidebarMode,
   t,
@@ -784,7 +785,28 @@ function MasterPanel() {
   const overlays = (
     <>
       <KeyboardOverlays
-        subscribeMenu={(handler) => desktopBridge()?.onMenuCommand?.(handler)}
+        subscribeMenu={(handler) =>
+          desktopBridge()?.onMenuCommand?.((id) => {
+            /*
+             * `settings.developer` is not a keyboard command and never will be
+             * — there is no chord for it — so it is answered here rather than
+             * in the palette's own whitelist, which only knows `COMMANDS`.
+             *
+             * The Settings *nav entry* needs `settings.manage`; the Settings
+             * *screen* does not, and neither does developer mode, which is
+             * guarded by a password precisely so it does not depend on a
+             * permission somebody could hand out. So the screen opens for
+             * anyone the shell's menu asks — the tabs they may not see are
+             * absent from it, and the sidebar simply highlights nothing.
+             */
+            if (id === 'settings.developer') {
+              navigate('settings');
+              requestSettingsTab('developer');
+              return;
+            }
+            handler(id);
+          })
+        }
         searchRecords={async (term) => ({ hits: await api.search(term) })}
         onOpenRecord={(hit) => {
           // Route the hit to the screen that owns it — which is exactly what

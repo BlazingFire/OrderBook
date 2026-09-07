@@ -133,6 +133,82 @@ Everything through Stage 6 is pushed to **both `dev` and `main`** (they are at
 the same commit as of 2026-08-28). Stages 7–12 are on `dev` only, awaiting the
 owner's word to push.
 
+### Developer mode, reset, test users, uninstaller and the Settings rebuild (2026-09-07)
+
+The owner asked for four things in one message: dummy users for the three role
+tiers, a "reset all" that only a developer password opens, on both panels, an
+uninstaller that removes the software from Windows or macOS completely, and
+solid UI for the tabs those live on. All four are built; `npm run lint`,
+`npm run typecheck` and `npm run test` each exit 0 (114 files / 1437 tests), and
+both panels' installers were built to prove the uninstaller ships inside them.
+
+**Developer mode is a password, not a permission** — `docs/DEVELOPER_MODE.md`
+carries the password and the full behaviour. The reasoning is that the person
+who needs these tools is usually not a user of the company at all (support, or
+the owner on a fresh install), so a permission would have to be granted by
+exactly the account that is locked out. Unlocking mints a 15-minute token held
+only in the server's memory and the page's React state; five wrong answers lock
+the route for a minute, counted per process rather than per address because on a
+shop LAN everybody shares a handful of addresses. Every developer route still
+requires a signed-in session on top of the token — the gate adds a door, it does
+not remove one, and there is deliberately no way in from the sign-in screen.
+
+**Reset erases through the same code path a fresh install takes.** The Master
+drops the `public` schema and re-runs the migrations rather than truncating and
+re-seeding by hand, so what comes back is by construction what a new
+installation has; then the uploads, documents, `secrets/` and `tmp/` folders go,
+the vault key is forgotten, and every in-process cache that holds tenant data is
+invalidated (settings, roles, pipelines, fields, insights, the public-API tenant
+id, the API-key limiter, the change ring). The PostgreSQL cluster, the logs and
+the data-folder pointer are deliberately kept. The Office's reset removes every
+file `paths()` names plus the image and avatar folders, clears the pairing
+through the store rather than the file, and resets the six caches a restore
+already resets — the settings file that says *where* the data folder is survives,
+because a reset erases a folder's contents, it does not forget which folder the
+operator chose.
+
+**Test users** are `admin` / `Admin@1234`, `management` / `Manage@1234` and
+`office` / `Office@1234`, declared once in `shared/src/domain/developer.ts` and
+seeded either from the Developer tab or by `npm run seed:dummy`. Seeding on a
+Master nobody has set up runs first-time setup itself and shows the pairing
+password once. It **re-arms an existing `admin` rather than skipping it**, which
+means a set-up Master's real administrator password is overwritten and its
+sessions dropped; the tool says so before it runs, and so does the documentation.
+
+**The uninstaller is one pair of scripts reached three ways.**
+`tools/uninstall/uninstall-orderbook.ps1` and `.sh` remove the program folders,
+the Electron profile and updater caches, shortcuts across every user profile, the
+`OrderBook` uninstall/Run/AppCompat registry entries and the two firewall rules —
+and, without `-KeepData`, the data directory including a relocated one read from
+the `<panel>-location.json` pointer. They ship as real files
+(`extraResources: ../tools/uninstall -> uninstall`, verified present in a built
+`win-unpacked/resources/`), because neither caller can read out of an asar: the
+shell hands the script to the OS *after* it has quit, and the NSIS uninstaller
+runs it once the program folder is already gone. That last point is why
+`customUnInit` copies the script to `$TEMP` — `customUnInstall` runs after
+`RMDir /r $INSTDIR`, so reading it from `$INSTDIR` there would find nothing.
+Processes are stopped **by path, never by image name**: plenty of these machines
+run an unrelated PostgreSQL, and `taskkill /IM postgres.exe` would take a
+company's database down to tidy up after us.
+
+**Both Settings screens were rebuilt** on a new `ui/src/SettingsLayout.tsx` —
+tabbed pages, one shared `AppearanceSettings` where each panel used to carry its
+own copy under a different key set, a shared `SettingsSection`/`SettingRow`, and
+the Developer tab itself. Nothing the old screens showed was dropped. A real bug
+turned up on the way: `request()`'s in-flight GET dedupe was keyed on the path
+alone, so a developer `status` call made right after unlocking was served the
+still-in-flight pre-unlock answer — the panel would have said "still locked"
+after a correct password. The key now includes the caller's headers, on both
+panels.
+
+**Deliberately not done.** No developer entry on the sign-in screen, so a
+forgotten administrator password still needs another signed-in user or
+`npm run seed:dummy` at the machine. Other users' `NTUSER.DAT` hives are not
+loaded, so their `Run`/AppCompat values survive an uninstall (their data folders
+and shortcuts do not). And nobody has run a packaged install-then-uninstall
+end to end on a real machine: the installers build, the scripts dry-run clean and
+the NSIS macros compile, but the live uninstall path is still unexercised.
+
 ### v1.0.3 blockers fixed, guardrails rewritten, designer and photo flow improved (2026-09-06)
 
 A Claude session audited the uncommitted work from the Qwen/OpenCode and

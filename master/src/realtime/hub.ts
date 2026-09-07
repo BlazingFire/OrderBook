@@ -73,6 +73,12 @@ const log = createLogger('realtime');
 type PanelSocket = Socket<ClientToServerEvents, ServerToClientEvents, never, SocketData>;
 
 /**
+ * Module-level reference, set once by `createRealtimeHub`.  `disconnectEverySocket`
+ * needs it without threading the hub instance through every service.
+ */
+let ioInstance: Server<ClientToServerEvents, ServerToClientEvents, never, SocketData> | null = null;
+
+/**
  * Live Office Panel sockets by panel id.
  *
  * Kept beside the `office-panels` room rather than as a room-per-panel: the
@@ -95,6 +101,22 @@ let adminSocketCount = 0;
 /** For the health route. Zero before the hub starts, which is honest. */
 export function socketCounts(): { panelSockets: number; adminSockets: number } {
   return { panelSockets: panelSockets.size, adminSockets: adminSocketCount };
+}
+
+/**
+ * Disconnect every connected socket — panel and admin alike.
+ *
+ * Called by `developer.service.ts` before a full reset so no client is
+ * mid-write when the schema is dropped.  The server itself keeps running;
+ * clients may reconnect after the reset completes.
+ */
+export function disconnectEverySocket(): void {
+  if (!ioInstance) return;
+  for (const socket of panelSockets.values()) {
+    socket.disconnect(true);
+  }
+  panelSockets.clear();
+  ioInstance.in(ROOM_MASTER_ADMINS).disconnectSockets(true);
 }
 
 /** How long the Master waits for a panel to answer an administrative request. */
@@ -129,6 +151,7 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
     // the framing costs more than it saves.
     perMessageDeflate: { threshold: 1024 },
   });
+  ioInstance = io;
 
   io.use(async (socket, next) => {
     try {
@@ -235,6 +258,7 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
       setPanelLink(null);
       panelSockets.clear();
       await io.close();
+      if (ioInstance === io) ioInstance = null;
     },
   };
 }

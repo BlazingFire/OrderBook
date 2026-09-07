@@ -1,70 +1,84 @@
 /**
- * Connection details (re-readable at any time), storage usage, and the
- * per-machine appearance controls (theme/density/motion — 6-UI-DESIGN.md §10,
- * "per-machine, never synced", lives here and only here).
+ * Settings, as tabs rather than as one long stack of cards.
  *
- * The pairing password is deliberately absent: it was shown once at setup and
- * only its hash is stored, so it cannot be displayed again.
+ * The skeleton — the page, the sections, the rows, the appearance controls and
+ * the Developer tab — lives in `@orderbook/ui`'s `SettingsLayout`, shared with
+ * the Office Panel. What is left here is what only the Master has: the company
+ * settings, the connection identity, the storage figures, and the two
+ * developer tools that reach the database.
+ *
+ * The pairing password is deliberately absent from the connection tab: it was
+ * shown once at setup and only its hash is stored, so it cannot be shown again.
+ *
+ * The Developer tab is present for every signed-in person, with no permission
+ * in front of it. That is the design (`shared/src/domain/developer.ts`): the
+ * developer password is the door, and there is no permission that could grant
+ * or withhold it without letting an administrator hand developer mode out.
  */
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type {
   MasterIdentity,
+  SeedDummyUsersResult,
   SettingKey,
   SettingView,
   StorageUsage,
   VaultStatus,
 } from '@orderbook/shared';
-import { SETTINGS } from '@orderbook/shared';
+import { DEVELOPER_RESET_CONFIRMATION, SETTINGS } from '@orderbook/shared';
 
-import { api } from '../api';
+import { api, desktopBridge } from '../api';
 import { StorageBackupActions } from '../components/StorageBackup';
 import {
+  AppearanceSettings,
   Button,
-  Card,
+  DataTable,
+  DeveloperPanel,
   IdField,
   Input,
   KeyValueList,
-  SCALE_DEFAULT,
-  SCALE_MAX,
-  SCALE_MIN,
-  SCALE_STEP,
-  Segmented,
+  SettingRow,
+  SettingsPage,
+  SettingsSection,
+  ShortcutSettings,
   Skeleton,
-  Slider,
   Switch,
-  applyDensity,
-  applyMotion,
-  applyScale,
-  applyTheme,
   formatBytes,
   formatDateTime,
-  loadDensity,
-  loadScale,
-  loadTheme,
-  motionDisabled,
-  rem,
   t,
-  type Density,
-  type Theme,
-  ShortcutSettings,
+  useDeveloperSession,
+  useUninstallTool,
+  useSettingsTab,
+  type DeveloperTool,
+  type SettingsTab,
 } from '@orderbook/ui';
 
-function currentRootSize(): string {
-  return getComputedStyle(document.documentElement).getPropertyValue('--root-size').trim();
-}
+/**
+ * Every tab this panel can have, including the one that needs a permission.
+ *
+ * The list is fixed rather than derived from the tabs actually built, because
+ * the permissions arrive a tick after the screen mounts: a remembered
+ * `company` validated against the tabs of that first tick would be thrown away
+ * every single load. `SettingsPage` shows the first tab while a remembered one
+ * has nothing to render, so nothing is left blank in the meantime.
+ */
+const TAB_IDS = [
+  'appearance',
+  'shortcuts',
+  'company',
+  'connection',
+  'storage',
+  'developer',
+] as const;
 
 export function SettingsScreen() {
   const [identity, setIdentity] = useState<MasterIdentity | null>(null);
   const [storage, setStorage] = useState<StorageUsage | null>(null);
-  const [theme, setTheme] = useState<Theme>(() => loadTheme());
-  const [density, setDensity] = useState<Density>(() => loadDensity());
-  const [scale, setScale] = useState<number>(() => loadScale());
-  const [motionOn, setMotionOn] = useState<boolean>(() => !motionDisabled());
   const [canManageStorage, setCanManageStorage] = useState(false);
   const [settings, setSettings] = useState<SettingView[] | null>(null);
   const [vault, setVault] = useState<VaultStatus | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [tab, setTab] = useSettingsTab('ob.settings.tab.master', TAB_IDS, 'appearance');
 
   const loadCompanySettings = useCallback(async (canManage: boolean, canReveal: boolean) => {
     if (canManage) setSettings(await api.settings().catch(() => null));
@@ -110,211 +124,278 @@ export function SettingsScreen() {
     }
   }
 
-  function handleThemeChange(next: Theme) {
-    setTheme(next);
-    applyTheme(next);
-  }
-
-  function handleDensityChange(next: Density) {
-    setDensity(next);
-    applyDensity(next);
-  }
-
-  function handleScaleChange(next: number): void {
-    applyScale(next);
-    setScale(next);
-  }
-
-  // Matches the mockup's own convention (and Office's): the switch reads
-  // "Turn animation off," so checked means motion is off, not on.
-  function handleMotionChange(motionOff: boolean) {
-    const nextMotionOn = !motionOff;
-    setMotionOn(nextMotionOn);
-    applyMotion(nextMotionOn);
-  }
-
-  return (
-    <div
-      style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)', maxWidth: rem(720) }}
-    >
-      <Card>
-        <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-4)' }}>
-          {t('settings.appearance.title')}
-        </div>
-        <p className="ob-small" style={{ margin: '0 0 var(--s-12)' }}>
-          {t('settings.appearance.subtitle')}
-        </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
-          <SettingRow label={t('settings.theme.label')}>
-            <Segmented
-              options={[
-                { value: 'light', label: t('settings.theme.light') },
-                { value: 'dark', label: t('settings.theme.dark') },
-              ]}
-              value={theme}
-              onChange={handleThemeChange}
-            />
-          </SettingRow>
-
-          <SettingRow label={t('settings.scale.label')}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
-              <Slider
-                value={scale}
-                min={SCALE_MIN}
-                max={SCALE_MAX}
-                step={SCALE_STEP}
-                label={t('settings.scale.label')}
-                onChange={handleScaleChange}
-              />
-              <span className="ob-mono ob-small" style={{ minWidth: '3.5rem', textAlign: 'right' }}>
-                {Math.round((scale / SCALE_DEFAULT) * 100)}%
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => handleScaleChange(SCALE_DEFAULT)}
-                disabled={scale === SCALE_DEFAULT}
+  const tabs: SettingsTab[] = [
+    {
+      id: 'appearance',
+      label: t('settings.tab.appearance'),
+      render: () => <AppearanceSettings />,
+    },
+    {
+      id: 'shortcuts',
+      label: t('settings.tab.shortcuts'),
+      render: () => (
+        <SettingsSection title={t('keys.settings.title')}>
+          <ShortcutSettings />
+        </SettingsSection>
+      ),
+    },
+    // Absent, not empty, without `settings.manage` — and absent too if the
+    // read failed, which is what the card used to do.
+    ...(settings
+      ? [
+          {
+            id: 'company',
+            label: t('settings.tab.company'),
+            render: () => (
+              <SettingsSection
+                title={t('settings.company.title')}
+                description={t('settings.company.subtitle')}
               >
-                {t('settings.scale.reset')}
-              </Button>
-            </div>
-            <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
-              {t('settings.scale.note', { size: currentRootSize() })}
-            </span>
-          </SettingRow>
-
-          <SettingRow label={t('settings.density.label')}>
-            <Segmented
-              options={[
-                { value: 'compact', label: t('settings.density.compact') },
-                { value: 'comfortable', label: t('settings.density.comfortable') },
-                { value: 'large', label: t('settings.density.large') },
-              ]}
-              value={density}
-              onChange={handleDensityChange}
-            />
-            <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
-              {t('settings.density.note')}
-            </span>
-          </SettingRow>
-
-          <SettingRow label={t('settings.motion.label')}>
-            <Switch
-              checked={!motionOn}
-              onChange={handleMotionChange}
-              label={t('settings.motion.turnOff')}
-            />
-            <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
-              {t('settings.motion.hint')}
-            </span>
-          </SettingRow>
-        </div>
-      </Card>
-
-      <Card>
-        <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-12)' }}>
-          {t('keys.settings.title')}
-        </div>
-        <ShortcutSettings />
-      </Card>
-
-      {settings && (
-        <Card>
-          <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-4)' }}>
-            {t('settings.company.title')}
-          </div>
-          <p className="ob-small" style={{ margin: '0 0 var(--s-12)' }}>
-            {t('settings.company.subtitle')}
-          </p>
-          {settingsError && (
-            <div className="ob-banner ob-banner--conflict" role="alert">
-              {settingsError}
-            </div>
-          )}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
-            {settings.map((setting) => (
-              <CompanySetting
-                key={setting.key}
-                setting={setting}
-                vault={setting.key === 'security.passwordRevealEnabled' ? vault : null}
-                onSave={saveSetting}
+                {settingsError && (
+                  <div className="ob-banner ob-banner--conflict" role="alert">
+                    {settingsError}
+                  </div>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
+                  {settings.map((setting) => (
+                    <CompanySetting
+                      key={setting.key}
+                      setting={setting}
+                      vault={setting.key === 'security.passwordRevealEnabled' ? vault : null}
+                      onSave={saveSetting}
+                    />
+                  ))}
+                </div>
+              </SettingsSection>
+            ),
+          },
+        ]
+      : []),
+    {
+      id: 'connection',
+      label: t('settings.tab.connection'),
+      render: () => (
+        <SettingsSection
+          title={t('settings.connection.title')}
+          description={t('settings.connection.description')}
+        >
+          {identity ? (
+            <>
+              <KeyValueList
+                items={[
+                  { label: t('settings.connection.company'), value: identity.companyName ?? '—' },
+                  {
+                    label:
+                      identity.lanIps.length > 1
+                        ? t('settings.connection.masterAddresses')
+                        : t('settings.connection.masterAddress'),
+                    value: identity.lanIps.length ? (
+                      <span className="ob-mono">
+                        {identity.lanIps.map((ip) => `${ip}:${identity.port}`).join('  •  ')}
+                      </span>
+                    ) : (
+                      t('settings.connection.noAddress', { port: identity.port })
+                    ),
+                  },
+                  {
+                    label: t('settings.connection.masterId'),
+                    value: <IdField value={identity.masterUniqueId} />,
+                  },
+                  {
+                    label: t('settings.connection.setupCompleted'),
+                    value: formatDateTime(identity.setupCompletedAt),
+                  },
+                ]}
               />
-            ))}
-          </div>
-        </Card>
-      )}
-
-      <Card>
-        <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-4)' }}>
-          {t('settings.connection.title')}
-        </div>
-        <p className="ob-small" style={{ margin: '0 0 var(--s-12)' }}>
-          {t('settings.connection.description')}
-        </p>
-        {identity ? (
-          <>
+              <p className="ob-small" style={{ marginTop: 'var(--s-12)', marginBottom: 0 }}>
+                {t('settings.connection.passwordNote')}
+              </p>
+            </>
+          ) : (
+            <SkeletonKeyValueRows rows={4} />
+          )}
+        </SettingsSection>
+      ),
+    },
+    {
+      id: 'storage',
+      label: t('settings.tab.storage'),
+      render: () => (
+        <SettingsSection title={t('settings.storage.title')}>
+          {storage ? (
             <KeyValueList
               items={[
-                { label: t('settings.connection.company'), value: identity.companyName ?? '—' },
                 {
-                  label:
-                    identity.lanIps.length > 1
-                      ? t('settings.connection.masterAddresses')
-                      : t('settings.connection.masterAddress'),
-                  value: identity.lanIps.length ? (
-                    <span className="ob-mono">
-                      {identity.lanIps.map((ip) => `${ip}:${identity.port}`).join('  •  ')}
-                    </span>
-                  ) : (
-                    t('settings.connection.noAddress', { port: identity.port })
-                  ),
+                  label: t('settings.storage.database'),
+                  value: formatBytes(storage.databaseBytes),
                 },
+                { label: t('settings.storage.uploads'), value: formatBytes(storage.uploadsBytes) },
                 {
-                  label: t('settings.connection.masterId'),
-                  value: <IdField value={identity.masterUniqueId} />,
+                  label: t('settings.storage.total'),
+                  value: <span className="ob-body-strong">{formatBytes(storage.totalBytes)}</span>,
                 },
-                {
-                  label: t('settings.connection.setupCompleted'),
-                  value: formatDateTime(identity.setupCompletedAt),
-                },
+                { label: t('settings.storage.free'), value: formatBytes(storage.diskFreeBytes) },
               ]}
             />
-            <p className="ob-small" style={{ marginTop: 'var(--s-12)', marginBottom: 0 }}>
-              {t('settings.connection.passwordNote')}
-            </p>
-          </>
-        ) : (
-          <SkeletonKeyValueRows rows={4} />
-        )}
-      </Card>
+          ) : (
+            <SkeletonKeyValueRows rows={4} />
+          )}
+          {canManageStorage && <StorageBackupActions />}
+        </SettingsSection>
+      ),
+    },
+    { id: 'developer', label: t('settings.tab.developer'), render: () => <DeveloperTab /> },
+  ];
 
-      <Card>
-        <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-4)' }}>
-          {t('settings.storage.title')}
-        </div>
-        {storage ? (
-          <KeyValueList
-            items={[
-              { label: t('settings.storage.database'), value: formatBytes(storage.databaseBytes) },
-              { label: t('settings.storage.uploads'), value: formatBytes(storage.uploadsBytes) },
-              {
-                label: t('settings.storage.total'),
-                value: <span className="ob-body-strong">{formatBytes(storage.totalBytes)}</span>,
-              },
-              { label: t('settings.storage.free'), value: formatBytes(storage.diskFreeBytes) },
-            ]}
-          />
-        ) : (
-          <SkeletonKeyValueRows rows={4} />
-        )}
-        {canManageStorage && <StorageBackupActions />}
-      </Card>
+  return (
+    <SettingsPage
+      title={t('settings.title')}
+      subtitle={t('settings.subtitle')}
+      tabs={tabs}
+      activeId={tab}
+      onChange={setTab}
+    />
+  );
+}
+
+/**
+ * Long enough for the "erased" toast to be read, short enough that nobody
+ * starts clicking around an installation that no longer has a database.
+ */
+const RELOAD_AFTER_RESET_MS = 1500;
+
+/**
+ * The Master's developer tools.
+ *
+ * Its own component so the unlock lives and dies with the tab: mounting it is
+ * what asks the server for a status, and nothing here is fetched while
+ * somebody is on Appearance.
+ */
+function DeveloperTab() {
+  const session = useDeveloperSession(api.developer);
+  const [seeded, setSeeded] = useState<SeedDummyUsersResult | null>(null);
+  const { token } = session;
+
+  // Built unconditionally: it owns the "delete the data too?" switch, and a
+  // hook cannot be called only when a token exists.
+  const uninstall = useUninstallTool(desktopBridge());
+
+  const tools: DeveloperTool[] = token
+    ? [
+        {
+          id: 'seed',
+          title: t('developer.tool.seed.title'),
+          description: t('developer.tool.seed.description'),
+          action: t('developer.tool.seed.action'),
+          done: t('developer.tool.seed.done'),
+          run: async () => setSeeded(await api.developer.seedDummyUsers(token)),
+          result: seeded ? <SeedResult result={seeded} /> : undefined,
+        },
+        {
+          id: 'reset-all',
+          danger: true,
+          title: t('developer.tool.resetAll.title'),
+          description: t('developer.tool.resetAll.description'),
+          action: t('developer.tool.resetAll.action'),
+          confirmWord: DEVELOPER_RESET_CONFIRMATION,
+          confirmTitle: t('developer.tool.resetAll.confirmTitle'),
+          confirmHint: t('developer.tool.resetAll.confirmHint'),
+          confirmDetails: [
+            t('developer.tool.resetAll.detail.records'),
+            t('developer.tool.resetAll.detail.files'),
+            t('developer.tool.resetAll.detail.people'),
+            t('developer.tool.resetAll.detail.settings'),
+            t('developer.tool.resetAll.detail.pairings'),
+            t('developer.tool.resetAll.detail.vault'),
+          ],
+          done: t('developer.tool.resetAll.done'),
+          run: async () => {
+            await api.developer.resetAll(token);
+            // Every screen this page has visited, the signed-in session and the
+            // socket now describe a Master that no longer exists. Reloading is
+            // the only honest way to the first-run screen — there is nothing
+            // left for this page to re-render.
+            setTimeout(() => window.location.reload(), RELOAD_AFTER_RESET_MS);
+          },
+        },
+        uninstall,
+      ]
+    : [];
+
+  return (
+    <DeveloperPanel
+      status={session.status}
+      busy={session.busy}
+      error={session.error}
+      onUnlock={session.unlock}
+      onLock={session.lock}
+      tools={tools}
+    />
+  );
+}
+
+/**
+ * What the seed produced, as a table to be read off the screen and typed into
+ * a sign-in form — which is why the credentials are monospaced and selectable
+ * rather than merely printed.
+ */
+function SeedResult({ result }: { result: SeedDummyUsersResult }) {
+  const mono = { userSelect: 'text' } as const;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}>
+      <DataTable
+        rows={result.users}
+        rowKey={(row) => row.username}
+        columns={[
+          {
+            key: 'username',
+            header: t('developer.tool.seed.username'),
+            render: (row) => (
+              <span className="ob-mono" style={mono}>
+                {row.username}
+              </span>
+            ),
+          },
+          {
+            key: 'password',
+            header: t('developer.tool.seed.password'),
+            render: (row) => (
+              <span className="ob-mono" style={mono}>
+                {row.password}
+              </span>
+            ),
+          },
+          {
+            key: 'tier',
+            header: t('developer.tool.seed.tier'),
+            // The tier is a key, like the username — not a sentence to translate.
+            render: (row) => <span className="ob-mono">{row.tier}</span>,
+          },
+          {
+            key: 'outcome',
+            header: t('developer.tool.seed.outcome'),
+            render: (row) =>
+              row.outcome === 'created'
+                ? t('developer.tool.seed.outcomeCreated')
+                : t('developer.tool.seed.outcomeReset'),
+          },
+        ]}
+      />
+      {result.pairingPassword && (
+        <p className="ob-small" style={{ margin: 0 }}>
+          {t('developer.tool.seed.pairingPassword')}{' '}
+          <span className="ob-mono" style={mono}>
+            {result.pairingPassword}
+          </span>
+        </p>
+      )}
     </div>
   );
 }
 
 /**
- * One row of the company card, rendered from the declaration rather than from a
+ * One row of the company tab, rendered from the declaration rather than from a
  * hand-written control per key.
  *
  * Three shapes and no fourth: a boolean is a switch, a secret is "set / not
@@ -339,7 +420,14 @@ function CompanySetting({
   const help = t(SETTINGS[setting.key].descriptionToken);
 
   return (
-    <SettingRow label={label}>
+    <SettingRow
+      label={label}
+      hint={
+        vault && vault.enabled
+          ? t('settings.vault.coverage', { stored: vault.stored, total: vault.total })
+          : help
+      }
+    >
       {setting.secret ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
           <span className="ob-small">
@@ -377,23 +465,7 @@ function CompanySetting({
           {JSON.stringify(setting.value)} - {t('settings.company.editedElsewhere')}
         </span>
       )}
-      <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
-        {vault && vault.enabled
-          ? t('settings.vault.coverage', { stored: vault.stored, total: vault.total })
-          : help}
-      </span>
     </SettingRow>
-  );
-}
-
-function SettingRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
-      <span className="ob-body" style={{ width: rem(140), flex: 'none' }}>
-        {label}
-      </span>
-      {children}
-    </div>
   );
 }
 

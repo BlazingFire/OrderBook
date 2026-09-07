@@ -33,6 +33,18 @@ files:
 extraResources:
   - from: staging
     to: panel
+  # The uninstall scripts ship as real files, beside the panel rather than in
+  # the asar, because neither thing that runs them can read out of an archive:
+  # the shell hands the script to powershell.exe/bash after it has quit, and the
+  # NSIS uninstaller copies it out to sweep leftovers once the program folder is
+  # already gone.
+  #
+  # `from` is outside this panel directory on purpose, and that is supported:
+  # app-builder-lib resolves it with `path.resolve(projectDir, from)`
+  # (out/fileMatcher.js, getFileMatchers), so `..` reaches the repository root.
+  # One copy of the scripts, shipped by both panels.
+  - from: ../tools/uninstall
+    to: uninstall
 
 # One 1024px PNG per panel, rendered by `node tools/make-icons.mjs` from the
 # logo lattice; electron-builder derives the .ico and .icns from it.

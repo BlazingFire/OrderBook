@@ -467,6 +467,12 @@
   padding: var(--s-16);
 }
 
+/* A card whose contents destroy something. Still elevation level 1 — the
+   hairline changes colour, it does not become a shadow. */
+.ob-card--danger {
+  border-color: var(--state-conflict);
+}
+
 .ob-elevated-2 {
   box-shadow: var(--sh-2);
 }

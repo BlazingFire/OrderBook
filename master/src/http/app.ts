@@ -26,6 +26,7 @@ import { recycleBinRoutes } from './routes/recycle-bin.routes.js';
 import { reportRoutes } from './routes/report.routes.js';
 import { settingsRoutes } from './routes/settings.routes.js';
 import { setupRoutes } from './routes/setup.routes.js';
+import { developerRoutes } from './routes/developer.routes.js';
 import { publicUpdateRoutes, updateRoutes } from './routes/update.routes.js';
 
 export function createApp(): Express {
@@ -87,6 +88,8 @@ export function createApp(): Express {
   app.use('/api/ai', aiRoutes);
   app.use('/api/integrations', integrationRoutes);
   app.use('/api/settings', settingsRoutes);
+  // Before the catch-all — the developer routes need `requireAuth` and nothing more.
+  app.use('/api/developer', developerRoutes);
   app.use('/api', dataRoutes);
 
   // There is deliberately **no** `express.static` mount for `config.uploadsDir`.

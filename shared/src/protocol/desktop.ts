@@ -77,6 +77,23 @@ export interface DesktopBridge {
   openLogFolder?(): Promise<boolean>;
 
   /**
+   * Remove this panel from the machine: hand one of the uninstall scripts to
+   * the operating system, then quit so it can delete what we are running from.
+   *
+   * Shell only — a browser tab never sees this, and that is not a limitation
+   * to work around. A page cannot delete the program serving it, and an
+   * operator sitting at another machine has no business uninstalling the PC
+   * they happen to be looking at.
+   *
+   * `keepData` true leaves the database, uploads and settings on disk. The
+   * shell asks for confirmation natively before anything happens, so this
+   * resolves `false` on a cancel — and equally on a platform we ship no
+   * uninstaller for, a build missing the script, or a spawn the OS refused.
+   * A `true` is the last thing the page will hear; the window is going away.
+   */
+  uninstall?(options: { keepData: boolean }): Promise<boolean>;
+
+  /**
    * The application menu asking the page to go somewhere, by command id.
    *
    * The menu lives in the main process and cannot see the panel's routes, so

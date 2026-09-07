@@ -170,6 +170,8 @@ export const EN_MESSAGES = {
   'validation.connector.urlInvalid': 'That is not a web address',
   'validation.connector.urlScheme': 'A connection address must start with http or https',
   'validation.connector.urlSelf': 'A connection cannot point back at this Master',
+  'validation.developer.passwordRequired': 'Enter the developer password',
+  'validation.developer.confirmationRequired': 'Type RESET to confirm',
   'validation.request.bodyRequired': 'That request needs a JSON body',
   'validation.ai.notConfigured': 'The assistant has no model configured yet',
   'validation.ai.promptRequired': 'Ask a question first',
@@ -202,6 +204,8 @@ export const EN_MESSAGES = {
   'error.unauthorized.differentMaster': 'This is a different Master Panel than the one you entered',
   'error.unauthorized.panelNotPaired': 'This panel is not paired',
   'error.unauthorized.panelCredentialsInvalid': 'Panel credentials are not valid',
+  'error.unauthorized.developerPassword': 'That is not the developer password',
+  'error.unauthorized.developerMode': 'Developer mode is not unlocked',
   'error.forbidden.partyNotAssigned': 'That party is not assigned to you',
   'error.forbidden.partyViewOnly': 'You may view that party but not change its records',
   'error.tenantViolation': '{what} does not belong to this company',
@@ -2391,6 +2395,19 @@ export const EN_MESSAGES = {
   'settings.theme.dark': 'Dark',
   'settings.theme.label': 'Theme',
   'settings.theme.light': 'Light',
+
+  // --- The Settings screen's frame. Each panel picks the tabs it has, so a
+  // label here may go unused on one panel and be the only word on the other.
+  'settings.title': 'Settings',
+  'settings.subtitle':
+    'Per-machine preferences, this installation’s details, and the maintenance tools.',
+  'settings.tab.appearance': 'Appearance',
+  'settings.tab.shortcuts': 'Shortcuts',
+  'settings.tab.company': 'Company',
+  'settings.tab.connection': 'Connection',
+  'settings.tab.machine': 'This machine',
+  'settings.tab.storage': 'Storage',
+  'settings.tab.developer': 'Developer',
   'shell.noModules':
     "Your role does not include access to any of this panel's screens. Ask an administrator if you think that is wrong.",
   'shell.starting': 'Starting…',
@@ -2547,4 +2564,76 @@ export const EN_MESSAGES = {
   'setting.ai.maxConcurrentRuns.label': 'Maximum concurrent AI runs',
   'setting.ai.maxConcurrentRuns.help':
     'How many AI requests can run at the same time. Lower this if the server becomes slow.',
+
+  // --- Developer mode ---
+  'developer.unlockFailed': 'Unlock failed',
+  'developer.unlocked.title': 'Developer mode is active',
+  'developer.unlocked.locksIn': 'Locks in {time}',
+  'developer.lock': 'Lock',
+  'developer.locked.title': 'Developer Mode',
+  'developer.locked.description':
+    'Enter the developer password to access maintenance tools. This is not a user account — it is a shared key documented with the software.',
+  'developer.locked.passwordLabel': 'Developer password',
+  'developer.locked.hint': 'Found in docs/DEVELOPER_MODE.md',
+  'developer.unlock': 'Unlock',
+  'developer.confirm.typeWord': 'Type {word} to confirm',
+
+  // --- The tools themselves. The seed's passwords are meant to be read off
+  // the screen and typed, so they are listed rather than described.
+  'developer.tool.seed.title': 'Test users',
+  'developer.tool.seed.description':
+    'Creates three sign-ins — admin, management and office — with the fixed passwords documented beside the software, and re-arms them with those passwords if they already exist. If a user called admin is already here, its password and its display name are overwritten and everyone signed in as it is signed out.',
+  'developer.tool.seed.action': 'Seed test users',
+  'developer.tool.seed.done': 'Test users are ready',
+  'developer.tool.seed.username': 'Username',
+  'developer.tool.seed.password': 'Password',
+  'developer.tool.seed.tier': 'Tier',
+  'developer.tool.seed.outcome': 'Outcome',
+  'developer.tool.seed.outcomeCreated': 'Created',
+  'developer.tool.seed.outcomeReset': 'Password reset',
+  'developer.tool.seed.pairingPassword':
+    'This seed had to run first-time setup itself. The pairing password it generated is shown once, here, and cannot be shown again:',
+
+  'developer.tool.resetAll.title': 'Erase everything',
+  'developer.tool.resetAll.description':
+    'Returns this Master to the state it was in before it was ever set up. There is no undo, and no backup is taken on the way.',
+  'developer.tool.resetAll.action': 'Erase everything',
+  'developer.tool.resetAll.confirmTitle': 'Erase this installation?',
+  'developer.tool.resetAll.confirmHint':
+    'What stays: the database server itself, the log files, and the data-folder location.',
+  'developer.tool.resetAll.detail.records': 'Every record — parties, products, leads and orders',
+  'developer.tool.resetAll.detail.files': 'Uploads and generated documents',
+  'developer.tool.resetAll.detail.people': 'Users and roles',
+  'developer.tool.resetAll.detail.settings': 'Company settings',
+  'developer.tool.resetAll.detail.pairings': 'Office Panel pairings',
+  'developer.tool.resetAll.detail.vault': 'The password vault key',
+  'developer.tool.resetAll.done': 'Erased — going back to first-run setup',
+
+  'developer.tool.resetPanel.title': 'Reset this panel',
+  'developer.tool.resetPanel.description':
+    'Unpairs this Office Panel and throws away everything it holds. The Master and its data are untouched.',
+  'developer.tool.resetPanel.action': 'Reset this panel',
+  'developer.tool.resetPanel.confirmTitle': 'Reset this panel?',
+  'developer.tool.resetPanel.confirmHint':
+    'What stays: the data-folder location. Everything else comes back from the Master once this panel is paired again.',
+  'developer.tool.resetPanel.detail.pairing': 'The pairing with the Master',
+  'developer.tool.resetPanel.detail.users': 'Cached users and remembered faces',
+  'developer.tool.resetPanel.detail.queue': 'The offline queue — anything saved here and not yet sent',
+  'developer.tool.resetPanel.detail.snapshot': 'The cached snapshot and product images',
+  'developer.tool.resetPanel.done': 'Panel reset — going back to the connection screen',
+
+  'developer.tool.uninstall.title': 'Uninstall OrderBook',
+  'developer.tool.uninstall.description':
+    'Removes this panel from this computer: the program, its shortcuts, its registry entries and the firewall rules its installer added. The window closes and the rest happens without it.',
+  'developer.tool.uninstall.action': 'Uninstall',
+  'developer.tool.uninstall.deleteData': 'Also delete all OrderBook data on this computer',
+  'developer.tool.uninstall.confirmWord': 'DELETE',
+  'developer.tool.uninstall.confirmTitle': 'Uninstall and delete the data?',
+  'developer.tool.uninstall.confirmHint':
+    'This computer will keep nothing. Take a backup first if anybody still needs these records.',
+  'developer.tool.uninstall.detail.program': 'The program, its shortcuts and its firewall rules',
+  'developer.tool.uninstall.detail.data': 'The database, uploads, documents and settings',
+  'developer.tool.uninstall.browserOnly':
+    'Open this panel in its desktop app to uninstall it — a browser tab cannot remove a program from the computer it is looking at.',
+  'developer.tool.uninstall.refused': 'Uninstall cancelled — nothing was removed',
 } as const;

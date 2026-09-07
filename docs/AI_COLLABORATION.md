@@ -187,6 +187,56 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-07 — Developer mode, reset, test users, uninstaller, Settings rebuild (Claude)
+
+Scope: the owner's four-part request — dummy users for the three role tiers, a
+password-gated "reset all" on both panels, a complete uninstaller for Windows and
+macOS, and solid UI for the tabs that carry them.
+
+**Method.** Five parallel implementation agents over disjoint file sets, then an
+integrator; a seven-lens adversarial review with three refuters per finding was
+launched and died on a session limit, so its verification was done by hand
+instead — the full gate, a live seed against a real database, dry-runs of both
+uninstall scripts, and real installer builds for both panels.
+
+**What was found by verifying rather than trusting.** The session that started
+this work was interrupted, and its tree came back partly reverted: the services
+and the UI kit survived, but every piece of *wiring* had rolled back — both
+Settings screens, both `api.ts`, the office HTTP routes, the whole Electron
+uninstall path, and the `seed:dummy` scripts. A report saying "implemented" and a
+working feature are two different claims; the gap only appeared because the flow
+was run, not read.
+
+**Files touched.** New: `shared/src/domain/developer.ts`,
+`master/src/services/developer.service.ts`,
+`master/src/http/routes/developer.routes.ts`,
+`master/src/db/seed-dummy-users-cli.ts`,
+`office/src/services/developer.service.ts`, `electron/lib/uninstall.ts`,
+`tools/uninstall/{uninstall-orderbook.ps1,uninstall-orderbook.sh,README.md}`,
+`ui/src/SettingsLayout.tsx`, `docs/DEVELOPER_MODE.md`, and five test files.
+Modified: both `electron-builder.yml`, both `installer.nsh`, `electron/shell.ts`,
+`electron/preload.cts`, `shared/src/protocol/desktop.ts`, both `i18n` catalogues,
+`shared/src/index.ts`, `master/src/http/app.ts`, `master/src/realtime/hub.ts`,
+`office/src/http/app.ts`, both `App.tsx`, both `api.ts`, both `SettingsScreen.tsx`,
+`ui/src/{index.ts,base.css}`, both `package.json`, and
+`master/tests/password-vault-invariants.test.ts` (the invariant now names the
+developer service as a permitted `secret-box` importer — it resets the vault key
+on a wipe and never opens a sealed row).
+
+**Verified.** `npm run lint`, `npm run typecheck` and `npm run test` each run
+separately, each exit 0 — 114 files / 1437 tests, integration suites included
+against a live PostgreSQL. Beyond the gate: `npm run seed:dummy` run against a
+real database and all three accounts signed in through `auth.service`; both
+uninstall scripts dry-run on Windows and macOS shapes; and
+`node tools/release.mjs --panel office` / `--panel master` built real installers,
+which is what proves `resources/uninstall/` actually ships and that the NSIS
+macros compile.
+
+**The lesson worth carrying.** An agent's "done" survives only as far as the next
+thing that actually runs it. The reverted wiring typechecked and linted clean —
+because the pieces that were left were internally consistent — and would have
+been reported as shipped by any check short of opening the screen.
+
 ### 2026-09-06 — v1.0.3 blocker repair, guardrail rewrite, designer and photo work (Claude)
 
 Scope: audit the uncommitted work from the two implementation sessions, repair

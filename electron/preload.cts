@@ -52,6 +52,13 @@ contextBridge.exposeInMainWorld('orderbook', {
     ipcRenderer.invoke('orderbook:openLogFolder') as Promise<boolean>,
 
   /**
+   * Uninstall this panel. The page chooses only whether the data survives —
+   * the shell owns the confirmation, the script and the quit.
+   */
+  uninstall: (options: { keepData: boolean }): Promise<boolean> =>
+    ipcRenderer.invoke('orderbook:uninstall', options) as Promise<boolean>,
+
+  /**
    * The application menu asking the page to go somewhere. One-way and
    * id-based: the menu is built in the main process and the renderer only
    * matches ids it knows, so the menu can never make the page do something it

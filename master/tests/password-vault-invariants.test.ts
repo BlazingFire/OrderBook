@@ -53,6 +53,8 @@ describe('the sealed value never leaves its module', () => {
       'master/src/repositories/connector.repository.ts',
       // Type-only: the row shape. It cannot call anything.
       'master/src/repositories/password-vault.repository.ts',
+      // Resets the vault key on a full developer wipe — never opens a sealed row.
+      'master/src/services/developer.service.ts',
       'master/src/services/password-vault.service.ts',
       'master/src/services/settings.service.ts',
     ]);
