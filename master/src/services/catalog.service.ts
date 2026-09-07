@@ -16,6 +16,8 @@ import type {
   Product,
   ProductCategory,
   ProductInput,
+  ProductListPage,
+  ProductListQuery,
 } from '@orderbook/shared';
 import {
   columnPatch,
@@ -309,13 +311,14 @@ export async function restoreParty(
 // --- Products --------------------------------------------------------------
 
 export async function listProducts(
-  query: { search?: string; limit?: number; offset?: number },
+  query: ProductListQuery,
   actor: ActorContext,
-): Promise<Paginated<Product>> {
+): Promise<ProductListPage> {
   requirePermission(actor, 'products.view');
 
   const page = await productRepo.listProducts(actor.tenantId, {
     search: query.search,
+    productType: query.productType,
     ...clampPaging(query, PAGING),
   });
 

@@ -24,7 +24,16 @@
  * whatever is in the outbox — not the whole catalogue. The listbox says so.
  */
 
-import type { Party, PickKind, PickPage, PickQuery, Product, SyncSnapshot } from '@orderbook/shared';
+import type {
+  Party,
+  PickKind,
+  PickPage,
+  PickQuery,
+  Product,
+  ProductListPage,
+  ProductListQuery,
+  SyncSnapshot,
+} from '@orderbook/shared';
 import { PICK_DEFAULT_LIMIT, PICK_MAX_LIMIT, comparePicked, pickScore } from '@orderbook/shared';
 
 /** Which permission each pickable kind sits behind, offline as online. */
@@ -104,4 +113,71 @@ export function pickFromView(
     (party) => party.name,
     query,
   );
+}
+
+const LIST_DEFAULT_LIMIT = 100;
+const LIST_MAX_LIMIT = 500;
+
+/**
+ * The catalogue page when the Master is switched off.
+ *
+ * Online, the Catalog screen pages through `product:list` on the Master, which
+ * sees the whole catalogue. Offline it pages through this — the cached
+ * snapshot, one page per collection plus whatever the outbox holds — with the
+ * same query shape, the same fields the Master's own search matches, and the
+ * same facet, so the screen does not change shape when the link drops. The
+ * caller stamps `offline: true` on the answer; the screen says so.
+ *
+ * The same two rules as `pickFromView`: it ranks the masked view it is handed,
+ * never the raw snapshot, and it gates on the session's permissions.
+ */
+export function listProductsFromView(
+  query: ProductListQuery,
+  view: SyncSnapshot,
+  permissions: readonly string[],
+): ProductListPage {
+  const required = REQUIRED_PERMISSION.product;
+  if (!permissions.includes(required)) throw new OfflinePickForbidden(required);
+
+  const limit = Math.max(
+    1,
+    Math.min(Math.floor(query.limit ?? LIST_DEFAULT_LIMIT) || LIST_DEFAULT_LIMIT, LIST_MAX_LIMIT),
+  );
+  const offset = Math.max(0, Math.floor(query.offset ?? 0) || 0);
+  const term = query.search?.trim().toLowerCase() ?? '';
+
+  const matches = (product: Product): boolean =>
+    term === '' ||
+    [
+      product.name,
+      product.productCode,
+      product.alias,
+      product.series,
+      product.barcode,
+      product.brand,
+      product.productType,
+      product.categoryName,
+    ].some((field) => (field ?? '').toLowerCase().includes(term));
+
+  const searched = view.products.filter(matches);
+
+  const counts = new Map<string, number>();
+  for (const product of searched) {
+    if (product.productType) counts.set(product.productType, (counts.get(product.productType) ?? 0) + 1);
+  }
+  const productTypes = [...counts.entries()]
+    .map(([value, count]) => ({ value, count }))
+    .sort((a, b) => a.value.localeCompare(b.value));
+
+  const filtered = (
+    query.productType ? searched.filter((product) => product.productType === query.productType) : searched
+  ).sort((a, b) => a.name.localeCompare(b.name));
+
+  return {
+    items: filtered.slice(offset, offset + limit),
+    total: filtered.length,
+    limit,
+    offset,
+    productTypes,
+  };
 }

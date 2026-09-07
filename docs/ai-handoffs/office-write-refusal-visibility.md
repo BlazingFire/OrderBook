@@ -33,6 +33,12 @@ there. Nothing ever told them.** That is the failure mode that makes the
 temporary-id bug in `fix-office-new-lead-unreachable.md` silent, and it is what
 would make a 500-row CSV import unusable.
 
+*Decided 2026-09-06/07:* the CSV/Excel importer (`product-csv-import.md`)
+landed and never touches the outbox — it is online-only, uploaded over the
+panel HTTP surface — so none of its refusals reach this buffer; it keeps its
+own row-numbered report instead. Ordinary queued writes still need the fix
+below.
+
 Two more problems in the same six lines:
 
 - `App.tsx:374` and `:383` are **hard-coded English literals**

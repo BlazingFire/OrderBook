@@ -58,7 +58,12 @@ import type {
   PipelineStageInput,
   Product,
   ProductImageUpdateInput,
+  ProductImportFormat,
+  ProductImportMode,
+  ProductImportResult,
   ProductInput,
+  ProductListPage,
+  ProductListQuery,
   RecycleBinQuery,
   DocumentAsset,
   DocumentAssetInput,
@@ -348,37 +353,63 @@ async function postFile<T>(path: string, form: FormData): Promise<T> {
       error?: string;
       message?: string;
       details?: Record<string, unknown>;
+      messageKey?: MessageKey;
+      params?: MessageParams;
     } | null;
     throw new ApiError(
       detail?.message ?? 'Request failed',
       detail?.error ?? 'internal_error',
       detail?.details ?? {},
+      detail?.messageKey,
+      detail?.params,
     );
   }
   return body as T;
 }
 
-/** A binary download, for storage export — the response is the file itself, not JSON. */
-async function postForBlob(path: string, body: unknown): Promise<{ blob: Blob; fileName: string }> {
-  const response = await fetch(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+/**
+ * A binary download — the response is the file itself, not JSON.
+ *
+ * Fetched rather than linked: the panel's server answers a JSON 503 when the
+ * Master is off, and an `<a href>` would navigate the whole window onto it.
+ */
+async function fetchBlob(
+  path: string,
+  init: RequestInit | undefined,
+  fallbackName: string,
+): Promise<{ blob: Blob; fileName: string }> {
+  const response = await fetch(path, init);
   if (!response.ok) {
     const detail = (await response.json().catch(() => null)) as {
       error?: string;
       message?: string;
       details?: Record<string, unknown>;
+      messageKey?: MessageKey;
+      params?: MessageParams;
     } | null;
     throw new ApiError(
       detail?.message ?? 'Request failed',
       detail?.error ?? 'internal_error',
       detail?.details ?? {},
+      detail?.messageKey,
+      detail?.params,
     );
   }
   const match = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') ?? '');
-  return { blob: await response.blob(), fileName: match?.[1] ?? 'orderbook-backup.obbackup' };
+  return { blob: await response.blob(), fileName: match?.[1] ?? fallbackName };
+}
+
+/** A binary download for storage export. */
+function postForBlob(path: string, body: unknown): Promise<{ blob: Blob; fileName: string }> {
+  return fetchBlob(
+    path,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+    'orderbook-backup.obbackup',
+  );
 }
 
 /**
@@ -461,6 +492,38 @@ export const api = {
     id: string,
     input: ProductInput & { baseFieldHlc?: Record<string, string> },
   ) => put<QueuedResult>(`/api/products/${id}`, input),
+
+  /**
+   * One page of the catalogue.
+   *
+   * Answered by the Master when the link is up — the whole catalogue, however
+   * large — and from this panel's cached snapshot when it is not, with
+   * `offline` set so the screen can say it is showing a cached page.
+   */
+  listProducts: (query: ProductListQuery, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (query.search) params.set('search', query.search);
+    if (query.productType) params.set('productType', query.productType);
+    if (query.limit) params.set('limit', String(query.limit));
+    if (query.offset) params.set('offset', String(query.offset));
+    const qs = params.toString();
+    return request<ProductListPage & { offline?: boolean }>(
+      `/api/products${qs ? `?${qs}` : ''}`,
+      signal ? { signal } : undefined,
+    );
+  },
+
+  // --- Bulk product import: online-only, like images ------------------------
+
+  productImportTemplate: (format: ProductImportFormat) =>
+    fetchBlob(`/api/products/import/template.${format}`, undefined, `products-template.${format}`),
+  importProducts: (file: File, options: { dryRun: boolean; mode: ProductImportMode }) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('dryRun', String(options.dryRun));
+    form.append('mode', options.mode);
+    return postFile<ProductImportResult>('/api/products/import', form);
+  },
 
   upsertVariant: (input: PartyProductVariantInput) =>
     post<QueuedResult>('/api/party-variants', input),

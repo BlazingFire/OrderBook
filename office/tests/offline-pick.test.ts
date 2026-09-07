@@ -16,7 +16,11 @@ import { describe, expect, it } from 'vitest';
 
 import type { Party, Product, SyncSnapshot } from '@orderbook/shared';
 
-import { OfflinePickForbidden, pickFromView } from '../src/services/offline-pick.js';
+import {
+  OfflinePickForbidden,
+  listProductsFromView,
+  pickFromView,
+} from '../src/services/offline-pick.js';
 
 const SYNC = { version: 1, hlc: 'x', fieldHlc: {}, temporaryId: null };
 const NOW = '2026-08-01T00:00:00.000Z';
@@ -146,5 +150,47 @@ describe('picking offline', () => {
   it('picks parties too', () => {
     const page = pickFromView('party', { term: 'pat' }, VIEW, ALL) as { items: Party[] };
     expect(page.items.map((item) => item.name)).toEqual(['Patel Tiles']);
+  });
+});
+
+describe('the catalogue page offline', () => {
+  const typed = {
+    ...VIEW,
+    products: [
+      { ...product('PR1', 'GLZ-100', 'Glazed Vitrified Tile'), productType: 'Vitrified' },
+      { ...product('PR2', 'GLS-200', 'Glossy Wall Tile'), productType: 'Ceramic' },
+      { ...product('PR3', 'RST-300', 'Rustic Floor Tile'), productType: 'Vitrified', brand: 'Kajaria' },
+      product('PR4', 'UNT-400', 'Untyped'),
+    ],
+  } as unknown as SyncSnapshot;
+
+  it('pages alphabetically by name and reports the total', () => {
+    const page = listProductsFromView({ limit: 2, offset: 1 }, typed, ALL);
+    expect(page.items.map((item) => item.name)).toEqual(['Glossy Wall Tile', 'Rustic Floor Tile']);
+    expect(page).toMatchObject({ total: 4, limit: 2, offset: 1 });
+  });
+
+  it('searches the same fields the Master does, case-insensitively', () => {
+    expect(listProductsFromView({ search: 'kajaria' }, typed, ALL).items.map((item) => item.id)).toEqual(['PR3']);
+    expect(listProductsFromView({ search: 'gls-2' }, typed, ALL).items.map((item) => item.id)).toEqual(['PR2']);
+    expect(listProductsFromView({ search: 'vitrified' }, typed, ALL).total).toBe(2);
+  });
+
+  it('filters by type while counting the facet over the search alone', () => {
+    const page = listProductsFromView({ productType: 'Vitrified' }, typed, ALL);
+    expect(page.items.map((item) => item.id)).toEqual(['PR1', 'PR3']);
+    expect(page.productTypes).toEqual([
+      { value: 'Ceramic', count: 1 },
+      { value: 'Vitrified', count: 2 },
+    ]);
+  });
+
+  it('clamps a silly page size', () => {
+    expect(listProductsFromView({ limit: 0 }, typed, ALL).limit).toBe(100);
+    expect(listProductsFromView({ limit: 9999 }, typed, ALL).limit).toBe(500);
+  });
+
+  it('refuses without products.view, offline as online', () => {
+    expect(() => listProductsFromView({}, typed, ['leads.view'])).toThrow(OfflinePickForbidden);
   });
 });

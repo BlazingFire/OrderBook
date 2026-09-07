@@ -8,11 +8,11 @@
  */
 
 import { columnPatch, PRODUCT_COLUMNS } from '@orderbook/shared';
-import type { Paginated, Product, ProductCategory, ProductInput } from '@orderbook/shared';
+import type { Product, ProductCategory, ProductInput, ProductListPage } from '@orderbook/shared';
 import type { Knex } from 'knex';
 
 import { db } from '../db/knex.js';
-import { allocatePermanentId } from './identity.repository.js';
+import { allocatePermanentId, allocatePermanentIds } from './identity.repository.js';
 import { firstCount, mapProduct, mapProductCategory } from './mappers.js';
 import { loadImagesFor } from './product-image.repository.js';
 import type { TransactionContext } from './transaction.js';
@@ -35,8 +35,8 @@ function baseQuery(tenantId: string, runner: Runner = db(), options: { includeDe
 
 export async function listProducts(
   tenantId: string,
-  options: { search?: string; limit: number; offset: number },
-): Promise<Paginated<Product>> {
+  options: { search?: string; productType?: string; limit: number; offset: number },
+): Promise<ProductListPage> {
   const base = baseQuery(tenantId).andWhere('p.is_active', true);
 
   if (options.search) {
@@ -49,9 +49,24 @@ export async function listProducts(
         .orWhereILike('p.series', pattern)
         .orWhereILike('p.barcode', pattern)
         .orWhereILike('p.brand', pattern)
+        .orWhereILike('p.product_type', pattern)
         .orWhereILike('c.name', pattern),
     );
   }
+
+  // Counted over the search-filtered set *before* the type filter is applied,
+  // so every chip stays clickable while one of them is selected.
+  const facetRows = await base
+    .clone()
+    .clearSelect()
+    .clearOrder()
+    .whereNotNull('p.product_type')
+    .groupBy('p.product_type')
+    .orderBy('p.product_type', 'asc')
+    .select<Array<{ value: string; count: string }>>('p.product_type as value')
+    .count('p.id as count');
+
+  if (options.productType) base.andWhere('p.product_type', options.productType);
 
   const countRows = await base
     .clone()
@@ -75,6 +90,7 @@ export async function listProducts(
     total: firstCount(countRows),
     limit: options.limit,
     offset: options.offset,
+    productTypes: facetRows.map((row) => ({ value: String(row.value), count: Number(row.count) })),
   };
 }
 
@@ -256,6 +272,123 @@ export async function nextProductCode(): Promise<string> {
     `SELECT 'PRD-' || lpad(nextval('product_code_seq')::text, 4, '0') AS code`,
   );
   return rows[0].code;
+}
+
+/** A block of generated codes for a bulk import — one round trip, not one per row. */
+export async function nextProductCodes(count: number): Promise<string[]> {
+  if (count <= 0) return [];
+  const { rows } = await db().raw<{ rows: Array<{ code: string }> }>(
+    `SELECT 'PRD-' || lpad(nextval('product_code_seq')::text, 4, '0') AS code
+       FROM generate_series(1, ?)`,
+    [count],
+  );
+  return rows.map((row) => row.code);
+}
+
+/**
+ * The live products behind a set of codes, keyed by lower-cased code.
+ *
+ * Live only, like `findProductByCode`: a code freed by the Recycle Bin is
+ * reusable, and the database's partial unique index says the same.
+ */
+export async function findLiveByCodes(
+  tenantId: string,
+  codes: readonly string[],
+  runner: Runner = db(),
+): Promise<Map<string, Product>> {
+  const found = new Map<string, Product>();
+  const wanted = [...new Set(codes.map((code) => code.trim().toLowerCase()).filter(Boolean))];
+
+  for (let at = 0; at < wanted.length; at += 1000) {
+    const rows = await baseQuery(tenantId, runner).whereRaw('lower(p.product_code) = ANY(?)', [
+      wanted.slice(at, at + 1000),
+    ]);
+    for (const row of rows) found.set(String(row.product_code).toLowerCase(), mapProduct(row));
+  }
+
+  return found;
+}
+
+/** Which of these barcodes are already on a live product, with that product's id. */
+export async function findLiveBarcodes(
+  tenantId: string,
+  barcodes: readonly string[],
+  runner: Runner = db(),
+): Promise<Map<string, string>> {
+  const found = new Map<string, string>();
+  const wanted = [...new Set(barcodes.map((code) => code.trim().toLowerCase()).filter(Boolean))];
+
+  for (let at = 0; at < wanted.length; at += 1000) {
+    const rows = await runner(TABLE)
+      .where({ tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .whereRaw('lower(barcode) = ANY(?)', [wanted.slice(at, at + 1000)])
+      .select<Array<{ id: string; barcode: string }>>('id', 'barcode');
+    for (const row of rows) found.set(String(row.barcode).toLowerCase(), String(row.id));
+  }
+
+  return found;
+}
+
+/**
+ * The category id for each name, creating the missing ones in one pass.
+ *
+ * `resolveCategoryId` does this for one row and stays for the single-product
+ * paths; a five-thousand-row import over twenty categories wants one read and
+ * one insert, not five thousand of each.
+ */
+export async function ensureCategories(
+  tenantId: string,
+  names: readonly string[],
+  trx: TransactionContext,
+): Promise<Map<string, string>> {
+  const byLowerName = new Map<string, string>();
+  const wanted = [...new Set(names.map((name) => name.trim()).filter(Boolean))];
+  if (wanted.length === 0) return byLowerName;
+
+  const lower = wanted.map((name) => name.toLowerCase());
+  const existing = await trx(CATEGORY_TABLE)
+    .where({ tenant_id: tenantId })
+    .whereRaw('lower(name) = ANY(?)', [lower])
+    .select<Array<{ id: string; name: string }>>('id', 'name');
+  for (const row of existing) byLowerName.set(String(row.name).toLowerCase(), String(row.id));
+
+  const missing = wanted.filter((name) => !byLowerName.has(name.toLowerCase()));
+  if (missing.length > 0) {
+    const ids = await allocatePermanentIds(tenantId, 'product_category', missing.length, trx);
+    await trx(CATEGORY_TABLE).insert(
+      missing.map((name, index) => ({ id: ids[index], tenant_id: tenantId, name })),
+    );
+    missing.forEach((name, index) => byLowerName.set(name.toLowerCase(), ids[index] as string));
+  }
+
+  return byLowerName;
+}
+
+/**
+ * Many products in one INSERT, ids and clock already settled by the caller.
+ *
+ * No re-read: `insertProduct` reads its row back so the single-product paths
+ * can hand the finished record to the browser, and a bulk import reports
+ * counts rather than records.
+ */
+export async function insertProductRows(
+  rows: ReadonlyArray<{ id: string; input: ProductInput; categoryId: string | null }>,
+  meta: { tenantId: string; hlc: string },
+  trx: TransactionContext,
+): Promise<void> {
+  if (rows.length === 0) return;
+
+  await trx(TABLE).insert(
+    rows.map((row) => ({
+      id: row.id,
+      tenant_id: meta.tenantId,
+      ...columnsFrom(row.input, row.categoryId),
+      hlc: meta.hlc,
+      field_hlc: '{}',
+      temporary_id: null,
+    })),
+  );
 }
 
 export async function countProducts(tenantId: string): Promise<number> {

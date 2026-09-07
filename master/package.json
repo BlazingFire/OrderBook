@@ -18,6 +18,7 @@
     "bcryptjs": "^2.4.3",
     "blurhash": "^2.0.5",
     "cookie-parser": "^1.4.7",
+    "exceljs": "^4.4.0",
     "express": "^4.21.1",
     "fontkit": "^2.0.4",
     "knex": "^3.1.0",

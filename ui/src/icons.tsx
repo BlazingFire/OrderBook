@@ -37,7 +37,9 @@ export type IconName =
   | 'trash'
   | 'filter'
   | 'drag'
-  | 'external';
+  | 'external'
+  | 'upload'
+  | 'download';
 
 const PATHS: Record<IconName, string> = {
   dashboard: 'M2.5 2.5h4.5v4.5h-4.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5h-4.5zM9 9h4.5v4.5H9z',
@@ -77,6 +79,9 @@ const PATHS: Record<IconName, string> = {
   filter: 'M2.5 3.5h11L9.5 8v4l-3 1.5V8z',
   drag: 'M5.5 4h.01M10.5 4h.01M5.5 8h.01M10.5 8h.01M5.5 12h.01M10.5 12h.01',
   external: 'M6.5 2.5H13v6.5M13 2.5L6.5 9M4.5 4H3v9h9v-1.5',
+  // A tray with an arrow: up out of it to send a file, down into it to save one.
+  upload: 'M8 10.5V3M4.8 6.2L8 3l3.2 3.2M3 10.5v2.5h10v-2.5',
+  download: 'M8 3v7.5M4.8 7.3L8 10.5l3.2-3.2M3 10.5v2.5h10v-2.5',
 };
 
 export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {

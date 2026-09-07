@@ -540,6 +540,11 @@ matters" — is delivered.
 **`exceljs`.** The design puts it last, behind CSV and PDF, and both of those
 ship here. Excel opens CSV; xlsx buys number formats and a frozen header row.
 It is a dependency decision worth making deliberately rather than in passing.
+*Decided 2026-09-06/07:* `exceljs` 4.4.0 is a `master` dependency, added for
+the bulk product import (`docs/ai-handoffs/product-csv-import.md`) — it reads
+`.xlsx` and `.csv` as strings and writes the blank template with a frozen
+header, text format on the code columns and dropdowns on the closed sets.
+Pure JS, no install scripts; SheetJS stays rejected.
 
 ### What Stage 10 deliberately did not do
 

@@ -16,6 +16,24 @@
  * shows up immediately), so a toast plus closing the drawer is enough; the row
  * appears in the table on its own.
  *
+ * **Products are paged from the Master, not read off the snapshot.** The
+ * snapshot is this panel's offline working set and holds one page of the
+ * catalogue (`SNAPSHOT_LIMIT`, 500 rows); it used to be the whole list, which
+ * meant a shop that imported five thousand products could see the first five
+ * hundred and reach the rest from nowhere. Online, the list now asks the
+ * Master — search, type filter and "load more" all run there. Offline, the
+ * panel's server pages the cached snapshot instead and says so, and the
+ * screen shows a "cached page" pill rather than pretending.
+ *
+ * Two things still come from `view.products`, deliberately: a product created
+ * on this panel and not yet acknowledged (its `sync.hlc` is empty) is shown at
+ * the top with the "not synced" pill, because the Master cannot know about it
+ * yet; and a row the Master did return is overlaid with the snapshot's copy,
+ * so a queued edit or a live change shows without waiting for a refetch. The
+ * refetch itself is driven by a fingerprint of `view.products` — the ids and
+ * clocks — so a lead or order moving elsewhere does not reload the catalogue
+ * (the v1.0.3 "refetches on every delta" blocker was exactly that).
+ *
  * Row click opens a view-only 520px detail drawer (`ProductDetail`/
  * `PartyDetail`) rather than jumping straight to an edit form — the same
  * split `LeadBoardScreen` + `LeadDetail` already use for leads. `openOn`
@@ -26,26 +44,31 @@
  * itself — `PartyDrawer`/`ProductDrawer` both now double as edit forms.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Party, Product } from '@orderbook/shared';
 
-import type { LocalView } from '../api';
+import { ApiError, api, type LocalView } from '../api';
 import { PartyDrawer, type CreatedParty } from '../components/PartyDrawer';
 import { ProductDrawer, type CreatedProduct } from '../components/ProductDrawer';
+import { ProductImportModal } from '../components/ProductImportModal';
 import { StockByColour } from '../components/StockCell';
 import {
   Button,
   DataTable,
   EmptyState,
+  ErrorState,
   FilterChip,
   Input,
+  LoadMorePager,
   Modal,
   ProgressiveImage,
+  SkeletonTable,
   StatusPill,
   formatMoney,
   rem,
   t,
   useColourHex,
+  useDebounced,
   useFilterBar,
   useToast,
   type DataTableColumn,
@@ -55,11 +78,48 @@ import { ProductDetail } from './ProductDetail';
 
 const RATE_PERMISSION = 'field.saleRate.view';
 
+/** Rows per fetch. `DataTable` virtualises past 100, so a page is cheap to show. */
+const PAGE = 100;
+
+/** Long enough that a fast typist issues one request, short enough not to lag. */
+const SEARCH_DEBOUNCE_MS = 250;
+
+/** A snapshot push lands in bursts; one refetch per burst is plenty. */
+const REFETCH_DEBOUNCE_MS = 500;
+
+interface ProductPage {
+  items: Product[];
+  total: number;
+  productTypes: Array<{ value: string; count: number }>;
+  /** The panel's server answered from its cached snapshot — the Master was unreachable. */
+  offline: boolean;
+}
+
 function distinctSorted(values: (string | null)[]): string[] {
   return Array.from(new Set(values.filter((value): value is string => Boolean(value)))).sort();
 }
 
-export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' | 'products' }) {
+function matchesProduct(product: Product, term: string, typeFilter: string | null): boolean {
+  return (
+    (!term ||
+      product.name.toLowerCase().includes(term) ||
+      product.productCode.toLowerCase().includes(term) ||
+      (product.alias ?? '').toLowerCase().includes(term) ||
+      (product.categoryName ?? '').toLowerCase().includes(term)) &&
+    (!typeFilter || product.productType === typeFilter)
+  );
+}
+
+export function CatalogScreen({
+  view,
+  tab,
+  canImport = false,
+}: {
+  view: LocalView;
+  tab: 'parties' | 'products';
+  /** Holds `products.bulk`. Absent rather than disabled, like every gated control. */
+  canImport?: boolean;
+}) {
   const toast = useToast();
   const colourHex = useColourHex(view.optionLists);
 
@@ -74,17 +134,21 @@ export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' |
   const [productDrawerOpen, setProductDrawerOpen] = useState(false);
   const [openProductId, setOpenProductId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+
+  const [page, setPage] = useState<ProductPage | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  /** Bumped to refetch page one — after a sync moved the catalogue, or on retry. */
+  const [revision, setRevision] = useState(0);
 
   const partyTerm = partySearch.trim().toLowerCase();
-  const productTerm = productSearch.trim().toLowerCase();
+  const productTerm = useDebounced(productSearch.trim(), SEARCH_DEBOUNCE_MS);
+  const productTermLower = productTerm.toLowerCase();
 
   const cities = useMemo(
     () => distinctSorted(view.parties.map((party) => party.city)),
     [view.parties],
-  );
-  const types = useMemo(
-    () => distinctSorted(view.products.map((product) => product.productType)),
-    [view.products],
   );
 
   const parties = useMemo(
@@ -100,19 +164,115 @@ export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' |
     [view.parties, partyTerm, cityFilter],
   );
 
-  const products = useMemo(
+  // --- Products: one page from the Master (or the cached snapshot, offline) ---
+
+  useEffect(() => {
+    if (tab !== 'products') return;
+
+    const controller = new AbortController();
+    setLoading(true);
+
+    api
+      .listProducts(
+        {
+          search: productTerm || undefined,
+          productType: typeFilter ?? undefined,
+          limit: PAGE,
+          offset: 0,
+        },
+        controller.signal,
+      )
+      .then((result) => {
+        setPage({
+          items: result.items,
+          total: result.total,
+          productTypes: result.productTypes ?? [],
+          offline: result.offline === true,
+        });
+        setLoadFailed(false);
+      })
+      .catch((caught: unknown) => {
+        if (caught instanceof ApiError && caught.code === 'aborted') return;
+        setLoadFailed(true);
+      })
+      .finally(() => {
+        // The next effect run owns `loading` once this one has been aborted.
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [tab, productTerm, typeFilter, revision]);
+
+  /*
+   * What the snapshot says about products, as one string: ids and clocks.
+   * It moves when a queued create is acknowledged, when a product is edited
+   * anywhere, and when the snapshot is refreshed after a bulk import — and
+   * not when a lead, an order or a stock figure changes.
+   */
+  const fingerprint = useMemo(
+    () => view.products.map((product) => `${product.id}:${product.sync.hlc}`).join('|'),
+    [view.products],
+  );
+  const seenFingerprint = useRef(fingerprint);
+  useEffect(() => {
+    if (seenFingerprint.current === fingerprint) return;
+    seenFingerprint.current = fingerprint;
+    const timer = setTimeout(() => setRevision((current) => current + 1), REFETCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [fingerprint]);
+
+  async function loadMore(): Promise<void> {
+    if (!page || loading) return;
+    setLoading(true);
+    try {
+      const result = await api.listProducts({
+        search: productTerm || undefined,
+        productType: typeFilter ?? undefined,
+        limit: PAGE,
+        offset: page.items.length,
+      });
+      setPage((current) => {
+        if (!current) return current;
+        const seen = new Set(current.items.map((product) => product.id));
+        return {
+          ...current,
+          items: [...current.items, ...result.items.filter((product) => !seen.has(product.id))],
+          total: result.total,
+          offline: result.offline === true,
+        };
+      });
+    } catch (caught) {
+      toast.push(caught instanceof Error ? caught.message : t('catalog.products.loadFailed'), {
+        tone: 'error',
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const byId = useMemo(
+    () => new Map(view.products.map((product) => [product.id, product])),
+    [view.products],
+  );
+
+  // Created here and not yet acknowledged: the Master cannot list these yet.
+  const pending = useMemo(
     () =>
       view.products.filter(
-        (product) =>
-          (!productTerm ||
-            product.name.toLowerCase().includes(productTerm) ||
-            product.productCode.toLowerCase().includes(productTerm) ||
-            (product.alias ?? '').toLowerCase().includes(productTerm) ||
-            (product.categoryName ?? '').toLowerCase().includes(productTerm)) &&
-          (!typeFilter || product.productType === typeFilter),
+        (product) => !product.sync.hlc && matchesProduct(product, productTermLower, typeFilter),
       ),
-    [view.products, productTerm, typeFilter],
+    [view.products, productTermLower, typeFilter],
   );
+
+  const products = useMemo(() => {
+    const shown = new Set(pending.map((product) => product.id));
+    const fromMaster = (page?.items ?? [])
+      .filter((product) => !shown.has(product.id))
+      // The snapshot's copy carries a queued edit or a live change the page
+      // predates; where it has one, it is the fresher row.
+      .map((product) => byId.get(product.id) ?? product);
+    return [...pending, ...fromMaster];
+  }, [pending, page, byId]);
 
   function onPartyCreated(party: CreatedParty): void {
     setPartyDrawerOpen(false);
@@ -181,22 +341,27 @@ export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' |
         />
         <FilterChip
           active={typeFilter === null}
-          count={view.products.length}
+          count={page ? page.total + pending.length : undefined}
           onClick={() => setTypeFilter(null)}
         >
           {t('catalog.filter.all')}
         </FilterChip>
-        {types.map((type) => (
+        {(page?.productTypes ?? []).map((facet) => (
           <FilterChip
-            key={type}
-            active={typeFilter === type}
-            count={view.products.filter((product) => product.productType === type).length}
-            onClick={() => setTypeFilter(type)}
+            key={facet.value}
+            active={typeFilter === facet.value}
+            count={facet.count}
+            onClick={() => setTypeFilter(facet.value)}
           >
-            {type}
+            {facet.value}
           </FilterChip>
         ))}
         <span style={{ flex: 1 }} />
+        {canImport && (
+          <Button variant="secondary" size="sm" icon="upload" onClick={() => setImportOpen(true)}>
+            {t('catalog.products.import')}
+          </Button>
+        )}
         <Button variant="primary" size="sm" icon="plus" onClick={() => setProductDrawerOpen(true)}>
           {t('catalog.products.new')}
         </Button>
@@ -378,17 +543,19 @@ export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' |
       key: 'name',
       header: t('catalog.products.column.name'),
       render: (product) => (
-        <span style={{ minWidth: 0 }}>
+        <span
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-8)', minWidth: 0 }}
+        >
           <span className="ob-body-strong" style={{ fontSize: rem(13.5) }}>
             {product.name}
           </span>
           {product.alias && (
-            <span
-              className="ob-small"
-              style={{ marginLeft: 'var(--s-8)', color: 'var(--fg-tertiary)' }}
-            >
+            <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
               {product.alias}
             </span>
+          )}
+          {!product.sync.hlc && (
+            <StatusPill tone="offline">{t('catalog.parties.notSynced')}</StatusPill>
           )}
         </span>
       ),
@@ -433,30 +600,72 @@ export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' |
     },
   ];
 
-  const openProduct = view.products.find((product) => product.id === openProductId) ?? null;
+  const openProduct =
+    products.find((product) => product.id === openProductId) ??
+    byId.get(openProductId ?? '') ??
+    null;
+
+  const filtered = productTerm !== '' || typeFilter !== null;
+  const shownTotal = (page?.total ?? 0) + pending.length;
 
   return (
     <>
-      <DataTable
-        columns={columns}
-        rows={products}
-        rowKey={(product) => product.id}
-        onRowOpen={(product) => setOpenProductId(product.id)}
-        openOn="click"
-        selectedId={openProductId ?? undefined}
-        empty={
-          view.products.length === 0 ? (
-            <EmptyState
-              title={t('catalog.products.empty.title')}
-              description={t('catalog.products.empty.description')}
-              actionLabel={t('catalog.products.new')}
-              onAction={() => setProductDrawerOpen(true)}
-            />
-          ) : (
-            <EmptyState title={t('catalog.products.empty.filtered')} />
-          )
-        }
-      />
+      {page === null && !loadFailed ? (
+        <SkeletonTable columns={columns} rows={8} />
+      ) : (
+        <DataTable
+          columns={columns}
+          rows={products}
+          rowKey={(product) => product.id}
+          onRowOpen={(product) => setOpenProductId(product.id)}
+          openOn="click"
+          selectedId={openProductId ?? undefined}
+          empty={
+            loadFailed ? (
+              <ErrorState
+                title={t('catalog.products.loadFailed')}
+                actionLabel={t('action.retryNow')}
+                onAction={() => setRevision((current) => current + 1)}
+              />
+            ) : !filtered ? (
+              <EmptyState
+                title={t('catalog.products.empty.title')}
+                description={t('catalog.products.empty.description')}
+                actionLabel={t('catalog.products.new')}
+                onAction={() => setProductDrawerOpen(true)}
+              />
+            ) : (
+              <EmptyState title={t('catalog.products.empty.filtered')} />
+            )
+          }
+        />
+      )}
+
+      {page && products.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 'var(--s-12)',
+            flexWrap: 'wrap',
+            padding: 'var(--s-8) 0',
+          }}
+        >
+          {page.offline && (
+            <StatusPill tone="offline">{t('catalog.products.cachedPage')}</StatusPill>
+          )}
+          <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
+            {t('catalog.products.shown', { shown: products.length, total: shownTotal })}
+          </span>
+          <LoadMorePager
+            hasMore={page.items.length < page.total}
+            loading={loading}
+            onLoadMore={() => void loadMore()}
+            label={t('catalog.products.loadMore')}
+          />
+        </div>
+      )}
 
       <Modal
         open={openProduct !== null}
@@ -497,6 +706,13 @@ export function CatalogScreen({ view, tab }: { view: LocalView; tab: 'parties' |
         product={editingProduct}
         onClose={() => setEditingProduct(null)}
         onUpdated={onProductUpdated}
+        onError={onDrawerError}
+      />
+
+      <ProductImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={() => setRevision((current) => current + 1)}
         onError={onDrawerError}
       />
     </>

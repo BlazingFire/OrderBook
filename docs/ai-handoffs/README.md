@@ -73,7 +73,9 @@ installers until items 0 and 1 are both done and verified.**
 11. `office-product-form-gates-and-slimming.md`
 12. `office-product-image-flow.md` (the rest)
 13. `party-access-truncation-and-routing.md`
-14. `product-csv-import.md` — large; depends on 1 and 4.
+14. `product-csv-import.md` — **done 2026-09-07 (Claude)**, with the paged
+    catalogue; see its implementer section. Its per-row report never touches
+    the outbox, so it did not wait on 4.
 
 **Decisions and documents:**
 

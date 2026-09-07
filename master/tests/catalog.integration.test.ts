@@ -178,6 +178,32 @@ describe.skipIf(!canRunIntegrationTests)('catalog service (integration)', () => 
       expect((await catalog.listProducts({ search: 'WLT' }, actor)).items).toHaveLength(1);
       expect((await catalog.listProducts({ search: 'Wall' }, actor)).items).toHaveLength(1);
     });
+
+    it('filters by product type and counts the facet over the search, not the filter', async () => {
+      await catalog.createProduct({ productCode: 'V-1', name: 'Carrara', productType: 'Vitrified' }, actor);
+      await catalog.createProduct({ productCode: 'V-2', name: 'Statuario', productType: 'Vitrified' }, actor);
+      await catalog.createProduct({ productCode: 'C-1', name: 'Carrara Wall', productType: 'Ceramic' }, actor);
+      await catalog.createProduct({ productCode: 'N-1', name: 'Untyped' }, actor);
+
+      const vitrified = await catalog.listProducts({ productType: 'Vitrified' }, actor);
+      expect(vitrified.items.map((product) => product.productCode).sort()).toEqual(['V-1', 'V-2']);
+      expect(vitrified.total).toBe(2);
+      // Every chip stays clickable while one is selected.
+      expect(vitrified.productTypes).toEqual([
+        { value: 'Ceramic', count: 1 },
+        { value: 'Vitrified', count: 2 },
+      ]);
+
+      const searched = await catalog.listProducts({ search: 'carrara' }, actor);
+      expect(searched.total).toBe(2);
+      expect(searched.productTypes).toEqual([
+        { value: 'Ceramic', count: 1 },
+        { value: 'Vitrified', count: 1 },
+      ]);
+
+      // The type itself is searchable.
+      expect((await catalog.listProducts({ search: 'ceram' }, actor)).total).toBe(1);
+    });
   });
 
   it('records an activity row for every write', async () => {

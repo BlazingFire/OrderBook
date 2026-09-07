@@ -7,6 +7,47 @@ Do not start it before the two blocking bugs and
 
 Owner's item 6: *"Import option for product through csv file"*.
 
+> ## Scope decisions — recorded 2026-09-06, implemented by Claude in the same session
+>
+> The owner widened the ask to *"bulk product from CSV or Excel, a blank
+> CSV/Excel template to download and upload back, a solid UI, unlimited
+> product add support"*, and asked for the implementation here rather than by
+> handoff. Decisions, in the order the brief asked for them:
+>
+> 1. **Full scope on the ceiling.** The Office catalogue is a server-paged
+>    list over `product:list` when the Master is reachable and a page of the
+>    cached snapshot (labelled "cached page") when it is not. `SNAPSHOT_LIMIT`
+>    and `PAGING.maxLimit` stay at 500: the snapshot is the offline working set
+>    and is pushed whole to every browser on every sync event, so it must not
+>    grow with the catalogue. The Add Lead code entry and paste resolve codes
+>    past the snapshot through the picker endpoint.
+> 2. **The import runs on the Master**, uploaded from the Office through the
+>    panel-authenticated HTTP surface (the product-photo path). **Online-only**
+>    — 503 `unavailable` offline, and the dialog says so. Nothing is queued: the
+>    outbox rewrites its file per mutation and its rejection buffer is replaced
+>    per flush, so a bulk import through it would be quadratic on disk and
+>    silent on refusal.
+> 3. **Excel via `exceljs` 4.4.0**, a `master` dependency (pure JS, no install
+>    scripts). It reads `.xlsx` and `.csv` and writes the styled template
+>    (frozen header, text format on the code columns, dropdowns on the closed
+>    sets, a Guide sheet). SheetJS stays rejected.
+> 4. **Two modes.** *Skip them* (default): a row whose code already exists is
+>    reported as skipped, so re-uploading a corrected file is idempotent.
+>    *Update them*: the row updates the existing product by code, stamping only
+>    the touched fields' clocks; needs `products.edit` on top of `products.bulk`.
+> 5. **One `catalog` change event per import**, not one per row. It is
+>    snapshot-forcing, so every connected panel refreshes once (debounced);
+>    a reconnecting panel gets a snapshot because the event is not replayable.
+> 6. **Template headers are the wire field keys** (`productCode`, `name`, …),
+>    language-neutral and exact on the way back; the matcher also accepts the
+>    form's labels and trade shorthand. **Prices are rupees in the sheet**,
+>    paise in the database, the same conversion the Add Product form makes.
+> 7. A money column the person may not set is **refused per row and named**,
+>    never silently dropped — the public API's `WRITE_GUARDS` reasoning.
+>
+> Per-row reporting lives in the importer, where the row numbers are —
+> `office-write-refusal-visibility.md` item 4 is answered that way.
+
 ## What exists today
 
 There is **no import of anything, anywhere**. There is one CSV **export** — the
@@ -99,3 +140,84 @@ answer — write down whichever you pick.
 
 ---
 *Implementer: append what changed and what you verified below this line.*
+
+## Implemented — 2026-09-06 (Claude)
+
+**Shared.** `ProductListQuery` / `ProductListPage` (optional `productTypes`
+facet) in `shared/src/domain/inputs.ts`; new `shared/src/domain/product-import.ts`
+(result and issue types, `MAX_PRODUCT_IMPORT_BYTES` 50 MiB,
+`MAX_PRODUCT_IMPORT_ISSUES` 1000, the two modes); `ChangedEntity` gains
+`'catalog'`, listed in `SNAPSHOT_FORCING_ENTITIES`; `product:list` typed with
+the new query and page. Tokens: `activity.catalog.imported`,
+`validation.import.*`, `import.*`, `catalog.products.{import,loadMore,shown,cachedPage,loadFailed}`,
+`error.conflict.barcodeTaken`, `import.skip.codeExists`,
+`lead.add.products.lookingUp` — all with real Hindi.
+
+**Master.** `master/src/lib/spreadsheet.ts` (exceljs: read either format as
+strings, indexed by spreadsheet row; write the template);
+`master/src/domain/product-import.ts` (pure: column spec, header matching
+with aliases, row parsing with rupees→paise, enum synonyms, per-row permission
+refusals, in-file duplicate detection, the Guide rows);
+`master/src/services/product-import.service.ts` (`productImportTemplate`,
+`importProducts` — `products.bulk` + `products.create` (+ `products.edit` for
+upsert); chunks of 500 rows per transaction with one HLC, one id block, one
+category pass and one multi-row INSERT; a failing chunk replays row by row
+through the single-row repository path and classifies the pg error per row;
+one `recordActivity` catalog/imported and one `catalog` `publishChange`);
+`product.repository.ts` gains `nextProductCodes`, `findLiveByCodes`,
+`findLiveBarcodes`, `ensureCategories`, `insertProductRows`, and `listProducts`
+gains the `productType` filter, the facet and `product_type` in the search;
+`panel-catalog.routes.ts` mounted at `/api/panel` (`GET
+/products/import/template.:format`, `POST /products/import` with `dryRun` and
+`mode` fields); `fan-out.ts` gates `catalog` on `products.view`.
+
+**Office server.** `GET /api/products` (forwards `product:list`; offline pages
+the cached, re-masked view through `listProductsFromView` in
+`offline-pick.ts` and answers `offline: true`); `GET
+/api/products/import/template.:format` and `POST /api/products/import`
+proxied to the Master with `masterFetch`, 503 `unavailable` when it is off.
+
+**Office web.** `CatalogScreen` products tab is server-paged: debounced
+search, type chips from the facet, "Load more", "Showing N of M", a
+cached-page pill offline, pending (unacknowledged) rows on top, snapshot
+overlay for queued edits, refetch on a fingerprint of `view.products` only.
+New `ProductImportModal` (templates → drop zone → preview with sample rows and
+a virtualised problems table → import → result), opened from an Import button
+gated on `products.bulk` (`App.tsx` passes `canImport`). `AddLeadScreen`'s
+code entry and paste resolve unknown codes through `api.pick`. Icons `upload`
+and `download`.
+
+**Tests.** Pure: `master/tests/product-import-domain.test.ts`,
+`master/tests/spreadsheet.test.ts`, `office/tests/offline-pick.test.ts`
+(catalogue page), `office/tests/module-forwarding.test.ts` (paged list online
+and offline, import 503/400). Integration:
+`master/tests/product-import.integration.test.ts` (valid file; exactly the bad
+rows named; idempotent re-upload; upsert stamps only touched clocks; barcode
+clash; in-file duplicate; permissions; per-row money refusal; dry run predicts
+the real run and writes nothing; file-level refusals; chunk fallback on a
+clash the pre-check missed; **1200-row import paged fully with the facet**;
+both templates), `master/tests/panel-catalog-route.integration.test.ts`
+(401/403/400 paths, both templates, dry run then import as the signed-in
+person). `catalog.integration.test.ts` covers the type filter and facet.
+`change-ring.test.ts` lists the new entity; `activity-tokens.lock.json` gains
+the token.
+
+**Verified.** `npm run lint`, `npm run typecheck`, `npm run test` run
+separately, each exit 0, integration suites against the embedded PostgreSQL.
+
+**Known limits.** The offline snapshot still holds 500 products (offline
+picker, palette search and `PartyDetail` see a page and say so;
+`productsComplete=false` keeps the image-cache sweep off — pre-existing). The
+catalogue's stock column reads `view.stock`, itself a 500-row page, so a
+product past it shows no stock chips until inventory is paged the same way.
+Generated codes burn sequence numbers on a dry run (display strings; the
+single-product path already burns one per failed attempt). One HLC per chunk.
+CSV is parsed with a comma delimiter only.
+
+**Fixture.** `dummy-data/products-5000.{json,csv,xlsx}` (untracked) — the
+CSV and XLSX carry prices in rupees, the JSON in paise.
+
+**Note (2026-09-07):** this implementation was lost once to an uncommitted
+working-tree reset between sessions and had to be rebuilt from scratch
+line-for-line. It is now committed to `main` — see the commit for the full
+file list.

@@ -187,6 +187,48 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-07 — Bulk product import (CSV/Excel), templates, and the paged catalogue (Claude)
+
+Scope: the owner's request for bulk product import from CSV or Excel with
+downloadable blank templates, a proper UI, and "unlimited product add
+support" — implemented here, by Claude, at the owner's instruction for this
+session. The standing brief is `docs/ai-handoffs/product-csv-import.md`; its
+scope decisions and the implementer's record are written there.
+
+**Headline.** The 500-product ceiling is lifted where it matters: the Office
+catalogue pages the Master's whole catalogue online (search, type facet, load
+more) and a labelled cached page offline; imports run on the Master over the
+panel HTTP surface in 500-row chunks with per-row fallback and a
+row-numbered report; one `catalog` change event per import instead of one
+per row. `exceljs` 4.4.0 is now a `master` dependency — the deliberate
+decision `HANDOFF.md` had deferred.
+
+**Files touched.** `master/package.json`, `package-lock.json`;
+`shared/src/domain/{inputs,product-import}.ts`, `shared/src/index.ts`,
+`shared/src/protocol/socket.ts`, `shared/src/i18n/{en,hi}.ts`,
+`shared/tests/activity-tokens.lock.json`; `master/src/lib/spreadsheet.ts`,
+`master/src/domain/product-import.ts`,
+`master/src/services/{product-import,catalog}.service.ts`,
+`master/src/repositories/product.repository.ts`,
+`master/src/http/routes/panel-catalog.routes.ts`, `master/src/http/app.ts`,
+`master/src/realtime/fan-out.ts`; `office/src/http/app.ts`,
+`office/src/services/offline-pick.ts`; `office/web/src/api.ts`,
+`office/web/src/App.tsx`, `office/web/src/screens/{CatalogScreen,AddLeadScreen}.tsx`,
+`office/web/src/components/ProductImportModal.tsx`; `ui/src/icons.tsx`;
+tests: `master/tests/{product-import-domain,spreadsheet}.test.ts`,
+`master/tests/{product-import,panel-catalog-route,catalog}.integration.test.ts`,
+`master/tests/change-ring.test.ts`, `office/tests/{offline-pick,module-forwarding}.test.ts`;
+docs: this file, `HANDOFF.md`, `docs/ai-handoffs/{product-csv-import,office-write-refusal-visibility,README}.md`.
+
+**Note.** This feature was implemented once already in an earlier session on
+2026-09-06 and lost to an uncommitted working-tree reset before it reached
+git — it had to be rebuilt from scratch in this session, verified again, and
+is committed here so that cannot repeat.
+
+**Verified.** `npm run lint`, `npm run typecheck` and `npm run test` run
+separately, each exit 0; the integration suites ran against the embedded
+PostgreSQL, including a 1200-row import paged through in full.
+
 ### 2026-09-07 — Developer mode, reset, test users, uninstaller, Settings rebuild (Claude)
 
 Scope: the owner's four-part request — dummy users for the three role tiers, a

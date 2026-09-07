@@ -97,6 +97,8 @@ import type {
   ProductImageReorderInput,
   ProductImageUpdateInput,
   ProductInput,
+  ProductListPage,
+  ProductListQuery,
   RecycleBinQuery,
   RemarkInput,
   RenderDocumentInput,
@@ -256,7 +258,14 @@ export type ChangedEntity =
   | 'role'
   | 'user'
   | 'document_template'
-  | 'document_export';
+  | 'document_export'
+  /**
+   * The whole catalogue moved at once — a bulk import. There is no single row
+   * to upsert, and publishing one `product` event per imported row would push
+   * a five-thousand-row file straight through the change ring and force every
+   * other panel into a full snapshot anyway. One event, one refresh.
+   */
+  | 'catalog';
 
 /**
  * `'restored'` is the Recycle Bin's — never minted as a `MutationKind`, since
@@ -348,6 +357,9 @@ export const SNAPSHOT_FORCING_ENTITIES: readonly ChangedEntity[] = [
   'pipeline',
   'option_list',
   'custom_field',
+  // A bulk import: many rows, one event, and the only honest answer is to
+  // fetch the catalogue page again.
+  'catalog',
 ];
 
 /**
@@ -474,7 +486,7 @@ export interface ClientToServerEvents {
   'party:create': (input: PartyInput, ack: CommandAck<Party>) => void;
   'party:update': (payload: { id: RecordId; input: PartyInput }, ack: CommandAck<Party>) => void;
 
-  'product:list': (query: ListQuery, ack: CommandAck<Paginated<Product>>) => void;
+  'product:list': (query: ProductListQuery, ack: CommandAck<ProductListPage>) => void;
   'product:create': (input: ProductInput, ack: CommandAck<Product>) => void;
   'product:update': (
     payload: { id: RecordId; input: ProductInput },

@@ -22,6 +22,7 @@ import {
   type ProductVisibility,
   maskVariant,
   MAX_IMAGE_SOURCE_BYTES,
+  MAX_PRODUCT_IMPORT_BYTES,
   MUTATION_PERMISSIONS,
   type DataChangedEvent,
   type Lead,
@@ -49,7 +50,11 @@ import { masterFetch } from '../lib/master-fetch.js';
 import { avatarFile, forgetAvatar, isCached } from '../services/avatar-cache.js';
 import { moveStorage } from '../services/panel-report.service.js';
 import * as userStore from '../services/user-store.js';
-import { OfflinePickForbidden, pickFromView } from '../services/offline-pick.js';
+import {
+  OfflinePickForbidden,
+  listProductsFromView,
+  pickFromView,
+} from '../services/offline-pick.js';
 import {
   PairingError,
   pairAutomatically,
@@ -77,6 +82,12 @@ const imageUpload = multer({
 const backupUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 64 * 1024 * 1024 },
+});
+// A product spreadsheet, forwarded whole to the Master — the same ceiling it
+// applies, so an oversized file is refused here rather than after the upload.
+const importUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_PRODUCT_IMPORT_BYTES },
 });
 
 export function createApp(): Express {
@@ -461,6 +472,126 @@ export function createApp(): Express {
       baseFieldHlc: req.body?.baseFieldHlc,
     }),
   );
+
+  /**
+   * The catalogue, paged.
+   *
+   * Online this asks the Master, which sees the whole catalogue — the snapshot
+   * this panel holds is one page of it, and a shop that imported five thousand
+   * products would otherwise see the first five hundred and no way to the
+   * rest. Offline it pages through the cached snapshot instead and says so,
+   * the same bargain the picker makes (`/api/pick/:kind` below).
+   */
+  app.get('/api/products', (req, res) => {
+    const query = {
+      search: typeof req.query.search === 'string' && req.query.search ? req.query.search : undefined,
+      productType:
+        typeof req.query.productType === 'string' && req.query.productType
+          ? req.query.productType
+          : undefined,
+      limit: req.query.limit ? Number(req.query.limit) : undefined,
+      offset: req.query.offset ? Number(req.query.offset) : undefined,
+    };
+
+    void (async () => {
+      try {
+        res.json(await masterConnection.command('product:list' as never, query));
+      } catch (error) {
+        if (!(error instanceof MasterCommandError && error.unreachable)) {
+          failForward(res, error);
+          return;
+        }
+
+        try {
+          const view = await localStore.getView();
+          if (!view) {
+            res.json({ items: [], total: 0, limit: query.limit ?? 100, offset: 0, offline: true });
+            return;
+          }
+
+          const page = listProductsFromView(
+            query,
+            forCurrentUser(view),
+            userSession.sessionPermissions(),
+          );
+          res.json({ ...page, offline: true });
+        } catch (offlineError) {
+          if (offlineError instanceof OfflinePickForbidden) {
+            res.status(403).json({
+              error: 'forbidden',
+              message: offlineError.message,
+              details: { permission: offlineError.permission },
+            });
+            return;
+          }
+          failForward(res, offlineError);
+        }
+      }
+    })();
+  });
+
+  // Bulk import stays online-only, like images: the outbox carries JSON
+  // mutations and rewrites its whole file per mutation, so five thousand
+  // queued creates would be quadratic on disk and invisible on refusal. The
+  // file goes to the Master over the panel HTTP surface and the row-numbered
+  // report comes straight back.
+  app.get('/api/products/import/template.:format', (req, res) => {
+    void (async () => {
+      try {
+        const response = await masterFetch(
+          `/api/panel/products/import/template.${encodeURIComponent(String(req.params.format))}`,
+        );
+
+        if (!response.ok) {
+          res.status(response.status).json(await response.json().catch(() => null));
+          return;
+        }
+
+        res.setHeader('Content-Type', response.headers.get('content-type') ?? 'application/octet-stream');
+        res.setHeader(
+          'Content-Disposition',
+          response.headers.get('content-disposition') ?? 'attachment; filename="products-template"',
+        );
+        res.send(Buffer.from(await response.arrayBuffer()));
+      } catch (error) {
+        res.status(503).json({
+          error: 'unavailable',
+          message: error instanceof Error ? error.message : 'The Master Panel is not reachable',
+          messageKey: 'error.unavailable',
+        });
+      }
+    })();
+  });
+
+  app.post('/api/products/import', importUpload.single('file'), (req, res) => {
+    if (!req.file) {
+      res.status(400).json({
+        error: 'validation_error',
+        message: 'Choose a CSV or Excel file',
+        messageKey: 'validation.import.fileRequired',
+      });
+      return;
+    }
+
+    void (async () => {
+      try {
+        const form = new FormData();
+        form.append('file', new Blob([req.file!.buffer]), req.file!.originalname || 'products.csv');
+        const body = (req.body ?? {}) as Record<string, unknown>;
+        form.append('dryRun', String(body.dryRun === 'true' || body.dryRun === true));
+        form.append('mode', body.mode === 'upsert' ? 'upsert' : 'create');
+
+        const response = await masterFetch('/api/panel/products/import', { method: 'POST', body: form });
+        res.status(response.status).json(await response.json().catch(() => null));
+      } catch (error) {
+        res.status(503).json({
+          error: 'unavailable',
+          message: error instanceof Error ? error.message : 'The Master Panel is not reachable',
+          messageKey: 'error.unavailable',
+        });
+      }
+    })();
+  });
 
   app.post('/api/products', (req, res) =>
     queue(res, { kind: 'product.create', entity: 'product', payload: req.body }),

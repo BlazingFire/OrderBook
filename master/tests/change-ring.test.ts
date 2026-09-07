@@ -99,6 +99,7 @@ describe('every changed entity is in exactly one bucket', () => {
     'user',
     'document_template',
     'document_export',
+    'catalog',
   ];
 
   const buckets = [REPLAYABLE_ENTITIES, SNAPSHOT_FORCING_ENTITIES, PANEL_IRRELEVANT_ENTITIES];

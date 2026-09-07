@@ -21,6 +21,7 @@ import type {
   CustomFieldType,
   IsoDate,
   IsoTimestamp,
+  Product,
   RecordId,
   UserAvatar,
   Uuid,
@@ -383,6 +384,22 @@ export interface Paginated<T> {
   total: number;
   limit: number;
   offset: number;
+}
+
+/** The catalogue's list query: the common shape plus a type-chip filter. */
+export interface ProductListQuery extends ListQuery {
+  productType?: string;
+}
+
+/**
+ * One page of the catalogue, with the facet the type chips are drawn from.
+ *
+ * The facet is counted over the *search-filtered* set without the type filter
+ * applied, so every chip stays clickable while one is selected. Optional on
+ * the wire: a 1.0.3 Master answers `product:list` with a plain `Paginated`.
+ */
+export interface ProductListPage extends Paginated<Product> {
+  productTypes?: Array<{ value: string; count: number }>;
 }
 
 /**

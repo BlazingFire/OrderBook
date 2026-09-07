@@ -14,6 +14,7 @@ export * from './domain/inputs.js';
 export * from './domain/permissions.js';
 export * from './domain/pick.js';
 export * from './domain/pick-score.js';
+export * from './domain/product-import.js';
 export * from './domain/product-validation.js';
 export * from './domain/recycle-bin.js';
 export * from './domain/reports.js';

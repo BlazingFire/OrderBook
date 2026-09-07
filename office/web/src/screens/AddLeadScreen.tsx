@@ -267,17 +267,48 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
     setCodeEntry('');
   }
 
+  /**
+   * A code, resolved against the whole catalogue.
+   *
+   * The snapshot is one page of it (`SNAPSHOT_LIMIT`), so a product past that
+   * page is findable only through the Master. The lookup tries what is already
+   * here, then falls through to the picker's own endpoint — which answers from
+   * the cached snapshot again when the link is down, so offline behaves as it
+   * did before.
+   */
+  const resolveByCode = useCallback(
+    async (code: string): Promise<Product | null> => {
+      const wanted = code.trim().toLowerCase();
+      const local =
+        view.products.find((candidate) => candidate.productCode.toLowerCase() === wanted) ??
+        [...productRows.current.values()].find(
+          (candidate) => candidate.productCode.toLowerCase() === wanted,
+        );
+      if (local) return local;
+
+      try {
+        const page = await api.pick<Product>('product', { term: code.trim() });
+        const hit =
+          page.items.find((candidate) => candidate.productCode.toLowerCase() === wanted) ?? null;
+        if (hit) productRows.current.set(hit.id, hit);
+        return hit;
+      } catch {
+        return null;
+      }
+    },
+    [view.products],
+  );
+
   /** The guide's convenience input: a code fills the rest of the line (§3.2). */
-  function addByCode(): void {
+  async function addByCode(): Promise<void> {
     const code = codeEntry.trim();
     if (!code) return;
 
-    const product = view.products.find(
-      (candidate) => candidate.productCode.toLowerCase() === code.toLowerCase(),
-    );
+    setError(t('lead.add.products.lookingUp'));
+    const product = await resolveByCode(code);
 
     if (!product) {
-      setError(`No product with code "${code}"`);
+      setError(t('lead.add.products.pasteUnknown', { codes: code }));
       return;
     }
 
@@ -343,20 +374,9 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
     if (rows.length <= 1 && (rows[0]?.length ?? 0) <= 1) return false;
 
     const added: DraftLine[] = [];
-    const unknown: string[] = [];
+    const unresolved: Array<{ code: string; colour?: string; quantity?: string }> = [];
 
-    for (const [code, colour, quantity] of rows) {
-      if (!code) continue;
-
-      const product = view.products.find(
-        (candidate) => candidate.productCode.toLowerCase() === code.toLowerCase(),
-      );
-
-      if (!product) {
-        unknown.push(code);
-        continue;
-      }
-
+    const lineFor = (product: Product, colour?: string, quantity?: string): DraftLine => {
       const line = lineFrom(product);
       const boxes = Number(quantity);
 
@@ -367,12 +387,50 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
         line.quantities = [{ colour, quantity: boxes }];
       }
 
-      added.push(line);
+      return line;
+    };
+
+    for (const [code, colour, quantity] of rows) {
+      if (!code) continue;
+
+      const product = view.products.find(
+        (candidate) => candidate.productCode.toLowerCase() === code.toLowerCase(),
+      );
+
+      if (!product) {
+        unresolved.push({ code, colour, quantity });
+        continue;
+      }
+
+      added.push(lineFor(product, colour, quantity));
     }
 
     if (added.length > 0) setLines((current) => [...current, ...added]);
-    setError(unknown.length > 0 ? t('lead.add.products.pasteUnknown', { codes: unknown.join(', ') }) : null);
     setCodeEntry('');
+
+    if (unresolved.length === 0) {
+      setError(null);
+      return true;
+    }
+
+    // The codes the snapshot does not hold are asked of the Master, and land
+    // a moment later in the order they were pasted; what is still unknown
+    // after that is named once, as before.
+    setError(t('lead.add.products.lookingUp'));
+    void Promise.all(
+      unresolved.map(async (entry) => ({ ...entry, product: await resolveByCode(entry.code) })),
+    ).then((resolved) => {
+      const late: DraftLine[] = [];
+      const unknown: string[] = [];
+      for (const entry of resolved) {
+        if (entry.product) late.push(lineFor(entry.product, entry.colour, entry.quantity));
+        else unknown.push(entry.code);
+      }
+      if (late.length > 0) setLines((current) => [...current, ...late]);
+      setError(
+        unknown.length > 0 ? t('lead.add.products.pasteUnknown', { codes: unknown.join(', ') }) : null,
+      );
+    });
 
     return true;
   }
@@ -727,11 +785,11 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') {
                       event.preventDefault();
-                      addByCode();
+                      void addByCode();
                     }
                   }}
                 />
-                <Button variant="secondary" onClick={addByCode}>
+                <Button variant="secondary" onClick={() => void addByCode()}>
                   {t('lead.add.products.add')}
                 </Button>
               </div>

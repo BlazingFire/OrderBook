@@ -908,7 +908,12 @@ function OfficePanel() {
         // Two entries sharing one screen: the sidebar has separate Parties and
         // Products items, and each keeps its own state.
         { id: 'parties', render: () => <CatalogScreen view={view} tab="parties" /> },
-        { id: 'products', render: () => <CatalogScreen view={view} tab="products" /> },
+        {
+          id: 'products',
+          render: () => (
+            <CatalogScreen view={view} tab="products" canImport={can('products.bulk')} />
+          ),
+        },
         {
           id: 'addLead',
           render: () => (
