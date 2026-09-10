@@ -144,6 +144,33 @@ const SOURCES: Record<FieldListKey, readonly SourceDefinition[]> = {
              GROUP BY packaging`,
     },
   ],
+  'line.grade': [
+    {
+      source: 'line_items',
+      sql: `SELECT grade AS value, count(*) AS count
+              FROM line_items
+             WHERE tenant_id = ? AND grade IS NOT NULL
+             GROUP BY grade`,
+    },
+    // `products` and `party_product_variants` both carry a grade a line copies
+    // from, so a grade in use on the catalogue is in use even before it reaches
+    // a lead — deleting it out from under them is the case this count exists to
+    // stop.
+    {
+      source: 'products',
+      sql: `SELECT grade AS value, count(*) AS count
+              FROM products
+             WHERE tenant_id = ? AND grade IS NOT NULL
+             GROUP BY grade`,
+    },
+    {
+      source: 'party_product_variants',
+      sql: `SELECT grade AS value, count(*) AS count
+              FROM party_product_variants
+             WHERE tenant_id = ? AND grade IS NOT NULL
+             GROUP BY grade`,
+    },
+  ],
 };
 
 interface RawRow {

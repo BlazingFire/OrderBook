@@ -118,6 +118,7 @@ export async function insertLines(
       line_item_id: ids[index],
       colour: quantity.colour,
       quantity: quantity.quantity,
+      variant_code: quantity.variantCode ?? null,
     })),
   );
 

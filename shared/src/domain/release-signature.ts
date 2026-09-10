@@ -34,10 +34,13 @@ import type { ReleaseManifest } from './version.js';
  *
  * `panel` is in here and that is not incidental. Without it, a signed Master
  * manifest could be served to an Office panel as its own, and every office PC
- * in the shop would install the Master build.
+ * in the shop would install the Master build. `platform` is in here for the
+ * identical reason: a Windows manifest relabelled for a Mac sends every Mac in
+ * the shop an installer it cannot open.
  */
 export const SIGNED_MANIFEST_FIELDS = [
   'panel',
+  'platform',
   'version',
   'file',
   'sizeBytes',

@@ -28,6 +28,9 @@ import { createReadStream } from 'node:fs';
 
 import { Router } from 'express';
 
+import type { ReleasePlatform } from '@orderbook/shared';
+import { LEGACY_RELEASE_PLATFORM } from '@orderbook/shared';
+
 import * as updateService from '../../services/update.service.js';
 import { appVersion } from '../../lib/app-version.js';
 import { asyncHandler } from '../async-handler.js';
@@ -39,6 +42,20 @@ import {
 } from '../middleware/require-auth.js';
 import { requirePanel } from '../middleware/require-panel.js';
 
+/**
+ * Which OS the asking panel runs, from the panel itself.
+ *
+ * Self-declared, and that is sound: the request is already authenticated as a
+ * paired panel, and a panel that lies about its own OS only breaks its own
+ * update. A panel that sends nothing is one built before this existed, and
+ * every one of those is Windows.
+ */
+function askingPlatform(value: unknown): ReleasePlatform {
+  return value === 'darwin' || value === 'linux' || value === 'win32'
+    ? value
+    : LEGACY_RELEASE_PLATFORM;
+}
+
 /** Reachable by a paired panel, on its pairing credentials. See the header. */
 export const publicUpdateRoutes: Router = Router();
 
@@ -46,15 +63,17 @@ publicUpdateRoutes.use(requirePanel);
 
 publicUpdateRoutes.get(
   '/office/latest',
-  asyncHandler(async (_req, res) => {
-    res.json(await updateService.availability('office', '0.0.0'));
+  asyncHandler(async (req, res) => {
+    res.json(
+      await updateService.availability('office', '0.0.0', askingPlatform(req.query.platform)),
+    );
   }),
 );
 
 publicUpdateRoutes.get(
   '/office/download',
-  asyncHandler(async (_req, res) => {
-    const manifest = await updateService.readManifest('office');
+  asyncHandler(async (req, res) => {
+    const manifest = await updateService.readManifest('office', askingPlatform(req.query.platform));
     if (!manifest) throw new NotFoundError('Office release');
 
     const file = updateService.releaseFileFor('office', manifest);
@@ -79,6 +98,9 @@ updateRoutes.get(
   asyncHandler(async (_req, res) => {
     const [master, office] = await Promise.all([
       updateService.masterAvailability(),
+      // The Master's own screen, so its own OS. In a shop running both, this
+      // reports the office build for the Master's platform; each panel's own
+      // Updates screen is what tells that panel what it can install.
       updateService.availability('office', '0.0.0'),
     ]);
 

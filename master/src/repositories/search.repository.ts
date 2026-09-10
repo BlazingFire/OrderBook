@@ -24,7 +24,7 @@ import type { Knex } from 'knex';
 
 import { db } from '../db/knex.js';
 import type { PartyScope } from '../domain/party-scope.js';
-import { likePrefix, prefixTsQuery } from '../domain/search-terms.js';
+import { likeContains, likePrefix, prefixTsQuery } from '../domain/search-terms.js';
 import { partyScopeSql } from './party-access.repository.js';
 
 type Runner = Knex | Knex.Transaction;
@@ -236,6 +236,56 @@ export async function pickProducts(
       options.include,
       fetch,
     ],
+  );
+
+  return { rows: rows.slice(0, options.limit), truncated: rows.length > options.limit };
+}
+
+/**
+ * One row per product-colour pair, for the new-lead screen's code box.
+ *
+ * Deliberately not `pickProducts` with a colour join: the ranking is different.
+ * A person typing here has a variant code in their hand most of the time, so an
+ * exact code match outranks everything, then a code prefix, then the product's
+ * own text. Reservations are not joined — free-to-sell is worked out by the
+ * service from the same totals every other stock read uses, so the two can
+ * never disagree.
+ */
+export async function pickVariants(
+  tenantId: string,
+  options: { term: string; limit: number },
+  runner: Runner = db(),
+): Promise<{ rows: Row[]; truncated: boolean }> {
+  const term = options.term.trim();
+  const pattern = likePrefix(term);
+  const contains = likeContains(term);
+  const fetch = options.limit + 1;
+
+  const { rows } = await runner.raw<{ rows: Row[] }>(
+    `SELECT s.product_id, s.colour, s.variant_code, s.quantity_boxes,
+            s.reorder_level, s.min_stock_level, s.max_stock_level, s.updated_at,
+            p.product_code, p.name AS product_name, p.alias, p.sin, p.size,
+            p.grade, p.product_type, p.weight_kg, p.rate, p.box_coverage_sqft,
+            c.name AS category_name,
+            (LOWER(COALESCE(s.variant_code, '')) = LOWER(?)) AS exact_code,
+            COALESCE(s.variant_code ILIKE ? ESCAPE '\\', false) AS code_prefix
+       FROM inventory_stock s
+       JOIN products p ON p.id = s.product_id
+       LEFT JOIN product_categories c ON c.id = p.category_id
+      WHERE s.tenant_id = ?
+        AND p.is_active
+        AND p.deleted_at IS NULL
+        AND (
+          ? = ''
+          OR s.variant_code ILIKE ? ESCAPE '\\'
+          OR p.product_code ILIKE ? ESCAPE '\\'
+          OR p.name ILIKE ? ESCAPE '\\'
+          OR p.sin ILIKE ? ESCAPE '\\'
+          OR s.colour ILIKE ? ESCAPE '\\'
+        )
+      ORDER BY exact_code DESC, code_prefix DESC, p.name ASC, s.colour ASC
+      LIMIT ?`,
+    [term, pattern, tenantId, term, pattern, pattern, contains, pattern, contains, fetch],
   );
 
   return { rows: rows.slice(0, options.limit), truncated: rows.length > options.limit };

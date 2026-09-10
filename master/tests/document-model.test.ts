@@ -63,7 +63,7 @@ function lineItem(overrides: Partial<LineItem> = {}): LineItem {
     fromPartyVariant: false,
     imagePath: null,
     notes: null,
-    quantities: [{ id: 'q1', colour: 'Ivory', quantity: 12 }],
+    quantities: [{ id: 'q1', colour: 'Ivory', quantity: 12, variantCode: '101' }],
     totalQuantity: 12,
     lineTotal: 1_500_000,
     createdAt: '2026-08-01T00:00:00.000Z',
@@ -206,8 +206,8 @@ describe('document model — rate redaction is a layout fact', () => {
       items: [
         lineItem({
           quantities: [
-            { id: 'q1', colour: 'Ivory', quantity: 12 },
-            { id: 'q2', colour: 'Cobalt', quantity: 3 },
+            { id: 'q1', colour: 'Ivory', quantity: 12, variantCode: '101' },
+            { id: 'q2', colour: 'Cobalt', quantity: 3, variantCode: '102' },
           ],
         }),
       ],

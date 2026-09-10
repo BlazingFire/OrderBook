@@ -11,6 +11,7 @@
 
 import { DEVELOPER_RESET_CONFIRMATION, DEVELOPER_TOKEN_HEADER } from '@orderbook/shared';
 import type {
+  PickKind,
   ActivityLogEntry,
   DesktopBridge,
   ActivityLogFacets,
@@ -488,10 +489,8 @@ export const api = {
     put<QueuedResult>(`/api/parties/${id}`, input),
 
   createProduct: (input: ProductInput) => post<QueuedResult>('/api/products', input),
-  updateProduct: (
-    id: string,
-    input: ProductInput & { baseFieldHlc?: Record<string, string> },
-  ) => put<QueuedResult>(`/api/products/${id}`, input),
+  updateProduct: (id: string, input: ProductInput & { baseFieldHlc?: Record<string, string> }) =>
+    put<QueuedResult>(`/api/products/${id}`, input),
 
   /**
    * One page of the catalogue.
@@ -614,10 +613,7 @@ export const api = {
    * snapshot when it is not — the response carries `offline` so the listbox can
    * say which of the two it is showing.
    */
-  pick: <T>(
-    kind: 'product' | 'party',
-    query: { term: string; include?: string[]; signal?: AbortSignal },
-  ) => {
+  pick: <T>(kind: PickKind, query: { term: string; include?: string[]; signal?: AbortSignal }) => {
     const params = new URLSearchParams({ q: query.term });
     if (query.include?.length) params.set('include', query.include.join(','));
     return request<{ items: T[]; truncated: boolean; offline?: boolean }>(

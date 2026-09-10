@@ -9,7 +9,6 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
 import type { OneTimeSecret, PermissionCatalogue, Role, RoleTier, User } from '@orderbook/shared';
 
 import { api, ApiError, type FieldDifference } from '../api';
@@ -20,6 +19,7 @@ import {
   Card,
   ConflictBanner,
   DataTable,
+  EditorScreen,
   EmptyState,
   FilterChip,
   FilterDivider,
@@ -359,41 +359,6 @@ export function AccessScreen({ permissions, currentUserId, currentUserTier }: Pr
           onRun={run}
         />
       )}
-    </div>
-  );
-}
-
-/**
- * The frame a large operation runs inside: who you are editing, what they are,
- * and one way back that is always in the same place. The sidebar entry says
- * where you are; this says what you are looking at.
- */
-function EditorScreen({
-  title,
-  meta,
-  onBack,
-  backLabel,
-  children,
-}: {
-  title: string;
-  meta?: ReactNode;
-  /** Returns false when the operation refused to close — an unsaved draft. */
-  onBack: () => boolean;
-  backLabel: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="ob-editorscreen">
-      <header className="ob-editorscreen-head">
-        <Button variant="ghost" size="sm" icon="collapse" onClick={() => onBack()}>
-          {backLabel}
-        </Button>
-        <h1 className="ob-title" style={{ margin: 0 }}>
-          {title}
-        </h1>
-        {meta && <div className="ob-editorscreen-meta">{meta}</div>}
-      </header>
-      <div className="ob-editorscreen-body">{children}</div>
     </div>
   );
 }

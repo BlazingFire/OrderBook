@@ -132,6 +132,8 @@ export interface PartyProductVariantInput {
 export interface LineItemQuantityInput {
   colour: string;
   quantity: number;
+  /** The product-and-colour code as typed; see `LineItemQuantity.variantCode`. */
+  variantCode?: string | null;
 }
 
 /**
@@ -154,8 +156,25 @@ export interface LineItemInput {
   weightKg?: number | null;
   grade?: string | null;
   productType?: string | null;
-  /** Required by policy: a line with no packaging is rejected. */
+  /**
+   * Chosen by hand on every line, never auto-filled (§3.2).
+   *
+   * Not rejected on create: a lead half-built offline is never lost to
+   * validation (§3.1). Conversion is where it becomes mandatory —
+   * `validation.lead.packagingMissing`.
+   */
   packaging?: string | null;
+  /**
+   * "No rate on this line" — a price to be quoted later, as opposed to one
+   * nobody has typed yet.
+   *
+   * `rate` alone cannot say it: absent already means "you may not see rates",
+   * and `null` falls through to the party variant and then the catalogue, so a
+   * line meant to carry no price silently saves at the catalogue rate. This
+   * flag is the fourth state, and it is honoured only for an actor who may set
+   * rates at all.
+   */
+  rateUnset?: boolean;
   sequence?: number;
   fromPartyVariant?: boolean;
   imagePath?: string | null;
@@ -253,6 +272,12 @@ export interface StockLevelsInput {
   reorderLevel?: number | null;
   minStockLevel?: number | null;
   maxStockLevel?: number | null;
+  /**
+   * The short code for this one product in this one colour. Absent leaves it
+   * alone; `null` or an empty string clears it, which is the only way to hand
+   * a code somebody has finished with to another row.
+   */
+  variantCode?: string | null;
 }
 
 /**

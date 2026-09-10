@@ -57,10 +57,7 @@ export function maskProduct(product: Product, visible: ProductVisibility): Produ
   return masked;
 }
 
-export function maskVariant(
-  variant: PartyProductVariant,
-  allowed: boolean,
-): PartyProductVariant {
+export function maskVariant(variant: PartyProductVariant, allowed: boolean): PartyProductVariant {
   if (allowed) return variant;
 
   const { rate: _rate, ...visible } = variant;
@@ -90,13 +87,19 @@ export function maskOrder(order: Order, allowed: boolean): Order {
  * somebody did in good faith. Dropping the field lets the line fall back to the
  * variant or the catalogue — the value the actor was entitled to anyway.
  */
-export function withPermittedRate<T extends { rate?: number | null }>(
+export function withPermittedRate<T extends { rate?: number | null; rateUnset?: boolean }>(
   draft: T,
   allowed: boolean,
 ): T {
-  if (allowed || draft.rate === undefined) return draft;
+  if (allowed) return draft;
 
-  const { rate: _rate, ...rest } = draft;
+  // `rateUnset` goes with it. Deciding a line carries *no* price is as much a
+  // rate decision as typing one — and it is the more consequential of the two,
+  // because it stops the catalogue fallback that this function otherwise leans
+  // on to put the actor back where they were entitled to be.
+  if (draft.rate === undefined && draft.rateUnset === undefined) return draft;
+
+  const { rate: _rate, rateUnset: _rateUnset, ...rest } = draft;
   return rest as T;
 }
 

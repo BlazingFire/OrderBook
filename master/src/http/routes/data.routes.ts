@@ -52,8 +52,10 @@ const needs = requirePermissionMiddleware;
  * reason: this product's scale is one shop's database, not a multi-gigabyte
  * one. A future increase in scale would want to stream this instead.
  */
-const backupUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024 * 1024 } });
-
+const backupUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 1024 * 1024 * 1024 },
+});
 
 // --- Overview --------------------------------------------------------------
 
@@ -362,8 +364,10 @@ dataRoutes.post(
   '/stock/reorder-level',
   asyncHandler(async (req, res) => {
     const { productId, colour } = req.body ?? {};
-    if (typeof productId !== 'string') throw new ValidationError('validation.stock.productRequired');
-    if (typeof colour !== 'string') throw new ValidationError('validation.stock.colourSelectRequired');
+    if (typeof productId !== 'string')
+      throw new ValidationError('validation.stock.productRequired');
+    if (typeof colour !== 'string')
+      throw new ValidationError('validation.stock.colourSelectRequired');
 
     /*
      * Three distinct meanings, and the route has to keep them apart:
@@ -387,6 +391,14 @@ dataRoutes.post(
           reorderLevel: level(body.reorderLevel),
           minStockLevel: level(body.minStockLevel),
           maxStockLevel: level(body.maxStockLevel),
+          // Same three meanings, one type narrower: absent leaves the code
+          // alone, empty or null clears it.
+          variantCode:
+            body.variantCode === undefined
+              ? undefined
+              : body.variantCode === null || body.variantCode === ''
+                ? null
+                : String(body.variantCode),
         },
         actorFromRequest(req),
       ),

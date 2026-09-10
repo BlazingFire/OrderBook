@@ -53,6 +53,10 @@ async function publish(
 
   const manifest: ReleaseManifest = {
     panel,
+    // These fixtures write `latest.json`, the legacy name, and every legacy
+    // manifest describes a Windows build — which is what the reader defaults
+    // an absent field to. Stated here so the fixture and the reader agree.
+    platform: 'win32',
     version,
     file,
     sizeBytes: options.wrongSize ? body.length + 99 : body.length,
@@ -65,6 +69,37 @@ async function publish(
 
   await writeFile(path.join(dir, 'latest.json'), JSON.stringify(manifest));
   if (!options.missingFile) await writeFile(path.join(dir, file), body);
+
+  return manifest;
+}
+
+/**
+ * Publish under `latest-<platform>.json`, the name a panel built from the
+ * platform-aware change onwards looks for first.
+ */
+async function publishFor(
+  panel: 'master' | 'office',
+  platform: 'win32' | 'darwin',
+  version: string,
+): Promise<ReleaseManifest> {
+  const dir = path.join(root, panel === 'master' ? 'master-panel' : 'office-panel');
+  await mkdir(dir, { recursive: true });
+
+  const body = `setup-bytes-for-${platform}-${version}`;
+  const file = `OrderBook-${panel}-${version}-Setup.${platform === 'darwin' ? 'dmg' : 'exe'}`;
+
+  const manifest: ReleaseManifest = {
+    panel,
+    platform,
+    version,
+    file,
+    sizeBytes: body.length,
+    sha256: createHash('sha256').update(body).digest('hex'),
+    releasedAt: '2026-09-10T00:00:00.000Z',
+  };
+
+  await writeFile(path.join(dir, `latest-${platform}.json`), JSON.stringify(manifest));
+  await writeFile(path.join(dir, file), body);
 
   return manifest;
 }
@@ -166,6 +201,57 @@ describe('the releases folder', () => {
     const resolved = service.releaseFileFor('office', escaping);
     expect(resolved.startsWith(service.releaseDirFor('office'))).toBe(true);
     expect(resolved.endsWith('calc.exe')).toBe(true);
+  });
+
+  it('UPD-43: one folder serves a Windows shop and a Mac one at once', async () => {
+    await publishFor('office', 'win32', '2.0.0');
+    await publishFor('office', 'darwin', '2.0.0');
+    const service = await loadService();
+
+    // Each asker gets its own OS's build, out of the same folder. Before
+    // manifests carried a platform this was impossible: the second publish
+    // overwrote the first and half the shop was offered an installer it
+    // could not open.
+    const windows = await service.availability('office', '1.0.0', 'win32');
+    const mac = await service.availability('office', '1.0.0', 'darwin');
+
+    expect(windows.available?.file).toMatch(/\.exe$/);
+    expect(mac.available?.file).toMatch(/\.dmg$/);
+  });
+
+  it('UPD-43: refuses a build for another OS rather than offering it', async () => {
+    await publishFor('office', 'win32', '2.0.0');
+    const service = await loadService();
+
+    // A Mac asking a folder that holds only a Windows build is told nothing is
+    // available — not handed 160 MB of .exe it would download and then refuse.
+    expect((await service.availability('office', '1.0.0', 'darwin')).available).toBeNull();
+  });
+
+  it('UPD-43: reads a pre-platform latest.json as the Windows build it is', async () => {
+    // Every folder published before manifests carried a platform holds one
+    // `latest.json` naming a `-Setup.exe`. A Windows panel updated across this
+    // change must keep finding it, or the shop is told nothing was published
+    // with a good build sitting right there.
+    await publish('office', '2.0.0');
+    const service = await loadService();
+
+    const result = await service.availability('office', '1.0.0', 'win32');
+    expect(result.available?.version).toBe('2.0.0');
+    expect(result.available?.platform).toBe('win32');
+  });
+
+  it('UPD-43: prefers the platform-named manifest over the legacy one', async () => {
+    await publish('office', '1.5.0');
+    await publishFor('office', 'win32', '2.0.0');
+    const service = await loadService();
+
+    // Both names are on disk during the window where the release script writes
+    // the shim. The specific one wins, so a newer build is not shadowed by an
+    // older compatibility copy.
+    expect((await service.availability('office', '1.0.0', 'win32')).available?.version).toBe(
+      '2.0.0',
+    );
   });
 
   it('UPD-10: keeps the two panels’ folders separate', async () => {

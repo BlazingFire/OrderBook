@@ -191,6 +191,7 @@ const FIXTURE: SyncSnapshot = {
       categoryName: null,
       size: null,
       colour: 'Ivory',
+      variantCode: '101',
       quantityBoxes: 10,
       reservedBoxes: 2,
       availableBoxes: 8,
@@ -209,7 +210,16 @@ const FIXTURE: SyncSnapshot = {
       kind: 'lead',
       name: 'Lead pipeline',
       stages: [
-        { id: 's1', pipelineId: 'p1', name: 'New', sequence: 1, isDefault: true, isTerminal: false, colour: null, isArchived: false },
+        {
+          id: 's1',
+          pipelineId: 'p1',
+          name: 'New',
+          sequence: 1,
+          isDefault: true,
+          isTerminal: false,
+          colour: null,
+          isArchived: false,
+        },
       ],
     },
   ],
@@ -298,7 +308,10 @@ describe('snapshot masking (DSH-1, DSH-2)', () => {
   });
 
   it('keeps rate fields for a session with field.saleRate.view', async () => {
-    vi.spyOn(userSession, 'sessionPermissions').mockReturnValue(['leads.create', 'field.saleRate.view']);
+    vi.spyOn(userSession, 'sessionPermissions').mockReturnValue([
+      'leads.create',
+      'field.saleRate.view',
+    ]);
 
     const response = await request(createApp()).get('/api/snapshot');
 
@@ -314,7 +327,10 @@ describe('snapshot masking (DSH-1, DSH-2)', () => {
    * `field.saleRate.view`.
    */
   it('withholds the purchase rate from a session that may only see the sale rate', async () => {
-    vi.spyOn(userSession, 'sessionPermissions').mockReturnValue(['leads.create', 'field.saleRate.view']);
+    vi.spyOn(userSession, 'sessionPermissions').mockReturnValue([
+      'leads.create',
+      'field.saleRate.view',
+    ]);
 
     const response = await request(createApp()).get('/api/snapshot');
 

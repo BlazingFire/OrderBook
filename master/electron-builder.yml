@@ -70,9 +70,11 @@ nsis:
   include: installer/installer.nsh
   artifactName: OrderBook-Master-${version}-Setup.${ext}
 
-# macOS. Built only on a Mac (`npm run release` picks the host platform), so
-# the Windows workflow is unaffected. Two artefacts: the .dmg is what a person
-# installs from, the .zip is what the update path downloads and unpacks.
+# macOS. Built only on a Mac — electron-builder refuses the target anywhere
+# else, so the Windows workflow is unaffected. `npm run release` defaults to the
+# host platform and takes `--os mac` to be explicit. Two artefacts: the .dmg is
+# what a person installs from, the .zip is what the update path downloads and
+# unpacks.
 mac:
   category: public.app-category.business
   target:

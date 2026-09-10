@@ -109,6 +109,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'fieldSet.product.surfaceTexture': 'सतह बनावट',
   'fieldSet.product.originPlant': 'उत्पादन संयंत्र',
   'fieldSet.line.packaging': 'पैकेजिंग',
+  'fieldSet.line.grade': 'ग्रेड',
 
   'action.view': 'देखें',
   'action.create': 'बनाएँ',
@@ -339,7 +340,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.cursor.malformed': 'परिणामों के इस पृष्ठ का लिंक अब मान्य नहीं है',
   'error.conflict.parentDeleted': 'एक या अधिक संबंधित रिकॉर्ड अभी भी रीसायकल बिन में हैं',
   'error.conflict.restoreCollision': 'एक मौजूदा रिकॉर्ड पहले से ही इस {field} का उपयोग कर रहा है',
-  'error.conflict.assetInUse': 'यह छवि एक दस्तावेज़ टेम्पलेट पर उपयोग हो रही है — पहले उसे वहाँ से हटाएँ',
+  'error.conflict.assetInUse':
+    'यह छवि एक दस्तावेज़ टेम्पलेट पर उपयोग हो रही है — पहले उसे वहाँ से हटाएँ',
   'error.conflict.passwordNotStored':
     'इस व्यक्ति के लिए अभी कोई पासवर्ड संग्रहीत नहीं है। अगली बार जब वे इस नेटवर्क पर साइन इन करेंगे तब वह याद रखा जाएगा।',
   'error.conflict.vaultUnreadable':
@@ -1406,7 +1408,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'designer.field.fitHelp': 'What to do when the text is longer than the box.',
   'designer.field.colour': 'रंग',
-  'designer.field.colourHelp': '#1F2A3B जैसा हेक्स रंग। खाली छोड़ने पर टेम्पलेट का एक्सेंट रंग लगेगा।',
+  'designer.field.colourHelp':
+    '#1F2A3B जैसा हेक्स रंग। खाली छोड़ने पर टेम्पलेट का एक्सेंट रंग लगेगा।',
   'designer.field.fill': 'भराव',
   'designer.field.stroke': 'किनारा',
   'designer.field.radius': 'कोने की त्रिज्या (mm)',
@@ -3453,8 +3456,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'photo.moveLater': 'बाद में करें',
   'photo.remove': 'फ़ोटो हटाएँ',
   'photo.removeConfirm.title': 'यह फ़ोटो हटाएँ?',
-  'photo.removeConfirm.body':
-    'फ़ोटो और उससे बने सभी आकार मिट जाएँगे। इसे वापस नहीं लाया जा सकता।',
+  'photo.removeConfirm.body': 'फ़ोटो और उससे बने सभी आकार मिट जाएँगे। इसे वापस नहीं लाया जा सकता।',
   'photo.dropHint': 'फ़ोटो यहाँ छोड़ें',
   'photo.saving': 'फ़ोटो सहेजी जा रही है…',
   'photo.caption.edit': 'विवरण',
@@ -4108,15 +4110,19 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'ai.support.ollama.title': 'Ollama',
   // TODO(i18n-hi)
-  'ai.support.ollama.desc': 'इसी मशीन पर छोटे HTTP API के पीछे लोकल मॉडल चलाता है। आम तौर पर यही चुना जाता है।',
+  'ai.support.ollama.desc':
+    'इसी मशीन पर छोटे HTTP API के पीछे लोकल मॉडल चलाता है। आम तौर पर यही चुना जाता है।',
   // TODO(i18n-hi)
-  'ai.support.ollama.download': 'इसे अपनी मीडिया से इसी मशीन पर इंस्टॉल करें — चलाने के लिए दुकान का ऑनलाइन होना ज़रूरी नहीं।',
+  'ai.support.ollama.download':
+    'इसे अपनी मीडिया से इसी मशीन पर इंस्टॉल करें — चलाने के लिए दुकान का ऑनलाइन होना ज़रूरी नहीं।',
   // TODO(i18n-hi)
   'ai.support.lmstudio.title': 'LM Studio',
   // TODO(i18n-hi)
-  'ai.support.lmstudio.desc': 'कमांड लाइन के बजाय एक विंडो, अपने सर्वर के साथ। मॉडल आज़माने के लिए आसान।',
+  'ai.support.lmstudio.desc':
+    'कमांड लाइन के बजाय एक विंडो, अपने सर्वर के साथ। मॉडल आज़माने के लिए आसान।',
   // TODO(i18n-hi)
-  'ai.support.lmstudio.download': 'यह भी इसी मशीन पर इंस्टॉल होता है; यह भी localhost पर ही चलता है।',
+  'ai.support.lmstudio.download':
+    'यह भी इसी मशीन पर इंस्टॉल होता है; यह भी localhost पर ही चलता है।',
   // TODO(i18n-hi)
   'ai.support.models': 'Recommended Models',
   // TODO(i18n-hi)
@@ -4140,9 +4146,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'ai.support.setup.step1': 'इसी मास्टर मशीन पर Ollama या LM Studio इंस्टॉल करें।',
   // TODO(i18n-hi)
-  'ai.support.setup.step2': 'ऊपर दिए मॉडलों में से एक उसमें लोड करें। वही चुनें जिसके लिए इस मशीन में RAM हो — हर पंक्ति का बैज यही बताता है।',
+  'ai.support.setup.step2':
+    'ऊपर दिए मॉडलों में से एक उसमें लोड करें। वही चुनें जिसके लिए इस मशीन में RAM हो — हर पंक्ति का बैज यही बताता है।',
   // TODO(i18n-hi)
-  'ai.support.setup.step3': 'सेटिंग्स में AI प्रोवाइडर को localhost पर उसी सर्वर की ओर लगाएँ। कुछ भी इस मशीन से बाहर नहीं जाता।',
+  'ai.support.setup.step3':
+    'सेटिंग्स में AI प्रोवाइडर को localhost पर उसी सर्वर की ओर लगाएँ। कुछ भी इस मशीन से बाहर नहीं जाता।',
   // TODO(i18n-hi)
   'ai.support.status': 'Current Status',
   // TODO(i18n-hi)
@@ -4286,4 +4294,231 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
     'Open this panel in its desktop app to uninstall it — a browser tab cannot remove a program from the computer it is looking at.',
   // TODO(i18n-hi)
   'developer.tool.uninstall.refused': 'Uninstall cancelled — nothing was removed',
+  // TODO(i18n-hi)
+  'action.backToList': 'Back to list',
+  // TODO(i18n-hi)
+  'dashboard.asOf': 'Figures as of {when}',
+  // TODO(i18n-hi)
+  'dashboard.asOf.stale': 'Figures from the last time the Master was reachable · {when}',
+  // TODO(i18n-hi)
+  'dashboard.pane.leads.empty': 'No open leads',
+  // TODO(i18n-hi)
+  'dashboard.pane.orders.empty': 'No open orders',
+  // TODO(i18n-hi)
+  'dashboard.pane.viewAll': 'View all',
+  // TODO(i18n-hi)
+  'dashboard.pipeline.title': 'Lead pipeline',
+  // TODO(i18n-hi)
+  'dashboard.stat.followUpsDue': 'Follow-ups due',
+  // TODO(i18n-hi)
+  'dashboard.stat.followUpsDue.noteNone': 'Nothing owed',
+  // TODO(i18n-hi)
+  'dashboard.stat.followUpsDue.noteSome': 'Leads whose date has arrived',
+  // TODO(i18n-hi)
+  'dashboard.stat.parties.note': 'On this panel',
+  // TODO(i18n-hi)
+  'dashboard.stat.products.note': 'On this panel',
+  // TODO(i18n-hi)
+  'dashboard.stat.products.partial': 'One page of a larger catalogue',
+  // TODO(i18n-hi)
+  'validation.stock.variantCodeTaken': 'Another colour already uses that code',
+  // TODO(i18n-hi)
+  'lead.add.draft.addColour': '+ Add another colour of this product…',
+  // TODO(i18n-hi)
+  'lead.add.draft.col.freeToSell': 'Free to sell',
+  // TODO(i18n-hi)
+  'lead.add.draft.col.quantity': 'Quantity',
+  // TODO(i18n-hi)
+  'lead.add.draft.colourOption': '{code} · {colour} · {free} free',
+  // TODO(i18n-hi)
+  'lead.add.draft.editing': 'editing saved product',
+  // TODO(i18n-hi)
+  'lead.add.draft.grade': 'Grade',
+  // TODO(i18n-hi)
+  'lead.add.draft.hintPackaging': 'Choose packaging to save this product',
+  // TODO(i18n-hi)
+  'lead.add.draft.hintQuantity': 'Enter a quantity for at least one colour',
+  // TODO(i18n-hi)
+  'lead.add.draft.hintRate': 'Enter a rate',
+  // TODO(i18n-hi)
+  'lead.add.draft.hintTotal': 'Line total {amount}',
+  // TODO(i18n-hi)
+  'lead.add.draft.new': 'new product',
+  // TODO(i18n-hi)
+  'lead.add.draft.packaging': 'Packaging',
+  // TODO(i18n-hi)
+  'lead.add.draft.quantityTitle': 'Quantity — boxes per colour',
+  // TODO(i18n-hi)
+  'lead.add.draft.rateCatalogue': 'catalogue rate',
+  // TODO(i18n-hi)
+  'lead.add.draft.rateLast': 'last used {date}',
+  // TODO(i18n-hi)
+  'lead.add.draft.rateParty': 'party rate',
+  // TODO(i18n-hi)
+  'lead.add.draft.ratePerBox': 'Rate per box',
+  // TODO(i18n-hi)
+  'lead.add.draft.rateReset': 'Reset to {amount}',
+  // TODO(i18n-hi)
+  'lead.add.draft.removeColour': 'Remove colour {colour}',
+  // TODO(i18n-hi)
+  'lead.add.draft.saveChanges': 'Save changes',
+  // TODO(i18n-hi)
+  'lead.add.draft.saveProduct': 'Save product',
+  // TODO(i18n-hi)
+  'lead.add.errors.draftOpen': 'Save or cancel the open product first',
+  // TODO(i18n-hi)
+  'lead.add.followUp.inThreeDays': 'In 3 days',
+  // TODO(i18n-hi)
+  'lead.add.followUp.nextWeek': 'Next week',
+  // TODO(i18n-hi)
+  'lead.add.followUp.tomorrow': 'Tomorrow',
+  // TODO(i18n-hi)
+  'lead.add.line.grade': 'Grade',
+  // TODO(i18n-hi)
+  'lead.add.line.modify': 'Modify',
+  // TODO(i18n-hi)
+  'lead.add.line.packaging': 'Packaging',
+  // TODO(i18n-hi)
+  'lead.add.line.rate': 'Rate',
+  // TODO(i18n-hi)
+  'lead.add.line.systemCode': 'System code',
+  // TODO(i18n-hi)
+  'lead.add.notes.placeholder': 'Anything the next person should know…',
+  // TODO(i18n-hi)
+  'lead.add.products.codeHint':
+    'Each unique code is one product in one colour. Packaging is never filled in for you.',
+  // TODO(i18n-hi)
+  'lead.add.products.codePlaceholder': 'Search by unique code or product name',
+  // TODO(i18n-hi)
+  'lead.add.products.col.code': 'Code',
+  // TODO(i18n-hi)
+  'lead.add.products.col.colour': 'Colour',
+  // TODO(i18n-hi)
+  'lead.add.products.col.free': 'Free',
+  // TODO(i18n-hi)
+  'lead.add.products.col.product': 'Product',
+  // TODO(i18n-hi)
+  'lead.add.products.noHit':
+    'Nothing matches. A unique code covers one colour of one product — try the code, a product name, or a system code.',
+  // TODO(i18n-hi)
+  'lead.add.products.overFree': 'over free stock',
+  // TODO(i18n-hi)
+  'lead.add.progress': '{done} of {total} required steps',
+  // TODO(i18n-hi)
+  'lead.add.source.otherLabel': 'Other source platform',
+  // TODO(i18n-hi)
+  'lead.add.source.otherPlaceholder': 'Which platform? e.g. Instagram, referral, exhibition',
+  // TODO(i18n-hi)
+  'lead.add.status.draft': 'Save or cancel the open product first',
+  // TODO(i18n-hi)
+  'lead.add.status.party': 'Select a party to continue',
+  // TODO(i18n-hi)
+  'lead.add.status.products': 'Add at least one product',
+  // TODO(i18n-hi)
+  'lead.add.step.notesHint': 'optional — can be added later',
+  // TODO(i18n-hi)
+  'lead.add.step.optional': 'optional',
+  // TODO(i18n-hi)
+  'lead.add.step.productsHint': 'at least one',
+  // TODO(i18n-hi)
+  'lead.add.step.required': 'required',
+  // TODO(i18n-hi)
+  'lead.add.step.source': 'Source platform',
+  // TODO(i18n-hi)
+  'lead.add.step.sourceHint': 'where the enquiry came from',
+  // TODO(i18n-hi)
+  'lead.add.summary.count': '{count} products · {boxes} boxes',
+  // TODO(i18n-hi)
+  'lead.add.summary.empty': 'Nothing added yet',
+  // TODO(i18n-hi)
+  'lead.add.party.create': '+ Create a new party',
+  // TODO(i18n-hi)
+  'lead.add.party.ownRates': 'own rates applied',
+  // TODO(i18n-hi)
+  'lead.add.party.placeholder': 'Select party — name, code or phone',
+  // TODO(i18n-hi)
+  'unit.box': 'box',
+  // TODO(i18n-hi)
+  'inventory.error.variantCode': 'Could not save the code',
+  // TODO(i18n-hi)
+  'inventory.variantCodeLabel': 'Code for {product} {colour}',
+  // TODO(i18n-hi)
+  'inventory.table.variantCode': 'Code',
+  // TODO(i18n-hi)
+  'lead.add.bulkNote': '{count} products — the list scrolls',
+  // TODO(i18n-hi)
+  'lead.add.draft.hintNoRate': 'Saves without a rate',
+  // TODO(i18n-hi)
+  'lead.add.draft.hintRateOrOff': 'Enter a rate or switch it off',
+  // TODO(i18n-hi)
+  'lead.add.draft.noRate': 'No rate on this line',
+  // TODO(i18n-hi)
+  'lead.add.draft.rateLater': 'quote it later — no amount on this line',
+  // TODO(i18n-hi)
+  'lead.add.draft.rateOff': 'Off',
+  // TODO(i18n-hi)
+  'lead.add.draft.rateOn': 'On',
+  // TODO(i18n-hi)
+  'lead.add.draft.rateSwitch': 'Use a rate on this product',
+  // TODO(i18n-hi)
+  'lead.add.draft.rateSwitchHint': 'Switch off to save this product without a rate',
+  // TODO(i18n-hi)
+  'lead.add.draft.title': 'Details for this product',
+  // TODO(i18n-hi)
+  'lead.add.followUp.label': 'Follow up',
+  // TODO(i18n-hi)
+  'lead.add.line.noPackaging': 'no packaging',
+  // TODO(i18n-hi)
+  'lead.add.line.rateNa': 'rate n/a',
+  // TODO(i18n-hi)
+  'lead.add.line.rateUnset': 'not set — to be quoted',
+  // TODO(i18n-hi)
+  'lead.add.line.remove': 'Remove {product}',
+  // TODO(i18n-hi)
+  'lead.add.line.toQuote': 'rate to quote',
+  // TODO(i18n-hi)
+  'lead.add.products.clear': 'Clear selection',
+  // TODO(i18n-hi)
+  'lead.add.products.pickedHint':
+    'Fill packaging, rate and quantity, then Add product — the search bar comes back for the next one.',
+  // TODO(i18n-hi)
+  'lead.add.products.searchAdds': 'search adds another',
+  // TODO(i18n-hi)
+  'lead.add.products.searchFirst': 'search a code, name or colour — at least one',
+  // TODO(i18n-hi)
+  'lead.add.saved': 'Lead saved — {id} syncs when the Master is reachable',
+  // TODO(i18n-hi)
+  'lead.add.source.label': 'Source',
+  // TODO(i18n-hi)
+  'lead.add.summary.countOne': '{count} product · {boxes} boxes',
+  // TODO(i18n-hi)
+  'lead.add.line.boxesShort': '{count} bx',
+  // TODO(i18n-hi)
+  'lead.add.line.ofFree': 'of {free} free',
+  // TODO(i18n-hi)
+  'lead.add.panel.clear': 'Clear',
+  // TODO(i18n-hi)
+  'lead.add.panel.countFiltered': '{shown} of {total}',
+  // TODO(i18n-hi)
+  'lead.add.panel.emptyFiltered': 'No added product matches that search.',
+  // TODO(i18n-hi)
+  'lead.add.panel.emptyNone': 'Nothing added yet — search a product on the left to add it here.',
+  // TODO(i18n-hi)
+  'lead.add.panel.removeSelected': 'Remove {count} products',
+  // TODO(i18n-hi)
+  'lead.add.panel.removeSelectedOne': 'Remove {count} product',
+  // TODO(i18n-hi)
+  'lead.add.panel.search': 'Search added products',
+  // TODO(i18n-hi)
+  'lead.add.panel.select': 'Select {product}',
+  // TODO(i18n-hi)
+  'lead.add.panel.selectAll': 'Select all shown',
+  // TODO(i18n-hi)
+  'lead.add.panel.selected': '{count} selected',
+  // TODO(i18n-hi)
+  'lead.add.panel.title': 'Added products',
+  // TODO(i18n-hi)
+  'lead.add.panel.truncated': 'Showing the first {shown} — narrow the search to see the rest',
+  // TODO(i18n-hi)
+  'lead.add.draft.showOptions': 'Show {field} options',
 };

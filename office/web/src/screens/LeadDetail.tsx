@@ -105,6 +105,20 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
           {lead.items.map((item) => (
             <div key={item.id} className="ob-card ob-card--pad">
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
+                {/*
+                 * The codes first, as on the screen the line was entered on:
+                 * `201, 202` is how the counter refers to this line on the
+                 * phone, and `item.code` is the product code, which cannot say
+                 * which colours were ordered.
+                 */}
+                {item.quantities.some((quantity) => quantity.variantCode) && (
+                  <span className="ob-mono ob-body-strong" style={{ fontSize: rem(13.5) }}>
+                    {item.quantities
+                      .map((quantity) => quantity.variantCode)
+                      .filter(Boolean)
+                      .join(', ')}
+                  </span>
+                )}
                 <span className="ob-body-strong" style={{ fontSize: rem(13.5) }}>
                   {item.productName}
                 </span>
@@ -139,6 +153,7 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
                   <span key={quantity.id} className="ob-colourname">
                     <ColourChip name={quantity.colour} hex={colourHex(quantity.colour)} />
                     <span>
+                      {quantity.variantCode ? `${quantity.variantCode} · ` : ''}
                       {quantity.colour} × {quantity.quantity}
                     </span>
                   </span>
@@ -146,8 +161,19 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--s-8)' }}>
+                {/*
+                 * Three states, and the em dash only covers one of them. A rate
+                 * that is present-and-null was deliberately left to be quoted;
+                 * a rate that is absent is one this role may not see, and
+                 * saying "to be quoted" there would be a claim about somebody
+                 * else's price.
+                 */}
                 <span className="ob-data" style={{ fontWeight: 550 }}>
-                  {item.lineTotal == null ? '—' : formatMoney(item.lineTotal)}
+                  {item.lineTotal != null
+                    ? formatMoney(item.lineTotal)
+                    : 'rate' in item && item.rate === null
+                      ? t('lead.add.line.rateUnset')
+                      : '—'}
                 </span>
               </div>
             </div>

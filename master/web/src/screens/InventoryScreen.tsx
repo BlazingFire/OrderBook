@@ -221,6 +221,46 @@ export function InventoryScreen({ revision }: Props) {
       render: (level) => level.productName,
     },
     {
+      /*
+       * The short code somebody types on the new-lead screen to reach this one
+       * product in this one colour. Edited here because this is the only screen
+       * that lists the pairs it names — a product row cannot hold it, since one
+       * product has a code per colour.
+       *
+       * Blank clears it, which is how a code is freed for another row: the
+       * unique index refuses two rows holding one code, and the Master answers
+       * that attempt with a sentence rather than a constraint name.
+       */
+      key: 'variantCode',
+      header: t('inventory.table.variantCode'),
+      width: rem(110),
+      render: (level) => (
+        <Input
+          key={level.variantCode ?? ''}
+          defaultValue={level.variantCode ?? ''}
+          placeholder="—"
+          aria-label={t('inventory.variantCodeLabel', {
+            product: level.productName,
+            colour: level.colour,
+          })}
+          onClick={(event) => event.stopPropagation()}
+          onBlur={(event) => {
+            const next = event.target.value.trim();
+            if (next === (level.variantCode ?? '')) return;
+            void run(
+              () =>
+                api.setReorderLevel({
+                  productId: level.productId,
+                  colour: level.colour,
+                  variantCode: next === '' ? null : next,
+                }),
+              t('inventory.error.variantCode'),
+            );
+          }}
+        />
+      ),
+    },
+    {
       key: 'colour',
       header: t('inventory.table.colour'),
       width: rem(150),

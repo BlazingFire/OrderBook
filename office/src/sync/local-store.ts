@@ -310,10 +310,13 @@ function provisionalLine(
   const product = view.products.find((candidate) => candidate.id === item.productId);
 
   const quantities = Array.isArray(item.quantities)
-    ? (item.quantities as Array<{ colour: string; quantity: number }>).map((quantity, i) => ({
+    ? (
+        item.quantities as Array<{ colour: string; quantity: number; variantCode?: string | null }>
+      ).map((quantity, i) => ({
         id: `${parentId}-${index}-${i}`,
         colour: quantity.colour,
         quantity: Number(quantity.quantity) || 0,
+        variantCode: quantity.variantCode ?? null,
       }))
     : [];
 
@@ -325,7 +328,11 @@ function provisionalLine(
   // into "this line is free", which is precisely the distinction §6 is about.
   const rateHidden =
     item.rate === undefined && product !== undefined && !('rate' in (product as object));
-  const rate = (item.rate as number | null | undefined) ?? product?.rate ?? null;
+  // `rateUnset` stops the catalogue fallback here too, or the board would show
+  // a price for a line the counter deliberately left to be quoted.
+  const rate = item.rateUnset
+    ? null
+    : ((item.rate as number | null | undefined) ?? product?.rate ?? null);
 
   const line: LineItem = {
     id: `${parentId}-line-${index}`,

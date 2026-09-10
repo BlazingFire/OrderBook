@@ -324,7 +324,12 @@ export const CUSTOM_FIELD_TYPES: readonly CustomFieldType[] = [
 ];
 
 export type CustomFieldEntity = 'lead' | 'order' | 'party' | 'product';
-export const CUSTOM_FIELD_ENTITIES: readonly CustomFieldEntity[] = ['lead', 'order', 'party', 'product'];
+export const CUSTOM_FIELD_ENTITIES: readonly CustomFieldEntity[] = [
+  'lead',
+  'order',
+  'party',
+  'product',
+];
 
 export function isCustomFieldEntity(value: unknown): value is CustomFieldEntity {
   return (CUSTOM_FIELD_ENTITIES as readonly unknown[]).includes(value);
@@ -587,6 +592,17 @@ export interface LineItemQuantity {
   id: Uuid;
   colour: string;
   quantity: number;
+  /**
+   * The short code the counter actually typed for this product-and-colour,
+   * frozen alongside the rest of the line.
+   *
+   * `LineItem.code` is the *product* code, which names the product across every
+   * colour it comes in — so it cannot say which colour was ordered. Without this
+   * the code somebody read down the phone is unrecoverable the moment the lead
+   * is saved, and a reprinted docket cannot show it. Null for a colour that had
+   * no code when the line was added.
+   */
+  variantCode: string | null;
 }
 
 /**
@@ -767,6 +783,16 @@ export interface InventoryStockLevel {
   categoryName: string | null;
   size: string | null;
   colour: string;
+  /**
+   * A short code naming this one product in this one colour, or null when
+   * nobody has given the pair one.
+   *
+   * Not `productCode`, which names the product across every colour it comes
+   * in: this is the number somebody types at the counter to reach exactly one
+   * row. Optional by design — see `20260320000000_product_variant_codes.ts`
+   * for why no back-fill invented them.
+   */
+  variantCode: string | null;
   quantityBoxes: number;
   reservedBoxes: number;
   availableBoxes: number;

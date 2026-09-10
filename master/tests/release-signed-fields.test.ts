@@ -24,7 +24,9 @@ describe('what a release signature covers', () => {
     const declared = /const SIGNED_FIELDS = \[([^\]]+)\]/.exec(SCRIPT);
     expect(declared, 'SIGNED_FIELDS not found in tools/release.mjs').not.toBeNull();
 
-    const fields = [...(declared?.[1] ?? '').matchAll(/'([a-zA-Z0-9]+)'/g)].map((match) => match[1]);
+    const fields = [...(declared?.[1] ?? '').matchAll(/'([a-zA-Z0-9]+)'/g)].map(
+      (match) => match[1],
+    );
 
     // Order matters as much as membership: the payload is positional, so the
     // same fields in a different order produce different bytes.
@@ -36,6 +38,7 @@ describe('what a release signature covers', () => {
     // either — a separator, a case rule, a stray space — fails here.
     const manifest = {
       panel: 'master' as const,
+      platform: 'win32' as const,
       version: '1.4.2',
       file: 'OrderBook-Master-1.4.2-Setup.exe',
       sizeBytes: 148_209_664,
@@ -59,8 +62,9 @@ describe('what a release signature covers', () => {
     // the same file — and must not produce a signature that fails to verify.
     const base = {
       panel: 'office' as const,
+      platform: 'darwin' as const,
       version: '1.4.2',
-      file: 'OrderBook-Office-1.4.2-Setup.exe',
+      file: 'OrderBook-Office-1.4.2-Setup.dmg',
       sizeBytes: 99,
       releasedAt: '2026-08-31T09:00:00.000Z',
     };

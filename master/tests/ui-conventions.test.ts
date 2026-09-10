@@ -28,7 +28,10 @@ function declarations(css: string, name: RegExp): [string, string][] {
 
 describe('scale tokens', () => {
   it('expresses every text-measured token in rem', () => {
-    const offenders = declarations(TOKENS, /^--(s-\d+|shell-(topbar|filterbar|footer|sidebar)|row-h|ctl-h-)/)
+    const offenders = declarations(
+      TOKENS,
+      /^--(s-\d+|shell-(topbar|filterbar|footer|sidebar)|row-h|ctl-h-)/,
+    )
       .filter(([, value]) => /\d(px)\b/.test(value))
       .map(([name, value]) => `${name}: ${value}`);
 
@@ -139,14 +142,17 @@ describe('JSX size literals', () => {
 
 /**
  * The standing rule the owner set, written down where a change trips over it:
- * **an Open on a table row shows the record's detail in a centred modal** — not
- * a right-hand drawer, and not a row that expands inline. Large editors still
- * get a screen of their own.
+ * **an Open on a table row shows the record's detail on a screen of its own**,
+ * with one way back in a fixed place and its entry nested under its module in
+ * the sidebar. Not a right-hand drawer, and not a row that expands inline —
+ * both were tried and turned down — and, since 2026-09-08, not a centred modal
+ * either. Modals remain right for dialogs: a create/edit form, an import
+ * wizard, a confirmation. They are not right for reading a record.
  *
- * This matters beyond taste now: `fitColumns` drops columns on a narrow screen,
- * and that is only defensible because the whole record is one click away.
+ * This matters beyond taste: `fitColumns` drops columns on a narrow screen, and
+ * that is only defensible because the whole record is one click away.
  */
-describe('record detail is a modal', () => {
+describe('record detail opens on its own screen', () => {
   function screenFiles(dir: string): string[] {
     const out: string[] = [];
     for (const entry of readdirSync(dir)) {

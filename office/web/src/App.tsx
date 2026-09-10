@@ -42,6 +42,7 @@ import {
   ResetProvider,
   ScreenHost,
   Splash,
+  SubNavProvider,
   ToastProvider,
   loadSidebarMode,
   publishAiEvent,
@@ -49,8 +50,10 @@ import {
   rem,
   storeSidebarMode,
   t,
+  useClearSubNav,
   useMediaQuery,
   useResetGate,
+  useSubNavState,
   useToast,
   type NavGroup,
   type NavItem,
@@ -115,9 +118,11 @@ function withTimeout<T>(work: Promise<T>, ms = 10_000): Promise<T> {
 export function App() {
   return (
     <ToastProvider>
-      <ResetProvider>
-        <OfficePanel />
-      </ResetProvider>
+      <SubNavProvider>
+        <ResetProvider>
+          <OfficePanel />
+        </ResetProvider>
+      </SubNavProvider>
     </ToastProvider>
   );
 }
@@ -175,6 +180,26 @@ function OfficePanel() {
    */
   const [resetNonce, setResetNonce] = useState<Record<string, number>>({});
   const askReset = useResetGate();
+
+  /*
+   * The record a screen currently has open, published by that screen and read
+   * here so the sidebar can nest an entry for it under its module (§8). The
+   * shell does not need to know what the record *is*, only where it belongs
+   * and how to leave it. Same rules-of-hooks reason as the two above for
+   * sitting here rather than beside the code that uses them.
+   */
+  const subNav = useSubNavState(route === 'gallery' ? null : tab);
+  const clearSubNav = useClearSubNav();
+
+  /*
+   * Which lead and which order are open, held here rather than inside their
+   * boards: the Dashboard's panes open a record on a screen that is mounted
+   * but hidden, and one id passed down each way is smaller than an imperative
+   * handle into a hidden screen. Parties and products are never opened from
+   * anywhere but their own list, so their ids stay local to `CatalogScreen`.
+   */
+  const [openLeadId, setOpenLeadId] = useState<string | null>(null);
+  const [openOrderId, setOpenOrderId] = useState<string | null>(null);
 
   // Stable, or every boot-step render would hand Splash a new callback and
   // restart its hold timer.
@@ -478,6 +503,12 @@ function OfficePanel() {
           : 'var(--line-strong)';
 
   // ---- Sidebar modules: absent, not greyed, when the role lacks `view`.
+  /** Grafts the open record's entry under the module it belongs to. */
+  const nest = (items: NavItem[]): NavItem[] =>
+    items.map((item) =>
+      subNav && subNav.parentId === item.id ? { ...item, children: subNav.items } : item,
+    );
+
   const groups: NavGroup[] = [
     {
       label: t('nav.work'),
@@ -544,7 +575,7 @@ function OfficePanel() {
         ] satisfies Array<NavItem | null>
       ).filter((item): item is NonNullable<typeof item> => item !== null),
     },
-  ];
+  ].map((group) => ({ ...group, items: nest(group.items) }));
 
   // Map sidebar ids back onto the tabs the screens know.
   const idToTab: Record<string, Tab> = {
@@ -571,11 +602,20 @@ function OfficePanel() {
   function resetActiveScreen(): void {
     if (route === 'gallery') return;
     if (!askReset()) return;
-    const id = idToTab[activeId] ?? activeId;
+    // Same identity `activeScreenId` uses: the screen that published the entry,
+    // not the sidebar item the entry hangs under.
+    const id = subNav ? tab : (idToTab[activeId] ?? activeId);
+    // The registry deliberately keeps entries across a screen being hidden, so
+    // remounting the screen is not enough — the entry has to be dropped here.
+    clearSubNav(id);
+    setOpenLeadId((current) => (id === 'leads' ? null : current));
+    setOpenOrderId((current) => (id === 'orders' ? null : current));
     setResetNonce((current) => ({ ...current, [id]: (current[id] ?? 0) + 1 }));
   }
 
   function goToTab(id: string): void {
+    // Already here. Selecting the open record's own entry is not a navigation.
+    if (subNav?.items.some((item) => item.id === id)) return;
     // Clear a stale #/gallery so the hash and the state agree; replaceState
     // does not fire hashchange, the setRoute below is the source of truth.
     if (readHash())
@@ -584,8 +624,9 @@ function OfficePanel() {
     if (idToTab[id]) setTab(idToTab[id]);
   }
 
-  const activeId =
-    route === 'gallery'
+  const activeId = subNav
+    ? subNav.activeId
+    : route === 'gallery'
       ? 'gallery'
       : // `addLead` is deliberately absent from the sidebar (reached only via
         // the "New lead" button), so it can never satisfy the sidebar-membership
@@ -597,11 +638,14 @@ function OfficePanel() {
           ? tab
           : (groups.flatMap((group) => group.items)[0]?.id ?? '');
 
+  const flatItems = groups.flatMap((group) => [
+    ...group.items,
+    ...group.items.flatMap((item) => item.children ?? []),
+  ]);
   const activeLabel =
-    route === 'gallery'
+    route === 'gallery' && !subNav
       ? t('footer.designSystem')
-      : (groups.flatMap((group) => group.items).find((item) => item.id === activeId)?.label ??
-        t('app.panel'));
+      : (flatItems.find((item) => item.id === activeId)?.label ?? t('app.panel'));
 
   const lastSynced = connection.lastSyncedAt
     ? new Date(connection.lastSyncedAt).toLocaleString()
@@ -876,12 +920,31 @@ function OfficePanel() {
 
   const needsView: ScreenSpec[] = view
     ? [
-        { id: 'dashboard', render: () => <DashboardScreen view={view} onNavigate={goToTab} /> },
+        {
+          id: 'dashboard',
+          render: () => (
+            <DashboardScreen
+              view={view}
+              linkDown={linkDown}
+              onNavigate={goToTab}
+              onOpenLead={(id) => {
+                setOpenLeadId(id);
+                setTab('leads');
+              }}
+              onOpenOrder={(id) => {
+                setOpenOrderId(id);
+                setTab('orders');
+              }}
+            />
+          ),
+        },
         {
           id: 'leads',
           render: () => (
             <LeadBoardScreen
               view={view}
+              openId={openLeadId}
+              onOpenId={setOpenLeadId}
               canConvert={can('lead.convert')}
               onError={setError}
               onAddLead={can('leads.create') ? () => setTab('addLead') : undefined}
@@ -891,7 +954,13 @@ function OfficePanel() {
         {
           id: 'orders',
           render: () => (
-            <OrderBoardScreen view={view} canDispatch={can('orders.dispatch')} onError={setError} />
+            <OrderBoardScreen
+              view={view}
+              openId={openOrderId}
+              onOpenId={setOpenOrderId}
+              canDispatch={can('orders.dispatch')}
+              onError={setError}
+            />
           ),
         },
         {
@@ -926,11 +995,15 @@ function OfficePanel() {
             <AddLeadScreen
               view={view}
               canEditRate={can('field.saleRate.edit')}
-              onSaved={() => {
+              onSaved={(id) => {
+                clearSubNav('addLead');
                 setTab('leads');
-                toast.push('Lead saved on this machine — it syncs when the Master is reachable');
+                toast.push(t('lead.add.saved', { id }));
               }}
-              onCancel={() => setTab('leads')}
+              onCancel={() => {
+                clearSubNav('addLead');
+                setTab('leads');
+              }}
             />
           ),
         },
@@ -938,7 +1011,16 @@ function OfficePanel() {
     : [];
 
   const screens = [...alwaysAvailable, ...needsView];
-  const activeScreenId = idToTab[activeId] ?? activeId;
+  /*
+   * The screen to mount when a nested entry is showing is the screen that
+   * *published* it, which is `tab` — the registry is keyed by it.
+   *
+   * It used to be the entry's `parentId`, which is the same thing for a record
+   * open inside its own list but not for New lead: that publishes under Leads
+   * so the sidebar highlights Leads, and resolving the parent mounted the lead
+   * board on top of the form somebody was typing into.
+   */
+  const activeScreenId = subNav ? tab : (idToTab[activeId] ?? activeId);
   const known = screens.some((screen) => screen.id === activeScreenId);
 
   const content =

@@ -32,6 +32,7 @@ import type {
   Product,
   ProductListPage,
   ProductListQuery,
+  ProductVariantPick,
   SyncSnapshot,
 } from '@orderbook/shared';
 import { PICK_DEFAULT_LIMIT, PICK_MAX_LIMIT, comparePicked, pickScore } from '@orderbook/shared';
@@ -39,8 +40,18 @@ import { PICK_DEFAULT_LIMIT, PICK_MAX_LIMIT, comparePicked, pickScore } from '@o
 /** Which permission each pickable kind sits behind, offline as online. */
 const REQUIRED_PERMISSION: Record<PickKind, string> = {
   product: 'products.view',
+  variant: 'products.view',
   party: 'parties.view',
 };
+
+/**
+ * The stock half of a variant row, checked on top of the product half.
+ *
+ * Online `search.service` asks for both keys in the same order; a picker that
+ * answered offline for somebody the Master would refuse is exactly the hole
+ * this file's header warns about.
+ */
+const VARIANT_STOCK_PERMISSION = 'inventory.view';
 
 export class OfflinePickForbidden extends Error {
   constructor(readonly permission: string) {
@@ -94,14 +105,27 @@ export function pickFromView(
   query: PickQuery,
   view: SyncSnapshot,
   permissions: readonly string[],
-): PickPage<Product> | PickPage<Party> {
+): PickPage<Product> | PickPage<Party> | PickPage<ProductVariantPick> {
   const required = REQUIRED_PERMISSION[kind];
   if (!permissions.includes(required)) throw new OfflinePickForbidden(required);
+
+  if (kind === 'variant') {
+    if (!permissions.includes(VARIANT_STOCK_PERMISSION)) {
+      throw new OfflinePickForbidden(VARIANT_STOCK_PERMISSION);
+    }
+    return pickVariantsFromView(query, view);
+  }
 
   if (kind === 'product') {
     return pickFrom<Product>(
       view.products,
-      (product) => [product.productCode, product.name, product.alias, product.barcode, product.brand],
+      (product) => [
+        product.productCode,
+        product.name,
+        product.alias,
+        product.barcode,
+        product.brand,
+      ],
       (product) => product.name,
       query,
     );
@@ -113,6 +137,61 @@ export function pickFromView(
     (party) => party.name,
     query,
   );
+}
+
+/**
+ * Product-colour rows built from the cached snapshot.
+ *
+ * `view.stock` is already one row per (product, colour) and already carries the
+ * reserved figure, so `availableBoxes` is the same number the Master would
+ * send. `rate` is copied from the product **only when the product carries one**
+ * — the snapshot this panel holds was masked for its reader, so an absent rate
+ * here means the same thing it means everywhere else and must not become zero.
+ *
+ * Rows whose product is not in the snapshot's page are skipped rather than
+ * guessed at: a line needs the product's name and grade, and half a row is
+ * worse than one the search does not offer.
+ */
+function pickVariantsFromView(query: PickQuery, view: SyncSnapshot): PickPage<ProductVariantPick> {
+  const byId = new Map(view.products.map((product) => [product.id, product]));
+
+  const rows = view.stock.flatMap((level) => {
+    const product = byId.get(level.productId);
+    if (!product) return [];
+
+    const row: ProductVariantPick & { id: string } = {
+      // `pickFrom` ranks and pages by `id`; a variant's identity is its
+      // (product, colour) pair, which is exactly what the stock row is keyed on.
+      id: `${level.productId}|${level.colour}`,
+      variantCode: level.variantCode,
+      productId: level.productId,
+      productCode: product.productCode,
+      productName: product.name,
+      alias: product.alias,
+      sin: product.sin,
+      size: product.size,
+      grade: product.grade,
+      productType: product.productType,
+      weightKg: product.weightKg,
+      colour: level.colour,
+      availableBoxes: level.availableBoxes,
+    };
+    if (product.rate !== undefined) row.rate = product.rate;
+    return [row];
+  });
+
+  const page = pickFrom(
+    rows,
+    (row) => [row.variantCode, row.productCode, row.productName, row.sin, row.colour],
+    (row) => `${row.productName} ${row.colour}`,
+    query,
+  );
+
+  return {
+    // The synthetic `id` was for the ranking, not for the wire.
+    items: page.items.map(({ id: _id, ...row }) => row),
+    truncated: page.truncated,
+  };
 }
 
 const LIST_DEFAULT_LIMIT = 100;
@@ -163,14 +242,17 @@ export function listProductsFromView(
 
   const counts = new Map<string, number>();
   for (const product of searched) {
-    if (product.productType) counts.set(product.productType, (counts.get(product.productType) ?? 0) + 1);
+    if (product.productType)
+      counts.set(product.productType, (counts.get(product.productType) ?? 0) + 1);
   }
   const productTypes = [...counts.entries()]
     .map(([value, count]) => ({ value, count }))
     .sort((a, b) => a.value.localeCompare(b.value));
 
   const filtered = (
-    query.productType ? searched.filter((product) => product.productType === query.productType) : searched
+    query.productType
+      ? searched.filter((product) => product.productType === query.productType)
+      : searched
   ).sort((a, b) => a.name.localeCompare(b.name));
 
   return {

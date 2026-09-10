@@ -22,6 +22,7 @@ export const FIELD_LIST_KEYS = [
   'product.surfaceTexture',
   'product.originPlant',
   'line.packaging',
+  'line.grade',
 ] as const;
 
 export type FieldListKey = (typeof FIELD_LIST_KEYS)[number];
@@ -90,6 +91,16 @@ const FIELD_SETS: readonly FieldSetDefinition[] = [
   {
     listKey: 'line.packaging',
     labelToken: 'fieldSet.line.packaging',
+    hasHex: false,
+    usedBy: ['leads', 'orders'],
+  },
+  // Also unseeded, and for the same reason as packaging: a grade is a word the
+  // company already uses on its own dockets. The new-lead card offers this list
+  // when it has rows and falls back to free text when it does not, so a shop
+  // that has never filled it in can still type one.
+  {
+    listKey: 'line.grade',
+    labelToken: 'fieldSet.line.grade',
     hasHex: false,
     usedBy: ['leads', 'orders'],
   },

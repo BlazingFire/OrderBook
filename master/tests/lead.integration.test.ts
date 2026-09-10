@@ -64,10 +64,7 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
     it('assigns permanent ids in the documented 12-character shape', async () => {
       const { party, product } = await seed();
 
-      const first = await leads.createLead(
-        { partyId: party.id, items: [line(product.id)] },
-        actor,
-      );
+      const first = await leads.createLead({ partyId: party.id, items: [line(product.id)] }, actor);
       const second = await leads.createLead(
         { partyId: party.id, items: [line(product.id)] },
         actor,
@@ -81,7 +78,10 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
       const { party, product } = await seed();
 
       const lead = await leads.createLead(
-        { partyId: party.id, items: [line(product.id, { quantities: [{ colour: 'Ivory', quantity: 12 }] })] },
+        {
+          partyId: party.id,
+          items: [line(product.id, { quantities: [{ colour: 'Ivory', quantity: 12 }] })],
+        },
         actor,
       );
 
@@ -98,10 +98,7 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
     it('starts the lead in the pipeline’s default stage', async () => {
       const { party, product } = await seed();
 
-      const lead = await leads.createLead(
-        { partyId: party.id, items: [line(product.id)] },
-        actor,
-      );
+      const lead = await leads.createLead({ partyId: party.id, items: [line(product.id)] }, actor);
 
       expect(lead.stageName).toBe('New');
       expect(lead.timeline.map((entry) => entry.message)).toContain('Lead created');
@@ -127,6 +124,50 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
 
       expect(lead.items[0]?.quantities).toHaveLength(2);
       expect(lead.items[0]?.totalQuantity).toBe(10);
+    });
+
+    it('stores the colour code the counter typed, per colour', async () => {
+      const { party, product } = await seed();
+
+      const lead = await leads.createLead(
+        {
+          partyId: party.id,
+          items: [
+            line(product.id, {
+              quantities: [
+                { colour: 'Ivory', quantity: 4, variantCode: '101' },
+                { colour: 'Slate', quantity: 6, variantCode: '102' },
+              ],
+            }),
+          ],
+        },
+        actor,
+      );
+
+      // Read back through the repository rather than trusting the create's
+      // return value: the point is that it reached the table and came home.
+      const stored = await leads.getLead(lead.id, actor);
+      const byColour = new Map(
+        (stored.items[0]?.quantities ?? []).map((entry) => [entry.colour, entry.variantCode]),
+      );
+
+      expect(byColour.get('Ivory')).toBe('101');
+      expect(byColour.get('Slate')).toBe('102');
+    });
+
+    it('keeps a rate switched off rather than pricing the line from the catalogue', async () => {
+      const { party, product } = await seed();
+
+      const lead = await leads.createLead(
+        { partyId: party.id, items: [line(product.id, { rate: null, rateUnset: true })] },
+        actor,
+      );
+
+      // The product is priced at 45_000 and a plain `rate: null` would land
+      // there — that fallback is what keeps an offline draft priced at all.
+      expect(lead.items[0]?.rate).toBeNull();
+      expect(lead.items[0]?.lineTotal).toBeNull();
+      expect(lead.totalAmount).toBe(0);
     });
 
     it('rejects a lead with no products', async () => {
@@ -163,10 +204,7 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
   describe('moving through the pipeline', () => {
     it('records a system timeline entry for every stage change', async () => {
       const { party, product } = await seed();
-      const lead = await leads.createLead(
-        { partyId: party.id, items: [line(product.id)] },
-        actor,
-      );
+      const lead = await leads.createLead({ partyId: party.id, items: [line(product.id)] }, actor);
 
       const moved = await leads.setStage(
         { id: lead.id, stageId: await stageIdByName('lead', 'Quoted') },
@@ -174,17 +212,12 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
       );
 
       expect(moved.stageName).toBe('Quoted');
-      expect(moved.timeline.map((entry) => entry.message)).toContain(
-        'Moved from New to Quoted',
-      );
+      expect(moved.timeline.map((entry) => entry.message)).toContain('Moved from New to Quoted');
     });
 
     it('stores a remark alongside the automatic entry, not instead of it', async () => {
       const { party, product } = await seed();
-      const lead = await leads.createLead(
-        { partyId: party.id, items: [line(product.id)] },
-        actor,
-      );
+      const lead = await leads.createLead({ partyId: party.id, items: [line(product.id)] }, actor);
 
       const moved = await leads.setStage(
         {
@@ -356,10 +389,7 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
   describe('order weight override', () => {
     it('keeps the computed figure and only relabels which one is shown', async () => {
       const { party, product } = await seed();
-      const lead = await leads.createLead(
-        { partyId: party.id, items: [line(product.id)] },
-        actor,
-      );
+      const lead = await leads.createLead({ partyId: party.id, items: [line(product.id)] }, actor);
       const order = await orders.convertLead({ leadId: lead.id }, actor);
 
       const overridden = await orders.updateOrder(order.id, { totalWeightKgOverride: 200 }, actor);

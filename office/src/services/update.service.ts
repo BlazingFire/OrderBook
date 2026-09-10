@@ -75,7 +75,7 @@ export async function availableUpdate(): Promise<UpdateAvailability> {
     // `masterFetch`, so the request carries this panel's pairing credentials.
     // The route refuses a stranger now, which is half of why the answer below
     // is worth anything.
-    const response = await masterFetch('/api/updates/office/latest', {
+    const response = await masterFetch(`/api/updates/office/latest?platform=${process.platform}`, {
       signal: AbortSignal.timeout(METADATA_TIMEOUT_MS),
     });
     if (!response.ok) throw new Error(`Master answered ${response.status}`);
@@ -179,7 +179,10 @@ export async function downloadUpdate(): Promise<{ path: string; manifest: Releas
     // Not there yet, or unreadable. Fall through and fetch it.
   }
 
-  const response = await masterFetch('/api/updates/office/download');
+  // The same OS the manifest was chosen for. Asking for one platform's
+  // manifest and then downloading whatever the other route feels like would
+  // hand this panel bytes whose digest cannot match.
+  const response = await masterFetch(`/api/updates/office/download?platform=${process.platform}`);
   if (!response.ok || !response.body) {
     throw new UpdateError('The Master would not send the update file', 'unreachable');
   }

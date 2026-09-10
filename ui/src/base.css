@@ -669,6 +669,57 @@ table.ob-table {
   gap: var(--s-4);
 }
 
+/*
+ * New lead: the form and the Added-products panel side by side, and one column
+ * when the window cannot hold two. `flex: 1 1 <basis>` rather than a media
+ * query, so it is the space that decides rather than a device class.
+ */
+.ob-lead-cols {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--s-20);
+}
+
+.ob-lead-form {
+  flex: 1 1 21.4286rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-20);
+}
+
+.ob-lead-panel {
+  flex: 1 1 21.4286rem;
+  min-width: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+  padding: var(--s-12);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+}
+
+/* Source and follow-up: two even columns under the party field's rule. */
+.ob-lead-enquiry {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
+  gap: var(--s-8) var(--s-20);
+  padding-top: var(--s-8);
+  border-top: 1px solid var(--line);
+}
+
+/* px, not rem: a breakpoint that tracked the scale slider would reorganise the
+   layout mid-drag, which reads as a bug (`ui-conventions.test.ts`). */
+@media (max-width: 560px) {
+  .ob-lead-enquiry {
+    grid-template-columns: 1fr;
+  }
+}
+
 .ob-chip {
   display: inline-flex;
   align-items: center;
@@ -1488,12 +1539,7 @@ html[data-window-blur='true'] .ob-busy rect {
   position: absolute;
   inset: 0 0 auto 0;
   height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    var(--rail-glint),
-    transparent
-  );
+  background: linear-gradient(90deg, transparent, var(--rail-glint), transparent);
   opacity: 0.7;
 }
 
@@ -2874,7 +2920,6 @@ html[data-window-blur='true'] .ob-busy rect {
  * side by side at the floor.
  */
 
-
 /* Grabbing is the whole interaction, so it has to look grabbable. */
 .ob-designer-element[data-selected='true'] {
   cursor: move;
@@ -2902,4 +2947,344 @@ html[data-window-blur='true'] .ob-busy rect {
 
 .ob-pane > .ob-card:nth-child(5) {
   animation-delay: 160ms;
+}
+
+/* ===========================================================================
+ * The new-lead screen's two search boxes and its product lines.
+ *
+ * A listbox that opens under a field, a row inside it laid out on a grid the
+ * caller sizes, and the header of a product line that expands in place. Here
+ * rather than inline because the hover and focus states cannot be written as a
+ * style object, and because both search boxes have to look like one control.
+ * ======================================================================== */
+
+.ob-suggest {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + var(--s-6));
+  z-index: 30;
+  padding: var(--s-4);
+  max-height: 18rem;
+  overflow-y: auto;
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-3);
+}
+
+.ob-suggest-row {
+  display: grid;
+  gap: 0 var(--s-12);
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  padding: var(--s-6) var(--s-8);
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--fg-primary);
+  cursor: pointer;
+}
+
+.ob-suggest-row:hover,
+.ob-suggest-row:focus-visible {
+  background: var(--bg-selected);
+}
+
+/* Not a row: the column header above them, which nothing hovers. */
+.ob-suggest-row.ob-eyebrow {
+  cursor: default;
+  background: none;
+}
+
+.ob-line-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-6) var(--s-12);
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  font: inherit;
+  padding: var(--s-8) var(--s-12);
+  border: none;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--fg-primary);
+  cursor: pointer;
+}
+
+.ob-line-head:hover {
+  background: var(--bg-hover);
+}
+
+.ob-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * The new-lead screen's chips, its picked-product bar, its rate switch and
+ * its saved product rows (New Lead Flow).
+ *
+ * Here rather than inline for the same reason as the block above: hover,
+ * focus and the switch's knob transition cannot be written as style objects,
+ * and a chip that is a `.ob-btn` with four inline overrides drifts out of step
+ * with the button it is pretending to be.
+ * ------------------------------------------------------------------------ */
+
+.ob-chip {
+  display: inline-flex;
+  align-items: center;
+  font: inherit;
+  font-size: 0.8929rem;
+  line-height: 1.2857rem;
+  padding: var(--s-2) var(--s-12);
+  border: 1px solid var(--line);
+  border-radius: 0.9286rem;
+  background: var(--bg-surface);
+  color: var(--fg-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ob-chip:hover {
+  background: var(--bg-hover);
+}
+
+.ob-chip[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/*
+ * The product that has been picked but not yet added.
+ *
+ * It replaces the search field in place rather than opening beside it, so the
+ * ring is the whole signal that the next keystroke goes somewhere else.
+ */
+.ob-picked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-8) var(--s-12);
+  min-height: 2.8571rem;
+  box-sizing: border-box;
+  padding: var(--s-4) var(--s-6) var(--s-4) var(--s-12);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+/*
+ * One product already on the lead, in the Added-products panel.
+ *
+ * Collapsed it is one line — codes, name, boxes, money — because the panel's
+ * job is to let somebody scan twenty products and find the one that is wrong.
+ * Opened it shows the colours and what was decided, which is the same
+ * information the draft card was filled in with.
+ */
+.ob-lead-line {
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+}
+
+.ob-lead-line[data-open='true'] {
+  border-color: var(--line-strong);
+}
+
+.ob-lead-line__head {
+  display: flex;
+  align-items: center;
+}
+
+.ob-lead-line[data-open='true'] .ob-lead-line__head {
+  background: var(--bg-sunken);
+}
+
+/* The clickable half of the head — everything but the checkbox. */
+.ob-lead-line__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--s-6);
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  font: inherit;
+  padding: var(--s-6) var(--s-8);
+  border: none;
+  background: none;
+  color: var(--fg-primary);
+  cursor: pointer;
+}
+
+.ob-lead-line__toggle:hover {
+  background: var(--bg-hover);
+}
+
+.ob-lead-line__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+  padding: var(--s-8) var(--s-8) var(--s-8) 2.2143rem;
+  border-top: 1px solid var(--line);
+}
+
+/* The panel's own scroller: the page below it must stay reachable. */
+.ob-lead-lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  max-height: 60vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* The bar that appears once anything in the panel is ticked. */
+.ob-lead-selbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  padding: var(--s-6) var(--s-8);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--accent-tint);
+}
+
+.ob-lead-check {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* Over free stock, at panel density: a dot with a title, not a pill. */
+.ob-lead-short {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: none;
+  border-radius: 50%;
+  background: var(--state-offline);
+}
+
+/*
+ * "Rate per box" on / off.
+ *
+ * A switch rather than a blank field, because a rate nobody has typed and a
+ * rate deliberately left to be quoted are different facts and the line stores
+ * them differently — `rateUnset` stops the catalogue fallback that an empty
+ * field falls into.
+ */
+.ob-rate-switch {
+  width: 2.1429rem;
+  height: 1.2143rem;
+  flex: none;
+  padding: 0;
+  border: none;
+  border-radius: 0.6429rem;
+  background: var(--bg-sunken);
+  cursor: pointer;
+  position: relative;
+}
+
+.ob-rate-switch[aria-checked='true'] {
+  background: var(--accent);
+}
+
+.ob-rate-switch__knob {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 1.0714rem;
+  height: 1.0714rem;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  box-shadow: var(--sh-2);
+  transition: left 120ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.ob-rate-switch[aria-checked='true'] .ob-rate-switch__knob {
+  left: 1.0714rem;
+}
+
+/* The ₹ that sits inside the rate field's own border, not beside it. */
+.ob-rate-field {
+  display: flex;
+  align-items: center;
+  height: 2.2857rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.ob-rate-field[data-invalid='true'] {
+  border-color: var(--state-offline);
+}
+
+.ob-rate-field > input {
+  flex: 1;
+  min-width: 0;
+  height: 2.1429rem;
+  border: none;
+  outline: none;
+  background: none;
+  color: var(--fg-primary);
+  font: inherit;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+  padding: 0 var(--s-8) 0 0;
+  text-align: right;
+}
+
+/* A select that reads as an affordance rather than a field: "add one more". */
+.ob-select--dashed {
+  border-style: dashed;
+  border-color: var(--line-strong);
+  color: var(--fg-secondary);
+  background: var(--bg-surface);
+}
+
+/*
+ * The chevron on a type-or-pick field.
+ *
+ * Sits inside the input's right padding rather than beside it, so the field
+ * stays one control and the grid column it lives in does not have to know the
+ * button exists. Out of the Tab order in markup — this is the mouse's way in.
+ */
+.ob-suggest-toggle {
+  position: absolute;
+  right: var(--s-2);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1.571rem;
+  height: 1.571rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--fg-tertiary);
+  font: inherit;
+  font-size: 0.786rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ob-suggest-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--fg-primary);
 }

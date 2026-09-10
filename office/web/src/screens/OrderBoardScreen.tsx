@@ -8,7 +8,10 @@
  *
  * Rendered as a table, not a board (6-UI-DESIGN.md, Orders.dc.html): dispatch
  * and stage tracking reads better as a sortable list than a kanban column for
- * this screen.
+ * this screen. Opening an order replaces the table with its detail — a
+ * sub-screen with one way back in a fixed place, and its own entry nested
+ * under Orders in the sidebar while it is open. The table is not unmounted
+ * while that shows, so its filters and scroll position survive the round trip.
  */
 
 import { useState } from 'react';
@@ -26,7 +29,7 @@ import {
   Card,
   ColourName,
   DataTable,
-  Modal,
+  EditorScreen,
   EmptyState,
   FilterChip,
   FilterDivider,
@@ -44,12 +47,16 @@ import {
   t,
   useColourHex,
   useFilterBar,
+  useSubNav,
   type PillTone,
 } from '@orderbook/ui';
 import type { DataTableColumn } from '@orderbook/ui';
 
 interface Props {
   view: LocalView;
+  /** The order showing as a sub-screen, held by the shell so the Dashboard can open one. */
+  openId: string | null;
+  onOpenId: (id: string | null) => void;
   canDispatch: boolean;
   onError: (message: string) => void;
 }
@@ -103,9 +110,7 @@ function onMyParties<T extends { partyId: string }>(
   return rows.filter((row) => mine.has(row.partyId));
 }
 
-export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
+export function OrderBoardScreen({ view, openId, onOpenId, canDispatch, onError }: Props) {
   const [stageFilter, setStageFilter] = useState<string | null>(null);
   const [scope, setScope] = useState<PartyScopeFilter>('all');
   const colourHex = useColourHex(view.optionLists);
@@ -116,7 +121,7 @@ export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
   const openOrder = orders.find((order) => order.id === openId) ?? null;
 
   useFilterBar(
-    pipeline ? (
+    pipeline && !openOrder ? (
       <>
         <Segmented
           options={[
@@ -151,9 +156,53 @@ export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
     ) : null,
   );
 
-  function closeDetail(): void {
-    setOpenId(null);
-    setExpanded(false);
+  useSubNav(
+    'orders',
+    openOrder
+      ? {
+          parentId: 'orders',
+          items: [{ id: 'orders.detail', label: openOrder.partyName, icon: 'orders' }],
+          activeId: 'orders.detail',
+        }
+      : null,
+  );
+
+  if (openOrder) {
+    return (
+      <EditorScreen
+        title={openOrder.partyName}
+        meta={
+          <>
+            <StatusPill tone={stageTone(openOrder, stages)}>{openOrder.stageName}</StatusPill>
+            {openOrder.dispatchedAt && (
+              <StatusPill tone="ok">{t('orders.badge.dispatched')}</StatusPill>
+            )}
+            <span className="ob-small">
+              {openOrder.leadId
+                ? t('orders.detail.subtitleWithLead', {
+                    id: openOrder.id,
+                    leadId: openOrder.leadId,
+                  })
+                : t('orders.detail.subtitleNoLead', { id: openOrder.id })}
+            </span>
+          </>
+        }
+        onBack={() => {
+          onOpenId(null);
+          return true;
+        }}
+        backLabel={t('action.backToList')}
+      >
+        <OrderDetailBody
+          order={openOrder}
+          stages={stages}
+          canDispatch={canDispatch}
+          onClose={() => onOpenId(null)}
+          onError={onError}
+          colourHex={colourHex}
+        />
+      </EditorScreen>
+    );
   }
 
   if (!pipeline) {
@@ -259,9 +308,8 @@ export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
         columns={columns}
         rows={filteredOrders}
         rowKey={(order) => order.id}
-        onRowOpen={(order) => setOpenId(order.id)}
+        onRowOpen={(order) => onOpenId(order.id)}
         openOn="click"
-        selectedId={openOrder?.id}
         empty={
           orders.length === 0 ? (
             <EmptyState
@@ -273,45 +321,6 @@ export function OrderBoardScreen({ view, canDispatch, onError }: Props) {
           )
         }
       />
-
-      <Modal
-        open={Boolean(openOrder)}
-        onClose={closeDetail}
-        size="lg"
-        expanded={expanded}
-        onToggleExpand={() => setExpanded((value) => !value)}
-        label={openOrder?.partyName}
-        title={
-          openOrder ? (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-8)' }}>
-              {openOrder.partyName}
-              {openOrder.dispatchedAt && (
-                <StatusPill tone="ok">{t('orders.badge.dispatched')}</StatusPill>
-              )}
-            </span>
-          ) : (
-            ''
-          )
-        }
-        subtitle={
-          openOrder
-            ? openOrder.leadId
-              ? t('orders.detail.subtitleWithLead', { id: openOrder.id, leadId: openOrder.leadId })
-              : t('orders.detail.subtitleNoLead', { id: openOrder.id })
-            : undefined
-        }
-      >
-        {openOrder && (
-          <OrderDetailBody
-            order={openOrder}
-            stages={stages}
-            canDispatch={canDispatch}
-            onClose={closeDetail}
-            onError={onError}
-            colourHex={colourHex}
-          />
-        )}
-      </Modal>
     </>
   );
 }

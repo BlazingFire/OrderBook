@@ -49,3 +49,15 @@ export function likePrefix(term: string): string {
   const escaped = term.replace(/[\\%_]/g, (character) => `\\${character}`);
   return `${escaped}%`;
 }
+
+/**
+ * The same escaping, matching anywhere in the value rather than only at the
+ * start.
+ *
+ * For the fields a prefix is the wrong shape on: a product name somebody
+ * remembers the middle of, or a colour they type as "iv" for "Ivory".
+ */
+export function likeContains(term: string): string {
+  const escaped = term.replace(/[\\%_]/g, (character) => `\\${character}`);
+  return `%${escaped}%`;
+}

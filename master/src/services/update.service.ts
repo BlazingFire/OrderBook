@@ -32,9 +32,10 @@ import type {
   PanelKind,
   PreparedInstaller,
   ReleaseManifest,
+  ReleasePlatform,
   UpdateAvailability,
 } from '@orderbook/shared';
-import { isNewer } from '@orderbook/shared';
+import { isNewer, LEGACY_RELEASE_PLATFORM } from '@orderbook/shared';
 
 import { config } from '../config/index.js';
 import { appVersion } from '../lib/app-version.js';
@@ -87,21 +88,57 @@ function isManifest(value: unknown): value is ReleaseManifest {
  * the size it claims. A manifest whose setup file was deleted is worse than no
  * manifest at all: it produces an Install button that cannot work.
  */
-export async function readManifest(panel: PanelKind): Promise<ReleaseManifest | null> {
-  const manifestPath = path.join(releaseDirFor(panel), 'latest.json');
+export async function readManifest(
+  panel: PanelKind,
+  platform: ReleasePlatform = process.platform as ReleasePlatform,
+): Promise<ReleaseManifest | null> {
+  /*
+   * `latest-<platform>.json` first, then plain `latest.json`.
+   *
+   * The fallback is not tidiness: every folder published before this change
+   * holds one `latest.json` describing a Windows build, and a shop that
+   * updated its Master would otherwise find no manifest at all and be told
+   * nothing had been published. The release script still writes the legacy
+   * name for Windows builds for exactly as long as panels older than this
+   * change are in the field — see `tools/release.mjs`.
+   */
+  const candidates = [
+    path.join(releaseDirFor(panel), `latest-${platform}.json`),
+    path.join(releaseDirFor(panel), 'latest.json'),
+  ];
+
+  let manifestPath = candidates[0];
+  let raw: string | null = null;
+
+  for (const candidate of candidates) {
+    try {
+      raw = await readFile(candidate, 'utf8');
+      manifestPath = candidate;
+      break;
+    } catch (error) {
+      // A missing file is the ordinary state — the next candidate gets a turn.
+      // Anything else is a folder we can see and cannot read, which is worth
+      // saying out loud rather than silently falling through to the legacy name.
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        log.warn(`Ignoring ${candidate}: it could not be read (${String(error)})`);
+        return null;
+      }
+    }
+  }
+
+  // Neither name is there, which on a machine nobody has published a build to
+  // is the ordinary state and says nothing worth logging.
+  if (raw === null) return null;
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(await readFile(manifestPath, 'utf8'));
+    parsed = JSON.parse(raw);
   } catch (error) {
-    // A missing file is the ordinary state on a machine nobody has published a
-    // build to, and says nothing worth logging. A file that is there but will
-    // not parse is the opposite: every other refusal in this function explains
-    // itself, and this one used to report "no update available" with a good
-    // 150 MB build sitting in the folder and nothing anywhere saying why.
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      log.warn(`Ignoring ${manifestPath}: it could not be read (${String(error)})`);
-    }
+    // A file that is there but will not parse is the opposite: every other
+    // refusal in this function explains itself, and this one used to report "no
+    // update available" with a good 150 MB build sitting in the folder and
+    // nothing anywhere saying why.
+    log.warn(`Ignoring ${manifestPath}: it could not be read (${String(error)})`);
     return null;
   }
 
@@ -111,19 +148,36 @@ export async function readManifest(panel: PanelKind): Promise<ReleaseManifest | 
   }
 
   /*
-   * `panel` comes from the manifest, not from the folder it was found in.
+   * A manifest with no `platform` predates the field, and every release that
+   * old was a Windows build. Defaulted on the way in rather than left absent,
+   * so everything below — the signature payload included — sees one shape.
    *
-   * It used to be overwritten here — `{ ...parsed, panel }` — which quietly
-   * defeated the point of signing it: a Master manifest dropped into the office
-   * folder would be relabelled 'office' before anything checked, and the
-   * signature would then verify against a payload this code had just rewritten.
-   * A manifest that says which panel it is for is only useful if that is the
-   * field we read.
+   * Nothing else is rewritten here. `panel` in particular comes from the
+   * manifest, not from the folder it was found in: it used to be overwritten —
+   * `{ ...parsed, panel }` — which quietly defeated the point of signing it, as
+   * a Master manifest dropped into the office folder would be relabelled
+   * 'office' before anything checked and the signature would then verify
+   * against a payload this code had just rewritten.
    */
-  const manifest = parsed as ReleaseManifest;
+  const manifest: ReleaseManifest = {
+    ...(parsed as ReleaseManifest),
+    platform: (parsed as ReleaseManifest).platform ?? LEGACY_RELEASE_PLATFORM,
+  };
 
   if (manifest.panel && manifest.panel !== panel) {
     log.warn(`Ignoring ${manifestPath}: it is a ${manifest.panel} release, in the ${panel} folder`);
+    return null;
+  }
+
+  /*
+   * The same refusal as the panel mismatch above, and it matters more: a
+   * Windows setup file offered to a Mac downloads 160 MB the shell then
+   * refuses to run, with nothing on screen saying why.
+   */
+  if (manifest.platform !== platform) {
+    log.warn(
+      `Ignoring ${manifestPath}: it is a ${manifest.platform} release, and this panel is ${platform}`,
+    );
     return null;
   }
 
@@ -150,7 +204,12 @@ export async function readManifest(panel: PanelKind): Promise<ReleaseManifest | 
 }
 
 /** What one panel kind should do, against a version already running. */
-export async function availability(panel: PanelKind, running: string): Promise<UpdateAvailability> {
+export async function availability(
+  panel: PanelKind,
+  running: string,
+  /** The asking panel's OS, which for the Master's own check is this process's. */
+  platform: ReleasePlatform = process.platform as ReleasePlatform,
+): Promise<UpdateAvailability> {
   /*
    * Ask GitHub first, when a repository is configured.
    *
@@ -161,9 +220,9 @@ export async function availability(panel: PanelKind, running: string): Promise<U
    * limit or a half-published release all leave the folder as it was, which is
    * the honest answer rather than an error on a screen.
    */
-  await syncFromGitHub(panel, releaseDirFor(panel), pinnedInstaller()).catch(() => null);
+  await syncFromGitHub(panel, releaseDirFor(panel), pinnedInstaller(), platform).catch(() => null);
 
-  const manifest = await readManifest(panel);
+  const manifest = await readManifest(panel, platform);
 
   if (!manifest) {
     // "Is the folder even there?" is the difference between "somebody has not
@@ -306,10 +365,12 @@ export function startReleasePolling(): () => void {
     running = true;
     try {
       for (const panel of ['master', 'office'] as const) {
-        await syncFromGitHub(panel, releaseDirFor(panel), pinnedInstaller()).catch((error: unknown) => {
-          log.warn(`Could not sync the ${panel} release: ${String(error)}`);
-          return null;
-        });
+        await syncFromGitHub(panel, releaseDirFor(panel), pinnedInstaller()).catch(
+          (error: unknown) => {
+            log.warn(`Could not sync the ${panel} release: ${String(error)}`);
+            return null;
+          },
+        );
       }
     } finally {
       running = false;

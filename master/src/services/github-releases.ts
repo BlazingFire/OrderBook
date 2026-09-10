@@ -31,7 +31,8 @@ import path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
-import type { PanelKind, ReleaseManifest } from '@orderbook/shared';
+import type { PanelKind, ReleaseManifest, ReleasePlatform } from '@orderbook/shared';
+import { LEGACY_RELEASE_PLATFORM } from '@orderbook/shared';
 
 import { config } from '../config/index.js';
 import { createLogger } from '../lib/logger.js';
@@ -57,10 +58,19 @@ const ALLOWED_HOSTS = new Set([
   'release-assets.githubusercontent.com',
 ]);
 
-const MANIFEST_ASSET: Record<PanelKind, string> = {
-  master: 'latest-master.json',
-  office: 'latest-office.json',
-};
+/**
+ * The manifest asset for one panel on one OS.
+ *
+ * Two axes, because a GitHub release holds every platform's build at once and
+ * one asset name per panel could only ever describe one of them. The Windows
+ * names are the ones already published, so a shop pinned to an existing
+ * release keeps finding its manifest.
+ */
+function manifestAsset(panel: PanelKind, platform: ReleasePlatform): string {
+  return platform === LEGACY_RELEASE_PLATFORM
+    ? `latest-${panel}.json`
+    : `latest-${panel}-${platform}.json`;
+}
 
 interface GitHubAsset {
   name: string;
@@ -153,6 +163,7 @@ export function syncFromGitHub(
   panel: PanelKind,
   releaseDir: string,
   pinned: string | null = null,
+  platform: ReleasePlatform = process.platform as ReleasePlatform,
 ): Promise<ReleaseManifest | null> {
   // One sync per panel at a time, shared rather than started twice.
   //
@@ -161,20 +172,24 @@ export function syncFromGitHub(
   // `/office/latest` and a browser sitting on the Updates screen can each start
   // one at any moment. Two runs on the same folder write the same `.part` file,
   // and the loser corrupts the winner.
-  const existing = inFlight.get(panel);
+  // Keyed on the pair now, not the panel: a Master serving a mixed shop syncs
+  // a Windows office build and a Mac one, and those write different files.
+  const key = `${panel}:${platform}`;
+  const existing = inFlight.get(key);
   if (existing) return existing;
 
-  const run = runSync(panel, releaseDir, pinned).finally(() => inFlight.delete(panel));
-  inFlight.set(panel, run);
+  const run = runSync(panel, releaseDir, pinned, platform).finally(() => inFlight.delete(key));
+  inFlight.set(key, run);
   return run;
 }
 
-const inFlight = new Map<PanelKind, Promise<ReleaseManifest | null>>();
+const inFlight = new Map<string, Promise<ReleaseManifest | null>>();
 
 async function runSync(
   panel: PanelKind,
   releaseDir: string,
   pinned: string | null,
+  platform: ReleasePlatform,
 ): Promise<ReleaseManifest | null> {
   if (!isConfigured()) return null;
 
@@ -188,18 +203,19 @@ async function runSync(
 
   if (!release) return null;
 
-  const manifestAsset = release.assets.find((asset) => asset.name === MANIFEST_ASSET[panel]);
-  if (!manifestAsset) return null;
+  const wanted = manifestAsset(panel, platform);
+  const found = release.assets.find((asset) => asset.name === wanted);
+  if (!found) return null;
 
   let manifest: ReleaseManifest;
   try {
-    const response = await guardedFetch(manifestAsset.browser_download_url, {
+    const response = await guardedFetch(found.browser_download_url, {
       headers: { 'user-agent': 'OrderBook-Master' },
     });
     if (!response.ok) throw new Error(`GitHub answered ${response.status}`);
     manifest = (await response.json()) as ReleaseManifest;
   } catch (error) {
-    log.warn(`Could not read ${MANIFEST_ASSET[panel]}: ${String(error)}`);
+    log.warn(`Could not read ${wanted}: ${String(error)}`);
     return null;
   }
 
@@ -212,7 +228,17 @@ async function runSync(
   }
 
   if (manifest.panel !== panel) {
-    log.error(`Refusing ${MANIFEST_ASSET[panel]}: it describes a ${manifest.panel} release`);
+    log.error(`Refusing ${wanted}: it describes a ${manifest.panel} release`);
+    return null;
+  }
+
+  // The same refusal on the other axis. An asset name is a label; what the
+  // manifest says it is for is the part the signature covers.
+  const declared = manifest.platform ?? LEGACY_RELEASE_PLATFORM;
+  if (declared !== platform) {
+    log.error(
+      `Refusing ${wanted}: it describes a ${declared} release, and this panel is ${platform}`,
+    );
     return null;
   }
 
@@ -408,10 +434,7 @@ const supersededBy =
  * @returns how many entries were removed, so the log can say so rather than
  * being a silent sweep somebody has to trust.
  */
-async function sweep(
-  releaseDir: string,
-  doomed: (entry: string) => boolean,
-): Promise<number> {
+async function sweep(releaseDir: string, doomed: (entry: string) => boolean): Promise<number> {
   let entries: string[];
   try {
     entries = await readdir(releaseDir);

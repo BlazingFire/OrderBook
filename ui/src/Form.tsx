@@ -106,13 +106,20 @@ export function Textarea({
   );
 }
 
-export function Select({ className, children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return (
-    <select className={['ob-select', className].filter(Boolean).join(' ')} {...rest}>
-      {children}
-    </select>
-  );
-}
+/**
+ * `forwardRef` like `Input`, so a screen can hand focus to a select the way it
+ * hands focus to a text field — the New Lead flow moves from the party it just
+ * chose to the source select, and there is no other way to reach it.
+ */
+export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
+  function Select({ className, children, ...rest }, ref) {
+    return (
+      <select ref={ref} className={['ob-select', className].filter(Boolean).join(' ')} {...rest}>
+        {children}
+      </select>
+    );
+  },
+);
 
 export function DateField({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
   return (

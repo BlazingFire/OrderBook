@@ -439,6 +439,8 @@ export function mapLineItemQuantity(row: Row): LineItemQuantity {
     id: String(row.id),
     colour: String(row.colour),
     quantity: toRequiredNumber(row.quantity),
+    variantCode:
+      row.variant_code === null || row.variant_code === undefined ? null : String(row.variant_code),
   };
 }
 
@@ -599,6 +601,7 @@ export function mapStockLevel(row: Row): InventoryStockLevel {
     categoryName: (row.category_name as string | null) ?? null,
     size: (row.size as string | null) ?? null,
     colour: String(row.colour),
+    variantCode: (row.variant_code as string | null) ?? null,
     quantityBoxes,
     reservedBoxes,
     availableBoxes: available,

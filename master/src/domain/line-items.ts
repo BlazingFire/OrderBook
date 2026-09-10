@@ -37,6 +37,8 @@ export interface VariantSnapshotSource {
 export interface ColourQuantity {
   colour: string;
   quantity: number;
+  /** The product-and-colour code as typed, frozen with the rest of the line. */
+  variantCode?: string | null;
 }
 
 /** A line as it exists on a lead or an order, independent of storage. */
@@ -72,6 +74,8 @@ export interface LineDraft {
   grade?: string | null;
   productType?: string | null;
   packaging?: string | null;
+  /** "No rate on this line" — see `LineItemInput.rateUnset`. */
+  rateUnset?: boolean;
   sequence?: number;
   fromPartyVariant?: boolean;
   imagePath?: string | null;
@@ -103,7 +107,10 @@ export function buildLineSnapshot(
     productId: product.id,
     productName: draft.productName ?? variant?.productName ?? product.name,
     alias: firstDefined(draft.alias, variant?.alias, product.alias),
-    rate: firstDefined(draft.rate, variant?.rate, product.rate),
+    // `rateUnset` is a decision, not a gap, so it stops the fallback dead. A
+    // plain `null` rate still falls through to the variant and the catalogue,
+    // which is what makes a line meant to carry no price save at one.
+    rate: draft.rateUnset ? null : firstDefined(draft.rate, variant?.rate, product.rate),
     code: draft.code ?? product.productCode,
     sin: firstDefined(draft.sin, variant?.sin, product.sin),
     size: firstDefined(draft.size, variant?.size, product.size),
@@ -127,7 +134,7 @@ export function buildLineSnapshot(
  * and each show as a row in the UI — a data shape nothing downstream expects.
  */
 export function normalizeQuantities(quantities: ColourQuantity[]): ColourQuantity[] {
-  const totals = new Map<string, number>();
+  const totals = new Map<string, { quantity: number; variantCode: string | null }>();
 
   for (const entry of quantities) {
     const colour = entry.colour.trim();
@@ -135,10 +142,22 @@ export function normalizeQuantities(quantities: ColourQuantity[]): ColourQuantit
     const quantity = Number(entry.quantity);
     if (!Number.isFinite(quantity) || quantity <= 0) continue;
 
-    totals.set(colour, (totals.get(colour) ?? 0) + quantity);
+    const code = entry.variantCode?.trim() || null;
+    const previous = totals.get(colour);
+    totals.set(colour, {
+      quantity: (previous?.quantity ?? 0) + quantity,
+      // The first code wins. Two rows for one colour are already a client
+      // mistake being repaired here; picking the earlier of two codes is at
+      // least the one that was typed first.
+      variantCode: previous?.variantCode ?? code,
+    });
   }
 
-  return [...totals.entries()].map(([colour, quantity]) => ({ colour, quantity }));
+  return [...totals.entries()].map(([colour, entry]) => ({
+    colour,
+    quantity: entry.quantity,
+    variantCode: entry.variantCode,
+  }));
 }
 
 export function totalQuantity(line: { quantities: ColourQuantity[] }): number {
@@ -160,10 +179,7 @@ export function orderTotalAmount(lines: LineSnapshot[]): number {
  * the override is displayed instead of this figure, never in place of knowing it.
  */
 export function computeTotalWeightKg(lines: LineSnapshot[]): number {
-  const total = lines.reduce(
-    (sum, line) => sum + (line.weightKg ?? 0) * totalQuantity(line),
-    0,
-  );
+  const total = lines.reduce((sum, line) => sum + (line.weightKg ?? 0) * totalQuantity(line), 0);
   // Three decimals matches the column; float drift otherwise shows up as
   // 12.000000000000002 kg on a dispatch note.
   return Math.round(total * 1000) / 1000;

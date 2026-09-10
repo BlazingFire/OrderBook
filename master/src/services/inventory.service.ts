@@ -201,13 +201,26 @@ export async function setReorderLevel(
   // waiting on a form deserves a sentence, not a constraint name.
   assertStockLevels(input);
 
-  const level = await inventoryRepo.setStockLevels(actor.tenantId, input.productId, colour, {
-    // Passed through as-is, `undefined` included: absent means untouched, and
-    // the repository writes only what was asserted.
-    reorderLevel: input.reorderLevel,
-    minStockLevel: input.minStockLevel,
-    maxStockLevel: input.maxStockLevel,
-  });
+  let level: InventoryStockLevel | null;
+  try {
+    level = await inventoryRepo.setStockLevels(actor.tenantId, input.productId, colour, {
+      // Passed through as-is, `undefined` included: absent means untouched, and
+      // the repository writes only what was asserted.
+      reorderLevel: input.reorderLevel,
+      minStockLevel: input.minStockLevel,
+      maxStockLevel: input.maxStockLevel,
+      variantCode: normalizeVariantCode(input.variantCode),
+    });
+  } catch (error) {
+    // The partial unique index is the enforcement; this only turns it into a
+    // sentence. Two people can reach it at once, so a pre-check would be a
+    // race with a nicer message, not a substitute.
+    const pg = error as { code?: string; constraint?: string } | null;
+    if (pg?.code === '23505' && (pg.constraint ?? '').includes('variant_code')) {
+      throw new ValidationError('validation.stock.variantCodeTaken');
+    }
+    throw error;
+  }
   if (!level) throw new NotFoundError('Stock level');
 
   publishChange({
@@ -250,6 +263,20 @@ export async function coloursFor(tenantId: string, productId: string): Promise<s
   return inventoryRepo.coloursFor(tenantId, productId);
 }
 
+/**
+ * The typed code, trimmed — or `null` when it is being cleared.
+ *
+ * Blank and `null` mean the same thing here, unlike the stock bands above: a
+ * code is a name somebody chose, and "" is not one. Clearing has to be
+ * possible, because a code cannot move to another colour while this row still
+ * holds it.
+ */
+function normalizeVariantCode(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
 function requireColour(colour: string | undefined): string {
   const trimmed = colour?.trim();
   if (!trimmed) {
@@ -281,6 +308,7 @@ function emptyLevel(productId: string, colour: string): InventoryStockLevel {
     categoryName: null,
     size: null,
     colour,
+    variantCode: null,
     quantityBoxes: 0,
     reservedBoxes: 0,
     availableBoxes: 0,

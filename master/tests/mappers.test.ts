@@ -201,7 +201,7 @@ describe('mapLineItem', () => {
         created_at: new Date(),
         updated_at: new Date(),
       },
-      [{ id: 'q1', colour: 'Ivory', quantity: 12 }],
+      [{ id: 'q1', colour: 'Ivory', quantity: 12, variantCode: '101' }],
     );
 
     expect(item).toMatchObject({
@@ -213,7 +213,9 @@ describe('mapLineItem', () => {
       totalQuantity: 12,
       lineTotal: 540000,
     });
-    expect(item.quantities).toEqual([{ id: 'q1', colour: 'Ivory', quantity: 12 }]);
+    expect(item.quantities).toEqual([
+      { id: 'q1', colour: 'Ivory', quantity: 12, variantCode: '101' },
+    ]);
   });
 });
 

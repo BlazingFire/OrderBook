@@ -46,6 +46,7 @@ function stockQuery(tenantId: string, runner: Runner = db()) {
     .select(
       's.product_id',
       's.colour',
+      's.variant_code',
       'p.product_code',
       'p.name as product_name',
       'p.size',
@@ -71,6 +72,7 @@ export async function listStockLevels(
       builder
         .whereILike('p.name', pattern)
         .orWhereILike('p.product_code', pattern)
+        .orWhereILike('s.variant_code', pattern)
         .orWhereILike('s.colour', pattern)
         .orWhereILike('c.name', pattern),
     );
@@ -131,7 +133,14 @@ async function unstockedReservations(
       'p.id',
       pairs.map((pair) => pair.productId),
     )
-    .select('p.id', 'p.product_code', 'p.name', 'p.size', 'p.box_coverage_sqft', 'c.name as category_name');
+    .select(
+      'p.id',
+      'p.product_code',
+      'p.name',
+      'p.size',
+      'p.box_coverage_sqft',
+      'c.name as category_name',
+    );
 
   const byId = new Map(products.map((product) => [String(product.id), product]));
 
@@ -277,13 +286,15 @@ export async function setStockLevels(
     reorderLevel?: number | null;
     minStockLevel?: number | null;
     maxStockLevel?: number | null;
+    variantCode?: string | null;
   },
 ): Promise<InventoryStockLevel | null> {
-  const asserted: Array<[column: string, value: number | null]> = [];
+  const asserted: Array<[column: string, value: string | number | null]> = [];
 
   if (levels.reorderLevel !== undefined) asserted.push(['reorder_level', levels.reorderLevel]);
   if (levels.minStockLevel !== undefined) asserted.push(['min_stock_level', levels.minStockLevel]);
   if (levels.maxStockLevel !== undefined) asserted.push(['max_stock_level', levels.maxStockLevel]);
+  if (levels.variantCode !== undefined) asserted.push(['variant_code', levels.variantCode]);
 
   // Nothing asserted is not an error and not a write — it is a read.
   if (asserted.length === 0) return findStockLevel(tenantId, productId, colour);
@@ -344,18 +355,16 @@ export async function countLowStock(tenantId: string): Promise<number> {
   const rows = await db()('inventory_stock')
     .where({ tenant_id: tenantId })
     .whereNotNull('reorder_level')
-    .select<Array<{ product_id: string; colour: string; quantity_boxes: string; reorder_level: string }>>(
-      'product_id',
-      'colour',
-      'quantity_boxes',
-      'reorder_level',
-    );
+    .select<
+      Array<{ product_id: string; colour: string; quantity_boxes: string; reorder_level: string }>
+    >('product_id', 'colour', 'quantity_boxes', 'reorder_level');
 
   const held = await reservations.reservedTotals(tenantId);
 
   return rows.filter((row) => {
     const available =
-      Number(row.quantity_boxes) - (held.get(stockKey(String(row.product_id), String(row.colour))) ?? 0);
+      Number(row.quantity_boxes) -
+      (held.get(stockKey(String(row.product_id), String(row.colour))) ?? 0);
     return available <= Number(row.reorder_level);
   }).length;
 }

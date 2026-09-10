@@ -1,33 +1,56 @@
 /**
- * Add Lead — the screen office staff spend their day in
- * (docs/LEAD_GENERATION_FLOW.md §3).
+ * New lead — the screen office staff spend their day in
+ * (docs/LEAD_GENERATION_FLOW.md §3, `New Lead Flow` design).
  *
- * Both the party and the product can be picked from existing records or created
- * inline, because a customer standing at the counter is often new and making
- * staff leave this screen to add them first would lose the lead.
+ * One page, three required answers, and a chip in the header that says how many
+ * are done: somebody at a counter with a customer on the phone needs to know
+ * what is still missing without reading the whole form. Party, source and
+ * follow-up share one compact card at the top because they are all *about* the
+ * enquiry; the products below are the work.
  *
- * Two rules from the guide are enforced visibly here rather than only on the
- * server:
- *  · **Packaging is never auto-filled.** Typing a product code fills every
- *    other snapshot field and pointedly leaves packaging blank.
- *  · **Party-wise mode changes where values come from**, but a party's saved
- *    packaging is offered as a suggestion the user must accept — never applied.
+ * The unit of work is **one product in one colour**. That pair has its own short
+ * code (`InventoryStockLevel.variantCode`), so the search box answers a typed
+ * code with exactly one row — code, product, colour and what is free to sell —
+ * instead of a product somebody then has to pick a colour on. Choosing one
+ * replaces the search field with the product itself and opens a draft card
+ * underneath: packaging, grade and rate at the top, a quantity per colour
+ * below. Nothing joins the lead until that card is added, so a half-filled
+ * product cannot ride along unnoticed, and the search field comes straight back
+ * for the next one.
  *
- * Saving works with no link to the Master: the lead is queued locally and
- * appears on the board immediately.
+ * Three rules are enforced visibly rather than only on the server:
+ *  · **Packaging is never auto-filled.** Picking a code fills every other field
+ *    and pointedly leaves packaging empty — the draft cannot be added until
+ *    somebody chooses one.
+ *  · **A rate can be switched off.** "To be quoted later" and "nobody has typed
+ *    it yet" are different facts, and the line stores them differently: the
+ *    switch sends `rateUnset`, which stops the catalogue fallback that an empty
+ *    field falls into.
+ *  · **A party's own rates change where money comes from**, but a party's saved
+ *    packaging is only ever a suggestion.
  *
- * Restyled onto the design system (6-UI-DESIGN.md, New-Lead.dc.html); the
- * data flow above is unchanged.
+ * The rate a line opens on is the last rate actually used for this party and
+ * this product, read out of the leads and orders already in this panel's
+ * snapshot; failing that the party's variant rate, failing that the catalogue.
+ * The note under the field says which of the three it is, and a changed rate
+ * offers to go back. No endpoint and no request — it works with the Master
+ * switched off, like everything else here.
+ *
+ * Saving works with no link to the Master: the lead is queued locally with a
+ * temporary id and appears on the board immediately.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import type {
   CustomFieldDefinition,
+  Lead,
   LineItemInput,
   OptionListItem,
+  Order,
   Party,
   PartyProductVariant,
-  Product,
+  ProductVariantPick,
 } from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
@@ -36,134 +59,251 @@ import { PartyDrawer, type CreatedParty } from '../components/PartyDrawer';
 import {
   Button,
   Card,
-  ColourQuantityGrid,
   ConflictBanner,
   DateField,
-  FormField,
-  IconButton,
   Input,
-  NumberInput,
-  Picker,
   Select,
+  SuggestInput,
   StatusPill,
-  Switch,
   Textarea,
   formatMoney,
   rem,
   t,
   useColourHex,
+  useDebounced,
+  useEnterToAdvance,
+  useEscapeToPrevious,
   useResetGuard,
   useCommand,
-  type ColourQuantity,
+  useSubNav,
 } from '@orderbook/ui';
-
-/** Illustrative only — shows the shape of a product code in the lookup box. */
-const PRODUCT_CODE_EXAMPLE = 'PRD-0042';
 
 interface Props {
   view: LocalView;
   /** From the signed-in person's own resolved set, not the snapshot's. */
   canEditRate: boolean;
-  onSaved: () => void;
+  /** Carries the queued lead's temporary id, so the shell can name it. */
+  onSaved: (id: string) => void;
   onCancel: () => void;
 }
 
+/** One colour of a line, with the quantity as typed. */
+interface ColourEntry {
+  colour: string;
+  /** Kept as text so a half-typed number stays half-typed. */
+  boxes: string;
+  variantCode: string | null;
+  availableBoxes: number;
+}
+
+/** What the draft card is editing, and what a saved line holds — one shape. */
 interface DraftLine {
+  key: string;
   productId: string;
   productName: string;
   code: string | null;
   alias: string | null;
-  /** The rupee text as typed; see `ratePaise`. `null` is a rate this person may not see. */
-  rateText: string | null;
-  /**
-   * True once somebody has typed in the rate cell.
-   *
-   * Which is the difference between a rate this line *derived* and a rate a
-   * person *decided*. Changing the party, or turning party-wise rates on,
-   * re-rates every untouched line — and must leave the decided ones exactly
-   * where they were, or the toggle silently overwrites somebody's negotiation.
-   */
-  rateTouched: boolean;
   sin: string | null;
   size: string | null;
   grade: string | null;
   productType: string | null;
   weightKg: number | null;
   packaging: string;
-  notes: string;
+  /** The rupee text as typed; see `ratePaise`. `null` is a rate this person may not see. */
+  rateText: string | null;
+  /**
+   * False when this line deliberately carries no price — quoted later.
+   *
+   * Distinct from a blank `rateText`, which is a rate nobody has got to yet and
+   * which the server fills from the catalogue. This one sends `rateUnset` and
+   * the line stays priceless all the way to the docket.
+   */
+  rateOn: boolean;
+  /**
+   * True once somebody has typed in the rate cell.
+   *
+   * Which is the difference between a rate the line *derived* and a rate a
+   * person *decided*. Changing the party re-rates every untouched line and must
+   * leave the decided ones exactly where they were, or choosing a party
+   * silently overwrites somebody's negotiation.
+   */
+  rateTouched: boolean;
   fromPartyVariant: boolean;
-  quantities: ColourQuantity[];
-  /** Shown as a hint only — accepting it is a deliberate click. */
-  suggestedPackaging: string | null;
+  notes: string;
+  colours: ColourEntry[];
+  /** Where the line goes back to when the draft is a `Modify` of a saved one. */
+  at: number | null;
+  isEdit: boolean;
+}
+
+/** Where a line's opening rate came from, for the note under the field. */
+interface RateOrigin {
+  /** In paise, or null when this person may not see rates at all. */
+  rate: number | null;
+  note: string;
+  fromPartyVariant: boolean;
+}
+
+const QUICK_FOLLOW_UPS = [
+  { days: 1, token: 'lead.add.followUp.tomorrow' },
+  { days: 3, token: 'lead.add.followUp.inThreeDays' },
+  { days: 7, token: 'lead.add.followUp.nextWeek' },
+] as const;
+
+/**
+ * How many added products the panel will draw at once.
+ *
+ * The panel is a scroller, not a page, and a lead with more products than this
+ * is one somebody is searching rather than reading. The cap is announced rather
+ * than silent — see `lead.add.panel.truncated`.
+ */
+const PANEL_LIMIT = 60;
+
+/** Local calendar date as `YYYY-MM-DD`, matching `Lead.followUpDate`'s format. */
+function isoDate(daysFromToday: number): string {
+  const now = new Date();
+  const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysFromToday);
+  const month = String(day.getMonth() + 1).padStart(2, '0');
+  return `${day.getFullYear()}-${month}-${String(day.getDate()).padStart(2, '0')}`;
+}
+
+function boxesOf(line: DraftLine): number {
+  return line.colours.reduce((sum, entry) => sum + (Number(entry.boxes) || 0), 0);
+}
+
+/**
+ * The line's rate in paise, or null when there is no rate to show.
+ *
+ * The draft holds the rupee text somebody typed rather than the paise number,
+ * because a controlled field rendered back from paise cannot be typed into: the
+ * "." in "12." parses to 12, the state does not change, and React restores the
+ * field to "12" as the key is pressed — so ₹12.50 is entered as ₹1250.
+ *
+ * A blank or unparseable field is unknown rather than free, the same rule the
+ * order total follows.
+ */
+function ratePaise(line: { rateText: string | null }): number | null {
+  if (line.rateText === null || !line.rateText.trim()) return null;
+  const rupees = Number(line.rateText);
+  return Number.isFinite(rupees) ? Math.round(rupees * 100) : null;
+}
+
+/** What a line is worth, or null when it has no rate to be worth anything at. */
+function lineTotal(line: DraftLine): number | null {
+  if (!line.rateOn) return null;
+  const rate = ratePaise(line);
+  return rate === null ? null : Math.round(rate * boxesOf(line));
+}
+
+/** A short, local date for the "last used" note — never a full timestamp. */
+function shortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
 export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
   const colourHex = useColourHex(view.optionLists);
+
   const [partyId, setPartyId] = useState('');
+  const [partyQuery, setPartyQuery] = useState('');
+  const [partyOpen, setPartyOpen] = useState(false);
+  const [partySel, setPartySel] = useState(0);
+  const [partyRows, setPartyRows] = useState<Party[]>([]);
   const [partyDrawerOpen, setPartyDrawerOpen] = useState(false);
 
-  const [partyWiseMode, setPartyWiseMode] = useState(false);
   const [sourcePlatform, setSourcePlatform] = useState('');
+  const [otherSource, setOtherSource] = useState('');
   const [followUpDate, setFollowUpDate] = useState('');
   const [notes, setNotes] = useState('');
   const [customFields, setCustomFields] = useState<Record<string, unknown>>({});
 
-  const [codeEntry, setCodeEntry] = useState('');
+  const [query, setQuery] = useState('');
+  const [sel, setSel] = useState(0);
+  const [variantRows, setVariantRows] = useState<ProductVariantPick[]>([]);
   const [lines, setLines] = useState<DraftLine[]>([]);
-
-  /*
-   * The rows behind the picker's options, kept so a choice can hand back the
-   * whole record. A picker deals in ids and labels; a line item needs the
-   * product, and the party card needs the party — which online may be a row
-   * this panel's cached snapshot has never held.
-   */
-  const partyRows = useRef(new Map<string, Party>());
-  const productRows = useRef(new Map<string, Product>());
-
-  /** Focused when the last colour on a line is filled — "next product". */
-  const productSearchRef = useRef<HTMLInputElement>(null);
+  const [draft, setDraft] = useState<DraftLine | null>(null);
+  /** Which panel rows are expanded, ticked, and what is filtering them. */
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Record<string, true>>({});
+  const [lineQuery, setLineQuery] = useState('');
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const selectedParty =
-    view.parties.find((party) => party.id === partyId) ?? partyRows.current.get(partyId) ?? null;
-
-  const leadFieldDefinitions = view.customFields.filter(
-    (definition: CustomFieldDefinition) => definition.entity === 'lead',
-  );
-  const sourceOptions = view.optionLists.filter(
-    (option: OptionListItem) => option.listKey === 'lead.sourcePlatform' && option.isActive,
-  );
-
-  /** Only consulted when party-wise mode is on — that is the whole toggle. */
-  const variantsForParty = useMemo(
-    () =>
-      partyWiseMode
-        ? new Map(
-            view.partyVariants
-              .filter((variant) => variant.partyId === partyId)
-              .map((variant) => [variant.productId, variant]),
-          )
-        : new Map<string, PartyProductVariant>(),
-    [partyWiseMode, partyId, view.partyVariants],
-  );
-
+  const partyRef = useRef<HTMLInputElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const otherRef = useRef<HTMLInputElement>(null);
+  const sourceRef = useRef<HTMLSelectElement>(null);
   /**
-   * Parties this person may only *read* are left out.
+   * The form column, for the Enter/Escape walk.
    *
-   * The Master refuses the save either way — a lead against a view-only party
-   * is a 403 naming why — so this is not the enforcement. It exists so the
-   * picker does not walk somebody into a refusal for a party they are looking
-   * straight at.
+   * The column and not the whole screen: the panel on the right is a review of
+   * what is already added, not a step on the way in, and Enter falling off the
+   * end of the notes into its search box would be a detour out of the flow.
+   *
+   * No `onSubmit` either. Enter on the last field saves in a drawer, where the
+   * last field is unambiguous and the dialog is the whole task; here it would
+   * queue a lead from whichever field happened to be last on a screen whose
+   * fields appear and disappear as products are drafted. Ctrl+S saves.
    */
+  const formRef = useRef<HTMLDivElement>(null);
+  /** Every variant row this session has seen, so a saved line keeps its codes. */
+  const seenVariants = useRef(new Map<string, ProductVariantPick>());
+  /** Parties the picker has fetched, so a chosen one survives the term changing. */
+  const seenParties = useRef(new Map<string, Party>());
+
+  /*
+   * The sidebar has no New-lead item of its own — it is not a module, it is a
+   * thing you are doing to the Leads module. Registering it as Leads' nested
+   * entry is what puts Leads back under the cursor while the form is open;
+   * without it nothing at all was highlighted and the header read "Office
+   * Panel".
+   */
+  useSubNav('addLead', {
+    parentId: 'leads',
+    items: [{ id: 'addLead.new', label: t('lead.add.title'), icon: 'leads' }],
+    activeId: 'addLead.new',
+  });
+
+  const sourceOptions = useMemo(
+    () =>
+      view.optionLists.filter(
+        (option: OptionListItem) => option.listKey === 'lead.sourcePlatform' && option.isActive,
+      ),
+    [view.optionLists],
+  );
+
+  const packagingOptions = useMemo(
+    () =>
+      view.optionLists.filter(
+        (option: OptionListItem) => option.listKey === 'line.packaging' && option.isActive,
+      ),
+    [view.optionLists],
+  );
+
+  const gradeOptions = useMemo(
+    () =>
+      view.optionLists.filter(
+        (option: OptionListItem) => option.listKey === 'line.grade' && option.isActive,
+      ),
+    [view.optionLists],
+  );
+
+  /*
+   * The enquiry came from somewhere, and on this screen it always came from the
+   * first thing in the list until somebody says otherwise. A blank required
+   * answer on a form nobody has touched reads as a fault rather than a question.
+   */
+  useEffect(() => {
+    setSourcePlatform((current) => current || (sourceOptions[0]?.value ?? ''));
+  }, [sourceOptions]);
+
   /**
    * Parties this person may actually put a lead against.
    *
-   * A view-only grant is dropped from the list. The Master refuses the save
-   * either way — a lead against a view-only party is a 403 naming why — so this
-   * is not the enforcement; it exists so the picker does not walk somebody into
-   * a refusal for a party they are looking straight at.
+   * A view-only grant is dropped. The Master refuses the save either way — a
+   * lead against a view-only party is a 403 naming why — so this is not the
+   * enforcement; it exists so the picker does not walk somebody into a refusal
+   * for a party they are looking straight at.
    */
   const readOnlyParties = useMemo(
     () =>
@@ -175,269 +315,399 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
     [view.partyGrants],
   );
 
+  const selectedParty =
+    view.parties.find((party) => party.id === partyId) ?? seenParties.current.get(partyId) ?? null;
+
+  /** The party's own variants, which are also what makes the "own rates" badge true. */
+  const variantsForParty = useMemo(
+    () =>
+      new Map(
+        view.partyVariants
+          .filter((variant) => variant.partyId === partyId)
+          .map((variant): [string, PartyProductVariant] => [variant.productId, variant]),
+      ),
+    [partyId, view.partyVariants],
+  );
+  const partyWiseMode = variantsForParty.size > 0;
+
   /*
-   * The rows behind the options, kept so a choice can hand back the whole
-   * record. A picker deals in ids and labels; a line item needs the product.
+   * A rate this role may not see is absent on every product alike, so the whole
+   * money column goes with it rather than rendering a confident zero.
    */
-  const fetchParties = useCallback(
-    async ({ term, include, signal }: { term: string; include: string[]; signal: AbortSignal }) => {
-      const page = await api.pick<Party>('party', { term, include, signal });
-      for (const row of page.items) partyRows.current.set(row.id, row);
-
-      return {
-        items: page.items
-          .filter((party) => !readOnlyParties.has(party.id))
-          .map((party) => ({
-            id: party.id,
-            label: party.name,
-            hint: [party.partyCode, party.phone, party.city].filter(Boolean).join(' · ') || null,
-          })),
-        truncated: page.truncated,
-        offline: page.offline,
-      };
-    },
-    [readOnlyParties],
-  );
-
-  const fetchProducts = useCallback(
-    async ({ term, include, signal }: { term: string; include: string[]; signal: AbortSignal }) => {
-      const page = await api.pick<Product>('product', { term, include, signal });
-      for (const row of page.items) productRows.current.set(row.id, row);
-
-      return {
-        items: page.items.map((product) => ({
-          id: product.id,
-          label: [product.productCode, product.name].filter(Boolean).join(' · '),
-          hint: [product.series, product.categoryName].filter(Boolean).join(' · ') || null,
-        })),
-        truncated: page.truncated,
-        offline: page.offline,
-      };
-    },
-    [],
-  );
+  const canSeeRates = view.permissions.includes('field.saleRate.view');
 
   /**
-   * The order total, or null when any line's rate is hidden from this person.
+   * The last rate this party actually paid for each product, newest first.
    *
-   * `rate ?? 0` treated a rate this role may not see as free, so a rate-blind
-   * user was shown a confident ₹0.00 total in perfect good faith — the exact
-   * failure the masking rule exists to prevent (`roles-ui.md` §6). Rendering
-   * from absence means the total is either right or visibly unknown.
+   * Read out of the leads and orders already on the snapshot rather than asked
+   * of the Master: it is the same data the Master would answer from, it costs
+   * no request, and it is still right with the link down. A record whose rate
+   * is absent — this role may not see rates — contributes nothing rather than
+   * a zero.
    */
-  const total = lines.reduce<number | null>((sum, line) => {
-    const amount = lineTotal(line);
-    return sum === null || amount === null ? null : sum + amount;
-  }, 0);
+  const lastRateFor = useMemo(() => {
+    const best = new Map<string, { rate: number; at: string }>();
 
-  /**
-   * Build a line from a product, applying the party's variant when the lead is
-   * in party-wise mode. `packaging` is left empty on purpose — §3.2 says it is
-   * chosen manually every time, so the variant's value becomes a suggestion.
-   */
-  function lineFrom(product: Product): DraftLine {
-    const variant = variantsForParty.get(product.id) ?? null;
-    const rate = variant?.rate ?? product.rate ?? null;
-
-    return {
-      productId: product.id,
-      productName: variant?.productName ?? product.name,
-      code: product.productCode,
-      alias: variant?.alias ?? product.alias,
-      rateText: rate === null ? null : String(rate / 100),
-      rateTouched: false,
-      sin: variant?.sin ?? product.sin,
-      size: variant?.size ?? product.size,
-      grade: variant?.grade ?? product.grade,
-      productType: variant?.productType ?? product.productType,
-      weightKg: variant?.weightKg ?? product.weightKg,
-      packaging: '',
-      notes: '',
-      fromPartyVariant: variant !== null,
-      // The grid lists every colour the product has stock for already,
-      // ready for entry — starting empty avoids a stray row for a colour
-      // that was never real (docs/LEAD_GENERATION_FLOW.md §3.7).
-      quantities: [],
-      suggestedPackaging: variant?.packaging ?? null,
-    };
-  }
-
-  function addProduct(product: Product): void {
-    setLines((current) => [...current, lineFrom(product)]);
-    setCodeEntry('');
-  }
-
-  /**
-   * A code, resolved against the whole catalogue.
-   *
-   * The snapshot is one page of it (`SNAPSHOT_LIMIT`), so a product past that
-   * page is findable only through the Master. The lookup tries what is already
-   * here, then falls through to the picker's own endpoint — which answers from
-   * the cached snapshot again when the link is down, so offline behaves as it
-   * did before.
-   */
-  const resolveByCode = useCallback(
-    async (code: string): Promise<Product | null> => {
-      const wanted = code.trim().toLowerCase();
-      const local =
-        view.products.find((candidate) => candidate.productCode.toLowerCase() === wanted) ??
-        [...productRows.current.values()].find(
-          (candidate) => candidate.productCode.toLowerCase() === wanted,
-        );
-      if (local) return local;
-
-      try {
-        const page = await api.pick<Product>('product', { term: code.trim() });
-        const hit =
-          page.items.find((candidate) => candidate.productCode.toLowerCase() === wanted) ?? null;
-        if (hit) productRows.current.set(hit.id, hit);
-        return hit;
-      } catch {
-        return null;
+    const consider = (record: Lead | Order): void => {
+      if (record.partyId !== partyId) return;
+      for (const item of record.items) {
+        if (item.rate === undefined || item.rate === null) continue;
+        const previous = best.get(item.productId);
+        if (previous && previous.at >= record.createdAt) continue;
+        best.set(item.productId, { rate: item.rate, at: record.createdAt });
       }
+    };
+
+    for (const lead of view.leads) consider(lead);
+    for (const order of view.orders) consider(order);
+    return best;
+  }, [partyId, view.leads, view.orders]);
+
+  /** Stock rows for one product, from the snapshot and from anything searched. */
+  const coloursFor = useCallback(
+    (productId: string): ColourEntry[] => {
+      const byColour = new Map<string, ColourEntry>();
+
+      for (const level of view.stock) {
+        if (level.productId !== productId) continue;
+        byColour.set(level.colour, {
+          colour: level.colour,
+          boxes: '',
+          variantCode: level.variantCode,
+          availableBoxes: level.availableBoxes,
+        });
+      }
+
+      // Anything the Master answered with that this panel's snapshot page does
+      // not hold — a catalogue past `SNAPSHOT_LIMIT` still has to be sellable.
+      for (const row of seenVariants.current.values()) {
+        if (row.productId !== productId || byColour.has(row.colour)) continue;
+        byColour.set(row.colour, {
+          colour: row.colour,
+          boxes: '',
+          variantCode: row.variantCode,
+          availableBoxes: row.availableBoxes,
+        });
+      }
+
+      return [...byColour.values()].sort((a, b) => a.colour.localeCompare(b.colour));
     },
-    [view.products],
+    [view.stock],
   );
 
-  /** The guide's convenience input: a code fills the rest of the line (§3.2). */
-  async function addByCode(): Promise<void> {
-    const code = codeEntry.trim();
-    if (!code) return;
+  function rateOriginFor(productId: string): RateOrigin {
+    if (!canSeeRates) return { rate: null, note: '', fromPartyVariant: false };
 
-    setError(t('lead.add.products.lookingUp'));
-    const product = await resolveByCode(code);
-
-    if (!product) {
-      setError(t('lead.add.products.pasteUnknown', { codes: code }));
-      return;
+    const last = lastRateFor.get(productId);
+    if (last) {
+      return {
+        rate: last.rate,
+        note: t('lead.add.draft.rateLast', { date: shortDate(last.at) }),
+        fromPartyVariant: false,
+      };
     }
 
-    setError(null);
-    addProduct(product);
+    const variant = variantsForParty.get(productId);
+    if (variant?.rate !== undefined && variant?.rate !== null) {
+      return { rate: variant.rate, note: t('lead.add.draft.rateParty'), fromPartyVariant: true };
+    }
+
+    const product = view.products.find((candidate) => candidate.id === productId);
+    const rate = product?.rate ?? null;
+    return { rate, note: t('lead.add.draft.rateCatalogue'), fromPartyVariant: false };
   }
 
-  /*
+  // --- Party search -------------------------------------------------------
+
+  const partyTerm = useDebounced(partyQuery, 200);
+
+  useEffect(() => {
+    if (partyId) return;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const page = await api.pick<Party>('party', { term: partyTerm });
+        if (cancelled) return;
+        for (const row of page.items) seenParties.current.set(row.id, row);
+        setPartyRows(page.items.filter((party) => !readOnlyParties.has(party.id)).slice(0, 6));
+      } catch {
+        // The picker answers from the cached snapshot when the link is down, so
+        // a failure here is a real one — and an empty list says so without a
+        // banner over a field somebody is still typing in.
+        if (!cancelled) setPartyRows([]);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [partyTerm, partyId, readOnlyParties]);
+
+  const partyPick = partyRows.length ? Math.min(partySel, partyRows.length - 1) : 0;
+
+  function chooseParty(party: Party): void {
+    seenParties.current.set(party.id, party);
+    setPartyId(party.id);
+    setPartyQuery('');
+    setPartyOpen(false);
+    setPartySel(0);
+    // On to the source, not straight to the products: the enquiry card is the
+    // first three answers in order, and jumping the two of them that are left
+    // meant they were filled in last or not at all. The rest of the way down is
+    // Enter, one field at a time, so nothing needs to jump ahead any more.
+    window.setTimeout(() => sourceRef.current?.focus(), 0);
+  }
+
+  // --- Product search -----------------------------------------------------
+
+  const term = useDebounced(query, 200);
+
+  useEffect(() => {
+    if (!term.trim() || draft) {
+      setVariantRows([]);
+      return;
+    }
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const page = await api.pick<ProductVariantPick>('variant', { term });
+        if (cancelled) return;
+        for (const row of page.items)
+          seenVariants.current.set(`${row.productId}|${row.colour}`, row);
+        setVariantRows(page.items.slice(0, 7));
+      } catch {
+        if (!cancelled) setVariantRows([]);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [term, draft]);
+
+  const variantPick = variantRows.length ? Math.min(sel, variantRows.length - 1) : 0;
+
+  /**
    * Re-rate the lines nobody has priced by hand.
    *
-   * Choosing a party, or turning party-wise rates on, changes what every line
-   * on the voucher costs. It used to change only the lines added *after* the
-   * switch, so a voucher built before the party was chosen quietly quoted
-   * catalogue prices while the badge said otherwise — the kind of wrong that
-   * reaches a customer.
-   *
-   * Only untouched lines move. A rate somebody typed is a decision, and a
-   * toggle must not overwrite a negotiation.
+   * Choosing a party changes what every line on the voucher costs. It used to
+   * change only the lines added *after* the switch, so a voucher built before
+   * the party was chosen quietly quoted catalogue prices — the kind of wrong
+   * that reaches a customer. Only untouched lines move: a rate somebody typed
+   * is a decision, and so is a rate somebody switched off.
    */
   useEffect(() => {
     setLines((current) =>
       current.map((line) => {
-        if (line.rateTouched) return line;
-
-        const product = view.products.find((candidate) => candidate.id === line.productId);
-        if (!product) return line;
-
-        const variant = variantsForParty.get(line.productId) ?? null;
-        const rate = variant?.rate ?? product.rate ?? null;
-
+        if (line.rateTouched || !line.rateOn) return line;
+        const origin = rateOriginFor(line.productId);
         return {
           ...line,
-          rateText: rate === null ? null : String(rate / 100),
-          fromPartyVariant: variant !== null,
-          suggestedPackaging: variant?.packaging ?? null,
+          rateText: origin.rate === null ? null : String(origin.rate / 100),
+          fromPartyVariant: origin.fromPartyVariant,
         };
       }),
     );
-  }, [variantsForParty, view.products]);
+    // `rateOriginFor` closes over exactly these; listing the function instead
+    // would re-run this on every render and undo somebody's typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partyId, lastRateFor, variantsForParty, view.products]);
 
-  /**
-   * Paste a block of lines out of a spreadsheet.
-   *
-   * Excel and every sheet program put **TSV** on the clipboard, not CSV — so
-   * this splits on newlines and then on tabs rather than reaching for a CSV
-   * parser, which would be the wrong tool and would mangle any product name
-   * containing a comma.
-   *
-   * A row is `code`, optionally followed by `colour` and `quantity`. Anything
-   * whose code does not resolve is collected and named once at the end rather
-   * than failing the paste: somebody pasting forty lines wants the
-   * thirty-eight that worked, plus a list of the two that did not.
-   */
-  function pasteLines(text: string): boolean {
-    const rows = text
-      .split(/\r?\n/)
-      .map((row) => row.trim())
-      .filter(Boolean)
-      .map((row) => row.split('\t').map((cell) => cell.trim()));
+  // --- Draft --------------------------------------------------------------
 
-    // A single cell with no tab is somebody pasting one code into the box.
-    // That is an ordinary paste and the input should handle it itself.
-    if (rows.length <= 1 && (rows[0]?.length ?? 0) <= 1) return false;
+  function openDraft(row: ProductVariantPick): void {
+    const origin = rateOriginFor(row.productId);
+    const variant = variantsForParty.get(row.productId) ?? null;
+    const known = coloursFor(row.productId).find((entry) => entry.colour === row.colour);
 
-    const added: DraftLine[] = [];
-    const unresolved: Array<{ code: string; colour?: string; quantity?: string }> = [];
+    setDraft({
+      key: `draft-${row.productId}-${row.colour}`,
+      productId: row.productId,
+      productName: variant?.productName ?? row.productName,
+      code: row.productCode,
+      alias: variant?.alias ?? row.alias,
+      sin: variant?.sin ?? row.sin,
+      size: variant?.size ?? row.size,
+      grade: variant?.grade ?? row.grade,
+      productType: variant?.productType ?? row.productType,
+      weightKg: variant?.weightKg ?? row.weightKg,
+      // Left empty on purpose (§3.2). The party's saved packaging is offered
+      // below as a suggestion, never applied.
+      packaging: '',
+      rateText: origin.rate === null ? null : String(origin.rate / 100),
+      rateOn: true,
+      rateTouched: false,
+      fromPartyVariant: origin.fromPartyVariant,
+      notes: '',
+      colours: [
+        known ?? {
+          colour: row.colour,
+          boxes: '',
+          variantCode: row.variantCode,
+          availableBoxes: row.availableBoxes,
+        },
+      ],
+      at: null,
+      isEdit: false,
+    });
+    setQuery('');
+    setSel(0);
+    setVariantRows([]);
 
-    const lineFor = (product: Product, colour?: string, quantity?: string): DraftLine => {
-      const line = lineFrom(product);
-      const boxes = Number(quantity);
-
-      // A colour and a quantity are optional: a two-column paste of codes and
-      // totals is just as common as a full one, and a line with no quantity is
-      // still a line somebody wanted on the voucher.
-      if (colour && Number.isFinite(boxes) && boxes > 0) {
-        line.quantities = [{ colour, quantity: boxes }];
+    // The rest of this product's colours, so "add another colour" is complete
+    // even for a product past this panel's snapshot page.
+    void (async () => {
+      try {
+        const page = await api.pick<ProductVariantPick>('variant', { term: row.productCode });
+        for (const found of page.items) {
+          seenVariants.current.set(`${found.productId}|${found.colour}`, found);
+        }
+        // Re-render so the newly known colours reach the dropdown.
+        setVariantRows([]);
+      } catch {
+        // Nothing to add — the colour that was picked is already on the draft.
       }
+    })();
+  }
 
-      return line;
+  function patchDraft(patch: Partial<DraftLine>): void {
+    setDraft((current) => (current ? { ...current, ...patch } : current));
+  }
+
+  function setColourBoxes(colour: string, boxes: string): void {
+    setDraft((current) =>
+      current
+        ? {
+            ...current,
+            colours: current.colours.map((entry) =>
+              entry.colour === colour ? { ...entry, boxes } : entry,
+            ),
+          }
+        : current,
+    );
+  }
+
+  function draftIsReady(candidate: DraftLine): boolean {
+    const filled = candidate.colours.filter((entry) => Number(entry.boxes) > 0);
+    if (!candidate.packaging.trim() || filled.length === 0) return false;
+    if (!canSeeRates || !candidate.rateOn) return true;
+    return (ratePaise(candidate) ?? 0) > 0;
+  }
+
+  function saveDraft(): void {
+    if (!draft || !draftIsReady(draft)) return;
+
+    const filled = draft.colours.filter((entry) => Number(entry.boxes) > 0);
+    const line: DraftLine = {
+      ...draft,
+      key: draft.isEdit
+        ? draft.key
+        : `line-${draft.productId}-${lines.length}-${draft.colours.length}`,
+      colours: filled,
+      at: null,
+      isEdit: false,
     };
 
-    for (const [code, colour, quantity] of rows) {
-      if (!code) continue;
-
-      const product = view.products.find(
-        (candidate) => candidate.productCode.toLowerCase() === code.toLowerCase(),
-      );
-
-      if (!product) {
-        unresolved.push({ code, colour, quantity });
-        continue;
-      }
-
-      added.push(lineFor(product, colour, quantity));
-    }
-
-    if (added.length > 0) setLines((current) => [...current, ...added]);
-    setCodeEntry('');
-
-    if (unresolved.length === 0) {
-      setError(null);
-      return true;
-    }
-
-    // The codes the snapshot does not hold are asked of the Master, and land
-    // a moment later in the order they were pasted; what is still unknown
-    // after that is named once, as before.
-    setError(t('lead.add.products.lookingUp'));
-    void Promise.all(
-      unresolved.map(async (entry) => ({ ...entry, product: await resolveByCode(entry.code) })),
-    ).then((resolved) => {
-      const late: DraftLine[] = [];
-      const unknown: string[] = [];
-      for (const entry of resolved) {
-        if (entry.product) late.push(lineFor(entry.product, entry.colour, entry.quantity));
-        else unknown.push(entry.code);
-      }
-      if (late.length > 0) setLines((current) => [...current, ...late]);
-      setError(
-        unknown.length > 0 ? t('lead.add.products.pasteUnknown', { codes: unknown.join(', ') }) : null,
-      );
+    setLines((current) => {
+      const next = current.slice();
+      if (draft.at === null) next.push(line);
+      else next.splice(Math.min(draft.at, next.length), 0, line);
+      return next;
     });
-
-    return true;
+    setDraft(null);
+    window.setTimeout(() => searchRef.current?.focus(), 0);
   }
 
-  function updateLine(index: number, patch: Partial<DraftLine>): void {
-    setLines((current) => current.map((line, i) => (i === index ? { ...line, ...patch } : line)));
+  function modifyLine(line: DraftLine, index: number): void {
+    setLines((current) => current.filter((candidate) => candidate.key !== line.key));
+    setOpenKey(null);
+    forget(line.key);
+    setDraft({ ...line, at: index, isEdit: true });
   }
+
+  function removeLine(line: DraftLine): void {
+    setLines((current) => current.filter((candidate) => candidate.key !== line.key));
+    setOpenKey((current) => (current === line.key ? null : current));
+    forget(line.key);
+  }
+
+  /** Drop a key from the tick set — a line that is gone cannot stay selected. */
+  function forget(key: string): void {
+    setSelected((current) => {
+      if (!current[key]) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  }
+
+  // --- The Added-products panel -------------------------------------------
+
+  const panelTerm = lineQuery.trim().toLowerCase();
+
+  /*
+   * Matched on the same words the row shows — codes, product, system code and
+   * every colour on the line — so what somebody reads is what they can search.
+   */
+  const matchedLines = panelTerm
+    ? lines.filter((line) =>
+        [
+          line.colours.map((entry) => entry.variantCode ?? '').join(' '),
+          line.productName,
+          line.sin ?? '',
+          line.code ?? '',
+          line.colours.map((entry) => entry.colour).join(' '),
+        ]
+          .join(' ')
+          .toLowerCase()
+          .includes(panelTerm),
+      )
+    : lines;
+
+  const panelLines = matchedLines.slice(0, PANEL_LIMIT);
+
+  /*
+   * Ticks are keyed by line, and a line can be removed while ticked (by its own
+   * Remove, or by a Modify that lifts it back into the draft). Reading the set
+   * back through the live lines keeps a stale key from inflating the count.
+   */
+  const selectedLines = lines.filter((line) => selected[line.key]);
+  const shownKeys = panelLines.map((line) => line.key);
+  const allShownTicked = shownKeys.length > 0 && shownKeys.every((key) => selected[key]);
+
+  function toggleSelect(key: string): void {
+    setSelected((current) => {
+      const next = { ...current };
+      if (next[key]) delete next[key];
+      else next[key] = true;
+      return next;
+    });
+  }
+
+  function toggleSelectAllShown(): void {
+    setSelected((current) => {
+      const next = { ...current };
+      for (const key of shownKeys) {
+        if (allShownTicked) delete next[key];
+        else next[key] = true;
+      }
+      return next;
+    });
+  }
+
+  function removeSelected(): void {
+    const doomed = new Set(selectedLines.map((line) => line.key));
+    setLines((current) => current.filter((line) => !doomed.has(line.key)));
+    setOpenKey((current) => (current && doomed.has(current) ? null : current));
+    setSelected({});
+  }
+
+  // --- Save ---------------------------------------------------------------
+
+  const isOther = sourcePlatform === 'other';
+  const resolvedSource = isOther ? otherSource.trim() || sourcePlatform : sourcePlatform;
 
   async function save(): Promise<void> {
     if (!partyId) {
@@ -448,24 +718,8 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
       setError(t('lead.add.errors.noProducts'));
       return;
     }
-
-    const missingPackaging = lines.filter((line) => !line.packaging.trim());
-    if (missingPackaging.length > 0) {
-      setError(
-        t('lead.add.errors.missingPackaging', {
-          names: missingPackaging.map((line) => line.productName).join(', '),
-        }),
-      );
-      return;
-    }
-
-    const missingQuantities = lines.filter((line) => totalQuantity(line) <= 0);
-    if (missingQuantities.length > 0) {
-      setError(
-        t('lead.add.errors.missingQuantities', {
-          names: missingQuantities.map((line) => line.productName).join(', '),
-        }),
-      );
+    if (draft) {
+      setError(t('lead.add.errors.draftOpen'));
       return;
     }
 
@@ -477,7 +731,6 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
         productId: line.productId,
         productName: line.productName,
         alias: line.alias,
-        rate: ratePaise(line),
         code: line.code,
         sin: line.sin,
         size: line.size,
@@ -488,14 +741,29 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
         sequence: index + 1,
         fromPartyVariant: line.fromPartyVariant,
         notes: line.notes.trim() || null,
-        quantities: line.quantities
-          .filter((quantity) => quantity.colour.trim() && quantity.quantity > 0)
-          .map((quantity) => ({ colour: quantity.colour.trim(), quantity: quantity.quantity })),
+        /*
+         * Three states, not two. A rate this role cannot see is sent as no key
+         * at all so the server fills it from the catalogue exactly as it would
+         * have; a rate switched off is sent as `rateUnset`, which stops that
+         * fallback dead; anything else is what was typed.
+         */
+        ...(canSeeRates
+          ? line.rateOn
+            ? { rate: ratePaise(line) }
+            : { rate: null, rateUnset: true }
+          : {}),
+        quantities: line.colours
+          .filter((entry) => entry.colour.trim() && Number(entry.boxes) > 0)
+          .map((entry) => ({
+            colour: entry.colour.trim(),
+            quantity: Number(entry.boxes),
+            variantCode: entry.variantCode,
+          })),
       }));
 
-      await api.createLead({
+      const queued = await api.createLead({
         partyId,
-        sourcePlatform: sourcePlatform || null,
+        sourcePlatform: resolvedSource || null,
         followUpDate: followUpDate || null,
         partyWiseMode,
         notes: notes.trim() || null,
@@ -503,7 +771,7 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
         items,
       });
 
-      onSaved();
+      onSaved(queued.id);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : t('lead.add.errors.generic'));
     } finally {
@@ -511,35 +779,90 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
     }
   }
 
-  function onPartyCreated(party: CreatedParty): void {
-    setPartyId(party.id);
-    setPartyDrawerOpen(false);
-  }
+  const totalBoxes = lines.reduce((sum, line) => sum + boxesOf(line), 0);
+  /**
+   * The order total, or null when any line's rate is hidden from this person.
+   *
+   * `rate ?? 0` treated a rate this role may not see as free, so a rate-blind
+   * user was shown a confident ₹0.00 total in perfect good faith — the exact
+   * failure the masking rule exists to prevent (`roles-ui.md` §6). A line whose
+   * rate was deliberately switched off is a different matter: it is genuinely
+   * worth nothing yet, and contributes nothing rather than voiding the total.
+   */
+  const total = lines.reduce<number | null>((sum, line) => {
+    if (!line.rateOn) return sum;
+    const amount = lineTotal(line);
+    return sum === null || amount === null ? null : sum + amount;
+  }, 0);
 
-  // Global Ctrl+S (§10) — same action the Save button below calls, withheld
-  // only while a save is already in flight, mirroring the button's own
-  // `busy` gate (it has no other disabled condition to mirror).
+  const ready = Boolean(partyId) && lines.length > 0 && !draft;
+  const doneSteps = (partyId ? 1 : 0) + (resolvedSource ? 1 : 0) + (lines.length > 0 ? 1 : 0);
+
+  const statusLine = !partyId
+    ? t('lead.add.status.party')
+    : lines.length === 0
+      ? t('lead.add.status.products')
+      : draft
+        ? t('lead.add.status.draft')
+        : t('lead.add.savingHint');
+
   useCommand('record.save', busy ? null : () => void save());
 
   /*
-   * Resetting this screen throws away a lead somebody is part-way through
-   * typing, so it asks first — but only when there is actually something to
-   * lose. An empty form resets silently.
+   * Enter forward, Escape back — one field at a time, down the whole column:
+   * party, source, follow-up, the product search, the draft card's packaging,
+   * grade, rate and quantities, then the notes and any custom fields.
+   *
+   * A select opens its list on Enter instead of skipping past it, and the
+   * native popup then owns the arrows and its own Enter; the Enter after it
+   * closes moves on. Both halves are in `useEnterToAdvance`.
+   */
+  useEnterToAdvance(formRef);
+  useEscapeToPrevious(formRef);
+
+  /*
+   * Resetting throws away a lead somebody is part-way through typing, so it asks
+   * first — but only when there is something to lose.
    */
   useResetGuard(
-    partyId || lines.length > 0 || notes.trim()
+    partyId || lines.length > 0 || draft || notes.trim()
       ? () => window.confirm(t('lead.add.discardConfirm'))
       : null,
   );
 
+  const leadFieldDefinitions = view.customFields.filter(
+    (definition: CustomFieldDefinition) => definition.entity === 'lead',
+  );
+
+  const summary =
+    lines.length === 0
+      ? t('lead.add.summary.empty')
+      : t(lines.length === 1 ? 'lead.add.summary.countOne' : 'lead.add.summary.count', {
+          count: lines.length,
+          boxes: totalBoxes,
+        });
+
   return (
-    <div
-      style={{ maxWidth: rem(720), display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-20)' }}>
+      {/* --- Header ------------------------------------------------------ */}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
         <h1 className="ob-title" style={{ margin: 0 }}>
           {t('lead.add.title')}
         </h1>
+        <span
+          className="ob-small"
+          style={{
+            padding: `${rem(1)} ${rem(7)}`,
+            borderRadius: 'var(--r-sm)',
+            background: 'var(--bg-sunken)',
+            color: 'var(--fg-secondary)',
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          {t('lead.add.progress', { done: doneSteps, total: 3 })}
+        </span>
+        <span style={{ flex: 1 }} />
         <Button variant="secondary" onClick={onCancel}>
           {t('action.cancel')}
         </Button>
@@ -547,388 +870,1324 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
 
       {error && <ConflictBanner>{error}</ConflictBanner>}
 
-      {/* --- 1. Party --------------------------------------------------- */}
+      {/*
+       * Two columns that become one when there is no room for two: the form on
+       * the left, and everything already added on the right, where it stays in
+       * view while the next product is being built rather than pushing the Save
+       * button off the bottom of a growing page.
+       */}
+      <div className="ob-lead-cols">
+        <div className="ob-lead-form" ref={formRef}>
+          {/* --- The enquiry: party, source, follow-up -------------------- */}
 
-      <Card>
-        <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-12)' }}>
-          {t('lead.add.party.title')}
-        </div>
-
-        {selectedParty ? (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-16)' }}>
-              <span className="ob-body-strong">{selectedParty.name}</span>
-              <span
-                className="ob-mono"
-                style={{ fontSize: rem(11.5), color: 'var(--fg-tertiary)' }}
+          <Card padded={false}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--s-8)',
+                padding: `${rem(9)} ${rem(12)}`,
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'stretch',
+                  gap: rem(5),
+                  width: '100%',
+                }}
               >
-                {selectedParty.partyCode}
+                <Eyebrow>{t('lead.add.party.title')}</Eyebrow>
+                {selectedParty ? (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flex: 1,
+                      minWidth: 0,
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
+                      gap: `${rem(4)} ${rem(10)}`,
+                      padding: `${rem(5)} ${rem(6)} ${rem(5)} ${rem(11)}`,
+                      border: '1px solid var(--line)',
+                      borderRadius: 'var(--r-md)',
+                    }}
+                  >
+                    <span className="ob-body-strong">{selectedParty.name}</span>
+                    <span className="ob-mono ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
+                      {selectedParty.partyCode}
+                    </span>
+                    {selectedParty.phone && (
+                      <span className="ob-small" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {selectedParty.phone}
+                      </span>
+                    )}
+                    {selectedParty.city && <span className="ob-small">{selectedParty.city}</span>}
+                    {partyWiseMode && (
+                      <StatusPill tone="ok">{t('lead.add.party.ownRates')}</StatusPill>
+                    )}
+                    <span style={{ flex: 1, minWidth: 0 }} />
+                    {/*
+                     * `data-field` puts this button back into the Enter/Escape
+                     * walk. Choosing a party replaces the search box with this
+                     * chip, so without it Escape from the source select would
+                     * find no party field to go back to — it is the first step
+                     * of the form, and it has to stay reachable as one.
+                     */}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      data-field
+                      onClick={() => {
+                        setPartyId('');
+                        setPartyQuery('');
+                        setPartyOpen(true);
+                        setPartySel(0);
+                        window.setTimeout(() => partyRef.current?.focus(), 0);
+                      }}
+                    >
+                      {t('lead.add.party.change')}
+                    </Button>
+                  </div>
+                ) : (
+                  <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                    <Input
+                      ref={partyRef}
+                      value={partyQuery}
+                      placeholder={t('lead.add.party.placeholder')}
+                      aria-label={t('lead.add.party.search')}
+                      autoComplete="off"
+                      onFocus={() => setPartyOpen(true)}
+                      onChange={(event) => {
+                        setPartyQuery(event.target.value);
+                        setPartyOpen(true);
+                        setPartySel(0);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') {
+                          setPartyOpen(false);
+                          return;
+                        }
+                        if (event.key === 'ArrowDown') {
+                          event.preventDefault();
+                          setPartyOpen(true);
+                          setPartySel(Math.min(partyPick + 1, Math.max(0, partyRows.length - 1)));
+                        }
+                        if (event.key === 'ArrowUp') {
+                          event.preventDefault();
+                          setPartySel(Math.max(0, partyPick - 1));
+                        }
+                        if (
+                          (event.key === 'Enter' || event.key === 'Tab') &&
+                          partyRows[partyPick]
+                        ) {
+                          event.preventDefault();
+                          chooseParty(partyRows[partyPick]);
+                        }
+                      }}
+                    />
+                    {partyOpen && (
+                      <div role="listbox" className="ob-suggest">
+                        {partyRows.map((party, index) => (
+                          <button
+                            key={party.id}
+                            type="button"
+                            className="ob-suggest-row"
+                            style={{
+                              gridTemplateColumns: `${rem(92)} minmax(0, 1fr) ${rem(130)}`,
+                              background: index === partyPick ? 'var(--bg-selected)' : undefined,
+                            }}
+                            onMouseEnter={() => setPartySel(index)}
+                            onClick={() => chooseParty(party)}
+                          >
+                            <span
+                              className="ob-mono ob-micro"
+                              style={{ color: 'var(--fg-tertiary)' }}
+                            >
+                              {party.partyCode}
+                            </span>
+                            <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                              <span className="ob-body-strong ob-ellipsis">{party.name}</span>
+                              <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
+                                {party.city ?? ''}
+                              </span>
+                            </span>
+                            <span
+                              className="ob-small"
+                              style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                            >
+                              {party.phone ?? ''}
+                            </span>
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          className="ob-btn ob-btn--ghost"
+                          style={{
+                            width: '100%',
+                            justifyContent: 'flex-start',
+                            color: 'var(--accent)',
+                          }}
+                          onClick={() => {
+                            setPartyOpen(false);
+                            setPartyDrawerOpen(true);
+                          }}
+                        >
+                          {t('lead.add.party.create')}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="ob-lead-enquiry">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: rem(5), minWidth: 0 }}>
+                  <Eyebrow>{t('lead.add.source.label')}</Eyebrow>
+                  {/*
+                   * A select rather than a row of chips: the list is
+                   * company-defined and a shop with eight sources wrapped the
+                   * chips onto three lines above a field nobody had filled in
+                   * yet.
+                   */}
+                  <Select
+                    ref={sourceRef}
+                    value={sourcePlatform}
+                    aria-label={t('lead.add.step.source')}
+                    style={{ width: '100%', maxWidth: rem(280) }}
+                    onChange={(event) => {
+                      setSourcePlatform(event.target.value);
+                      if (event.target.value === 'other') {
+                        window.setTimeout(() => otherRef.current?.focus(), 0);
+                      }
+                    }}
+                  >
+                    {sourceOptions.map((option) => (
+                      <option key={option.id} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                  {isOther && (
+                    <Input
+                      ref={otherRef}
+                      value={otherSource}
+                      placeholder={t('lead.add.source.otherPlaceholder')}
+                      aria-label={t('lead.add.source.otherLabel')}
+                      style={{ width: '100%', maxWidth: rem(280) }}
+                      onChange={(event) => setOtherSource(event.target.value)}
+                    />
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: rem(5), minWidth: 0 }}>
+                  <Eyebrow>{t('lead.add.followUp.label')}</Eyebrow>
+                  <span
+                    style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
+                      gap: 'var(--s-4)',
+                    }}
+                  >
+                    <DateField
+                      value={followUpDate}
+                      aria-label={t('lead.add.details.followUp')}
+                      onChange={(event) => setFollowUpDate(event.target.value)}
+                    />
+                    {QUICK_FOLLOW_UPS.map(({ days, token }) => {
+                      const iso = isoDate(days);
+                      return (
+                        <Chip
+                          key={token}
+                          active={followUpDate === iso}
+                          onClick={() => setFollowUpDate((current) => (current === iso ? '' : iso))}
+                        >
+                          {t(token)}
+                        </Chip>
+                      );
+                    })}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* --- Products ----------------------------------------------------- */}
+
+          <section style={{ display: 'flex', flexDirection: 'column' }}>
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                gap: `${rem(6)} ${rem(10)}`,
+                marginBottom: 'var(--s-6)',
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: rem(17),
+                  height: rem(17),
+                  flex: 'none',
+                  borderRadius: '50%',
+                  background: lines.length > 0 ? 'var(--accent)' : 'var(--bg-sunken)',
+                  color: lines.length > 0 ? 'var(--fg-on-accent)' : 'var(--fg-tertiary)',
+                  fontSize: rem(11),
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                1
               </span>
-              {selectedParty.phone && <span className="ob-small">{selectedParty.phone}</span>}
-              {selectedParty.city && <span className="ob-small">{selectedParty.city}</span>}
-              <span style={{ flex: 1 }} />
-              <Button variant="secondary" size="sm" onClick={() => setPartyId('')}>
-                {t('lead.add.party.change')}
-              </Button>
+              <span className="ob-body-strong">{t('lead.add.products.title')}</span>
+              <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
+                {lines.length
+                  ? t('lead.add.products.searchAdds')
+                  : t('lead.add.products.searchFirst')}
+              </span>
+              <span style={{ flex: 1, minWidth: 0 }} />
+              {lines.length > 0 && (
+                <span className="ob-small" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {summary}
+                </span>
+              )}
             </div>
 
-            <label
+            {/* The search field, or the product it turned into. */}
+            <div style={{ position: 'relative' }}>
+              {draft ? (
+                <div className="ob-picked">
+                  <span
+                    className="ob-mono ob-body-strong"
+                    style={{ fontSize: rem(14), color: 'var(--accent)' }}
+                  >
+                    {draft.colours.map((entry) => entry.variantCode ?? entry.colour).join(', ')}
+                  </span>
+                  <span className="ob-body-strong">{draft.productName}</span>
+                  <span className="ob-mono ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
+                    {draft.sin ?? draft.code ?? ''}
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-6)' }}>
+                    {draft.colours.map((entry) => (
+                      <Swatch
+                        key={entry.colour}
+                        colour={entry.colour}
+                        hex={colourHex(entry.colour)}
+                        dotOnly
+                      />
+                    ))}
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0 }} />
+                  <Button variant="primary" disabled={!draftIsReady(draft)} onClick={saveDraft}>
+                    {draft.isEdit
+                      ? t('lead.add.draft.saveChanges')
+                      : t('lead.add.draft.saveProduct')}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    aria-label={t('lead.add.products.clear')}
+                    title={t('lead.add.products.clear')}
+                    onClick={() => {
+                      setDraft(null);
+                      window.setTimeout(() => searchRef.current?.focus(), 0);
+                    }}
+                  >
+                    ✕
+                  </Button>
+                </div>
+              ) : (
+                <Input
+                  ref={searchRef}
+                  value={query}
+                  placeholder={t('lead.add.products.codePlaceholder')}
+                  aria-label={t('lead.add.products.searchLabel')}
+                  autoComplete="off"
+                  onChange={(event) => {
+                    setQuery(event.target.value);
+                    setSel(0);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'ArrowDown') {
+                      event.preventDefault();
+                      setSel(Math.min(variantPick + 1, Math.max(0, variantRows.length - 1)));
+                    }
+                    if (event.key === 'ArrowUp') {
+                      event.preventDefault();
+                      setSel(Math.max(0, variantPick - 1));
+                    }
+                    if (
+                      (event.key === 'Enter' || event.key === 'Tab') &&
+                      variantRows[variantPick]
+                    ) {
+                      event.preventDefault();
+                      openDraft(variantRows[variantPick]);
+                    }
+                  }}
+                />
+              )}
+
+              {!draft && query.trim() !== '' && (
+                <div role="listbox" className="ob-suggest">
+                  <div
+                    className="ob-suggest-row ob-eyebrow"
+                    style={{
+                      gridTemplateColumns: SUGGEST_GRID,
+                      color: 'var(--fg-tertiary)',
+                    }}
+                  >
+                    <span>{t('lead.add.products.col.code')}</span>
+                    <span>{t('lead.add.products.col.product')}</span>
+                    <span>{t('lead.add.products.col.colour')}</span>
+                    <span style={{ textAlign: 'right' }}>{t('lead.add.products.col.free')}</span>
+                  </div>
+                  {variantRows.map((row, index) => (
+                    <button
+                      key={`${row.productId}|${row.colour}`}
+                      type="button"
+                      className="ob-suggest-row"
+                      style={{
+                        gridTemplateColumns: SUGGEST_GRID,
+                        background: index === variantPick ? 'var(--bg-selected)' : undefined,
+                      }}
+                      onMouseEnter={() => setSel(index)}
+                      onClick={() => openDraft(row)}
+                    >
+                      <span
+                        className="ob-mono ob-body-strong"
+                        style={{
+                          fontSize: rem(14),
+                          color: index === variantPick ? 'var(--accent)' : undefined,
+                        }}
+                      >
+                        {row.variantCode ?? row.productCode}
+                      </span>
+                      <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                        <span className="ob-ellipsis">{row.productName}</span>
+                        <span className="ob-mono ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
+                          {[
+                            row.sin,
+                            row.rate === undefined
+                              ? null
+                              : `${formatMoney(row.rate ?? null)}/${t('unit.box')}`,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </span>
+                      </span>
+                      <Swatch colour={row.colour} hex={colourHex(row.colour)} />
+                      <span
+                        className="ob-small"
+                        style={{
+                          textAlign: 'right',
+                          fontVariantNumeric: 'tabular-nums',
+                          color: row.availableBoxes <= 0 ? 'var(--state-offline)' : undefined,
+                        }}
+                      >
+                        {row.availableBoxes}
+                      </span>
+                    </button>
+                  ))}
+                  {variantRows.length === 0 && (
+                    <p className="ob-small" style={{ margin: 0, padding: 'var(--s-8)' }}>
+                      {t('lead.add.products.noHit')}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <p
+                className="ob-micro"
+                style={{ margin: `${rem(7)} 0 0`, color: 'var(--fg-tertiary)' }}
+              >
+                {draft ? t('lead.add.products.pickedHint') : t('lead.add.products.codeHint')}
+              </p>
+            </div>
+
+            {/* The card one product is built in before it joins the lead. */}
+            {draft && (
+              <DraftCard
+                draft={draft}
+                canEditRate={canEditRate}
+                canSeeRates={canSeeRates}
+                ready={draftIsReady(draft)}
+                packagingOptions={packagingOptions}
+                gradeOptions={gradeOptions}
+                suggestedPackaging={variantsForParty.get(draft.productId)?.packaging ?? null}
+                rateOrigin={rateOriginFor(draft.productId)}
+                colourHex={colourHex}
+                moreColours={coloursFor(draft.productId).filter(
+                  (entry) => !draft.colours.some((used) => used.colour === entry.colour),
+                )}
+                onPatch={patchDraft}
+                onBoxes={setColourBoxes}
+                onAddColour={(entry) => patchDraft({ colours: [...draft.colours, entry] })}
+                onRemoveColour={(colour) =>
+                  patchDraft({
+                    colours:
+                      draft.colours.length === 1
+                        ? draft.colours
+                        : draft.colours.filter((entry) => entry.colour !== colour),
+                  })
+                }
+                onSave={saveDraft}
+              />
+            )}
+          </section>
+
+          {/* --- Notes -------------------------------------------------------- */}
+
+          <section>
+            <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: 'var(--s-8)',
-                marginTop: 'var(--s-12)',
+                marginBottom: rem(5),
+              }}
+            >
+              <Eyebrow>{t('lead.add.details.notes')}</Eyebrow>
+              <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
+                {t('lead.add.step.notesHint')}
+              </span>
+            </div>
+            <Textarea
+              rows={3}
+              value={notes}
+              placeholder={t('lead.add.notes.placeholder')}
+              aria-label={t('lead.add.details.notes')}
+              onChange={(event) => setNotes(event.target.value)}
+            />
+            <CustomFields
+              definitions={leadFieldDefinitions}
+              values={customFields}
+              onChange={setCustomFields}
+            />
+          </section>
+
+          {/* --- Save --------------------------------------------------------- */}
+
+          <div
+            style={{
+              borderTop: '1px solid var(--line)',
+              paddingTop: 'var(--s-16)',
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              gap: `${rem(12)} ${rem(16)}`,
+            }}
+          >
+            <Button
+              variant="primary"
+              size="lg"
+              busy={busy}
+              disabled={!ready}
+              title="Ctrl+S"
+              onClick={() => void save()}
+            >
+              {busy ? t('lead.add.saving') : t('lead.add.save')}
+            </Button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: rem(2) }}>
+              <span className="ob-small" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                {summary}
+              </span>
+              <span
+                className="ob-micro"
+                style={{ color: ready ? 'var(--fg-tertiary)' : 'var(--state-offline)' }}
+              >
+                {statusLine}
+              </span>
+            </div>
+            <span style={{ flex: 1 }} />
+            <span className="ob-title" style={{ margin: 0, fontVariantNumeric: 'tabular-nums' }}>
+              {formatMoney(total)}
+            </span>
+          </div>
+        </div>
+
+        {/* --- Added products ------------------------------------------- */}
+
+        <aside className="ob-lead-panel" aria-label={t('lead.add.panel.title')}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
+            <Eyebrow>{t('lead.add.panel.title')}</Eyebrow>
+            <span
+              className="ob-micro"
+              style={{ color: 'var(--fg-tertiary)', fontVariantNumeric: 'tabular-nums' }}
+            >
+              {lines.length === 0
+                ? ''
+                : panelTerm
+                  ? t('lead.add.panel.countFiltered', {
+                      shown: matchedLines.length,
+                      total: lines.length,
+                    })
+                  : String(lines.length)}
+            </span>
+            <span style={{ flex: 1, minWidth: 0 }} />
+            <span className="ob-small" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              {summary}
+            </span>
+          </div>
+
+          <Input
+            value={lineQuery}
+            placeholder={t('lead.add.panel.search')}
+            aria-label={t('lead.add.panel.search')}
+            autoComplete="off"
+            onChange={(event) => setLineQuery(event.target.value)}
+          />
+
+          {selectedLines.length > 0 && (
+            <div className="ob-lead-selbar">
+              <span
+                className="ob-small ob-body-strong"
+                style={{ fontVariantNumeric: 'tabular-nums' }}
+              >
+                {t('lead.add.panel.selected', { count: selectedLines.length })}
+              </span>
+              <span style={{ flex: 1, minWidth: 0 }} />
+              <Button variant="secondary" size="sm" onClick={() => setSelected({})}>
+                {t('lead.add.panel.clear')}
+              </Button>
+              <Button variant="danger" size="sm" onClick={removeSelected}>
+                {t(
+                  selectedLines.length === 1
+                    ? 'lead.add.panel.removeSelectedOne'
+                    : 'lead.add.panel.removeSelected',
+                  { count: selectedLines.length },
+                )}
+              </Button>
+            </div>
+          )}
+
+          {lines.length > 0 && (
+            <label
+              className="ob-small"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--s-8)',
+                color: 'var(--fg-tertiary)',
                 cursor: 'pointer',
               }}
             >
-              <Switch checked={partyWiseMode} onChange={setPartyWiseMode} />
-              <span className="ob-small">{t('lead.add.party.useRates')}</span>
+              <input
+                type="checkbox"
+                className="ob-lead-check"
+                checked={allShownTicked}
+                onChange={toggleSelectAllShown}
+              />
+              {t('lead.add.panel.selectAll')}
             </label>
-          </>
-        ) : (
-          <>
-            <FormField label={t('lead.add.party.search')}>
-              {() => (
-                <Picker
-                  // Always null here: this branch only renders while nothing is
-                  // chosen — the card above replaces it the moment one is.
-                  value={null}
-                  onChange={(option) => setPartyId(option?.id ?? '')}
-                  fetchPage={fetchParties}
-                  label={t('lead.add.party.search')}
-                  placeholder={t('lead.add.party.searchPlaceholder')}
-                  storageKey="ob.pick.party"
-                  onCreate={() => setPartyDrawerOpen(true)}
-                />
-              )}
-            </FormField>
-
-            <div style={{ marginTop: 'var(--s-8)' }}>
-              <Button
-                variant="ghost"
-                size="sm"
-                icon="plus"
-                onClick={() => setPartyDrawerOpen(true)}
-              >
-                {t('lead.add.party.newParty')}
-              </Button>
-            </div>
-          </>
-        )}
-      </Card>
-
-      {/* --- 2. Products ------------------------------------------------ */}
-
-      <Card>
-        <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-12)' }}>
-          {t('lead.add.products.title')}
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}>
-          {lines.map((line, index) => (
-            <Card key={`${line.productId}-${index}`}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
-                <span className="ob-body-strong" style={{ fontSize: rem(13.5) }}>
-                  {line.productName}
-                </span>
-                {line.code && (
-                  <span
-                    className="ob-mono"
-                    style={{ fontSize: rem(11), color: 'var(--fg-tertiary)' }}
-                  >
-                    {line.code}
-                  </span>
-                )}
-                {line.fromPartyVariant && (
-                  <StatusPill tone="accent">{t('lead.add.products.partyRate')}</StatusPill>
-                )}
-                <span style={{ flex: 1 }} />
-                <IconButton
-                  icon="trash"
-                  label={t('lead.add.products.remove')}
-                  onClick={() => setLines((current) => current.filter((_, i) => i !== index))}
-                />
-              </div>
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: 'var(--s-12) var(--s-16)',
-                  marginTop: 'var(--s-12)',
-                }}
-              >
-                <FormField label={t('lead.add.products.packagingRequired')}>
-                  {(id) => (
-                    <>
-                      <Input
-                        id={id}
-                        value={line.packaging}
-                        placeholder={t('lead.add.products.packagingPlaceholder')}
-                        invalid={!line.packaging.trim()}
-                        onChange={(event) => updateLine(index, { packaging: event.target.value })}
-                      />
-                      {line.suggestedPackaging && !line.packaging && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          style={{ marginTop: 'var(--s-4)' }}
-                          onClick={() =>
-                            updateLine(index, { packaging: line.suggestedPackaging ?? '' })
-                          }
-                        >
-                          {t('lead.add.products.useSuggested', { value: line.suggestedPackaging })}
-                        </Button>
-                      )}
-                    </>
-                  )}
-                </FormField>
-
-                <FormField
-                  label={t('lead.add.products.rate')}
-                  hint={canEditRate ? undefined : t('lead.add.products.rateHint')}
-                >
-                  {(id) => (
-                    // Entered in rupees, kept as typed and converted to paise
-                    // by `ratePaise`.
-                    <NumberInput
-                      id={id}
-                      // A courtesy only — the Master ignores a rate from anybody
-                      // without `field.saleRate.edit`, whatever the panel sends.
-                      disabled={!canEditRate}
-                      value={line.rateText ?? ''}
-                      onChange={(event) =>
-                        updateLine(index, {
-                          rateText: event.target.value.replace(/[^0-9.]/g, ''),
-                          rateTouched: true,
-                        })
-                      }
-                    />
-                  )}
-                </FormField>
-
-                <FormField label={t('lead.add.products.size')}>
-                  {(id) => (
-                    <Input
-                      id={id}
-                      value={line.size ?? ''}
-                      onChange={(event) => updateLine(index, { size: event.target.value })}
-                    />
-                  )}
-                </FormField>
-
-                <FormField label={t('lead.add.products.grade')}>
-                  {(id) => (
-                    <Input
-                      id={id}
-                      value={line.grade ?? ''}
-                      onChange={(event) => updateLine(index, { grade: event.target.value })}
-                    />
-                  )}
-                </FormField>
-              </div>
-
-              <div style={{ marginTop: 'var(--s-12)' }}>
-                <ColourQuantityGrid
-                  mode="entry"
-                  productId={line.productId}
-                  productLabel={line.productName}
-                  quantities={line.quantities}
-                  stock={view.stock}
-                  onChange={(quantities) => updateLine(index, { quantities })}
-                  onEnterLast={() => productSearchRef.current?.focus()}
-                  colourHex={colourHex}
-                />
-                <p
-                  className="ob-small"
-                  style={{ marginTop: 'var(--s-4)', color: 'var(--fg-tertiary)' }}
-                >
-                  {t('lead.add.products.keyboardHint')}
-                </p>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--s-8)' }}>
-                <span className="ob-small">
-                  {totalQuantity(line)} {t('unit.boxes')} ·{' '}
-                  <strong className="ob-body-strong">{formatMoney(lineTotal(line))}</strong>
-                </span>
-              </div>
-            </Card>
-          ))}
-        </div>
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: 'var(--s-12) var(--s-16)',
-            marginTop: 'var(--s-12)',
-          }}
-        >
-          <FormField label={t('lead.add.products.byCode')}>
-            {(id) => (
-              <div style={{ display: 'flex', gap: 'var(--s-6)' }}>
-                <Input
-                  id={id}
-                  value={codeEntry}
-                  placeholder={t('lead.add.products.byCodePlaceholder', {
-                    example: PRODUCT_CODE_EXAMPLE,
-                  })}
-                  onChange={(event) => setCodeEntry(event.target.value)}
-                  onPaste={(event) => {
-                    // Only intercepted when it is actually a block. A single
-                    // pasted code falls through to the browser's own handling.
-                    if (pasteLines(event.clipboardData.getData('text/plain'))) {
-                      event.preventDefault();
-                    }
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault();
-                      void addByCode();
-                    }
-                  }}
-                />
-                <Button variant="secondary" onClick={() => void addByCode()}>
-                  {t('lead.add.products.add')}
-                </Button>
-              </div>
-            )}
-          </FormField>
-
-          <FormField label={t('lead.add.products.searchLabel')}>
-            {() => (
-              <Picker
-                // A product picker is an *add* action, not a standing
-                // selection: the chosen row goes onto the voucher and the field
-                // clears itself for the next one.
-                value={null}
-                onChange={(option) => {
-                  const product = option ? productRows.current.get(option.id) : null;
-                  if (product) addProduct(product);
-                }}
-                fetchPage={fetchProducts}
-                label={t('lead.add.products.searchLabel')}
-                placeholder={t('lead.add.products.searchPlaceholder')}
-                storageKey="ob.pick.product"
-              />
-            )}
-          </FormField>
-        </div>
-      </Card>
-
-      {/* --- 3. Lead details -------------------------------------------- */}
-
-      <Card>
-        <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-12)' }}>
-          {t('lead.add.details.title')}
-        </div>
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: 'var(--s-12) var(--s-16)',
-          }}
-        >
-          <FormField label={t('lead.add.details.source')}>
-            {(id) => (
-              <Select
-                id={id}
-                value={sourcePlatform}
-                onChange={(event) => setSourcePlatform(event.target.value)}
-              >
-                <option value="">—</option>
-                {sourceOptions.map((option) => (
-                  <option key={option.id} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </FormField>
-
-          <FormField label={t('lead.add.details.followUp')}>
-            {(id) => (
-              <DateField
-                id={id}
-                value={followUpDate}
-                onChange={(event) => setFollowUpDate(event.target.value)}
-              />
-            )}
-          </FormField>
-        </div>
-
-        <FormField label={t('lead.add.details.notes')}>
-          {(id) => (
-            <Textarea
-              id={id}
-              rows={3}
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-            />
           )}
-        </FormField>
 
-        <CustomFields
-          definitions={leadFieldDefinitions}
-          values={customFields}
-          onChange={setCustomFields}
-        />
-      </Card>
+          {panelLines.length === 0 && (
+            <p
+              className="ob-small"
+              style={{ margin: 0, padding: `${rem(12)} ${rem(2)}`, color: 'var(--fg-tertiary)' }}
+            >
+              {t(lines.length === 0 ? 'lead.add.panel.emptyNone' : 'lead.add.panel.emptyFiltered')}
+            </p>
+          )}
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <strong className="ob-body-strong">
-          {t('lead.add.total', { amount: formatMoney(total) })}
-        </strong>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
-          <span className="ob-small">{t('lead.add.savingHint')}</span>
-          <Button
-            variant="primary"
-            size="lg"
-            busy={busy}
-            title="Ctrl+S"
-            onClick={() => void save()}
-          >
-            {busy ? t('lead.add.saving') : t('lead.add.save')}
-          </Button>
-        </div>
+          <div className="ob-lead-lines">
+            {panelLines.map((line) => (
+              <LeadLine
+                key={line.key}
+                line={line}
+                open={openKey === line.key}
+                checked={Boolean(selected[line.key])}
+                colourHex={colourHex}
+                onToggle={() => setOpenKey((current) => (current === line.key ? null : line.key))}
+                onCheck={() => toggleSelect(line.key)}
+                onModify={() => modifyLine(line, lines.indexOf(line))}
+                onRemove={() => removeLine(line)}
+              />
+            ))}
+          </div>
+
+          {matchedLines.length > panelLines.length && (
+            <p className="ob-micro" style={{ margin: 0, color: 'var(--fg-tertiary)' }}>
+              {t('lead.add.panel.truncated', { shown: panelLines.length })}
+            </p>
+          )}
+        </aside>
       </div>
 
       <PartyDrawer
         open={partyDrawerOpen}
         onClose={() => setPartyDrawerOpen(false)}
-        onCreated={onPartyCreated}
+        onCreated={(party: CreatedParty) => {
+          seenParties.current.set(party.id, party as unknown as Party);
+          setPartyId(party.id);
+          setPartyDrawerOpen(false);
+          window.setTimeout(() => searchRef.current?.focus(), 0);
+        }}
         onError={setError}
       />
     </div>
   );
 }
 
-function totalQuantity(line: { quantities: ColourQuantity[] }): number {
-  return line.quantities.reduce((sum, quantity) => sum + (quantity.quantity || 0), 0);
+// --- Pieces ---------------------------------------------------------------
+
+const SUGGEST_GRID = `${rem(70)} minmax(0, 1fr) minmax(0, 0.6fr) ${rem(74)}`;
+const COLOUR_GRID = `${rem(70)} minmax(0, 1fr) ${rem(120)} ${rem(110)} ${rem(30)}`;
+
+/** The small upper-case label that names a row without becoming a heading. */
+function Eyebrow({ children }: { children: ReactNode }) {
+  return (
+    <span className="ob-eyebrow" style={{ flex: 'none', color: 'var(--fg-tertiary)' }}>
+      {children}
+    </span>
+  );
+}
+
+function Chip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button type="button" className="ob-chip" aria-pressed={active} onClick={onClick}>
+      {children}
+    </button>
+  );
+}
+
+function Swatch({
+  colour,
+  hex,
+  dotOnly = false,
+}: {
+  colour: string;
+  hex: string | undefined;
+  dotOnly?: boolean;
+}) {
+  const dot = (
+    <span
+      aria-hidden="true"
+      style={{
+        width: rem(13),
+        height: rem(13),
+        borderRadius: '50%',
+        flex: 'none',
+        background: hex ?? 'var(--bg-sunken)',
+        border: '1px solid var(--line-strong)',
+      }}
+    />
+  );
+
+  if (dotOnly) return <span title={colour}>{dot}</span>;
+
+  return (
+    <span
+      className="ob-small"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: rem(7), minWidth: 0 }}
+    >
+      {dot}
+      <span className="ob-ellipsis">{colour}</span>
+    </span>
+  );
 }
 
 /**
- * The line's rate in paise, or null when there is no rate to show.
+ * One product already on the lead, as the panel draws it.
  *
- * The draft holds the rupee text the user typed rather than the paise number,
- * because a controlled field rendered back from paise cannot be typed into: the
- * "." in "12." parses to 12, the state does not change, and React restores the
- * field to "12" as the key is pressed — so ₹12.50 is entered as ₹1250. Keeping
- * the text and converting once, here, lets a half-typed number stay half-typed.
+ * Collapsed it is one line — codes, name, boxes, money — so twenty products can
+ * be scanned for the one that is wrong. Opened it shows every colour with what
+ * was ordered against what is free, the packaging, grade and rate, and the two
+ * things that can be done about it.
  *
- * A blank or unparseable field is unknown rather than free, the same rule the
- * order total follows.
+ * The tick box sits outside the toggle rather than inside it: expanding a row
+ * to read it must not select it for removal.
  */
-function ratePaise(line: DraftLine): number | null {
-  if (line.rateText === null || !line.rateText.trim()) return null;
+function LeadLine({
+  line,
+  open,
+  checked,
+  colourHex,
+  onToggle,
+  onCheck,
+  onModify,
+  onRemove,
+}: {
+  line: DraftLine;
+  open: boolean;
+  checked: boolean;
+  colourHex: (name: string) => string | undefined;
+  onToggle: () => void;
+  onCheck: () => void;
+  onModify: () => void;
+  onRemove: () => void;
+}) {
+  const over = line.colours.some((entry) => Number(entry.boxes) > entry.availableBoxes);
+  const boxes = boxesOf(line);
+  const amount = lineTotal(line);
 
-  const rupees = Number(line.rateText);
-  return Number.isFinite(rupees) ? Math.round(rupees * 100) : null;
+  const meta = [
+    line.packaging.trim() || t('lead.add.line.noPackaging'),
+    line.grade ?? '—',
+    line.rateOn ? `${formatMoney(ratePaise(line))}/${t('unit.box')}` : t('lead.add.line.toQuote'),
+  ].join(' · ');
+
+  return (
+    <div className="ob-lead-line" data-open={open ? 'true' : undefined}>
+      <div className="ob-lead-line__head">
+        <input
+          type="checkbox"
+          className="ob-lead-check"
+          style={{ marginLeft: 'var(--s-8)' }}
+          checked={checked}
+          aria-label={t('lead.add.panel.select', { product: line.productName })}
+          onChange={onCheck}
+        />
+        <button
+          type="button"
+          className="ob-lead-line__toggle"
+          aria-expanded={open}
+          onClick={onToggle}
+        >
+          <span aria-hidden="true" style={{ flex: 'none', color: 'var(--fg-tertiary)' }}>
+            {open ? '▾' : '▸'}
+          </span>
+          <span className="ob-mono ob-body-strong" style={{ flex: 'none' }}>
+            {line.colours.map((entry) => entry.variantCode ?? entry.colour).join(', ')}
+          </span>
+          <span className="ob-body-strong ob-ellipsis" style={{ flex: 1, minWidth: 0 }}>
+            {line.productName}
+          </span>
+          {over && (
+            <span
+              className="ob-lead-short"
+              title={t('lead.add.products.overFree')}
+              aria-label={t('lead.add.products.overFree')}
+            />
+          )}
+          <span
+            className="ob-micro"
+            style={{
+              flex: 'none',
+              color: 'var(--fg-tertiary)',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {t('lead.add.line.boxesShort', { count: boxes })}
+          </span>
+          <span
+            className="ob-small"
+            style={{
+              flex: 'none',
+              fontWeight: line.rateOn ? 600 : 450,
+              color: line.rateOn ? undefined : 'var(--fg-tertiary)',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {line.rateOn ? formatMoney(amount) : t('lead.add.line.rateNa')}
+          </span>
+        </button>
+      </div>
+
+      {open && (
+        <div className="ob-lead-line__body">
+          {line.colours.map((entry) => {
+            const short = Number(entry.boxes) > entry.availableBoxes;
+            return (
+              <span
+                key={entry.colour}
+                className="ob-small"
+                style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}
+              >
+                <Swatch colour={entry.colour} hex={colourHex(entry.colour)} dotOnly />
+                <span className="ob-mono ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
+                  {entry.variantCode ?? '—'}
+                </span>
+                <span className="ob-ellipsis" style={{ flex: 1, minWidth: 0 }}>
+                  {entry.colour}
+                </span>
+                <span className="ob-body-strong" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {entry.boxes || '0'}
+                </span>
+                <span
+                  className="ob-micro"
+                  style={{
+                    color: short ? 'var(--state-offline)' : 'var(--fg-tertiary)',
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {t('lead.add.line.ofFree', { free: entry.availableBoxes })}
+                </span>
+              </span>
+            );
+          })}
+
+          <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
+            {meta}
+          </span>
+
+          <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
+            <Button variant="secondary" size="sm" onClick={onModify}>
+              {t('lead.add.line.modify')}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={onRemove}>
+              {t('lead.add.products.remove')}
+            </Button>
+          </span>
+        </div>
+      )}
+    </div>
+  );
 }
 
-function lineTotal(line: DraftLine): number | null {
-  const rate = ratePaise(line);
-  return rate === null ? null : Math.round(rate * totalQuantity(line));
+function ColourRows({
+  rows,
+  colourHex,
+  quantityHeader,
+  freeHeader,
+  codeHeader,
+  colourHeader,
+  onBoxes,
+  onRemove,
+  removeLabel,
+}: {
+  rows: ColourEntry[];
+  colourHex: (name: string) => string | undefined;
+  codeHeader: string;
+  colourHeader: string;
+  quantityHeader: string;
+  freeHeader: string;
+  onBoxes: (colour: string, boxes: string) => void;
+  onRemove?: (colour: string) => void;
+  removeLabel: (colour: string) => string;
+}) {
+  function step(entry: ColourEntry, delta: number): void {
+    const current = Number(entry.boxes) || 0;
+    onBoxes(entry.colour, String(Math.max(0, current + delta)));
+  }
+
+  return (
+    <>
+      <div
+        className="ob-eyebrow"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: COLOUR_GRID,
+          gap: `0 ${rem(12)}`,
+          paddingBottom: rem(4),
+          color: 'var(--fg-tertiary)',
+        }}
+      >
+        <span>{codeHeader}</span>
+        <span>{colourHeader}</span>
+        <span style={{ textAlign: 'right' }}>{quantityHeader}</span>
+        <span style={{ textAlign: 'right' }}>{freeHeader}</span>
+        <span />
+      </div>
+      {rows.map((entry) => {
+        const over = Number(entry.boxes) > entry.availableBoxes;
+        return (
+          <div
+            key={entry.colour}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: COLOUR_GRID,
+              gap: `0 ${rem(12)}`,
+              alignItems: 'center',
+              padding: `${rem(3)} 0`,
+            }}
+          >
+            <span className="ob-mono ob-body-strong">{entry.variantCode ?? '—'}</span>
+            <Swatch colour={entry.colour} hex={colourHex(entry.colour)} />
+            <Input
+              value={entry.boxes}
+              inputMode="numeric"
+              placeholder="0"
+              invalid={over}
+              aria-label={`${quantityHeader} — ${entry.colour}`}
+              style={{ textAlign: 'right' }}
+              onChange={(event) => onBoxes(entry.colour, event.target.value.replace(/[^0-9]/g, ''))}
+              onKeyDown={(event) => {
+                const by = event.shiftKey ? 10 : 1;
+                if (event.key === 'ArrowUp') {
+                  event.preventDefault();
+                  step(entry, by);
+                }
+                if (event.key === 'ArrowDown') {
+                  event.preventDefault();
+                  step(entry, -by);
+                }
+              }}
+            />
+            <span
+              className="ob-small"
+              style={{
+                textAlign: 'right',
+                fontVariantNumeric: 'tabular-nums',
+                color: over ? 'var(--state-offline)' : 'var(--fg-secondary)',
+              }}
+            >
+              {entry.availableBoxes}
+            </span>
+            {onRemove ? (
+              <button
+                type="button"
+                className="ob-btn ob-btn--ghost"
+                aria-label={removeLabel(entry.colour)}
+                style={{ padding: 0, minWidth: rem(24) }}
+                onClick={() => onRemove(entry.colour)}
+              >
+                ✕
+              </button>
+            ) : (
+              <span />
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+/**
+ * The card one product is built in before it joins the lead.
+ *
+ * Nothing here is on the voucher yet, which is the point: packaging, a rate and
+ * at least one quantity are all decided in one place, and Add is refused until
+ * they are. The hint along the bottom says which of the three is missing rather
+ * than making somebody guess at a disabled button.
+ */
+function DraftCard({
+  draft,
+  canEditRate,
+  canSeeRates,
+  ready,
+  packagingOptions,
+  gradeOptions,
+  suggestedPackaging,
+  rateOrigin,
+  colourHex,
+  moreColours,
+  onPatch,
+  onBoxes,
+  onAddColour,
+  onRemoveColour,
+  onSave,
+}: {
+  draft: DraftLine;
+  canEditRate: boolean;
+  canSeeRates: boolean;
+  ready: boolean;
+  packagingOptions: OptionListItem[];
+  gradeOptions: OptionListItem[];
+  suggestedPackaging: string | null;
+  rateOrigin: RateOrigin;
+  colourHex: (name: string) => string | undefined;
+  moreColours: ColourEntry[];
+  onPatch: (patch: Partial<DraftLine>) => void;
+  onBoxes: (colour: string, boxes: string) => void;
+  onAddColour: (entry: ColourEntry) => void;
+  onRemoveColour: (colour: string) => void;
+  onSave: () => void;
+}) {
+  const filled = draft.colours.filter((entry) => Number(entry.boxes) > 0);
+  const rate = ratePaise(draft);
+  const preview =
+    rate === null ? null : rate * filled.reduce((sum, entry) => sum + Number(entry.boxes), 0);
+
+  const hint = !draft.packaging.trim()
+    ? t('lead.add.draft.hintPackaging')
+    : filled.length === 0
+      ? t('lead.add.draft.hintQuantity')
+      : !canSeeRates || !draft.rateOn
+        ? t('lead.add.draft.hintNoRate')
+        : (rate ?? 0) > 0
+          ? t('lead.add.draft.hintTotal', { amount: formatMoney(preview) })
+          : t('lead.add.draft.hintRateOrOff');
+
+  function step(delta: number): void {
+    const current = Number(draft.rateText ?? '0') || 0;
+    onPatch({ rateText: String(Math.max(0, current + delta)), rateTouched: true });
+  }
+
+  /*
+   * The grade the line already carries has to stay pickable even when nobody
+   * has put it on the list — it came off the product, and a select that cannot
+   * show its own value silently rewrites the line the moment it renders.
+   */
+  const gradeValues = [
+    ...gradeOptions.map((option) => ({ value: option.value, label: option.label })),
+    ...(draft.grade && !gradeOptions.some((option) => option.value === draft.grade)
+      ? [{ value: draft.grade, label: draft.grade }]
+      : []),
+  ];
+
+  return (
+    <Card padded={false} style={{ marginTop: 'var(--s-8)' }}>
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: `${rem(6)} ${rem(12)}`,
+          padding: `${rem(8)} ${rem(14)}`,
+          borderBottom: '1px solid var(--line)',
+        }}
+      >
+        <Eyebrow>{t('lead.add.draft.title')}</Eyebrow>
+        <span style={{ flex: 1, minWidth: 0 }} />
+        <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
+          {draft.isEdit ? t('lead.add.draft.editing') : t('lead.add.draft.new')}
+        </span>
+      </div>
+
+      <div style={{ padding: `${rem(12)} ${rem(14)} ${rem(14)}` }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `minmax(0, 1fr) minmax(0, 1fr) minmax(${rem(160)}, ${rem(220)})`,
+            gap: 'var(--s-12)',
+            marginBottom: 'var(--s-12)',
+          }}
+        >
+          <label className="ob-small" style={{ display: 'block', color: 'var(--fg-secondary)' }}>
+            {t('lead.add.draft.packaging')}{' '}
+            <span style={{ color: 'var(--state-offline)' }}>{t('lead.add.step.required')}</span>
+            {/* Typed or picked, one control — `line.packaging` ships unseeded,
+                so a shop that has never filled it in must still be able to
+                type, and one that has should not have to.
+
+                `autoFocus` because the card has just replaced the search box
+                somebody was typing in: without it the caret lands on the body
+                and the Enter walk has nowhere to start from. Packaging is the
+                right place to start anyway — it is the one field a picked code
+                deliberately leaves empty. */}
+            <SuggestInput
+              autoFocus
+              value={draft.packaging}
+              invalid={!draft.packaging.trim()}
+              placeholder={t('lead.add.products.packagingPlaceholder')}
+              optionsLabel={t('lead.add.draft.showOptions', {
+                field: t('lead.add.draft.packaging'),
+              })}
+              options={packagingOptions.map((option) => ({
+                value: option.value,
+                label: option.label,
+              }))}
+              onChange={(next) => onPatch({ packaging: next })}
+            />
+            {suggestedPackaging && !draft.packaging && (
+              <Button
+                variant="ghost"
+                size="sm"
+                style={{ marginTop: rem(4) }}
+                onClick={() => onPatch({ packaging: suggestedPackaging })}
+              >
+                {t('lead.add.products.useSuggested', { value: suggestedPackaging })}
+              </Button>
+            )}
+          </label>
+
+          <label className="ob-small" style={{ display: 'block', color: 'var(--fg-secondary)' }}>
+            {t('lead.add.draft.grade')}
+            {/* The same control as packaging beside it: a grade is a short word
+                from a short list, and the two sitting in one row must not be a
+                dropdown and a text box. */}
+            <SuggestInput
+              value={draft.grade ?? ''}
+              optionsLabel={t('lead.add.draft.showOptions', {
+                field: t('lead.add.draft.grade'),
+              })}
+              options={gradeValues.map((option) => ({
+                value: option.value,
+                label: option.label,
+              }))}
+              onChange={(next) => onPatch({ grade: next || null })}
+            />
+          </label>
+
+          {canSeeRates && (
+            <div className="ob-small" style={{ color: 'var(--fg-secondary)' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
+                <span>{t('lead.add.draft.ratePerBox')}</span>
+                <button
+                  type="button"
+                  className="ob-rate-switch"
+                  role="switch"
+                  aria-checked={draft.rateOn}
+                  aria-label={t('lead.add.draft.rateSwitch')}
+                  title={t('lead.add.draft.rateSwitchHint')}
+                  disabled={!canEditRate}
+                  onClick={() => onPatch({ rateOn: !draft.rateOn, rateTouched: true })}
+                >
+                  <span aria-hidden="true" className="ob-rate-switch__knob" />
+                </button>
+                <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
+                  {draft.rateOn ? t('lead.add.draft.rateOn') : t('lead.add.draft.rateOff')}
+                </span>
+              </span>
+
+              {draft.rateOn ? (
+                <span
+                  className="ob-rate-field"
+                  data-invalid={(rate ?? 0) > 0 ? undefined : 'true'}
+                  style={{ marginTop: rem(4) }}
+                >
+                  <span
+                    aria-hidden="true"
+                    style={{ padding: `0 ${rem(2)} 0 ${rem(9)}`, color: 'var(--fg-tertiary)' }}
+                  >
+                    ₹
+                  </span>
+                  <input
+                    value={draft.rateText ?? ''}
+                    inputMode="numeric"
+                    // A courtesy only — the Master ignores a rate from anybody
+                    // without `field.saleRate.edit`, whatever the panel sends.
+                    disabled={!canEditRate}
+                    aria-label={t('lead.add.draft.ratePerBox')}
+                    onChange={(event) =>
+                      onPatch({
+                        rateText: event.target.value.replace(/[^0-9.]/g, ''),
+                        rateTouched: true,
+                      })
+                    }
+                    onKeyDown={(event) => {
+                      const by = event.shiftKey ? 10 : 1;
+                      if (event.key === 'ArrowUp') {
+                        event.preventDefault();
+                        step(by);
+                      }
+                      if (event.key === 'ArrowDown') {
+                        event.preventDefault();
+                        step(-by);
+                      }
+                    }}
+                  />
+                </span>
+              ) : (
+                <span
+                  className="ob-small"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    height: rem(32),
+                    marginTop: rem(4),
+                    padding: `0 ${rem(9)}`,
+                    border: '1px dashed var(--line-strong)',
+                    borderRadius: 'var(--r-sm)',
+                    color: 'var(--fg-tertiary)',
+                  }}
+                >
+                  {t('lead.add.draft.noRate')}
+                </span>
+              )}
+
+              <span
+                style={{
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  gap: rem(8),
+                  marginTop: rem(4),
+                }}
+              >
+                <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
+                  {draft.rateOn ? rateOrigin.note : t('lead.add.draft.rateLater')}
+                </span>
+                {draft.rateOn && rateOrigin.rate !== null && rate !== rateOrigin.rate && (
+                  <button
+                    type="button"
+                    className="ob-btn ob-btn--ghost ob-micro"
+                    style={{ padding: 0, color: 'var(--accent)', textDecoration: 'underline' }}
+                    onClick={() =>
+                      onPatch({
+                        rateText: String((rateOrigin.rate ?? 0) / 100),
+                        rateTouched: false,
+                      })
+                    }
+                  >
+                    {t('lead.add.draft.rateReset', { amount: formatMoney(rateOrigin.rate) })}
+                  </button>
+                )}
+              </span>
+            </div>
+          )}
+        </div>
+
+        <div className="ob-eyebrow" style={{ color: 'var(--fg-tertiary)', marginBottom: rem(6) }}>
+          {t('lead.add.draft.quantityTitle')}
+        </div>
+
+        <ColourRows
+          rows={draft.colours}
+          colourHex={colourHex}
+          codeHeader={t('lead.add.products.col.code')}
+          colourHeader={t('lead.add.products.col.colour')}
+          quantityHeader={t('lead.add.draft.col.quantity')}
+          freeHeader={t('lead.add.draft.col.freeToSell')}
+          onBoxes={onBoxes}
+          onRemove={draft.colours.length > 1 ? onRemoveColour : undefined}
+          removeLabel={(colour) => t('lead.add.draft.removeColour', { colour })}
+        />
+
+        {moreColours.length > 0 && (
+          <Select
+            value=""
+            className="ob-select--dashed"
+            aria-label={t('lead.add.draft.addColour')}
+            style={{ marginTop: 'var(--s-8)', maxWidth: rem(340) }}
+            onChange={(event) => {
+              const found = moreColours.find((entry) => entry.colour === event.target.value);
+              if (found) onAddColour(found);
+            }}
+          >
+            <option value="">{t('lead.add.draft.addColour')}</option>
+            {moreColours.map((entry) => (
+              <option key={entry.colour} value={entry.colour}>
+                {t('lead.add.draft.colourOption', {
+                  code: entry.variantCode ?? '—',
+                  colour: entry.colour,
+                  free: entry.availableBoxes,
+                })}
+              </option>
+            ))}
+          </Select>
+        )}
+
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: 'var(--s-8)',
+            marginTop: 'var(--s-16)',
+            paddingTop: 'var(--s-12)',
+            borderTop: '1px solid var(--line)',
+          }}
+        >
+          <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
+            {hint}
+          </span>
+          <span style={{ flex: 1, minWidth: 0 }} />
+          {/*
+           * `data-field` makes this the last stop of the Enter walk through the
+           * card, and Enter over a button is a click — so the last quantity,
+           * Enter, Enter adds the product and puts the caret back in the search
+           * box for the next one. While the draft is short of something the
+           * button is disabled, which takes it out of the walk, and Enter runs
+           * on past it to the notes instead.
+           */}
+          <Button variant="primary" data-field disabled={!ready} onClick={onSave}>
+            {draft.isEdit ? t('lead.add.draft.saveChanges') : t('lead.add.draft.saveProduct')}
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
 }

@@ -37,6 +37,8 @@ import * as publicApiAndConnectors from './20260316000000_public_api_and_connect
 import * as aiAssistant from './20260317000000_ai_assistant.js';
 import * as documentLayoutV2 from './20260318000000_document_layout_v2.js';
 import * as productsBulkPermissionGrant from './20260319000000_products_bulk_permission_grant.js';
+import * as productVariantCodes from './20260320000000_product_variant_codes.js';
+import * as lineItemVariantCodes from './20260321000000_line_item_variant_codes.js';
 
 export interface Migration {
   name: string;
@@ -103,6 +105,14 @@ export const migrations: Migration[] = [
   {
     name: '20260319000000_products_bulk_permission_grant',
     ...productsBulkPermissionGrant,
+  },
+  {
+    name: '20260320000000_product_variant_codes',
+    ...productVariantCodes,
+  },
+  {
+    name: '20260321000000_line_item_variant_codes',
+    ...lineItemVariantCodes,
   },
   // Stage 7 of `docs/backend-modules/` — last in the array, not last by
   // timestamp. Its `20260309` slot was reserved before `20260310`/`20260311`

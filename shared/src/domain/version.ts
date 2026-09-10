@@ -81,6 +81,23 @@ export function standing(
 export type PanelKind = 'master' | 'office';
 
 /**
+ * The operating systems a panel is built for.
+ *
+ * The strings are Node's own `process.platform` values rather than prettier
+ * ones, so every comparison in the update path is against something a running
+ * panel can produce without a lookup table.
+ */
+export type ReleasePlatform = 'win32' | 'darwin' | 'linux';
+
+/**
+ * Every release before platform-aware manifests existed was a Windows build —
+ * 1.0.1 through 1.0.3 are all `-Setup.exe`. A manifest on disk with no
+ * `platform` is therefore a Windows one, and reading it as such is what keeps
+ * an already-deployed shop updating across this change.
+ */
+export const LEGACY_RELEASE_PLATFORM: ReleasePlatform = 'win32';
+
+/**
  * `latest.json`, the file that sits beside a setup file in the releases folder
  * and says what it is.
  *
@@ -91,6 +108,15 @@ export type PanelKind = 'master' | 'office';
  */
 export interface ReleaseManifest {
   panel: PanelKind;
+  /**
+   * Which OS this build installs on.
+   *
+   * Signed, for the same reason `panel` is: without it a Windows manifest
+   * could be handed to a Mac as its own, and the shell would download 160 MB
+   * of `.exe` it can never run. A manifest read off disk without the field is
+   * `LEGACY_RELEASE_PLATFORM`.
+   */
+  platform: ReleasePlatform;
   version: string;
   /** Filename only, resolved against the folder the manifest was found in. */
   file: string;

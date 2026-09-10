@@ -2,6 +2,7 @@
 
 import { DEVELOPER_RESET_CONFIRMATION, DEVELOPER_TOKEN_HEADER } from '@orderbook/shared';
 import type {
+  PickKind,
   ActivityLogEntry,
   DesktopBridge,
   ActivityLogFacets,
@@ -568,8 +569,21 @@ export const api = {
     quantityBoxes: number;
     note?: string;
   }) => post<InventoryStockLevel>('/api/stock/adjust', input),
-  setReorderLevel: (input: { productId: string; colour: string; reorderLevel: number | null }) =>
-    post<InventoryStockLevel>('/api/stock/reorder-level', input),
+  /**
+   * The bands and the variant code for one (product, colour).
+   *
+   * Every field but the pair is optional and **absent means untouched** —
+   * which is what lets the reorder cell and the code cell, on the same row,
+   * each save without wiping the other.
+   */
+  setReorderLevel: (input: {
+    productId: string;
+    colour: string;
+    reorderLevel?: number | null;
+    minStockLevel?: number | null;
+    maxStockLevel?: number | null;
+    variantCode?: string | null;
+  }) => post<InventoryStockLevel>('/api/stock/reorder-level', input),
 
   // Leads are read-only here: they are raised in the Office Panel, and the
   // Master's API has no create endpoint at all (docs/LEAD_GENERATION_FLOW.md §2).
@@ -672,10 +686,7 @@ export const api = {
   vaultStatus: () => request<VaultStatus>('/api/settings/vault-status'),
 
   /** One page of a searchable dropdown — see `/api/pick/:kind`. */
-  pick: <T>(
-    kind: 'product' | 'party',
-    query: { term: string; include?: string[]; signal?: AbortSignal },
-  ) => {
+  pick: <T>(kind: PickKind, query: { term: string; include?: string[]; signal?: AbortSignal }) => {
     const params = new URLSearchParams({ q: query.term });
     if (query.include?.length) params.set('include', query.include.join(','));
     return request<{ items: T[]; truncated: boolean }>(

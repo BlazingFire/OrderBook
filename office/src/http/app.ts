@@ -484,7 +484,8 @@ export function createApp(): Express {
    */
   app.get('/api/products', (req, res) => {
     const query = {
-      search: typeof req.query.search === 'string' && req.query.search ? req.query.search : undefined,
+      search:
+        typeof req.query.search === 'string' && req.query.search ? req.query.search : undefined,
       productType:
         typeof req.query.productType === 'string' && req.query.productType
           ? req.query.productType
@@ -547,7 +548,10 @@ export function createApp(): Express {
           return;
         }
 
-        res.setHeader('Content-Type', response.headers.get('content-type') ?? 'application/octet-stream');
+        res.setHeader(
+          'Content-Type',
+          response.headers.get('content-type') ?? 'application/octet-stream',
+        );
         res.setHeader(
           'Content-Disposition',
           response.headers.get('content-disposition') ?? 'attachment; filename="products-template"',
@@ -581,7 +585,10 @@ export function createApp(): Express {
         form.append('dryRun', String(body.dryRun === 'true' || body.dryRun === true));
         form.append('mode', body.mode === 'upsert' ? 'upsert' : 'create');
 
-        const response = await masterFetch('/api/panel/products/import', { method: 'POST', body: form });
+        const response = await masterFetch('/api/panel/products/import', {
+          method: 'POST',
+          body: form,
+        });
         res.status(response.status).json(await response.json().catch(() => null));
       } catch (error) {
         res.status(503).json({
@@ -770,18 +777,28 @@ export function createApp(): Express {
     queue(res, { kind: 'partyVariant.upsert', entity: 'party_variant', payload: req.body }),
   );
 
-  app.post('/api/leads', (req, res) =>
-    queue(res, { kind: 'lead.create', entity: 'lead', payload: req.body }),
-  );
-  app.put('/api/leads/:id', (req, res) =>
-    queue(res, {
+  app.post('/api/leads', (req, res) => {
+    const problem = leadPayloadProblem(req.body, { itemsRequired: true });
+    if (problem) {
+      res.status(400).json({ error: 'validation_error', message: problem });
+      return;
+    }
+    void queue(res, { kind: 'lead.create', entity: 'lead', payload: req.body });
+  });
+  app.put('/api/leads/:id', (req, res) => {
+    const problem = leadPayloadProblem(req.body, { itemsRequired: false });
+    if (problem) {
+      res.status(400).json({ error: 'validation_error', message: problem });
+      return;
+    }
+    void queue(res, {
       kind: 'lead.update',
       entity: 'lead',
       entityId: req.params.id,
       payload: req.body,
       baseFieldHlc: req.body?.baseFieldHlc,
-    }),
-  );
+    });
+  });
   app.post('/api/leads/:id/stage', (req, res) =>
     queue(res, {
       kind: 'lead.setStage',
@@ -1491,6 +1508,64 @@ function errorHandler(error: unknown, _req: Request, res: Response, _next: NextF
     message: 'Something went wrong',
     messageKey: 'error.generic.internal',
   });
+}
+
+/**
+ * The shape check a queued lead has to pass before it is accepted.
+ *
+ * `queue()` writes `req.body` into the outbox verbatim, and the outbox is
+ * durable — so a malformed lead is answered `202 queued`, sits on disk, and
+ * then comes back hours later as a bare rejection string with no route back to
+ * the form that produced it. This is the trust boundary the browser cannot
+ * bypass (§1), and it is the last place a mistake can still be shown to the
+ * person who made it.
+ *
+ * Deliberately structural only: a party that does not exist, a product that was
+ * deleted, a rate this role may not set — those are the Master's to judge, and
+ * judging them here would need a catalogue this process does not have. Nothing
+ * here rejects a *half-built* lead either; packaging stays optional on save
+ * exactly as §3.1 requires.
+ *
+ * Returns the problem as a sentence, or null when the payload is sound.
+ */
+function leadPayloadProblem(body: unknown, options: { itemsRequired: boolean }): string | null {
+  if (typeof body !== 'object' || body === null) return 'The lead was empty';
+  const lead = body as Record<string, unknown>;
+
+  if (options.itemsRequired && typeof lead.partyId !== 'string') {
+    return 'Choose a party for this lead';
+  }
+  if (lead.partyId !== undefined && typeof lead.partyId !== 'string') {
+    return 'Choose a party for this lead';
+  }
+
+  if (lead.items === undefined) {
+    return options.itemsRequired ? 'Add at least one product' : null;
+  }
+  if (!Array.isArray(lead.items) || (options.itemsRequired && lead.items.length === 0)) {
+    return 'Add at least one product';
+  }
+
+  for (const [index, raw] of lead.items.entries()) {
+    const at = `Product ${index + 1}`;
+    if (typeof raw !== 'object' || raw === null) return `${at} is empty`;
+    const item = raw as Record<string, unknown>;
+
+    if (typeof item.productId !== 'string' || !item.productId) {
+      return `${at} has no product`;
+    }
+    if (!Array.isArray(item.quantities)) return `${at} has no quantities`;
+
+    const boxes = item.quantities.filter((entry) => {
+      if (typeof entry !== 'object' || entry === null) return false;
+      const quantity = (entry as Record<string, unknown>).quantity;
+      const colour = (entry as Record<string, unknown>).colour;
+      return typeof colour === 'string' && colour.trim() !== '' && Number(quantity) > 0;
+    });
+    if (boxes.length === 0) return `${at} needs a quantity for at least one colour`;
+  }
+
+  return null;
 }
 
 /**

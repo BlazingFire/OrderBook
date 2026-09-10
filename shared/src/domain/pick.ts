@@ -5,16 +5,43 @@
  * keystroke, it keeps whatever is already selected visible even when the search
  * term excludes it, and it tells the reader when it has stopped counting.
  *
- * Two kinds only. Leads and orders are served by their own list endpoints,
+ * Three kinds. Leads and orders are served by their own list endpoints,
  * which already page and filter; and a `user` kind was deliberately dropped —
  * `listUsers` requires `users.manage` while the Recycle Bin's "deleted by"
  * filter is gated on `recycleBin.viewAll`, so routing that filter through a
  * pick would 403 people who have a working filter today.
  */
 
-import type { Party, Product } from './entities.js';
+import type { Party, Product, RecordId } from './entities.js';
 
-export type PickKind = 'product' | 'party';
+export type PickKind = 'product' | 'party' | 'variant';
+
+/**
+ * One product in one colour, as the new-lead screen reaches it.
+ *
+ * A flattened join rather than a `Product` because that is the unit the
+ * counter works in: a code, a colour, what is free to sell in that colour, and
+ * enough of the product to fill a line. `product` search answers with the
+ * product across all its colours; this answers with one row per colour.
+ */
+export interface ProductVariantPick {
+  /** The short code somebody types, when the pair has been given one. */
+  variantCode: string | null;
+  productId: RecordId;
+  productCode: string;
+  productName: string;
+  alias: string | null;
+  sin: string | null;
+  size: string | null;
+  grade: string | null;
+  productType: string | null;
+  weightKg: number | null;
+  colour: string;
+  /** Boxes that may be sold now — on hand less what orders already hold. */
+  availableBoxes: number;
+  /** Absent, not null, without `field.saleRate.view` — never zero. */
+  rate?: number | null;
+}
 
 export interface PickQuery {
   term?: string;
@@ -43,11 +70,12 @@ export interface PickPage<T> {
 
 export type ProductPickPage = PickPage<Product>;
 export type PartyPickPage = PickPage<Party>;
+export type VariantPickPage = PickPage<ProductVariantPick>;
 
 /** How many rows a picker asks for when the caller does not say. */
 export const PICK_DEFAULT_LIMIT = 20;
 export const PICK_MAX_LIMIT = 50;
 
 export function isPickKind(value: unknown): value is PickKind {
-  return value === 'product' || value === 'party';
+  return value === 'product' || value === 'party' || value === 'variant';
 }

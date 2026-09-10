@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * Build both panels' Windows setup files and publish them to the releases
+ * Build both panels' setup files for one OS and publish them to the releases
  * folder.
  *
- *   npm run release              -- current version, both panels
+ *   npm run release              -- current version, both panels, this OS
  *   npm run release -- 1.1.0     -- bump every package.json first
  *   npm run release -- --panel office
+ *   npm run release -- --os mac  -- macOS .dmg (only runs on a Mac)
  *
  * The output folder is the whole distribution story: copy it to the Master PC
  * and the Master installs its own build from it and serves the office build to
@@ -64,9 +65,89 @@ const args = process.argv.slice(2);
 const only = args.includes('--panel') ? args[args.indexOf('--panel') + 1] : null;
 const requestedVersion = args.find((arg) => /^\d+\.\d+\.\d+$/.test(arg)) ?? null;
 
+/**
+ * What each target OS needs, keyed by the `--os` name a person types.
+ *
+ * `builderFlag` is the switch electron-builder takes; `platform` is Node's own
+ * `process.platform`, which is what goes in the manifest and what a running
+ * panel compares against. `postgres` names the `@embedded-postgres` package
+ * holding that OS's server binaries — the Master vendors them, and getting this
+ * wrong ships a Mac build that cannot start its own database.
+ *
+ * **A build only runs on its own OS.** electron-builder refuses a macOS target
+ * anywhere but macOS ("Build for macOS is supported only on macOS"), because a
+ * .dmg is made with `hdiutil` and code signing needs the keychain. There is no
+ * cross-compile to add here; the check below just says so before an hour of
+ * staging rather than after.
+ */
+const TARGETS = {
+  win: {
+    builderFlag: '--win',
+    platform: 'win32',
+    ext: 'exe',
+    postgres: ['windows-x64'],
+    buildsOn: ['win32'],
+  },
+  mac: {
+    builderFlag: '--mac',
+    platform: 'darwin',
+    // `arch: [universal]` in the yml, so one file covers Intel and Apple
+    // silicon — but the PostgreSQL binaries are per-architecture and the
+    // package for this machine's own arch is the one that must be vendored.
+    ext: 'dmg',
+    postgres: [`darwin-${process.arch === 'arm64' ? 'arm64' : 'x64'}`],
+    buildsOn: ['darwin'],
+  },
+  linux: {
+    builderFlag: '--linux',
+    platform: 'linux',
+    ext: 'AppImage',
+    postgres: [`linux-${process.arch === 'arm64' ? 'arm64' : 'x64'}`],
+    buildsOn: ['linux'],
+  },
+};
+
+/** The `--os` name for the machine this is running on. */
+function hostTarget() {
+  const found = Object.entries(TARGETS).find(([, target]) =>
+    target.buildsOn.includes(process.platform),
+  );
+  if (!found) throw new Error(`No release target builds on ${process.platform}`);
+  return found[0];
+}
+
+const osName = args.includes('--os') ? args[args.indexOf('--os') + 1] : hostTarget();
+const RELEASE_TARGET = TARGETS[osName];
+
+/**
+ * Checked from `main`, not at import, so a bad `--os` prints the same
+ * `Release failed: …` line every other refusal here does rather than a stack
+ * trace from module evaluation.
+ */
+function assertTarget() {
+  if (!RELEASE_TARGET) {
+    throw new Error(`Unknown --os "${osName}" — expected ${Object.keys(TARGETS).join(', ')}`);
+  }
+
+  if (!RELEASE_TARGET.buildsOn.includes(process.platform)) {
+    throw new Error(
+      [
+        `A ${osName} release can only be built on ${RELEASE_TARGET.buildsOn.join(' or ')}, ` +
+          `and this is ${process.platform}.`,
+        'electron-builder has no cross-compile for it: a .dmg is made with hdiutil and',
+        "signed against the machine's keychain, neither of which exists off macOS.",
+      ].join('\n'),
+    );
+  }
+}
+
 function run(command, commandArgs, cwd = ROOT) {
   console.log(`  $ ${command} ${commandArgs.join(' ')}`);
-  execFileSync(command, commandArgs, { cwd, stdio: 'inherit', shell: process.platform === 'win32' });
+  execFileSync(command, commandArgs, {
+    cwd,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+  });
 }
 
 async function readJson(file) {
@@ -137,7 +218,15 @@ function sign(manifest) {
   // The exact bytes `shared/src/domain/release-signature.ts` defines. Kept in
   // step by hand here because this script must run before anything is built —
   // `signed-fields.test.ts` pins the two against each other.
-  const SIGNED_FIELDS = ['panel', 'version', 'file', 'sizeBytes', 'sha256', 'releasedAt'];
+  const SIGNED_FIELDS = [
+    'panel',
+    'platform',
+    'version',
+    'file',
+    'sizeBytes',
+    'sha256',
+    'releasedAt',
+  ];
   const payload = SIGNED_FIELDS.map((field) =>
     field === 'sha256'
       ? `${field}=${String(manifest[field]).toLowerCase()}`
@@ -154,7 +243,10 @@ function sign(manifest) {
 async function sha256(file) {
   const hash = createHash('sha256');
   await new Promise((resolve, reject) => {
-    createReadStream(file).on('data', (chunk) => hash.update(chunk)).on('error', reject).on('end', resolve);
+    createReadStream(file)
+      .on('data', (chunk) => hash.update(chunk))
+      .on('error', reject)
+      .on('end', resolve);
   });
   return hash.digest('hex');
 }
@@ -206,20 +298,22 @@ async function productionTree(panel) {
 
   const modules = path.join(ROOT, 'node_modules');
 
-  return output
-    .split(/\r?\n/)
-    .filter((line) => line.startsWith(modules))
-    // The workspace packages themselves are links back into this repo; `dist`
-    // and `package.json` are copied directly instead.
-    .filter((line) => !line.includes(`${path.sep}@orderbook${path.sep}`))
-    /*
-     * `@embedded-postgres/*` is declared as an optional dependency and is
-     * therefore in the production tree, but a packaged Master reads its server
-     * binaries from `vendor/postgres` — which `postgres-server.ts:52` looks in
-     * first, and which `vendorPostgres()` above fills. Shipping both would put
-     * 100 MB in the installer twice.
-     */
-    .filter((line) => !line.includes(`${path.sep}@embedded-postgres${path.sep}`));
+  return (
+    output
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith(modules))
+      // The workspace packages themselves are links back into this repo; `dist`
+      // and `package.json` are copied directly instead.
+      .filter((line) => !line.includes(`${path.sep}@orderbook${path.sep}`))
+      /*
+       * `@embedded-postgres/*` is declared as an optional dependency and is
+       * therefore in the production tree, but a packaged Master reads its server
+       * binaries from `vendor/postgres` — which `postgres-server.ts:52` looks in
+       * first, and which `vendorPostgres()` above fills. Shipping both would put
+       * 100 MB in the installer twice.
+       */
+      .filter((line) => !line.includes(`${path.sep}@embedded-postgres${path.sep}`))
+  );
 }
 
 /**
@@ -312,7 +406,7 @@ async function build(panel, version) {
     'npx',
     [
       'electron-builder',
-      '--win',
+      RELEASE_TARGET.builderFlag,
       '--config',
       'electron-builder.yml',
       `--config.electronVersion=${electronVersion}`,
@@ -330,7 +424,7 @@ async function build(panel, version) {
    * rather than the build.
    */
   const outDir = path.join(ROOT, 'build', panel);
-  const expected = `OrderBook-${config.label}-${version}-Setup.exe`;
+  const expected = `OrderBook-${config.label}-${version}-Setup.${RELEASE_TARGET.ext}`;
   const files = await readdir(outDir);
 
   if (!files.includes(expected)) {
@@ -354,6 +448,7 @@ async function publish(panel, version, setupPath, notes) {
   const { size } = await stat(setupPath);
   const manifest = sign({
     panel,
+    platform: RELEASE_TARGET.platform,
     version,
     file,
     sizeBytes: size,
@@ -362,15 +457,33 @@ async function publish(panel, version, setupPath, notes) {
     ...(notes ? { notes } : {}),
   });
 
-  // Written last, on purpose. It is the file both panels look for, so a build
-  // interrupted halfway leaves the previous release intact rather than a
-  // manifest pointing at a setup file that is still being copied.
-  await writeFile(path.join(target, 'latest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+  const body = `${JSON.stringify(manifest, null, 2)}\n`;
+
+  /*
+   * Written last, on purpose. These are the files both panels look for, so a
+   * build interrupted halfway leaves the previous release intact rather than a
+   * manifest pointing at a setup file that is still being copied.
+   *
+   * Two names, and the second is a compatibility shim rather than a duplicate.
+   * `latest-<platform>.json` is what a panel built from this change onwards
+   * reads, and it is what lets one folder hold a Windows build and a Mac build
+   * at once. Plain `latest.json` is the only name panels shipped before this
+   * knew, and every one of those is Windows — so the Windows build writes it
+   * too, and a Mac build deliberately does not, because overwriting it with a
+   * .dmg manifest would break every Windows panel already in the shop. Delete
+   * the shim once no pre-platform panel is left in the field.
+   */
+  await writeFile(path.join(target, `latest-${RELEASE_TARGET.platform}.json`), body);
+  if (RELEASE_TARGET.platform === 'win32') {
+    await writeFile(path.join(target, 'latest.json'), body);
+  }
 
   console.log(`  published ${file} (${(size / 1024 / 1024).toFixed(0)} MB) to ${target}`);
 }
 
 async function main() {
+  assertTarget();
+
   if (requestedVersion) await setVersion(requestedVersion);
   const version = await currentVersion();
 

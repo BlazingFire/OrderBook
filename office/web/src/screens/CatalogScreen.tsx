@@ -34,14 +34,16 @@
  * clocks — so a lead or order moving elsewhere does not reload the catalogue
  * (the v1.0.3 "refetches on every delta" blocker was exactly that).
  *
- * Row click opens a view-only 520px detail drawer (`ProductDetail`/
- * `PartyDetail`) rather than jumping straight to an edit form — the same
- * split `LeadBoardScreen` + `LeadDetail` already use for leads. `openOn`
- * is `"click"` here, not the DataTable default of `"doubleClick"`: the
- * mockups open Products and Parties on a single click (Leads' list view is
- * the one that waits for a double-click, matching its Kanban drag
- * convention). Editing is one button inside that drawer, not the row click
- * itself — `PartyDrawer`/`ProductDrawer` both now double as edit forms.
+ * Row click opens a view-only detail sub-screen (`ProductDetail`/`PartyDetail`)
+ * rather than jumping straight to an edit form — the same split
+ * `LeadBoardScreen` + `LeadDetail` uses for leads. The detail replaces the list
+ * and carries one way back in a fixed place, with its own entry nested under
+ * Parties or Products in the sidebar while it is open. `openOn` is `"click"`
+ * here, not the DataTable default of `"doubleClick"`: the mockups open Products
+ * and Parties on a single click (Leads' list view is the one that waits for a
+ * double-click, matching its Kanban drag convention). Editing is one button
+ * inside the detail, not the row click itself — `PartyDrawer`/`ProductDrawer`
+ * both double as edit forms, and stay overlays because a form is a dialog.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -55,12 +57,12 @@ import { StockByColour } from '../components/StockCell';
 import {
   Button,
   DataTable,
+  EditorScreen,
   EmptyState,
   ErrorState,
   FilterChip,
   Input,
   LoadMorePager,
-  Modal,
   ProgressiveImage,
   SkeletonTable,
   StatusPill,
@@ -70,6 +72,7 @@ import {
   useColourHex,
   useDebounced,
   useFilterBar,
+  useSubNav,
   useToast,
   type DataTableColumn,
 } from '@orderbook/ui';
@@ -298,8 +301,32 @@ export function CatalogScreen({
     toast.push(message, { tone: 'error' });
   }
 
+  const openParty = view.parties.find((party) => party.id === openPartyId) ?? null;
+  const openProduct =
+    products.find((product) => product.id === openProductId) ??
+    byId.get(openProductId ?? '') ??
+    null;
+  const openRecord = tab === 'parties' ? openParty : openProduct;
+
+  useSubNav(
+    tab,
+    openRecord
+      ? {
+          parentId: tab,
+          items: [
+            {
+              id: `${tab}.detail`,
+              label: openRecord.name,
+              icon: tab === 'parties' ? 'parties' : 'products',
+            },
+          ],
+          activeId: `${tab}.detail`,
+        }
+      : null,
+  );
+
   useFilterBar(
-    tab === 'parties' ? (
+    openRecord ? null : tab === 'parties' ? (
       <>
         <Input
           value={partySearch}
@@ -368,6 +395,36 @@ export function CatalogScreen({
       </>
     ),
   );
+
+  if (tab === 'parties' && openParty) {
+    return (
+      <EditorScreen
+        title={openParty.name}
+        meta={<span className="ob-mono ob-small">{openParty.partyCode}</span>}
+        onBack={() => {
+          setOpenPartyId(null);
+          return true;
+        }}
+        backLabel={t('action.backToList')}
+      >
+        <PartyDetail
+          party={openParty}
+          view={view}
+          onEdit={() => {
+            setEditingParty(openParty);
+            setOpenPartyId(null);
+          }}
+        />
+        <PartyDrawer
+          open={editingParty !== null}
+          party={editingParty}
+          onClose={() => setEditingParty(null)}
+          onUpdated={onPartyUpdated}
+          onError={onDrawerError}
+        />
+      </EditorScreen>
+    );
+  }
 
   if (tab === 'parties') {
     const columns: DataTableColumn<Party>[] = [
@@ -445,8 +502,6 @@ export function CatalogScreen({
       },
     ];
 
-    const openParty = view.parties.find((party) => party.id === openPartyId) ?? null;
-
     return (
       <>
         <DataTable
@@ -469,25 +524,6 @@ export function CatalogScreen({
             )
           }
         />
-
-        <Modal
-          open={openParty !== null}
-          onClose={() => setOpenPartyId(null)}
-          size="lg"
-          title={openParty?.name ?? ''}
-          subtitle={openParty && <span className="ob-mono">{openParty.partyCode}</span>}
-        >
-          {openParty && (
-            <PartyDetail
-              party={openParty}
-              view={view}
-              onEdit={() => {
-                setEditingParty(openParty);
-                setOpenPartyId(null);
-              }}
-            />
-          )}
-        </Modal>
 
         <PartyDrawer
           open={partyDrawerOpen}
@@ -600,10 +636,42 @@ export function CatalogScreen({
     },
   ];
 
-  const openProduct =
-    products.find((product) => product.id === openProductId) ??
-    byId.get(openProductId ?? '') ??
-    null;
+  if (openProduct) {
+    return (
+      <EditorScreen
+        title={openProduct.name}
+        meta={
+          <span className="ob-mono ob-small">
+            {openProduct.productCode}
+            {openProduct.alias ? ` · ${openProduct.alias}` : ''}
+          </span>
+        }
+        onBack={() => {
+          setOpenProductId(null);
+          return true;
+        }}
+        backLabel={t('action.backToList')}
+      >
+        <ProductDetail
+          product={openProduct}
+          view={view}
+          onEdit={() => {
+            setEditingProduct(openProduct);
+            setOpenProductId(null);
+          }}
+          onMessage={(message) => toast.push(message)}
+          onError={onDrawerError}
+        />
+        <ProductDrawer
+          open={editingProduct !== null}
+          product={editingProduct}
+          onClose={() => setEditingProduct(null)}
+          onUpdated={onProductUpdated}
+          onError={onDrawerError}
+        />
+      </EditorScreen>
+    );
+  }
 
   const filtered = productTerm !== '' || typeFilter !== null;
   const shownTotal = (page?.total ?? 0) + pending.length;
@@ -666,34 +734,6 @@ export function CatalogScreen({
           />
         </div>
       )}
-
-      <Modal
-        open={openProduct !== null}
-        onClose={() => setOpenProductId(null)}
-        size="lg"
-        title={openProduct?.name ?? ''}
-        subtitle={
-          openProduct && (
-            <span className="ob-mono">
-              {openProduct.productCode}
-              {openProduct.alias ? ` · ${openProduct.alias}` : ''}
-            </span>
-          )
-        }
-      >
-        {openProduct && (
-          <ProductDetail
-            product={openProduct}
-            view={view}
-            onEdit={() => {
-              setEditingProduct(openProduct);
-              setOpenProductId(null);
-            }}
-            onMessage={(message) => toast.push(message)}
-            onError={onDrawerError}
-          />
-        )}
-      </Modal>
 
       <ProductDrawer
         open={productDrawerOpen}

@@ -5,10 +5,12 @@
  * Converted leads leave the board — they are history now, and their order runs
  * the workflow from that point.
  *
- * Board/List/filters are published into the shell's filter strip (§8); the
- * open lead renders in a centred modal over the board so the list keeps its
- * scroll position, and can widen to `xl` from the dialog's own header
- * control (§8 — Lead and Order detail are the two screens allowed to).
+ * Board/List/filters are published into the shell's filter strip (§8). Opening
+ * a lead replaces this screen with its detail: a sub-screen with one way back
+ * in a fixed place, and its own entry nested under Leads in the sidebar while
+ * it is open, so the shell can say what is on screen. The board is not
+ * unmounted while that is showing, so its mode, filters and scroll position
+ * are all still there on the way back.
  */
 
 import { useState } from 'react';
@@ -18,7 +20,7 @@ import { api, type LocalView } from '../api';
 import {
   ColourChip,
   DataTable,
-  Modal,
+  EditorScreen,
   EmptyState,
   FilterChip,
   FilterDivider,
@@ -32,6 +34,7 @@ import {
   t,
   useColourHex,
   useFilterBar,
+  useSubNav,
   useToast,
   type DataTableColumn,
 } from '@orderbook/ui';
@@ -39,6 +42,9 @@ import { LeadDetail } from './LeadDetail';
 
 interface Props {
   view: LocalView;
+  /** The lead showing as a sub-screen, held by the shell so the Dashboard can open one. */
+  openId: string | null;
+  onOpenId: (id: string | null) => void;
   canConvert: boolean;
   onError: (message: string) => void;
   onAddLead?: () => void;
@@ -72,12 +78,10 @@ function onMyParties<T extends { partyId: string }>(
   return rows.filter((row) => mine.has(row.partyId));
 }
 
-export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props) {
+export function LeadBoardScreen({ view, openId, onOpenId, canConvert, onError, onAddLead }: Props) {
   const [tab, setTab] = useState<BoardTab>('board');
   const [stageFilter, setStageFilter] = useState<string | null>(null);
   const [scope, setScope] = useState<PartyScopeFilter>('all');
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
   const [menuId, setMenuId] = useState<string | null>(null);
   const colourHex = useColourHex(view.optionLists);
   const toast = useToast();
@@ -92,7 +96,7 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
   const openLead = view.leads.find((lead) => lead.id === openId) ?? null;
 
   useFilterBar(
-    pipeline ? (
+    pipeline && !openLead ? (
       <>
         <Segmented
           options={[
@@ -135,6 +139,49 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
     ) : null,
   );
 
+  useSubNav(
+    'leads',
+    openLead
+      ? {
+          parentId: 'leads',
+          items: [{ id: 'leads.detail', label: openLead.partyName, icon: 'leads' }],
+          activeId: 'leads.detail',
+        }
+      : null,
+  );
+
+  if (openLead) {
+    return (
+      <EditorScreen
+        title={openLead.partyName}
+        meta={
+          <>
+            {!openLead.sync.hlc && (
+              <StatusPill tone="offline">{t('lead.badge.notSynced')}</StatusPill>
+            )}
+            {openLead.convertedOrderId && (
+              <StatusPill tone="ok">{t('lead.badge.converted')}</StatusPill>
+            )}
+            <span className="ob-mono ob-small">{openLead.id}</span>
+          </>
+        }
+        onBack={() => {
+          onOpenId(null);
+          return true;
+        }}
+        backLabel={t('action.backToList')}
+      >
+        <LeadDetail
+          lead={openLead}
+          view={view}
+          canConvert={canConvert}
+          onClose={() => onOpenId(null)}
+          onError={onError}
+        />
+      </EditorScreen>
+    );
+  }
+
   if (!pipeline) {
     return (
       <EmptyState
@@ -164,11 +211,6 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
     } catch (caught) {
       onError(caught instanceof Error ? caught.message : 'Could not convert the lead');
     }
-  }
-
-  function closeDetail(): void {
-    setOpenId(null);
-    setExpanded(false);
   }
 
   const columns: DataTableColumn<Lead>[] = [
@@ -240,7 +282,7 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
           stages={stages}
           items={filtered}
           onMove={(lead, stageId) => void move(lead, stageId)}
-          onOpen={(lead) => setOpenId(lead.id)}
+          onOpen={(lead) => onOpenId(lead.id)}
           emptyMessage={t('lead.board.emptyColumn')}
           renderColumnExtra={(stageId) => {
             const stageTotal = filtered
@@ -296,7 +338,7 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
                         onClick={(event) => {
                           event.stopPropagation();
                           setMenuId(null);
-                          setOpenId(lead.id);
+                          onOpenId(lead.id);
                         }}
                       >
                         {t('lead.board.menu.open')}
@@ -409,8 +451,7 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
           columns={columns}
           rows={filtered}
           rowKey={(lead) => lead.id}
-          onRowOpen={(lead) => setOpenId(lead.id)}
-          selectedId={openId ?? undefined}
+          onRowOpen={(lead) => onOpenId(lead.id)}
           empty={
             <EmptyState
               title={t('lead.board.emptyTitle')}
@@ -421,37 +462,6 @@ export function LeadBoardScreen({ view, canConvert, onError, onAddLead }: Props)
           }
         />
       )}
-
-      <Modal
-        open={Boolean(openLead)}
-        onClose={closeDetail}
-        size="lg"
-        expanded={expanded}
-        onToggleExpand={() => setExpanded((value) => !value)}
-        label={openLead?.partyName}
-        title={
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-8)' }}>
-            {openLead?.partyName}
-            {openLead && !openLead.sync.hlc && (
-              <StatusPill tone="offline">{t('lead.badge.notSynced')}</StatusPill>
-            )}
-            {openLead?.convertedOrderId && (
-              <StatusPill tone="ok">{t('lead.badge.converted')}</StatusPill>
-            )}
-          </span>
-        }
-        subtitle={openLead && <span className="ob-mono">{openLead.id}</span>}
-      >
-        {openLead && (
-          <LeadDetail
-            lead={openLead}
-            view={view}
-            canConvert={canConvert}
-            onClose={closeDetail}
-            onError={onError}
-          />
-        )}
-      </Modal>
     </>
   );
 }
