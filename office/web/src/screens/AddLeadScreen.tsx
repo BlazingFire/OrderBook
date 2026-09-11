@@ -13,28 +13,19 @@
  * code with exactly one row — code, product, colour and what is free to sell —
  * instead of a product somebody then has to pick a colour on. Choosing one
  * replaces the search field with the product itself and opens a draft card
- * underneath: packaging, grade and rate at the top, a quantity per colour
+ * underneath: packaging, grade and quantity at the top, one row per colour
  * below. Nothing joins the lead until that card is added, so a half-filled
  * product cannot ride along unnoticed, and the search field comes straight back
  * for the next one.
  *
- * Three rules are enforced visibly rather than only on the server:
+ * Two rules are enforced visibly rather than only on the server:
  *  · **Packaging is never auto-filled.** Picking a code fills every other field
  *    and pointedly leaves packaging empty — the draft cannot be added until
  *    somebody chooses one.
- *  · **A rate can be switched off.** "To be quoted later" and "nobody has typed
- *    it yet" are different facts, and the line stores them differently: the
- *    switch sends `rateUnset`, which stops the catalogue fallback that an empty
- *    field falls into.
- *  · **A party's own rates change where money comes from**, but a party's saved
- *    packaging is only ever a suggestion.
+ *  · **A party's saved packaging is only ever a suggestion.**
  *
- * The rate a line opens on is the last rate actually used for this party and
- * this product, read out of the leads and orders already in this panel's
- * snapshot; failing that the party's variant rate, failing that the catalogue.
- * The note under the field says which of the three it is, and a changed rate
- * offers to go back. No endpoint and no request — it works with the Master
- * switched off, like everything else here.
+ * No rate is asked for or shown here. A line goes up without one and the
+ * Master prices it — the party's variant rate, failing that the catalogue.
  *
  * Saving works with no link to the Master: the lead is queued locally with a
  * temporary id and appears on the board immediately.
@@ -43,18 +34,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type {
-  CustomFieldDefinition,
-  Lead,
   LineItemInput,
   OptionListItem,
-  Order,
   Party,
   PartyProductVariant,
   ProductVariantPick,
 } from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
-import { CustomFields } from '../components/CustomFields';
 import { PartyDrawer, type CreatedParty } from '../components/PartyDrawer';
 import {
   Button,
@@ -66,7 +53,6 @@ import {
   SuggestInput,
   StatusPill,
   Textarea,
-  formatMoney,
   rem,
   t,
   useColourHex,
@@ -80,8 +66,6 @@ import {
 
 interface Props {
   view: LocalView;
-  /** From the signed-in person's own resolved set, not the snapshot's. */
-  canEditRate: boolean;
   /** Carries the queued lead's temporary id, so the shell can name it. */
   onSaved: (id: string) => void;
   onCancel: () => void;
@@ -109,39 +93,12 @@ interface DraftLine {
   productType: string | null;
   weightKg: number | null;
   packaging: string;
-  /** The rupee text as typed; see `ratePaise`. `null` is a rate this person may not see. */
-  rateText: string | null;
-  /**
-   * False when this line deliberately carries no price — quoted later.
-   *
-   * Distinct from a blank `rateText`, which is a rate nobody has got to yet and
-   * which the server fills from the catalogue. This one sends `rateUnset` and
-   * the line stays priceless all the way to the docket.
-   */
-  rateOn: boolean;
-  /**
-   * True once somebody has typed in the rate cell.
-   *
-   * Which is the difference between a rate the line *derived* and a rate a
-   * person *decided*. Changing the party re-rates every untouched line and must
-   * leave the decided ones exactly where they were, or choosing a party
-   * silently overwrites somebody's negotiation.
-   */
-  rateTouched: boolean;
   fromPartyVariant: boolean;
   notes: string;
   colours: ColourEntry[];
   /** Where the line goes back to when the draft is a `Modify` of a saved one. */
   at: number | null;
   isEdit: boolean;
-}
-
-/** Where a line's opening rate came from, for the note under the field. */
-interface RateOrigin {
-  /** In paise, or null when this person may not see rates at all. */
-  rate: number | null;
-  note: string;
-  fromPartyVariant: boolean;
 }
 
 const QUICK_FOLLOW_UPS = [
@@ -171,36 +128,7 @@ function boxesOf(line: DraftLine): number {
   return line.colours.reduce((sum, entry) => sum + (Number(entry.boxes) || 0), 0);
 }
 
-/**
- * The line's rate in paise, or null when there is no rate to show.
- *
- * The draft holds the rupee text somebody typed rather than the paise number,
- * because a controlled field rendered back from paise cannot be typed into: the
- * "." in "12." parses to 12, the state does not change, and React restores the
- * field to "12" as the key is pressed — so ₹12.50 is entered as ₹1250.
- *
- * A blank or unparseable field is unknown rather than free, the same rule the
- * order total follows.
- */
-function ratePaise(line: { rateText: string | null }): number | null {
-  if (line.rateText === null || !line.rateText.trim()) return null;
-  const rupees = Number(line.rateText);
-  return Number.isFinite(rupees) ? Math.round(rupees * 100) : null;
-}
-
-/** What a line is worth, or null when it has no rate to be worth anything at. */
-function lineTotal(line: DraftLine): number | null {
-  if (!line.rateOn) return null;
-  const rate = ratePaise(line);
-  return rate === null ? null : Math.round(rate * boxesOf(line));
-}
-
-/** A short, local date for the "last used" note — never a full timestamp. */
-function shortDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-}
-
-export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
+export function AddLeadScreen({ view, onSaved, onCancel }: Props) {
   const colourHex = useColourHex(view.optionLists);
 
   const [partyId, setPartyId] = useState('');
@@ -212,9 +140,8 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
 
   const [sourcePlatform, setSourcePlatform] = useState('');
   const [otherSource, setOtherSource] = useState('');
-  const [followUpDate, setFollowUpDate] = useState('');
+  const [followUpDate, setFollowUpDate] = useState(() => isoDate(0));
   const [notes, setNotes] = useState('');
-  const [customFields, setCustomFields] = useState<Record<string, unknown>>({});
 
   const [query, setQuery] = useState('');
   const [sel, setSel] = useState(0);
@@ -232,7 +159,7 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
   const partyRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const otherRef = useRef<HTMLInputElement>(null);
-  const sourceRef = useRef<HTMLSelectElement>(null);
+  const sourceRef = useRef<HTMLInputElement>(null);
   /**
    * The form column, for the Enter/Escape walk.
    *
@@ -330,39 +257,6 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
   );
   const partyWiseMode = variantsForParty.size > 0;
 
-  /*
-   * A rate this role may not see is absent on every product alike, so the whole
-   * money column goes with it rather than rendering a confident zero.
-   */
-  const canSeeRates = view.permissions.includes('field.saleRate.view');
-
-  /**
-   * The last rate this party actually paid for each product, newest first.
-   *
-   * Read out of the leads and orders already on the snapshot rather than asked
-   * of the Master: it is the same data the Master would answer from, it costs
-   * no request, and it is still right with the link down. A record whose rate
-   * is absent — this role may not see rates — contributes nothing rather than
-   * a zero.
-   */
-  const lastRateFor = useMemo(() => {
-    const best = new Map<string, { rate: number; at: string }>();
-
-    const consider = (record: Lead | Order): void => {
-      if (record.partyId !== partyId) return;
-      for (const item of record.items) {
-        if (item.rate === undefined || item.rate === null) continue;
-        const previous = best.get(item.productId);
-        if (previous && previous.at >= record.createdAt) continue;
-        best.set(item.productId, { rate: item.rate, at: record.createdAt });
-      }
-    };
-
-    for (const lead of view.leads) consider(lead);
-    for (const order of view.orders) consider(order);
-    return best;
-  }, [partyId, view.leads, view.orders]);
-
   /** Stock rows for one product, from the snapshot and from anything searched. */
   const coloursFor = useCallback(
     (productId: string): ColourEntry[] => {
@@ -394,28 +288,6 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
     },
     [view.stock],
   );
-
-  function rateOriginFor(productId: string): RateOrigin {
-    if (!canSeeRates) return { rate: null, note: '', fromPartyVariant: false };
-
-    const last = lastRateFor.get(productId);
-    if (last) {
-      return {
-        rate: last.rate,
-        note: t('lead.add.draft.rateLast', { date: shortDate(last.at) }),
-        fromPartyVariant: false,
-      };
-    }
-
-    const variant = variantsForParty.get(productId);
-    if (variant?.rate !== undefined && variant?.rate !== null) {
-      return { rate: variant.rate, note: t('lead.add.draft.rateParty'), fromPartyVariant: true };
-    }
-
-    const product = view.products.find((candidate) => candidate.id === productId);
-    const rate = product?.rate ?? null;
-    return { rate, note: t('lead.add.draft.rateCatalogue'), fromPartyVariant: false };
-  }
 
   // --- Party search -------------------------------------------------------
 
@@ -489,36 +361,19 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
 
   const variantPick = variantRows.length ? Math.min(sel, variantRows.length - 1) : 0;
 
-  /**
-   * Re-rate the lines nobody has priced by hand.
-   *
-   * Choosing a party changes what every line on the voucher costs. It used to
-   * change only the lines added *after* the switch, so a voucher built before
-   * the party was chosen quietly quoted catalogue prices — the kind of wrong
-   * that reaches a customer. Only untouched lines move: a rate somebody typed
-   * is a decision, and so is a rate somebody switched off.
-   */
+  /* Choosing a party changes which lines came off its own variants. */
   useEffect(() => {
     setLines((current) =>
-      current.map((line) => {
-        if (line.rateTouched || !line.rateOn) return line;
-        const origin = rateOriginFor(line.productId);
-        return {
-          ...line,
-          rateText: origin.rate === null ? null : String(origin.rate / 100),
-          fromPartyVariant: origin.fromPartyVariant,
-        };
-      }),
+      current.map((line) => ({ ...line, fromPartyVariant: variantsForParty.has(line.productId) })),
     );
-    // `rateOriginFor` closes over exactly these; listing the function instead
-    // would re-run this on every render and undo somebody's typing.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [partyId, lastRateFor, variantsForParty, view.products]);
+    setDraft((current) =>
+      current ? { ...current, fromPartyVariant: variantsForParty.has(current.productId) } : current,
+    );
+  }, [variantsForParty]);
 
   // --- Draft --------------------------------------------------------------
 
   function openDraft(row: ProductVariantPick): void {
-    const origin = rateOriginFor(row.productId);
     const variant = variantsForParty.get(row.productId) ?? null;
     const known = coloursFor(row.productId).find((entry) => entry.colour === row.colour);
 
@@ -536,10 +391,7 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
       // Left empty on purpose (§3.2). The party's saved packaging is offered
       // below as a suggestion, never applied.
       packaging: '',
-      rateText: origin.rate === null ? null : String(origin.rate / 100),
-      rateOn: true,
-      rateTouched: false,
-      fromPartyVariant: origin.fromPartyVariant,
+      fromPartyVariant: variant !== null,
       notes: '',
       colours: [
         known ?? {
@@ -591,9 +443,7 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
 
   function draftIsReady(candidate: DraftLine): boolean {
     const filled = candidate.colours.filter((entry) => Number(entry.boxes) > 0);
-    if (!candidate.packaging.trim() || filled.length === 0) return false;
-    if (!canSeeRates || !candidate.rateOn) return true;
-    return (ratePaise(candidate) ?? 0) > 0;
+    return Boolean(candidate.packaging.trim()) && filled.length > 0;
   }
 
   function saveDraft(): void {
@@ -741,17 +591,6 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
         sequence: index + 1,
         fromPartyVariant: line.fromPartyVariant,
         notes: line.notes.trim() || null,
-        /*
-         * Three states, not two. A rate this role cannot see is sent as no key
-         * at all so the server fills it from the catalogue exactly as it would
-         * have; a rate switched off is sent as `rateUnset`, which stops that
-         * fallback dead; anything else is what was typed.
-         */
-        ...(canSeeRates
-          ? line.rateOn
-            ? { rate: ratePaise(line) }
-            : { rate: null, rateUnset: true }
-          : {}),
         quantities: line.colours
           .filter((entry) => entry.colour.trim() && Number(entry.boxes) > 0)
           .map((entry) => ({
@@ -767,7 +606,6 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
         followUpDate: followUpDate || null,
         partyWiseMode,
         notes: notes.trim() || null,
-        customFields,
         items,
       });
 
@@ -780,20 +618,6 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
   }
 
   const totalBoxes = lines.reduce((sum, line) => sum + boxesOf(line), 0);
-  /**
-   * The order total, or null when any line's rate is hidden from this person.
-   *
-   * `rate ?? 0` treated a rate this role may not see as free, so a rate-blind
-   * user was shown a confident ₹0.00 total in perfect good faith — the exact
-   * failure the masking rule exists to prevent (`roles-ui.md` §6). A line whose
-   * rate was deliberately switched off is a different matter: it is genuinely
-   * worth nothing yet, and contributes nothing rather than voiding the total.
-   */
-  const total = lines.reduce<number | null>((sum, line) => {
-    if (!line.rateOn) return sum;
-    const amount = lineTotal(line);
-    return sum === null || amount === null ? null : sum + amount;
-  }, 0);
 
   const ready = Boolean(partyId) && lines.length > 0 && !draft;
   const doneSteps = (partyId ? 1 : 0) + (resolvedSource ? 1 : 0) + (lines.length > 0 ? 1 : 0);
@@ -811,7 +635,7 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
   /*
    * Enter forward, Escape back — one field at a time, down the whole column:
    * party, source, follow-up, the product search, the draft card's packaging,
-   * grade, rate and quantities, then the notes and any custom fields.
+   * grade and quantities, then the notes.
    *
    * A select opens its list on Enter instead of skipping past it, and the
    * native popup then owns the arrows and its own Enter; the Enter after it
@@ -828,10 +652,6 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
     partyId || lines.length > 0 || draft || notes.trim()
       ? () => window.confirm(t('lead.add.discardConfirm'))
       : null,
-  );
-
-  const leadFieldDefinitions = view.customFields.filter(
-    (definition: CustomFieldDefinition) => definition.entity === 'lead',
   );
 
   const summary =
@@ -1125,24 +945,6 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
                 marginBottom: 'var(--s-6)',
               }}
             >
-              <span
-                aria-hidden="true"
-                style={{
-                  width: rem(17),
-                  height: rem(17),
-                  flex: 'none',
-                  borderRadius: '50%',
-                  background: lines.length > 0 ? 'var(--accent)' : 'var(--bg-sunken)',
-                  color: lines.length > 0 ? 'var(--fg-on-accent)' : 'var(--fg-tertiary)',
-                  fontSize: rem(11),
-                  fontWeight: 600,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                1
-              </span>
               <span className="ob-body-strong">{t('lead.add.products.title')}</span>
               <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
                 {lines.length
@@ -1268,14 +1070,7 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
                       <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                         <span className="ob-ellipsis">{row.productName}</span>
                         <span className="ob-mono ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                          {[
-                            row.sin,
-                            row.rate === undefined
-                              ? null
-                              : `${formatMoney(row.rate ?? null)}/${t('unit.box')}`,
-                          ]
-                            .filter(Boolean)
-                            .join(' · ')}
+                          {row.sin}
                         </span>
                       </span>
                       <Swatch colour={row.colour} hex={colourHex(row.colour)} />
@@ -1311,13 +1106,10 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
             {draft && (
               <DraftCard
                 draft={draft}
-                canEditRate={canEditRate}
-                canSeeRates={canSeeRates}
                 ready={draftIsReady(draft)}
                 packagingOptions={packagingOptions}
                 gradeOptions={gradeOptions}
                 suggestedPackaging={variantsForParty.get(draft.productId)?.packaging ?? null}
-                rateOrigin={rateOriginFor(draft.productId)}
                 colourHex={colourHex}
                 moreColours={coloursFor(draft.productId).filter(
                   (entry) => !draft.colours.some((used) => used.colour === entry.colour),
@@ -1361,11 +1153,6 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
               aria-label={t('lead.add.details.notes')}
               onChange={(event) => setNotes(event.target.value)}
             />
-            <CustomFields
-              definitions={leadFieldDefinitions}
-              values={customFields}
-              onChange={setCustomFields}
-            />
           </section>
 
           {/* --- Save --------------------------------------------------------- */}
@@ -1401,10 +1188,6 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
                 {statusLine}
               </span>
             </div>
-            <span style={{ flex: 1 }} />
-            <span className="ob-title" style={{ margin: 0, fontVariantNumeric: 'tabular-nums' }}>
-              {formatMoney(total)}
-            </span>
           </div>
         </div>
 
@@ -1535,7 +1318,7 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
 // --- Pieces ---------------------------------------------------------------
 
 const SUGGEST_GRID = `${rem(70)} minmax(0, 1fr) minmax(0, 0.6fr) ${rem(74)}`;
-const COLOUR_GRID = `${rem(70)} minmax(0, 1fr) ${rem(120)} ${rem(110)} ${rem(30)}`;
+const COLOUR_GRID = `${rem(70)} minmax(0, 1fr) ${rem(120)} ${rem(30)}`;
 
 /** The small upper-case label that names a row without becoming a heading. */
 function Eyebrow({ children }: { children: ReactNode }) {
@@ -1601,9 +1384,9 @@ function Swatch({
 /**
  * One product already on the lead, as the panel draws it.
  *
- * Collapsed it is one line — codes, name, boxes, money — so twenty products can
+ * Collapsed it is one line — codes, name, boxes — so twenty products can
  * be scanned for the one that is wrong. Opened it shows every colour with what
- * was ordered against what is free, the packaging, grade and rate, and the two
+ * was ordered against what is free, the packaging and grade, and the two
  * things that can be done about it.
  *
  * The tick box sits outside the toggle rather than inside it: expanding a row
@@ -1630,13 +1413,10 @@ function LeadLine({
 }) {
   const over = line.colours.some((entry) => Number(entry.boxes) > entry.availableBoxes);
   const boxes = boxesOf(line);
-  const amount = lineTotal(line);
 
-  const meta = [
-    line.packaging.trim() || t('lead.add.line.noPackaging'),
-    line.grade ?? '—',
-    line.rateOn ? `${formatMoney(ratePaise(line))}/${t('unit.box')}` : t('lead.add.line.toQuote'),
-  ].join(' · ');
+  const meta = [line.packaging.trim() || t('lead.add.line.noPackaging'), line.grade ?? '—'].join(
+    ' · ',
+  );
 
   return (
     <div className="ob-lead-line" data-open={open ? 'true' : undefined}>
@@ -1680,17 +1460,6 @@ function LeadLine({
             }}
           >
             {t('lead.add.line.boxesShort', { count: boxes })}
-          </span>
-          <span
-            className="ob-small"
-            style={{
-              flex: 'none',
-              fontWeight: line.rateOn ? 600 : 450,
-              color: line.rateOn ? undefined : 'var(--fg-tertiary)',
-              fontVariantNumeric: 'tabular-nums',
-            }}
-          >
-            {line.rateOn ? formatMoney(amount) : t('lead.add.line.rateNa')}
           </span>
         </button>
       </div>
@@ -1746,31 +1515,71 @@ function LeadLine({
   );
 }
 
+/** The boxes field: digits only, arrows step by one (ten with Shift). */
+function BoxesInput({
+  entry,
+  label,
+  onBoxes,
+  autoFocus,
+}: {
+  entry: ColourEntry;
+  label: string;
+  onBoxes: (colour: string, boxes: string) => void;
+  autoFocus?: boolean;
+}) {
+  const over = Number(entry.boxes) > entry.availableBoxes;
+  function step(delta: number): void {
+    const current = Number(entry.boxes) || 0;
+    onBoxes(entry.colour, String(Math.max(0, current + delta)));
+  }
+  return (
+    <Input
+      autoFocus={autoFocus}
+      value={entry.boxes}
+      inputMode="numeric"
+      placeholder="0"
+      invalid={over}
+      aria-label={label}
+      style={{ textAlign: 'right' }}
+      onChange={(event) => onBoxes(entry.colour, event.target.value.replace(/[^0-9]/g, ''))}
+      onKeyDown={(event) => {
+        const by = event.shiftKey ? 10 : 1;
+        if (event.key === 'ArrowUp') {
+          event.preventDefault();
+          step(by);
+        }
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          step(-by);
+        }
+      }}
+    />
+  );
+}
+
 function ColourRows({
   rows,
   colourHex,
   quantityHeader,
-  freeHeader,
   codeHeader,
   colourHeader,
   onBoxes,
   onRemove,
   removeLabel,
+  focusColour,
 }: {
   rows: ColourEntry[];
   colourHex: (name: string) => string | undefined;
   codeHeader: string;
   colourHeader: string;
   quantityHeader: string;
-  freeHeader: string;
   onBoxes: (colour: string, boxes: string) => void;
   onRemove?: (colour: string) => void;
   removeLabel: (colour: string) => string;
+  /** The colour just added from the select below; its field takes the caret when it appears. */
+  focusColour?: string | null;
 }) {
-  function step(entry: ColourEntry, delta: number): void {
-    const current = Number(entry.boxes) || 0;
-    onBoxes(entry.colour, String(Math.max(0, current + delta)));
-  }
+  const perRow = rows.length > 1;
 
   return (
     <>
@@ -1787,7 +1596,6 @@ function ColourRows({
         <span>{codeHeader}</span>
         <span>{colourHeader}</span>
         <span style={{ textAlign: 'right' }}>{quantityHeader}</span>
-        <span style={{ textAlign: 'right' }}>{freeHeader}</span>
         <span />
       </div>
       {rows.map((entry) => {
@@ -1805,36 +1613,25 @@ function ColourRows({
           >
             <span className="ob-mono ob-body-strong">{entry.variantCode ?? '—'}</span>
             <Swatch colour={entry.colour} hex={colourHex(entry.colour)} />
-            <Input
-              value={entry.boxes}
-              inputMode="numeric"
-              placeholder="0"
-              invalid={over}
-              aria-label={`${quantityHeader} — ${entry.colour}`}
-              style={{ textAlign: 'right' }}
-              onChange={(event) => onBoxes(entry.colour, event.target.value.replace(/[^0-9]/g, ''))}
-              onKeyDown={(event) => {
-                const by = event.shiftKey ? 10 : 1;
-                if (event.key === 'ArrowUp') {
-                  event.preventDefault();
-                  step(entry, by);
-                }
-                if (event.key === 'ArrowDown') {
-                  event.preventDefault();
-                  step(entry, -by);
-                }
-              }}
-            />
-            <span
-              className="ob-small"
-              style={{
-                textAlign: 'right',
-                fontVariantNumeric: 'tabular-nums',
-                color: over ? 'var(--state-offline)' : 'var(--fg-secondary)',
-              }}
-            >
-              {entry.availableBoxes}
-            </span>
+            {perRow ? (
+              <BoxesInput
+                entry={entry}
+                label={`${quantityHeader} — ${entry.colour}`}
+                onBoxes={onBoxes}
+                autoFocus={entry.colour === focusColour}
+              />
+            ) : (
+              <span
+                className="ob-small"
+                style={{
+                  textAlign: 'right',
+                  fontVariantNumeric: 'tabular-nums',
+                  color: over ? 'var(--state-offline)' : 'var(--fg-secondary)',
+                }}
+              >
+                {entry.boxes || '0'}
+              </span>
+            )}
             {onRemove ? (
               <button
                 type="button"
@@ -1858,20 +1655,17 @@ function ColourRows({
 /**
  * The card one product is built in before it joins the lead.
  *
- * Nothing here is on the voucher yet, which is the point: packaging, a rate and
- * at least one quantity are all decided in one place, and Add is refused until
- * they are. The hint along the bottom says which of the three is missing rather
+ * Nothing here is on the voucher yet, which is the point: packaging and at
+ * least one quantity are both decided in one place, and Add is refused until
+ * they are. The hint along the bottom says which of the two is missing rather
  * than making somebody guess at a disabled button.
  */
 function DraftCard({
   draft,
-  canEditRate,
-  canSeeRates,
   ready,
   packagingOptions,
   gradeOptions,
   suggestedPackaging,
-  rateOrigin,
   colourHex,
   moreColours,
   onPatch,
@@ -1881,13 +1675,10 @@ function DraftCard({
   onSave,
 }: {
   draft: DraftLine;
-  canEditRate: boolean;
-  canSeeRates: boolean;
   ready: boolean;
   packagingOptions: OptionListItem[];
   gradeOptions: OptionListItem[];
   suggestedPackaging: string | null;
-  rateOrigin: RateOrigin;
   colourHex: (name: string) => string | undefined;
   moreColours: ColourEntry[];
   onPatch: (patch: Partial<DraftLine>) => void;
@@ -1897,24 +1688,12 @@ function DraftCard({
   onSave: () => void;
 }) {
   const filled = draft.colours.filter((entry) => Number(entry.boxes) > 0);
-  const rate = ratePaise(draft);
-  const preview =
-    rate === null ? null : rate * filled.reduce((sum, entry) => sum + Number(entry.boxes), 0);
 
   const hint = !draft.packaging.trim()
     ? t('lead.add.draft.hintPackaging')
     : filled.length === 0
       ? t('lead.add.draft.hintQuantity')
-      : !canSeeRates || !draft.rateOn
-        ? t('lead.add.draft.hintNoRate')
-        : (rate ?? 0) > 0
-          ? t('lead.add.draft.hintTotal', { amount: formatMoney(preview) })
-          : t('lead.add.draft.hintRateOrOff');
-
-  function step(delta: number): void {
-    const current = Number(draft.rateText ?? '0') || 0;
-    onPatch({ rateText: String(Math.max(0, current + delta)), rateTouched: true });
-  }
+      : null;
 
   /*
    * The grade the line already carries has to stay pickable even when nobody
@@ -1927,6 +1706,16 @@ function DraftCard({
       ? [{ value: draft.grade, label: draft.grade }]
       : []),
   ];
+
+  /*
+   * The colour most recently added from the select at the bottom.
+   *
+   * Its row mounts above that select, so the Enter walk cannot reach it: the
+   * next field after the select in document order is the Add button, and that
+   * is where the caret went. The new row's field takes focus on mount instead,
+   * which is where the quantity for the colour just chosen gets typed.
+   */
+  const [addedColour, setAddedColour] = useState<string | null>(null);
 
   return (
     <Card padded={false} style={{ marginTop: 'var(--s-8)' }}>
@@ -2012,112 +1801,36 @@ function DraftCard({
             />
           </label>
 
-          {canSeeRates && (
-            <div className="ob-small" style={{ color: 'var(--fg-secondary)' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
-                <span>{t('lead.add.draft.ratePerBox')}</span>
-                <button
-                  type="button"
-                  className="ob-rate-switch"
-                  role="switch"
-                  aria-checked={draft.rateOn}
-                  aria-label={t('lead.add.draft.rateSwitch')}
-                  title={t('lead.add.draft.rateSwitchHint')}
-                  disabled={!canEditRate}
-                  onClick={() => onPatch({ rateOn: !draft.rateOn, rateTouched: true })}
-                >
-                  <span aria-hidden="true" className="ob-rate-switch__knob" />
-                </button>
-                <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                  {draft.rateOn ? t('lead.add.draft.rateOn') : t('lead.add.draft.rateOff')}
-                </span>
+          <label className="ob-small" style={{ display: 'block', color: 'var(--fg-secondary)' }}>
+            {t('lead.add.draft.col.quantity')}
+            {/* One colour: this is the count. More than one: each colour has
+                its own field in the rows below and this shows the sum. */}
+            {draft.colours.length === 1 && draft.colours[0] ? (
+              <span style={{ display: 'block', marginTop: rem(4) }}>
+                <BoxesInput
+                  entry={draft.colours[0]}
+                  label={t('lead.add.draft.col.quantity')}
+                  onBoxes={onBoxes}
+                />
               </span>
-
-              {draft.rateOn ? (
-                <span
-                  className="ob-rate-field"
-                  data-invalid={(rate ?? 0) > 0 ? undefined : 'true'}
-                  style={{ marginTop: rem(4) }}
-                >
-                  <span
-                    aria-hidden="true"
-                    style={{ padding: `0 ${rem(2)} 0 ${rem(9)}`, color: 'var(--fg-tertiary)' }}
-                  >
-                    ₹
-                  </span>
-                  <input
-                    value={draft.rateText ?? ''}
-                    inputMode="numeric"
-                    // A courtesy only — the Master ignores a rate from anybody
-                    // without `field.saleRate.edit`, whatever the panel sends.
-                    disabled={!canEditRate}
-                    aria-label={t('lead.add.draft.ratePerBox')}
-                    onChange={(event) =>
-                      onPatch({
-                        rateText: event.target.value.replace(/[^0-9.]/g, ''),
-                        rateTouched: true,
-                      })
-                    }
-                    onKeyDown={(event) => {
-                      const by = event.shiftKey ? 10 : 1;
-                      if (event.key === 'ArrowUp') {
-                        event.preventDefault();
-                        step(by);
-                      }
-                      if (event.key === 'ArrowDown') {
-                        event.preventDefault();
-                        step(-by);
-                      }
-                    }}
-                  />
-                </span>
-              ) : (
-                <span
-                  className="ob-small"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    height: rem(32),
-                    marginTop: rem(4),
-                    padding: `0 ${rem(9)}`,
-                    border: '1px dashed var(--line-strong)',
-                    borderRadius: 'var(--r-sm)',
-                    color: 'var(--fg-tertiary)',
-                  }}
-                >
-                  {t('lead.add.draft.noRate')}
-                </span>
-              )}
-
-              <span
+            ) : (
+              <output
+                className="ob-input"
+                aria-label={t('lead.add.draft.col.quantity')}
                 style={{
                   display: 'flex',
-                  alignItems: 'baseline',
-                  gap: rem(8),
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
                   marginTop: rem(4),
+                  background: 'var(--bg-sunken)',
+                  fontVariantNumeric: 'tabular-nums',
                 }}
               >
-                <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                  {draft.rateOn ? rateOrigin.note : t('lead.add.draft.rateLater')}
-                </span>
-                {draft.rateOn && rateOrigin.rate !== null && rate !== rateOrigin.rate && (
-                  <button
-                    type="button"
-                    className="ob-btn ob-btn--ghost ob-micro"
-                    style={{ padding: 0, color: 'var(--accent)', textDecoration: 'underline' }}
-                    onClick={() =>
-                      onPatch({
-                        rateText: String((rateOrigin.rate ?? 0) / 100),
-                        rateTouched: false,
-                      })
-                    }
-                  >
-                    {t('lead.add.draft.rateReset', { amount: formatMoney(rateOrigin.rate) })}
-                  </button>
-                )}
-              </span>
-            </div>
-          )}
+                {boxesOf(draft)}
+              </output>
+            )}
+          </label>
+
         </div>
 
         <div className="ob-eyebrow" style={{ color: 'var(--fg-tertiary)', marginBottom: rem(6) }}>
@@ -2130,10 +1843,10 @@ function DraftCard({
           codeHeader={t('lead.add.products.col.code')}
           colourHeader={t('lead.add.products.col.colour')}
           quantityHeader={t('lead.add.draft.col.quantity')}
-          freeHeader={t('lead.add.draft.col.freeToSell')}
           onBoxes={onBoxes}
           onRemove={draft.colours.length > 1 ? onRemoveColour : undefined}
           removeLabel={(colour) => t('lead.add.draft.removeColour', { colour })}
+          focusColour={addedColour}
         />
 
         {moreColours.length > 0 && (
@@ -2144,7 +1857,9 @@ function DraftCard({
             style={{ marginTop: 'var(--s-8)', maxWidth: rem(340) }}
             onChange={(event) => {
               const found = moreColours.find((entry) => entry.colour === event.target.value);
-              if (found) onAddColour(found);
+              if (!found) return;
+              setAddedColour(found.colour);
+              onAddColour(found);
             }}
           >
             <option value="">{t('lead.add.draft.addColour')}</option>

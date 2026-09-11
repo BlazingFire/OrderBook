@@ -994,7 +994,6 @@ function OfficePanel() {
           render: () => (
             <AddLeadScreen
               view={view}
-              canEditRate={can('field.saleRate.edit')}
               onSaved={(id) => {
                 clearSubNav('addLead');
                 setTab('leads');

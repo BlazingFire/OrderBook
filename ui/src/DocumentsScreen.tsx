@@ -49,7 +49,8 @@ import {
 import { Button, ButtonLink } from './Button.js';
 import { Card, Section } from './Card.js';
 import { DataTable, type DataTableColumn } from './DataTable.js';
-import { FormField, Input, NumberInput, Select, Switch, Textarea } from './Form.js';
+import { FormField, Input, NumberInput, Switch, Textarea } from './Form.js';
+import { Select } from './SuggestInput.js';
 import { EmptyState, ErrorState, ConflictBanner, SkeletonTable } from './States.js';
 import { StatusPill } from './DataDisplay.js';
 import { LoadMorePager } from './CursorPager.js';

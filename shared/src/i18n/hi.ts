@@ -1322,7 +1322,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'documents.gallery.use': 'Use this design',
   // TODO(i18n-hi)
-  // TODO(i18n-hi)
   'designer.binding.companyName': 'Company name',
   // TODO(i18n-hi)
   'designer.binding.title': 'Document title',
@@ -1876,7 +1875,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'firstRun.choose.back': 'Back',
   // TODO(i18n-hi)
   'firstRun.choose.newSite': 'Set up new site',
-  // TODO(i18n-hi)
   // TODO(i18n-hi)
   'firstRun.dataDir.title': 'Where this Master keeps its data',
   // TODO(i18n-hi)
@@ -2581,7 +2579,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'master.backup.restore.confirmWipe':
     'This installation already has data. Restoring will replace it completely. Type CONFIRM to proceed.',
   // TODO(i18n-hi)
-  // TODO(i18n-hi)
   'master.settings.storage.title': 'Storage on this PC',
   // TODO(i18n-hi)
   'master.sync.conflictReview': '{count} conflicts — review',
@@ -2688,7 +2685,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'office.backup.restore.confirmWipe':
     'This device already has data. Restoring will replace it completely. Type CONFIRM to proceed.',
-  // TODO(i18n-hi)
   // TODO(i18n-hi)
   'office.settings.storage.title': 'Storage on this device',
   // TODO(i18n-hi)
@@ -3722,8 +3718,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'reports.topParties.parties': 'Parties',
   // TODO(i18n-hi)
-  // TODO(i18n-hi)
-  // TODO(i18n-hi)
   'settings.appearance.density': 'Density',
   // TODO(i18n-hi)
   'settings.appearance.densityComfortable': 'Comfortable',
@@ -3890,7 +3884,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'signin.submitting': 'Signing in…',
   // TODO(i18n-hi)
   'signin.subtitleFallback': 'Sign in to continue',
-  // TODO(i18n-hi)
   // TODO(i18n-hi)
   'signin.chooseProfile': 'Who is using this panel?',
   // TODO(i18n-hi)
@@ -4325,8 +4318,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.draft.addColour': '+ Add another colour of this product…',
   // TODO(i18n-hi)
-  'lead.add.draft.col.freeToSell': 'Free to sell',
-  // TODO(i18n-hi)
   'lead.add.draft.col.quantity': 'Quantity',
   // TODO(i18n-hi)
   'lead.add.draft.colourOption': '{code} · {colour} · {free} free',
@@ -4339,25 +4330,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.draft.hintQuantity': 'Enter a quantity for at least one colour',
   // TODO(i18n-hi)
-  'lead.add.draft.hintRate': 'Enter a rate',
-  // TODO(i18n-hi)
-  'lead.add.draft.hintTotal': 'Line total {amount}',
-  // TODO(i18n-hi)
   'lead.add.draft.new': 'new product',
   // TODO(i18n-hi)
   'lead.add.draft.packaging': 'Packaging',
   // TODO(i18n-hi)
   'lead.add.draft.quantityTitle': 'Quantity — boxes per colour',
-  // TODO(i18n-hi)
-  'lead.add.draft.rateCatalogue': 'catalogue rate',
-  // TODO(i18n-hi)
-  'lead.add.draft.rateLast': 'last used {date}',
-  // TODO(i18n-hi)
-  'lead.add.draft.rateParty': 'party rate',
-  // TODO(i18n-hi)
-  'lead.add.draft.ratePerBox': 'Rate per box',
-  // TODO(i18n-hi)
-  'lead.add.draft.rateReset': 'Reset to {amount}',
   // TODO(i18n-hi)
   'lead.add.draft.removeColour': 'Remove colour {colour}',
   // TODO(i18n-hi)
@@ -4447,40 +4424,20 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.bulkNote': '{count} products — the list scrolls',
   // TODO(i18n-hi)
-  'lead.add.draft.hintNoRate': 'Saves without a rate',
-  // TODO(i18n-hi)
-  'lead.add.draft.hintRateOrOff': 'Enter a rate or switch it off',
-  // TODO(i18n-hi)
-  'lead.add.draft.noRate': 'No rate on this line',
-  // TODO(i18n-hi)
-  'lead.add.draft.rateLater': 'quote it later — no amount on this line',
-  // TODO(i18n-hi)
-  'lead.add.draft.rateOff': 'Off',
-  // TODO(i18n-hi)
-  'lead.add.draft.rateOn': 'On',
-  // TODO(i18n-hi)
-  'lead.add.draft.rateSwitch': 'Use a rate on this product',
-  // TODO(i18n-hi)
-  'lead.add.draft.rateSwitchHint': 'Switch off to save this product without a rate',
-  // TODO(i18n-hi)
   'lead.add.draft.title': 'Details for this product',
   // TODO(i18n-hi)
   'lead.add.followUp.label': 'Follow up',
   // TODO(i18n-hi)
   'lead.add.line.noPackaging': 'no packaging',
   // TODO(i18n-hi)
-  'lead.add.line.rateNa': 'rate n/a',
-  // TODO(i18n-hi)
   'lead.add.line.rateUnset': 'not set — to be quoted',
   // TODO(i18n-hi)
   'lead.add.line.remove': 'Remove {product}',
   // TODO(i18n-hi)
-  'lead.add.line.toQuote': 'rate to quote',
-  // TODO(i18n-hi)
   'lead.add.products.clear': 'Clear selection',
   // TODO(i18n-hi)
   'lead.add.products.pickedHint':
-    'Fill packaging, rate and quantity, then Add product — the search bar comes back for the next one.',
+    'Fill packaging and quantity, then Add product — the search bar comes back for the next one.',
   // TODO(i18n-hi)
   'lead.add.products.searchAdds': 'search adds another',
   // TODO(i18n-hi)

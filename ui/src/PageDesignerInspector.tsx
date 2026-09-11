@@ -19,7 +19,8 @@ import type {
 } from '@orderbook/shared';
 
 import { Button } from './Button.js';
-import { FormField, Input, NumberInput, Select, Switch } from './Form.js';
+import { FormField, Input, NumberInput, Switch } from './Form.js';
+import { Select } from './SuggestInput.js';
 import { t } from './i18n.js';
 import { rem } from './rem.js';
 

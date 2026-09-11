@@ -266,7 +266,7 @@ function provisionalLead(view: SyncSnapshot, mutation: Mutation): Lead {
   const stage = pipeline?.stages.find((candidate) => candidate.isDefault) ?? pipeline?.stages[0];
 
   const items = (payload.items ?? []).map((item, index) =>
-    provisionalLine(view, mutation.entityId, item, index),
+    provisionalLine(view, mutation.entityId, item, index, payload.partyWiseMode ? payload.partyId : undefined),
   );
 
   return {
@@ -306,8 +306,15 @@ function provisionalLine(
   parentId: string,
   item: Record<string, unknown>,
   index: number,
+  /** Set when the lead is party-wise: the party's own variant rate wins, as on the Master. */
+  variantPartyId?: string,
 ): LineItem {
   const product = view.products.find((candidate) => candidate.id === item.productId);
+  const variant = variantPartyId
+    ? view.partyVariants.find(
+        (candidate) => candidate.partyId === variantPartyId && candidate.productId === item.productId,
+      )
+    : undefined;
 
   const quantities = Array.isArray(item.quantities)
     ? (
@@ -329,10 +336,12 @@ function provisionalLine(
   const rateHidden =
     item.rate === undefined && product !== undefined && !('rate' in (product as object));
   // `rateUnset` stops the catalogue fallback here too, or the board would show
-  // a price for a line the counter deliberately left to be quoted.
+  // a price for a line the counter deliberately left to be quoted. Otherwise the
+  // same ladder as `buildLineSnapshot` on the Master — sent rate, party variant,
+  // catalogue — so a queued lead shows the figure the ack will confirm.
   const rate = item.rateUnset
     ? null
-    : ((item.rate as number | null | undefined) ?? product?.rate ?? null);
+    : ((item.rate as number | null | undefined) ?? variant?.rate ?? product?.rate ?? null);
 
   const line: LineItem = {
     id: `${parentId}-line-${index}`,
