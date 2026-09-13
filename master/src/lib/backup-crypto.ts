@@ -30,9 +30,6 @@ const scrypt = promisify(scryptCallback) as (
   keylen: number,
 ) => Promise<Buffer>;
 
-const SCRYPT_N = 16_384;
-const SCRYPT_R = 8;
-const SCRYPT_P = 1;
 const KEY_LENGTH = 32;
 const SALT_LENGTH = 16;
 const IV_LENGTH = 12;
@@ -138,7 +135,3 @@ export async function decryptBackup(parsed: ParsedBackupFile, passphrase: string
     throw new BackupFileError('wrong_passphrase');
   }
 }
-
-// Re-exported so callers importing this module do not also need the shared
-// package just to spell out `SCRYPT_N` etc. in tests.
-export const BACKUP_KDF_PARAMS = { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P, keyLength: KEY_LENGTH };

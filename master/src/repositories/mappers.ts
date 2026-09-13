@@ -32,7 +32,6 @@ import type {
   StockReservation,
   SyncConflict,
   SyncMeta,
-  Tenant,
   TimelineEntry,
   User,
   UserAvatar,
@@ -121,7 +120,7 @@ function toStringArray(value: unknown): string[] {
 type Row = Record<string, unknown>;
 
 /** The sync bookkeeping every syncable record carries. */
-export function mapSyncMeta(row: Row): SyncMeta {
+function mapSyncMeta(row: Row): SyncMeta {
   return {
     version: toRequiredNumber(row.version),
     hlc: String(row.hlc ?? ''),
@@ -131,17 +130,6 @@ export function mapSyncMeta(row: Row): SyncMeta {
 }
 
 // --- Tenancy & access ------------------------------------------------------
-
-export function mapTenant(row: Row): Tenant {
-  return {
-    id: String(row.id),
-    name: String(row.name),
-    slug: String(row.slug),
-    isActive: Boolean(row.is_active),
-    createdAt: toRequiredIso(row.created_at),
-    updatedAt: toRequiredIso(row.updated_at),
-  };
-}
 
 export function mapRole(row: Row): Role {
   return {
@@ -239,7 +227,7 @@ export function mapOfficePanel(row: Row): OfficePanel {
  * figure coerced to 0 would render as a full disk on every panel paired before
  * this existed.
  */
-export function mapOfficePanelDevice(row: Row): OfficePanelDevice {
+function mapOfficePanelDevice(row: Row): OfficePanelDevice {
   return {
     hostname: (row.hostname as string | null) ?? null,
     platform: (row.platform as string | null) ?? null,

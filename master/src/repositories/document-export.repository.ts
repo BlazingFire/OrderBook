@@ -269,24 +269,3 @@ export async function markSuperseded(
   return affected;
 }
 
-/**
- * Delete export rows older than `before`, handing back the files they named.
- *
- * The paths come out of the DELETE rather than being rebuilt from the storage
- * key: `exportPathFor` would give the same answer today, and would stop giving
- * it the first time the layout changes — and the row that knows where the file
- * is is the row being removed.
- */
-export async function deleteExportsBefore(
-  tenantId: string,
-  before: Date,
-  trx: TransactionContext,
-): Promise<string[]> {
-  const rows = await trx(TABLE)
-    .where('tenant_id', tenantId)
-    .where('created_at', '<', before)
-    .del()
-    .returning<Array<{ storage_path: string }>>('storage_path');
-
-  return rows.map((row) => row.storage_path).filter(Boolean);
-}

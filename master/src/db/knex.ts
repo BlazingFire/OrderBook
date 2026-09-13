@@ -8,7 +8,7 @@ const log = createLogger('db');
 
 let instance: Knex | null = null;
 
-export function buildKnexConfig(connectionUrl: string): Knex.Config {
+function buildKnexConfig(connectionUrl: string): Knex.Config {
   return {
     client: 'pg',
     connection: connectionUrl,

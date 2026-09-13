@@ -57,7 +57,7 @@ export async function listAll(
   return rows.map(mapPartyProductVariant);
 }
 
-export async function findVariant(
+async function findVariant(
   tenantId: string,
   partyId: string,
   productId: string,

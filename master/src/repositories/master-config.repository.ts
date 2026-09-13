@@ -20,10 +20,6 @@ export async function findMasterConfig(): Promise<MasterConfigRow | null> {
   return row ?? null;
 }
 
-export async function isSetupComplete(): Promise<boolean> {
-  return (await findMasterConfig()) !== null;
-}
-
 export async function insertMasterConfig(
   values: Omit<MasterConfigRow, 'id'>,
   trx?: Knex.Transaction,

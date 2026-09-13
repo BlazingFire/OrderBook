@@ -45,7 +45,7 @@ const FACE_FILES: Record<FaceName, string> = {
   mono: 'SourceCodePro-Regular.ttf',
 };
 
-export function fontPath(face: FaceName): string {
+function fontPath(face: FaceName): string {
   return path.join(config.documents.fontsDir, FACE_FILES[face]);
 }
 

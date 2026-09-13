@@ -186,19 +186,6 @@ export async function grantsForParties(
   return byParty;
 }
 
-/** Party ids this person is explicitly assigned to. */
-export async function assignedPartyIds(
-  tenantId: string,
-  userId: string,
-  level?: PartyAccessLevel,
-): Promise<string[]> {
-  const query = db()(TABLE).where({ tenant_id: tenantId, user_id: userId });
-  if (level === 'manage') query.where('access_level', 'manage');
-
-  const rows = await query.select<Array<{ party_id: string }>>('party_id');
-  return rows.map((row) => row.party_id);
-}
-
 /**
  * Replace a party's whole grant set inside the caller's transaction.
  *

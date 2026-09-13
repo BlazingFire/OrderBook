@@ -13,7 +13,7 @@
 const FORMULA_PREFIX_CHARS = new Set(['=', '+', '-', '@']);
 
 /** Renders one CSV field: quoted if needed, formula-injection-guarded. */
-export function csvCell(value: unknown): string {
+function csvCell(value: unknown): string {
   if (value === null || value === undefined) return '';
 
   let text = typeof value === 'string' ? value : String(value);

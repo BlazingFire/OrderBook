@@ -147,44 +147,6 @@ export function wrapLines(doc: Doc, text: string, maxWidth: number, style: TextS
 }
 
 /**
- * Word-wraps a mixed-script paragraph and draws each line through `runText`.
- *
- * PDFKit's own `text(…, { width })` cannot be used for anything that might
- * contain Devanagari: it wraps and draws under the **single** font bound at
- * the time of the call, so every Hindi character silently maps to `.notdef`
- * and vanishes from the page — the paragraph looks merely short rather than
- * broken. That is exactly what happened to the terms block before this
- * existed, and it survived a visual check because the English half rendered
- * perfectly.
- *
- * Returns the y coordinate below the last line drawn.
- */
-export function wrappedRunText(
-  doc: Doc,
-  text: string,
-  x: number,
-  y: number,
-  maxWidth: number,
-  style: TextStyle,
-  lineHeight = style.size * 1.45,
-): number {
-  // Whitespace collapsed on the way in, which is what this function has always
-  // done: `split(/\s+/)` treated a newline as a space. `wrapLines` honours
-  // newlines, so preserving that behaviour here is deliberate rather than an
-  // oversight — changing how every existing terms block prints is not this
-  // function's business.
-  const lines = wrapLines(doc, text.replace(/\s+/g, ' ').trim(), maxWidth, style);
-  let cursor = y;
-
-  for (const line of lines) {
-    if (line.length > 0) runText(doc, line, x, cursor, style);
-    cursor += lineHeight;
-  }
-
-  return cursor;
-}
-
-/**
  * The largest size at or below `style.size` whose wrapped text fits `maxHeight`.
  *
  * Steps down rather than solving, because the wrap points move as the size
@@ -360,26 +322,4 @@ export function pageFooter(
       script: 'mono',
     });
   }
-}
-
-/** A label/value stack, for the party block and the header's right-hand column. */
-export function keyValueBlock(
-  doc: Doc,
-  entries: Array<{ label: string; value: string }>,
-  x: number,
-  y: number,
-  lineHeight = 11,
-): number {
-  let cursor = y;
-
-  for (const entry of entries) {
-    const labelEnd = runText(doc, `${entry.label} `, x, cursor, {
-      size: 8,
-      colour: '#777777',
-    });
-    runText(doc, entry.value, labelEnd, cursor, { size: 8, colour: '#111111' });
-    cursor += lineHeight;
-  }
-
-  return cursor;
 }

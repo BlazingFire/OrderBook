@@ -253,7 +253,7 @@ export async function assignablePeople(actor: ActorContext): Promise<AssignableP
 // --- The write-side gate every other service calls -------------------------
 
 /** What this caller may do on this party. */
-export async function levelForParty(
+async function levelForParty(
   partyId: string,
   actor: ActorContext,
 ): Promise<PartyAccessLevel | 'none'> {

@@ -30,9 +30,9 @@ declare module 'express-serve-static-core' {
   }
 }
 
-export const PANEL_ID_HEADER = 'x-orderbook-panel-id';
-export const PANEL_SECRET_HEADER = 'x-orderbook-panel-secret';
-export const ACTING_TOKEN_HEADER = 'x-orderbook-acting-token';
+const PANEL_ID_HEADER = 'x-orderbook-panel-id';
+const PANEL_SECRET_HEADER = 'x-orderbook-panel-secret';
+const ACTING_TOKEN_HEADER = 'x-orderbook-acting-token';
 
 function header(req: Request, name: string): string | undefined {
   const value = req.headers[name];

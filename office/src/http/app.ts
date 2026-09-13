@@ -1677,7 +1677,7 @@ function filterDashboardForCurrentUser(
  * 10-TESTING.md` §6.8 (`DSH-1`) calls out for this snapshot. The map is the
  * inventory the pure test pins; `forCurrentUser` below is what actually runs.
  */
-export type SnapshotPolicy = 'mask-rates' | 'replace' | 'gate' | 'passthrough';
+type SnapshotPolicy = 'mask-rates' | 'replace' | 'gate' | 'passthrough';
 
 export const SNAPSHOT_POLICY: Record<keyof SyncSnapshot, SnapshotPolicy> = {
   // The Master's boot id and change-ring position. Neither is company data —

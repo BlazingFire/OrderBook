@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "if not exist \"%INIT_CWD%\\.tmp\" mkdir \"%INIT_CWD%\\.tmp\" && set \"TEMP=%INIT_CWD%\\.tmp\" && set \"TMP=%INIT_CWD%\\.tmp\" && tsc -b && vite build",
     "typecheck": "tsc -b",
     "preview": "vite preview"
   },

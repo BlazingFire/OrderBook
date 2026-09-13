@@ -28,7 +28,7 @@
 import type { Lead, Order, Party, MasterIdentity } from '@orderbook/shared';
 import type { CustomFieldDefinition, DocumentBindingRef } from '@orderbook/shared';
 
-import { formatDateForDocument, formatMinorUnits } from './document-text.js';
+import { formatDateForDocument } from './document-text.js';
 
 /**
  * Every binding an element may name.
@@ -82,10 +82,10 @@ export const DOCUMENT_BINDINGS: readonly DocumentBinding[] = [
  * `plain` is printable to anybody who may render the document at all.
  * `rate` is money, and drops with `ratesIncluded`.
  */
-export type BindingGroup = 'plain' | 'rate';
+type BindingGroup = 'plain' | 'rate';
 
 /** The eight typed switches, by the name they carry on the template. */
-export type BindingSwitch = 'showPartyBlock' | 'showTerms' | 'showSignature' | 'showRates';
+type BindingSwitch = 'showPartyBlock' | 'showTerms' | 'showSignature' | 'showRates';
 
 export interface BindingContext {
   subject: Lead | Order;
@@ -370,13 +370,3 @@ function resolveCustomField(
       return String(raw);
   }
 }
-
-/** Exported for the palette, which groups bindings under these headings. */
-export const BINDING_GROUPS: ReadonlyArray<{ prefix: string; label: string }> = [
-  { prefix: 'company.', label: 'Company' },
-  { prefix: 'document.', label: 'Document' },
-  { prefix: 'party.', label: 'Party' },
-];
-
-/** Kept beside the resolver so the two cannot disagree about what money is. */
-export const formatMoneyForDocument = formatMinorUnits;

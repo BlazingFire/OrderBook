@@ -33,7 +33,7 @@ const P = 1;
 const KEY_LENGTH = 64;
 const SALT_LENGTH = 16;
 
-export const SCRYPT_PREFIX = 'scrypt$';
+const SCRYPT_PREFIX = 'scrypt$';
 
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(SALT_LENGTH);

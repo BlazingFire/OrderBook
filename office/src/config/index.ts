@@ -31,7 +31,7 @@ const repoRoot = path.resolve(packageRoot, '..');
  * sets when packaged; from source it stays in the package folder, exactly
  * where it has always been.
  */
-export const settingsFile = process.env.ORDERBOOK_OFFICE_SETTINGS_FILE
+const settingsFile = process.env.ORDERBOOK_OFFICE_SETTINGS_FILE
   ? path.resolve(process.env.ORDERBOOK_OFFICE_SETTINGS_FILE)
   : path.join(packageRoot, '.env');
 
@@ -122,5 +122,3 @@ export const config = {
       : DEFAULT_LOCALE,
   },
 } as const;
-
-export type Config = typeof config;

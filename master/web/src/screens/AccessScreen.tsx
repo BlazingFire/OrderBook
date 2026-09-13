@@ -55,7 +55,7 @@ interface Props {
   onTabChange: (tab: Tab) => void;
 }
 
-export type Tab = 'users' | 'roles';
+type Tab = 'users' | 'roles';
 
 export function AccessScreen({
   permissions,

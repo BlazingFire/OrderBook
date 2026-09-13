@@ -20,7 +20,7 @@ const TABLE = 'document_templates';
 type Runner = Knex | Knex.Transaction;
 type Row = Record<string, unknown>;
 
-export function mapDocumentTemplate(row: Row): DocumentTemplate {
+function mapDocumentTemplate(row: Row): DocumentTemplate {
   return {
     id: String(row.id),
     tenantId: String(row.tenant_id),
@@ -124,20 +124,6 @@ export async function findTemplateById(
   if (!options.includeDeleted) builder.whereNull('deleted_at');
 
   const row = await builder.first<Row>('*');
-  return row ? mapDocumentTemplate(row) : null;
-}
-
-/** The render path's lookup: the tenant's default template for one document type. */
-export async function defaultTemplateFor(
-  tenantId: string,
-  documentType: DocumentType,
-  runner: Runner = db(),
-): Promise<DocumentTemplate | null> {
-  const row = await runner(TABLE)
-    .where({ tenant_id: tenantId, document_type: documentType, is_default: true })
-    .whereNull('deleted_at')
-    .first<Row>('*');
-
   return row ? mapDocumentTemplate(row) : null;
 }
 

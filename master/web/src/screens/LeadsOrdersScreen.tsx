@@ -30,7 +30,7 @@ import {
   type TabItem,
 } from '@orderbook/ui';
 
-export type View = 'leads' | 'orders' | 'converted';
+type View = 'leads' | 'orders' | 'converted';
 
 interface Props {
   /** Bumped by the live socket whenever lead or order data changes. */

@@ -367,7 +367,7 @@ export async function addRemark(
  * and only when the lead is in `partyWiseMode` — a lead that is not in that
  * mode must take catalogue values even where a variant exists.
  */
-export async function buildLines(
+async function buildLines(
   tenantId: string,
   partyId: string,
   drafts: LineDraft[],

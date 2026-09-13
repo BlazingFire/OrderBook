@@ -34,8 +34,8 @@ import { ConflictError, ValidationError } from '../lib/errors.js';
 const HEX_PATTERN = /^#[0-9A-Fa-f]{6}$/;
 
 /** Millimetres. The database CHECK allows 0–100; the product refuses the extremes. */
-export const MIN_MARGIN_MM = 5;
-export const MAX_MARGIN_MM = 50;
+const MIN_MARGIN_MM = 5;
+const MAX_MARGIN_MM = 50;
 
 /**
  * The shortest page this product supports is A5 landscape — 148mm tall. A

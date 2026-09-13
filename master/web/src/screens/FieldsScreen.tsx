@@ -65,7 +65,7 @@ interface Props {
   onTabChange: (tab: Tab) => void;
 }
 
-export type Tab = 'values' | 'definitions' | 'stages';
+type Tab = 'values' | 'definitions' | 'stages';
 
 /** The server's own rule (`master/src/domain/field-values.ts`), checked here to save a round trip. */
 const HEX_PATTERN = /^#[0-9A-Fa-f]{6}$/;

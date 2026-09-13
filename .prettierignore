@@ -2,7 +2,3 @@ node_modules/
 dist/
 build/
 package-lock.json
-
-# Vendored third-party skill — kept byte-identical to upstream so it can be
-# diffed and re-synced. See .claude/skills/apple-design/VENDORED.md
-.claude/skills/

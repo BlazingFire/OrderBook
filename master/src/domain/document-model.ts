@@ -33,7 +33,7 @@ import { resolveBinding, type BindingContext } from './document-bindings.js';
 import { formatDateForDocument, formatMinorUnits, type ScriptTag } from './document-text.js';
 import type { TemplateShape } from './document-template.js';
 
-export type DocumentColumnKey =
+type DocumentColumnKey =
   | 'sequence'
   | 'category'
   | 'product'
@@ -73,7 +73,7 @@ export interface DocumentRow {
   chips: DocumentColourChip[];
 }
 
-export interface DocumentTotals {
+interface DocumentTotals {
   boxCount: number;
   /** Absent — not zero — when rates are not included. */
   grandTotal?: string;

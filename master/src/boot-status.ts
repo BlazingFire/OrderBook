@@ -15,7 +15,7 @@
  * staring at, instead of a silence.
  */
 
-export type BootState = 'starting' | 'ready' | 'failed';
+type BootState = 'starting' | 'ready' | 'failed';
 
 export interface BootStatus {
   state: BootState;

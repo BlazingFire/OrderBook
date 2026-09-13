@@ -32,7 +32,7 @@ What is actually true:
   are append-only and only durably updated when a turn **commits**, so a
   still-streaming conversation is never a complete, readable file.
 - **The `.claude/` folder in this repo** is not a GUI. It holds
-  `settings.local.json` and vendored skills — configuration, not a session.
+  `settings.local.json` — configuration, not a session.
 
 ### What this means for collaboration
 
@@ -80,8 +80,8 @@ no agent can open the one you already have in the GUI.
 1. **Put durable decisions in `HANDOFF.md`** (this repo's running record).
    Anything worth remembering — a decision, a gotcha, a completed stage —
    belongs there, not in a chat transcript that dies with the session.
-2. **Write plans as files.** Claude Code has a `writing-plans` skill (vendored
-   under `.claude/skills/`) that produces handoff plans for other models to
+2. **Write plans as files.** Claude Code's `writing-plans` skill (installed
+   globally, not vendored) produces handoff plans for other models to
    execute. Command Code writes plans to `~/.commandcode/plans/`. Both are
    better handoffs than pasted chat.
 3. **Prefer the source of truth over any summary.** `docs/PROJECT_PLAN.md` is
@@ -90,9 +90,10 @@ no agent can open the one you already have in the GUI.
 4. **Status lives in git, not in memory.** Commit granular work; the log is the
    shared timeline all three agents can read (`git log`). Uncommitted work is
    invisible to the others.
-5. **Vendored skills** (`.claude/skills/` and `.agents/skills/`, kept
-   byte-identical to upstream per `.prettierignore`) are shared tooling — read
-   them, don't edit them.
+5. **Project skills** live in `.commandcode/skills/` (team-shared, tracked) and
+   `.agents/skills/ui-consistency/` (the Muse Code shape of the same rule).
+   Third-party skills are installed globally on each machine, not vendored —
+   the vendored copies were removed on 2026-09-14.
 
 ---
 
@@ -135,8 +136,8 @@ Use this when passing a task from one agent to another:
    verified, what's left. The next agent reads the file, not the chat.
 4. **Update `HANDOFF.md`** when the task closes.
 
-This mirrors the "improve" skill's model (`plans/` + execute/reconcile) already
-vendored in this repo, and keeps every agent working from durable state.
+This mirrors the "improve" skill's model (`plans/` + execute/reconcile) and
+keeps every agent working from durable state.
 
 ---
 
@@ -172,8 +173,7 @@ For OrderBook specifically: `npm run typecheck` covers the web workspaces and
 | Shared UI package | `ui/src/` (consumed as source by both panels) |
 | Electron shell | `electron/` (main process + supervisor) |
 | Release/build tooling | `tools/` (`release.mjs`, `make-icons.mjs`, …) |
-| AI assistant (product feature) | `master/src/ai/`, docs in `docs/overhaul/workstream-I.md` |
-| AI dev skills (vendored) | `.claude/skills/` + `.agents/skills/` |
+| Project skills | `.commandcode/skills/` + `.agents/skills/ui-consistency/` |
 
 ---
 
@@ -186,6 +186,28 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
+
+### 2026-09-14 — Build fix, dead code, bloat removal, handoff rewrite (Claude)
+
+Scope: owner's "commit all to main, update handoff and project files, remove
+bloatware code and bloat files". Root cause of the `vite build` failure
+(`remove …\esbuild-…: Access is denied`) is a Windows temp-folder lock; both
+`web` workspaces' `build` scripts now point `TEMP`/`TMP` at a project-local
+`.tmp/` (gitignored) — `start:master` and `start:office` verified through real
+`npm`/`cmd.exe`. Deleted the vendored third-party skills (`.claude/skills/`,
+four of `.agents/skills/`, `skills-lock.json`, 138 files; all installed
+globally already), `docs/IMAGE_PIPELINE_FRONTEND_BRIEF.md`, and the four
+`docs/ai-handoffs/` briefs verified done — every one of the 22 was checked
+against the current tree, 18 remain open/partial and the README there is the
+verified queue. Knip-driven dead-code pass: 43 symbols deleted, 48
+un-exported, `master/src/domain/i18n-tokens.ts` removed. `HANDOFF.md`
+rewritten from a 3,110-line log into a current-state document (history stays
+in git); `AGENTS.md`, `opencode.md`, `README.md`, this file and the
+`repo-conventions` skill brought in line. `updates.test.ts` UPD-7 fixed
+(`1.1.0` → `9.9.9`; it was publishing the app's own version as "new").
+Verified: `npm run lint`, `npm run typecheck` exit 0; unit suites green;
+integration suites still blocked by the machine's PostgreSQL permission
+failure.
 
 ### 2026-09-13 — Project skill .agents/skills/ui-consistency (Muse Code)
 

@@ -34,9 +34,9 @@ import {
 
 export type ImportField = Exclude<keyof ProductInput, 'categoryId' | 'parameters' | 'customFields'>;
 
-export type ImportKind = 'text' | 'money' | 'number' | 'int' | 'enum';
+type ImportKind = 'text' | 'money' | 'number' | 'int' | 'enum';
 
-export type MoneyPermission = 'field.saleRate.edit' | 'field.purchaseRate.edit';
+type MoneyPermission ='field.saleRate.edit' | 'field.purchaseRate.edit';
 
 export interface ImportColumn {
   field: ImportField;

@@ -611,5 +611,3 @@ function FollowUpRow({
     </button>
   );
 }
-
-export type { DashboardTab };

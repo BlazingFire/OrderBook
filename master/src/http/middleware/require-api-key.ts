@@ -56,10 +56,6 @@ function noteFailure(prefix: string): void {
   log.warn(`Rejected API key ${prefix} (${count} failed attempts since start)`);
 }
 
-export function failureCount(prefix: string): number {
-  return failures.get(prefix) ?? 0;
-}
-
 export function resetApiKeyFailures(): void {
   failures.clear();
 }

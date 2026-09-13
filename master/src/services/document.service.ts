@@ -18,7 +18,6 @@ import type {
   DocumentTemplate,
   DocumentTemplateInput,
   DocumentTemplateQuery,
-  DocumentType,
 } from '@orderbook/shared';
 import { TEMPLATE_DEFAULTS, isDocumentType, isLocale, normaliseLayout } from '@orderbook/shared';
 
@@ -84,41 +83,6 @@ export async function getTemplate(id: string, actor: ActorContext): Promise<Docu
   const template = await templateRepo.findTemplateById(actor.tenantId, id);
   if (!template) throw new NotFoundError('Document template');
   return template;
-}
-
-/**
- * What the render path uses when the caller named no template: the tenant's
- * default for that document type, or — when they have saved none —
- * `TEMPLATE_DEFAULTS` in memory. A fresh installation can therefore print
- * before anybody has opened the designer.
- */
-export async function resolveTemplateForRender(
-  tenantId: string,
-  documentType: DocumentType,
-): Promise<{ template: TemplateShape & DocumentTemplateFlags; id: string | null; name: string }> {
-  const stored = await templateRepo.defaultTemplateFor(tenantId, documentType);
-  if (stored) return { template: stored, id: stored.id, name: stored.name };
-
-  // The in-memory default is described as blocks, because a default says what
-  // a quotation *is* rather than where it sits on a particular sheet. It gains
-  // geometry here, against the paper it is about to be printed on.
-  const fallback = TEMPLATE_DEFAULTS[documentType];
-  return {
-    template: {
-      ...fallback,
-      layout: normaliseLayout(
-        fallback.layout,
-        {
-          paperSize: fallback.paperSize,
-          orientation: fallback.orientation,
-          margins: fallback.margins,
-        },
-        { hasLogo: fallback.showLogo, hasSignature: fallback.showSignature },
-      ),
-    },
-    id: null,
-    name: fallback.name,
-  };
 }
 
 /** The switch fields the model builder needs alongside the geometry. */

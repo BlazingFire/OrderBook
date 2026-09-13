@@ -48,10 +48,6 @@ let loaded = false;
  */
 let revision = 0;
 
-export function snapshotRevision(): number {
-  return revision;
-}
-
 /**
  * Store the snapshot, and — in the **same disk write** — the cursor that
  * describes it.

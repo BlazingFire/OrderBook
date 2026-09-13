@@ -42,18 +42,18 @@ function assertStorageKey(storageKey: string): void {
   }
 }
 
-export function exportPathFor(storageKey: string): string {
+function exportPathFor(storageKey: string): string {
   assertStorageKey(storageKey);
   return path.join(config.documents.exportsDir, `${storageKey}.pdf`);
 }
 
-export function assetPathFor(storageKey: string, extension: 'png' | 'jpg'): string {
+function assetPathFor(storageKey: string, extension: 'png' | 'jpg'): string {
   assertStorageKey(storageKey);
   return path.join(config.documents.assetsDir, `${storageKey}.${extension}`);
 }
 
 /** Relative to `dataDir`, which is what the database stores — never an absolute path. */
-export function relativeToData(absolutePath: string): string {
+function relativeToData(absolutePath: string): string {
   return path.relative(config.dataDir, absolutePath).split(path.sep).join('/');
 }
 

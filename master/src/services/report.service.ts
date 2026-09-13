@@ -404,7 +404,3 @@ const REPORT_TITLE: Record<ReportKind, MessageKey> = {
   'lead-outcomes': 'reports.kind.leadOutcomes',
   'top-parties': 'reports.kind.topParties',
 };
-
-// Re-exported so a caller (route/socket layer) can validate `:report` /
-// `report` against the same list `ReportKind` is derived from.
-export { isReportKind } from '@orderbook/shared';

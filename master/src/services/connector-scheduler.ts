@@ -59,7 +59,7 @@ export function startConnectorScheduler(): () => void {
 }
 
 /** Exported so a test can run one tick without waiting a minute. */
-export async function tick(now: Date = new Date()): Promise<void> {
+async function tick(now: Date = new Date()): Promise<void> {
   await flushKeyUsage();
 
   const scheduled = await connectorRepo.listScheduled();

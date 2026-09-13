@@ -57,13 +57,7 @@ import { canSeeRates } from '../domain/visibility.js';
 import { config } from '../config/index.js';
 import { db } from '../db/knex.js';
 import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
-import {
-  readStoredFile,
-  removeStoredFile,
-  sha256Of,
-  writeExportFile,
-} from '../lib/document-files.js';
-import { createLogger } from '../lib/logger.js';
+import { readStoredFile, sha256Of, writeExportFile } from '../lib/document-files.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as assetRepo from '../repositories/document-asset.repository.js';
 import * as customFieldRepo from '../repositories/custom-field.repository.js';
@@ -73,8 +67,6 @@ import * as templateRepo from '../repositories/document-template.repository.js';
 import { renderPdf } from '../pdf/renderer.js';
 import * as documentService from './document.service.js';
 import { resolvePartyScope } from '../domain/party-scope.js';
-
-const log = createLogger('documents');
 import * as leadService from './lead.service.js';
 import * as orderService from './order.service.js';
 import * as setupService from './setup.service.js';
@@ -428,36 +420,4 @@ export async function fetchAssetFile(
   if (!bytes) throw new NotFoundError('Document asset');
 
   return { fileName: asset.filename, contentType: asset.mimeType, bytes };
-}
-
-/**
- * Delete rendered PDFs older than the company's retention setting.
- *
- * **`config.documents.retainExports` is `null` by default, and `null` is an
- * explicit "never prune" branch here rather than a falsy accident.** That
- * matters: this installation has been accumulating PDFs since it shipped, and
- * defaulting the setting to a number would bulk-delete a year of documents on
- * the first sweep after a deploy. Turning it on is a decision somebody makes
- * with the figure in front of them.
- *
- * The row goes first, inside a transaction, and the file afterwards. A file
- * removed before the row committed would leave a ledger entry pointing at
- * nothing; a row removed with the file left behind is a stray file, which is
- * the cheaper of the two mistakes.
- */
-export async function pruneExports(tenantId: string): Promise<number> {
-  const retainDays = config.documents.retainExports;
-  if (retainDays === null || retainDays === undefined) return 0;
-
-  const before = new Date(Date.now() - retainDays * 24 * 60 * 60 * 1000);
-
-  const paths = await db().transaction((trx) =>
-    exportRepo.deleteExportsBefore(tenantId, before, trx),
-  );
-
-  for (const relativePath of paths) await removeStoredFile(relativePath);
-
-  if (paths.length > 0)
-    log.info(`Pruned ${paths.length} rendered document(s) older than ${retainDays} days`);
-  return paths.length;
 }

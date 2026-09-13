@@ -59,6 +59,3 @@ export function sweepRecentReauth(): void {
 export function clearRecentReauth(): void {
   recentReauth.clear();
 }
-
-/** The window, exported so a test can state it rather than re-deriving it. */
-export const REAUTH_WINDOW_MS = REAUTH_TTL_MS;

@@ -199,7 +199,7 @@ async function loadResources(
   return byConnector;
 }
 
-export function mapConnector(
+function mapConnector(
   row: ConnectorRow & { run_as_user_name?: string | null },
   resources: ConnectorResource[],
 ): Connector {

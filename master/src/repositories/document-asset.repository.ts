@@ -47,15 +47,6 @@ export async function listAssets(
   return rows.map(mapDocumentAsset);
 }
 
-export async function findAssetById(
-  tenantId: string,
-  id: string,
-  runner: Runner = db(),
-): Promise<DocumentAsset | null> {
-  const row = await runner(TABLE).where({ tenant_id: tenantId, id }).first<Row>('*');
-  return row ? mapDocumentAsset(row) : null;
-}
-
 /** The stored path, for the authenticated file route and for the renderer. */
 export async function findAssetPath(
   tenantId: string,

@@ -20,45 +20,6 @@
 import type { InventoryStockLevel } from '@orderbook/shared';
 import { ColourChip, StatusPill, t } from '@orderbook/ui';
 
-export function StockCell({ level }: { level: InventoryStockLevel | undefined }) {
-  if (!level) return <span style={{ color: 'var(--fg-tertiary)' }}>{t('catalog.stock.none')}</span>;
-
-  if (level.availableBoxes < 0) {
-    return (
-      <span style={{ color: 'var(--state-conflict)' }}>
-        {t('catalog.stock.short', { count: Math.abs(level.availableBoxes) })}
-        <div className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
-          {level.reservedBoxes > 0
-            ? t('catalog.stock.onFloorReserved', {
-                onFloor: level.quantityBoxes,
-                reserved: level.reservedBoxes,
-              })
-            : t('catalog.stock.onFloor', { onFloor: level.quantityBoxes })}
-        </div>
-      </span>
-    );
-  }
-
-  return (
-    <span>
-      <span className="ob-data">{level.availableBoxes}</span> {t('catalog.stock.free')}
-      {level.isLow && (
-        <span style={{ marginLeft: 'var(--s-6)' }}>
-          <StatusPill tone="offline">{t('catalog.stock.low')}</StatusPill>
-        </span>
-      )}
-      {level.reservedBoxes > 0 && (
-        <div className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
-          {t('catalog.stock.onFloorReserved', {
-            onFloor: level.quantityBoxes,
-            reserved: level.reservedBoxes,
-          })}
-        </div>
-      )}
-    </span>
-  );
-}
-
 /** Every colour a product is stocked in, compact enough for a DataTable row. */
 export function StockByColour({
   productId,

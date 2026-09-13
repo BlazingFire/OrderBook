@@ -247,7 +247,7 @@ function StandingPill({ version, reference }: { version: string | null; referenc
  * asking exactly that, and leaving it unsaid is how an update never gets
  * installed.
  */
-export function UpdateOffer({
+function UpdateOffer({
   offer,
   availability,
   canInstall,

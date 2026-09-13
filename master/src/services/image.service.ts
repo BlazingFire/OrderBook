@@ -82,7 +82,7 @@ function imageDir(tenantId: string, imageId: string): string {
 }
 
 /** `variant` is untrusted client input — this is the only place a filename is built from it. */
-export function variantFilePath(tenantId: string, imageId: string, variant: string): string | null {
+function variantFilePath(tenantId: string, imageId: string, variant: string): string | null {
   if (!IMAGE_VARIANT_SPECS.some((spec) => spec.name === variant)) return null;
   return path.join(imageDir(tenantId, imageId), `${variant}.webp`);
 }

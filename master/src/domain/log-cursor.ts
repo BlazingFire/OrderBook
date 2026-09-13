@@ -11,7 +11,7 @@ import { ValidationError } from '../lib/errors.js';
 
 const CURSOR_VERSION = 'v1';
 
-export const LOG_PAGING = { DEFAULT_LIMIT: 50, MAX_LIMIT: 200 } as const;
+const LOG_PAGING ={ DEFAULT_LIMIT: 50, MAX_LIMIT: 200 } as const;
 
 /** Clamps a client-supplied page size, defaulting when absent or nonsensical. */
 export function clampLogPage(limit: number | undefined): number {

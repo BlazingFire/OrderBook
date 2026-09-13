@@ -44,8 +44,8 @@ new migration instead of editing an old one.
 
 ## Don't edit vendored or local tooling
 
-- `.claude/skills/` and `.agents/skills/` are **vendored** and kept byte-identical
-  to upstream (see `skills-lock.json`) — read them, don't edit them.
+- Third-party skills are installed globally per machine, not vendored in the repo.
+  `.agents/skills/ui-consistency/` is the one project-authored skill there.
 - `.commandcode/skills/` is **team-shared and tracked** — edit freely, but treat
   changes as conventions that need review like any other.
 - The rest of `.commandcode/` (taste, settings) is **local-only** and gitignored.

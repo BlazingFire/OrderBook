@@ -16,7 +16,7 @@ import { ValidationError } from '../lib/errors.js';
 const TEMPLATE_CURSOR_VERSION = 'dt1';
 const EXPORT_CURSOR_VERSION = 'de1';
 
-export const DOCUMENT_PAGING = { DEFAULT_LIMIT: 50, MAX_LIMIT: 200 } as const;
+const DOCUMENT_PAGING ={ DEFAULT_LIMIT: 50, MAX_LIMIT: 200 } as const;
 
 export function clampDocumentPage(limit: number | undefined): number {
   if (limit === undefined || !Number.isFinite(limit) || limit <= 0) {

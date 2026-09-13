@@ -20,16 +20,10 @@ import { v4 as uuid } from 'uuid';
 
 import { parseStockKey, stockKey } from '../domain/stock-key.js';
 import { db } from '../db/knex.js';
-import { firstCount, mapStockLevel, mapStockMovement, toNumber } from './mappers.js';
+import { mapStockLevel, mapStockMovement } from './mappers.js';
 import * as reservationsRepo from './reservation.repository.js';
 
 type Runner = Knex | Knex.Transaction;
-
-/**
- * Colour bucket for products that have never been given one. Matches the value
- * the rebuild migration used, so pre-existing stock lands in the same row.
- */
-export const DEFAULT_COLOUR = 'Default';
 
 /**
  * Driven from `inventory_stock` joined back to products, rather than from
@@ -382,38 +376,4 @@ export async function countLowStock(tenantId: string, reservations = true): Prom
       (held.get(stockKey(String(row.product_id), String(row.colour))) ?? 0);
     return available <= Number(row.reorder_level);
   }).length;
-}
-
-/** Everything reserved but not stocked is short by definition. */
-export async function countUnstockedReservations(tenantId: string): Promise<number> {
-  const held = await reservationsRepo.reservedTotals(tenantId);
-  if (held.size === 0) return 0;
-
-  const rows = await db()('inventory_stock')
-    .where({ tenant_id: tenantId })
-    .select<Array<{ product_id: string; colour: string }>>('product_id', 'colour');
-
-  const stocked = new Set(rows.map((row) => stockKey(row.product_id, row.colour)));
-  return [...held.keys()].filter((key) => !stocked.has(key)).length;
-}
-
-/** Total stock rows, used by the dashboard's product count sanity check. */
-export async function countStockRows(tenantId: string): Promise<number> {
-  const rows = await db()('inventory_stock')
-    .where({ tenant_id: tenantId })
-    .count<Array<{ count: string }>>('id as count');
-  return firstCount(rows);
-}
-
-/** Box coverage, for the sqft mirror shown next to box quantities. */
-export async function boxCoverage(
-  tenantId: string,
-  productId: string,
-  runner: Runner = db(),
-): Promise<number> {
-  const row = await runner('products')
-    .where({ tenant_id: tenantId, id: productId })
-    .first<{ box_coverage_sqft: string | null } | undefined>('box_coverage_sqft');
-
-  return toNumber(row?.box_coverage_sqft) ?? 0;
 }

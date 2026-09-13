@@ -8,7 +8,6 @@
  */
 
 import dgram from 'node:dgram';
-import { hostname } from 'node:os';
 
 import {
   DISCOVERY_PORT,
@@ -89,8 +88,4 @@ async function handleMessage(
     if (error) log.warn(`Failed to reply to ${remote.address}`, error);
     else log.debug(`Replied to discovery from ${message.hostname} (${remote.address})`);
   });
-}
-
-export function masterHostname(): string {
-  return hostname();
 }

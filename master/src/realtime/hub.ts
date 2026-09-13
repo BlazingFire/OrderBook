@@ -1048,7 +1048,7 @@ function scheduleDashboard(io: RealtimeHub['io']): void {
 }
 
 /** Test seam: drop a pending flush so a suite does not leak a timer. */
-export function cancelScheduledDashboard(): void {
+function cancelScheduledDashboard(): void {
   if (dashboardTimer) clearTimeout(dashboardTimer);
   dashboardTimer = null;
 }

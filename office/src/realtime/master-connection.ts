@@ -45,7 +45,7 @@ const log = createLogger('master-link');
 /** How often a connected panel repeats its self-description. */
 const REPORT_INTERVAL_MS = 5 * 60 * 1000;
 
-export type ConnectionState = 'unpaired' | 'connecting' | 'connected' | 'disconnected';
+type ConnectionState = 'unpaired' | 'connecting' | 'connected' | 'disconnected';
 
 /**
  * A command the Master answered with a refusal, or that never reached it.
@@ -75,7 +75,7 @@ export class MasterCommandError extends Error {
   }
 }
 
-export interface ConnectionStatus {
+interface ConnectionStatus {
   state: ConnectionState;
   masterHost: string | null;
   masterPort: number | null;
