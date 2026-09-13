@@ -35,12 +35,8 @@ describe('every parser rejects a wrong shape', () => {
   // parsers would reject for the uninteresting reason that it is not an object.
   const WRONG: Record<string, unknown> = {
     'security.passwordRevealEnabled': 'yes',
-    'ai.provider': { kind: 'anthropic' },
-    'ai.apiKey': 42,
-    'ai.allowWrites': 'yes',
-    'ai.retentionDays': -1,
-    'ai.dailyTokenBudget': 'lots',
-    'ai.maxConcurrentRuns': -1,
+    'pricing.enabled': 'yes',
+    'inventory.freeToSell': 'yes',
     'externalApi.enabled': 1,
   };
 
@@ -57,7 +53,7 @@ describe('the key helpers', () => {
     expect(isSettingKey('__proto__')).toBe(false);
   });
 
-  it('names the AI key as the only secret', () => {
-    expect(SETTING_KEYS.filter(isSecretSetting)).toEqual(['ai.apiKey']);
+  it('declares no secret setting today, so the sealed read path has no live key', () => {
+    expect(SETTING_KEYS.filter(isSecretSetting)).toEqual([]);
   });
 });

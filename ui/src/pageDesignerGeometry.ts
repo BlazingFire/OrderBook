@@ -344,6 +344,25 @@ export function distribute(rects: readonly Rect[], axis: 'x' | 'y'): Rect[] {
 }
 
 /**
+ * Move a converted bundle so its top-left lands on a drop point.
+ *
+ * Pure arithmetic beside `clampToPage` so the drop path is unit-tested without
+ * a pointer: the caller still clamps afterwards, because a bundle dropped near
+ * an edge lands partly outside the margin box the server validates against.
+ */
+export function shiftBundle(
+  elements: readonly DocumentElement[],
+  to: { x: number; y: number },
+): DocumentElement[] {
+  if (elements.length === 0) return [];
+  const left = Math.min(...elements.map((element) => element.x));
+  const top = Math.min(...elements.map((element) => element.y));
+  const dx = to.x - left;
+  const dy = to.y - top;
+  return elements.map((element) => ({ ...element, x: tidy(element.x + dx), y: tidy(element.y + dy) }));
+}
+
+/**
  * Renumber paint order from zero after a reorder.
  *
  * Without this the numbers drift — bring-to-front by adding one to the maximum

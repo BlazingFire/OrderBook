@@ -393,6 +393,7 @@ export async function buildLines(
       {
         id: product.id,
         name: product.name,
+        categoryName: product.categoryName,
         alias: product.alias,
         rate: product.rate ?? null,
         productCode: product.productCode,

@@ -192,7 +192,7 @@ async function runQuery(
  */
 export async function pickProducts(
   tenantId: string,
-  options: { term: string; limit: number; include: string[] },
+  options: { term: string; limit: number; include: string[]; categoryId?: string },
   runner: Runner = db(),
 ): Promise<{ rows: Row[]; truncated: boolean }> {
   const tsQuery = prefixTsQuery(options.term);
@@ -202,6 +202,8 @@ export async function pickProducts(
   // One more than asked for, so "there are more" is a fact rather than a guess.
   const fetch = options.limit + 1;
   const hasInclude = options.include.length > 0;
+  const categoryId = options.categoryId?.trim();
+  const hasCategory = Boolean(categoryId);
 
   const { rows } = await runner.raw<{ rows: Row[] }>(
     `SELECT p.*, c.name AS category_name,
@@ -211,6 +213,7 @@ export async function pickProducts(
        FROM products p
        LEFT JOIN product_categories c ON c.id = p.category_id
       WHERE p.tenant_id = ?
+        AND (NOT ? OR p.category_id = ?)
         AND (
           (p.is_active AND p.deleted_at IS NULL AND (
             NOT ?
@@ -228,6 +231,8 @@ export async function pickProducts(
       hasQuery,
       tsQuery ?? '',
       tenantId,
+      hasCategory,
+      categoryId ?? '',
       hasQuery,
       tsQuery ?? '',
       pattern,
@@ -286,6 +291,44 @@ export async function pickVariants(
       ORDER BY exact_code DESC, code_prefix DESC, p.name ASC, s.colour ASC
       LIMIT ?`,
     [term, pattern, tenantId, term, pattern, pattern, contains, pattern, contains, fetch],
+  );
+
+  return { rows: rows.slice(0, options.limit), truncated: rows.length > options.limit };
+}
+
+/**
+ * Main products for the new-lead flow's first picker.
+ *
+ * A category is only offered when it holds live products: an empty main
+ * product is a dead end the counter cannot add anything from, and one that
+ * only ever held archived products reads the same from the counter.
+ */
+export async function pickCategories(
+  tenantId: string,
+  options: { term: string; limit: number; include: string[] },
+  runner: Runner = db(),
+): Promise<{ rows: Row[]; truncated: boolean }> {
+  const pattern = likePrefix(options.term.trim());
+  const fetch = options.limit + 1;
+  const hasInclude = options.include.length > 0;
+
+  const { rows } = await runner.raw<{ rows: Row[] }>(
+    `SELECT c.id, c.tenant_id, c.name, c.created_at
+       FROM product_categories c
+      WHERE c.tenant_id = ?
+        AND (
+          (c.name ILIKE ? ESCAPE '\\' AND EXISTS (
+            SELECT 1 FROM products p
+             WHERE p.tenant_id = c.tenant_id
+               AND p.category_id = c.id
+               AND p.is_active
+               AND p.deleted_at IS NULL
+          ))
+          OR (? AND c.id = ANY(?))
+        )
+      ORDER BY c.name ASC
+      LIMIT ?`,
+    [tenantId, pattern, hasInclude, options.include, fetch],
   );
 
   return { rows: rows.slice(0, options.limit), truncated: rows.length > options.limit };

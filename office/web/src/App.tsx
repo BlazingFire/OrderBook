@@ -33,7 +33,6 @@ import {
   FilterBarOutlet,
   FilterBarProvider,
   GalleryScreen,
-  AssistantScreen,
   Icon,
   IconButton,
   KeyboardOverlays,
@@ -44,8 +43,9 @@ import {
   Splash,
   SubNavProvider,
   ToastProvider,
+  flattenNav,
+  graftSubNav,
   loadSidebarMode,
-  publishAiEvent,
   requestSettingsTab,
   rem,
   storeSidebarMode,
@@ -53,12 +53,17 @@ import {
   useClearSubNav,
   useMediaQuery,
   useResetGate,
+  useSettingsTab,
   useSubNavState,
   useToast,
+  splitSubPage,
+  withSubPages,
+  type DocumentsTab,
   type NavGroup,
   type NavItem,
   type ScreenSpec,
   type SidebarMode,
+  type SubPage,
 } from '@orderbook/ui';
 import { searchLocalView } from './localSearch';
 import { DocumentsScreen } from './screens/DocumentsScreen';
@@ -70,12 +75,11 @@ import { ConnectionScreen } from './screens/ConnectionScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
 import { LeadBoardScreen } from './screens/LeadBoardScreen';
 import { OrderBoardScreen } from './screens/OrderBoardScreen';
-import { SettingsScreen } from './screens/SettingsScreen';
+import { SETTINGS_TAB_IDS, SettingsScreen } from './screens/SettingsScreen';
 import { UpdatesScreen } from './screens/UpdatesScreen';
 import { SignInScreen } from './screens/SignInScreen';
 
 type Tab =
-  | 'assistant'
   | 'dashboard'
   | 'leads'
   | 'orders'
@@ -137,6 +141,19 @@ function OfficePanel() {
   const [rejections, setRejections] = useState<MutationResult[]>([]);
 
   const [tab, setTab] = useState<Tab>('dashboard');
+  /*
+   * Which sub-page each module is showing, keyed by module. A screen's tabs
+   * are offered from the sidebar too, and both controls read from here so
+   * they never disagree. Settings keeps its own remembered tab (per machine,
+   * validated against the tabs this panel has) through the same hook the
+   * desktop menu's "Developer" request already lands in.
+   */
+  const [subKeys, setSubKeys] = useState<Record<string, string>>({});
+  const [settingsTab, setSettingsTab] = useSettingsTab(
+    'ob.settings.tab.office',
+    SETTINGS_TAB_IDS,
+    'appearance',
+  );
   const [error, setError] = useState<string | null>(null);
   const [flushing, setFlushing] = useState(false);
 
@@ -200,6 +217,13 @@ function OfficePanel() {
    */
   const [openLeadId, setOpenLeadId] = useState<string | null>(null);
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
+  /*
+   * Bumped each time somebody *asks* for the New lead form — the sidebar
+   * entry, the topbar button, Ctrl+Shift+N. The form reads it to put the
+   * cursor on the party picker when it is blank, and to leave a half-typed
+   * lead exactly where it was when it is not.
+   */
+  const [newLeadNonce, setNewLeadNonce] = useState(0);
 
   // Stable, or every boot-step render would hand Splash a new callback and
   // restart its hold timer.
@@ -320,15 +344,6 @@ function OfficePanel() {
         // is; a since-deactivated user learns about it here.
         void refreshSession();
       }
-    });
-
-    /*
-     * The assistant's tokens, on the stream this browser already has open.
-     * `MasterConnection` re-emits exactly one `ai:event` listener into it, so
-     * nothing here is attached or removed per run.
-     */
-    source.addEventListener('ai', (event) => {
-      publishAiEvent(JSON.parse((event as MessageEvent).data));
     });
 
     source.addEventListener('snapshot', (event) => {
@@ -503,11 +518,78 @@ function OfficePanel() {
           : 'var(--line-strong)';
 
   // ---- Sidebar modules: absent, not greyed, when the role lacks `view`.
-  /** Grafts the open record's entry under the module it belongs to. */
+
+  /*
+   * The sub-pages each module offers from the sidebar: its views, slices or
+   * tabs, exactly as the screen itself offers them. A module absent from here
+   * is a single page and gets no fold. Orders folds into its pipeline stages,
+   * read off the snapshot, so the sidebar names whatever the company calls
+   * them.
+   */
+  const orderStages = [
+    ...(view?.pipelines.find((pipeline) => pipeline.kind === 'order')?.stages ?? []),
+  ].sort((a, b) => a.sequence - b.sequence);
+
+  const subPages: Record<string, SubPage[]> = {
+    // New lead is a thing you do to the Leads module, so it is Leads' second
+    // page rather than a module of its own; Board stays a toggle on the list.
+    leads: [
+      { key: 'list', label: t('lead.board.tab.list'), icon: 'orders' },
+      ...(can('leads.create')
+        ? [{ key: 'new', label: t('lead.add.title'), icon: 'plus' as const }]
+        : []),
+    ],
+    orders: [
+      { key: 'all', label: t('orders.filter.allStages'), icon: 'orders' },
+      ...orderStages.map((stage) => ({
+        key: `stage:${stage.id}`,
+        label: stage.name,
+        icon: 'chevron-right' as const,
+      })),
+    ],
+    partyAccess: [
+      { key: 'all', label: t('partyAccess.filter.all'), icon: 'parties' },
+      { key: 'restricted', label: t('partyAccess.filter.restricted'), icon: 'shield' },
+      { key: 'open', label: t('partyAccess.filter.open'), icon: 'eye' },
+    ],
+    documents: [
+      { key: 'templates', label: t('documents.tab.templates'), icon: 'edit' },
+      { key: 'exports', label: t('documents.tab.exports'), icon: 'download' },
+    ],
+    settings: SETTINGS_TAB_IDS.map((id) => ({
+      key: id,
+      label: t(`settings.tab.${id}`),
+      icon: 'settings' as const,
+    })),
+  };
+
+  /** The sub-page a module is showing: the chosen one, else its first. */
+  const subKeyOf = (module: string): string =>
+    module === 'settings'
+      ? settingsTab
+      : module === 'leads'
+        ? tab === 'addLead'
+          ? 'new'
+          : 'list'
+        : (subKeys[module] ?? subPages[module]?.[0]?.key ?? '');
+
+  /** The New lead form, with the cursor placed only when the form is blank. */
+  function openNewLead(): void {
+    setTab('addLead');
+    setNewLeadNonce((current) => current + 1);
+  }
+
+  function selectSubPage(module: string, key: string): void {
+    if (module === 'settings') setSettingsTab(key);
+    else if (module === 'leads') {
+      if (key === 'new') openNewLead();
+      else setTab('leads');
+    } else setSubKeys((current) => ({ ...current, [module]: key }));
+  }
+
+  /** Hangs each module's sub-pages, then the open record's entry, under it. */
   const nest = (items: NavItem[]): NavItem[] =>
-    items.map((item) =>
-      subNav && subNav.parentId === item.id ? { ...item, children: subNav.items } : item,
-    );
+    graftSubNav(withSubPages(items, subPages), subNav);
 
   const groups: NavGroup[] = [
     {
@@ -564,12 +646,6 @@ function OfficePanel() {
       label: t('nav.system'),
       items: (
         [
-          // Absent rather than disabled, like every other permission-gated
-          // entry: a greyed tab for a permission somebody will never hold is a
-          // permanent tease.
-          can('ai.use')
-            ? { id: 'assistant', label: t('nav.assistant'), icon: 'eye' as const }
-            : null,
           { id: 'settings', label: t('nav.settings'), icon: 'settings' as const },
           { id: 'updates', label: t('nav.updates'), icon: 'sync' as const },
         ] satisfies Array<NavItem | null>
@@ -579,7 +655,6 @@ function OfficePanel() {
 
   // Map sidebar ids back onto the tabs the screens know.
   const idToTab: Record<string, Tab> = {
-    assistant: 'assistant',
     dashboard: 'dashboard',
     leads: 'leads',
     orders: 'orders',
@@ -604,7 +679,10 @@ function OfficePanel() {
     if (!askReset()) return;
     // Same identity `activeScreenId` uses: the screen that published the entry,
     // not the sidebar item the entry hangs under.
-    const id = subNav ? tab : (idToTab[activeId] ?? activeId);
+    const id =
+      subNav || tab === 'addLead'
+        ? tab
+        : (idToTab[splitSubPage(activeId)?.module ?? activeId] ?? activeId);
     // The registry deliberately keeps entries across a screen being hidden, so
     // remounting the screen is not enough — the entry has to be dropped here.
     clearSubNav(id);
@@ -621,6 +699,13 @@ function OfficePanel() {
     if (readHash())
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
     setRoute('');
+    // A sub-page is its module's screen, showing that page.
+    const sub = splitSubPage(id);
+    if (sub && subPages[sub.module]?.some((page) => page.key === sub.key)) {
+      selectSubPage(sub.module, sub.key);
+      if (sub.module !== 'leads' && idToTab[sub.module]) setTab(idToTab[sub.module]);
+      return;
+    }
     if (idToTab[id]) setTab(idToTab[id]);
   }
 
@@ -633,15 +718,14 @@ function OfficePanel() {
         // check below — that used to fall through to the first sidebar item
         // (Dashboard) and silently discard the switch to Add Lead.
         tab === 'addLead'
-        ? 'addLead'
-        : groups.some((group) => group.items.some((item) => item.id === idToTab[tab]))
-          ? tab
-          : (groups.flatMap((group) => group.items)[0]?.id ?? '');
+        ? 'leads.new'
+        : subPages[tab]?.length
+          ? `${tab}.${subKeyOf(tab)}`
+          : groups.some((group) => group.items.some((item) => item.id === idToTab[tab]))
+            ? tab
+            : (groups.flatMap((group) => group.items)[0]?.id ?? '');
 
-  const flatItems = groups.flatMap((group) => [
-    ...group.items,
-    ...group.items.flatMap((item) => item.children ?? []),
-  ]);
+  const flatItems = groups.flatMap((group) => flattenNav(group.items));
   const activeLabel =
     route === 'gallery' && !subNav
       ? t('footer.designSystem')
@@ -665,7 +749,7 @@ function OfficePanel() {
         <button
           className="ob-btn ob-btn--primary"
           disabled={!view}
-          onClick={() => setTab('addLead')}
+          onClick={openNewLead}
         >
           {t('action.newLead')}
         </button>
@@ -875,19 +959,6 @@ function OfficePanel() {
    */
   const alwaysAvailable: ScreenSpec[] = [
     {
-      id: 'assistant',
-      render: () => (
-        <AssistantScreen
-          transport={{
-            status: api.aiStatus,
-            listRuns: api.aiRuns,
-            ask: api.aiAsk,
-            cancel: api.aiCancel,
-          }}
-        />
-      ),
-    },
-    {
       /*
        * In `alwaysAvailable`, not `needsView`.
        *
@@ -898,7 +969,12 @@ function OfficePanel() {
        */
       id: 'documents',
       render: () => (
-        <DocumentsScreen revision={view?.pendingCount ?? 0} permissions={permissions} view={view} />
+        <DocumentsScreen
+          revision={view?.pendingCount ?? 0}
+          permissions={permissions}
+          view={view}
+          tab={subKeyOf('documents') as DocumentsTab}
+        />
       ),
     },
     {
@@ -913,6 +989,8 @@ function OfficePanel() {
           session={session}
           pendingCount={pendingCount}
           openConflicts={openConflicts}
+          tab={settingsTab}
+          onTabChange={setSettingsTab}
         />
       ),
     },
@@ -931,10 +1009,6 @@ function OfficePanel() {
                 setOpenLeadId(id);
                 setTab('leads');
               }}
-              onOpenOrder={(id) => {
-                setOpenOrderId(id);
-                setTab('orders');
-              }}
             />
           ),
         },
@@ -947,7 +1021,7 @@ function OfficePanel() {
               onOpenId={setOpenLeadId}
               canConvert={can('lead.convert')}
               onError={setError}
-              onAddLead={can('leads.create') ? () => setTab('addLead') : undefined}
+              onAddLead={can('leads.create') ? openNewLead : undefined}
             />
           ),
         },
@@ -960,6 +1034,14 @@ function OfficePanel() {
               onOpenId={setOpenOrderId}
               canDispatch={can('orders.dispatch')}
               onError={setError}
+              stageId={
+                subKeyOf('orders').startsWith('stage:')
+                  ? subKeyOf('orders').slice('stage:'.length)
+                  : null
+              }
+              onStageChange={(stageId) =>
+                selectSubPage('orders', stageId === null ? 'all' : `stage:${stageId}`)
+              }
             />
           ),
         },
@@ -977,7 +1059,12 @@ function OfficePanel() {
         {
           id: 'partyAccess',
           render: () => (
-            <PartyAccessScreen permissions={permissions} revision={view.pendingCount ?? 0} />
+            <PartyAccessScreen
+              permissions={permissions}
+              revision={view.pendingCount ?? 0}
+              restriction={subKeyOf('partyAccess') as 'all' | 'open' | 'restricted'}
+              onRestrictionChange={(next) => selectSubPage('partyAccess', next)}
+            />
           ),
         },
         // Two entries sharing one screen: the sidebar has separate Parties and
@@ -994,15 +1081,12 @@ function OfficePanel() {
           render: () => (
             <AddLeadScreen
               view={view}
+              focusNonce={newLeadNonce}
               onSaved={(id) => {
-                clearSubNav('addLead');
                 setTab('leads');
                 toast.push(t('lead.add.saved', { id }));
               }}
-              onCancel={() => {
-                clearSubNav('addLead');
-                setTab('leads');
-              }}
+              onCancel={() => setTab('leads')}
             />
           ),
         },
@@ -1019,7 +1103,10 @@ function OfficePanel() {
    * so the sidebar highlights Leads, and resolving the parent mounted the lead
    * board on top of the form somebody was typing into.
    */
-  const activeScreenId = subNav ? tab : (idToTab[activeId] ?? activeId);
+  const activeScreenId =
+    subNav || tab === 'addLead'
+      ? tab
+      : (idToTab[splitSubPage(activeId)?.module ?? activeId] ?? activeId);
   const known = screens.some((screen) => screen.id === activeScreenId);
 
   const content =
@@ -1053,7 +1140,7 @@ function OfficePanel() {
         'view.refresh': () => window.location.reload(),
         // A new record on this panel is a lead. Absent rather than inert when
         // the role cannot create one — the palette then simply does not offer it.
-        'record.new': can('leads.create') ? () => setTab('addLead') : null,
+        'record.new': can('leads.create') ? openNewLead : null,
       }}
     >
       <FilterBarProvider>

@@ -8,13 +8,8 @@
  * Deleting them was the fix — this comment says so because three separate places
  * used to claim a GC hint that never happened.
  *
- * The one real consumer is `ai.service.ts`, which reads `getMemoryStatus()` to
- * refuse a new AI run when the process is over its RAM cap.
- *
  * Does not kill or restart anything — that is the supervisor's job.
  */
-
-import os from 'node:os';
 
 /** Node's own default old-space ceiling on 64-bit, in bytes. The fallback
  *  when the Electron shell has not set `--max-old-space-size`. */
@@ -67,25 +62,5 @@ export function startMemoryMonitor(options: {
   return () => {
     if (timer) clearInterval(timer);
     timer = null;
-  };
-}
-
-export function getMemoryStatus() {
-  const { rss, heapUsed, heapTotal } = process.memoryUsage();
-  const totalSystemMb = Math.round(os.totalmem() / (1024 * 1024));
-  const freeSystemMb = Math.round(os.freemem() / (1024 * 1024));
-  const panel = process.env.ORDERBOOK_PANEL ?? 'unknown';
-  const capMb = parseInt(process.env.ORDERBOOK_RAM_CAP_MB ?? '0', 10);
-  const rssMb = Math.round(rss / (1024 * 1024));
-
-  return {
-    rssMb,
-    heapUsedMb: Math.round(heapUsed / (1024 * 1024)),
-    heapTotalMb: Math.round(heapTotal / (1024 * 1024)),
-    totalSystemMb,
-    freeSystemMb,
-    panel,
-    capMb,
-    isOverCap: capMb > 0 && rssMb > capMb,
   };
 }

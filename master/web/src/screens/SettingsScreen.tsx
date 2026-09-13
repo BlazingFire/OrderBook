@@ -48,7 +48,6 @@ import {
   t,
   useDeveloperSession,
   useUninstallTool,
-  useSettingsTab,
   type DeveloperTool,
   type SettingsTab,
 } from '@orderbook/ui';
@@ -62,7 +61,7 @@ import {
  * every single load. `SettingsPage` shows the first tab while a remembered one
  * has nothing to render, so nothing is left blank in the meantime.
  */
-const TAB_IDS = [
+export const SETTINGS_TAB_IDS = [
   'appearance',
   'shortcuts',
   'company',
@@ -71,14 +70,27 @@ const TAB_IDS = [
   'developer',
 ] as const;
 
-export function SettingsScreen() {
+export function SettingsScreen({
+  tab,
+  onTabChange,
+  onSaved,
+}: {
+  /** Which tab is showing — remembered by the shell, chosen here or from the sidebar. */
+  tab: string;
+  onTabChange: (tab: string) => void;
+  /**
+   * A company setting was written. The shell re-reads the signed-in user, whose
+   * permissions and feature switches depend on those settings, so the change
+   * shows on this screen's own sidebar rather than after a reload.
+   */
+  onSaved: () => void;
+}) {
   const [identity, setIdentity] = useState<MasterIdentity | null>(null);
   const [storage, setStorage] = useState<StorageUsage | null>(null);
   const [canManageStorage, setCanManageStorage] = useState(false);
   const [settings, setSettings] = useState<SettingView[] | null>(null);
   const [vault, setVault] = useState<VaultStatus | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
-  const [tab, setTab] = useSettingsTab('ob.settings.tab.master', TAB_IDS, 'appearance');
 
   const loadCompanySettings = useCallback(async (canManage: boolean, canReveal: boolean) => {
     if (canManage) setSettings(await api.settings().catch(() => null));
@@ -115,6 +127,7 @@ export function SettingsScreen() {
     setSettingsError(null);
     try {
       setSettings(await api.saveSetting(key, value));
+      onSaved();
       // Switching the reveal toggle off has just deleted every stored
       // password, so a stale coverage line would be a lie about what this
       // company is holding.
@@ -253,7 +266,7 @@ export function SettingsScreen() {
       subtitle={t('settings.subtitle')}
       tabs={tabs}
       activeId={tab}
-      onChange={setTab}
+      onChange={onTabChange}
     />
   );
 }

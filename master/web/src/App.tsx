@@ -17,14 +17,16 @@ import { io, type Socket } from 'socket.io-client';
 import type {
   DashboardSummary,
   OfficePanelWithPresence,
+  RecycleBinEntityType,
+  ReportKind,
   ServerToClientEvents,
   SignedInUser,
 } from '@orderbook/shared';
+import { RECYCLE_BIN_ENTITIES, RESTORE_PERMISSION } from '@orderbook/shared';
 
 import { ApiError, api, desktopBridge } from './api';
 import {
   AppShell,
-  AssistantScreen,
   Avatar,
   BP_NARROW,
   Clock,
@@ -43,8 +45,9 @@ import {
   ToastProvider,
   TopbarActionsOutlet,
   TopbarActionsProvider,
+  flattenNav,
+  graftSubNav,
   loadSidebarMode,
-  publishAiEvent,
   requestSettingsTab,
   rem,
   storeSidebarMode,
@@ -52,11 +55,16 @@ import {
   useClearSubNav,
   useMediaQuery,
   useResetGate,
+  useSettingsTab,
   useSubNavState,
+  splitSubPage,
+  withSubPages,
+  type DocumentsTab,
   type NavGroup,
   type NavItem,
   type ScreenSpec,
   type SidebarMode,
+  type SubPage,
 } from '@orderbook/ui';
 import { AccessScreen } from './screens/AccessScreen';
 import { ConflictsScreen } from './screens/ConflictsScreen';
@@ -68,14 +76,14 @@ import { FirstRunScreen } from './screens/FirstRunScreen';
 import { IntegrationsScreen } from './screens/IntegrationsScreen';
 import { InventoryScreen } from './screens/InventoryScreen';
 import { LeadsOrdersScreen } from './screens/LeadsOrdersScreen';
+import { NewLeadScreen } from './screens/NewLeadScreen';
 import { LogsScreen } from './screens/LogsScreen';
 import { PanelsScreen } from './screens/PanelsScreen';
 import { RecycleBinScreen } from './screens/RecycleBinScreen';
 import { ReportsScreen } from './screens/ReportsScreen';
-import { SettingsScreen } from './screens/SettingsScreen';
+import { SETTINGS_TAB_IDS, SettingsScreen } from './screens/SettingsScreen';
 import { UpdatesScreen } from './screens/UpdatesScreen';
 import { SignInScreen } from './screens/SignInScreen';
-import { AiSupportScreen } from '@orderbook/ui';
 
 type Phase = 'loading' | 'first-run' | 'signed-out' | 'ready';
 type Tab =
@@ -87,8 +95,6 @@ type Tab =
   | 'documents'
   | 'access'
   | 'partyAccess'
-  | 'assistant'
-  | 'aiSupport'
   | 'fields'
   | 'integrations'
   | 'logs'
@@ -97,6 +103,7 @@ type Tab =
   | 'settings'
   | 'updates';
 type Route = '' | 'gallery';
+type RecycleBinType = RecycleBinEntityType | '';
 
 /**
  * Which entities each screen's data is derived from.
@@ -153,6 +160,19 @@ function MasterPanel() {
   const [user, setUser] = useState<SignedInUser | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('dashboard');
+  /*
+   * Which sub-page each module is showing, keyed by module. A screen's tabs
+   * are offered from the sidebar too, and both controls read from here so
+   * they never disagree. Settings keeps its own remembered tab (per machine,
+   * validated against the tabs this panel has) through the same hook the
+   * desktop menu's "Developer" request already lands in.
+   */
+  const [subKeys, setSubKeys] = useState<Record<string, string>>({});
+  const [settingsTab, setSettingsTab] = useSettingsTab(
+    'ob.settings.tab.master',
+    SETTINGS_TAB_IDS,
+    'appearance',
+  );
 
   const [panels, setPanels] = useState<OfficePanelWithPresence[]>([]);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
@@ -292,11 +312,6 @@ function MasterPanel() {
     // synthetic key rather than riding on some other entity's counter.
     socket.on('sync:conflict', () => bump('sync_conflict'));
 
-    // The assistant's tokens ride this socket rather than a stream of their
-    // own — a second one would mean a second keep-alive and a second reconnect
-    // for a channel that is already open and already authenticated.
-    socket.on('ai:event', publishAiEvent);
-
     return () => {
       socket.close();
     };
@@ -308,6 +323,15 @@ function MasterPanel() {
 
   const refreshPanels = useCallback(() => {
     void api.panels().then((result) => setPanels(result.panels));
+  }, []);
+
+  // Permissions and feature switches ride on the signed-in user; a company
+  // setting that changes either is re-read rather than waited out to a reload.
+  const refreshUser = useCallback(() => {
+    void api
+      .me()
+      .then((me) => setUser(me.user))
+      .catch(() => undefined);
   }, []);
 
   // Hash routing: #/gallery is the one extra place a user can land.
@@ -385,7 +409,6 @@ function MasterPanel() {
   const canManagePanels = user.permissions.includes('panels.manage');
   const canManageSettings = user.permissions.includes('settings.manage');
   const canManageApi = user.permissions.includes('api.manage');
-  const canUseAi = user.permissions.includes('ai.use');
   const canViewFields = user.permissions.includes('fields.view');
   // Either key opens the screen: `party.assign` to redraw the map,
   // `party.accessAll` to read it. Somebody trusted with the whole book should
@@ -468,10 +491,6 @@ function MasterPanel() {
     canViewRecycleBin
       ? { id: 'recycleBin', label: t('nav.master.recycleBin'), icon: 'trash' }
       : null,
-    canUseAi ? { id: 'assistant', label: t('nav.master.assistant'), icon: 'eye' } : null,
-    canUseAi
-      ? { id: 'aiSupport', label: t('ai.support.checkSupport'), icon: 'settings' }
-      : null,
     canManageApi
       ? { id: 'integrations', label: t('nav.master.integrations'), icon: 'server' }
       : null,
@@ -492,23 +511,105 @@ function MasterPanel() {
     setResetNonce((current) => ({ ...current, [tab]: (current[tab] ?? 0) + 1 }));
   }
 
+  /*
+   * The sub-pages each module offers from the sidebar: its tabs, views or
+   * slices, exactly as the screen itself offers them. A module absent from
+   * here is a single page and gets no fold. Permission-gated tabs are gated
+   * here the same way, so the sidebar never offers a page the screen would
+   * refuse to show.
+   */
+  const subPages: Record<string, SubPage[]> = {
+    orders: [
+      { key: 'leads', label: t('leadsOrders.tab.leads'), icon: 'leads' },
+      { key: 'orders', label: t('leadsOrders.tab.orders'), icon: 'orders' },
+      { key: 'converted', label: t('leadsOrders.tab.converted'), icon: 'check' },
+      ...(user.permissions.includes('leads.create')
+        ? [{ key: 'new', label: t('lead.add.title'), icon: 'plus' as const }]
+        : []),
+    ],
+    inventory: [
+      { key: 'all', label: t('inventory.filter.all'), icon: 'inventory' },
+      { key: 'low', label: t('inventory.filter.lowOnly'), icon: 'warning' },
+    ],
+    reports: [
+      { key: 'dispatches', label: t('reports.tab.dispatches'), icon: 'upload' },
+      { key: 'lead-outcomes', label: t('reports.tab.leadOutcomes'), icon: 'leads' },
+      { key: 'top-parties', label: t('reports.tab.topParties'), icon: 'parties' },
+    ],
+    documents: [
+      { key: 'templates', label: t('documents.tab.templates'), icon: 'edit' },
+      { key: 'exports', label: t('documents.tab.exports'), icon: 'download' },
+    ],
+    access: [
+      ...(user.permissions.includes('users.manage')
+        ? [{ key: 'users', label: t('access.tab.users'), icon: 'parties' as const }]
+        : []),
+      ...(user.permissions.includes('roles.view')
+        ? [{ key: 'roles', label: t('access.tab.roles'), icon: 'shield' as const }]
+        : []),
+    ],
+    partyAccess: [
+      { key: 'all', label: t('partyAccess.filter.all'), icon: 'parties' },
+      { key: 'restricted', label: t('partyAccess.filter.restricted'), icon: 'shield' },
+      { key: 'open', label: t('partyAccess.filter.open'), icon: 'eye' },
+    ],
+    fields: [
+      { key: 'values', label: t('fields.tab.values'), icon: 'filter' },
+      { key: 'definitions', label: t('fields.tab.definitions'), icon: 'edit' },
+      { key: 'stages', label: t('fields.tab.stages'), icon: 'orders' },
+    ],
+    recycleBin: [
+      { key: 'all', label: t('recycleBin.filter.allTypes'), icon: 'trash' },
+      ...RECYCLE_BIN_ENTITIES.filter((branch) =>
+        user.permissions.includes(RESTORE_PERMISSION[branch]),
+      ).map((branch) => ({
+        key: branch,
+        label: t(`recycleBin.entity.${branch}`),
+        icon: 'trash' as const,
+      })),
+    ],
+    integrations: [
+      { key: 'keys', label: t('integrations.tab.keys'), icon: 'shield' },
+      { key: 'connectors', label: t('integrations.tab.connectors'), icon: 'server' },
+    ],
+    settings: SETTINGS_TAB_IDS.map((id) => ({
+      key: id,
+      label: t(`settings.tab.${id}`),
+      icon: 'settings' as const,
+    })),
+  };
+
+  /** The sub-page a module is showing: the chosen one, else its first. */
+  const subKeyOf = (module: string): string =>
+    module === 'settings' ? settingsTab : (subKeys[module] ?? subPages[module]?.[0]?.key ?? '');
+
+  function selectSubPage(module: string, key: string): void {
+    if (module === 'settings') setSettingsTab(key);
+    else setSubKeys((current) => ({ ...current, [module]: key }));
+  }
+
   const nest = (items: Array<NavItem | null>): NavItem[] =>
-    items
-      .filter((item): item is NavItem => item !== null)
-      .map((item) =>
-        subNav && subNav.parentId === item.id ? { ...item, children: subNav.items } : item,
-      );
+    graftSubNav(
+      withSubPages(
+        items.filter((item): item is NavItem => item !== null),
+        subPages,
+      ),
+      subNav,
+    );
 
   const groups: NavGroup[] = [
     { label: t('nav.master.work'), items: nest(workItems) },
     { label: t('nav.master.admin'), items: nest(adminItems) },
   ];
 
-  const activeId = subNav ? subNav.activeId : route === 'gallery' ? 'gallery' : tab;
-  const flatItems = groups.flatMap((group) => [
-    ...group.items,
-    ...group.items.flatMap((item) => item.children ?? []),
-  ]);
+  const activeId = subNav
+    ? subNav.activeId
+    : route === 'gallery'
+      ? 'gallery'
+      : subPages[tab]?.length
+        ? `${tab}.${subKeyOf(tab)}`
+        : tab;
+  const flatItems = groups.flatMap((group) => flattenNav(group.items));
   const activeLabel =
     route === 'gallery' && !subNav
       ? t('footer.designSystem')
@@ -533,6 +634,13 @@ function MasterPanel() {
     if (readHash())
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
     setRoute('');
+    // A sub-page is its module's screen, showing that page.
+    const sub = splitSubPage(id);
+    if (sub && subPages[sub.module]?.some((page) => page.key === sub.key)) {
+      selectSubPage(sub.module, sub.key);
+      setTab(sub.module as Tab);
+      return;
+    }
     setTab(id as Tab);
   }
 
@@ -674,16 +782,43 @@ function MasterPanel() {
     { id: 'panels', render: () => <PanelsScreen panels={panels} onRefresh={refreshPanels} /> },
     {
       id: 'orders',
-      render: () => <LeadsOrdersScreen revision={revisionOf(revisions, 'records')} />,
+      render: () =>
+        subKeyOf('orders') === 'new' ? (
+          <NewLeadScreen
+            key={`new-${resetNonce.orders ?? 0}`}
+            focusNonce={1}
+            onSaved={() => selectSubPage('orders', 'leads')}
+            onCancel={() => selectSubPage('orders', 'leads')}
+          />
+        ) : (
+          <LeadsOrdersScreen
+            revision={revisionOf(revisions, 'records')}
+            permissions={user.permissions}
+            view={subKeyOf('orders') as 'leads' | 'orders' | 'converted'}
+            onViewChange={(view) => selectSubPage('orders', view)}
+          />
+        ),
     },
     {
       id: 'inventory',
-      render: () => <InventoryScreen revision={revisionOf(revisions, 'inventory')} />,
+      render: () => (
+        <InventoryScreen
+          revision={revisionOf(revisions, 'inventory')}
+          filter={subKeyOf('inventory') as 'all' | 'low'}
+          onFilterChange={(filter) => selectSubPage('inventory', filter)}
+          freeToSell={user.features.freeToSell}
+        />
+      ),
     },
     {
       id: 'reports',
       render: () => (
-        <ReportsScreen revision={revisionOf(revisions, 'reports')} permissions={user.permissions} />
+        <ReportsScreen
+          revision={revisionOf(revisions, 'reports')}
+          permissions={user.permissions}
+          kind={subKeyOf('reports') as ReportKind}
+          onKindChange={(kind) => selectSubPage('reports', kind)}
+        />
       ),
     },
     {
@@ -692,6 +827,7 @@ function MasterPanel() {
         <DocumentsScreen
           revision={revisionOf(revisions, 'documents')}
           permissions={user.permissions}
+          tab={subKeyOf('documents') as DocumentsTab}
         />
       ),
     },
@@ -702,6 +838,8 @@ function MasterPanel() {
           permissions={user.permissions}
           currentUserId={user.id}
           currentUserTier={user.roleTier}
+          tab={subKeyOf('access') as 'users' | 'roles'}
+          onTabChange={(next) => selectSubPage('access', next)}
         />
       ),
     },
@@ -711,13 +849,20 @@ function MasterPanel() {
         <PartyAccessScreen
           permissions={user.permissions}
           revision={revisionOf(revisions, 'partyAccess')}
+          restriction={subKeyOf('partyAccess') as 'all' | 'open' | 'restricted'}
+          onRestrictionChange={(next) => selectSubPage('partyAccess', next)}
         />
       ),
     },
     {
       id: 'fields',
       render: () => (
-        <FieldsScreen permissions={user.permissions} revision={revisionOf(revisions, 'fields')} />
+        <FieldsScreen
+          permissions={user.permissions}
+          revision={revisionOf(revisions, 'fields')}
+          tab={subKeyOf('fields') as 'values' | 'definitions' | 'stages'}
+          onTabChange={(next) => selectSubPage('fields', next)}
+        />
       ),
     },
     { id: 'logs', render: () => <LogsScreen permissions={user.permissions} /> },
@@ -727,6 +872,8 @@ function MasterPanel() {
         <RecycleBinScreen
           permissions={user.permissions}
           revision={revisionOf(revisions, 'recycleBin')}
+          type={(subKeyOf('recycleBin') === 'all' ? '' : subKeyOf('recycleBin')) as RecycleBinType}
+          onTypeChange={(next) => selectSubPage('recycleBin', next === '' ? 'all' : next)}
         />
       ),
     },
@@ -744,28 +891,21 @@ function MasterPanel() {
       render: () => <UpdatesScreen panels={panels} permissions={user.permissions} />,
     },
     {
-      id: 'assistant',
+      id: 'integrations',
       render: () => (
-        <AssistantScreen
-          transport={{
-            status: api.aiStatus,
-            listRuns: api.aiRuns,
-            ask: api.aiAsk,
-            cancel: api.aiCancel,
-          }}
+        <IntegrationsScreen
+          canManage={canManageApi}
+          tab={subKeyOf('integrations') as 'keys' | 'connectors'}
+          onTabChange={(next) => selectSubPage('integrations', next)}
         />
       ),
     },
-    { id: 'integrations', render: () => <IntegrationsScreen canManage={canManageApi} /> },
     {
-      id: 'aiSupport',
+      id: 'settings',
       render: () => (
-        <AiSupportScreen
-          transport={{ status: api.aiStatus }}
-        />
+        <SettingsScreen tab={settingsTab} onTabChange={setSettingsTab} onSaved={refreshUser} />
       ),
     },
-    { id: 'settings', render: () => <SettingsScreen /> },
   ];
 
   /*

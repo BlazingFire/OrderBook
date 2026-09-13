@@ -257,11 +257,31 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       return { partyId: party.body.id as string, productId: product.body.id as string, lead };
     }
 
-    it('has no endpoint for raising a lead — that belongs to the Office Panel', async () => {
+    it('raises a lead through POST /api/leads — the same service the panels use', async () => {
       const { password } = await initialize();
       const agent = await signedInAgent(password);
+      const seeded = await seedLead(agent);
 
-      await agent.post('/api/leads').send({ partyId: 'x', items: [] }).expect(404);
+      // Refused, not missing: an empty line set is a validation failure (400),
+      // which proves the route exists and reaches the service.
+      await agent.post('/api/leads').send({ partyId: 'x', items: [] }).expect(400);
+
+      const created = await agent
+        .post('/api/leads')
+        .send({
+          partyId: seeded.partyId,
+          items: [
+            {
+              productId: seeded.productId,
+              packaging: 'carton',
+              quantities: [{ colour: 'Ivory', quantity: 2 }],
+            },
+          ],
+        })
+        .expect(201);
+
+      expect(created.body.id).toBe('LD0000000002');
+      expect(created.body.items[0]).toMatchObject({ code: 'GVT-01', totalQuantity: 2 });
     });
 
     it('lists open leads with their totals', async () => {

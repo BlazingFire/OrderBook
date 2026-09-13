@@ -137,8 +137,6 @@ const PANEL_ONLY: Record<string, string> = {
   logs: 'Master only: the activity log is a Master table with no panel-local copy.',
   recycleBin: 'Master only: restoring a soft-deleted row is a write against the owning database.',
   integrations: 'Master only: API keys and connectors are configured where they are held.',
-  aiSupport:
-    'Master only: the screen reports the hardware the model would run on, and the model runs on the Master. An Office panel has no AI subsystem to describe.',
 
   // Office only — these are the order desk's own working surfaces.
   leads: 'Office only: the lead board is the sales desk’s workflow, not the Master’s.',

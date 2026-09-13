@@ -9,7 +9,7 @@
  * to the working area rather than the window.
  */
 
-import { Fragment } from 'react';
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { t } from './i18n.js';
 import { Icon, type IconName } from './icons';
@@ -22,12 +22,21 @@ export interface NavItem {
   icon: IconName;
   count?: number;
   /**
-   * One level of nesting, for a large operation opened out of this module —
-   * editing a role, editing a person. Never a second static tier of modules:
-   * the sidebar is a map of where you can go, and burying a module inside
-   * another module makes it a worse one.
+   * Nested entries: a module's sub-pages (Documents → Templates / Exports) or
+   * a large operation opened out of it — editing a role, an open record. An
+   * item with children shows a chevron and folds; it unfolds on its own while
+   * the current page is inside it.
    */
   children?: NavItem[];
+}
+
+function contains(item: NavItem, id: string): boolean {
+  return item.id === id || (item.children?.some((child) => contains(child, id)) ?? false);
+}
+
+/** Every item at every depth, in sidebar order. */
+export function flattenNav(items: NavItem[]): NavItem[] {
+  return items.flatMap((item) => [item, ...flattenNav(item.children ?? [])]);
 }
 
 export interface NavGroup {
@@ -65,20 +74,49 @@ export function AppShell({
   overlays?: ReactNode;
   children: ReactNode;
 }) {
-  function renderNavItem(item: NavItem, isChild: boolean) {
+  // Folds the operator has set by hand; anything unset follows the current page.
+  const [folded, setFolded] = useState<Record<string, boolean>>({});
+
+  function renderNavItem(item: NavItem, depth: number) {
+    const hasChildren = Boolean(item.children?.length);
+    const open = hasChildren && (folded[item.id] ?? !contains(item, activeId)) === false;
     return (
-      <button
-        key={item.id}
-        type="button"
-        className={isChild ? 'ob-navitem ob-navitem--child' : 'ob-navitem'}
-        aria-current={activeId === item.id ? 'page' : undefined}
-        title={item.label}
-        onClick={() => onNavigate(item.id)}
-      >
-        <Icon name={item.icon} size={isChild ? 14 : 16} />
-        {!collapsed && <span className="ob-navitem-label">{item.label}</span>}
-        {!collapsed && item.count ? <span className="count">{item.count}</span> : null}
-      </button>
+      <div key={item.id} className="ob-navitem-wrap">
+        <div className={depth ? 'ob-navitem ob-navitem--child' : 'ob-navitem'}>
+          <button
+            type="button"
+            className="ob-navitem-main"
+            aria-current={activeId === item.id ? 'page' : undefined}
+            title={item.label}
+            onClick={() => {
+              onNavigate(item.id);
+              if (hasChildren) setFolded((current) => ({ ...current, [item.id]: false }));
+            }}
+          >
+            <Icon name={item.icon} size={depth ? 14 : 16} />
+            {!collapsed && <span className="ob-navitem-label">{item.label}</span>}
+            {!collapsed && item.count ? <span className="count">{item.count}</span> : null}
+          </button>
+          {!collapsed && hasChildren && (
+            <button
+              type="button"
+              className="ob-navitem-fold"
+              aria-label={open ? t('nav.fold') : t('nav.unfold')}
+              aria-expanded={open}
+              onClick={() => setFolded((current) => ({ ...current, [item.id]: open }))}
+            >
+              <Icon name={open ? 'chevron-down' : 'chevron-right'} size={12} />
+            </button>
+          )}
+        </div>
+        {/* Collapsed to icons there is no indent to read a child by, and no
+            label to say what it is — so a collapsed sidebar shows modules only. */}
+        {!collapsed && open && (
+          <div className="ob-navitem-children">
+            {item.children!.map((child) => renderNavItem(child, depth + 1))}
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -90,24 +128,22 @@ export function AppShell({
         className={collapsed ? 'ob-sidebar ob-sidebar--collapsed' : 'ob-sidebar'}
         aria-label="Modules"
       >
-        <div className="ob-sidebar-brand">
+        <button
+          type="button"
+          className="ob-sidebar-brand"
+          title={t('nav.home')}
+          aria-label={t('nav.home')}
+          onClick={() => onNavigate('dashboard')}
+        >
           <Logo size={24} />
           {!collapsed && <span className="ob-sidebar-wordmark">{t('app.name')}</span>}
-        </div>
+        </button>
 
         <div className="ob-sidebar-nav">
           {groups.map((group) => (
             <div className="ob-navgroup" key={group.label}>
               {!collapsed && <div className="ob-navgroup-label ob-eyebrow">{group.label}</div>}
-              {group.items.map((item) => (
-                <Fragment key={item.id}>
-                  {renderNavItem(item, false)}
-                  {/* Collapsed to icons there is no indent to read a child by,
-                      and no label to say what it is — so a collapsed sidebar
-                      shows modules only. The operation is still on screen. */}
-                  {!collapsed && item.children?.map((child) => renderNavItem(child, true))}
-                </Fragment>
-              ))}
+              {group.items.map((item) => renderNavItem(item, 0))}
             </div>
           ))}
         </div>

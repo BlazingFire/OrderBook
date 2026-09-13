@@ -14,7 +14,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import type { Party, Product, SyncSnapshot } from '@orderbook/shared';
+import type { Party, Product, ProductCategory, SyncSnapshot } from '@orderbook/shared';
 
 import {
   OfflinePickForbidden,
@@ -42,6 +42,7 @@ function product(id: string, code: string, name: string): Product {
     finish: null,
     series: null,
     color: null,
+    colourPolicy: 'fixed',
     thicknessMm: null,
     piecesPerBox: null,
     boxCoverageSqft: null,
@@ -150,6 +151,41 @@ describe('picking offline', () => {
   it('picks parties too', () => {
     const page = pickFromView('party', { term: 'pat' }, VIEW, ALL) as { items: Party[] };
     expect(page.items.map((item) => item.name)).toEqual(['Patel Tiles']);
+  });
+
+  it('picks main products, and narrows models to one of them', () => {
+    const category = (id: string, name: string): ProductCategory => ({
+      id,
+      tenantId: 't1',
+      name,
+      createdAt: NOW,
+    });
+    const named = {
+      ...VIEW,
+      categories: [category('C1', 'One Piece Toilet'), category('C2', 'One Piece Basin')],
+      products: [
+        { ...product('PR1', 'H-10', '102 (9")'), categoryId: 'C1', categoryName: 'One Piece Toilet' },
+        { ...product('PR2', 'H-11', 'Damru'), categoryId: 'C2', categoryName: 'One Piece Basin' },
+      ],
+    } as unknown as SyncSnapshot;
+
+    const mains = pickFromView('category', { term: 'one piece' }, named, ALL) as {
+      items: ProductCategory[];
+    };
+    expect(mains.items.map((item) => item.name)).toEqual(['One Piece Basin', 'One Piece Toilet']);
+
+    const models = pickFromView('product', { term: '', categoryId: 'C1' }, named, ALL) as {
+      items: Product[];
+    };
+    expect(models.items.map((item) => item.name)).toEqual(['102 (9")']);
+
+    // A main product with no live product on this panel is a dead end and is
+    // not offered.
+    const empty = { ...named, products: [] } as unknown as SyncSnapshot;
+    const none = pickFromView('category', { term: '' }, empty, ALL) as {
+      items: ProductCategory[];
+    };
+    expect(none.items).toEqual([]);
   });
 });
 

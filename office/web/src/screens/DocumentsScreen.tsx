@@ -16,16 +16,21 @@ import { useMemo, useRef } from 'react';
 import type { CustomFieldDefinition } from '@orderbook/shared';
 
 import { ApiError, api, type LocalView } from '../api';
-import { DocumentsScreen as SharedDocumentsScreen, type DocumentsTransport } from '@orderbook/ui';
+import {
+  DocumentsScreen as SharedDocumentsScreen,
+  type DocumentsTab,
+  type DocumentsTransport,
+} from '@orderbook/ui';
 
 interface Props {
   revision: number;
   permissions: string[];
   /** The merged snapshot, or null before the first one has arrived. */
   view: LocalView | null;
+  tab: DocumentsTab;
 }
 
-export function DocumentsScreen({ revision, permissions, view }: Props) {
+export function DocumentsScreen({ revision, permissions, view, tab }: Props) {
   /*
    * The snapshot behind a ref, so the transport is built once.
    *
@@ -95,6 +100,11 @@ export function DocumentsScreen({ revision, permissions, view }: Props) {
   );
 
   return (
-    <SharedDocumentsScreen revision={revision} permissions={permissions} transport={transport} />
+    <SharedDocumentsScreen
+      revision={revision}
+      permissions={permissions}
+      transport={transport}
+      tab={tab}
+    />
   );
 }

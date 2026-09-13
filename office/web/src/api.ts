@@ -79,10 +79,6 @@ import type {
   ReportKind,
   ReportRangeInput,
   RestoreInput,
-  AiRun,
-  AiStartInput,
-  AiStatus,
-  Insight,
   SearchHit,
   StageReorderInput,
   SyncConflict,
@@ -563,8 +559,6 @@ export const api = {
 
   search: (term: string) => request<SearchHit[]>(`/api/search?q=${encodeURIComponent(term)}`),
 
-  // --- The assistant (Stage 12). Master-online-only, never queued: an answer
-  // to an hour-old question delivered when the link returns helps nobody.
   // --- The sign-in screen's own reads --------------------------------------
 
   /** People who have signed in on this panel before, newest first. */
@@ -581,12 +575,6 @@ export const api = {
       '/api/storage/path',
       { path, moveExisting },
     ),
-
-  aiStatus: () => request<AiStatus>('/api/ai/status'),
-  aiRuns: () => request<AiRun[]>('/api/ai/runs'),
-  aiAsk: (input: AiStartInput) => post<{ runId: string }>('/api/ai/runs', input),
-  aiCancel: (runId: string) => request<void>(`/api/ai/runs/${runId}`, { method: 'DELETE' }),
-  aiInsights: () => request<Insight[]>('/api/ai/insights'),
 
   conflicts: () => request<SyncConflict[]>('/api/conflicts'),
   resolveConflict: (id: number, action: 'keepWinner' | 'restoreLoser') =>
@@ -613,9 +601,13 @@ export const api = {
    * snapshot when it is not — the response carries `offline` so the listbox can
    * say which of the two it is showing.
    */
-  pick: <T>(kind: PickKind, query: { term: string; include?: string[]; signal?: AbortSignal }) => {
+  pick: <T>(
+    kind: PickKind,
+    query: { term: string; include?: string[]; categoryId?: string; signal?: AbortSignal },
+  ) => {
     const params = new URLSearchParams({ q: query.term });
     if (query.include?.length) params.set('include', query.include.join(','));
+    if (query.categoryId) params.set('categoryId', query.categoryId);
     return request<{ items: T[]; truncated: boolean; offline?: boolean }>(
       `/api/pick/${kind}?${params.toString()}`,
       query.signal ? { signal: query.signal } : undefined,

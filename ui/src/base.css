@@ -1052,6 +1052,7 @@ html[data-window-blur='true'] .ob-busy rect {
 
 .ob-sidebar-brand {
   height: var(--shell-topbar-h);
+  width: 100%;
   flex: none;
   display: flex;
   align-items: center;
@@ -1060,6 +1061,11 @@ html[data-window-blur='true'] .ob-busy rect {
   border-bottom: 1px solid var(--line);
   overflow: hidden;
   white-space: nowrap;
+  color: inherit;
+  transition: background-color var(--d-fast) var(--e-standard);
+}
+.ob-sidebar-brand:hover {
+  background: var(--bg-hover);
 }
 
 .ob-sidebar-wordmark {
@@ -1082,36 +1088,63 @@ html[data-window-blur='true'] .ob-busy rect {
   padding: 0 var(--s-8) var(--s-4);
 }
 
+/* A row: the item itself, plus a fold chevron when it has children. */
 .ob-navitem {
   display: flex;
   align-items: center;
-  gap: var(--s-8);
   width: 100%;
-  padding: var(--s-6) var(--s-8);
-  border-radius: var(--r-sm);
   color: var(--fg-secondary);
   font-size: var(--t-small-size);
   white-space: nowrap;
+}
+.ob-navitem-main {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  flex: 1;
+  min-width: 0;
+  padding: var(--s-6) var(--s-8);
+  border-radius: var(--r-sm);
+  color: inherit;
   transition: background-color var(--d-fast) var(--e-standard);
 }
-.ob-navitem:hover {
+.ob-navitem-main:hover {
   background: var(--bg-hover);
   color: var(--fg-primary);
 }
-.ob-navitem svg {
+.ob-navitem-main svg {
   flex: none;
   opacity: 0.85;
 }
-.ob-navitem[aria-current='page'] {
+.ob-navitem-main[aria-current='page'] {
   background: var(--accent-tint);
   color: var(--accent);
   font-weight: 550;
 }
-.ob-navitem .count {
+.ob-navitem-main .count {
   margin-left: auto;
   font-size: var(--t-micro-size);
   color: var(--fg-tertiary);
   font-variant-numeric: tabular-nums;
+}
+.ob-navitem-main[aria-current='page'] .count {
+  color: var(--accent);
+}
+.ob-navitem-fold {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--ctl-h-sm);
+  height: var(--ctl-h-sm);
+  margin-left: var(--s-2);
+  border-radius: var(--r-sm);
+  color: var(--fg-tertiary);
+  transition: background-color var(--d-fast) var(--e-standard);
+}
+.ob-navitem-fold:hover {
+  background: var(--bg-hover);
+  color: var(--fg-primary);
 }
 
 /* The label truncates; the icon and the count do not. A role called
@@ -1124,24 +1157,26 @@ html[data-window-blur='true'] .ob-busy rect {
 }
 
 /*
- * A large operation opened out of the module above it. The indent alone would
- * read as an accident at this type size, so it also carries a hairline down the
- * left — the same "this belongs to that" line a detail band uses.
+ * Entries under a module: its sub-pages, or a large operation opened out of
+ * it. The indent alone would read as an accident at this type size, so it also
+ * carries a hairline down the left — the same "this belongs to that" line a
+ * detail band uses. Nesting adds another indent per level.
  */
-.ob-navitem--child {
+.ob-navitem-children {
   margin-left: var(--s-12);
   padding-left: var(--s-12);
   border-left: 1px solid var(--line);
-  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+}
+.ob-navitem--child {
   font-size: var(--t-micro-size);
   color: var(--fg-tertiary);
 }
-
-.ob-navitem--child[aria-current='page'] {
-  border-left-color: var(--accent);
+.ob-navitem--child .ob-navitem-main {
+  padding-top: var(--s-4);
+  padding-bottom: var(--s-4);
 }
-.ob-navitem[aria-current='page'] .count {
-  color: var(--accent);
+.ob-navitem-children:has(> .ob-navitem-wrap > .ob-navitem > .ob-navitem-main[aria-current='page']) {
+  border-left-color: var(--accent);
 }
 
 .ob-sidebar-collapse {
@@ -2646,6 +2681,10 @@ html[data-window-blur='true'] .ob-busy rect {
    more, rather than the same thing enlarged. */
 
 @media (max-width: 1180px) {
+  .ob-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   /* One column: two columns of definition list below this width give each
      value about twelve characters. */
   .ob-detail-grid {
@@ -2681,40 +2720,96 @@ html[data-window-blur='true'] .ob-busy rect {
 }
 
 /* ===========================================================================
- * The assistant (Stage 12)
+ * Record detail — two columns (§8)
  *
- * Appended as its own block rather than folded into the surrounding rules, per
- * the ownership table: this stage adds, it does not rewrite.
- *
- * `white-space: pre-wrap` is the whole of the text treatment, and that is the
- * point — a generated answer is plain text on purpose. No markdown, no HTML,
- * no auto-linkification: part of what the model saw was a party's notes, which
- * anybody outside this company can write into.
+ * What a person reads (lines, history) takes the width; what they glance at
+ * or act on (stage, party, facts, convert) sits in an aside that stays the
+ * same width from the 1024px floor to a 4K panel. A stack of full-width cards
+ * put every value a screen-width away from its label.
  * ======================================================================== */
 
-.ob-ai-stream {
-  white-space: pre-wrap;
-  margin: var(--s-8) 0 0;
-  line-height: var(--t-body-line);
+.ob-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 21rem;
+  gap: var(--s-16);
+  align-items: start;
+  max-width: 96rem;
+}
+.ob-detail-main,
+.ob-detail-aside {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+  min-width: 0;
+}
+.ob-detail-aside .ob-kv {
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+.ob-detail-aside .ob-kv dd {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* A generated sentence beside figures that were computed, not generated. */
-.ob-ai-note {
-  border-left: 2px solid var(--accent);
-  background: var(--accent-tint);
-  padding: var(--s-6) var(--s-8);
-  border-radius: var(--r-sm);
-  margin-top: var(--s-8);
+/* The card's own header and footer rows, flush with its padding. */
+.ob-detail-head,
+.ob-detail-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s-12);
+  padding: var(--s-8) var(--s-12);
+}
+.ob-detail-head {
+  border-bottom: 1px solid var(--line);
+}
+.ob-detail-foot {
+  justify-content: flex-end;
+  border-top: 1px solid var(--line);
 }
 
-.ob-ai-provenance {
-  margin-top: var(--s-8);
-  color: var(--fg-tertiary);
+/* One line item per row: name and meta on the left, the figures on the right.
+   Rows, not nested cards — a card inside a card reads as a mistake at this
+   size, and the hairline between rows is all the separation a list needs. */
+.ob-lines {
+  display: flex;
+  flex-direction: column;
 }
-
-.ob-ai-provenance ul {
-  margin: var(--s-4) 0 0;
-  padding-left: var(--s-16);
+.ob-line {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-12);
+  padding: var(--s-8) var(--s-12);
+}
+.ob-line + .ob-line {
+  border-top: 1px solid var(--line);
+}
+.ob-line-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.ob-line-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s-4) var(--s-8);
+  min-width: 0;
+}
+.ob-line-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-4) var(--s-12);
+}
+.ob-line-figures {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--s-2);
+  white-space: nowrap;
 }
 
 /* ===========================================================================
@@ -2923,6 +3018,129 @@ html[data-window-blur='true'] .ob-busy rect {
 /* Grabbing is the whole interaction, so it has to look grabbable. */
 .ob-designer-element[data-selected='true'] {
   cursor: move;
+}
+
+/* ===========================================================================
+ * PDF designer shell — Templates + Blocks left, the free page centre,
+ * Template Options right. Three columns where the pane holds them, stacked
+ * where it does not. Breakpoint in physical px: it must not track the scale.
+ * ======================================================================== */
+
+.ob-pdfdesigner {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr) 17rem;
+  grid-template-areas:
+    'alerts alerts alerts'
+    'left stage right';
+  gap: var(--s-16);
+  align-items: start;
+}
+
+.ob-pdfdesigner-alerts {
+  grid-area: alerts;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+}
+
+.ob-pdfdesigner-alerts:empty {
+  display: none;
+}
+
+.ob-pdfdesigner-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+  min-width: 0;
+}
+
+.ob-pdfdesigner-rail:first-of-type {
+  grid-area: left;
+}
+
+.ob-pdfdesigner-rail:last-of-type {
+  grid-area: right;
+}
+
+.ob-pdfdesigner-stage {
+  grid-area: stage;
+  min-width: 0;
+}
+
+.ob-pdfdesigner-typerow {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  width: 100%;
+  padding: var(--s-8) var(--s-12);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  text-align: left;
+  transition: background-color var(--d-fast) var(--e-standard);
+}
+
+.ob-pdfdesigner-typerow:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.ob-pdfdesigner-typerow[aria-pressed='true'] {
+  background: var(--accent-tint);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ob-pdfdesigner-typerow:disabled {
+  opacity: 0.45;
+}
+
+.ob-pdfdesigner-blockrow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  width: 100%;
+  padding: var(--s-8) var(--s-12);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  color: var(--fg-secondary);
+  font-size: var(--t-small-size);
+  cursor: grab;
+  transition: background-color var(--d-fast) var(--e-standard);
+}
+
+.ob-pdfdesigner-blockrow:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--fg-primary);
+}
+
+.ob-pdfdesigner-more {
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-size: var(--t-small-size);
+  text-align: left;
+  cursor: pointer;
+}
+
+@media (max-width: 1180px) {
+  .ob-pdfdesigner {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'alerts'
+      'stage'
+      'left'
+      'right';
+  }
+}
+
+.ob-editorscreen-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
 }
 
 /* ===========================================================================
@@ -3148,6 +3366,100 @@ html[data-window-blur='true'] .ob-busy rect {
   max-height: 60vh;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+/*
+ * The new-lead hierarchy flow: two equal pickers side by side (they are the
+ * same control twice — main product, then its models — so they share a size),
+ * a box the models collect in, one detail row per model, and the review list.
+ *
+ * Code and name are large because they are what the counter reads back down
+ * the phone; dimensions are small and muted because they are what nobody asks
+ * about. The panel never shrinks away: it is the running record of a lead
+ * that can hold any number of products, so it scrolls on its own.
+ */
+.ob-lead-pickers {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--s-12);
+}
+
+.ob-lead-selected {
+  box-sizing: border-box;
+  margin-top: var(--s-8);
+  padding: var(--s-8) var(--s-12);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+}
+
+.ob-lead-selected__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  max-height: 12rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.ob-lead-selected__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  padding: var(--s-4) var(--s-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-sunken);
+}
+
+.ob-lead-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+  margin-top: var(--s-8);
+}
+
+.ob-lead-detail {
+  box-sizing: border-box;
+  padding: var(--s-8) var(--s-12);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+}
+
+.ob-lead-detail__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-8);
+  margin-bottom: var(--s-6);
+  min-width: 0;
+}
+
+.ob-lead-detail__fields {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr) minmax(0, 0.8fr) minmax(0, 0.6fr);
+  gap: var(--s-8);
+  align-items: center;
+}
+
+.ob-lead-review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+  margin-top: var(--s-12);
+  max-height: 50vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.ob-lead-review__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  min-width: 0;
 }
 
 /* The bar that appears once anything in the panel is ticked. */

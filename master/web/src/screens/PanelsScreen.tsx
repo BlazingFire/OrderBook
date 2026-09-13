@@ -306,7 +306,6 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
               columns={columns}
               rows={panels}
               rowKey={(panel) => panel.id}
-              openOn="click"
               selectedId={openPanelId ?? undefined}
               onRowOpen={(panel) => setOpenPanelId(panel.id)}
             />

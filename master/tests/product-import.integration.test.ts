@@ -317,7 +317,9 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
   it('serves a CSV and an Excel template', async () => {
     const csvTemplate = await productImportTemplate('csv', admin);
     expect(csvTemplate.contentType).toMatch(/^text\/csv/);
-    expect(csvTemplate.bytes.toString('utf8').split('\r\n')[0]).toMatch(/^productCode,name,/);
+    expect(csvTemplate.bytes.toString('utf8').split('\r\n')[0]).toMatch(
+      /^brand,categoryName,productCode,/,
+    );
 
     const xlsxTemplate = await productImportTemplate('xlsx', admin);
     expect(xlsxTemplate.fileName).toBe('products-template.xlsx');

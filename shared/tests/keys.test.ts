@@ -195,7 +195,9 @@ describe('the command catalogue', () => {
     // Master's. Copying the Master's order would put Alt+4 on a screen the
     // office sidebar shows somewhere else.
     expect(office[3]?.tab).toBe('conflicts');
-    expect(office.map((command) => command.navOrder)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    // Ten modules, nine chords: App update is the tail with no Alt+N.
+    expect(office.map((command) => command.navOrder)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(office[9]?.defaultChord).toBeUndefined();
   });
 
   it('has a unique id for every command', () => {

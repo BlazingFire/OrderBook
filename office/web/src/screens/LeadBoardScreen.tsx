@@ -60,6 +60,12 @@ function leadColours(lead: Lead): string[] {
   return Array.from(new Set(lead.items.flatMap((item) => item.quantities.map((q) => q.colour))));
 }
 
+function leadMains(lead: Lead): string[] {
+  return Array.from(
+    new Set(lead.items.map((item) => item.categoryName).filter((name): name is string => Boolean(name))),
+  );
+}
+
 /**
  * "My parties" — the leads or orders on parties explicitly assigned to the
  * signed-in person.
@@ -79,12 +85,14 @@ function onMyParties<T extends { partyId: string }>(
 }
 
 export function LeadBoardScreen({ view, openId, onOpenId, canConvert, onError, onAddLead }: Props) {
-  const [tab, setTab] = useState<BoardTab>('board');
+  const [tab, setTab] = useState<BoardTab>('list');
   const [stageFilter, setStageFilter] = useState<string | null>(null);
   const [scope, setScope] = useState<PartyScopeFilter>('all');
   const [menuId, setMenuId] = useState<string | null>(null);
   const colourHex = useColourHex(view.optionLists);
   const toast = useToast();
+  // Off with the company's pricing switch, or without the role's key.
+  const showMoney = view.permissions.includes('field.saleRate.view');
 
   const pipeline = view.pipelines.find((candidate) => candidate.kind === 'lead');
   const stages = [...(pipeline?.stages ?? [])].sort((a, b) => a.sequence - b.sequence);
@@ -226,6 +234,24 @@ export function LeadBoardScreen({ view, openId, onOpenId, canConvert, onError, o
     },
     { key: 'party', header: t('lead.list.col.party'), render: (lead) => lead.partyName },
     {
+      key: 'products',
+      header: t('lead.list.col.products'),
+      priority: 2,
+      render: (lead) => {
+        const mains = leadMains(lead);
+        const names = lead.items.map((item) => item.productName).join(', ');
+        return (
+          <span
+            className="ob-small ob-ellipsis"
+            title={mains.length ? `${mains.join(' · ')}\n${names}` : names}
+            style={{ display: 'block' }}
+          >
+            {mains.length ? mains.join(' · ') : names}
+          </span>
+        );
+      },
+    },
+    {
       key: 'stage',
       header: t('lead.list.col.stage'),
       width: rem(110),
@@ -246,13 +272,18 @@ export function LeadBoardScreen({ view, openId, onOpenId, canConvert, onError, o
       align: 'right',
       render: (lead) => String(leadBoxes(lead)),
     },
-    {
-      key: 'amount',
-      header: t('lead.list.col.amount'),
-      width: rem(110),
-      align: 'right',
-      render: (lead) => (lead.totalAmount !== undefined ? formatMoney(lead.totalAmount) : '—'),
-    },
+    ...(showMoney
+      ? [
+          {
+            key: 'amount',
+            header: t('lead.list.col.amount'),
+            width: rem(110),
+            align: 'right',
+            render: (lead: Lead) =>
+              lead.totalAmount !== undefined ? formatMoney(lead.totalAmount) : '—',
+          } satisfies DataTableColumn<Lead>,
+        ]
+      : []),
     {
       key: 'followUp',
       header: t('lead.list.col.followUp'),
@@ -285,6 +316,7 @@ export function LeadBoardScreen({ view, openId, onOpenId, canConvert, onError, o
           onOpen={(lead) => onOpenId(lead.id)}
           emptyMessage={t('lead.board.emptyColumn')}
           renderColumnExtra={(stageId) => {
+            if (!showMoney) return null;
             const stageTotal = filtered
               .filter((lead) => lead.stageId === stageId)
               .reduce((sum, lead) => sum + (lead.totalAmount ?? 0), 0);
@@ -297,6 +329,7 @@ export function LeadBoardScreen({ view, openId, onOpenId, canConvert, onError, o
           renderCard={(lead) => {
             const boxes = leadBoxes(lead);
             const colours = leadColours(lead);
+            const mains = leadMains(lead);
             const stageIndex = stages.findIndex((stage) => stage.id === lead.stageId);
             const nextStage =
               stageIndex >= 0 && stageIndex < stages.length - 1 ? stages[stageIndex + 1] : null;
@@ -400,6 +433,15 @@ export function LeadBoardScreen({ view, openId, onOpenId, canConvert, onError, o
                   </span>
                 </div>
 
+                {mains.length > 0 && (
+                  <div
+                    className="ob-micro ob-ellipsis"
+                    style={{ color: 'var(--fg-tertiary)', marginTop: 'var(--s-4)' }}
+                  >
+                    {mains.join(' · ')}
+                  </div>
+                )}
+
                 {colours.length > 0 && (
                   <div
                     style={{
@@ -422,9 +464,11 @@ export function LeadBoardScreen({ view, openId, onOpenId, canConvert, onError, o
                         <ColourChip key={colour} name={colour} hex={colourHex(colour)} />
                       ))}
                     </span>
-                    <span className="ob-small" style={{ fontWeight: 500 }}>
-                      {lead.totalAmount !== undefined ? formatMoney(lead.totalAmount) : '—'}
-                    </span>
+                    {showMoney && (
+                      <span className="ob-small" style={{ fontWeight: 500 }}>
+                        {lead.totalAmount !== undefined ? formatMoney(lead.totalAmount) : '—'}
+                      </span>
+                    )}
                   </div>
                 )}
 

@@ -38,10 +38,7 @@
  * rather than jumping straight to an edit form — the same split
  * `LeadBoardScreen` + `LeadDetail` uses for leads. The detail replaces the list
  * and carries one way back in a fixed place, with its own entry nested under
- * Parties or Products in the sidebar while it is open. `openOn` is `"click"`
- * here, not the DataTable default of `"doubleClick"`: the mockups open Products
- * and Parties on a single click (Leads' list view is the one that waits for a
- * double-click, matching its Kanban drag convention). Editing is one button
+ * Parties or Products in the sidebar while it is open. Editing is one button
  * inside the detail, not the row click itself — `PartyDrawer`/`ProductDrawer`
  * both double as edit forms, and stay overlays because a form is a dialog.
  */
@@ -125,6 +122,11 @@ export function CatalogScreen({
 }) {
   const toast = useToast();
   const colourHex = useColourHex(view.optionLists);
+  // Off with the company's pricing switch, or without the role's key: no
+  // Rate column and no rate fields, rather than redacted ones.
+  const showMoney = view.permissions.includes(RATE_PERMISSION);
+  // Absent means an older Master, which sends every figure — read as "on".
+  const freeToSell = view.features?.freeToSell ?? true;
 
   const [partySearch, setPartySearch] = useState('');
   const [cityFilter, setCityFilter] = useState<string | null>(null);
@@ -333,7 +335,8 @@ export function CatalogScreen({
           onChange={(event) => setPartySearch(event.target.value)}
           placeholder={t('catalog.parties.searchPlaceholder')}
           aria-label={t('catalog.parties.searchLabel')}
-          style={{ width: rem(240) }}
+          data-screen-search
+          style={{ width: rem(400) }}
         />
         <FilterChip
           active={cityFilter === null}
@@ -364,7 +367,8 @@ export function CatalogScreen({
           onChange={(event) => setProductSearch(event.target.value)}
           placeholder={t('catalog.products.searchPlaceholder')}
           aria-label={t('catalog.products.searchLabel')}
-          style={{ width: rem(240) }}
+          data-screen-search
+          style={{ width: rem(400) }}
         />
         <FilterChip
           active={typeFilter === null}
@@ -509,7 +513,6 @@ export function CatalogScreen({
           rows={parties}
           rowKey={(party) => party.id}
           onRowOpen={(party) => setOpenPartyId(party.id)}
-          openOn="click"
           selectedId={openPartyId ?? undefined}
           empty={
             view.parties.length === 0 ? (
@@ -597,6 +600,13 @@ export function CatalogScreen({
       ),
     },
     {
+      key: 'brand',
+      header: t('catalog.products.column.brand'),
+      priority: 3,
+      width: rem(90),
+      render: (product) => product.brand ?? '—',
+    },
+    {
       key: 'type',
       header: t('catalog.products.column.type'),
       priority: 3,
@@ -611,24 +621,46 @@ export function CatalogScreen({
       render: (product) => product.size ?? '—',
     },
     {
+      key: 'colour',
+      header: t('catalog.products.column.colour'),
+      priority: 3,
+      width: rem(120),
+      render: (product) => (
+        <span className="ob-small" style={{ color: 'var(--fg-secondary)' }}>
+          {product.color ?? '—'}
+          {product.colourPolicy === 'selectable' && (
+            <span className="ob-mono" title={t('product.field.colourPolicyHint')}>
+              {' '}
+              · {t('catalog.products.colour.selectable')}
+            </span>
+          )}
+        </span>
+      ),
+    },
+    {
       key: 'grade',
       header: t('catalog.products.column.grade'),
       priority: 3,
       width: rem(80),
       render: (product) => product.grade ?? '—',
     },
-    {
-      key: 'rate',
-      header: t('catalog.products.column.rate'),
-      width: rem(100),
-      align: 'right',
-      // `rate` is absent, not null, when the role cannot see it (UI-11).
-      render: (product) => formatMoney(product.rate ?? null),
-      redactedReason: (product) => (product.rate === undefined ? RATE_PERMISSION : undefined),
-    },
+    ...(showMoney
+      ? [
+          {
+            key: 'rate',
+            header: t('catalog.products.column.rate'),
+            width: rem(100),
+            align: 'right',
+            // `rate` is absent, not null, when the role cannot see it (UI-11).
+            render: (product: Product) => formatMoney(product.rate ?? null),
+            redactedReason: (product: Product) =>
+              product.rate === undefined ? RATE_PERMISSION : undefined,
+          } satisfies DataTableColumn<Product>,
+        ]
+      : []),
     {
       key: 'stock',
-      header: t('catalog.products.column.stock'),
+      header: t(freeToSell ? 'catalog.products.column.stock' : 'catalog.products.column.stockOnHand'),
       width: '1.3fr',
       render: (product) => (
         <StockByColour productId={product.id} stock={view.stock} colourHex={colourHex} />
@@ -665,6 +697,7 @@ export function CatalogScreen({
         <ProductDrawer
           open={editingProduct !== null}
           product={editingProduct}
+          showMoney={showMoney}
           onClose={() => setEditingProduct(null)}
           onUpdated={onProductUpdated}
           onError={onDrawerError}
@@ -686,7 +719,6 @@ export function CatalogScreen({
           rows={products}
           rowKey={(product) => product.id}
           onRowOpen={(product) => setOpenProductId(product.id)}
-          openOn="click"
           selectedId={openProductId ?? undefined}
           empty={
             loadFailed ? (
@@ -737,6 +769,7 @@ export function CatalogScreen({
 
       <ProductDrawer
         open={productDrawerOpen}
+        showMoney={showMoney}
         onClose={() => setProductDrawerOpen(false)}
         onCreated={onProductCreated}
         onError={onDrawerError}
@@ -744,6 +777,7 @@ export function CatalogScreen({
       <ProductDrawer
         open={editingProduct !== null}
         product={editingProduct}
+        showMoney={showMoney}
         onClose={() => setEditingProduct(null)}
         onUpdated={onProductUpdated}
         onError={onDrawerError}
@@ -751,6 +785,7 @@ export function CatalogScreen({
 
       <ProductImportModal
         open={importOpen}
+        showMoney={showMoney}
         onClose={() => setImportOpen(false)}
         onImported={() => setRevision((current) => current + 1)}
         onError={onDrawerError}

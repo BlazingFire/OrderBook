@@ -50,6 +50,9 @@ interface Props {
   permissions: string[];
   /** Bumped by the live socket whenever data changes. */
   revision: number;
+  /** Which branch is showing ('' for all) — chosen here or from the sidebar. */
+  type: RecycleBinEntityType | '';
+  onTypeChange: (type: RecycleBinEntityType | '') => void;
 }
 
 /** A blocker the Bin can actually act on: still-deleted, and a restorable type. */
@@ -105,14 +108,13 @@ function Truncated({ children, className }: { children: string; className?: stri
   );
 }
 
-export function RecycleBinScreen({ permissions, revision }: Props) {
+export function RecycleBinScreen({ permissions, revision, type, onTypeChange }: Props) {
   const toast = useToast();
   const canView = permissions.includes('recycleBin.view');
   const canViewAll = permissions.includes('recycleBin.viewAll');
   const canRestore = (type: RecycleBinEntityType): boolean =>
     permissions.includes(RESTORE_PERMISSION[type]);
 
-  const [type, setType] = useState<RecycleBinEntityType | ''>('');
   const [search, setSearch] = useState('');
   const [deletedBy, setDeletedBy] = useState('');
   const [entries, setEntries] = useState<BinEntry[]>([]);
@@ -284,13 +286,14 @@ export function RecycleBinScreen({ permissions, revision }: Props) {
             value={search}
             placeholder={t('recycleBin.search.placeholder')}
             aria-label={t('recycleBin.search.placeholder')}
+            data-screen-search
             onChange={(event) => setSearch(event.target.value)}
           />
         </div>
         <Select
           value={type}
           aria-label={t('recycleBin.filter.type')}
-          onChange={(event) => setType(event.target.value as RecycleBinEntityType | '')}
+          onChange={(event) => onTypeChange(event.target.value as RecycleBinEntityType | '')}
         >
           <option value="">{t('recycleBin.filter.allTypes')}</option>
           {/* Only the branches this caller may see: a type they hold no delete

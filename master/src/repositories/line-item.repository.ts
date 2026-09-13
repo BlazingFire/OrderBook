@@ -94,6 +94,7 @@ export async function insertLines(
       parent_id: context.parentId,
       product_id: line.productId,
       product_name: line.productName,
+      category_name: line.categoryName,
       alias: line.alias,
       rate: line.rate,
       code: line.code,
@@ -162,6 +163,7 @@ export async function loadSnapshots(
   return (byParent.get(parentId) ?? []).map((line) => ({
     productId: line.productId,
     productName: line.productName,
+    categoryName: line.categoryName,
     alias: line.alias,
     rate: line.rate ?? null,
     code: line.code,

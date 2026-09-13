@@ -25,6 +25,7 @@ import type { MessageKey } from '../i18n/keys.js';
 export const PRODUCT_UOMS = ['box', 'sqft', 'piece'] as const;
 export const PRODUCT_EDGE_TYPES = ['rectified', 'non_rectified'] as const;
 export const PRODUCT_APPLICATIONS = ['floor', 'wall', 'floor_wall', 'outdoor'] as const;
+export const PRODUCT_COLOUR_POLICIES = ['fixed', 'selectable'] as const;
 
 /** Thrown with a catalogue token, so the message reaches a person translated. */
 export class ProductValidationError extends Error {
@@ -55,6 +56,13 @@ function assertNonNegative(value: number | null | undefined): void {
 export function validateProductInput(input: ProductInput): void {
   if (asserted(input.uom) && !(PRODUCT_UOMS as readonly string[]).includes(String(input.uom))) {
     throw new ProductValidationError('validation.product.uom');
+  }
+
+  if (
+    asserted(input.colourPolicy) &&
+    !(PRODUCT_COLOUR_POLICIES as readonly string[]).includes(String(input.colourPolicy))
+  ) {
+    throw new ProductValidationError('validation.product.colourPolicy');
   }
 
   if (

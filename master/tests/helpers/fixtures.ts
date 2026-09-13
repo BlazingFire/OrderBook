@@ -18,6 +18,7 @@ import type { ActorContext } from '../../src/domain/actor.js';
 import { invalidateFieldCache } from '../../src/repositories/custom-field.repository.js';
 import { invalidatePipelineCache } from '../../src/repositories/pipeline.repository.js';
 import { invalidateRoleCache } from '../../src/repositories/role.repository.js';
+import { upsertSetting } from '../../src/repositories/settings.repository.js';
 import { invalidateSettingsCache } from '../../src/services/settings.service.js';
 import { resetAuthState } from '../../src/services/auth.service.js';
 import { startTestPostgres, stopTestPostgres, testConnectionUrl } from './db.js';
@@ -111,10 +112,14 @@ interface StageSnapshot {
 }
 let seededStages: StageSnapshot[] = [];
 
+/** The migrations' tenant, captured once so `resetData()` can write under it. */
+let seededTenantId = '';
+
 export async function setupDatabase(): Promise<void> {
   await startTestPostgres();
   initDatabase(testConnectionUrl());
   await runMigrations();
+  seededTenantId = await testTenantId();
 
   // Self-healing: a previous crashed run can leave test-created roles behind,
   // and capturing those as "seeded" would make them immortal. The migration
@@ -231,6 +236,18 @@ export async function resetData(): Promise<void> {
      WHERE s.entity = 'role';
   `);
   await db()('master_clock').update({ physical: 0, counter: 0 });
+
+  // Pricing and free-to-sell on for every suite. Both switches ship off — off
+  // strips the four rate keys from every resolved permission set, and off
+  // reports every stock figure as the floor count — so every masking test
+  // that grants `field.saleRate.view` and expects a rate, and every
+  // reservation test that expects a reserved figure, would fail for a reason
+  // it is not about. `pricing-gate.integration.test.ts` and
+  // `free-to-sell.integration.test.ts` are the ones that turn them off.
+  await db().transaction(async (trx) => {
+    await upsertSetting(seededTenantId, 'pricing.enabled', true, false, 1, null, trx);
+    await upsertSetting(seededTenantId, 'inventory.freeToSell', true, false, 1, null, trx);
+  });
 
   // These caches outlive a truncate; a stale role would let a later test pass
   // with permissions the database no longer grants.

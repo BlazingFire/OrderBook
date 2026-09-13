@@ -133,6 +133,311 @@ Everything through Stage 6 is pushed to **both `dev` and `main`** (they are at
 the same commit as of 2026-08-28). Stages 7–12 are on `dev` only, awaiting the
 owner's word to push.
 
+### Commit + rebuild checkpoint (2026-09-13)
+
+Everything below this line is committed on `main`: the pricing switch, the
+assistant removal, the sidebar sub-pages, the product hierarchy + new-lead
+flow, the catalogue reload script, and this session's .gitignore additions
+(CATA.pdf, dummy-data/, vitest-out.txt, .claude/launch.json — operator
+fixtures and local logs, untracked by design). Verified: `npm run lint` +
+`npm run typecheck` exit 0; all 80 unit suites green (937 tests). The 42
+integration suites (563 tests) skip/fail on this machine because the shared
+test cluster cannot start — PostgreSQL refuses every directory here
+(`initdb: could not create/change permissions`, `postgres: could not create
+lock file postmaster.pid`), including fresh dirs outside TEMP, while plain
+file creation works; the identical failure on a stashed clean tree proves it
+is environmental, not the change. Fresh Windows installers
+(`C:\OrderBook-Releases`, both panels, v1.0.3) are rebuilt below — the
+in-app update path (releases folder / GitHub sync, hash + signature checks)
+is untouched, so installed panels pick this build up as usual.
+
+### PDF Designer Canva-style shell in the Documents editor (2026-09-12)
+
+Owner's message: a screenshot of the wanted PDF Designer (Templates + Blocks
+left, live A4 sheet centre, Template Options right, Preview with real lead +
+Save template on top) with "rest i will tell".
+
+Built in the Documents → Templates → New/Edit editor (`EditorScreen`), not a
+new nav item; no Light/Dark toggle (app theme wins). `TemplateEditor`
+(`ui/src/DocumentsScreen.tsx`) is reskinned into a `DesignerShell` 3-column
+grid; `LayoutCard` stays as an exported stub for a reviewable diff. Blocks are
+one `DocumentBlock` each through `blocksToElements()`
+(`ui/src/documentBlocks.ts`), shifted to the drop point (`shiftBundle`,
+unit-tested) and placed via a consumed-once `pendingInsert` on `PageDesigner`.
+Margins Narrow/Normal/Wide, Paper A4/A5 with the rest under More settings,
+watermark-empty seeds DRAFT, popup-safe preview against a real lead/order,
+optional `actions` slot on `EditorScreen`, new `documents.designer.*` i18n
+keys. Renderer/bindings/redaction/routes/adapters untouched.
+
+Verified: lint + typecheck exit 0, both panels build, 187 focused tests green
+(incl. PDF-55). Full `verify` attempted — 240 integration failures from the
+already-documented shared-cluster contention; every such file passes alone.
+Change-log entry in `docs/AI_COLLABORATION.md`. Open for the owner: click
+through each type, every option, Narrow/Normal/Wide + A4/A5 + Letter
+disclosure, drag and click-insert each block, preview vs lead/order,
+save/reload/conflict, Office online, rate-blind user — then say what is next.
+
+### Office dashboard rebuilt around the screenshot (2026-09-12)
+
+Owner's message: a screenshot of the wanted dashboard (4 stat cards, lead
+pipeline with per-stage money, recent activity, follow-up rows). Rebuilt
+`office/web/src/screens/DashboardScreen.tsx` to that arrangement: Open
+leads / Open orders / Dispatched this week / Sync cards; pipeline bars with
+amounts summed from the snapshot; activity from the leads'/orders' own
+timelines (moves, conversions as "Order OR… created from LD…", dispatches as
+"Order OR… marked {stage}" with the real stage name, typed remarks with the
+actor, offline leads flagged); follow-up rows open the lead. 13 new
+`dashboard.*` keys in en + hi. Verified: i18n suites green (34 tests),
+eslint clean on the touched files; repo-wide `verify` still red on the
+pre-existing `LayoutCard` stub breakage (see the 2026-09-12 follow-up entry
+below), not on this change. Change-log entry in `docs/AI_COLLABORATION.md`.
+
+### Empty state + sample parties (2026-09-12, follow-up)
+
+Owner's follow-up: "remove all products zero products zero leads make few
+parties". Ran the wipe again with no import: products 547 → 0, categories
+41 → 0, leads/orders/line items/inventory already 0 and still 0. Then created
+3 sample parties through `createParty` (P-0001 Patel Tiles & Sanitary, Morbi;
+P-0002 Shree Balaji Traders, Rajkot; P-0003 New Home Ceramics, Ahmedabad).
+The one-shot script now takes flags — default wipes to zero,
+`--with-catalog` re-imports the SWISWARE CSV, `--with-parties` seeds the 3
+sample parties (`wipe:business`, `reload:catalog`, `seed:parties` in
+`master/package.json`). Users/roles/settings/panels untouched. Note: repo-wide
+`npm run lint`/`typecheck` currently fail on a pre-existing unused
+`LayoutCard` in `ui/src/DocumentsScreen.tsx` (working-tree change, not mine);
+master workspace typecheck + eslint on the script are green.
+
+### Catalogue reload: wipe + SWISWARE 2026 import (2026-09-12)
+
+Owner's message: "REMOVE ALL PRODUCTS AND UPLOAD CATA.PDF FILE PRODUCTS".
+Done against the live database the same session: CATA.pdf (28 pages,
+image-only, no text layer) was verified page-by-page against
+`dummy-data/swisware-2026.csv` — 547 rows / 41 categories / SW-0001…SW-0547,
+already transcribed in a previous session. New one-shot script
+`master/src/services/catalog-reload-cli.ts` (`reload:catalog`) truncated all
+business tables (products, categories, images, leads, orders, line items,
+inventory, reservations, movements, timeline, variants, parties, access,
+sync/conflict bookkeeping, activity), reset id counters + sequences, then
+imported the CSV through the real `importProducts` path: 5002 live products
+wiped → 547 created, 0 skipped, 0 failed. Users/roles/settings/panels kept.
+Old 2 leads + 1 order referencing demo PRD-* products were deleted per the
+owner's "full fresh start" choice. Operator script only — no migration, not
+imported by app code or tests. Verified: `npm run lint` + `npm run typecheck`
+green in every workspace, product-import + product-hierarchy suites green (18
+tests); full `npm run verify` not re-run.
+
+### Product hierarchy + keyboard-first lead entry on both panels (2026-09-12)
+
+The owner's SWISWARE 2026 catalogue message is fully built. `npm run verify`
+is green (122 files / 1498 tests) and `npm run build` succeeds for both
+panels.
+
+**Catalogue model.** Brand = `products.brand`, main product =
+`product_categories` (create-on-the-fly already existed). New:
+`products.colour_policy` (`fixed` default | `selectable`, migration
+`20260322000000_product_colour_policy_and_line_category`), set on the product
+drawer after `color` ("Counter may choose the colour") alongside a new Main
+product field, a colour pill on the catalogue table, and a `colourPolicy`
+import column; and the `line_items.category_name` snapshot, filled by
+`createLead` from the product's category unless the client sent one (offline
+quote wins, like every other snapshot). `validateProductInput` constrains the
+policy on both write paths (service + offline merge).
+
+**Lead entry is one shared screen** (`ui/src/NewLeadScreen.tsx`) behind a
+narrow transport. Party → source → follow-up → main-product picker →
+repeatable sub-product picker (same size, typeahead, arrows; Enter adds to the
+box and the caret stays) → Shift+Q (plain keydown — shift+letter never reaches
+the command registry while typing) or Next → per-row colour → packaging →
+grade → quantity walk (colour a dropdown only for selectable models, else
+locked base-colour text; code+name large, dimensions muted) → Enter on the
+last quantity commits N lines → caret back to the main-product picker →
+Ctrl+Enter review modal → Ctrl+Enter saves; Esc walks back everywhere and
+closes the modal. Office adapter queues through the outbox (offline behaviour
+unchanged, legacy screen backed up to session scratchpad only); Master adapter
+over `api.pick` + new `POST /api/leads` (the same `leadService.createLead`
+the socket hub uses), mounted as Leads & orders › New lead gated by
+`leads.create`. Pick gains a `category` kind (live-products-only) and a
+`categoryId` filter, mirrored in the Office offline picker.
+
+**Documents.** Line columns are now `# | Main product | Model | Code | Colour
+| Packing | Grade | Boxes` (+ Rate/Amount when priced — the pricing-off gate
+is untouched); `size` left the default set but stays a valid column key so old
+stored layouts keep validating; colour reads as text everywhere
+(`showColourChips: false` in defaults and every starter that had it true).
+Starters stay code, not migration; stored tenant templates are untouched.
+
+**Catalogue data.** `dummy-data/swisware-2026.csv`: 547 products across 43
+main products, transcribed from all 28 PDF pages — names/sizes as printed,
+base White except printed colours (WUDU BLACK, Wooden, named Vitrosa and
+Rustic/double-colour finishes), `selectable` only for the page-13 Water Closet
+"ALL COLOURS" range, everything else `fixed`. Import via Products › Import.
+
+**Tests.** New `product-hierarchy.integration.test.ts` (policy round-trip +
+refusal, snapshot fill + client-wins, category pick + filtered models, import
+parse), new PDF-90 model gate, rewritten `POST /api/leads` HTTP gate,
+offline-pick category cases; `document-model.test.ts` and
+`snapshot-masking.test.ts` fixtures updated. Two gates caught real issues on
+the way: the i18n no-digits rule rejected "7511" in a placeholder, and
+`http-api.integration.test.ts` still asserted "no endpoint for raising a
+lead".
+
+**Open for the owner:** run one real lead on each panel (focus walk, Shift+Q,
+Ctrl+Enter review), import the CSV, and print one quotation to check the new
+columns.
+
+### Product field order follows lead generation (2026-09-12, follow-up)
+
+Owner's message: "update this product flow to all other parameters like add
+product where first brand then main product name then code then dimensions
+then other parameters like colour etc". UI-only reorder, no migration: the Add
+Product form now walks Brand → Main product → Code → Model name → Alias →
+Type → Series → Barcode, then Spec as Size → Thickness → Colour + the
+selectable toggle → Grade → Finish → Shade → Surface → Calibre → Water →
+PEI → Edge → Application → Origin plant (Pricing/Packing/Photos unchanged);
+`EMPTY`, edit-hydration and the `save()` input keys reordered to match, Brand
+takes `autoFocus`, header comment updated. Catalogue table gains a Brand
+column (`catalog.products.column.brand`, en+hi) and reads photo → code → name
+→ brand → type → size → colour → grade → rate? → stock. ProductDetail's
+facts read Brand → Main product → Code → Type → Size → Colour (with the
+selectable marker) → Grade → Weight → Rate?. Import template columns lead
+with brand → main product → code → dimensions → colour (`IMPORT_COLUMNS`
+reordered, "first eight" comment rewritten); the import preview table gains
+Brand/Main product/Colour sample columns; `swisware-2026.csv` regenerated
+from `gen-swisware.mjs` to the new header order (548 lines / 547 rows).
+`panel-catalog-route` and `product-import` header assertions updated to the
+new order; `product-import-domain` is order-agnostic and untouched. Master
+InventoryScreen and PDF columns deliberately unchanged (stock figures, and
+`# | Main product | Model | Code | Colour | Packing | Grade | Boxes`,
+already in this order).
+
+Verified: `npm run lint` + `npm run typecheck` exit 0; affected suites green
+(panel-catalog-route 8, product-import-domain 16, product-hierarchy 5,
+document-model 18, offline-pick 13, i18n-coverage 15 — relevant DB suites
+also pass in isolation when the shared test cluster is free). Full
+`npm run verify` attempted: exactly 1 failure in 1500 —
+`product-import.integration "serves a CSV and an Excel template"`, fixed by
+updating its header regex; the remaining red runs are the already-documented
+shared-test-cluster contention (`pg_ctl start exited with 1`, suites skipped),
+not this change. Both-panel `npm run build` currently fails in this sandbox
+on an esbuild temp-file lock (`Access is denied` removing
+`%TEMP%\esbuild-*`, fails identically on untouched trees); `tsc -b` for both
+web UIs passes, so the failure is environmental, not the change. Change-log
+entry in `docs/AI_COLLABORATION.md`.
+
+### Pricing switch, assistant removed, sidebar sub-pages, Documents as a screen (2026-09-11)
+
+Nine owner requests in one message; all nine are built. `npm run lint`,
+`npm run typecheck` and `npx vitest run` exit 0 (119 files / 1482 tests, plus
+the four suites re-run after the two fixes below).
+
+**Trap found on the way:** the AI migration had granted `ai.use` to the seeded
+roles, and once the key left the catalogue every one of those roles became
+uneditable — the grid drew it checked-but-disabled, resubmitted it, and the
+save was refused as unknown. `mapRole` now filters stored keys through
+`isPermission`, as `permissionSetFromRow` already did: a retired key must
+neither keep granting nor surface.
+
+**Money is now a company setting, `pricing.enabled`, off by default.** The
+owner's words: "no pricing needed to be mentioned, it's just order management
+software". Rather than teach every screen a second reason to hide money, the
+switch strips the four `field.*Rate.*` keys from every resolved permission set
+(`master/src/services/pricing-gate.ts`) — so a company with pricing off behaves
+exactly like a role never granted them, through the masking that already
+existed for that role: screens, PDFs, reports, exports and the public API all
+follow. Every path that resolves a role's permissions goes through that module
+rather than `roleRepo.permissionSetForRole` directly; the repository stays pure
+and the setting is read (cached) on each resolution, so a flip takes effect on
+the next call, as an edited role does. A session records which way the switch
+was when its permissions were built and rebuilds when it moves. The Pricing
+group leaves the permission catalogue while the switch is off, because a cell
+that grants nothing is worse than a missing one. The surfaces that used to keep
+a redacted or "—" Amount column regardless (both dashboards, lead board, order
+board, catalogue, party/product detail, product drawer/import preview, master
+Leads & orders, the Documents rates switch/columns/grand-total binding) now
+drop the column entirely on `field.saleRate.view` absent. **The test fixture
+seeds the switch on** for every suite, since the masking tests grant the key
+and expect a rate; `pricing-gate.integration.test.ts` is the one that turns it
+off. Nothing stored is touched by the switch.
+
+**The AI assistant is gone — code, routes, socket events, settings,
+permissions, i18n, CSS, tests.** The `20260317000000_ai_assistant` migration
+stays (migrations are history), so `ai_runs` still exists and old roles may
+still hold `ai.*` keys — `isPermission` drops them at resolution. The three
+`activity.ai_run.*` tokens stay in the catalogue too: `activity.*` is
+append-only and rows the assistant wrote still render. With `ai.apiKey` gone
+there is no secret setting; the sealed read/write path in `settings.service.ts`
+and the Settings screen's secret row are kept, dormant, because they are wired
+to the `is_secret`/`key_version` columns and the restore semantics documented
+there. `shared/tests/wire-optionality.test.ts` now guards `SyncSnapshot`
+instead of the deleted AI types.
+
+**The sidebar folds.** `NavItem.children` is now a real second tier: an item
+with children shows a chevron, folds and unfolds by hand, and unfolds on its
+own while the current page is inside it. Every module with more than one view
+offers those views as sub-pages: each `App.tsx` declares a `subPages` record
+(`ui/src/subPages.ts` — `withSubPages`, `splitSubPage`), the shell keeps the
+chosen key per module, and the screen takes it as a controlled prop beside its
+own `Tabs`/`Segmented`, so the two never disagree. Master: Leads & orders,
+Inventory, Reports, Documents, Roles & users, Party access, Fields, Recycle bin
+(per entity the caller may restore), Integrations, Settings. Office: Leads
+(list/board), Orders (all + each pipeline stage, read off the snapshot), Party
+access, Documents, Settings. Single-view modules (Dashboard, Conflicts, Office
+panels, Activity log, App update, Products, Parties) deliberately have no
+fold. Settings' remembered tab moved into the shell (`useSettingsTab` in
+App.tsx) so the sidebar and the desktop menu's "Developer" request drive the
+same state. The Documents in-screen tabs are gone (the sidebar is the control);
+`graftSubNav` hangs an open operation under its parent at any depth, so the
+template editor's entry sits under Templates. The template editor and the
+starter gallery are full sub-screens (`EditorScreen`) with a back button, not
+modals; the delete confirmation stays a modal. The OrderBook mark in the
+sidebar is a button that goes to the Dashboard. Leads default to the list view.
+Products and Parties search boxes are wider; Party access is narrower.
+
+**Free to sell is a company setting, `inventory.freeToSell`, off by
+default.** The owner's words: "remove free to sell feature from whole
+software, turn off and on switch in settings for inventory". Off, every stock
+figure the Master hands out reads the floor count as free and nothing as
+reserved (`withoutReservations` in `shared/src/domain/inventory-view.ts`,
+applied in `inventory.service.ts` to every level it lists, returns or
+publishes; `listStockLevels`/`countLowStock` take a `reservations` flag so a
+colour that exists only as a reservation is not a row and low stock is judged
+on the floor count; the pick list's free figure follows). The reservations
+still exist underneath and orders still take them, so switching back on shows
+the true picture. **How a switch reaches a screen:** `CompanyFeatures`
+(`shared/src/domain/entities.ts`) rides on `SignedInUser.features` for the
+Master and on `SyncSnapshot.features` for a panel (optional on the wire; absent
+means an older Master, read as "on"), built by
+`master/src/services/company-features.ts`. The Master's Settings screen calls
+`onSaved` and the shell re-reads `api.me()`, so permissions and switches change
+on that screen without a reload; a panel picks a flip up with its next
+snapshot. With the switch off the screens drop the Reserved/Free columns
+(Inventory table and detail band, product detail), the reservations panel on
+an order, the "boxes reserved" note on the office dashboard, and the wording
+on the new-lead picker says "in stock" rather than "free". The fixture seeds
+this switch on beside `pricing.enabled`; `free-to-sell.integration.test.ts`
+turns it off.
+
+**New lead is Leads' second page.** The Office sidebar shows Leads › List
+and Leads › New lead (the latter only with `leads.create`); the old dynamic
+`useSubNav('addLead')` entry is gone. Every way in — the sidebar page, the
+topbar button, Ctrl+Shift+N — goes through `openNewLead()`, which bumps a
+nonce the form reads: a blank form puts the cursor on the party picker, a
+form with anything on it is left exactly where it was (the screen stays
+mounted while hidden, so the draft survives a tab change). Alt+1…9 match each
+panel's sidebar order again — Documents was missing from the Office list, so
+Alt+8 opened Settings while the sidebar showed Documents eighth.
+
+**Ctrl+F searches the screen.** `view.find` used to open the palette; it now
+focuses the visible screen's search box — any `<Input data-screen-search>` on
+screen — and only falls back to the palette's record search where a screen
+has none. Mark a new screen-level search input with `data-screen-search`.
+
+**Small things asked for the same evening:** the UI scale slider has −/+
+buttons stepping `SCALE_STEP` on the grid; the Office lead detail is two
+columns (lines and history left, stage/party/facts/convert in a 21rem aside)
+with line items as hairline rows rather than nested cards — `.ob-detail-*` and
+`.ob-line*` in `base.css`, collapsing to one column under 1180px.
+
 ### Developer mode, reset, test users, uninstaller and the Settings rebuild (2026-09-07)
 
 The owner asked for four things in one message: dummy users for the three role

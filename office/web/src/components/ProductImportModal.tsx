@@ -47,6 +47,8 @@ const MAX_MB = Math.round(MAX_PRODUCT_IMPORT_BYTES / (1024 * 1024));
 
 interface ProductImportModalProps {
   open: boolean;
+  /** Holds `field.saleRate.view`; off with the company's pricing switch. */
+  showMoney: boolean;
   onClose: () => void;
   /** Something was written; the catalogue should refetch. */
   onImported: (result: ProductImportResult) => void;
@@ -72,7 +74,13 @@ function describe(error: unknown): string {
   return t('import.failed');
 }
 
-export function ProductImportModal({ open, onClose, onImported, onError }: ProductImportModalProps) {
+export function ProductImportModal({
+  open,
+  showMoney,
+  onClose,
+  onImported,
+  onError,
+}: ProductImportModalProps) {
   const [step, setStep] = useState<Step>('pick');
   const [mode, setMode] = useState<ProductImportMode>('create');
   const [file, setFile] = useState<File | null>(null);
@@ -368,18 +376,41 @@ export function ProductImportModal({ open, onClose, onImported, onError }: Produ
                       render: (row) => row.name,
                     },
                     {
+                      key: 'brand',
+                      header: t('catalog.products.column.brand'),
+                      width: rem(110),
+                      render: (row) => row.brand ?? '—',
+                    },
+                    {
+                      key: 'category',
+                      header: t('product.field.category'),
+                      width: rem(130),
+                      render: (row) => row.categoryName ?? '—',
+                    },
+                    {
+                      key: 'colour',
+                      header: t('catalog.products.column.colour'),
+                      width: rem(110),
+                      render: (row) => row.color ?? '—',
+                    },
+                    {
                       key: 'type',
                       header: t('catalog.products.column.type'),
                       width: rem(110),
                       render: (row) => row.productType ?? row.categoryName ?? '—',
                     },
-                    {
-                      key: 'rate',
-                      header: t('catalog.products.column.rate'),
-                      width: rem(100),
-                      align: 'right',
-                      render: (row) => formatMoney(row.rate ?? null),
-                    },
+                    ...(showMoney
+                      ? [
+                          {
+                            key: 'rate',
+                            header: t('catalog.products.column.rate'),
+                            width: rem(100),
+                            align: 'right' as const,
+                            render: (row: ProductImportResult['sample'][number]) =>
+                              formatMoney(row.rate ?? null),
+                          },
+                        ]
+                      : []),
                   ]}
                   rows={result.sample}
                   rowKey={(row) => `${row.productCode}:${row.name}`}

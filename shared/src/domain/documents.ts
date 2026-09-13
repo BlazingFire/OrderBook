@@ -217,7 +217,11 @@ const SHARED_DEFAULTS = {
   paperSize: 'A4',
   orientation: 'portrait',
   margins: { top: 18, right: 15, bottom: 18, left: 15 },
-  showColourChips: true,
+  // Colour reads as text on the line ("White ×5"), not as swatches: the
+  // hierarchy flow sells named colours the counter chose, and a swatch cannot
+  // say which of two whites it is. A shop that wants the dots back flips the
+  // switch on its own template.
+  showColourChips: false,
   showTerms: true,
   showLogo: true,
   showSignature: false,

@@ -26,18 +26,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'permission.users.viewPassword': 'संग्रहीत पासवर्ड दिखाएँ',
   'permission.roles.assign': 'उपयोगकर्ताओं को भूमिकाएँ सौंपें',
   'permission.panels.manage': 'ऑफ़िस पैनल प्रबंधित करें',
-  'permission.ai.use': 'Ask the assistant',
-  'permission.ai.write': 'Apply what the assistant suggests',
-  'permission.ai.manage': 'Configure the assistant',
-  'setting.ai.allowWrites.label': 'Let people apply the assistant’s suggestions',
-  'setting.ai.allowWrites.help':
-    'Off means the assistant can only read and draft. Nothing it suggests can be saved.',
-  'setting.ai.retentionDays.label': 'Keep transcripts for',
-  'setting.ai.retentionDays.help':
-    'Days before a question and its answer are deleted. The record of what was spent is kept.',
-  'setting.ai.dailyTokenBudget.label': 'Daily token budget',
-  'setting.ai.dailyTokenBudget.help':
-    'A ceiling for a paid provider. Zero means no ceiling, which is right for a model running here.',
   'permission.api.manage': 'Manage API keys and connections',
   'permission.settings.manage': 'सेटिंग्स प्रबंधित करें',
   'permission.storage.manage': 'स्टोरेज निर्यात, पुनर्स्थापित और स्थानांतरित करें',
@@ -129,13 +117,15 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'setting.security.passwordRevealEnabled.label': 'पासवर्ड याद रखें ताकि उन्हें फिर दिखाया जा सके',
   'setting.security.passwordRevealEnabled.help':
     'जब तक यह चालू है, इस नेटवर्क पर टाइप किया गया हर पासवर्ड ऐसे रूप में रखा जाता है जिसे प्रशासक पढ़ सकता है। इसे बंद करने पर पहले से रखे गए सभी पासवर्ड हटा दिए जाते हैं।',
-  'setting.ai.provider.label': 'एआई प्रदाता',
-  'setting.ai.provider.help': 'एआई अनुभाग किस मॉडल से बात करता है। बंद का अर्थ है किसी से नहीं।',
-  'setting.ai.apiKey.label': 'एआई कुंजी',
-  'setting.ai.apiKey.help': 'सील करके रखी जाती है। सहेजने के बाद इसे दोबारा नहीं दिखाया जाता।',
   'setting.externalApi.enabled.label': 'अन्य सॉफ़्टवेयर को जुड़ने दें',
   'setting.externalApi.enabled.help':
     'नेटवर्क के अन्य प्रोग्रामों से कुंजी-युक्त अनुरोधों के लिए इस मास्टर को खोलता है।',
+  'setting.inventory.freeToSell.label': 'बिक्री-योग्य स्टॉक ट्रैक करें',
+  'setting.inventory.freeToSell.help':
+    'चालू होने पर हर स्टॉक आँकड़ा तीन हिस्सों में दिखता है — उपलब्ध, खुले ऑर्डरों के लिए आरक्षित, और बिक्री-योग्य — और कम स्टॉक बिक्री-योग्य पर आँका जाता है। बंद होने पर हर रंग के लिए एक ही संख्या दिखती है, फ़र्श पर रखे बॉक्स, और आरक्षित/बिक्री-योग्य कहीं नहीं दिखते। ऑर्डर नीचे अपना स्टॉक रोके रखते हैं, इसलिए वापस चालू करने पर सही तस्वीर दिखती है।',
+  'setting.pricing.enabled.label': 'दरें और राशियाँ दिखाएँ',
+  'setting.pricing.enabled.help':
+    'बंद होने पर कहीं भी कोई दर, राशि या कुल नहीं दिखता — स्क्रीन, दस्तावेज़, रिपोर्ट या API में — और मूल्य-निर्धारण अनुमतियों का कोई असर नहीं होता। संग्रहीत कुछ भी नहीं खोता; इसे फिर चालू करने पर हर आँकड़ा वापस दिखता है।',
 
   'error.notFound': '{what} नहीं मिला',
   'error.forbidden.missingPermission': 'अनुमति नहीं है: {permission}',
@@ -159,19 +149,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'validation.developer.confirmationRequired': 'Type RESET to confirm',
   'validation.request.bodyRequired': 'That request needs a JSON body',
-  'validation.ai.notConfigured': 'The assistant has no model configured yet',
-  'validation.ai.promptRequired': 'Ask a question first',
-  'validation.ai.budgetSpent': 'Today’s token budget is spent',
-  'validation.ai.nothingAccepted': 'Tick at least one field to apply',
-  'error.ai.unreachable': 'The model did not answer',
-  'error.ai.unauthorized': 'The model refused the key it was given',
-  'error.ai.failed': 'The assistant could not finish that',
-  'error.ai.cancelled': 'Stopped',
-  'error.ai.interrupted': 'Interrupted when the Master restarted',
-  'error.ai.notConfigured': 'No model is configured',
-  'activity.ai_run.asked': '{actor} asked the assistant something',
-  'activity.ai_run.drafted': '{actor} had the assistant draft something',
-  'activity.ai_run.applied': '{actor} applied a change the assistant suggested',
   'validation.apiKey.labelRequired': 'Give the key a label so it can be recognised later',
   'validation.apiKey.scopesRequired': 'Choose at least one permission for this key',
   'validation.apiKey.expired': 'That API key has expired',
@@ -293,6 +270,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.product.edgeType': 'यह किनारे का प्रकार नहीं है',
   'validation.product.application': 'यह टाइल इस जगह के लिए मान्य नहीं है',
   'validation.product.peiRating': 'PEI रेटिंग 0 से 5 तक होती है',
+  'validation.product.colourPolicy': 'बिक्री पर रंग या तो तय होगा या चुना जाएगा',
   'validation.product.percentage': 'शून्य से सौ के बीच प्रतिशत भरें',
   'validation.product.negativeAmount': 'यह राशि ऋणात्मक नहीं हो सकती',
   'validation.stock.levelRange': 'अधिकतम, न्यूनतम से कम नहीं हो सकता',
@@ -447,6 +425,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'activity.user.created': '{actor} ने {name} के लिए खाता बनाया',
   'activity.user.updated': '{actor} ने {name} को अपडेट किया',
   'activity.user.deactivated': '{actor} ने {name} को निष्क्रिय किया',
+  'activity.ai_run.asked': '{actor} asked the assistant something',
+  'activity.ai_run.drafted': '{actor} had the assistant draft something',
+  'activity.ai_run.applied': '{actor} applied a change the assistant suggested',
   'activity.user.deleted': '{actor} ने {name} का खाता हटाया',
   'activity.user.restored': '{actor} ने {name} का खाता पुनर्स्थापित किया',
   'activity.user.password_reset': '{actor} ने {name} का पासवर्ड रीसेट किया',
@@ -968,6 +949,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'catalog.parties.searchPlaceholder': 'Search name, code, phone…',
   // TODO(i18n-hi)
   'catalog.products.column.code': 'Code',
+  'catalog.products.column.brand': 'ब्रांड',
+  'catalog.products.column.colour': 'रंग',
+  'catalog.products.colour.selectable': 'चुनने योग्य',
   // TODO(i18n-hi)
   'catalog.products.column.grade': 'Grade',
   // TODO(i18n-hi)
@@ -978,6 +962,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'catalog.products.column.size': 'Size',
   // TODO(i18n-hi)
   'catalog.products.column.stock': 'Free to sell, by colour',
+  'catalog.products.column.stockOnHand': 'स्टॉक, रंग अनुसार',
   // TODO(i18n-hi)
   'catalog.products.column.type': 'Type',
   // TODO(i18n-hi)
@@ -1942,6 +1927,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'inventory.action.stockIn': 'Stock in',
   // TODO(i18n-hi)
   'inventory.boxesFree': '{count} boxes free',
+  'inventory.boxesOnHand': '{count} बॉक्स उपलब्ध',
   // TODO(i18n-hi)
   'inventory.drawer.adjust': 'Adjust to physical count',
   // TODO(i18n-hi)
@@ -2242,6 +2228,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.list.col.lead': 'Lead',
   // TODO(i18n-hi)
   'lead.list.col.party': 'Party',
+  'lead.list.col.products': 'उत्पाद',
   // TODO(i18n-hi)
   'lead.list.col.source': 'Source',
   // TODO(i18n-hi)
@@ -2328,40 +2315,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'logs.action.export': 'Export CSV',
   // TODO(i18n-hi)
   'logs.action.verify': 'Verify chain',
-  // TODO(i18n-hi)
-  'ai.title': 'Assistant',
-  'ai.help':
-    'Ask about this shop’s own records. It can only read what you can read, and it can change nothing.',
-  'ai.placeholder': 'Ask about a party, an order, or stock…',
-  'ai.ask': 'Ask',
-  'ai.stop': 'Stop',
-  'ai.thinking': 'Thinking…',
-  'ai.empty': 'Nothing asked yet',
-  'ai.noAnswer': 'No answer was produced',
-  'ai.off.title': 'The assistant is not set up',
-  'ai.off.hint': 'An administrator points this installation at a model in Settings.',
-  'ai.provenance': 'What this looked at ({count} steps)',
-  'ai.provenance.step': '{tool} — {rows} records',
-  'ai.budget': '{spent} of {budget} tokens used today',
-  'ai.support.gb': '{gb} GB',
-  'ai.hardware.ram': '{gb} GB RAM',
-  'ai.hardware.cpus': '{count} CPU',
-  'ai.hardware.appleSilicon': 'Apple Silicon',
-  'ai.hardware.recommended': 'सुझाए गए: {models}',
-  'ai.hardware.marginal':
-    'This machine has {gb} GB. A local model will run, slowly, with little else open.',
-  'ai.hardware.unsupported':
-    'This machine has {gb} GB, which is too little for a local model. Point it at another machine instead.',
-  'ai.generated': 'Written by the assistant. Check anything you act on.',
-  'nav.master.assistant': 'Assistant',
-  'nav.assistant': 'Assistant',
-  'insight.stock.slowMoving': '{name}: {boxes} boxes, nothing out for {days} days',
-  'insight.lead.overdueFollowUp': '{party}: follow-up {days} days overdue',
-  'insight.order.unusualSize': '{party} placed an order well above their usual size',
-  'insight.dispatch.trend':
-    'Dispatches this month: {thisMonth}, against a recent average of {average}',
-  'insight.title': 'Worth a look',
-  'insight.empty': 'Nothing unusual today',
   'integrations.title': 'Integrations',
   'integrations.loadFailed': 'Could not load the integrations',
   'integrations.tab.keys': 'API keys',
@@ -2626,6 +2579,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'nav.dashboard': 'Dashboard',
   // TODO(i18n-hi)
   'nav.documents': 'Documents',
+  'nav.fold': 'उप-पृष्ठ छिपाएँ',
+  'nav.home': 'डैशबोर्ड पर जाएँ',
   // TODO(i18n-hi)
   'nav.leads': 'Leads',
   // TODO(i18n-hi)
@@ -2674,6 +2629,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'nav.settings': 'Settings',
   // TODO(i18n-hi)
   'nav.system': 'System',
+  'nav.unfold': 'उप-पृष्ठ दिखाएँ',
   // TODO(i18n-hi)
   'nav.updates': 'App update',
   // TODO(i18n-hi)
@@ -3404,6 +3360,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'product.field.series': 'सीरीज़',
   'product.field.finish': 'फ़िनिश',
   'product.field.color': 'रंग',
+  'product.field.colourPolicy': 'बिक्री पर रंग',
+  'product.field.colourPolicyLabel': 'काउंटर रंग चुन सकता है',
+  'product.field.colourPolicyHint':
+    'बंद: इसी बेस रंग पर तय। चालू: काउंटर हर लाइन के लिए रंग चुनेगा।',
+  'product.field.category': 'मुख्य उत्पाद',
   'product.field.thickness': 'मोटाई (मिमी)',
   'product.field.piecesPerBox': 'प्रति बॉक्स पीस',
   'product.field.boxCoverage': 'प्रति बॉक्स कवरेज (वर्ग फुट)',
@@ -3687,7 +3648,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'reports.range.toMonthHint': 'Leave empty to run up to this month',
   // TODO(i18n-hi)
-  'reports.ratesHidden': 'Money is left out — your role does not include {permission}.',
+  'reports.ratesHidden':
+    'Money is left out — pricing is switched off, or your role does not include {permission}.',
   // TODO(i18n-hi)
   'reports.stat.boxes': 'Boxes dispatched',
   // TODO(i18n-hi)
@@ -4070,99 +4032,14 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'settings.scale.label': 'UI scale',
   // TODO(i18n-hi)
   'settings.scale.reset': 'Reset',
+  'settings.scale.smaller': 'छोटा',
+  'settings.scale.larger': 'बड़ा',
   // TODO(i18n-hi)
   'settings.scale.note': 'Root {size} — this screen resizes live',
   // TODO(i18n-hi)
   'keys.command.toggleSidebar': 'Toggle sidebar',
   // TODO(i18n-hi)
-  'keys.command.find': 'Find',
-  // TODO(i18n-hi)
-  'ai.support.title': 'Local AI Support',
-  // TODO(i18n-hi)
-  'ai.support.subtitle': 'Hardware detection, software options and model recommendations',
-  // TODO(i18n-hi)
-  'ai.support.hardware': 'Hardware Summary',
-  // TODO(i18n-hi)
-  'ai.support.totalRam': 'Total RAM',
-  // TODO(i18n-hi)
-  'ai.support.availableRam': 'Available RAM',
-  // TODO(i18n-hi)
-  'ai.support.cpus': 'CPU Cores',
-  // TODO(i18n-hi)
-  'ai.support.platform': 'Platform',
-  // TODO(i18n-hi)
-  'ai.support.platform.darwin': 'macOS',
-  // TODO(i18n-hi)
-  'ai.support.platform.win32': 'Windows',
-  // TODO(i18n-hi)
-  'ai.support.platform.linux': 'Linux',
-  // TODO(i18n-hi)
-  'ai.support.unifiedMemory': 'Apple Silicon — Unified Memory (GPU shares system RAM)',
-  // TODO(i18n-hi)
-  'ai.support.software': 'Supported Local LLM Software',
-  // TODO(i18n-hi)
-  'ai.support.ollama.title': 'Ollama',
-  // TODO(i18n-hi)
-  'ai.support.ollama.desc':
-    'इसी मशीन पर छोटे HTTP API के पीछे लोकल मॉडल चलाता है। आम तौर पर यही चुना जाता है।',
-  // TODO(i18n-hi)
-  'ai.support.ollama.download':
-    'इसे अपनी मीडिया से इसी मशीन पर इंस्टॉल करें — चलाने के लिए दुकान का ऑनलाइन होना ज़रूरी नहीं।',
-  // TODO(i18n-hi)
-  'ai.support.lmstudio.title': 'LM Studio',
-  // TODO(i18n-hi)
-  'ai.support.lmstudio.desc':
-    'कमांड लाइन के बजाय एक विंडो, अपने सर्वर के साथ। मॉडल आज़माने के लिए आसान।',
-  // TODO(i18n-hi)
-  'ai.support.lmstudio.download':
-    'यह भी इसी मशीन पर इंस्टॉल होता है; यह भी localhost पर ही चलता है।',
-  // TODO(i18n-hi)
-  'ai.support.models': 'Recommended Models',
-  // TODO(i18n-hi)
-  'ai.support.models.note': 'Models that fit on this machine based on available RAM',
-  // TODO(i18n-hi)
-  'ai.support.model.name': 'Model',
-  // TODO(i18n-hi)
-  'ai.support.model.size': 'Size',
-  // TODO(i18n-hi)
-  'ai.support.model.ram': 'RAM Needed',
-  // TODO(i18n-hi)
-  'ai.support.model.provider': 'Provider',
-  // TODO(i18n-hi)
-  'ai.support.model.fits': 'Fits on this machine',
-  // TODO(i18n-hi)
-  'ai.support.model.marginal': 'May be slow — close other apps',
-  // TODO(i18n-hi)
-  'ai.support.model.tooLarge': 'Not enough RAM',
-  // TODO(i18n-hi)
-  'ai.support.setup': 'Setup Steps',
-  // TODO(i18n-hi)
-  'ai.support.setup.step1': 'इसी मास्टर मशीन पर Ollama या LM Studio इंस्टॉल करें।',
-  // TODO(i18n-hi)
-  'ai.support.setup.step2':
-    'ऊपर दिए मॉडलों में से एक उसमें लोड करें। वही चुनें जिसके लिए इस मशीन में RAM हो — हर पंक्ति का बैज यही बताता है।',
-  // TODO(i18n-hi)
-  'ai.support.setup.step3':
-    'सेटिंग्स में AI प्रोवाइडर को localhost पर उसी सर्वर की ओर लगाएँ। कुछ भी इस मशीन से बाहर नहीं जाता।',
-  // TODO(i18n-hi)
-  'ai.support.status': 'Current Status',
-  // TODO(i18n-hi)
-  'ai.support.status.reachable': 'Local model detected and reachable',
-  // TODO(i18n-hi)
-  'ai.support.status.unreachable':
-    'No local model detected — install Ollama and pull a model to get started',
-  // TODO(i18n-hi)
-  'ai.support.checkSupport': 'Check AI Support',
-  // TODO(i18n-hi)
-  'error.ai.tooManyConcurrent': 'Too many AI requests are running. Try again in a moment.',
-  // TODO(i18n-hi)
-  'error.ai.memoryPressure':
-    'The server is under memory pressure. Close other applications and try again.',
-  // TODO(i18n-hi)
-  'setting.ai.maxConcurrentRuns.label': 'Maximum concurrent AI runs',
-  // TODO(i18n-hi)
-  'setting.ai.maxConcurrentRuns.help':
-    'How many AI requests can run at the same time. Lower this if the server becomes slow.',
+  'keys.command.find': 'इस स्क्रीन में खोजें',
 
   // --- Developer mode ---
   // TODO(i18n-hi)
@@ -4321,6 +4198,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.draft.col.quantity': 'Quantity',
   // TODO(i18n-hi)
   'lead.add.draft.colourOption': '{code} · {colour} · {free} free',
+  'lead.add.draft.colourOptionOnHand': '{code} · {colour} · {free} स्टॉक में',
   // TODO(i18n-hi)
   'lead.add.draft.editing': 'editing saved product',
   // TODO(i18n-hi)
@@ -4372,6 +4250,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.products.col.colour': 'Colour',
   // TODO(i18n-hi)
   'lead.add.products.col.free': 'Free',
+  'lead.add.products.col.onHand': 'स्टॉक',
   // TODO(i18n-hi)
   'lead.add.products.col.product': 'Product',
   // TODO(i18n-hi)
@@ -4379,6 +4258,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
     'Nothing matches. A unique code covers one colour of one product — try the code, a product name, or a system code.',
   // TODO(i18n-hi)
   'lead.add.products.overFree': 'over free stock',
+  'lead.add.products.overOnHand': 'उपलब्ध स्टॉक से अधिक',
   // TODO(i18n-hi)
   'lead.add.progress': '{done} of {total} required steps',
   // TODO(i18n-hi)
@@ -4425,6 +4305,29 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.bulkNote': '{count} products — the list scrolls',
   // TODO(i18n-hi)
   'lead.add.draft.title': 'Details for this product',
+  'lead.add.flow.mainProduct': 'मुख्य उत्पाद',
+  'lead.add.flow.mainProductPlaceholder': 'मुख्य उत्पाद खोजें — जैसे one piece toilet',
+  'lead.add.flow.mainProductHint': 'पहले रेंज चुनें, फिर नीचे उसके मॉडल।',
+  'lead.add.flow.subProduct': 'उप उत्पाद',
+  'lead.add.flow.subProductPlaceholder': 'मॉडल खोजें — जैसे 102, Damru, 7511',
+  'lead.add.flow.subProductHint': 'खोजने के लिए लिखें, तीर से चलें, Enter से नीचे बॉक्स में जोड़ें।',
+  'lead.add.flow.next': 'आगे',
+  'lead.add.flow.nextHint': 'Shift+Q पैकेजिंग, ग्रेड और मात्रा पर ले जाता है।',
+  'lead.add.flow.selectedTitle': 'चुने गए मॉडल',
+  'lead.add.flow.selectedEmpty': 'अभी कुछ नहीं — Enter से ऊपर का मॉडल इस बॉक्स में जोड़ें।',
+  'lead.add.flow.removeModel': '{model} हटाएँ',
+  'lead.add.flow.backToModels': 'मॉडलों पर वापस',
+  'lead.add.flow.addProduct': 'उत्पाद जोड़ें',
+  'lead.add.flow.addedPrefix': 'जुड़ा',
+  'lead.add.flow.noMainProduct': 'पहले मुख्य उत्पाद चुनें',
+  'lead.add.flow.reviewTitle': 'लीड जाँचें',
+  'lead.add.flow.reviewHint': 'Ctrl+Enter से पूरा करें, Esc से फॉर्म पर वापस।',
+  'lead.add.flow.complete': 'लीड पूरी करें',
+  'lead.add.flow.completing': 'सहेज रहे हैं…',
+  'lead.add.flow.fixedColour': 'तय रंग',
+  'lead.add.flow.noHit': 'कुछ नहीं मिला।',
+  'lead.add.flow.chooseColour': 'रंग चुनें',
+  'lead.add.flow.modelCount': '{count} मॉडल',
   // TODO(i18n-hi)
   'lead.add.followUp.label': 'Follow up',
   // TODO(i18n-hi)
@@ -4452,6 +4355,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.line.boxesShort': '{count} bx',
   // TODO(i18n-hi)
   'lead.add.line.ofFree': 'of {free} free',
+  'lead.add.line.ofOnHand': '{free} स्टॉक में से',
   // TODO(i18n-hi)
   'lead.add.panel.clear': 'Clear',
   // TODO(i18n-hi)
@@ -4478,4 +4382,84 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.panel.truncated': 'Showing the first {shown} — narrow the search to see the rest',
   // TODO(i18n-hi)
   'lead.add.draft.showOptions': 'Show {field} options',
+  // TODO(i18n-hi)
+  'dashboard.pipeline.openBoard': "Open board",
+  // TODO(i18n-hi)
+  'dashboard.pipeline.emptyTitle': "No open leads",
+  // TODO(i18n-hi)
+  'dashboard.pipeline.emptyDescription': "Leads you create appear here, online or off.",
+  // TODO(i18n-hi)
+  'dashboard.followUp.title': "Follow up today",
+  // TODO(i18n-hi)
+  'dashboard.followUp.emptyTitle': "Nothing due",
+  // TODO(i18n-hi)
+  'dashboard.followUp.emptyDescription': "Leads whose follow-up date arrives show up here.",
+  // TODO(i18n-hi)
+  'dashboard.activity.title': "Recent activity",
+  // TODO(i18n-hi)
+  'dashboard.activity.convertedOrder': "Order {orderId} created from {leadId}",
+  // TODO(i18n-hi)
+  'dashboard.activity.leadSavedOffline': "Lead saved offline on Panel {device}",
+  // TODO(i18n-hi)
+  'dashboard.activity.orderReady': "Order {orderId} marked {stage}",
+  // TODO(i18n-hi)
+  'documents.designer.title': "PDF Designer",
+  // TODO(i18n-hi)
+  'documents.designer.templates': "Templates",
+  // TODO(i18n-hi)
+  'documents.designer.blocks': "Blocks",
+  // TODO(i18n-hi)
+  'documents.designer.blocksHint': "Drag a block onto the page, or press Enter to place it.",
+  // TODO(i18n-hi)
+  'documents.designer.options': "Template options",
+  // TODO(i18n-hi)
+  'documents.designer.margins': "Margins",
+  // TODO(i18n-hi)
+  'documents.designer.paper': "Paper",
+  // TODO(i18n-hi)
+  'documents.designer.fromLead': "From a lead",
+  // TODO(i18n-hi)
+  'documents.designer.fromOrder': "From an order",
+  // TODO(i18n-hi)
+  'documents.designer.atDispatch': "At dispatch, no rates",
+  // TODO(i18n-hi)
+  'documents.designer.block.header': "Header",
+  // TODO(i18n-hi)
+  'documents.designer.block.party': "Party block",
+  // TODO(i18n-hi)
+  'documents.designer.block.lines': "Lines table",
+  // TODO(i18n-hi)
+  'documents.designer.block.totals': "Totals",
+  // TODO(i18n-hi)
+  'documents.designer.block.terms': "Terms",
+  // TODO(i18n-hi)
+  'documents.designer.block.signature': "Signature",
+  // TODO(i18n-hi)
+  'documents.designer.margin.narrow': "Narrow",
+  // TODO(i18n-hi)
+  'documents.designer.margin.normal': "Normal",
+  // TODO(i18n-hi)
+  'documents.designer.margin.wide': "Wide",
+  // TODO(i18n-hi)
+  'documents.designer.previewWithRealLead': "Preview with real lead",
+  // TODO(i18n-hi)
+  'documents.designer.saveTemplate': "Save template",
+  // TODO(i18n-hi)
+  'documents.designer.ratesHint': "Without this, or without the View sale rate permission, the PDF leaves the rate columns out.",
+  // TODO(i18n-hi)
+  'documents.designer.moreSettings': "More settings",
+  // TODO(i18n-hi)
+  'documents.designer.linesExists': "The page already has a lines table",
+  // TODO(i18n-hi)
+  'documents.designer.tooManyElements': "The page cannot hold more items",
+  // TODO(i18n-hi)
+  'dashboard.activity.today': "Today {time}",
+  // TODO(i18n-hi)
+  'dashboard.activity.yesterday': "Yesterday {time}",
+  // TODO(i18n-hi)
+  'dashboard.activity.emptyTitle': "No activity yet",
+  // TODO(i18n-hi)
+  'dashboard.activity.emptyDescription': "Moves, conversions and dispatches show up here.",
+  // TODO(i18n-hi)
+  'documents.designer.margin.custom': "Custom",
 };

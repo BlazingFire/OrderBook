@@ -34,7 +34,21 @@ import { formatDateForDocument, formatMinorUnits, type ScriptTag } from './docum
 import type { TemplateShape } from './document-template.js';
 
 export type DocumentColumnKey =
-  'sequence' | 'product' | 'code' | 'size' | 'colours' | 'quantity' | 'rate' | 'lineTotal';
+  | 'sequence'
+  | 'category'
+  | 'product'
+  | 'code'
+  | 'colours'
+  | 'packaging'
+  | 'grade'
+  | 'quantity'
+  | 'rate'
+  | 'lineTotal'
+  // Retired, never built — `size` used to sit between code and colours. Stored
+  // layouts name columns by key and tolerate unknown ones, so removing the key
+  // outright would turn an old layout's heading override into a key error
+  // rather than a quiet no-op.
+  | 'size';
 
 export interface DocumentColumn {
   key: DocumentColumnKey;
@@ -289,12 +303,17 @@ export function buildDocumentModel(input: BuildDocumentModelInput): DocumentMode
  * There is deliberately no "present but hidden" state for them to fall into.
  */
 function buildColumns(ratesIncluded: boolean): DocumentColumn[] {
+  // Main product first, then the model — the hierarchy the counter sells in.
+  // Colour reads as text (the `showColourChips` switch stays for the shops
+  // that want swatches); packing and grade are the line's own answers.
   const columns: DocumentColumn[] = [
     { key: 'sequence', heading: '#', align: 'left', weight: 3, script: 'mono' },
-    { key: 'product', heading: 'Product', align: 'left', weight: 26, script: 'body' },
-    { key: 'code', heading: 'Code', align: 'left', weight: 12, script: 'mono' },
-    { key: 'size', heading: 'Size', align: 'left', weight: 10, script: 'body' },
-    { key: 'colours', heading: 'Colours', align: 'left', weight: 20, script: 'body' },
+    { key: 'category', heading: 'Main product', align: 'left', weight: 16, script: 'body' },
+    { key: 'product', heading: 'Model', align: 'left', weight: 24, script: 'body' },
+    { key: 'code', heading: 'Code', align: 'left', weight: 11, script: 'mono' },
+    { key: 'colours', heading: 'Colour', align: 'left', weight: 18, script: 'body' },
+    { key: 'packaging', heading: 'Packing', align: 'left', weight: 10, script: 'body' },
+    { key: 'grade', heading: 'Grade', align: 'left', weight: 8, script: 'body' },
     { key: 'quantity', heading: 'Boxes', align: 'right', weight: 8, script: 'mono' },
   ];
 
@@ -316,10 +335,12 @@ function buildRow(
 ): DocumentRow {
   const cells: Partial<Record<DocumentColumnKey, string>> = {
     sequence: String(index + 1),
+    category: line.categoryName ?? '',
     product: line.productName,
     code: line.code ?? '',
-    size: line.size ?? '',
     colours: line.quantities.map((q) => `${q.colour} ×${q.quantity}`).join(', '),
+    packaging: line.packaging ?? '',
+    grade: line.grade ?? '',
     quantity: String(line.totalQuantity),
   };
 

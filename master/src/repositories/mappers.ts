@@ -37,6 +37,7 @@ import type {
   User,
   UserAvatar,
 } from '@orderbook/shared';
+import { isPermission } from '@orderbook/shared';
 
 export function toNumber(value: unknown): number | null {
   if (value === null || value === undefined) return null;
@@ -149,7 +150,12 @@ export function mapRole(row: Row): Role {
     name: String(row.name),
     tier: row.tier as Role['tier'],
     // Stored as one JSONB array; sorted on write so the order is stable.
-    permissions: toStringArray(row.permissions),
+    // Filtered through the frozen catalogue, as `permissionSetFromRow` already
+    // does: a key a migration granted and a later build removed must neither
+    // keep granting nor surface — the grid would draw it checked-but-disabled,
+    // resubmit it on save, and the save would be refused as unknown, leaving
+    // every role that ever held it uneditable through the product.
+    permissions: toStringArray(row.permissions).filter(isPermission),
     isSystem: Boolean(row.is_system),
     userCount: toRequiredNumber(row.user_count),
     deletedAt: toIso(row.deleted_at),
@@ -379,6 +385,9 @@ export function mapProduct(row: Row, images: ProductImage[] = []): Product {
     finish: (row.finish as string | null) ?? null,
     series: (row.series as string | null) ?? null,
     color: (row.color as string | null) ?? null,
+    // `colour_policy` postdates old databases mid-migration; the migration's
+    // own default is what an un-migrated row would carry.
+    colourPolicy: row.colour_policy === 'selectable' ? 'selectable' : 'fixed',
     thicknessMm: toNumber(row.thickness_mm),
     piecesPerBox: toNumber(row.pieces_per_box),
     boxCoverageSqft: toNumber(row.box_coverage_sqft),
@@ -452,6 +461,7 @@ export function mapLineItem(row: Row, quantities: LineItemQuantity[]): LineItem 
     parentId: String(row.parent_id),
     productId: String(row.product_id),
     productName: String(row.product_name ?? ''),
+    categoryName: (row.category_name as string | null) ?? null,
     alias: (row.alias as string | null) ?? null,
     rate: toNumber(row.rate),
     code: (row.code as string | null) ?? null,

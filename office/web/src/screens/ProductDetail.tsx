@@ -64,6 +64,10 @@ export function ProductDetail({
 }) {
   const colourHex = useColourHex(view.optionLists);
   const [mode, setMode] = useState<StockMode>('none');
+  // Off with the company's pricing switch, or without the role's key.
+  const showMoney = view.permissions.includes(RATE_PERMISSION);
+  // Absent means an older Master, which sends every figure — read as "on".
+  const freeToSell = view.features?.freeToSell ?? true;
 
   const levels = view.stock.filter((level) => level.productId === product.id);
   const colours = Array.from(
@@ -92,34 +96,38 @@ export function ProductDetail({
       align: 'right',
       render: (level) => level.quantityBoxes,
     },
-    {
-      key: 'reserved',
-      header: t('product.detail.stock.reserved'),
-      width: rem(84),
-      align: 'right',
-      render: (level) => level.reservedBoxes,
-    },
-    {
-      key: 'free',
-      header: t('product.detail.stock.free'),
-      width: rem(84),
-      align: 'right',
-      render: (level) => (
-        <span
-          className="ob-body-strong"
-          style={{
-            color:
-              level.availableBoxes < 0
-                ? 'var(--state-conflict)'
-                : level.availableBoxes === 0
-                  ? 'var(--fg-tertiary)'
-                  : 'var(--fg-primary)',
-          }}
-        >
-          {level.availableBoxes}
-        </span>
-      ),
-    },
+    ...(freeToSell
+      ? [
+          {
+            key: 'reserved',
+            header: t('product.detail.stock.reserved'),
+            width: rem(84),
+            align: 'right' as const,
+            render: (level: InventoryStockLevel) => level.reservedBoxes,
+          },
+          {
+            key: 'free',
+            header: t('product.detail.stock.free'),
+            width: rem(84),
+            align: 'right' as const,
+            render: (level: InventoryStockLevel) => (
+              <span
+                className="ob-body-strong"
+                style={{
+                  color:
+                    level.availableBoxes < 0
+                      ? 'var(--state-conflict)'
+                      : level.availableBoxes === 0
+                        ? 'var(--fg-tertiary)'
+                        : 'var(--fg-primary)',
+                }}
+              >
+                {level.availableBoxes}
+              </span>
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -127,29 +135,54 @@ export function ProductDetail({
       <Card>
         <KeyValueList
           items={[
+            { label: t('product.field.brand'), value: product.brand ?? '—' },
+            { label: t('product.field.category'), value: product.categoryName ?? '—' },
+            { label: t('product.field.code'), value: product.productCode },
             {
               label: t('product.detail.type'),
               value: product.productType ?? product.categoryName ?? '—',
             },
             { label: t('product.detail.size'), value: product.size ?? '—' },
+            {
+              label: t('product.field.color'),
+              value: (
+                <span>
+                  {product.color ?? '—'}
+                  {product.colourPolicy === 'selectable' && (
+                    <span
+                      className="ob-mono ob-micro"
+                      title={t('product.field.colourPolicyHint')}
+                      style={{ color: 'var(--fg-tertiary)' }}
+                    >
+                      {' '}
+                      · {t('catalog.products.colour.selectable')}
+                    </span>
+                  )}
+                </span>
+              ),
+            },
             { label: t('product.detail.grade'), value: product.grade ?? '—' },
             {
               label: t('product.detail.weight'),
               value: product.weightKg != null ? `${product.weightKg} kg` : '—',
             },
-            {
-              label: t('product.detail.rate'),
-              value:
-                product.rate === undefined ? (
-                  <span
-                    className="ob-redacted"
-                    title={`Missing permission: ${RATE_PERMISSION}`}
-                    aria-label="Hidden"
-                  />
-                ) : (
-                  formatMoney(product.rate)
-                ),
-            },
+            ...(showMoney
+              ? [
+                  {
+                    label: t('product.detail.rate'),
+                    value:
+                      product.rate === undefined ? (
+                        <span
+                          className="ob-redacted"
+                          title={`Missing permission: ${RATE_PERMISSION}`}
+                          aria-label="Hidden"
+                        />
+                      ) : (
+                        formatMoney(product.rate)
+                      ),
+                  },
+                ]
+              : []),
           ]}
         />
       </Card>

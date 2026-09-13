@@ -2,10 +2,6 @@
  * The Master Panel's own UI reads and writes through these endpoints. Office
  * Panels use the Socket.IO commands instead — both funnel into the same
  * services, so behaviour cannot diverge between the two panels.
- *
- * One deliberate asymmetry: **the Master cannot create a lead.** Leads are
- * raised in the Office Panel (docs/LEAD_GENERATION_FLOW.md §2), and the absence
- * of a POST /leads here is what makes that true rather than merely documented.
  */
 
 import { Router } from 'express';
@@ -200,6 +196,7 @@ dataRoutes.get(
           term: String(req.query.q ?? ''),
           limit: req.query.limit ? Number(req.query.limit) : undefined,
           include,
+          categoryId: typeof req.query.categoryId === 'string' ? req.query.categoryId : undefined,
         },
         actorFromRequest(req),
       ),
@@ -406,7 +403,15 @@ dataRoutes.post(
   }),
 );
 
-// --- Leads (read and progress only — creation is the Office Panel's job) ---
+// --- Leads -----------------------------------------------------------------
+
+dataRoutes.post(
+  '/leads',
+  needs('leads.create'),
+  asyncHandler(async (req, res) => {
+    res.status(201).json(await leadService.createLead(req.body, actorFromRequest(req)));
+  }),
+);
 
 dataRoutes.get(
   '/leads',

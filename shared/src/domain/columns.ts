@@ -69,6 +69,7 @@ export const PRODUCT_COLUMNS = {
   finish: 'finish',
   series: 'series',
   color: 'color',
+  colourPolicy: 'colour_policy',
   thicknessMm: 'thickness_mm',
   piecesPerBox: 'pieces_per_box',
   boxCoverageSqft: 'box_coverage_sqft',

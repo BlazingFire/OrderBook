@@ -127,11 +127,23 @@ export interface User {
 }
 
 /** What a signed-in caller is told about themselves. */
+/**
+ * The company switches every screen reads — carried with the signed-in user
+ * on the Master and with the snapshot on a panel, so both UIs draw the same
+ * screen without a second request.
+ */
+export interface CompanyFeatures {
+  /** `inventory.freeToSell`: whether stock is split into on hand / reserved / free. */
+  freeToSell: boolean;
+}
+
 export interface SignedInUser extends User {
   /** Already intersected with the tier ceiling. */
   permissions: string[];
   /** Bumped when the role changes, so a stale session is detected per call. */
   roleVersion: number;
+  /** The company switches the screens read (`domain/inventory-view.ts`). */
+  features: CompanyFeatures;
 }
 
 export type OfficePanelStatus = 'pending' | 'active' | 'revoked';
@@ -408,6 +420,16 @@ export interface Product {
   finish: string | null;
   series: string | null;
   color: string | null;
+  /**
+   * Whether the counter may choose a colour at sale time.
+   *
+   * `'fixed'` locks the model to its base `color` — a designer table top IS
+   * its printed colour and may never be re-coloured. `'selectable'` lets lead
+   * entry choose any `stock.colour` value (the plain Water Closet range is
+   * printed "available in all colours"). Editing lives on the product drawer;
+   * the new-lead screen only reads it. Defaults to `'fixed'` in the database.
+   */
+  colourPolicy: 'fixed' | 'selectable';
   thicknessMm: number | null;
   piecesPerBox: number | null;
   boxCoverageSqft: number | null;
@@ -620,6 +642,8 @@ export interface LineItem {
 
   // Snapshotted at add time
   productName: string;
+  /** The main product (category) the line was entered under — snapshot like `productName`. */
+  categoryName: string | null;
   alias: string | null;
   /** Gated by `field.saleRate.view`; absent, not null, when not permitted. */
   rate?: number | null;

@@ -50,13 +50,14 @@ function lineItem(overrides: Partial<LineItem> = {}): LineItem {
     parentId: 'LD1',
     productId: 'PR1',
     productName: 'Ivory Basin',
+    categoryName: 'One Piece Basin',
     alias: null,
     rate: 125_000,
     code: 'C-100',
     sin: null,
     size: '600x600',
     weightKg: null,
-    grade: null,
+    grade: 'A',
     productType: null,
     packaging: 'Box',
     sequence: 1,
@@ -265,6 +266,34 @@ describe('document model — rate redaction is a layout fact', () => {
     expect(
       withoutRates.elements.some((element) => element.kind === 'text' && element.label === 'Total'),
     ).toBe(false);
+  });
+
+  it('PDF-90: the line carries main product, model, colour text, packing and grade', () => {
+    const model = build(false);
+    const keys = model.columns.map((column) => column.key);
+
+    expect(keys).toEqual([
+      'sequence',
+      'category',
+      'product',
+      'code',
+      'colours',
+      'packaging',
+      'grade',
+      'quantity',
+    ]);
+    expect(model.columns.find((column) => column.key === 'product')?.heading).toBe('Model');
+    expect(model.columns.find((column) => column.key === 'colours')?.heading).toBe('Colour');
+
+    const cells = model.rows[0]!.cells;
+    expect(cells.category).toBe('One Piece Basin');
+    expect(cells.product).toBe('Ivory Basin');
+    expect(cells.colours).toBe('Ivory ×12');
+    expect(cells.packaging).toBe('Box');
+    expect(cells.grade).toBe('A');
+    // `size` left the default set: the snapshot stays on the line for stock
+    // traceability, but the document reads what the counter sold.
+    expect('size' in cells).toBe(false);
   });
 
   it('PDF-81: a character limit is applied before anything measures the text', () => {

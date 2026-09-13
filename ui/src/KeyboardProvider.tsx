@@ -240,7 +240,18 @@ export function KeyboardProvider({
         }
         if (command.id === 'view.find') {
           event.preventDefault();
-          setPaletteOpen(true);
+          // The screen's own search box when it has one — the one on screen,
+          // not one on a hidden pane — and the palette's record search when
+          // it has none, so the chord means "search here" everywhere.
+          const box = Array.from(
+            document.querySelectorAll<HTMLInputElement>('input[data-screen-search]'),
+          ).find((input) => input.offsetParent !== null);
+          if (box) {
+            box.focus();
+            box.select();
+          } else {
+            setPaletteOpen(true);
+          }
           return;
         }
 

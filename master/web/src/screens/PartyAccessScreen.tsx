@@ -52,6 +52,7 @@ import {
   Segmented,
   SkeletonTable,
   StatusPill,
+  rem,
   t,
   type DataTableColumn,
 } from '@orderbook/ui';
@@ -60,9 +61,12 @@ interface Props {
   permissions: string[];
   /** Bumped by the live socket whenever data changes. */
   revision: number;
+  /** Which slice is showing — chosen here or from the sidebar's sub-pages. */
+  restriction: Restriction;
+  onRestrictionChange: (restriction: Restriction) => void;
 }
 
-type Restriction = 'all' | 'open' | 'restricted';
+export type Restriction = 'all' | 'open' | 'restricted';
 
 const ROW = { display: 'flex', alignItems: 'center', gap: 'var(--s-8)' } as const;
 const STACK = { display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' } as const;
@@ -71,13 +75,17 @@ function levelLabel(level: PartyAccessLevel): string {
   return level === 'manage' ? t('partyAccess.level.manage') : t('partyAccess.level.view');
 }
 
-export function PartyAccessScreen({ permissions, revision }: Props) {
+export function PartyAccessScreen({
+  permissions,
+  revision,
+  restriction,
+  onRestrictionChange,
+}: Props) {
   const canAssign = permissions.includes('party.assign');
 
   const [rows, setRows] = useState<PartyAccessRow[]>([]);
   const [people, setPeople] = useState<AssignablePerson[]>([]);
   const [search, setSearch] = useState('');
-  const [restriction, setRestriction] = useState<Restriction>('all');
   const [loading, setLoading] = useState(true);
   const [failure, setFailure] = useState<string | null>(null);
   const [openParty, setOpenParty] = useState<PartyAccessRow | null>(null);
@@ -180,10 +188,12 @@ export function PartyAccessScreen({ permissions, revision }: Props) {
           onChange={(event) => setSearch(event.target.value)}
           placeholder={t('partyAccess.searchPlaceholder')}
           aria-label={t('partyAccess.searchPlaceholder')}
+          data-screen-search
+          style={{ width: rem(260) }}
         />
         <Segmented<Restriction>
           value={restriction}
-          onChange={setRestriction}
+          onChange={onRestrictionChange}
           options={[
             { value: 'all', label: t('partyAccess.filter.all') },
             { value: 'restricted', label: t('partyAccess.filter.restricted') },
@@ -205,7 +215,6 @@ export function PartyAccessScreen({ permissions, revision }: Props) {
           columns={columns}
           rows={rows}
           rowKey={(row) => row.partyId}
-          openOn="click"
           onRowOpen={(row) => setOpenParty(row)}
           selectedId={openParty?.partyId}
           empty={<EmptyState title={t('partyAccess.empty')} />}

@@ -1,13 +1,14 @@
 /**
  * Create or edit a product without leaving the Catalog screen.
  *
- * **Twenty-two fields, in five labelled groups.** The form used to offer eight
- * of a product's columns; the other fourteen — every ceramic and trade
- * attribute the owner asked for — had no way in at all, so a shade or a PEI
- * rating could only be recorded by writing it somewhere it did not belong. The
- * field coverage is the change that matters here; the container being a centred
- * modal rather than a right-hand drawer follows the standing rule and is
- * secondary.
+ * **Twenty-four fields, in five labelled groups, ordered the way the lead
+ * screen sells: brand, then the main product, then the code, then dimensions,
+ * then colour and the rest.** The form used to offer eight of a product's
+ * columns; the other attributes — every ceramic and trade attribute the owner
+ * asked for — had no way in at all, so a shade or a PEI rating could only be
+ * recorded by writing it somewhere it did not belong. The field coverage is
+ * the change that matters here; the container being a centred modal rather
+ * than a right-hand drawer follows the standing rule and is secondary.
  *
  * The name is kept for its call sites; it is a modal now.
  *
@@ -28,6 +29,7 @@ import { PRODUCT_APPLICATIONS, PRODUCT_EDGE_TYPES, PRODUCT_UOMS } from '@orderbo
 import { api } from '../api';
 import {
   Button,
+  Checkbox,
   Field,
   FieldGroup,
   Input,
@@ -49,43 +51,53 @@ export interface CreatedProduct {
 interface ProductDrawerProps {
   open: boolean;
   product?: Product | null;
+  /** Holds `field.saleRate.view`; off with the company's pricing switch. */
+  showMoney: boolean;
   onClose: () => void;
   onCreated?: (product: CreatedProduct) => void;
   onUpdated?: (name: string) => void;
   onError: (message: string) => void;
 }
 
-/** Every editable column, so the form and the record cannot drift apart. */
+/**
+ * Every editable column, so the form and the record cannot drift apart.
+ *
+ * Key order follows the lead-generation flow: brand, then the main product,
+ * then the code, then dimensions, then colour and the rest. The JSX below
+ * follows the same order, which is what the Enter walk follows.
+ */
 const EMPTY = {
+  brand: '',
+  categoryName: '',
   productCode: '',
   name: '',
   alias: '',
   productType: '',
   series: '',
+  barcode: '',
   size: '',
+  thicknessMm: '',
+  color: '',
+  colourPolicy: 'fixed',
   grade: '',
   finish: '',
-  color: '',
+  shade: '',
+  surfaceTexture: '',
+  calibre: '',
+  waterAbsorptionPct: '',
+  peiRating: '',
+  edgeType: '',
+  application: '',
+  originPlant: '',
   hsnCode: '',
   rate: '',
   mrp: '',
   purchaseRate: '',
   gstRatePct: '',
   uom: 'box',
-  barcode: '',
-  brand: '',
   weightKg: '',
   piecesPerBox: '',
   boxCoverageSqft: '',
-  thicknessMm: '',
-  shade: '',
-  calibre: '',
-  waterAbsorptionPct: '',
-  peiRating: '',
-  edgeType: '',
-  surfaceTexture: '',
-  application: '',
-  originPlant: '',
 };
 
 type Draft = typeof EMPTY;
@@ -106,6 +118,7 @@ function fromPaise(value: number | null | undefined): string {
 export function ProductDrawer({
   open,
   product,
+  showMoney,
   onClose,
   onCreated,
   onUpdated,
@@ -144,36 +157,38 @@ export function ProductDrawer({
     setDraft(
       editing
         ? {
+            brand: editing.brand ?? '',
+            categoryName: editing.categoryName ?? '',
             productCode: editing.productCode,
             name: editing.name,
             alias: editing.alias ?? '',
             productType: editing.productType ?? '',
             series: editing.series ?? '',
+            barcode: editing.barcode ?? '',
             size: editing.size ?? '',
+            thicknessMm: editing.thicknessMm != null ? String(editing.thicknessMm) : '',
+            color: editing.color ?? '',
+            colourPolicy: editing.colourPolicy ?? 'fixed',
             grade: editing.grade ?? '',
             finish: editing.finish ?? '',
-            color: editing.color ?? '',
+            shade: editing.shade ?? '',
+            surfaceTexture: editing.surfaceTexture ?? '',
+            calibre: editing.calibre ?? '',
+            waterAbsorptionPct:
+              editing.waterAbsorptionPct != null ? String(editing.waterAbsorptionPct) : '',
+            peiRating: editing.peiRating != null ? String(editing.peiRating) : '',
+            edgeType: editing.edgeType ?? '',
+            application: editing.application ?? '',
+            originPlant: editing.originPlant ?? '',
             hsnCode: editing.hsnCode ?? '',
             rate: fromPaise(editing.rate),
             mrp: fromPaise(editing.mrp),
             purchaseRate: fromPaise(editing.purchaseRate),
             gstRatePct: editing.gstRatePct != null ? String(editing.gstRatePct) : '',
             uom: editing.uom || 'box',
-            barcode: editing.barcode ?? '',
-            brand: editing.brand ?? '',
             weightKg: editing.weightKg != null ? String(editing.weightKg) : '',
             piecesPerBox: editing.piecesPerBox != null ? String(editing.piecesPerBox) : '',
             boxCoverageSqft: editing.boxCoverageSqft != null ? String(editing.boxCoverageSqft) : '',
-            thicknessMm: editing.thicknessMm != null ? String(editing.thicknessMm) : '',
-            shade: editing.shade ?? '',
-            calibre: editing.calibre ?? '',
-            waterAbsorptionPct:
-              editing.waterAbsorptionPct != null ? String(editing.waterAbsorptionPct) : '',
-            peiRating: editing.peiRating != null ? String(editing.peiRating) : '',
-            edgeType: editing.edgeType ?? '',
-            surfaceTexture: editing.surfaceTexture ?? '',
-            application: editing.application ?? '',
-            originPlant: editing.originPlant ?? '',
           }
         : EMPTY,
     );
@@ -213,34 +228,38 @@ export function ProductDrawer({
     const text = (field: keyof Draft): string | null => draft[field].trim() || null;
 
     const input = {
+      brand: text('brand'),
+      categoryName: text('categoryName'),
       productCode,
       name,
       alias: text('alias'),
       productType: text('productType'),
       series: text('series'),
+      barcode: text('barcode'),
       size: text('size'),
+      thicknessMm: toNumber(draft.thicknessMm),
+      color: text('color'),
+      colourPolicy: (draft.colourPolicy === 'selectable' ? 'selectable' : 'fixed') as
+        | 'fixed'
+        | 'selectable',
       grade: text('grade'),
       finish: text('finish'),
-      color: text('color'),
+      shade: text('shade'),
+      surfaceTexture: text('surfaceTexture'),
+      calibre: text('calibre'),
+      waterAbsorptionPct: toNumber(draft.waterAbsorptionPct),
+      peiRating: toNumber(draft.peiRating),
+      edgeType: text('edgeType'),
+      application: text('application'),
+      originPlant: text('originPlant'),
       hsnCode: text('hsnCode'),
       rate: toPaise(draft.rate),
       mrp: toPaise(draft.mrp),
       gstRatePct: toNumber(draft.gstRatePct),
       uom: draft.uom,
-      barcode: text('barcode'),
-      brand: text('brand'),
       weightKg: toNumber(draft.weightKg),
       piecesPerBox: toNumber(draft.piecesPerBox),
       boxCoverageSqft: toNumber(draft.boxCoverageSqft),
-      thicknessMm: toNumber(draft.thicknessMm),
-      shade: text('shade'),
-      calibre: text('calibre'),
-      waterAbsorptionPct: toNumber(draft.waterAbsorptionPct),
-      peiRating: toNumber(draft.peiRating),
-      edgeType: text('edgeType'),
-      surfaceTexture: text('surfaceTexture'),
-      application: text('application'),
-      originPlant: text('originPlant'),
       // Sent only when the field was rendered. Sending `null` for a hidden
       // field would clear a cost this person was never shown.
       ...(canSeeCost ? { purchaseRate: toPaise(draft.purchaseRate) } : {}),
@@ -335,12 +354,13 @@ export function ProductDrawer({
     >
       <div ref={fields}>
         <FieldGroup title={t('product.group.identity')}>
+          {text('brand', t('product.field.brand'), { autoFocus: true })}
+          {text('categoryName', t('product.field.category'))}
           <Field label={t('product.field.code')} required>
             {(id) => (
               <Input
                 id={id}
                 value={draft.productCode}
-                autoFocus
                 className="ob-mono"
                 onChange={(event) => set('productCode', event.target.value)}
               />
@@ -359,16 +379,18 @@ export function ProductDrawer({
             )}
           </Field>
           {text('alias', t('product.field.alias'))}
-          {text('brand', t('product.field.brand'))}
           {text('productType', t('product.field.type'))}
           {text('series', t('product.field.series'))}
           {text('barcode', t('product.field.barcode'), { className: 'ob-mono' })}
         </FieldGroup>
 
         <FieldGroup title={t('product.group.pricing')}>
-          {numeric('rate', t('product.field.rate'), t('product.field.rateHint'))}
-          {numeric('mrp', t('product.field.mrp'))}
-          {canSeeCost &&
+          {/* The stored values still round-trip untouched: a hidden field is
+              sent back exactly as it arrived, never cleared. */}
+          {showMoney && numeric('rate', t('product.field.rate'), t('product.field.rateHint'))}
+          {showMoney && numeric('mrp', t('product.field.mrp'))}
+          {showMoney &&
+            canSeeCost &&
             numeric(
               'purchaseRate',
               t('product.field.purchaseRate'),
@@ -394,9 +416,19 @@ export function ProductDrawer({
         <FieldGroup title={t('product.group.spec')}>
           {text('size', t('product.field.size'))}
           {numeric('thicknessMm', t('product.field.thickness'))}
+          {text('color', t('product.field.color'))}
+          <Field label={t('product.field.colourPolicy')} hint={t('product.field.colourPolicyHint')}>
+            {(id) => (
+              <Checkbox
+                name={id}
+                checked={draft.colourPolicy === 'selectable'}
+                onChange={(checked) => set('colourPolicy', checked ? 'selectable' : 'fixed')}
+                label={t('product.field.colourPolicyLabel')}
+              />
+            )}
+          </Field>
           {text('grade', t('product.field.grade'))}
           {text('finish', t('product.field.finish'))}
-          {text('color', t('product.field.color'))}
           {text('shade', t('product.field.shade'))}
           {text('surfaceTexture', t('product.field.surfaceTexture'))}
           {text('calibre', t('product.field.calibre'))}

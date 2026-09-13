@@ -16,6 +16,7 @@ import type {
   PickPage,
   PickQuery,
   Product,
+  ProductCategory,
   ProductVariantPick,
   SearchHit,
   SearchHitKind,
@@ -28,9 +29,10 @@ import { clampLimit } from '../domain/paging.js';
 import { resolvePartyScope } from '../domain/party-scope.js';
 import { stockKey } from '../domain/stock-key.js';
 import { maskProduct, productVisibility } from '../domain/visibility.js';
-import { mapParty, mapProduct } from '../repositories/mappers.js';
+import { mapParty, mapProduct, mapProductCategory } from '../repositories/mappers.js';
 import * as reservations from '../repositories/reservation.repository.js';
 import * as searchRepo from '../repositories/search.repository.js';
+import { freeToSell } from './company-features.js';
 
 const PAGING = { defaultLimit: 20, maxLimit: 100 };
 
@@ -41,6 +43,8 @@ const REQUIRED_PERMISSION = {
   // both keys rather than inventing a third. `pick` checks the second itself:
   // this map is one key per kind by shape.
   variant: 'products.view',
+  // A category pick names main products; same audience as the products inside.
+  category: 'products.view',
   party: 'parties.view',
   lead_line: 'leads.view',
   order_line: 'orders.view',
@@ -86,7 +90,7 @@ export async function pick(
   kind: PickKind,
   query: PickQuery,
   actor: ActorContext,
-): Promise<PickPage<Product> | PickPage<Party> | PickPage<ProductVariantPick>> {
+): Promise<PickPage<Product> | PickPage<Party> | PickPage<ProductVariantPick> | PickPage<ProductCategory>> {
   requirePermission(actor, REQUIRED_PERMISSION[kind]);
   // The stock half of a variant row. Asked for separately so the 403 names the
   // key that is actually missing.
@@ -102,7 +106,11 @@ export async function pick(
 
   if (kind === 'variant') {
     const page = await searchRepo.pickVariants(actor.tenantId, { term, limit });
-    const held = await reservations.reservedTotals(actor.tenantId);
+    // Nothing is held back while the company's free-to-sell switch is off:
+    // the figure a picker shows is the floor count, as everywhere else.
+    const held = (await freeToSell(actor.tenantId))
+      ? await reservations.reservedTotals(actor.tenantId)
+      : new Map<string, number>();
     const canSeeRates = actorCan(actor, 'field.saleRate.view');
 
     return {
@@ -139,13 +147,23 @@ export async function pick(
   }
 
   if (kind === 'product') {
-    const page = await searchRepo.pickProducts(actor.tenantId, { term, limit, include });
+    const page = await searchRepo.pickProducts(actor.tenantId, {
+      term,
+      limit,
+      include,
+      categoryId: query.categoryId,
+    });
     const visible = productVisibility(actor);
 
     return {
       items: page.rows.map((row) => maskProduct(mapProduct(row), visible)),
       truncated: page.truncated,
     };
+  }
+
+  if (kind === 'category') {
+    const page = await searchRepo.pickCategories(actor.tenantId, { term, limit, include });
+    return { items: page.rows.map((row) => mapProductCategory(row)), truncated: page.truncated };
   }
 
   const page = await searchRepo.pickParties(actor.tenantId, {

@@ -226,12 +226,12 @@ export const STARTER_DESIGNS: readonly StarterDesign[] = [
     template: {
       ...ORDER_CONFIRMATION,
       name: 'Order Confirmation — Wide',
-      // Landscape, for an order whose lines carry many colours: the chips run
-      // along the row, and portrait runs out of width before it runs out of
-      // page.
+      // Landscape, for an order whose lines carry many colours: the colour
+      // text runs along the row, and portrait runs out of width before it
+      // runs out of page.
       orientation: 'landscape',
       margins: { top: 14, right: 16, bottom: 14, left: 16 },
-      showColourChips: true,
+      showColourChips: false,
       layout: {
         blocks: [
           { kind: 'header', align: 'left' },
@@ -256,7 +256,7 @@ export const STARTER_DESIGNS: readonly StarterDesign[] = [
       // business seeing what the customer paid.
       accentColour: '#0369A1',
       showRates: false,
-      showColourChips: true,
+      showColourChips: false,
       showTerms: false,
       termsText: null,
       layout: {
@@ -277,11 +277,11 @@ export const STARTER_DESIGNS: readonly StarterDesign[] = [
     template: {
       ...DISPATCH_NOTE,
       name: 'Packing List',
-      // Grouped by product and showing the colour chips, because this is the
+      // Grouped by product with the colours as text, because this is the
       // sheet somebody ticks off against the boxes as they go on the truck.
       // No totals block: rates are off, and the renderer drops totals whenever
       // they are.
-      showColourChips: true,
+      showColourChips: false,
       layout: {
         blocks: [
           { kind: 'header', align: 'left' },
@@ -331,7 +331,7 @@ export const STARTER_DESIGNS: readonly StarterDesign[] = [
       accentColour: '#15803D',
       showWatermark: true,
       watermarkText: 'SAMPLE',
-      showColourChips: true,
+      showColourChips: false,
       showTerms: true,
       termsText: 'Samples issued free of charge for approval. Not for resale.',
       layout: {

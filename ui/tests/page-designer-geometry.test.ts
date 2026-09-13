@@ -25,6 +25,7 @@ import {
   renumber,
   reorder,
   scaleFor,
+  shiftBundle,
   snap,
   tidy,
   toMm,
@@ -309,5 +310,26 @@ describe('page designer geometry', () => {
   it('rounds to a tenth of a millimetre so a layout stops accumulating noise', () => {
     expect(tidy(12.34567)).toBe(12.3);
     expect(tidy(0.04)).toBe(0);
+  });
+
+  it('shifts a converted bundle so its top-left lands on the drop point', () => {
+    const moved = shiftBundle(
+      [
+        element({ id: 'a', x: 15, y: 18, w: 40, h: 10 }),
+        element({ id: 'b', x: 15, y: 30, w: 20, h: 6 }),
+      ],
+      { x: 100, y: 120 },
+    );
+
+    // The bundle's own rhythm survives the move: both travel by the same delta.
+    expect(moved.map((e) => [e.id, e.x, e.y])).toEqual([
+      ['a', 100, 120],
+      ['b', 100, 132],
+    ]);
+    expect(moved).toHaveLength(2);
+  });
+
+  it('shifts nothing when there is nothing to place', () => {
+    expect(shiftBundle([], { x: 10, y: 10 })).toEqual([]);
   });
 });

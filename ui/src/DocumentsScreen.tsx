@@ -4,7 +4,7 @@
  *
  * Lives in `ui/` and takes a **transport**, so the Master and an Office panel
  * mount the same screen rather than keeping two copies in step by hand — the
- * pattern `AssistantScreen` and `GalleryScreen` already follow. Each panel
+ * pattern `GalleryScreen` already follows. Each panel
  * supplies its own reads: the Master calls its HTTP API directly, an Office
  * panel proxies the same calls through to the Master over its socket.
  *
@@ -25,6 +25,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
+  DocumentBlockKind,
+  DocumentElement,
   DocumentExport,
   DocumentTemplate,
   CustomFieldDefinition,
@@ -32,12 +34,14 @@ import type {
   DocumentTemplateInput,
   DocumentSubjectKind,
   DocumentType,
+  PageGeometry,
   PageOrientation,
   PaperSize,
   TemplateDefaults,
 } from '@orderbook/shared';
 import {
   DOCUMENT_TYPES,
+  MAX_ELEMENTS,
   MAX_TERMS_LENGTH,
   PAGE_ORIENTATIONS,
   PAPER_SIZES,
@@ -49,17 +53,22 @@ import {
 import { Button, ButtonLink } from './Button.js';
 import { Card, Section } from './Card.js';
 import { DataTable, type DataTableColumn } from './DataTable.js';
-import { FormField, Input, NumberInput, Switch, Textarea } from './Form.js';
+import { bundleForBlock, DESIGNER_BLOCKS } from './documentBlocks.js';
+import { Checkbox, FormField, Input, NumberInput, Switch, Textarea } from './Form.js';
+import { Icon } from './icons.js';
+import { Segmented } from './Tabs.js';
 import { Select } from './SuggestInput.js';
 import { EmptyState, ErrorState, ConflictBanner, SkeletonTable } from './States.js';
 import { StatusPill } from './DataDisplay.js';
 import { LoadMorePager } from './CursorPager.js';
 import { Modal } from './Modal.js';
-import { Tabs, type TabItem } from './Tabs.js';
+import { EditorScreen } from './EditorScreen.js';
+import { useSubNav } from './SubNavSlot.js';
 import { useToast } from './Toast.js';
 import { PageDesigner } from './PageDesigner.js';
 import { PageDesignerCanvas } from './PageDesignerCanvas.js';
 import { bindingChoices } from './PageDesigner.js';
+import { pageFrame, scaleFor, shiftBundle, tidy } from './pageDesignerGeometry.js';
 import { formatBytes, formatDateTime } from './format.js';
 import { rem } from './rem.js';
 import { t } from './i18n.js';
@@ -103,14 +112,16 @@ export interface DocumentsTransport {
   ): { message: string; storedVersion: number; diff: Record<string, FieldDifference> } | null;
 }
 
+/** The two sub-pages, chosen from the sidebar rather than inside the screen. */
+export type DocumentsTab = 'templates' | 'exports';
+
 interface Props {
   revision: number;
   /** The signed-in caller's own resolved permissions. */
   permissions: string[];
   transport: DocumentsTransport;
+  tab: DocumentsTab;
 }
-
-type Tab = 'templates' | 'exports';
 
 const DOCUMENT_TYPE_KEY: Record<DocumentType, string> = {
   quotation: 'documents.type.quotation',
@@ -128,9 +139,49 @@ interface PreviewSubject {
 /** One `<option>` value has to identify both halves `/preview` asks for. */
 const subjectKey = (subject: PreviewSubject) => `${subject.kind}:${subject.id}`;
 
-export function DocumentsScreen({ revision, permissions, transport }: Props) {
-  const [tab, setTab] = useState<Tab>('templates');
+export function DocumentsScreen({ revision, permissions, transport, tab }: Props) {
+  const toast = useToast();
   const can = (key: string) => permissions.includes(key);
+  // Absent when the company's pricing switch is off, or the role lacks it: the
+  // rate switch, the rates columns and the grand-total binding go with it.
+  const showMoney = can('field.saleRate.view');
+
+  /*
+   * The open operation — choosing a starter design, or the editor itself — is
+   * a full screen with its own sidebar entry under Templates, not a modal: the
+   * editor holds a sheet of paper and an inspector side by side, and a dialog
+   * capped near 660px never showed an A4 page whole. `starter` is read once,
+   * when `TemplateEditor` mounts — picking again reopens a fresh editor under
+   * a new `key`, so it is never stale there.
+   */
+  const [editing, setEditing] = useState<DocumentTemplate | 'new' | null>(null);
+  const [starter, setStarter] = useState<TemplateDefaults | null>(null);
+  const [choosing, setChoosing] = useState(false);
+
+  // Null while Exports is showing, so the shell's highlight follows the page
+  // on screen; the draft itself survives the round trip.
+  const operation =
+    tab !== 'templates'
+      ? null
+      : choosing
+        ? { id: 'documents.new', label: t('documents.gallery.title') }
+        : editing
+          ? {
+              id: 'documents.editor',
+              label: editing === 'new' ? t('documents.editor.newTitle') : editing.name,
+            }
+          : null;
+
+  useSubNav(
+    'documents',
+    operation
+      ? {
+          parentId: 'documents.templates',
+          items: [{ ...operation, icon: 'edit' }],
+          activeId: operation.id,
+        }
+      : null,
+  );
 
   // The whole screen is behind `documents.view`; without it there is no partial
   // version worth rendering, since both tabs read from guarded endpoints.
@@ -143,33 +194,62 @@ export function DocumentsScreen({ revision, permissions, transport }: Props) {
     );
   }
 
-  const tabs: TabItem[] = [
-    { id: 'templates', label: t('documents.tab.templates') },
-    { id: 'exports', label: t('documents.tab.exports') },
-  ];
+  function closeEditor(): void {
+    setEditing(null);
+    setStarter(null);
+  }
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h1 className="ob-title" style={{ margin: 0 }}>
-          {t('documents.title')}
-        </h1>
-        <Tabs tabs={tabs} activeId={tab} onChange={(id) => setTab(id as Tab)} />
-      </div>
-
-      {tab === 'templates' ? (
-        <TemplatesTab
-          transport={transport}
-          revision={revision}
-          canCreate={can('documents.create')}
-          canEdit={can('documents.edit')}
-          canDelete={can('documents.delete')}
-          canRender={can('documents.render')}
+  if (tab === 'templates' && choosing) {
+    return (
+      <EditorScreen
+        title={t('documents.gallery.title')}
+        backLabel={t('action.backToList')}
+        onBack={() => {
+          setChoosing(false);
+          return true;
+        }}
+      >
+        <StarterGallery
+          onPick={(design) => {
+            setStarter(design);
+            setChoosing(false);
+            setEditing('new');
+          }}
         />
-      ) : (
-        <ExportsTab revision={revision} transport={transport} />
-      )}
-    </div>
+      </EditorScreen>
+    );
+  }
+
+  if (tab === 'templates' && editing) {
+    return (
+      <DesignerEditorScreen
+        editing={editing}
+        transport={transport}
+        starter={starter}
+        canSave={editing === 'new' ? can('documents.create') : can('documents.edit')}
+        canRender={can('documents.render')}
+        showMoney={showMoney}
+        onSaved={(name) => {
+          closeEditor();
+          toast.push(t('documents.editor.saved', { name }), { tone: 'ok' });
+        }}
+        onCancel={closeEditor}
+      />
+    );
+  }
+
+  return tab === 'templates' ? (
+    <TemplatesTab
+      transport={transport}
+      revision={revision}
+      canCreate={can('documents.create')}
+      canDelete={can('documents.delete')}
+      showMoney={showMoney}
+      onOpen={setEditing}
+      onNew={() => setChoosing(true)}
+    />
+  ) : (
+    <ExportsTab revision={revision} transport={transport} showMoney={showMoney} />
   );
 }
 
@@ -179,16 +259,18 @@ function TemplatesTab({
   transport,
   revision,
   canCreate,
-  canEdit,
   canDelete,
-  canRender,
+  showMoney,
+  onOpen,
+  onNew,
 }: {
   transport: DocumentsTransport;
   revision: number;
   canCreate: boolean;
-  canEdit: boolean;
   canDelete: boolean;
-  canRender: boolean;
+  showMoney: boolean;
+  onOpen: (template: DocumentTemplate) => void;
+  onNew: () => void;
 }) {
   const toast = useToast();
   const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
@@ -198,41 +280,25 @@ function TemplatesTab({
   // Kept apart from the row list so a failed fetch renders as a failure. An
   // error folded into "no templates" reads as a statement about the company.
   const [failure, setFailure] = useState<string | null>(null);
-  const [editing, setEditing] = useState<DocumentTemplate | 'new' | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<DocumentTemplate | null>(null);
   const [deleting, setDeleting] = useState(false);
-  // Whether the "start from a design" gallery is open, and what got picked in
-  // it. `starter` is read once, when `TemplateEditor` mounts — picking again
-  // reopens a fresh editor under a new `key`, so it is never stale there.
-  const [galleryOpen, setGalleryOpen] = useState(false);
-  const [starter, setStarter] = useState<TemplateDefaults | null>(null);
 
   /*
    * The transport behind a ref, and an empty dependency list.
    *
-   * A caller is free to build this object inline — `AiSupportScreen` did, and
-   * turned one status read into one per sync delta. Depending on the object's
-   * identity makes that caller's ordinary React idiom into a refetch loop in
-   * *this* file, which is the wrong place to discover it. The ref keeps the
-   * reads current without making the identity load-bearing.
+   * A caller is free to build this object inline, and depending on the
+   * object's identity makes that caller's ordinary React idiom into a refetch
+   * loop in *this* file, which is the wrong place to discover it. The ref
+   * keeps the reads current without making the identity load-bearing.
    * (`ui/tests/no-transport-dep.test.ts` enforces this.)
    */
   const transportRef = useRef(transport);
   transportRef.current = transport;
 
-  function openNew(): void {
-    setGalleryOpen(true);
-  }
-
-  function pick(design: TemplateDefaults | null): void {
-    setStarter(design);
-    setGalleryOpen(false);
-    setEditing('new');
-  }
-
   // `loading` is only ever cleared here, never re-raised: this reloads after
-  // every save, delete and editor close, and re-raising it would replace the
-  // list the caller is looking at with skeleton rows each time.
+  // every delete, and re-raising it would replace the list the caller is
+  // looking at with skeleton rows each time. Coming back from the editor
+  // remounts this list, which is the refetch that shows what was saved.
   const load = useCallback(async () => {
     setFailure(null);
     try {
@@ -262,17 +328,6 @@ function TemplatesTab({
     } finally {
       setPaging(false);
     }
-  }
-
-  /**
-   * Closing refetches, because one way out of the editor is the conflict
-   * banner's "Reload theirs" — leaving the list holding the very version the
-   * server just refused would make the next save fail for the same reason.
-   */
-  function closeEditor(): void {
-    setEditing(null);
-    setStarter(null);
-    void load();
   }
 
   async function remove(template: DocumentTemplate): Promise<void> {
@@ -324,18 +379,22 @@ function TemplatesTab({
       render: (template) =>
         `${template.paperSize} · ${t(`documents.orientation.${template.orientation}`)}`,
     },
-    {
-      key: 'rates',
-      header: t('documents.templates.colRates'),
-      priority: 2,
-      width: rem(110),
-      render: (template) =>
-        template.showRates ? (
-          <StatusPill tone="ok">{t('documents.templates.ratesShown')}</StatusPill>
-        ) : (
-          <StatusPill>{t('documents.templates.ratesHidden')}</StatusPill>
-        ),
-    },
+    ...(showMoney
+      ? [
+          {
+            key: 'rates',
+            header: t('documents.templates.colRates'),
+            priority: 2,
+            width: rem(110),
+            render: (template: DocumentTemplate) =>
+              template.showRates ? (
+                <StatusPill tone="ok">{t('documents.templates.ratesShown')}</StatusPill>
+              ) : (
+                <StatusPill>{t('documents.templates.ratesHidden')}</StatusPill>
+              ),
+          } satisfies DataTableColumn<DocumentTemplate>,
+        ]
+      : []),
     {
       key: 'updated',
       header: t('documents.templates.colUpdated'),
@@ -369,7 +428,7 @@ function TemplatesTab({
       title={t('documents.templates.sectionTitle')}
       action={
         canCreate ? (
-          <Button variant="primary" onClick={openNew}>
+          <Button variant="primary" onClick={onNew}>
             {t('documents.templates.create')}
           </Button>
         ) : null
@@ -380,44 +439,6 @@ function TemplatesTab({
           looking at. A failure with nothing on screen takes the list's place
           below, because "no templates" would be a claim, not a report. */}
       {failure && templates.length > 0 && <ConflictBanner>{failure}</ConflictBanner>}
-
-      <StarterGalleryModal open={galleryOpen} onClose={() => setGalleryOpen(false)} onPick={pick} />
-
-      {/* `xl`, not `lg`. The editor holds a sheet of paper and an inspector side
-          by side: at `lg` (60rem) the fixed 240px inspector left the stage about
-          544px wide on every monitor from a 1366px laptop to a 4K panel, so an
-          A4 page drew 769px tall inside a modal body capped near 660px and the
-          whole page was never visible at once. `.ob-modal--xl` is
-          `min(76rem, 100%)`, written for exactly this and still inside the
-          1024px design floor. */}
-      <Modal
-        open={editing !== null}
-        onClose={closeEditor}
-        size="xl"
-        title={editing === 'new' ? t('documents.editor.newTitle') : (editing?.name ?? '')}
-        subtitle={
-          editing && editing !== 'new' ? t(DOCUMENT_TYPE_KEY[editing.documentType]) : undefined
-        }
-      >
-        {editing && (
-          <TemplateEditor
-            transport={transport}
-            // Remounting on the edited id throws away a draft that belonged to
-            // a different template, which is what opening another row means.
-            key={editing === 'new' ? 'new' : editing.id}
-            template={editing === 'new' ? null : editing}
-            starter={editing === 'new' ? starter : null}
-            canSave={editing === 'new' ? canCreate : canEdit}
-            canRender={canRender}
-            onSaved={(name) => {
-              setEditing(null);
-              toast.push(t('documents.editor.saved', { name }), { tone: 'ok' });
-              void load();
-            }}
-            onCancel={closeEditor}
-          />
-        )}
-      </Modal>
 
       <Card padded={false}>
         {loading ? (
@@ -434,19 +455,17 @@ function TemplatesTab({
             columns={columns}
             rows={templates}
             rowKey={(template) => template.id}
-            openOn="click"
-            // A caller who cannot edit still gets the dialog: it is the only
+            // A caller who cannot edit still gets the editor: it is the only
             // place the eight switches and the terms text are readable, and
             // the editor disables its own controls rather than lying about
             // what the template says.
-            onRowOpen={(template) => setEditing(template)}
-            selectedId={editing && editing !== 'new' ? editing.id : undefined}
+            onRowOpen={onOpen}
             empty={
               <EmptyState
                 title={t('documents.templates.empty.title')}
                 description={t('documents.templates.empty.description')}
                 actionLabel={canCreate ? t('documents.templates.create') : undefined}
-                onAction={canCreate ? openNew : undefined}
+                onAction={canCreate ? onNew : undefined}
               />
             }
           />
@@ -578,61 +597,49 @@ function draftFrom(
  * changing the document type afterwards is editing, the same as it would be
  * for a blank one.
  */
-function StarterGalleryModal({
-  open,
-  onClose,
-  onPick,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onPick: (design: TemplateDefaults | null) => void;
-}) {
+function StarterGallery({ onPick }: { onPick: (design: TemplateDefaults | null) => void }) {
   // Grouped under the document type rather than listed flat. Somebody opening
   // this knows which *kind* of paper they need before they know which design,
   // and a flat grid of fourteen makes them read all fourteen to find out which
   // three are dispatch notes. Headings, not a filter: there is no state to get
   // wrong and nothing to reset.
   return (
-    <Modal open={open} onClose={onClose} size="lg" title={t('documents.gallery.title')}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
-        <StarterGrid>
-          <StarterCard
-            name={t('documents.gallery.blank')}
-            description={t('documents.gallery.blankDescription', {
-              type: t(DOCUMENT_TYPE_KEY.quotation),
-            })}
-            typeLabel={t(DOCUMENT_TYPE_KEY.quotation)}
-            onUse={() => onPick(null)}
-          />
-        </StarterGrid>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
+      <StarterGrid>
+        <StarterCard
+          name={t('documents.gallery.blank')}
+          description={t('documents.gallery.blankDescription', {
+            type: t(DOCUMENT_TYPE_KEY.quotation),
+          })}
+          typeLabel={t(DOCUMENT_TYPE_KEY.quotation)}
+          onUse={() => onPick(null)}
+        />
+      </StarterGrid>
 
-        {DOCUMENT_TYPES.map((documentType) => {
-          const designs = STARTER_DESIGNS.filter(
-            (design) => design.documentType === documentType,
-          );
-          if (designs.length === 0) return null;
+      {DOCUMENT_TYPES.map((documentType) => {
+        const designs = STARTER_DESIGNS.filter((design) => design.documentType === documentType);
+        if (designs.length === 0) return null;
 
-          return (
-            <section key={documentType}>
-              <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
-                {t(DOCUMENT_TYPE_KEY[documentType])}
-              </div>
-              <StarterGrid>
-                {designs.map((design) => (
-                  <StarterCard
-                    key={design.id}
-                    name={t(design.nameToken)}
-                    description={t(design.descriptionToken)}
-                    typeLabel={t(DOCUMENT_TYPE_KEY[design.documentType])}
-                    onUse={() => onPick(design.template)}
-                  />
-                ))}
-              </StarterGrid>
-            </section>
-          );
-        })}
-      </div>
-    </Modal>
+        return (
+          <section key={documentType}>
+            <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
+              {t(DOCUMENT_TYPE_KEY[documentType])}
+            </div>
+            <StarterGrid>
+              {designs.map((design) => (
+                <StarterCard
+                  key={design.id}
+                  name={t(design.nameToken)}
+                  description={t(design.descriptionToken)}
+                  typeLabel={t(DOCUMENT_TYPE_KEY[design.documentType])}
+                  onUse={() => onPick(design.template)}
+                />
+              ))}
+            </StarterGrid>
+          </section>
+        );
+      })}
+    </div>
   );
 }
 
@@ -679,12 +686,107 @@ function StarterCard({
   );
 }
 
+function DesignerEditorScreen({
+  editing,
+  transport,
+  starter,
+  canSave,
+  canRender,
+  showMoney,
+  onSaved,
+  onCancel,
+}: {
+  editing: DocumentTemplate | 'new';
+  transport: DocumentsTransport;
+  starter: TemplateDefaults | null;
+  canSave: boolean;
+  canRender: boolean;
+  showMoney: boolean;
+  onSaved: (name: string) => void;
+  onCancel: () => void;
+}) {
+  return (
+    <EditorScreen
+      title={t('documents.designer.title')}
+      meta={
+        editing !== 'new' ? (
+          <StatusPill tone="default">{t(DOCUMENT_TYPE_KEY[editing.documentType])}</StatusPill>
+        ) : undefined
+      }
+      backLabel={t('action.backToList')}
+      onBack={() => {
+        onCancel();
+        return true;
+      }}
+    >
+      <TemplateEditor
+        transport={transport}
+        // Remounting on the edited id throws away a draft that belonged to
+        // a different template, which is what opening another row means.
+        key={editing === 'new' ? 'new' : editing.id}
+        template={editing === 'new' ? null : editing}
+        starter={editing === 'new' ? starter : null}
+        canSave={canSave}
+        canRender={canRender}
+        showMoney={showMoney}
+        onSaved={onSaved}
+        onCancel={onCancel}
+      />
+    </EditorScreen>
+  );
+}
+
+/**
+ * Margin presets behind the Narrow / Normal / Wide segmented control.
+ *
+ * Whole numbers, because the server validates integer millimetres 5–50 — and
+ * top+bottom must stay at or under 48 or the smallest page refuses the save.
+ */
+const MARGIN_PRESETS = {
+  narrow: { top: 10, right: 10, bottom: 10, left: 10 },
+  normal: { top: 18, right: 15, bottom: 18, left: 15 },
+  wide: { top: 24, right: 20, bottom: 24, left: 20 },
+} as const;
+
+type MarginPreset = keyof typeof MARGIN_PRESETS;
+
+function marginPresetOf(margins: Draft['margins']): MarginPreset | null {
+  for (const [name, preset] of Object.entries(MARGIN_PRESETS) as Array<[MarginPreset, Draft['margins']]>) {
+    if (
+      margins.top === preset.top &&
+      margins.right === preset.right &&
+      margins.bottom === preset.bottom &&
+      margins.left === preset.left
+    ) {
+      return name;
+    }
+  }
+  return null;
+}
+
+/** Subtitle per document type, as the screenshot's Templates rail shows it. */
+const DESIGNER_TYPE_HINT: Record<DocumentType, string> = {
+  quotation: 'documents.designer.fromLead',
+  order_confirmation: 'documents.designer.fromOrder',
+  dispatch_note: 'documents.designer.atDispatch',
+};
+
+const BLOCK_LABEL_KEY: Record<DocumentBlockKind, string> = {
+  header: 'documents.designer.block.header',
+  party: 'documents.designer.block.party',
+  lines: 'documents.designer.block.lines',
+  totals: 'documents.designer.block.totals',
+  terms: 'documents.designer.block.terms',
+  signature: 'documents.designer.block.signature',
+};
+
 function TemplateEditor({
   transport,
   template,
   starter,
   canSave,
   canRender,
+  showMoney,
   onSaved,
   onCancel,
 }: {
@@ -694,6 +796,7 @@ function TemplateEditor({
   starter?: TemplateDefaults | null;
   canSave: boolean;
   canRender: boolean;
+  showMoney: boolean;
   onSaved: (name: string) => void;
   onCancel: () => void;
 }) {
@@ -750,8 +853,81 @@ function TemplateEditor({
    */
   function changeType(next: DocumentType): void {
     if (template) set('documentType', next);
-    else setDraft(draftFrom(null, next));
+    else {
+      setInsertion(null);
+      setDraft(draftFrom(null, next));
+    }
   }
+
+  // --- the designer shell -------------------------------------------------
+  //
+  // The draft, the save and the conflict flow are unchanged from the stacked
+  // form this replaces — only the arrangement is new: a Templates + Blocks
+  // rail left, the free canvas centre, Template Options right, Preview + Save
+  // in the `EditorScreen` head.
+  const toast = useToast();
+  const [insertion, setInsertion] = useState<{
+    kind: DocumentBlockKind;
+    atMm: { x: number; y: number } | null;
+    nonce: number;
+  } | null>(null);
+
+  const geometry: PageGeometry = useMemo(
+    () => ({
+      paperSize: draft.paperSize ?? 'A4',
+      orientation: draft.orientation ?? 'portrait',
+      margins: draft.margins ?? { ...MARGIN_PRESETS.normal },
+    }),
+    [draft.paperSize, draft.orientation, draft.margins],
+  );
+
+  const layout = useMemo(
+    () =>
+      normaliseLayout(draft.layout, geometry, {
+        hasLogo: draft.showLogo ?? true,
+        hasSignature: draft.showSignature ?? false,
+      }),
+    [draft.layout, geometry, draft.showLogo, draft.showSignature],
+  );
+
+  const bindings = useMemo(
+    () => designerBindings(customFields, showMoney),
+    [customFields, showMoney],
+  );
+
+  const insertElements = useCallback(
+    (atMm: { x: number; y: number } | null): DocumentElement[] | null => {
+      const kind = insertion?.kind;
+      if (!kind) return null;
+      if (kind === 'lines' && layout.elements.some((element) => element.kind === 'table')) {
+        toast.push(t('documents.designer.linesExists'), { tone: 'error' });
+        return null;
+      }
+      const bundle = bundleForBlock(kind, geometry, {
+        hasLogo: draft.showLogo ?? true,
+        hasSignature: draft.showSignature ?? false,
+      });
+      if (layout.elements.length + bundle.length > MAX_ELEMENTS) {
+        toast.push(t('documents.designer.tooManyElements'), { tone: 'error' });
+        return null;
+      }
+      if (kind === 'signature' || !atMm) return bundle;
+      const { margins } = pageFrame(geometry);
+      return shiftBundle(bundle, atMm).map((element) => {
+        if (element.kind === 'rule') return element;
+        const w = Math.min(element.w, margins.w);
+        const h = Math.min(element.h, margins.h);
+        const x = Math.min(Math.max(element.x, margins.x), margins.x + margins.w - w);
+        const y = Math.min(Math.max(element.y, margins.y), margins.y + margins.h - h);
+        return { ...element, x: tidy(x), y: tidy(y), w: tidy(w), h: tidy(h) };
+      });
+    },
+    [insertion?.kind, layout.elements, geometry, draft.showLogo, draft.showSignature, toast],
+  );
+
+  const placeBlock = useCallback((kind: DocumentBlockKind, atMm?: { x: number; y: number }) => {
+    setInsertion({ kind, atMm: atMm ?? null, nonce: Date.now() });
+  }, []);
 
   async function save(overwrite = false): Promise<void> {
     setBusy(true);
@@ -787,311 +963,427 @@ function TemplateEditor({
   const margins = draft.margins;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
-      {failure && <ConflictBanner>{failure}</ConflictBanner>}
-
-      {conflict && (
-        <ConflictBanner
-          action={
-            <div style={{ display: 'flex', gap: 'var(--s-8)' }}>
-              <Button variant="secondary" size="sm" onClick={onCancel}>
-                {t('documents.editor.reloadTheirs')}
-              </Button>
-              <Button size="sm" disabled={busy} onClick={() => void save(true)}>
-                {t('documents.editor.overwriteMine')}
-              </Button>
-            </div>
-          }
-        >
-          <strong>{conflict.message}</strong>
-          {Object.keys(conflict.diff).length > 0 && (
-            <ul style={{ margin: 'var(--s-8) 0 0', paddingLeft: 'var(--s-20)' }}>
-              {Object.entries(conflict.diff).map(([field, difference]) => (
-                <li key={field}>
-                  <strong>{field}</strong>: {t('documents.editor.theirs')}{' '}
-                  <code>{String(difference.stored)}</code>, {t('documents.editor.yours')}{' '}
-                  <code>{String(difference.incoming)}</code>
-                </li>
-              ))}
-            </ul>
-          )}
-        </ConflictBanner>
-      )}
-
-      <Card className="ob-measure-form">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-16)' }}>
-          <FormField label={t('documents.editor.name')} required>
-            {(id) => (
-              <Input
-                id={id}
-                value={draft.name}
-                disabled={!canSave}
-                onChange={(event) => set('name', event.target.value)}
-              />
-            )}
-          </FormField>
-
-          <FormField label={t('documents.editor.documentType')}>
-            {(id) => (
-              <Select
-                id={id}
-                value={draft.documentType}
-                disabled={!canSave}
-                onChange={(event) => changeType(event.target.value as DocumentType)}
-              >
-                {DOCUMENT_TYPES.map((value) => (
-                  <option key={value} value={value}>
-                    {t(DOCUMENT_TYPE_KEY[value])}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </FormField>
-
-          <FormField label={t('documents.editor.paperSize')}>
-            {(id) => (
-              <Select
-                id={id}
-                value={draft.paperSize}
-                disabled={!canSave}
-                onChange={(event) => set('paperSize', event.target.value as PaperSize)}
-              >
-                {PAPER_SIZES.map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </FormField>
-
-          <FormField label={t('documents.editor.orientation')}>
-            {(id) => (
-              <Select
-                id={id}
-                value={draft.orientation}
-                disabled={!canSave}
-                onChange={(event) => set('orientation', event.target.value as PageOrientation)}
-              >
-                {PAGE_ORIENTATIONS.map((value) => (
-                  <option key={value} value={value}>
-                    {t(`documents.orientation.${value}`)}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </FormField>
-
-          <FormField
-            label={t('documents.editor.accentColour')}
-            hint={t('documents.editor.accentHint')}
-          >
-            {(id) => (
-              <Input
-                id={id}
-                value={draft.accentColour ?? ''}
-                placeholder="#2F6FEB"
-                disabled={!canSave}
-                onChange={(event) => set('accentColour', event.target.value.trim() || null)}
-              />
-            )}
-          </FormField>
-
-          <FormField label={t('documents.editor.default')} hint={t('documents.editor.defaultHint')}>
-            {() => (
-              <Switch
-                checked={draft.isDefault ?? false}
-                disabled={!canSave}
-                label={t('documents.editor.defaultLabel')}
-                onChange={(next) => set('isDefault', next)}
-              />
-            )}
-          </FormField>
-        </div>
-      </Card>
-
-      <Card className="ob-measure-form">
-        <h3 className="ob-title" style={{ margin: '0 0 var(--s-8)' }}>
-          {t('documents.editor.group.margins')}
-        </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--s-12)' }}>
-          {(['top', 'right', 'bottom', 'left'] as const).map((edge) => (
-            <FormField key={edge} label={t(`documents.editor.margin.${edge}`)}>
-              {(id) => (
-                <NumberInput
-                  id={id}
-                  value={String(margins[edge])}
-                  disabled={!canSave}
-                  onChange={(event) => {
-                    // Millimetres, whole numbers. A blank box means 0 rather
-                    // than NaN, which the server would reject as a type error
-                    // halfway through typing.
-                    const digits = event.target.value.replace(/[^\d]/g, '');
-                    const next = { ...margins };
-                    next[edge] = digits === '' ? 0 : Number(digits);
-                    set('margins', next);
-                  }}
-                />
-              )}
-            </FormField>
-          ))}
-        </div>
-      </Card>
-
-      <Card className="ob-measure-form">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
-          {TOGGLE_GROUPS.map((group) => (
-            <div
-              key={group.titleKey}
-              style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}
-            >
-              <span className="ob-small" style={{ color: 'var(--fg-secondary)' }}>
-                {t(group.titleKey)}
-              </span>
-              {group.keys.map((key) => (
-                <Switch
-                  key={key}
-                  checked={Boolean(draft[key])}
-                  disabled={!canSave}
-                  label={t(TOGGLE_LABEL_KEY[key])}
-                  onChange={(next) => set(key, next)}
-                />
-              ))}
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      <Card className="ob-measure-form">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}>
-          {draft.showWatermark && (
-            <FormField label={t('documents.editor.watermarkText')}>
-              {(id) => (
-                <Input
-                  id={id}
-                  value={draft.watermarkText ?? ''}
-                  disabled={!canSave}
-                  onChange={(event) => set('watermarkText', event.target.value || null)}
-                />
-              )}
-            </FormField>
-          )}
-
-          {draft.showTerms && (
-            <FormField
-              label={t('documents.editor.termsText')}
-              hint={t('documents.editor.termsHint', { max: MAX_TERMS_LENGTH })}
-            >
-              {(id) => (
-                <Textarea
-                  id={id}
-                  rows={4}
-                  maxLength={500}
-                  value={draft.termsText ?? ''}
-                  disabled={!canSave}
-                  onChange={(event) => set('termsText', event.target.value || null)}
-                />
-              )}
-            </FormField>
-          )}
-
-          <FormField label={t('documents.editor.footerText')}>
-            {(id) => (
-              <Input
-                id={id}
-                value={draft.footerText ?? ''}
-                disabled={!canSave}
-                onChange={(event) => set('footerText', event.target.value || null)}
-              />
-            )}
-          </FormField>
-        </div>
-      </Card>
-
-      <LayoutCard
-        draft={draft}
-        canEdit={canSave}
-        customFields={customFields}
-        onLayout={(layout) => setDraft((current) => ({ ...current, layout }))}
-      />
-
-      {canRender && <PreviewPanel draft={draft} transport={transport} />}
-
-      <div style={{ display: 'flex', gap: 'var(--s-8)', justifyContent: 'flex-end' }}>
-        <Button variant="secondary" onClick={onCancel}>
-          {t('documents.cancel')}
-        </Button>
-        {canSave && (
-          <Button
-            variant="primary"
-            busy={busy}
-            disabled={!draft.name.trim()}
-            onClick={() => void save()}
-          >
-            {t('documents.editor.save')}
-          </Button>
-        )}
-      </div>
-    </div>
+    <DesignerShell
+      draft={draft}
+      nameConflict={failure}
+      conflict={conflict}
+      busy={busy}
+      canSave={canSave}
+      canRender={canRender}
+      showMoney={showMoney}
+      geometry={geometry}
+      layout={layout}
+      bindings={bindings}
+      insertion={insertion}
+      margins={margins}
+      set={set}
+      onLayout={(next) => setDraft((current) => ({ ...current, layout: next }))}
+      onInsertConsumed={() => setInsertion(null)}
+      insertElements={insertElements}
+      placeBlock={placeBlock}
+      changeType={changeType}
+      save={save}
+      onCancel={onCancel}
+      transport={transport}
+    />
   );
 }
 
 /**
- * The page, drawn to scale.
- *
- * Read-only for now, and that is the point of shipping it on its own: the
- * canvas converts millimetres to pixels, the renderer converts the same
- * millimetres to points, and the two agreeing is a thing worth seeing before
- * any drag code exists to blame. A discrepancy here is a static picture beside
- * a preview PDF rather than a mystery mid-drag.
+ * The screenshot's three-column shell: Templates + Blocks left, the free
+ * canvas centre, Template Options right. Failure and conflict banners span the
+ * top; Preview + Save live in the `EditorScreen` head, not in a form footer.
  */
-function LayoutCard({
+function DesignerShell({
   draft,
+  nameConflict,
+  conflict,
+  busy,
+  canSave,
+  canRender,
+  showMoney,
+  geometry,
+  layout,
+  bindings,
+  insertion,
+  margins,
+  set,
   onLayout,
-  canEdit,
-  customFields,
+  onInsertConsumed,
+  insertElements,
+  placeBlock,
+  changeType,
+  save,
+  onCancel,
+  transport,
 }: {
-  draft: DocumentTemplateInput;
+  draft: Draft;
+  nameConflict: string | null;
+  conflict: { message: string; diff: Record<string, FieldDifference> } | null;
+  busy: boolean;
+  canSave: boolean;
+  canRender: boolean;
+  showMoney: boolean;
+  geometry: PageGeometry;
+  layout: DocumentLayoutV2;
+  bindings: ReturnType<typeof bindingChoices>;
+  insertion: { kind: DocumentBlockKind; atMm: { x: number; y: number } | null; nonce: number } | null;
+  margins: Draft['margins'];
+  set: <K extends keyof Draft>(key: K, value: Draft[K]) => void;
   onLayout: (layout: DocumentLayoutV2) => void;
-  canEdit: boolean;
-  customFields: CustomFieldDefinition[];
+  onInsertConsumed: () => void;
+  insertElements: (atMm: { x: number; y: number } | null) => DocumentElement[] | null;
+  placeBlock: (kind: DocumentBlockKind, atMm?: { x: number; y: number }) => void;
+  changeType: (next: DocumentType) => void;
+  save: (overwrite?: boolean) => Promise<void>;
+  onCancel: () => void;
+  transport: DocumentsTransport;
 }) {
-  // Memoised, not merely built. A fresh object every render would re-run the
-  // conversion below on every keystroke in the form above it — the same trap
-  // an `exhaustive-deps` fix walks into when the dependency is a literal.
-  const geometry = useMemo(
-    () => ({
-      paperSize: draft.paperSize ?? 'A4',
-      orientation: draft.orientation ?? 'portrait',
-      margins: draft.margins ?? { top: 18, right: 15, bottom: 18, left: 15 },
-    }),
-    [draft.paperSize, draft.orientation, draft.margins],
-  );
+  const marginPreset = marginPresetOf(margins);
+  const [showMore, setShowMore] = useState(false);
+  const stageRef = useRef<HTMLDivElement | null>(null);
 
-  /*
-   * Normalised for display, not merely read.
-   *
-   * A stored template arrives as elements — the mapper converts on read. A
-   * *new* one is seeded from `TEMPLATE_DEFAULTS`, which describes a document as
-   * ordered blocks because a default says what a quotation is rather than where
-   * it sits on a particular sheet. Converting here is what makes the card show
-   * the same page the server is about to store, instead of nothing at all.
-   */
-  const layout = useMemo(
-    () =>
-      normaliseLayout(draft.layout, geometry, {
-        hasLogo: draft.showLogo ?? true,
-        hasSignature: draft.showSignature ?? false,
-      }),
-    [draft.layout, geometry, draft.showLogo, draft.showSignature],
-  );
+  function pointFromDrop(event: React.DragEvent): { x: number; y: number } | null {
+    const pageEl = stageRef.current?.querySelector('.ob-designer-page');
+    if (!pageEl) return null;
+    const box = pageEl.getBoundingClientRect();
+    const scale = scaleFor(box.width, pageFrame(geometry).page.w);
+    if (scale <= 0) return null;
+    return { x: tidy((event.clientX - box.left) / scale), y: tidy((event.clientY - box.top) / scale) };
+  }
 
+  return (
+    <div className="ob-pdfdesigner">
+      <div className="ob-pdfdesigner-alerts">
+        {nameConflict && <ConflictBanner>{nameConflict}</ConflictBanner>}
+        {conflict && (
+          <ConflictBanner
+            action={
+              <div style={{ display: 'flex', gap: 'var(--s-8)' }}>
+                <Button variant="secondary" size="sm" onClick={onCancel}>
+                  {t('documents.editor.reloadTheirs')}
+                </Button>
+                <Button size="sm" disabled={busy} onClick={() => void save(true)}>
+                  {t('documents.editor.overwriteMine')}
+                </Button>
+              </div>
+            }
+          >
+            <strong>{conflict.message}</strong>
+            {Object.keys(conflict.diff).length > 0 && (
+              <ul style={{ margin: 'var(--s-8) 0 0', paddingLeft: 'var(--s-20)' }}>
+                {Object.entries(conflict.diff).map(([field, difference]) => (
+                  <li key={field}>
+                    <strong>{field}</strong>: {t('documents.editor.theirs')}{' '}
+                    <code>{String(difference.stored)}</code>, {t('documents.editor.yours')}{' '}
+                    <code>{String(difference.incoming)}</code>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </ConflictBanner>
+        )}
+      </div>
+
+      <aside className="ob-pdfdesigner-rail" aria-label={t('documents.designer.templates')}>
+        <div className="ob-eyebrow">{t('documents.designer.templates')}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}>
+          {DOCUMENT_TYPES.map((value) => (
+            <button
+              key={value}
+              type="button"
+              className="ob-pdfdesigner-typerow"
+              aria-pressed={draft.documentType === value}
+              disabled={!canSave}
+              onClick={() => changeType(value)}
+            >
+              <span className="ob-body-strong">{t(DOCUMENT_TYPE_KEY[value])}</span>
+              <span className="ob-small">{t(DESIGNER_TYPE_HINT[value])}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="ob-eyebrow" style={{ marginTop: 'var(--s-16)' }}>
+          {t('documents.designer.blocks')}
+        </div>
+        <p className="ob-small" style={{ margin: 0 }}>
+          {t('documents.designer.blocksHint')}
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}>
+          {DESIGNER_BLOCKS.map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              className="ob-pdfdesigner-blockrow"
+              draggable={canSave}
+              disabled={!canSave}
+              onDragStart={(event) => {
+                event.dataTransfer.setData('application/x-ob-block', kind);
+                event.dataTransfer.effectAllowed = 'copy';
+              }}
+              onClick={() => placeBlock(kind)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') placeBlock(kind);
+              }}
+            >
+              <Icon name="drag" size={14} />
+              <span>{t(BLOCK_LABEL_KEY[kind])}</span>
+            </button>
+          ))}
+        </div>
+      </aside>
+
+      <div
+        ref={stageRef}
+        className="ob-pdfdesigner-stage"
+        onDragOver={(event) => {
+          if (!canSave) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'copy';
+        }}
+        onDrop={(event) => {
+          if (!canSave) return;
+          const kind = event.dataTransfer.getData('application/x-ob-block') as DocumentBlockKind;
+          if (!kind || !DESIGNER_BLOCKS.includes(kind)) return;
+          event.preventDefault();
+          placeBlock(kind, pointFromDrop(event) ?? undefined);
+        }}
+      >
+        {layout.elements.length > 0 ? (
+          canSave ? (
+            <PageDesigner
+              geometry={geometry}
+              layout={layout}
+              bindings={bindings}
+              onChange={onLayout}
+              pendingInsert={insertion}
+              insertElements={insertElements}
+              onInsertConsumed={onInsertConsumed}
+            />
+          ) : (
+            <div style={{ maxWidth: rem(420), margin: '0 auto' }}>
+              <PageDesignerCanvas geometry={geometry} elements={layout.elements} />
+            </div>
+          )
+        ) : (
+          <p className="ob-small">{t('documents.preview.noSubjects')}</p>
+        )}
+      </div>
+
+      <aside className="ob-pdfdesigner-rail" aria-label={t('documents.designer.options')}>
+        <DesignerPreviewHead draft={draft} canRender={canRender} busy={busy} canSave={canSave} save={save} onCancel={onCancel} transport={transport} />
+        <div className="ob-eyebrow">{t('documents.designer.options')}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}>
+          {TOGGLE_GROUPS.flatMap((group) => group.keys)
+            .filter((key) => showMoney || key !== 'showRates')
+            .map((key) => (
+              <Checkbox
+                key={key}
+                checked={Boolean(draft[key])}
+                disabled={!canSave}
+                label={t(TOGGLE_LABEL_KEY[key])}
+                onChange={(next) => {
+                  if (key === 'showWatermark' && next && !(draft.watermarkText ?? '').trim()) {
+                    set('watermarkText', 'DRAFT');
+                  }
+                  set(key, next);
+                }}
+              />
+            ))}
+        </div>
+        {(draft.showRates || showMoney) && (
+          <p className="ob-small" style={{ margin: 0 }}>
+            {t('documents.designer.ratesHint')}
+          </p>
+        )}
+
+        <div className="ob-eyebrow" style={{ marginTop: 'var(--s-12)' }}>
+          {t('documents.designer.margins')}
+        </div>
+        <Segmented<MarginPreset | 'custom'>
+          value={marginPreset ?? 'custom'}
+          onChange={(next) => {
+            if (next === 'custom') return;
+            set('margins', { ...MARGIN_PRESETS[next] });
+          }}
+          options={
+            marginPreset
+              ? [
+                  { value: 'narrow' as const, label: t('documents.designer.margin.narrow') },
+                  { value: 'normal' as const, label: t('documents.designer.margin.normal') },
+                  { value: 'wide' as const, label: t('documents.designer.margin.wide') },
+                ]
+              : [
+                  { value: 'narrow' as const, label: t('documents.designer.margin.narrow') },
+                  { value: 'normal' as const, label: t('documents.designer.margin.normal') },
+                  { value: 'wide' as const, label: t('documents.designer.margin.wide') },
+                  { value: 'custom' as const, label: t('documents.designer.margin.custom') },
+                ]
+          }
+        />
+
+        <div className="ob-eyebrow" style={{ marginTop: 'var(--s-12)' }}>
+          {t('documents.designer.paper')}
+        </div>
+        <Segmented<PaperSize>
+          value={(draft.paperSize ?? 'A4') as PaperSize}
+          onChange={(next) => set('paperSize', next)}
+          options={[
+            { value: 'A4', label: 'A4' },
+            { value: 'A5', label: 'A5' },
+          ]}
+        />
+
+        <button
+          type="button"
+          className="ob-pdfdesigner-more"
+          aria-expanded={showMore}
+          onClick={() => setShowMore((current) => !current)}
+        >
+          {t('documents.designer.moreSettings')}
+        </button>
+        {showMore && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}>
+            <FormField label={t('documents.editor.name')} required>
+              {(id) => (
+                <Input
+                  id={id}
+                  value={draft.name}
+                  disabled={!canSave}
+                  onChange={(event) => set('name', event.target.value)}
+                />
+              )}
+            </FormField>
+            <FormField label={t('documents.editor.paperSize')}>
+              {(id) => (
+                <Select
+                  id={id}
+                  value={draft.paperSize}
+                  disabled={!canSave}
+                  onChange={(event) => set('paperSize', event.target.value as PaperSize)}
+                >
+                  {PAPER_SIZES.map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </FormField>
+            <FormField label={t('documents.editor.orientation')}>
+              {(id) => (
+                <Select
+                  id={id}
+                  value={draft.orientation}
+                  disabled={!canSave}
+                  onChange={(event) => set('orientation', event.target.value as PageOrientation)}
+                >
+                  {PAGE_ORIENTATIONS.map((value) => (
+                    <option key={value} value={value}>
+                      {t(`documents.orientation.${value}`)}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </FormField>
+            <FormField
+              label={t('documents.editor.accentColour')}
+              hint={t('documents.editor.accentHint')}
+            >
+              {(id) => (
+                <Input
+                  id={id}
+                  value={draft.accentColour ?? ''}
+                  placeholder="#2F6FEB"
+                  disabled={!canSave}
+                  onChange={(event) => set('accentColour', event.target.value.trim() || null)}
+                />
+              )}
+            </FormField>
+            <FormField label={t('documents.editor.default')} hint={t('documents.editor.defaultHint')}>
+              {() => (
+                <Switch
+                  checked={draft.isDefault ?? false}
+                  disabled={!canSave}
+                  label={t('documents.editor.defaultLabel')}
+                  onChange={(next) => set('isDefault', next)}
+                />
+              )}
+            </FormField>
+            <div
+              style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--s-8)' }}
+            >
+              {(['top', 'right', 'bottom', 'left'] as const).map((edge) => (
+                <FormField key={edge} label={t(`documents.editor.margin.${edge}`)}>
+                  {(id) => (
+                    <NumberInput
+                      id={id}
+                      value={String(margins[edge])}
+                      disabled={!canSave}
+                      onChange={(event) => {
+                        const digits = event.target.value.replace(/[^\d]/g, '');
+                        const next = { ...margins };
+                        next[edge] = digits === '' ? 0 : Number(digits);
+                        set('margins', next);
+                      }}
+                    />
+                  )}
+                </FormField>
+              ))}
+            </div>
+            {draft.showWatermark && (
+              <FormField label={t('documents.editor.watermarkText')}>
+                {(id) => (
+                  <Input
+                    id={id}
+                    value={draft.watermarkText ?? ''}
+                    disabled={!canSave}
+                    onChange={(event) => set('watermarkText', event.target.value || null)}
+                  />
+                )}
+              </FormField>
+            )}
+            {draft.showTerms && (
+              <FormField
+                label={t('documents.editor.termsText')}
+                hint={t('documents.editor.termsHint', { max: MAX_TERMS_LENGTH })}
+              >
+                {(id) => (
+                  <Textarea
+                    id={id}
+                    rows={4}
+                    maxLength={500}
+                    value={draft.termsText ?? ''}
+                    disabled={!canSave}
+                    onChange={(event) => set('termsText', event.target.value || null)}
+                  />
+                )}
+              </FormField>
+            )}
+            <FormField label={t('documents.editor.footerText')}>
+              {(id) => (
+                <Input
+                  id={id}
+                  value={draft.footerText ?? ''}
+                  disabled={!canSave}
+                  onChange={(event) => set('footerText', event.target.value || null)}
+                />
+              )}
+            </FormField>
+          </div>
+        )}
+      </aside>
+    </div>
+  );
+}
+function designerBindings(
+  customFields: CustomFieldDefinition[],
+  showMoney: boolean,
+): ReturnType<typeof bindingChoices> {
   // The catalogue the palette offers. Built here rather than fetched: these are
   // the bindings this product has, and a list that arrived over the wire could
   // disagree with the one the renderer will actually resolve.
-  const bindings = useMemo(
-    () =>
-      bindingChoices(
+  return bindingChoices(
         [
           { binding: 'company.name', label: t('designer.binding.companyName'), group: 'Company' },
           { binding: 'document.title', label: t('designer.binding.title'), group: 'Document' },
@@ -1112,11 +1404,15 @@ function LayoutCard({
             label: t('designer.binding.boxCount'),
             group: 'Document',
           },
-          {
-            binding: 'document.grandTotal',
-            label: t('designer.binding.grandTotal'),
-            group: 'Document',
-          },
+          ...(showMoney
+            ? [
+                {
+                  binding: 'document.grandTotal',
+                  label: t('designer.binding.grandTotal'),
+                  group: 'Document',
+                },
+              ]
+            : []),
           {
             binding: 'document.lineCount',
             label: t('designer.binding.lineCount'),
@@ -1160,25 +1456,66 @@ function LayoutCard({
             key: definition.key,
             label: definition.label,
           })),
-      ),
-    [customFields],
-  );
+      );
+}
 
-  if (layout.elements.length === 0) return null;
+/**
+ * Kept as a stub so the diff stays reviewable: the stacked form this named
+ * has moved into `DesignerShell`, and deleting the symbol outright would hide
+ * that move. Remove once the designer shell has run on both panels.
+ */
+export function LayoutCard(_props: {
+  draft: DocumentTemplateInput;
+  onLayout: (layout: DocumentLayoutV2) => void;
+  canEdit: boolean;
+  customFields: CustomFieldDefinition[];
+  showMoney: boolean;
+}): null {
+  void _props;
+  return null;
+}
 
+/**
+ * The head of the designer's right rail: Preview + Save where the screenshot
+ * puts them, with Cancel beside them. `PreviewPanel` below owns the subject
+ * loading and the popup-safe open; this is its trigger row.
+ */
+function DesignerPreviewHead({
+  draft,
+  canRender,
+  busy,
+  canSave,
+  save,
+  onCancel,
+  transport,
+}: {
+  draft: Draft;
+  canRender: boolean;
+  busy: boolean;
+  canSave: boolean;
+  save: (overwrite?: boolean) => Promise<void>;
+  onCancel: () => void;
+  transport: DocumentsTransport;
+}) {
   return (
-    <Card>
-      <div className="ob-eyebrow">{t('documents.layout.title')}</div>
-      <p className="ob-small">{t('documents.layout.help')}</p>
-
-      {canEdit ? (
-        <PageDesigner geometry={geometry} layout={layout} bindings={bindings} onChange={onLayout} />
-      ) : (
-        <div style={{ maxWidth: rem(420), margin: '0 auto' }}>
-          <PageDesignerCanvas geometry={geometry} elements={layout.elements} />
-        </div>
-      )}
-    </Card>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}>
+      <PreviewPanel draft={draft} transport={transport} compact canRender={canRender} />
+      <div style={{ display: 'flex', gap: 'var(--s-8)' }}>
+        <Button variant="secondary" onClick={onCancel}>
+          {t('documents.cancel')}
+        </Button>
+        {canSave && (
+          <Button
+            variant="primary"
+            busy={busy}
+            disabled={!draft.name.trim()}
+            onClick={() => void save()}
+          >
+            {t('documents.designer.saveTemplate')}
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1192,9 +1529,13 @@ function LayoutCard({
 function PreviewPanel({
   draft,
   transport,
+  compact = false,
+  canRender = true,
 }: {
   draft: DocumentTemplateInput;
   transport: DocumentsTransport;
+  compact?: boolean;
+  canRender?: boolean;
 }) {
   // The transport behind a ref, never in a dependency array — see the note in
   // `TemplatesTab`, and `ui/tests/no-transport-dep.test.ts`.
@@ -1279,12 +1620,16 @@ function PreviewPanel({
 
   return (
     <Card className="ob-measure-form">
-      <h3 className="ob-title" style={{ margin: '0 0 var(--s-4)' }}>
-        {t('documents.preview.title')}
-      </h3>
-      <p className="ob-small" style={{ margin: '0 0 var(--s-12)', color: 'var(--fg-secondary)' }}>
-        {t('documents.preview.description')}
-      </p>
+      {!compact && (
+        <>
+          <h3 className="ob-title" style={{ margin: '0 0 var(--s-4)' }}>
+            {t('documents.preview.title')}
+          </h3>
+          <p className="ob-small" style={{ margin: '0 0 var(--s-12)', color: 'var(--fg-secondary)' }}>
+            {t('documents.preview.description')}
+          </p>
+        </>
+      )}
 
       {failure && (
         <div style={{ marginBottom: 'var(--s-12)' }}>
@@ -1295,13 +1640,46 @@ function PreviewPanel({
       {subjects === null ? (
         <span className="ob-small">{t('documents.preview.loadingSubjects')}</span>
       ) : unreadable ? (
-        <ErrorState
-          title={t('documents.preview.subjectsFailed')}
-          actionLabel={t('action.retryNow')}
-          onAction={() => void loadSubjects()}
-        />
+        compact ? (
+          <Button variant="secondary" onClick={() => void loadSubjects()}>
+            {t('action.retryNow')}
+          </Button>
+        ) : (
+          <ErrorState
+            title={t('documents.preview.subjectsFailed')}
+            actionLabel={t('action.retryNow')}
+            onAction={() => void loadSubjects()}
+          />
+        )
       ) : subjects.length === 0 ? (
         <span className="ob-small">{t('documents.preview.noSubjects')}</span>
+      ) : compact ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}>
+          <div style={{ display: 'flex', gap: 'var(--s-8)', alignItems: 'flex-end' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <FormField label={t('documents.preview.subject')}>
+                {(id) => (
+                  <Select
+                    id={id}
+                    value={subject ? subjectKey(subject) : ''}
+                    onChange={(event) => setChosen(event.target.value)}
+                  >
+                    {subjects.map((option) => (
+                      <option key={subjectKey(option)} value={subjectKey(option)}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </FormField>
+            </div>
+          </div>
+          {canRender && (
+            <Button busy={busy} disabled={!subject} onClick={() => void preview()}>
+              {t('documents.designer.previewWithRealLead')}
+            </Button>
+          )}
+        </div>
       ) : (
         <div style={{ display: 'flex', gap: 'var(--s-8)', alignItems: 'flex-end' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -1332,7 +1710,15 @@ function PreviewPanel({
 
 // --- Export history ---------------------------------------------------------
 
-function ExportsTab({ revision, transport }: { revision: number; transport: DocumentsTransport }) {
+function ExportsTab({
+  revision,
+  transport,
+  showMoney,
+}: {
+  revision: number;
+  transport: DocumentsTransport;
+  showMoney: boolean;
+}) {
   // The transport behind a ref, never in a dependency array — see the note in
   // `TemplatesTab`, and `ui/tests/no-transport-dep.test.ts`.
   const transportRef = useRef(transport);
@@ -1411,17 +1797,21 @@ function ExportsTab({ revision, transport }: { revision: number; transport: Docu
       // the template was renamed or deleted.
       render: (row) => row.templateName,
     },
-    {
-      key: 'rates',
-      header: t('documents.exports.colRates'),
-      width: rem(110),
-      render: (row) =>
-        row.ratesIncluded ? (
-          <StatusPill tone="accent">{t('documents.exports.withRates')}</StatusPill>
-        ) : (
-          <StatusPill>{t('documents.exports.withoutRates')}</StatusPill>
-        ),
-    },
+    ...(showMoney
+      ? [
+          {
+            key: 'rates',
+            header: t('documents.exports.colRates'),
+            width: rem(110),
+            render: (row: DocumentExport) =>
+              row.ratesIncluded ? (
+                <StatusPill tone="accent">{t('documents.exports.withRates')}</StatusPill>
+              ) : (
+                <StatusPill>{t('documents.exports.withoutRates')}</StatusPill>
+              ),
+          } satisfies DataTableColumn<DocumentExport>,
+        ]
+      : []),
     {
       key: 'pages',
       header: t('documents.exports.colPages'),

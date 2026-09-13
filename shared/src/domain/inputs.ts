@@ -58,6 +58,7 @@ export interface ProductInput {
   finish?: string | null;
   series?: string | null;
   color?: string | null;
+  colourPolicy?: 'fixed' | 'selectable' | null;
   thicknessMm?: number | null;
   piecesPerBox?: number | null;
   boxCoverageSqft?: number | null;
@@ -148,6 +149,7 @@ export interface LineItemQuantityInput {
 export interface LineItemInput {
   productId: RecordId;
   productName?: string | null;
+  categoryName?: string | null;
   alias?: string | null;
   rate?: number | null;
   code?: string | null;

@@ -7,7 +7,11 @@
  */
 
 import { ApiError, api } from '../api';
-import { DocumentsScreen as SharedDocumentsScreen, type DocumentsTransport } from '@orderbook/ui';
+import {
+  DocumentsScreen as SharedDocumentsScreen,
+  type DocumentsTab,
+  type DocumentsTransport,
+} from '@orderbook/ui';
 
 const transport: DocumentsTransport = {
   templates: (options) => api.documentTemplates(options),
@@ -56,11 +60,18 @@ const transport: DocumentsTransport = {
 export function DocumentsScreen({
   revision,
   permissions,
+  tab,
 }: {
   revision: number;
   permissions: string[];
+  tab: DocumentsTab;
 }) {
   return (
-    <SharedDocumentsScreen revision={revision} permissions={permissions} transport={transport} />
+    <SharedDocumentsScreen
+      revision={revision}
+      permissions={permissions}
+      transport={transport}
+      tab={tab}
+    />
   );
 }

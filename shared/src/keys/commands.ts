@@ -66,6 +66,7 @@ const MASTER_NAV: Array<[id: string, token: MessageKey]> = [
   ['fields', 'nav.master.fields'],
   ['logs', 'nav.master.logs'],
   ['recycleBin', 'nav.master.recycleBin'],
+  ['integrations', 'nav.master.integrations'],
   ['settings', 'nav.master.settings'],
   ['updates', 'nav.updates'],
 ];
@@ -86,6 +87,7 @@ const OFFICE_NAV: Array<[id: string, token: MessageKey]> = [
   ['products', 'nav.products'],
   ['parties', 'nav.parties'],
   ['partyAccess', 'nav.partyAccess'],
+  ['documents', 'nav.documents'],
   ['settings', 'nav.settings'],
   ['updates', 'nav.updates'],
 ];

@@ -91,6 +91,18 @@ export function SubNavProvider({ children }: { children: ReactNode }) {
   return <RegistryContext.Provider value={value}>{children}</RegistryContext.Provider>;
 }
 
+/** Grafts the open operation's entries under the item they belong to, at any depth. */
+export function graftSubNav(items: NavItem[], subNav: SubNavState | null): NavItem[] {
+  if (!subNav) return items;
+  return items.map((item) =>
+    item.id === subNav.parentId
+      ? { ...item, children: [...(item.children ?? []), ...subNav.items] }
+      : item.children
+        ? { ...item, children: graftSubNav(item.children, subNav) }
+        : item,
+  );
+}
+
 /** Read by the shell: the open operation on the screen currently showing. */
 export function useSubNavState(screenId: string | null): SubNavState | null {
   const { entries } = useContext(RegistryContext);

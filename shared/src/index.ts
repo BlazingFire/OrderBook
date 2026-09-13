@@ -1,5 +1,4 @@
 export * from './domain/activity.js';
-export * from './domain/ai.js';
 export * from './domain/api-keys.js';
 export * from './domain/columns.js';
 export * from './domain/connectors.js';
@@ -18,6 +17,7 @@ export * from './domain/product-import.js';
 export * from './domain/product-validation.js';
 export * from './domain/recycle-bin.js';
 export * from './domain/reports.js';
+export * from './domain/inventory-view.js';
 export * from './domain/settings.js';
 export * from './domain/version.js';
 export * from './domain/developer.js';

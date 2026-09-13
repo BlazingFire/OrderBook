@@ -40,3 +40,13 @@ Thumbs.db
 .commandcode/*
 !.commandcode/skills/
 !.commandcode/skills/**
+.claude/launch.json
+
+# Operator-supplied catalogue source and working fixtures — untracked by
+# design (see docs/ai-handoffs/product-csv-import.md). The reload script reads
+# them from a dev machine, never from a packaged panel.
+CATA.pdf
+dummy-data/
+
+# Stray local test-run logs, not source.
+vitest-out.txt

@@ -32,7 +32,6 @@ import {
   t,
   useDeveloperSession,
   useUninstallTool,
-  useSettingsTab,
   type DeveloperTool,
   type SettingsTab,
 } from '@orderbook/ui';
@@ -42,6 +41,9 @@ interface Props {
   session: PanelSession;
   pendingCount: number;
   openConflicts: number;
+  /** Which tab is showing — remembered by the shell, chosen here or from the sidebar. */
+  tab: string;
+  onTabChange: (tab: string) => void;
 }
 
 const CONNECTION_STATE_KEY: Record<ConnectionInfo['state'], string> = {
@@ -51,10 +53,22 @@ const CONNECTION_STATE_KEY: Record<ConnectionInfo['state'], string> = {
   disconnected: 'settings.connection.state.disconnected',
 };
 
-const TAB_IDS = ['appearance', 'shortcuts', 'machine', 'storage', 'developer'] as const;
+export const SETTINGS_TAB_IDS = [
+  'appearance',
+  'shortcuts',
+  'machine',
+  'storage',
+  'developer',
+] as const;
 
-export function SettingsScreen({ connection, session, pendingCount, openConflicts }: Props) {
-  const [tab, setTab] = useSettingsTab('ob.settings.tab.office', TAB_IDS, 'appearance');
+export function SettingsScreen({
+  connection,
+  session,
+  pendingCount,
+  openConflicts,
+  tab,
+  onTabChange,
+}: Props) {
 
   const machineItems = [
     { label: t('settings.machine.panel'), value: connection.panelName },
@@ -148,7 +162,7 @@ export function SettingsScreen({ connection, session, pendingCount, openConflict
       subtitle={t('settings.subtitle')}
       tabs={tabs}
       activeId={tab}
-      onChange={setTab}
+      onChange={onTabChange}
     />
   );
 }

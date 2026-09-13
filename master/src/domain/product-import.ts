@@ -25,6 +25,7 @@
 import type { MessageParams, ProductImportIssue, ProductInput } from '@orderbook/shared';
 import {
   PRODUCT_APPLICATIONS,
+  PRODUCT_COLOUR_POLICIES,
   PRODUCT_EDGE_TYPES,
   PRODUCT_UOMS,
   ProductValidationError,
@@ -51,20 +52,24 @@ export interface ImportColumn {
   note: string;
 }
 
-/** Template order. The first eight are what a supplier's list usually has. */
+/**
+ * Template order. The lead-generation flow first: brand, the main product,
+ * the code, dimensions, then colour and the rest.
+ */
 export const IMPORT_COLUMNS: readonly ImportColumn[] = [
+  { field: 'brand', kind: 'text', note: '' },
+  { field: 'categoryName', kind: 'text', note: 'Created if it does not exist yet.' },
   { field: 'productCode', kind: 'text', note: 'Unique. Leave blank to have one generated (PRD-0001, …).' },
   { field: 'name', kind: 'text', required: true, note: 'Required.' },
   { field: 'alias', kind: 'text', note: 'A short name staff use at the counter.' },
-  { field: 'categoryName', kind: 'text', note: 'Created if it does not exist yet.' },
-  { field: 'productType', kind: 'text', note: 'Free text — drives the type filter chips.' },
-  { field: 'brand', kind: 'text', note: '' },
-  { field: 'series', kind: 'text', note: '' },
   { field: 'size', kind: 'text', note: 'e.g. 600x600mm' },
-  { field: 'sin', kind: 'text', note: 'Stock item number from the catalogue.' },
-  { field: 'grade', kind: 'text', note: '' },
-  { field: 'finish', kind: 'text', note: '' },
   { field: 'color', kind: 'text', note: '' },
+  { field: 'colourPolicy', kind: 'enum', values: PRODUCT_COLOUR_POLICIES, note: 'fixed keeps the base colour; selectable lets the counter choose one. Defaults to fixed.' },
+  { field: 'grade', kind: 'text', note: '' },
+  { field: 'sin', kind: 'text', note: 'Stock item number from the catalogue.' },
+  { field: 'productType', kind: 'text', note: 'Free text — drives the type filter chips.' },
+  { field: 'series', kind: 'text', note: '' },
+  { field: 'finish', kind: 'text', note: '' },
   { field: 'shade', kind: 'text', note: 'Production shade, not the batch.' },
   { field: 'calibre', kind: 'text', note: '' },
   { field: 'surfaceTexture', kind: 'text', note: '' },
@@ -128,6 +133,7 @@ const HEADER_ALIASES: Record<string, ImportField> = Object.fromEntries(
       ['rate', ['price', 'saleprice', 'salerate', 'ratebox', 'rateperbox', 'sellingprice']],
       ['mrp', []],
       ['pricePerSqft', ['ratepersqft', 'sqftrate', 'ratesqft', 'persqft']],
+      ['colourPolicy', ['colourpolicy', 'colorpolicy', 'colouratsale', 'coloratsale']],
       ['purchaseRate', ['cost', 'costprice', 'purchaseprice', 'buyingprice']],
       ['gstRatePct', ['gst', 'gstrate', 'gstpercent', 'tax', 'taxrate']],
       ['waterAbsorptionPct', ['waterabsorption']],

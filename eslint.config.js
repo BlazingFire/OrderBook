@@ -73,9 +73,9 @@ export default tseslint.config(
      * The blanket `'off'` above is right for ~4,000 unswept lines and wrong for
      * a file somebody has just finished translating: without this block a
      * sweep lasts exactly until the next agent adds a `<span>Primary</span>`,
-     * which is what happened to `AssistantScreen.tsx` — it gained eight English
-     * literals, two of them duplicating tokens added twelve lines away, in the
-     * same commit that added the tokens.
+     * which is what happened to a since-removed screen — it gained eight
+     * English literals, two of them duplicating tokens added twelve lines
+     * away, in the same commit that added the tokens.
      *
      * A guardrail brief asked for a test that catches this. The rule that
      * catches it already existed and was switched off; turning it on for the
@@ -85,8 +85,6 @@ export default tseslint.config(
      * Add a file here as you finish translating it. Never remove one.
      */
     files: [
-      'ui/src/AiSupportScreen.tsx',
-      'ui/src/AssistantScreen.tsx',
       'ui/src/DocumentsScreen.tsx',
       'ui/src/ImageCropModal.tsx',
       'ui/src/PageDesigner.tsx',

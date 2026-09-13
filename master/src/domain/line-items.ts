@@ -12,6 +12,7 @@
 export interface ProductSnapshotSource {
   id: string;
   name: string;
+  categoryName: string | null;
   alias: string | null;
   rate: number | null;
   productCode: string | null;
@@ -45,6 +46,7 @@ export interface ColourQuantity {
 export interface LineSnapshot {
   productId: string;
   productName: string;
+  categoryName: string | null;
   alias: string | null;
   rate: number | null;
   code: string | null;
@@ -65,6 +67,7 @@ export interface LineSnapshot {
 export interface LineDraft {
   productId: string;
   productName?: string | null;
+  categoryName?: string | null;
   alias?: string | null;
   rate?: number | null;
   code?: string | null;
@@ -106,6 +109,7 @@ export function buildLineSnapshot(
   return {
     productId: product.id,
     productName: draft.productName ?? variant?.productName ?? product.name,
+    categoryName: draft.categoryName ?? product.categoryName,
     alias: firstDefined(draft.alias, variant?.alias, product.alias),
     // `rateUnset` is a decision, not a gap, so it stops the fallback dead. A
     // plain `null` rate still falls through to the variant and the catalogue,

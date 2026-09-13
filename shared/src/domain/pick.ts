@@ -12,9 +12,9 @@
  * pick would 403 people who have a working filter today.
  */
 
-import type { Party, Product, RecordId } from './entities.js';
+import type { Party, Product, ProductCategory, RecordId } from './entities.js';
 
-export type PickKind = 'product' | 'party' | 'variant';
+export type PickKind = 'product' | 'party' | 'variant' | 'category';
 
 /**
  * One product in one colour, as the new-lead screen reaches it.
@@ -54,6 +54,14 @@ export interface PickQuery {
    * pinned rows have to be present in the idle state before any term exists.
    */
   include?: string[];
+  /**
+   * Main-product filter for `product` picks: only models of this category.
+   *
+   * The new-lead flow picks the main product first, then searches models
+   * inside it — an unfiltered model search over the whole catalogue is what
+   * the category-then-model walk replaces.
+   */
+  categoryId?: string;
 }
 
 export interface PickPage<T> {
@@ -71,11 +79,12 @@ export interface PickPage<T> {
 export type ProductPickPage = PickPage<Product>;
 export type PartyPickPage = PickPage<Party>;
 export type VariantPickPage = PickPage<ProductVariantPick>;
+export type CategoryPickPage = PickPage<ProductCategory>;
 
 /** How many rows a picker asks for when the caller does not say. */
 export const PICK_DEFAULT_LIMIT = 20;
 export const PICK_MAX_LIMIT = 50;
 
 export function isPickKind(value: unknown): value is PickKind {
-  return value === 'product' || value === 'party' || value === 'variant';
+  return value === 'product' || value === 'party' || value === 'variant' || value === 'category';
 }

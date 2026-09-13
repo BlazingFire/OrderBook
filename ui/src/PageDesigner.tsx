@@ -50,6 +50,14 @@ export interface PageDesignerProps {
   onChange: (layout: DocumentLayoutV2) => void;
   /** Rendered beside the canvas — the live PDF preview, when there is one. */
   aside?: React.ReactNode;
+  /**
+   * A block the palette asked to place. Consumed once (see `onInsertConsumed`)
+   * so a re-render never inserts it twice — the shell owns the request, this
+   * owns the undo entry.
+   */
+  pendingInsert?: { kind: string; atMm: { x: number; y: number } | null; nonce: number } | null;
+  insertElements?: (atMm: { x: number; y: number } | null) => DocumentElement[] | null;
+  onInsertConsumed?: () => void;
 }
 
 interface Drag {
@@ -82,13 +90,23 @@ const GRIP_PX = 7;
  *  about than a command log, and fifty is more than anybody backs out of. */
 const UNDO_DEPTH = 50;
 
-export function PageDesigner({ geometry, layout, bindings, onChange, aside }: PageDesignerProps) {
+export function PageDesigner({
+  geometry,
+  layout,
+  bindings,
+  onChange,
+  aside,
+  pendingInsert = null,
+  insertElements,
+  onInsertConsumed,
+}: PageDesignerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [guides, setGuides] = useState<Guide[]>([]);
 
   const dragRef = useRef<Drag | null>(null);
   const undoRef = useRef<DocumentLayoutV2[]>([]);
   const surfaceRef = useRef<HTMLDivElement | null>(null);
+  const consumedNonce = useRef<number | null>(null);
 
   const { page, margins } = pageFrame(geometry);
   const elements = layout.elements;
@@ -123,6 +141,22 @@ export function PageDesigner({ geometry, layout, bindings, onChange, aside }: Pa
     undoRef.current = rest;
     onChange(previous);
   }, [onChange]);
+
+  // A palette block, placed once. The shell builds the bundle (it knows the
+  // block kind and the drop point); this takes the single undo snapshot and
+  // the selection, like any other add.
+  useEffect(() => {
+    if (!pendingInsert || !insertElements) return;
+    if (consumedNonce.current === pendingInsert.nonce) return;
+    consumedNonce.current = pendingInsert.nonce;
+    const created = insertElements(pendingInsert.atMm);
+    if (created && created.length > 0) {
+      undoRef.current = [layout, ...undoRef.current].slice(0, UNDO_DEPTH);
+      onChange({ version: 2, elements: [...elements, ...created] });
+      setSelectedId(created[0]!.id);
+    }
+    onInsertConsumed?.();
+  }, [pendingInsert, insertElements, onInsertConsumed, elements, layout, onChange]);
 
   // --- pointer ---------------------------------------------------------
 

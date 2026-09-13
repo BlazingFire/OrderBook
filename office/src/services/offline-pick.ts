@@ -30,6 +30,7 @@ import type {
   PickPage,
   PickQuery,
   Product,
+  ProductCategory,
   ProductListPage,
   ProductListQuery,
   ProductVariantPick,
@@ -41,6 +42,7 @@ import { PICK_DEFAULT_LIMIT, PICK_MAX_LIMIT, comparePicked, pickScore } from '@o
 const REQUIRED_PERMISSION: Record<PickKind, string> = {
   product: 'products.view',
   variant: 'products.view',
+  category: 'products.view',
   party: 'parties.view',
 };
 
@@ -105,7 +107,7 @@ export function pickFromView(
   query: PickQuery,
   view: SyncSnapshot,
   permissions: readonly string[],
-): PickPage<Product> | PickPage<Party> | PickPage<ProductVariantPick> {
+): PickPage<Product> | PickPage<Party> | PickPage<ProductVariantPick> | PickPage<ProductCategory> {
   const required = REQUIRED_PERMISSION[kind];
   if (!permissions.includes(required)) throw new OfflinePickForbidden(required);
 
@@ -117,8 +119,14 @@ export function pickFromView(
   }
 
   if (kind === 'product') {
+    // A main-product filter narrows the model search, same as the Master's
+    // own `category_id` clause — empty when unset, so the check costs nothing.
+    const inCategory =
+      query.categoryId === undefined || query.categoryId === ''
+        ? view.products
+        : view.products.filter((product) => product.categoryId === query.categoryId);
     return pickFrom<Product>(
-      view.products,
+      inCategory,
       (product) => [
         product.productCode,
         product.name,
@@ -127,6 +135,19 @@ export function pickFromView(
         product.brand,
       ],
       (product) => product.name,
+      query,
+    );
+  }
+
+  if (kind === 'category') {
+    // Only main products that hold live products are offered — the same live
+    // check the Master's own `EXISTS` clause makes. Hand-held differently:
+    // here it is a set built from the cached page.
+    const stocked = new Set(view.products.map((product) => product.categoryId));
+    return pickFrom<ProductCategory>(
+      view.categories.filter((category) => stocked.has(category.id)),
+      (category) => [category.name],
+      (category) => category.name,
       query,
     );
   }

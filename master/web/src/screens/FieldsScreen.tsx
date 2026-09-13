@@ -60,9 +60,12 @@ interface Props {
   permissions: string[];
   /** Bumped by the live socket whenever data changes. */
   revision: number;
+  /** Which tab is showing — chosen here or from the sidebar's sub-pages. */
+  tab: Tab;
+  onTabChange: (tab: Tab) => void;
 }
 
-type Tab = 'values' | 'definitions' | 'stages';
+export type Tab = 'values' | 'definitions' | 'stages';
 
 /** The server's own rule (`master/src/domain/field-values.ts`), checked here to save a round trip. */
 const HEX_PATTERN = /^#[0-9A-Fa-f]{6}$/;
@@ -97,11 +100,10 @@ function moved<T>(rows: T[], index: number, delta: number): T[] {
   return next;
 }
 
-export function FieldsScreen({ permissions, revision }: Props) {
+export function FieldsScreen({ permissions, revision, tab, onTabChange }: Props) {
   const canView = permissions.includes('fields.view');
   const canManage = permissions.includes('fields.manage');
 
-  const [tab, setTab] = useState<Tab>('values');
   const [catalogue, setCatalogue] = useState<FieldCatalogue | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -143,7 +145,7 @@ export function FieldsScreen({ permissions, revision }: Props) {
         <h1 className="ob-title" style={{ margin: 0 }}>
           {t('fields.title')}
         </h1>
-        <Tabs tabs={tabItems} activeId={tab} onChange={(id) => setTab(id as Tab)} />
+        <Tabs tabs={tabItems} activeId={tab} onChange={(id) => onTabChange(id as Tab)} />
       </div>
 
       {!canManage && (

@@ -22,7 +22,7 @@ import * as connectorRepo from '../repositories/connector.repository.js';
 import { systemActor } from '../domain/actor.js';
 import { getSetting } from './settings.service.js';
 import { runConnector } from './connector-run.service.js';
-import { permissionSetForRole } from '../repositories/role.repository.js';
+import { permissionSetForRole } from './pricing-gate.js';
 import * as userRepo from '../repositories/user.repository.js';
 
 const log = createLogger('connector-scheduler');

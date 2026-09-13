@@ -37,22 +37,14 @@ export function DataTable<T>({
   rows,
   rowKey,
   onRowOpen,
-  /**
-   * Whether a single click or a double-click opens a row. The mockups
-   * disagree with each other here — Leads' list view opens on double-click
-   * (matching its Kanban board's drag-vs-open convention), while Orders,
-   * Products and Parties open on a single click — so this is per-table, not
-   * a fixed app-wide rule.
-   */
-  openOn = 'doubleClick',
   selectedId,
   empty,
 }: {
   columns: DataTableColumn<T>[];
   rows: T[];
   rowKey: (row: T) => string;
+  /** A row opens on one click — everywhere, so no list ever waits for a double. */
   onRowOpen?: (row: T) => void;
-  openOn?: 'click' | 'doubleClick';
   selectedId?: string;
   empty?: ReactNode;
 }) {
@@ -181,13 +173,9 @@ export function DataTable<T>({
                   gridTemplateColumns: gridTemplate,
                   cursor: onRowOpen ? 'pointer' : undefined,
                 }}
-                title={onRowOpen && openOn === 'doubleClick' ? 'Double-click to open' : undefined}
                 tabIndex={onRowOpen ? 0 : undefined}
                 role={onRowOpen ? 'button' : undefined}
-                onClick={onRowOpen && openOn === 'click' ? () => onRowOpen(row) : undefined}
-                onDoubleClick={
-                  onRowOpen && openOn === 'doubleClick' ? () => onRowOpen(row) : undefined
-                }
+                onClick={onRowOpen ? () => onRowOpen(row) : undefined}
                 onKeyDown={
                   onRowOpen
                     ? (e) => {

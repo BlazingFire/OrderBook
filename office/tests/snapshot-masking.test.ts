@@ -67,6 +67,7 @@ const FIXTURE: SyncSnapshot = {
       finish: null,
       series: null,
       color: null,
+      colourPolicy: 'fixed',
       thicknessMm: null,
       piecesPerBox: null,
       boxCoverageSqft: null,

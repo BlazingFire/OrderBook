@@ -6,21 +6,19 @@
  * (`docs/TESTING_PLAN.md`), so a Master and a panel on different versions is the
  * *normal* state of a shop mid-update, not an edge case. Nothing on that
  * boundary validates a payload's shape: `office/src/http/app.ts` forwards
- * `masterConnection.command('ai:status')` straight into `res.json(...)`, and
- * `office/web/src/api.ts` casts the result. So a field the sending Master does
- * not know about arrives as `undefined` regardless of what the type says.
+ * Master answers straight into `res.json(...)`, and `office/web/src/api.ts`
+ * casts the result. So a field the sending Master does not know about arrives
+ * as `undefined` regardless of what the type says.
  *
- * `d52bdef` added four **required** fields to `AiHardware`. A 1.0.2 Master
- * returned `{tier, totalMemoryGb, cpus}`, which is truthy, so `HardwareInfo`
- * rendered and then read `.recommendedModels.length` off `undefined` — and
- * because `ui/src/ErrorBoundary.tsx` is mounted app-wide, that did not degrade
- * the Assistant tab, it replaced the **entire Office panel** with the crash
- * screen.
+ * `d52bdef` added four **required** fields to a type the (since removed)
+ * assistant screen read. A 1.0.2 Master sent a truthy object without them, the
+ * screen rendered and read `.length` off `undefined` — and because
+ * `ui/src/ErrorBoundary.tsx` is mounted app-wide, that did not degrade one tab,
+ * it replaced the **entire Office panel** with the crash screen.
  *
- * The repo already applies this rule to `partyGrants`, `bootId`, `seq` and
- * `serverVersion` on `SyncSnapshot`, each with a comment saying why. Four such
- * comments sat in `shared/src/domain/ai.ts` while this test did not exist, and
- * comments are what the last agent read past.
+ * `SyncSnapshot` already applies the rule to `partyGrants`, `bootId`, `seq` and
+ * `serverVersion`, each with a comment saying why — and comments are what the
+ * last agent read past, which is why this is a test.
  *
  * ## The shape of the check
  *
@@ -50,17 +48,25 @@ interface Guarded {
 
 const GUARDED: Guarded[] = [
   {
-    file: 'src/domain/ai.ts',
-    type: 'AiHardware',
-    sinceAlways: ['tier', 'totalMemoryGb', 'cpus'],
-  },
-  {
-    file: 'src/domain/ai.ts',
-    type: 'RecommendedModel',
-    // The whole type arrived with 1.0.3, so an older Master sends no list at
-    // all — `recommendedModels` being optional is what covers that. Within a
-    // model, these four are what any sender that sends one will have set.
-    sinceAlways: ['name', 'sizeLabel', 'ramRequiredGb', 'provider'],
+    file: 'src/protocol/socket.ts',
+    type: 'SyncSnapshot',
+    sinceAlways: [
+      'parties',
+      'products',
+      'categories',
+      'partyVariants',
+      'leads',
+      'orders',
+      'stock',
+      'pipelines',
+      'optionLists',
+      'customFields',
+      'conflicts',
+      'dashboard',
+      'permissions',
+      'serverHlc',
+      'serverTime',
+    ],
   },
 ];
 

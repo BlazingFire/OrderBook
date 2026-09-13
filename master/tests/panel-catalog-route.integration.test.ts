@@ -120,7 +120,7 @@ describe.skipIf(!canRunIntegrationTests)('the panel catalogue import routes (int
 
     expect(response.headers['content-type']).toMatch(/^text\/csv/);
     expect(response.headers['content-disposition']).toBe('attachment; filename="products-template.csv"');
-    expect(response.text.split('\r\n')[0]).toMatch(/^productCode,name,alias,/);
+    expect(response.text.split('\r\n')[0]).toMatch(/^brand,categoryName,productCode,/);
   });
 
   it('serves the Excel template', async () => {

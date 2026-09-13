@@ -32,7 +32,7 @@ import type { ActorContext } from '../../domain/actor.js';
 import { UnauthorizedError } from '../../lib/errors.js';
 import { createLogger } from '../../lib/logger.js';
 import * as apiKeyRepo from '../../repositories/api-key.repository.js';
-import { permissionSetForRole } from '../../repositories/role.repository.js';
+import { permissionSetForRole } from '../../services/pricing-gate.js';
 import { consume, noteUsed } from './api-key-rate-limit.js';
 
 const log = createLogger('api-key');
