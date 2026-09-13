@@ -146,10 +146,17 @@ test cluster cannot start — PostgreSQL refuses every directory here
 (`initdb: could not create/change permissions`, `postgres: could not create
 lock file postmaster.pid`), including fresh dirs outside TEMP, while plain
 file creation works; the identical failure on a stashed clean tree proves it
-is environmental, not the change. Fresh Windows installers
-(`C:\OrderBook-Releases`, both panels, v1.0.3) are rebuilt below — the
-in-app update path (releases folder / GitHub sync, hash + signature checks)
-is untouched, so installed panels pick this build up as usual.
+is environmental, not the change. **Installers NOT rebuilt:** `node
+tools/release.mjs` and `electron-builder` directly both hang indefinitely on
+this machine (no output, the node process spins in kernel time with no child
+processes) — the same machine-level sickness hitting PostgreSQL (`Permission
+denied` creating any directory) and esbuild's TEMP files (`Access is denied`
+deleting its own temp file, worked around with a clean `C:\ob-build-tmp`).
+All build inputs are refreshed and committed (both `web/dist`, both server
+`dist`, both `electron/dist`), so a release run on a healthy machine works;
+`C:\OrderBook-Releases` still holds the 1.0.3 exes as latest. A reboot (or a
+Defender exclusion over the repo + TEMP) is the next thing to try before
+re-running `npm run release`.
 
 ### PDF Designer Canva-style shell in the Documents editor (2026-09-12)
 

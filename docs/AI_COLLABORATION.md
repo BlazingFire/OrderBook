@@ -187,15 +187,55 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-13 — Project skill .agents/skills/ui-consistency (Muse Code)
+
+Scope: owner's `/create-skill` (UI consistency, project scope). Created
+`.agents/skills/ui-consistency/SKILL.md` through the workspace file-write path:
+the sandboxed shell can neither read nor write `.agents/` (PowerShell
+`New-Item`/`Get-Content` and the validator all get access-denied), while the
+file channel writes and reads it fine. Content mirrors the
+`.commandcode/skills/ui-consistency` team skill in Muse-native shape; that
+team skill is untouched and no vendored skill was modified.
+
+Verified: file reads back correct via the file channel; `muse skills validate`
+(run as `C:\Users\Z\.local\bin\muse.exe`, found off-PATH) fails with
+`invalid-skill-package: Access is denied (os error 5)` on the skill path —
+environmental, not a content diagnostic. Owner to re-run
+`muse skills validate .agents/skills/ui-consistency --json` in an unsandboxed
+terminal; expect valid:true with zero diagnostics.
+
+### 2026-09-13 — Three team skills: ui-consistency, domain-flows, test-guardrails (Muse Code)
+
+Scope: owner's "install more skills, make new plugins, keep UI consistent,
+don't break anything". Authored three team skills under `.commandcode/skills/`
+(the tracked team-shared location; vendored `.claude/skills` and
+`.agents/skills` untouched): `ui-consistency` (one-kit rule, scale contract,
+i18n), `domain-flows` (entities, Socket.IO contract, single-writer,
+leads-to-orders, migrations permanent), `test-guardrails` (test layout, the
+`master/web` + `office/web` zero-coverage blind spot, integration skip
+behaviour). External installs (ponytail, caveman, memsearch, rufflo) are
+user-terminal steps — this sandbox has no node/npx/python on PATH and profile
+writes are denied — so commands were handed over, nothing installed from here.
+
+Verified: `npm run verify` could not run in this sandbox (no Node.js on PATH:
+`where.exe node`/`npx` find nothing, no `C:\Program Files\nodejs`); the change
+is markdown-only (three SKILL.md files + this entry), outside the
+eslint/typecheck/vitest surface. `master/web/src` and `office/web/src`
+confirmed at zero test files each. Owner to run `npm run verify` locally.
+
 ### 2026-09-13 — Commit + rebuild checkpoint (Command Code)
 
 Scope: owner's "commit all to main and update all exe and everything else".
 Committed the whole working tree to `main` (pricing switch, assistant
 removal, sidebar sub-pages, product hierarchy + new-lead flow, catalogue
 reload script, new-lead/product-drawer/import rebuilds, dashboard + lead
-detail rebuilds, designer shell) and rebuilt the Windows installers for both
-panels into `C:\OrderBook-Releases` (v1.0.3, same filename the deployed
-panels already check, so the in-app update path serves them unchanged).
+detail rebuilds, designer shell). The installer rebuild was attempted but this
+machine refuses: `node tools/release.mjs` and direct `electron-builder` both
+hang indefinitely (no output, node spinning in kernel time, no children) —
+same machine-level sickness as PostgreSQL and esbuild's TEMP files. All build
+inputs are refreshed and committed (both `web/dist`, both server `dist`, both
+`electron/dist`), so `npm run release` works on a healthy machine; the
+releases folder still serves the 1.0.3 exes as latest.
 `.gitignore` now keeps operator fixtures and local logs untracked by design:
 `CATA.pdf`, `dummy-data/`, `vitest-out.txt`, `.claude/launch.json`.
 
