@@ -27,6 +27,7 @@ import { actorCan, requirePermission, type ActorContext } from '../domain/actor.
 import { assertCropRect, assertRotation, IMAGE_VARIANT_SPECS, MAX_SOURCE_BYTES, variantDimensions } from '../domain/images.js';
 import { config } from '../config/index.js';
 import { db } from '../db/knex.js';
+import { maskProduct, productVisibility } from '../domain/visibility.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
@@ -91,6 +92,30 @@ async function reloadProduct(tenantId: string, productId: string): Promise<Produ
   const product = await productRepo.findProductById(tenantId, productId);
   if (!product) throw new NotFoundError('Product');
   return product;
+}
+
+/**
+ * Announce the change with the whole record, and answer the caller with only
+ * what they may see.
+ *
+ * Every one of the four image mutations used to `return updated` — the raw row
+ * straight out of `findProductById`, which applies no masking. Every *other*
+ * product write ends `return maskProduct(product, productVisibility(actor))`
+ * (`catalog.service.ts`). The panel route ships the body verbatim, the Office
+ * server relays it byte for byte, and the browser sets it into React state — so
+ * a clerk with `products.edit` but not `field.purchaseRate.view` added a photo
+ * and the 201 body carried `purchaseRate` and `rate`, plainly readable in the
+ * network tab. The panel's own `/api/snapshot` had gone to the trouble of
+ * stripping exactly those keys for that person.
+ *
+ * `publishChange` deliberately keeps the **raw** record: the Office server
+ * re-masks change events per signed-in user, so masking here would blind
+ * everyone to fields they are entitled to. One function so a fifth mutation
+ * added later cannot get the pairing wrong.
+ */
+function publishAndMask(product: Product, actor: ActorContext): Product {
+  publishChange({ entity: 'product', action: 'updated', id: product.id, payload: product });
+  return maskProduct(product, productVisibility(actor));
 }
 
 /**
@@ -268,8 +293,7 @@ export async function uploadImage(request: UploadImageRequest, actor: ActorConte
   });
 
   const updated = await reloadProduct(actor.tenantId, request.productId);
-  publishChange({ entity: 'product', action: 'updated', id: updated.id, payload: updated });
-  return updated;
+  return publishAndMask(updated, actor);
 }
 
 export async function updateImageCaption(
@@ -310,8 +334,7 @@ export async function updateImageCaption(
   });
 
   const updated = await reloadProduct(actor.tenantId, productId);
-  publishChange({ entity: 'product', action: 'updated', id: updated.id, payload: updated });
-  return updated;
+  return publishAndMask(updated, actor);
 }
 
 export async function reorderImages(input: ProductImageReorderInput, actor: ActorContext): Promise<Product> {
@@ -345,8 +368,7 @@ export async function reorderImages(input: ProductImageReorderInput, actor: Acto
   });
 
   const updated = await reloadProduct(actor.tenantId, input.productId);
-  publishChange({ entity: 'product', action: 'updated', id: updated.id, payload: updated });
-  return updated;
+  return publishAndMask(updated, actor);
 }
 
 /**
@@ -399,8 +421,7 @@ export async function deleteImage(imageId: string, actor: ActorContext): Promise
   });
 
   const updated = await reloadProduct(actor.tenantId, productId);
-  publishChange({ entity: 'product', action: 'updated', id: updated.id, payload: updated });
-  return updated;
+  return publishAndMask(updated, actor);
 }
 
 export interface ImageFile {

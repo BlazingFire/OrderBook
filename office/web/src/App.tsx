@@ -38,12 +38,14 @@ import {
   KeyboardOverlays,
   KeyboardProvider,
   PaletteButton,
+  apiErrorText,
   ConfirmProvider,
   ResetProvider,
   ScreenHost,
   Splash,
   SubNavProvider,
   ToastProvider,
+  translator,
   flattenNav,
   graftSubNav,
   loadSidebarMode,
@@ -414,14 +416,24 @@ function OfficePanel() {
     try {
       const outcome = await api.flush();
       setRejections(outcome.rejections);
-      if (outcome.rejections.length > 0 && can('sync.resolveConflicts')) {
-        toast.push(`${outcome.rejections.length} change(s) were refused`, {
+      if (outcome.rejections.length > 0) {
+        /*
+         * Told to everybody, not only to an admin.
+         *
+         * This was gated on `sync.resolveConflicts`, which sits at the admin
+         * tier — so the one notification that a write had been thrown away was
+         * withheld from exactly the shop-floor staff whose writes get thrown
+         * away. Only the *route to the screen* needs a permission now, and even
+         * that one is open: the refusals section there is a person's own work,
+         * and dismissing it is not an adjudication.
+         */
+        toast.push(translator().tCount('sync.changesRefused', outcome.rejections.length), {
           tone: 'error',
-          action: { label: t('action.reviewConflicts'), onClick: () => setTab('conflicts') },
+          action: { label: t('action.reviewRefusals'), onClick: () => setTab('conflicts') },
         });
       }
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : 'Could not sync';
+      const message = apiErrorText(caught, 'sync.couldNotSync');
       setError(message);
       toast.push(message, { tone: 'error' });
     } finally {
@@ -1053,9 +1065,10 @@ function OfficePanel() {
           render: () => (
             <ConflictsScreen
               conflicts={view.conflicts}
+              rejections={rejections}
               canResolve={can('sync.resolveConflicts')}
               onError={setError}
-              onResolved={() => void flush()}
+              onResolved={() => void refreshSyncState()}
             />
           ),
         },

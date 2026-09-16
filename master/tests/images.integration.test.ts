@@ -244,4 +244,68 @@ describe.skipIf(!canRunIntegrationTests)('product images (integration)', () => {
     const file = await imageService.resolveImageFile(imageId, 'thumb', actor);
     expect(existsSync(file.path)).toBe(true);
   });
+
+  it('masks the product it hands back, so a photo upload does not leak the cost price', async () => {
+    /*
+     * All four image mutations ended `return updated` — the raw row out of
+     * `findProductById`, which applies no masking, while every other product
+     * write in the codebase ends `return maskProduct(…)`. The panel route ships
+     * that body verbatim, the Office server relays it byte for byte, and the
+     * browser sets it into React state. So a clerk with `products.edit` but not
+     * `field.purchaseRate.view` added a photo and got `purchaseRate` and `rate`
+     * in the 201 — readable in the network tab, on exactly the keys the panel's
+     * own snapshot had stripped for that person.
+     */
+    const product = await catalog.createProduct(
+      { productCode: 'PRD-MASK', name: 'Costed Tile', rate: 40_000, purchaseRate: 25_000 },
+      actor,
+    );
+
+    const clerk = await actorWith(['products.view', 'products.edit']);
+    const uploaded = await imageService.uploadImage(
+      {
+        productId: product.id,
+        fileBuffer: await testJpeg(80, 80, { r: 9, g: 9, b: 9 }),
+        crop: { cropX: 0, cropY: 0, cropWidth: 80, cropHeight: 80, rotationDeg: 0 },
+      },
+      clerk,
+    );
+
+    // Masking removes the key rather than nulling it, so absence is the assertion.
+    expect('purchaseRate' in uploaded).toBe(false);
+    expect('rate' in uploaded).toBe(false);
+    // The upload still happened — this is a masking fix, not a refusal.
+    expect(uploaded.images).toHaveLength(1);
+
+    const imageId = uploaded.images[0]!.id;
+
+    // The other three mutations go through the same helper; each is checked so
+    // a future one cannot be added without it.
+    const captioned = await imageService.updateImageCaption(
+      imageId,
+      { caption: 'Front face' },
+      clerk,
+    );
+    expect('purchaseRate' in captioned).toBe(false);
+
+    const reordered = await imageService.reorderImages(
+      { productId: product.id, ids: [imageId] },
+      clerk,
+    );
+    expect('purchaseRate' in reordered).toBe(false);
+
+    const afterDelete = await imageService.deleteImage(imageId, clerk);
+    expect('purchaseRate' in afterDelete).toBe(false);
+
+    // An actor who *may* see cost still does.
+    const full = await imageService.uploadImage(
+      {
+        productId: product.id,
+        fileBuffer: await testJpeg(80, 80, { r: 10, g: 10, b: 10 }),
+        crop: { cropX: 0, cropY: 0, cropWidth: 80, cropHeight: 80, rotationDeg: 0 },
+      },
+      actor,
+    );
+    expect(full.purchaseRate).toBe(25_000);
+  });
 });

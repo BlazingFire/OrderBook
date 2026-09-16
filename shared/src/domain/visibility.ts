@@ -87,19 +87,49 @@ export function maskOrder(order: Order, allowed: boolean): Order {
  * somebody did in good faith. Dropping the field lets the line fall back to the
  * variant or the catalogue — the value the actor was entitled to anyway.
  */
-export function withPermittedRate<T extends { rate?: number | null; rateUnset?: boolean }>(
-  draft: T,
-  allowed: boolean,
-): T {
+export function withPermittedRate<
+  T extends {
+    rate?: number | null;
+    rateUnset?: boolean;
+    mrp?: number | null;
+    pricePerSqft?: number | null;
+  },
+>(draft: T, allowed: boolean): T {
   if (allowed) return draft;
 
-  // `rateUnset` goes with it. Deciding a line carries *no* price is as much a
-  // rate decision as typing one — and it is the more consequential of the two,
-  // because it stops the catalogue fallback that this function otherwise leans
-  // on to put the actor back where they were entitled to be.
-  if (draft.rate === undefined && draft.rateUnset === undefined) return draft;
+  /*
+   * `mrp` and `pricePerSqft` go with `rate`.
+   *
+   * `entities.ts` and this file's own `PRODUCT_FIELD_VISIBILITY` both stated
+   * that `mrp` is "writable only under `field.saleRate.edit`" — and nothing
+   * implemented it. This function destructured `rate` alone, so a role with
+   * `products.edit` and no money permission could set a product's MRP through
+   * **every** write path, and `pricePerSqft` through the catalogue screen and
+   * an offline sync push (the public API alone happened to block that one).
+   * Three paths call this function; widening it here closes all three at once,
+   * which is why it is here rather than repeated at each call site.
+   *
+   * `rateUnset` goes with them. Deciding a line carries *no* price is as much a
+   * rate decision as typing one — and it is the more consequential of the two,
+   * because it stops the catalogue fallback that this function otherwise leans
+   * on to put the actor back where they were entitled to be.
+   */
+  if (
+    draft.rate === undefined &&
+    draft.rateUnset === undefined &&
+    draft.mrp === undefined &&
+    draft.pricePerSqft === undefined
+  ) {
+    return draft;
+  }
 
-  const { rate: _rate, rateUnset: _rateUnset, ...rest } = draft;
+  const {
+    rate: _rate,
+    rateUnset: _rateUnset,
+    mrp: _mrp,
+    pricePerSqft: _pricePerSqft,
+    ...rest
+  } = draft;
   return rest as T;
 }
 

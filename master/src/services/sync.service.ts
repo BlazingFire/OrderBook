@@ -509,7 +509,13 @@ async function mergeUpdate(
      */
     if (entity === 'product') {
       if (!canEditRates(actor)) {
-        fields = fields.filter((field) => field !== 'rate' && field !== 'pricePerSqft');
+        // `mrp` joined its siblings here: it was documented as gated on
+        // `field.saleRate.edit` and enforced on no write path at all, so an
+        // offline push was one of three ways to change a product's MRP without
+        // the permission.
+        fields = fields.filter(
+          (field) => field !== 'rate' && field !== 'pricePerSqft' && field !== 'mrp',
+        );
       }
       if (!canEditCost(actor)) {
         fields = fields.filter((field) => field !== 'purchaseRate');

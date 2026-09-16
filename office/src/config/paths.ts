@@ -31,6 +31,8 @@ export interface PanelPaths {
   deviceFile: string;
   clockFile: string;
   outboxFile: string;
+  /** Writes the Master refused, kept after they leave the outbox. */
+  refusalsFile: string;
   snapshotFile: string;
   usersFile: string;
   signInAttemptsFile: string;
@@ -45,6 +47,7 @@ const FILE_NAMES = {
   deviceFile: 'device.json',
   clockFile: 'clock.json',
   outboxFile: 'outbox.json',
+  refusalsFile: 'refusals.json',
   snapshotFile: 'snapshot.json',
   usersFile: 'users.json',
   signInAttemptsFile: 'sign-in-attempts.json',
@@ -71,6 +74,7 @@ export function paths(): PanelPaths {
     deviceFile: path.join(dataDir, FILE_NAMES.deviceFile),
     clockFile: path.join(dataDir, FILE_NAMES.clockFile),
     outboxFile: path.join(dataDir, FILE_NAMES.outboxFile),
+    refusalsFile: path.join(dataDir, FILE_NAMES.refusalsFile),
     snapshotFile: path.join(dataDir, FILE_NAMES.snapshotFile),
     usersFile: path.join(dataDir, FILE_NAMES.usersFile),
     signInAttemptsFile: path.join(dataDir, FILE_NAMES.signInAttemptsFile),

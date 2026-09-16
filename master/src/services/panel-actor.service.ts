@@ -21,8 +21,22 @@
 import type { SessionRejection } from '@orderbook/shared';
 
 import type { ActorContext } from '../domain/actor.js';
+import { UnauthorizedError } from '../lib/errors.js';
 import { resolveSessionDetailedWithPermissions } from './auth.service.js';
 import * as panelService from './panel.service.js';
+
+/**
+ * A panel presented an acting token the Master will not honour.
+ *
+ * Carries the rejection reason so a caller that has somewhere to put it — the
+ * socket hub emits `session:rejected` — can tell the panel *why* before the
+ * command fails, without anyone having to re-derive it.
+ */
+export class RefusedActingTokenError extends UnauthorizedError {
+  constructor(readonly rejection: SessionRejection) {
+    super('error.unauthorized.signInFailed');
+  }
+}
 
 export interface PanelActorRequest {
   tenantId: string;
@@ -49,7 +63,40 @@ export interface PanelActorResolution {
   rejection?: SessionRejection;
 }
 
+/**
+ * The actor a panel's command runs as.
+ *
+ * **Throws** `RefusedActingTokenError` when a token was presented and refused.
+ * That enforcement used to live in the caller, and only one of the two callers
+ * did it: `require-panel.ts` returned a 401 and stated the rule in its own
+ * header comment, while `hub.ts` cleared the token, emitted `session:rejected`
+ * — and then let the command proceed under the panel's *machine* role. A
+ * modified or stale panel could therefore trade a revoked user session for the
+ * panel's own authority on the socket path, on exactly the boundary the HTTP
+ * path guards. Enforcing it here means a third caller cannot inherit the bug.
+ *
+ * The genuinely tokenless case is not a refusal and still gets the panel's own
+ * actor: a panel with nobody signed in has to be able to raise a lead.
+ */
 export async function resolvePanelActor(
+  request: PanelActorRequest,
+): Promise<PanelActorResolution> {
+  const resolution = await resolvePanelActorAllowingRefusal(request);
+  if (!resolution.tokenAccepted) {
+    throw new RefusedActingTokenError(resolution.rejection ?? 'expired');
+  }
+  return resolution;
+}
+
+/**
+ * The same resolution, reported rather than thrown.
+ *
+ * For the one caller that must *not* refuse: a broadcast fan-out decides what a
+ * socket may receive, and a refused token there means "nobody is signed in on
+ * this panel" — which is the tokenless case, not an error to raise at somebody
+ * who is not asking for anything. Never use it on a command path.
+ */
+export async function resolvePanelActorAllowingRefusal(
   request: PanelActorRequest,
 ): Promise<PanelActorResolution> {
   const { tenantId, panelId, deviceCode, actingUserToken } = request;

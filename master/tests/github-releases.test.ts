@@ -40,6 +40,17 @@ const MANIFEST_URL = 'https://github.com/orderbook/releases/releases/download/v2
 /** The bytes a release pretends to ship. Small — nothing here is about size. */
 const PAYLOAD = Buffer.from('a fake windows installer');
 
+/*
+ * Every `syncFromGitHub` call below passes `'win32'` explicitly.
+ *
+ * This suite is about the Windows release path throughout — the asset names,
+ * the `.exe` filename, the legacy `latest-master.json` manifest name. Its calls
+ * used to let the platform default to `process.platform`, so on a Linux or
+ * macOS checkout the service asked GitHub for `latest-master-linux.json`, found
+ * nothing, and nine tests failed with what read like a product bug. Platform
+ * *selection* is covered where it belongs, in `updates.test.ts` (UPD-43).
+ */
+
 let dir: string;
 let requested: string[];
 
@@ -162,7 +173,7 @@ describe('syncing a release from GitHub', () => {
 
     const { syncFromGitHub } = await import('../src/services/github-releases.js');
 
-    expect(await syncFromGitHub('master', dir)).toBeNull();
+    expect(await syncFromGitHub('master', dir, null, 'win32')).toBeNull();
     expect(requested).toEqual([]);
   });
 
@@ -175,7 +186,7 @@ describe('syncing a release from GitHub', () => {
     });
 
     const { syncFromGitHub } = await loadService();
-    const landed = await syncFromGitHub('master', dir);
+    const landed = await syncFromGitHub('master', dir, null, 'win32');
 
     expect(landed?.version).toBe('2.0.0');
     expect(await readFile(path.join(dir, manifest.file))).toEqual(PAYLOAD);
@@ -202,7 +213,7 @@ describe('syncing a release from GitHub', () => {
 
     const { syncFromGitHub } = await loadService();
 
-    expect(await syncFromGitHub('master', dir)).toBeNull();
+    expect(await syncFromGitHub('master', dir, null, 'win32')).toBeNull();
     expect(requested).not.toContain(SETUP_URL);
     expect(await readdir(dir)).toEqual([]);
   });
@@ -227,7 +238,7 @@ describe('syncing a release from GitHub', () => {
 
     const { syncFromGitHub } = await loadService();
 
-    expect(await syncFromGitHub('master', dir)).toBeNull();
+    expect(await syncFromGitHub('master', dir, null, 'win32')).toBeNull();
     expect(requested).not.toContain(SETUP_URL);
   });
 
@@ -244,7 +255,7 @@ describe('syncing a release from GitHub', () => {
 
     const { syncFromGitHub } = await loadService();
 
-    expect(await syncFromGitHub('master', dir)).toBeNull();
+    expect(await syncFromGitHub('master', dir, null, 'win32')).toBeNull();
     expect(requested).not.toContain('https://cdn.example.invalid/setup.exe');
     expect(await readdir(dir)).toEqual([]);
   });
@@ -264,7 +275,7 @@ describe('syncing a release from GitHub', () => {
 
     const { syncFromGitHub } = await loadService();
 
-    expect(await syncFromGitHub('master', dir)).not.toBeNull();
+    expect(await syncFromGitHub('master', dir, null, 'win32')).not.toBeNull();
     expect(await readFile(path.join(dir, manifest.file))).toEqual(PAYLOAD);
   });
 
@@ -285,7 +296,7 @@ describe('syncing a release from GitHub', () => {
 
     const { syncFromGitHub } = await loadService();
 
-    expect(await syncFromGitHub('master', dir)).toBeNull();
+    expect(await syncFromGitHub('master', dir, null, 'win32')).toBeNull();
     expect(requested).not.toContain(SETUP_URL);
   });
 
@@ -301,7 +312,7 @@ describe('syncing a release from GitHub', () => {
 
     const { syncFromGitHub } = await loadService();
 
-    expect(await syncFromGitHub('master', dir)).toBeNull();
+    expect(await syncFromGitHub('master', dir, null, 'win32')).toBeNull();
     // Neither the file nor a half-written `.part` is left behind.
     expect(await readdir(dir)).toEqual([]);
   });
@@ -316,7 +327,7 @@ describe('syncing a release from GitHub', () => {
 
     const { syncFromGitHub } = await loadService();
 
-    expect(await syncFromGitHub('master', dir)).toBeNull();
+    expect(await syncFromGitHub('master', dir, null, 'win32')).toBeNull();
     expect(await readdir(dir)).toEqual([]);
   });
 
@@ -341,7 +352,7 @@ describe('syncing a release from GitHub', () => {
 
     const { syncFromGitHub } = await loadService();
 
-    expect(await syncFromGitHub('office', dir)).toBeNull();
+    expect(await syncFromGitHub('office', dir, null, 'win32')).toBeNull();
     expect(requested).not.toContain(SETUP_URL);
   });
 
@@ -360,7 +371,7 @@ describe('syncing a release from GitHub', () => {
 
       const { syncFromGitHub } = await loadService();
 
-      expect(await syncFromGitHub('master', dir), JSON.stringify(state)).toBeNull();
+      expect(await syncFromGitHub('master', dir, null, 'win32'), JSON.stringify(state)).toBeNull();
       expect(requested).toEqual([API]);
     }
   });
@@ -379,7 +390,7 @@ describe('syncing a release from GitHub', () => {
 
     const { syncFromGitHub } = await loadService();
 
-    expect(await syncFromGitHub('master', dir)).not.toBeNull();
+    expect(await syncFromGitHub('master', dir, null, 'win32')).not.toBeNull();
     expect(requested).not.toContain(SETUP_URL);
     expect(JSON.parse(await readFile(path.join(dir, 'latest.json'), 'utf8')).version).toBe('2.0.0');
   });
@@ -394,7 +405,7 @@ describe('syncing a release from GitHub', () => {
 
     const { syncFromGitHub } = await loadService();
 
-    await expect(syncFromGitHub('master', dir)).resolves.toBeNull();
+    await expect(syncFromGitHub('master', dir, null, 'win32')).resolves.toBeNull();
   });
 });
 
@@ -478,7 +489,7 @@ describe('clearing out what an earlier run left behind', () => {
     });
 
     const { syncFromGitHub } = await loadService();
-    await syncFromGitHub('master', dir);
+    await syncFromGitHub('master', dir, null, 'win32');
 
     expect(await readdir(dir)).not.toContain('OrderBook-Master-1.9.9-Setup.exe.part');
   });
@@ -496,7 +507,7 @@ describe('clearing out what an earlier run left behind', () => {
     });
 
     const { syncFromGitHub } = await loadService();
-    await syncFromGitHub('master', dir);
+    await syncFromGitHub('master', dir, null, 'win32');
 
     expect((await readdir(dir)).sort()).toEqual([manifest.file, 'latest.json'].sort());
   });
@@ -515,7 +526,7 @@ describe('clearing out what an earlier run left behind', () => {
     });
 
     const { syncFromGitHub } = await loadService();
-    await syncFromGitHub('master', dir);
+    await syncFromGitHub('master', dir, null, 'win32');
 
     expect(requested).not.toContain(SETUP_URL);
     expect(await readFile(path.join(dir, manifest.file))).toEqual(PAYLOAD);
@@ -541,7 +552,7 @@ describe('clearing out what an earlier run left behind', () => {
     });
 
     const { syncFromGitHub } = await loadService();
-    expect(await syncFromGitHub('master', dir)).toBeNull();
+    expect(await syncFromGitHub('master', dir, null, 'win32')).toBeNull();
 
     const left = await readdir(dir);
     expect(left).toContain(held.file); // still installable, still servable
@@ -564,7 +575,7 @@ describe('clearing out what an earlier run left behind', () => {
     });
 
     const { syncFromGitHub } = await loadService();
-    expect(await syncFromGitHub('master', dir)).not.toBeNull();
+    expect(await syncFromGitHub('master', dir, null, 'win32')).not.toBeNull();
 
     expect((await readdir(dir)).sort()).toEqual([manifest.file, 'latest.json'].sort());
   });
@@ -583,7 +594,7 @@ describe('clearing out what an earlier run left behind', () => {
     });
 
     const { syncFromGitHub } = await loadService();
-    await syncFromGitHub('master', dir);
+    await syncFromGitHub('master', dir, null, 'win32');
 
     expect(await readdir(dir)).not.toContain('latest.json.tmp');
     // And the manifest that did land is readable, not torn.
@@ -599,7 +610,7 @@ describe('clearing out what an earlier run left behind', () => {
     });
 
     const { syncFromGitHub } = await loadService();
-    await syncFromGitHub('master', dir);
+    await syncFromGitHub('master', dir, null, 'win32');
 
     expect((await readdir(dir)).sort()).toEqual([manifest.file, 'latest.json'].sort());
   });
@@ -619,7 +630,7 @@ describe('clearing out what an earlier run left behind', () => {
     });
 
     const { syncFromGitHub } = await loadService();
-    await syncFromGitHub('master', dir);
+    await syncFromGitHub('master', dir, null, 'win32');
 
     const left = await readdir(dir);
     expect(left).toContain('READ ME FIRST.txt');
@@ -641,7 +652,7 @@ describe('clearing out what an earlier run left behind', () => {
     });
 
     const { syncFromGitHub } = await loadService();
-    await syncFromGitHub('master', dir, pinned);
+    await syncFromGitHub('master', dir, pinned, 'win32');
 
     expect(await readdir(dir)).toContain(pinned);
   });
@@ -660,8 +671,8 @@ describe('clearing out what an earlier run left behind', () => {
 
     const { syncFromGitHub } = await loadService();
     const [a, b] = await Promise.all([
-      syncFromGitHub('master', dir),
-      syncFromGitHub('master', dir),
+      syncFromGitHub('master', dir, null, 'win32'),
+      syncFromGitHub('master', dir, null, 'win32'),
     ]);
 
     expect(a).toEqual(b);

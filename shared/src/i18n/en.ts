@@ -2153,6 +2153,20 @@ export const EN_MESSAGES = {
   // --- The Master's own Parties screen ---
   // Deliberately not `catalog.parties.created`: that text says "syncs when the
   // Master is reachable", which is false on the Master itself.
+  // --- Writes the Master refused ---
+  // `sync.changesRefused` is deliberately a count pair: the panel says how many
+  // were thrown away, and a number glued into a sentence does not translate.
+  'sync.changesRefused.one': '{count} change was refused',
+  'sync.changesRefused.other': '{count} changes were refused',
+  'sync.couldNotSync': 'Could not sync with the Master',
+  'sync.rejections.title': 'Refused by the Master',
+  'sync.rejections.description':
+    'These were saved on this panel and the Master would not take them. They are not in the shop’s records.',
+  'sync.rejections.dismiss': 'Dismiss',
+  'sync.rejections.dismissFailed': 'Could not dismiss those',
+  'sync.rejections.noReason': 'No reason was given',
+  'action.reviewRefusals': 'See what was refused',
+
   // --- Change your own password ---
   'access.changePassword.title': 'Change your password',
   'access.changePassword.current': 'Current password',

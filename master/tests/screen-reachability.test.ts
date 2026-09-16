@@ -138,9 +138,14 @@ const PANEL_ONLY: Record<string, string> = {
   recycleBin: 'Master only: restoring a soft-deleted row is a write against the owning database.',
   integrations: 'Master only: API keys and connectors are configured where they are held.',
 
+  // `parties` was here — "Office only: the Master reaches parties through Party
+  // Access instead." That was never a decision, it was an omission with a
+  // sentence attached: `api.createParty` had zero callers on the Master and an
+  // administrator had no way to add a customer. Both panels have the screen
+  // now, and this test's other direction is what made the stale claim visible.
+
   // Office only — these are the order desk's own working surfaces.
   leads: 'Office only: the lead board is the sales desk’s workflow, not the Master’s.',
-  parties: 'Office only: the Master reaches parties through Party Access instead.',
   products: 'Office only: the Master edits the catalogue from Inventory.',
   addLead: 'Office only: creating a lead is an Office action, and it has no sidebar row.',
 };

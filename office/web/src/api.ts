@@ -467,6 +467,14 @@ export const api = {
   snapshot: () => request<LocalView>('/api/snapshot'),
   syncState: () => request<SyncState>('/api/sync'),
   flush: () => post<FlushOutcome>('/api/sync/flush'),
+  /**
+   * Stop holding refusals somebody has now read. Not gated on
+   * `sync.resolveConflicts` — dismissing a message about your own refused write
+   * is not an admin action, and gating it there is what made the refusal
+   * invisible to the only person who needed it.
+   */
+  acknowledgeRejections: (mutationIds: string[]) =>
+    post<{ rejections: MutationResult[] }>('/api/sync/rejections/acknowledge', { mutationIds }),
 
   exportStorage: (officeScope: 'settings-only' | 'full-replica', passphrase: string) =>
     postForBlob('/api/storage/export', {

@@ -4493,4 +4493,13 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'access.changePassword.failed': 'पासवर्ड बदला नहीं जा सका',
   'access.changePassword.signsYouOut': 'इसे बदलने पर आप हर जगह से साइन आउट हो जाएँगे, इस विंडो सहित।',
   'action.changePassword': 'पासवर्ड बदलें',
+  'sync.changesRefused.one': '{count} बदलाव अस्वीकार किया गया',
+  'sync.changesRefused.other': '{count} बदलाव अस्वीकार किए गए',
+  'sync.couldNotSync': 'मास्टर के साथ सिंक नहीं हो सका',
+  'sync.rejections.title': 'मास्टर ने अस्वीकार किया',
+  'sync.rejections.description': 'ये इस पैनल पर सहेजे गए थे और मास्टर ने इन्हें नहीं लिया। ये दुकान के रिकॉर्ड में नहीं हैं।',
+  'sync.rejections.dismiss': 'हटाएँ',
+  'sync.rejections.dismissFailed': 'इन्हें हटाया नहीं जा सका',
+  'sync.rejections.noReason': 'कोई कारण नहीं बताया गया',
+  'action.reviewRefusals': 'देखें क्या अस्वीकार हुआ',
 };

@@ -7,13 +7,21 @@
  * is invisible to the gate. Both of the blocking defects the owner hit in
  * manual QA lived there, and `tsc` was clean on both:
  *
- *  · The Office's New Lead screen was unreachable. `addLead` had no `idToTab`
- *    entry, so the sidebar-membership check fell through to the first nav item
- *    and the tab switch landed on the Dashboard. Pressing "+ New Lead" appeared
- *    to do nothing.
+ *  · The Office's New Lead screen was unreachable. `activeId` had no branch for
+ *    `addLead`, so the sidebar-membership check fell through to the first nav
+ *    item and the tab switch landed on the Dashboard. Pressing "+ New Lead"
+ *    appeared to do nothing.
  *  · The Master had no Parties screen. `api.createParty` had existed with
  *    **zero callers** since the repo was restructured, so the panel that owns
  *    the database could not add a customer.
+ *
+ * **Sibling file:** `screen-reachability.test.ts` already holds the
+ * nav ↔ `ScreenSpec` ↔ `Tab` agreement, and caught the stale "Office only"
+ * reason for `parties` the moment the Master gained the screen. It does not
+ * catch the New Lead bug, because all three of its lists agreed — the defect
+ * was in how `activeId` *chose* between them. That is what the first group
+ * below adds; the second group is about the api clients, which neither file
+ * covered.
  *
  * Both are source-level facts, so these are source-level assertions — the style
  * `no-duplicate-ui.test.ts` and `i18n-call-sites.test.ts` already use. No React
@@ -63,24 +71,6 @@ function tabUnion(source: string): string[] {
   return [...body.matchAll(/'([A-Za-z][A-Za-z0-9]*)'/g)].map((match) => match[1] ?? '');
 }
 
-/** Every `id: 'x'` inside the panel's `ScreenSpec` registrations. */
-function registeredScreens(source: string): Set<string> {
-  const ids = new Set<string>();
-  for (const marker of ['const screens: ScreenSpec[] = [', 'ScreenSpec[] = [']) {
-    let from = source.indexOf(marker);
-    while (from > -1) {
-      // To the end of the file is fine: an id declared in a later array is
-      // still a registered screen, and nothing else in these files uses the
-      // exact `id: '…'` spelling at this indentation.
-      for (const match of source.slice(from).matchAll(/\bid: '([A-Za-z][A-Za-z0-9]*)'/g)) {
-        if (match[1]) ids.add(match[1]);
-      }
-      from = source.indexOf(marker, from + 1);
-    }
-  }
-  return ids;
-}
-
 /**
  * Screens with no sidebar entry, stated on purpose.
  *
@@ -95,14 +85,6 @@ const NAV_LESS: Record<'master' | 'office', string[]> = {
 };
 
 describe('every Tab in a panel can actually be shown', () => {
-  it.each(['master', 'office'] as const)('%s: every Tab has a screen registered', (panel) => {
-    const source = appSource(panel);
-    const screens = registeredScreens(source);
-
-    const missing = tabUnion(source).filter((tab) => !screens.has(tab));
-    expect(missing, `${panel}: Tab members with no ScreenSpec`).toEqual([]);
-  });
-
   it('office: every Tab is reachable through idToTab or is a stated nav-less screen', () => {
     const source = appSource('office');
 

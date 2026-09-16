@@ -36,6 +36,7 @@ function filePaths(): Record<string, string> {
     'device.json': current.deviceFile,
     'clock.json': current.clockFile,
     'outbox.json': current.outboxFile,
+    'refusals.json': current.refusalsFile,
     'snapshot.json': current.snapshotFile,
     'users.json': current.usersFile,
     'sign-in-attempts.json': current.signInAttemptsFile,

@@ -65,7 +65,12 @@ type Handler = (req: Request, res: Response, actor: ActorContext) => Promise<voi
  * matters on the way out, where masking removes the key entirely.
  */
 const WRITE_GUARDS = [
-  { fields: ['rate', 'pricePerSqft'], permission: 'field.saleRate.edit' },
+  // `mrp` belongs here with its siblings: `entities.ts` and `visibility.ts`
+  // both documented it as writable only under `field.saleRate.edit`, and no
+  // path enforced it. It is never *masked* on the way out — it is printed on
+  // the box, so hiding it would be theatre — but setting it is a price
+  // decision like any other.
+  { fields: ['rate', 'pricePerSqft', 'mrp'], permission: 'field.saleRate.edit' },
   { fields: ['purchaseRate'], permission: 'field.purchaseRate.edit' },
 ] as const;
 

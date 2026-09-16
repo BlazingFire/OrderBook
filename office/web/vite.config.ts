@@ -25,6 +25,14 @@ export default defineConfig({
     port: 5200,
     proxy: {
       '/api': 'http://localhost:4200',
+      /*
+       * Cached product images are served from `/uploads/images/…`
+       * (`office/src/http/app.ts`), not from `/api`. Without this line every
+       * product photo 404s for anybody evaluating the panel through the dev
+       * server — which reads as "there is no product image flow" and was
+       * reported as exactly that.
+       */
+      '/uploads': 'http://localhost:4200',
     },
   },
 });

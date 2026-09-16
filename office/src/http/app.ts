@@ -443,13 +443,32 @@ export function createApp(): Express {
   app.get('/api/sync', async (_req, res) => {
     res.json({
       pendingCount: await outbox.pendingCount(),
-      rejections: sync.recentRejections(),
+      rejections: await sync.recentRejections(),
       ...masterConnection.getStatus(),
     });
   });
 
   app.post('/api/sync/flush', async (_req, res) => {
     res.json(await sync.flush());
+  });
+
+  /**
+   * Somebody has read the refusals, so stop holding them.
+   *
+   * Deliberately not gated on `sync.resolveConflicts`: that permission sits at
+   * the admin tier, and the people whose writes get refused are shop-floor
+   * sales staff. Gating the *notification* on a permission they do not hold is
+   * how a refused lead came to vanish with nothing ever telling the person who
+   * typed it. Dismissing a message about your own work is not an admin action.
+   */
+  app.post('/api/sync/rejections/acknowledge', async (req, res) => {
+    const body = req.body as { mutationIds?: unknown } | undefined;
+    const ids = Array.isArray(body?.mutationIds)
+      ? body.mutationIds.filter((id): id is string => typeof id === 'string')
+      : undefined;
+
+    await sync.acknowledgeRejections(ids);
+    res.json({ rejections: await sync.recentRejections() });
   });
 
   /**
