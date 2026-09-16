@@ -1,13 +1,40 @@
+/**
+ * Sign in to the Master.
+ *
+ * Two things this screen used to get wrong, both fixed here:
+ *
+ *  · It rendered `caught.message` — the server's **English** sentence — and
+ *    discarded the `messageKey` the transport carries, so every sign-in failure
+ *    was in English on a Hindi panel. `apiErrorText` is the client the
+ *    three-tier pipeline never had.
+ *  · There was no way to say why the window arrived back here. A session that
+ *    ends mid-use (most often: this person just changed their own password,
+ *    which invalidates every session they hold) dropped them to a bare sign-in
+ *    form with no explanation.
+ */
+
 import { useState, type FormEvent } from 'react';
-import type { SignedInUser } from '@orderbook/shared';
+import type { MessageKey, SignedInUser } from '@orderbook/shared';
 import { api } from '../api';
-import { Button, Card, FieldError, FormField, Input, LogoLockup, rem, t } from '@orderbook/ui';
+import {
+  Button,
+  Card,
+  FieldError,
+  FormField,
+  Input,
+  LogoLockup,
+  apiErrorText,
+  rem,
+  t,
+} from '@orderbook/ui';
 
 interface Props {
   onSignedIn: (user: SignedInUser, sessionToken: string) => void;
+  /** Why the window is back here, when it did not get here by signing out. */
+  notice?: MessageKey | null;
 }
 
-export function SignInScreen({ onSignedIn }: Props) {
+export function SignInScreen({ onSignedIn, notice }: Props) {
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +48,7 @@ export function SignInScreen({ onSignedIn }: Props) {
       const result = await api.signIn(username, password);
       onSignedIn(result.user, result.sessionToken);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : t('signIn.error.default'));
+      setError(apiErrorText(caught, 'signIn.error.default'));
       setPassword('');
     } finally {
       setBusy(false);
@@ -46,6 +73,14 @@ export function SignInScreen({ onSignedIn }: Props) {
         <p className="ob-small" style={{ textAlign: 'center', margin: 0 }}>
           {t('signIn.subtitle')}
         </p>
+
+        {/* Above the card, not inside it: it explains why this screen is here,
+            which is not about the fields below. */}
+        {notice && (
+          <p className="ob-small" style={{ textAlign: 'center', margin: 0, color: 'var(--accent)' }}>
+            {t(notice)}
+          </p>
+        )}
 
         <Card>
           <form

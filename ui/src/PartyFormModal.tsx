@@ -3,22 +3,30 @@
  * (docs/LEAD_GENERATION_FLOW.md §3.1's "a customer standing at the counter is
  * often new").
  *
- * **Every column the record has, not the five it used to offer.** That is the
- * change that matters here; the container being a centred modal rather than a
- * right-hand drawer is secondary, and follows the standing rule that a record's
- * detail opens centred over the list it came from. A form that offers five of a
- * party's fourteen fields is not a shorter form — it is a form that quietly
- * cannot record an address, so somebody writes it in the notes.
+ * **Every column the record has, not the five it used to offer.** A form that
+ * offers five of a party's fourteen fields is not a shorter form — it is a form
+ * that quietly cannot record an address, so somebody writes it in the notes.
  *
- * The name is kept for its call sites; it is a modal now.
+ * Lives in `ui/` and takes a **transport**, like `NewLeadScreen` and
+ * `DocumentsScreen`: the two panels reach the same data differently — the
+ * Office queues through its offline outbox and gets back an id, the Master
+ * writes straight to its own database and gets back the whole record — so this
+ * component speaks one narrow interface and never a panel's api client. It was
+ * an Office-only component until the Master gained a Parties screen; copying it
+ * across would have made every future field a two-file change, which is the
+ * drift `master/tests/no-duplicate-ui.test.ts` and the PartyAccess parity test
+ * exist to stop.
+ *
+ * It renders a centred modal, per the standing rule that a record's detail
+ * opens centred over the list it came from.
  *
  * Props are deliberately generic rather than Add-Lead-specific:
  *
  *   party     — pass one to edit it; omit to create.
- *   onCreated — called once the write is queued. Writes go through the outbox
- *               like everything else in this panel, so the server hands back an
- *               id and nothing else; the caller gets that plus the fields just
- *               typed, which is enough to select the new party immediately.
+ *   onCreated — called once the write is accepted. The Office's write is queued
+ *               through the outbox, so the server hands back an id and nothing
+ *               else; the caller gets that plus the fields just typed, which is
+ *               enough to select the new party immediately.
  *   onUpdated — the caller-typed name, for the confirmation toast.
  *
  * Party-specific product rate overrides are deliberately not here: they need
@@ -27,21 +35,17 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import type { Party } from '@orderbook/shared';
+import type { Party, PartyInput } from '@orderbook/shared';
 
-import { api } from '../api';
-import {
-  Button,
-  Field,
-  FieldGroup,
-  Input,
-  Modal,
-  Textarea,
-  t,
-  useCommand,
-  useEnterToAdvance,
-} from '@orderbook/ui';
+import { Button } from './Button.js';
+import { Field, FieldGroup } from './FieldGrid.js';
+import { Input, Textarea } from './Form.js';
+import { Modal } from './Modal.js';
+import { t } from './i18n.js';
+import { useCommand } from './KeyboardProvider.js';
+import { useEnterToAdvance } from './useEnterToAdvance.js';
 
+/** What the caller learns about a party that was just created. */
 export interface CreatedParty {
   id: string;
   name: string;
@@ -49,8 +53,27 @@ export interface CreatedParty {
   city: string | null;
 }
 
-interface PartyDrawerProps {
+/**
+ * Narrow on purpose. A transport that exposed a whole api client would let this
+ * component reach for anything, and the two panels' clients are not the same
+ * shape — only the two calls below are common to both.
+ */
+export interface PartyFormTransport {
+  /** Resolves to the new party's id. The Office's id is the one its outbox minted. */
+  createParty(input: PartyInput): Promise<{ id: string }>;
+  /**
+   * `baseFieldHlc` is what this screen last saw for each field, so the Master's
+   * merge can tell an ordinary sequential edit apart from a real clash.
+   */
+  updateParty(
+    id: string,
+    input: PartyInput & { baseFieldHlc?: Record<string, string> },
+  ): Promise<unknown>;
+}
+
+interface PartyFormModalProps {
   open: boolean;
+  transport: PartyFormTransport;
   party?: Party | null;
   onClose: () => void;
   onCreated?: (party: CreatedParty) => void;
@@ -75,19 +98,22 @@ const EMPTY = {
 
 type Draft = typeof EMPTY;
 
-export function PartyDrawer({
+export function PartyFormModal({
   open,
+  transport,
   party,
   onClose,
   onCreated,
   onUpdated,
   onError,
-}: PartyDrawerProps) {
+}: PartyFormModalProps) {
   const editing = party ?? null;
 
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [busy, setBusy] = useState(false);
   const fields = useRef<HTMLDivElement>(null);
+  const transportRef = useRef(transport);
+  transportRef.current = transport;
 
   useEnterToAdvance(fields, () => void save(), open);
   useCommand('record.save', open && !busy ? () => void save() : null);
@@ -151,13 +177,13 @@ export function PartyDrawer({
     setBusy(true);
     try {
       if (editing) {
-        // What this screen last saw for each field — lets the Master's merge
-        // tell an ordinary sequential edit apart from a real clash against
-        // whatever changed elsewhere since.
-        await api.updateParty(editing.id, { ...input, baseFieldHlc: editing.sync.fieldHlc });
+        await transportRef.current.updateParty(editing.id, {
+          ...input,
+          baseFieldHlc: editing.sync.fieldHlc,
+        });
         onUpdated?.(name);
       } else {
-        const result = await api.createParty(input);
+        const result = await transportRef.current.createParty(input);
         onCreated?.({ id: result.id, name, phone: input.phone, city: input.city });
         setDraft(EMPTY);
       }

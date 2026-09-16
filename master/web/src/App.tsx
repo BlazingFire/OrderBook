@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import type {
   DashboardSummary,
+  MessageKey,
   OfficePanelWithPresence,
   RecycleBinEntityType,
   ReportKind,
@@ -38,6 +39,8 @@ import {
   KeyboardOverlays,
   KeyboardProvider,
   PaletteButton,
+  ConfirmProvider,
+  onSessionEnded,
   ResetProvider,
   ScreenHost,
   Splash,
@@ -79,6 +82,8 @@ import { LeadsOrdersScreen } from './screens/LeadsOrdersScreen';
 import { NewLeadScreen } from './screens/NewLeadScreen';
 import { LogsScreen } from './screens/LogsScreen';
 import { PanelsScreen } from './screens/PanelsScreen';
+import { ChangePasswordDialog } from './components/ChangePasswordDialog';
+import { PartiesScreen } from './screens/PartiesScreen';
 import { RecycleBinScreen } from './screens/RecycleBinScreen';
 import { ReportsScreen } from './screens/ReportsScreen';
 import { SETTINGS_TAB_IDS, SettingsScreen } from './screens/SettingsScreen';
@@ -90,6 +95,7 @@ type Tab =
   | 'dashboard'
   | 'panels'
   | 'orders'
+  | 'parties'
   | 'inventory'
   | 'reports'
   | 'documents'
@@ -122,6 +128,7 @@ const SCREEN_ENTITIES: Record<string, readonly string[]> = {
   fields: ['option_list', 'custom_field', 'pipeline'],
   access: ['user', 'role'],
   partyAccess: ['party'],
+  parties: ['party'],
   recycleBin: ['lead', 'order', 'party', 'product', 'role', 'user', 'document_template'],
   conflicts: ['sync_conflict'],
 };
@@ -144,13 +151,15 @@ function readHash(): string {
 export function App() {
   return (
     <ToastProvider>
-      <SubNavProvider>
-        <TopbarActionsProvider>
-          <ResetProvider>
-            <MasterPanel />
-          </ResetProvider>
-        </TopbarActionsProvider>
-      </SubNavProvider>
+      <ConfirmProvider>
+        <SubNavProvider>
+          <TopbarActionsProvider>
+            <ResetProvider>
+              <MasterPanel />
+            </ResetProvider>
+          </TopbarActionsProvider>
+        </SubNavProvider>
+      </ConfirmProvider>
     </ToastProvider>
   );
 }
@@ -159,6 +168,9 @@ function MasterPanel() {
   const [phase, setPhase] = useState<Phase>('loading');
   const [user, setUser] = useState<SignedInUser | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const [changingPassword, setChangingPassword] = useState(false);
+  /** Why this window is at the sign-in screen, when it did not sign out itself. */
+  const [signInNotice, setSignInNotice] = useState<MessageKey | null>(null);
   const [tab, setTab] = useState<Tab>('dashboard');
   /*
    * Which sub-page each module is showing, keyed by module. A screen's tabs
@@ -289,6 +301,25 @@ function MasterPanel() {
     };
   }, [bootAttempt]);
 
+  /*
+   * The session can end without this window doing anything: an administrator
+   * deactivates the account, the server restarts, or — the common one — this
+   * person changes their own password, which invalidates every session they
+   * hold including this one. `api.ts` publishes it from the single place every
+   * request passes through; all this has to do is stop rendering a signed-in
+   * shell and say why.
+   */
+  useEffect(
+    () =>
+      onSessionEnded((reason) => {
+        setUser(null);
+        setSessionToken(null);
+        setSignInNotice(reason);
+        setPhase('signed-out');
+      }),
+    [],
+  );
+
   // One socket for the whole session, opened once signed in.
   useEffect(() => {
     if (phase !== 'ready' || !sessionToken) return;
@@ -391,9 +422,11 @@ function MasterPanel() {
   if (phase === 'signed-out' || !user) {
     return (
       <SignInScreen
+        notice={signInNotice}
         onSignedIn={(signedInUser, token) => {
           setUser(signedInUser);
           setSessionToken(token);
+          setSignInNotice(null);
           setPhase('ready');
         }}
       />
@@ -415,6 +448,10 @@ function MasterPanel() {
   // be able to see how it is divided without also being able to change it.
   const canViewPartyAccess =
     user.permissions.includes('party.assign') || user.permissions.includes('party.accessAll');
+  // Parties are read by anyone who can reach a lead — the list is the same
+  // book the Office Panel browses. Creating and editing are gated inside the
+  // screen on their own permissions.
+  const canViewParties = user.permissions.includes('parties.view');
   const canViewLogs = user.permissions.includes('logs.view');
   const canViewRecycleBin = user.permissions.includes('recycleBin.view');
   const canViewReports = user.permissions.includes('reports.view');
@@ -461,6 +498,7 @@ function MasterPanel() {
   const workItems: Array<NavItem | null> = [
     { id: 'dashboard', label: t('nav.master.dashboard'), icon: 'dashboard' },
     { id: 'orders', label: t('nav.master.leadsOrders'), icon: 'orders' },
+    canViewParties ? { id: 'parties', label: t('nav.master.parties'), icon: 'parties' } : null,
     {
       id: 'inventory',
       label: t('nav.master.inventory'),
@@ -660,6 +698,11 @@ function MasterPanel() {
         onClick={resetActiveScreen}
       />
       <PaletteButton />
+      {/* Beside Sign out, because the two are the same kind of thing — what you
+          do with your own account — and the topbar is on every screen. */}
+      <button className="ob-btn ob-btn--ghost" onClick={() => setChangingPassword(true)}>
+        {t('action.changePassword')}
+      </button>
       <button className="ob-btn ob-btn--ghost" onClick={() => void signOut()}>
         {t('action.signOut')}
       </button>
@@ -780,6 +823,15 @@ function MasterPanel() {
       ),
     },
     { id: 'panels', render: () => <PanelsScreen panels={panels} onRefresh={refreshPanels} /> },
+    {
+      id: 'parties',
+      render: () => (
+        <PartiesScreen
+          revision={revisionOf(revisions, 'parties')}
+          permissions={user.permissions}
+        />
+      ),
+    },
     {
       id: 'orders',
       render: () =>
@@ -956,6 +1008,10 @@ function MasterPanel() {
         }}
       />
       {syncOverlay}
+      <ChangePasswordDialog
+        open={changingPassword}
+        onClose={() => setChangingPassword(false)}
+      />
     </>
   );
 

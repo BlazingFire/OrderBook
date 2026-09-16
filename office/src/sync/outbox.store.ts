@@ -81,6 +81,13 @@ export async function settle(mutationIds: string[]): Promise<void> {
 }
 
 /**
+ * Payload keys that may carry a record id this panel minted offline. Kept in
+ * step with `PAYLOAD_ID_KEYS` in `master/src/services/sync.service.ts`, which
+ * resolves the same references on the receiving end.
+ */
+const PAYLOAD_ID_KEYS = ['partyId', 'ownerId', 'productId'] as const;
+
+/**
  * Rewrite every queued mutation that still refers to a temporary id.
  *
  * A panel can queue "create lead X" and "move lead X to Quoted" before either
@@ -88,14 +95,53 @@ export async function settle(mutationIds: string[]): Promise<void> {
  * have to point at it — otherwise the Master resolves them through `id_map`,
  * which works, but leaves the panel's own queue describing a record by a name
  * nothing else uses.
+ *
+ * References *inside* a payload are rewritten too, not just `entityId`: a lead
+ * queued against a party this panel created carries the party's temporary id as
+ * `payload.partyId`, and leaving it pointing at a settled id makes the panel's
+ * own queue disagree with what it already knows about the record.
  */
 export async function remapIds(mapping: Map<string, string>): Promise<void> {
   if (mapping.size === 0) return;
 
+  const remap = (value: unknown): unknown =>
+    typeof value === 'string' ? (mapping.get(value) ?? value) : value;
+
   await mutate((current) =>
     current.map((mutation) => {
+      const payload: Record<string, unknown> = { ...mutation.payload };
+      let changed = false;
+
+      for (const key of PAYLOAD_ID_KEYS) {
+        if (!(key in payload)) continue;
+        const next = remap(payload[key]);
+        if (next !== payload[key]) {
+          payload[key] = next;
+          changed = true;
+        }
+      }
+
+      if (Array.isArray(payload.items)) {
+        const items = payload.items.map((item) => {
+          if (typeof item !== 'object' || item === null) return item;
+          const line = item as Record<string, unknown>;
+          if (!('productId' in line)) return item;
+          const next = remap(line.productId);
+          if (next === line.productId) return item;
+          changed = true;
+          return { ...line, productId: next };
+        });
+        if (changed) payload.items = items;
+      }
+
       const permanent = mapping.get(mutation.entityId);
-      return permanent ? { ...mutation, entityId: permanent } : mutation;
+      if (!permanent && !changed) return mutation;
+
+      return {
+        ...mutation,
+        ...(permanent ? { entityId: permanent } : {}),
+        ...(changed ? { payload } : {}),
+      };
     }),
   );
 }

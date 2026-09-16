@@ -10,6 +10,7 @@
  */
 
 import { DEVELOPER_RESET_CONFIRMATION, DEVELOPER_TOKEN_HEADER } from '@orderbook/shared';
+import { publishSessionEnded } from '@orderbook/ui';
 import type {
   PickKind,
   ActivityLogEntry,
@@ -259,6 +260,18 @@ async function send<T>(
       messageKey?: MessageKey;
       params?: MessageParams;
     } | null;
+
+    /*
+     * A 401 is not an ordinary failure — the session this window is rendering
+     * as signed in no longer exists. Announced once, here, because every caller
+     * routes through this function: the alternative was eleven screens each
+     * showing a generic error toast while the shell went on believing it was
+     * signed in. Still thrown afterwards, so the caller's own error path runs
+     * exactly as before.
+     */
+    if (response.status === 401) {
+      publishSessionEnded(detail?.messageKey ?? 'signIn.notice.sessionEnded');
+    }
 
     throw new ApiError(
       detail?.message ?? 'Request failed',

@@ -7,9 +7,11 @@
  * so `tab` keeps working exactly as App.tsx already drives it; this screen
  * only republishes its search/filters into the shell's filter strip.
  *
- * Creation reuses `PartyDrawer` (extracted from the inline "+ New party" flow
- * that used to live only in AddLeadScreen) and a new `ProductDrawer` built the
- * same way around the already-existing, previously UI-less `api.createProduct`.
+ * Creation reuses the shared `PartyFormModal` (extracted from the inline
+ * "+ New party" flow
+ * that used to live only in AddLeadScreen, then moved into `ui/` when the
+ * Master gained its own Parties screen) and a `ProductDrawer` built the same
+ * way around the already-existing, previously UI-less `api.createProduct`.
  * Neither drawer is told to wait for the created record to come back through
  * the merged view before reporting success — the panel's SSE stream applies a
  * queued write to `view` right away (the same reason a lead saved offline
@@ -39,7 +41,7 @@
  * `LeadBoardScreen` + `LeadDetail` uses for leads. The detail replaces the list
  * and carries one way back in a fixed place, with its own entry nested under
  * Parties or Products in the sidebar while it is open. Editing is one button
- * inside the detail, not the row click itself — `PartyDrawer`/`ProductDrawer`
+ * inside the detail, not the row click itself — the party form/`ProductDrawer`
  * both double as edit forms, and stay overlays because a form is a dialog.
  */
 
@@ -47,17 +49,19 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Party, Product } from '@orderbook/shared';
 
 import { ApiError, api, type LocalView } from '../api';
-import { PartyDrawer, type CreatedParty } from '../components/PartyDrawer';
+import { partyFormTransport } from '../partyFormTransport';
 import { ProductDrawer, type CreatedProduct } from '../components/ProductDrawer';
 import { ProductImportModal } from '../components/ProductImportModal';
 import { StockByColour } from '../components/StockCell';
 import {
   Button,
+  type CreatedParty,
   DataTable,
   EditorScreen,
   EmptyState,
   ErrorState,
   FilterChip,
+  PartyFormModal,
   Input,
   LoadMorePager,
   ProgressiveImage,
@@ -130,7 +134,7 @@ export function CatalogScreen({
 
   const [partySearch, setPartySearch] = useState('');
   const [cityFilter, setCityFilter] = useState<string | null>(null);
-  const [partyDrawerOpen, setPartyDrawerOpen] = useState(false);
+  const [partyFormOpen, setPartyFormOpen] = useState(false);
   const [openPartyId, setOpenPartyId] = useState<string | null>(null);
   const [editingParty, setEditingParty] = useState<Party | null>(null);
 
@@ -280,7 +284,7 @@ export function CatalogScreen({
   }, [pending, page, byId]);
 
   function onPartyCreated(party: CreatedParty): void {
-    setPartyDrawerOpen(false);
+    setPartyFormOpen(false);
     toast.push(t('catalog.parties.created', { name: party.name }));
   }
 
@@ -356,7 +360,7 @@ export function CatalogScreen({
           </FilterChip>
         ))}
         <span style={{ flex: 1 }} />
-        <Button variant="primary" size="sm" icon="plus" onClick={() => setPartyDrawerOpen(true)}>
+        <Button variant="primary" size="sm" icon="plus" onClick={() => setPartyFormOpen(true)}>
           {t('catalog.parties.new')}
         </Button>
       </>
@@ -419,7 +423,8 @@ export function CatalogScreen({
             setOpenPartyId(null);
           }}
         />
-        <PartyDrawer
+        <PartyFormModal
+          transport={partyFormTransport}
           open={editingParty !== null}
           party={editingParty}
           onClose={() => setEditingParty(null)}
@@ -520,7 +525,7 @@ export function CatalogScreen({
                 title={t('catalog.parties.empty.title')}
                 description={t('catalog.parties.empty.description')}
                 actionLabel={t('catalog.parties.new')}
-                onAction={() => setPartyDrawerOpen(true)}
+                onAction={() => setPartyFormOpen(true)}
               />
             ) : (
               <EmptyState title={t('catalog.parties.empty.filtered')} />
@@ -528,13 +533,15 @@ export function CatalogScreen({
           }
         />
 
-        <PartyDrawer
-          open={partyDrawerOpen}
-          onClose={() => setPartyDrawerOpen(false)}
+        <PartyFormModal
+          transport={partyFormTransport}
+          open={partyFormOpen}
+          onClose={() => setPartyFormOpen(false)}
           onCreated={onPartyCreated}
           onError={onDrawerError}
         />
-        <PartyDrawer
+        <PartyFormModal
+          transport={partyFormTransport}
           open={editingParty !== null}
           party={editingParty}
           onClose={() => setEditingParty(null)}
@@ -660,7 +667,9 @@ export function CatalogScreen({
       : []),
     {
       key: 'stock',
-      header: t(freeToSell ? 'catalog.products.column.stock' : 'catalog.products.column.stockOnHand'),
+      header: t(
+        freeToSell ? 'catalog.products.column.stock' : 'catalog.products.column.stockOnHand',
+      ),
       width: '1.3fr',
       render: (product) => (
         <StockByColour productId={product.id} stock={view.stock} colourHex={colourHex} />

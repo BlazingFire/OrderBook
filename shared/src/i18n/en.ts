@@ -530,6 +530,7 @@ export const EN_MESSAGES = {
   'common.edit': 'Edit',
   'common.close': 'Close',
   'common.delete': 'Delete',
+  'common.confirm': 'Confirm',
   'common.search': 'Search',
   'common.restore': 'Restore',
   'common.export': 'Export',
@@ -1885,6 +1886,7 @@ export const EN_MESSAGES = {
   'nav.master.leadsOrders': 'Leads & orders',
   'nav.master.logs': 'Activity log',
   'nav.master.panels': 'Office panels',
+  'nav.master.parties': 'Parties',
   'nav.master.partyAccess': 'Party access',
   'nav.master.recycleBin': 'Recycle bin',
   'nav.master.reports': 'Reports',
@@ -2147,6 +2149,45 @@ export const EN_MESSAGES = {
   'panels.table.status': 'Status',
   'panels.table.storage': 'Storage',
   'party.createFailed': 'Could not create the party',
+
+  // --- The Master's own Parties screen ---
+  // Deliberately not `catalog.parties.created`: that text says "syncs when the
+  // Master is reachable", which is false on the Master itself.
+  // --- Change your own password ---
+  'access.changePassword.title': 'Change your password',
+  'access.changePassword.current': 'Current password',
+  'access.changePassword.new': 'New password',
+  'access.changePassword.confirm': 'Confirm new password',
+  'access.changePassword.mismatch': 'The two new passwords do not match',
+  'access.changePassword.submit': 'Change password',
+  'access.changePassword.failed': 'Could not change the password',
+  'access.changePassword.signsYouOut':
+    'Changing it signs you out everywhere, including this window.',
+  'action.changePassword': 'Change password',
+
+  // --- Session loss, told at the sign-in screen the window was dropped to ---
+  'signIn.notice.sessionEnded': 'Your session ended. Sign in again.',
+  'signIn.notice.passwordChanged': 'Your password changed. Sign in with the new one.',
+
+  'leadsOrders.delete.lead': 'Delete lead',
+  'leadsOrders.delete.order': 'Delete order',
+  'leadsOrders.delete.lead.title': 'Delete lead {id}?',
+  'leadsOrders.delete.order.title': 'Delete order {id}?',
+  'leadsOrders.delete.body': 'It goes to the Recycle Bin and can be restored.',
+  'leadsOrders.delete.failed': 'Could not delete that record',
+  'leadsOrders.delete.blocked': 'Still in use by {items} — deal with those first',
+
+  'parties.created': '{name} saved',
+  'parties.updated': '{name} updated',
+  'parties.deleted': '{name} deleted',
+  'parties.deleteFailed': 'Could not delete the party',
+  'parties.deleteBlocked': 'Still in use by {items} — deal with those first',
+  'parties.delete.title': 'Delete {name}?',
+  'parties.delete.body': 'It goes to the Recycle Bin and can be restored.',
+  'parties.delete.confirm': 'Delete party',
+  'parties.error.load': 'Could not load parties',
+  'parties.loadMore': 'Load more',
+  'parties.summary': 'Showing {shown} of {total}',
   'party.detail.access.manage':
     'This party is assigned to you. You can see and change its records.',
   'party.detail.access.open':

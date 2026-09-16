@@ -17,9 +17,10 @@
  * with no editor — a control somebody can never use is absent, not greyed
  * (`AccessScreen.tsx`'s convention).
  *
- * This is also the Master Panel's first parties list. It has never had one:
- * parties are created and edited on the Office Panel's Catalog screen, and this
- * screen deliberately does not duplicate that — it edits access, not the party.
+ * It shows parties, but it is not the parties list. Both panels have one of
+ * those — the Office Panel's Catalog screen and the Master's `PartiesScreen`,
+ * which share one form (`PartyFormModal` in `ui/`). This screen deliberately
+ * does not duplicate either: it edits access, not the party.
  *
  * **This file is byte-identical to `office/web/src/screens/PartyAccessScreen.tsx`
  * and must stay that way** — `master/tests/party-access-screen-parity.test.ts`

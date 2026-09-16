@@ -284,7 +284,61 @@ function payloadAs<T>(mutation: Mutation): T {
   return mutation.payload as T;
 }
 
-async function route(mutation: Mutation, actor: ActorContext): Promise<MutationResult> {
+/**
+ * Payload keys that may carry a record id a panel minted offline.
+ *
+ * `partyId`/`ownerId`/`productId` are the scalar references; `items[].productId`
+ * is the one nested reference the line-item payloads carry. Everything else in
+ * a payload is a value, not a reference.
+ */
+const PAYLOAD_ID_KEYS = ['partyId', 'ownerId', 'productId'] as const;
+
+/**
+ * Promote every temporary id *inside* a payload to its permanent one.
+ *
+ * `route()` used to resolve only `mutation.entityId`, on the assumption that a
+ * panel can mint a temporary id for the record being written but never for one
+ * it points at. That is false for the flow the panel ships: Add Lead's inline
+ * party drawer creates a party — minting `A3F9K2…` — and the lead saved
+ * immediately after references it as `payload.partyId`. `lead.service.ts` does
+ * an exact-match party lookup with no `id_map` fallback, threw
+ * `validation.lead.partyMissing`, and `applyOne` recorded that as a *permanent*
+ * rejection, so the lead was refused forever and the panel dropped it from the
+ * outbox with the optimistic overlay. The lead vanished with no trace.
+ *
+ * Resolved for every mutation kind rather than per-case, so a kind added later
+ * cannot forget: `resolveId` returns the id unchanged when `id_map` has no row,
+ * so a permanent id passes through untouched. Ordering is safe — the outbox
+ * preserves enqueue order, `party.create` precedes `lead.create` in the batch,
+ * and `mapTemporaryId` commits its own transaction before `route()` returns.
+ */
+async function resolvePayloadIds(mutation: Mutation, actor: ActorContext): Promise<Mutation> {
+  const map = async (value: unknown): Promise<unknown> =>
+    typeof value === 'string' && isTemporaryId(value)
+      ? await identityRepo.resolveId(actor.tenantId, value)
+      : value;
+
+  const payload: Record<string, unknown> = { ...mutation.payload };
+
+  for (const key of PAYLOAD_ID_KEYS) {
+    if (key in payload) payload[key] = await map(payload[key]);
+  }
+
+  if (Array.isArray(payload.items)) {
+    payload.items = await Promise.all(
+      payload.items.map(async (item) => {
+        if (typeof item !== 'object' || item === null) return item;
+        const line = item as Record<string, unknown>;
+        return 'productId' in line ? { ...line, productId: await map(line.productId) } : line;
+      }),
+    );
+  }
+
+  return { ...mutation, payload };
+}
+
+async function route(incoming: Mutation, actor: ActorContext): Promise<MutationResult> {
+  const mutation = await resolvePayloadIds(incoming, actor);
 
   switch (mutation.kind) {
     case 'lead.create': {

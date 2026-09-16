@@ -119,6 +119,118 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
       expect(mapped?.permanent_id).toBe('LD0000000001');
     });
 
+    it('resolves a temporary party id inside a lead payload, in the same batch', async () => {
+      // The flow this is about: a salesperson opens Add Lead, uses the inline
+      // party drawer to add the customer standing at the counter, picks
+      // products and saves. Both writes queue behind one another in the outbox
+      // and arrive in one batch.
+      //
+      // `route()` used to resolve `mutation.entityId` and nothing else, so
+      // `payload.partyId` reached `createLead` as the 15-character temporary id
+      // the panel minted. `lead.service.ts` does an exact-match party lookup
+      // with no `id_map` fallback, threw `validation.lead.partyMissing`, and
+      // `applyOne` recorded that as a **permanent** rejection — replaying it
+      // returned the same refusal forever, and the panel settled it out of the
+      // outbox along with the optimistic overlay. The lead vanished with no
+      // trace and nothing ever told the person who typed it.
+      //
+      // Every other `lead.create` test in this file uses a permanent party id,
+      // which is why nothing caught it.
+      const product = await catalog.createProduct(
+        { productCode: 'OFF-02', name: 'Gloss Tile', rate: 15_000 },
+        actor,
+      );
+
+      const temporaryPartyId = formatTemporaryId(PANEL_A, 21);
+      const temporaryLeadId = formatTemporaryId(PANEL_A, 22);
+
+      const response = await sync.applyPush(
+        {
+          mutations: [
+            mutation({
+              kind: 'party.create',
+              entity: 'party',
+              entityId: temporaryPartyId,
+              payload: { name: 'Counter Customer' },
+            }),
+            mutation({
+              kind: 'lead.create',
+              entity: 'lead',
+              entityId: temporaryLeadId,
+              hlc: hlcFor(PANEL_A, 2_000),
+              payload: {
+                partyId: temporaryPartyId,
+                items: [
+                  {
+                    productId: product.id,
+                    packaging: 'carton',
+                    quantities: [{ colour: 'Ivory', quantity: 2 }],
+                  },
+                ],
+              },
+            }),
+          ],
+        },
+        actor,
+      );
+
+      expect(response.results.map((result) => result.status)).toEqual(['applied', 'applied']);
+
+      const partyId = response.results[0]?.entityId;
+      const leadId = response.results[1]?.entityId;
+      expect(partyId).toBeTruthy();
+
+      const lead = await db()('leads').where({ id: leadId }).first();
+      // The lead points at the party's *permanent* id, not the one the panel
+      // minted — which is what makes it survive the round trip.
+      expect(lead?.party_id).toBe(partyId);
+    });
+
+    it('resolves a temporary product id inside a lead payload', async () => {
+      // The same failure with the other reference: a product created on the
+      // panel and used on a lead in the same offline session came back as
+      // `validation.lead.productMissing`.
+      const party = await catalog.createParty({ name: 'Walk-in' }, actor);
+      const temporaryProductId = formatTemporaryId(PANEL_A, 31);
+
+      const response = await sync.applyPush(
+        {
+          mutations: [
+            mutation({
+              kind: 'product.create',
+              entity: 'product',
+              entityId: temporaryProductId,
+              payload: { productCode: 'OFF-03', name: 'Rustic Tile', rate: 12_000 },
+            }),
+            mutation({
+              kind: 'lead.create',
+              entity: 'lead',
+              entityId: formatTemporaryId(PANEL_A, 32),
+              hlc: hlcFor(PANEL_A, 2_000),
+              payload: {
+                partyId: party.id,
+                items: [
+                  {
+                    productId: temporaryProductId,
+                    packaging: 'carton',
+                    quantities: [{ colour: 'Ivory', quantity: 1 }],
+                  },
+                ],
+              },
+            }),
+          ],
+        },
+        actor,
+      );
+
+      expect(response.results.map((result) => result.status)).toEqual(['applied', 'applied']);
+
+      const productId = response.results[0]?.entityId;
+      const lines = await db()('line_items').where({ parent_id: response.results[1]?.entityId });
+      expect(lines).toHaveLength(1);
+      expect(lines[0]?.product_id).toBe(productId);
+    });
+
     it('applies a replayed batch once, not twice', async () => {
       const { party, product } = await seed();
       const only = mutation({

@@ -38,6 +38,7 @@ import {
   KeyboardOverlays,
   KeyboardProvider,
   PaletteButton,
+  ConfirmProvider,
   ResetProvider,
   ScreenHost,
   Splash,
@@ -122,11 +123,13 @@ function withTimeout<T>(work: Promise<T>, ms = 10_000): Promise<T> {
 export function App() {
   return (
     <ToastProvider>
-      <SubNavProvider>
-        <ResetProvider>
-          <OfficePanel />
-        </ResetProvider>
-      </SubNavProvider>
+      <ConfirmProvider>
+        <SubNavProvider>
+          <ResetProvider>
+            <OfficePanel />
+          </ResetProvider>
+        </SubNavProvider>
+      </ConfirmProvider>
     </ToastProvider>
   );
 }

@@ -1,0 +1,48 @@
+/**
+ * Turn whatever a failed api call threw into a sentence in the reader's own
+ * language.
+ *
+ * The three-tier error pipeline — a specific `messageKey`, failing that the
+ * coarse `error.<code>` token, failing that English — was built end to end on
+ * both servers and had **no client**. A repo-wide grep for `.messageKey` in
+ * either front end found only the two assignments that create it, the two
+ * server-side serialisers, and the type definitions. Every screen did
+ * `caught instanceof Error ? caught.message : …`, which renders the server's
+ * *English* `message` and throws the key away. On a Hindi panel every failure
+ * was in English, including every sign-in failure.
+ *
+ * Structurally typed rather than taking each panel's own `ApiError` class:
+ * `ui/` cannot import from either panel, and the two classes are the same
+ * shape where it matters.
+ */
+
+import { errorMessageKey } from '@orderbook/shared';
+import type { MessageKey, MessageParams } from '@orderbook/shared';
+
+import { t } from './i18n.js';
+
+interface ApiErrorShape {
+  code: string;
+  messageKey?: MessageKey;
+  params?: MessageParams;
+}
+
+function isApiErrorShape(value: unknown): value is ApiErrorShape {
+  return (
+    value instanceof Error &&
+    'code' in value &&
+    typeof (value as { code: unknown }).code === 'string'
+  );
+}
+
+/**
+ * `fallback` is used only when the thrown value carries no code at all — a
+ * network stack failure, or something that is not an `Error`.
+ */
+export function apiErrorText(caught: unknown, fallback: MessageKey): string {
+  if (isApiErrorShape(caught)) {
+    if (caught.messageKey) return t(caught.messageKey, caught.params);
+    return t(errorMessageKey(caught.code));
+  }
+  return caught instanceof Error ? caught.message : t(fallback);
+}

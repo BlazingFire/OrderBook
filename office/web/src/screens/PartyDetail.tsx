@@ -18,7 +18,7 @@
  * lead" / "New lead for this party" buttons — both need the Add-Lead flow,
  * which this screen has no route to.
  *
- * Editing reuses `PartyDrawer`'s edit mode via `onEdit`, added alongside
+ * Editing reuses the shared party form's edit mode via `onEdit`, added alongside
  * this component specifically so this button would not be a dead end.
  */
 
