@@ -3,7 +3,7 @@
 Where everything is, and what each place is *for*. Read `HANDOFF.md` first for
 what is true right now; this file is the layout, which changes far more slowly.
 
-It exists because the repo is large enough (547 source files across six
+It exists because the repo is large enough (548 source files across six
 workspaces) that "find the file that does X" is otherwise a search rather than a
 lookup. If you add a directory, add a row here.
 
