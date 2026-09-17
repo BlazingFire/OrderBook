@@ -13,7 +13,7 @@ file assumes both.
 
 ### 1. Merge the branch
 
-`claude/hopeful-lovelace-q6f57v` is seven commits ahead of `main` and pushed, and
+`claude/hopeful-lovelace-q6f57v` is eight commits ahead of `main` and pushed, and
 **nothing has merged it**. The standing convention is that work lands on `main`;
 the branch exists only because the session was required to use one. Until it
 merges, `main` still has the lost-lead bug, no Master Parties screen, and four

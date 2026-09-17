@@ -191,7 +191,7 @@ was verified, so the next agent can trust the state without re-auditing.
 
 Scope: the owner's "tell me project status, make the structure understandable,
 complete pending tasks, update all files, take the data out because I'm deleting
-the sessions". Seven commits on `claude/hopeful-lovelace-q6f57v`, pushed, **not
+the sessions". Eight commits on `claude/hopeful-lovelace-q6f57v`, pushed, **not
 merged to `main`**.
 
 Closed fourteen of the nineteen open briefs, including all three blocking ones:
