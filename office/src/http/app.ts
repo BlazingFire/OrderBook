@@ -390,9 +390,11 @@ export function createApp(): Express {
       const { username, password } = req.body ?? {};
 
       if (typeof username !== 'string' || typeof password !== 'string') {
-        res
-          .status(400)
-          .json({ error: 'invalid_request', message: 'Enter your username and password' });
+        res.status(400).json({
+          error: 'invalid_request',
+          message: 'Enter your username and password',
+          messageKey: 'signin.credentialsRequired',
+        });
         return;
       }
 
@@ -400,7 +402,16 @@ export function createApp(): Express {
         res.json({ session: await userSession.signIn(username, password) });
       } catch (error) {
         if (error instanceof userSession.SignInError) {
-          res.status(401).json({ error: error.code, message: error.message });
+          // The same spread this file already uses for a forwarded refusal.
+          // Without it the Master's `messageKey` and its `{seconds}`/`{count}`
+          // placeholders died here, and the browser rendered English.
+          res.status(401).json({
+            error: error.code,
+            message: error.message,
+            ...(error.messageKey ? { messageKey: error.messageKey } : {}),
+            ...(error.params ? { params: error.params } : {}),
+            ...(error.details ? { details: error.details } : {}),
+          });
           return;
         }
         log.error('Sign-in failed unexpectedly', error);

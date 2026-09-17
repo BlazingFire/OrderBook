@@ -24,6 +24,7 @@ import {
   t,
   useResetGuard,
   type NewLeadTransport,
+  useConfirm,
 } from '@orderbook/ui';
 
 interface Props {
@@ -34,7 +35,22 @@ interface Props {
 
 export function NewLeadScreen({ focusNonce, onSaved, onCancel }: Props) {
   const [dirty, setDirty] = useState(false);
-  useResetGuard(dirty ? () => window.confirm(t('lead.add.discardConfirm')) : null);
+  /*
+   * A themed, translated confirm rather than `window.confirm`, which in
+   * Electron renders the bare Chromium prompt and blocks the renderer while it
+   * is up. `useResetGuard` takes a promise for exactly this reason.
+   */
+  const confirmDiscard = useConfirm();
+  useResetGuard(
+    dirty
+      ? () =>
+          confirmDiscard({
+            title: t('lead.add.discardConfirm'),
+            confirmLabel: t('lead.add.discard'),
+            tone: 'danger',
+          })
+      : null,
+  );
 
   const variantCache = useRef(new Map<string, Map<string, PartyProductVariant>>());
 
@@ -79,10 +95,7 @@ export function NewLeadScreen({ focusNonce, onSaved, onCancel }: Props) {
   async function refreshVariants(partyId: string): Promise<void> {
     try {
       const rows = await api.partyVariants(partyId);
-      variantCache.current.set(
-        partyId,
-        new Map(rows.map((row) => [row.productId, row])),
-      );
+      variantCache.current.set(partyId, new Map(rows.map((row) => [row.productId, row])));
     } catch {
       // No variants known for this party; the catalogue fills every line.
     }

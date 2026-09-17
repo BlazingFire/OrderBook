@@ -24,6 +24,7 @@
  */
 
 import { useEffect, useState, type FormEvent } from 'react';
+import type { MessageKey } from '@orderbook/shared';
 
 import { api, type ConnectionInfo, type PanelProfile, type PanelSession } from '../api';
 import {
@@ -35,8 +36,10 @@ import {
   Input,
   LogoLockup,
   OfflineBanner,
+  apiErrorText,
   rem,
   t,
+  useConfirm,
 } from '@orderbook/ui';
 
 import { StoragePathCard } from '../components/StoragePathCard';
@@ -44,9 +47,12 @@ import { StoragePathCard } from '../components/StoragePathCard';
 interface Props {
   connection: ConnectionInfo;
   onSignedIn: (session: PanelSession) => void;
+  /** Why the window is back here, when it did not get here by signing out. */
+  notice?: MessageKey | null;
 }
 
-export function SignInScreen({ connection, onSignedIn }: Props) {
+export function SignInScreen({ connection, onSignedIn, notice }: Props) {
+  const confirm = useConfirm();
   const [profiles, setProfiles] = useState<PanelProfile[]>([]);
   /** The face somebody picked. `null` means the plain username form. */
   const [chosen, setChosen] = useState<PanelProfile | null>(null);
@@ -75,7 +81,11 @@ export function SignInScreen({ connection, onSignedIn }: Props) {
       const { session } = await api.signIn(chosen?.username ?? username, password);
       onSignedIn(session);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : t('signin.errorFallback'));
+      // Renders the `messageKey` the transport carries, falling back to the
+      // coarse `error.<code>` token and only then to English. Every sign-in
+      // failure used to show the server's English sentence — on a Hindi panel
+      // too — because this line read `caught.message` and dropped the key.
+      setError(apiErrorText(caught, 'signin.errorFallback'));
       setPassword('');
     } finally {
       setBusy(false);
@@ -91,14 +101,22 @@ export function SignInScreen({ connection, onSignedIn }: Props) {
     // exists for — the person removed cannot sign in here at all until it
     // comes back. That is right when somebody leaves and wrong as a slip, and
     // nothing else on this screen can undo it.
-    if (!window.confirm(t('signin.forgetConfirm', { name: profile.displayName }))) return;
+    // A themed, translated dialog rather than `window.confirm`, which in
+    // Electron renders the bare Chromium prompt — untranslated, unthemed, and
+    // with the page origin in its title bar on Windows.
+    const confirmed = await confirm({
+      title: t('signin.forgetConfirm', { name: profile.displayName }),
+      confirmLabel: t('signin.forgetAction'),
+      tone: 'danger',
+    });
+    if (!confirmed) return;
 
     try {
       await api.forgetProfile(profile.userId);
     } catch (caught) {
       // The row used to disappear whatever happened, so a failed delete left
       // the list claiming a removal the panel had not made.
-      setError(caught instanceof Error ? caught.message : t('signin.forgetFailed'));
+      setError(apiErrorText(caught, 'signin.forgetFailed'));
       return;
     }
 
@@ -124,6 +142,14 @@ export function SignInScreen({ connection, onSignedIn }: Props) {
         <p className="ob-small" style={{ textAlign: 'center' }}>
           {connection.companyName ?? t('signin.subtitleFallback')}
         </p>
+
+        {/* Above the card: it explains why this screen is here, which is not
+            about the fields below. */}
+        {notice && (
+          <p className="ob-small" style={{ textAlign: 'center', margin: 0, color: 'var(--accent)' }}>
+            {t(notice)}
+          </p>
+        )}
 
         {/*
           Said before the attempt, not after it fails. Offline sign-in only works

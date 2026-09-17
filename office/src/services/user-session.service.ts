@@ -24,7 +24,13 @@
  * has to have exactly one answer.
  */
 
-import type { PanelUserSession, SessionRejection, SignedInUser } from '@orderbook/shared';
+import type {
+  MessageKey,
+  MessageParams,
+  PanelUserSession,
+  SessionRejection,
+  SignedInUser,
+} from '@orderbook/shared';
 
 import { createLogger } from '../lib/logger.js';
 import { mintVerifier, verifyAgainst } from '../lib/password.js';
@@ -36,12 +42,46 @@ import * as userStore from './user-store.js';
 
 const log = createLogger('user-session');
 
+/**
+ * A refusal this panel can explain.
+ *
+ * `messageKey`/`params` carry the Master's own structured answer through rather
+ * than flattening it. The Master distinguishes four outcomes — `signInFailed`,
+ * `tooManyAttempts`, `accountDeactivated`, `noRole` — and serialises each with
+ * a key, its placeholders and a code (`master/src/realtime/hub.ts`'s own doc
+ * comment exists to stop that being lost). This class used to take the English
+ * `message` alone, so all four collapsed into one sentence and one code, and
+ * every sign-in failure on a Hindi panel rendered in English.
+ */
 export class SignInError extends Error {
   constructor(
     message: string,
     readonly code: 'invalid_credentials' | 'unknown_here' | 'inactive' | 'locked_out',
+    readonly messageKey?: MessageKey,
+    readonly params?: MessageParams,
+    readonly details?: Record<string, unknown>,
   ) {
     super(message);
+  }
+}
+
+/**
+ * The Master's stable code, mapped onto the panel's narrower union.
+ *
+ * `invalid_credentials` is the default rather than the answer: it is what an
+ * unrecognised code means for the person in front of the screen, but a lockout
+ * and a deactivated account are different facts and the panel can say so.
+ */
+function signInCodeFor(code: string | undefined): SignInError['code'] {
+  switch (code) {
+    case 'locked_out':
+      return 'locked_out';
+    case 'inactive':
+      return 'inactive';
+    case 'unknown_here':
+      return 'unknown_here';
+    default:
+      return 'invalid_credentials';
   }
 }
 
@@ -83,16 +123,34 @@ export async function signIn(username: string, password: string): Promise<PanelS
   const trimmed = (username ?? '').trim();
 
   if (!trimmed || !password) {
-    throw new SignInError('Enter your username and password', 'invalid_credentials');
+    throw new SignInError(
+      'Enter your username and password',
+      'invalid_credentials',
+      'signin.credentialsRequired',
+    );
   }
 
   // Checked before the credential read, so a locked-out username costs an
   // attacker a round trip rather than a scrypt derivation.
   const locked = await attempts.lockedFor(trimmed);
   if (locked > 0) {
+    /*
+     * This panel's own offline counter, not the Master's.
+     *
+     * Decided deliberately: the panel throttles what it can see, which while
+     * offline is the only throttle there is, and while online the Master's
+     * check runs first and its answer wins (it reaches this code path through
+     * `signInAgainstMaster`'s refusal, carrying its own `{seconds}`). Two
+     * numbers that disagree between two states would be worse than none, so
+     * the panel only ever reports the one that actually applies to the attempt
+     * it is refusing.
+     */
+    const seconds = Math.max(1, Math.ceil(locked / 1000));
     throw new SignInError(
-      `Too many failed attempts. Try again in ${Math.ceil(locked / 1000)} seconds.`,
+      `Too many failed attempts. Try again in ${seconds} seconds.`,
       'locked_out',
+      'error.unauthorized.tooManyAttempts',
+      { seconds },
     );
   }
 
@@ -131,6 +189,19 @@ async function signInAgainstMaster(username: string, password: string): Promise<
     if (error instanceof MasterCommandError && error.unreachable) {
       log.warn(`Master unreachable during sign-in, trying this panel's own record`);
       return await signInOffline(username, password);
+    }
+
+    // The Master's own refusal, carried through rather than flattened. It was
+    // built with `code`, `messageKey`, `params` and `details` all intact one
+    // layer down, and this line used to discard every one of them.
+    if (error instanceof MasterCommandError) {
+      throw new SignInError(
+        error.message,
+        signInCodeFor(error.code),
+        error.messageKey,
+        error.params,
+        error.details,
+      );
     }
 
     throw new SignInError((error as Error).message, 'invalid_credentials');

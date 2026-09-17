@@ -161,7 +161,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'error.unauthorized.noRole':
     'इस खाते की कोई भूमिका नहीं है। किसी प्रशासक से भूमिका देने को कहें।',
   'error.unauthorized.currentPasswordIncorrect': 'आपका मौजूदा पासवर्ड सही नहीं है',
-  'error.unauthorized.tooManyAttempts': 'बहुत अधिक विफल प्रयास। एक मिनट में फिर कोशिश करें।',
+  'error.unauthorized.tooManyAttempts': 'बहुत अधिक विफल प्रयास। {seconds} सेकंड में फिर कोशिश करें।',
   'error.unauthorized.pairingNotAccepting':
     'मास्टर पैनल अभी नए पैनल स्वीकार नहीं कर रहा है। मास्टर पर "ऑफ़िस पैनल जोड़ें" खोलकर फिर कोशिश करें।',
   'error.unauthorized.incorrectPairingPassword': 'जोड़ी पासवर्ड गलत है',
@@ -4502,4 +4502,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'sync.rejections.dismissFailed': 'इन्हें हटाया नहीं जा सका',
   'sync.rejections.noReason': 'कोई कारण नहीं बताया गया',
   'action.reviewRefusals': 'देखें क्या अस्वीकार हुआ',
+  'error.unauthorized.signInFailedRemaining.one': 'साइन-इन विफल — {count} प्रयास बचा है',
+  'error.unauthorized.signInFailedRemaining.other': 'साइन-इन विफल — {count} प्रयास बचे हैं',
+  'signin.credentialsRequired': 'अपना उपयोगकर्ता नाम और पासवर्ड दर्ज करें',
+  'signin.forgetAction': 'इस पैनल से हटाएँ',
+  'lead.add.discard': 'ड्राफ़्ट हटाएँ',
 };

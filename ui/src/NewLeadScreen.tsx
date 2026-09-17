@@ -56,6 +56,7 @@ import { DateField, Input, Textarea } from './Form.js';
 import { useCommand } from './KeyboardProvider.js';
 import { useDebounced } from './useDebounced.js';
 import { useEnterToAdvance, useEscapeToPrevious } from './useEnterToAdvance.js';
+import { useConfirm } from './ConfirmDialog.js';
 import { useResetGuard } from './ResetSlot.js';
 
 /**
@@ -186,9 +187,7 @@ export function NewLeadScreen({ focusNonce, transport, onSaved, onCancel, onDirt
 
   const sourceOptions = useMemo(
     () =>
-      optionLists.filter(
-        (option) => option.listKey === 'lead.sourcePlatform' && option.isActive,
-      ),
+      optionLists.filter((option) => option.listKey === 'lead.sourcePlatform' && option.isActive),
     [optionLists],
   );
   const packagingOptions = useMemo(
@@ -406,7 +405,9 @@ export function NewLeadScreen({ focusNonce, transport, onSaved, onCancel, onDirt
     setModelOpen(false);
     setPhase('detail');
     window.setTimeout(() => {
-      const first = formRef.current?.querySelector<HTMLElement>('[data-detail-row] input, [data-detail-row] select');
+      const first = formRef.current?.querySelector<HTMLElement>(
+        '[data-detail-row] input, [data-detail-row] select',
+      );
       first?.focus();
     }, 0);
   }
@@ -450,7 +451,9 @@ export function NewLeadScreen({ focusNonce, transport, onSaved, onCancel, onDirt
   // --- Commit the group -------------------------------------------------------
 
   function rowReady(entry: SelectedModel): boolean {
-    return Boolean(entry.packaging.trim()) && Number(entry.boxes) > 0 && Boolean(entry.colour.trim());
+    return (
+      Boolean(entry.packaging.trim()) && Number(entry.boxes) > 0 && Boolean(entry.colour.trim())
+    );
   }
 
   function detailReady(): boolean {
@@ -540,7 +543,8 @@ export function NewLeadScreen({ focusNonce, transport, onSaved, onCancel, onDirt
     }
   }
 
-  const ready = Boolean(partyId) && committed.length > 0 && phase === 'pick' && selected.length === 0;
+  const ready =
+    Boolean(partyId) && committed.length > 0 && phase === 'pick' && selected.length === 0;
   const doneSteps = (partyId ? 1 : 0) + (resolvedSource ? 1 : 0) + (committed.length > 0 ? 1 : 0);
 
   const statusLine = !partyId
@@ -582,8 +586,21 @@ export function NewLeadScreen({ focusNonce, transport, onSaved, onCancel, onDirt
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [reviewOpen]);
 
+  /*
+   * A themed, translated confirm rather than `window.confirm`, which in
+   * Electron renders the bare Chromium prompt and blocks the renderer while it
+   * is up. `useResetGuard` takes a promise for exactly this reason.
+   */
+  const confirmDiscard = useConfirm();
   useResetGuard(
-    dirty ? () => window.confirm(t('lead.add.discardConfirm')) : null,
+    dirty
+      ? () =>
+          confirmDiscard({
+            title: t('lead.add.discardConfirm'),
+            confirmLabel: t('lead.add.discard'),
+            tone: 'danger',
+          })
+      : null,
   );
 
   const totalBoxes = committed.reduce(
@@ -728,10 +745,7 @@ export function NewLeadScreen({ focusNonce, transport, onSaved, onCancel, onDirt
                           event.preventDefault();
                           setPartySel(Math.max(0, partyPick - 1));
                         }
-                        if (
-                          (event.key === 'Enter' || event.key === 'Tab') &&
-                          parties[partyPick]
-                        ) {
+                        if ((event.key === 'Enter' || event.key === 'Tab') && parties[partyPick]) {
                           event.preventDefault();
                           chooseParty(parties[partyPick]);
                         }
@@ -874,7 +888,11 @@ export function NewLeadScreen({ focusNonce, transport, onSaved, onCancel, onDirt
                 <Eyebrow>{t('lead.add.flow.mainProduct')}</Eyebrow>
                 <Input
                   ref={categoryRef}
-                  value={categoryId ? (categoryRows.find((row) => row.id === categoryId)?.name ?? '') : categoryQuery}
+                  value={
+                    categoryId
+                      ? (categoryRows.find((row) => row.id === categoryId)?.name ?? '')
+                      : categoryQuery
+                  }
                   placeholder={t('lead.add.flow.mainProductPlaceholder')}
                   aria-label={t('lead.add.flow.mainProduct')}
                   autoComplete="off"
@@ -900,7 +918,9 @@ export function NewLeadScreen({ focusNonce, transport, onSaved, onCancel, onDirt
                     if (event.key === 'ArrowDown') {
                       event.preventDefault();
                       setCategoryOpen(true);
-                      setCategorySel(Math.min(categoryPick + 1, Math.max(0, categoryRows.length - 1)));
+                      setCategorySel(
+                        Math.min(categoryPick + 1, Math.max(0, categoryRows.length - 1)),
+                      );
                     }
                     if (event.key === 'ArrowUp') {
                       event.preventDefault();
@@ -983,10 +1003,7 @@ export function NewLeadScreen({ focusNonce, transport, onSaved, onCancel, onDirt
                     }
                     // Enter claimed: the model joins the box and the caret
                     // stays on this picker for the next one.
-                    if (
-                      (event.key === 'Enter' || event.key === 'Tab') &&
-                      modelRows[modelPick]
-                    ) {
+                    if ((event.key === 'Enter' || event.key === 'Tab') && modelRows[modelPick]) {
                       event.preventDefault();
                       void addModel(modelRows[modelPick]);
                     }
@@ -1020,10 +1037,7 @@ export function NewLeadScreen({ focusNonce, transport, onSaved, onCancel, onDirt
                             {row.size ?? ''}
                           </span>
                         </span>
-                        <span
-                          className="ob-mono ob-micro"
-                          style={{ color: 'var(--fg-tertiary)' }}
-                        >
+                        <span className="ob-mono ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
                           {row.productCode}
                         </span>
                       </button>
@@ -1038,7 +1052,10 @@ export function NewLeadScreen({ focusNonce, transport, onSaved, onCancel, onDirt
               </div>
             </div>
 
-            <p className="ob-micro" style={{ margin: `${rem(7)} 0 0`, color: 'var(--fg-tertiary)' }}>
+            <p
+              className="ob-micro"
+              style={{ margin: `${rem(7)} 0 0`, color: 'var(--fg-tertiary)' }}
+            >
               {t('lead.add.flow.mainProductHint')} {t('lead.add.flow.subProductHint')}
             </p>
 
@@ -1054,7 +1071,9 @@ export function NewLeadScreen({ focusNonce, transport, onSaved, onCancel, onDirt
               >
                 <Eyebrow>{t('lead.add.flow.selectedTitle')}</Eyebrow>
                 <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                  {selected.length > 0 ? t('lead.add.flow.modelCount', { count: selected.length }) : ''}
+                  {selected.length > 0
+                    ? t('lead.add.flow.modelCount', { count: selected.length })
+                    : ''}
                 </span>
                 <span style={{ flex: 1, minWidth: 0 }} />
                 {phase === 'detail' ? (
@@ -1142,7 +1161,12 @@ export function NewLeadScreen({ focusNonce, transport, onSaved, onCancel, onDirt
                   }}
                 >
                   <span style={{ flex: 1, minWidth: 0 }} />
-                  <Button variant="primary" data-field disabled={!detailReady()} onClick={addProduct}>
+                  <Button
+                    variant="primary"
+                    data-field
+                    disabled={!detailReady()}
+                    onClick={addProduct}
+                  >
                     {t('lead.add.flow.addProduct')}
                   </Button>
                 </div>
@@ -1243,7 +1267,9 @@ export function NewLeadScreen({ focusNonce, transport, onSaved, onCancel, onDirt
               return (
                 <div key={`${item.productId}-${index}`} className="ob-lead-line">
                   <div className="ob-lead-line__head">
-                    <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                    <span
+                      style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}
+                    >
                       <span className="ob-body-strong ob-ellipsis" style={{ fontSize: rem(15) }}>
                         {item.productName}
                       </span>
@@ -1393,7 +1419,10 @@ function DetailRow({
             onChange={(event) => onPatch({ colour: event.target.value })}
           >
             {(entry.colourChoices.length > 0
-              ? entry.colourChoices.map((choice) => ({ value: choice.colour, label: choice.colour }))
+              ? entry.colourChoices.map((choice) => ({
+                  value: choice.colour,
+                  label: choice.colour,
+                }))
               : colourOptions
             ).map((option) => (
               <option key={option.value} value={option.value}>

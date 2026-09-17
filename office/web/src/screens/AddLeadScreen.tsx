@@ -24,7 +24,7 @@ import type {
 } from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
-import { NewLeadScreen, t, useResetGuard, type NewLeadTransport } from '@orderbook/ui';
+import { NewLeadScreen, t, useResetGuard, type NewLeadTransport, useConfirm } from '@orderbook/ui';
 
 interface Props {
   view: LocalView;
@@ -40,7 +40,22 @@ export function AddLeadScreen({ view, focusNonce, onSaved, onCancel }: Props) {
   // The guard lives in the mounted adapter, not the shared screen: the
   // screen holds the draft and reports whether one exists; the shell's reset
   // asks through the gate this registers.
-  useResetGuard(dirty ? () => window.confirm(t('lead.add.discardConfirm')) : null);
+  /*
+   * A themed, translated confirm rather than `window.confirm`, which in
+   * Electron renders the bare Chromium prompt and blocks the renderer while it
+   * is up. `useResetGuard` takes a promise for exactly this reason.
+   */
+  const confirmDiscard = useConfirm();
+  useResetGuard(
+    dirty
+      ? () =>
+          confirmDiscard({
+            title: t('lead.add.discardConfirm'),
+            confirmLabel: t('lead.add.discard'),
+            tone: 'danger',
+          })
+      : null,
+  );
 
   const transport = useMemo<NewLeadTransport>(
     () => ({
@@ -69,29 +84,27 @@ export function AddLeadScreen({ view, focusNonce, onSaved, onCancel }: Props) {
         new Map(
           view.partyVariants
             .filter((variant) => variant.partyId === partyId)
-            .map(
-              (variant): [string, PartyProductVariant] => [
-                variant.productId,
-                {
-                  id: variant.id,
-                  tenantId: variant.tenantId,
-                  partyId: variant.partyId,
-                  productId: variant.productId,
-                  productName: variant.productName,
-                  alias: variant.alias,
-                  rate: variant.rate,
-                  size: variant.size,
-                  sin: variant.sin,
-                  grade: variant.grade,
-                  productType: variant.productType,
-                  weightKg: variant.weightKg,
-                  packaging: variant.packaging,
-                  createdAt: variant.createdAt,
-                  updatedAt: variant.updatedAt,
-                  sync: variant.sync,
-                },
-              ],
-            ),
+            .map((variant): [string, PartyProductVariant] => [
+              variant.productId,
+              {
+                id: variant.id,
+                tenantId: variant.tenantId,
+                partyId: variant.partyId,
+                productId: variant.productId,
+                productName: variant.productName,
+                alias: variant.alias,
+                rate: variant.rate,
+                size: variant.size,
+                sin: variant.sin,
+                grade: variant.grade,
+                productType: variant.productType,
+                weightKg: variant.weightKg,
+                packaging: variant.packaging,
+                createdAt: variant.createdAt,
+                updatedAt: variant.updatedAt,
+                sync: variant.sync,
+              },
+            ]),
         ),
       partyWise: (partyId) => view.partyVariants.some((variant) => variant.partyId === partyId),
       createLead: async (input) => {

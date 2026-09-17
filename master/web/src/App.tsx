@@ -540,9 +540,11 @@ function MasterPanel() {
     { id: 'updates', label: t('nav.updates'), icon: 'sync' },
   ];
 
-  function resetActiveScreen(): void {
+  async function resetActiveScreen(): Promise<void> {
     if (route === 'gallery') return;
-    if (!askReset()) return;
+    // Awaited now: asking is a themed dialog rather than a renderer-blocking
+    // `window.confirm`, so the answer arrives a turn later.
+    if (!(await askReset())) return;
     // The screen is going away, so its sidebar entry must go with it — the
     // registry deliberately does not clear itself on teardown any more.
     clearSubNav(tab);
@@ -695,7 +697,7 @@ function MasterPanel() {
         icon="reset"
         label={t('screen.reset')}
         title={t('screen.resetHint')}
-        onClick={resetActiveScreen}
+        onClick={() => void resetActiveScreen()}
       />
       <PaletteButton />
       {/* Beside Sign out, because the two are the same kind of thing — what you
@@ -1021,7 +1023,7 @@ function MasterPanel() {
       userId={user?.id ?? null}
       onNavigate={navigate}
       shellCommands={{
-        'view.reset': resetActiveScreen,
+        'view.reset': () => void resetActiveScreen(),
         // F5 is swallowed by the desktop shell so it cannot bypass the panel;
         // binding it here gives the key back its ordinary meaning, and in a
         // browser tab this does exactly what the browser would have done.

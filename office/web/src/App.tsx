@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { applyChangeToSnapshot } from '@orderbook/shared';
-import type { DataChangedEvent, MutationResult } from '@orderbook/shared';
+import type { DataChangedEvent, MessageKey, MutationResult } from '@orderbook/shared';
 
 import {
   ApiError,
@@ -40,6 +40,7 @@ import {
   PaletteButton,
   apiErrorText,
   ConfirmProvider,
+  onSessionEnded,
   ResetProvider,
   ScreenHost,
   Splash,
@@ -141,6 +142,8 @@ function OfficePanel() {
 
   const [connection, setConnection] = useState<ConnectionInfo | null>(null);
   const [session, setSession] = useState<PanelSession | null>(null);
+  /** Why this window is at the sign-in screen, when it did not sign out itself. */
+  const [signInNotice, setSignInNotice] = useState<MessageKey | null>(null);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [view, setView] = useState<LocalView | null>(null);
   const [rejections, setRejections] = useState<MutationResult[]>([]);
@@ -260,6 +263,22 @@ function OfficePanel() {
       setSessionChecked(true);
     }
   }, []);
+
+  /*
+   * The session can end without this window doing anything: the Master
+   * deactivates the account, the panel's pairing is revoked, or the person
+   * changes their own password on the Master — which invalidates every session
+   * they hold. `api.ts` publishes it from the single place every request passes
+   * through; all this has to do is stop rendering a signed-in shell and say why.
+   */
+  useEffect(
+    () =>
+      onSessionEnded((reason) => {
+        setSession(null);
+        setSignInNotice(reason);
+      }),
+    [],
+  );
 
   const refreshSyncState = useCallback(async () => {
     try {
@@ -495,7 +514,16 @@ function OfficePanel() {
   // Pairing says this machine may talk to the Master. Signing in says who is
   // doing the talking — and until somebody has, there is nothing to show.
   if (!session) {
-    return <SignInScreen connection={connection} onSignedIn={setSession} />;
+    return (
+      <SignInScreen
+        connection={connection}
+        notice={signInNotice}
+        onSignedIn={(next) => {
+          setSignInNotice(null);
+          setSession(next);
+        }}
+      />
+    );
   }
 
   const permissions = session.permissions;
@@ -689,9 +717,11 @@ function OfficePanel() {
    * draft, now that navigating away no longer does.
    */
 
-  function resetActiveScreen(): void {
+  async function resetActiveScreen(): Promise<void> {
     if (route === 'gallery') return;
-    if (!askReset()) return;
+    // Awaited now: asking is a themed dialog rather than a renderer-blocking
+    // `window.confirm`, so the answer arrives a turn later.
+    if (!(await askReset())) return;
     // Same identity `activeScreenId` uses: the screen that published the entry,
     // not the sidebar item the entry hangs under.
     const id =
@@ -774,7 +804,7 @@ function OfficePanel() {
         icon="reset"
         label={t('screen.reset')}
         title={t('screen.resetHint')}
-        onClick={resetActiveScreen}
+        onClick={() => void resetActiveScreen()}
       />
 
       <button className="ob-btn ob-btn--ghost" onClick={() => void signOut()}>
@@ -1150,7 +1180,7 @@ function OfficePanel() {
       userId={session?.userId ?? null}
       onNavigate={goToTab}
       shellCommands={{
-        'view.reset': resetActiveScreen,
+        'view.reset': () => void resetActiveScreen(),
         // As on the Master: the shell swallows F5, so this is what hands the key
         // back rather than a second, different meaning for it.
         'view.refresh': () => window.location.reload(),

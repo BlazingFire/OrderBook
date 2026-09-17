@@ -172,10 +172,26 @@ export const EN_MESSAGES = {
   'error.unauthorized.apiKeyExpired': 'That API key has expired or been revoked',
   'error.unauthorized': 'Not signed in',
   'error.unauthorized.signInFailed': 'Sign-in failed',
+  'signin.credentialsRequired': 'Enter your username and password',
+  // The countable form. The sequence a person actually experiences is
+  // 3 → 2 → 1 → locked for 60s → 3 again, because `recordFailure` zeroes the
+  // counter when it applies the lock; the copy says exactly that and no more.
+  //
+  // Safe to show: the failure map is keyed by the *attempted* username whether
+  // or not the account exists, both branches share one `recordFailure` and one
+  // generic message, and a missing user still pays a full scrypt hash — so the
+  // count leaks nothing about whether the account is real. Keep it that way.
+  'error.unauthorized.signInFailedRemaining.one': 'Sign-in failed — {count} attempt left',
+  'error.unauthorized.signInFailedRemaining.other': 'Sign-in failed — {count} attempts left',
   'error.unauthorized.accountDeactivated': 'This account has been deactivated',
   'error.unauthorized.noRole': 'This account has no role. Ask an administrator to assign one.',
   'error.unauthorized.currentPasswordIncorrect': 'Your current password is not correct',
-  'error.unauthorized.tooManyAttempts': 'Too many failed attempts. Try again in a minute.',
+  // `{seconds}` because the fixed "in a minute" is simply wrong once fifty of
+  // the sixty have gone. `auth.service.ts` holds `lockedUntil` — the exact
+  // millisecond the lock lifts — on the line above the throw, and passed
+  // nothing.
+  'error.unauthorized.tooManyAttempts':
+    'Too many failed attempts. Try again in {seconds} seconds.',
   'error.unauthorized.pairingNotAccepting':
     'The Master Panel is not accepting new panels right now. Open "Add Office Panel" on the Master and try again.',
   'error.unauthorized.incorrectPairingPassword': 'Incorrect pairing password',
@@ -556,6 +572,8 @@ export const EN_MESSAGES = {
    * readings are correct for their own panel. Everything else is shared.
    */
   'lead.add.discardConfirm': 'Discard this lead and start over?',
+  /** The confirm button in the dialog `lead.add.discardConfirm` titles. */
+  'lead.add.discard': 'Discard the draft',
   'screen.reset': 'Reset this screen',
   'screen.resetHint':
     'Clear the filters, scroll and unsaved entry on this screen and load it fresh.',
@@ -2672,6 +2690,8 @@ export const EN_MESSAGES = {
   'signin.forgetConfirm':
     'Remove {name} from this panel? While the Master Panel is unreachable they will not be able to sign in here until it is back.',
   'signin.forgetFailed': 'Could not remove that person from this panel',
+  /** The confirm button in the dialog `signin.forgetConfirm` titles. */
+  'signin.forgetAction': 'Remove from this panel',
   'storage.title': 'Where this panel keeps its files',
   'storage.change': 'Change',
   'storage.folder': 'Folder',

@@ -165,10 +165,23 @@ async function attemptSignIn(
     // typed name, so a person's failed attempts never joined up with the rest
     // of their history.
     await recordSignInAttempt(credential?.tenantId ?? null, key, false, credential?.id, source);
-    // The *response* stays deliberately generic. "No such user" versus "wrong
-    // password" is a username oracle for the caller; the auditor is not the
-    // caller.
-    throw new UnauthorizedError('error.unauthorized.signInFailed');
+    /*
+     * The *response* stays deliberately generic about *which* thing was wrong.
+     * "No such user" versus "wrong password" is a username oracle for the
+     * caller; the auditor is not the caller.
+     *
+     * The count is a different question and is safe to answer: the failure map
+     * is keyed by the attempted username whether or not the account exists,
+     * both branches share this one path, and a missing user still pays a full
+     * scrypt hash — so the number is identical for a real and an invented name.
+     * Withholding it only made the lockout arrive without warning.
+     */
+    const remaining = remainingAttempts(key);
+    throw remaining > 0
+      ? new UnauthorizedError('error.unauthorized.signInFailedRemaining.other', {
+          count: remaining,
+        })
+      : new UnauthorizedError('error.unauthorized.signInFailed');
   }
 
   if (!credential.isActive) {
@@ -544,8 +557,25 @@ function tokenSession(token: string | undefined): Session | null {
 function assertNotLockedOut(username: string): void {
   const record = failures.get(username);
   if (record && record.lockedUntil > Date.now()) {
-    throw new UnauthorizedError('error.unauthorized.tooManyAttempts');
+    // The exact millisecond the lock lifts was already in scope one line up and
+    // was thrown away, leaving the fixed sentence "try again in a minute" —
+    // which is simply wrong once fifty of the sixty seconds have gone.
+    throw new UnauthorizedError('error.unauthorized.tooManyAttempts', {
+      seconds: Math.max(1, Math.ceil((record.lockedUntil - Date.now()) / 1000)),
+    });
   }
+}
+
+/**
+ * How many tries are left after the failure just recorded.
+ *
+ * Zero means the lock has just been applied — the caller should say so rather
+ * than offer a countdown that is about to be overtaken by `assertNotLockedOut`.
+ */
+function remainingAttempts(username: string): number {
+  const record = failures.get(username);
+  if (!record) return MAX_FAILURES;
+  return record.lockedUntil > Date.now() ? 0 : Math.max(0, MAX_FAILURES - record.count);
 }
 
 function recordFailure(username: string): void {
