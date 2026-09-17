@@ -21,9 +21,9 @@ open privilege holes.
 
 ### 2. Run the integration suites — they have never run
 
-42 files and 568 tests skipped for the whole of 2026-09-17, because PostgreSQL
+43 files and 583 tests skipped for the whole of 2026-09-17, because PostgreSQL
 refuses to start as root and the container had no other user account. That
-includes four tests **written** in that session and never executed:
+includes nineteen tests **written** in that session and never executed:
 
 - `master/tests/sync.integration.test.ts` — the two temporary-id resolution
   tests, which cover the blocking bug.
@@ -31,6 +31,20 @@ includes four tests **written** in that session and never executed:
   image mutations.
 - `master/tests/party-access.integration.test.ts` — PA-14 (export completeness)
   and PA-15 (the export permission).
+- `master/tests/company-settings.integration.test.ts` — **the whole file.** It
+  is the only thing that proves the five new settings do anything; each turns
+  its switch away from its default, because the defaults preserve the old
+  behaviour and a run at the defaults would pass against a switch wired to
+  nothing.
+- `master/tests/access.integration.test.ts` — the two password-minimum tests.
+- `master/tests/reports.integration.test.ts` — the two that put the SQL and JS
+  lead classifiers side by side at a threshold that is not 30.
+
+The pure half of each of those is covered and did run: `shared/tests/
+inventory-view.test.ts`, `master/tests/password-rules.test.ts`, the
+`credential-invariants` password guards, the `panel-naming` discovery guards,
+`ui/tests/locale.test.ts`, and the language picker in
+`ui/tests/settings-layout.test.tsx`.
 
 On a normal (non-root) checkout `npm run test` runs them. **Check the skip
 count, not just the pass count** — a skipped suite prints like a passing one,
@@ -54,6 +68,15 @@ had. The visual and interaction changes specifically:
 - **Change password** in the Master topbar: the dialog warns it signs you out,
   and the window should land on sign-in *with a message*, not on a generic error.
 - Both themes, and the scale slider at its minimum (the type and chip clamps).
+- **The language picker** (Settings → Appearance). Switch to हिन्दी and look at
+  the panel: this is the first time anybody has been able to, and it is how the
+  1,737-string backlog below becomes visible rather than theoretical. Switching
+  back must work from a panel you can no longer read — the two buttons are named
+  in their own scripts for exactly that reason.
+- **The Settings tab itself**, on both panels: the four groups, a number setting
+  saved with its button (not on keystroke), the per-row save feedback, and the
+  tab strip at 157% on a 1366px screen, which is where the later tabs used to be
+  unreachable.
 
 ### 4. Rebuild the 1.1.0 installers
 
@@ -76,6 +99,39 @@ inputs are refreshed and a healthy machine should work.
 
 ---
 
+## Six more settings, surveyed and verified, deliberately not shipped
+
+The 2026-09-17 survey verified twelve candidates and shipped five. These six
+survived adversarial review and were held back only to keep one round
+reviewable. Each is a single entry in `shared/src/domain/settings.ts` plus two
+i18n tokens — no migration — so the cost is in wiring the reader, not in the
+setting.
+
+| Candidate | What it would decide |
+|---|---|
+| `security.offlineSignInEnabled` | whether an Office Panel may sign somebody in while the Master is unreachable |
+| `inventory.adjustmentNoteRequired` | whether correcting a count needs a written reason |
+| `catalog.defaultUom` | the unit a new product starts in |
+| `catalog.importCreatesCategories` | whether a bulk import may invent categories, or must match existing ones |
+| `leads.followUpDefaultDays` | the follow-up date a new lead is pre-filled with |
+| `leads.packagingRequiredOnConvert` | whether packaging must be chosen before a lead becomes an order |
+
+**Do not start one of these without asking the owner first.** Every one is a
+question about how the shop works, and the survey could establish only that the
+code would support the answer — not what the answer is.
+
+Six candidates were **rejected**, and the reasons are worth keeping so nobody
+re-proposes them: `security.signInLockoutAttempts` cannot be read by the Office's
+offline lockout store, which runs precisely because the Master cannot be asked;
+`catalog.productCodePrefix` would overwrite products on an upsert import,
+because the generator has no collision retry; `locale.*` is per-machine in
+writing; `panels.pairingWindowMinutes` is a fail-safe backstop rather than a UX
+number; and company address / GST belong in `master_config` beside
+`company_name`, not in a second table — `settings.ts` records splitting one
+concept across two tables as the reason a previous key was deleted.
+
+---
+
 ## The two decisions waiting on the owner
 
 Neither is a code question, and both have been re-litigated more than once.
@@ -92,7 +148,10 @@ files on disk, and an offline panel reconnecting after a purge it never saw).
 live number. A Hindi panel is mostly in English today and no test can see it,
 because the parity check only asserts a key exists. Either that backlog gets
 worked through, or the Hindi option should be honest about being partial. It is
-currently neither.
+currently neither — and as of 2026-09-17 it is also *reachable*, which raises
+the stakes: before the picker existed no user could see the backlog, and now
+anybody who tries the language can. Ship the translations, or say on the picker
+that Hindi is partial. Leaving it silent is now a choice with a reader.
 
 Still open from before: extra party fields (credit terms, multiple contacts —
 GST is already there); concurrent edits of one lead from two panels

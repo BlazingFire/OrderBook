@@ -58,11 +58,18 @@ against the code before acting on it.
   2026-09-17 **fourteen of the nineteen open handoff briefs are closed** —
   including all three that were blocking. See "Recent sessions" and
   `docs/ai-handoffs/README.md`.
+- **Nine company settings**, in four groups on the Settings tab. Adding one is
+  a single entry in `shared/src/domain/settings.ts` plus two i18n tokens — no
+  migration, no column, because the table is one row per key and an absent row
+  means the declared `fallback`. The dividing line is written at the top of
+  that file: *if two people at the same PC should see it differently it is
+  localStorage; if it is a decision the company made once, it is a setting
+  here.*
 - **Verify gate:** `npm run verify` = `lint` + `typecheck` (all workspaces,
   both Electron shells, the test tsconfigs) + `vitest run`. Run the three steps
   separately and check each exit code.
-  **Last run 2026-09-17: lint 0, typecheck 0, 84 files / 968 tests passing,
-  42 files / 568 tests skipped.** The skips are the integration suites: they
+  **Last run 2026-09-17: lint 0, typecheck 0, 87 files / 1041 tests passing,
+  43 files / 583 tests skipped.** The skips are the integration suites: they
   need a real PostgreSQL, and PostgreSQL refuses to run as root. That is the
   only reason they skip, on the owner's PC and in a container alike.
   **A skipped suite prints like a passing one — check the count.**
@@ -88,13 +95,18 @@ against the code before acting on it.
   `npm run release` (electron-builder) hangs on the owner's PC. Build inputs
   are refreshed; a release run on a healthy machine (or after a reboot /
   Defender exclusion for the repo) should work. **This is still owed.**
-- **Hindi is 1,737 strings behind.** `hi.ts` is a *total* record — the type
-  demands it — but `npm run i18n:sync` fills a missing key with the English
-  text and a `// TODO(i18n-hi)` marker, and that backlog has grown to 1,737 of
-  them. So a Hindi panel is mostly in English today, and no test can see it:
-  the parity check only asserts the key exists. `grep -c 'TODO(i18n-hi)'
-  shared/src/i18n/hi.ts` is the real number. Every key added on 2026-09-17 was
-  translated by hand rather than added to the pile.
+- **Hindi is 1,737 strings behind, and is now reachable.** `hi.ts` is a *total*
+  record — the type demands it — but `npm run i18n:sync` fills a missing key
+  with the English text and a `// TODO(i18n-hi)` marker, and that backlog has
+  grown to 1,737 of them. So a Hindi panel is mostly in English today, and no
+  test can see it: the parity check only asserts the key exists. `grep -c
+  'TODO(i18n-hi)' shared/src/i18n/hi.ts` is the real number. Every key added on
+  2026-09-17 was translated by hand rather than added to the pile.
+  **Until 2026-09-17 there was no way to select Hindi at all** — `ob.locale`
+  was read on every render and written nowhere in the tree. Settings →
+  Appearance has a picker now, and a browser profile that has never chosen
+  adopts `ORDERBOOK_DEFAULT_LOCALE` once at boot. That makes the backlog
+  visible to anyone who tries it, which it was not before.
 - **Live database on the owner's PC:** external PostgreSQL via `.env`
   `DATABASE_URL` (database `order_book`). Catalogue currently holds 0
   products and 3 sample parties (P-0001…P-0003) after the 2026-09-12 wipe;
@@ -395,6 +407,71 @@ Bin retention policy above.
   is hex now; `parseToken` rejoins everything after the second separator.
 
 ## Recent sessions
+
+### 2026-09-17 — Five company settings, a grouped Settings tab, a language picker (Claude)
+
+Same branch, `claude/hopeful-lovelace-q6f57v`, **not yet merged**. The owner's
+"add more necessary settings in settings tab / simplify it".
+
+**The five, and what each replaces:**
+
+| Setting | Was |
+|---|---|
+| `panels.autoPairingEnabled` | auto pairing always available behind the 5-minute window |
+| `security.developerModeEnabled` | developer mode reachable by any signed-in person, always |
+| `security.sessionHours` | a hardcoded 12 in `config/index.ts` |
+| `inventory.defaultReorderLevel` | `reorder_level` NULL on every row a movement creates, so "Low stock" read 0 until somebody typed a number on each line by hand |
+| `leads.quietAfterDays` | a 30 the code itself called "a designer's placeholder, not the owner's number" |
+
+Defaults preserve the previous behaviour exactly, so every test turns its
+switch *away* from the default — a suite run at the defaults would pass against
+a switch wired to nothing.
+
+**Two traps these hit, worth knowing before adding the tenth setting:**
+
+- **A second independent read wins silently.** `signIn` stamped the session from
+  the setting while `auth.routes.ts` set the cookie from `config.session.ttlMs`.
+  The service returns `sessionTtlMs` now and the route uses it; neither may read
+  the number twice.
+- **`Number(null)` is 0.** `countLowStock` filtered `whereNotNull('reorder_level')`
+  and then compared in JS. With a company default of 0 that reads "no default"
+  and "flag anything empty" as the same thing. The filter is gone and the
+  comparison is explicit.
+
+**Simplified:** the tab renders from a declared `control` per setting rather
+than from `typeof value` — which deleted a dead branch that printed
+`JSON.stringify` beside the words "edited elsewhere" — and groups the settings
+under four headings. Numbers save on a button, not per keystroke. Save feedback
+is per row. The vault hint was replacing the help text instead of sitting under
+it. `.ob-tabs` scrolls: at 157% on a 1366px screen the later tabs could not be
+reached at all. The Master opens on Company.
+
+**The language picker is the largest thing here and is not a setting.**
+`ob.locale` was read at `ui/src/i18n.ts` and written nowhere in the tree, and
+both boot endpoints had served `defaultLocale` since the config was written with
+no reader — a complete Hindi catalogue nobody could switch to. Appearance has a
+picker; a fresh profile adopts `ORDERBOOK_DEFAULT_LOCALE` once, behind the
+splash, and never again (it is a default, not something re-imposed at each
+boot). `.env.example` documents both locale variables for the first time.
+
+**A security fix alongside:** `createUser` and `resetPassword` hashed whatever
+password arrived, with no length check, while `changeOwnPassword` had enforced
+eight characters since it was written. The weaker pair was the one that mints
+accounts and the one that resets a locked-out person's password. One
+`assertPasswordLongEnough` in `master/src/lib/password.ts` now, applied to the
+supplied value and never to the generated fallback — checking after the fallback
+would enforce nothing, since a generated password always passes.
+
+Also: 15 dead `settings.appearance.*` keys deleted (zero call sites, two
+catalogues); the Office's storage card shows the free space its own endpoint had
+been serving to nobody; `PANEL_SCOPED` moved to `shared/src/i18n/panel-scoped.ts`
+because the call-site guard had grown a second copy of the list.
+
+Verified: lint 0, typecheck 0, build 0, 87 files / 1041 tests. **Thirteen
+deliberate breaks, one per new guard, each watched failing.** The integration
+suites still have not run, so the fifteen integration tests added here join the
+four from the earlier round as written-but-never-executed. Nothing seen in a
+browser or Electron.
 
 ### 2026-09-17 — Fourteen briefs closed, four privilege holes, the test suite made portable (Claude)
 

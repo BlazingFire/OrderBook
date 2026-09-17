@@ -190,6 +190,65 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-17 — Five company settings, a Settings tab that groups, and a language picker (Claude)
+
+Scope: the owner's "add more necessary settings in settings tab / simplify it".
+Same branch, `claude/hopeful-lovelace-q6f57v`, **not merged to `main`**.
+
+Surveyed by a 34-agent workflow — six discovery lenses plus a screens critique,
+then one adversarial verifier per candidate, then a synthesis. 28 candidates, 26
+after dedup, **12 kept and 14 rejected**; the synthesis narrowed the 12 to five
+to ship. Every citation the plan rested on was re-checked against the tree
+before anything was built.
+
+**The five:** `panels.autoPairingEnabled`, `security.developerModeEnabled`,
+`security.sessionHours`, `inventory.defaultReorderLevel`, `leads.quietAfterDays`.
+Each turns something that was already a hardcoded number or an always-on
+behaviour into the owner's decision, and each default preserves exactly what the
+product did before — which is why every test turns its switch *away* from the
+default.
+
+**The rejections are the useful half of that survey.**
+`security.signInLockoutAttempts` cannot work: the Office's offline lockout store
+runs precisely because the Master cannot be asked, so it cannot read a Master
+setting by construction. `catalog.productCodePrefix` would overwrite products on
+an upsert import — the generator has no collision retry.  `locale.*` is declared
+per-machine in writing. `panels.pairingWindowMinutes` is a fail-safe backstop,
+not a UX number. And my own strongest hypothesis — company address and GST on
+documents — was rejected too: company identity lives in `master_config` /
+`MasterIdentity`, where `company_name` already is, and splitting one concept
+across two tables is the drift `settings.ts` records as the reason a previous
+key was deleted.
+
+**Simplified:** the Settings tab renders from a declared `control` per setting
+rather than from `typeof value`, which deleted a dead branch that printed JSON
+beside the words "edited elsewhere"; settings are grouped under four headings;
+a number setting saves on a button, not on every keystroke; save feedback is
+per row; the vault hint no longer replaces the help text it was meant to sit
+under; `.ob-tabs` scrolls (the tabs were unreachable at 157% on a 1366px
+screen); the Master lands on Company rather than Appearance.
+
+**The language picker** — the largest gap the survey found, and not a setting.
+`ob.locale` was read on every render and written nowhere in the tree, and both
+panels' boot endpoints had served `defaultLocale` since the config was written
+with no reader at all. A complete Hindi catalogue shipped that no installation
+could reach. There is a picker in Appearance now, and a fresh browser profile
+adopts `ORDERBOOK_DEFAULT_LOCALE` once, behind the splash.
+
+**One security fix alongside:** `createUser` and `resetPassword` hashed whatever
+password arrived with no length check, while `changeOwnPassword` had enforced
+eight characters since it was written — so the weaker of the two paths was the
+one that mints accounts. One `assertPasswordLongEnough` now, in
+`master/src/lib/password.ts`, with a source guard that fails if a fourth path
+appears without it.
+
+Verified: lint 0, typecheck 0, build 0, **87 files / 1041 tests passing, 43
+files / 583 skipped**. Every new guard was watched failing against the exact
+defect it names — thirteen deliberate breaks in all. **The integration suites
+still have never run** (PostgreSQL will not start as root), so the fifteen
+integration tests added here are unexecuted, on top of the four from the
+earlier round. Nothing was seen in a browser or Electron.
+
 ### 2026-09-17 — Fourteen briefs closed, four privilege holes, portable tests (Claude)
 
 Scope: the owner's "tell me project status, make the structure understandable,
