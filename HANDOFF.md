@@ -37,38 +37,63 @@ removed for good on 2026-09-11.
 | Fields, Logs, Recycle Bin, Reports, PDF Designer, i18n design | `docs/BACKEND_MODULES.md` + `docs/backend-modules/` |
 | The 2026-08/09 overhaul designs (stages 0–12, all implemented) | `docs/overhaul/` |
 | Multi-agent workflow and per-session change log | `docs/AI_COLLABORATION.md` |
+| Where every file lives, and where a change goes | `docs/CODE_MAP.md` |
+| What to do next, and the decisions waiting on the owner | `docs/NEXT_PHASE.md` |
 
 `docs/overhaul/` and `docs/backend-modules/` are cited from source comments
 as design rationale. They were written before the code and several of their
 stated facts did not survive contact with the tree — check a design's claim
 against the code before acting on it.
 
-## Current state (2026-09-14)
+## Current state (2026-09-17)
 
-- **Version 1.1.0** on `main`. `main` is the working branch; the owner
-  commits and pushes to it directly. `dev` and the `claude/*` branches are
-  historical and behind — do not branch from them.
-- **Every stage of the overhaul programme is implemented**, plus everything
-  listed under "Recent sessions". What is still owed is manual verification
-  (below), not code.
+- **Version 1.1.0.** The work of 2026-09-17 is on
+  **`claude/hopeful-lovelace-q6f57v`**, seven commits ahead of `main` and pushed.
+  **It has not been merged.** Merge it to `main` — the standing convention that
+  work lands on `main` still holds; this branch exists because the session was
+  required to use one. `dev` and the older `claude/*` branches are historical
+  and behind — do not branch from them.
+- **Every stage of the overhaul programme is implemented**, and as of
+  2026-09-17 **fourteen of the nineteen open handoff briefs are closed** —
+  including all three that were blocking. See "Recent sessions" and
+  `docs/ai-handoffs/README.md`.
 - **Verify gate:** `npm run verify` = `lint` + `typecheck` (all workspaces,
-  both Electron shells, the test tsconfigs) + `vitest run`. Last full green
-  run: 2026-09-12, 122 files / ~1500 tests, integration suites against a real
-  PostgreSQL. On the owner's PC the integration suites currently cannot start
-  the shared test cluster (`initdb: could not create/change permissions`,
-  `postgres: could not create lock file postmaster.pid`) — that is the
-  machine, not the code; the ~80 unit suites (~940 tests) run and pass.
-  Run the three steps separately and check each exit code.
-- **Builds:** `npm run build` is green for shared, both servers and both
-  web bundles. The esbuild "`remove …\esbuild-…: Access is denied`" failure
-  on this PC is fixed at the source: both `web` workspaces' `build` scripts
-  point `TEMP`/`TMP` at a project-local `.tmp/` (gitignored) before `vite
-  build`, so `start:master` / `start:office` work without any manual step.
+  both Electron shells, the test tsconfigs) + `vitest run`. Run the three steps
+  separately and check each exit code.
+  **Last run 2026-09-17: lint 0, typecheck 0, 84 files / 968 tests passing,
+  42 files / 568 tests skipped.** The skips are the integration suites: they
+  need a real PostgreSQL, and PostgreSQL refuses to run as root. That is the
+  only reason they skip, on the owner's PC and in a container alike.
+  **A skipped suite prints like a passing one — check the count.**
+- **The suite was not green before this session, and not for a code reason.**
+  Thirteen tests across `updates.test.ts` and `github-releases.test.ts` failed
+  on any non-Windows checkout: their fixtures describe Windows releases while
+  the code under test defaults to `process.platform`. Two more (UPD-4, UPD-5)
+  passed *vacuously* off Windows — the manifest was discarded for the wrong OS
+  before the check under test ran. Fixed by pinning the platform where the test
+  is not about platform. If you are on Windows you would never have seen this.
+- **Builds:** `npm run build` is green for shared, both servers and both web
+  bundles — **and now runs on Linux and macOS too**. The Windows esbuild
+  failure (`remove …\esbuild-…: Access is denied`, a Defender lock on the
+  helper binary) is still fixed by pointing `TEMP`/`TMP` at a project-local
+  `.tmp/` (gitignored), but that fix had been written in `cmd` inside an npm
+  script, so `npm run build` died with `sh: 1: Syntax error` anywhere but
+  Windows. It is `tools/build-web.mjs` now. Two things that script has to get
+  right, both learned the hard way: it resolves `tsc`/`vite` from
+  `node_modules/.bin` **by path** (a global TypeScript 6 on PATH rejects the
+  side-effect CSS imports TS 5.9 accepts), and it uses `process.cwd()`, not
+  `INIT_CWD` — under `--workspace` the latter is the repo root.
 - **Installers:** `C:\OrderBook-Releases` still holds the 1.0.3 setup files.
-  `npm run release` (electron-builder) hangs on this PC — same machine-level
-  permission sickness as PostgreSQL above. Build inputs are refreshed; a
-  release run on a healthy machine (or after a reboot / Defender exclusion
-  for the repo) should work.
+  `npm run release` (electron-builder) hangs on the owner's PC. Build inputs
+  are refreshed; a release run on a healthy machine (or after a reboot /
+  Defender exclusion for the repo) should work. **This is still owed.**
+- **Hindi is 1,737 strings behind.** `hi.ts` is a *total* record — the type
+  demands it — but `npm run i18n:sync` fills a missing key with the English
+  text and a `// TODO(i18n-hi)` marker, and that backlog has grown to 1,737 of
+  them. So a Hindi panel is mostly in English today, and no test can see it:
+  the parity check only asserts the key exists. `grep -c 'TODO(i18n-hi)'
+  shared/src/i18n/hi.ts` is the real number. Every key added on 2026-09-17 was
+  translated by hand rather than added to the pile.
 - **Live database on the owner's PC:** external PostgreSQL via `.env`
   `DATABASE_URL` (database `order_book`). Catalogue currently holds 0
   products and 3 sample parties (P-0001…P-0003) after the 2026-09-12 wipe;
@@ -118,6 +143,9 @@ docs/          all prose; nothing source-of-truth lives in a code comment
 .agents/skills/ui-consistency/   the same UI rule in the shape Muse Code discovers
 ```
 
+- **Layout:** `docs/CODE_MAP.md` is the map — every workspace and directory,
+  what each is for, where a given kind of change goes, and which test guards
+  what. Read it before hunting for a file.
 - **UI:** import from `@orderbook/ui`; never copy a component into a panel
   (`master/tests/no-duplicate-ui.test.ts` fails if one grows its own kit).
   Per-panel differences (name, default theme, storage key) come from
@@ -136,6 +164,21 @@ docs/          all prose; nothing source-of-truth lives in a code comment
   chosen key as a controlled prop. A record opens as a full sub-screen with a
   back button and a nested sidebar entry — not a modal, not a drawer.
   `Ctrl+F` focuses `<Input data-screen-search>` on the visible screen.
+- **A screen both panels need lives in `ui/` and takes a `transport`**, never a
+  panel's api client. `NewLeadScreen`, `DocumentsScreen` and `PartyFormModal`
+  all do this, and `ui/tests/no-transport-dep.test.ts` holds the line. The two
+  clients genuinely differ — the Office's `createParty` resolves to a
+  `QueuedResult` carrying an outbox id, the Master's to a whole `Party` — so a
+  shared component that knew either one would have to know which panel it was
+  on.
+- **Errors reach a screen through `apiErrorText`** (`ui/src/errorText.ts`):
+  the specific `messageKey`, failing that the coarse `error.<code>` token,
+  failing that English. Rendering `caught.message` shows the server's English
+  and throws the key away — which is what every screen did until 2026-09-17.
+- **A 401 is announced, not just thrown.** `send()` in both clients publishes
+  through `ui/src/sessionEnded.ts`; both shells subscribe and drop to sign-in
+  with a reason. Anything that invalidates a session should give that reason a
+  key.
 - **Company switches** (`pricing.enabled`, `inventory.freeToSell`) ride on
   `SignedInUser.features` (Master) and `SyncSnapshot.features` (panels), built
   by `master/src/services/company-features.ts`. Pricing off strips the four
@@ -215,13 +258,34 @@ docs/          all prose; nothing source-of-truth lives in a code comment
 
 ## Owed work
 
-**Code:** 19 briefs in `docs/ai-handoffs/` are open or partial (verified
-against the tree 2026-09-14; the README there is the queue). The blocking
-ones: the Office new-lead sync path does not remap a temporary `partyId`;
-the Master has no Parties screen (`createParty` has no caller); `mrp` is
-ungated in the sync filter and public-API write guards; the four image
-mutations return the unmasked product; a refused acting token on the socket
-falls back to a default actor.
+**Code:** five briefs remain in `docs/ai-handoffs/` — **that README is the
+queue and it is current**. Nothing blocking is left. In order:
+
+1. **There is no way to look at a product photo.** `ProductDetail.tsx` has no
+   reference to `product.images` at all, so the `large` (800px) and `master`
+   (2048px) variants encoded on every upload are never requested by anything.
+   For a ceramics catalogue that is the primary use of a photo. The image UI is
+   also entirely untranslated (`ProductImages.tsx` imports no `t`).
+2. **The New Product form is still 29 fields** — the owner's own complaint. The
+   permission defects around it are fixed; the reorganisation is deliberately
+   its own commit so a permission fix is not buried in a layout diff.
+3. **No route from a party to its access editor** — the owner's "no option for
+   assign party". Assigning is reachable only from a separate admin-tier nav
+   entry, so somebody looking at a party record cannot get to "who can see this".
+4. **Reset password has no self-exclusion**: an administrator resetting their own
+   password signs themselves out with no warning. Also
+   `invalidateSessionsForUser` records no *reason*, so the sign-in screen says
+   "your session ended" rather than naming the password change — the token
+   `signIn.notice.passwordChanged` exists and is waiting for it.
+5. **The Recycle Bin has no exit, and that needs an owner decision, not code.**
+   Nothing is ever deleted for good: tombstoned rows, the sealed password of a
+   deleted user, and the image files of a deleted product all accumulate
+   forever. Three coherent options are written up in the brief. **Do not
+   implement one until the owner picks.**
+
+**Also owed, and not in a brief:** the Hindi catalogue is 1,737 strings behind
+(see "Current state"), and nothing can detect it — the parity test only checks
+that a key exists, not that it was translated.
 
 **Manual:**
 
@@ -239,11 +303,29 @@ falls back to a default actor.
   the live path is unexercised).
 - Rebuild the 1.1.0 installers on a machine where electron-builder runs.
 
-Open questions still unanswered by the owner: extra party fields (GST/tax
-id, credit terms, multiple contacts); concurrent edits of one lead from two
-panels (last-write-wins is the default); app name/branding.
+Open questions still unanswered by the owner: extra party fields (credit terms,
+multiple contacts — GST is already a field); concurrent edits of one lead from
+two panels (last-write-wins is the default); app name/branding; and the Recycle
+Bin retention policy above.
 
 ## Traps worth knowing
+
+- **A test fixture pinned to `win32` passes only on Windows, or worse, passes
+  vacuously everywhere.** `updates.test.ts` and `github-releases.test.ts`
+  published Windows manifests and called APIs that default to
+  `process.platform`; thirteen tests failed on Linux and two passed *without
+  reaching the check they were about*, because the manifest was discarded for
+  the wrong OS first. Pin the platform explicitly in a test that is not about
+  platform.
+- **A guard can pass against the very bug it was written for.** Two written on
+  2026-09-17 did: one searched the whole file for `tab === 'addLead'` and was
+  satisfied by an unrelated line fifty lines above the defect; the other listed
+  a renamed panel in a fixture the repository's own filter would never return.
+  Both were rewritten. Break the code, watch it go red, put the code back —
+  and check the assertion is reaching the thing it names.
+- **An integration suite that skips is not a suite that passed.** PostgreSQL
+  will not start as root, so on a root checkout every one of the 42 integration
+  files skips and the summary line still reads green. Check the skip count.
 
 - **An update used to be a full record replace and silently nulled every
   column the form did not show.** Fixed by the one column map; `columnPatch()`
@@ -312,6 +394,86 @@ panels (last-write-wins is the default); app name/branding.
   is hex now; `parseToken` rejoins everything after the second separator.
 
 ## Recent sessions
+
+### 2026-09-17 — Fourteen briefs closed, four privilege holes, the test suite made portable (Claude)
+
+Branch `claude/hopeful-lovelace-q6f57v`, seven commits, **not yet merged to
+`main`**. Read `docs/ai-handoffs/README.md` for what is left.
+
+**The three blocking briefs, all closed:**
+
+- **An Office lead raised against a party created on the same panel was
+  silently lost.** `route()` in `sync.service.ts` resolved only
+  `mutation.entityId` through `id_map`, so `payload.partyId` arrived as the
+  temporary id the panel minted; `createLead` threw `validation.lead.
+  partyMissing`; `applyOne` recorded that as a **permanent** rejection, so a
+  replay returned the same refusal forever while the panel settled it out of
+  the outbox with the optimistic overlay. `resolvePayloadIds()` now maps
+  `partyId`/`ownerId`/`productId` and `items[].productId` for every mutation
+  kind before the switch, so a kind added later cannot forget.
+- **The Master had no Parties screen.** `api.createParty` had zero callers
+  since the repo restructure, so an administrator at the PC that owns the
+  database had to walk to an Office panel. The form moved to
+  `ui/src/PartyFormModal.tsx` with an injected transport rather than being
+  copied — a copied `PartyAccessScreen` already drifted in four places within a
+  day.
+- **Nothing tested either web application.** Neither `web` workspace matches
+  the vitest glob and neither held a test file. `web-reachability.test.ts` adds
+  the two invariants the existing `screen-reachability.test.ts` does not cover,
+  and both were watched failing against the unfixed code.
+
+**Four privilege/masking holes:** the socket path downgraded a *refused* acting
+token to the panel's own machine authority instead of refusing it (the HTTP
+path already refused, and said so in its own comment); `mrp` was documented as
+gated in two files and enforced in none; all four image mutations returned the
+unmasked product, so a photo upload leaked `purchaseRate` in its 201; and
+`parties.export` was enforced on one transport out of two.
+
+**A refused Office write was invisible to whoever wrote it.** The toast was
+gated on an admin-tier permission the shop-floor staff whose writes get refused
+do not hold, and `lastRejections` was a module variable overwritten on every
+flush including empty ones. Refusals are durable now, in their own file beside
+the outbox, with a section on the Conflicts screen anyone can read and dismiss.
+
+**Also:** self-service password change (the endpoint shipped audited with no UI
+caller); session-loss handling at the one place every request passes through;
+sign-in now says how many attempts are left and how long a lockout has to run,
+in the reader's own language — `apiErrorText` is the client the three-tier
+error pipeline was built for and never had; delete actions for leads, orders
+and parties on the Master, so all nine Recycle Bin entity types are finally
+reachable; `ConfirmDialog` replacing the last four `window.confirm` calls,
+which made `useResetGuard` promise-based; `.ob-popover`/`.ob-menu` given the
+CSS they never had; the sticky table header made to stick; column sorting in
+`DataTable`; contrast tokens at 3:1 and the amber pill at AA; a guard against a
+malformed `panel:report` 500ing the panel admin screen; and a suffix scan so
+two panels cannot be minted with the same name.
+
+**Two things worth knowing about the tests.** Thirteen were failing before any
+of this, on any non-Windows checkout, for a fixture reason rather than a code
+one — and two more passed *vacuously* off Windows. And every guard written this
+round was watched failing against the defect it targets; two were rewritten
+after they passed against broken code, which is exactly the trap this file's
+"guards must be seen to fail" rule exists for.
+
+**New:** `docs/CODE_MAP.md` — the repo's layout, what each directory is for, and
+where a given kind of change goes. Linked from `README.md`, `AGENTS.md` and
+`opencode.md`.
+
+**Decided, so it stops being re-litigated:** *parties live on both panels, the
+product catalogue is Office-only.* `docs/TESTING_PLAN.md` is reconciled against
+the screens that actually render — its §5 asked the tester to create products
+and upload images on the Master, where no such screen exists or will, which is
+how four of the owner's ten QA findings arrived as bug reports for features
+nobody had built. Its AI Assistant section is gone; the feature was deleted on
+2026-09-11.
+
+**Not verified, and it matters:** every integration suite (42 files, 568 tests)
+skipped for this entire session. PostgreSQL will not run as root and the
+container had no other user account. The integration tests written this round —
+the temporary-id resolution, the image masking, PA-14 and PA-15 — **have never
+been executed.** Run them on a normal checkout before trusting them. Nothing
+was run in a browser or in Electron either, so every UI change here is
+typechecked and unseen.
 
 ### 2026-09-14 — Build fix, dead code, bloat removal, handoff rewrite (Claude)
 

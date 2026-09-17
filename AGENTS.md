@@ -17,10 +17,15 @@ It is order management, not billing: money shows only behind the opt-in
 ## Source of truth — read these before assuming
 
 - **`HANDOFF.md`** (root) — current state, decisions, traps, owed work. Read first in any session.
+- **`docs/CODE_MAP.md`** — the layout: every workspace and directory, what each is for, where a
+  given kind of change goes, and which tests guard what. Read second; it is what stops
+  "find the file that does X" being a search.
 - **`docs/PROJECT_PLAN.md`** — architecture source of truth (requirements, pairing, screen flows).
 - **`docs/schema/`** — every table, column, index, and rationale.
 - **`docs/overhaul/`** and **`docs/backend-modules/`** — the designs behind the code, cited from
   source comments. Written before the code; check a claim against the tree before acting on it.
+- **`docs/NEXT_PHASE.md`** — what to do next, in order, and the two decisions waiting on the
+  owner. Written to be picked up cold.
 - **`docs/AI_COLLABORATION.md`** — the multi-agent workflow, handoff protocol, and change log.
   **Update its Change log after each prompt** that changes the repo.
 

@@ -145,3 +145,32 @@ short** of what it actually renders — fix that comment too.
 
 ---
 *Implementer: append what changed and what you verified below this line.*
+
+---
+
+## Landed 2026-09-17 (Claude) — every permission defect, and the Enter trap
+
+- **§1 purchase rate** — `canSeeCost` was `!editing || 'purchaseRate' in editing`,
+  which defaults *permissive* on create. `view.permissions` is threaded in from
+  `CatalogScreen` and the field is gated on `field.purchaseRate.edit`.
+- **§2 sale rate** — gated on `field.saleRate.edit`, and omitted from the payload
+  when not rendered. `product.field.rateHint` — which showed a raw permission
+  slug to a salesperson — is deleted from both catalogues.
+- **§3 MRP** — done in `close-money-field-gate-gaps.md`, as this brief asked.
+  `withPermittedRate` now strips `mrp` and `pricePerSqft` with `rate`, fixing all
+  three call sites at once; `mrp` joined the sync merge filter and the public
+  API's `WRITE_GUARDS`. Pinned by `shared/tests/money-field-gate.test.ts`, which
+  is pure and therefore actually runs.
+- **§4 ungated create buttons** — "New product" and "New party" are absent
+  (not greyed) without `products.create` / `parties.create`, including the
+  empty-state actions.
+- **§5 Enter saves the form** — the handler on the Name field is deleted.
+
+### Still open
+
+§6 (product code required and autofocused when the Master generates one for
+free), §7 (client-side min/max on the four range-constrained numerics), and **the
+field-count reorganisation itself** — which the brief says to land as its own
+commit after the gates, and which is where the owner's actual complaint ("too
+much field in New Product modal") is answered. The stale module comment about
+the field count is also still wrong.

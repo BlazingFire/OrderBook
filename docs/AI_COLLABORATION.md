@@ -187,6 +187,47 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-17 — Fourteen briefs closed, four privilege holes, portable tests (Claude)
+
+Scope: the owner's "tell me project status, make the structure understandable,
+complete pending tasks, update all files, take the data out because I'm deleting
+the sessions". Seven commits on `claude/hopeful-lovelace-q6f57v`, pushed, **not
+merged to `main`**.
+
+Closed fourteen of the nineteen open briefs, including all three blocking ones:
+the Office lead silently lost when raised against a party created on the same
+panel (`resolvePayloadIds` in `sync.service.ts`, plus the outbox half), the
+Master's missing Parties screen (form moved to `ui/src/PartyFormModal.tsx` with
+an injected transport, not copied), and the absence of any test over either web
+application (`web-reachability.test.ts`).
+
+Four privilege/masking holes: the socket path downgrading a *refused* acting
+token to the panel's machine authority; `mrp` documented as gated in two files
+and enforced in none; all four image mutations returning the unmasked product;
+`parties.export` enforced on one transport out of two. Plus the refusal a
+shop-floor user could never see — gated on an admin permission, and held in a
+module variable overwritten on every flush.
+
+Also: self-service password change, session-loss handling in the one place every
+request passes through, sign-in attempt/lockout feedback in the reader's own
+language, delete actions for leads/orders/parties on the Master, `ConfirmDialog`
+replacing the last four `window.confirm`s (which made `useResetGuard`
+promise-based), the popover CSS that never existed, the sticky header, column
+sorting, AA contrast, the `panel:report` guard and the panel-naming suffix scan.
+
+Verified: lint 0, typecheck 0, 84 files / 968 tests. **Thirteen tests were
+already failing before this session** on any non-Windows checkout — Windows
+fixtures against APIs defaulting to `process.platform` — and two more passed
+vacuously; both fixed. **Every integration suite (42 files, 568 tests) skipped
+throughout**: PostgreSQL will not run as root and the container had no other
+user, so the integration tests written this round have never been executed.
+Nothing was run in a browser or Electron.
+
+New: `docs/CODE_MAP.md`, linked from `README.md`, `AGENTS.md` and `opencode.md`.
+`docs/TESTING_PLAN.md` reconciled against the screens that actually render, and
+the ownership question settled in `HANDOFF.md`: parties on both panels, the
+product catalogue Office-only.
+
 ### 2026-09-14 — Build fix, dead code, bloat removal, handoff rewrite (Claude)
 
 Scope: owner's "commit all to main, update handoff and project files, remove

@@ -91,3 +91,31 @@ Access screen uses. That is the smallest change that answers the report.
 
 ---
 *Implementer: append what changed and what you verified below this line.*
+
+---
+
+## Landed 2026-09-17 (Claude) — items 1 and 2, plus the export permission gap
+
+- **§1 truncation** — the screen keeps the whole `Paginated<PartyAccessRow>`,
+  sends `limit`/`offset`, pages with a Load more, and resets the offset when the
+  search or restriction changes. The summary reads `page.total`. The *restricted*
+  figure is its own `limit: 1` count query rather than `rows.filter(...)`: with
+  paging, filtering the loaded rows answers a question about the page while
+  looking like an answer about the company — the same mistake one layer down.
+  Both copies of the screen changed together; the parity test passes.
+- **§2 CSV export** — `exportRows` loops to `page.total` now. Also closed the
+  permission gap the brief noted at the end: `parties.export` was enforced on the
+  Master's HTTP route and **not** on the `partyAccess:export` socket command an
+  Office panel uses, so a whole-company map of who can see which customer was one
+  transport away from ungated. Enforced in the service, where both paths meet.
+- Tests PA-14 and PA-15 added to `master/tests/party-access.integration.test.ts`.
+  **Not run** — the integration suites need PostgreSQL, which will not start as
+  root, and the container had no other user. Run them on a normal checkout.
+
+### Still open — everything in §3 and §4
+
+§3 (a route from a party's detail to its access editor) and all of §4 are
+untouched: the "open to everyone" label computed from the viewer rather than the
+grant, the every-edit-claims-eleven-fields problem, party custom fields in the
+new-party modal, duplicate-party prevention, `record.reassignOwner` having no UI,
+the untranslated strings, and the stale "drawer" comments.

@@ -78,34 +78,59 @@ Screen: **AccessScreen**.
    - [ ] "Reveal password" for a user (admin-only plaintext reveal) — confirm it's gated by a permission and shows the correct value.
    - [ ] Soft-delete a user, confirm under "deleted users", restore it.
    - [ ] **Live permission check:** while the limited user is signed in on another device/session, revoke one of their permissions from the admin side — confirm their very next action is blocked (no need for them to re-login).
-- [ ] Change your **own** password via `/me/password` flow (self-service) — sign out, sign back in with new password.
+- [ ] Change your **own** password — **Change password** in the Master's topbar, on
+      every screen. The dialog says up front that it signs you out everywhere;
+      confirm that after it succeeds the window lands on the sign-in screen with
+      a message naming the reason, and that the new password works.
 
 ---
 
-## 5. Parties / Products / Categories / Stock (Master, PC-A)
+## 5. Parties, fields and stock (Master, PC-A)
 
-Screen: **PartyAccess**, **Inventory**, plus party/product pickers used elsewhere.
+Screens: **Parties**, **PartyAccess**, **Inventory**, plus the party/product
+pickers used elsewhere.
 
-1. Parties (customers):
-   - [ ] Create a party with variants (e.g., multiple contact addresses) via `/party-variants`.
-   - [ ] Edit a party.
+> **Which panel owns what — settled 2026-09-17, recorded in `HANDOFF.md`.**
+> **Parties are on both panels**; the Master gained a Parties screen, and both
+> render the same `PartyFormModal` from `ui/`. **The product catalogue is
+> Office-owned**: there is no Master products screen and there is not going to
+> be one, so the catalogue steps below moved to §6. Earlier revisions of this
+> plan asked for all of it on the Master — written against the API surface and
+> the permission catalogue rather than against the screens that render — which
+> is how four of the owner's ten QA findings came back as bug reports for
+> features nobody had built.
+
+1. Parties (customers) — screen **Parties**:
+   - [ ] Create a party. Confirm it appears in the list and the total in the
+         filter strip counts every party, not the page.
+   - [ ] Open a row — it opens a **centred modal**, not a drawer — and edit it.
+   - [ ] Sort by name, then by code; confirm the caret follows the active column.
+   - [ ] Search; confirm the request settles after you stop typing, not per keystroke.
+   - [ ] Delete a party, find it in the Recycle Bin, restore it.
+   - [ ] Delete a party that a live lead references; confirm the refusal **names
+         what is blocking it** rather than saying "could not delete".
+   - [ ] With a role lacking `parties.create`, confirm the **New party** button is
+         absent, not greyed.
    - [ ] Confirm **Master cannot create a lead directly** tied to party creation — leads are Office-only (see Section 7).
-2. Products & categories:
-   - [ ] Create a category, then a product under it.
-   - [ ] Look up a product by its code (`/products/by-code`).
-   - [ ] Upload/reorder product images; confirm image variants render (thumbnail vs full).
-3. Stock/inventory:
+2. Stock/inventory — screen **Inventory**:
    - [ ] Record inbound stock for a product.
    - [ ] Manually adjust stock (correction) and confirm a stock movement entry is logged.
    - [ ] Set a reorder level and confirm a low-stock indicator appears once stock drops below it.
    - [ ] Check colour-variant stock breakdown for a product that has colours.
-4. Custom fields & pipeline stages — screen **FieldsScreen**:
+3. Custom fields & pipeline stages — screen **FieldsScreen**:
    - [ ] Add a custom field, use it on a party/lead, confirm the value round-trips.
    - [ ] Reorder pipeline stages; archive a stage; confirm archived stage no longer selectable for new leads but historical leads keep it; restore the stage.
-5. Party-level access control — **PartyAccessScreen**:
+4. Party-level access control — **PartyAccessScreen**:
    - [ ] Restrict a party so only specific users/roles can see it.
    - [ ] Confirm a user without access cannot see that party from Office (Section 7) or Master search.
-   - [ ] Export party-access list to CSV, confirm the file opens and matches on-screen data.
+   - [ ] Confirm the summary line counts the **whole company**, not the loaded
+         page: with more than 200 parties, page to the end and check the totals
+         did not move.
+   - [ ] Export party-access list to CSV, confirm the file opens and matches
+         on-screen data — and with **more than 200 parties**, confirm every one
+         of them is in the file. (It used to stop at 200 and say it was complete.)
+   - [ ] With a role holding `party.accessAll` but not `parties.export`, confirm
+         the export is refused on the Office panel too, not just the Master.
 
 ---
 
@@ -139,6 +164,33 @@ Do this for **both** PC-B and PC-C independently.
 - [ ] **Offline sign-in:** disconnect PC-B from the network (disable Wi-Fi/Ethernet), relaunch Office, sign in with a user who has signed in before — confirm offline verifier lets them in without Master reachable.
 - [ ] Reconnect PC-B, confirm any pending revocation/permission change from Master is now applied (re-check via `revokedTokens`/reconcile).
 - [ ] On Master, delete/deactivate a user that has an offline session cached on an Office panel — reconnect that panel and confirm the offline verifier is destroyed (user can no longer sign in offline afterward).
+
+---
+
+## 7a. Office: the product catalogue (PC-B)
+
+Screen: **Catalog**, Products tab. This is where the catalogue lives — see the
+ownership note in §5.
+
+1. Products & categories:
+   - [ ] Create a category, then a product under it.
+   - [ ] Look up a product by its code.
+   - [ ] Upload, reorder and delete product images; confirm the variants render
+         (micro in a table row, thumb in the form).
+   - [ ] Import products from CSV/Excel with a template; confirm the row-numbered
+         error report names the rows it refused.
+   - [ ] Through the **dev server** as well as the packaged app, confirm product
+         images load. They are served from `/uploads`, which the dev server did
+         not proxy — every photo 404'd and it read as "there is no image flow".
+2. Permission gates — sign in with a role lacking each key in turn:
+   - [ ] Without `products.create`, the **New product** button is **absent**, not greyed.
+   - [ ] Without `field.saleRate.edit`, the rate and MRP fields do not render —
+         on a **new** product as well as on an edit.
+   - [ ] Without `field.purchaseRate.edit`, the purchase rate does not render on
+         a new product. It used to, and the Master discarded what was typed
+         without telling anybody.
+   - [ ] Pressing Enter in the **Name** field advances to the next field rather
+         than saving the whole 29-field form.
 
 ---
 
@@ -240,18 +292,7 @@ Screen: **IntegrationsScreen**.
 
 ---
 
-## 14. AI Assistant / Insights (if enabled in this build)
-
-Screen: **AssistantScreen** (shared).
-
-- [ ] Check assistant status (`/ai/status`) — confirm it correctly reports available/unavailable depending on configuration.
-- [ ] Start a run, confirm it completes and produces insights or a proposal.
-- [ ] Apply a proposal from a run, confirm the underlying data (e.g., a lead/order field) actually changes and is logged.
-- [ ] Confirm this screen and its actions are **not** present/reachable on Office (Master-only).
-
----
-
-## 15. Auto-update flow (do this last — it replaces the running app)
+## 14. Auto-update flow (do this last — it replaces the running app)
 
 Setup: build a **newer** version (e.g., bump to `1.0.3` via `npm run release -- 1.0.3`) and drop the output into `C:\OrderBook-Releases\{master,office}-panel\` on the Master PC, exactly as the release script's own instructions say.
 
@@ -270,7 +311,7 @@ Setup: build a **newer** version (e.g., bump to `1.0.3` via `npm run release -- 
 
 ---
 
-## 16. Cross-cutting regression pass
+## 15. Cross-cutting regression pass
 
 After all sections above, do one more full-data sanity check:
 

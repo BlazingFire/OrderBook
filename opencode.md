@@ -7,10 +7,11 @@ This file only says where the truth lives and what is open. Do not duplicate
 ## Read order (every session)
 
 1. `HANDOFF.md` — current state, decisions, traps, owed work.
-2. `docs/AI_COLLABORATION.md` — the multi-agent workflow + handoff protocol. **Update
+2. `docs/CODE_MAP.md` — the repo's layout, and where a given change goes.
+3. `docs/AI_COLLABORATION.md` — the multi-agent workflow + handoff protocol. **Update
    its Change log after each prompt that changes the repo.**
-3. `docs/PROJECT_PLAN.md` — architecture source of truth.
-4. `docs/schema/` — every table/column/index.
+4. `docs/PROJECT_PLAN.md` — architecture source of truth.
+5. `docs/schema/` — every table/column/index.
 
 ## Standing gate
 
@@ -33,12 +34,15 @@ This file only says where the truth lives and what is open. Do not duplicate
 - **Work lands on `main`.** `dev` is historical.
 - **A guard must be seen to fail** against the defect it targets before it is accepted.
 
-## What is open (as of 2026-09-14)
+## What is open (as of 2026-09-17)
 
-See `HANDOFF.md` → "Owed work". All of it is manual verification (responsive gate,
-keep-alive walk, new-lead flow on both panels, PDF Designer click-through, packaged
-install/uninstall) plus rebuilding the 1.1.0 installers on a machine where
-electron-builder runs.
+`docs/NEXT_PHASE.md` is the answer, in order. The short version: the 2026-09-17
+work is on `claude/hopeful-lovelace-q6f57v` and **is not merged**; every
+integration suite (42 files) skipped that whole session, so four newly written
+tests have never run; nothing was seen in a browser or Electron. Then five
+briefs remain in `docs/ai-handoffs/` — none blocking — plus the manual
+verification already owed (responsive gate, keep-alive walk, PDF Designer
+click-through, packaged install/uninstall) and rebuilding the 1.1.0 installers.
 
 ## Environment
 
