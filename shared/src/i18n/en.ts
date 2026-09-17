@@ -2342,6 +2342,8 @@ export const EN_MESSAGES = {
   'partyAccess.searchPlaceholder': 'Search parties',
   'partyAccess.staleSave': 'Somebody else changed this party’s access first. Reload to see it.',
   'partyAccess.summary': '{restricted} of {total} parties are restricted.',
+  /** Appended when the list is showing fewer rows than the total above. */
+  'partyAccess.showing': 'Showing {shown} so far.',
   'partyAccess.title': 'Party access',
   'product.codeRequired': 'Enter the product code',
   'product.createFailed': 'Could not create the product',

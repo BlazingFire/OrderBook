@@ -4508,4 +4508,5 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.discard': 'ड्राफ़्ट हटाएँ',
   'table.sortBy': '{column} से क्रमबद्ध करें',
   'settings.appearance.resetAll': 'दिखावट रीसेट करें',
+  'partyAccess.showing': 'अब तक {shown} दिख रहे हैं।',
 };
