@@ -48,7 +48,8 @@ against the code before acting on it.
 ## Current state (2026-09-17)
 
 - **Version 1.1.0.** The work of 2026-09-17 is on
-  **`claude/hopeful-lovelace-q6f57v`**, eight commits ahead of `main` and pushed.
+  **`claude/hopeful-lovelace-q6f57v`**, pushed and ahead of `main`
+  (`git rev-list --count origin/main..origin/claude/hopeful-lovelace-q6f57v`).
   **It has not been merged.** Merge it to `main` — the standing convention that
   work lands on `main` still holds; this branch exists because the session was
   required to use one. `dev` and the older `claude/*` branches are historical
@@ -397,8 +398,7 @@ Bin retention policy above.
 
 ### 2026-09-17 — Fourteen briefs closed, four privilege holes, the test suite made portable (Claude)
 
-Branch `claude/hopeful-lovelace-q6f57v`, eight commits, **not yet merged to
-`main`**. Read `docs/ai-handoffs/README.md` for what is left.
+Branch `claude/hopeful-lovelace-q6f57v`, **not yet merged to `main`**. Read `docs/ai-handoffs/README.md` for what is left.
 
 **The three blocking briefs, all closed:**
 

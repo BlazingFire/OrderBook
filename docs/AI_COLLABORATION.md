@@ -143,9 +143,12 @@ keeps every agent working from durable state.
 
 ## 6. Verification before anything is "done"
 
-The project's own gate is `npm run verify` (lint + typecheck + tests). Current
-status at the time of writing: **1141 passing tests across 92 files**, both
-panels build. No agent should claim a change is done without running the
+The project's own gate is `npm run verify` (lint + typecheck + tests). As of
+2026-09-17: **968 passing tests across 84 files, plus 568 skipped across 42** —
+the skips are every integration suite, which needs a PostgreSQL that will not
+start as root. Both panels build, on Windows and now on Linux too. **Record the
+skip count, not just the pass count**: a skipped suite prints like a passing
+one, and this project has lost months to exactly that. No agent should claim a change is done without running the
 relevant gate and recording the result.
 
 ```bash
@@ -191,8 +194,7 @@ was verified, so the next agent can trust the state without re-auditing.
 
 Scope: the owner's "tell me project status, make the structure understandable,
 complete pending tasks, update all files, take the data out because I'm deleting
-the sessions". Eight commits on `claude/hopeful-lovelace-q6f57v`, pushed, **not
-merged to `main`**.
+the sessions". On `claude/hopeful-lovelace-q6f57v`, pushed, **not merged to `main`**.
 
 Closed fourteen of the nineteen open briefs, including all three blocking ones:
 the Office lead silently lost when raised against a party created on the same
