@@ -16,12 +16,15 @@ authRoutes.post(
       throw new ValidationError('validation.signIn.credentialsRequired');
     }
 
-    const { token, user } = await authService.signIn(username, password);
+    const { token, user, sessionTtlMs } = await authService.signIn(username, password);
 
     res.cookie(config.session.cookieName, token, {
       httpOnly: true,
       sameSite: 'lax',
-      maxAge: config.session.ttlMs,
+      // The ttl the session was actually stamped with, handed back by `signIn`
+      // — never a second read. Two independent reads would let the shorter one
+      // win silently once the value became a company setting.
+      maxAge: sessionTtlMs,
     });
     // The token is also returned in the body: the Master's own browser UI
     // presents it when opening its Socket.IO connection, which does not carry

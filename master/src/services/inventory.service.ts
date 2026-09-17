@@ -17,7 +17,12 @@ import type {
   StockListQuery,
   StockMovement,
 } from '@orderbook/shared';
-import { ProductValidationError, validateStockLevels, withoutReservations } from '@orderbook/shared';
+import {
+  ProductValidationError,
+  validateStockLevels,
+  withDefaultReorderLevel,
+  withoutReservations,
+} from '@orderbook/shared';
 
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { clampLimit, clampPaging } from '../domain/paging.js';
@@ -29,6 +34,7 @@ import * as inventoryRepo from '../repositories/inventory.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
 import { publishChange } from './change-bus.js';
 import { freeToSell } from './company-features.js';
+import { getSetting } from './settings.service.js';
 
 const PAGING = { defaultLimit: 200, maxLimit: 1000 };
 const MOVEMENT_PAGING = { defaultLimit: 50, maxLimit: 200 };
@@ -43,18 +49,22 @@ export async function listStock(
     search: query.search,
     lowOnly: query.lowOnly,
     reservations: await freeToSell(actor.tenantId),
+    defaultReorderLevel: await getSetting(actor.tenantId, 'inventory.defaultReorderLevel'),
     ...clampPaging(query, PAGING),
   });
 }
 
 /**
- * A single level as the company's free-to-sell switch has it read: as
- * computed while the switch is on, collapsed to the floor count while it is
- * off. Every level this service returns or publishes passes through here, so
- * a panel never sees a reserved figure the switch says does not exist.
+ * A single level as the company's switches have it read: collapsed to the floor
+ * count while free-to-sell is off, then judged against the company's default
+ * low-stock level if the line has none of its own. Every level this service
+ * returns or publishes passes through here, so a panel never sees a reserved
+ * figure the switch says does not exist — and `emptyLevel`'s hardcoded
+ * `isLow: false` is corrected here rather than at its own site.
  */
 async function outgoing(tenantId: string, level: InventoryStockLevel): Promise<InventoryStockLevel> {
-  return (await freeToSell(tenantId)) ? level : withoutReservations(level);
+  const base = (await freeToSell(tenantId)) ? level : withoutReservations(level);
+  return withDefaultReorderLevel(base, await getSetting(tenantId, 'inventory.defaultReorderLevel'));
 }
 
 export async function listMovements(
@@ -274,7 +284,11 @@ export async function publishStockFor(
 }
 
 export async function countLowStock(tenantId: string): Promise<number> {
-  return inventoryRepo.countLowStock(tenantId, await freeToSell(tenantId));
+  return inventoryRepo.countLowStock(
+    tenantId,
+    await freeToSell(tenantId),
+    await getSetting(tenantId, 'inventory.defaultReorderLevel'),
+  );
 }
 
 export async function coloursFor(tenantId: string, productId: string): Promise<string[]> {

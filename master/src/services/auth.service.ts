@@ -18,7 +18,6 @@ import { randomBytes } from 'node:crypto';
 import type { ChangeOwnPasswordInput, PermissionSet, SignedInUser, User } from '@orderbook/shared';
 import { effectivePermissions } from '@orderbook/shared';
 
-import { config } from '../config/index.js';
 import { db } from '../db/knex.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 import { UnauthorizedError, ValidationError } from '../lib/errors.js';
@@ -32,6 +31,7 @@ import * as userRepo from '../repositories/user.repository.js';
 import { companyFeatures } from './company-features.js';
 import { rememberPassword } from './password-vault.service.js';
 import { gatePricing, permissionSetForRole, pricingEnabled } from './pricing-gate.js';
+import { getSetting } from './settings.service.js';
 import { clearRecentReauth, sweepRecentReauth } from './reauth-cache.js';
 
 const log = createLogger('auth');
@@ -138,7 +138,22 @@ export async function signIn(
   password: string,
   /** Which machine the attempt came from, for the audit trail. */
   source?: string,
-): Promise<{ token: string; user: SignedInUser; credentialFingerprint: string }> {
+): Promise<{
+  token: string;
+  user: SignedInUser;
+  credentialFingerprint: string;
+  /**
+   * How long this session was stamped for, in milliseconds.
+   *
+   * Returned rather than re-read by the route, so the session's expiry and the
+   * cookie's `maxAge` cannot disagree. They were two independent reads of
+   * `config.session.ttlMs`, and the moment the value became a setting the
+   * shorter of the two would silently win for the Master's own browser: set 24
+   * hours and the cookie would still be dropped at 12, signing the
+   * administrator out while the setting insisted otherwise.
+   */
+  sessionTtlMs: number;
+}> {
   const key = username?.trim().toLowerCase() ?? '';
   return withSignInLock(key, () => attemptSignIn(key, password, source));
 }
@@ -147,7 +162,13 @@ async function attemptSignIn(
   key: string,
   password: string,
   source?: string,
-): Promise<{ token: string; user: SignedInUser; credentialFingerprint: string }> {
+): Promise<{
+  token: string;
+  user: SignedInUser;
+  credentialFingerprint: string;
+  /** See `signIn` — this is the function that stamps it. */
+  sessionTtlMs: number;
+}> {
   assertNotLockedOut(key);
 
   const credential = await userRepo.readCredentialForVerification(key);
@@ -233,6 +254,12 @@ async function attemptSignIn(
   const roleVersion =
     (await roleRepo.roleVersion(credential.tenantId, credential.roleId ?? '')) ?? 0;
 
+  // The company's own sign-out policy, not the twelve hours the config file
+  // used to fix for everyone. `config.session.ttlMs` remains the parse fallback
+  // and the value the boot path uses before any tenant exists.
+  const sessionTtlMs =
+    (await getSetting(credential.tenantId, 'security.sessionHours')) * 60 * 60 * 1000;
+
   sessions.set(token, {
     userId: credential.id,
     tenantId: credential.tenantId,
@@ -243,7 +270,7 @@ async function attemptSignIn(
     // that arrived over sync from a tampered replica carrying an admin key on
     // an office tier is stripped now and never enters the session.
     permissions: effectivePermissions(permissionSet.permissions, permissionSet.tier),
-    expiresAt: Date.now() + config.session.ttlMs,
+    expiresAt: Date.now() + sessionTtlMs,
   });
 
   const user = await userRepo.findById(credential.tenantId, credential.id);
@@ -270,6 +297,7 @@ async function attemptSignIn(
     token,
     user: await decorate(user, token),
     credentialFingerprint,
+    sessionTtlMs,
   };
 }
 

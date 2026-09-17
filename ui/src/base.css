@@ -2232,11 +2232,23 @@ html[data-window-blur='true'] .ob-busy rect {
  * Tabs — underline style, distinct from the segmented control
  * ======================================================================== */
 
+/*
+ * Scrollable, because the strip cannot wrap and must not silently truncate.
+ *
+ * `.ob-tab` is `white-space: nowrap` and this row has no `flex-wrap`, so with
+ * six tabs at the scale slider's maximum (22px root against a 14px default —
+ * 157%) the last tab is pushed outside the pane on a 1366px shop PC with no
+ * way to reach it. Arrow-key roving focus still lands on it, so Developer was
+ * *invisible* rather than unreachable — on exactly the machines whose operator
+ * had asked for a bigger UI.
+ */
 .ob-tabs {
   display: flex;
   align-items: center;
   gap: var(--s-16);
   border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 .ob-tab {
   position: relative;

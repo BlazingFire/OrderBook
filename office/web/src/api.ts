@@ -12,6 +12,7 @@
 import { DEVELOPER_RESET_CONFIRMATION, DEVELOPER_TOKEN_HEADER } from '@orderbook/shared';
 import { publishSessionEnded } from '@orderbook/ui';
 import type {
+  Locale,
   PickKind,
   ActivityLogEntry,
   DesktopBridge,
@@ -459,7 +460,8 @@ export const api = {
     return postFile<{ manifest: BackupManifest }>('/api/connection/restore', form);
   },
 
-  session: () => request<{ session: PanelSession | null }>('/api/session'),
+  session: () =>
+    request<{ session: PanelSession | null; defaultLocale: Locale }>('/api/session'),
   signIn: (username: string, password: string) =>
     post<{ session: PanelSession }>('/api/auth/sign-in', { username, password }),
   signOut: () => post<{ ok: true }>('/api/auth/sign-out'),

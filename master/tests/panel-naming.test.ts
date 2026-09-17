@@ -13,9 +13,14 @@
  * is worth pinning is the arithmetic.
  */
 
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { nextPanelName } from '../src/services/panel.service.js';
+
+const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'src');
 
 describe('nextPanelName', () => {
   it('starts at one', () => {
@@ -46,5 +51,31 @@ describe('nextPanelName', () => {
     // "Office Panel — Reception" matches the prefix and must not be able to
     // pull the sequence backwards or forwards.
     expect(nextPanelName(['Office Panel 3', 'Office Panel — Reception'])).toBe('Office Panel 4');
+  });
+});
+
+describe('what discovery advertises', () => {
+  /*
+   * Read from the source rather than exercised, because exercising it means a
+   * UDP socket and a database, and the thing worth pinning is one identifier.
+   *
+   * `panels.autoPairingEnabled` refuses an auto pairing that `isAcceptingPairing`
+   * alone would allow. A responder still advertising the raw window would tell
+   * a panel "found, ready to pair" and then refuse the pairing it invited —
+   * which reads, on the panel's screen, as the Master being broken.
+   */
+  const responder = readFileSync(path.join(SRC, 'discovery', 'responder.ts'), 'utf8');
+
+  it('asks the same question the pairing itself asks', () => {
+    expect(responder).toContain('isAutoPairingOpen');
+  });
+
+  it('does not read the pairing window directly, which would ignore the setting', () => {
+    const code = responder
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('*') && !line.trim().startsWith('//'))
+      .join('\n');
+
+    expect(code).not.toContain('isAcceptingPairing');
   });
 });

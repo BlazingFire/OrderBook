@@ -19,13 +19,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import type {
   MasterIdentity,
+  SettingControl,
   SeedDummyUsersResult,
   SettingKey,
   SettingView,
   StorageUsage,
   VaultStatus,
 } from '@orderbook/shared';
-import { DEVELOPER_RESET_CONFIRMATION, SETTINGS } from '@orderbook/shared';
+import { DEVELOPER_RESET_CONFIRMATION, SETTINGS, SETTING_GROUPS } from '@orderbook/shared';
 
 import { api, desktopBridge } from '../api';
 import { StorageBackupActions } from '../components/StorageBackup';
@@ -33,6 +34,7 @@ import {
   AppearanceSettings,
   Button,
   DataTable,
+  FieldError,
   DeveloperPanel,
   IdField,
   Input,
@@ -43,7 +45,9 @@ import {
   ShortcutSettings,
   Skeleton,
   Switch,
+  apiErrorText,
   formatBytes,
+  rem,
   formatDateTime,
   t,
   useDeveloperSession,
@@ -90,7 +94,18 @@ export function SettingsScreen({
   const [canManageStorage, setCanManageStorage] = useState(false);
   const [settings, setSettings] = useState<SettingView[] | null>(null);
   const [vault, setVault] = useState<VaultStatus | null>(null);
-  const [settingsError, setSettingsError] = useState<string | null>(null);
+  /**
+   * Which row failed, and which row is in flight.
+   *
+   * Both keyed by setting, not held as one flag and one string: with nine rows
+   * under four headings, a banner at the top of the section appears nowhere
+   * near the switch that refused, and a global "saving" would grey controls
+   * somebody is not waiting on.
+   */
+  const [settingsError, setSettingsError] = useState<{ key: SettingKey; message: string } | null>(
+    null,
+  );
+  const [savingKey, setSavingKey] = useState<SettingKey | null>(null);
 
   const loadCompanySettings = useCallback(async (canManage: boolean, canReveal: boolean) => {
     if (canManage) setSettings(await api.settings().catch(() => null));
@@ -125,6 +140,7 @@ export function SettingsScreen({
 
   async function saveSetting(key: SettingKey, value: unknown): Promise<void> {
     setSettingsError(null);
+    setSavingKey(key);
     try {
       setSettings(await api.saveSetting(key, value));
       onSaved();
@@ -133,7 +149,9 @@ export function SettingsScreen({
       // company is holding.
       setVault(await api.vaultStatus().catch(() => null));
     } catch (caught) {
-      setSettingsError(caught instanceof Error ? caught.message : t('settings.company.saveFailed'));
+      setSettingsError({ key, message: apiErrorText(caught, 'settings.company.saveFailed') });
+    } finally {
+      setSavingKey(null);
     }
   }
 
@@ -159,27 +177,51 @@ export function SettingsScreen({
           {
             id: 'company',
             label: t('settings.tab.company'),
+            /*
+             * One section per declared group, in `SETTING_GROUPS` order.
+             *
+             * Nine rows in a single unlabelled column is a wall of switches
+             * with nothing to point somebody at over the phone. Grouped by the
+             * `group` each setting declares — deliberately not by the key's
+             * first segment, which would give six groups for nine settings,
+             * three of them singletons, and read worse than flat.
+             *
+             * A group with nothing in it is not rendered, so a heading never
+             * appears empty; `shared/tests/settings.test.ts` also fails if a
+             * declared group has no members at all.
+             */
             render: () => (
-              <SettingsSection
-                title={t('settings.company.title')}
-                description={t('settings.company.subtitle')}
-              >
-                {settingsError && (
-                  <div className="ob-banner ob-banner--conflict" role="alert">
-                    {settingsError}
-                  </div>
-                )}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
-                  {settings.map((setting) => (
-                    <CompanySetting
-                      key={setting.key}
-                      setting={setting}
-                      vault={setting.key === 'security.passwordRevealEnabled' ? vault : null}
-                      onSave={saveSetting}
-                    />
-                  ))}
-                </div>
-              </SettingsSection>
+              <>
+                {SETTING_GROUPS.map((group) => {
+                  const inGroup = settings.filter((setting) => SETTINGS[setting.key].group === group);
+                  if (inGroup.length === 0) return null;
+
+                  return (
+                    <SettingsSection
+                      key={group}
+                      title={t(`settingGroup.${group}`)}
+                      description={
+                        group === SETTING_GROUPS[0] ? t('settings.company.subtitle') : undefined
+                      }
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
+                        {inGroup.map((setting) => (
+                          <CompanySetting
+                            key={setting.key}
+                            setting={setting}
+                            vault={setting.key === 'security.passwordRevealEnabled' ? vault : null}
+                            saving={savingKey === setting.key}
+                            error={
+                              settingsError?.key === setting.key ? settingsError.message : null
+                            }
+                            onSave={saveSetting}
+                          />
+                        ))}
+                      </div>
+                    </SettingsSection>
+                  );
+                })}
+              </>
             ),
           },
         ]
@@ -418,30 +460,40 @@ function SeedResult({ result }: { result: SeedDummyUsersResult }) {
  * grows — a key with no editor yet appears saying so, instead of silently
  * missing.
  */
+/**
+ * One company setting, drawn from the control its declaration names.
+ *
+ * This used to branch on `typeof setting.value`, with a final `else` that
+ * printed `JSON.stringify(value)` beside "Edited from its own screen" — a
+ * screen that does not exist. It was unreachable while every setting was a
+ * boolean, so it was never seen and never typechecked; the first number
+ * setting would have shipped as an uneditable row pointing nowhere. Switching
+ * on the declared `control` makes that branch impossible: the `never` below is
+ * a compile error the day somebody adds a control kind and forgets this file.
+ */
 function CompanySetting({
   setting,
   vault,
+  saving,
+  error,
   onSave,
 }: {
   setting: SettingView;
   /** Only for the reveal toggle: how much of the company is actually covered. */
   vault: VaultStatus | null;
+  saving: boolean;
+  /** This row's own failure, rendered here rather than in a banner two sections away. */
+  error: string | null;
   onSave: (key: SettingKey, value: unknown) => Promise<void>;
 }) {
   const [draft, setDraft] = useState('');
-  const label = t(SETTINGS[setting.key].labelToken);
-  const help = t(SETTINGS[setting.key].descriptionToken);
+  const definition = SETTINGS[setting.key];
+  const label = t(definition.labelToken);
+  const help = t(definition.descriptionToken);
 
-  return (
-    <SettingRow
-      label={label}
-      hint={
-        vault && vault.enabled
-          ? t('settings.vault.coverage', { stored: vault.stored, total: vault.total })
-          : help
-      }
-    >
-      {setting.secret ? (
+  function control() {
+    if (setting.secret) {
+      return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
           <span className="ob-small">
             {setting.configured
@@ -457,7 +509,7 @@ function CompanySetting({
           <Button
             variant="secondary"
             size="sm"
-            disabled={draft.length === 0}
+            disabled={draft.length === 0 || saving}
             onClick={() => {
               const value = draft;
               setDraft('');
@@ -467,18 +519,115 @@ function CompanySetting({
             {t('settings.company.secretSave')}
           </Button>
         </div>
-      ) : typeof setting.value === 'boolean' ? (
-        <Switch
-          checked={setting.value}
-          onChange={(next) => void onSave(setting.key, next)}
-          label={label}
-        />
-      ) : (
-        <span className="ob-mono ob-small">
-          {JSON.stringify(setting.value)} - {t('settings.company.editedElsewhere')}
+      );
+    }
+
+    switch (definition.control.kind) {
+      case 'boolean':
+        return (
+          <Switch
+            checked={setting.value === true}
+            disabled={saving}
+            onChange={(next) => void onSave(setting.key, next)}
+            label={label}
+          />
+        );
+      case 'number':
+        return (
+          <NumberSetting
+            control={definition.control}
+            value={(setting.value ?? null) as number | null}
+            label={label}
+            saving={saving}
+            onSave={(next) => onSave(setting.key, next)}
+          />
+        );
+      default: {
+        const exhaustive: never = definition.control;
+        return exhaustive;
+      }
+    }
+  }
+
+  return (
+    <SettingRow label={label} hint={help}>
+      {control()}
+      {/* The coverage line is a *second* line, never a replacement for the
+          help text. It used to displace it — so the moment the vault was
+          switched on, the sentence explaining that switching it off deletes
+          every stored password vanished, at exactly the moment it mattered. */}
+      {vault?.enabled && (
+        <span className="ob-small">
+          {t('settings.vault.coverage', { stored: vault.stored, total: vault.total })}
         </span>
       )}
+      {error && <FieldError>{error}</FieldError>}
     </SettingRow>
+  );
+}
+
+/**
+ * A bounded number, saved on a button rather than on change.
+ *
+ * A `Switch` may save on change — there is one other value and it is visible.
+ * A number must not: saving each keystroke writes `1` while somebody is on
+ * their way to typing `12`, and for `security.sessionHours` that is a value
+ * that signs people out four times as often, written and audited.
+ */
+function NumberSetting({
+  control,
+  value,
+  label,
+  saving,
+  onSave,
+}: {
+  control: Extract<SettingControl, { kind: 'number' }>;
+  value: number | null;
+  label: string;
+  saving: boolean;
+  onSave: (value: number | null) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState(value === null ? '' : String(value));
+
+  // Re-seeded when the stored value changes under us — a save elsewhere, or
+  // this row's own write coming back.
+  useEffect(() => {
+    setDraft(value === null ? '' : String(value));
+  }, [value]);
+
+  const trimmed = draft.trim();
+  const parsed = trimmed === '' ? null : Number(trimmed);
+  const valid =
+    parsed === null
+      ? control.nullable === true
+      : Number.isFinite(parsed) && parsed >= control.min && parsed <= control.max;
+  const changed = parsed !== value;
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
+      <Input
+        type="number"
+        min={control.min}
+        max={control.max}
+        step={control.step}
+        value={draft}
+        aria-label={label}
+        aria-invalid={!valid || undefined}
+        placeholder={control.nullable ? t('setting.number.none') : undefined}
+        style={{ width: rem(110) }}
+        onChange={(event) => setDraft(event.target.value)}
+      />
+      <span className="ob-small">{t(control.unitToken)}</span>
+      <Button
+        variant="secondary"
+        size="sm"
+        busy={saving}
+        disabled={!valid || !changed || saving}
+        onClick={() => void onSave(parsed)}
+      >
+        {t('common.save')}
+      </Button>
+    </div>
   );
 }
 

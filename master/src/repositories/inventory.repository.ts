@@ -15,6 +15,7 @@
  */
 
 import type { InventoryStockLevel, StockMovement, StockMovementType } from '@orderbook/shared';
+import { withDefaultReorderLevel } from '@orderbook/shared';
 import type { Knex } from 'knex';
 import { v4 as uuid } from 'uuid';
 
@@ -67,6 +68,11 @@ export async function listStockLevels(
      * exists only as a reservation is not a row.
      */
     reservations?: boolean;
+    /**
+     * The company's low-stock level for any line that has none of its own.
+     * `null`/absent means no default, which is exactly today's behaviour.
+     */
+    defaultReorderLevel?: number | null;
   },
 ): Promise<InventoryStockLevel[]> {
   const query = stockQuery(tenantId);
@@ -104,9 +110,18 @@ export async function listStockLevels(
   // reserved-but-unstocked pairs are folded in at zero.
   levels.push(...(await unstockedReservations(tenantId, held, levels)));
 
+  // The company's default low-stock level, for any line with none of its own.
+  // Applied here rather than in the service because `lowOnly` filters on the
+  // next line — a service-side pass would filter on the un-defaulted `isLow`
+  // and then correct rows that had already been dropped.
+  const judged =
+    options.defaultReorderLevel === undefined || options.defaultReorderLevel === null
+      ? levels
+      : levels.map((level) => withDefaultReorderLevel(level, options.defaultReorderLevel ?? null));
+
   // Filtered after the reservation totals are known, because "low" is judged on
   // what is free to sell and SQL cannot see those totals in the same pass.
-  const visible = options.lowOnly ? levels.filter((level) => level.isLow) : levels;
+  const visible = options.lowOnly ? judged.filter((level) => level.isLow) : judged;
 
   return visible.sort(
     (a, b) => a.productName.localeCompare(b.productName) || a.colour.localeCompare(b.colour),
@@ -358,14 +373,29 @@ export async function hasMovementForOrder(
 
 /**
  * Products at or below their reorder level — judged on free-to-sell stock, or
- * on the floor count while the company's free-to-sell switch is off.
+ * on the floor count while the company's free-to-sell switch is off, and
+ * against `defaultReorderLevel` for any line that has none of its own.
+ *
+ * The `whereNotNull('reorder_level')` this used to carry excluded every
+ * defaulted row before the default could be applied. Dropping it is only half
+ * the fix: `Number(null)` is **0**, so the JS compare below would then have
+ * silently judged every previously-excluded row against zero. The two must
+ * change together.
  */
-export async function countLowStock(tenantId: string, reservations = true): Promise<number> {
+export async function countLowStock(
+  tenantId: string,
+  reservations = true,
+  defaultReorderLevel: number | null = null,
+): Promise<number> {
   const rows = await db()('inventory_stock')
     .where({ tenant_id: tenantId })
-    .whereNotNull('reorder_level')
     .select<
-      Array<{ product_id: string; colour: string; quantity_boxes: string; reorder_level: string }>
+      Array<{
+        product_id: string;
+        colour: string;
+        quantity_boxes: string;
+        reorder_level: string | null;
+      }>
     >('product_id', 'colour', 'quantity_boxes', 'reorder_level');
 
   const held = reservations ? await reservationsRepo.reservedTotals(tenantId) : new Map<string, number>();
@@ -374,6 +404,7 @@ export async function countLowStock(tenantId: string, reservations = true): Prom
     const available =
       Number(row.quantity_boxes) -
       (held.get(stockKey(String(row.product_id), String(row.colour))) ?? 0);
-    return available <= Number(row.reorder_level);
+    const level = row.reorder_level === null ? defaultReorderLevel : Number(row.reorder_level);
+    return level !== null && available <= level;
   }).length;
 }

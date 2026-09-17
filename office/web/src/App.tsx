@@ -27,6 +27,7 @@ import {
 } from './api';
 import {
   AppShell,
+  adoptDefaultLocale,
   BP_NARROW,
   BusyMark,
   Clock,
@@ -308,8 +309,13 @@ function OfficePanel() {
         setBootStep(1);
 
         try {
-          const { session: restored } = await withTimeout(api.session());
+          const { session: restored, defaultLocale } = await withTimeout(api.session());
           if (cancelled) return;
+          // Behind the splash, before the shell first renders. Unlike the
+          // Master's, this endpoint needs no session, so the sign-in screen
+          // gets the deployment's language too. Writes once — see
+          // `adoptDefaultLocale`.
+          adoptDefaultLocale(defaultLocale);
           setSession(restored);
         } catch {
           // Nobody signed in, or a session the Master no longer honours. That

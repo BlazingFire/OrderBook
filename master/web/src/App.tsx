@@ -27,6 +27,7 @@ import { RECYCLE_BIN_ENTITIES, RESTORE_PERMISSION } from '@orderbook/shared';
 
 import { ApiError, api, desktopBridge } from './api';
 import {
+  adoptDefaultLocale,
   AppShell,
   Avatar,
   BP_NARROW,
@@ -183,7 +184,12 @@ function MasterPanel() {
   const [settingsTab, setSettingsTab] = useSettingsTab(
     'ob.settings.tab.master',
     SETTINGS_TAB_IDS,
-    'appearance',
+    // The company settings, not the theme picker. Settings is reached from a
+    // nav entry gated on `settings.manage`, so whoever opens it came to change
+    // something the company decides — and landed on a per-desk preference.
+    // `SettingsPage` falls back to the first tab for anyone without that
+    // permission, and a remembered tab still wins for anyone who has chosen.
+    'company',
   );
 
   const [panels, setPanels] = useState<OfficePanelWithPresence[]>([]);
@@ -264,6 +270,11 @@ function MasterPanel() {
           try {
             const me = await api.me();
             if (cancelled) return;
+            // Behind the splash, before the shell first renders: a fresh
+            // browser profile on a Hindi deployment paints in Hindi rather
+            // than starting English and staying there. Writes once — see
+            // `adoptDefaultLocale`.
+            adoptDefaultLocale(me.defaultLocale);
             setUser(me.user);
             setSessionToken(me.sessionToken);
             setPhase('ready');

@@ -130,6 +130,36 @@ export const EN_MESSAGES = {
   'roleTemplate.dispatch': 'Dispatch',
 
   // --- setting.* — label and help for every key in `domain/settings.ts` ---
+  // --- Headings the company settings are grouped under. Words a shopkeeper
+  // --- would use over the phone, not the module names the keys are built from.
+  'settingGroup.access': 'Who can get in',
+  'settingGroup.stock': 'Stock and prices',
+  'settingGroup.leads': 'Leads and follow-up',
+  'settingGroup.integrations': 'Other software',
+
+  // --- Units rendered beside a number setting's field.
+  'setting.unit.hours': 'hours',
+  'setting.unit.days': 'days',
+  'setting.unit.boxes': 'boxes',
+  /** The placeholder in a number setting that may be left empty. */
+  'setting.number.none': 'None',
+
+  'setting.panels.autoPairingEnabled.label': 'Let a new Office Panel join without the password',
+  'setting.panels.autoPairingEnabled.help':
+    'While Add Office Panel is open, any PC on this WiFi can join with one click. Switch this off once your panels are set up and joining will always need the pairing password.',
+  'setting.security.developerModeEnabled.label': 'Allow developer mode on this PC',
+  'setting.security.developerModeEnabled.help':
+    'Developer mode can erase all data and seed test users, and its password is the same on every copy of OrderBook. Switching it off also switches off the in-app uninstaller — OrderBook can still be removed from Windows Settings → Apps.',
+  'setting.security.sessionHours.label': 'Sign people out after',
+  'setting.security.sessionHours.help':
+    'How long somebody stays signed in without typing their password again. Anyone already signed in keeps the time they were given; this applies from their next sign-in.',
+  'setting.inventory.defaultReorderLevel.label': 'Low stock below',
+  'setting.inventory.defaultReorderLevel.help':
+    'Used for any colour you have not given its own low-stock level. Leave it empty for none. Colours with no stock at all count as low.',
+  'setting.leads.quietAfterDays.label': 'A lead has gone quiet after',
+  'setting.leads.quietAfterDays.help':
+    'How long a lead can sit untouched before the Lead Outcomes report stops counting it as open.',
+
   'setting.security.passwordRevealEnabled.label': 'Remember passwords so they can be shown again',
   'setting.security.passwordRevealEnabled.help':
     'While this is on, every password typed on this network is kept in a form an administrator can read back. Turning it off deletes every one already kept.',
@@ -172,6 +202,8 @@ export const EN_MESSAGES = {
   'error.unauthorized.apiKeyExpired': 'That API key has expired or been revoked',
   'error.unauthorized': 'Not signed in',
   'error.unauthorized.signInFailed': 'Sign-in failed',
+  'error.unauthorized.developerDisabled':
+    'Developer mode is switched off for this PC. An administrator can switch it on in Settings → Who can get in.',
   'signin.credentialsRequired': 'Enter your username and password',
   // The countable form. The sequence a person actually experiences is
   // 3 → 2 → 1 → locked for 60s → 3 again, because `recordFailure` zeroes the
@@ -2583,21 +2615,7 @@ export const EN_MESSAGES = {
     'Top {limit} by number of orders — your role does not include rates.',
   'reports.topParties.orderedByValue': 'Top {limit} by order value.',
   'reports.topParties.parties': 'Parties',
-  'settings.appearance.density': 'Density',
-  'settings.appearance.densityComfortable': 'Comfortable',
-  'settings.appearance.densityCompact': 'Compact',
-  'settings.appearance.densityLarge': 'Large',
-  'settings.appearance.densityNote': 'Row and control heights only — text size is the scale above.',
-  'settings.appearance.scale': 'UI scale',
-  'settings.appearance.scaleReset': 'Reset',
-  'settings.appearance.scaleNote': 'Root {size} — this screen resizes live',
-  'settings.appearance.motion': 'Motion',
-  'settings.appearance.motionHint': "Also honours the system's reduced-motion setting",
-  'settings.appearance.motionLabel': 'Turn animation off',
   'settings.appearance.subtitle': 'Per-machine — never synced',
-  'settings.appearance.theme': 'Theme',
-  'settings.appearance.themeDark': 'Dark',
-  'settings.appearance.themeLight': 'Light',
   'settings.appearance.title': 'Appearance',
   'settings.company.title': 'Company settings',
   'settings.company.subtitle': 'Decided once for the whole company — not per machine.',
@@ -2633,6 +2651,8 @@ export const EN_MESSAGES = {
   'settings.scale.smaller': 'Smaller',
   'settings.scale.larger': 'Larger',
   'settings.scale.note': 'Root {size} — this screen resizes live',
+  'settings.language.label': 'Language',
+  'settings.language.hint': 'Changing the language reloads this panel.',
   'settings.machine.company': 'Company',
   'settings.machine.connection': 'Connection',
   'settings.machine.networkLink': 'Network link',
@@ -2643,7 +2663,6 @@ export const EN_MESSAGES = {
   'settings.motion.hint': "Also honours the system's reduced-motion setting",
   'settings.motion.label': 'Motion',
   'settings.motion.turnOff': 'Turn animation off',
-  'settings.perMachine': 'Per-machine — never synced',
   'settings.storage.database': 'Database',
   'settings.storage.free': 'Free space on this drive',
   'settings.storage.total': 'Total used by this software',
@@ -2658,8 +2677,15 @@ export const EN_MESSAGES = {
   // --- The Settings screen's frame. Each panel picks the tabs it has, so a
   // label here may go unused on one panel and be the only word on the other.
   'settings.title': 'Settings',
-  'settings.subtitle':
-    'Per-machine preferences, this installation’s details, and the maintenance tools.',
+  // Panel-scoped (`ui/src/i18n.ts`): the Master now lands on the company
+  // settings, and the shared wording called the whole screen "per-machine
+  // preferences" — contradicted two rows down by "Decided once for the whole
+  // company". That contradiction became the first sentence an administrator
+  // read.
+  'master.settings.subtitle':
+    'Decisions your company makes once, plus this PC’s own preferences and details.',
+  'office.settings.subtitle':
+    'This PC’s own preferences, its connection to the Master, and the maintenance tools.',
   'settings.tab.appearance': 'Appearance',
   'settings.tab.shortcuts': 'Shortcuts',
   'settings.tab.company': 'Company',
@@ -2695,6 +2721,7 @@ export const EN_MESSAGES = {
   'signin.forgetAction': 'Remove from this panel',
   'storage.title': 'Where this panel keeps its files',
   'storage.change': 'Change',
+  'storage.free': '{size} free on this drive',
   'storage.folder': 'Folder',
   'storage.browse': 'Browse…',
   'storage.move': 'Move the files here',

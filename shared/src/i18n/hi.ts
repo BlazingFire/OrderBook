@@ -3677,29 +3677,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'reports.topParties.parties': 'Parties',
   // TODO(i18n-hi)
-  'settings.appearance.density': 'Density',
-  // TODO(i18n-hi)
-  'settings.appearance.densityComfortable': 'Comfortable',
-  // TODO(i18n-hi)
-  'settings.appearance.densityCompact': 'Compact',
-  // TODO(i18n-hi)
-  'settings.appearance.densityLarge': 'Large',
-  // TODO(i18n-hi)
-  'settings.appearance.densityNote': 'Row and control heights only — text size is the scale above.',
-  // TODO(i18n-hi)
-  'settings.appearance.motion': 'Motion',
-  // TODO(i18n-hi)
-  'settings.appearance.motionHint': "Also honours the system's reduced-motion setting",
-  // TODO(i18n-hi)
-  'settings.appearance.motionLabel': 'Turn animation off',
-  // TODO(i18n-hi)
   'settings.appearance.subtitle': 'Per-machine — never synced',
-  // TODO(i18n-hi)
-  'settings.appearance.theme': 'Theme',
-  // TODO(i18n-hi)
-  'settings.appearance.themeDark': 'Dark',
-  // TODO(i18n-hi)
-  'settings.appearance.themeLight': 'Light',
   // TODO(i18n-hi)
   'settings.appearance.title': 'Appearance',
   // TODO(i18n-hi)
@@ -3749,6 +3727,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'settings.density.note': 'Row and control heights only — text size is the scale above.',
   // TODO(i18n-hi)
+  'settings.language.label': 'भाषा',
+  'settings.language.hint': 'भाषा बदलने पर यह पैनल फिर से लोड होगा।',
   'settings.machine.company': 'Company',
   // TODO(i18n-hi)
   'settings.machine.connection': 'Connection',
@@ -3768,8 +3748,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'settings.motion.label': 'Motion',
   // TODO(i18n-hi)
   'settings.motion.turnOff': 'Turn animation off',
-  // TODO(i18n-hi)
-  'settings.perMachine': 'Per-machine — never synced',
   // TODO(i18n-hi)
   'settings.storage.database': 'Database',
   // TODO(i18n-hi)
@@ -3793,10 +3771,10 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // --- The Settings screen's frame.
   // TODO(i18n-hi)
   'settings.title': 'Settings',
-  // TODO(i18n-hi)
-  'settings.subtitle':
-    'Per-machine preferences, this installation’s details, and the maintenance tools.',
-  // TODO(i18n-hi)
+  'master.settings.subtitle':
+    'आपकी कंपनी एक बार जो तय करती है, साथ ही इस PC की अपनी पसंद और जानकारी।',
+  'office.settings.subtitle':
+    'इस PC की अपनी पसंद, मास्टर से इसका कनेक्शन, और रखरखाव के साधन।',
   'settings.tab.appearance': 'Appearance',
   // TODO(i18n-hi)
   'settings.tab.shortcuts': 'Shortcuts',
@@ -3859,6 +3837,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'storage.change': 'Change',
   // TODO(i18n-hi)
+  'storage.free': 'इस ड्राइव पर {size} खाली',
   'storage.folder': 'Folder',
   // TODO(i18n-hi)
   'storage.browse': 'Browse…',
@@ -4019,12 +3998,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
     'Clear the filters, scroll and unsaved entry on this screen and load it fresh.',
   // TODO(i18n-hi)
   'lead.add.discardConfirm': 'Discard this lead and start over?',
-  // TODO(i18n-hi)
-  'settings.appearance.scale': 'UI scale',
-  // TODO(i18n-hi)
-  'settings.appearance.scaleReset': 'Reset',
-  // TODO(i18n-hi)
-  'settings.appearance.scaleNote': 'Root {size} — this screen resizes live',
   // TODO(i18n-hi)
   'settings.scale.label': 'UI scale',
   // TODO(i18n-hi)
@@ -4507,4 +4480,23 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'table.sortBy': '{column} से क्रमबद्ध करें',
   'settings.appearance.resetAll': 'दिखावट रीसेट करें',
   'partyAccess.showing': 'अब तक {shown} दिख रहे हैं।',
+  'settingGroup.access': 'कौन अंदर आ सकता है',
+  'settingGroup.stock': 'स्टॉक और दाम',
+  'settingGroup.leads': 'लीड और फ़ॉलो-अप',
+  'settingGroup.integrations': 'अन्य सॉफ़्टवेयर',
+  'setting.unit.hours': 'घंटे',
+  'setting.unit.days': 'दिन',
+  'setting.unit.boxes': 'बॉक्स',
+  'setting.number.none': 'कोई नहीं',
+  'setting.panels.autoPairingEnabled.label': 'नए ऑफ़िस पैनल को बिना पासवर्ड जुड़ने दें',
+  'setting.panels.autoPairingEnabled.help': 'जब तक ऑफ़िस पैनल जोड़ें खुला है, इस WiFi का कोई भी PC एक क्लिक में जुड़ सकता है। पैनल सेट हो जाने पर इसे बंद कर दें — फिर जुड़ने के लिए पेयरिंग पासवर्ड हमेशा ज़रूरी होगा।',
+  'setting.security.developerModeEnabled.label': 'इस PC पर डेवलपर मोड की अनुमति दें',
+  'setting.security.developerModeEnabled.help': 'डेवलपर मोड सारा डेटा मिटा सकता है और टेस्ट उपयोगकर्ता बना सकता है, और इसका पासवर्ड OrderBook की हर कॉपी में एक ही है। इसे बंद करने पर ऐप के अंदर का अनइंस्टॉलर भी बंद हो जाता है — OrderBook को Windows Settings → Apps से तब भी हटाया जा सकता है।',
+  'setting.security.sessionHours.label': 'इतने समय बाद साइन आउट करें',
+  'setting.security.sessionHours.help': 'कोई व्यक्ति दोबारा पासवर्ड डाले बिना कितनी देर साइन इन रहेगा। जो पहले से साइन इन हैं उनका समय वही रहेगा; यह उनके अगले साइन-इन से लागू होगा।',
+  'setting.inventory.defaultReorderLevel.label': 'इससे कम होने पर स्टॉक कम',
+  'setting.inventory.defaultReorderLevel.help': 'उन रंगों के लिए जिनका अपना कोई स्तर तय नहीं है। कोई नहीं चाहिए तो खाली छोड़ें। जिन रंगों का स्टॉक बिल्कुल नहीं है वे भी कम गिने जाएँगे।',
+  'setting.leads.quietAfterDays.label': 'लीड इतने दिन बाद शांत मानी जाएगी',
+  'setting.leads.quietAfterDays.help': 'लीड आउटकम रिपोर्ट किसी लीड को कितने दिन तक बिना छेड़े खुला गिनती रहे।',
+  'error.unauthorized.developerDisabled': 'इस PC के लिए डेवलपर मोड बंद है। एक प्रशासक इसे सेटिंग्स → कौन अंदर आ सकता है में चालू कर सकता है।',
 };

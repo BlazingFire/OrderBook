@@ -38,6 +38,7 @@ import { panelLink } from '../realtime/panel-link.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as panelRepo from '../repositories/office-panel.repository.js';
 import { permissionSetForRole } from './pricing-gate.js';
+import { getSetting } from './settings.service.js';
 import { roleIdForTier } from '../repositories/user.repository.js';
 import { publishChange } from './change-bus.js';
 import { getIdentity, verifyPairingPassword } from './setup.service.js';
@@ -81,12 +82,30 @@ export function isAcceptingPairing(): boolean {
   return Date.now() < pairingWindowClosesAt;
 }
 
+/**
+ * Whether a panel may join right now with no password.
+ *
+ * Both halves in one place, because three readers ask the question and they
+ * must agree. If the discovery reply said yes while `pairPanel` said no, a
+ * panel would select this Master, POST auto, and be refused — while the
+ * Master's own screen sat waiting for a panel that could never arrive.
+ *
+ * The window alone used to be the whole answer, which meant that while the Add
+ * Office Panel screen was open, any machine on the shop's WiFi could become a
+ * trusted panel with one click. `panels.manage` says who may open the window;
+ * only this setting says whether an open window may admit a stranger.
+ */
+export async function isAutoPairingOpen(tenantId: string): Promise<boolean> {
+  if (!isAcceptingPairing()) return false;
+  return getSetting(tenantId, 'panels.autoPairingEnabled');
+}
+
 export async function pairPanel(request: PairingRequest, remoteIp: string | null): Promise<PairingSuccess> {
   const identity = await getIdentity();
   if (!identity) throw new ValidationError('validation.panel.setupIncomplete');
 
   if (request.mode === 'auto') {
-    if (!isAcceptingPairing()) {
+    if (!(await isAutoPairingOpen(identity.tenantId))) {
       throw new UnauthorizedError('error.unauthorized.pairingNotAccepting');
     }
   } else {

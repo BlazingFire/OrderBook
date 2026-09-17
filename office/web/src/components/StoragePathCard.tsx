@@ -16,9 +16,9 @@
  * actual reason.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-import { Button, Card, FormField, Input, t } from '@orderbook/ui';
+import { Button, Card, FormField, Input, formatBytes, t } from '@orderbook/ui';
 
 import { api, desktopBridge } from '../api';
 
@@ -29,16 +29,27 @@ export function StoragePathCard() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [moved, setMoved] = useState<string | null>(null);
+  const [freeBytes, setFreeBytes] = useState<number | null>(null);
 
-  useEffect(() => {
+  /*
+   * Read again after a move, not just on mount. `relocateDataDir` refuses a
+   * disk without room, so the number is the one thing on this card that
+   * predicts whether the move will be taken — and after moving to a folder on
+   * a *different* drive the mounted value describes the drive the panel just
+   * left. The move's own response carries only the path and a file count.
+   */
+  const loadPath = useCallback((): void => {
     void api
       .storagePath()
       .then((result) => {
         setDataDir(result.dataDir);
         setDraft(result.dataDir);
+        setFreeBytes(result.freeBytes);
       })
       .catch(() => setDataDir(null));
   }, []);
+
+  useEffect(() => loadPath(), [loadPath]);
 
   const bridge = desktopBridge();
 
@@ -58,6 +69,7 @@ export function StoragePathCard() {
       setDraft(result.dataDir);
       setMoved(t('storage.moved', { count: result.filesMoved }));
       setOpen(false);
+      loadPath();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : t('storage.failed'));
     } finally {
@@ -76,6 +88,13 @@ export function StoragePathCard() {
           <div className="ob-small ob-mono" style={{ wordBreak: 'break-all' }}>
             {dataDir}
           </div>
+          {/* Omitted rather than shown as a dash: the panel answers `null` when
+              it cannot read the drive, and "— free" reads like no space left. */}
+          {freeBytes !== null && (
+            <div className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
+              {t('storage.free', { size: formatBytes(freeBytes) })}
+            </div>
+          )}
         </div>
         <Button variant="secondary" onClick={() => setOpen((current) => !current)}>
           {open ? t('common.cancel') : t('storage.change')}

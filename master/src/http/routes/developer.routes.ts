@@ -14,11 +14,48 @@ import { DEVELOPER_RESET_CONFIRMATION, DEVELOPER_TOKEN_HEADER } from '@orderbook
 import { ValidationError } from '../../lib/errors.js';
 import { developerGate, resetAllData, seedDummyUsers } from '../../services/developer.service.js';
 import { asyncHandler } from '../async-handler.js';
-import { requireAuth } from '../middleware/require-auth.js';
+import { actorFromRequest, requireAuth } from '../middleware/require-auth.js';
+import { getSetting } from '../../services/settings.service.js';
+import { UnauthorizedError } from '../../lib/errors.js';
 
 export const developerRoutes: Router = Router();
 
 developerRoutes.use(requireAuth);
+
+/*
+ * Whether developer mode may be unlocked on this Master at all.
+ *
+ * Here, in route middleware, and deliberately not inside `developerGate`.
+ * `createDeveloperGate` is a pure in-memory factory with no database access —
+ * `master/tests/developer-service.test.ts` constructs it with no PostgreSQL in
+ * the process — so a `getSetting` inside it would force a third injected option
+ * and rewrite that whole file. This keeps the gate pure and every one of those
+ * unit tests untouched.
+ *
+ * **The `.env` override is the floor.** While `ORDERBOOK_DEVELOPER_PASSWORD` is
+ * set the switch is ignored, so an installation that turns developer mode off
+ * and then loses everyone holding `settings.manage` still has a way back in at
+ * the machine itself. Without that, those two events together would make a
+ * packaged install unrecoverable. The `!== undefined && !== ''` test is copied
+ * from `developer.service.ts` so the floor and the password check agree on what
+ * "set" means.
+ *
+ * The refusal reaches the operator through the error path `useDeveloperSession`
+ * already renders, rather than through a new field on `DeveloperStatus` — which
+ * would make `status` async and force the Office panel to answer for a switch
+ * this version does not honour there.
+ */
+developerRoutes.use(
+  asyncHandler(async (req, _res, next) => {
+    const override = process.env.ORDERBOOK_DEVELOPER_PASSWORD;
+    if (override !== undefined && override !== '') return next();
+
+    const actor = actorFromRequest(req);
+    if (await getSetting(actor.tenantId, 'security.developerModeEnabled')) return next();
+
+    throw new UnauthorizedError('error.unauthorized.developerDisabled');
+  }),
+);
 
 developerRoutes.post(
   '/unlock',

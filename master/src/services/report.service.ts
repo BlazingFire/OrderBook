@@ -28,7 +28,7 @@ import { requirePermission, type ActorContext } from '../domain/actor.js';
 import { resolvePartyScope } from '../domain/party-scope.js';
 import { canSeeRates } from '../domain/visibility.js';
 import { renderReportPdf } from '../pdf/table-renderer.js';
-import { QUIET_AFTER_DAYS } from '../domain/lead-outcome.js';
+import { getSetting } from './settings.service.js';
 import { resolveReportRange, type DateComponents } from '../domain/report-range.js';
 import { config } from '../config/index.js';
 import { db } from '../db/knex.js';
@@ -117,7 +117,14 @@ export async function leadOutcomeReport(input: ReportRangeInput, actor: ActorCon
   requirePermission(actor, 'reports.view');
   const { range, fromDate, toDateExclusive } = buildRange(input);
 
-  const rows = await reportRepo.leadOutcomesByMonth({ tenantId: actor.tenantId, fromDate, toDateExclusive, scope: resolvePartyScope(actor) });
+  // Read once and handed to the SQL classifier, so the number in the query and
+  // the number in the caption below are the same number.
+  const quietAfterDays = await getSetting(actor.tenantId, 'leads.quietAfterDays');
+
+  const rows = await reportRepo.leadOutcomesByMonth(
+    { tenantId: actor.tenantId, fromDate, toDateExclusive, scope: resolvePartyScope(actor) },
+    quietAfterDays,
+  );
 
   const byMonth = new Map<string, Record<LeadOutcome, number>>();
   for (const month of range.months) byMonth.set(month, { converted: 0, lost: 0, quiet: 0, open: 0 });
@@ -133,7 +140,7 @@ export async function leadOutcomeReport(input: ReportRangeInput, actor: ActorCon
     for (const outcome of OUTCOMES) totals[outcome] += bucket[outcome];
   }
 
-  return { range, months, totals, quietAfterDays: QUIET_AFTER_DAYS };
+  return { range, months, totals, quietAfterDays };
 }
 
 export async function topPartiesReport(

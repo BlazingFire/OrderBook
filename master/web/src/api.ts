@@ -3,6 +3,7 @@
 import { DEVELOPER_RESET_CONFIRMATION, DEVELOPER_TOKEN_HEADER } from '@orderbook/shared';
 import { publishSessionEnded } from '@orderbook/ui';
 import type {
+  Locale,
   PickKind,
   ActivityLogEntry,
   DesktopBridge,
@@ -415,7 +416,8 @@ export const api = {
   signOut: () => post<void>('/api/auth/sign-out'),
   // Carries the caller's own resolved permissions, so the UI renders from what
   // the trusted process granted rather than guessing from the role name.
-  me: () => request<{ user: SignedInUser; sessionToken: string }>('/api/auth/me'),
+  me: () =>
+    request<{ user: SignedInUser; sessionToken: string; defaultLocale: Locale }>('/api/auth/me'),
 
   dashboard: () => request<DashboardSummary>('/api/dashboard'),
   storage: () => request<StorageUsage>('/api/storage'),
