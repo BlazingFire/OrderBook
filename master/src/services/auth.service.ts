@@ -19,8 +19,8 @@ import type { ChangeOwnPasswordInput, PermissionSet, SignedInUser, User } from '
 import { effectivePermissions } from '@orderbook/shared';
 
 import { db } from '../db/knex.js';
-import { hashPassword, verifyPassword } from '../lib/password.js';
-import { UnauthorizedError, ValidationError } from '../lib/errors.js';
+import { assertPasswordLongEnough, hashPassword, verifyPassword } from '../lib/password.js';
+import { UnauthorizedError } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import { nextHlc } from '../repositories/identity.repository.js';
@@ -435,9 +435,7 @@ export async function changeOwnPassword(
   // otherwise nobody could change their own without administrative rights.
   if (!matches) throw new UnauthorizedError('error.unauthorized.currentPasswordIncorrect');
 
-  if (!input.newPassword || input.newPassword.length < 8) {
-    throw new ValidationError('validation.password.tooShort');
-  }
+  assertPasswordLongEnough(input.newPassword ?? '');
 
   const passwordHash = await hashPassword(input.newPassword);
 
