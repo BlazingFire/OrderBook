@@ -129,6 +129,16 @@ export function CatalogScreen({
   // Off with the company's pricing switch, or without the role's key: no
   // Rate column and no rate fields, rather than redacted ones.
   const showMoney = view.permissions.includes(RATE_PERMISSION);
+  /*
+   * Absent, not greyed — the convention `PartyAccessScreen.tsx` states.
+   *
+   * These controls had no permission check at all: `grep 'products.create'`
+   * across both panels matched nothing but a toast token. Someone without the
+   * key could open the whole form, fill it in, save, and earn a refusal that
+   * (until the refusal-visibility fix) they would never see.
+   */
+  const canCreateParty = view.permissions.includes('parties.create');
+  const canCreateProduct = view.permissions.includes('products.create');
   // Absent means an older Master, which sends every figure — read as "on".
   const freeToSell = view.features?.freeToSell ?? true;
 
@@ -360,9 +370,11 @@ export function CatalogScreen({
           </FilterChip>
         ))}
         <span style={{ flex: 1 }} />
-        <Button variant="primary" size="sm" icon="plus" onClick={() => setPartyFormOpen(true)}>
-          {t('catalog.parties.new')}
-        </Button>
+        {canCreateParty && (
+          <Button variant="primary" size="sm" icon="plus" onClick={() => setPartyFormOpen(true)}>
+            {t('catalog.parties.new')}
+          </Button>
+        )}
       </>
     ) : (
       <>
@@ -397,9 +409,16 @@ export function CatalogScreen({
             {t('catalog.products.import')}
           </Button>
         )}
-        <Button variant="primary" size="sm" icon="plus" onClick={() => setProductDrawerOpen(true)}>
-          {t('catalog.products.new')}
-        </Button>
+        {canCreateProduct && (
+          <Button
+            variant="primary"
+            size="sm"
+            icon="plus"
+            onClick={() => setProductDrawerOpen(true)}
+          >
+            {t('catalog.products.new')}
+          </Button>
+        )}
       </>
     ),
   );
@@ -524,8 +543,8 @@ export function CatalogScreen({
               <EmptyState
                 title={t('catalog.parties.empty.title')}
                 description={t('catalog.parties.empty.description')}
-                actionLabel={t('catalog.parties.new')}
-                onAction={() => setPartyFormOpen(true)}
+                actionLabel={canCreateParty ? t('catalog.parties.new') : undefined}
+                onAction={canCreateParty ? () => setPartyFormOpen(true) : undefined}
               />
             ) : (
               <EmptyState title={t('catalog.parties.empty.filtered')} />
@@ -707,6 +726,7 @@ export function CatalogScreen({
           open={editingProduct !== null}
           product={editingProduct}
           showMoney={showMoney}
+          permissions={view.permissions}
           onClose={() => setEditingProduct(null)}
           onUpdated={onProductUpdated}
           onError={onDrawerError}
@@ -740,8 +760,8 @@ export function CatalogScreen({
               <EmptyState
                 title={t('catalog.products.empty.title')}
                 description={t('catalog.products.empty.description')}
-                actionLabel={t('catalog.products.new')}
-                onAction={() => setProductDrawerOpen(true)}
+                actionLabel={canCreateProduct ? t('catalog.products.new') : undefined}
+                onAction={canCreateProduct ? () => setProductDrawerOpen(true) : undefined}
               />
             ) : (
               <EmptyState title={t('catalog.products.empty.filtered')} />
@@ -779,6 +799,7 @@ export function CatalogScreen({
       <ProductDrawer
         open={productDrawerOpen}
         showMoney={showMoney}
+        permissions={view.permissions}
         onClose={() => setProductDrawerOpen(false)}
         onCreated={onProductCreated}
         onError={onDrawerError}
@@ -787,6 +808,7 @@ export function CatalogScreen({
         open={editingProduct !== null}
         product={editingProduct}
         showMoney={showMoney}
+        permissions={view.permissions}
         onClose={() => setEditingProduct(null)}
         onUpdated={onProductUpdated}
         onError={onDrawerError}

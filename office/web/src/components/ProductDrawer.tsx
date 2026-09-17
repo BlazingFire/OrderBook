@@ -12,14 +12,25 @@
  *
  * The name is kept for its call sites; it is a modal now.
  *
- * **The purchase rate is hidden entirely without the key, not disabled.** A
+ * **A money field is hidden entirely without the permission, not disabled.** A
  * disabled field with a value in it is a disclosure; a disabled field with no
- * value in it is a permanent tease. The Master masks the field by *absence*, so
- * "the key is not there" and "the person may not see cost" are the same test.
+ * value in it is a permanent tease.
  *
- * The sale rate has no client-side gate, deliberately: the Master ignores a
- * rate from anybody without `field.saleRate.edit` whatever the panel sends, so
- * a gate here would be a courtesy — and this screen is not handed a `can()`.
+ * All three money fields are gated on the signed-in person's own permissions,
+ * threaded in from `CatalogScreen`. Two things were wrong before:
+ *
+ *  · The purchase rate was inferred from **key absence** on the record being
+ *    edited — which works on the edit branch and defaults *permissive* on
+ *    create, where there is no record to infer from. A clerk without
+ *    `field.purchaseRate.edit` typed a cost price into a new product, it was
+ *    sent, the Master silently discarded it, and nobody was told.
+ *  · The sale rate and MRP had no gate at all, justified by a comment saying
+ *    this screen "is not handed a `can()`". It is now: `SyncSnapshot.permissions`
+ *    is the same list `DashboardScreen` already reads, and `CatalogScreen`
+ *    already holds it.
+ *
+ * Gating the render and gating the payload are the same decision here, so they
+ * read from the same flags rather than from two different tests.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -53,6 +64,8 @@ interface ProductDrawerProps {
   product?: Product | null;
   /** Holds `field.saleRate.view`; off with the company's pricing switch. */
   showMoney: boolean;
+  /** The signed-in person's own resolved permissions, from the snapshot. */
+  permissions: string[];
   onClose: () => void;
   onCreated?: (product: CreatedProduct) => void;
   onUpdated?: (name: string) => void;
@@ -119,6 +132,7 @@ export function ProductDrawer({
   open,
   product,
   showMoney,
+  permissions,
   onClose,
   onCreated,
   onUpdated,
@@ -140,16 +154,19 @@ export function ProductDrawer({
   const set = (field: keyof Draft, value: string): void =>
     setDraft((current) => ({ ...current, [field]: value }));
 
-  /**
-   * Whether this panel's signed-in person may see what the company pays.
+  /*
+   * From the permission list, not from the record's shape.
    *
-   * Read from the record rather than from a permission list: the Master masks
-   * the purchase rate by **key absence**, so an editing product that carries no
-   * `purchaseRate` property is exactly the case where the field must not
-   * render. On a new product there is nothing to disclose, so it is offered —
-   * and the Master drops it if they may not set one.
+   * `!editing || 'purchaseRate' in editing` was the old test: correct on the
+   * edit branch, and permissive on create — `editing` is null, so it was always
+   * true and the field always rendered on a new product.
+   *
+   * `edit`, not `view`: this is a form, and what it governs is whether a value
+   * may be *set*. `showMoney` (a `view` key, and the company pricing switch)
+   * still decides whether money appears on this screen at all.
    */
-  const canSeeCost = !editing || 'purchaseRate' in editing;
+  const canEditRate = permissions.includes('field.saleRate.edit');
+  const canEditCost = permissions.includes('field.purchaseRate.edit');
 
   useEffect(() => {
     if (!open) return;
@@ -240,8 +257,7 @@ export function ProductDrawer({
       thicknessMm: toNumber(draft.thicknessMm),
       color: text('color'),
       colourPolicy: (draft.colourPolicy === 'selectable' ? 'selectable' : 'fixed') as
-        | 'fixed'
-        | 'selectable',
+        'fixed' | 'selectable',
       grade: text('grade'),
       finish: text('finish'),
       shade: text('shade'),
@@ -253,8 +269,9 @@ export function ProductDrawer({
       application: text('application'),
       originPlant: text('originPlant'),
       hsnCode: text('hsnCode'),
-      rate: toPaise(draft.rate),
-      mrp: toPaise(draft.mrp),
+      // Omitted, not sent as null: a field the person may not set must not
+      // reach the Master as an assertion that it is empty.
+      ...(canEditRate ? { rate: toPaise(draft.rate), mrp: toPaise(draft.mrp) } : {}),
       gstRatePct: toNumber(draft.gstRatePct),
       uom: draft.uom,
       weightKg: toNumber(draft.weightKg),
@@ -262,7 +279,7 @@ export function ProductDrawer({
       boxCoverageSqft: toNumber(draft.boxCoverageSqft),
       // Sent only when the field was rendered. Sending `null` for a hidden
       // field would clear a cost this person was never shown.
-      ...(canSeeCost ? { purchaseRate: toPaise(draft.purchaseRate) } : {}),
+      ...(canEditCost ? { purchaseRate: toPaise(draft.purchaseRate) } : {}),
     };
 
     setBusy(true);
@@ -372,9 +389,6 @@ export function ProductDrawer({
                 id={id}
                 value={draft.name}
                 onChange={(event) => set('name', event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') void save();
-                }}
               />
             )}
           </Field>
@@ -387,10 +401,10 @@ export function ProductDrawer({
         <FieldGroup title={t('product.group.pricing')}>
           {/* The stored values still round-trip untouched: a hidden field is
               sent back exactly as it arrived, never cleared. */}
-          {showMoney && numeric('rate', t('product.field.rate'), t('product.field.rateHint'))}
-          {showMoney && numeric('mrp', t('product.field.mrp'))}
+          {showMoney && canEditRate && numeric('rate', t('product.field.rate'))}
+          {showMoney && canEditRate && numeric('mrp', t('product.field.mrp'))}
           {showMoney &&
-            canSeeCost &&
+            canEditCost &&
             numeric(
               'purchaseRate',
               t('product.field.purchaseRate'),

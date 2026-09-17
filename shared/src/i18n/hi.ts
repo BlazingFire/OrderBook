@@ -3449,8 +3449,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'product.field.rate': 'Rate per box',
   // TODO(i18n-hi)
-  'product.field.rateHint':
-    'Entered in rupees; the Master ignores this without field.saleRate.edit',
   // TODO(i18n-hi)
   'product.field.size': 'Size',
   // TODO(i18n-hi)

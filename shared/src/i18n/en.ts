@@ -2464,8 +2464,6 @@ export const EN_MESSAGES = {
   'product.field.images': 'Photos',
   'product.field.name': 'Product name',
   'product.field.rate': 'Rate per box',
-  'product.field.rateHint':
-    'Entered in rupees; the Master ignores this without field.saleRate.edit',
   'product.field.size': 'Size',
   'product.field.type': 'Type',
   'product.field.weight': 'Box weight (kg)',
