@@ -3023,7 +3023,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'panels.detail.identity': 'Identity',
   // TODO(i18n-hi)
-  'panels.detail.mac': 'MAC address',
   // TODO(i18n-hi)
   'panels.detail.network': 'Network',
   // TODO(i18n-hi)
@@ -4507,4 +4506,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'signin.credentialsRequired': 'अपना उपयोगकर्ता नाम और पासवर्ड दर्ज करें',
   'signin.forgetAction': 'इस पैनल से हटाएँ',
   'lead.add.discard': 'ड्राफ़्ट हटाएँ',
+  'table.sortBy': '{column} से क्रमबद्ध करें',
+  'settings.appearance.resetAll': 'दिखावट रीसेट करें',
 };

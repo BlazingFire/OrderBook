@@ -120,7 +120,7 @@
 .ob-btn--secondary {
   background: var(--bg-surface);
   color: var(--fg-primary);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-control);
 }
 .ob-btn--secondary:hover:not(:disabled) {
   background: var(--bg-hover);
@@ -138,7 +138,7 @@
 .ob-btn--danger {
   background: var(--bg-surface);
   color: var(--state-conflict);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-control);
 }
 .ob-btn--danger:hover:not(:disabled) {
   background: var(--state-conflict-tint);
@@ -343,9 +343,11 @@
   display: inline-flex;
   align-items: center;
   gap: var(--s-4);
-  height: calc(var(--ctl-h-md) - 0.5714rem);
+  /* 20px floor: at SCALE_MIN this resolved to 17.3px (15.7px on Compact),
+     under HIG's 20×20pt target minimum. */
+  height: max(calc(var(--ctl-h-md) - 0.5714rem), 20px);
   padding: 0 var(--s-8);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-control);
   border-radius: var(--r-sm);
   background: var(--bg-surface);
   color: var(--fg-secondary);
@@ -385,7 +387,7 @@
   width: 100%;
   height: var(--ctl-h-md);
   padding: 0 var(--s-8);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-control);
   border-radius: var(--r-sm);
   background: var(--bg-surface);
   color: var(--fg-primary);
@@ -484,11 +486,25 @@
  * DataTable (§9.1)
  * ======================================================================== */
 
+/*
+ * No `overflow: auto` here, deliberately.
+ *
+ * It had one, with no height constraint — so this element grew to the table's
+ * full height and never itself scrolled, while the real scroller stayed the
+ * enclosing `.ob-pane`. That made `.ob-tablewrap` the sticky containing block
+ * instead of `.ob-pane`, so `position: sticky` on `thead` never activated and
+ * the header scrolled away with the rows on every long list. It is also the
+ * same fact `DataTable.tsx`'s virtualiser had to work around by measuring
+ * against `.ob-pane`; the two now agree about which element scrolls.
+ *
+ * `overflow: hidden` keeps the rounded corners clipping the rows without
+ * creating a scroll container.
+ */
 .ob-tablewrap {
   background: var(--bg-surface);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  overflow: auto;
+  overflow: hidden;
 }
 
 /*
@@ -519,10 +535,51 @@ table.ob-table {
   position: sticky;
   top: 0;
   z-index: 1;
+  /* On `thead` itself, not only on its `th` cells: without it the gaps between
+     cells are transparent and rows show through the header as they scroll. */
+  background: var(--bg-sunken);
 }
 
 .ob-table tr {
   width: 100%;
+}
+
+/*
+ * A sortable header is a button filling its cell, so the whole header is the
+ * target rather than the few pixels of its text. It inherits the `th`'s type
+ * so the row still reads as one band.
+ */
+.ob-th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-4);
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.ob-th-sort:hover {
+  color: var(--fg-primary);
+}
+
+/* Muted until this column is the sorted one, so a row of carets does not read
+   as six active controls. */
+.ob-th-caret {
+  color: var(--fg-tertiary);
+  font-size: 0.8em;
+}
+
+.ob-table th[aria-sort='ascending'] .ob-th-caret,
+.ob-table th[aria-sort='descending'] .ob-th-caret {
+  color: var(--accent);
 }
 
 .ob-table thead th {
@@ -1978,6 +2035,62 @@ html[data-window-blur='true'] .ob-busy rect {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/*
+ * Popover and menu surfaces.
+ *
+ * These classes were used in four places — `Popover.tsx`, both panels' sync
+ * status popovers, and the Lead board's kebab menu — and had **no rule
+ * anywhere**. `.ob-popover` therefore had no `position`, so the `left`/`bottom`
+ * the component sets inline were inert (a statically positioned element ignores
+ * them), it had no background, and it rendered in normal document flow with
+ * whatever was behind it showing through. `.ob-menu-item` rendered as three
+ * bare, padding-less buttons shoved into the card's own flow.
+ *
+ * The `z-index` matters as much as the paint: both panels' click-away shims are
+ * `position: absolute` at `--z-popover`, so against an unpositioned popover the
+ * shim painted *above* it and swallowed every click inside — including the
+ * popover's own Close button. The shims now sit one below.
+ */
+.ob-popover {
+  position: absolute;
+  z-index: var(--z-popover);
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-2);
+}
+
+.ob-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 11rem;
+  padding: var(--s-4);
+}
+
+.ob-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: var(--ctl-h-md);
+  padding: 0 var(--s-8);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ob-menu-item:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.ob-menu-item:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .ob-modal-wrap {

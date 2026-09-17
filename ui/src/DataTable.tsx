@@ -5,10 +5,11 @@
  * absent key (redaction removes the key — never assume `null`).
  */
 
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { fitColumns, gridTemplateFor } from './fitColumns.js';
+import { t } from './i18n.js';
 
 export interface DataTableColumn<T> {
   key: string;
@@ -26,6 +27,36 @@ export interface DataTableColumn<T> {
    * `fitColumns.ts`. On a table that is the record, every column stays at 1.
    */
   priority?: 1 | 2 | 3;
+  /**
+   * What this column sorts by. Present makes the header a sort control.
+   *
+   * A value function rather than a flag, because `render` returns a
+   * `ReactNode` — a pill, a two-line summary, a colour chip — and there is no
+   * general way to order those. The column says what its own underlying value
+   * is; `null`/`undefined` sorts last in both directions, so a row missing the
+   * value never displaces one that has it.
+   */
+  sortValue?: (row: T) => string | number | null | undefined;
+}
+
+export interface DataTableSort {
+  key: string;
+  dir: 'asc' | 'desc';
+}
+
+/** `null`/`undefined` last in both directions; strings compared case-insensitively. */
+function compareValues(
+  a: string | number | null | undefined,
+  b: string | number | null | undefined,
+): number {
+  const aMissing = a === null || a === undefined || a === '';
+  const bMissing = b === null || b === undefined || b === '';
+  if (aMissing && bMissing) return 0;
+  if (aMissing) return 1;
+  if (bMissing) return -1;
+
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
 }
 
 const VIRTUALIZE_ABOVE = 100;
@@ -39,6 +70,8 @@ export function DataTable<T>({
   onRowOpen,
   selectedId,
   empty,
+  sort,
+  onSortChange,
 }: {
   columns: DataTableColumn<T>[];
   rows: T[];
@@ -47,6 +80,13 @@ export function DataTable<T>({
   onRowOpen?: (row: T) => void;
   selectedId?: string;
   empty?: ReactNode;
+  /**
+   * Controlled, so a screen that pages from the server can sort there instead
+   * and still render the header state. Omit `onSortChange` and the headers stay
+   * inert even on a column that declares a `sortValue`.
+   */
+  sort?: DataTableSort;
+  onSortChange?: (sort: DataTableSort) => void;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -105,18 +145,33 @@ export function DataTable<T>({
     };
   }, [rows.length]);
 
-  const virtualize = rows.length > VIRTUALIZE_ABOVE;
-  let visibleRows = rows;
+  /*
+   * Sorted before the virtualisation slice, which already operates on a plain
+   * array — so this is additive rather than a restructure. A copy, because
+   * `rows` belongs to the caller and `sort` in place would reorder their state.
+   */
+  const sorted = useMemo(() => {
+    if (!sort) return rows;
+    const column = columns.find((c) => c.key === sort.key);
+    if (!column?.sortValue) return rows;
+
+    const direction = sort.dir === 'asc' ? 1 : -1;
+    const value = column.sortValue;
+    return [...rows].sort((a, b) => compareValues(value(a), value(b)) * direction);
+  }, [rows, columns, sort]);
+
+  const virtualize = sorted.length > VIRTUALIZE_ABOVE;
+  let visibleRows = sorted;
   let padTop = 0;
   let padBottom = 0;
 
   if (virtualize) {
     const first = Math.max(0, Math.floor(scrollTop / rowH) - OVERSCAN);
     const visibleCount = Math.ceil(viewportH / rowH) + OVERSCAN * 2;
-    const last = Math.min(rows.length, first + visibleCount);
-    visibleRows = rows.slice(first, last);
+    const last = Math.min(sorted.length, first + visibleCount);
+    visibleRows = sorted.slice(first, last);
     padTop = first * rowH;
-    padBottom = (rows.length - last) * rowH;
+    padBottom = (sorted.length - last) * rowH;
   }
 
   /*
@@ -142,15 +197,53 @@ export function DataTable<T>({
         </colgroup>
         <thead>
           <tr style={{ display: 'grid', gridTemplateColumns: gridTemplate }}>
-            {visible.map((c) => (
-              <th
-                key={c.key}
-                className={c.align === 'right' ? 'num' : undefined}
-                style={{ display: 'flex', alignItems: 'center' }}
-              >
-                {c.header}
-              </th>
-            ))}
+            {visible.map((c) => {
+              const sortable = Boolean(c.sortValue && onSortChange);
+              const active = sort?.key === c.key ? sort.dir : undefined;
+
+              return (
+                <th
+                  key={c.key}
+                  className={c.align === 'right' ? 'num' : undefined}
+                  // `aria-sort` belongs on the header cell, not on the button
+                  // inside it — a screen reader announces the column's state,
+                  // not the control's.
+                  aria-sort={
+                    sortable
+                      ? active === 'asc'
+                        ? 'ascending'
+                        : active === 'desc'
+                          ? 'descending'
+                          : 'none'
+                      : undefined
+                  }
+                  style={{ display: 'flex', alignItems: 'center' }}
+                >
+                  {sortable ? (
+                    <button
+                      type="button"
+                      className="ob-th-sort"
+                      title={t('table.sortBy', { column: c.header })}
+                      onClick={() =>
+                        onSortChange?.({
+                          key: c.key,
+                          // First click sorts ascending; clicking the active
+                          // column flips it.
+                          dir: active === 'asc' ? 'desc' : 'asc',
+                        })
+                      }
+                    >
+                      {c.header}
+                      <span aria-hidden="true" className="ob-th-caret">
+                        {active === 'asc' ? '▲' : active === 'desc' ? '▼' : '↕'}
+                      </span>
+                    </button>
+                  ) : (
+                    c.header
+                  )}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody style={{ display: 'block' }}>

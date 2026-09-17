@@ -631,8 +631,7 @@ function OfficePanel() {
   }
 
   /** Hangs each module's sub-pages, then the open record's entry, under it. */
-  const nest = (items: NavItem[]): NavItem[] =>
-    graftSubNav(withSubPages(items, subPages), subNav);
+  const nest = (items: NavItem[]): NavItem[] => graftSubNav(withSubPages(items, subPages), subNav);
 
   const groups: NavGroup[] = [
     {
@@ -791,11 +790,7 @@ function OfficePanel() {
       <PaletteButton />
 
       {tab !== 'addLead' && route !== 'gallery' && can('leads.create') && (
-        <button
-          className="ob-btn ob-btn--primary"
-          disabled={!view}
-          onClick={openNewLead}
-        >
+        <button className="ob-btn ob-btn--primary" disabled={!view} onClick={openNewLead}>
           {t('action.newLead')}
         </button>
       )}
@@ -885,7 +880,10 @@ function OfficePanel() {
         <>
           {/* Click-away shim keeps the popover honest without a portal. */}
           <div
-            style={{ position: 'absolute', inset: 0, zIndex: 'var(--z-popover)' }}
+            // One below the popover it backs, not level with it: the popover now
+            // carries `--z-popover` itself, and a shim at the same level painted
+            // over it and ate every click inside.
+            style={{ position: 'absolute', inset: 0, zIndex: 'calc(var(--z-popover) - 1)' }}
             onClick={() => setSyncPopover(false)}
           />
           <div

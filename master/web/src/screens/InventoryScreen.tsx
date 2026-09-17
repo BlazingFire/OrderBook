@@ -47,6 +47,7 @@ import {
   useColourHex,
   useFilterBar,
   type DataTableColumn,
+  useDebounced,
 } from '@orderbook/ui';
 
 interface Props {
@@ -83,6 +84,11 @@ export function InventoryScreen({ revision, filter, onFilterChange, freeToSell }
   const [optionLists, setOptionLists] = useState<OptionListItem[]>([]);
   const colourHex = useColourHex(optionLists);
   const [search, setSearch] = useState('');
+  // The input stays wired to the raw value so typing feels instant; only the
+  // network-triggering effect waits. Without this the screen fired a full
+  // request per keystroke, so fast typing produced a burst of overlapping
+  // requests for characters the person had already typed past.
+  const debouncedSearch = useDebounced(search);
   const lowOnly = filter === 'low';
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -101,7 +107,7 @@ export function InventoryScreen({ revision, filter, onFilterChange, freeToSell }
   const load = useCallback(async () => {
     try {
       const [stock, recent] = await Promise.all([
-        api.stock({ search: search || undefined, lowOnly }),
+        api.stock({ search: debouncedSearch || undefined, lowOnly }),
         api.stockMovements(),
       ]);
       setLevels(stock);
@@ -109,7 +115,7 @@ export function InventoryScreen({ revision, filter, onFilterChange, freeToSell }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : t('inventory.error.load'));
     }
-  }, [search, lowOnly]);
+  }, [debouncedSearch, lowOnly]);
 
   useEffect(() => {
     void load();
@@ -209,7 +215,12 @@ export function InventoryScreen({ revision, filter, onFilterChange, freeToSell }
       {freeToSell && (
         <span
           className="ob-small"
-          style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}
+          style={{
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            minWidth: 0,
+          }}
         >
           {t('inventory.filterNote')}
         </span>
@@ -548,7 +559,9 @@ export function InventoryScreen({ revision, filter, onFilterChange, freeToSell }
         action={
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
             <span className="ob-pill">
-              {t(freeToSell ? 'inventory.boxesFree' : 'inventory.boxesOnHand', { count: totalFree })}
+              {t(freeToSell ? 'inventory.boxesFree' : 'inventory.boxesOnHand', {
+                count: totalFree,
+              })}
             </span>
             <Button
               variant="primary"

@@ -9,7 +9,7 @@ import { CUSTOM_FIELD_ENTITIES, type CustomFieldEntity } from './entities.js';
 import type { MessageKey } from '../i18n/keys.js';
 
 /**
- * The four managed option-list sets. Inlined literals, never referenced from a
+ * The eight managed option-list sets. Inlined literals, never referenced from a
  * migration (`03-DATABASE.md` §2: a migration is a fixed historical fact, not
  * a view of today's code).
  */
@@ -34,7 +34,7 @@ export function isFieldListKey(value: unknown): value is FieldListKey {
 export interface FieldSetDefinition {
   listKey: FieldListKey;
   labelToken: MessageKey;
-  /** True for `'stock.colour'` only — the other three have no colour to render. */
+  /** True for `'stock.colour'` only — the other seven have no colour to render. */
   hasHex: boolean;
   /** Tables that reference this set, as tokens the client labels. */
   usedBy: string[];
@@ -57,7 +57,16 @@ const FIELD_SETS: readonly FieldSetDefinition[] = [
     listKey: 'product.productType',
     labelToken: 'fieldSet.product.productType',
     hasHex: false,
-    usedBy: ['products'],
+    /*
+     * Three sources, not one. `field-usage.repository.ts` counts `products`,
+     * `line_items` **and** `party_product_variants` for this key, and this list
+     * is rendered verbatim as "Used by …" on the Fields screen — the blast
+     * radius an administrator reads before retiring an option. Saying "products"
+     * invited them to confirm no current product used a value and delete it,
+     * while historical lines on past leads and orders, and party rate overrides,
+     * went on referencing a string that no longer existed.
+     */
+    usedBy: ['products', 'leads', 'orders'],
   },
   // The four ceramic vocabularies. Lists rather than columns with a CHECK,
   // because these are sets staff extend — a new brand or a new surface arrives

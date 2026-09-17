@@ -154,17 +154,29 @@ export function SettingsSection({
   title,
   description,
   tone = 'default',
+  action,
   children,
 }: {
   title: string;
   description?: string;
   tone?: 'default' | 'danger';
+  /** A control that applies to the whole section, right-aligned in its header. */
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <Card className={tone === 'danger' ? 'ob-card--danger' : undefined}>
-      <div className="ob-eyebrow" style={{ marginBottom: description ? 'var(--s-4)' : 'var(--s-12)' }}>
-        {title}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 'var(--s-12)',
+          marginBottom: description ? 'var(--s-4)' : 'var(--s-12)',
+        }}
+      >
+        <div className="ob-eyebrow">{title}</div>
+        {action}
       </div>
       {description && (
         <p className="ob-small" style={{ margin: '0 0 var(--s-12)' }}>
@@ -245,10 +257,37 @@ export function AppearanceSettings() {
     setMotionOn(!motionOff);
   }
 
+  /*
+   * Scale, density and motion together — **not** theme.
+   *
+   * Scale already had a per-control reset; density and motion had none, so
+   * putting a machine back to its shipped defaults after experimenting meant
+   * three separate corrections. Theme is left alone deliberately: resetting
+   * somebody's light/dark preference as a side effect of an appearance reset
+   * they did not ask for would be surprising, and light/dark is a preference
+   * rather than a setting that drifts.
+   *
+   * The per-scale reset stays: somebody who only moved the slider wants only
+   * the slider back.
+   */
+  const atDefaults = scale === SCALE_DEFAULT && density === 'comfortable' && motionOn;
+
+  function resetAppearance(): void {
+    pickScale(SCALE_DEFAULT);
+    pickDensity('comfortable');
+    // `toggleMotion` takes "motion is off", so false restores motion.
+    toggleMotion(false);
+  }
+
   return (
     <SettingsSection
       title={t('settings.appearance.title')}
       description={t('settings.appearance.subtitle')}
+      action={
+        <Button variant="secondary" size="sm" disabled={atDefaults} onClick={resetAppearance}>
+          {t('settings.appearance.resetAll')}
+        </Button>
+      }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
         <SettingRow label={t('settings.theme.label')}>

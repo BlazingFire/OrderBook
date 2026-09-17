@@ -26,7 +26,17 @@
   --glaze-60: #0f4088;
   --glaze-05: #e3ecf8;
 
-  --kiln-amber: #b26a00;
+  /*
+   * Darkened from #b26a00 for AA on 11px text.
+   *
+   * This is the colour of the "not synced" pill on every unsaved lead, party
+   * and order card in the Office panel — arguably the most-read status colour
+   * in the product, and light is the Office panel's default theme. The old
+   * value was 3.75:1 on its own tint and 4.24:1 on white, both under the 4.5:1
+   * floor. #8a5200 is 5.66:1 and 6.39:1. The dark theme's amber already passes
+   * (6.79:1) and is left alone.
+   */
+  --kiln-amber: #8a5200;
   --kiln-amber-05: #fbf0dc;
   --kiln-red: #a8231f;
   --kiln-red-05: #fae9e8;
@@ -49,6 +59,17 @@
   --line: var(--porcelain-20);
   --line-strong: var(--porcelain-30);
   --line-focus: var(--glaze-50);
+  /*
+   * The boundary of a *control*, as opposed to a decorative separator.
+   *
+   * `--line` (#d6dbde) is 1.40:1 on white, and `.ob-card` fills with the same
+   * `--bg-surface` a secondary button or an input does — so a control sitting
+   * inside a card had almost no visible edge. WCAG 1.4.11 wants ≥3:1 to
+   * identify a control. #848d94 is 3.38:1 on `--bg-surface` and 3.06:1 on
+   * `--bg-canvas`, which are the two backgrounds a control can sit on.
+   * `--line` keeps its job on separators, where 1.4:1 is fine.
+   */
+  --line-control: #848d94;
 
   --accent: var(--glaze-50);
   --accent-hover: var(--glaze-60);
@@ -79,7 +100,17 @@
   --t-display-line: 2rem; /* 28px */
   --t-title-size: 1.2857rem; /* 18px */
   --t-title-line: 1.7143rem; /* 24px */
-  --t-eyebrow-size: 0.7857rem; /* 11px */
+  /*
+   * Floored at 10px.
+   *
+   * The scale slider's own minimum is an 11px root (`theme.ts` SCALE_MIN), at
+   * which 0.7857rem resolves to **8.6px** — table headers, card labels and
+   * status pills, under HIG's ~10pt desktop floor, with nothing in the product
+   * stopping an operator from walking there. Clamped rather than raising
+   * SCALE_MIN, so the slider keeps its useful range for table *bodies* while
+   * the labels stay legible.
+   */
+  --t-eyebrow-size: max(0.7857rem, 10px); /* 11px, never below 10px */
   --t-eyebrow-line: 1rem; /* 14px */
   --t-body-size: 1rem; /* 14px */
   --t-body-line: 1.4286rem; /* 20px */
@@ -87,7 +118,7 @@
   --t-data-line: 1.2857rem; /* 18px */
   --t-small-size: 0.8929rem; /* 12.5px */
   --t-small-line: 1.1429rem; /* 16px */
-  --t-micro-size: 0.7857rem; /* 11px */
+  --t-micro-size: max(0.7857rem, 10px); /* 11px, never below 10px — see eyebrow */
   --t-micro-line: 1rem; /* 14px */
   --t-mono-size: 0.8929rem; /* 12.5px */
   --t-mono-line: 1.2857rem; /* 18px */
@@ -175,6 +206,8 @@
 
   --bg-hover: #1b2429;
   --fg-on-accent: #0a0f11;
+  /* 3.79:1 on `--bg-surface`, 4.23:1 on `--bg-sunken`. */
+  --line-control: #6b787e;
 
   --sh-2: 0 4px 12px rgba(0, 0, 0, 0.45);
   --sh-3: 0 16px 40px rgba(0, 0, 0, 0.6);

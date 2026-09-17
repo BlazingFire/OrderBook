@@ -745,7 +745,10 @@ function MasterPanel() {
     <>
       {/* Click-away shim keeps the popover honest without a portal. */}
       <div
-        style={{ position: 'absolute', inset: 0, zIndex: 'var(--z-popover)' }}
+        // One below the popover it backs, not level with it: the popover now
+        // carries `--z-popover` itself, and a shim at the same level painted
+        // over it and ate every click inside.
+        style={{ position: 'absolute', inset: 0, zIndex: 'calc(var(--z-popover) - 1)' }}
         onClick={() => setSyncPopover(false)}
       />
       <div
@@ -828,10 +831,7 @@ function MasterPanel() {
     {
       id: 'parties',
       render: () => (
-        <PartiesScreen
-          revision={revisionOf(revisions, 'parties')}
-          permissions={user.permissions}
-        />
+        <PartiesScreen revision={revisionOf(revisions, 'parties')} permissions={user.permissions} />
       ),
     },
     {
@@ -1010,10 +1010,7 @@ function MasterPanel() {
         }}
       />
       {syncOverlay}
-      <ChangePasswordDialog
-        open={changingPassword}
-        onClose={() => setChangingPassword(false)}
-      />
+      <ChangePasswordDialog open={changingPassword} onClose={() => setChangingPassword(false)} />
     </>
   );
 

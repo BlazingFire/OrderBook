@@ -547,6 +547,7 @@ export const EN_MESSAGES = {
   'common.close': 'Close',
   'common.delete': 'Delete',
   'common.confirm': 'Confirm',
+  'table.sortBy': 'Sort by {column}',
   'common.search': 'Search',
   'common.restore': 'Restore',
   'common.export': 'Export',
@@ -2124,7 +2125,6 @@ export const EN_MESSAGES = {
   'panels.detail.history': 'History',
   'panels.detail.id': 'Panel ID',
   'panels.detail.identity': 'Identity',
-  'panels.detail.mac': 'MAC address',
   'panels.detail.network': 'Network',
   'panels.detail.revokedNote':
     'This panel was removed. It has to pair again before it can connect.',
@@ -2629,6 +2629,7 @@ export const EN_MESSAGES = {
   'settings.density.note': 'Row and control heights only — text size is the scale above.',
   'settings.scale.label': 'UI scale',
   'settings.scale.reset': 'Reset',
+  'settings.appearance.resetAll': 'Reset appearance',
   'settings.scale.smaller': 'Smaller',
   'settings.scale.larger': 'Larger',
   'settings.scale.note': 'Root {size} — this screen resizes live',

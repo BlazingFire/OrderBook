@@ -207,7 +207,6 @@ export function mapOfficePanel(row: Row): OfficePanel {
     roleId: (row.role_id as string | null) ?? null,
     deviceCode: String(row.device_code ?? ''),
     lanIp: (row.lan_ip as string | null) ?? null,
-    macAddress: (row.mac_address as string | null) ?? null,
     status: row.status as OfficePanel['status'],
     notes: (row.notes as string | null) ?? null,
     pairedAt: toIso(row.paired_at),

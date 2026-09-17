@@ -157,7 +157,15 @@ export interface OfficePanel {
   /** The 6-char code this panel stamps into temporary ids and HLC timestamps. */
   deviceCode: string;
   lanIp: string | null;
-  macAddress: string | null;
+  /*
+   * `mac_address` was on this record, on the mapper, and rendered on the Panels
+   * detail card — and **nothing ever wrote it**. `insertPanel` did not set it,
+   * `updateDeviceReport` did not set it, and no other writer existed, so an
+   * administrator opening a panel's card saw a permanent em dash with no signal
+   * that this had never been implemented rather than "not reported yet".
+   * Removed from the type, the mapper and the screen. The column stays: dropping
+   * it is a migration, and this is not one.
+   */
   status: OfficePanelStatus;
   /** Free text an administrator keeps against the panel — which desk it is on. */
   notes: string | null;

@@ -33,6 +33,7 @@ import {
   Button,
   ConfirmDialog,
   DataTable,
+  type DataTableSort,
   EmptyState,
   ErrorState,
   Input,
@@ -72,6 +73,10 @@ export function PartiesScreen({ revision, permissions }: Props) {
   const [editing, setEditing] = useState<Party | null>(null);
   const [deleting, setDeleting] = useState<Party | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  // Client-side, over the pages already loaded — the Master's list route takes
+  // no sort argument, and pretending otherwise would sort one page and call it
+  // the book.
+  const [sort, setSort] = useState<DataTableSort>({ key: 'name', dir: 'asc' });
 
   const canCreate = permissions.includes('parties.create');
   const canEdit = permissions.includes('parties.edit');
@@ -169,6 +174,7 @@ export function PartiesScreen({ revision, permissions }: Props) {
       key: 'code',
       header: t('catalog.parties.column.code'),
       width: rem(100),
+      sortValue: (party) => party.partyCode,
       render: (party) => (
         <span className="ob-mono" style={{ fontSize: rem(12), color: 'var(--fg-secondary)' }}>
           {party.partyCode}
@@ -178,6 +184,7 @@ export function PartiesScreen({ revision, permissions }: Props) {
     {
       key: 'name',
       header: t('catalog.parties.column.name'),
+      sortValue: (party) => party.name,
       render: (party) => (
         <span className="ob-body-strong" style={{ fontSize: rem(13.5) }}>
           {party.name}
@@ -189,6 +196,7 @@ export function PartiesScreen({ revision, permissions }: Props) {
       header: t('catalog.parties.column.phone'),
       priority: 2,
       width: rem(130),
+      sortValue: (party) => party.phone,
       render: (party) => <span className="ob-data">{party.phone ?? '—'}</span>,
     },
     {
@@ -196,6 +204,7 @@ export function PartiesScreen({ revision, permissions }: Props) {
       header: t('catalog.parties.column.city'),
       priority: 3,
       width: rem(110),
+      sortValue: (party) => party.city,
       render: (party) => party.city ?? '—',
     },
     {
@@ -203,6 +212,7 @@ export function PartiesScreen({ revision, permissions }: Props) {
       header: t('party.detail.since'),
       priority: 3,
       width: rem(110),
+      sortValue: (party) => party.createdAt,
       render: (party) => formatDateTime(party.createdAt),
     },
   ];
@@ -223,6 +233,8 @@ export function PartiesScreen({ revision, permissions }: Props) {
         rowKey={(party) => party.id}
         onRowOpen={(party) => setOpenId(party.id)}
         selectedId={openId ?? undefined}
+        sort={sort}
+        onSortChange={setSort}
         empty={
           search ? (
             <EmptyState title={t('catalog.parties.empty.filtered')} />
