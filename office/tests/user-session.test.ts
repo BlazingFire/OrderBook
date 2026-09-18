@@ -73,6 +73,7 @@ vi.mock('../src/realtime/master-connection.js', () => ({
 const userSession = await import('../src/services/user-session.service.js');
 const userStore = await import('../src/services/user-store.js');
 const attempts = await import('../src/services/sign-in-attempts.store.js');
+const localStore = await import('../src/sync/local-store.js');
 
 const MASTER_USER = {
   id: 'US000000000C',
@@ -121,6 +122,7 @@ beforeEach(async () => {
   userStore.resetUserStore();
   userSession.resetSession();
   attempts.resetSignInAttempts();
+  localStore.resetLocalStore();
 });
 
 afterEach(async () => {
@@ -415,5 +417,114 @@ describe('signing in on an Office Panel', () => {
     link.state = 'disconnected';
     const session = await userSession.signIn('  SUNITA ', 'correct-horse');
     expect(session.userId).toBe('US000000000C');
+  });
+});
+
+/**
+ * `security.offlineSignInEnabled`, which is the only setting in the product
+ * whose reader runs *because* the Master cannot be reached. It cannot call
+ * `getSetting`; it reads the switch off the snapshot this panel already has on
+ * disk.
+ */
+describe('the company switch for signing in offline', () => {
+  /** A snapshot carrying only what this gate reads. */
+  async function cacheSwitch(offlineSignInEnabled: boolean | undefined): Promise<void> {
+    await localStore.setSnapshot({
+      parties: [],
+      products: [],
+      categories: [],
+      partyVariants: [],
+      leads: [],
+      orders: [],
+      stock: [],
+      pipelines: [],
+      optionLists: [],
+      customFields: [],
+      conflicts: [],
+      dashboard: {} as never,
+      permissions: [],
+      serverHlc: '0',
+      serverTime: '2026-09-18T00:00:00.000Z',
+      ...(offlineSignInEnabled === undefined
+        ? {}
+        : { features: { freeToSell: true, offlineSignInEnabled } }),
+    });
+  }
+
+  it('refuses an offline sign-in when the company turned it off', async () => {
+    await signInOnline();
+    await userSession.signOut();
+    await cacheSwitch(false);
+
+    link.state = 'disconnected';
+    await expect(userSession.signIn('sunita', 'correct-horse')).rejects.toMatchObject({
+      code: 'offline_disabled',
+    });
+    expect(userSession.currentSession()).toBeNull();
+  });
+
+  it('still allows it while the company leaves it on', async () => {
+    await signInOnline();
+    await userSession.signOut();
+    await cacheSwitch(true);
+
+    link.state = 'disconnected';
+    const session = await userSession.signIn('sunita', 'correct-horse');
+    expect(session.offline).toBe(true);
+  });
+
+  it('reads the switch off disk after a panel restart, with the Master off', async () => {
+    // The claim this whole design rests on. `getRawSnapshot()` would answer
+    // null here — memory is empty after a restart and only the file survives —
+    // and the person would be let in.
+    await signInOnline();
+    await userSession.signOut();
+    await cacheSwitch(false);
+
+    localStore.resetLocalStore();
+    userSession.resetSession();
+
+    link.state = 'disconnected';
+    await expect(userSession.signIn('sunita', 'correct-horse')).rejects.toMatchObject({
+      code: 'offline_disabled',
+    });
+  });
+
+  it('signs people in offline against a snapshot from an older Master', async () => {
+    // `features` absent entirely: a Master built before this switch existed.
+    // Absent means "as before", never "refuse" — reading it strictly would
+    // strip offline sign-in from every panel in the middle of an upgrade.
+    await signInOnline();
+    await userSession.signOut();
+    await cacheSwitch(undefined);
+
+    link.state = 'disconnected';
+    const session = await userSession.signIn('sunita', 'correct-horse');
+    expect(session.offline).toBe(true);
+  });
+
+  it('does not count a refusal from the switch toward the lockout', async () => {
+    // The lockout is checked ABOVE the online/offline branch, so counting these
+    // would lock somebody out of their ONLINE sign-in for typing the right
+    // password three times at a door the company had shut.
+    await signInOnline();
+    await userSession.signOut();
+    await cacheSwitch(false);
+
+    link.state = 'disconnected';
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(userSession.signIn('sunita', 'correct-horse')).rejects.toMatchObject({
+        code: 'offline_disabled',
+      });
+    }
+
+    link.state = 'connected';
+    link.signIn.mockResolvedValue({
+      token: 'token-abc',
+      user: MASTER_USER,
+      credentialFingerprint: 'fp-original',
+    });
+    const session = await userSession.signIn('sunita', 'correct-horse');
+    expect(session.offline).toBe(false);
   });
 });

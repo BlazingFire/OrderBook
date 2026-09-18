@@ -19,6 +19,7 @@ import path from 'node:path';
 
 import { maskLineItem } from '@orderbook/shared';
 import type {
+  CompanyFeatures,
   Lead,
   LineItem,
   Mutation,
@@ -72,6 +73,30 @@ export function getRawSnapshot(): SyncSnapshot | null {
   return snapshot;
 }
 
+/**
+ * The company's switches as this panel last heard them, read from disk if they
+ * are not already in memory.
+ *
+ * This exists for the one caller that runs **because** the Master cannot be
+ * reached, so `getSetting` is not available to it by construction — the same
+ * shape that made `security.signInLockoutAttempts` impossible. It works because
+ * `restore()` is a bare `readFile` of a file the panel already owns: no socket,
+ * no Master, and `master-connection.ts` already restores before it opens the
+ * socket so a cold offline start has this too.
+ *
+ * `getRawSnapshot()` is deliberately not enough. After a panel restart memory
+ * is empty and only the file survives, which is exactly the case a switch about
+ * signing in offline has to answer correctly.
+ *
+ * `null` when the panel has never synced, or the file is unreadable. Every
+ * caller resolves that to the setting's own declared fallback rather than
+ * deciding for itself.
+ */
+export async function cachedFeatures(): Promise<CompanyFeatures | null> {
+  const current = snapshot ?? (await restore());
+  return current?.features ?? null;
+}
+
 /** What this panel already has, for the Master to answer with a delta. */
 export function getCursor(): SyncDeltaCursor | null {
   return cursor;
@@ -100,11 +125,38 @@ export async function persistCurrent(): Promise<void> {
   await persist();
 }
 
-/** Restore the last snapshot from disk, so an offline start still has data. */
+/**
+ * Restore the last snapshot from disk, so an offline start still has data.
+ *
+ * Concurrent callers share one read. `loaded = true` used to be set before the
+ * `readFile` was awaited, so a second caller arriving in that window was told
+ * the store was loaded and handed a `snapshot` still sitting at `null`. That
+ * was harmless while every reader treated null as "no data yet"; it stopped
+ * being harmless when `cachedFeatures()` below started answering a security
+ * question from it.
+ */
 export async function restore(): Promise<SyncSnapshot | null> {
+  // The in-flight read is checked FIRST. Checking `loaded` first is what the
+  // first attempt at this fix did, and it left the window exactly where it
+  // was — because the read still had to mark the store loaded, and a caller
+  // arriving mid-read took that branch and got the `null` snapshot.
+  if (restoring) return restoring;
   if (loaded) return snapshot;
-  loaded = true;
 
+  restoring = (async () => {
+    try {
+      return await readSnapshotFile();
+    } finally {
+      restoring = null;
+    }
+  })();
+
+  return restoring;
+}
+
+let restoring: Promise<SyncSnapshot | null> | null = null;
+
+async function readSnapshotFile(): Promise<SyncSnapshot | null> {
   try {
     const raw = await fs.readFile(paths().snapshotFile, 'utf8');
     const parsed = JSON.parse(raw) as StoredSnapshot | SyncSnapshot;
@@ -125,6 +177,10 @@ export async function restore(): Promise<SyncSnapshot | null> {
   } catch {
     snapshot = null;
     cursor = null;
+  } finally {
+    // Set once the read is over, never before it: `loaded` means "the file has
+    // been consulted", and until it has, saying so hands out a null snapshot.
+    loaded = true;
   }
 
   return snapshot;

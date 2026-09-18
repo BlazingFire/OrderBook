@@ -31,6 +31,7 @@ import type {
   SessionRejection,
   SignedInUser,
 } from '@orderbook/shared';
+import { SETTINGS } from '@orderbook/shared';
 
 import { createLogger } from '../lib/logger.js';
 import { mintVerifier, verifyAgainst } from '../lib/password.js';
@@ -39,6 +40,7 @@ import * as attempts from './sign-in-attempts.store.js';
 import { cacheAvatar } from './avatar-cache.js';
 import { masterFetch } from '../lib/master-fetch.js';
 import * as userStore from './user-store.js';
+import * as localStore from '../sync/local-store.js';
 
 const log = createLogger('user-session');
 
@@ -56,7 +58,12 @@ const log = createLogger('user-session');
 export class SignInError extends Error {
   constructor(
     message: string,
-    readonly code: 'invalid_credentials' | 'unknown_here' | 'inactive' | 'locked_out',
+    readonly code:
+      | 'invalid_credentials'
+      | 'unknown_here'
+      | 'inactive'
+      | 'locked_out'
+      | 'offline_disabled',
     readonly messageKey?: MessageKey,
     readonly params?: MessageParams,
     readonly details?: Record<string, unknown>,
@@ -166,7 +173,16 @@ export async function signIn(username: string, password: string): Promise<PanelS
   } catch (error) {
     // Counted here rather than in each path, so the offline route cannot be
     // added to later without inheriting the throttle.
-    if (error instanceof SignInError) await attempts.recordFailure(trimmed);
+    //
+    // `offline_disabled` is the one exclusion, and it is not a nicety: the
+    // lockout is checked ABOVE the online/offline branch, so three refusals
+    // from the company's own switch would lock somebody out of their ONLINE
+    // sign-in too — the person typed the right password every time and the
+    // panel would tell them to wait a minute before trying a door that was
+    // never shut.
+    if (error instanceof SignInError && error.code !== 'offline_disabled') {
+      await attempts.recordFailure(trimmed);
+    }
     throw error;
   }
 }
@@ -261,6 +277,38 @@ async function signInAgainstMaster(username: string, password: string): Promise<
 }
 
 async function signInOffline(username: string, password: string): Promise<PanelSession> {
+  /*
+   * The company's switch, read off the cached snapshot.
+   *
+   * Gated here rather than at the two call sites above, for the same reason the
+   * failure count lives in one place: there are two ways in — the link being
+   * down, and the Master answering `unreachable` — and a third would inherit
+   * this automatically.
+   *
+   * `getSetting` is not available to this function by construction: it runs
+   * precisely because the Master cannot be asked. `cachedFeatures()` reads the
+   * snapshot file this panel already owns, so it works with the Master off and
+   * after a restart, when memory is empty and only the file survives.
+   *
+   * Both absences resolve to the setting's declared fallback, which is `true`.
+   * A snapshot from a Master too old to carry the field, and no snapshot at
+   * all, both mean "nobody has told me otherwise" — and fail-closed here would
+   * tell the person at the counter that only somebody who has signed in before
+   * may sign in, which is a lie they cannot fix without the Master. It would
+   * also buy nothing: anyone who can delete `snapshot.json` can edit the flag
+   * inside it instead.
+   */
+  const features = await localStore.cachedFeatures();
+  if (
+    (features?.offlineSignInEnabled ?? SETTINGS['security.offlineSignInEnabled'].fallback) === false
+  ) {
+    throw new SignInError(
+      'Signing in needs the Master Panel. This company does not allow signing in while it is off.',
+      'offline_disabled',
+      'error.generic.offlineSignInDisabled',
+    );
+  }
+
   const known = await userStore.findByUsername(username);
 
   // Deliberately the same message as a wrong password. "You have never signed in
