@@ -50,6 +50,12 @@ describe('every parser rejects a wrong shape', () => {
     'panels.autoPairingEnabled': 'yes',
     'security.developerModeEnabled': 'yes',
     'catalog.importCreatesCategories': 'yes',
+    'security.offlineSignInEnabled': 'yes',
+    'inventory.adjustmentNoteRequired': 'yes',
+    'leads.packagingRequiredOnConvert': 'yes',
+    // In the set's shape but not in the set — for a closed list the interesting
+    // refusal is the plausible word, not a number.
+    'catalog.defaultUom': 'crate',
     // Below their floors rather than the wrong type: for a bounded number the
     // interesting refusal is the in-range-looking value that is out of range —
     // 0 hours signs the administrator out on their next request, and 0 quiet
@@ -57,6 +63,11 @@ describe('every parser rejects a wrong shape', () => {
     'security.sessionHours': 0,
     'leads.quietAfterDays': 0,
     'inventory.defaultReorderLevel': -1,
+    // 0 is LEGAL here and means today, so the refusal has to come from below
+    // the floor. That asymmetry with the two above is the whole point of this
+    // key's floor being 0: an upgraded installation must keep opening the New
+    // Lead form on today.
+    'leads.followUpDefaultDays': -1,
   };
 
   it.each(SETTING_KEYS)('%s throws on a value it cannot mean', (key) => {
@@ -85,6 +96,15 @@ describe('every setting declares a control its fallback fits', () => {
 
     if (control.kind === 'boolean') {
       expect(typeof fallback).toBe('boolean');
+      return;
+    }
+
+    if (control.kind === 'select') {
+      // Every legal value is in the list the screen draws, and the default is
+      // one of them — otherwise the row opens on a value the dropdown cannot
+      // show, which is the select's version of the dead branch this whole
+      // `control` field replaced.
+      expect(control.options.map((option) => option.value)).toContain(fallback);
       return;
     }
 
@@ -135,5 +155,51 @@ describe('the key helpers', () => {
 
   it('declares no secret setting today, so the sealed read path has no live key', () => {
     expect(SETTING_KEYS.filter(isSecretSetting)).toEqual([]);
+  });
+});
+
+describe('every select control names options both catalogues can render', () => {
+  it.each(SETTING_KEYS)('%s', (key) => {
+    const control: SettingControl = SETTINGS[key].control;
+    if (control.kind !== 'select') return;
+
+    expect(control.options.length).toBeGreaterThan(1);
+    // Distinct, or two rows in the dropdown mean the same thing and the second
+    // is unreachable.
+    expect(new Set(control.options.map((option) => option.value)).size).toBe(
+      control.options.length,
+    );
+
+    // The EN half cannot fail by typo — `MessageKey` makes a misspelt token a
+    // compile error — but it catches one DELETED from the catalogue. The HI
+    // half is the live one: `hi.ts` is hand-maintained, and it is all that
+    // stands between a missing key and a blank row in the dropdown.
+    for (const option of control.options) {
+      expect(Object.keys(EN_MESSAGES)).toContain(option.labelToken);
+      expect(Object.keys(HI_MESSAGES)).toContain(option.labelToken);
+    }
+  });
+});
+
+describe('leads.followUpDefaultDays keeps today expressible', () => {
+  // The one property an upgraded installation depends on. Copying
+  // `leads.quietAfterDays`' floor of 1 here — the obvious thing to do, since
+  // the two sit beside each other and both count days — would silently change
+  // what the New Lead form opens on in every shop that has never touched this.
+  const definition = SETTINGS['leads.followUpDefaultDays'];
+
+  it('defaults to 0, which is what the form does today', () => {
+    expect(definition.fallback).toBe(0);
+  });
+
+  it('accepts 0 rather than treating it as unset', () => {
+    expect(definition.parse(0)).toBe(0);
+  });
+
+  it('declares a floor of 0, so the field can be set back to today', () => {
+    const control: SettingControl = definition.control;
+    expect(control.kind).toBe('number');
+    if (control.kind !== 'number') return;
+    expect(control.min).toBe(0);
   });
 });

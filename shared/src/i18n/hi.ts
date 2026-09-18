@@ -213,6 +213,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'error.generic.invalidCredentials': 'उपयोगकर्ता नाम या पासवर्ड गलत है',
   'error.generic.lockedOut': 'बहुत अधिक विफल प्रयास। बाद में फिर कोशिश करें।',
   'error.generic.unknownHere': 'यह इस पैनल पर उपलब्ध नहीं है',
+  'error.generic.offlineSignInDisabled':
+    'साइन इन के लिए मास्टर पैनल चाहिए। यह कंपनी उसके बंद रहते साइन इन करने की अनुमति नहीं देती।',
 
   'validation.backup.passphraseTooShort': 'निर्यात पासफ़्रेज़ कम से कम {min} अक्षरों का होना चाहिए',
   'validation.backup.passphraseRequired': 'निर्यात पासफ़्रेज़ दर्ज करें',
@@ -234,6 +236,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.remark.textRequired': 'टिप्पणी में कुछ पाठ होना चाहिए',
   'validation.stock.boxesArrivedRequired': 'कितने बॉक्स आए यह दर्ज करें',
   'validation.stock.countedBoxesRequired': 'गिने गए बॉक्सों की संख्या दर्ज करें',
+  'validation.stock.adjustmentNoteRequired': 'बताइए कि यह गिनती क्यों सुधारी जा रही है',
   'validation.stock.reorderLevelNegative': 'पुनःऑर्डर स्तर ऋणात्मक नहीं हो सकता',
   'validation.stock.colourRequired': 'यह स्टॉक किस रंग के लिए है यह चुनें',
   'validation.stock.productRequired': 'एक उत्पाद चुनें',
@@ -4501,6 +4504,21 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'setting.security.sessionHours.help': 'कोई व्यक्ति दोबारा पासवर्ड डाले बिना कितनी देर साइन इन रहेगा। जो पहले से साइन इन हैं उनका समय वही रहेगा; यह उनके अगले साइन-इन से लागू होगा।',
   'setting.inventory.defaultReorderLevel.label': 'इससे कम होने पर स्टॉक कम',
   'setting.inventory.defaultReorderLevel.help': 'उन रंगों के लिए जिनका अपना कोई स्तर तय नहीं है। कोई नहीं चाहिए तो खाली छोड़ें। जिन रंगों का स्टॉक बिल्कुल नहीं है वे भी कम गिने जाएँगे।',
+  'setting.security.offlineSignInEnabled.label': 'मास्टर पैनल बंद होने पर भी साइन इन करने दें',
+  'setting.security.offlineSignInEnabled.help':
+    'चालू रहने पर जो व्यक्ति पहले इस पैनल पर साइन इन कर चुका है वह मास्टर पैनल बंद होने पर भी दोबारा साइन इन कर सकता है, और उसे वही अनुमतियाँ मिलती हैं जो इस पैनल ने आख़िरी बार सहेजी थीं। बंद रहने पर हर साइन इन के लिए मास्टर चाहिए। जो पैनल पहले से ऑफ़लाइन है वह दोबारा जुड़ने तक अपना पिछला उत्तर ही रखता है।',
+  'setting.inventory.adjustmentNoteRequired.label': 'स्टॉक गिनती सुधारते समय कारण अनिवार्य करें',
+  'setting.inventory.adjustmentNoteRequired.help':
+    'सुधार उस आँकड़े को बदल देता है जिसे दोबारा निकाला नहीं जा सकता। यह चालू होने पर सुधार करने वाले को कारण लिखना होगा। जो गिनती पहले से मेल खाती है उसकी पुष्टि करने पर कुछ दर्ज नहीं होता, इसलिए उसके लिए कारण नहीं चाहिए।',
+  'setting.catalog.defaultUom.label': 'नए उत्पाद इस इकाई में गिने जाएँगे',
+  'setting.catalog.defaultUom.help':
+    'नया उत्पाद जोड़ने वाला फ़ॉर्म इसी इकाई पर खुलता है, और जिस शीट में इकाई का कॉलम नहीं है उससे आयात किया गया उत्पाद इसी इकाई में सहेजा जाता है। इसे बदलने से पहले से मौजूद किसी उत्पाद पर कोई असर नहीं पड़ता।',
+  'setting.leads.followUpDefaultDays.label': 'नई लीड पर इतने दिन बाद संपर्क करें',
+  'setting.leads.followUpDefaultDays.help':
+    'नई लीड इसी फ़ॉलो-अप तारीख़ के साथ शुरू होती है। 0 का अर्थ है आज। पूछताछ लेने वाला इसे बदल सकता है, और कल / 3 दिन में / अगले हफ़्ते वाले बटन पहले जैसे ही रहते हैं।',
+  'setting.leads.packagingRequiredOnConvert.label': 'लीड को ऑर्डर बनाने से पहले पैकेजिंग अनिवार्य है',
+  'setting.leads.packagingRequiredOnConvert.help':
+    'बंद रहने पर जिस लीड की पंक्तियों में पैकेजिंग नहीं है वह भी ऑर्डर बन सकती है। पहले से भरी हुई पैकेजिंग दोनों स्थितियों में सुरक्षित रहती है।',
   'setting.leads.quietAfterDays.label': 'लीड इतने दिन बाद शांत मानी जाएगी',
   'setting.leads.quietAfterDays.help': 'लीड आउटकम रिपोर्ट किसी लीड को कितने दिन तक बिना छेड़े खुला गिनती रहे।',
   'error.unauthorized.developerDisabled': 'इस PC के लिए डेवलपर मोड बंद है। एक प्रशासक इसे सेटिंग्स → कौन अंदर आ सकता है में चालू कर सकता है।',

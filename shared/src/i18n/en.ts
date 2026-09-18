@@ -156,6 +156,21 @@ export const EN_MESSAGES = {
   'setting.inventory.defaultReorderLevel.label': 'Low stock below',
   'setting.inventory.defaultReorderLevel.help':
     'Used for any colour you have not given its own low-stock level. Leave it empty for none. Colours with no stock at all count as low.',
+  'setting.security.offlineSignInEnabled.label': 'Allow signing in while the Master Panel is off',
+  'setting.security.offlineSignInEnabled.help':
+    'On, somebody who has signed in on a panel before can sign in on it again with the Master Panel switched off, using the permissions that panel last cached. Off, every sign-in needs the Master. A panel that is already offline keeps its last answer until it reconnects.',
+  'setting.inventory.adjustmentNoteRequired.label': 'Require a reason when a stock count is corrected',
+  'setting.inventory.adjustmentNoteRequired.help':
+    'A correction rewrites a figure nobody can work out again. With this on, the person doing it has to type why. Confirming a count that already matches writes nothing and needs no reason.',
+  'setting.catalog.defaultUom.label': 'New products are counted in',
+  'setting.catalog.defaultUom.help':
+    'The unit the Add Product form starts on, and the unit a product imported from a sheet with no unit column is saved in. Changing it never touches a product that already exists.',
+  'setting.leads.followUpDefaultDays.label': 'Follow up a new lead after',
+  'setting.leads.followUpDefaultDays.help':
+    'The follow-up date a new lead starts with. 0 means today. Whoever is taking the enquiry can still change it, and the Tomorrow / In 3 days / Next week buttons are unchanged.',
+  'setting.leads.packagingRequiredOnConvert.label': 'Packaging is required before converting a lead',
+  'setting.leads.packagingRequiredOnConvert.help':
+    'Off, a lead whose lines have no packaging can still become an order. Packaging already entered is kept either way.',
   'setting.leads.quietAfterDays.label': 'A lead has gone quiet after',
   'setting.leads.quietAfterDays.help':
     'How long a lead can sit untouched before the Lead Outcomes report stops counting it as open.',
@@ -275,6 +290,8 @@ export const EN_MESSAGES = {
   'error.generic.invalidCredentials': 'Incorrect username or password',
   'error.generic.lockedOut': 'Too many failed attempts. Try again later',
   'error.generic.unknownHere': 'That is not available on this panel',
+  'error.generic.offlineSignInDisabled':
+    'Signing in needs the Master Panel. This company does not allow signing in while it is off.',
 
   // --- validation.* — field-level messages, one per distinct throw site ---
   'validation.backup.passphraseTooShort':
@@ -300,6 +317,7 @@ export const EN_MESSAGES = {
   'validation.remark.textRequired': 'A remark needs some text',
   'validation.stock.boxesArrivedRequired': 'Enter how many boxes arrived',
   'validation.stock.countedBoxesRequired': 'Enter the counted number of boxes',
+  'validation.stock.adjustmentNoteRequired': 'Say why you are correcting this count',
   'validation.stock.reorderLevelNegative': 'A reorder level cannot be negative',
   'validation.stock.colourRequired': 'Choose which colour this stock is for',
   'validation.stock.productRequired': 'Select a product',

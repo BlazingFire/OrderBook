@@ -23,6 +23,10 @@ import type { ProductInput } from './inputs.js';
 import type { MessageKey } from '../i18n/keys.js';
 
 export const PRODUCT_UOMS = ['box', 'sqft', 'piece'] as const;
+
+/** The three, as a type — `catalog.defaultUom` parses to this. */
+export type ProductUom = (typeof PRODUCT_UOMS)[number];
+
 export const PRODUCT_EDGE_TYPES = ['rectified', 'non_rectified'] as const;
 export const PRODUCT_APPLICATIONS = ['floor', 'wall', 'floor_wall', 'outdoor'] as const;
 export const PRODUCT_COLOUR_POLICIES = ['fixed', 'selectable'] as const;
@@ -120,4 +124,18 @@ export function validateStockLevels(levels: {
   if (min !== undefined && min !== null && max !== undefined && max !== null && max < min) {
     throw new ProductValidationError('validation.stock.levelRange');
   }
+}
+
+/**
+ * Whether a written reason is really absent.
+ *
+ * Shared because `inventory.adjustmentNoteRequired` is checked in three places
+ * — the Master's service, and each panel's form before it sends — and three
+ * hand-written `!note` tests is how the server comes to refuse something a form
+ * let through. A note of spaces is the one that matters: it satisfies every
+ * truthiness check and says nothing at all, which is precisely the answer
+ * somebody gives to a field they resent.
+ */
+export function isBlankNote(note: string | null | undefined): boolean {
+  return note === undefined || note === null || note.trim() === '';
 }

@@ -26,6 +26,7 @@
  */
 
 import type { MessageKey } from '../i18n/keys.js';
+import { PRODUCT_UOMS, type ProductUom } from './product-validation.js';
 
 /**
  * Which heading a setting sits under on the Settings screen.
@@ -60,6 +61,21 @@ export type SettingControl =
       nullable?: boolean;
       /** Rendered beside the field — "hours", "days", "boxes". */
       unitToken: MessageKey;
+    }
+  | {
+      kind: 'select';
+      /**
+       * The closed set, in the order the dropdown lists them, each carrying the
+       * token that names it.
+       *
+       * `{ value, labelToken }` pairs rather than a bare list plus a token
+       * *prefix*: a prefix would have to be cast to `MessageKey` where it is
+       * rendered, which is exactly the compile error `i18n/keys.ts` exists to
+       * produce. Written this way the token is checked where it is declared,
+       * and `shared/tests/settings.test.ts` can check both catalogues carry it
+       * — the same way it already checks `unitToken`.
+       */
+      options: readonly { value: string; labelToken: MessageKey }[];
     };
 
 export interface SettingDefinition<T> {
@@ -119,6 +135,23 @@ function asOptionalCount(max: number) {
       throw new RangeError(`expected null or a number between 0 and ${max}`);
     }
     return Math.round(raw * 100) / 100;
+  };
+}
+
+/**
+ * One of a closed set, refused outside it.
+ *
+ * The set lives here because `parse` is a key's single validation site on
+ * **both** the write path and the read path: a hand-edited row saying `crate`
+ * has to fall back to the declared default here, not travel on to a database
+ * CHECK constraint that answers a shopkeeper with a 500.
+ */
+function asOneOf<T extends string>(allowed: readonly T[]) {
+  return (raw: unknown): T => {
+    if (typeof raw !== 'string' || !(allowed as readonly string[]).includes(raw)) {
+      throw new TypeError(`expected one of ${allowed.join(', ')}`);
+    }
+    return raw as T;
   };
 }
 
@@ -339,6 +372,103 @@ export const SETTINGS = {
    * `true` is the fallback because an upgraded installation must behave exactly
    * as it did the minute before: today every import creates what it names.
    */
+  /**
+   * Whether an Office Panel may sign somebody in while the Master is off.
+   *
+   * The panel keeps a verifier for anybody who has signed in on it before, so
+   * a power cut at the Master does not shut the counter. That is a real
+   * convenience and a real widening: the Master is where an account is
+   * deactivated, a role is narrowed and a password is changed, and a panel
+   * working from its own cache is working from the last answer it was given.
+   *
+   * **The reader is the one place in this product that runs *because* the
+   * Master cannot be reached**, so it cannot call `getSetting`. It reads the
+   * value off the cached snapshot on disk, which is why this switch is on
+   * `CompanyFeatures` rather than read where it is needed. It is therefore as
+   * fresh as the panel's last sync — a panel already offline keeps its last
+   * answer until it reconnects. That is inherent to an offline replica and is
+   * the same propagation the product already accepts for a revoked session.
+   *
+   * `true` is the fallback, and it also resolves both absences on the panel —
+   * a snapshot from a Master too old to carry the field, and no snapshot at
+   * all. Fail-closed was tried and rejected on evidence: `snapshot.json` is
+   * written without the temp-then-rename the outbox uses, so a power cut mid-
+   * write leaves a torn file, and fail-closed would then tell the person at the
+   * counter that only somebody who has signed in here before may sign in —
+   * a lie they cannot fix without the Master. It also buys nothing: anyone who
+   * can delete that file can equally edit the flag inside it.
+   */
+  'security.offlineSignInEnabled': {
+    labelToken: 'setting.security.offlineSignInEnabled.label',
+    descriptionToken: 'setting.security.offlineSignInEnabled.help',
+    group: 'access',
+    control: { kind: 'boolean' },
+    fallback: true,
+    parse: (raw: unknown): boolean => asBoolean(raw),
+  },
+
+  /**
+   * Whether correcting a stock count needs a written reason.
+   *
+   * A correction rewrites a figure nobody can re-derive: the ledger says 40,
+   * somebody counts 37, and the three that went missing leave no other trace.
+   * `stock.adjust` is already granted separately from ordinary stock entry for
+   * that reason; this is the other half, and it is the half an auditor asks
+   * for.
+   *
+   * Confirming a count that already matches is deliberately exempt. That path
+   * writes no movement and no activity row, so a reason collected there would
+   * be discarded — asking for one would be a form that takes something and
+   * throws it away.
+   *
+   * `false` is the fallback: today a correction takes any note or none.
+   */
+  'inventory.adjustmentNoteRequired': {
+    labelToken: 'setting.inventory.adjustmentNoteRequired.label',
+    descriptionToken: 'setting.inventory.adjustmentNoteRequired.help',
+    group: 'stock',
+    control: { kind: 'boolean' },
+    fallback: false,
+    parse: (raw: unknown): boolean => asBoolean(raw),
+  },
+
+  /**
+   * The unit a new product starts in.
+   *
+   * It cannot be more than that. `uom` is `TEXT NOT NULL DEFAULT 'box'` with a
+   * CHECK over the three values, and that migration is not to be touched — so
+   * this decides what a **form starts on** and what a create naming no unit
+   * stores, never what an existing row holds.
+   *
+   * Note the divergence from `inventory.defaultReorderLevel` above, which is
+   * deliberately never written onto a line: `uom` is NOT NULL with a CHECK and
+   * has no null state meaning "unset", so a create has to resolve it to
+   * something. The line it must not cross is a different one — an *update* that
+   * names no unit leaves the stored one alone, or a company default would
+   * silently re-unit products somebody already shipped.
+   *
+   * `'box'` is the fallback because it is what the column default, the mapper's
+   * belt and the form's own seed already say: at the fallback every create path
+   * stores the byte it stores today.
+   */
+  'catalog.defaultUom': {
+    labelToken: 'setting.catalog.defaultUom.label',
+    descriptionToken: 'setting.catalog.defaultUom.help',
+    group: 'stock',
+    control: {
+      kind: 'select',
+      // Derived from the one list, never a second copy of it: a hand-written
+      // ['box','sqft','piece'] here is how this drifts from the CHECK
+      // constraint and from `validateProductInput`.
+      options: PRODUCT_UOMS.map((value) => ({
+        value,
+        labelToken: `product.uom.${value}` as const,
+      })),
+    },
+    fallback: 'box' as ProductUom,
+    parse: (raw: unknown): ProductUom => asOneOf(PRODUCT_UOMS)(raw),
+  },
+
   'catalog.importCreatesCategories': {
     labelToken: 'setting.catalog.importCreatesCategories.label',
     descriptionToken: 'setting.catalog.importCreatesCategories.help',
@@ -363,6 +493,53 @@ export const SETTINGS = {
    * straight into a SQL `>=`, so `0` would classify every lead as quiet on the
    * day it was raised.
    */
+  /**
+   * The follow-up date a new lead is pre-filled with.
+   *
+   * Shops differ on this and the product had guessed: the New Lead form opened
+   * on *today*, which is the one answer that is never a follow-up. Whoever is
+   * taking the enquiry can still change it, and the Tomorrow / In 3 days /
+   * Next week buttons beside the field do not move with this — they are
+   * shortcuts, not the default.
+   *
+   * `0` is the fallback and means today, which is exactly what the form does
+   * now. `0` must stay expressible for that reason: a floor of 1 here would
+   * change the shipped behaviour of every installation on upgrade.
+   */
+  'leads.followUpDefaultDays': {
+    labelToken: 'setting.leads.followUpDefaultDays.label',
+    descriptionToken: 'setting.leads.followUpDefaultDays.help',
+    group: 'leads',
+    control: { kind: 'number', min: 0, max: 90, step: 1, unitToken: 'setting.unit.days' },
+    fallback: 0,
+    parse: (raw: unknown): number => asBoundedInt(0, 90)(raw),
+  },
+
+  /**
+   * Whether packaging must be chosen on every line before a lead becomes an
+   * order.
+   *
+   * Unlike the others this switch **relaxes** a rule rather than adding one.
+   * The rule is already enforced, and correctly: packaging is never inferred,
+   * so an unset one has to be caught before the order exists rather than
+   * quietly defaulted on the way through. But it is a rule about how a
+   * particular shop sells, and a shop that packs to order cannot state the
+   * packaging at the moment the lead converts.
+   *
+   * Off, packaging already entered is still kept — this decides whether the
+   * conversion is refused, never whether the field is recorded.
+   *
+   * `true` is the fallback, which is today's behaviour exactly.
+   */
+  'leads.packagingRequiredOnConvert': {
+    labelToken: 'setting.leads.packagingRequiredOnConvert.label',
+    descriptionToken: 'setting.leads.packagingRequiredOnConvert.help',
+    group: 'leads',
+    control: { kind: 'boolean' },
+    fallback: true,
+    parse: (raw: unknown): boolean => asBoolean(raw),
+  },
+
   'leads.quietAfterDays': {
     labelToken: 'setting.leads.quietAfterDays.label',
     descriptionToken: 'setting.leads.quietAfterDays.help',

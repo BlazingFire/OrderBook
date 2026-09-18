@@ -43,6 +43,7 @@ import {
   SettingsPage,
   SettingsSection,
   ShortcutSettings,
+  Select,
   Skeleton,
   Switch,
   apiErrorText,
@@ -535,6 +536,16 @@ function CompanySetting({
             onSave={(next) => onSave(setting.key, next)}
           />
         );
+      case 'select':
+        return (
+          <SelectSetting
+            control={definition.control}
+            value={String(setting.value ?? '')}
+            label={label}
+            saving={saving}
+            onSave={(next) => onSave(setting.key, next)}
+          />
+        );
       default: {
         const exhaustive: never = definition.control;
         return exhaustive;
@@ -556,6 +567,46 @@ function CompanySetting({
       )}
       {error && <FieldError>{error}</FieldError>}
     </SettingRow>
+  );
+}
+
+/**
+ * A closed set, saved on change rather than on a button.
+ *
+ * The opposite call from `NumberSetting` below, and for the reason stated
+ * there: a number must not save per keystroke, because `1` on the way to `12`
+ * is a legal-looking value that would be written and audited. A select has no
+ * intermediate state — every legal value is in the list, one pick is one
+ * decision, and `Select` emits only on a real commit, never while somebody
+ * types to filter. That is the same call `Switch` already makes above.
+ */
+function SelectSetting({
+  control,
+  value,
+  label,
+  saving,
+  onSave,
+}: {
+  control: Extract<SettingControl, { kind: 'select' }>;
+  value: string;
+  label: string;
+  saving: boolean;
+  onSave: (value: string) => Promise<void>;
+}) {
+  return (
+    <Select
+      value={value}
+      disabled={saving}
+      aria-label={label}
+      style={{ width: rem(200) }}
+      onChange={(event) => void onSave(event.target.value)}
+    >
+      {control.options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {t(option.labelToken)}
+        </option>
+      ))}
+    </Select>
   );
 }
 
