@@ -59,6 +59,32 @@ const PANELS = {
     vendorPostgres: false,
     extras: [],
   },
+  /*
+   * The standalone clean-install tool. Not a panel, and the flags say so.
+   *
+   * It ships no server: no `dist`, no `web/dist`, no production dependency
+   * tree, no PostgreSQL. Its `extraResources` carry the two uninstall scripts
+   * and one static HTML page, both declared in its own
+   * `electron-builder.yml`, so there is nothing for `stage()` to assemble.
+   *
+   * It is also NOT published into the releases folder. That folder is what a
+   * Master serves to its panels over the LAN, and every file in it is
+   * something a panel may be told to install — a tool that erases the machine
+   * has no business in that stream. It is handed over deliberately, on a USB
+   * stick or a download, which is the only way it is ever wanted.
+   */
+  cleaner: {
+    dir: 'cleaner',
+    folder: null,
+    label: 'Clean Install',
+    vendorPostgres: false,
+    extras: [],
+    /** No server to compile, and nothing to stage. */
+    serverless: true,
+    /** Kept out of the releases folder — see above. */
+    publish: false,
+    artifact: 'CleanInstall',
+  },
 };
 
 const args = process.argv.slice(2);
@@ -368,9 +394,10 @@ async function build(panel, version) {
   const config = PANELS[panel];
   const panelRoot = path.join(ROOT, config.dir);
 
-  console.log(`\n== ${config.label} Panel ${version} ==`);
+  console.log(`\n== ${config.label} ${version} ==`);
 
-  run('npm', ['run', 'build', '--workspace', `@orderbook/${panel}`]);
+  // A serverless target has no `dist` or `web/dist` to build.
+  if (!config.serverless) run('npm', ['run', 'build', '--workspace', `@orderbook/${panel}`]);
 
   /*
    * One shell, compiled once, copied into whichever panel is being packaged.
@@ -387,7 +414,7 @@ async function build(panel, version) {
   await cp(path.join(ROOT, 'electron', 'dist'), shellDist, { recursive: true });
 
   if (config.vendorPostgres) await vendorPostgres();
-  await stage(panel);
+  if (!config.serverless) await stage(panel);
 
   /*
    * `electronVersion` is passed rather than written into the yml.
@@ -424,7 +451,10 @@ async function build(panel, version) {
    * rather than the build.
    */
   const outDir = path.join(ROOT, 'build', panel);
-  const expected = `OrderBook-${config.label}-${version}-Setup.${RELEASE_TARGET.ext}`;
+  // `artifact` where the folder name and the filename differ: the tool is
+  // "Clean Install" to a reader and `CleanInstall` in a filename, because a
+  // space in an artifact name is a different kind of trouble on three OSes.
+  const expected = `OrderBook-${config.artifact ?? config.label}-${version}-Setup.${RELEASE_TARGET.ext}`;
   const files = await readdir(outDir);
 
   if (!files.includes(expected)) {
@@ -488,10 +518,19 @@ async function main() {
   const version = await currentVersion();
 
   const notes = process.env.ORDERBOOK_RELEASE_NOTES ?? '';
-  const panels = only ? [only] : Object.keys(PANELS);
+  /*
+   * The default is the two panels, not everything in `PANELS`.
+   *
+   * A plain `npm run release` publishes a folder somebody copies to the Master
+   * PC, and the clean-install tool does not belong in it — see its entry
+   * above. It is built on request: `npm run release -- --panel cleaner`.
+   */
+  const panels = only ? [only] : Object.keys(PANELS).filter((name) => PANELS[name].publish !== false);
 
   for (const panel of panels) {
-    if (!PANELS[panel]) throw new Error(`Unknown panel "${panel}" — expected master or office`);
+    if (!PANELS[panel]) {
+      throw new Error(`Unknown target "${panel}" — expected ${Object.keys(PANELS).join(', ')}`);
+    }
   }
 
   console.log(`Releasing ${version} to ${RELEASES_DIR}`);
@@ -499,6 +538,10 @@ async function main() {
 
   for (const panel of panels) {
     const setupPath = await build(panel, version);
+    if (PANELS[panel].publish === false) {
+      console.log(`  built ${path.relative(ROOT, setupPath)} (not published — hand it over directly)`);
+      continue;
+    }
     await publish(panel, version, setupPath, notes);
   }
 

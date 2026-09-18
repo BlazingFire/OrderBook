@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { ReleaseManifest } from '@orderbook/shared';
 
-import { manifestNames, panelOf, verifySetupFile } from '../src/setup-file.js';
+import { manifestNames, panelOf, verifySetupFile } from '../lib/cleaner/setup-file.js';
 
 const FILE = 'OrderBook-Master-1.1.0-Setup.exe';
 

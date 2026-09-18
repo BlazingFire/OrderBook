@@ -12,7 +12,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { uninstallCommand, uninstallScriptsDir } from '../lib/uninstall.js';
+import { sweepCommand, uninstallCommand, uninstallScriptsDir } from '../lib/uninstall.js';
 
 const SCRIPTS = path.resolve('/Program Files/OrderBook Master Panel/resources/uninstall');
 
@@ -277,5 +277,87 @@ describe('the keep-data flag', () => {
       expect(JSON.stringify(command?.args).toLowerCase()).not.toContain('keepdata');
       expect(JSON.stringify(command?.args)).not.toContain('--keep-data');
     }
+  });
+});
+
+/*
+ * The whole-machine sweep the standalone clean-install tool runs.
+ *
+ * Two differences from the per-panel command above, and both matter: it asks
+ * for every panel at once, and it can ask without doing anything. The dry run
+ * is what the tool's detect and verify passes are built on, so a `-DryRun`
+ * that silently stopped being passed would turn "here is what I found" into
+ * an erase nobody asked for.
+ */
+describe('the whole-machine sweep', () => {
+  it('asks Windows for every panel, and changes nothing on a dry run', () => {
+    expect(
+      sweepCommand({ platform: 'win32', panel: 'all', dryRun: true, scriptsDir: SCRIPTS }),
+    ).toEqual({
+      file: 'powershell.exe',
+      args: [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        path.join(SCRIPTS, 'uninstall-orderbook.ps1'),
+        '-Panel',
+        'all',
+        '-DryRun',
+      ],
+    });
+  });
+
+  it('never passes -Yes and -DryRun together', () => {
+    // -Yes answers the confirmation; -DryRun means there is nothing to
+    // confirm. Passing both reads like a belt-and-braces mistake and is how a
+    // detect pass turns into a wipe.
+    for (const platform of ['win32', 'darwin', 'linux'] as const) {
+      const dry = sweepCommand({ platform, panel: 'all', dryRun: true, scriptsDir: SCRIPTS });
+      expect(dry?.args).not.toContain('-Yes');
+      expect(dry?.args).not.toContain('--yes');
+
+      const real = sweepCommand({ platform, panel: 'all', dryRun: false, scriptsDir: SCRIPTS });
+      expect(real?.args.some((arg) => arg === '-Yes' || arg === '--yes')).toBe(true);
+      expect(real?.args).not.toContain('-DryRun');
+      expect(real?.args).not.toContain('--dry-run');
+    }
+  });
+
+  it('never passes the keep-data flag — this tool is the one that erases', () => {
+    // The clean-install tool exists to leave nothing behind. If it ever grew a
+    // keep-data mode it would need its own confirmation, and this assertion is
+    // where that conversation starts.
+    for (const platform of ['win32', 'darwin', 'linux'] as const) {
+      for (const dryRun of [true, false]) {
+        const command = sweepCommand({ platform, panel: 'all', dryRun, scriptsDir: SCRIPTS });
+        expect(JSON.stringify(command?.args).toLowerCase()).not.toContain('keepdata');
+        expect(JSON.stringify(command?.args)).not.toContain('--keep-data');
+      }
+    }
+  });
+
+  it('runs the POSIX script directly, so its output comes back to us', () => {
+    // Not through osascript, unlike the per-panel macOS command: that wrapper
+    // hands the script's output to Terminal, and this tool has to read it.
+    const command = sweepCommand({
+      platform: 'darwin',
+      panel: 'all',
+      dryRun: true,
+      scriptsDir: SCRIPTS,
+    });
+    expect(command?.file).toBe('bash');
+    expect(command?.args).toEqual([
+      path.posix.join(SCRIPTS, 'uninstall-orderbook.sh'),
+      '--panel',
+      'all',
+      '--dry-run',
+    ]);
+  });
+
+  it('is null on a platform with no script, like the per-panel command', () => {
+    expect(
+      sweepCommand({ platform: 'freebsd', panel: 'all', dryRun: true, scriptsDir: SCRIPTS }),
+    ).toBeNull();
   });
 });

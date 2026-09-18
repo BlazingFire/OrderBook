@@ -15,7 +15,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { dataFolders, isClean, parseScriptOutput, present } from '../src/detect.js';
+import { dataFolders, isClean, parseScriptOutput, present } from '../lib/cleaner/detect.js';
 
 const FIXTURES = path.join(import.meta.dirname, 'fixtures');
 const linux = readFileSync(path.join(FIXTURES, 'linux-dry-run.txt'), 'utf8');

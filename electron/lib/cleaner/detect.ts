@@ -21,7 +21,7 @@
  * one here would be a second opinion that can disagree with the thing actually
  * doing the removing.
  *
- * Pure: no spawning, no filesystem. `cleaner/src/run-script.ts` does that and
+ * Pure: no spawning, no filesystem. `run.ts` beside it does that and
  * hands the text here, which is what lets every case below be a fixture.
  */
 
