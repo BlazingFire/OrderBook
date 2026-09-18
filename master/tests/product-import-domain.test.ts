@@ -200,9 +200,12 @@ describe('the file as a whole', () => {
   });
 
   it('writes one guide row per template column', () => {
-    const guide = templateGuideRows(true);
+    const guide = templateGuideRows(true, 'box');
     expect(guide).toHaveLength(IMPORT_HEADERS.length);
     expect(guide.find((row) => row[0] === 'uom')?.[3]).toBe('box, sqft, piece');
+    expect(guide.find((row) => row[0] === 'uom')?.[4]).toBe(
+      'What the product is counted in. Defaults to box.',
+    );
     expect(guide.find((row) => row[0] === 'name')?.[1]).toBe('yes');
     expect(guide.find((row) => row[0] === 'categoryName')?.[4]).toBe('Created if it does not exist yet.');
   });
@@ -210,11 +213,34 @@ describe('the file as a whole', () => {
   it('tells the truth about categories when the company does not let an import create one', () => {
     // The template is the one thing a person reads before filling the sheet
     // in. Left alone it would promise the opposite of what the import does.
-    const guide = templateGuideRows(false);
+    const guide = templateGuideRows(false, 'box');
     expect(guide.find((row) => row[0] === 'categoryName')?.[4]).toBe(
       'Must already exist — an import cannot create one.',
     );
     // Every other note is untouched.
     expect(guide.find((row) => row[0] === 'name')?.[4]).toBe('Required.');
+  });
+});
+
+describe('the guide sheet reports the company\'s own answers', () => {
+  it('names the unit a row with no unit column will actually be saved in', () => {
+    // The template is the one thing a person reads before filling the sheet in.
+    // A standing "Defaults to box." against a company set to square feet
+    // produces a file that has to be imported twice.
+    const guide = templateGuideRows(true, 'sqft');
+    expect(guide.find((row) => row[0] === 'uom')?.[4]).toBe(
+      'What the product is counted in. Defaults to sqft.',
+    );
+  });
+
+  it('changes the two notes that are answers, and no others', () => {
+    const standing = templateGuideRows(true, 'box');
+    const changed = templateGuideRows(false, 'sqft');
+
+    const differing = changed
+      .filter((row, index) => row[4] !== standing[index]?.[4])
+      .map((row) => row[0]);
+
+    expect(differing.sort()).toEqual(['categoryName', 'uom']);
   });
 });

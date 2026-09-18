@@ -51,6 +51,7 @@ import { publishStockFor } from './inventory.service.js';
 import { publishChange } from './change-bus.js';
 import { requirePartyAccess } from './party-access.service.js';
 import * as inventoryService from './inventory.service.js';
+import { getSetting } from './settings.service.js';
 
 const PAGING = { defaultLimit: 100, maxLimit: 500 };
 
@@ -106,7 +107,17 @@ export async function convertLead(
   // entities: a converter without `field.saleRate.view` must still carry the
   // rate across, they just may not see it.
   const leadLines = await lineItemRepo.loadSnapshots(actor.tenantId, 'lead', lead.id);
-  assertConvertible({ convertedOrderId: lead.convertedOrderId, items: leadLines });
+
+  // Read here, outside the transaction below. `getSetting` takes a pooled
+  // connection, and the lock-order note inside that transaction is why: a
+  // second connection acquired while holding `master_clock`'s lock is how a
+  // pool this size deadlocks under load.
+  assertConvertible(
+    { convertedOrderId: lead.convertedOrderId, items: leadLines },
+    {
+      packagingRequired: await getSetting(actor.tenantId, 'leads.packagingRequiredOnConvert'),
+    },
+  );
 
   const orderStages = await pipelineRepo.stagesFor(actor.tenantId, 'order');
   const orderLines = copyLinesForOrder(leadLines);

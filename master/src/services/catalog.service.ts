@@ -51,6 +51,7 @@ import * as variantRepo from '../repositories/party-variant.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
 import { publishChange } from './change-bus.js';
 import { requirePartyAccess } from './party-access.service.js';
+import { getSetting } from './settings.service.js';
 
 const PAGING = { defaultLimit: 100, maxLimit: 500 };
 
@@ -386,6 +387,19 @@ export async function createProduct(input: ProductInput, actor: ActorContext): P
     throw new ConflictError('error.conflict.productCodeTaken', { productCode });
   }
 
+  /*
+   * The company's unit, for a create that names none.
+   *
+   * `?? unit`, never `unit` outright: a create that DOES name a unit keeps it.
+   * The company setting decides what a product starts in, not what somebody
+   * asked for — the same line `inventory.defaultReorderLevel` draws, and the
+   * one that separates a default from a company silently re-uniting records.
+   *
+   * Read outside the transaction, like every other `getSetting` on a write
+   * path, so no second pooled connection is taken while a lock is held.
+   */
+  const unit = await getSetting(actor.tenantId, 'catalog.defaultUom');
+
   const product = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
     return productRepo.insertProduct(
@@ -397,7 +411,10 @@ export async function createProduct(input: ProductInput, actor: ActorContext): P
         // Without one, that value falls back to the catalogue default rather
         // than to whatever the caller sent.
         input: withPermittedPurchaseRate(
-          withPermittedRate({ ...input, name, productCode }, canEditRates(actor)),
+          withPermittedRate(
+            { ...input, name, productCode, uom: input.uom ?? unit },
+            canEditRates(actor),
+          ),
           canEditCost(actor),
         ),
         hlc,

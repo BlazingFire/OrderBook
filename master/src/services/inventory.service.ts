@@ -19,6 +19,7 @@ import type {
 } from '@orderbook/shared';
 import {
   ProductValidationError,
+  isBlankNote,
   validateStockLevels,
   withDefaultReorderLevel,
   withoutReservations,
@@ -155,6 +156,24 @@ export async function recordAdjustment(
 
   if (delta === 0) {
     return outgoing(actor.tenantId, current ?? { ...emptyLevel(input.productId, colour) });
+  }
+
+  /*
+   * Below the `delta === 0` return, never above it.
+   *
+   * Confirming a count that already matches writes no movement and no activity
+   * row, so a reason collected there would be taken and thrown away — a form
+   * that asks for something it then discards. Above this line is the tempting
+   * placement and it is the wrong one.
+   *
+   * A note of spaces counts as no note: `isBlankNote` is shared with both
+   * panels' forms so the server cannot refuse something a form let through.
+   */
+  if (
+    isBlankNote(input.note) &&
+    (await getSetting(actor.tenantId, 'inventory.adjustmentNoteRequired'))
+  ) {
+    throw new ValidationError('validation.stock.adjustmentNoteRequired');
   }
 
   const moved = await inventoryRepo.applyMovement({

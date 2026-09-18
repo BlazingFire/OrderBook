@@ -100,6 +100,7 @@ export async function productImportTemplate(
   }
 
   const mayCreateCategories = await getSetting(actor.tenantId, 'catalog.importCreatesCategories');
+  const templateDefaultUom = await getSetting(actor.tenantId, 'catalog.defaultUom');
 
   const bytes = await buildXlsxTemplate({
     columns: IMPORT_COLUMNS.map((column) => ({
@@ -108,7 +109,10 @@ export async function productImportTemplate(
       text: TEXT_COLUMNS.has(column.field),
       values: column.values,
     })),
-    guide: [['column', 'required', 'kind', 'allowed values', 'note'], ...templateGuideRows(mayCreateCategories)],
+    guide: [
+      ['column', 'required', 'kind', 'allowed values', 'note'],
+      ...templateGuideRows(mayCreateCategories, templateDefaultUom),
+    ],
   });
 
   return { bytes, contentType: XLSX_CONTENT_TYPE, fileName: 'products-template.xlsx' };
@@ -294,6 +298,28 @@ export async function importProducts(
       return false;
     });
   }
+
+  /*
+   * The company's unit, for a CREATE whose sheet named none.
+   *
+   * `creates` only. An upsert that names no unit must leave the stored one
+   * alone, or re-importing last year's price list would silently re-unit every
+   * product in it — a company setting editing shipped records, which is the one
+   * thing this setting must never do.
+   *
+   * Injected here rather than left to `createProduct`'s default, because the
+   * bulk path does not go through it: `insertProductRows` writes straight to
+   * the table, so without this a sheet with no unit column would fall through
+   * to the column's own `DEFAULT 'box'` and the setting would be a decorated
+   * dropdown. Above the dry-run boundary for the same reason the category gate
+   * is: one function answers both questions.
+   */
+  const defaultUom = await getSetting(actor.tenantId, 'catalog.defaultUom');
+  creates = creates.map((entry) =>
+    entry.input.uom === undefined || entry.input.uom === null
+      ? { ...entry, input: { ...entry.input, uom: defaultUom } }
+      : entry,
+  );
 
   const sample = [...creates, ...updates]
     .sort((a, b) => a.row - b.row)

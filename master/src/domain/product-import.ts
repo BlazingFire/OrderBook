@@ -402,20 +402,35 @@ export function findDuplicatesInFile(
 /**
  * The Guide sheet: one row per column, so the template explains itself.
  *
- * `createsCategories` is the company's `catalog.importCreatesCategories`
- * switch, passed in rather than read here — this module is pure. It is not a
- * cosmetic detail: with the switch off, the standing note "Created if it does
- * not exist yet." is the opposite of what the importer will do, and the
- * template is the one thing a person reads before filling the sheet in.
+ * `createsCategories` and `defaultUom` are the company's answers, passed in
+ * rather than read here — this module is pure. Neither is cosmetic: with the
+ * category switch off, the standing note "Created if it does not exist yet."
+ * is the opposite of what the importer will do, and the `uom` note names the
+ * unit a row with no unit column will actually be saved in. The template is the
+ * one thing a person reads before filling the sheet in, so a note that lies
+ * there produces a file that has to be imported twice.
  */
-export function templateGuideRows(createsCategories: boolean): string[][] {
+export function templateGuideRows(createsCategories: boolean, defaultUom: string): string[][] {
   return IMPORT_COLUMNS.map((column) => [
     column.field,
     column.required ? 'yes' : '',
     column.kind === 'money' ? 'rupees' : column.kind === 'enum' ? 'one of' : column.kind,
     column.values ? column.values.join(', ') : '',
-    column.field === 'categoryName' && !createsCategories
-      ? 'Must already exist — an import cannot create one.'
-      : column.note,
+    noteFor(column, createsCategories, defaultUom),
   ]);
+}
+
+/** The two notes that are the company's answer rather than a fixed sentence. */
+function noteFor(
+  column: (typeof IMPORT_COLUMNS)[number],
+  createsCategories: boolean,
+  defaultUom: string,
+): string {
+  if (column.field === 'categoryName' && !createsCategories) {
+    return 'Must already exist — an import cannot create one.';
+  }
+  if (column.field === 'uom') {
+    return `What the product is counted in. Defaults to ${defaultUom}.`;
+  }
+  return column.note;
 }
