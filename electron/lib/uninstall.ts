@@ -98,5 +98,29 @@ export function uninstallCommand(request: UninstallRequest): UninstallCommand | 
     };
   }
 
+  if (platform === 'linux') {
+    /*
+     * The same script, run directly rather than through a terminal.
+     *
+     * macOS needs Terminal because `/Applications` belongs to root and the
+     * script's `sudo` has to have somewhere to ask. A Linux install is
+     * per-user — the AppImage sits in `~/Applications`, the profile and data
+     * under `$XDG_CONFIG_HOME` — so there is normally nothing to elevate for,
+     * and the script already falls back to `sudo` on its own for the case
+     * where somebody put the AppImage in `/opt` by hand. Picking a terminal
+     * emulator for an arbitrary desktop is a guess with no good default.
+     */
+    return {
+      file: 'bash',
+      args: [
+        path.posix.join(scriptsDir, 'uninstall-orderbook.sh'),
+        '--panel',
+        panel,
+        '--yes',
+        ...(keepData ? ['--keep-data'] : []),
+      ],
+    };
+  }
+
   return null;
 }
