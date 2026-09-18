@@ -450,18 +450,11 @@ function SeedResult({ result }: { result: SeedDummyUsersResult }) {
 }
 
 /**
- * One row of the company tab, rendered from the declaration rather than from a
- * hand-written control per key.
- *
- * Three shapes and no fourth: a boolean is a switch, a secret is "set / not
- * set" plus a field that writes a new value and never reads the old one back,
- * and anything else is shown read-only because the screen that owns it is not
- * this one. That last branch is what keeps this component honest as `SETTINGS`
- * grows — a key with no editor yet appears saying so, instead of silently
- * missing.
- */
-/**
  * One company setting, drawn from the control its declaration names.
+ *
+ * A secret is its own shape — "set / not set" plus a field that writes a new
+ * value and never reads the old one back — and everything else comes from the
+ * declared `control`.
  *
  * This used to branch on `typeof setting.value`, with a final `else` that
  * printed `JSON.stringify(value)` beside "Edited from its own screen" — a
