@@ -50,6 +50,13 @@ interface Props {
   /** Which list is showing — chosen here or from the sidebar's sub-pages. */
   view: View;
   onViewChange: (view: View) => void;
+  /**
+   * `leads.packagingRequiredOnConvert`, already coalesced by the shell.
+   *
+   * A prop rather than a read here, because this screen's `view` is a tab name
+   * — it has no snapshot to resolve from.
+   */
+  packagingRequired: boolean;
 }
 
 /**
@@ -76,7 +83,13 @@ function summariseItems(items: LineItem[]): { text: string; title: string } {
   return { text: lines.map((line) => line.short).join(', '), title: lines.map((line) => line.full).join('\n') };
 }
 
-export function LeadsOrdersScreen({ revision, permissions, view, onViewChange }: Props) {
+export function LeadsOrdersScreen({
+  revision,
+  permissions,
+  view,
+  onViewChange,
+  packagingRequired,
+}: Props) {
   // Off with the company's pricing switch, or without the role's key: no
   // Amount column at all, rather than one reading "—" top to bottom.
   const showMoney = permissions.includes('field.saleRate.view');
@@ -472,7 +485,8 @@ export function LeadsOrdersScreen({ revision, permissions, view, onViewChange }:
       header: '',
       width: rem(240),
       render: (lead) => {
-        const missingPackaging = lead.items.some((item) => !item.packaging?.trim());
+        const missingPackaging =
+          packagingRequired && lead.items.some((item) => !item.packaging?.trim());
         return (
           <div
             style={{

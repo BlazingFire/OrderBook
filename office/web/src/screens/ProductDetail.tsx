@@ -24,6 +24,7 @@
  */
 
 import { useState } from 'react';
+import { resolveCompanyFeatures } from '@orderbook/shared';
 import type { InventoryStockLevel, Product } from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
@@ -67,7 +68,10 @@ export function ProductDetail({
   // Off with the company's pricing switch, or without the role's key.
   const showMoney = view.permissions.includes(RATE_PERMISSION);
   // Absent means an older Master, which sends every figure — read as "on".
-  const freeToSell = view.features?.freeToSell ?? true;
+  // Every company switch this screen reads, each absence resolved to the
+  // setting's own declared fallback rather than to a literal written here.
+  const features = resolveCompanyFeatures(view.features);
+  const freeToSell = features.freeToSell;
 
   const levels = view.stock.filter((level) => level.productId === product.id);
   const colours = Array.from(
@@ -233,6 +237,7 @@ export function ProductDetail({
           productId={product.id}
           mode={mode}
           colours={colours}
+          noteRequired={features.adjustmentNoteRequired}
           levels={new Map(levels.map((level) => [level.colour, level.quantityBoxes]))}
           onDone={(message) => {
             setMode('none');
@@ -251,6 +256,7 @@ function StockMovementForm({
   mode,
   colours,
   levels,
+  noteRequired,
   onDone,
   onCancel,
   onError,
@@ -260,6 +266,8 @@ function StockMovementForm({
   colours: string[];
   /** On-hand boxes per colour, so switching the colour in "Adjust count" can default to today's count. */
   levels: Map<string, number>;
+  /** `inventory.adjustmentNoteRequired`, already coalesced by the screen. */
+  noteRequired: boolean;
   onDone: (message: string) => void;
   onCancel: () => void;
   onError: (message: string) => void;
@@ -270,6 +278,20 @@ function StockMovementForm({
   );
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+
+  /*
+   * A correction that changes the figure needs a reason; confirming a count
+   * that already matches does not, because the server writes nothing for it and
+   * would discard the reason anyway.
+   *
+   * `levels` here is this product's own map, built from the snapshot rather
+   * than from a filtered page, so an absent colour really does mean zero — the
+   * opposite of the Master's screen, where `levels` is a clamped search result.
+   */
+  const noteNeeded =
+    noteRequired &&
+    mode === 'adjust' &&
+    Number(quantity) !== (levels.get(colour.trim()) ?? 0);
 
   function selectColour(name: string): void {
     setColour(name);
@@ -299,6 +321,12 @@ function StockMovementForm({
 
     setBusy(true);
     try {
+      if (noteNeeded && note.trim() === '') {
+        onError(t('validation.stock.adjustmentNoteRequired'));
+        setBusy(false);
+        return;
+      }
+
       const input = {
         productId,
         colour: trimmedColour,
@@ -355,9 +383,20 @@ function StockMovementForm({
       </div>
       <FormField
         label={t('product.detail.stockForm.note')}
-        hint={t('product.detail.stockForm.noteHint')}
+        hint={
+          noteNeeded
+            ? t('validation.stock.adjustmentNoteRequired')
+            : t('product.detail.stockForm.noteHint')
+        }
       >
-        {(id) => <Input id={id} value={note} onChange={(event) => setNote(event.target.value)} />}
+        {(id) => (
+          <Input
+            id={id}
+            value={note}
+            aria-invalid={noteNeeded && note.trim() === '' ? true : undefined}
+            onChange={(event) => setNote(event.target.value)}
+          />
+        )}
       </FormField>
       <div style={{ display: 'flex', gap: 'var(--s-8)', marginTop: 'var(--s-8)' }}>
         <Button variant="primary" size="sm" busy={busy} onClick={() => void save()}>

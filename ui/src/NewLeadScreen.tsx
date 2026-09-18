@@ -85,6 +85,18 @@ interface Props {
   onSaved: (id: string) => void;
   onCancel: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  /**
+   * `leads.followUpDefaultDays`. 0 is today, which is what this form did before
+   * the setting existed.
+   *
+   * Required, with no default — both panels pass it, coalescing the optional
+   * `CompanyFeatures` field at their own edge. A default here is how one panel
+   * silently keeps the old behaviour while the Settings screen says otherwise,
+   * and `tsc` would never mention it.
+   */
+  followUpDefaultDays: number;
+  /** `leads.packagingRequiredOnConvert`. Required for the same reason. */
+  packagingRequired: boolean;
 }
 
 /** One picked model and what the counter has said about it so far. */
@@ -122,7 +134,15 @@ function fixedColourOf(product: Product): string | null {
   return product.colourPolicy === 'selectable' || !base ? null : base;
 }
 
-export function NewLeadScreen({ focusNonce, transport, onSaved, onCancel, onDirtyChange }: Props) {
+export function NewLeadScreen({
+  focusNonce,
+  transport,
+  onSaved,
+  onCancel,
+  onDirtyChange,
+  followUpDefaultDays,
+  packagingRequired,
+}: Props) {
   const [optionLists, setOptionLists] = useState<OptionListItem[]>([]);
   const [partyId, setPartyId] = useState('');
   const [partyQuery, setPartyQuery] = useState('');
@@ -133,7 +153,7 @@ export function NewLeadScreen({ focusNonce, transport, onSaved, onCancel, onDirt
 
   const [sourcePlatform, setSourcePlatform] = useState('');
   const [otherSource, setOtherSource] = useState('');
-  const [followUpDate, setFollowUpDate] = useState(() => isoDate(0));
+  const [followUpDate, setFollowUpDate] = useState(() => isoDate(followUpDefaultDays));
   const [notes, setNotes] = useState('');
 
   const [categoryId, setCategoryId] = useState('');
@@ -451,8 +471,13 @@ export function NewLeadScreen({ focusNonce, transport, onSaved, onCancel, onDirt
   // --- Commit the group -------------------------------------------------------
 
   function rowReady(entry: SelectedModel): boolean {
+    // `rowReady` gates `addProduct()`, so forgetting the switch here would be
+    // the worst outcome in this change: a company that turned packaging OFF and
+    // still could not enter a line in the shop.
     return (
-      Boolean(entry.packaging.trim()) && Number(entry.boxes) > 0 && Boolean(entry.colour.trim())
+      (!packagingRequired || Boolean(entry.packaging.trim())) &&
+      Number(entry.boxes) > 0 &&
+      Boolean(entry.colour.trim())
     );
   }
 
@@ -1134,6 +1159,7 @@ export function NewLeadScreen({ focusNonce, transport, onSaved, onCancel, onDirt
                   <DetailRow
                     key={entry.key}
                     entry={entry}
+                    packagingRequired={packagingRequired}
                     packagingOptions={packagingOptions}
                     gradeOptions={gradeOptions}
                     colourOptions={colourOptions}
@@ -1355,6 +1381,7 @@ function Chip({
  */
 function DetailRow({
   entry,
+  packagingRequired,
   packagingOptions,
   gradeOptions,
   colourOptions,
@@ -1364,6 +1391,7 @@ function DetailRow({
   onEnterLast,
 }: {
   entry: SelectedModel;
+  packagingRequired: boolean;
   packagingOptions: Array<{ value: string; label: string }>;
   gradeOptions: Array<{ value: string; label: string }>;
   colourOptions: Array<{ value: string; label: string }>;
@@ -1433,7 +1461,7 @@ function DetailRow({
         )}
         <SuggestInput
           value={entry.packaging}
-          invalid={!entry.packaging.trim()}
+          invalid={packagingRequired && !entry.packaging.trim()}
           placeholder={t('lead.add.draft.packaging')}
           optionsLabel={t('lead.add.draft.showOptions', { field: t('lead.add.draft.packaging') })}
           options={packagingOptions}

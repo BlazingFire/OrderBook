@@ -61,6 +61,8 @@ interface Props {
    * would then only repeat the first.
    */
   freeToSell: boolean;
+  /** `inventory.adjustmentNoteRequired`, already coalesced by the shell. */
+  adjustmentNoteRequired: boolean;
 }
 
 const MOVEMENT_TYPE_KEY = {
@@ -77,7 +79,13 @@ interface LineLock {
   productName: string;
 }
 
-export function InventoryScreen({ revision, filter, onFilterChange, freeToSell }: Props) {
+export function InventoryScreen({
+  revision,
+  filter,
+  onFilterChange,
+  freeToSell,
+  adjustmentNoteRequired,
+}: Props) {
   const [levels, setLevels] = useState<InventoryStockLevel[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -738,6 +746,7 @@ export function InventoryScreen({ revision, filter, onFilterChange, freeToSell }
           description={t('inventory.physicalCount.description')}
           products={products}
           levels={levels}
+          noteRequired={adjustmentNoteRequired}
           submitLabel={t('inventory.physicalCount.submit')}
           busy={busy}
           lock={lineLock}
@@ -770,6 +779,7 @@ function MovementForm({
   submitLabel,
   busy,
   lock,
+  noteRequired,
   onSubmit,
 }: {
   description: string;
@@ -778,6 +788,8 @@ function MovementForm({
   submitLabel: string;
   busy: boolean;
   lock?: LineLock | null;
+  /** `inventory.adjustmentNoteRequired`, already coalesced by the screen. */
+  noteRequired?: boolean;
   onSubmit: (input: {
     productId: string;
     colour: string;
@@ -794,6 +806,23 @@ function MovementForm({
   const knownColours = levels
     .filter((level) => level.productId === productId)
     .map((level) => level.colour);
+
+  /*
+   * Whether this particular submission needs a reason.
+   *
+   * `levels` is the search/lowOnly-filtered, clamped page this screen loaded,
+   * NOT the stock table — so a line missing from it means "this screen does not
+   * know today's count", never zero. Treating absence as zero would compute no
+   * delta for a count of 0 and let a write-off through unasked, which is the
+   * exact correction the setting exists to police. Over-ask instead: the server
+   * discards the note on a no-op anyway, so over-asking is recoverable and
+   * under-asking is not.
+   */
+  const known = levels.find(
+    (level) => level.productId === productId && level.colour === colour.trim(),
+  );
+  const noteNeeded =
+    noteRequired === true && (known === undefined || Number(quantity) !== known.quantityBoxes);
 
   return (
     <>
@@ -859,12 +888,16 @@ function MovementForm({
         )}
       </FormField>
 
-      <FormField label={t('inventory.field.note')}>
+      <FormField
+        label={t('inventory.field.note')}
+        hint={noteNeeded ? t('validation.stock.adjustmentNoteRequired') : undefined}
+      >
         {(id) => (
           <Input
             id={id}
             value={note}
             placeholder={t('inventory.field.notePlaceholder')}
+            aria-invalid={noteNeeded && note.trim() === '' ? true : undefined}
             onChange={(event) => setNote(event.target.value)}
           />
         )}
@@ -874,7 +907,13 @@ function MovementForm({
         <Button
           variant="primary"
           busy={busy}
-          disabled={busy || !productId || !colour.trim() || quantity === ''}
+          disabled={
+            busy ||
+            !productId ||
+            !colour.trim() ||
+            quantity === '' ||
+            (noteNeeded && note.trim() === '')
+          }
           onClick={() =>
             // Nothing is reset here: a successful write closes the modal, which
             // unmounts this form, and after a rejected one the boxes and note

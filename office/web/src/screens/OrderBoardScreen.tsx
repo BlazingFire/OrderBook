@@ -15,6 +15,7 @@
  */
 
 import { useState } from 'react';
+import { resolveCompanyFeatures } from '@orderbook/shared';
 import type {
   Order,
   PartyScopeFilter,
@@ -127,7 +128,9 @@ export function OrderBoardScreen({
   // Off with the company's pricing switch, or without the role's key.
   const showMoney = view.permissions.includes(SALE_RATE_PERMISSION);
   // Absent means an older Master, which sends every figure — read as "on".
-  const freeToSell = view.features?.freeToSell ?? true;
+  // Through the shared resolver rather than a literal written here, so this
+  // screen cannot drift from the fallback `settings.ts` declares.
+  const freeToSell = resolveCompanyFeatures(view.features).freeToSell;
 
   const pipeline = view.pipelines.find((candidate) => candidate.kind === 'order');
   const stages = sortedStages(pipeline);

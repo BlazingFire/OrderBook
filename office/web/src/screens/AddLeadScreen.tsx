@@ -24,6 +24,7 @@ import type {
 } from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
+import { resolveCompanyFeatures } from '@orderbook/shared';
 import { NewLeadScreen, t, useResetGuard, type NewLeadTransport, useConfirm } from '@orderbook/ui';
 
 interface Props {
@@ -36,6 +37,9 @@ interface Props {
 }
 
 export function AddLeadScreen({ view, focusNonce, onSaved, onCancel }: Props) {
+  // Resolved at this panel's edge, so the shared screen takes plain values and
+  // never has to know a switch might be absent from an older Master's snapshot.
+  const features = resolveCompanyFeatures(view.features);
   const [dirty, setDirty] = useState(false);
   // The guard lives in the mounted adapter, not the shared screen: the
   // screen holds the draft and reports whether one exists; the shell's reset
@@ -118,6 +122,8 @@ export function AddLeadScreen({ view, focusNonce, onSaved, onCancel }: Props) {
   return (
     <NewLeadScreen
       focusNonce={focusNonce}
+      followUpDefaultDays={features.followUpDefaultDays}
+      packagingRequired={features.packagingRequiredOnConvert}
       transport={transport}
       onSaved={onSaved}
       onCancel={onCancel}

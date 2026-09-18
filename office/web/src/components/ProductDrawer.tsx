@@ -66,6 +66,11 @@ interface ProductDrawerProps {
   showMoney: boolean;
   /** The signed-in person's own resolved permissions, from the snapshot. */
   permissions: string[];
+  /**
+   * `catalog.defaultUom`, already coalesced by the screen — a plain value, like
+   * `showMoney` above, rather than a snapshot this component has to interpret.
+   */
+  defaultUom: string;
   onClose: () => void;
   onCreated?: (product: CreatedProduct) => void;
   onUpdated?: (name: string) => void;
@@ -115,6 +120,19 @@ const EMPTY = {
 
 type Draft = typeof EMPTY;
 
+/**
+ * A fresh draft, opening on the company's unit.
+ *
+ * `EMPTY.uom` deliberately stays `'box'` rather than becoming `''`:
+ * `validateProductInput` treats an empty string as "not asserted" while
+ * `columnPatch` still emits it, so a bare `EMPTY` reaching the server would
+ * hit the column's CHECK constraint. Overriding here keeps `EMPTY` a valid
+ * draft on its own and makes the default one substitution in one place.
+ */
+function blankDraft(defaultUom: string): Draft {
+  return { ...EMPTY, uom: defaultUom };
+}
+
 /** Money is entered in rupees and stored in paise. */
 function toPaise(value: string): number | null {
   return value.trim() ? Math.round(Number(value) * 100) : null;
@@ -137,10 +155,11 @@ export function ProductDrawer({
   onCreated,
   onUpdated,
   onError,
+  defaultUom,
 }: ProductDrawerProps) {
   const editing = product ?? null;
 
-  const [draft, setDraft] = useState<Draft>(EMPTY);
+  const [draft, setDraft] = useState<Draft>(() => blankDraft(defaultUom));
   const [busy, setBusy] = useState(false);
 
   /*
@@ -202,12 +221,12 @@ export function ProductDrawer({
             mrp: fromPaise(editing.mrp),
             purchaseRate: fromPaise(editing.purchaseRate),
             gstRatePct: editing.gstRatePct != null ? String(editing.gstRatePct) : '',
-            uom: editing.uom || 'box',
+            uom: editing.uom || defaultUom,
             weightKg: editing.weightKg != null ? String(editing.weightKg) : '',
             piecesPerBox: editing.piecesPerBox != null ? String(editing.piecesPerBox) : '',
             boxCoverageSqft: editing.boxCoverageSqft != null ? String(editing.boxCoverageSqft) : '',
           }
-        : EMPTY,
+        : blankDraft(defaultUom),
     );
 
     setLiveProduct(editing);
@@ -225,7 +244,7 @@ export function ProductDrawer({
   useCommand('record.save', open && !busy ? () => void save() : null);
 
   function close(): void {
-    setDraft(EMPTY);
+    setDraft(blankDraft(defaultUom));
     onClose();
   }
 
@@ -293,7 +312,7 @@ export function ProductDrawer({
       } else {
         const result = await api.createProduct(input);
         onCreated?.({ id: result.id, productCode, name });
-        setDraft(EMPTY);
+        setDraft(blankDraft(defaultUom));
       }
     } catch (caught) {
       onError(caught instanceof Error ? caught.message : t('product.createFailed'));

@@ -23,7 +23,11 @@ import type {
   ServerToClientEvents,
   SignedInUser,
 } from '@orderbook/shared';
-import { RECYCLE_BIN_ENTITIES, RESTORE_PERMISSION } from '@orderbook/shared';
+import {
+  RECYCLE_BIN_ENTITIES,
+  RESTORE_PERMISSION,
+  resolveCompanyFeatures,
+} from '@orderbook/shared';
 
 import { ApiError, api, desktopBridge } from './api';
 import {
@@ -384,6 +388,15 @@ function MasterPanel() {
   // Stable, or every boot-step render would hand Splash a new callback and
   // restart its hold timer.
   const markSplashDone = useCallback(() => setSplashDone(true), []);
+
+  /*
+   * The company's switches, every absence resolved to the setting's own
+   * declared fallback, once, here. A Master built before a switch existed sends
+   * a `features` without it, so the panels coalesce at their edge and pass
+   * plain values inward — a shared screen never has to know it might be
+   * missing, and no screen writes its own `?? true` to drift from `settings.ts`.
+   */
+  const companyFeatures = resolveCompanyFeatures(user?.features);
 
   const refreshPanels = useCallback(() => {
     void api.panels().then((result) => setPanels(result.panels));
@@ -865,6 +878,8 @@ function MasterPanel() {
           <NewLeadScreen
             key={`new-${resetNonce.orders ?? 0}`}
             focusNonce={1}
+            followUpDefaultDays={companyFeatures.followUpDefaultDays}
+            packagingRequired={companyFeatures.packagingRequiredOnConvert}
             onSaved={() => selectSubPage('orders', 'leads')}
             onCancel={() => selectSubPage('orders', 'leads')}
           />
@@ -872,6 +887,7 @@ function MasterPanel() {
           <LeadsOrdersScreen
             revision={revisionOf(revisions, 'records')}
             permissions={user.permissions}
+            packagingRequired={companyFeatures.packagingRequiredOnConvert}
             view={subKeyOf('orders') as 'leads' | 'orders' | 'converted'}
             onViewChange={(view) => selectSubPage('orders', view)}
           />
@@ -884,7 +900,8 @@ function MasterPanel() {
           revision={revisionOf(revisions, 'inventory')}
           filter={subKeyOf('inventory') as 'all' | 'low'}
           onFilterChange={(filter) => selectSubPage('inventory', filter)}
-          freeToSell={user.features.freeToSell}
+          freeToSell={companyFeatures.freeToSell}
+          adjustmentNoteRequired={companyFeatures.adjustmentNoteRequired}
         />
       ),
     },

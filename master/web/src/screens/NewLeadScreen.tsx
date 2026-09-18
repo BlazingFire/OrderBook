@@ -31,9 +31,18 @@ interface Props {
   focusNonce: number;
   onSaved: (id: string) => void;
   onCancel: () => void;
+  /** The company's switches, already coalesced by the shell. */
+  followUpDefaultDays: number;
+  packagingRequired: boolean;
 }
 
-export function NewLeadScreen({ focusNonce, onSaved, onCancel }: Props) {
+export function NewLeadScreen({
+  focusNonce,
+  onSaved,
+  onCancel,
+  followUpDefaultDays,
+  packagingRequired,
+}: Props) {
   const [dirty, setDirty] = useState(false);
   /*
    * A themed, translated confirm rather than `window.confirm`, which in
@@ -104,6 +113,8 @@ export function NewLeadScreen({ focusNonce, onSaved, onCancel }: Props) {
   return (
     <SharedNewLeadScreen
       focusNonce={focusNonce}
+      followUpDefaultDays={followUpDefaultDays}
+      packagingRequired={packagingRequired}
       transport={{
         ...transport,
         pickParty: async (term, signal) => {

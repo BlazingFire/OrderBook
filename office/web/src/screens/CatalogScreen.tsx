@@ -46,6 +46,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { resolveCompanyFeatures } from '@orderbook/shared';
 import type { Party, Product } from '@orderbook/shared';
 
 import { ApiError, api, type LocalView } from '../api';
@@ -140,7 +141,10 @@ export function CatalogScreen({
   const canCreateParty = view.permissions.includes('parties.create');
   const canCreateProduct = view.permissions.includes('products.create');
   // Absent means an older Master, which sends every figure — read as "on".
-  const freeToSell = view.features?.freeToSell ?? true;
+  // Every company switch this screen reads, each absence resolved to the
+  // setting's own declared fallback rather than to a literal written here.
+  const features = resolveCompanyFeatures(view.features);
+  const freeToSell = features.freeToSell;
 
   const [partySearch, setPartySearch] = useState('');
   const [cityFilter, setCityFilter] = useState<string | null>(null);
@@ -727,6 +731,7 @@ export function CatalogScreen({
           product={editingProduct}
           showMoney={showMoney}
           permissions={view.permissions}
+          defaultUom={features.defaultUom}
           onClose={() => setEditingProduct(null)}
           onUpdated={onProductUpdated}
           onError={onDrawerError}
@@ -800,6 +805,7 @@ export function CatalogScreen({
         open={productDrawerOpen}
         showMoney={showMoney}
         permissions={view.permissions}
+        defaultUom={features.defaultUom}
         onClose={() => setProductDrawerOpen(false)}
         onCreated={onProductCreated}
         onError={onDrawerError}
@@ -809,6 +815,7 @@ export function CatalogScreen({
         product={editingProduct}
         showMoney={showMoney}
         permissions={view.permissions}
+        defaultUom={features.defaultUom}
         onClose={() => setEditingProduct(null)}
         onUpdated={onProductUpdated}
         onError={onDrawerError}
