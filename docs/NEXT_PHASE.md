@@ -19,36 +19,34 @@ the branch exists only because the session was required to use one. Until it
 merges, `main` still has the lost-lead bug, no Master Parties screen, and four
 open privilege holes.
 
-### 2. Run the integration suites — they have never run
+### 2. The integration suites now run — here is how
 
-43 files and 583 tests skipped for the whole of 2026-09-17, because PostgreSQL
-refuses to start as root and the container had no other user account. That
-includes nineteen tests **written** in that session and never executed:
+They had never run, on any machine, for the whole of 2026-09-17: PostgreSQL
+refuses to start as root and the container had no other account. On 2026-09-18 a
+non-root account (`obtest`) was created and they ran for the first time.
 
-- `master/tests/sync.integration.test.ts` — the two temporary-id resolution
-  tests, which cover the blocking bug.
-- `master/tests/images.integration.test.ts` — the masking test for all four
-  image mutations.
-- `master/tests/party-access.integration.test.ts` — PA-14 (export completeness)
-  and PA-15 (the export permission).
-- `master/tests/company-settings.integration.test.ts` — **the whole file.** It
-  is the only thing that proves the five new settings do anything; each turns
-  its switch away from its default, because the defaults preserve the old
-  behaviour and a run at the defaults would pass against a switch wired to
-  nothing.
-- `master/tests/access.integration.test.ts` — the two password-minimum tests.
-- `master/tests/reports.integration.test.ts` — the two that put the SQL and JS
-  lead classifiers side by side at a threshold that is not 30.
+```
+sudo -u obtest bash -lc '
+  mkdir -p ~/run
+  cp /home/user/OrderBook/vitest.config.ts ~/run/
+  ln -sfn /home/user/OrderBook/node_modules ~/run/node_modules
+  cd /home/user/OrderBook
+  npx vitest run --config ~/run/vitest.config.ts --root /home/user/OrderBook
+'
+```
 
-The pure half of each of those is covered and did run: `shared/tests/
-inventory-view.test.ts`, `master/tests/password-rules.test.ts`, the
-`credential-invariants` password guards, the `panel-naming` discovery guards,
-`ui/tests/locale.test.ts`, and the language picker in
-`ui/tests/settings-layout.test.tsx`.
+The config has to be copied somewhere the account can write: vitest bundles it
+to a sibling `.timestamp-*.mjs` and dies with `EACCES` otherwise. `--root` keeps
+every relative path in that config pointing at the repository.
 
-On a normal (non-root) checkout `npm run test` runs them. **Check the skip
-count, not just the pass count** — a skipped suite prints like a passing one,
-and this project has been bitten by exactly that before.
+**Check the skip count, not just the pass count.** A skipped suite prints like a
+passing one, and this project has been bitten by exactly that — twice now. The
+second time shipped a `.update(db().raw(...))` that throws before any SQL is
+built: unexecuted turned out to mean unparsed by anything that would object.
+
+Running them found one real defect in the round they were written for, and it
+was in a test rather than in the code. That is still the point: a test nobody
+has executed is a claim, not a check.
 
 ### 3. Do a browser and Electron pass
 
@@ -99,26 +97,20 @@ inputs are refreshed and a healthy machine should work.
 
 ---
 
-## Six more settings, surveyed and verified, deliberately not shipped
+## Every surveyed setting has now shipped
 
-The 2026-09-17 survey verified twelve candidates and shipped five. These six
-survived adversarial review and were held back only to keep one round
-reviewable. Each is a single entry in `shared/src/domain/settings.ts` plus two
-i18n tokens — no migration — so the cost is in wiring the reader, not in the
-setting.
+The 2026-09-17 survey verified twelve candidates and shipped five; the owner
+asked for the remaining six on 2026-09-18 and they are in. Fifteen company
+settings, four groups. Nothing from that survey is outstanding.
 
-| Candidate | What it would decide |
-|---|---|
-| `security.offlineSignInEnabled` | whether an Office Panel may sign somebody in while the Master is unreachable |
-| `inventory.adjustmentNoteRequired` | whether correcting a count needs a written reason |
-| `catalog.defaultUom` | the unit a new product starts in |
-| `catalog.importCreatesCategories` | whether a bulk import may invent categories, or must match existing ones |
-| `leads.followUpDefaultDays` | the follow-up date a new lead is pre-filled with |
-| `leads.packagingRequiredOnConvert` | whether packaging must be chosen before a lead becomes an order |
-
-**Do not start one of these without asking the owner first.** Every one is a
-question about how the shop works, and the survey could establish only that the
-code would support the answer — not what the answer is.
+The one thing to know before adding a sixteenth: a company switch reaches a
+panel through `CompanyFeatures`, and every field on it is **optional** because a
+shop mid-update runs a Master and a panel on different versions. That means a
+switch added to the interface and forgotten in
+`master/src/services/company-features.ts` typechecks cleanly, ships, and decides
+nothing — no screen broken, no test red.
+`master/tests/company-features-complete.test.ts` is the only thing that catches
+it. Add the field, and let that test tell you where else to go.
 
 Six candidates were **rejected**, and the reasons are worth keeping so nobody
 re-proposes them: `security.signInLockoutAttempts` cannot be read by the Office's

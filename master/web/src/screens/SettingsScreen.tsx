@@ -184,7 +184,7 @@ export function SettingsScreen({
              * Nine rows in a single unlabelled column is a wall of switches
              * with nothing to point somebody at over the phone. Grouped by the
              * `group` each setting declares — deliberately not by the key's
-             * first segment, which would give six groups for nine settings,
+             * first segment, which would give six groups for fifteen settings,
              * three of them singletons, and read worse than flat.
              *
              * A group with nothing in it is not rendered, so a heading never

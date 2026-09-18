@@ -190,6 +190,59 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-18 — The six deferred settings, and the switch nobody was receiving (Claude)
+
+Scope: the owner's "now implement the 6 deferred settings too". Those six were
+held in `docs/NEXT_PHASE.md` behind a note saying not to start one without
+asking the owner, because each is a question about how the shop works rather
+than about the code. They asked.
+
+Surveyed by a 19-agent workflow before anything was built: one wiring plan per
+candidate, each then attacked by two independent lenses — a **reachability**
+lens asking only "can the code that needs this value obtain it at the moment it
+needs it", and an **invariants** lens asking "does this break something already
+true". Ten of the twelve reviews refuted something.
+
+**The survey's most valuable output was not about the six settings.** Four
+reviews independently hit the same wall from different directions: a company
+switch never reached a panel after its first snapshot. `writeSetting` published
+nothing and could not — `'setting'` was not a `ChangedEntity`. A connected panel
+never heard a flip; a reconnecting one took a delta, which carries no
+`features`. `inventory.freeToSell` had shipped with that for months. One entry
+in `SNAPSHOT_FORCING_ENTITIES` fixes both halves.
+
+**It also corrected me.** I reported to the owner that
+`leads.packagingRequiredOnConvert` was a documented-but-unwired rule, having
+grepped for the enforcement site and found none. The rule is enforced, in
+`master/src/domain/conversion.ts` — a file carrying a literal NUL byte at offset
+3175, so `grep` answers "binary file matches" and prints nothing. A reviewer
+read it with `readFileSync` and said so.
+
+**One agent wrote code rather than a plan.** The `catalog.importCreatesCategories`
+planner implemented its candidate and left it uncommitted in the working tree. I
+read the whole diff, ran it, and broke its guard two ways before keeping it —
+unreviewed agent output is not the same as reviewed work, however good it looks.
+
+**Rewritten guards, five of them**, each because it passed against the defect it
+named: a payload assertion satisfied by the doc comment that explains the
+payload; a "never defaulted" regex watching the wrong identifier; a placement
+check that pinned one side of a position; a packaging reach guard that flagged
+the line which *records* the value rather than the lines that refuse on it; and
+a concurrency fix of mine whose own new test proved it had not worked.
+
+**The integration suites ran, for the first time in this project's history.** A
+non-root account exists on this machine now, so `npx vitest run --config <a copy
+somewhere writable> --root <repo>` executes all 43 of them: **1750 tests**,
+against the 1148 the gate sees as root. The recipe is in `docs/NEXT_PHASE.md`
+§2. Running them found a defect in the round they were written for — in a test,
+which is still the point.
+
+**Also fixed:** a Knex `.update(raw)` I shipped broken the day before. It throws
+before any SQL is built, and printed as "skipped" because the suite skips.
+
+Verified: lint 0, typecheck 0, build 0, **140 files / 1750 tests, nothing
+skipped** — the first fully-executed run this project has had.
+
 ### 2026-09-17 — Five company settings, a Settings tab that groups, and a language picker (Claude)
 
 Scope: the owner's "add more necessary settings in settings tab / simplify it".

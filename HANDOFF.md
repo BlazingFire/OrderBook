@@ -58,7 +58,7 @@ against the code before acting on it.
   2026-09-17 **fourteen of the nineteen open handoff briefs are closed** —
   including all three that were blocking. See "Recent sessions" and
   `docs/ai-handoffs/README.md`.
-- **Nine company settings**, in four groups on the Settings tab. Adding one is
+- **Fifteen company settings**, in four groups on the Settings tab. Adding one is
   a single entry in `shared/src/domain/settings.ts` plus two i18n tokens — no
   migration, no column, because the table is one row per key and an absent row
   means the declared `fallback`. The dividing line is written at the top of
@@ -68,10 +68,11 @@ against the code before acting on it.
 - **Verify gate:** `npm run verify` = `lint` + `typecheck` (all workspaces,
   both Electron shells, the test tsconfigs) + `vitest run`. Run the three steps
   separately and check each exit code.
-  **Last run 2026-09-17: lint 0, typecheck 0, 87 files / 1041 tests passing,
-  43 files / 583 tests skipped.** The skips are the integration suites: they
-  need a real PostgreSQL, and PostgreSQL refuses to run as root. That is the
-  only reason they skip, on the owner's PC and in a container alike.
+  **Last run 2026-09-18: lint 0, typecheck 0, build 0, and — for the first
+  time — every suite executed: 140 files / 1750 tests passing, 0 skipped.**
+  As root the integration suites still skip (43 files / 588 tests), because
+  PostgreSQL refuses to start as root. Running them needs a non-root account;
+  the recipe is in `docs/NEXT_PHASE.md` §2, and it is worth the two minutes.
   **A skipped suite prints like a passing one — check the count.**
 - **The suite was not green before this session, and not for a code reason.**
   Thirteen tests across `updates.test.ts` and `github-releases.test.ts` failed
@@ -407,6 +408,63 @@ Bin retention policy above.
   is hex now; `parseToken` rejoins everything after the second separator.
 
 ## Recent sessions
+
+### 2026-09-18 — The six deferred settings, and the switch nobody was receiving (Claude)
+
+Same branch. The owner asked for the six settings `docs/NEXT_PHASE.md` had held
+back pending their decision; asking was the gate, and they opened it.
+
+**Fifteen company settings now, four groups.** The six:
+`security.offlineSignInEnabled`, `inventory.adjustmentNoteRequired`,
+`catalog.defaultUom`, `catalog.importCreatesCategories`,
+`leads.followUpDefaultDays`, `leads.packagingRequiredOnConvert`. Every fallback
+is today's behaviour.
+
+**The finding that mattered more than any of them: a company switch never
+reached a panel after its first snapshot.** `writeSetting` published nothing,
+and could not — `'setting'` was not a `ChangedEntity` at all. A connected panel
+never heard a flip; a reconnecting one took a delta, and `SyncDelta` carries no
+`features`. There is no periodic resnapshot. **`inventory.freeToSell` has
+shipped with this**, so a shop that turned it off and saw its panels ignore it
+was not imagining things. Fixed by one list entry —
+`SNAPSHOT_FORCING_ENTITIES` — which buys the live refresh and the delta refusal
+together. **This is a behaviour change to a shipped switch**: panels obey a flip
+now that they used to ignore.
+
+**Two traps worth knowing before the sixteenth setting:**
+
+- **An optional `CompanyFeatures` field left unresolved typechecks cleanly.**
+  Every field but `freeToSell` is optional and has to be
+  (`shared/tests/wire-optionality.test.ts` says why). So a switch added to the
+  interface and forgotten in `company-features.ts` ships, reads as `undefined`
+  everywhere, is taken as "as before", and decides nothing — with no screen
+  broken and no test red. `master/tests/company-features-complete.test.ts` is
+  the only thing in the tree that catches it.
+- **`??`, never `||`.** Four switches are booleans whose fallback is `true`, so
+  `||` re-enables every one a company turned off; and `followUpDefaultDays`' `0`
+  is both its fallback and a real answer. `resolveCompanyFeatures()` is the one
+  place that coalesces, and it reads the fallbacks from `SETTINGS` rather than
+  restating them — there were eleven hand-written `?? true` reads across the two
+  panels before it.
+
+**`SettingControl` gained a third kind, `select`**, for `catalog.defaultUom`.
+The `never` arm in `SettingsScreen` failed the build until the renderer handled
+it, which is exactly what that field is for.
+
+**A correction to the previous entry:** `leads.packagingRequiredOnConvert` was
+reported here as a documented-but-unwired rule. It was wired all along, at
+`master/src/domain/conversion.ts`. That file carries a literal NUL byte at
+offset 3175, so `grep` answers "binary file matches" and shows nothing. **Read
+it with `readFileSync`, not `grep`.**
+
+**Also fixed:** a Knex `.update(raw)` I shipped broken last round in
+`reports.integration.test.ts` — it throws before any SQL is built, and printed
+as "skipped" because the suite skips. Found by reading, not running.
+
+**The integration suites ran.** For the first time in this project's recorded
+history: a non-root account exists on this machine now, and
+`npx vitest run --config <a copy in a writable dir> --root /home/user/OrderBook`
+executes them. See §2 of `docs/NEXT_PHASE.md`.
 
 ### 2026-09-17 — Five company settings, a grouped Settings tab, a language picker (Claude)
 

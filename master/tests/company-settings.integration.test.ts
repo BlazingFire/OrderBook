@@ -26,6 +26,9 @@ import * as panels from '../src/services/panel.service.js';
 import * as settings from '../src/services/settings.service.js';
 import * as setup from '../src/services/setup.service.js';
 import * as auth from '../src/services/auth.service.js';
+import * as leads from '../src/services/lead.service.js';
+import * as orders from '../src/services/order.service.js';
+import { buildSnapshot } from '../src/services/snapshot.service.js';
 import { canRunIntegrationTests } from './helpers/db.js';
 import { resetData, setupDatabase, teardownDatabase, testActor } from './helpers/fixtures.js';
 
@@ -348,6 +351,207 @@ describe.skipIf(!canRunIntegrationTests)('company settings, end to end (integrat
       expect((await catalog.listCategories(actor)).map((category) => category.name)).toEqual([
         'Vitrified',
       ]);
+    });
+  });
+
+  describe('inventory.adjustmentNoteRequired', () => {
+    /** 40 boxes on the floor, no reorder level — the shape a movement creates. */
+    async function seeded() {
+      const product = await catalog.createProduct(
+        { productCode: 'ADJ-01', name: 'Matt 300x300', rate: 22_000 },
+        actor,
+      );
+      await inventory.recordInbound(
+        { productId: product.id, colour: 'Ivory', quantityBoxes: 40 },
+        actor,
+      );
+      return product;
+    }
+
+    it('leaves a correction with no reason alone at the default', async () => {
+      // No writeSetting at all: the one property an upgraded installation
+      // depends on.
+      const product = await seeded();
+
+      const level = await inventory.recordAdjustment(
+        { productId: product.id, colour: 'Ivory', quantityBoxes: 37 },
+        actor,
+      );
+      expect(level.quantityBoxes).toBe(37);
+    });
+
+    it('refuses a correction with no reason while the switch is on', async () => {
+      const product = await seeded();
+      await settings.writeSetting(actor, 'inventory.adjustmentNoteRequired', true);
+
+      await expect(
+        inventory.recordAdjustment(
+          { productId: product.id, colour: 'Ivory', quantityBoxes: 37 },
+          actor,
+        ),
+      ).rejects.toThrow(/say why/i);
+    });
+
+    it('counts a reason of only spaces as no reason', async () => {
+      const product = await seeded();
+      await settings.writeSetting(actor, 'inventory.adjustmentNoteRequired', true);
+
+      await expect(
+        inventory.recordAdjustment(
+          { productId: product.id, colour: 'Ivory', quantityBoxes: 37, note: '   ' },
+          actor,
+        ),
+      ).rejects.toThrow(/say why/i);
+    });
+
+    it('takes the correction once a reason is given', async () => {
+      const product = await seeded();
+      await settings.writeSetting(actor, 'inventory.adjustmentNoteRequired', true);
+
+      const level = await inventory.recordAdjustment(
+        { productId: product.id, colour: 'Ivory', quantityBoxes: 37, note: 'breakage' },
+        actor,
+      );
+      expect(level.quantityBoxes).toBe(37);
+    });
+
+    it('still lets somebody confirm a count that already matches', async () => {
+      // The carve-out. That path writes no movement and no activity row, so a
+      // reason collected there would be discarded — and moving the guard above
+      // the early return is the tempting mistake this pins.
+      const product = await seeded();
+      await settings.writeSetting(actor, 'inventory.adjustmentNoteRequired', true);
+
+      const before = await inventory.listMovements({ productId: product.id }, actor);
+      const level = await inventory.recordAdjustment(
+        { productId: product.id, colour: 'Ivory', quantityBoxes: 40 },
+        actor,
+      );
+
+      expect(level.quantityBoxes).toBe(40);
+      expect(await inventory.listMovements({ productId: product.id }, actor)).toHaveLength(
+        before.length,
+      );
+    });
+  });
+
+  describe('leads.packagingRequiredOnConvert', () => {
+    /** A lead with one line and no packaging on it. */
+    async function leadWithoutPackaging() {
+      const party = await catalog.createParty({ name: 'Packless Traders' }, actor);
+      const product = await catalog.createProduct(
+        { productCode: 'PKG-01', name: 'Wall 300x600', rate: 30_000 },
+        actor,
+      );
+      await inventory.recordInbound(
+        { productId: product.id, colour: 'White', quantityBoxes: 50 },
+        actor,
+      );
+      return leads.createLead(
+        {
+          partyId: party.id,
+          items: [
+            { productId: product.id, quantities: [{ colour: 'White', quantity: 10 }] },
+          ],
+        },
+        actor,
+      );
+    }
+
+    it('refuses the conversion at the default, as it always has', async () => {
+      const lead = await leadWithoutPackaging();
+
+      await expect(orders.convertLead({ leadId: lead.id }, actor)).rejects.toThrow(
+        /packaging/i,
+      );
+    });
+
+    it('converts with the switch off, and still reserves the stock', async () => {
+      const lead = await leadWithoutPackaging();
+      await settings.writeSetting(actor, 'leads.packagingRequiredOnConvert', false);
+
+      const order = await orders.convertLead({ leadId: lead.id }, actor);
+
+      expect(order.items[0]?.packaging ?? null).toBeNull();
+      // The switch relaxes one refusal; it must not skip the rest of the
+      // conversion, and reservations are the part that would go unnoticed.
+      expect(order.reservations.length).toBeGreaterThan(0);
+    });
+
+    it('refuses again when the switch is turned back on', async () => {
+      // A reader that captured the value once at module load passes the case
+      // above and fails this one, so this is what exercises the cache
+      // invalidation on write.
+      const lead = await leadWithoutPackaging();
+      await settings.writeSetting(actor, 'leads.packagingRequiredOnConvert', false);
+      await settings.writeSetting(actor, 'leads.packagingRequiredOnConvert', true);
+
+      await expect(orders.convertLead({ leadId: lead.id }, actor)).rejects.toThrow(/packaging/i);
+    });
+
+    it('leaves the other conversion guards alone with the switch off', async () => {
+      const lead = await leadWithoutPackaging();
+      await settings.writeSetting(actor, 'leads.packagingRequiredOnConvert', false);
+      await orders.convertLead({ leadId: lead.id }, actor);
+
+      await expect(orders.convertLead({ leadId: lead.id }, actor)).rejects.toThrow(
+        /already been converted/i,
+      );
+    });
+  });
+
+  describe('catalog.defaultUom', () => {
+    it('stores the company default on a create that names no unit', async () => {
+      await settings.writeSetting(actor, 'catalog.defaultUom', 'sqft');
+
+      const product = await catalog.createProduct(
+        { productCode: 'UOM-01', name: 'Glazed 600x600' },
+        actor,
+      );
+
+      expect(product.uom).toBe('sqft');
+    });
+
+    it('keeps a unit the create named, rather than overriding it', async () => {
+      // The line between a default and a company silently re-uniting records.
+      await settings.writeSetting(actor, 'catalog.defaultUom', 'sqft');
+
+      const product = await catalog.createProduct(
+        { productCode: 'UOM-02', name: 'Matt 300x300', uom: 'piece' },
+        actor,
+      );
+
+      expect(product.uom).toBe('piece');
+    });
+
+    it('stores box at the default, so an upgraded installation is unchanged', async () => {
+      const product = await catalog.createProduct(
+        { productCode: 'UOM-03', name: 'Wall 300x600' },
+        actor,
+      );
+
+      expect(product.uom).toBe('box');
+    });
+  });
+
+  describe('every switch reaches both channels', () => {
+    it('answers the same on the signed-in user and in the snapshot', async () => {
+      // Two call sites of one resolver. A switch wired into only one of them
+      // works on the Master and does nothing on every panel, or the reverse.
+      const credentials = await setup.runFirstTimeSetup(null);
+      await settings.writeSetting(actor, 'leads.followUpDefaultDays', 7);
+
+      const signedIn = await auth.signIn(credentials.username, credentials.password, 'browser');
+      expect(signedIn.user.features.followUpDefaultDays).toBe(7);
+
+      expect((await buildSnapshot(actor)).features).toMatchObject({ followUpDefaultDays: 7 });
+    });
+
+    it('answers the declared fallback when nothing has been set', async () => {
+      const credentials = await setup.runFirstTimeSetup(null);
+
+      const signedIn = await auth.signIn(credentials.username, credentials.password, 'browser');
+      expect(signedIn.user.features.followUpDefaultDays).toBe(0);
     });
   });
 });

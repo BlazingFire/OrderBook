@@ -48,7 +48,7 @@ Everything is offline: no CDN, no internet call, ever.
 | `domain/visibility.ts` | Masking on the way out, and `withPermittedRate` / `withPermittedPurchaseRate` on the way in. Three services share these. |
 | `domain/columns.ts` | **The one column map.** `undefined` = not asserted, `null` = clear. Never add a second copy — see the trap in `HANDOFF.md`. |
 | `domain/fields.ts` | The eight managed option-list sets. |
-| `domain/settings.ts` | The nine company switches, each declaring its group, its control and its fallback. Adding one is an entry here plus two i18n tokens — **no migration**: the table is one row per key and an absent row means the fallback. |
+| `domain/settings.ts` | The fifteen company switches, each declaring its group, its control and its fallback. Adding one is an entry here plus two i18n tokens — **no migration**: the table is one row per key and an absent row means the fallback. |
 | `domain/version.ts` | `ReleaseManifest`, `ReleasePlatform`, and version comparison. |
 | `sync/mutations.ts` | The offline write envelope: `Mutation`, `MutationResult`, `MUTATION_PERMISSIONS`. |
 | `sync/hlc.ts`, `sync/ids.ts` | Hybrid logical clocks; temporary vs permanent record ids. |
@@ -57,6 +57,7 @@ Everything is offline: no CDN, no internet call, ever.
 | `protocol/discovery.ts` | The custom UDP broadcast protocol (not mDNS). |
 | `i18n/en.ts`, `i18n/hi.ts` | The catalogue. `hi.ts` is a **total** record; `npm run i18n:sync` keeps it that way. |
 | `i18n/errors.ts` | `errorMessageKey` — the coarse `error.<code>` tier between a specific key and English. |
+| `domain/company-features.ts` | `resolveCompanyFeatures` — the switches a panel reads, every absence filled from the setting's own declared fallback. Both panels resolve at their edge; no screen writes its own `?? true`. |
 | `i18n/panel-scoped.ts` | The keys stored twice, `master.*` and `office.*`. The resolver in `ui/` and the call-site guard both read this list — a second copy is how a key renders raw on screen with a green suite. |
 | `keys/commands.ts` | The command registry the palette and the chords read. |
 
@@ -163,7 +164,7 @@ PartyAccess, Conflicts, Settings, Updates, Connection, SignIn.
 | Add a socket command | `shared/protocol/socket.ts`, then `master/realtime/hub.ts`, then the panel caller |
 | Add an offline-able write | `shared/sync/mutations.ts` (kind + permission), `office/http/app.ts` (queue it), `master/services/sync.service.ts` (`route()`) |
 | Change a string | `shared/i18n/en.ts`, then `npm run i18n:sync`, then translate the Hindi |
-| Add a company setting | one entry in `shared/domain/settings.ts` (group + control + fallback + parser) and its two i18n tokens. Nothing else — no migration, no column, no screen change |
+| Add a company setting | one entry in `shared/domain/settings.ts` (group + control + fallback + parser) and its two i18n tokens. No migration, no column. **If a screen or an offline panel must read it**, also add it to `CompanyFeatures` (optional — see `wire-optionality.test.ts`), to `company-features.ts`, and to `resolveCompanyFeatures` |
 | Change a colour or size | `ui/src/tokens.css`. Never a literal in a component. |
 
 ## Tests

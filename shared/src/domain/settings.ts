@@ -32,7 +32,7 @@ import { PRODUCT_UOMS, type ProductUom } from './product-validation.js';
  * Which heading a setting sits under on the Settings screen.
  *
  * Deliberately declared rather than derived from the key's first segment: with
- * nine settings that would give six groups, three of them singletons, which is
+ * fifteen settings that would give six groups, three of them singletons, which is
  * worse than no grouping at all. These names are the ones a shopkeeper would
  * use over the phone, not the module names the keys are built from.
  */
