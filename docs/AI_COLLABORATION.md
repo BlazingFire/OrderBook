@@ -190,6 +190,46 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-18 — A standalone clean-install tool (Claude)
+
+Scope: the owner's "make dedicated exe and dmg or any other file to perform
+fresh install... detects all files and config made by software on device and
+uninstall it and start fresh install from given software setup path".
+
+Planned with three Explore agents before anything was written, and the finding
+that shaped the whole change came out of that: **most of what was asked for
+already existed.** `tools/uninstall/uninstall-orderbook.ps1` is 454 lines that
+already know every registry key, per-profile cache, shortcut and firewall rule
+this product leaves, and `-DryRun` already prints the plan. What was missing was
+a way to reach it on a broken machine, and a step that installs afterwards.
+
+So the work became orchestration and packaging rather than detection — which is
+a much smaller and much safer change than writing a second inventory would have
+been. The plan says this explicitly under "What already exists — do not
+rebuild", because the tempting version of this task is the one that reimplements
+the sweep and quietly misses something.
+
+Four questions to the owner before planning, two of them consequential: whether
+"fresh" meant destroying the shop's live database (it did), and how to handle a
+`.dmg` that cannot be built anywhere but a Mac. The second surfaced a bigger
+problem — the panels themselves have no working Mac or Linux build — which the
+owner chose to record rather than fix, and which is now in `docs/NEXT_PHASE.md`.
+
+Three defects fixed on the way, all found by mapping the footprint rather than
+by looking for bugs: a hardcoded releases path on macOS, no Linux branch at all,
+and a five-way flag contract with `erase` as every side's default and nothing
+checking the five agreed.
+
+Two guards had to be rewritten because they passed against the defect they
+named — one satisfied by a status message the script prints, one aimed at the
+wrong identifier. That is now three sessions running, which is worth saying
+plainly: a source-reading guard written in the same pass as the code it guards
+tends to match the code rather than the rule.
+
+Verified on Linux end to end against a seeded footprint, with the AppImage
+built, started and loading. The Windows and macOS artifacts are configuration
+and unit tests only, and the commit says so.
+
 ### 2026-09-18 — The six deferred settings, and the switch nobody was receiving (Claude)
 
 Scope: the owner's "now implement the 6 deferred settings too". Those six were

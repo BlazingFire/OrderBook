@@ -34,7 +34,7 @@ ui/         the one React kit and shared screens both panels render from
 master/     Master Panel — server (src/) + React frontend (web/)
 office/     Office Panel — server (src/) + React frontend (web/)
 electron/   the desktop shell wrapping each panel
-tools/      release, icon, i18n-sync and uninstall scripts
+tools/      release, icon, i18n-sync and the uninstall scripts
 ```
 
 ## Running it
@@ -100,6 +100,26 @@ every Office Panel pulls the office build from the Master over the LAN.
 `ORDERBOOK_RELEASES_DIR` overrides the location on both the build PC and the
 Master. Building needs internet once, for electron-builder's toolchain; the
 shipped apps never reach the internet.
+
+## Starting a PC over
+
+```bash
+npm run release -- --panel cleaner
+```
+
+**OrderBook Clean Install** is a separate program that finds everything
+OrderBook has left on a PC, removes it, checks that it is really gone, and then
+runs a setup file you choose. It is for the PC where the ordinary uninstaller
+is not enough or will not run — which is the PC where the scripts shipped
+*inside* the installation cannot be reached.
+
+It builds for Windows, Linux and macOS, and lands in `build/cleaner/` rather
+than the releases folder: that folder is what a Master serves to its panels over
+the LAN, and a tool that erases a machine does not belong in that stream. Copy
+it to a USB stick.
+
+It erases the database. There is a typed confirmation, and it offers to copy
+every data folder somewhere first.
 
 Data lives in `%APPDATA%\OrderBook\{master,office}`, outside the program
 folder, so installing a new build over an old one leaves every party, lead and

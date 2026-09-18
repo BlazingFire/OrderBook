@@ -409,6 +409,48 @@ Bin retention policy above.
 
 ## Recent sessions
 
+### 2026-09-18 — A standalone clean-install tool (Claude)
+
+Same branch. The owner asked for a dedicated installer that detects what the
+software has left on a PC, removes it, and then installs fresh from a given
+setup path.
+
+**Most of it already existed and was in the wrong place.**
+`tools/uninstall/uninstall-orderbook.{ps1,sh}` have known the complete footprint
+for a long time — registry keys, per-profile caches, shortcuts, firewall rules,
+relocated data folders — and `-DryRun` prints the whole plan. But they ship
+*inside* both setup files, so on the machine that needs them (the one too broken
+to start) they are unreachable. The new tool is the same two scripts, in a
+program that runs from a USB stick.
+
+**One copy of each script, four callers**: the app's Settings → Developer, both
+NSIS uninstallers, and now `cleaner/`. A second inventory of what this product
+installs is how the thing claiming to remove everything comes to miss something.
+
+**The step that is new** is the verify pass: after erasing, it re-runs the dry
+run and reports what survived. Every other entry point reports success because
+a script exited zero.
+
+**Where things live:** `cleaner/` is packaging only — builder config, icon, one
+static HTML page. The logic is `electron/lib/cleaner/` and `electron/cleaner.main.ts`,
+because `electron/tsconfig.json` owns that tree and `rootDir` will not span
+workspaces. `sweepCommand` sits in `electron/lib/uninstall.ts` with the other
+pure command builders, so the flag spellings stay in one tested place.
+
+**Three defects fixed on the way**, each of which would have made the tool
+quietly wrong: the shell script ignored `ORDERBOOK_RELEASES_DIR`; it had no
+Linux branch at all; and `-KeepData`/`--keep-data` is spelled in five files that
+never import one another, with **erase** as every side's default, and nothing
+checked they agreed. They are checked now.
+
+**Verified for real on Linux**: a seeded footprint of seven items detected,
+three data folders copied, eight removed, zero leftovers, backup intact. The
+AppImage builds, starts and loads.
+
+**Not verified, and it cannot be from here:** the Windows `.exe` and the macOS
+`.dmg`. `release.mjs` refuses a cross-compile by design, so the `.ps1` path has
+unit tests over captured output and nothing else.
+
 ### 2026-09-18 — The six deferred settings, and the switch nobody was receiving (Claude)
 
 Same branch. The owner asked for the six settings `docs/NEXT_PHASE.md` had held

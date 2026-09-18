@@ -97,6 +97,35 @@ inputs are refreshed and a healthy machine should work.
 
 ---
 
+## The Mac and Linux panel builds do not work
+
+Found on 2026-09-18 while building the clean-install tool for three platforms.
+Both are small, and neither is a guess — they are in the code:
+
+1. **`vendorPostgres()` (`tools/release.mjs`) hardcodes `windows-x64`**, whatever
+   `--os` says. `TARGETS` declares the right `@embedded-postgres` package for
+   each OS and the doc comment beside it says getting this wrong "ships a Mac
+   build that cannot start its own database" — and then the function ignores
+   the field. A `--os mac` or `--os linux` **Master** would vendor Windows
+   binaries.
+2. **Neither panel's `electron-builder.yml` has a `linux:` block.**
+   `TARGETS.linux` exists and expects an `AppImage`, so `--os linux` gets as
+   far as electron-builder and then fails the exact-filename check, because
+   nothing told it what to name the artifact. `cleaner/electron-builder.yml`
+   now has a working `linux:` block to copy from, including the
+   `executableName` that stops the binary shipping as `@orderbookcleaner`.
+
+Until both are fixed, the clean-install tool's Mac and Linux builds clean an
+installation that cannot exist on those platforms. The tool was still built for
+all three, deliberately and with the owner's decision, because the alternative
+was to ship it only where the gap happens not to bite.
+
+Also unverified from this machine, and unfixable here: `release.mjs` refuses a
+cross-compile (`assertTarget`), so a `.dmg` needs a Mac and the Windows `.exe`
+can be produced on Linux but not *run* there.
+
+---
+
 ## Every surveyed setting has now shipped
 
 The 2026-09-17 survey verified twelve candidates and shipped five; the owner

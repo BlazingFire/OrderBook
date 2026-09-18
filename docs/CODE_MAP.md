@@ -29,8 +29,9 @@ Everything is offline: no CDN, no internet call, ever.
 | `master/web/` | `@orderbook/master-web` | The Master's React frontend. |
 | `office/` | `@orderbook/office` | An Office Panel's server. Owns the outbox and a snapshot cache. |
 | `office/web/` | `@orderbook/office-web` | An Office Panel's React frontend. |
-| `electron/` | — | One desktop shell; `master.main.ts` / `office.main.ts` are thin configs over `shell.ts`. |
-| `tools/` | — | `release.mjs`, `i18n-sync.mjs`, `make-icons.mjs`, uninstall scripts, the custom eslint rules. |
+| `electron/` | — | Desktop shells; `master.main.ts` / `office.main.ts` are thin configs over `shell.ts`, and `cleaner.main.ts` is the clean-install tool, which shares the uninstall libraries and nothing else. |
+| `cleaner/` | `@orderbook/cleaner` | Packaging only for **OrderBook Clean Install**: its builder config, icon and one static HTML page. The logic is in `electron/lib/cleaner/`. |
+| `tools/` | — | `release.mjs`, `i18n-sync.mjs`, `make-icons.mjs`, `uninstall/` (the one copy of the footprint sweep, run by the app, both uninstallers and the clean-install tool), the custom eslint rules. |
 | `docs/` | — | All prose. Nothing source-of-truth lives in a code comment. |
 
 **`shared/` must be compiled before anything can import it.** The `prepare` and
@@ -166,6 +167,7 @@ PartyAccess, Conflicts, Settings, Updates, Connection, SignIn.
 | Change a string | `shared/i18n/en.ts`, then `npm run i18n:sync`, then translate the Hindi |
 | Add a company setting | one entry in `shared/domain/settings.ts` (group + control + fallback + parser) and its two i18n tokens. No migration, no column. **If a screen or an offline panel must read it**, also add it to `CompanyFeatures` (optional — see `wire-optionality.test.ts`), to `company-features.ts`, and to `resolveCompanyFeatures` |
 | Change a colour or size | `ui/src/tokens.css`. Never a literal in a component. |
+| Change what an uninstall removes | `tools/uninstall/uninstall-orderbook.{ps1,sh}` — one copy, four callers. If you touch a flag, `electron/tests/uninstall.test.ts` pins its spelling in five places |
 
 ## Tests
 
