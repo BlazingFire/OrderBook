@@ -31,7 +31,7 @@ Everything is offline: no CDN, no internet call, ever.
 | `office/web/` | `@orderbook/office-web` | An Office Panel's React frontend. |
 | `electron/` | — | Desktop shells; `master.main.ts` / `office.main.ts` are thin configs over `shell.ts`, and `cleaner.main.ts` is the clean-install tool, which shares the uninstall libraries and nothing else. |
 | `cleaner/` | `@orderbook/cleaner` | Packaging only for **OrderBook Clean Install**: its builder config, icon and one static HTML page. The logic is in `electron/lib/cleaner/`. |
-| `tools/` | — | `release.mjs`, `i18n-sync.mjs`, `make-icons.mjs`, `uninstall/` (the one copy of the footprint sweep, run by the app, both uninstallers and the clean-install tool), the custom eslint rules. |
+| `tools/` | — | `release.mjs` (one build per OS — it refuses a cross-compile, and vendors that OS's PostgreSQL from `TARGETS[*].postgres`), `i18n-sync.mjs`, `make-icons.mjs`, `uninstall/` (the one copy of the footprint sweep, run by the app, both uninstallers and the clean-install tool), the custom eslint rules. |
 | `docs/` | — | All prose. Nothing source-of-truth lives in a code comment. |
 
 **`shared/` must be compiled before anything can import it.** The `prepare` and
@@ -186,7 +186,9 @@ counts as real verification.
   `web-reachability`, `i18n-tokens`, `i18n-call-sites`, `ui-conventions`,
   `migration-registry`, `credential-invariants` (including the password
   minimum: every path that hashes a caller-supplied password must check it),
-  and the discovery half of `panel-naming`.
+  `packaging-invariants` (the release targets, both panels'
+  `electron-builder.yml` and the uninstall script have to agree, and nothing
+  compiles them together), and the discovery half of `panel-naming`.
 
 ## Docs
 

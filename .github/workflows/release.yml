@@ -9,11 +9,21 @@ name: Release
 # makes `npm version` (or editing that one field) the publish gesture.
 #
 #   1. Bump the version and push to main.
-#   2. This builds both Windows installers, signs the manifests, and publishes
-#      a GitHub Release with four assets.
+#   2. This builds both panels on all three operating systems, signs each
+#      manifest, and publishes one GitHub Release holding every artefact.
 #   3. Each Master polls that release, verifies the signature, downloads into
 #      its releases folder, and serves the office build to its panels over the
 #      LAN exactly as it does for a USB stick today.
+#
+# ## Why a matrix
+#
+# electron-builder does not cross-compile: a .dmg is made with `hdiutil` and an
+# AppImage with Linux tooling, and `assertTarget()` in `tools/release.mjs`
+# refuses the attempt before an hour of staging rather than after. So each OS
+# builds on its own runner, and `manifestAsset()` in
+# `master/src/services/github-releases.ts` is what lets one release hold all
+# three: `latest-<panel>.json` is Windows (the name already in the field) and
+# `latest-<panel>-<platform>.json` is everything else.
 #
 # ## Where releases are published
 #
@@ -46,24 +56,24 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    # Windows, because the artefact is an NSIS setup file and the Master
-    # vendors Windows PostgreSQL binaries into it.
-    runs-on: windows-latest
+  # Split out so exactly one runner decides, and exactly one creates the
+  # release. Three matrix legs each running `gh release create` would race, and
+  # two of them would fail on a tag that already exists.
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      publish: ${{ steps.version.outputs.publish }}
+      signed: ${{ steps.version.outputs.signed }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-
       - name: Decide whether this version is new
         id: version
-        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_KEY: ${{ secrets.RELEASE_KEY }}
         run: |
           version="$(node -p "require('./package.json').version")"
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -75,69 +85,34 @@ jobs:
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Install dependencies
-        if: steps.version.outputs.publish == 'true'
-        # No `install-scripts approve` step: the runner's npm 10 does not block
-        # postinstall the way npm 12 does locally, so the embedded-postgres
-        # binaries this release vendors are downloaded by `npm ci` itself.
-        run: npm ci
-
-      - name: Write the release key
-        if: steps.version.outputs.publish == 'true'
-        id: key
-        shell: bash
-        env:
-          RELEASE_KEY: ${{ secrets.RELEASE_KEY }}
-        run: |
+          # The same secret reaches every runner, so this is decided once.
           if [ -z "$RELEASE_KEY" ]; then
             echo "No RELEASE_KEY secret — this build will publish as an unsigned DRAFT."
             echo "signed=false" >> "$GITHUB_OUTPUT"
-            exit 0
+          else
+            echo "signed=true" >> "$GITHUB_OUTPUT"
           fi
 
-          # Outside the workspace, so no later step can package it by accident.
-          key_file="$RUNNER_TEMP/release.pem"
-          printf '%s' "$RELEASE_KEY" > "$key_file"
-          echo "::add-mask::$key_file"
-          echo "key_file=$key_file" >> "$GITHUB_OUTPUT"
-          echo "signed=true" >> "$GITHUB_OUTPUT"
+  # Created empty and up front, so each matrix leg has somewhere to upload to
+  # the moment it finishes rather than waiting for the slowest OS.
+  create-release:
+    needs: check
+    if: needs.check.outputs.publish == 'true'
+    runs-on: ubuntu-latest
 
-      - name: Build and sign both installers
-        if: steps.version.outputs.publish == 'true'
-        shell: bash
-        env:
-          ORDERBOOK_RELEASES_DIR: ${{ runner.temp }}\release-out
-          ORDERBOOK_RELEASE_KEY: ${{ steps.key.outputs.key_file }}
-          ORDERBOOK_RELEASE_KEY_ID: ${{ vars.RELEASE_KEY_ID }}
-          ORDERBOOK_RELEASE_NOTES: ${{ github.event.head_commit.message }}
-        run: npm run release
-
-      - name: Name the manifests for a flat asset list
-        if: steps.version.outputs.publish == 'true'
-        shell: bash
-        run: |
-          # A GitHub Release has one namespace for every asset, so two files
-          # both called `latest.json` cannot coexist. `MANIFEST_ASSET` in
-          # `github-releases.ts` is the other half of this rename.
-          out='${{ runner.temp }}/release-out'
-          cp "$out/master-panel/latest.json" "$out/latest-master.json"
-          cp "$out/office-panel/latest.json" "$out/latest-office.json"
-
-      - name: Publish the release
-        if: steps.version.outputs.publish == 'true'
-        shell: bash
+    steps:
+      - name: Create the release
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
           REPO: ${{ vars.RELEASES_REPO || github.repository }}
         run: |
-          version='${{ steps.version.outputs.version }}'
-          out='${{ runner.temp }}/release-out'
+          version='${{ needs.check.outputs.version }}'
 
           # Unsigned stays a draft. `latestRelease()` skips drafts and
           # pre-releases, so nothing here reaches a shop PC until a human
           # publishes it deliberately.
           draft=''
-          if [ '${{ steps.key.outputs.signed }}' != 'true' ]; then
+          if [ '${{ needs.check.outputs.signed }}' != 'true' ]; then
             draft='--draft'
             echo "::warning::Published as a draft: no RELEASE_KEY, so the manifests are unsigned."
           fi
@@ -146,8 +121,120 @@ jobs:
             --repo "$REPO" \
             --title "OrderBook $version" \
             --notes "${{ github.event.head_commit.message }}" \
-            $draft \
-            "$out/master-panel/OrderBook-Master-$version-Setup.exe" \
-            "$out/office-panel/OrderBook-Office-$version-Setup.exe" \
-            "$out/latest-master.json" \
-            "$out/latest-office.json"
+            $draft
+
+  build:
+    needs: [check, create-release]
+    if: needs.check.outputs.publish == 'true'
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      # One red OS should not cancel two builds that are working. The failing
+      # leg stays red and the release simply has no asset for that platform,
+      # which is visible in its asset list and in `manifestAsset()`'s 404.
+      fail-fast: false
+      matrix:
+        include:
+          - os: win
+            runner: windows-latest
+          - os: mac
+            runner: macos-latest
+          - os: linux
+            runner: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        # No `install-scripts approve` step: the runner's npm 10 does not block
+        # postinstall the way npm 12 does locally, so `@embedded-postgres`'s
+        # `hydrate-symlinks.js` — which recreates the SONAME symlinks the
+        # server needs to load its own libraries on macOS and Linux — runs as
+        # part of `npm ci`.
+        run: npm ci
+
+      - name: Write the release key
+        id: key
+        shell: bash
+        env:
+          RELEASE_KEY: ${{ secrets.RELEASE_KEY }}
+        run: |
+          if [ -z "$RELEASE_KEY" ]; then
+            echo "key_file=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Outside the workspace, so no later step can package it by accident.
+          key_file="$RUNNER_TEMP/release.pem"
+          printf '%s' "$RELEASE_KEY" > "$key_file"
+          echo "::add-mask::$key_file"
+          echo "key_file=$key_file" >> "$GITHUB_OUTPUT"
+
+      - name: Build and sign both installers
+        shell: bash
+        env:
+          ORDERBOOK_RELEASES_DIR: ${{ runner.temp }}/release-out
+          ORDERBOOK_RELEASE_KEY: ${{ steps.key.outputs.key_file }}
+          ORDERBOOK_RELEASE_KEY_ID: ${{ vars.RELEASE_KEY_ID }}
+          ORDERBOOK_RELEASE_NOTES: ${{ github.event.head_commit.message }}
+        # `--os` is passed rather than left to the host so a runner image change
+        # cannot silently build something other than what this leg is named for.
+        run: npm run release -- --os ${{ matrix.os }}
+
+      - name: Collect this platform's assets
+        shell: bash
+        run: |
+          # A GitHub Release has one namespace for every asset, so each
+          # `latest-<platform>.json` is renamed to the name `manifestAsset()`
+          # in `github-releases.ts` will ask for. The Windows shim keeps the
+          # bare `latest-<panel>.json` name every panel in the field knows.
+          out='${{ runner.temp }}/release-out'
+          upload="$RUNNER_TEMP/upload"
+          mkdir -p "$upload"
+
+          shopt -s nullglob
+          for dir in "$out"/*-panel; do
+            panel="$(basename "$dir")"
+            panel="${panel%-panel}"
+
+            for manifest in "$dir"/latest-*.json; do
+              platform="$(basename "$manifest" .json)"
+              platform="${platform#latest-}"
+              cp "$manifest" "$upload/latest-$panel-$platform.json"
+            done
+
+            # The compatibility shim, written only by a Windows build.
+            if [ -f "$dir/latest.json" ]; then
+              cp "$dir/latest.json" "$upload/latest-$panel.json"
+            fi
+
+            # Every setup file this platform produced, whatever its extension —
+            # .exe, .dmg, .AppImage and .deb all land here and the list is
+            # built from what exists rather than from four hardcoded paths.
+            for setup in "$dir"/OrderBook-*; do
+              case "$setup" in
+                *.json) continue ;;
+              esac
+              cp "$setup" "$upload/"
+            done
+          done
+
+          echo "Uploading:"
+          ls -1 "$upload"
+
+      - name: Upload to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
+          REPO: ${{ vars.RELEASES_REPO || github.repository }}
+        run: |
+          version='${{ needs.check.outputs.version }}'
+          # --clobber so a re-run of one leg replaces its own assets instead of
+          # failing on names the previous attempt already uploaded.
+          gh release upload "v$version" "$RUNNER_TEMP/upload"/* \
+            --repo "$REPO" --clobber

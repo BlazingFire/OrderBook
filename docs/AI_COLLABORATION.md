@@ -935,3 +935,40 @@ New files: `master/src/lib/memory-monitor.ts`, `ui/src/AiSupportScreen.tsx`.
 
 **Verified.** All 140 shared tests pass. All 23 keyboard tests pass. All three
 package-level tsconfigs (shared, master, office) typecheck clean.
+
+---
+
+### 2026-09-18 — Fix the Mac and Linux panel builds (Claude)
+
+**Prompt:** "fix the mac and linux panel builds too".
+
+`tools/release.mjs` has accepted `--os mac` and `--os linux` since the targets
+were written and neither produced a working panel. Four defects, all in code
+that typechecks, lints and tests clean:
+
+1. `vendorPostgres()` hardcoded `windows-x64`; `TARGETS[*].postgres` was
+   declared, documented and read by nothing.
+2. Neither panel yml had a `linux:` block, while `TARGETS.linux` expected an
+   AppImage filename.
+3. `allowScripts` approved only the Windows `@embedded-postgres` package, whose
+   postinstall recreates 14 SONAME symlinks Windows does not use.
+4. `arch: [universal]` shipped one architecture's PostgreSQL to both halves of
+   a merged macOS app.
+
+**Changed:** `tools/release.mjs` (target-driven vendoring, both macOS arches, a
+build-time executability check), `master/src/db/postgres-server.ts` (arch-first
+candidate, `X_OK`), root `package.json` (all five packages approved),
+`master/` + `office/electron-builder.yml` (AppImage + `.deb`), both panels'
+`package.json` (a `homepage`, which fpm requires),
+`tools/uninstall/uninstall-orderbook.sh` (the names a `.deb` actually installs),
+`.github/workflows/release.yml` (a three-runner matrix).
+
+**New:** `master/tests/packaging-invariants.test.ts` — five source-reading
+guards, each watched failing against the defect it names.
+
+**Verified.** Both Linux panels built to AppImage and `.deb`; the packaged
+Master created its own database under `xvfb-run` as a non-root account and
+answered `/api/health`; the uninstall sweep found every path a real extracted
+`.deb` installs. Full suite non-root: 144 files, 1815 tests, **0 skipped**.
+The macOS build cannot be run from here — `assertTarget()` refuses it off macOS
+— so that half is guarded rather than executed, and the CI matrix runs it first.

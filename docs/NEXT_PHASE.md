@@ -97,32 +97,57 @@ inputs are refreshed and a healthy machine should work.
 
 ---
 
-## The Mac and Linux panel builds do not work
+## The Mac and Linux panel builds now work (2026-09-18)
 
-Found on 2026-09-18 while building the clean-install tool for three platforms.
-Both are small, and neither is a guess — they are in the code:
+Both defects below were real and are fixed; the section is kept because what
+made them invisible is worth remembering. Neither showed up in a test, a lint
+or a typecheck — one was a declared field with no consumer, the other a missing
+block in a YAML file nobody built from.
 
-1. **`vendorPostgres()` (`tools/release.mjs`) hardcodes `windows-x64`**, whatever
-   `--os` says. `TARGETS` declares the right `@embedded-postgres` package for
-   each OS and the doc comment beside it says getting this wrong "ships a Mac
-   build that cannot start its own database" — and then the function ignores
-   the field. A `--os mac` or `--os linux` **Master** would vendor Windows
-   binaries.
-2. **Neither panel's `electron-builder.yml` has a `linux:` block.**
-   `TARGETS.linux` exists and expects an `AppImage`, so `--os linux` gets as
-   far as electron-builder and then fails the exact-filename check, because
-   nothing told it what to name the artifact. `cleaner/electron-builder.yml`
-   now has a working `linux:` block to copy from, including the
-   `executableName` that stops the binary shipping as `@orderbookcleaner`.
+1. **`vendorPostgres()` (`tools/release.mjs`) hardcoded `windows-x64`**,
+   whatever `--os` said. `TARGETS` declared the right `@embedded-postgres`
+   package for each OS and the doc comment beside it said getting this wrong
+   "ships a Mac build that cannot start its own database" — and then the
+   function ignored the field. It now reads `RELEASE_TARGET.postgres`, vendors
+   **both** macOS architectures (one universal .dmg, two architectures of
+   server binary), and verifies after copying that `initdb`, `pg_ctl` and
+   `postgres` exist, are executable and have a non-empty `share/`.
+2. **Neither panel's `electron-builder.yml` had a `linux:` block.** Both now
+   build an AppImage **and** a `.deb`, with the `executableName` that stops the
+   binary shipping as `@orderbookmaster`.
 
-Until both are fixed, the clean-install tool's Mac and Linux builds clean an
-installation that cannot exist on those platforms. The tool was still built for
-all three, deliberately and with the owner's decision, because the alternative
-was to ship it only where the gap happens not to bite.
+Three things followed from those:
 
-Also unverified from this machine, and unfixable here: `release.mjs` refuses a
-cross-compile (`assertTarget`), so a `.dmg` needs a Mac and the Windows `.exe`
-can be produced on Linux but not *run* there.
+- `candidateBinDirs()` (`master/src/db/postgres-server.ts`) tries
+  `vendor/postgres/<process.arch>/bin` before the flat path, which is what
+  makes the two-architecture macOS layout findable. `resolveBinDir()` now
+  checks `X_OK`, not just existence — a copy that lost its executable bit used
+  to report "found" and fail later inside `initdb`.
+- `allowScripts` (root `package.json`) approves all five `@embedded-postgres`
+  packages. The postinstall is not a download — the tarball ships `native/**` —
+  it is `hydrate-symlinks.js`, recreating 14 SONAME symlinks in `native/lib/`.
+  Windows has no symlinks to lose, which is why only Windows was ever approved.
+- `.github/workflows/release.yml` is a three-runner matrix. electron-builder
+  does not cross-compile, so one job per OS, one job that creates the release
+  and three that upload to it.
+
+### What was actually run, and what was not
+
+On this Linux container, for real: both panels built to AppImage and `.deb`;
+`initdb`/`pg_ctl`/`postgres` inside the packaged Master execute and report
+17.10; the 14 `lib/` symlinks are present; the packaged Master, launched under
+`xvfb-run` as a non-root account, **created its own cluster and database** and
+answered `/api/health` with `status: ok`; the `.deb` payload lands under
+`/opt/OrderBook Master Panel` with `/usr/share/applications/orderbook-master.desktop`,
+hicolor icons and a `/usr/bin` alternative, and the uninstall script's Linux
+branch finds every one of them.
+
+**Not run: the macOS build.** `assertTarget()` refuses `--os mac` anywhere but
+macOS, by design. The universal packaging, the two-architecture vendoring
+layout and the `process.arch` runtime branch are reasoned and guarded by
+`master/tests/packaging-invariants.test.ts`, not executed. The CI matrix is
+what will execute them first. The Windows `.exe` is producible here and still
+not runnable here.
 
 ---
 

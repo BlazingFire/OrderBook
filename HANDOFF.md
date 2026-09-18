@@ -409,6 +409,63 @@ Bin retention policy above.
 
 ## Recent sessions
 
+### 2026-09-18 — The Mac and Linux panel builds (Claude)
+
+Same branch. The clean-install tool built the session before ships for three
+platforms and cleans up after installations that, on two of them, could not
+exist. The owner asked for that to stop being true.
+
+**Four defects, none of which any test, lint or typecheck could see.**
+
+1. `vendorPostgres()` hardcoded `windows-x64` in the source path, the error
+   text and the "run this to fix it" hint. `TARGETS[*].postgres` named the
+   right package per OS, was documented as the thing that stops a Mac build
+   shipping a database it cannot start — and **had no consumer at all**. A
+   `--os mac` Master would have vendored Windows binaries.
+2. Neither panel's `electron-builder.yml` had a `linux:` block, while
+   `TARGETS.linux` asked electron-builder for `--linux` and then looked for an
+   `AppImage` filename nothing had told it to produce.
+3. `allowScripts` approved only the Windows `@embedded-postgres` package. That
+   postinstall is not the download — the tarball ships `native/**` — it is
+   `hydrate-symlinks.js`, recreating 14 SONAME symlinks in `native/lib/`.
+   Windows has none to lose, which is exactly why this was invisible.
+4. `arch: [universal]` on macOS could not work as configured: electron-builder
+   packs twice and merges, but `extraResources` is identical in both halves, so
+   the merged app carried one architecture's PostgreSQL for an audience of two.
+   `mergeASARs` and friends all operate inside the asar and `vendor/` is not.
+
+**The shape of the fix.** `vendorPostgres()` now takes its packages from the
+target: one package keeps today's flat `vendor/postgres/{bin,lib,share}`, two
+get an arch level, and macOS is the two-package case. `candidateBinDirs()` tries
+`vendor/postgres/<process.arch>/bin` before the flat path — no platform
+conditional, Windows and Linux simply miss the first candidate.
+`resolveBinDir()` checks `X_OK` rather than existence, because a copy that lost its executable
+bit used to report "found" and fail later inside `initdb` with a message naming
+none of this. And the build verifies its own output: `initdb`, `pg_ctl` and
+`postgres` present, executable, `share/` non-empty, or the release stops.
+
+**The `.deb` is new, and it changed the uninstaller.** electron-builder names a
+Debian package's desktop entry, its hicolor icons and its `/usr/bin` symlink
+after `executableName`, not after the product — so a sweep that only knew
+"OrderBook Master Panel" walked past all three. `exec_of()` in
+`uninstall-orderbook.sh` is what closes that, and it was checked against a real
+extracted `.deb`, not against a guess.
+
+**Verified for real on this Linux container**: both panels built to AppImage and
+`.deb`; the packaged `initdb`/`pg_ctl`/`postgres` run and report 17.10; the 14
+`lib/` symlinks are there; the packaged Master, launched under `xvfb-run` as a
+non-root account, **created its own cluster and database** and answered
+`/api/health` with `status: ok`. That one run proves the whole chain at once —
+vendoring, staging, packaging, discovery, execution. The full suite then ran
+non-root: **144 files, 1815 tests, nothing skipped.**
+
+**Not verified, and it cannot be from here:** the macOS build. `assertTarget()`
+refuses `--os mac` anywhere but macOS by design, so the universal packaging, the
+two-architecture layout and the `process.arch` branch are reasoned and guarded
+by `master/tests/packaging-invariants.test.ts` — five guards, each watched
+failing against the defect it names — rather than executed. The new CI matrix is
+what will run them first.
+
 ### 2026-09-18 — A standalone clean-install tool (Claude)
 
 Same branch. The owner asked for a dedicated installer that detects what the
@@ -450,6 +507,9 @@ AppImage builds, starts and loads.
 **Not verified, and it cannot be from here:** the Windows `.exe` and the macOS
 `.dmg`. `release.mjs` refuses a cross-compile by design, so the `.ps1` path has
 unit tests over captured output and nothing else.
+
+*(Updated later the same day: the panel builds this tool cleans up after now
+exist on Linux and are configured for macOS — see the session above.)*
 
 ### 2026-09-18 — The six deferred settings, and the switch nobody was receiving (Claude)
 

@@ -48,6 +48,11 @@ if [ "$PANEL" != master ]; then PANELS+=(office); fi
 
 product_of() { if [ "$1" = master ]; then echo 'OrderBook Master Panel'; else echo 'OrderBook Office Panel'; fi; }
 app_id_of() { echo "com.orderbook.$1"; }
+# `executableName` in each panel's electron-builder.yml. The .deb names its
+# binary, its /usr/share/applications entry and its icon after this rather than
+# after the product name, so a sweep that only knew the product name walked
+# past the desktop entry of every Debian install.
+exec_of() { echo "orderbook-$1"; }
 
 REMOVED=0; KEPT=0; SKIPPED=0; FAILED=0
 say() { printf '[%s] %s\n' "$1" "$2"; }
@@ -116,6 +121,7 @@ fi
 for panel in "${PANELS[@]}"; do
   product="$(product_of "$panel")"
   app_id="$(app_id_of "$panel")"
+  exec_name="$(exec_of "$panel")"
   echo "-- $product"
 
   # Quit politely first so the server's own shutdown runs, then make sure of
@@ -172,7 +178,20 @@ for panel in "${PANELS[@]}"; do
     remove_path 'desktop entry' "${XDG_DATA_HOME:-$HOME/.local/share}/applications/$product.desktop"
     remove_path 'desktop entry' "${XDG_DATA_HOME:-$HOME/.local/share}/applications/$app_id.desktop"
     remove_path 'desktop entry' "/usr/share/applications/$product.desktop"
+    # What the .deb actually installs: entry, icons and binary all named for
+    # `executableName`, not for the product.
+    remove_path 'desktop entry' "/usr/share/applications/$exec_name.desktop"
+    remove_path 'desktop entry' "${XDG_DATA_HOME:-$HOME/.local/share}/applications/$exec_name.desktop"
     remove_path 'desktop icon' "$HOME/Desktop/$product.desktop"
+    remove_path 'desktop icon' "$HOME/Desktop/$exec_name.desktop"
+    for size in 16 32 48 64 128 256 512 1024; do
+      remove_path 'application icon' "/usr/share/icons/hicolor/${size}x${size}/apps/$exec_name.png"
+    done
+    remove_path 'launcher symlink' "/usr/bin/$exec_name"
+    # `update-alternatives` is what the .deb's postinst uses when it is present,
+    # so the real link lives here and /usr/bin/ only points at it.
+    remove_path 'launcher alternative' "/etc/alternatives/$exec_name"
+    remove_path 'package docs' "/usr/share/doc/$exec_name-panel"
   fi
 
   if [ "$OS" = mac ]; then
@@ -188,6 +207,7 @@ for panel in "${PANELS[@]}"; do
     # Master sets one by default on first run; the Office panel does not.
     remove_path 'autostart entry' "$APP_SUPPORT/autostart/$product.desktop"
     remove_path 'autostart entry' "$APP_SUPPORT/autostart/$app_id.desktop"
+    remove_path 'autostart entry' "$APP_SUPPORT/autostart/$exec_name.desktop"
   fi
 
   data_dir="$APP_SUPPORT/OrderBook/$panel"

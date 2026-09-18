@@ -67,6 +67,10 @@
   "allowScripts": {
     "sharp@0.33.5": true,
     "electron@33.4.11": true,
-    "@embedded-postgres/windows-x64@17.10.0-beta.17": true
+    "@embedded-postgres/windows-x64@17.10.0-beta.17": true,
+    "@embedded-postgres/darwin-x64@17.10.0-beta.17": true,
+    "@embedded-postgres/darwin-arm64@17.10.0-beta.17": true,
+    "@embedded-postgres/linux-x64@17.10.0-beta.17": true,
+    "@embedded-postgres/linux-arm64@17.10.0-beta.17": true
   }
 }

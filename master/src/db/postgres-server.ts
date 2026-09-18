@@ -13,7 +13,7 @@
  */
 
 import { execFile, spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { accessSync, constants as fsConstants, existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -48,7 +48,17 @@ export function embeddedPostgresPackageDir(): string {
 function candidateBinDirs(): string[] {
   const candidates: string[] = [];
 
-  // Binaries bundled into the packaged app (production on the shop PC).
+  /*
+   * Binaries bundled into the packaged app (production on the shop PC).
+   *
+   * Two layouts, tried in that order, both written by `vendorPostgres()` in
+   * `tools/release.mjs`. A universal macOS build carries both architectures
+   * under `vendor/postgres/<arch>/` because one app file runs on Intel and
+   * Apple silicon and the server binaries do not; every other target vendors
+   * one architecture and keeps the flat layout. No platform conditional here:
+   * Windows and Linux simply miss the first candidate.
+   */
+  candidates.push(path.join(config.packageRoot, 'vendor', 'postgres', process.arch, 'bin'));
   candidates.push(path.join(config.packageRoot, 'vendor', 'postgres', 'bin'));
 
   // `embedded-postgres` ships platform binaries under its package directory.
@@ -72,16 +82,53 @@ function candidateBinDirs(): string[] {
   return candidates;
 }
 
+/**
+ * Present is not the same as runnable.
+ *
+ * A vendored tree that passed through a zip, a Windows checkout or a `cp` that
+ * dropped the mode bits leaves `pg_ctl` sitting exactly where it belongs with
+ * no executable bit. `existsSync` alone calls that directory found, and the
+ * failure surfaces later as EACCES from inside `initdb`, on a shop PC, in a
+ * message naming none of this. Windows has no such bit and `accessSync`
+ * reports X_OK satisfied there, so this costs nothing on win32.
+ */
+function isExecutable(file: string): boolean {
+  try {
+    accessSync(file, fsConstants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function resolveBinDir(): string {
   if (config.database.binDir) {
-    if (!existsSync(path.join(config.database.binDir, binName('pg_ctl')))) {
+    const pgCtl = path.join(config.database.binDir, binName('pg_ctl'));
+    if (!existsSync(pgCtl)) {
       throw new Error(`ORDERBOOK_PG_BIN is set but pg_ctl was not found in ${config.database.binDir}`);
+    }
+    if (!isExecutable(pgCtl)) {
+      throw new Error(`ORDERBOOK_PG_BIN is set but ${pgCtl} is not executable`);
     }
     return config.database.binDir;
   }
 
+  const foundButNotExecutable: string[] = [];
+
   for (const dir of candidateBinDirs()) {
-    if (existsSync(path.join(dir, binName('pg_ctl')))) return dir;
+    const pgCtl = path.join(dir, binName('pg_ctl'));
+    if (!existsSync(pgCtl)) continue;
+    if (isExecutable(pgCtl)) return dir;
+    foundButNotExecutable.push(pgCtl);
+  }
+
+  if (foundButNotExecutable.length > 0) {
+    throw new Error(
+      'Found PostgreSQL binaries that cannot be executed:\n  ' +
+        foundButNotExecutable.join('\n  ') +
+        '\nRestore the executable bit (chmod +x) on the bin directory, or set ' +
+        'ORDERBOOK_PG_BIN to a usable installation.',
+    );
   }
 
   throw new Error(
