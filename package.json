@@ -14,7 +14,8 @@
     "master",
     "master/web",
     "office",
-    "office/web"
+    "office/web",
+    "cleaner"
   ],
   "scripts": {
     "prepare": "npm run build:shared",

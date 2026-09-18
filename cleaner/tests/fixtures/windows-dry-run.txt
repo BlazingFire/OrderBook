@@ -1,0 +1,34 @@
+OrderBook uninstall  (DRY RUN - nothing will be changed)
+  Panels: master office
+  Data:   ERASED - database, uploads, documents, settings, logs
+
+-- Running processes
+[dry-run] would stop OrderBook Master Panel (pid 7312): C:\Program Files\OrderBook Master Panel\OrderBook Master Panel.exe
+[dry-run] would stop postgres (pid 9004): C:\Program Files\OrderBook Master Panel\resources\panel\vendor\postgres\bin\postgres.exe
+-- Uninstallers
+[dry-run] would run C:\Program Files\OrderBook Master Panel\Uninstall OrderBook Master Panel.exe /S --delete-app-data
+-- Program folders
+[dry-run] would remove program folder: C:\Program Files\OrderBook Master Panel
+[dry-run] would remove program folder: C:\Program Files\OrderBook Office Panel (absent)
+-- Electron profile and updater cache
+[dry-run] would remove profile: C:\Users\pat\AppData\Roaming\OrderBook Master Panel
+[dry-run] would remove profile cache: C:\Users\pat\AppData\Local\OrderBook Master Panel
+[dry-run] would remove updater cache: C:\Users\pat\AppData\Local\OrderBook Master Panel-updater (absent)
+[dry-run] would remove updater cache: C:\Users\pat\AppData\Local\orderbook-master-updater (absent)
+-- Data
+[dry-run] would remove data folder: C:\Users\pat\AppData\Roaming\OrderBook\master
+[dry-run] would remove the folder named in C:\Users\pat\AppData\Roaming\OrderBook\master-location.json, if any
+[dry-run] would remove location pointer: C:\Users\pat\AppData\Roaming\OrderBook\master-location.json (absent)
+[dry-run] would remove settings file: C:\Users\pat\AppData\Roaming\OrderBook\master-settings.env (absent)
+[dry-run] would remove relocated data folder: D:\OrderBookData
+[dry-run] would remove releases folder: C:\OrderBook-Releases
+-- Shortcuts
+[dry-run] would remove shortcut: C:\Users\Public\Desktop\OrderBook Master Panel.lnk
+-- Registry
+[dry-run] would delete key HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\c3f1b0e2-orderbook-master
+[dry-run] would delete login-item values mentioning OrderBook under HKCU:\Software\Microsoft\Windows\CurrentVersion\Run
+-- Firewall
+[dry-run] would delete firewall rule OrderBook Master (TCP 4100)
+[dry-run] would delete firewall rule OrderBook Discovery (UDP 45789)
+
+Dry run complete. Nothing was changed.
