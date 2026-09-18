@@ -272,7 +272,21 @@ export type ChangedEntity =
    * a five-thousand-row file straight through the change ring and force every
    * other panel into a full snapshot anyway. One event, one refresh.
    */
-  | 'catalog';
+  | 'catalog'
+  /**
+   * A company switch was written.
+   *
+   * Not a row a panel upserts — a field of the snapshot itself. `id` is the
+   * setting key and `payload` is deliberately `null`: a sealed setting's value
+   * must never ride the change ring, and nothing needs it, because this entity
+   * forces a fresh snapshot rather than being folded in.
+   *
+   * It had no event at all until 2026-09-18, which meant `inventory.freeToSell`
+   * reached a panel exactly once, on its first snapshot, and every later flip
+   * was invisible to a panel that stayed connected *and* to one that
+   * reconnected with a usable cursor.
+   */
+  | 'setting';
 
 /**
  * `'restored'` is the Recycle Bin's — never minted as a `MutationKind`, since
@@ -367,6 +381,13 @@ export const SNAPSHOT_FORCING_ENTITIES: readonly ChangedEntity[] = [
   // A bulk import: many rows, one event, and the only honest answer is to
   // fetch the catalogue page again.
   'catalog',
+  // A company switch. It is not in any id-keyed list, so there is nothing to
+  // upsert — `features` is a field of the snapshot. Listing it here buys both
+  // halves from one place: the live path refreshes, and a reconnecting panel's
+  // delta is refused so it takes the full snapshot. Listing it as REPLAYABLE
+  // instead would drop it on the floor, and listing it as PANEL_IRRELEVANT
+  // would drop it *before* the replayability test in `delta.service.ts`.
+  'setting',
 ];
 
 /**

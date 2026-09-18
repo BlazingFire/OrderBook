@@ -35,6 +35,7 @@ import { CURRENT_KEY_VERSION, open, seal, SecretBoxError } from '../lib/secret-b
 import * as activityLog from '../repositories/activity-log.repository.js';
 import { clearVault } from '../repositories/password-vault.repository.js';
 import * as settingsRepo from '../repositories/settings.repository.js';
+import { publishChange } from './change-bus.js';
 
 const log = createLogger('settings');
 
@@ -222,4 +223,23 @@ export async function writeSetting<K extends SettingKey>(
   });
 
   invalidateSettingsCache(actor.tenantId);
+
+  /*
+   * Tell the panels, and tell them AFTER the cache is dropped.
+   *
+   * Order is load-bearing: publishing first races the refresh this triggers
+   * against the per-tenant cache above, and the snapshot that refresh builds
+   * would be served the value that was just replaced.
+   *
+   * Until this existed a company switch reached a panel exactly once, on its
+   * first snapshot. `inventory.freeToSell` has shipped with that: an
+   * administrator flipped it, the Settings screen said so, and every panel
+   * went on showing the old shape until somebody restarted it. `'setting'` is
+   * in `SNAPSHOT_FORCING_ENTITIES`, so this both refreshes a connected panel
+   * and refuses a reconnecting panel's delta.
+   *
+   * `payload: null` on purpose. The refresh is decided before anything reads
+   * the payload, and a sealed setting's value must never ride the ring.
+   */
+  publishChange({ entity: 'setting', action: 'updated', id: key, payload: null });
 }

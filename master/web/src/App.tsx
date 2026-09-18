@@ -331,6 +331,21 @@ function MasterPanel() {
     [],
   );
 
+  /*
+   * Permissions and feature switches ride on the signed-in user; a company
+   * setting that changes either is re-read rather than waited out to a reload.
+   *
+   * Declared above the socket effect on purpose. That effect's dependency
+   * array is evaluated during render, so a `const` below it would be read in
+   * its temporal dead zone — a crash on every render, not a stale value.
+   */
+  const refreshUser = useCallback(() => {
+    void api
+      .me()
+      .then((me) => setUser(me.user))
+      .catch(() => undefined);
+  }, []);
+
   // One socket for the whole session, opened once signed in.
   useEffect(() => {
     if (phase !== 'ready' || !sessionToken) return;
@@ -347,7 +362,14 @@ function MasterPanel() {
 
     // Every entity, unconditionally. The old allow-list is what made a per-entity
     // counter pointless for exactly the screens that most needed one.
-    socket.on('data:changed', (event) => bump(event.entity));
+    socket.on('data:changed', (event) => {
+      bump(event.entity);
+      // A company switch is not a row any screen counts — it rides on the
+      // signed-in user as `features`, and until now only *this* browser's own
+      // save refreshed it. A second administrator's flip left this one drawing
+      // the old shape with no way to notice.
+      if (event.entity === 'setting') refreshUser();
+    });
 
     // A merge shadowed somebody's value; the conflicts screen and the dashboard
     // counter both need to move. It arrives on its own channel, so it gets a
@@ -357,7 +379,7 @@ function MasterPanel() {
     return () => {
       socket.close();
     };
-  }, [phase, sessionToken]);
+  }, [phase, sessionToken, refreshUser]);
 
   // Stable, or every boot-step render would hand Splash a new callback and
   // restart its hold timer.
@@ -365,15 +387,6 @@ function MasterPanel() {
 
   const refreshPanels = useCallback(() => {
     void api.panels().then((result) => setPanels(result.panels));
-  }, []);
-
-  // Permissions and feature switches ride on the signed-in user; a company
-  // setting that changes either is re-read rather than waited out to a reload.
-  const refreshUser = useCallback(() => {
-    void api
-      .me()
-      .then((me) => setUser(me.user))
-      .catch(() => undefined);
   }, []);
 
   // Hash routing: #/gallery is the one extra place a user can land.

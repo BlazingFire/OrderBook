@@ -1746,8 +1746,14 @@ export const SNAPSHOT_POLICY: Record<keyof SyncSnapshot, SnapshotPolicy> = {
   // this snapshot was complete, so this passes through unchanged.
   productsComplete: 'passthrough',
   // The company's switches. Not per-person — the same company for whoever is
-  // signed in — and the stock figures beside them were already shaped by the
-  // Master to match, so a stale switch here can only be as stale as `stock`.
+  // signed in — so nothing here is re-masked for the reader.
+  //
+  // This used to say a stale switch "can only be as stale as `stock`". That
+  // was wrong, and only looked right for `inventory.freeToSell`: `stock` is
+  // replayable and gets live upserts, while `features` had no change event of
+  // any kind, so it was refreshed exactly once per snapshot. `'setting'` is a
+  // `ChangedEntity` now and forces a fresh snapshot, which is what finally
+  // makes the sentence above true.
   features: 'passthrough',
 };
 
