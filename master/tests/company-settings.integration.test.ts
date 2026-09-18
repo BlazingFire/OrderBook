@@ -18,7 +18,9 @@ import type { Express } from 'express';
 
 import type { ActorContext } from '../src/domain/actor.js';
 import { createApp } from '../src/http/app.js';
+import { db } from '../src/db/knex.js';
 import * as catalog from '../src/services/catalog.service.js';
+import { importProducts } from '../src/services/product-import.service.js';
 import * as inventory from '../src/services/inventory.service.js';
 import * as panels from '../src/services/panel.service.js';
 import * as settings from '../src/services/settings.service.js';
@@ -247,6 +249,105 @@ describe.skipIf(!canRunIntegrationTests)('company settings, end to end (integrat
       expect(await levelFor(product.id)).toMatchObject({ isLow: false });
       expect(await levelFor(empty.id)).toMatchObject({ isLow: true });
       expect(await inventory.countLowStock(actor.tenantId)).toBe(1);
+    });
+  });
+
+  describe('catalog.importCreatesCategories', () => {
+    function csv(rows: Array<Array<string | number>>): { buffer: Buffer; fileName: string } {
+      return {
+        buffer: Buffer.from(rows.map((row) => row.map(String).join(',')).join('\r\n') + '\r\n', 'utf8'),
+        fileName: 'supplier.csv',
+      };
+    }
+
+    const FILE = csv([
+      ['productCode', 'name', 'categoryName'],
+      ['GVT-1', 'Carrara White', 'Vitrified'],
+      ['GVT-2', 'Statuario', ''],
+    ]);
+
+    it('refuses the row naming a category the company does not have, and invents nothing', async () => {
+      await settings.writeSetting(actor, 'catalog.importCreatesCategories', false);
+
+      const result = await importProducts(FILE, { dryRun: false, mode: 'create' }, actor);
+
+      expect(result.issues).toEqual([
+        {
+          row: 2,
+          kind: 'error',
+          column: 'categoryName',
+          messageKey: 'validation.import.unknownCategory',
+          params: { categoryName: 'Vitrified' },
+        },
+      ]);
+      expect(result.failed).toBe(1);
+      // The row is refused, not filed under no category: nothing of it landed.
+      expect(result.created).toBe(1);
+      expect(await catalog.listCategories(actor)).toEqual([]);
+      const codes = (await db()('products').select('product_code')).map((row) => row.product_code);
+      expect(codes).toEqual(['GVT-2']);
+    });
+
+    it('gives the preview and the commit the same answer about the same row', async () => {
+      await settings.writeSetting(actor, 'catalog.importCreatesCategories', false);
+
+      const preview = await importProducts(FILE, { dryRun: true, mode: 'create' }, actor);
+      const commit = await importProducts(FILE, { dryRun: false, mode: 'create' }, actor);
+
+      // The defect this switch could introduce: a preview that says "ok" and a
+      // commit that refuses. Both passes must name row 2 and count it the same.
+      expect(preview.issues).toEqual(commit.issues);
+      expect(preview.created).toBe(commit.created);
+      expect(preview.failed).toBe(commit.failed);
+      // And the preview wrote nothing while establishing that.
+      expect(await catalog.listCategories(actor)).toEqual([]);
+    });
+
+    it('refuses an unknown category on the upsert path too, where a second repository call creates one', async () => {
+      // `updateProduct` resolves a free-text category through
+      // `resolveCategoryId`, which creates it — a second invention site, on a
+      // path the chunked create never touches.
+      await catalog.createProduct({ productCode: 'GVT-1', name: 'Carrara White' }, actor);
+      await settings.writeSetting(actor, 'catalog.importCreatesCategories', false);
+
+      const result = await importProducts(FILE, { dryRun: false, mode: 'upsert' }, actor);
+
+      expect(result.issues.map((issue) => [issue.row, issue.messageKey])).toEqual([
+        [2, 'validation.import.unknownCategory'],
+      ]);
+      expect(result.updated).toBe(0);
+      expect(await catalog.listCategories(actor)).toEqual([]);
+    });
+
+    it('accepts the row once the category exists, matching case-insensitively', async () => {
+      // Created by an earlier import, while the switch was still on — and
+      // spelt differently, because the match is on `lower(name)`, the same
+      // rule `ensureCategories` already uses.
+      await importProducts(
+        csv([
+          ['productCode', 'name', 'categoryName'],
+          ['OLD-1', 'Ivory Matt', 'VITRIFIED'],
+        ]),
+        { dryRun: false, mode: 'create' },
+        actor,
+      );
+      await settings.writeSetting(actor, 'catalog.importCreatesCategories', false);
+
+      const result = await importProducts(FILE, { dryRun: false, mode: 'create' }, actor);
+
+      expect(result.issues).toEqual([]);
+      expect(result.created).toBe(2);
+      expect(await catalog.listCategories(actor)).toHaveLength(1);
+    });
+
+    it('creates the category at its default, so an upgraded installation imports exactly as before', async () => {
+      const result = await importProducts(FILE, { dryRun: false, mode: 'create' }, actor);
+
+      expect(result.issues).toEqual([]);
+      expect(result.created).toBe(2);
+      expect((await catalog.listCategories(actor)).map((category) => category.name)).toEqual([
+        'Vitrified',
+      ]);
     });
   });
 });

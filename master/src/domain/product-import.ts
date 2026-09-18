@@ -399,13 +399,23 @@ export function findDuplicatesInFile(
   return issues;
 }
 
-/** The Guide sheet: one row per column, so the template explains itself. */
-export function templateGuideRows(): string[][] {
+/**
+ * The Guide sheet: one row per column, so the template explains itself.
+ *
+ * `createsCategories` is the company's `catalog.importCreatesCategories`
+ * switch, passed in rather than read here — this module is pure. It is not a
+ * cosmetic detail: with the switch off, the standing note "Created if it does
+ * not exist yet." is the opposite of what the importer will do, and the
+ * template is the one thing a person reads before filling the sheet in.
+ */
+export function templateGuideRows(createsCategories: boolean): string[][] {
   return IMPORT_COLUMNS.map((column) => [
     column.field,
     column.required ? 'yes' : '',
     column.kind === 'money' ? 'rupees' : column.kind === 'enum' ? 'one of' : column.kind,
     column.values ? column.values.join(', ') : '',
-    column.note,
+    column.field === 'categoryName' && !createsCategories
+      ? 'Must already exist — an import cannot create one.'
+      : column.note,
   ]);
 }

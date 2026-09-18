@@ -169,6 +169,9 @@ export const EN_MESSAGES = {
   'setting.inventory.freeToSell.label': 'Track free-to-sell stock',
   'setting.inventory.freeToSell.help':
     'On splits every stock figure into on hand, reserved for open orders, and free to sell, and judges low stock on what is free. Off shows one number per colour — the boxes on the floor — and hides reserved and free everywhere. Orders still hold their stock underneath, so turning it back on shows the true picture.',
+  'setting.catalog.importCreatesCategories.label': 'Let a product import create new categories',
+  'setting.catalog.importCreatesCategories.help':
+    'On, a bulk import files a product under whatever category the sheet names, creating it if it is new. Off, the category must already exist — a row naming one you do not have is refused by number so you can fix the spelling, and a row with no category is imported as before.',
   'setting.pricing.enabled.label': 'Show rates and amounts',
   'setting.pricing.enabled.help':
     'Off means no rate, amount or total appears anywhere — screens, documents, reports or the API — and the Pricing permissions have no effect. Nothing stored is lost; turning it back on shows every figure again.',
@@ -356,6 +359,8 @@ export const EN_MESSAGES = {
   'validation.import.notAWholeNumber': '"{column}" must be a whole number',
   'validation.import.invalidValue': '"{column}" must be one of: {allowed}',
   'validation.import.duplicateInFile': '"{column}" repeats row {firstRow}',
+  'validation.import.unknownCategory':
+    'There is no category named "{categoryName}" — this company does not let an import create one',
   'validation.import.rowFailed': 'The row could not be saved: {reason}',
   'import.skip.codeExists': 'Product code "{productCode}" already exists — skipped',
   'validation.role.nameRequired': 'Give the role a name',

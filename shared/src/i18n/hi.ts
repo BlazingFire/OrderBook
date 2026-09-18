@@ -123,6 +123,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'setting.inventory.freeToSell.label': 'बिक्री-योग्य स्टॉक ट्रैक करें',
   'setting.inventory.freeToSell.help':
     'चालू होने पर हर स्टॉक आँकड़ा तीन हिस्सों में दिखता है — उपलब्ध, खुले ऑर्डरों के लिए आरक्षित, और बिक्री-योग्य — और कम स्टॉक बिक्री-योग्य पर आँका जाता है। बंद होने पर हर रंग के लिए एक ही संख्या दिखती है, फ़र्श पर रखे बॉक्स, और आरक्षित/बिक्री-योग्य कहीं नहीं दिखते। ऑर्डर नीचे अपना स्टॉक रोके रखते हैं, इसलिए वापस चालू करने पर सही तस्वीर दिखती है।',
+  'setting.catalog.importCreatesCategories.label': 'उत्पाद आयात को नई श्रेणियाँ बनाने दें',
+  'setting.catalog.importCreatesCategories.help':
+    'चालू रहने पर बल्क आयात शीट में लिखी श्रेणी के अनुसार उत्पाद रखता है, और श्रेणी नई हो तो बना देता है। बंद रहने पर श्रेणी पहले से होनी चाहिए — जिस पंक्ति में ऐसी श्रेणी लिखी है जो आपके पास नहीं है वह पंक्ति संख्या सहित अस्वीकार होगी ताकि आप वर्तनी ठीक कर सकें, और जिस पंक्ति में कोई श्रेणी नहीं है वह पहले की तरह आयात होगी।',
   'setting.pricing.enabled.label': 'दरें और राशियाँ दिखाएँ',
   'setting.pricing.enabled.help':
     'बंद होने पर कहीं भी कोई दर, राशि या कुल नहीं दिखता — स्क्रीन, दस्तावेज़, रिपोर्ट या API में — और मूल्य-निर्धारण अनुमतियों का कोई असर नहीं होता। संग्रहीत कुछ भी नहीं खोता; इसे फिर चालू करने पर हर आँकड़ा वापस दिखता है।',
@@ -288,6 +291,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.import.notAWholeNumber': '"{column}" एक पूर्ण संख्या होनी चाहिए',
   'validation.import.invalidValue': '"{column}" इनमें से एक होना चाहिए: {allowed}',
   'validation.import.duplicateInFile': '"{column}" पंक्ति {firstRow} में दोहराया गया है',
+  'validation.import.unknownCategory':
+    '"{categoryName}" नाम की कोई श्रेणी नहीं है — यह कंपनी आयात से नई श्रेणी बनाने की अनुमति नहीं देती',
   'validation.import.rowFailed': 'पंक्ति सहेजी नहीं जा सकी: {reason}',
   'import.skip.codeExists': 'उत्पाद कोड "{productCode}" पहले से मौजूद है — छोड़ा गया',
   'validation.role.nameRequired': 'भूमिका को एक नाम दें',

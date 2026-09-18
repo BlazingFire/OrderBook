@@ -58,6 +58,7 @@ import * as activityLog from '../repositories/activity-log.repository.js';
 import { allocatePermanentIds, nextHlc } from '../repositories/identity.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
 import { publishChange } from './change-bus.js';
+import { getSetting } from './settings.service.js';
 
 const log = createLogger('product-import');
 
@@ -98,6 +99,8 @@ export async function productImportTemplate(
     };
   }
 
+  const mayCreateCategories = await getSetting(actor.tenantId, 'catalog.importCreatesCategories');
+
   const bytes = await buildXlsxTemplate({
     columns: IMPORT_COLUMNS.map((column) => ({
       header: column.field,
@@ -105,7 +108,7 @@ export async function productImportTemplate(
       text: TEXT_COLUMNS.has(column.field),
       values: column.values,
     })),
-    guide: [['column', 'required', 'kind', 'allowed values', 'note'], ...templateGuideRows()],
+    guide: [['column', 'required', 'kind', 'allowed values', 'note'], ...templateGuideRows(mayCreateCategories)],
   });
 
   return { bytes, contentType: XLSX_CONTENT_TYPE, fileName: 'products-template.xlsx' };
@@ -247,6 +250,51 @@ export async function importProducts(
     return false;
   });
 
+  // A category the file names but the company does not have.
+  //
+  // Settled **here**, above the dry-run boundary, for the reason this file's
+  // header gives: one function answers "what would this file do" and "do it",
+  // so a preview that says "ok" and a commit that refuses would be the defect.
+  // A row with no category column, or a blank cell, never reaches this — a
+  // blank cell leaves the key absent (`domain/product-import.ts`).
+  const mayCreateCategories = await getSetting(actor.tenantId, 'catalog.importCreatesCategories');
+  let knownCategories = new Map<string, string>();
+  if (!mayCreateCategories) {
+    knownCategories = new Map(
+      (await productRepo.listCategories(actor.tenantId)).map((category) => [
+        category.name.trim().toLowerCase(),
+        category.id,
+      ]),
+    );
+
+    // Refused, not filed under no category: the same rule a price column the
+    // actor may not set already follows — a success that discarded what the
+    // file asserted is the worst answer available.
+    const unknownCategory = (entry: ParsedRow): boolean => {
+      const name = entry.input.categoryName?.trim();
+      return name !== undefined && name !== '' && !knownCategories.has(name.toLowerCase());
+    };
+    const refuseCategory = (entry: ParsedRow): void => {
+      issues.push({
+        row: entry.row,
+        kind: 'error',
+        column: headerFor('categoryName'),
+        messageKey: 'validation.import.unknownCategory',
+        params: { categoryName: entry.input.categoryName ?? '' },
+      });
+    };
+    creates = creates.filter((entry) => {
+      if (!unknownCategory(entry)) return true;
+      refuseCategory(entry);
+      return false;
+    });
+    updates = updates.filter((entry) => {
+      if (!unknownCategory(entry)) return true;
+      refuseCategory(entry);
+      return false;
+    });
+  }
+
   const sample = [...creates, ...updates]
     .sort((a, b) => a.row - b.row)
     .slice(0, 5)
@@ -274,11 +322,17 @@ export async function importProducts(
       await db().transaction(async (trx) => {
         const hlc = await nextHlc(trx);
         const ids = await allocatePermanentIds(actor.tenantId, 'product', chunk.length, trx);
-        const categories = await productRepo.ensureCategories(
-          actor.tenantId,
-          chunk.map((entry) => entry.input.categoryName ?? '').filter(Boolean),
-          trx,
-        );
+        // While the switch is off the creating call is not made at all, rather
+        // than made and trusted to find everything: every surviving row's name
+        // is already in `knownCategories`, and nothing in this product deletes
+        // a category, so the ids stay good between the check and this insert.
+        const categories = mayCreateCategories
+          ? await productRepo.ensureCategories(
+              actor.tenantId,
+              chunk.map((entry) => entry.input.categoryName ?? '').filter(Boolean),
+              trx,
+            )
+          : knownCategories;
         await productRepo.insertProductRows(
           chunk.map((entry, index) => ({
             id: ids[index] as string,

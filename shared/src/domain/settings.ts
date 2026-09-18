@@ -317,6 +317,38 @@ export const SETTINGS = {
   },
 
   /**
+   * Whether a bulk product import may invent a category, or must match one the
+   * company already has.
+   *
+   * `ensureCategories` (`master/src/repositories/product.repository.ts:324`)
+   * inserts every name it does not recognise, and `resolveCategoryId`
+   * (`:490`) does the same one row at a time on the replay and upsert paths.
+   * A supplier's sheet with "Vitrified", "vitrified tiles" and "VITRIFIED
+   * TILES " in it therefore leaves three categories behind, and nothing in the
+   * product deletes a category once it exists.
+   *
+   * Off, a row naming a category the company does not have is **refused**, not
+   * quietly filed under no category: the same rule a price column the actor may
+   * not set already follows (`master/src/domain/product-import.ts:16`) — a
+   * success that discarded what the file asserted is the worst answer
+   * available. A row with no category column, or a blank cell, is untouched.
+   *
+   * Refused above the dry-run boundary, so the preview a person approves and
+   * the import that follows cannot disagree about a row.
+   *
+   * `true` is the fallback because an upgraded installation must behave exactly
+   * as it did the minute before: today every import creates what it names.
+   */
+  'catalog.importCreatesCategories': {
+    labelToken: 'setting.catalog.importCreatesCategories.label',
+    descriptionToken: 'setting.catalog.importCreatesCategories.help',
+    group: 'stock',
+    control: { kind: 'boolean' },
+    fallback: true,
+    parse: (raw: unknown): boolean => asBoolean(raw),
+  },
+
+  /**
    * How long a lead sits untouched before the Lead Outcomes report calls it
    * "went quiet" rather than "open".
    *

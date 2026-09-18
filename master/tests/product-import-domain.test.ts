@@ -200,9 +200,21 @@ describe('the file as a whole', () => {
   });
 
   it('writes one guide row per template column', () => {
-    const guide = templateGuideRows();
+    const guide = templateGuideRows(true);
     expect(guide).toHaveLength(IMPORT_HEADERS.length);
     expect(guide.find((row) => row[0] === 'uom')?.[3]).toBe('box, sqft, piece');
     expect(guide.find((row) => row[0] === 'name')?.[1]).toBe('yes');
+    expect(guide.find((row) => row[0] === 'categoryName')?.[4]).toBe('Created if it does not exist yet.');
+  });
+
+  it('tells the truth about categories when the company does not let an import create one', () => {
+    // The template is the one thing a person reads before filling the sheet
+    // in. Left alone it would promise the opposite of what the import does.
+    const guide = templateGuideRows(false);
+    expect(guide.find((row) => row[0] === 'categoryName')?.[4]).toBe(
+      'Must already exist — an import cannot create one.',
+    );
+    // Every other note is untouched.
+    expect(guide.find((row) => row[0] === 'name')?.[4]).toBe('Required.');
   });
 });
