@@ -215,7 +215,7 @@ describe.skipIf(!canRunIntegrationTests)('Reports (integration)', () => {
       const leadId = await createOpenLead('Rajkot');
       await db()('leads')
         .where({ id: leadId })
-        .update(db().raw("updated_at = now() - interval '10 days'"));
+        .update({ updated_at: db().raw("now() - interval '10 days'") });
 
       await settingsService.writeSetting(actor, 'leads.quietAfterDays', 7);
       const strict = await reportService.leadOutcomeReport({ period: 'thisMonth' }, actor);
@@ -236,7 +236,7 @@ describe.skipIf(!canRunIntegrationTests)('Reports (integration)', () => {
       const leadId = await createOpenLead('Bhuj');
       await db()('leads')
         .where({ id: leadId })
-        .update(db().raw("updated_at = now() - interval '10 days'"));
+        .update({ updated_at: db().raw("now() - interval '10 days'") });
 
       await settingsService.writeSetting(actor, 'leads.quietAfterDays', 7);
 
