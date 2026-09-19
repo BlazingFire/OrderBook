@@ -4,8 +4,8 @@ import { rem } from './rem.js';
  * Checkbox, Radio, Switch, Label, HelperText, FieldError, and FormField — the
  * label/control/help/error composite every screen builds a field from.
  *
- * Numeric entry is right-aligned tabular figures with no steppers; the grid's
- * own ↑/↓ ± Shift handling lives in ColourQuantityGrid, not here (§9.2).
+ * Numeric entry is right-aligned tabular figures with no steppers; a screen
+ * that wants ↑/↓ ± Shift stepping adds it on its own quantity cells (§9.2).
  */
 
 import { forwardRef, useId } from 'react';

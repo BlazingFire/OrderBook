@@ -25,6 +25,7 @@ import { rem } from './rem.js';
  * row to a list. This one edits a value and accepts one that is not on it.
  */
 export function SuggestInput({
+  id,
   value,
   options,
   onChange,
@@ -33,6 +34,8 @@ export function SuggestInput({
   autoFocus,
   optionsLabel,
 }: {
+  /** So a `Field` label can point at the input. */
+  id?: string;
   value: string;
   options: Array<{ value: string; label: string }>;
   onChange: (next: string) => void;
@@ -73,6 +76,7 @@ export function SuggestInput({
   return (
     <span style={{ position: 'relative', display: 'block', marginTop: rem(4) }}>
       <Input
+        id={id}
         autoFocus={autoFocus}
         value={value}
         invalid={invalid}

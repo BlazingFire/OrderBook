@@ -22,6 +22,7 @@ import {
   StatusPill,
   Tabs,
   formatDateTime,
+  formatKg,
   formatMoney,
   rem,
   t,
@@ -48,9 +49,13 @@ interface Props {
  * later columns would then stand out of line with every other row's.
  */
 function summariseItems(items: LineItem[]): { text: string; title: string } {
+  // One line is one variant, so the colour rides beside the name: "DAMRU
+  // [Vitrosa 41] ×5" is what the counter would say.
   const lines = items.map(
     (item) =>
-      `${item.productName} ×${item.totalQuantity}${item.packaging ? ` · ${item.packaging}` : ''}`,
+      `${item.productName}${item.variantLabel ? ` [${item.variantLabel}]` : ''} ×${item.quantity}${
+        item.packaging ? ` · ${item.packaging}` : ''
+      }`,
   );
   return { text: lines.join(', '), title: lines.join('\n') };
 }
@@ -325,6 +330,26 @@ export function LeadsOrdersScreen({ revision }: Props) {
           </span>
         );
       },
+    },
+    {
+      key: 'weight',
+      header: t('leadsOrders.leads.column.weight'),
+      width: rem(110),
+      align: 'right',
+      // The sum over the lines that have a weight; the asterisk says some do
+      // not, so the figure is a floor rather than the load.
+      render: (lead) => (
+        <span
+          title={
+            lead.linesWithoutWeight > 0
+              ? t('leadsOrders.linesWithoutWeight', { count: lead.linesWithoutWeight })
+              : undefined
+          }
+        >
+          {formatKg(lead.totalWeightKg)}
+          {lead.linesWithoutWeight > 0 ? '*' : ''}
+        </span>
+      ),
     },
     {
       key: 'amount',

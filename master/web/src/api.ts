@@ -25,6 +25,7 @@ import type {
   DeveloperUnlock,
   ResetAllResult,
   SeedDummyUsersResult,
+  LoadCatalogueResult,
   SeedSampleDataResult,
   AiRun,
   AiStartInput,
@@ -533,8 +534,6 @@ export const api = {
     request<Paginated<Product>>(
       `/api/products${search ? `?search=${encodeURIComponent(search)}` : ''}`,
     ),
-  productByCode: (code: string) =>
-    request<Product>(`/api/products/by-code/${encodeURIComponent(code)}`),
   createProduct: (input: ProductInput) => post<Product>('/api/products', input),
   categories: () => request<ProductCategory[]>('/api/categories'),
 
@@ -545,35 +544,30 @@ export const api = {
     const query = params.toString();
     return request<InventoryStockLevel[]>(`/api/stock${query ? `?${query}` : ''}`);
   },
-  stockColours: (productId: string) => request<string[]>(`/api/stock/colours/${productId}`),
-  stockMovements: (productId?: string) =>
-    request<StockMovement[]>(`/api/stock/movements${productId ? `?productId=${productId}` : ''}`),
-  stockInbound: (input: {
-    productId: string;
-    colour: string;
-    quantityBoxes: number;
-    note?: string;
-  }) => post<InventoryStockLevel>('/api/stock/inbound', input),
-  stockAdjust: (input: {
-    productId: string;
-    colour: string;
-    quantityBoxes: number;
-    note?: string;
-  }) => post<InventoryStockLevel>('/api/stock/adjust', input),
+  /** The ledger, newest first; scoped to one product or one variant when asked. */
+  stockMovements: (scope: { productId?: string; variantId?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (scope.productId) params.set('productId', scope.productId);
+    if (scope.variantId) params.set('variantId', scope.variantId);
+    const query = params.toString();
+    return request<StockMovement[]>(`/api/stock/movements${query ? `?${query}` : ''}`);
+  },
+  stockInbound: (input: { variantId: string; quantityBoxes: number; note?: string }) =>
+    post<InventoryStockLevel>('/api/stock/inbound', input),
+  stockAdjust: (input: { variantId: string; quantityBoxes: number; note?: string }) =>
+    post<InventoryStockLevel>('/api/stock/adjust', input),
   /**
-   * The bands and the variant code for one (product, colour).
+   * The stock band for one variant.
    *
-   * Every field but the pair is optional and **absent means untouched** —
-   * which is what lets the reorder cell and the code cell, on the same row,
-   * each save without wiping the other.
+   * Every level is optional and **absent means untouched** — which is what
+   * lets the reorder, min and max cells on one row each save without wiping
+   * the others.
    */
   setReorderLevel: (input: {
-    productId: string;
-    colour: string;
+    variantId: string;
     reorderLevel?: number | null;
     minStockLevel?: number | null;
     maxStockLevel?: number | null;
-    variantCode?: string | null;
   }) => post<InventoryStockLevel>('/api/stock/reorder-level', input),
 
   // Leads are read-only here: they are raised in the Office Panel, and the
@@ -677,8 +671,12 @@ export const api = {
   vaultStatus: () => request<VaultStatus>('/api/settings/vault-status'),
 
   /** One page of a searchable dropdown — see `/api/pick/:kind`. */
-  pick: <T>(kind: PickKind, query: { term: string; include?: string[]; signal?: AbortSignal }) => {
+  pick: <T>(
+    kind: PickKind,
+    query: { term: string; categoryId?: string; include?: string[]; signal?: AbortSignal },
+  ) => {
     const params = new URLSearchParams({ q: query.term });
+    if (query.categoryId) params.set('categoryId', query.categoryId);
     if (query.include?.length) params.set('include', query.include.join(','));
     return request<{ items: T[]; truncated: boolean }>(
       `/api/pick/${kind}?${params.toString()}`,
@@ -848,5 +846,7 @@ export const api = {
       postAsDeveloper<SeedDummyUsersResult>('/api/developer/seed-dummy-users', token),
     seedSampleData: (token: string) =>
       postAsDeveloper<SeedSampleDataResult>('/api/developer/seed-sample-data', token),
+    loadSwiswareCatalogue: (token: string) =>
+      postAsDeveloper<LoadCatalogueResult>('/api/developer/load-catalogue', token),
   },
 };

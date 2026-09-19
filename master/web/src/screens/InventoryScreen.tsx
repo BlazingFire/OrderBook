@@ -1,26 +1,33 @@
 /**
- * Inventory, per (product, colour) (docs/LEAD_GENERATION_FLOW.md §5.1, §6).
+ * Inventory, per variant (docs/LEAD_GENERATION_FLOW.md §5.1, §6).
  *
- * Three quantities are shown side by side because they answer different
- * questions: what is on the floor, what is already reserved for orders that
- * have not been dispatched, and what is therefore free to sell. Only the last
- * one is what a new order can actually draw on, so it is what "low stock" is
- * judged against.
+ * A row is one variant of one product — the thing a code names, the thing a
+ * lead line is raised on, the thing a reservation holds. Three quantities are
+ * shown side by side because they answer different questions: what is on the
+ * floor, what is already reserved for orders that have not been dispatched,
+ * and what is therefore free to sell. Only the last one is what a new order
+ * can actually draw on, so it is what "low stock" is judged against.
+ *
+ * The code is read-only here: it belongs to the product master, where the
+ * catalogue form edits it alongside the variant's label and weight. What this
+ * screen owns is the stock band — reorder, min and max — edited inline,
+ * because this is the only screen that lists every variant with its figures.
  *
  * Stock is allowed to go negative — a dealer routinely sells against a factory
  * order that has not arrived. The shortfall is surfaced, never blocked.
  *
- * Clicking a stock row opens a drawer scoped to that one (product, colour)
- * line: the same three quantities, a ledger of just its movements, and
- * "Stock in" / "Adjust to physical count" pre-locked to the line so the fast
- * path never requires re-picking the product and colour (6-UI-DESIGN.md §8).
+ * Clicking a stock row opens a dialog scoped to that one variant: the same
+ * three quantities, a ledger of just its movements, and "Stock in" / "Adjust
+ * to physical count" pre-locked to the line so the fast path never requires
+ * re-picking the product and variant (6-UI-DESIGN.md §8).
  */
 
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type {
   InventoryStockLevel,
   OptionListItem,
   Product,
+  ProductVariant,
   StockMovement,
 } from '@orderbook/shared';
 
@@ -42,6 +49,7 @@ import {
   SkeletonTable,
   StatusPill,
   formatDateTime,
+  formatKg,
   rem,
   t,
   useColourHex,
@@ -59,12 +67,17 @@ const MOVEMENT_TYPE_KEY = {
   adjustment: 'inventory.movementType.adjustment',
 } as const;
 
-/** A line-scoped Stock-in/Adjust locks the form to the drawer's (product, colour). */
+/** A line-scoped Stock-in/Adjust locks the form to the drawer's variant. */
 interface LineLock {
-  productId: string;
-  colour: string;
-  productCode: string;
+  variantId: string;
+  variantCode: string;
+  variantLabel: string | null;
   productName: string;
+}
+
+/** The variant's name as the screen speaks of it: the colour, or the code alone. */
+function variantName(level: { variantCode: string; variantLabel: string | null }): string {
+  return level.variantLabel ? `${level.variantLabel} · ${level.variantCode}` : level.variantCode;
 }
 
 export function InventoryScreen({ revision }: Props) {
@@ -81,11 +94,11 @@ export function InventoryScreen({ revision }: Props) {
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [lineLock, setLineLock] = useState<LineLock | null>(null);
 
-  // Which (product, colour) line is opened into its detail band, and the
-  // movements scoped to just that line. The band's summary numbers are *not*
-  // stored here — they are derived from `levels` below so they stay live as
-  // `levels` reloads.
-  const [openLineKey, setOpenLineKey] = useState<string | null>(null);
+  // Which variant is opened into its detail dialog, and the movements scoped
+  // to just that line. The dialog's summary numbers are *not* stored here —
+  // they are derived from `levels` below so they stay live as `levels`
+  // reloads.
+  const [openVariantId, setOpenVariantId] = useState<string | null>(null);
   const [lineMovements, setLineMovements] = useState<StockMovement[]>([]);
   const [lineMovementsLoading, setLineMovementsLoading] = useState(false);
 
@@ -138,15 +151,11 @@ export function InventoryScreen({ revision }: Props) {
     }
   }
 
-  // The movements endpoint filters by product server-side but not by colour
-  // (colour is free text within a product), so the line's ledger is fetched
-  // by product and narrowed to the one colour here.
-  const loadLineMovements = useCallback(async (productId: string, colour: string) => {
+  const loadLineMovements = useCallback(async (variantId: string) => {
     setLineMovementsLoading(true);
     setLineMovements([]);
     try {
-      const productMovements = await api.stockMovements(productId);
-      setLineMovements(productMovements.filter((movement) => movement.colour === colour));
+      setLineMovements(await api.stockMovements({ variantId }));
     } catch {
       setLineMovements([]);
     } finally {
@@ -155,27 +164,26 @@ export function InventoryScreen({ revision }: Props) {
   }, []);
 
   function openLine(level: InventoryStockLevel): void {
-    setOpenLineKey(`${level.productId}-${level.colour}`);
-    void loadLineMovements(level.productId, level.colour);
+    setOpenVariantId(level.variantId);
+    void loadLineMovements(level.variantId);
+  }
+
+  function lockFor(level: InventoryStockLevel): LineLock {
+    return {
+      variantId: level.variantId,
+      variantCode: level.variantCode,
+      variantLabel: level.variantLabel,
+      productName: level.productName,
+    };
   }
 
   function openLineStockIn(level: InventoryStockLevel): void {
-    setLineLock({
-      productId: level.productId,
-      colour: level.colour,
-      productCode: level.productCode,
-      productName: level.productName,
-    });
+    setLineLock(lockFor(level));
     setStockInOpen(true);
   }
 
   function openLineAdjust(level: InventoryStockLevel): void {
-    setLineLock({
-      productId: level.productId,
-      colour: level.colour,
-      productCode: level.productCode,
-      productName: level.productName,
-    });
+    setLineLock(lockFor(level));
     setAdjustOpen(true);
   }
 
@@ -207,64 +215,79 @@ export function InventoryScreen({ revision }: Props) {
 
   const totalFree = levels.reduce((sum, level) => sum + level.availableBoxes, 0);
 
+  /**
+   * One editable figure of the stock band. Saves on blur, sends only its own
+   * field — absent means untouched on the Master, so the three cells on a row
+   * never overwrite each other.
+   */
+  const bandCell = (
+    level: InventoryStockLevel,
+    field: 'reorderLevel' | 'minStockLevel' | 'maxStockLevel',
+    labelKey: 'inventory.reorderLevelLabel' | 'inventory.minLevelLabel' | 'inventory.maxLevelLabel',
+  ) => (
+    <NumberInput
+      key={`${level.variantId}-${field}-${level[field] ?? ''}`}
+      defaultValue={level[field] ?? ''}
+      aria-label={t(labelKey, { product: level.productName, variant: variantName(level) })}
+      onClick={(event) => event.stopPropagation()}
+      onBlur={(event) => {
+        const next = event.target.value === '' ? null : Number(event.target.value);
+        if (next === (level[field] ?? null)) return;
+        void run(
+          () => api.setReorderLevel({ variantId: level.variantId, [field]: next }),
+          t('inventory.error.reorder'),
+        );
+      }}
+    />
+  );
+
   const levelColumns: DataTableColumn<InventoryStockLevel>[] = [
-    {
-      key: 'code',
-      header: t('inventory.table.code'),
-      priority: 2,
-      width: rem(110),
-      render: (level) => <span className="ob-mono">{level.productCode}</span>,
-    },
     {
       key: 'product',
       header: t('inventory.table.product'),
-      render: (level) => level.productName,
-    },
-    {
-      /*
-       * The short code somebody types on the new-lead screen to reach this one
-       * product in this one colour. Edited here because this is the only screen
-       * that lists the pairs it names — a product row cannot hold it, since one
-       * product has a code per colour.
-       *
-       * Blank clears it, which is how a code is freed for another row: the
-       * unique index refuses two rows holding one code, and the Master answers
-       * that attempt with a sentence rather than a constraint name.
-       */
-      key: 'variantCode',
-      header: t('inventory.table.variantCode'),
-      width: rem(110),
       render: (level) => (
-        <Input
-          key={level.variantCode ?? ''}
-          defaultValue={level.variantCode ?? ''}
-          placeholder="—"
-          aria-label={t('inventory.variantCodeLabel', {
-            product: level.productName,
-            colour: level.colour,
-          })}
-          onClick={(event) => event.stopPropagation()}
-          onBlur={(event) => {
-            const next = event.target.value.trim();
-            if (next === (level.variantCode ?? '')) return;
-            void run(
-              () =>
-                api.setReorderLevel({
-                  productId: level.productId,
-                  colour: level.colour,
-                  variantCode: next === '' ? null : next,
-                }),
-              t('inventory.error.variantCode'),
-            );
-          }}
-        />
+        <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          <span className="ob-ellipsis">{level.productName}</span>
+          {level.categoryName && (
+            <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
+              {level.categoryName}
+            </span>
+          )}
+        </span>
       ),
     },
     {
-      key: 'colour',
-      header: t('inventory.table.colour'),
+      key: 'variant',
+      header: t('inventory.table.variant'),
       width: rem(150),
-      render: (level) => <ColourName name={level.colour} hex={colourHex(level.colour)} />,
+      render: (level) =>
+        level.variantLabel ? (
+          <ColourName name={level.variantLabel} hex={colourHex(level.variantLabel)} />
+        ) : (
+          <span style={{ color: 'var(--fg-tertiary)' }}>—</span>
+        ),
+    },
+    {
+      // Read-only: the code is the product master's, edited on the catalogue
+      // form beside the variant's label and weight.
+      key: 'code',
+      header: t('inventory.table.code'),
+      priority: 2,
+      width: rem(100),
+      render: (level) => <span className="ob-mono">{level.variantCode}</span>,
+    },
+    {
+      key: 'weight',
+      header: t('inventory.table.weight'),
+      priority: 3,
+      width: rem(96),
+      align: 'right',
+      render: (level) =>
+        level.weightKg === null ? (
+          <StatusPill tone="offline">{t('product.weight.missing')}</StatusPill>
+        ) : (
+          formatKg(level.weightKg)
+        ),
     },
     {
       key: 'onHand',
@@ -298,29 +321,25 @@ export function InventoryScreen({ revision }: Props) {
       key: 'reorder',
       header: t('inventory.table.reorder'),
       priority: 3,
-      width: rem(110),
+      width: rem(96),
       align: 'right',
-      render: (level) => (
-        <NumberInput
-          defaultValue={level.reorderLevel ?? ''}
-          aria-label={t('inventory.reorderLevelLabel', {
-            product: level.productName,
-            colour: level.colour,
-          })}
-          onClick={(event) => event.stopPropagation()}
-          onBlur={(event) =>
-            void run(
-              () =>
-                api.setReorderLevel({
-                  productId: level.productId,
-                  colour: level.colour,
-                  reorderLevel: event.target.value === '' ? null : Number(event.target.value),
-                }),
-              t('inventory.error.reorder'),
-            )
-          }
-        />
-      ),
+      render: (level) => bandCell(level, 'reorderLevel', 'inventory.reorderLevelLabel'),
+    },
+    {
+      key: 'min',
+      header: t('inventory.table.min'),
+      priority: 3,
+      width: rem(90),
+      align: 'right',
+      render: (level) => bandCell(level, 'minStockLevel', 'inventory.minLevelLabel'),
+    },
+    {
+      key: 'max',
+      header: t('inventory.table.max'),
+      priority: 3,
+      width: rem(90),
+      align: 'right',
+      render: (level) => bandCell(level, 'maxStockLevel', 'inventory.maxLevelLabel'),
     },
     {
       key: 'status',
@@ -348,10 +367,17 @@ export function InventoryScreen({ revision }: Props) {
       render: (movement) => movement.productName,
     },
     {
-      key: 'colour',
-      header: t('inventory.movements.table.colour'),
-      width: rem(130),
-      render: (movement) => <ColourName name={movement.colour} hex={colourHex(movement.colour)} />,
+      key: 'variant',
+      header: t('inventory.movements.table.variant'),
+      width: rem(170),
+      render: (movement) => (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-6)' }}>
+          {movement.variantLabel && (
+            <ColourName name={movement.variantLabel} hex={colourHex(movement.variantLabel)} />
+          )}
+          <span className="ob-mono ob-small">{movement.variantCode}</span>
+        </span>
+      ),
     },
     {
       key: 'type',
@@ -393,8 +419,8 @@ export function InventoryScreen({ revision }: Props) {
     },
   ];
 
-  // Same shape as `movementColumns` minus product/colour — the drawer's
-  // ledger is already scoped to one (product, colour) line.
+  // Same shape as `movementColumns` minus product/variant — the dialog's
+  // ledger is already scoped to one variant.
   const lineMovementColumns: DataTableColumn<StockMovement>[] = [
     {
       key: 'when',
@@ -442,8 +468,8 @@ export function InventoryScreen({ revision }: Props) {
     },
   ];
 
-  const openLevel = openLineKey
-    ? (levels.find((level) => `${level.productId}-${level.colour}` === openLineKey) ?? null)
+  const openLevel = openVariantId
+    ? (levels.find((level) => level.variantId === openVariantId) ?? null)
     : null;
 
   /**
@@ -523,7 +549,7 @@ export function InventoryScreen({ revision }: Props) {
         title={t('inventory.section.stockLevels')}
         action={
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
-            <span className="ob-pill">{t('inventory.boxesFree', { count: totalFree })}</span>
+            <span className="ob-pill">{t('inventory.piecesFree', { count: totalFree })}</span>
             <Button
               variant="primary"
               size="sm"
@@ -550,10 +576,10 @@ export function InventoryScreen({ revision }: Props) {
         <DataTable
           columns={levelColumns}
           rows={levels}
-          rowKey={(level) => `${level.productId}-${level.colour}`}
+          rowKey={(level) => level.variantId}
           onRowOpen={openLine}
           openOn="click"
-          selectedId={openLineKey ?? undefined}
+          selectedId={openVariantId ?? undefined}
           empty={
             <EmptyState
               title={t('inventory.empty.title')}
@@ -582,15 +608,17 @@ export function InventoryScreen({ revision }: Props) {
 
       <Modal
         open={Boolean(openLevel)}
-        onClose={() => setOpenLineKey(null)}
+        onClose={() => setOpenVariantId(null)}
         size="lg"
         title={
           openLevel && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-8)' }}>
-              <ColourChip hex={colourHex(openLevel.colour)} name={openLevel.colour} />
+              {openLevel.variantLabel && (
+                <ColourChip hex={colourHex(openLevel.variantLabel)} name={openLevel.variantLabel} />
+              )}
               {t('inventory.drawer.title', {
                 product: openLevel.productName,
-                colour: openLevel.colour,
+                variant: variantName(openLevel),
               })}
             </span>
           )
@@ -599,11 +627,18 @@ export function InventoryScreen({ revision }: Props) {
           openLevel
             ? t('inventory.drawer.title', {
                 product: openLevel.productName,
-                colour: openLevel.colour,
+                variant: variantName(openLevel),
               })
             : ''
         }
-        subtitle={openLevel && <span className="ob-mono">{openLevel.productCode}</span>}
+        subtitle={
+          openLevel && (
+            <span className="ob-mono">
+              {openLevel.variantCode}
+              {openLevel.weightKg !== null ? ` · ${formatKg(openLevel.weightKg)}` : ''}
+            </span>
+          )
+        }
         footer={
           openLevel && (
             <>
@@ -612,7 +647,7 @@ export function InventoryScreen({ revision }: Props) {
                 onClick={() => {
                   // One dialog at a time: the movement form replaces this one
                   // rather than stacking on it (HIG, Modality).
-                  setOpenLineKey(null);
+                  setOpenVariantId(null);
                   openLineAdjust(openLevel);
                 }}
               >
@@ -621,13 +656,13 @@ export function InventoryScreen({ revision }: Props) {
               <Button
                 variant="secondary"
                 onClick={() => {
-                  setOpenLineKey(null);
+                  setOpenVariantId(null);
                   openLineStockIn(openLevel);
                 }}
               >
                 {t('inventory.action.stockIn')}
               </Button>
-              <Button variant="primary" onClick={() => setOpenLineKey(null)}>
+              <Button variant="primary" onClick={() => setOpenVariantId(null)}>
                 {t('action.done')}
               </Button>
             </>
@@ -647,7 +682,7 @@ export function InventoryScreen({ revision }: Props) {
           lineLock
             ? t('inventory.stockIn.titleForLine', {
                 product: lineLock.productName,
-                colour: lineLock.colour,
+                variant: variantName(lineLock),
               })
             : t('inventory.stockIn.title')
         }
@@ -662,14 +697,13 @@ export function InventoryScreen({ revision }: Props) {
         <MovementForm
           description={t('inventory.stockIn.description')}
           products={products}
-          levels={levels}
           submitLabel={t('inventory.stockIn.submit')}
           busy={busy}
           lock={lineLock}
           onSubmit={async (input) => {
             const saved = await run(() => api.stockInbound(input), t('inventory.error.inbound'));
             if (!saved) return;
-            if (lineLock) await loadLineMovements(lineLock.productId, lineLock.colour);
+            if (lineLock) await loadLineMovements(lineLock.variantId);
             setStockInOpen(false);
             setLineLock(null);
           }}
@@ -686,7 +720,7 @@ export function InventoryScreen({ revision }: Props) {
           lineLock
             ? t('inventory.physicalCount.titleForLine', {
                 product: lineLock.productName,
-                colour: lineLock.colour,
+                variant: variantName(lineLock),
               })
             : t('inventory.physicalCount.title')
         }
@@ -699,14 +733,13 @@ export function InventoryScreen({ revision }: Props) {
         <MovementForm
           description={t('inventory.physicalCount.description')}
           products={products}
-          levels={levels}
           submitLabel={t('inventory.physicalCount.submit')}
           busy={busy}
           lock={lineLock}
           onSubmit={async (input) => {
             const saved = await run(() => api.stockAdjust(input), t('inventory.error.adjust'));
             if (!saved) return;
-            if (lineLock) await loadLineMovements(lineLock.productId, lineLock.colour);
+            if (lineLock) await loadLineMovements(lineLock.variantId);
             setAdjustOpen(false);
             setLineLock(null);
           }}
@@ -721,14 +754,14 @@ export function InventoryScreen({ revision }: Props) {
  * means and which endpoint receives it, so one form with two labels beats two
  * near-identical ones.
  *
- * When opened from a line's drawer, `lock` pins the product and colour to
- * that line — the picker and datalist are replaced by static text so the
- * only thing left to enter is the number (and an optional note).
+ * The product is picked first and then one of its variants — a one-form
+ * product has exactly one, chosen for you. When opened from a line's dialog,
+ * `lock` pins both to that line: the two pickers are replaced by static text
+ * so the only thing left to enter is the number (and an optional note).
  */
 function MovementForm({
   description,
   products,
-  levels,
   submitLabel,
   busy,
   lock,
@@ -736,26 +769,31 @@ function MovementForm({
 }: {
   description: string;
   products: Product[];
-  levels: InventoryStockLevel[];
   submitLabel: string;
   busy: boolean;
   lock?: LineLock | null;
-  onSubmit: (input: {
-    productId: string;
-    colour: string;
-    quantityBoxes: number;
-    note?: string;
-  }) => Promise<void>;
+  onSubmit: (input: { variantId: string; quantityBoxes: number; note?: string }) => Promise<void>;
 }) {
-  const [productId, setProductId] = useState(lock?.productId ?? '');
-  const [colour, setColour] = useState(lock?.colour ?? '');
+  const [productId, setProductId] = useState('');
+  const [variantId, setVariantId] = useState(lock?.variantId ?? '');
   const [quantity, setQuantity] = useState('');
   const [note, setNote] = useState('');
-  const listId = useId();
 
-  const knownColours = levels
-    .filter((level) => level.productId === productId)
-    .map((level) => level.colour);
+  const product = products.find((candidate) => candidate.id === productId) ?? null;
+  const variants: ProductVariant[] = product
+    ? product.variants.filter((variant) => variant.isActive)
+    : [];
+
+  const nameOf = (variant: ProductVariant): string =>
+    variant.label ? `${variant.label} · ${variant.code}` : variant.code;
+
+  function chooseProduct(id: string): void {
+    setProductId(id);
+    const chosen = products.find((candidate) => candidate.id === id);
+    const active = chosen?.variants.filter((variant) => variant.isActive) ?? [];
+    // One form, one variant: nothing to choose, so it is chosen.
+    setVariantId(active.length === 1 ? active[0]!.id : '');
+  }
 
   return (
     <>
@@ -767,18 +805,15 @@ function MovementForm({
         {(id) =>
           lock ? (
             <p id={id} className="ob-body-strong" style={{ margin: 0 }}>
-              {lock.productCode} — {lock.productName}
+              {lock.productName}
             </p>
           ) : (
-            <Select
-              id={id}
-              value={productId}
-              onChange={(event) => setProductId(event.target.value)}
-            >
+            <Select id={id} value={productId} onChange={(event) => chooseProduct(event.target.value)}>
               <option value="">{t('inventory.field.productPlaceholder')}</option>
-              {products.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.productCode} — {product.name}
+              {products.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.name}
+                  {candidate.categoryName ? ` — ${candidate.categoryName}` : ''}
                 </option>
               ))}
             </Select>
@@ -786,32 +821,31 @@ function MovementForm({
         }
       </FormField>
 
-      <FormField label={t('inventory.field.colour')}>
+      <FormField label={t('inventory.field.variant')}>
         {(id) =>
           lock ? (
             <p id={id} className="ob-body-strong" style={{ margin: 0 }}>
-              {lock.colour}
+              {variantName(lock)}
             </p>
           ) : (
-            <>
-              <Input
-                id={id}
-                list={listId}
-                value={colour}
-                placeholder={t('inventory.field.colourPlaceholder')}
-                onChange={(event) => setColour(event.target.value)}
-              />
-              <datalist id={listId}>
-                {knownColours.map((known) => (
-                  <option key={known} value={known} />
-                ))}
-              </datalist>
-            </>
+            <Select
+              id={id}
+              value={variantId}
+              disabled={!product}
+              onChange={(event) => setVariantId(event.target.value)}
+            >
+              <option value="">{t('inventory.field.variantPlaceholder')}</option>
+              {variants.map((variant) => (
+                <option key={variant.id} value={variant.id}>
+                  {nameOf(variant)}
+                </option>
+              ))}
+            </Select>
           )
         }
       </FormField>
 
-      <FormField label={t('inventory.field.boxes')}>
+      <FormField label={t('inventory.field.pieces')}>
         {(id) => (
           <NumberInput
             id={id}
@@ -836,14 +870,13 @@ function MovementForm({
         <Button
           variant="primary"
           busy={busy}
-          disabled={busy || !productId || !colour.trim() || quantity === ''}
+          disabled={busy || !variantId || quantity === ''}
           onClick={() =>
             // Nothing is reset here: a successful write closes the modal, which
-            // unmounts this form, and after a rejected one the boxes and note
+            // unmounts this form, and after a rejected one the pieces and note
             // the operator typed are the only copy of what they meant to record.
             void onSubmit({
-              productId,
-              colour: colour.trim(),
+              variantId,
               quantityBoxes: Number(quantity),
               note: note.trim() || undefined,
             })

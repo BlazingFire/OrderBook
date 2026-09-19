@@ -184,7 +184,7 @@ export async function findStockLevel(
 
 export async function listMovements(
   tenantId: string,
-  options: { productId?: string; limit: number },
+  options: { productId?: string; variantId?: string; limit: number },
 ): Promise<StockMovement[]> {
   const query = db()('stock_movements as m')
     .join('products as p', 'p.id', 'm.product_id')
@@ -193,6 +193,7 @@ export async function listMovements(
     .select('m.*', 'p.name as product_name', 'v.code as variant_code', 'v.label as variant_label');
 
   if (options.productId) query.andWhere('m.product_id', options.productId);
+  if (options.variantId) query.andWhere('m.variant_id', options.variantId);
 
   // Newest first: the movement list is read as "what happened recently".
   const rows = await query.orderBy('m.id', 'desc').limit(options.limit);

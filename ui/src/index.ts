@@ -26,7 +26,6 @@ export * from './BusyMark.js';
 export * from './Button.js';
 export * from './Card.js';
 export * from './Clock.js';
-export * from './ColourQuantityGrid.js';
 export * from './Combobox.js';
 export * from './CommandPalette.js';
 export * from './CursorPager.js';

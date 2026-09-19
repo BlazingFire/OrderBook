@@ -29,6 +29,7 @@ import {
   Popover,
   Segmented,
   StatusPill,
+  formatKg,
   formatMoney,
   rem,
   t,
@@ -52,12 +53,19 @@ interface Props {
 
 type BoardTab = 'board' | 'list';
 
-function leadBoxes(lead: Lead): number {
-  return lead.items.reduce((sum, item) => sum + item.totalQuantity, 0);
+function leadPieces(lead: Lead): number {
+  return lead.items.reduce((sum, item) => sum + item.quantity, 0);
 }
 
+/** The colours on the lead's lines — a pattern or a one-form product has none to show. */
 function leadColours(lead: Lead): string[] {
-  return Array.from(new Set(lead.items.flatMap((item) => item.quantities.map((q) => q.colour))));
+  return Array.from(
+    new Set(
+      lead.items
+        .map((item) => item.variantLabel)
+        .filter((label): label is string => label !== null),
+    ),
+  );
 }
 
 /**
@@ -207,7 +215,7 @@ export function LeadBoardScreen({ view, openId, onOpenId, canConvert, onError, o
   async function convertFromBoard(lead: Lead): Promise<void> {
     try {
       const result = await api.convertLead(lead.id);
-      toast.push(t('lead.board.convertedToast', { boxes: leadBoxes(lead), orderId: result.id }));
+      toast.push(t('lead.board.convertedToast', { qty: leadPieces(lead), orderId: result.id }));
     } catch (caught) {
       onError(caught instanceof Error ? caught.message : 'Could not convert the lead');
     }
@@ -239,12 +247,28 @@ export function LeadBoardScreen({ view, openId, onOpenId, canConvert, onError, o
       render: (lead) => lead.sourcePlatform ?? '—',
     },
     {
-      key: 'boxes',
-      header: t('lead.list.col.boxes'),
+      key: 'qty',
+      header: t('lead.list.col.qty'),
       priority: 2,
       width: rem(80),
       align: 'right',
-      render: (lead) => String(leadBoxes(lead)),
+      render: (lead) => String(leadPieces(lead)),
+    },
+    {
+      key: 'weight',
+      header: t('lead.list.col.weight'),
+      priority: 3,
+      width: rem(110),
+      align: 'right',
+      render: (lead) =>
+        lead.linesWithoutWeight > 0 ? (
+          <span title={t('lead.detail.linesWithoutWeight', { count: lead.linesWithoutWeight })}>
+            {formatKg(lead.totalWeightKg)}
+            <span style={{ color: 'var(--state-offline)' }}> *</span>
+          </span>
+        ) : (
+          formatKg(lead.totalWeightKg)
+        ),
     },
     {
       key: 'amount',
@@ -295,7 +319,7 @@ export function LeadBoardScreen({ view, openId, onOpenId, canConvert, onError, o
             ) : null;
           }}
           renderCard={(lead) => {
-            const boxes = leadBoxes(lead);
+            const pieces = leadPieces(lead);
             const colours = leadColours(lead);
             const stageIndex = stages.findIndex((stage) => stage.id === lead.stageId);
             const nextStage =
@@ -395,8 +419,9 @@ export function LeadBoardScreen({ view, openId, onOpenId, canConvert, onError, o
                   </span>
                   <span className="ob-small">
                     · {lead.items.length}{' '}
-                    {lead.items.length === 1 ? t('unit.product') : t('unit.products')} · {boxes}{' '}
-                    {t('unit.boxes')}
+                    {lead.items.length === 1 ? t('unit.line') : t('unit.lines')} · {pieces}{' '}
+                    {t('unit.pieces')}
+                    {lead.totalWeightKg > 0 ? ` · ${formatKg(lead.totalWeightKg)}` : ''}
                   </span>
                 </div>
 

@@ -345,6 +345,7 @@ dataRoutes.get(
       await inventoryService.listMovements(
         {
           productId: typeof req.query.productId === 'string' ? req.query.productId : undefined,
+          variantId: typeof req.query.variantId === 'string' ? req.query.variantId : undefined,
           limit: req.query.limit ? Number(req.query.limit) : undefined,
         },
         actorFromRequest(req),

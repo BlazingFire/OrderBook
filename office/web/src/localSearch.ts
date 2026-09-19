@@ -35,12 +35,16 @@ export function searchLocalView(view: LocalView, term: string): SearchHit[] {
   const hits: SearchHit[] = [];
 
   for (const product of view.products) {
-    if (!matches(needle, product.name, product.productCode, product.alias, product.sin)) continue;
+    // The codes and colours live on the variants: "41" and "Magenta" both
+    // have to find the model they belong to.
+    const codes = product.variants.map((variant) => variant.code);
+    const labels = product.variants.map((variant) => variant.label);
+    if (!matches(needle, product.name, product.alias, product.sin, ...codes, ...labels)) continue;
     hits.push({
       kind: 'product',
       id: product.id,
       title: product.name,
-      subtitle: product.productCode,
+      subtitle: `${product.categoryName} · ${codes.join(', ')}`,
       // No `ts_rank` offline. A flat score keeps the order the snapshot is in,
       // which is the Master's own, rather than inventing a ranking that would
       // visibly reshuffle the moment the link comes back.

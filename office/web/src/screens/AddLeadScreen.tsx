@@ -8,18 +8,24 @@
  * follow-up share one compact card at the top because they are all *about* the
  * enquiry; the products below are the work.
  *
- * The unit of work is **one product in one colour**. That pair has its own short
- * code (`InventoryStockLevel.variantCode`), so the search box answers a typed
- * code with exactly one row — code, product, colour and what is free to sell —
- * instead of a product somebody then has to pick a colour on. Choosing one
- * replaces the search field with the product itself and opens a draft card
- * underneath: packaging, grade and rate at the top, a quantity per colour
- * below. Nothing joins the lead until that card is added, so a half-filled
- * product cannot ride along unnoticed, and the search field comes straight back
- * for the next one.
+ * Products are found the way the catalogue is organised — **category, then
+ * model, then variant**. The search box first offers categories and only
+ * categories: typing "toilet" shows *ONE PIECE TOILET*, never a product. The
+ * chosen category becomes a chip in front of the box and the same box then
+ * searches the models inside it, by name or by any of their codes. Choosing a
+ * model replaces the search field with the model itself and opens a draft card
+ * underneath: packaging, grade and rate at the top, one row per variant below —
+ * code and weight read off the variant, a quantity to type. Nothing joins the
+ * lead until that card is added, so a half-filled product cannot ride along
+ * unnoticed, and the search field comes straight back for the next one, with
+ * the category still chosen.
+ *
+ * The unit of a lead is **one variant** (`LineItem.variantId`). A card with
+ * quantities against White and Blue adds two lines, each with its own code,
+ * weight and total; the Added-products panel shows them as two.
  *
  * Three rules are enforced visibly rather than only on the server:
- *  · **Packaging is never auto-filled.** Picking a code fills every other field
+ *  · **Packaging is never auto-filled.** Picking a model fills every other field
  *    and pointedly leaves packaging empty — the draft cannot be added until
  *    somebody chooses one.
  *  · **A rate can be switched off.** "To be quoted later" and "nobody has typed
@@ -31,16 +37,20 @@
  *
  * The rate a line opens on is the last rate actually used for this party and
  * this product, read out of the leads and orders already in this panel's
- * snapshot; failing that the party's variant rate, failing that the catalogue.
- * The note under the field says which of the three it is, and a changed rate
+ * snapshot; failing that the party's own rate, failing that the catalogue. The
+ * note under the field says which of the three it is, and a changed rate
  * offers to go back. No endpoint and no request — it works with the Master
  * switched off, like everything else here.
+ *
+ * Weights are the variant's and may not have been entered yet. A line without
+ * one shows "weight missing" rather than a zero, and the footer counts such
+ * lines beside the total weight it could compute.
  *
  * Saving works with no link to the Master: the lead is queued locally with a
  * temporary id and appears on the board immediately.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type {
   CustomFieldDefinition,
@@ -50,7 +60,9 @@ import type {
   Order,
   Party,
   PartyProductVariant,
-  ProductVariantPick,
+  Product,
+  ProductCategory,
+  ProductVariant,
 } from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
@@ -66,6 +78,7 @@ import {
   SuggestInput,
   StatusPill,
   Textarea,
+  formatKg,
   formatMoney,
   rem,
   t,
@@ -87,27 +100,34 @@ interface Props {
   onCancel: () => void;
 }
 
-/** One colour of a line, with the quantity as typed. */
-interface ColourEntry {
-  colour: string;
-  /** Kept as text so a half-typed number stays half-typed. */
-  boxes: string;
-  variantCode: string | null;
-  availableBoxes: number;
+/** What every line and every draft row knows about its variant. */
+interface VariantFacts {
+  variantId: string;
+  /** The colour or pattern; null on a product that comes in one form. */
+  variantLabel: string | null;
+  code: string;
+  /** Per piece, or null while the master has no figure for it yet. */
+  weightKg: number | null;
+  /** Free to sell, or null when this panel holds no stock row for the variant. */
+  availableBoxes: number | null;
 }
 
-/** What the draft card is editing, and what a saved line holds — one shape. */
-interface DraftLine {
-  key: string;
+/** One variant of the model on the draft card, with the quantity as typed. */
+interface DraftRow extends VariantFacts {
+  /** Kept as text so a half-typed number stays half-typed. */
+  qty: string;
+}
+
+/** What is decided once for the whole card, and copied onto every line it adds. */
+interface ProductFacts {
   productId: string;
   productName: string;
-  code: string | null;
+  categoryName: string;
   alias: string | null;
   sin: string | null;
   size: string | null;
   grade: string | null;
   productType: string | null;
-  weightKg: number | null;
   packaging: string;
   /** The rupee text as typed; see `ratePaise`. `null` is a rate this person may not see. */
   rateText: string | null;
@@ -130,10 +150,21 @@ interface DraftLine {
   rateTouched: boolean;
   fromPartyVariant: boolean;
   notes: string;
-  colours: ColourEntry[];
+}
+
+/** The card one model is built in: the product's facts and a row per variant. */
+interface DraftProduct extends ProductFacts {
+  rows: DraftRow[];
   /** Where the line goes back to when the draft is a `Modify` of a saved one. */
   at: number | null;
-  isEdit: boolean;
+  /** The saved line's key, kept so a modified line stays the same line. */
+  editKey: string | null;
+}
+
+/** One line on the lead: one variant, one quantity. */
+interface DraftLine extends ProductFacts, VariantFacts {
+  key: string;
+  quantity: number;
 }
 
 /** Where a line's opening rate came from, for the note under the field. */
@@ -167,10 +198,6 @@ function isoDate(daysFromToday: number): string {
   return `${day.getFullYear()}-${month}-${String(day.getDate()).padStart(2, '0')}`;
 }
 
-function boxesOf(line: DraftLine): number {
-  return line.colours.reduce((sum, entry) => sum + (Number(entry.boxes) || 0), 0);
-}
-
 /**
  * The line's rate in paise, or null when there is no rate to show.
  *
@@ -192,12 +219,23 @@ function ratePaise(line: { rateText: string | null }): number | null {
 function lineTotal(line: DraftLine): number | null {
   if (!line.rateOn) return null;
   const rate = ratePaise(line);
-  return rate === null ? null : Math.round(rate * boxesOf(line));
+  return rate === null ? null : Math.round(rate * line.quantity);
+}
+
+/** Weight × quantity to three decimals, or null while the weight is unknown. */
+function lineWeight(line: { weightKg: number | null; quantity: number }): number | null {
+  if (line.weightKg === null) return null;
+  return Math.round(line.weightKg * line.quantity * 1000) / 1000;
 }
 
 /** A short, local date for the "last used" note — never a full timestamp. */
 function shortDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
+/** The variant's name as a line shows it: the colour, or the code when it has none. */
+function variantName(facts: { variantLabel: string | null; code: string }): string {
+  return facts.variantLabel ?? facts.code;
 }
 
 export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
@@ -217,10 +255,14 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
   const [customFields, setCustomFields] = useState<Record<string, unknown>>({});
 
   const [query, setQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
   const [sel, setSel] = useState(0);
-  const [variantRows, setVariantRows] = useState<ProductVariantPick[]>([]);
+  /** The first stage's answer. Cleared with the chip's ✕ or Backspace on an empty box. */
+  const [category, setCategory] = useState<ProductCategory | null>(null);
+  const [categoryRows, setCategoryRows] = useState<ProductCategory[]>([]);
+  const [productRows, setProductRows] = useState<Product[]>([]);
   const [lines, setLines] = useState<DraftLine[]>([]);
-  const [draft, setDraft] = useState<DraftLine | null>(null);
+  const [draft, setDraft] = useState<DraftProduct | null>(null);
   /** Which panel rows are expanded, ticked, and what is filtering them. */
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [selected, setSelected] = useState<Record<string, true>>({});
@@ -246,10 +288,10 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
    * fields appear and disappear as products are drafted. Ctrl+S saves.
    */
   const formRef = useRef<HTMLDivElement>(null);
-  /** Every variant row this session has seen, so a saved line keeps its codes. */
-  const seenVariants = useRef(new Map<string, ProductVariantPick>());
   /** Parties the picker has fetched, so a chosen one survives the term changing. */
   const seenParties = useRef(new Map<string, Party>());
+  /** Line keys, unique for the life of the screen. */
+  const nextKey = useRef(1);
 
   /*
    * The sidebar has no New-lead item of its own — it is not a module, it is a
@@ -318,8 +360,8 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
   const selectedParty =
     view.parties.find((party) => party.id === partyId) ?? seenParties.current.get(partyId) ?? null;
 
-  /** The party's own variants, which are also what makes the "own rates" badge true. */
-  const variantsForParty = useMemo(
+  /** The party's own rates, which are also what makes the "own rates" badge true. */
+  const partyRatesFor = useMemo(
     () =>
       new Map(
         view.partyVariants
@@ -328,7 +370,7 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
       ),
     [partyId, view.partyVariants],
   );
-  const partyWiseMode = variantsForParty.size > 0;
+  const partyWiseMode = partyRatesFor.size > 0;
 
   /*
    * A rate this role may not see is absent on every product alike, so the whole
@@ -363,35 +405,9 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
     return best;
   }, [partyId, view.leads, view.orders]);
 
-  /** Stock rows for one product, from the snapshot and from anything searched. */
-  const coloursFor = useCallback(
-    (productId: string): ColourEntry[] => {
-      const byColour = new Map<string, ColourEntry>();
-
-      for (const level of view.stock) {
-        if (level.productId !== productId) continue;
-        byColour.set(level.colour, {
-          colour: level.colour,
-          boxes: '',
-          variantCode: level.variantCode,
-          availableBoxes: level.availableBoxes,
-        });
-      }
-
-      // Anything the Master answered with that this panel's snapshot page does
-      // not hold — a catalogue past `SNAPSHOT_LIMIT` still has to be sellable.
-      for (const row of seenVariants.current.values()) {
-        if (row.productId !== productId || byColour.has(row.colour)) continue;
-        byColour.set(row.colour, {
-          colour: row.colour,
-          boxes: '',
-          variantCode: row.variantCode,
-          availableBoxes: row.availableBoxes,
-        });
-      }
-
-      return [...byColour.values()].sort((a, b) => a.colour.localeCompare(b.colour));
-    },
+  /** Free stock per variant, from the snapshot. Absent means unknown, not zero. */
+  const freeFor = useMemo(
+    () => new Map(view.stock.map((level) => [level.variantId, level.availableBoxes])),
     [view.stock],
   );
 
@@ -407,7 +423,7 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
       };
     }
 
-    const variant = variantsForParty.get(productId);
+    const variant = partyRatesFor.get(productId);
     if (variant?.rate !== undefined && variant?.rate !== null) {
       return { rate: variant.rate, note: t('lead.add.draft.rateParty'), fromPartyVariant: true };
     }
@@ -459,35 +475,63 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
     window.setTimeout(() => sourceRef.current?.focus(), 0);
   }
 
-  // --- Product search -----------------------------------------------------
+  // --- Product search: category first, then the models inside it ----------
 
   const term = useDebounced(query, 200);
 
   useEffect(() => {
-    if (!term.trim() || draft) {
-      setVariantRows([]);
+    if (draft) {
+      setCategoryRows([]);
+      setProductRows([]);
       return;
     }
     let cancelled = false;
 
     void (async () => {
       try {
-        const page = await api.pick<ProductVariantPick>('variant', { term });
-        if (cancelled) return;
-        for (const row of page.items)
-          seenVariants.current.set(`${row.productId}|${row.colour}`, row);
-        setVariantRows(page.items.slice(0, 7));
+        if (category) {
+          const page = await api.pick<Product>('product', { term, categoryId: category.id });
+          if (cancelled) return;
+          setProductRows(page.items.slice(0, 7));
+        } else {
+          const page = await api.pick<ProductCategory>('category', { term });
+          if (cancelled) return;
+          setCategoryRows(page.items.slice(0, 7));
+        }
       } catch {
-        if (!cancelled) setVariantRows([]);
+        if (!cancelled) {
+          setCategoryRows([]);
+          setProductRows([]);
+        }
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [term, draft]);
+  }, [term, category, draft]);
 
-  const variantPick = variantRows.length ? Math.min(sel, variantRows.length - 1) : 0;
+  const rows: Array<ProductCategory | Product> = category ? productRows : categoryRows;
+  const pick = rows.length ? Math.min(sel, rows.length - 1) : 0;
+  const listOpen = !draft && searchOpen;
+
+  function chooseCategory(next: ProductCategory): void {
+    setCategory(next);
+    setQuery('');
+    setSel(0);
+    setProductRows([]);
+    setSearchOpen(true);
+    window.setTimeout(() => searchRef.current?.focus(), 0);
+  }
+
+  function clearCategory(): void {
+    setCategory(null);
+    setQuery('');
+    setSel(0);
+    setCategoryRows([]);
+    setProductRows([]);
+    window.setTimeout(() => searchRef.current?.focus(), 0);
+  }
 
   /**
    * Re-rate the lines nobody has priced by hand.
@@ -513,26 +557,34 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
     // `rateOriginFor` closes over exactly these; listing the function instead
     // would re-run this on every render and undo somebody's typing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [partyId, lastRateFor, variantsForParty, view.products]);
+  }, [partyId, lastRateFor, partyRatesFor, view.products]);
 
   // --- Draft --------------------------------------------------------------
 
-  function openDraft(row: ProductVariantPick): void {
-    const origin = rateOriginFor(row.productId);
-    const variant = variantsForParty.get(row.productId) ?? null;
-    const known = coloursFor(row.productId).find((entry) => entry.colour === row.colour);
+  function rowFor(variant: ProductVariant, qty = ''): DraftRow {
+    return {
+      variantId: variant.id,
+      variantLabel: variant.label,
+      code: variant.code,
+      weightKg: variant.weightKg,
+      availableBoxes: freeFor.get(variant.id) ?? null,
+      qty,
+    };
+  }
+
+  function openDraft(product: Product): void {
+    const origin = rateOriginFor(product.id);
+    const partyRate = partyRatesFor.get(product.id) ?? null;
 
     setDraft({
-      key: `draft-${row.productId}-${row.colour}`,
-      productId: row.productId,
-      productName: variant?.productName ?? row.productName,
-      code: row.productCode,
-      alias: variant?.alias ?? row.alias,
-      sin: variant?.sin ?? row.sin,
-      size: variant?.size ?? row.size,
-      grade: variant?.grade ?? row.grade,
-      productType: variant?.productType ?? row.productType,
-      weightKg: variant?.weightKg ?? row.weightKg,
+      productId: product.id,
+      productName: partyRate?.productName ?? product.name,
+      categoryName: product.categoryName,
+      alias: partyRate?.alias ?? product.alias,
+      sin: partyRate?.sin ?? product.sin,
+      size: partyRate?.size ?? product.size,
+      grade: partyRate?.grade ?? product.grade,
+      productType: partyRate?.productType ?? product.productType,
       // Left empty on purpose (§3.2). The party's saved packaging is offered
       // below as a suggestion, never applied.
       packaging: '',
@@ -541,90 +593,89 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
       rateTouched: false,
       fromPartyVariant: origin.fromPartyVariant,
       notes: '',
-      colours: [
-        known ?? {
-          colour: row.colour,
-          boxes: '',
-          variantCode: row.variantCode,
-          availableBoxes: row.availableBoxes,
-        },
-      ],
+      // Every variant the model comes in, blank until somebody types. A
+      // variant taken off the form stays sellable on old lines, not new ones.
+      rows: product.variants.filter((variant) => variant.isActive).map((variant) => rowFor(variant)),
       at: null,
-      isEdit: false,
+      editKey: null,
     });
     setQuery('');
     setSel(0);
-    setVariantRows([]);
-
-    // The rest of this product's colours, so "add another colour" is complete
-    // even for a product past this panel's snapshot page.
-    void (async () => {
-      try {
-        const page = await api.pick<ProductVariantPick>('variant', { term: row.productCode });
-        for (const found of page.items) {
-          seenVariants.current.set(`${found.productId}|${found.colour}`, found);
-        }
-        // Re-render so the newly known colours reach the dropdown.
-        setVariantRows([]);
-      } catch {
-        // Nothing to add — the colour that was picked is already on the draft.
-      }
-    })();
+    setSearchOpen(false);
+    setProductRows([]);
   }
 
-  function patchDraft(patch: Partial<DraftLine>): void {
+  function patchDraft(patch: Partial<DraftProduct>): void {
     setDraft((current) => (current ? { ...current, ...patch } : current));
   }
 
-  function setColourBoxes(colour: string, boxes: string): void {
+  function setRowQty(variantId: string, qty: string): void {
     setDraft((current) =>
       current
         ? {
             ...current,
-            colours: current.colours.map((entry) =>
-              entry.colour === colour ? { ...entry, boxes } : entry,
-            ),
+            rows: current.rows.map((row) => (row.variantId === variantId ? { ...row, qty } : row)),
           }
         : current,
     );
   }
 
-  function draftIsReady(candidate: DraftLine): boolean {
-    const filled = candidate.colours.filter((entry) => Number(entry.boxes) > 0);
+  function draftIsReady(candidate: DraftProduct): boolean {
+    const filled = candidate.rows.filter((row) => Number(row.qty) > 0);
     if (!candidate.packaging.trim() || filled.length === 0) return false;
     if (!canSeeRates || !candidate.rateOn) return true;
     return (ratePaise(candidate) ?? 0) > 0;
   }
 
+  /** One line per variant with a quantity — a card with two colours filled adds two. */
   function saveDraft(): void {
     if (!draft || !draftIsReady(draft)) return;
 
-    const filled = draft.colours.filter((entry) => Number(entry.boxes) > 0);
-    const line: DraftLine = {
-      ...draft,
-      key: draft.isEdit
-        ? draft.key
-        : `line-${draft.productId}-${lines.length}-${draft.colours.length}`,
-      colours: filled,
-      at: null,
-      isEdit: false,
-    };
+    const { rows: draftRows, at, editKey, ...facts } = draft;
+    const added: DraftLine[] = draftRows
+      .filter((row) => Number(row.qty) > 0)
+      .map((row, index) => {
+        const { qty, ...variant } = row;
+        return {
+          ...facts,
+          ...variant,
+          quantity: Number(qty),
+          // A modified line keeps its key, so a tick or an open row stays put.
+          key: editKey && index === 0 ? editKey : `line-${nextKey.current++}`,
+        };
+      });
 
     setLines((current) => {
       const next = current.slice();
-      if (draft.at === null) next.push(line);
-      else next.splice(Math.min(draft.at, next.length), 0, line);
+      if (at === null) next.push(...added);
+      else next.splice(Math.min(at, next.length), 0, ...added);
       return next;
     });
     setDraft(null);
     window.setTimeout(() => searchRef.current?.focus(), 0);
   }
 
+  /** Lift one saved line back into the card, on its own — the variant is fixed. */
   function modifyLine(line: DraftLine, index: number): void {
     setLines((current) => current.filter((candidate) => candidate.key !== line.key));
     setOpenKey(null);
     forget(line.key);
-    setDraft({ ...line, at: index, isEdit: true });
+    const { key, quantity, variantId, variantLabel, code, weightKg, availableBoxes, ...facts } = line;
+    setDraft({
+      ...facts,
+      rows: [
+        {
+          variantId,
+          variantLabel,
+          code,
+          weightKg,
+          availableBoxes: freeFor.get(variantId) ?? availableBoxes,
+          qty: String(quantity),
+        },
+      ],
+      at: index,
+      editKey: key,
+    });
   }
 
   function removeLine(line: DraftLine): void {
@@ -648,18 +699,12 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
   const panelTerm = lineQuery.trim().toLowerCase();
 
   /*
-   * Matched on the same words the row shows — codes, product, system code and
-   * every colour on the line — so what somebody reads is what they can search.
+   * Matched on the same words the row shows — code, product, colour, system
+   * code and category — so what somebody reads is what they can search.
    */
   const matchedLines = panelTerm
     ? lines.filter((line) =>
-        [
-          line.colours.map((entry) => entry.variantCode ?? '').join(' '),
-          line.productName,
-          line.sin ?? '',
-          line.code ?? '',
-          line.colours.map((entry) => entry.colour).join(' '),
-        ]
+        [line.code, line.productName, line.variantLabel ?? '', line.sin ?? '', line.categoryName]
           .join(' ')
           .toLowerCase()
           .includes(panelTerm),
@@ -729,9 +774,12 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
     try {
       const items: LineItemInput[] = lines.map((line, index) => ({
         productId: line.productId,
+        variantId: line.variantId,
+        quantity: line.quantity,
         productName: line.productName,
         alias: line.alias,
         code: line.code,
+        variantLabel: line.variantLabel,
         sin: line.sin,
         size: line.size,
         weightKg: line.weightKg,
@@ -752,13 +800,6 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
             ? { rate: ratePaise(line) }
             : { rate: null, rateUnset: true }
           : {}),
-        quantities: line.colours
-          .filter((entry) => entry.colour.trim() && Number(entry.boxes) > 0)
-          .map((entry) => ({
-            colour: entry.colour.trim(),
-            quantity: Number(entry.boxes),
-            variantCode: entry.variantCode,
-          })),
       }));
 
       const queued = await api.createLead({
@@ -779,7 +820,7 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
     }
   }
 
-  const totalBoxes = lines.reduce((sum, line) => sum + boxesOf(line), 0);
+  const totalQty = lines.reduce((sum, line) => sum + line.quantity, 0);
   /**
    * The order total, or null when any line's rate is hidden from this person.
    *
@@ -794,6 +835,13 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
     const amount = lineTotal(line);
     return sum === null || amount === null ? null : sum + amount;
   }, 0);
+  /*
+   * The weight is summed over the lines that have one and the rest are counted,
+   * the same way the Master reports it: a missing weight is a fact to show, not
+   * a zero to add.
+   */
+  const totalWeight = lines.reduce((sum, line) => sum + (lineWeight(line) ?? 0), 0);
+  const unweighed = lines.filter((line) => line.weightKg === null).length;
 
   const ready = Boolean(partyId) && lines.length > 0 && !draft;
   const doneSteps = (partyId ? 1 : 0) + (resolvedSource ? 1 : 0) + (lines.length > 0 ? 1 : 0);
@@ -839,8 +887,12 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
       ? t('lead.add.summary.empty')
       : t(lines.length === 1 ? 'lead.add.summary.countOne' : 'lead.add.summary.count', {
           count: lines.length,
-          boxes: totalBoxes,
+          qty: totalQty,
         });
+
+  const searchPlaceholder = category
+    ? t('lead.add.products.productPlaceholder', { category: category.name })
+    : t('lead.add.products.categoryPlaceholder');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-20)' }}>
@@ -1157,7 +1209,7 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
               )}
             </div>
 
-            {/* The search field, or the product it turned into. */}
+            {/* The search field, or the model it turned into. */}
             <div style={{ position: 'relative' }}>
               {draft ? (
                 <div className="ob-picked">
@@ -1165,25 +1217,22 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
                     className="ob-mono ob-body-strong"
                     style={{ fontSize: rem(14), color: 'var(--accent)' }}
                   >
-                    {draft.colours.map((entry) => entry.variantCode ?? entry.colour).join(', ')}
+                    {draft.rows.length === 1
+                      ? draft.rows[0]!.code
+                      : t('lead.add.products.variantCount', { count: draft.rows.length })}
                   </span>
                   <span className="ob-body-strong">{draft.productName}</span>
-                  <span className="ob-mono ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                    {draft.sin ?? draft.code ?? ''}
+                  <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
+                    {draft.categoryName}
                   </span>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-6)' }}>
-                    {draft.colours.map((entry) => (
-                      <Swatch
-                        key={entry.colour}
-                        colour={entry.colour}
-                        hex={colourHex(entry.colour)}
-                        dotOnly
-                      />
-                    ))}
-                  </span>
+                  {draft.sin && (
+                    <span className="ob-mono ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
+                      {draft.sin}
+                    </span>
+                  )}
                   <span style={{ flex: 1, minWidth: 0 }} />
                   <Button variant="primary" disabled={!draftIsReady(draft)} onClick={saveDraft}>
-                    {draft.isEdit
+                    {draft.editKey
                       ? t('lead.add.draft.saveChanges')
                       : t('lead.add.draft.saveProduct')}
                   </Button>
@@ -1200,100 +1249,186 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
                   </Button>
                 </div>
               ) : (
-                <Input
-                  ref={searchRef}
-                  value={query}
-                  placeholder={t('lead.add.products.codePlaceholder')}
-                  aria-label={t('lead.add.products.searchLabel')}
-                  autoComplete="off"
-                  onChange={(event) => {
-                    setQuery(event.target.value);
-                    setSel(0);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'ArrowDown') {
-                      event.preventDefault();
-                      setSel(Math.min(variantPick + 1, Math.max(0, variantRows.length - 1)));
-                    }
-                    if (event.key === 'ArrowUp') {
-                      event.preventDefault();
-                      setSel(Math.max(0, variantPick - 1));
-                    }
-                    if (
-                      (event.key === 'Enter' || event.key === 'Tab') &&
-                      variantRows[variantPick]
-                    ) {
-                      event.preventDefault();
-                      openDraft(variantRows[variantPick]);
-                    }
-                  }}
-                />
+                <div className="ob-lead-search">
+                  {category && (
+                    <span className="ob-chip" aria-pressed="true" style={{ cursor: 'default' }}>
+                      <span className="ob-ellipsis">{category.name}</span>
+                      <button
+                        type="button"
+                        className="ob-chip__clear"
+                        aria-label={t('lead.add.products.changeCategory')}
+                        title={t('lead.add.products.changeCategory')}
+                        onClick={clearCategory}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  )}
+                  <Input
+                    ref={searchRef}
+                    value={query}
+                    placeholder={searchPlaceholder}
+                    aria-label={t('lead.add.products.searchLabel')}
+                    autoComplete="off"
+                    style={{ flex: 1, minWidth: rem(160) }}
+                    onFocus={() => setSearchOpen(true)}
+                    onBlur={() => setSearchOpen(false)}
+                    onChange={(event) => {
+                      setQuery(event.target.value);
+                      setSearchOpen(true);
+                      setSel(0);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Escape' && searchOpen) {
+                        event.preventDefault();
+                        setSearchOpen(false);
+                        return;
+                      }
+                      // Backspace on an empty box steps back a stage, the way
+                      // a token in a search field is deleted.
+                      if (event.key === 'Backspace' && query === '' && category) {
+                        event.preventDefault();
+                        clearCategory();
+                        return;
+                      }
+                      if (event.key === 'ArrowDown') {
+                        event.preventDefault();
+                        setSearchOpen(true);
+                        setSel(Math.min(pick + 1, Math.max(0, rows.length - 1)));
+                      }
+                      if (event.key === 'ArrowUp') {
+                        event.preventDefault();
+                        setSel(Math.max(0, pick - 1));
+                      }
+                      if ((event.key === 'Enter' || event.key === 'Tab') && listOpen && rows[pick]) {
+                        // Claimed, so the Enter walk does not step past a
+                        // choice that has only just been made.
+                        event.preventDefault();
+                        if (category) openDraft(rows[pick] as Product);
+                        else chooseCategory(rows[pick] as ProductCategory);
+                      }
+                    }}
+                  />
+                </div>
               )}
 
-              {!draft && query.trim() !== '' && (
+              {listOpen && !category && (
                 <div role="listbox" className="ob-suggest">
                   <div
                     className="ob-suggest-row ob-eyebrow"
-                    style={{
-                      gridTemplateColumns: SUGGEST_GRID,
-                      color: 'var(--fg-tertiary)',
-                    }}
+                    style={{ gridTemplateColumns: 'minmax(0, 1fr)', color: 'var(--fg-tertiary)' }}
                   >
-                    <span>{t('lead.add.products.col.code')}</span>
-                    <span>{t('lead.add.products.col.product')}</span>
-                    <span>{t('lead.add.products.col.colour')}</span>
-                    <span style={{ textAlign: 'right' }}>{t('lead.add.products.col.free')}</span>
+                    <span>{t('lead.add.products.col.category')}</span>
                   </div>
-                  {variantRows.map((row, index) => (
+                  {categoryRows.map((row, index) => (
                     <button
-                      key={`${row.productId}|${row.colour}`}
+                      key={row.id}
                       type="button"
                       className="ob-suggest-row"
                       style={{
-                        gridTemplateColumns: SUGGEST_GRID,
-                        background: index === variantPick ? 'var(--bg-selected)' : undefined,
+                        gridTemplateColumns: 'minmax(0, 1fr)',
+                        background: index === pick ? 'var(--bg-selected)' : undefined,
                       }}
                       onMouseEnter={() => setSel(index)}
-                      onClick={() => openDraft(row)}
+                      // `mousedown`, not `click`: the input's blur would close
+                      // the list out from under the pointer first.
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        chooseCategory(row);
+                      }}
                     >
                       <span
-                        className="ob-mono ob-body-strong"
-                        style={{
-                          fontSize: rem(14),
-                          color: index === variantPick ? 'var(--accent)' : undefined,
-                        }}
+                        className="ob-body-strong ob-ellipsis"
+                        style={{ color: index === pick ? 'var(--accent)' : undefined }}
                       >
-                        {row.variantCode ?? row.productCode}
-                      </span>
-                      <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                        <span className="ob-ellipsis">{row.productName}</span>
-                        <span className="ob-mono ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                          {[
-                            row.sin,
-                            row.rate === undefined
-                              ? null
-                              : `${formatMoney(row.rate ?? null)}/${t('unit.box')}`,
-                          ]
-                            .filter(Boolean)
-                            .join(' · ')}
-                        </span>
-                      </span>
-                      <Swatch colour={row.colour} hex={colourHex(row.colour)} />
-                      <span
-                        className="ob-small"
-                        style={{
-                          textAlign: 'right',
-                          fontVariantNumeric: 'tabular-nums',
-                          color: row.availableBoxes <= 0 ? 'var(--state-offline)' : undefined,
-                        }}
-                      >
-                        {row.availableBoxes}
+                        {row.name}
                       </span>
                     </button>
                   ))}
-                  {variantRows.length === 0 && (
+                  {categoryRows.length === 0 && (
                     <p className="ob-small" style={{ margin: 0, padding: 'var(--s-8)' }}>
-                      {t('lead.add.products.noHit')}
+                      {t('lead.add.products.noCategory')}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {listOpen && category && (
+                <div role="listbox" className="ob-suggest">
+                  <div
+                    className="ob-suggest-row ob-eyebrow"
+                    style={{ gridTemplateColumns: SUGGEST_GRID, color: 'var(--fg-tertiary)' }}
+                  >
+                    <span>{t('lead.add.products.col.code')}</span>
+                    <span>{t('lead.add.products.col.product')}</span>
+                    <span>{t('lead.add.products.col.variant')}</span>
+                    <span style={{ textAlign: 'right' }}>{t('lead.add.products.col.weight')}</span>
+                  </div>
+                  {productRows.map((row, index) => {
+                    const active = row.variants.filter((variant) => variant.isActive);
+                    const first = active[0] ?? row.variants[0];
+                    const weights = active.map((variant) => variant.weightKg);
+                    return (
+                      <button
+                        key={row.id}
+                        type="button"
+                        className="ob-suggest-row"
+                        style={{
+                          gridTemplateColumns: SUGGEST_GRID,
+                          background: index === pick ? 'var(--bg-selected)' : undefined,
+                        }}
+                        onMouseEnter={() => setSel(index)}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          openDraft(row);
+                        }}
+                      >
+                        <span
+                          className="ob-mono ob-body-strong"
+                          style={{
+                            fontSize: rem(14),
+                            color: index === pick ? 'var(--accent)' : undefined,
+                          }}
+                        >
+                          {active.length > 1
+                            ? t('lead.add.products.variantCount', { count: active.length })
+                            : (first?.code ?? '—')}
+                        </span>
+                        <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                          <span className="ob-ellipsis">{row.name}</span>
+                          <span className="ob-mono ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
+                            {[
+                              row.sin,
+                              row.size,
+                              row.rate === undefined
+                                ? null
+                                : `${formatMoney(row.rate ?? null)}/${t('unit.piece')}`,
+                            ]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </span>
+                        </span>
+                        <span className="ob-small ob-ellipsis" style={{ minWidth: 0 }}>
+                          {active.length > 1
+                            ? active.map((variant) => variant.label ?? variant.code).join(', ')
+                            : (first?.label ?? '—')}
+                        </span>
+                        <span
+                          className="ob-small"
+                          style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                        >
+                          {weights.length === 1
+                            ? formatKg(weights[0] ?? null)
+                            : weights.some((weight) => weight === null)
+                              ? t('product.weight.missingShort')
+                              : formatKg(weights.reduce<number>((sum, w) => sum + (w ?? 0), 0))}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {productRows.length === 0 && (
+                    <p className="ob-small" style={{ margin: 0, padding: 'var(--s-8)' }}>
+                      {t('lead.add.products.noProduct')}
                     </p>
                   )}
                 </div>
@@ -1303,11 +1438,15 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
                 className="ob-micro"
                 style={{ margin: `${rem(7)} 0 0`, color: 'var(--fg-tertiary)' }}
               >
-                {draft ? t('lead.add.products.pickedHint') : t('lead.add.products.codeHint')}
+                {draft
+                  ? t('lead.add.products.pickedHint')
+                  : category
+                    ? t('lead.add.products.productHint')
+                    : t('lead.add.products.categoryHint')}
               </p>
             </div>
 
-            {/* The card one product is built in before it joins the lead. */}
+            {/* The card one model is built in before it joins the lead. */}
             {draft && (
               <DraftCard
                 draft={draft}
@@ -1316,23 +1455,11 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
                 ready={draftIsReady(draft)}
                 packagingOptions={packagingOptions}
                 gradeOptions={gradeOptions}
-                suggestedPackaging={variantsForParty.get(draft.productId)?.packaging ?? null}
+                suggestedPackaging={partyRatesFor.get(draft.productId)?.packaging ?? null}
                 rateOrigin={rateOriginFor(draft.productId)}
                 colourHex={colourHex}
-                moreColours={coloursFor(draft.productId).filter(
-                  (entry) => !draft.colours.some((used) => used.colour === entry.colour),
-                )}
                 onPatch={patchDraft}
-                onBoxes={setColourBoxes}
-                onAddColour={(entry) => patchDraft({ colours: [...draft.colours, entry] })}
-                onRemoveColour={(colour) =>
-                  patchDraft({
-                    colours:
-                      draft.colours.length === 1
-                        ? draft.colours
-                        : draft.colours.filter((entry) => entry.colour !== colour),
-                  })
-                }
+                onQty={setRowQty}
                 onSave={saveDraft}
               />
             )}
@@ -1393,12 +1520,23 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: rem(2) }}>
               <span className="ob-small" style={{ fontVariantNumeric: 'tabular-nums' }}>
                 {summary}
+                {lines.length > 0 && (
+                  <>
+                    {' · '}
+                    {t('lead.add.summary.weight', { kg: formatKg(totalWeight) })}
+                  </>
+                )}
               </span>
               <span
                 className="ob-micro"
                 style={{ color: ready ? 'var(--fg-tertiary)' : 'var(--state-offline)' }}
               >
-                {statusLine}
+                {unweighed > 0
+                  ? t(
+                      unweighed === 1 ? 'lead.add.summary.noWeightOne' : 'lead.add.summary.noWeight',
+                      { count: unweighed },
+                    )
+                  : statusLine}
               </span>
             </div>
             <span style={{ flex: 1 }} />
@@ -1534,8 +1672,8 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
 
 // --- Pieces ---------------------------------------------------------------
 
-const SUGGEST_GRID = `${rem(70)} minmax(0, 1fr) minmax(0, 0.6fr) ${rem(74)}`;
-const COLOUR_GRID = `${rem(70)} minmax(0, 1fr) ${rem(120)} ${rem(110)} ${rem(30)}`;
+const SUGGEST_GRID = `${rem(84)} minmax(0, 1fr) minmax(0, 0.7fr) ${rem(84)}`;
+const VARIANT_GRID = `${rem(84)} minmax(0, 1fr) ${rem(84)} ${rem(96)} ${rem(84)} ${rem(90)}`;
 
 /** The small upper-case label that names a row without becoming a heading. */
 function Eyebrow({ children }: { children: ReactNode }) {
@@ -1562,49 +1700,59 @@ function Chip({
   );
 }
 
-function Swatch({
-  colour,
+/**
+ * A variant's name with its colour dot, when the palette knows the colour.
+ *
+ * A pattern variant ("Vitrosa 41") has no swatch, and a no-variant product
+ * has no label at all — both simply show what they have.
+ */
+function VariantName({
+  facts,
   hex,
-  dotOnly = false,
 }: {
-  colour: string;
+  facts: { variantLabel: string | null; code: string };
   hex: string | undefined;
-  dotOnly?: boolean;
 }) {
-  const dot = (
-    <span
-      aria-hidden="true"
-      style={{
-        width: rem(13),
-        height: rem(13),
-        borderRadius: '50%',
-        flex: 'none',
-        background: hex ?? 'var(--bg-sunken)',
-        border: '1px solid var(--line-strong)',
-      }}
-    />
-  );
-
-  if (dotOnly) return <span title={colour}>{dot}</span>;
-
   return (
     <span
       className="ob-small"
       style={{ display: 'inline-flex', alignItems: 'center', gap: rem(7), minWidth: 0 }}
     >
-      {dot}
-      <span className="ob-ellipsis">{colour}</span>
+      {facts.variantLabel && (
+        <span
+          aria-hidden="true"
+          style={{
+            width: rem(13),
+            height: rem(13),
+            borderRadius: '50%',
+            flex: 'none',
+            background: hex ?? 'var(--bg-sunken)',
+            border: '1px solid var(--line-strong)',
+          }}
+        />
+      )}
+      <span className="ob-ellipsis">{facts.variantLabel ?? '—'}</span>
+    </span>
+  );
+}
+
+/** The weight cell: a figure, or the pill that says there is none to show. */
+function WeightCell({ kg }: { kg: number | null }) {
+  if (kg === null) return <StatusPill tone="offline">{t('product.weight.missingShort')}</StatusPill>;
+  return (
+    <span className="ob-small" style={{ fontVariantNumeric: 'tabular-nums' }}>
+      {formatKg(kg)}
     </span>
   );
 }
 
 /**
- * One product already on the lead, as the panel draws it.
+ * One variant already on the lead, as the panel draws it.
  *
- * Collapsed it is one line — codes, name, boxes, money — so twenty products can
- * be scanned for the one that is wrong. Opened it shows every colour with what
- * was ordered against what is free, the packaging, grade and rate, and the two
- * things that can be done about it.
+ * Collapsed it is one line — code, name, colour, quantity, money — so twenty
+ * lines can be scanned for the one that is wrong. Opened it shows the weight,
+ * what was ordered against what is free, the packaging, grade and rate, and
+ * the two things that can be done about it.
  *
  * The tick box sits outside the toggle rather than inside it: expanding a row
  * to read it must not select it for removal.
@@ -1628,14 +1776,14 @@ function LeadLine({
   onModify: () => void;
   onRemove: () => void;
 }) {
-  const over = line.colours.some((entry) => Number(entry.boxes) > entry.availableBoxes);
-  const boxes = boxesOf(line);
+  const over = line.availableBoxes !== null && line.quantity > line.availableBoxes;
   const amount = lineTotal(line);
+  const kg = lineWeight(line);
 
   const meta = [
     line.packaging.trim() || t('lead.add.line.noPackaging'),
     line.grade ?? '—',
-    line.rateOn ? `${formatMoney(ratePaise(line))}/${t('unit.box')}` : t('lead.add.line.toQuote'),
+    line.rateOn ? `${formatMoney(ratePaise(line))}/${t('unit.piece')}` : t('lead.add.line.toQuote'),
   ].join(' · ');
 
   return (
@@ -1659,10 +1807,16 @@ function LeadLine({
             {open ? '▾' : '▸'}
           </span>
           <span className="ob-mono ob-body-strong" style={{ flex: 'none' }}>
-            {line.colours.map((entry) => entry.variantCode ?? entry.colour).join(', ')}
+            {line.code}
           </span>
           <span className="ob-body-strong ob-ellipsis" style={{ flex: 1, minWidth: 0 }}>
             {line.productName}
+            {line.variantLabel && (
+              <span className="ob-small" style={{ fontWeight: 450, color: 'var(--fg-secondary)' }}>
+                {' · '}
+                {line.variantLabel}
+              </span>
+            )}
           </span>
           {over && (
             <span
@@ -1679,7 +1833,7 @@ function LeadLine({
               fontVariantNumeric: 'tabular-nums',
             }}
           >
-            {t('lead.add.line.boxesShort', { count: boxes })}
+            {t('lead.add.line.qtyShort', { count: line.quantity })}
           </span>
           <span
             className="ob-small"
@@ -1697,36 +1851,43 @@ function LeadLine({
 
       {open && (
         <div className="ob-lead-line__body">
-          {line.colours.map((entry) => {
-            const short = Number(entry.boxes) > entry.availableBoxes;
-            return (
+          <span
+            className="ob-small"
+            style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}
+          >
+            <VariantName facts={line} hex={colourHex(line.variantLabel ?? '')} />
+            <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
+              {line.categoryName}
+            </span>
+            <span style={{ flex: 1, minWidth: 0 }} />
+            <span className="ob-body-strong" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              {line.quantity}
+            </span>
+            {line.availableBoxes !== null && (
               <span
-                key={entry.colour}
-                className="ob-small"
-                style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}
+                className="ob-micro"
+                style={{
+                  color: over ? 'var(--state-offline)' : 'var(--fg-tertiary)',
+                  fontVariantNumeric: 'tabular-nums',
+                }}
               >
-                <Swatch colour={entry.colour} hex={colourHex(entry.colour)} dotOnly />
-                <span className="ob-mono ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                  {entry.variantCode ?? '—'}
-                </span>
-                <span className="ob-ellipsis" style={{ flex: 1, minWidth: 0 }}>
-                  {entry.colour}
-                </span>
-                <span className="ob-body-strong" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  {entry.boxes || '0'}
-                </span>
-                <span
-                  className="ob-micro"
-                  style={{
-                    color: short ? 'var(--state-offline)' : 'var(--fg-tertiary)',
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  {t('lead.add.line.ofFree', { free: entry.availableBoxes })}
-                </span>
+                {t('lead.add.line.ofFree', { free: line.availableBoxes })}
               </span>
-            );
-          })}
+            )}
+          </span>
+
+          <span
+            className="ob-small"
+            style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}
+          >
+            <span style={{ color: 'var(--fg-tertiary)' }}>{t('lead.add.line.weight')}</span>
+            <WeightCell kg={line.weightKg} />
+            {kg !== null && (
+              <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
+                {t('lead.add.line.lineWeight', { kg: formatKg(kg) })}
+              </span>
+            )}
+          </span>
 
           <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
             {meta}
@@ -1746,122 +1907,16 @@ function LeadLine({
   );
 }
 
-function ColourRows({
-  rows,
-  colourHex,
-  quantityHeader,
-  freeHeader,
-  codeHeader,
-  colourHeader,
-  onBoxes,
-  onRemove,
-  removeLabel,
-}: {
-  rows: ColourEntry[];
-  colourHex: (name: string) => string | undefined;
-  codeHeader: string;
-  colourHeader: string;
-  quantityHeader: string;
-  freeHeader: string;
-  onBoxes: (colour: string, boxes: string) => void;
-  onRemove?: (colour: string) => void;
-  removeLabel: (colour: string) => string;
-}) {
-  function step(entry: ColourEntry, delta: number): void {
-    const current = Number(entry.boxes) || 0;
-    onBoxes(entry.colour, String(Math.max(0, current + delta)));
-  }
-
-  return (
-    <>
-      <div
-        className="ob-eyebrow"
-        style={{
-          display: 'grid',
-          gridTemplateColumns: COLOUR_GRID,
-          gap: `0 ${rem(12)}`,
-          paddingBottom: rem(4),
-          color: 'var(--fg-tertiary)',
-        }}
-      >
-        <span>{codeHeader}</span>
-        <span>{colourHeader}</span>
-        <span style={{ textAlign: 'right' }}>{quantityHeader}</span>
-        <span style={{ textAlign: 'right' }}>{freeHeader}</span>
-        <span />
-      </div>
-      {rows.map((entry) => {
-        const over = Number(entry.boxes) > entry.availableBoxes;
-        return (
-          <div
-            key={entry.colour}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: COLOUR_GRID,
-              gap: `0 ${rem(12)}`,
-              alignItems: 'center',
-              padding: `${rem(3)} 0`,
-            }}
-          >
-            <span className="ob-mono ob-body-strong">{entry.variantCode ?? '—'}</span>
-            <Swatch colour={entry.colour} hex={colourHex(entry.colour)} />
-            <Input
-              value={entry.boxes}
-              inputMode="numeric"
-              placeholder="0"
-              invalid={over}
-              aria-label={`${quantityHeader} — ${entry.colour}`}
-              style={{ textAlign: 'right' }}
-              onChange={(event) => onBoxes(entry.colour, event.target.value.replace(/[^0-9]/g, ''))}
-              onKeyDown={(event) => {
-                const by = event.shiftKey ? 10 : 1;
-                if (event.key === 'ArrowUp') {
-                  event.preventDefault();
-                  step(entry, by);
-                }
-                if (event.key === 'ArrowDown') {
-                  event.preventDefault();
-                  step(entry, -by);
-                }
-              }}
-            />
-            <span
-              className="ob-small"
-              style={{
-                textAlign: 'right',
-                fontVariantNumeric: 'tabular-nums',
-                color: over ? 'var(--state-offline)' : 'var(--fg-secondary)',
-              }}
-            >
-              {entry.availableBoxes}
-            </span>
-            {onRemove ? (
-              <button
-                type="button"
-                className="ob-btn ob-btn--ghost"
-                aria-label={removeLabel(entry.colour)}
-                style={{ padding: 0, minWidth: rem(24) }}
-                onClick={() => onRemove(entry.colour)}
-              >
-                ✕
-              </button>
-            ) : (
-              <span />
-            )}
-          </div>
-        );
-      })}
-    </>
-  );
-}
-
 /**
- * The card one product is built in before it joins the lead.
+ * The card one model is built in before it joins the lead.
  *
  * Nothing here is on the voucher yet, which is the point: packaging, a rate and
  * at least one quantity are all decided in one place, and Add is refused until
  * they are. The hint along the bottom says which of the three is missing rather
  * than making somebody guess at a disabled button.
+ *
+ * One row per variant, the code and weight already filled from the master —
+ * the only thing to type is how many. A row left blank simply adds nothing.
  */
 function DraftCard({
   draft,
@@ -1873,14 +1928,11 @@ function DraftCard({
   suggestedPackaging,
   rateOrigin,
   colourHex,
-  moreColours,
   onPatch,
-  onBoxes,
-  onAddColour,
-  onRemoveColour,
+  onQty,
   onSave,
 }: {
-  draft: DraftLine;
+  draft: DraftProduct;
   canEditRate: boolean;
   canSeeRates: boolean;
   ready: boolean;
@@ -1889,17 +1941,15 @@ function DraftCard({
   suggestedPackaging: string | null;
   rateOrigin: RateOrigin;
   colourHex: (name: string) => string | undefined;
-  moreColours: ColourEntry[];
-  onPatch: (patch: Partial<DraftLine>) => void;
-  onBoxes: (colour: string, boxes: string) => void;
-  onAddColour: (entry: ColourEntry) => void;
-  onRemoveColour: (colour: string) => void;
+  onPatch: (patch: Partial<DraftProduct>) => void;
+  onQty: (variantId: string, qty: string) => void;
   onSave: () => void;
 }) {
-  const filled = draft.colours.filter((entry) => Number(entry.boxes) > 0);
+  const filled = draft.rows.filter((row) => Number(row.qty) > 0);
   const rate = ratePaise(draft);
-  const preview =
-    rate === null ? null : rate * filled.reduce((sum, entry) => sum + Number(entry.boxes), 0);
+  const pieces = filled.reduce((sum, row) => sum + Number(row.qty), 0);
+  const preview = rate === null ? null : rate * pieces;
+  const previewKg = filled.reduce((sum, row) => sum + (lineWeight({ weightKg: row.weightKg, quantity: Number(row.qty) }) ?? 0), 0);
 
   const hint = !draft.packaging.trim()
     ? t('lead.add.draft.hintPackaging')
@@ -1914,6 +1964,11 @@ function DraftCard({
   function step(delta: number): void {
     const current = Number(draft.rateText ?? '0') || 0;
     onPatch({ rateText: String(Math.max(0, current + delta)), rateTouched: true });
+  }
+
+  function stepQty(row: DraftRow, delta: number): void {
+    const current = Number(row.qty) || 0;
+    onQty(row.variantId, String(Math.max(0, current + delta)));
   }
 
   /*
@@ -1943,7 +1998,7 @@ function DraftCard({
         <Eyebrow>{t('lead.add.draft.title')}</Eyebrow>
         <span style={{ flex: 1, minWidth: 0 }} />
         <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
-          {draft.isEdit ? t('lead.add.draft.editing') : t('lead.add.draft.new')}
+          {draft.editKey ? t('lead.add.draft.editing') : t('lead.add.draft.new')}
         </span>
       </div>
 
@@ -1966,7 +2021,7 @@ function DraftCard({
                 `autoFocus` because the card has just replaced the search box
                 somebody was typing in: without it the caret lands on the body
                 and the Enter walk has nowhere to start from. Packaging is the
-                right place to start anyway — it is the one field a picked code
+                right place to start anyway — it is the one field a picked model
                 deliberately leaves empty. */}
             <SuggestInput
               autoFocus
@@ -2015,7 +2070,7 @@ function DraftCard({
           {canSeeRates && (
             <div className="ob-small" style={{ color: 'var(--fg-secondary)' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
-                <span>{t('lead.add.draft.ratePerBox')}</span>
+                <span>{t('lead.add.draft.ratePerPiece')}</span>
                 <button
                   type="button"
                   className="ob-rate-switch"
@@ -2051,7 +2106,7 @@ function DraftCard({
                     // A courtesy only — the Master ignores a rate from anybody
                     // without `field.saleRate.edit`, whatever the panel sends.
                     disabled={!canEditRate}
-                    aria-label={t('lead.add.draft.ratePerBox')}
+                    aria-label={t('lead.add.draft.ratePerPiece')}
                     onChange={(event) =>
                       onPatch({
                         rateText: event.target.value.replace(/[^0-9.]/g, ''),
@@ -2121,44 +2176,92 @@ function DraftCard({
         </div>
 
         <div className="ob-eyebrow" style={{ color: 'var(--fg-tertiary)', marginBottom: rem(6) }}>
-          {t('lead.add.draft.quantityTitle')}
+          {draft.rows.length > 1
+            ? t('lead.add.draft.quantityTitleVariants')
+            : t('lead.add.draft.quantityTitle')}
         </div>
 
-        <ColourRows
-          rows={draft.colours}
-          colourHex={colourHex}
-          codeHeader={t('lead.add.products.col.code')}
-          colourHeader={t('lead.add.products.col.colour')}
-          quantityHeader={t('lead.add.draft.col.quantity')}
-          freeHeader={t('lead.add.draft.col.freeToSell')}
-          onBoxes={onBoxes}
-          onRemove={draft.colours.length > 1 ? onRemoveColour : undefined}
-          removeLabel={(colour) => t('lead.add.draft.removeColour', { colour })}
-        />
-
-        {moreColours.length > 0 && (
-          <Select
-            value=""
-            className="ob-select--dashed"
-            aria-label={t('lead.add.draft.addColour')}
-            style={{ marginTop: 'var(--s-8)', maxWidth: rem(340) }}
-            onChange={(event) => {
-              const found = moreColours.find((entry) => entry.colour === event.target.value);
-              if (found) onAddColour(found);
-            }}
-          >
-            <option value="">{t('lead.add.draft.addColour')}</option>
-            {moreColours.map((entry) => (
-              <option key={entry.colour} value={entry.colour}>
-                {t('lead.add.draft.colourOption', {
-                  code: entry.variantCode ?? '—',
-                  colour: entry.colour,
-                  free: entry.availableBoxes,
-                })}
-              </option>
-            ))}
-          </Select>
-        )}
+        <div
+          className="ob-eyebrow"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: VARIANT_GRID,
+            gap: `0 ${rem(12)}`,
+            paddingBottom: rem(4),
+            color: 'var(--fg-tertiary)',
+          }}
+        >
+          <span>{t('lead.add.products.col.code')}</span>
+          <span>{t('lead.add.products.col.variant')}</span>
+          <span style={{ textAlign: 'right' }}>{t('lead.add.products.col.weight')}</span>
+          <span style={{ textAlign: 'right' }}>{t('lead.add.draft.col.quantity')}</span>
+          <span style={{ textAlign: 'right' }}>{t('lead.add.draft.col.freeToSell')}</span>
+          <span style={{ textAlign: 'right' }}>{t('lead.add.draft.col.lineWeight')}</span>
+        </div>
+        {draft.rows.map((row) => {
+          const qty = Number(row.qty) || 0;
+          const over = row.availableBoxes !== null && qty > row.availableBoxes;
+          return (
+            <div
+              key={row.variantId}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: VARIANT_GRID,
+                gap: `0 ${rem(12)}`,
+                alignItems: 'center',
+                padding: `${rem(3)} 0`,
+              }}
+            >
+              <span className="ob-mono ob-body-strong">{row.code}</span>
+              <VariantName facts={row} hex={colourHex(row.variantLabel ?? '')} />
+              <span style={{ textAlign: 'right' }}>
+                <WeightCell kg={row.weightKg} />
+              </span>
+              <Input
+                value={row.qty}
+                inputMode="numeric"
+                placeholder="0"
+                invalid={over}
+                aria-label={`${t('lead.add.draft.col.quantity')} — ${variantName(row)}`}
+                style={{ textAlign: 'right' }}
+                onChange={(event) => onQty(row.variantId, event.target.value.replace(/[^0-9]/g, ''))}
+                onKeyDown={(event) => {
+                  const by = event.shiftKey ? 10 : 1;
+                  if (event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    stepQty(row, by);
+                  }
+                  if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    stepQty(row, -by);
+                  }
+                }}
+              />
+              <span
+                className="ob-small"
+                style={{
+                  textAlign: 'right',
+                  fontVariantNumeric: 'tabular-nums',
+                  color: over ? 'var(--state-offline)' : 'var(--fg-secondary)',
+                }}
+              >
+                {row.availableBoxes ?? '—'}
+              </span>
+              <span
+                className="ob-small"
+                style={{
+                  textAlign: 'right',
+                  fontVariantNumeric: 'tabular-nums',
+                  color: 'var(--fg-secondary)',
+                }}
+              >
+                {qty > 0 && row.weightKg !== null
+                  ? formatKg(lineWeight({ weightKg: row.weightKg, quantity: qty }))
+                  : '—'}
+              </span>
+            </div>
+          );
+        })}
 
         <div
           style={{
@@ -2173,6 +2276,12 @@ function DraftCard({
         >
           <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
             {hint}
+            {filled.length > 0 && previewKg > 0 && (
+              <>
+                {' · '}
+                {t('lead.add.summary.weight', { kg: formatKg(previewKg) })}
+              </>
+            )}
           </span>
           <span style={{ flex: 1, minWidth: 0 }} />
           {/*
@@ -2184,7 +2293,7 @@ function DraftCard({
            * on past it to the notes instead.
            */}
           <Button variant="primary" data-field disabled={!ready} onClick={onSave}>
-            {draft.isEdit ? t('lead.add.draft.saveChanges') : t('lead.add.draft.saveProduct')}
+            {draft.editKey ? t('lead.add.draft.saveChanges') : t('lead.add.draft.saveProduct')}
           </Button>
         </div>
       </div>

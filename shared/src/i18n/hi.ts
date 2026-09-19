@@ -969,9 +969,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'catalog.stock.short': 'Short {count}',
   // TODO(i18n-hi)
-  'catalog.stock.tooltip': '{colour} — {onFloor} on floor',
+  'catalog.stock.tooltip': '{variant} — {onFloor} गोदाम में',
   // TODO(i18n-hi)
-  'catalog.stock.tooltipReserved': '{colour} — {onFloor} on floor, {reserved} reserved',
+  'catalog.stock.tooltipReserved': '{variant} — {onFloor} गोदाम में, {reserved} आरक्षित',
   // TODO(i18n-hi)
   'common.no': 'No',
   // TODO(i18n-hi)
@@ -1494,7 +1494,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'inventory.drawer.ledgerTitle': 'Ledger — signed, append-only',
   // TODO(i18n-hi)
-  'inventory.drawer.title': '{product} — {colour}',
+  'inventory.drawer.title': '{product} — {variant}',
   // TODO(i18n-hi)
   'inventory.empty.description': 'Record stock in, and it will appear here.',
   // TODO(i18n-hi)
@@ -1564,11 +1564,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'inventory.physicalCount.title': 'Physical count',
   // TODO(i18n-hi)
-  'inventory.physicalCount.titleForLine': 'Physical count — {product} ({colour})',
+  'inventory.physicalCount.titleForLine': 'भौतिक गिनती — {product} ({variant})',
   // TODO(i18n-hi)
-  'inventory.reorderLevelLabel': 'Reorder level for {product} {colour}',
+  'inventory.reorderLevelLabel': '{product} {variant} का रीऑर्डर स्तर',
   // TODO(i18n-hi)
-  'inventory.search.placeholder': 'Search product or colour',
+  'inventory.search.placeholder': 'उत्पाद, कोड या रंग खोजें',
   // TODO(i18n-hi)
   'inventory.section.stockLevels': 'Stock levels',
   // TODO(i18n-hi)
@@ -1576,15 +1576,15 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'inventory.status.low': 'Low',
   // TODO(i18n-hi)
-  'inventory.stockIn.description': 'Boxes that arrived from the factory or a purchase.',
+  'inventory.stockIn.description': 'फ़ैक्टरी या खरीद से आए पीस।',
   // TODO(i18n-hi)
   'inventory.stockIn.submit': 'Add stock',
   // TODO(i18n-hi)
   'inventory.stockIn.title': 'Stock in',
   // TODO(i18n-hi)
-  'inventory.stockIn.titleForLine': 'Stock in — {product} ({colour})',
+  'inventory.stockIn.titleForLine': 'स्टॉक इन — {product} ({variant})',
   // TODO(i18n-hi)
-  'inventory.table.code': 'Code',
+  'inventory.table.code': 'कोड',
   // TODO(i18n-hi)
   'inventory.table.colour': 'Colour',
   // TODO(i18n-hi)
@@ -1687,7 +1687,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.board.convertedNote': 'Converted leads leave the board',
   // TODO(i18n-hi)
-  'lead.board.convertedToast': 'Converted — {boxes} boxes reserved as {orderId}',
+  'lead.board.convertedToast': 'बदल गया — {qty} पीस {orderId} के लिए आरक्षित',
   // TODO(i18n-hi)
   'lead.board.emptyColumn': 'No leads at this stage.',
   // TODO(i18n-hi)
@@ -2907,7 +2907,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'product.detail.stock.reserved': 'Reserved',
   // TODO(i18n-hi)
-  'product.detail.stockForm.adjustDone': 'Stock count for {colour} adjusted',
+  'product.detail.stockForm.adjustDone': '{variant} की स्टॉक गिनती सुधारी गई',
   // TODO(i18n-hi)
   'product.detail.stockForm.colour': 'Colour',
   // TODO(i18n-hi)
@@ -2917,7 +2917,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'product.detail.stockForm.failed': 'Could not record the stock movement',
   // TODO(i18n-hi)
-  'product.detail.stockForm.inboundDone': '{count} boxes of {colour} added to stock',
+  'product.detail.stockForm.inboundDone': '{variant} के {count} पीस स्टॉक में जोड़े गए',
   // TODO(i18n-hi)
   'product.detail.stockForm.note': 'Note',
   // TODO(i18n-hi)
@@ -2980,7 +2980,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'product.field.none': '—',
   'product.field.alias': 'Alias',
   // TODO(i18n-hi)
-  'product.field.code': 'Product code',
+  'product.field.code': 'कोड',
   // TODO(i18n-hi)
   'product.field.grade': 'Grade',
   // TODO(i18n-hi)
@@ -3027,7 +3027,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'product.field.name': 'Product name',
   // TODO(i18n-hi)
-  'product.field.rate': 'Rate per box',
+  'product.field.rate': 'प्रति पीस दर',
   // TODO(i18n-hi)
   'product.field.rateHint':
     'Entered in rupees; the Master ignores this without field.saleRate.edit',
@@ -3036,7 +3036,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'product.field.type': 'Type',
   // TODO(i18n-hi)
-  'product.field.weight': 'Box weight (kg)',
+  'product.field.weight': 'वज़न (kg)',
   // TODO(i18n-hi)
   'product.nameRequired': 'Enter the product name',
   // TODO(i18n-hi)
@@ -3871,7 +3871,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.draft.hintPackaging': 'Choose packaging to save this product',
   // TODO(i18n-hi)
-  'lead.add.draft.hintQuantity': 'Enter a quantity for at least one colour',
+  'lead.add.draft.hintQuantity': 'कम से कम एक वेरिएंट की मात्रा दर्ज करें',
   // TODO(i18n-hi)
   'lead.add.draft.hintRate': 'Enter a rate',
   // TODO(i18n-hi)
@@ -3881,7 +3881,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.draft.packaging': 'Packaging',
   // TODO(i18n-hi)
-  'lead.add.draft.quantityTitle': 'Quantity — boxes per colour',
+  'lead.add.draft.quantityTitle': 'मात्रा — पीस',
   // TODO(i18n-hi)
   'lead.add.draft.rateCatalogue': 'catalogue rate',
   // TODO(i18n-hi)
@@ -3924,7 +3924,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.products.codePlaceholder': 'Search by unique code or product name',
   // TODO(i18n-hi)
-  'lead.add.products.col.code': 'Code',
+  'lead.add.products.col.code': 'कोड',
   // TODO(i18n-hi)
   'lead.add.products.col.colour': 'Colour',
   // TODO(i18n-hi)
@@ -3961,7 +3961,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.step.sourceHint': 'where the enquiry came from',
   // TODO(i18n-hi)
-  'lead.add.summary.count': '{count} products · {boxes} boxes',
+  'lead.add.summary.count': '{count} लाइनें · {qty} पीस',
   // TODO(i18n-hi)
   'lead.add.summary.empty': 'Nothing added yet',
   // TODO(i18n-hi)
@@ -4013,18 +4013,17 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.products.clear': 'Clear selection',
   // TODO(i18n-hi)
-  'lead.add.products.pickedHint':
-    'Fill packaging, rate and quantity, then Add product — the search bar comes back for the next one.',
+  'lead.add.products.pickedHint': 'नीचे कार्ड भरें, फिर उत्पाद जोड़ें। अगले के लिए खोज उसी श्रेणी में वापस आती है।',
   // TODO(i18n-hi)
-  'lead.add.products.searchAdds': 'search adds another',
+  'lead.add.products.searchAdds': 'खोज से और जोड़ें',
   // TODO(i18n-hi)
-  'lead.add.products.searchFirst': 'search a code, name or colour — at least one',
+  'lead.add.products.searchFirst': 'श्रेणी चुनें, फिर मॉडल — कम से कम एक',
   // TODO(i18n-hi)
   'lead.add.saved': 'Lead saved — {id} syncs when the Master is reachable',
   // TODO(i18n-hi)
   'lead.add.source.label': 'Source',
   // TODO(i18n-hi)
-  'lead.add.summary.countOne': '{count} product · {boxes} boxes',
+  'lead.add.summary.countOne': '{count} लाइन · {qty} पीस',
   // TODO(i18n-hi)
   'lead.add.line.boxesShort': '{count} bx',
   // TODO(i18n-hi)
@@ -4099,4 +4098,100 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'developer.tool.sample.count.partyAssignments': "Party access assignments",
   // TODO(i18n-hi)
   'developer.tool.sample.count.deleted': "In the Recycle Bin",
+
+  // --- Product model → variant restructure (2026-09): categories, variants, weights ---
+  'lead.add.products.categoryPlaceholder': 'श्रेणी लिखें — जैसे toilet, basin, urinal',
+  'lead.add.products.productPlaceholder': '{category} में खोजें — मॉडल का नाम या कोड',
+  'lead.add.products.changeCategory': 'श्रेणी बदलें',
+  'lead.add.products.categoryHint': 'पहले श्रेणी चुनें; उसके अंदर के मॉडल बाद में आते हैं। खाली बॉक्स पर Backspace से पीछे जाएँ।',
+  'lead.add.products.productHint': 'मॉडल चुनें; उसके वेरिएंट, कोड और वज़न नीचे कार्ड में भर जाते हैं।',
+  'lead.add.products.col.category': 'श्रेणी',
+  'lead.add.products.col.variant': 'वेरिएंट',
+  'lead.add.products.col.weight': 'वज़न',
+  'lead.add.products.variantCount': '{count} वेरिएंट',
+  'lead.add.products.noCategory': 'कोई श्रेणी नहीं मिली — कैटलॉग पहले श्रेणी से व्यवस्थित है।',
+  'lead.add.products.noProduct': 'इस श्रेणी में कोई मॉडल इससे मेल नहीं खाता।',
+  'lead.add.draft.ratePerPiece': 'प्रति पीस दर',
+  'lead.add.draft.quantityTitleVariants': 'मात्रा — प्रति वेरिएंट पीस',
+  'lead.add.draft.col.lineWeight': 'लाइन वज़न',
+  'lead.add.line.qtyShort': '{count} पीस',
+  'lead.add.line.weight': 'वज़न',
+  'lead.add.line.lineWeight': 'इस लाइन पर {kg}',
+  'lead.add.summary.weight': 'कुल {kg}',
+  'lead.add.summary.noWeight': '{count} लाइनों का वज़न नहीं है — उत्पाद पर दर्ज करें',
+  'lead.add.summary.noWeightOne': '{count} लाइन का वज़न नहीं है — उत्पाद पर दर्ज करें',
+  'lead.list.col.qty': 'मात्रा',
+  'lead.list.col.weight': 'वज़न',
+  'lead.detail.line.weight': '{each} प्रति · इस लाइन पर {total}',
+  'lead.detail.totalWeight': 'कुल वज़न',
+  'lead.detail.linesWithoutWeight': '{count} लाइनों का वज़न नहीं',
+  'lead.detail.linesWithoutWeightOne': '{count} लाइन का वज़न नहीं',
+  'orders.column.code': 'कोड',
+  'orders.column.variant': 'वेरिएंट',
+  'orders.column.qty': 'मात्रा',
+  'orders.column.lineWeight': 'लाइन वज़न',
+  'orders.detail.linesWithoutWeight': '{count} लाइनों का वज़न अभी नहीं है — गणना में वे शामिल नहीं',
+  'orders.detail.linesWithoutWeightOne': '{count} लाइन का वज़न अभी नहीं है — गणना में वह शामिल नहीं',
+  'catalog.products.column.category': 'श्रेणी',
+  'catalog.products.column.codes': 'कोड',
+  'catalog.products.column.weight': 'वज़न',
+  'catalog.products.filter.missingWeight': 'वज़न बाकी',
+  'catalog.products.variantCount': '{count} वेरिएंट · {first}…',
+  'product.weight.missing': 'वज़न नहीं',
+  'product.weight.missingShort': 'नहीं',
+  'product.weight.range': '{low} – {high}',
+  'product.field.category': 'श्रेणी',
+  'product.field.categoryHint': 'लीड स्क्रीन इसे यहीं ढूँढती है। नया नाम श्रेणी बना देता है।',
+  'product.field.weightHint': 'प्रति पीस। तौलने तक खाली छोड़ें — यह “नहीं” दिखेगा, शून्य नहीं।',
+  'product.group.codes': 'कोड और वज़न',
+  'product.group.sizeGrade': 'साइज़ और ग्रेड',
+  'product.variants.hasVariants': 'वेरिएंट (रंग या पैटर्न) में आता है?',
+  'product.variants.no': 'नहीं — एक कोड',
+  'product.variants.yes': 'हाँ — हर वेरिएंट का अपना कोड',
+  'product.variants.noHint': 'एक उत्पाद, एक कोड, एक वज़न।',
+  'product.variants.yesHint': 'हर रंग या पैटर्न लीड पर अपनी लाइन है, अपने कोड और वज़न के साथ।',
+  'product.variants.col.label': 'रंग / वेरिएंट',
+  'product.variants.col.code': 'कोड',
+  'product.variants.col.weight': 'वज़न (kg)',
+  'product.variants.labelPlaceholder': 'जैसे White, Vitrosa 41',
+  'product.variants.add': '+ वेरिएंट जोड़ें',
+  'product.variants.remove': 'वेरिएंट {label} हटाएँ',
+  'product.variants.weightHint': 'वज़न प्रति पीस है। खाली वज़न दर्ज होने तक हर लीड पर “नहीं” दिखता है।',
+  'product.detail.category': 'श्रेणी',
+  'product.detail.variantsTitle': 'वेरिएंट और स्टॉक',
+  'product.detail.stock.variant': 'वेरिएंट',
+  'product.detail.stock.code': 'कोड',
+  'product.detail.stock.weight': 'वज़न',
+  'product.detail.stock.oneForm': 'एक रूप',
+  'product.detail.stockForm.variant': 'वेरिएंट',
+  'product.detail.stockForm.variantRequired': 'वेरिएंट चुनें',
+  'unit.piece': 'पीस',
+  'unit.pieces': 'पीस',
+  'unit.line': 'लाइन',
+  'unit.lines': 'लाइनें',
+
+  // --- Master panel: inventory per variant, catalogue loader ---
+  'inventory.table.variant': 'वेरिएंट',
+  'inventory.table.weight': 'वज़न',
+  'inventory.table.min': 'न्यूनतम',
+  'inventory.table.max': 'अधिकतम',
+  'inventory.minLevelLabel': '{product} {variant} का न्यूनतम स्टॉक',
+  'inventory.maxLevelLabel': '{product} {variant} का अधिकतम स्टॉक',
+  'inventory.piecesFree': '{count} पीस उपलब्ध',
+  'inventory.field.variant': 'वेरिएंट',
+  'inventory.field.variantPlaceholder': 'वेरिएंट चुनें…',
+  'inventory.field.pieces': 'पीस',
+  'inventory.movements.table.variant': 'वेरिएंट',
+  'leadsOrders.leads.column.weight': 'वज़न',
+  'leadsOrders.linesWithoutWeight': '{count} लाइनों का वज़न अभी नहीं है — आँकड़े में वे शामिल नहीं',
+  'developer.tool.swisware.title': 'Swisware कैटलॉग लोड करें',
+  'developer.tool.swisware.description': 'Swisware मास्टर कैटलॉग की हर श्रेणी, मॉडल और वेरिएंट को उत्पाद मास्टर में लोड करता है — कोड जैसे छपे हैं, वज़न प्रशासक के भरने के लिए खाली। दोबारा दबाना सुरक्षित है: पहले से मौजूद मॉडल छोड़ दिया जाता है।',
+  'developer.tool.swisware.action': 'कैटलॉग लोड करें',
+  'developer.tool.swisware.done': 'कैटलॉग लोड हुआ',
+  'developer.tool.swisware.loaded': 'कैटलॉग उत्पाद मास्टर में है। वज़न भरने के लिए Office पैनल का कैटलॉग खोलें।',
+  'developer.tool.swisware.alreadyPresent': 'लोड करने को कुछ नहीं — कैटलॉग का हर मॉडल पहले से उत्पाद मास्टर में है।',
+  'developer.tool.swisware.count.categories': 'बनी श्रेणियाँ',
+  'developer.tool.swisware.count.products': 'बने मॉडल',
+  'developer.tool.swisware.count.variants': 'बने वेरिएंट',
+  'developer.tool.swisware.count.skipped': 'पहले से मौजूद मॉडल, अछूते',
 };

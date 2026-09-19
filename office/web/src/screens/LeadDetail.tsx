@@ -27,6 +27,7 @@ import {
   StatusPill,
   Timeline,
   formatDateTime,
+  formatKg,
   formatMoney,
   rem,
   t,
@@ -106,58 +107,58 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
             <div key={item.id} className="ob-card ob-card--pad">
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
                 {/*
-                 * The codes first, as on the screen the line was entered on:
-                 * `201, 202` is how the counter refers to this line on the
-                 * phone, and `item.code` is the product code, which cannot say
-                 * which colours were ordered.
+                 * The code first, as on the screen the line was entered on:
+                 * `41` is how the counter refers to this line on the phone.
+                 * One line is one variant, so the code says exactly which.
                  */}
-                {item.quantities.some((quantity) => quantity.variantCode) && (
+                {item.code && (
                   <span className="ob-mono ob-body-strong" style={{ fontSize: rem(13.5) }}>
-                    {item.quantities
-                      .map((quantity) => quantity.variantCode)
-                      .filter(Boolean)
-                      .join(', ')}
+                    {item.code}
                   </span>
                 )}
                 <span className="ob-body-strong" style={{ fontSize: rem(13.5) }}>
                   {item.productName}
                 </span>
+                {item.variantLabel && (
+                  <span className="ob-colourname">
+                    <ColourChip name={item.variantLabel} hex={colourHex(item.variantLabel)} />
+                    <span className="ob-small">{item.variantLabel}</span>
+                  </span>
+                )}
                 <span className="ob-small">
-                  {item.code}
-                  {item.size ? ` · ${item.size}` : ''}
-                  {item.grade ? ` · ${item.grade}` : ''}
+                  {[item.size, item.grade].filter(Boolean).join(' · ')}
                 </span>
                 <span style={{ flex: 1 }} />
                 <span className="ob-data">
-                  {item.totalQuantity} {t('unit.boxes')}
+                  {item.quantity} {t('unit.pieces')}
                 </span>
-              </div>
-
-              <div style={{ marginTop: 'var(--s-4)' }}>
-                {item.packaging ? (
-                  <span className="ob-small">{item.packaging}</span>
-                ) : (
-                  <StatusPill tone="conflict">{t('lead.detail.packagingNotChosen')}</StatusPill>
-                )}
               </div>
 
               <div
                 style={{
                   display: 'flex',
                   flexWrap: 'wrap',
+                  alignItems: 'center',
                   gap: 'var(--s-8) var(--s-16)',
-                  marginTop: 'var(--s-8)',
+                  marginTop: 'var(--s-4)',
                 }}
               >
-                {item.quantities.map((quantity) => (
-                  <span key={quantity.id} className="ob-colourname">
-                    <ColourChip name={quantity.colour} hex={colourHex(quantity.colour)} />
-                    <span>
-                      {quantity.variantCode ? `${quantity.variantCode} · ` : ''}
-                      {quantity.colour} × {quantity.quantity}
-                    </span>
+                {item.packaging ? (
+                  <span className="ob-small">{item.packaging}</span>
+                ) : (
+                  <StatusPill tone="conflict">{t('lead.detail.packagingNotChosen')}</StatusPill>
+                )}
+                {/* The weight frozen on the line, and what this line adds to the total. */}
+                {item.weightKg === null ? (
+                  <StatusPill tone="offline">{t('product.weight.missing')}</StatusPill>
+                ) : (
+                  <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
+                    {t('lead.detail.line.weight', {
+                      each: formatKg(item.weightKg),
+                      total: formatKg(item.lineWeightKg),
+                    })}
                   </span>
-                ))}
+                )}
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--s-8)' }}>
@@ -180,21 +181,41 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
           ))}
         </div>
 
-        {lead.totalAmount !== undefined && (
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'flex-end',
-              gap: 'var(--s-16)',
-              marginTop: 'var(--s-8)',
-            }}
-          >
-            <span className="ob-small">{t('lead.detail.total')}</span>
-            <span className="ob-body-strong" style={{ fontVariantNumeric: 'tabular-nums' }}>
-              {formatMoney(lead.totalAmount)}
-            </span>
-          </div>
-        )}
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'flex-end',
+            alignItems: 'center',
+            gap: 'var(--s-8) var(--s-16)',
+            marginTop: 'var(--s-8)',
+          }}
+        >
+          <span className="ob-small">{t('lead.detail.totalWeight')}</span>
+          <span className="ob-body-strong" style={{ fontVariantNumeric: 'tabular-nums' }}>
+            {formatKg(lead.totalWeightKg)}
+          </span>
+          {lead.linesWithoutWeight > 0 && (
+            <StatusPill tone="offline">
+              {t(
+                lead.linesWithoutWeight === 1
+                  ? 'lead.detail.linesWithoutWeightOne'
+                  : 'lead.detail.linesWithoutWeight',
+                { count: lead.linesWithoutWeight },
+              )}
+            </StatusPill>
+          )}
+          {lead.totalAmount !== undefined && (
+            <>
+              <span className="ob-small" style={{ marginLeft: 'var(--s-8)' }}>
+                {t('lead.detail.total')}
+              </span>
+              <span className="ob-body-strong" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                {formatMoney(lead.totalAmount)}
+              </span>
+            </>
+          )}
+        </div>
       </Card>
 
       <Card>

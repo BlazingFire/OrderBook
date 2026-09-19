@@ -357,10 +357,10 @@ export function ProductImportModal({ open, onClose, onImported, onError }: Produ
                 <DataTable
                   columns={[
                     {
-                      key: 'code',
-                      header: t('catalog.products.column.code'),
-                      width: rem(110),
-                      render: (row) => <span className="ob-mono">{row.productCode}</span>,
+                      key: 'category',
+                      header: t('catalog.products.column.category'),
+                      width: rem(130),
+                      render: (row) => row.categoryName ?? '—',
                     },
                     {
                       key: 'name',
@@ -368,10 +368,14 @@ export function ProductImportModal({ open, onClose, onImported, onError }: Produ
                       render: (row) => row.name,
                     },
                     {
-                      key: 'type',
-                      header: t('catalog.products.column.type'),
-                      width: rem(110),
-                      render: (row) => row.productType ?? row.categoryName ?? '—',
+                      key: 'codes',
+                      header: t('catalog.products.column.codes'),
+                      width: rem(140),
+                      render: (row) => (
+                        <span className="ob-mono">
+                          {(row.variants ?? []).map((variant) => variant.code).join(', ')}
+                        </span>
+                      ),
                     },
                     {
                       key: 'rate',
@@ -382,7 +386,7 @@ export function ProductImportModal({ open, onClose, onImported, onError }: Produ
                     },
                   ]}
                   rows={result.sample}
-                  rowKey={(row) => `${row.productCode}:${row.name}`}
+                  rowKey={(row) => `${row.categoryName ?? ''}:${row.name}`}
                 />
               </section>
             )}

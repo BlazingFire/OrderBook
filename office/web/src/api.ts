@@ -492,7 +492,8 @@ export const api = {
   listProducts: (query: ProductListQuery, signal?: AbortSignal) => {
     const params = new URLSearchParams();
     if (query.search) params.set('search', query.search);
-    if (query.productType) params.set('productType', query.productType);
+    if (query.categoryId) params.set('categoryId', query.categoryId);
+    if (query.missingWeight) params.set('missingWeight', 'true');
     if (query.limit) params.set('limit', String(query.limit));
     if (query.offset) params.set('offset', String(query.offset));
     const qs = params.toString();
@@ -538,18 +539,10 @@ export const api = {
   // Stock and search need the Master, so these still fail when it is offline —
   // which is correct: a stale stock figure presented as current is worse than
   // an honest "cannot reach the Master right now".
-  stockInbound: (input: {
-    productId: string;
-    colour: string;
-    quantityBoxes: number;
-    note?: string;
-  }) => post('/api/stock/inbound', input),
-  stockAdjust: (input: {
-    productId: string;
-    colour: string;
-    quantityBoxes: number;
-    note?: string;
-  }) => post('/api/stock/adjust', input),
+  stockInbound: (input: { variantId: string; quantityBoxes: number; note?: string }) =>
+    post('/api/stock/inbound', input),
+  stockAdjust: (input: { variantId: string; quantityBoxes: number; note?: string }) =>
+    post('/api/stock/adjust', input),
 
   search: (term: string) => request<SearchHit[]>(`/api/search?q=${encodeURIComponent(term)}`),
 
@@ -603,8 +596,12 @@ export const api = {
    * snapshot when it is not — the response carries `offline` so the listbox can
    * say which of the two it is showing.
    */
-  pick: <T>(kind: PickKind, query: { term: string; include?: string[]; signal?: AbortSignal }) => {
+  pick: <T>(
+    kind: PickKind,
+    query: { term: string; categoryId?: string; include?: string[]; signal?: AbortSignal },
+  ) => {
     const params = new URLSearchParams({ q: query.term });
+    if (query.categoryId) params.set('categoryId', query.categoryId);
     if (query.include?.length) params.set('include', query.include.join(','));
     return request<{ items: T[]; truncated: boolean; offline?: boolean }>(
       `/api/pick/${kind}?${params.toString()}`,

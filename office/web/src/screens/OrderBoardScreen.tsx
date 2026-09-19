@@ -42,6 +42,7 @@ import {
   StatusPill,
   Timeline,
   formatDateTime,
+  formatKg,
   formatMoney,
   rem,
   t,
@@ -76,8 +77,8 @@ function stageTone(order: Order, stages: PipelineStage[]): PillTone {
   return 'default';
 }
 
-function totalBoxes(order: Order): number {
-  return order.items.reduce((sum, item) => sum + item.totalQuantity, 0);
+function totalPieces(order: Order): number {
+  return order.items.reduce((sum, item) => sum + item.quantity, 0);
 }
 
 function displayWeightKg(order: Order): number {
@@ -249,11 +250,11 @@ export function OrderBoardScreen({ view, openId, onOpenId, canDispatch, onError 
     },
     {
       key: 'boxes',
-      header: t('orders.column.boxes'),
+      header: t('orders.column.qty'),
       priority: 2,
       width: rem(80),
       align: 'right',
-      render: (order) => totalBoxes(order).toLocaleString('en-IN'),
+      render: (order) => totalPieces(order).toLocaleString('en-IN'),
     },
     {
       key: 'weight',
@@ -367,29 +368,41 @@ function OrderDetailBody({
             <table className="ob-table">
               <thead>
                 <tr>
+                  <th>{t('orders.column.code')}</th>
                   <th>{t('orders.column.product')}</th>
+                  <th>{t('orders.column.variant')}</th>
                   <th>{t('orders.column.packaging')}</th>
-                  <th>{t('orders.column.colours')}</th>
-                  <th className="num">{t('orders.column.boxes')}</th>
+                  <th className="num">{t('orders.column.qty')}</th>
+                  <th className="num">{t('orders.column.lineWeight')}</th>
                   <th className="num">{t('orders.detail.lineTotal')}</th>
                 </tr>
               </thead>
               <tbody>
                 {order.items.map((item) => (
                   <tr key={item.id}>
+                    <td className="ob-mono">{item.code ?? '—'}</td>
                     <td>
                       {item.productName}
-                      <div className="ob-small">{item.code}</div>
+                      {item.size && <div className="ob-small">{item.size}</div>}
+                    </td>
+                    <td>
+                      {item.variantLabel ? (
+                        <ColourName name={item.variantLabel} hex={colourHex(item.variantLabel)} />
+                      ) : (
+                        '—'
+                      )}
                     </td>
                     <td>{item.packaging ?? '—'}</td>
-                    <td>
-                      {item.quantities.map((quantity) => (
-                        <div key={quantity.id} className="ob-small">
-                          {quantity.colour} × {quantity.quantity}
-                        </div>
-                      ))}
+                    <td className="num">{item.quantity.toLocaleString('en-IN')}</td>
+                    <td className="num">
+                      {/* The weight frozen on the line when it was raised — a later
+                          edit to the variant's weight does not move it. */}
+                      {item.lineWeightKg === null ? (
+                        <StatusPill tone="offline">{t('product.weight.missing')}</StatusPill>
+                      ) : (
+                        formatKg(item.lineWeightKg)
+                      )}
                     </td>
-                    <td className="num">{item.totalQuantity.toLocaleString('en-IN')}</td>
                     <td className="num">
                       {item.lineTotal === undefined ? (
                         <span
@@ -418,18 +431,27 @@ function OrderDetailBody({
               <table className="ob-table">
                 <thead>
                   <tr>
+                    <th>{t('orders.column.code')}</th>
                     <th>{t('orders.column.product')}</th>
-                    <th>{t('orders.column.colour')}</th>
-                    <th className="num">{t('orders.column.boxes')}</th>
+                    <th>{t('orders.column.variant')}</th>
+                    <th className="num">{t('orders.column.qty')}</th>
                     <th>{t('orders.column.status')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {order.reservations.map((reservation) => (
                     <tr key={reservation.id}>
+                      <td className="ob-mono">{reservation.variantCode}</td>
                       <td>{reservation.productName}</td>
                       <td>
-                        <ColourName name={reservation.colour} hex={colourHex(reservation.colour)} />
+                        {reservation.variantLabel ? (
+                          <ColourName
+                            name={reservation.variantLabel}
+                            hex={colourHex(reservation.variantLabel)}
+                          />
+                        ) : (
+                          '—'
+                        )}
                       </td>
                       <td className="num">{reservation.quantity.toLocaleString('en-IN')}</td>
                       <td>
@@ -453,6 +475,18 @@ function OrderDetailBody({
               value: order.totalWeightKg.toLocaleString('en-IN'),
             })}
           </p>
+          {order.linesWithoutWeight > 0 && (
+            <p className="ob-small" style={{ marginTop: 0 }}>
+              <StatusPill tone="offline">
+                {t(
+                  order.linesWithoutWeight === 1
+                    ? 'orders.detail.linesWithoutWeightOne'
+                    : 'orders.detail.linesWithoutWeight',
+                  { count: order.linesWithoutWeight },
+                )}
+              </StatusPill>
+            </p>
+          )}
 
           <FormField label={t('orders.detail.weightOverrideLabel')}>
             {(id) => (

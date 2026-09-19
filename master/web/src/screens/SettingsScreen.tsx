@@ -20,6 +20,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type {
   MasterIdentity,
   SeedDummyUsersResult,
+  LoadCatalogueResult,
   SeedSampleDataResult,
   SettingKey,
   SettingView,
@@ -276,6 +277,7 @@ function DeveloperTab() {
   const session = useDeveloperSession(api.developer);
   const [seeded, setSeeded] = useState<SeedDummyUsersResult | null>(null);
   const [sampled, setSampled] = useState<SeedSampleDataResult | null>(null);
+  const [catalogue, setCatalogue] = useState<LoadCatalogueResult | null>(null);
   const { token } = session;
 
   // Built unconditionally: it owns the "delete the data too?" switch, and a
@@ -292,6 +294,15 @@ function DeveloperTab() {
           done: t('developer.tool.seed.done'),
           run: async () => setSeeded(await api.developer.seedDummyUsers(token)),
           result: seeded ? <SeedResult result={seeded} /> : undefined,
+        },
+        {
+          id: 'swisware-catalogue',
+          title: t('developer.tool.swisware.title'),
+          description: t('developer.tool.swisware.description'),
+          action: t('developer.tool.swisware.action'),
+          done: t('developer.tool.swisware.done'),
+          run: async () => setCatalogue(await api.developer.loadSwiswareCatalogue(token)),
+          result: catalogue ? <CatalogueResult result={catalogue} /> : undefined,
         },
         {
           id: 'sample-data',
@@ -401,6 +412,42 @@ function SeedResult({ result }: { result: SeedDummyUsersResult }) {
           </span>
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * What loading the catalogue produced — or, on a second press, what it left
+ * alone. The four counts are the whole story: a model whose codes were already
+ * in the master is skipped rather than half-created.
+ */
+function CatalogueResult({ result }: { result: LoadCatalogueResult }) {
+  const lines: Array<[string, number]> = [
+    [t('developer.tool.swisware.count.categories'), result.categories],
+    [t('developer.tool.swisware.count.products'), result.products],
+    [t('developer.tool.swisware.count.variants'), result.variants],
+    [t('developer.tool.swisware.count.skipped'), result.skipped],
+  ];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}>
+      <p className="ob-small" style={{ margin: 0 }}>
+        {result.products > 0
+          ? t('developer.tool.swisware.loaded')
+          : t('developer.tool.swisware.alreadyPresent')}
+      </p>
+      <DataTable
+        rows={lines.map(([label, count]) => ({ label, count }))}
+        rowKey={(row) => row.label}
+        columns={[
+          { key: 'label', header: t('developer.tool.sample.what'), render: (row) => row.label },
+          {
+            key: 'count',
+            header: t('developer.tool.sample.howMany'),
+            render: (row) => <span className="ob-mono">{row.count}</span>,
+          },
+        ]}
+      />
     </div>
   );
 }

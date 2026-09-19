@@ -2907,6 +2907,47 @@ html[data-window-blur='true'] .ob-busy rect {
 }
 
 /*
+ * The product search with its category chosen: the chip in front of the box
+ * is the first stage's answer, and its ✕ (or Backspace on an empty box) goes
+ * back to choosing a category.
+ */
+.ob-lead-search {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  min-width: 0;
+}
+
+.ob-lead-search .ob-chip {
+  flex: none;
+  max-width: 45%;
+  gap: var(--s-6);
+  padding-right: var(--s-6);
+}
+
+.ob-chip__clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2857rem;
+  height: 1.2857rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.7857rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ob-chip__clear:hover {
+  background: var(--accent);
+  color: var(--fg-on-accent);
+}
+
+/*
  * The product that has been picked but not yet added.
  *
  * It replaces the search field in place rather than opening beside it, so the

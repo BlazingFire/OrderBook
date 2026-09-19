@@ -21,7 +21,7 @@
  * catalogue (`SNAPSHOT_LIMIT`, 500 rows); it used to be the whole list, which
  * meant a shop that imported five thousand products could see the first five
  * hundred and reach the rest from nowhere. Online, the list now asks the
- * Master — search, type filter and "load more" all run there. Offline, the
+ * Master — search, category filter and "load more" all run there. Offline, the
  * panel's server pages the cached snapshot instead and says so, and the
  * screen shows a "cached page" pill rather than pretending.
  *
@@ -53,7 +53,7 @@ import { ApiError, api, type LocalView } from '../api';
 import { PartyDrawer, type CreatedParty } from '../components/PartyDrawer';
 import { ProductDrawer, type CreatedProduct } from '../components/ProductDrawer';
 import { ProductImportModal } from '../components/ProductImportModal';
-import { StockByColour } from '../components/StockCell';
+import { StockByVariant } from '../components/StockCell';
 import {
   Button,
   DataTable,
@@ -66,6 +66,7 @@ import {
   ProgressiveImage,
   SkeletonTable,
   StatusPill,
+  formatKg,
   formatMoney,
   rem,
   t,
@@ -93,7 +94,7 @@ const REFETCH_DEBOUNCE_MS = 500;
 interface ProductPage {
   items: Product[];
   total: number;
-  productTypes: Array<{ value: string; count: number }>;
+  categories: Array<{ id: string; name: string; count: number }>;
   /** The panel's server answered from its cached snapshot — the Master was unreachable. */
   offline: boolean;
 }
@@ -102,15 +103,37 @@ function distinctSorted(values: (string | null)[]): string[] {
   return Array.from(new Set(values.filter((value): value is string => Boolean(value)))).sort();
 }
 
-function matchesProduct(product: Product, term: string, typeFilter: string | null): boolean {
+/** A variant whose weight nobody has entered yet — flagged, never treated as zero. */
+function missingWeight(product: Product): boolean {
+  return product.variants.some((variant) => variant.isActive && variant.weightKg === null);
+}
+
+function matchesProduct(
+  product: Product,
+  term: string,
+  categoryFilter: string | null,
+  weightFilter: boolean,
+): boolean {
   return (
     (!term ||
       product.name.toLowerCase().includes(term) ||
-      product.productCode.toLowerCase().includes(term) ||
+      product.variants.some(
+        (variant) =>
+          variant.code.toLowerCase().includes(term) ||
+          (variant.label ?? '').toLowerCase().includes(term),
+      ) ||
       (product.alias ?? '').toLowerCase().includes(term) ||
-      (product.categoryName ?? '').toLowerCase().includes(term)) &&
-    (!typeFilter || product.productType === typeFilter)
+      product.categoryName.toLowerCase().includes(term)) &&
+    (!categoryFilter || product.categoryId === categoryFilter) &&
+    (!weightFilter || missingWeight(product))
   );
+}
+
+/** The code column: the one code, or how many there are and the first of them. */
+function codesOf(product: Product): string {
+  const active = product.variants.filter((variant) => variant.isActive);
+  if (active.length <= 1) return active[0]?.code ?? product.variants[0]?.code ?? '—';
+  return t('catalog.products.variantCount', { count: active.length, first: active[0]!.code });
 }
 
 export function CatalogScreen({
@@ -133,7 +156,8 @@ export function CatalogScreen({
   const [editingParty, setEditingParty] = useState<Party | null>(null);
 
   const [productSearch, setProductSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [weightFilter, setWeightFilter] = useState(false);
   const [productDrawerOpen, setProductDrawerOpen] = useState(false);
   const [openProductId, setOpenProductId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -179,7 +203,8 @@ export function CatalogScreen({
       .listProducts(
         {
           search: productTerm || undefined,
-          productType: typeFilter ?? undefined,
+          categoryId: categoryFilter ?? undefined,
+          missingWeight: weightFilter || undefined,
           limit: PAGE,
           offset: 0,
         },
@@ -189,7 +214,7 @@ export function CatalogScreen({
         setPage({
           items: result.items,
           total: result.total,
-          productTypes: result.productTypes ?? [],
+          categories: result.categories ?? [],
           offline: result.offline === true,
         });
         setLoadFailed(false);
@@ -204,7 +229,7 @@ export function CatalogScreen({
       });
 
     return () => controller.abort();
-  }, [tab, productTerm, typeFilter, revision]);
+  }, [tab, productTerm, categoryFilter, weightFilter, revision]);
 
   /*
    * What the snapshot says about products, as one string: ids and clocks.
@@ -230,7 +255,8 @@ export function CatalogScreen({
     try {
       const result = await api.listProducts({
         search: productTerm || undefined,
-        productType: typeFilter ?? undefined,
+        categoryId: categoryFilter ?? undefined,
+        missingWeight: weightFilter || undefined,
         limit: PAGE,
         offset: page.items.length,
       });
@@ -262,9 +288,11 @@ export function CatalogScreen({
   const pending = useMemo(
     () =>
       view.products.filter(
-        (product) => !product.sync.hlc && matchesProduct(product, productTermLower, typeFilter),
+        (product) =>
+          !product.sync.hlc &&
+          matchesProduct(product, productTermLower, categoryFilter, weightFilter),
       ),
-    [view.products, productTermLower, typeFilter],
+    [view.products, productTermLower, categoryFilter, weightFilter],
   );
 
   const products = useMemo(() => {
@@ -367,22 +395,26 @@ export function CatalogScreen({
           style={{ width: rem(240) }}
         />
         <FilterChip
-          active={typeFilter === null}
+          active={categoryFilter === null}
           count={page ? page.total + pending.length : undefined}
-          onClick={() => setTypeFilter(null)}
+          onClick={() => setCategoryFilter(null)}
         >
           {t('catalog.filter.all')}
         </FilterChip>
-        {(page?.productTypes ?? []).map((facet) => (
+        {(page?.categories ?? []).map((facet) => (
           <FilterChip
-            key={facet.value}
-            active={typeFilter === facet.value}
+            key={facet.id}
+            active={categoryFilter === facet.id}
             count={facet.count}
-            onClick={() => setTypeFilter(facet.value)}
+            onClick={() => setCategoryFilter((current) => (current === facet.id ? null : facet.id))}
           >
-            {facet.value}
+            {facet.name}
           </FilterChip>
         ))}
+        {/* Off by itself: it is a to-do list, not a category. */}
+        <FilterChip active={weightFilter} onClick={() => setWeightFilter((current) => !current)}>
+          {t('catalog.products.filter.missingWeight')}
+        </FilterChip>
         <span style={{ flex: 1 }} />
         {canImport && (
           <Button variant="secondary" size="sm" icon="upload" onClick={() => setImportOpen(true)}>
@@ -566,12 +598,19 @@ export function CatalogScreen({
       },
     },
     {
-      key: 'code',
-      header: t('catalog.products.column.code'),
-      width: rem(100),
+      key: 'category',
+      header: t('catalog.products.column.category'),
+      priority: 2,
+      width: rem(130),
+      render: (product) => product.categoryName,
+    },
+    {
+      key: 'codes',
+      header: t('catalog.products.column.codes'),
+      width: rem(120),
       render: (product) => (
         <span className="ob-mono" style={{ fontSize: rem(12), color: 'var(--fg-secondary)' }}>
-          {product.productCode}
+          {codesOf(product)}
         </span>
       ),
     },
@@ -597,25 +636,31 @@ export function CatalogScreen({
       ),
     },
     {
-      key: 'type',
-      header: t('catalog.products.column.type'),
-      priority: 3,
-      width: rem(90),
-      render: (product) => product.productType ?? product.categoryName ?? '—',
-    },
-    {
       key: 'size',
       header: t('catalog.products.column.size'),
-      priority: 2,
+      priority: 3,
       width: rem(110),
       render: (product) => product.size ?? '—',
     },
     {
-      key: 'grade',
-      header: t('catalog.products.column.grade'),
-      priority: 3,
-      width: rem(80),
-      render: (product) => product.grade ?? '—',
+      key: 'weight',
+      header: t('catalog.products.column.weight'),
+      priority: 2,
+      width: rem(110),
+      align: 'right',
+      render: (product) => {
+        if (missingWeight(product)) {
+          return <StatusPill tone="offline">{t('product.weight.missing')}</StatusPill>;
+        }
+        const active = product.variants.filter((variant) => variant.isActive);
+        // One figure for a one-form product; a range for a model, because one
+        // number for "each of its variants weighs something different" lies.
+        if (active.length === 1) return formatKg(active[0]!.weightKg);
+        const weights = active.map((variant) => variant.weightKg ?? 0);
+        const low = Math.min(...weights);
+        const high = Math.max(...weights);
+        return low === high ? formatKg(low) : t('product.weight.range', { low: formatKg(low), high: formatKg(high) });
+      },
     },
     {
       key: 'rate',
@@ -631,7 +676,7 @@ export function CatalogScreen({
       header: t('catalog.products.column.stock'),
       width: '1.3fr',
       render: (product) => (
-        <StockByColour productId={product.id} stock={view.stock} colourHex={colourHex} />
+        <StockByVariant productId={product.id} stock={view.stock} colourHex={colourHex} />
       ),
     },
   ];
@@ -642,7 +687,7 @@ export function CatalogScreen({
         title={openProduct.name}
         meta={
           <span className="ob-mono ob-small">
-            {openProduct.productCode}
+            {codesOf(openProduct)}
             {openProduct.alias ? ` · ${openProduct.alias}` : ''}
           </span>
         }
@@ -665,6 +710,8 @@ export function CatalogScreen({
         <ProductDrawer
           open={editingProduct !== null}
           product={editingProduct}
+          categories={view.categories}
+          optionLists={view.optionLists}
           onClose={() => setEditingProduct(null)}
           onUpdated={onProductUpdated}
           onError={onDrawerError}
@@ -673,7 +720,7 @@ export function CatalogScreen({
     );
   }
 
-  const filtered = productTerm !== '' || typeFilter !== null;
+  const filtered = productTerm !== '' || categoryFilter !== null || weightFilter;
   const shownTotal = (page?.total ?? 0) + pending.length;
 
   return (
@@ -737,6 +784,8 @@ export function CatalogScreen({
 
       <ProductDrawer
         open={productDrawerOpen}
+        categories={view.categories}
+        optionLists={view.optionLists}
         onClose={() => setProductDrawerOpen(false)}
         onCreated={onProductCreated}
         onError={onDrawerError}
@@ -744,6 +793,8 @@ export function CatalogScreen({
       <ProductDrawer
         open={editingProduct !== null}
         product={editingProduct}
+        categories={view.categories}
+        optionLists={view.optionLists}
         onClose={() => setEditingProduct(null)}
         onUpdated={onProductUpdated}
         onError={onDrawerError}

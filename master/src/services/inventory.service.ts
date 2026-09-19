@@ -46,13 +46,14 @@ export async function listStock(
 }
 
 export async function listMovements(
-  query: { productId?: string; limit?: number },
+  query: { productId?: string; variantId?: string; limit?: number },
   actor: ActorContext,
 ): Promise<StockMovement[]> {
   requirePermission(actor, 'inventory.view');
 
   return inventoryRepo.listMovements(actor.tenantId, {
     productId: query.productId,
+    variantId: query.variantId,
     limit: clampLimit(query.limit, MOVEMENT_PAGING),
   });
 }

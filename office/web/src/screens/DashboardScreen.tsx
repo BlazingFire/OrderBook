@@ -174,8 +174,8 @@ export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead, onOpen
   const dispatchedThisWeek = view.orders.filter(
     (order) => order.dispatchedAt !== null && new Date(order.dispatchedAt) >= weekStart,
   );
-  const dispatchedBoxes = dispatchedThisWeek.reduce(
-    (sum, order) => sum + order.items.reduce((s, item) => s + item.totalQuantity, 0),
+  const dispatchedPieces = dispatchedThisWeek.reduce(
+    (sum, order) => sum + order.items.reduce((s, item) => s + item.quantity, 0),
     0,
   );
   // `totalAmount` is absent, not null, on every order alike when the role
@@ -270,13 +270,13 @@ export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead, onOpen
       render: (order) => <span className="ob-small">{order.stageName}</span>,
     },
     {
-      key: 'boxes',
-      header: t('orders.column.boxes'),
+      key: 'qty',
+      header: t('orders.column.qty'),
       width: rem(72),
       align: 'right',
       priority: 3,
       render: (order) =>
-        order.items.reduce((sum, item) => sum + item.totalQuantity, 0).toLocaleString('en-IN'),
+        order.items.reduce((sum, item) => sum + item.quantity, 0).toLocaleString('en-IN'),
     },
     {
       key: 'amount',
@@ -352,9 +352,9 @@ export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead, onOpen
             label={t('dashboard.dispatched.title')}
             value={
               <>
-                {dispatchedBoxes.toLocaleString('en-IN')}{' '}
+                {dispatchedPieces.toLocaleString('en-IN')}{' '}
                 <span className="ob-data" style={{ color: 'var(--fg-secondary)' }}>
-                  {t('unit.boxes')}
+                  {t('unit.pieces')}
                 </span>
               </>
             }

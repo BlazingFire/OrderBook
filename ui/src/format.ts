@@ -6,6 +6,16 @@ export function formatMoney(smallestUnit: number | null): string {
   return `₹${(smallestUnit / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+/**
+ * A weight in kilograms, to three decimals at most — the precision the master
+ * stores. `null` is an unentered weight, shown as a dash rather than a zero so
+ * it never reads as "weighs nothing".
+ */
+export function formatKg(kg: number | null): string {
+  if (kg === null || !Number.isFinite(kg)) return '—';
+  return `${kg.toLocaleString('en-IN', { maximumFractionDigits: 3 })} kg`;
+}
+
 export function formatBytes(bytes: number | null): string {
   if (bytes === null) return '—';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
