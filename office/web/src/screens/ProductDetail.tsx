@@ -118,7 +118,7 @@ export function ProductDetail({
     {
       key: 'weight',
       header: t('product.detail.stock.weight'),
-      width: rem(110),
+      width: rem(132),
       align: 'right',
       render: ({ variant }) =>
         variant.weightKg === null ? (

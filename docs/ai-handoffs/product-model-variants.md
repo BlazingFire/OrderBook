@@ -164,6 +164,25 @@ On the dev machine (`.env` → `order_book_new`, PostgreSQL 18):
 5. Edit Vitrosa 41's weight on the product → the order's line is unchanged.
 6. Master → Inventory: one row per variant, codes read-only, min/max inline.
 
+## 6a. What the walk-through found (2026-09-19, isolated `order_book_variants` DB, ports 4110/4210)
+
+All six steps passed on the build after these fixes, which the same session made:
+
+- **A lead raised on a party created from the lead screen was refused** by the
+  Master ("The selected party no longer exists"): the lead's payload names the
+  party by its temporary id and only a mutation's own `entityId` was resolved
+  through `id_map`. Pre-existing, not from this restructure, but the first
+  thing the walk-through hit. `lead.service.ts` now resolves `partyId` on
+  create and update; `sync.integration.test.ts` covers the two-push order.
+- **The Master's Stock-in/Physical-count product select listed the first 100
+  products** (`api.products()` is one page), so DAMRU at position 57-by-id but
+  past the page by name was unreachable. It is now a search box over the
+  `product` pick endpoint, so any catalogue size works.
+- The draft card's six-column variant grid overflowed the form column and hid
+  the variant name; the weight-pill columns clipped "weight missing"; a few
+  strings still said boxes, colours or tiles (`Rate / box`, `by colour`,
+  `each colour`, the sample-data blurb, the product search's label).
+
 ## 7. Left open
 
 - Weights: the catalogue's 549 variants land blank; entering them is the

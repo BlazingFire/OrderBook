@@ -426,6 +426,60 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
       expect(response.results.every((result) => result.status === 'applied')).toBe(true);
       expect((await leads.getLead('LD0000000001', actor)).stageName).toBe('Quoted');
     });
+
+    it('resolves a lead raised on a party the panel created, by that party\'s temporary id', async () => {
+      const { product } = await seed();
+      const partyTemporaryId = formatTemporaryId(PANEL_A, 31);
+      const leadTemporaryId = formatTemporaryId(PANEL_A, 32);
+
+      // The party create is acknowledged first, on its own; the lead that
+      // names the party by its temporary id arrives afterwards — the order the
+      // New lead screen's "create a new party" produces.
+      const first = await sync.applyPush(
+        {
+          mutations: [
+            mutation({
+              kind: 'party.create',
+              entity: 'party',
+              entityId: partyTemporaryId,
+              payload: { name: 'Raised offline' },
+            }),
+          ],
+        },
+        actor,
+      );
+      expect(first.results[0]?.status).toBe('applied');
+
+      const second = await sync.applyPush(
+        {
+          mutations: [
+            mutation({
+              kind: 'lead.create',
+              entity: 'lead',
+              entityId: leadTemporaryId,
+              hlc: hlcFor(PANEL_A, 2_000),
+              payload: {
+                partyId: partyTemporaryId,
+                items: [
+                  {
+                    productId: product.id,
+                    variantId: product.variants[0]!.id,
+                    quantity: 2,
+                    packaging: 'carton',
+                  },
+                ],
+              },
+            }),
+          ],
+        },
+        actor,
+      );
+
+      expect(second.results[0]?.status).toBe('applied');
+      const lead = await leads.getLead(second.results[0]!.entityId, actor);
+      expect(lead.partyName).toBe('Raised offline');
+      expect(lead.partyId).toMatch(/^PT\d{10}$/);
+    });
   });
 
   describe('refusals', () => {

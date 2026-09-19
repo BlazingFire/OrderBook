@@ -53,6 +53,7 @@ import {
   rem,
   t,
   useColourHex,
+  useDebounced,
   useFilterBar,
   type DataTableColumn,
 } from '@orderbook/ui';
@@ -83,7 +84,6 @@ function variantName(level: { variantCode: string; variantLabel: string | null }
 export function InventoryScreen({ revision }: Props) {
   const [levels, setLevels] = useState<InventoryStockLevel[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
   const [optionLists, setOptionLists] = useState<OptionListItem[]>([]);
   const colourHex = useColourHex(optionLists);
   const [search, setSearch] = useState('');
@@ -118,13 +118,6 @@ export function InventoryScreen({ revision }: Props) {
   useEffect(() => {
     void load();
   }, [load, revision]);
-
-  useEffect(() => {
-    void api
-      .products()
-      .then((page) => setProducts(page.items))
-      .catch(() => setProducts([]));
-  }, []);
 
   useEffect(() => {
     void api
@@ -280,7 +273,7 @@ export function InventoryScreen({ revision }: Props) {
       key: 'weight',
       header: t('inventory.table.weight'),
       priority: 3,
-      width: rem(96),
+      width: rem(132),
       align: 'right',
       render: (level) =>
         level.weightKg === null ? (
@@ -696,7 +689,6 @@ export function InventoryScreen({ revision }: Props) {
         )}
         <MovementForm
           description={t('inventory.stockIn.description')}
-          products={products}
           submitLabel={t('inventory.stockIn.submit')}
           busy={busy}
           lock={lineLock}
@@ -732,7 +724,6 @@ export function InventoryScreen({ revision }: Props) {
         )}
         <MovementForm
           description={t('inventory.physicalCount.description')}
-          products={products}
           submitLabel={t('inventory.physicalCount.submit')}
           busy={busy}
           lock={lineLock}
@@ -754,32 +745,52 @@ export function InventoryScreen({ revision }: Props) {
  * means and which endpoint receives it, so one form with two labels beats two
  * near-identical ones.
  *
- * The product is picked first and then one of its variants — a one-form
- * product has exactly one, chosen for you. When opened from a line's dialog,
- * `lock` pins both to that line: the two pickers are replaced by static text
- * so the only thing left to enter is the number (and an optional note).
+ * The product is found by typing — a name or any of its codes, through the
+ * same picker the lead screen uses, so a catalogue of any size is reachable
+ * (a select over "the first page of products" stopped at a hundred). Then one
+ * of its variants — a one-form product has exactly one, chosen for you. When
+ * opened from a line's dialog, `lock` pins both to that line: the pickers are
+ * replaced by static text so the only thing left to enter is the number (and
+ * an optional note).
  */
 function MovementForm({
   description,
-  products,
   submitLabel,
   busy,
   lock,
   onSubmit,
 }: {
   description: string;
-  products: Product[];
   submitLabel: string;
   busy: boolean;
   lock?: LineLock | null;
   onSubmit: (input: { variantId: string; quantityBoxes: number; note?: string }) => Promise<void>;
 }) {
+  const [query, setQuery] = useState('');
+  const [matches, setMatches] = useState<Product[]>([]);
   const [productId, setProductId] = useState('');
   const [variantId, setVariantId] = useState(lock?.variantId ?? '');
   const [quantity, setQuantity] = useState('');
   const [note, setNote] = useState('');
 
-  const product = products.find((candidate) => candidate.id === productId) ?? null;
+  const term = useDebounced(query, 200);
+  useEffect(() => {
+    if (lock) return;
+    let cancelled = false;
+    void api
+      .pick<Product>('product', { term, include: productId ? [productId] : [] })
+      .then((page) => {
+        if (!cancelled) setMatches(page.items);
+      })
+      .catch(() => {
+        if (!cancelled) setMatches([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [term, lock, productId]);
+
+  const product = matches.find((candidate) => candidate.id === productId) ?? null;
   const variants: ProductVariant[] = product
     ? product.variants.filter((variant) => variant.isActive)
     : [];
@@ -789,7 +800,7 @@ function MovementForm({
 
   function chooseProduct(id: string): void {
     setProductId(id);
-    const chosen = products.find((candidate) => candidate.id === id);
+    const chosen = matches.find((candidate) => candidate.id === id);
     const active = chosen?.variants.filter((variant) => variant.isActive) ?? [];
     // One form, one variant: nothing to choose, so it is chosen.
     setVariantId(active.length === 1 ? active[0]!.id : '');
@@ -808,15 +819,29 @@ function MovementForm({
               {lock.productName}
             </p>
           ) : (
-            <Select id={id} value={productId} onChange={(event) => chooseProduct(event.target.value)}>
-              <option value="">{t('inventory.field.productPlaceholder')}</option>
-              {products.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.name}
-                  {candidate.categoryName ? ` — ${candidate.categoryName}` : ''}
-                </option>
-              ))}
-            </Select>
+            <>
+              <Input
+                id={id}
+                value={query}
+                placeholder={t('inventory.field.productSearchPlaceholder')}
+                autoComplete="off"
+                onChange={(event) => setQuery(event.target.value)}
+              />
+              <Select
+                value={productId}
+                aria-label={t('inventory.field.product')}
+                style={{ marginTop: rem(6) }}
+                onChange={(event) => chooseProduct(event.target.value)}
+              >
+                <option value="">{t('inventory.field.productPlaceholder')}</option>
+                {matches.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.name}
+                    {candidate.categoryName ? ` — ${candidate.categoryName}` : ''}
+                  </option>
+                ))}
+              </Select>
+            </>
           )
         }
       </FormField>

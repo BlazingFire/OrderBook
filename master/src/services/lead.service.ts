@@ -31,7 +31,7 @@ import { db } from '../db/knex.js';
 import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as customFieldRepo from '../repositories/custom-field.repository.js';
-import { nextHlc } from '../repositories/identity.repository.js';
+import { nextHlc, resolveId } from '../repositories/identity.repository.js';
 import * as leadRepo from '../repositories/lead.repository.js';
 import * as partyRepo from '../repositories/party.repository.js';
 import * as variantRepo from '../repositories/party-variant.repository.js';
@@ -81,19 +81,24 @@ export async function createLead(input: LeadInput, actor: ActorContext): Promise
   if (!input.partyId) throw new ValidationError('validation.lead.partyRequired');
   if (!input.items?.length) throw new ValidationError('validation.lead.itemsRequired');
 
-  if (!(await partyRepo.findPartyById(actor.tenantId, input.partyId))) {
+  // A party created on the panel and used on a lead straight away is named by
+  // its temporary id in the lead's payload, whichever order the two writes
+  // arrive in. `id_map` keeps every temporary id resolvable, the same way the
+  // sync service resolves a mutation's own `entityId`.
+  const partyId = await resolveId(actor.tenantId, input.partyId);
+  if (!(await partyRepo.findPartyById(actor.tenantId, partyId))) {
     throw new ValidationError('validation.lead.partyMissing');
   }
 
   // Party Access: a lead may only be raised against a party the caller manages.
   // Checked here rather than in the route because the Office Panel — which
   // raises nearly every lead — reaches this function over Socket.IO instead.
-  await requirePartyAccess(input.partyId, 'manage', actor);
+  await requirePartyAccess(partyId, 'manage', actor);
 
   await assertSourcePlatform(actor.tenantId, input.sourcePlatform ?? null);
 
   const customFields = normalizeCustomFields(input.customFields, definitions);
-  const lines = await buildLines(actor.tenantId, input.partyId, input.items, {
+  const lines = await buildLines(actor.tenantId, partyId, input.items, {
     partyWiseMode: input.partyWiseMode ?? false,
     canEditRate: canEditRates(actor),
   });
@@ -104,7 +109,7 @@ export async function createLead(input: LeadInput, actor: ActorContext): Promise
     const leadId = await leadRepo.insertLead(
       {
         tenantId: actor.tenantId,
-        partyId: input.partyId,
+        partyId,
         ownerId,
         stageId: defaultStage(stages).id,
         sourcePlatform: input.sourcePlatform ?? null,
@@ -180,15 +185,16 @@ export async function updateLead(
   const definitions = await customFieldRepo.definitionsFor(actor.tenantId, 'lead');
   const patch: Record<string, unknown> = {};
 
-  if (input.partyId !== undefined) {
-    if (!(await partyRepo.findPartyById(actor.tenantId, input.partyId))) {
+  const partyId = input.partyId === undefined ? undefined : await resolveId(actor.tenantId, input.partyId);
+  if (partyId !== undefined) {
+    if (!(await partyRepo.findPartyById(actor.tenantId, partyId))) {
       throw new ValidationError('validation.lead.partyMissing');
     }
     // Both ends of the move: the old party was checked above, and moving a lead
     // *onto* a party you do not manage would otherwise be a way to write into
     // somebody else's book — or to smuggle a record out of your own.
-    await requirePartyAccess(input.partyId, 'manage', actor);
-    patch.party_id = input.partyId;
+    await requirePartyAccess(partyId, 'manage', actor);
+    patch.party_id = partyId;
   }
 
   if (input.ownerId !== undefined) {
@@ -211,7 +217,7 @@ export async function updateLead(
   const lines =
     input.items === undefined
       ? null
-      : await buildLines(actor.tenantId, input.partyId ?? existing.partyId, input.items, {
+      : await buildLines(actor.tenantId, partyId ?? existing.partyId, input.items, {
           partyWiseMode: input.partyWiseMode ?? existing.partyWiseMode,
           canEditRate: canEditRates(actor),
         });

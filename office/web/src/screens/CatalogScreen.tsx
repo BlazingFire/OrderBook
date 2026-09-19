@@ -646,7 +646,7 @@ export function CatalogScreen({
       key: 'weight',
       header: t('catalog.products.column.weight'),
       priority: 2,
-      width: rem(110),
+      width: rem(132),
       align: 'right',
       render: (product) => {
         if (missingWeight(product)) {

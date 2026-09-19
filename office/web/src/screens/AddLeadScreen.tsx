@@ -1400,9 +1400,12 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
                             {[
                               row.sin,
                               row.size,
-                              row.rate === undefined
+                              // Absent is a rate this role may not see; null is
+                              // a catalogue with no price yet. Neither is worth
+                              // a dash in the list.
+                              row.rate === undefined || row.rate === null
                                 ? null
-                                : `${formatMoney(row.rate ?? null)}/${t('unit.piece')}`,
+                                : `${formatMoney(row.rate)}/${t('unit.piece')}`,
                             ]
                               .filter(Boolean)
                               .join(' · ')}
@@ -1673,7 +1676,12 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
 // --- Pieces ---------------------------------------------------------------
 
 const SUGGEST_GRID = `${rem(84)} minmax(0, 1fr) minmax(0, 0.7fr) ${rem(84)}`;
-const VARIANT_GRID = `${rem(84)} minmax(0, 1fr) ${rem(84)} ${rem(96)} ${rem(84)} ${rem(90)}`;
+/*
+ * Six columns in the form column's width: the fixed ones are as narrow as
+ * their figures allow, so the variant's name — the one column that can wrap
+ * or shrink — keeps room to be read.
+ */
+const VARIANT_GRID = `${rem(64)} minmax(${rem(72)}, 1fr) ${rem(68)} ${rem(64)} ${rem(52)} ${rem(72)}`;
 
 /** The small upper-case label that names a row without becoming a heading. */
 function Eyebrow({ children }: { children: ReactNode }) {
@@ -2186,7 +2194,7 @@ function DraftCard({
           style={{
             display: 'grid',
             gridTemplateColumns: VARIANT_GRID,
-            gap: `0 ${rem(12)}`,
+            gap: `0 ${rem(8)}`,
             paddingBottom: rem(4),
             color: 'var(--fg-tertiary)',
           }}
@@ -2194,8 +2202,8 @@ function DraftCard({
           <span>{t('lead.add.products.col.code')}</span>
           <span>{t('lead.add.products.col.variant')}</span>
           <span style={{ textAlign: 'right' }}>{t('lead.add.products.col.weight')}</span>
-          <span style={{ textAlign: 'right' }}>{t('lead.add.draft.col.quantity')}</span>
-          <span style={{ textAlign: 'right' }}>{t('lead.add.draft.col.freeToSell')}</span>
+          <span style={{ textAlign: 'right' }}>{t('lead.add.draft.col.qty')}</span>
+          <span style={{ textAlign: 'right' }}>{t('lead.add.draft.col.free')}</span>
           <span style={{ textAlign: 'right' }}>{t('lead.add.draft.col.lineWeight')}</span>
         </div>
         {draft.rows.map((row) => {
@@ -2207,12 +2215,12 @@ function DraftCard({
               style={{
                 display: 'grid',
                 gridTemplateColumns: VARIANT_GRID,
-                gap: `0 ${rem(12)}`,
+                gap: `0 ${rem(8)}`,
                 alignItems: 'center',
                 padding: `${rem(3)} 0`,
               }}
             >
-              <span className="ob-mono ob-body-strong">{row.code}</span>
+              <span className="ob-mono ob-body-strong ob-ellipsis">{row.code}</span>
               <VariantName facts={row} hex={colourHex(row.variantLabel ?? '')} />
               <span style={{ textAlign: 'right' }}>
                 <WeightCell kg={row.weightKg} />
@@ -2223,7 +2231,7 @@ function DraftCard({
                 placeholder="0"
                 invalid={over}
                 aria-label={`${t('lead.add.draft.col.quantity')} — ${variantName(row)}`}
-                style={{ textAlign: 'right' }}
+                style={{ textAlign: 'right', minWidth: 0, width: '100%' }}
                 onChange={(event) => onQty(row.variantId, event.target.value.replace(/[^0-9]/g, ''))}
                 onKeyDown={(event) => {
                   const by = event.shiftKey ? 10 : 1;

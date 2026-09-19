@@ -926,11 +926,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'catalog.products.column.name': 'Product',
   // TODO(i18n-hi)
-  'catalog.products.column.rate': 'Rate / box',
+  'catalog.products.column.rate': 'दर',
   // TODO(i18n-hi)
   'catalog.products.column.size': 'Size',
   // TODO(i18n-hi)
-  'catalog.products.column.stock': 'Free to sell, by colour',
+  'catalog.products.column.stock': 'बिक्री के लिए उपलब्ध, वेरिएंट अनुसार',
   // TODO(i18n-hi)
   'catalog.products.created': '{name} saved — syncs when the Master is reachable',
   // TODO(i18n-hi)
@@ -1629,7 +1629,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.products.remove': 'Remove',
   // TODO(i18n-hi)
-  'lead.add.products.searchLabel': 'Or search by name, alias, type or series',
+  'lead.add.products.searchLabel': 'उत्पाद खोजें — पहले श्रेणी, फिर मॉडल',
   // TODO(i18n-hi)
   'lead.add.products.searchPlaceholder': 'Start typing…',
   // TODO(i18n-hi)
@@ -1699,7 +1699,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.detail.convertAction': 'Convert to order',
   // TODO(i18n-hi)
   'lead.detail.convertDesc':
-    'Creates an order with these lines copied exactly as they stand, and reserves the stock for each colour.',
+    'इन लाइनों को ज्यों का त्यों कॉपी करके ऑर्डर बनाता है, और हर वेरिएंट का स्टॉक आरक्षित करता है।',
   // TODO(i18n-hi)
   'lead.detail.convertMissingPackaging':
     'Choose packaging for {names} first — it is never filled in automatically.',
@@ -2854,7 +2854,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'product.detail.grade': 'Grade',
   // TODO(i18n-hi)
-  'product.detail.rate': 'Rate / box',
+  'product.detail.rate': 'दर',
   // TODO(i18n-hi)
   'product.detail.size': 'Size',
   // TODO(i18n-hi)
@@ -3960,7 +3960,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'developer.tool.sample.title': "Sample data",
   // TODO(i18n-hi)
-  'developer.tool.sample.description': "Fills this Master with six months of a small tile trade — parties, products with photos, stock, leads at every stage, orders in progress and dispatched, remarks, party-wise rates, party access, custom fields and a few records in the Recycle Bin — so every screen has something to show. Seeds the three test users first, exactly as \"Seed test users\" does. Runs once per installation; erase everything to start over.",
+  'developer.tool.sample.description': 'इस Master को छह महीने के एक छोटे सैनिटरीवेयर व्यापार से भरता है — Swisware कैटलॉग, बेचे जाने वाले मॉडलों पर दाम और वज़न, पार्टियाँ, प्रति वेरिएंट स्टॉक, हर चरण पर लीड, चालू और भेजे गए ऑर्डर, टिप्पणियाँ, पार्टी-वार दरें, पार्टी एक्सेस, कस्टम फ़ील्ड और Recycle Bin में कुछ रिकॉर्ड — ताकि हर स्क्रीन पर कुछ दिखे। पहले तीन टेस्ट उपयोगकर्ता बनाता है, ठीक "Seed test users" की तरह। प्रति इंस्टॉलेशन एक बार चलता है; फिर से शुरू करने के लिए सब मिटाएँ।',
   // TODO(i18n-hi)
   'developer.tool.sample.action': "Seed sample data",
   // TODO(i18n-hi)
@@ -4093,4 +4093,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'developer.tool.swisware.count.products': 'बने मॉडल',
   'developer.tool.swisware.count.variants': 'बने वेरिएंट',
   'developer.tool.swisware.count.skipped': 'पहले से मौजूद मॉडल, अछूते',
+  'lead.add.draft.col.qty': 'मात्रा',
+  'lead.add.draft.col.free': 'उपलब्ध',
+  'inventory.field.productSearchPlaceholder': 'उत्पाद खोजने के लिए नाम या कोड लिखें',
 };

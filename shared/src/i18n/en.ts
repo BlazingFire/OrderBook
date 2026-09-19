@@ -773,9 +773,9 @@ export const EN_MESSAGES = {
   'catalog.parties.searchLabel': 'Search parties',
   'catalog.parties.searchPlaceholder': 'Search name, code, phone…',
   'catalog.products.column.name': 'Product',
-  'catalog.products.column.rate': 'Rate / box',
+  'catalog.products.column.rate': 'Rate',
   'catalog.products.column.size': 'Size',
-  'catalog.products.column.stock': 'Free to sell, by colour',
+  'catalog.products.column.stock': 'Free to sell, by variant',
   'catalog.products.created': '{name} saved — syncs when the Master is reachable',
   'catalog.products.empty.description': 'Products you create appear here, online or off.',
   'catalog.products.empty.filtered': 'No products match this search.',
@@ -1240,7 +1240,7 @@ export const EN_MESSAGES = {
   'lead.add.products.rate': 'Rate per box',
   'lead.add.products.rateHint': 'Your role cannot set rates',
   'lead.add.products.remove': 'Remove',
-  'lead.add.products.searchLabel': 'Or search by name, alias, type or series',
+  'lead.add.products.searchLabel': 'Search products — category first, then the model',
   'lead.add.products.searchPlaceholder': 'Start typing…',
   'lead.add.products.short': 'short',
   'lead.add.products.size': 'Size',
@@ -1276,7 +1276,7 @@ export const EN_MESSAGES = {
   'lead.detail.code': 'Code',
   'lead.detail.convertAction': 'Convert to order',
   'lead.detail.convertDesc':
-    'Creates an order with these lines copied exactly as they stand, and reserves the stock for each colour.',
+    'Creates an order with these lines copied exactly as they stand, and reserves the stock for each variant.',
   'lead.detail.convertMissingPackaging':
     'Choose packaging for {names} first — it is never filled in automatically.',
   'lead.detail.convertTitle': 'Convert to order',
@@ -1973,7 +1973,7 @@ export const EN_MESSAGES = {
   'product.detail.adjustAction': 'Adjust count',
   'product.detail.editAction': 'Edit product',
   'product.detail.grade': 'Grade',
-  'product.detail.rate': 'Rate / box',
+  'product.detail.rate': 'Rate',
   'product.detail.size': 'Size',
   'product.detail.stock.free': 'Free',
   'product.detail.stock.none': 'No stock recorded for this product yet.',
@@ -2448,8 +2448,7 @@ export const EN_MESSAGES = {
     'This seed had to run first-time setup itself. The pairing password it generated is shown once, here, and cannot be shown again:',
 
   'developer.tool.sample.title': 'Sample data',
-  'developer.tool.sample.description':
-    'Fills this Master with six months of a small tile trade — parties, products with photos, stock, leads at every stage, orders in progress and dispatched, remarks, party-wise rates, party access, custom fields and a few records in the Recycle Bin — so every screen has something to show. Seeds the three test users first, exactly as "Seed test users" does. Runs once per installation; erase everything to start over.',
+  'developer.tool.sample.description': 'Fills this Master with six months of a small sanitaryware trade — the Swisware catalogue with prices and weights on the models it sells, parties, stock per variant, leads at every stage, orders in progress and dispatched, remarks, party-wise rates, party access, custom fields and a few records in the Recycle Bin — so every screen has something to show. Seeds the three test users first, exactly as "Seed test users" does. Runs once per installation; erase everything to start over.',
   'developer.tool.sample.action': 'Seed sample data',
   'developer.tool.sample.done': 'Sample data is ready — open the dashboard',
   'developer.tool.sample.span': 'History runs from {from} to {to}.',
@@ -2608,4 +2607,7 @@ export const EN_MESSAGES = {
   'developer.tool.swisware.count.products': 'Models created',
   'developer.tool.swisware.count.variants': 'Variants created',
   'developer.tool.swisware.count.skipped': 'Models already present, left alone',
+  'lead.add.draft.col.qty': 'Qty',
+  'lead.add.draft.col.free': 'Free',
+  'inventory.field.productSearchPlaceholder': 'Type a name or a code to find the product',
 } as const;

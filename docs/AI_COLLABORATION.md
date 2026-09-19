@@ -216,8 +216,12 @@ workspace, 117 files / 1459 tests passed, none skipped. New suites:
 `migration-product-variants`, `product-variants`, `catalogue-seed`. The
 persistent test cluster was migrated in place by the new migration (its
 idempotency guard is what makes re-running `up()` in a test safe). The live
-walk-through in the handoff §6 was run on the dev machine against
-`order_book_new`.
+walk-through in the handoff §6 was run on the dev machine against a throwaway
+`order_book_variants` database on ports 4110/4210 (another session's servers
+held 4100/4200 and `order_book_new`); it found one pre-existing refusal (a
+lead on a panel-created party) and one hundred-product cap on the Master's
+stock form, both fixed — handoff §6a. `order_book_new` has **not** been
+migrated: the first Master start on this branch will run the wipe there.
 
 ### 2026-09-19 — v1.0.3 Windows installers, with two packaged-only shell fixes (Claude)
 
