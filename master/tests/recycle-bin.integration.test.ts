@@ -52,13 +52,15 @@ describe.skipIf(!canRunIntegrationTests)('the Recycle Bin (integration)', () => 
     it('is refused while a live lead references it', async () => {
       const party = await catalogService.createParty({ name: 'Sharma Tiles' }, actor);
       const product = await catalogService.createProduct(
-        { name: 'Basin', productCode: 'B-1' },
+        { name: 'Basin', categoryName: 'Basins', variants: [{ code: 'B-1' }] },
         actor,
       );
       await leadService.createLead(
         {
           partyId: party.id,
-          items: [{ productId: product.id, packaging: 'Box', quantities: [{ colour: 'White', quantity: 5 }] }],
+          items: [
+            { productId: product.id, variantId: product.variants[0]!.id, quantity: 5, packaging: 'Box' },
+          ],
         },
         actor,
       );
@@ -109,11 +111,11 @@ describe.skipIf(!canRunIntegrationTests)('the Recycle Bin (integration)', () => 
   describe('deleting and restoring a product', () => {
     it('is refused while stock is on hand', async () => {
       const product = await catalogService.createProduct(
-        { name: 'Basin', productCode: 'B-1' },
+        { name: 'Basin', categoryName: 'Basins', variants: [{ code: 'B-1' }] },
         actor,
       );
       await inventoryService.recordInbound(
-        { productId: product.id, colour: 'White', quantityBoxes: 10 },
+        { variantId: product.variants[0]!.id, quantityBoxes: 10 },
         actor,
       );
 
@@ -122,36 +124,62 @@ describe.skipIf(!canRunIntegrationTests)('the Recycle Bin (integration)', () => 
       });
     });
 
-    it('restore refuses a collision on the same code and offers a suggestion', async () => {
+    it('frees the codes of a binned product for another product', async () => {
       const product = await catalogService.createProduct(
-        { name: 'Basin', productCode: 'B-1' },
+        { name: 'Basin', categoryName: 'Basins', variants: [{ code: 'B-1' }] },
         actor,
       );
       await catalogService.deleteProduct(product.id, actor);
+
       // A new product reissues the freed code — an ordinary Tuesday.
-      await catalogService.createProduct({ name: 'Basin V2', productCode: 'B-1' }, actor);
+      const again = await catalogService.createProduct(
+        { name: 'Basin V2', categoryName: 'Basins', variants: [{ code: 'B-1' }] },
+        actor,
+      );
+      expect(again.variants[0]?.code).toBe('B-1');
+    });
+
+    it('restore is refused, naming the codes, once another product holds them', async () => {
+      const product = await catalogService.createProduct(
+        { name: 'Basin', categoryName: 'Basins', variants: [{ code: 'B-1' }] },
+        actor,
+      );
+      await catalogService.deleteProduct(product.id, actor);
+      await catalogService.createProduct(
+        { name: 'Basin V2', categoryName: 'Basins', variants: [{ code: 'B-1' }] },
+        actor,
+      );
 
       await expect(
         recycleBinService.restoreEntity({ entityType: 'product', id: product.id }, actor),
       ).rejects.toMatchObject({
         code: 'conflict',
-        details: { field: 'productCode', suggestion: expect.stringContaining('restored') },
+        details: { field: 'code', codes: ['B-1'] },
       });
     });
 
-    it('restore succeeds with an explicit renameTo', async () => {
+    it('restore brings the variants and their codes back', async () => {
       const product = await catalogService.createProduct(
-        { name: 'Basin', productCode: 'B-1' },
+        { name: 'Basin', categoryName: 'Basins', variants: [{ code: 'B-1' }] },
         actor,
       );
       await catalogService.deleteProduct(product.id, actor);
-      await catalogService.createProduct({ name: 'Basin V2', productCode: 'B-1' }, actor);
 
       const result = await recycleBinService.restoreEntity(
-        { entityType: 'product', id: product.id, renameTo: 'B-1-OLD' },
+        { entityType: 'product', id: product.id },
         actor,
       );
-      expect(result.renamedTo).toBe('B-1-OLD');
+      expect(result.entityType).toBe('product');
+      const restored = await catalogService.getProduct(product.id, actor);
+      expect(restored.variants.map((variant) => variant.code)).toEqual(['B-1']);
+
+      // The code is in use again: a new product cannot take it.
+      await expect(
+        catalogService.createProduct(
+          { name: 'Basin V3', categoryName: 'Basins', variants: [{ code: 'B-1' }] },
+          actor,
+        ),
+      ).rejects.toMatchObject({ code: 'conflict' });
     });
   });
 
@@ -159,13 +187,15 @@ describe.skipIf(!canRunIntegrationTests)('the Recycle Bin (integration)', () => 
     async function seedLeadWithParty(): Promise<{ leadId: string; partyId: string }> {
       const party = await catalogService.createParty({ name: 'Sharma Tiles' }, actor);
       const product = await catalogService.createProduct(
-        { name: 'Basin', productCode: 'B-1' },
+        { name: 'Basin', categoryName: 'Basins', variants: [{ code: 'B-1' }] },
         actor,
       );
       const lead = await leadService.createLead(
         {
           partyId: party.id,
-          items: [{ productId: product.id, packaging: 'Box', quantities: [{ colour: 'White', quantity: 5 }] }],
+          items: [
+            { productId: product.id, variantId: product.variants[0]!.id, quantity: 5, packaging: 'Box' },
+          ],
         },
         actor,
       );
@@ -214,7 +244,7 @@ describe.skipIf(!canRunIntegrationTests)('the Recycle Bin (integration)', () => 
       await orderService.deleteOrder(order.id, actor);
 
       const afterDelete = await inventoryService.listStock({}, actor);
-      const after = afterDelete.find((s) => s.colour === before?.colour && s.productId === before?.productId);
+      const after = afterDelete.find((s) => s.variantId === before?.variantId);
       expect(after?.reservedBoxes ?? 0).toBe(0);
     });
 

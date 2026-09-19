@@ -12,6 +12,7 @@ import {
   mapLineItem,
   mapParty,
   mapProduct,
+  mapProductVariant,
   toIso,
   toIsoDate,
   toNumber,
@@ -142,27 +143,40 @@ describe('mapParty', () => {
 
 describe('mapProduct', () => {
   it('coerces NUMERIC columns and defaults missing JSONB parameters to an object', () => {
-    const product = mapProduct({
-      id: 'pr1',
-      product_code: 'GVT-01',
-      name: 'Carrara White',
-      category_id: 'c1',
-      category_name: 'Floor Tile',
-      size: '600x600mm',
-      finish: 'Glossy',
-      series: null,
-      color: null,
-      thickness_mm: '9.50',
-      pieces_per_box: 4,
-      box_coverage_sqft: '15.50',
-      rate: 45000,
-      price_per_sqft: null,
-      hsn_code: null,
-      parameters: null,
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date(),
-    });
+    const product = mapProduct(
+      {
+        id: 'pr1',
+        name: 'Carrara White',
+        category_id: 'c1',
+        category_name: 'Floor Tile',
+        has_variants: false,
+        size: '600x600mm',
+        finish: 'Glossy',
+        series: null,
+        thickness_mm: '9.50',
+        pieces_per_box: 4,
+        box_coverage_sqft: '15.50',
+        rate: 45000,
+        price_per_sqft: null,
+        hsn_code: null,
+        parameters: null,
+        is_active: true,
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+      [],
+      [
+        {
+          id: 'VR0000000001',
+          productId: 'pr1',
+          code: 'GVT-01',
+          label: null,
+          weightKg: 22.5,
+          sequence: 1,
+          isActive: true,
+        },
+      ],
+    );
 
     expect(product.thicknessMm).toBe(9.5);
     expect(product.boxCoverageSqft).toBe(15.5);
@@ -170,11 +184,38 @@ describe('mapProduct', () => {
     expect(product.pricePerSqft).toBeNull();
     expect(product.parameters).toEqual({});
     expect(product.categoryName).toBe('Floor Tile');
+    expect(product.hasVariants).toBe(false);
+    expect(product.variants.map((variant) => variant.code)).toEqual(['GVT-01']);
+  });
+
+  it("coerces the variant's NUMERIC weight and keeps a null one null", () => {
+    expect(
+      mapProductVariant({
+        id: 'VR1',
+        product_id: 'pr1',
+        code: '41',
+        label: 'Vitrosa 41',
+        weight_kg: '18.500',
+        sequence: 2,
+        is_active: true,
+      }),
+    ).toEqual({
+      id: 'VR1',
+      productId: 'pr1',
+      code: '41',
+      label: 'Vitrosa 41',
+      weightKg: 18.5,
+      sequence: 2,
+      isActive: true,
+    });
+    expect(
+      mapProductVariant({ id: 'VR2', product_id: 'pr1', code: '42', label: null, weight_kg: null, sequence: 3, is_active: false }).weightKg,
+    ).toBeNull();
   });
 });
 
 describe('mapLineItem', () => {
-  it('carries the frozen snapshot alongside the colour quantities', () => {
+  it('carries the frozen snapshot and computes the line weight', () => {
     const item = mapLineItem(
       {
         id: 'LI0000000001',
@@ -182,10 +223,12 @@ describe('mapLineItem', () => {
         parent_type: 'lead',
         parent_id: 'LD0000000001',
         product_id: 'PR0000000001',
+        variant_id: 'VR0000000001',
         product_name: 'Carrara White',
         alias: 'Carrara',
         rate: 45000,
         code: 'GVT-01',
+        variant_label: 'Ivory',
         sin: 'SIN-1',
         size: '600x1200',
         weight_kg: '22.500',
@@ -196,26 +239,51 @@ describe('mapLineItem', () => {
         from_party_variant: false,
         image_path: null,
         notes: null,
-        total_quantity: '12.00',
+        quantity: '12.00',
         line_total: 540000,
         created_at: new Date(),
         updated_at: new Date(),
       },
-      [{ id: 'q1', colour: 'Ivory', quantity: 12, variantCode: '101' }],
     );
 
     expect(item).toMatchObject({
       code: 'GVT-01',
+      variantId: 'VR0000000001',
+      variantLabel: 'Ivory',
       productName: 'Carrara White',
       rate: 45000,
       weightKg: 22.5,
       packaging: 'carton',
-      totalQuantity: 12,
+      quantity: 12,
+      // 22.5 × 12, computed on the way out rather than stored.
+      lineWeightKg: 270,
       lineTotal: 540000,
     });
-    expect(item.quantities).toEqual([
-      { id: 'q1', colour: 'Ivory', quantity: 12, variantCode: '101' },
-    ]);
+  });
+
+  it('leaves the line weight null when the variant had no weight', () => {
+    const item = mapLineItem({
+      id: 'LI0000000002',
+      tenant_id: 't1',
+      parent_type: 'lead',
+      parent_id: 'LD0000000001',
+      product_id: 'PR0000000001',
+      variant_id: 'VR0000000002',
+      product_name: 'Carrara White',
+      code: 'GVT-02',
+      variant_label: null,
+      weight_kg: null,
+      sequence: 2,
+      from_party_variant: false,
+      quantity: '3.00',
+      line_total: null,
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+
+    expect(item.weightKg).toBeNull();
+    expect(item.lineWeightKg).toBeNull();
+    expect(item.variantLabel).toBeNull();
   });
 });
 

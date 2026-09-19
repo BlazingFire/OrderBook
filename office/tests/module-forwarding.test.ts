@@ -141,20 +141,21 @@ describe('the paged catalogue', () => {
     vi.restoreAllMocks();
   });
 
-  it('forwards product:list with the search, type and page when the Master is up', async () => {
+  it('forwards product:list with the search, category, weight filter and page when the Master is up', async () => {
     const commandSpy = vi
       .spyOn(masterConnection, 'command')
-      .mockResolvedValue({ items: [], total: 0, limit: 50, offset: 100, productTypes: [] } as never);
+      .mockResolvedValue({ items: [], total: 0, limit: 50, offset: 100, categories: [] } as never);
 
     const response = await request(createApp()).get(
-      '/api/products?search=ivory&productType=Vitrified&limit=50&offset=100',
+      '/api/products?search=ivory&categoryId=PC1&missingWeight=true&limit=50&offset=100',
     );
 
     expect(response.status).toBe(200);
     expect(response.body.offline).toBeUndefined();
     expect(commandSpy).toHaveBeenCalledWith('product:list', {
       search: 'ivory',
-      productType: 'Vitrified',
+      categoryId: 'PC1',
+      missingWeight: true,
       limit: 50,
       offset: 100,
     });
@@ -164,8 +165,24 @@ describe('the paged catalogue', () => {
     vi.spyOn(masterConnection, 'command').mockRejectedValue(UNREACHABLE);
     vi.spyOn(localStore, 'getView').mockResolvedValue({
       products: [
-        { id: 'PR1', name: 'Zed', productCode: 'Z-1', productType: 'Ceramic', sync: { hlc: 'x' }, images: [] },
-        { id: 'PR2', name: 'Alpha', productCode: 'A-1', productType: 'Vitrified', sync: { hlc: 'x' }, images: [] },
+        {
+          id: 'PR1',
+          name: 'Zed',
+          categoryId: 'PC1',
+          categoryName: 'Ceramic',
+          variants: [{ id: 'V1', code: 'Z-1', label: null, weightKg: null, isActive: true }],
+          sync: { hlc: 'x' },
+          images: [],
+        },
+        {
+          id: 'PR2',
+          name: 'Alpha',
+          categoryId: 'PC2',
+          categoryName: 'Vitrified',
+          variants: [{ id: 'V2', code: 'A-1', label: null, weightKg: 12, isActive: true }],
+          sync: { hlc: 'x' },
+          images: [],
+        },
       ],
       parties: [],
       leads: [],
@@ -185,9 +202,9 @@ describe('the paged catalogue', () => {
       offline: true,
       total: 2,
       items: [{ id: 'PR2' }],
-      productTypes: [
-        { value: 'Ceramic', count: 1 },
-        { value: 'Vitrified', count: 1 },
+      categories: [
+        { id: 'PC1', name: 'Ceramic', count: 1 },
+        { id: 'PC2', name: 'Vitrified', count: 1 },
       ],
     });
   });

@@ -87,7 +87,8 @@ async function makeConnector(
       remoteIdPointer: '/id',
       itemsPointer: '/data',
       fieldMaps: [
-        { localField: 'productCode', remotePointer: '/sku', transform: 'upper', isRequired: true },
+        { localField: 'code', remotePointer: '/sku', transform: 'upper', isRequired: true },
+        { localField: 'categoryName', remotePointer: '/category', transform: 'trim' },
         {
           localField: 'name',
           remotePointer: '/name',
@@ -143,7 +144,7 @@ describe.skipIf(!canRunIntegrationTests)('connector import (integration)', () =>
 
     const products = await catalogService.listProducts({}, actor);
     expect(products.items).toHaveLength(1);
-    expect(products.items[0]?.productCode).toBe('RST-300');
+    expect(products.items[0]?.variants.map((variant) => variant.code)).toEqual(['RST-300']);
     // Rupees on the wire, paise in the catalogue.
     expect(products.items[0]?.rate).toBe(12_500);
 

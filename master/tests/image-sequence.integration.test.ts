@@ -52,7 +52,10 @@ describe.skipIf(!canRunIntegrationTests)('product image sequencing (integration)
   });
 
   it('numbers a new photo past the highest sequence in use, not by the photo count', async () => {
-    const product = await catalog.createProduct({ productCode: 'PRD-IMGSEQ', name: 'Gapped Gallery' }, actor);
+    const product = await catalog.createProduct(
+      { categoryName: 'Tiles', variants: [{ code: 'PRD-IMGSEQ' }], name: 'Gapped Gallery' },
+      actor,
+    );
 
     await uploadPhoto(product.id, 10);
     await uploadPhoto(product.id, 20);

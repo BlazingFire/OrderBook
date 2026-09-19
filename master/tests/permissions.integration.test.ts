@@ -33,7 +33,7 @@ let admin: ActorContext;
 async function seed() {
   const party = await catalog.createParty({ name: 'Permission Traders' }, admin);
   const product = await catalog.createProduct(
-    { productCode: 'PRM-01', name: 'Glazed Tile', rate: 55_000 },
+    { categoryName: 'Tiles', variants: [{ code: 'PRM-01' }], name: 'Glazed Tile', rate: 55_000 },
     admin,
   );
   return { party, product };
@@ -47,8 +47,9 @@ async function seedLead() {
       items: [
         {
           productId: product.id,
+          variantId: product.variants[0]!.id,
+          quantity: 4,
           packaging: 'carton',
-          quantities: [{ colour: 'Ivory', quantity: 4 }],
         },
       ],
     },
@@ -90,8 +91,9 @@ describe.skipIf(!canRunIntegrationTests)('permissions (integration)', () => {
             items: [
               {
                 productId: product.id,
+                variantId: product.variants[0]!.id,
+                quantity: 1,
                 packaging: 'carton',
-                quantities: [{ colour: 'Ivory', quantity: 1 }],
               },
             ],
           },
@@ -115,8 +117,9 @@ describe.skipIf(!canRunIntegrationTests)('permissions (integration)', () => {
           items: [
             {
               productId: product.id,
+              variantId: product.variants[0]!.id,
+              quantity: 2,
               packaging: 'carton',
-              quantities: [{ colour: 'Ivory', quantity: 2 }],
             },
           ],
         },
@@ -163,8 +166,9 @@ describe.skipIf(!canRunIntegrationTests)('permissions (integration)', () => {
             items: [
               {
                 productId: product.id,
+                variantId: product.variants[0]!.id,
+                quantity: 1,
                 packaging: 'carton',
-                quantities: [{ colour: 'Ivory', quantity: 1 }],
               },
             ],
           },
@@ -186,7 +190,7 @@ describe.skipIf(!canRunIntegrationTests)('permissions (integration)', () => {
       expect('lineTotal' in (seen.items[0] ?? {})).toBe(false);
       // Everything else is still there — masking is not redaction.
       expect(seen.items[0]?.productName).toBe('Glazed Tile');
-      expect(seen.items[0]?.totalQuantity).toBe(4);
+      expect(seen.items[0]?.quantity).toBe(4);
     });
 
     it('ignores a rate from somebody without field.saleRate.edit', async () => {
@@ -204,9 +208,10 @@ describe.skipIf(!canRunIntegrationTests)('permissions (integration)', () => {
           items: [
             {
               productId: product.id,
+              variantId: product.variants[0]!.id,
+              quantity: 4,
               packaging: 'carton',
               rate: 1,
-              quantities: [{ colour: 'Ivory', quantity: 4 }],
             },
           ],
         },
@@ -234,9 +239,10 @@ describe.skipIf(!canRunIntegrationTests)('permissions (integration)', () => {
           items: [
             {
               productId: product.id,
+              variantId: product.variants[0]!.id,
+              quantity: 4,
               packaging: 'carton',
               rate: 61_000,
-              quantities: [{ colour: 'Ivory', quantity: 4 }],
             },
           ],
         },
@@ -250,7 +256,7 @@ describe.skipIf(!canRunIntegrationTests)('permissions (integration)', () => {
       const pricer = await actorWith(['products.create', 'products.view', 'field.saleRate.view']);
 
       const product = await catalog.createProduct(
-        { productCode: 'PRM-02', name: 'Unpriced Tile', rate: 9 },
+        { categoryName: 'Tiles', variants: [{ code: 'PRM-02' }], name: 'Unpriced Tile', rate: 9 },
         pricer,
       );
 

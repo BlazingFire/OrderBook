@@ -17,7 +17,7 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import type { Party, Product } from '@orderbook/shared';
+import type { Party, Product, ProductCategory } from '@orderbook/shared';
 
 import type { ActorContext } from '../src/domain/actor.js';
 import { ForbiddenError } from '../src/lib/errors.js';
@@ -36,27 +36,50 @@ let admin: ActorContext;
 
 async function seed() {
   const glazed = await catalog.createProduct(
-    { productCode: 'GLZ-100', name: 'Glazed Vitrified Tile', rate: 40_000, purchaseRate: 30_000 },
+    {
+      categoryName: 'Floor tiles',
+      variants: [{ code: 'GLZ-100' }],
+      name: 'Glazed Vitrified Tile',
+      rate: 40_000,
+      purchaseRate: 30_000,
+    },
     admin,
   );
   const glossy = await catalog.createProduct(
-    { productCode: 'GLS-200', name: 'Glossy Wall Tile', rate: 22_000 },
+    { categoryName: 'Wall tiles', variants: [{ code: 'GLS-200' }], name: 'Glossy Wall Tile', rate: 22_000 },
     admin,
   );
   const rustic = await catalog.createProduct(
-    { productCode: 'RST-300', name: 'Rustic Floor Tile', rate: 18_000 },
+    {
+      categoryName: 'Floor tiles',
+      name: 'Rustic Floor Tile',
+      rate: 18_000,
+      hasVariants: true,
+      variants: [
+        { code: 'RST-300', label: 'Terracotta' },
+        { code: 'RST-301', label: 'Slate' },
+      ],
+    },
     admin,
   );
   return { glazed, glossy, rustic };
 }
 
-async function pickProducts(term: string, actor = admin, include: string[] = []) {
-  const page = (await search.pick('product', { term, include }, actor)) as {
+async function pickProducts(
+  term: string,
+  actor = admin,
+  include: string[] = [],
+  categoryId?: string,
+) {
+  const page = (await search.pick('product', { term, include, categoryId }, actor)) as {
     items: Product[];
     truncated: boolean;
   };
   return page;
 }
+
+const codesOf = (page: { items: Product[] }) =>
+  page.items.map((item) => item.variants.map((variant) => variant.code).join(','));
 
 describe.skipIf(!canRunIntegrationTests)('the picker (integration)', () => {
   beforeAll(setupDatabase);
@@ -70,14 +93,14 @@ describe.skipIf(!canRunIntegrationTests)('the picker (integration)', () => {
     await seed();
 
     const page = await pickProducts('gla');
-    expect(page.items.map((item) => item.productCode)).toEqual(['GLZ-100']);
+    expect(codesOf(page)).toEqual(['GLZ-100']);
   });
 
   it('matches every typed word as a prefix', async () => {
     await seed();
 
     const page = await pickProducts('gl wa');
-    expect(page.items.map((item) => item.productCode)).toEqual(['GLS-200']);
+    expect(codesOf(page)).toEqual(['GLS-200']);
   });
 
   it('puts a code typed in full at the top', async () => {
@@ -86,7 +109,30 @@ describe.skipIf(!canRunIntegrationTests)('the picker (integration)', () => {
     // The boost, and the reason it needs NULLS LAST: without it the rows whose
     // boost evaluates to NULL sort above the one that actually matched.
     const page = await pickProducts('RST-300');
-    expect(page.items[0]?.productCode).toBe('RST-300');
+    expect(page.items[0]?.name).toBe('Rustic Floor Tile');
+  });
+
+  it('finds a model by any of its variant codes, and hands the variants back with it', async () => {
+    await seed();
+
+    const page = await pickProducts('RST-301');
+    expect(page.items.map((item) => item.name)).toEqual(['Rustic Floor Tile']);
+    expect(page.items[0]?.variants.map((variant) => [variant.code, variant.label])).toEqual([
+      ['RST-300', 'Terracotta'],
+      ['RST-301', 'Slate'],
+    ]);
+  });
+
+  it('scopes the second stage of the lead search to the chosen category', async () => {
+    const { glazed } = await seed();
+
+    const page = await pickProducts('', admin, [], glazed.categoryId);
+    expect(page.items.map((item) => item.name).sort()).toEqual([
+      'Glazed Vitrified Tile',
+      'Rustic Floor Tile',
+    ]);
+    // A term that would match a product in another category finds nothing here.
+    expect((await pickProducts('glossy', admin, [], glazed.categoryId)).items).toHaveLength(0);
   });
 
   it('returns everything when nothing has been typed yet', async () => {
@@ -103,10 +149,10 @@ describe.skipIf(!canRunIntegrationTests)('the picker (integration)', () => {
     const { rustic } = await seed();
 
     const page = await pickProducts('gla', admin, [rustic.id]);
-    const codes = page.items.map((item) => item.productCode);
+    const codes = codesOf(page);
 
     expect(codes).toContain('GLZ-100');
-    expect(codes).toContain('RST-300');
+    expect(codes).toContain('RST-300,RST-301');
   });
 
   it('keeps an included row that has since been deleted', async () => {
@@ -160,7 +206,7 @@ describe.skipIf(!canRunIntegrationTests)('the picker (integration)', () => {
     // Real product codes and tile sizes contain `%` and `_`, and both are LIKE
     // wildcards. Unescaped, the prefix boost would match the whole catalogue.
     const page = await pickProducts('GLZ%');
-    expect(page.items.map((item) => item.productCode)).toEqual(['GLZ-100']);
+    expect(codesOf(page)).toEqual(['GLZ-100']);
   });
 
   it('treats a term with nothing searchable in it as no filter at all', async () => {
@@ -169,6 +215,50 @@ describe.skipIf(!canRunIntegrationTests)('the picker (integration)', () => {
     // Not "no results" — that is the difference that makes the idle pinned and
     // recent state work before anybody has typed a letter.
     expect((await pickProducts('%')).items).toHaveLength(3);
+  });
+
+  describe('categories', () => {
+    it('offers categories only — typing "tile" never surfaces a product', async () => {
+      await seed();
+
+      const page = (await search.pick('category', { term: 'tile' }, admin)) as {
+        items: ProductCategory[];
+        truncated: boolean;
+      };
+
+      expect(page.items.map((item) => item.name)).toEqual(['Floor tiles', 'Wall tiles']);
+    });
+
+    it('puts a category whose name starts with the term first', async () => {
+      await seed();
+
+      const page = (await search.pick('category', { term: 'wall' }, admin)) as {
+        items: ProductCategory[];
+        truncated: boolean;
+      };
+
+      expect(page.items.map((item) => item.name)).toEqual(['Wall tiles']);
+    });
+
+    it('lists every category when nothing has been typed', async () => {
+      await seed();
+
+      const page = (await search.pick('category', { term: '' }, admin)) as {
+        items: ProductCategory[];
+        truncated: boolean;
+      };
+
+      expect(page.items.map((item) => item.name)).toEqual(['Floor tiles', 'Wall tiles']);
+    });
+
+    it('sits behind the catalogue permission', async () => {
+      await seed();
+
+      const nobody = await actorWith(['leads.view']);
+      await expect(search.pick('category', { term: '' }, nobody)).rejects.toBeInstanceOf(
+        ForbiddenError,
+      );
+    });
   });
 
   describe('parties', () => {

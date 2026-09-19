@@ -34,7 +34,8 @@ let admin: ActorContext;
 async function seedProduct() {
   return catalog.createProduct(
     {
-      productCode: 'ATTR-1',
+      categoryName: 'Tiles',
+      variants: [{ code: 'ATTR-1' }],
       name: 'Glazed Vitrified Tile',
       rate: 42_000,
       mrp: 55_000,
@@ -117,7 +118,7 @@ describe.skipIf(!canRunIntegrationTests)('product attributes (integration)', () 
       const clerk = await actorWith(['products.view', 'products.edit', 'field.saleRate.edit']);
       await catalog.updateProduct(
         product.id,
-        { productCode: product.productCode, name: product.name, purchaseRate: 1 },
+        { name: product.name, purchaseRate: 1 },
         clerk,
       );
 
@@ -133,7 +134,7 @@ describe.skipIf(!canRunIntegrationTests)('product attributes (integration)', () 
       const clerk = await actorWith(['products.view', 'products.edit']);
       await catalog.updateProduct(
         product.id,
-        { productCode: product.productCode, name: 'Renamed Tile' },
+        { name: 'Renamed Tile' },
         clerk,
       );
 
@@ -161,7 +162,7 @@ describe.skipIf(!canRunIntegrationTests)('product attributes (integration)', () 
     ])('refuses a bad %s with a readable message', async (_field, patch) => {
       await expect(
         catalog.createProduct(
-          { productCode: `BAD-${_field}`, name: 'Bad Tile', ...patch },
+          { categoryName: 'Tiles', variants: [{ code: `BAD-${_field}` }], name: 'Bad Tile', ...patch },
           admin,
         ),
       ).rejects.toBeInstanceOf(ValidationError);
@@ -173,14 +174,14 @@ describe.skipIf(!canRunIntegrationTests)('product attributes (integration)', () 
       const product = await seedProduct();
 
       await inventory.setReorderLevel(
-        { productId: product.id, colour: 'Ivory', minStockLevel: 10, maxStockLevel: 100 },
+        { variantId: product.variants[0]!.id, minStockLevel: 10, maxStockLevel: 100 },
         admin,
       );
 
       // Exactly what the existing reorder-level screen sends: it knows nothing
       // about min and max and never will.
       const level = await inventory.setReorderLevel(
-        { productId: product.id, colour: 'Ivory', reorderLevel: 25 },
+        { variantId: product.variants[0]!.id, reorderLevel: 25 },
         admin,
       );
 
@@ -193,11 +194,11 @@ describe.skipIf(!canRunIntegrationTests)('product attributes (integration)', () 
       const product = await seedProduct();
 
       await inventory.setReorderLevel(
-        { productId: product.id, colour: 'Ivory', minStockLevel: 10 },
+        { variantId: product.variants[0]!.id, minStockLevel: 10 },
         admin,
       );
       const level = await inventory.setReorderLevel(
-        { productId: product.id, colour: 'Ivory', minStockLevel: null },
+        { variantId: product.variants[0]!.id, minStockLevel: null },
         admin,
       );
 
@@ -209,7 +210,7 @@ describe.skipIf(!canRunIntegrationTests)('product attributes (integration)', () 
 
       await expect(
         inventory.setReorderLevel(
-          { productId: product.id, colour: 'Ivory', minStockLevel: 50, maxStockLevel: 10 },
+          { variantId: product.variants[0]!.id, minStockLevel: 50, maxStockLevel: 10 },
           admin,
         ),
       ).rejects.toBeInstanceOf(ValidationError);

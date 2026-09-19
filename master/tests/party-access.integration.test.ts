@@ -12,6 +12,7 @@
  * same fact by a different route.
  */
 
+import type { Product } from '@orderbook/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { canRunIntegrationTests } from './helpers/db.js';
@@ -82,18 +83,22 @@ async function makePerson(username: string): Promise<string> {
 }
 
 async function seedProduct() {
-  return catalog.createProduct({ productCode: 'PA-01', name: 'Glazed Tile', rate: 42_000 }, admin);
+  return catalog.createProduct(
+    { categoryName: 'Tiles', variants: [{ code: 'PA-01' }], name: 'Glazed Tile', rate: 42_000 },
+    admin,
+  );
 }
 
-async function seedLead(partyId: string, productId: string, actor: ActorContext) {
+async function seedLead(partyId: string, product: Product, actor: ActorContext) {
   return leads.createLead(
     {
       partyId,
       items: [
         {
-          productId,
+          productId: product.id,
+          variantId: product.variants[0]!.id,
+          quantity: 3,
           packaging: 'carton',
-          quantities: [{ colour: 'Ivory', quantity: 3 }],
         },
       ],
     },
@@ -123,7 +128,7 @@ describe.skipIf(!canRunIntegrationTests)('party access (integration)', () => {
       const product = await seedProduct();
       const anyone = await desk(await makePerson('anyone'));
 
-      const lead = await seedLead(party.id, product.id, anyone);
+      const lead = await seedLead(party.id, product, anyone);
       expect(lead.partyId).toBe(party.id);
     });
   });
@@ -152,7 +157,7 @@ describe.skipIf(!canRunIntegrationTests)('party access (integration)', () => {
     it('PA-2b: takes its leads and orders with it', async () => {
       const party = await catalog.createParty({ name: 'Closed Traders' }, admin);
       const product = await seedProduct();
-      const lead = await seedLead(party.id, product.id, admin);
+      const lead = await seedLead(party.id, product, admin);
       const order = await orders.convertLead({ leadId: lead.id }, admin);
 
       const mine = await makePerson('mine');
@@ -186,7 +191,7 @@ describe.skipIf(!canRunIntegrationTests)('party access (integration)', () => {
       const actor = await desk(reader);
       expect((await catalog.listParties({}, actor)).items.map((row) => row.id)).toContain(party.id);
 
-      const failure = await seedLead(party.id, product.id, actor).catch((error: unknown) => error);
+      const failure = await seedLead(party.id, product, actor).catch((error: unknown) => error);
 
       expect(failure).toBeInstanceOf(ForbiddenError);
       // Names `party.accessAll`, not `leads.create` — the caller *holds*
@@ -210,7 +215,7 @@ describe.skipIf(!canRunIntegrationTests)('party access (integration)', () => {
       );
 
       const actor = await desk(owner);
-      const lead = await seedLead(party.id, product.id, actor);
+      const lead = await seedLead(party.id, product, actor);
       const order = await orders.convertLead({ leadId: lead.id }, actor);
 
       expect(order.partyId).toBe(party.id);
@@ -230,7 +235,7 @@ describe.skipIf(!canRunIntegrationTests)('party access (integration)', () => {
       );
 
       const outsider = await desk(await makePerson('outsider'));
-      const failure = await seedLead(party.id, product.id, outsider).catch(
+      const failure = await seedLead(party.id, product, outsider).catch(
         (error: unknown) => error,
       );
 
@@ -302,7 +307,7 @@ describe.skipIf(!canRunIntegrationTests)('party access (integration)', () => {
     it('PA-8: dashboard counts and reports are scoped, and complete for a holder', async () => {
       const party = await catalog.createParty({ name: 'Counted Traders' }, admin);
       const product = await seedProduct();
-      await seedLead(party.id, product.id, admin);
+      await seedLead(party.id, product, admin);
 
       await partyAccess.replaceAssignments(
         party.id,
@@ -335,7 +340,7 @@ describe.skipIf(!canRunIntegrationTests)('party access (integration)', () => {
       const mine = await catalog.createParty({ name: 'Mine' }, admin);
       const theirs = await catalog.createParty({ name: 'Theirs' }, admin);
       const product = await seedProduct();
-      await seedLead(theirs.id, product.id, admin);
+      await seedLead(theirs.id, product, admin);
 
       await catalog.upsertVariant({ partyId: theirs.id, productId: product.id, rate: 1 }, admin);
 
@@ -571,7 +576,7 @@ describe.skipIf(!canRunIntegrationTests)('party access (integration)', () => {
       );
 
       const actor = await desk(owner);
-      await seedLead(party.id, product.id, actor);
+      await seedLead(party.id, product, actor);
 
       await partyAccess.replaceAssignments(
         party.id,

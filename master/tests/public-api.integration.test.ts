@@ -179,13 +179,14 @@ describe.skipIf(!canRunIntegrationTests)('public API (integration)', () => {
       const actor = await testActor();
       const product = await catalogService.createProduct(
         {
-          productCode: 'RST-300',
           name: 'Rustic 300',
+          categoryName: 'Basins',
+          variants: [{ code: 'RST-300', weightKg: 12 }],
           alias: 'Rustic',
           size: '300x300',
           rate: 12_500,
           hsnCode: '6907',
-        } as never,
+        },
         actor,
       );
 
@@ -205,7 +206,10 @@ describe.skipIf(!canRunIntegrationTests)('public API (integration)', () => {
       expect(response.body.alias).toBe('Rustic Matt');
       // The eighteen columns nobody mentioned.
       expect(response.body.name).toBe('Rustic 300');
-      expect(response.body.productCode).toBe('RST-300');
+      expect(response.body.categoryName).toBe('Basins');
+      expect(response.body.variants).toEqual([
+        expect.objectContaining({ id: product.variants[0]!.id, code: 'RST-300', weightKg: 12 }),
+      ]);
       expect(response.body.size).toBe('300x300');
       expect(response.body.hsnCode).toBe('6907');
       expect(response.body.rate).toBe(12_500);
@@ -214,7 +218,7 @@ describe.skipIf(!canRunIntegrationTests)('public API (integration)', () => {
     it('will not let a rate-blind key null the price, by naming it or by omitting it', async () => {
       const actor = await testActor();
       const product = await catalogService.createProduct(
-        { productCode: 'RST-301', name: 'Rustic 301', rate: 9_900 } as never,
+        { name: 'Rustic 301', categoryName: 'Basins', variants: [{ code: 'RST-301' }], rate: 9_900 },
         actor,
       );
 
@@ -264,12 +268,12 @@ describe.skipIf(!canRunIntegrationTests)('public API (integration)', () => {
       await request(app)
         .post('/api/v1/products')
         .set('Authorization', `Bearer ${token}`)
-        .send({ productCode: 'VIEW-1', name: 'View only', rate: 12_500 })
+        .send({ name: 'View only', categoryName: 'Basins', variants: [{ code: 'VIEW-1' }], rate: 12_500 })
         .expect(403);
 
       const actor = await testActor();
       const product = await catalogService.createProduct(
-        { productCode: 'VIEW-2', name: 'View only two', rate: 9_900 } as never,
+        { name: 'View only two', categoryName: 'Basins', variants: [{ code: 'VIEW-2' }], rate: 9_900 },
         actor,
       );
 
@@ -300,7 +304,7 @@ describe.skipIf(!canRunIntegrationTests)('public API (integration)', () => {
       const response = await request(app)
         .post('/api/v1/products')
         .set('Authorization', `Bearer ${token}`)
-        .send({ productCode: 'EDIT-1', name: 'Edit rate', rate: 12_500 })
+        .send({ name: 'Edit rate', categoryName: 'Basins', variants: [{ code: 'EDIT-1' }], rate: 12_500 })
         .expect(201);
 
       // The figure actually landed, which is the half a silent drop hid.
@@ -312,7 +316,7 @@ describe.skipIf(!canRunIntegrationTests)('public API (integration)', () => {
     it('records the key as its own principal, and the chain still verifies', async () => {
       const actor = await testActor();
       const product = await catalogService.createProduct(
-        { productCode: 'RST-302', name: 'Rustic 302' } as never,
+        { name: 'Rustic 302', categoryName: 'Basins', variants: [{ code: 'RST-302' }] },
         actor,
       );
 

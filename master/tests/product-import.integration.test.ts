@@ -3,11 +3,12 @@
  *
  * The things worth pinning are the ones a unit test cannot see: that a file
  * with three bad rows imports the other seventeen and names exactly those
- * three; that re-uploading the same file changes nothing; that the write is
- * one activity row and one `catalog` event rather than five thousand of each;
- * that a clash the pre-check missed falls back to a per-row insert and the
- * rest of the chunk still lands; and that a file past the old 500-row ceiling
- * is fully reachable through the paged list.
+ * three; that re-uploading the same file changes nothing; that rows sharing a
+ * model fold into one product with several variants; that the write is one
+ * activity row and one `catalog` event rather than five thousand of each;
+ * that a clash the pre-check missed falls back to a per-product insert and
+ * the rest of the chunk still lands; and that a file past the old 500-row
+ * ceiling is fully reachable through the paged list.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -24,7 +25,7 @@ import { db } from '../src/db/knex.js';
 import type { ActorContext } from '../src/domain/actor.js';
 import { ForbiddenError, ValidationError } from '../src/lib/errors.js';
 import { resetChangeRing, since } from '../src/realtime/change-ring.js';
-import * as productRepo from '../src/repositories/product.repository.js';
+import * as productVariantRepo from '../src/repositories/product-variant.repository.js';
 import * as catalog from '../src/services/catalog.service.js';
 import { importProducts, productImportTemplate } from '../src/services/product-import.service.js';
 
@@ -39,6 +40,13 @@ function run(file: { buffer: Buffer; fileName: string }, actor = admin, dryRun =
   return importProducts(file, { dryRun, mode }, actor);
 }
 
+const HEAD = ['categoryName', 'name', 'variant', 'code'];
+
+async function byName(): Promise<Map<string, Awaited<ReturnType<typeof catalog.listProducts>>['items'][number]>> {
+  const page = await catalog.listProducts({ limit: 500 }, admin);
+  return new Map(page.items.map((product) => [product.name, product]));
+}
+
 describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', () => {
   beforeAll(setupDatabase);
   afterAll(teardownDatabase);
@@ -48,20 +56,21 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
     admin = await testActor();
   });
 
-  it('imports a valid file, writes one activity row and publishes one catalog event', async () => {
+  it('imports a valid file — folding rows into models — and publishes one catalog event', async () => {
     const result = await run(
       csv([
-        ['productCode', 'name', 'categoryName', 'rate', 'uom', 'application'],
-        ['GVT-1', 'Carrara White', 'Vitrified', '1200.50', 'Boxes', 'Floor and wall'],
-        ['GVT-2', 'Statuario', 'Vitrified', '980', 'box', 'floor'],
-        ['', 'Ivory Matt', 'Wall Tiles', '', 'sqft', ''],
+        [...HEAD, 'weightKg', 'rate', 'uom'],
+        ['ONE PIECE BASIN', 'DAMRU', 'White', 'DAMRU-WHITE', '18', '2600', 'pcs'],
+        ['ONE PIECE BASIN', 'DAMRU', 'Vitrosa 41', '41', '', '3400', ''],
+        ['One piece basin', 'Damru', 'Vitrosa 42', '42', '18.5', '', ''],
+        ['ONE PIECE TOILET', '102', '', '102', '32.5', '6800', 'piece'],
       ]),
     );
 
     expect(result).toMatchObject({
       dryRun: false,
-      totalRows: 3,
-      created: 3,
+      totalRows: 4,
+      created: 4,
       updated: 0,
       skipped: 0,
       failed: 0,
@@ -69,37 +78,40 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
       ignoredColumns: [],
     });
 
-    const page = await catalog.listProducts({}, admin);
-    expect(page.total).toBe(3);
-    const byCode = new Map(page.items.map((product) => [product.productCode, product]));
-    expect(byCode.get('GVT-1')).toMatchObject({
-      name: 'Carrara White',
-      categoryName: 'Vitrified',
-      rate: 120050,
-      uom: 'box',
-      application: 'floor_wall',
-    });
-    expect(byCode.get('PRD-0001')).toMatchObject({ name: 'Ivory Matt', categoryName: 'Wall Tiles', uom: 'sqft' });
-    // Two rows named the same category; it exists once.
+    const products = await byName();
+    expect(products.size).toBe(2);
+    const damru = products.get('DAMRU');
+    expect(damru).toMatchObject({ categoryName: 'ONE PIECE BASIN', rate: 260000, uom: 'piece', hasVariants: true });
+    expect(damru?.variants.map((variant) => [variant.code, variant.label, variant.weightKg])).toEqual([
+      ['DAMRU-WHITE', 'White', 18],
+      ['41', 'Vitrosa 41', null],
+      ['42', 'Vitrosa 42', 18.5],
+    ]);
+    const toilet = products.get('102');
+    expect(toilet).toMatchObject({ categoryName: 'ONE PIECE TOILET', rate: 680000, hasVariants: false });
+    expect(toilet?.variants.map((variant) => [variant.code, variant.label, variant.weightKg])).toEqual([
+      ['102', null, 32.5],
+    ]);
+    // Three rows named the same category in three spellings; it exists once.
     expect(await catalog.listCategories(admin)).toHaveLength(2);
 
     const activity = await db()('activity_log').where({ entity_type: 'catalog' });
     expect(activity).toHaveLength(1);
     expect(activity[0]).toMatchObject({ action: 'imported' });
-    expect(activity[0].details).toMatchObject({ count: 3, fileName: 'supplier.csv' });
+    expect(activity[0].details).toMatchObject({ count: 4, fileName: 'supplier.csv' });
     expect(await db()('activity_log').where({ entity_type: 'product' })).toHaveLength(0);
 
     const events = since(0) ?? [];
     expect(events.map((event) => event.entity)).toEqual(['catalog']);
-    expect(events[0]?.payload).toMatchObject({ created: 3, updated: 0 });
+    expect(events[0]?.payload).toMatchObject({ created: 4, updated: 0 });
   });
 
   it('names exactly the rows that are wrong and imports the rest', async () => {
-    const rows: Array<Array<string | number>> = [['productCode', 'name', 'peiRating', 'uom']];
-    for (let i = 1; i <= 20; i += 1) rows.push([`T-${i}`, `Tile ${i}`, i % 5, 'box']);
-    rows[4] = ['T-4', '', 3, 'box']; // row 5: no name
-    rows[9] = ['T-9', 'Tile 9', 9, 'box']; // row 10: PEI out of range
-    rows[15] = ['T-15', 'Tile 15', 1, 'crates']; // row 16: not a unit
+    const rows: Array<Array<string | number>> = [[...HEAD, 'weightKg', 'uom']];
+    for (let i = 1; i <= 20; i += 1) rows.push(['Tiles', `Tile ${i}`, '', `T-${i}`, i, 'box']);
+    rows[4] = ['Tiles', '', '', 'T-4', 3, 'box']; // row 5: no name
+    rows[9] = ['Tiles', 'Tile 9', '', 'T-9', 0, 'box']; // row 10: weight not above zero
+    rows[15] = ['Tiles', 'Tile 15', '', 'T-15', 1, 'crates']; // row 16: not a unit
 
     const result = await run(csv(rows));
 
@@ -107,17 +119,34 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
     expect(result.failed).toBe(3);
     expect(result.issues.map((issue) => [issue.row, issue.messageKey])).toEqual([
       [5, 'validation.product.nameRequired'],
-      [10, 'validation.product.peiRating'],
+      [10, 'validation.product.weightPositive'],
       [16, 'validation.import.invalidValue'],
     ]);
     expect((await catalog.listProducts({ limit: 100 }, admin)).total).toBe(17);
   });
 
+  it('refuses a model that names a variant on some rows and not on others', async () => {
+    const result = await run(
+      csv([
+        [...HEAD],
+        ['Basins', 'Nova', 'White', 'NOVA-W'],
+        ['Basins', 'Nova', '', 'NOVA'],
+        ['Urinals', 'Hexa', '', 'HEXA'],
+      ]),
+    );
+
+    expect(result).toMatchObject({ created: 1, failed: 2 });
+    expect(result.issues.map((issue) => [issue.row, issue.messageKey])).toEqual([
+      [2, 'validation.import.mixedVariants'],
+      [3, 'validation.import.mixedVariants'],
+    ]);
+  });
+
   it('skips rows whose code already exists, so re-uploading a file is idempotent', async () => {
     const file = csv([
-      ['productCode', 'name'],
-      ['A-1', 'One'],
-      ['A-2', 'Two'],
+      [...HEAD],
+      ['Basins', 'One', '', 'A-1'],
+      ['Basins', 'Two', '', 'A-2'],
     ]);
     await run(file);
     resetChangeRing();
@@ -133,42 +162,57 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
     expect(await db()('activity_log').where({ entity_type: 'catalog' })).toHaveLength(1);
   });
 
-  it('updates existing rows by code in upsert mode, stamping only the touched fields', async () => {
+  it('updates existing models by code in upsert mode, folding new variants in and stamping only the touched fields', async () => {
     await run(
       csv([
-        ['productCode', 'name', 'rate', 'brand'],
-        ['A-1', 'One', '100', 'Kajaria'],
+        [...HEAD, 'weightKg', 'rate', 'brand'],
+        ['Basins', 'Damru', 'White', 'D-W', '18', '100', 'Swisware'],
+        ['Basins', 'Damru', 'Vitrosa 41', '41', '', '100', 'Swisware'],
       ]),
     );
-    const before = (await catalog.listProducts({}, admin)).items[0];
+    const before = (await byName()).get('Damru');
 
     const result = await run(
       csv([
-        ['productCode', 'name', 'rate'],
-        ['a-1', 'One renamed', '150'],
-        ['A-2', 'Two', '200'],
+        [...HEAD, 'weightKg', 'rate'],
+        ['basins', 'DAMRU', 'Vitrosa 41', '41', '18.5', '150'],
+        ['Basins', 'Damru', 'Vitrosa 42', '42', '18.5', '150'],
+        ['Urinals', 'Hexa', '', 'HEXA', '8', '200'],
       ]),
       admin,
       false,
       'upsert',
     );
 
-    expect(result).toMatchObject({ created: 1, updated: 1, skipped: 0, failed: 0 });
-    const after = (await catalog.listProducts({}, admin)).items.find((product) => product.id === before?.id);
-    expect(after).toMatchObject({ name: 'One renamed', rate: 15000, brand: 'Kajaria' });
+    expect(result).toMatchObject({ created: 1, updated: 2, skipped: 0, failed: 0 });
+    const after = await catalog.getProduct(before!.id, admin);
+    // The sheet's spelling of the model name wins, as any other field would.
+    expect(after).toMatchObject({ name: 'DAMRU', rate: 15000, brand: 'Swisware' });
+    // The white variant the sheet did not mention is still there, id intact;
+    // the one it did mention got its weight; the new one was added.
+    expect(after?.variants.map((variant) => [variant.code, variant.label, variant.weightKg])).toEqual([
+      ['D-W', 'White', 18],
+      ['41', 'Vitrosa 41', 18.5],
+      ['42', 'Vitrosa 42', 18.5],
+    ]);
+    expect(after?.variants[0]?.id).toBe(before?.variants[0]?.id);
     expect(after?.sync.version).toBe((before?.sync.version ?? 0) + 1);
     expect(after?.sync.fieldHlc.rate).toBe(after?.sync.hlc);
+    expect(after?.sync.fieldHlc.variants).toBe(after?.sync.hlc);
     expect(after?.sync.fieldHlc.brand).toBeUndefined();
   });
 
   it('refuses a barcode another live product already carries', async () => {
-    await catalog.createProduct({ productCode: 'X-1', name: 'Existing', barcode: '890123' }, admin);
+    await catalog.createProduct(
+      { name: 'Existing', categoryName: 'Basins', barcode: '890123', variants: [{ code: 'X-1' }] },
+      admin,
+    );
 
     const result = await run(
       csv([
-        ['productCode', 'name', 'barcode'],
-        ['X-2', 'Clash', '890123'],
-        ['X-3', 'Fine', '890124'],
+        [...HEAD, 'barcode'],
+        ['Basins', 'Clash', '', 'X-2', '890123'],
+        ['Basins', 'Fine', '', 'X-3', '890124'],
       ]),
     );
 
@@ -187,9 +231,9 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
   it('flags a code repeated inside the file and imports its first occurrence only', async () => {
     const result = await run(
       csv([
-        ['productCode', 'name'],
-        ['D-1', 'First'],
-        ['d-1', 'Second'],
+        [...HEAD],
+        ['Basins', 'First', '', 'D-1'],
+        ['Basins', 'Second', '', 'd-1'],
       ]),
     );
 
@@ -197,14 +241,14 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
     expect(result.issues[0]).toMatchObject({
       row: 3,
       messageKey: 'validation.import.duplicateInFile',
-      params: { column: 'productCode', firstRow: 2 },
+      params: { column: 'code', firstRow: 2 },
     });
   });
 
   it('needs products.bulk, and products.edit for upsert', async () => {
     const file = csv([
-      ['productCode', 'name'],
-      ['P-1', 'One'],
+      [...HEAD],
+      ['Basins', 'One', '', 'P-1'],
     ]);
 
     await expect(run(file, await actorWith(['products.create', 'products.view']))).rejects.toThrow(
@@ -220,9 +264,9 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
 
     const result = await run(
       csv([
-        ['productCode', 'name', 'rate'],
-        ['R-1', 'Priced', '100'],
-        ['R-2', 'Unpriced', ''],
+        [...HEAD, 'rate'],
+        ['Basins', 'Priced', '', 'R-1', '100'],
+        ['Basins', 'Unpriced', '', 'R-2', ''],
       ]),
       seller,
     );
@@ -238,13 +282,26 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
 
   it('predicts on a dry run exactly what the real run then does, and writes nothing', async () => {
     const file = csv([
-      ['productCode', 'name', 'uom'],
-      ['S-1', 'One', 'box'],
-      ['S-2', '', 'box'],
+      [...HEAD, 'uom'],
+      ['Basins', 'One', '', 'S-1', 'box'],
+      ['Basins', '', '', 'S-2', 'box'],
     ]);
 
     const preview = await run(file, admin, true);
-    expect(preview).toMatchObject({ dryRun: true, created: 1, failed: 1, sample: [{ productCode: 'S-1', name: 'One', uom: 'box' }] });
+    expect(preview).toMatchObject({
+      dryRun: true,
+      created: 1,
+      failed: 1,
+      sample: [
+        {
+          categoryName: 'Basins',
+          name: 'One',
+          uom: 'box',
+          hasVariants: false,
+          variants: [{ code: 'S-1', label: null, weightKg: null, sequence: 1 }],
+        },
+      ],
+    });
     expect((await catalog.listProducts({}, admin)).total).toBe(0);
     expect(since(0)).toEqual([]);
 
@@ -252,24 +309,27 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
     expect(real).toMatchObject({ dryRun: false, created: 1, failed: 1, issues: preview.issues });
   });
 
-  it('refuses a file with no name column, an empty file and an unknown extension', async () => {
-    await expect(run(csv([['productCode', 'rate'], ['A', '1']]))).rejects.toThrow(ValidationError);
-    await expect(run(csv([['productCode', 'name']]))).rejects.toThrow(/no rows/);
+  it('refuses a file with a required column missing, an empty file and an unknown extension', async () => {
+    await expect(run(csv([['name', 'code'], ['A', '1']]))).rejects.toThrow(ValidationError);
+    await expect(run(csv([[...HEAD]]))).rejects.toThrow(/no rows/);
     await expect(run({ buffer: Buffer.from('x'), fileName: 'legacy.xls' })).rejects.toThrow(/\.csv and \.xlsx/);
   });
 
-  it('falls back to row-by-row when a chunk clashes, losing only the clashing row', async () => {
+  it('falls back to product-by-product when a chunk clashes, losing only the clashing model', async () => {
     // The pre-check is told the catalogue is empty; the unique index knows better.
-    await catalog.createProduct({ productCode: 'C-3', name: 'Already there' }, admin);
-    vi.spyOn(productRepo, 'findLiveByCodes').mockResolvedValueOnce(new Map());
+    await catalog.createProduct(
+      { name: 'Already there', categoryName: 'Basins', variants: [{ code: 'C-3' }] },
+      admin,
+    );
+    vi.spyOn(productVariantRepo, 'findLiveVariantsByCodes').mockResolvedValueOnce(new Map());
 
     const result = await run(
       csv([
-        ['productCode', 'name'],
-        ['C-1', 'One'],
-        ['C-2', 'Two'],
-        ['C-3', 'Three'],
-        ['C-4', 'Four'],
+        [...HEAD],
+        ['Basins', 'One', '', 'C-1'],
+        ['Basins', 'Two', '', 'C-2'],
+        ['Basins', 'Three', '', 'C-3'],
+        ['Basins', 'Four', '', 'C-4'],
       ]),
     );
 
@@ -278,7 +338,7 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
       {
         row: 4,
         kind: 'error',
-        column: 'productCode',
+        column: 'code',
         messageKey: 'error.conflict.productCodeTaken',
         params: { productCode: 'C-3' },
       },
@@ -288,9 +348,9 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
   });
 
   it('imports a file well past the old 500-row ceiling and pages through all of it', async () => {
-    const rows: Array<Array<string | number>> = [['productCode', 'name', 'productType']];
+    const rows: Array<Array<string | number>> = [[...HEAD]];
     for (let i = 1; i <= 1200; i += 1) {
-      rows.push([`BIG-${String(i).padStart(4, '0')}`, `Product ${i}`, i % 3 === 0 ? 'Vitrified' : 'Ceramic']);
+      rows.push([i % 3 === 0 ? 'Vitrified' : 'Ceramic', `Product ${i}`, '', `BIG-${String(i).padStart(4, '0')}`]);
     }
 
     const result = await run(csv(rows));
@@ -299,17 +359,21 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
     const first = await catalog.listProducts({ limit: 100 }, admin);
     expect(first.total).toBe(1200);
     expect(first.items).toHaveLength(100);
-    expect(first.productTypes).toEqual([
-      { value: 'Ceramic', count: 800 },
-      { value: 'Vitrified', count: 400 },
+    expect(first.categories?.map((facet) => [facet.name, facet.count])).toEqual([
+      ['Ceramic', 800],
+      ['Vitrified', 400],
     ]);
 
     const last = await catalog.listProducts({ limit: 100, offset: 1100 }, admin);
     expect(last.items).toHaveLength(100);
 
-    const filtered = await catalog.listProducts({ productType: 'Vitrified', search: 'Product 12', limit: 500 }, admin);
-    expect(filtered.items.every((product) => product.productType === 'Vitrified')).toBe(true);
-    expect(filtered.productTypes?.map((facet) => facet.value)).toEqual(['Ceramic', 'Vitrified']);
+    const vitrified = first.categories?.find((facet) => facet.name === 'Vitrified');
+    const filtered = await catalog.listProducts(
+      { categoryId: vitrified?.id, search: 'Product 12', limit: 500 },
+      admin,
+    );
+    expect(filtered.items.every((product) => product.categoryName === 'Vitrified')).toBe(true);
+    expect(filtered.categories?.map((facet) => facet.name)).toEqual(['Ceramic', 'Vitrified']);
 
     expect(await catalog.findProductByCode('BIG-1199', admin)).toMatchObject({ name: 'Product 1199' });
   });
@@ -317,7 +381,7 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
   it('serves a CSV and an Excel template', async () => {
     const csvTemplate = await productImportTemplate('csv', admin);
     expect(csvTemplate.contentType).toMatch(/^text\/csv/);
-    expect(csvTemplate.bytes.toString('utf8').split('\r\n')[0]).toMatch(/^productCode,name,/);
+    expect(csvTemplate.bytes.toString('utf8').split('\r\n')[0]).toMatch(/^categoryName,name,variant,code,weightKg,/);
 
     const xlsxTemplate = await productImportTemplate('xlsx', admin);
     expect(xlsxTemplate.fileName).toBe('products-template.xlsx');

@@ -82,127 +82,128 @@ describe.skipIf(!canRunIntegrationTests)('catalog service (integration)', () => 
   });
 
   describe('products', () => {
-    it('generates a product code when none is supplied', async () => {
-      const product = await catalog.createProduct({ productCode: '', name: 'Carrara White' }, actor);
-      expect(product.productCode).toBe('PRD-0001');
-    });
+    const single = (name: string, code: string, extra: Record<string, unknown> = {}) =>
+      catalog.createProduct(
+        { name, categoryName: 'Test category', variants: [{ code }], ...extra },
+        actor,
+      );
 
-    it('keeps a supplied product code', async () => {
-      const product = await catalog.createProduct({ productCode: 'GVT-6060', name: 'Statuario' }, actor);
-      expect(product.productCode).toBe('GVT-6060');
-    });
-
-    it('refuses a duplicate product code', async () => {
-      await catalog.createProduct({ productCode: 'GVT-6060', name: 'One' }, actor);
+    it('refuses a product with no code at all', async () => {
       await expect(
-        catalog.createProduct({ productCode: 'GVT-6060', name: 'Two' }, actor),
-      ).rejects.toThrow(/already in use/i);
+        catalog.createProduct({ name: 'Carrara White', categoryName: 'Basins', variants: [] }, actor),
+      ).rejects.toThrow(/at least one code/i);
     });
 
-    it('treats product codes as case-insensitive when detecting duplicates', async () => {
-      await catalog.createProduct({ productCode: 'GVT-6060', name: 'One' }, actor);
+    it('keeps the supplied code on the product\'s single variant', async () => {
+      const product = await single('Statuario', 'GVT-6060');
+      expect(product.hasVariants).toBe(false);
+      expect(product.variants.map((variant) => [variant.code, variant.label])).toEqual([['GVT-6060', null]]);
+    });
+
+    it('refuses a duplicate code across products', async () => {
+      await single('One', 'GVT-6060');
+      await expect(single('Two', 'GVT-6060')).rejects.toThrow(/already in use/i);
+    });
+
+    it('treats codes as case-insensitive when detecting duplicates', async () => {
+      await single('One', 'GVT-6060');
+      await expect(single('Two', 'gvt-6060')).rejects.toThrow(/already in use/i);
+    });
+
+    it('requires a category', async () => {
       await expect(
-        catalog.createProduct({ productCode: 'gvt-6060', name: 'Two' }, actor),
-      ).rejects.toThrow(/already in use/i);
+        catalog.createProduct({ name: 'One', variants: [{ code: 'A1' }] }, actor),
+      ).rejects.toThrow(/category/i);
     });
 
     it('creates a category on the fly and reuses it for the next product', async () => {
-      const first = await catalog.createProduct(
-        { productCode: 'A1', name: 'One', categoryName: 'Floor Tile' },
-        actor,
-      );
-      const second = await catalog.createProduct(
-        { productCode: 'A2', name: 'Two', categoryName: 'floor tile' },
-        actor,
-      );
+      const first = await single('One', 'A1', { categoryName: 'Floor Tile' });
+      const second = await single('Two', 'A2', { categoryName: 'floor tile' });
 
       expect(first.categoryId).toBe(second.categoryId);
+      expect(first.categoryName).toBe('Floor Tile');
       expect(await catalog.listCategories(actor)).toHaveLength(1);
     });
 
     it('stores flexible attributes in the JSONB column and reads them back', async () => {
-      const product = await catalog.createProduct(
-        { productCode: 'A1', name: 'One', parameters: { glaze: 'matte', batch: 7 } },
-        actor,
-      );
-
+      const product = await single('One', 'A1', { parameters: { glaze: 'matte', batch: 7 } });
       expect(product.parameters).toEqual({ glaze: 'matte', batch: 7 });
     });
 
     it('supports querying into JSONB parameters, which is why the column is JSONB', async () => {
-      await catalog.createProduct(
-        { productCode: 'A1', name: 'Matte one', parameters: { glaze: 'matte' } },
-        actor,
-      );
-      await catalog.createProduct(
-        { productCode: 'A2', name: 'Glossy one', parameters: { glaze: 'glossy' } },
-        actor,
-      );
+      await single('Matte one', 'A1', { parameters: { glaze: 'matte' } });
+      await single('Glossy one', 'A2', { parameters: { glaze: 'glossy' } });
 
       const rows = await db()('products').whereRaw(`parameters->>'glaze' = ?`, ['matte']);
       expect(rows).toHaveLength(1);
       expect(rows[0]?.name).toBe('Matte one');
     });
 
-    it('allows a product to be renamed onto its own existing code', async () => {
-      const product = await catalog.createProduct({ productCode: 'A1', name: 'One' }, actor);
+    it('allows a product to be renamed while keeping its own code', async () => {
+      const product = await single('One', 'A1');
       const updated = await catalog.updateProduct(
         product.id,
-        { productCode: 'A1', name: 'One Renamed' },
+        { name: 'One Renamed', variants: [{ id: product.variants[0]?.id, code: 'A1' }] },
         actor,
       );
 
       expect(updated.name).toBe('One Renamed');
+      expect(updated.variants.map((variant) => variant.code)).toEqual(['A1']);
     });
 
-    it('refuses to move a product onto another product code', async () => {
-      await catalog.createProduct({ productCode: 'A1', name: 'One' }, actor);
-      const second = await catalog.createProduct({ productCode: 'A2', name: 'Two' }, actor);
+    it('refuses to move a product onto another product\'s code', async () => {
+      await single('One', 'A1');
+      const second = await single('Two', 'A2');
 
       await expect(
-        catalog.updateProduct(second.id, { productCode: 'A1', name: 'Two' }, actor),
+        catalog.updateProduct(
+          second.id,
+          { name: 'Two', variants: [{ id: second.variants[0]?.id, code: 'A1' }] },
+          actor,
+        ),
       ).rejects.toThrow(/already in use/i);
     });
 
     it('searches by code, name and category', async () => {
-      await catalog.createProduct(
-        { productCode: 'GVT-01', name: 'Carrara White', categoryName: 'Floor Tile' },
-        actor,
-      );
-      await catalog.createProduct(
-        { productCode: 'WLT-02', name: 'Statuario Gold', categoryName: 'Wall Tile' },
-        actor,
-      );
+      await single('Carrara White', 'GVT-01', { categoryName: 'Floor Tile' });
+      await single('Statuario Gold', 'WLT-02', { categoryName: 'Wall Tile' });
 
       expect((await catalog.listProducts({ search: 'carrara' }, actor)).items).toHaveLength(1);
       expect((await catalog.listProducts({ search: 'WLT' }, actor)).items).toHaveLength(1);
       expect((await catalog.listProducts({ search: 'Wall' }, actor)).items).toHaveLength(1);
     });
 
-    it('filters by product type and counts the facet over the search, not the filter', async () => {
-      await catalog.createProduct({ productCode: 'V-1', name: 'Carrara', productType: 'Vitrified' }, actor);
-      await catalog.createProduct({ productCode: 'V-2', name: 'Statuario', productType: 'Vitrified' }, actor);
-      await catalog.createProduct({ productCode: 'C-1', name: 'Carrara Wall', productType: 'Ceramic' }, actor);
-      await catalog.createProduct({ productCode: 'N-1', name: 'Untyped' }, actor);
+    it('filters by category and counts the facet over the search, not the filter', async () => {
+      await single('Carrara', 'V-1', { categoryName: 'Vitrified' });
+      await single('Statuario', 'V-2', { categoryName: 'Vitrified' });
+      const wall = await single('Carrara Wall', 'C-1', { categoryName: 'Ceramic' });
 
-      const vitrified = await catalog.listProducts({ productType: 'Vitrified' }, actor);
-      expect(vitrified.items.map((product) => product.productCode).sort()).toEqual(['V-1', 'V-2']);
-      expect(vitrified.total).toBe(2);
+      const vitrified = await catalog.listProducts({ categoryId: wall.categoryId }, actor);
+      expect(vitrified.items.map((product) => product.name)).toEqual(['Carrara Wall']);
+      expect(vitrified.total).toBe(1);
       // Every chip stays clickable while one is selected.
-      expect(vitrified.productTypes).toEqual([
-        { value: 'Ceramic', count: 1 },
-        { value: 'Vitrified', count: 2 },
+      expect(vitrified.categories?.map((entry) => [entry.name, entry.count])).toEqual([
+        ['Ceramic', 1],
+        ['Vitrified', 2],
       ]);
 
       const searched = await catalog.listProducts({ search: 'carrara' }, actor);
       expect(searched.total).toBe(2);
-      expect(searched.productTypes).toEqual([
-        { value: 'Ceramic', count: 1 },
-        { value: 'Vitrified', count: 1 },
+      expect(searched.categories?.map((entry) => [entry.name, entry.count])).toEqual([
+        ['Ceramic', 1],
+        ['Vitrified', 1],
       ]);
 
-      // The type itself is searchable.
+      // The category itself is searchable.
       expect((await catalog.listProducts({ search: 'ceram' }, actor)).total).toBe(1);
+    });
+
+    it('lists only products with a variant missing its weight when asked', async () => {
+      await single('Weighed', 'W-1', { variants: [{ code: 'W-1', weightKg: 12.5 }] });
+      await single('Unweighed', 'W-2');
+
+      const missing = await catalog.listProducts({ missingWeight: true }, actor);
+      expect(missing.items.map((product) => product.name)).toEqual(['Unweighed']);
     });
   });
 

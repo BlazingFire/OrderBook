@@ -486,10 +486,11 @@ export function createApp(): Express {
     const query = {
       search:
         typeof req.query.search === 'string' && req.query.search ? req.query.search : undefined,
-      productType:
-        typeof req.query.productType === 'string' && req.query.productType
-          ? req.query.productType
+      categoryId:
+        typeof req.query.categoryId === 'string' && req.query.categoryId
+          ? req.query.categoryId
           : undefined,
+      missingWeight: req.query.missingWeight === 'true' ? true : undefined,
       limit: req.query.limit ? Number(req.query.limit) : undefined,
       offset: req.query.offset ? Number(req.query.offset) : undefined,
     };

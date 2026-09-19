@@ -35,17 +35,16 @@ describe.skipIf(!canRunIntegrationTests)('partial patch semantics (integration)'
   describe('products', () => {
     /** Every column the shipped 8-field drawer does not send. */
     const fullProduct = {
-      productCode: 'GVT-600',
+      categoryName: 'Floor tiles',
+      variants: [{ code: 'GVT-600', weightKg: 28.5 }],
       name: 'Glazed Vitrified 600x600',
       alias: 'GVT 600',
       size: '600x600',
       sin: 'SIN-11',
       grade: 'Premium',
       productType: 'Floor',
-      weightKg: 28.5,
       finish: 'Glossy',
       series: 'Marble Look',
-      color: 'Ivory',
       thicknessMm: 9.2,
       piecesPerBox: 4,
       boxCoverageSqft: 15.5,
@@ -63,14 +62,12 @@ describe.skipIf(!canRunIntegrationTests)('partial patch semantics (integration)'
       const after = await catalog.updateProduct(
         created.id,
         {
-          productCode: 'GVT-600',
           name: 'Glazed Vitrified 600x600 (v2)',
           alias: 'GVT 600',
           size: '600x600',
           sin: 'SIN-11',
           grade: 'Premium',
           productType: 'Floor',
-          weightKg: 28.5,
           rate: 42_000,
         },
         actor,
@@ -79,8 +76,9 @@ describe.skipIf(!canRunIntegrationTests)('partial patch semantics (integration)'
       expect(after.name).toBe('Glazed Vitrified 600x600 (v2)');
       expect(after.finish).toBe('Glossy');
       expect(after.series).toBe('Marble Look');
-      expect(after.color).toBe('Ivory');
       expect(after.thicknessMm).toBe(9.2);
+      // The variant set was not named either, so it stays: the code and the weight.
+      expect(after.variants.map((variant) => [variant.code, variant.weightKg])).toEqual([['GVT-600', 28.5]]);
       expect(after.piecesPerBox).toBe(4);
       expect(after.boxCoverageSqft).toBe(15.5);
       expect(after.pricePerSqft).toBe(2_700);
@@ -94,7 +92,7 @@ describe.skipIf(!canRunIntegrationTests)('partial patch semantics (integration)'
 
       const after = await catalog.updateProduct(
         created.id,
-        { productCode: 'GVT-600', name: fullProduct.name, finish: null },
+        { name: fullProduct.name, finish: null },
         actor,
       );
 

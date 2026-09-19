@@ -45,9 +45,10 @@ function soundLead() {
     items: [
       {
         productId: 'PR0000000001',
+        variantId: 'VR0000000001',
+        quantity: 4,
         packaging: 'Packaging 2',
         rate: 17_500,
-        quantities: [{ colour: 'White', quantity: 4, variantCode: '201' }],
       },
     ],
   };
@@ -81,7 +82,7 @@ describe('POST /api/leads', () => {
     expect(submitted).toMatchObject({ kind: 'lead.create', entity: 'lead' });
   });
 
-  it('carries the colour code and the rate-off flag through to the outbox verbatim', async () => {
+  it('carries the variant, the quantity and the rate-off flag through to the outbox verbatim', async () => {
     const lead = soundLead();
     lead.items[0] = {
       ...lead.items[0],
@@ -95,7 +96,8 @@ describe('POST /api/leads', () => {
     const item = (payload.items as Array<Record<string, unknown>>)[0] ?? {};
 
     expect(item.rateUnset).toBe(true);
-    expect(item.quantities).toEqual([{ colour: 'White', quantity: 4, variantCode: '201' }]);
+    expect(item.variantId).toBe('VR0000000001');
+    expect(item.quantity).toBe(4);
   });
 
   it('refuses a lead with no party before anything is written', async () => {
@@ -118,16 +120,25 @@ describe('POST /api/leads', () => {
     expect(submitted).toBeUndefined();
   });
 
-  it('refuses a line whose colours all come to nothing', async () => {
+  it('refuses a line whose quantity comes to nothing', async () => {
     const lead = soundLead();
-    lead.items = [
-      { ...lead.items[0]!, quantities: [{ colour: 'White', quantity: 0, variantCode: '201' }] },
-    ];
+    lead.items = [{ ...lead.items[0]!, quantity: 0 }];
 
     const response = await request(createApp()).post('/api/leads').send(lead);
 
     expect(response.status).toBe(400);
     expect(response.body.message).toMatch(/quantity/i);
+    expect(submitted).toBeUndefined();
+  });
+
+  it('refuses a line that names a product but no variant', async () => {
+    const lead = soundLead();
+    lead.items = [{ ...lead.items[0]!, variantId: '' }];
+
+    const response = await request(createApp()).post('/api/leads').send(lead);
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toMatch(/variant/i);
     expect(submitted).toBeUndefined();
   });
 

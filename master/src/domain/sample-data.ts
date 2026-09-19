@@ -358,7 +358,7 @@ export interface SampleStockCount {
 }
 
 export const SAMPLE_STOCK_COUNTS: readonly SampleStockCount[] = [
-  { day: 58, code: '102', countedPieces: 62, note: 'Monthly count — 2 pieces chipped in godown' },
+  { day: 58, code: '102', countedPieces: 128, note: 'Monthly count — 2 pieces chipped in godown' },
   { day: 101, code: 'WB-18X12', countedPieces: 118, note: 'Found 4 extra pieces behind rack 3' },
   { day: 147, code: '20-OP', countedPieces: 146, note: 'Quarterly count' },
 ];

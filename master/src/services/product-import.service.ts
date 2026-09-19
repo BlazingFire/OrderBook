@@ -526,6 +526,18 @@ function classifyGroupFailure(
   const perRow = (issue: Omit<ProductImportIssue, 'row'>): ProductImportIssue[] =>
     group.rows.map((entry) => ({ row: entry.row, ...issue }));
 
+  // The variant repository has already turned a code clash into the
+  // catalogue's own conflict; name the row's code, not the whole set.
+  if (error instanceof AppError && error.messageKey === 'error.conflict.productCodeTaken') {
+    return group.rows.map((entry) => ({
+      row: entry.row,
+      kind: 'error',
+      column: headerFor('code'),
+      messageKey: 'error.conflict.productCodeTaken',
+      params: { productCode: entry.input.variant.code },
+    }));
+  }
+
   if (pg?.code === '23505') {
     if ((pg.constraint ?? '').includes('barcode')) {
       return perRow({

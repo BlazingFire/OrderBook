@@ -27,15 +27,20 @@ let actor: ActorContext;
 async function createLead(): Promise<{ leadId: string; partyId: string; productId: string }> {
   const party = await catalogService.createParty({ name: `DSH Party ${Date.now()}-${Math.random()}` }, actor);
   const product = await catalogService.createProduct(
-    { name: 'DSH Tile', productCode: `DSH-${Math.random().toString(36).slice(2, 8)}` },
+    {
+      name: 'DSH Tile',
+      categoryName: 'Tiles',
+      variants: [{ code: `DSH-${Math.random().toString(36).slice(2, 8)}` }],
+    },
     actor,
   );
-  await inventoryService.recordInbound({ productId: product.id, colour: 'White', quantityBoxes: 100 }, actor);
+  const variantId = product.variants[0]!.id;
+  await inventoryService.recordInbound({ variantId, quantityBoxes: 100 }, actor);
 
   const lead = await leadService.createLead(
     {
       partyId: party.id,
-      items: [{ productId: product.id, packaging: 'Box', quantities: [{ colour: 'White', quantity: 10 }] }],
+      items: [{ productId: product.id, variantId, quantity: 10, packaging: 'Box' }],
     },
     actor,
   );

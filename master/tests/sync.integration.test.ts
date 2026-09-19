@@ -72,7 +72,7 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
   async function seed() {
     const party = await catalog.createParty({ name: 'Offline Traders' }, actor);
     const product = await catalog.createProduct(
-      { productCode: 'OFF-01', name: 'Matte Tile', rate: 20_000 },
+      { categoryName: 'Tiles', variants: [{ code: 'OFF-01' }], name: 'Matte Tile', rate: 20_000 },
       actor,
     );
     return { party, product };
@@ -95,8 +95,9 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
                 items: [
                   {
                     productId: product.id,
+                    variantId: product.variants[0]!.id,
+                    quantity: 3,
                     packaging: 'carton',
-                    quantities: [{ colour: 'Ivory', quantity: 3 }],
                   },
                 ],
               },
@@ -130,8 +131,9 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
           items: [
             {
               productId: product.id,
+              variantId: product.variants[0]!.id,
+              quantity: 1,
               packaging: 'carton',
-              quantities: [{ colour: 'Ivory', quantity: 1 }],
             },
           ],
         },
@@ -159,8 +161,9 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
           items: [
             {
               productId: product.id,
+              variantId: product.variants[0]!.id,
+              quantity: 1,
               packaging: 'carton',
-              quantities: [{ colour: 'Ivory', quantity: 1 }],
             },
           ],
         },
@@ -183,8 +186,9 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
 
       const item = {
         productId: product.id,
+        variantId: product.variants[0]!.id,
+        quantity: 1,
         packaging: 'carton',
-        quantities: [{ colour: 'Ivory', quantity: 1 }],
       };
 
       // Panel B's lead was raised first in real time; panel A's reached the
@@ -226,8 +230,9 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
           items: [
             {
               productId: product.id,
+              variantId: product.variants[0]!.id,
+              quantity: 2,
               packaging: 'carton',
-              quantities: [{ colour: 'Ivory', quantity: 2 }],
             },
           ],
         },
@@ -397,8 +402,9 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
                 items: [
                   {
                     productId: product.id,
+                    variantId: product.variants[0]!.id,
+                    quantity: 1,
                     packaging: 'carton',
-                    quantities: [{ colour: 'Ivory', quantity: 1 }],
                   },
                 ],
               },
@@ -438,8 +444,9 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
                 items: [
                   {
                     productId: product.id,
+                    variantId: product.variants[0]!.id,
+                    quantity: 1,
                     packaging: 'carton',
-                    quantities: [{ colour: 'Ivory', quantity: 1 }],
                   },
                 ],
               },
@@ -491,10 +498,18 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
 
   async function existingProduct() {
     return catalog.createProduct(
-      { productCode: 'MRG-01', name: 'Merge Tile', rate: 20_000, uom: 'box' },
+      {
+        categoryName: 'Tiles',
+        variants: [{ code: 'MRG-01', weightKg: 20 }],
+        name: 'Merge Tile',
+        rate: 20_000,
+        uom: 'box',
+      },
       actor,
     );
   }
+
+  const reload = (id: string) => catalog.getProduct(id, actor);
 
   it('accepts a valid attribute edit made offline', async () => {
     const product = await existingProduct();
@@ -516,7 +531,7 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
     );
 
     expect(response.results[0]?.status).not.toBe('rejected');
-    expect((await catalog.findProductByCode(product.productCode, actor))!.brand).toBe('Somany');
+    expect((await reload(product.id)).brand).toBe('Somany');
   });
 
   it('refuses a value the column could never hold, with a reason', async () => {
@@ -545,7 +560,7 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
     expect(result?.error ?? '').toMatch(/unit of measure/i);
 
     // …and nothing was written.
-    expect((await catalog.findProductByCode(product.productCode, actor))!.uom).toBe('box');
+    expect((await reload(product.id)).uom).toBe('box');
   });
 
   it('does not merge a category assignment', async () => {
@@ -571,6 +586,101 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
     // merge cannot run `resolveCategoryId`, so a stale id would be a foreign
     // key error rather than a rename — assignment stays an online operation.
     expect(response.results[0]?.status).not.toBe('rejected');
-    expect((await catalog.findProductByCode(product.productCode, actor))!.categoryId).toBeNull();
+    expect((await reload(product.id)).categoryId).toBe(product.categoryId);
+  });
+
+  it('replaces the variant set as one field, keeping the ids stock is keyed by', async () => {
+    const product = await existingProduct();
+    const [existing] = product.variants;
+
+    const response = await sync.applyPush(
+      {
+        mutations: [
+          mutation({
+            kind: 'product.update',
+            entity: 'product',
+            entityId: product.id,
+            fields: ['hasVariants', 'variants'],
+            payload: {
+              hasVariants: true,
+              variants: [
+                { id: existing!.id, code: 'MRG-01', label: 'White', weightKg: 21 },
+                { code: 'MRG-02', label: 'Blue', weightKg: 22 },
+              ],
+            },
+            baseFieldHlc: product.sync.fieldHlc,
+          }),
+        ],
+      },
+      actor,
+    );
+
+    expect(response.results[0]?.status).toBe('applied');
+    const after = await reload(product.id);
+    expect(after.hasVariants).toBe(true);
+    expect(after.variants.map((variant) => [variant.id === existing!.id, variant.code, variant.label, variant.weightKg])).toEqual([
+      [true, 'MRG-01', 'White', 21],
+      [false, 'MRG-02', 'Blue', 22],
+    ]);
+    expect(after.sync.fieldHlc.variants).toBeDefined();
+  });
+
+  it('records a losing variant set as one conflict rather than merging rows', async () => {
+    const product = await existingProduct();
+    const [existing] = product.variants;
+
+    // The Master's own edit lands first, stamping `variants`.
+    const online = await catalog.updateProduct(
+      product.id,
+      { name: product.name, variants: [{ id: existing!.id, code: 'MRG-01', weightKg: 30 }] },
+      await testActor(),
+    );
+
+    // A panel that never saw that edit pushes an older set with an older clock.
+    const response = await sync.applyPush(
+      {
+        mutations: [
+          mutation({
+            kind: 'product.update',
+            entity: 'product',
+            entityId: product.id,
+            fields: ['variants'],
+            payload: { variants: [{ id: existing!.id, code: 'MRG-01', weightKg: 25 }] },
+            baseFieldHlc: product.sync.fieldHlc,
+            // Far in the past: older than anything the Master has stamped.
+            hlc: hlcFor(PANEL_A, -1_000_000_000),
+          }),
+        ],
+      },
+      actor,
+    );
+
+    expect(response.results[0]?.conflicts.map((conflict) => conflict.field)).toEqual(['variants']);
+    expect((await reload(product.id)).variants[0]?.weightKg).toBe(30);
+    expect(online.variants[0]?.weightKg).toBe(30);
+  });
+
+  it('refuses a variant set that breaks the rules, with a reason', async () => {
+    const product = await existingProduct();
+
+    const response = await sync.applyPush(
+      {
+        mutations: [
+          mutation({
+            kind: 'product.update',
+            entity: 'product',
+            entityId: product.id,
+            fields: ['variants'],
+            payload: { variants: [{ code: 'MRG-01', weightKg: -1 }] },
+            baseFieldHlc: product.sync.fieldHlc,
+          }),
+        ],
+      },
+      actor,
+    );
+
+    expect(response.results[0]?.status).toBe('rejected');
+    expect(response.results[0]?.error ?? '').toMatch(/greater than zero/i);
+    expect((await reload(product.id)).variants[0]?.weightKg).toBe(20);
   });
 });

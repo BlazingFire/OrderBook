@@ -1,135 +1,152 @@
 /**
- * The two line-item rules the new-lead screen leans on, tested without a
- * database because they are pure and because both are silent when they break.
+ * The line-item rules the new-lead screen leans on, tested without a
+ * database because they are pure and because each is silent when it breaks.
  *
  *   1. **A rate switched off stays off.** `rate: null` on its own falls through
- *      to the party variant and then the catalogue by design — that fallback is
+ *      to the party's rate and then the catalogue by design — that fallback is
  *      what keeps an offline draft priced — so a line meant to carry no price
  *      saved at the catalogue rate. `rateUnset` is the flag that stops it.
- *   2. **The colour code survives the merge.** `normalizeQuantities` collapses
- *      duplicate colours, and it used to rebuild the row from `(colour,
- *      quantity)` alone, which dropped the code the counter typed.
+ *   2. **The code and the weight come from the variant**, never from the
+ *      product or the party's rates: a party negotiates a price, not what a
+ *      basin weighs.
+ *   3. **A missing weight stays missing.** The totals leave it out and count
+ *      it, rather than treating an unentered weight as zero.
  */
 
 import { describe, expect, it } from 'vitest';
 
-import { buildLineSnapshot, normalizeQuantities } from '../src/domain/line-items.js';
+import { planDispatchMovements, planReservations } from '../src/domain/conversion.js';
+import {
+  buildLineSnapshot,
+  computeTotalWeightKg,
+  lineWeightKg,
+  linesWithoutWeight,
+  normaliseQuantity,
+  type LineSnapshot,
+} from '../src/domain/line-items.js';
 
 const PRODUCT = {
   id: 'PR0000000001',
   name: 'Pedestal standard',
   alias: null,
   rate: 18_000,
-  productCode: 'PR-0102',
   sin: null,
   size: null,
-  weightKg: null,
   grade: 'Grade A',
   productType: null,
 };
 
-const VARIANT = {
+const WHITE = { id: 'VR0000000001', code: '201', label: 'White', weightKg: 12.5 };
+const UNWEIGHED = { id: 'VR0000000002', code: '202', label: 'Blue', weightKg: null };
+
+const PARTY_RATE = {
   alias: null,
   rate: 17_400,
   size: null,
   sin: null,
   grade: null,
   productType: null,
-  weightKg: null,
   productName: null,
 };
 
-const ONE_WHITE = [{ colour: 'White', quantity: 4, variantCode: '201' }];
+const draft = (overrides: Record<string, unknown> = {}) => ({
+  productId: PRODUCT.id,
+  variantId: WHITE.id,
+  quantity: 4,
+  ...overrides,
+});
 
 describe('a rate that was switched off', () => {
   it('stays null rather than falling back to the catalogue', () => {
-    const line = buildLineSnapshot(
-      { productId: PRODUCT.id, rate: null, rateUnset: true, quantities: ONE_WHITE },
-      PRODUCT,
-      null,
-      1,
-    );
-
+    const line = buildLineSnapshot(draft({ rate: null, rateUnset: true }), PRODUCT, WHITE, null, 1);
     expect(line.rate).toBeNull();
   });
 
-  it('stays null rather than falling back to the party variant', () => {
-    const line = buildLineSnapshot(
-      { productId: PRODUCT.id, rateUnset: true, quantities: ONE_WHITE },
-      PRODUCT,
-      VARIANT,
-      1,
-    );
-
-    expect(line.rate).toBeNull();
-  });
-
-  it('leaves a line with no rate to be worth nothing at all', () => {
-    const line = buildLineSnapshot(
-      { productId: PRODUCT.id, rateUnset: true, quantities: ONE_WHITE },
-      PRODUCT,
-      null,
-      1,
-    );
-
-    // Null, not zero: nobody has said this line is free, only that its price is
-    // still to be agreed.
+  it('stays null rather than falling back to the party rate', () => {
+    const line = buildLineSnapshot(draft({ rateUnset: true }), PRODUCT, WHITE, PARTY_RATE, 1);
     expect(line.rate).toBeNull();
   });
 });
 
 describe('a rate nobody has typed yet', () => {
-  it('still falls back to the party variant, then the catalogue', () => {
-    expect(
-      buildLineSnapshot({ productId: PRODUCT.id, quantities: ONE_WHITE }, PRODUCT, VARIANT, 1).rate,
-    ).toBe(17_400);
-
-    expect(
-      buildLineSnapshot({ productId: PRODUCT.id, quantities: ONE_WHITE }, PRODUCT, null, 1).rate,
-    ).toBe(18_000);
+  it('still falls back to the party rate, then the catalogue', () => {
+    expect(buildLineSnapshot(draft(), PRODUCT, WHITE, PARTY_RATE, 1).rate).toBe(17_400);
+    expect(buildLineSnapshot(draft(), PRODUCT, WHITE, null, 1).rate).toBe(18_000);
   });
 
   it('keeps a rate the panel did send, whatever the catalogue says now', () => {
-    const line = buildLineSnapshot(
-      { productId: PRODUCT.id, rate: 17_500, quantities: ONE_WHITE },
-      PRODUCT,
-      VARIANT,
-      1,
-    );
-
+    const line = buildLineSnapshot(draft({ rate: 17_500 }), PRODUCT, WHITE, PARTY_RATE, 1);
     expect(line.rate).toBe(17_500);
   });
 });
 
-describe('normalizeQuantities', () => {
-  it('carries the colour code through onto the stored row', () => {
-    expect(normalizeQuantities([{ colour: 'White', quantity: 4, variantCode: '201' }])).toEqual([
-      { colour: 'White', quantity: 4, variantCode: '201' },
+describe('the variant is where the code and the weight come from', () => {
+  it('freezes the variant\'s code, label and weight onto the line', () => {
+    const line = buildLineSnapshot(draft(), PRODUCT, WHITE, PARTY_RATE, 1);
+
+    expect(line.variantId).toBe(WHITE.id);
+    expect(line.code).toBe('201');
+    expect(line.variantLabel).toBe('White');
+    expect(line.weightKg).toBe(12.5);
+    expect(line.quantity).toBe(4);
+  });
+
+  it('keeps the code and weight an offline panel already froze', () => {
+    const line = buildLineSnapshot(draft({ code: '201-OLD', weightKg: 11 }), PRODUCT, WHITE, null, 1);
+    expect(line.code).toBe('201-OLD');
+    expect(line.weightKg).toBe(11);
+  });
+
+  it('leaves the weight null when the variant has none — never zero', () => {
+    const line = buildLineSnapshot(draft({ variantId: UNWEIGHED.id }), PRODUCT, UNWEIGHED, null, 1);
+    expect(line.weightKg).toBeNull();
+    expect(lineWeightKg(line)).toBeNull();
+  });
+});
+
+describe('quantities and weights', () => {
+  it('treats a blank, negative or unparsable quantity as nothing entered', () => {
+    expect(normaliseQuantity('')).toBe(0);
+    expect(normaliseQuantity(-2)).toBe(0);
+    expect(normaliseQuantity('abc')).toBe(0);
+    expect(normaliseQuantity('12')).toBe(12);
+  });
+
+  it('multiplies weight by quantity to three decimals', () => {
+    expect(lineWeightKg({ weightKg: 32.5, quantity: 10 })).toBe(325);
+    expect(lineWeightKg({ weightKg: 0.1, quantity: 3 })).toBe(0.3);
+  });
+
+  it('totals only the weighed lines and counts the rest', () => {
+    const lines: LineSnapshot[] = [
+      buildLineSnapshot(draft({ quantity: 10 }), PRODUCT, WHITE, null, 1),
+      buildLineSnapshot(draft({ variantId: UNWEIGHED.id, quantity: 3 }), PRODUCT, UNWEIGHED, null, 2),
+    ];
+
+    expect(computeTotalWeightKg(lines)).toBe(125);
+    expect(linesWithoutWeight(lines)).toBe(1);
+  });
+});
+
+describe('what a line means for stock', () => {
+  const lines: LineSnapshot[] = [
+    buildLineSnapshot(draft({ quantity: 5 }), PRODUCT, WHITE, null, 1),
+    buildLineSnapshot(draft({ variantId: UNWEIGHED.id, quantity: 3 }), PRODUCT, UNWEIGHED, null, 2),
+    buildLineSnapshot(draft({ quantity: 2 }), PRODUCT, WHITE, null, 3),
+  ];
+
+  it('reserves one hold per line, keyed by the variant', () => {
+    expect(planReservations(lines)).toEqual([
+      { productId: PRODUCT.id, variantId: WHITE.id, quantity: 5, lineIndex: 0 },
+      { productId: PRODUCT.id, variantId: UNWEIGHED.id, quantity: 3, lineIndex: 1 },
+      { productId: PRODUCT.id, variantId: WHITE.id, quantity: 2, lineIndex: 2 },
     ]);
   });
 
-  it('keeps the first code when one colour arrives twice', () => {
-    expect(
-      normalizeQuantities([
-        { colour: 'Grey', quantity: 2, variantCode: '202' },
-        { colour: 'Grey', quantity: 3, variantCode: '999' },
-      ]),
-    ).toEqual([{ colour: 'Grey', quantity: 5, variantCode: '202' }]);
-  });
-
-  it('leaves a colour that never had a code as null rather than absent', () => {
-    expect(normalizeQuantities([{ colour: 'Ivory', quantity: 1 }])).toEqual([
-      { colour: 'Ivory', quantity: 1, variantCode: null },
+  it('sums the holds per variant into one signed movement each on dispatch', () => {
+    expect(planDispatchMovements(planReservations(lines))).toEqual([
+      { productId: PRODUCT.id, variantId: WHITE.id, quantityBoxes: -7 },
+      { productId: PRODUCT.id, variantId: UNWEIGHED.id, quantityBoxes: -3 },
     ]);
-  });
-
-  it('still drops blank colours and non-positive quantities', () => {
-    expect(
-      normalizeQuantities([
-        { colour: '  ', quantity: 5, variantCode: '1' },
-        { colour: 'White', quantity: 0, variantCode: '201' },
-        { colour: 'White', quantity: -2, variantCode: '201' },
-      ]),
-    ).toEqual([]);
   });
 });

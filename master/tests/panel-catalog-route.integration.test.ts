@@ -97,7 +97,7 @@ describe.skipIf(!canRunIntegrationTests)('the panel catalogue import routes (int
 
     await request(app)
       .post('/api/panel/products/import')
-      .attach('file', Buffer.from('productCode,name\r\nA,B\r\n'), 'a.csv')
+      .attach('file', Buffer.from('categoryName,name,code\r\nA,B,C\r\n'), 'a.csv')
       .expect(401);
   });
 
@@ -120,7 +120,7 @@ describe.skipIf(!canRunIntegrationTests)('the panel catalogue import routes (int
 
     expect(response.headers['content-type']).toMatch(/^text\/csv/);
     expect(response.headers['content-disposition']).toBe('attachment; filename="products-template.csv"');
-    expect(response.text.split('\r\n')[0]).toMatch(/^productCode,name,alias,/);
+    expect(response.text.split('\r\n')[0]).toMatch(/^categoryName,name,variant,code,weightKg,/);
   });
 
   it('serves the Excel template', async () => {
@@ -146,7 +146,10 @@ describe.skipIf(!canRunIntegrationTests)('the panel catalogue import routes (int
 
   it('previews on dryRun without writing, then imports as the signed-in person', async () => {
     const token = await importerToken();
-    const file = Buffer.from('productCode,name,rate\r\nR-1,Ivory,120.50\r\nR-2,,10\r\n', 'utf8');
+    const file = Buffer.from(
+      'categoryName,name,code,rate\r\nBasins,Ivory,R-1,120.50\r\nBasins,,R-2,10\r\n',
+      'utf8',
+    );
 
     const preview = await asPanel(request(app).post('/api/panel/products/import'), token)
       .field('dryRun', 'true')
@@ -160,7 +163,12 @@ describe.skipIf(!canRunIntegrationTests)('the panel catalogue import routes (int
       .attach('file', file, 'supplier.csv')
       .expect(200);
     expect(imported.body).toMatchObject({ dryRun: false, created: 1, failed: 1, mode: 'create' });
-    expect((await catalog.listProducts({}, admin)).items[0]).toMatchObject({ productCode: 'R-1', rate: 12050 });
+    expect((await catalog.listProducts({}, admin)).items[0]).toMatchObject({
+      name: 'Ivory',
+      categoryName: 'Basins',
+      variants: [expect.objectContaining({ code: 'R-1' })],
+      rate: 12050,
+    });
 
     // The person, not the machine, is on the audit row.
     const [activity] = await db()('activity_log').where({ entity_type: 'catalog' });

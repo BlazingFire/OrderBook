@@ -36,7 +36,8 @@ describe.skipIf(!canRunIntegrationTests)('search (integration)', () => {
     );
     const product = await catalog.createProduct(
       {
-        productCode: 'SAN-77',
+        categoryName: 'Basins',
+        variants: [{ code: 'SAN-77' }],
         name: 'Cascade Basin',
         alias: 'Waterfall',
         sin: 'SIN-4412',
@@ -74,6 +75,49 @@ describe.skipIf(!canRunIntegrationTests)('search (integration)', () => {
       await seed();
       expect(await search.search({ term: 'zzzznotathing' }, actor)).toEqual([]);
     });
+
+    it('finds a model by any variant code or colour, and follows a code that is edited later', async () => {
+      const model = await catalog.createProduct(
+        {
+          categoryName: 'Basins',
+          name: 'Damru',
+          hasVariants: true,
+          variants: [
+            { code: 'DMR-41', label: 'Vitrosa 41' },
+            { code: 'DMR-42', label: 'Magenta' },
+          ],
+        },
+        actor,
+      );
+
+      for (const term of ['DMR-42', 'Magenta']) {
+        const hits = await search.search({ term, kinds: ['product'] }, actor);
+        expect(hits.map((hit) => hit.id)).toEqual([model.id]);
+      }
+      // The subtitle is what tells two models apart in the list: the
+      // category and the codes.
+      const [hit] = await search.search({ term: 'Damru', kinds: ['product'] }, actor);
+      expect(hit?.subtitle).toContain('Basins');
+      expect(hit?.subtitle).toContain('DMR-41');
+
+      // A variant edit re-indexes the product: the product's own row did not
+      // change, so this only works because the variant table has a trigger.
+      await catalog.updateProduct(
+        model.id,
+        {
+          name: 'Damru',
+          variants: [
+            { id: model.variants[0]!.id, code: 'DMR-41', label: 'Vitrosa 41' },
+            { id: model.variants[1]!.id, code: 'DMR-99', label: 'Magenta' },
+          ],
+        },
+        actor,
+      );
+      expect((await search.search({ term: 'DMR-99', kinds: ['product'] }, actor)).map((hit) => hit.id)).toEqual([
+        model.id,
+      ]);
+      expect(await search.search({ term: 'DMR-42', kinds: ['product'] }, actor)).toEqual([]);
+    });
   });
 
   describe('finding leads and orders through their line items', () => {
@@ -86,8 +130,9 @@ describe.skipIf(!canRunIntegrationTests)('search (integration)', () => {
           items: [
             {
               productId: product.id,
+              variantId: product.variants[0]!.id,
+              quantity: 3,
               packaging: 'wooden crate',
-              quantities: [{ colour: 'Ivory', quantity: 3 }],
             },
           ],
         },
@@ -117,7 +162,7 @@ describe.skipIf(!canRunIntegrationTests)('search (integration)', () => {
       // The catalogue is renamed months later.
       await catalog.updateProduct(
         product.id,
-        { productCode: 'SAN-77', name: 'Cascade Basin Mk II', alias: 'Waterfall II' },
+        { name: 'Cascade Basin Mk II', alias: 'Waterfall II' },
         actor,
       );
 
@@ -144,6 +189,35 @@ describe.skipIf(!canRunIntegrationTests)('search (integration)', () => {
       const hits = await search.search({ term: 'crate' }, actor);
 
       expect(hits.some((hit) => hit.kind === 'lead_line' && hit.id === lead.id)).toBe(true);
+    });
+
+    it('matches a line by the colour it was raised in, and names it in the subtitle', async () => {
+      const party = await catalog.createParty({ name: 'Morbi Traders' }, actor);
+      const model = await catalog.createProduct(
+        {
+          categoryName: 'Basins',
+          name: 'Damru',
+          hasVariants: true,
+          variants: [
+            { code: 'DMR-41', label: 'Vitrosa 41' },
+            { code: 'DMR-42', label: 'Burgundy' },
+          ],
+        },
+        actor,
+      );
+      const lead = await leads.createLead(
+        {
+          partyId: party.id,
+          items: [{ productId: model.id, variantId: model.variants[1]!.id, quantity: 2, packaging: 'carton' }],
+        },
+        actor,
+      );
+
+      const hits = await search.search({ term: 'Burgundy', kinds: ['lead_line'] }, actor);
+
+      expect(hits.map((hit) => hit.id)).toEqual([lead.id]);
+      expect(hits[0]?.subtitle).toContain('DMR-42');
+      expect(hits[0]?.subtitle).toContain('Burgundy');
     });
   });
 

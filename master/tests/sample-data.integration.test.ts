@@ -23,9 +23,9 @@ import {
   SAMPLE_LEADS,
   SAMPLE_OPTION_VALUES,
   SAMPLE_PARTIES,
-  SAMPLE_PRODUCTS,
   SAMPLE_WINDOW_DAYS,
 } from '../src/domain/sample-data.js';
+import { catalogueTotals } from '../src/domain/swisware-catalogue.js';
 import { chainBounds, verifyChain } from '../src/repositories/activity-log.repository.js';
 import * as auth from '../src/services/auth.service.js';
 import * as catalog from '../src/services/catalog.service.js';
@@ -59,7 +59,8 @@ describe.skipIf(!canRunIntegrationTests)('sample data seed (integration)', () =>
 
     expect(result.counts).toMatchObject({
       parties: SAMPLE_PARTIES.length,
-      products: SAMPLE_PRODUCTS.length,
+      // The product master is the whole Swisware catalogue, loaded on day one.
+      products: catalogueTotals().products,
       images: 0,
       leads: SAMPLE_LEADS.length,
       orders: wonLeads.length,
@@ -122,9 +123,10 @@ describe.skipIf(!canRunIntegrationTests)('sample data seed (integration)', () =>
         .count('* as n')
         .first(),
     ).toMatchObject({ n: '1' });
-    const binnedProduct = await db()('products')
-      .where({ tenant_id: tenantId, product_code: SAMPLE_DELETIONS.product })
-      .first<{ deleted_at: Date | null }>('deleted_at');
+    const binnedProduct = await db()('products as p')
+      .join('product_variants as v', 'v.product_id', 'p.id')
+      .where({ 'p.tenant_id': tenantId, 'v.code': SAMPLE_DELETIONS.productCode })
+      .first<{ deleted_at: Date | null }>('p.deleted_at');
     expect(binnedProduct?.deleted_at).not.toBeNull();
   });
 
@@ -183,17 +185,14 @@ describe.skipIf(!canRunIntegrationTests)('sample data seed (integration)', () =>
   it('leaves a ledger the dashboard can read: real stock figures, low-stock rows and due follow-ups', async () => {
     const tenantId = await testTenantId();
 
-    // Opening 600, one dispatch of 100, counted down to 492, then three more
-    // dispatches of 200, 150 and 100 — the ledger replays to 42.
-    const crystal = await db()('inventory_stock')
-      .join('products', 'products.id', 'inventory_stock.product_id')
-      .where({
-        'inventory_stock.tenant_id': tenantId,
-        'products.product_code': 'DC-6060-CRYS',
-        colour: 'White',
-      })
+    // Toilet 102: opening 90, one dispatch of 20, a truck of 60, counted down
+    // to 128, then three more dispatches of 60, 40 and 24 — the ledger replays
+    // to 4, and stock is keyed by the variant the code belongs to.
+    const toilet = await db()('inventory_stock')
+      .join('product_variants', 'product_variants.id', 'inventory_stock.variant_id')
+      .where({ 'inventory_stock.tenant_id': tenantId, 'product_variants.code': '102' })
       .first<{ quantity_boxes: string }>('inventory_stock.quantity_boxes');
-    expect(Number(crystal?.quantity_boxes)).toBe(42);
+    expect(Number(toilet?.quantity_boxes)).toBe(4);
 
     const adminRole = await db()('roles')
       .where({ tenant_id: tenantId, tier: 'admin' })

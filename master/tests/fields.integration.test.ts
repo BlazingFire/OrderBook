@@ -7,6 +7,7 @@
  * touches a single record that already held it.
  */
 
+import type { Product } from '@orderbook/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { canRunIntegrationTests } from './helpers/db.js';
@@ -35,14 +36,14 @@ let actor: ActorContext;
 async function seedLeadFixture() {
   const party = await catalogService.createParty({ name: 'Patel Tiles' }, actor);
   const product = await catalogService.createProduct(
-    { productCode: 'GVT-01', name: 'Carrara White', rate: 45_000 },
+    { categoryName: 'Tiles', variants: [{ code: 'GVT-01' }], name: 'Carrara White', rate: 45_000 },
     actor,
   );
   return { party, product };
 }
 
-function line(productId: string) {
-  return { productId, packaging: 'carton', quantities: [{ colour: 'Ivory', quantity: 10 }] };
+function line(product: Product) {
+  return { productId: product.id, variantId: product.variants[0]!.id, quantity: 10, packaging: 'carton' };
 }
 
 async function sourcePlatformValueId(value: string): Promise<string> {
@@ -184,7 +185,7 @@ describe.skipIf(!canRunIntegrationTests)('Fields (integration)', () => {
       it('a lead keeps its sourcePlatform after the option is removed, and can still be saved', async () => {
         const { party, product } = await seedLeadFixture();
         const lead = await leadService.createLead(
-          { partyId: party.id, sourcePlatform: 'whatsapp', items: [line(product.id)] },
+          { partyId: party.id, sourcePlatform: 'whatsapp', items: [line(product)] },
           actor,
         );
         expect(lead.sourcePlatform).toBe('whatsapp');
@@ -213,7 +214,7 @@ describe.skipIf(!canRunIntegrationTests)('Fields (integration)', () => {
 
         await expect(
           leadService.createLead(
-            { partyId: party.id, sourcePlatform: 'whatsapp', items: [line(product.id)] },
+            { partyId: party.id, sourcePlatform: 'whatsapp', items: [line(product)] },
             actor,
           ),
         ).rejects.toThrow(ValidationError);
@@ -223,10 +224,10 @@ describe.skipIf(!canRunIntegrationTests)('Fields (integration)', () => {
         const value = await fieldsService.createValue({ listKey: 'stock.colour', value: 'Ivory', label: 'Ivory' }, actor);
         const { product } = await seedLeadFixture();
 
-        await catalogService.updateProduct(product.id, { productCode: product.productCode, name: product.name }, actor);
+        await catalogService.updateProduct(product.id, { name: product.name }, actor);
         // A colour with no inventory row yet is the common case; the point of
         // this gate is that deleting the option touches nothing in
-        // `inventory_stock`/`line_item_quantities`/`stock_reservations` — proven
+        // `inventory_stock`/`line_items`/`stock_reservations` — proven
         // by there being zero rows for this fresh product before and after.
         const before = await db()('inventory_stock').where({ tenant_id: actor.tenantId }).select('*');
 
@@ -315,7 +316,7 @@ describe.skipIf(!canRunIntegrationTests)('Fields (integration)', () => {
       );
 
       const { party, product } = await seedLeadFixture();
-      const lead = await leadService.createLead({ partyId: party.id, items: [line(product.id)] }, actor);
+      const lead = await leadService.createLead({ partyId: party.id, items: [line(product)] }, actor);
       expect(lead.incomplete).toBe(true);
       expect(lead.missingFields).toContain('Budget');
 
@@ -393,7 +394,7 @@ describe.skipIf(!canRunIntegrationTests)('Fields (integration)', () => {
       it('is refused while a live lead sits in the stage, naming the occupancy', async () => {
         const { party, product } = await seedLeadFixture();
         const quotedStageId = await stageIdByName('lead', 'Quoted');
-        const lead = await leadService.createLead({ partyId: party.id, items: [line(product.id)] }, actor);
+        const lead = await leadService.createLead({ partyId: party.id, items: [line(product)] }, actor);
         await leadService.setStage({ id: lead.id, stageId: quotedStageId }, actor);
 
         try {
@@ -416,7 +417,7 @@ describe.skipIf(!canRunIntegrationTests)('Fields (integration)', () => {
         expect(archived.isArchived).toBe(true);
 
         const { party, product } = await seedLeadFixture();
-        const lead = await leadService.createLead({ partyId: party.id, items: [line(product.id)] }, actor);
+        const lead = await leadService.createLead({ partyId: party.id, items: [line(product)] }, actor);
         await expect(leadService.setStage({ id: lead.id, stageId: wonStageId }, actor)).rejects.toThrow(
           ValidationError,
         );

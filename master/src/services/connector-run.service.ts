@@ -648,8 +648,15 @@ function withVariantFields(
   if (typeof code !== 'string' || !code.trim()) return rest;
 
   const current = variants?.[0];
+  // A remote system that models no categories still has to land somewhere
+  // the category-first search can reach; the administrator moves it later.
+  const category =
+    existing || rest.categoryId || (typeof rest.categoryName === 'string' && rest.categoryName.trim())
+      ? {}
+      : { categoryName: 'Imported' };
   return {
     ...rest,
+    ...category,
     hasVariants: false,
     variants: [
       {

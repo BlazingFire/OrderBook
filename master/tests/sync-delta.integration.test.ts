@@ -16,7 +16,7 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { applyChangeToSnapshot, type SyncSnapshot } from '@orderbook/shared';
+import { applyChangeToSnapshot, type Product, type SyncSnapshot } from '@orderbook/shared';
 
 import type { ActorContext } from '../src/domain/actor.js';
 import { BOOT_ID, currentSeq, resetChangeRing } from '../src/realtime/change-ring.js';
@@ -47,12 +47,12 @@ async function seedParty(name: string) {
   return catalog.createParty({ name }, admin);
 }
 
-async function seedLead(partyId: string, productId: string) {
+async function seedLead(partyId: string, product: Product) {
   return leads.createLead(
     {
       partyId,
       items: [
-        { productId, packaging: 'carton', quantities: [{ colour: 'Ivory', quantity: 3 }] },
+        { productId: product.id, variantId: product.variants[0]!.id, quantity: 3, packaging: 'carton' },
       ],
     },
     admin,
@@ -72,7 +72,7 @@ describe.skipIf(!canRunIntegrationTests)('reconnect delta (integration)', () => 
   it('leaves a replaying panel holding what a snapshot-taking one holds', async () => {
     const party = await seedParty('Delta Traders');
     const product = await catalog.createProduct(
-      { productCode: 'DL-01', name: 'Glazed Tile', rate: 42_000 },
+      { categoryName: 'Tiles', variants: [{ code: 'DL-01' }], name: 'Glazed Tile', rate: 42_000 },
       admin,
     );
 
@@ -81,9 +81,12 @@ describe.skipIf(!canRunIntegrationTests)('reconnect delta (integration)', () => 
     const cursor = { bootId: BOOT_ID, lastSeq: before.seq ?? currentSeq() };
 
     // What happened while it was away.
-    await seedLead(party.id, product.id);
+    await seedLead(party.id, product);
     await catalog.updateParty(party.id, { name: 'Delta Traders Ltd' }, admin);
-    await catalog.createProduct({ productCode: 'DL-02', name: 'Matt Tile', rate: 39_000 }, admin);
+    await catalog.createProduct(
+      { categoryName: 'Tiles', variants: [{ code: 'DL-02' }], name: 'Matt Tile', rate: 39_000 },
+      admin,
+    );
 
     const delta = await buildDelta(cursor, admin);
     expect(delta).not.toBeNull();
@@ -112,7 +115,7 @@ describe.skipIf(!canRunIntegrationTests)('reconnect delta (integration)', () => 
 
     const party = await seedParty('Variant Traders');
     const product = await catalog.createProduct(
-      { productCode: 'DL-03', name: 'Rustic Tile', rate: 12_000 },
+      { categoryName: 'Tiles', variants: [{ code: 'DL-03' }], name: 'Rustic Tile', rate: 12_000 },
       admin,
     );
 

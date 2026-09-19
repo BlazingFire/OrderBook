@@ -10,7 +10,7 @@
  * stage.
  */
 
-import type { PermissionSet } from '@orderbook/shared';
+import type { PermissionSet, Product, ProductInput, ProductVariant } from '@orderbook/shared';
 import { PERMISSIONS } from '@orderbook/shared';
 
 import { closeDatabase, db, initDatabase, runMigrations } from '../../src/db/knex.js';
@@ -18,6 +18,7 @@ import type { ActorContext } from '../../src/domain/actor.js';
 import { invalidateFieldCache } from '../../src/repositories/custom-field.repository.js';
 import { invalidatePipelineCache } from '../../src/repositories/pipeline.repository.js';
 import { invalidateRoleCache } from '../../src/repositories/role.repository.js';
+import * as catalogService from '../../src/services/catalog.service.js';
 import { invalidateSettingsCache } from '../../src/services/settings.service.js';
 import { resetAuthState } from '../../src/services/auth.service.js';
 import { startTestPostgres, stopTestPostgres, testConnectionUrl } from './db.js';
@@ -41,7 +42,6 @@ const DATA_TABLES = [
   'stock_reservations',
   'stock_movements',
   'inventory_stock',
-  'line_item_quantities',
   'line_items',
   'timeline_entries',
   'orders',
@@ -51,6 +51,7 @@ const DATA_TABLES = [
   // CASCADE. It is test data in every suite: no migration seeds a grant.
   'party_access',
   'product_images',
+  'product_variants',
   'products',
   'product_categories',
   'parties',
@@ -159,10 +160,7 @@ export async function teardownDatabase(): Promise<void> {
 export async function resetData(): Promise<void> {
   await db().raw(`TRUNCATE TABLE ${DATA_TABLES.join(', ')} RESTART IDENTITY CASCADE`);
 
-  await db().raw(`
-    ALTER SEQUENCE party_code_seq RESTART WITH 1;
-    ALTER SEQUENCE product_code_seq RESTART WITH 1;
-  `);
+  await db().raw(`ALTER SEQUENCE party_code_seq RESTART WITH 1`);
 
   // Permanent ids are handed out from a table, not a sequence, so RESTART
   // IDENTITY does not touch them — every suite would otherwise start numbering
@@ -284,4 +282,39 @@ export async function actorWith(
   return testActor({
     permissions: { roleId: null, roleName: 'Limited', tier: 'office', permissions },
   });
+}
+
+/**
+ * A product the way every suite needs one: in a category, with at least one
+ * variant carrying a code. Returns the product and its first variant, because
+ * a line, a stock movement or a reservation is keyed by the variant id.
+ */
+export async function createTestProduct(
+  actor: ActorContext,
+  input: {
+    name: string;
+    categoryName?: string;
+    code?: string;
+    weightKg?: number | null;
+    variants?: Array<{ code: string; label: string; weightKg?: number | null }>;
+  } & Record<string, unknown>,
+): Promise<{ product: Product; variant: ProductVariant }> {
+  const { name, categoryName, code, weightKg, variants, ...rest } = input;
+  const product = await catalogService.createProduct(
+    {
+      ...(rest as Partial<ProductInput>),
+      name,
+      categoryName: categoryName ?? 'Test category',
+      ...(variants
+        ? { hasVariants: true, variants }
+        : {
+            hasVariants: false,
+            variants: [{ code: code ?? `T-${name.replace(/[^A-Za-z0-9]+/g, '-').toUpperCase()}`, weightKg: weightKg ?? null }],
+          }),
+    },
+    actor,
+  );
+  const variant = product.variants[0];
+  if (!variant) throw new Error(`createTestProduct: ${name} came back without a variant`);
+  return { product, variant };
 }

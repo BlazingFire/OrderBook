@@ -210,8 +210,13 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       const { password } = await initialize();
       const agent = await signedInAgent(password);
 
-      await agent.post('/api/products').send({ productCode: 'A1', name: 'One' }).expect(201);
-      await agent.post('/api/products').send({ productCode: 'A1', name: 'Two' }).expect(409);
+      const product = (code: string, name: string) => ({
+        name,
+        categoryName: 'Basins',
+        variants: [{ code }],
+      });
+      await agent.post('/api/products').send(product('A1', 'One')).expect(201);
+      await agent.post('/api/products').send(product('A1', 'Two')).expect(409);
     });
 
     it('filters parties by search term', async () => {
@@ -237,7 +242,12 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       const party = await agent.post('/api/parties').send({ name: 'Patel Tiles' }).expect(201);
       const product = await agent
         .post('/api/products')
-        .send({ productCode: 'GVT-01', name: 'Carrara White', rate: 45_000, weightKg: 20 })
+        .send({
+          name: 'Carrara White',
+          categoryName: 'Tiles',
+          rate: 45_000,
+          variants: [{ code: 'GVT-01', weightKg: 20 }],
+        })
         .expect(201);
 
       const lead = await leads.createLead(
@@ -246,15 +256,21 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
           items: [
             {
               productId: product.body.id as string,
+              variantId: (product.body as { variants: Array<{ id: string }> }).variants[0]!.id,
+              quantity: 12,
               packaging: 'carton',
-              quantities: [{ colour: 'Ivory', quantity: 12 }],
             },
           ],
         },
         await testActor(),
       );
 
-      return { partyId: party.body.id as string, productId: product.body.id as string, lead };
+      return {
+        partyId: party.body.id as string,
+        productId: product.body.id as string,
+        variantId: (product.body as { variants: Array<{ id: string }> }).variants[0]!.id,
+        lead,
+      };
     }
 
     it('has no endpoint for raising a lead — that belongs to the Office Panel', async () => {
@@ -338,12 +354,9 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
     it('dispatches an order and moves the stock ledger', async () => {
       const { password } = await initialize();
       const agent = await signedInAgent(password);
-      const { productId, lead } = await seedLead(agent);
+      const { variantId, lead } = await seedLead(agent);
 
-      await agent
-        .post('/api/stock/inbound')
-        .send({ productId, colour: 'Ivory', quantityBoxes: 50 })
-        .expect(200);
+      await agent.post('/api/stock/inbound').send({ variantId, quantityBoxes: 50 }).expect(200);
 
       const order = await agent.post(`/api/leads/${lead.id}/convert`).send({}).expect(201);
 
@@ -382,7 +395,7 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       const agent = await signedInAgent(password);
       await agent
         .post('/api/products')
-        .send({ productCode: 'SAN-77', name: 'Cascade Basin' })
+        .send({ name: 'Cascade Basin', categoryName: 'Basins', variants: [{ code: 'SAN-77' }] })
         .expect(201);
 
       const response = await agent.get('/api/search?q=Cascade').expect(200);

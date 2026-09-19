@@ -14,7 +14,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import type { Party, Product, SyncSnapshot } from '@orderbook/shared';
+import type { Party, Product, ProductCategory, SyncSnapshot } from '@orderbook/shared';
 
 import {
   OfflinePickForbidden,
@@ -25,23 +25,36 @@ import {
 const SYNC = { version: 1, hlc: 'x', fieldHlc: {}, temporaryId: null };
 const NOW = '2026-08-01T00:00:00.000Z';
 
-function product(id: string, code: string, name: string): Product {
+function product(
+  id: string,
+  code: string,
+  name: string,
+  category: { id: string; name: string } = { id: 'PC1', name: 'Tiles' },
+  variants: Array<{ code: string; label: string | null }> = [{ code, label: null }],
+): Product {
   return {
     id,
     tenantId: 't1',
-    productCode: code,
     name,
     alias: null,
-    categoryId: null,
-    categoryName: null,
+    categoryId: category.id,
+    categoryName: category.name,
     size: null,
     sin: null,
     grade: null,
     productType: null,
-    weightKg: null,
+    hasVariants: variants.some((variant) => variant.label !== null),
+    variants: variants.map((variant, index) => ({
+      id: `${id}-V${index + 1}`,
+      productId: id,
+      code: variant.code,
+      label: variant.label,
+      weightKg: null,
+      sequence: index + 1,
+      isActive: true,
+    })),
     finish: null,
     series: null,
-    color: null,
     thicknessMm: null,
     piecesPerBox: null,
     boxCoverageSqft: null,
@@ -96,26 +109,66 @@ function party(id: string, name: string): Party {
   };
 }
 
+const FLOOR = { id: 'PC1', name: 'Floor tiles' };
+const WALL = { id: 'PC2', name: 'Wall tiles' };
+
 const VIEW = {
   products: [
-    product('PR1', 'GLZ-100', 'Glazed Vitrified Tile'),
-    product('PR2', 'GLS-200', 'Glossy Wall Tile'),
-    product('PR3', 'RST-300', 'Rustic Floor Tile'),
+    product('PR1', 'GLZ-100', 'Glazed Vitrified Tile', FLOOR),
+    product('PR2', 'GLS-200', 'Glossy Wall Tile', WALL),
+    product('PR3', 'RST-300', 'Rustic Floor Tile', FLOOR, [
+      { code: 'RST-300', label: 'Terracotta' },
+      { code: 'RST-301', label: 'Slate' },
+    ]),
+  ],
+  categories: [
+    { id: FLOOR.id, tenantId: 't1', name: FLOOR.name, createdAt: NOW },
+    { id: WALL.id, tenantId: 't1', name: WALL.name, createdAt: NOW },
   ],
   parties: [party('PT1', 'Patel Tiles'), party('PT2', 'Shree Ceramics')],
 } as unknown as SyncSnapshot;
 
 const ALL = ['products.view', 'parties.view'];
 
+const codesOf = (page: { items: Product[] }) =>
+  page.items.map((item) => item.variants.map((variant) => variant.code).join(','));
+
 describe('picking offline', () => {
   it('matches a prefix of the name', () => {
     const page = pickFromView('product', { term: 'gla' }, VIEW, ALL) as { items: Product[] };
-    expect(page.items.map((item) => item.productCode)).toEqual(['GLZ-100']);
+    expect(codesOf(page)).toEqual(['GLZ-100']);
   });
 
   it('matches a code typed in full, however the words break', () => {
     const page = pickFromView('product', { term: 'RST-300' }, VIEW, ALL) as { items: Product[] };
-    expect(page.items.map((item) => item.productCode)).toEqual(['RST-300']);
+    expect(codesOf(page)).toEqual(['RST-300,RST-301']);
+  });
+
+  it('finds a model by any of its variant codes or colours', () => {
+    expect(codesOf(pickFromView('product', { term: 'RST-301' }, VIEW, ALL) as { items: Product[] })).toEqual([
+      'RST-300,RST-301',
+    ]);
+    expect(codesOf(pickFromView('product', { term: 'slate' }, VIEW, ALL) as { items: Product[] })).toEqual([
+      'RST-300,RST-301',
+    ]);
+  });
+
+  it('scopes products to the chosen category', () => {
+    const page = pickFromView('product', { term: '', categoryId: FLOOR.id }, VIEW, ALL) as {
+      items: Product[];
+    };
+    expect(page.items.map((item) => item.id).sort()).toEqual(['PR1', 'PR3']);
+    expect(
+      (pickFromView('product', { term: 'glossy', categoryId: FLOOR.id }, VIEW, ALL) as { items: Product[] }).items,
+    ).toHaveLength(0);
+  });
+
+  it('offers categories, and only categories, for the first stage', () => {
+    const page = pickFromView('category', { term: 'tile' }, VIEW, ALL) as { items: ProductCategory[] };
+    expect(page.items.map((item) => item.name)).toEqual(['Wall tiles', 'Floor tiles']);
+    expect(() => pickFromView('category', { term: '' }, VIEW, ['leads.view'])).toThrow(
+      OfflinePickForbidden,
+    );
   });
 
   it('returns everything when nothing has been typed', () => {
@@ -154,13 +207,15 @@ describe('picking offline', () => {
 });
 
 describe('the catalogue page offline', () => {
+  const VITRIFIED = { id: 'PC10', name: 'Vitrified' };
+  const CERAMIC = { id: 'PC11', name: 'Ceramic' };
   const typed = {
     ...VIEW,
     products: [
-      { ...product('PR1', 'GLZ-100', 'Glazed Vitrified Tile'), productType: 'Vitrified' },
-      { ...product('PR2', 'GLS-200', 'Glossy Wall Tile'), productType: 'Ceramic' },
-      { ...product('PR3', 'RST-300', 'Rustic Floor Tile'), productType: 'Vitrified', brand: 'Kajaria' },
-      product('PR4', 'UNT-400', 'Untyped'),
+      product('PR1', 'GLZ-100', 'Glazed Vitrified Tile', VITRIFIED),
+      product('PR2', 'GLS-200', 'Glossy Wall Tile', CERAMIC),
+      { ...product('PR3', 'RST-300', 'Rustic Floor Tile', VITRIFIED), brand: 'Kajaria' },
+      product('PR4', 'UNT-400', 'Untyped', CERAMIC),
     ],
   } as unknown as SyncSnapshot;
 
@@ -176,13 +231,19 @@ describe('the catalogue page offline', () => {
     expect(listProductsFromView({ search: 'vitrified' }, typed, ALL).total).toBe(2);
   });
 
-  it('filters by type while counting the facet over the search alone', () => {
-    const page = listProductsFromView({ productType: 'Vitrified' }, typed, ALL);
+  it('filters by category while counting the facet over the search alone', () => {
+    const page = listProductsFromView({ categoryId: VITRIFIED.id }, typed, ALL);
     expect(page.items.map((item) => item.id)).toEqual(['PR1', 'PR3']);
-    expect(page.productTypes).toEqual([
-      { value: 'Ceramic', count: 1 },
-      { value: 'Vitrified', count: 2 },
+    expect(page.categories).toEqual([
+      { id: CERAMIC.id, name: 'Ceramic', count: 2 },
+      { id: VITRIFIED.id, name: 'Vitrified', count: 2 },
     ]);
+  });
+
+  it('lists only the models with a weight still to enter when asked', () => {
+    const page = listProductsFromView({ missingWeight: true }, typed, ALL);
+    // Every fixture variant has a null weight, so all four qualify.
+    expect(page.total).toBe(4);
   });
 
   it('clamps a silly page size', () => {

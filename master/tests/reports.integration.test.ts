@@ -24,13 +24,22 @@ async function createDispatchedOrder(
   createdAtIso?: string,
 ): Promise<{ orderId: string; partyId: string }> {
   const party = await catalogService.createParty({ name: `RPT Party ${city} ${Date.now()}`, city }, actor);
-  const product = await catalogService.createProduct({ name: 'RPT Tile', productCode: `RPT-${Math.random().toString(36).slice(2, 8)}` }, actor);
-  await inventoryService.recordInbound({ productId: product.id, colour: 'White', quantityBoxes: 100 }, actor);
+  const product = await catalogService.createProduct(
+    {
+      name: 'RPT Tile',
+      categoryName: 'Tiles',
+      hasVariants: true,
+      variants: [{ code: `RPT-${Math.random().toString(36).slice(2, 8)}`, label: 'White' }],
+    },
+    actor,
+  );
+  const variantId = product.variants[0]!.id;
+  await inventoryService.recordInbound({ variantId, quantityBoxes: 100 }, actor);
 
   const lead = await leadService.createLead(
     {
       partyId: party.id,
-      items: [{ productId: product.id, packaging: 'Box', quantities: [{ colour: 'White', quantity: 10 }] }],
+      items: [{ productId: product.id, variantId, quantity: 10, packaging: 'Box' }],
     },
     actor,
   );
@@ -89,6 +98,52 @@ describe.skipIf(!canRunIntegrationTests)('Reports (integration)', () => {
       const report = await reportService.dispatchReport({ period: 'thisMonth' }, actor);
       const thisMonth = report.months.find((m) => m.orderCount > 0);
       expect(thisMonth?.boxCount).toBeGreaterThan(0);
+    });
+
+    it('RPT-18: the colour buckets are the variant labels the pieces were dispatched in, and a no-variant product is one blank bucket', async () => {
+      const party = await catalogService.createParty({ name: 'RPT Colours', city: 'Morbi' }, actor);
+      const model = await catalogService.createProduct(
+        {
+          name: 'RPT Basin',
+          categoryName: 'Basins',
+          hasVariants: true,
+          variants: [
+            { code: 'RPT-C-1', label: 'White' },
+            { code: 'RPT-C-2', label: 'Magenta' },
+          ],
+        },
+        actor,
+      );
+      const plain = await catalogService.createProduct(
+        { name: 'RPT Pan', categoryName: 'Pans', variants: [{ code: 'RPT-P-1' }] },
+        actor,
+      );
+      const [white, magenta] = model.variants;
+      const [pan] = plain.variants;
+      for (const variant of [white!, magenta!, pan!]) {
+        await inventoryService.recordInbound({ variantId: variant.id, quantityBoxes: 100 }, actor);
+      }
+
+      const lead = await leadService.createLead(
+        {
+          partyId: party.id,
+          items: [
+            { productId: model.id, variantId: white!.id, quantity: 5, packaging: 'Box' },
+            { productId: model.id, variantId: magenta!.id, quantity: 10, packaging: 'Box' },
+            { productId: plain.id, variantId: pan!.id, quantity: 7, packaging: 'Box' },
+          ],
+        },
+        actor,
+      );
+      const order = await orderService.convertLead({ leadId: lead.id }, actor);
+      await orderService.dispatchOrder({ orderId: order.id }, actor);
+      await setDispatchedAt(order.id, new Date().toISOString());
+
+      const report = await reportService.dispatchReport({ period: 'thisMonth' }, actor);
+      const buckets = new Map(report.colours.map((bucket) => [bucket.colour, bucket.boxCount]));
+      expect(buckets.get('White')).toBe(5);
+      expect(buckets.get('Magenta')).toBe(10);
+      expect(buckets.get('')).toBe(7);
     });
 
     it('RPT-9: BIGINT totals sum as numbers, not strings', async () => {

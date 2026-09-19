@@ -50,7 +50,7 @@ describe.skipIf(!canRunIntegrationTests)('product images (integration)', () => {
   });
 
   it('normalizes a source photo into four on-disk WebP variants and returns them on the product', async () => {
-    const product = await catalog.createProduct({ productCode: 'PRD-IMG1', name: 'Glossy Floor Tile' }, actor);
+    const product = await catalog.createProduct({ categoryName: 'Tiles', variants: [{ code: 'PRD-IMG1' }], name: 'Glossy Floor Tile' }, actor);
     const source = await testJpeg(1200, 900, { r: 210, g: 140, b: 60 });
 
     const updated = await imageService.uploadImage(
@@ -96,7 +96,7 @@ describe.skipIf(!canRunIntegrationTests)('product images (integration)', () => {
   });
 
   it('rejects a file that is not a decodable image, naming it (§2.1)', async () => {
-    const product = await catalog.createProduct({ productCode: 'PRD-IMG2', name: 'Bad Upload' }, actor);
+    const product = await catalog.createProduct({ categoryName: 'Tiles', variants: [{ code: 'PRD-IMG2' }], name: 'Bad Upload' }, actor);
     const notAnImage = Buffer.from('this is not an image');
 
     await expect(
@@ -108,7 +108,7 @@ describe.skipIf(!canRunIntegrationTests)('product images (integration)', () => {
   });
 
   it('bakes a 90° rotation into the pixels before cropping', async () => {
-    const product = await catalog.createProduct({ productCode: 'PRD-IMG3', name: 'Rotated Tile' }, actor);
+    const product = await catalog.createProduct({ categoryName: 'Tiles', variants: [{ code: 'PRD-IMG3' }], name: 'Rotated Tile' }, actor);
     // A 400×200 source rotated 90° becomes a 200×400 canvas to crop against.
     const source = await testJpeg(400, 200, { r: 20, g: 20, b: 20 });
 
@@ -126,7 +126,7 @@ describe.skipIf(!canRunIntegrationTests)('product images (integration)', () => {
   });
 
   it('refuses a crop rect that falls outside the rotated source', async () => {
-    const product = await catalog.createProduct({ productCode: 'PRD-IMG4', name: 'Out Of Bounds' }, actor);
+    const product = await catalog.createProduct({ categoryName: 'Tiles', variants: [{ code: 'PRD-IMG4' }], name: 'Out Of Bounds' }, actor);
     const source = await testJpeg(200, 200, { r: 1, g: 2, b: 3 });
 
     await expect(
@@ -138,7 +138,7 @@ describe.skipIf(!canRunIntegrationTests)('product images (integration)', () => {
   });
 
   it('makes the first upload primary, and later uploads not primary, in sequence order', async () => {
-    const product = await catalog.createProduct({ productCode: 'PRD-IMG5', name: 'Multi Photo' }, actor);
+    const product = await catalog.createProduct({ categoryName: 'Tiles', variants: [{ code: 'PRD-IMG5' }], name: 'Multi Photo' }, actor);
     const crop = { cropX: 0, cropY: 0, cropWidth: 100, cropHeight: 100, rotationDeg: 0 };
 
     const afterFirst = await imageService.uploadImage(
@@ -159,7 +159,7 @@ describe.skipIf(!canRunIntegrationTests)('product images (integration)', () => {
   });
 
   it('moves primary to the oldest remaining image when the primary is deleted', async () => {
-    const product = await catalog.createProduct({ productCode: 'PRD-IMG6', name: 'Delete Primary' }, actor);
+    const product = await catalog.createProduct({ categoryName: 'Tiles', variants: [{ code: 'PRD-IMG6' }], name: 'Delete Primary' }, actor);
     const crop = { cropX: 0, cropY: 0, cropWidth: 100, cropHeight: 100, rotationDeg: 0 };
 
     const afterFirst = await imageService.uploadImage(
@@ -177,7 +177,7 @@ describe.skipIf(!canRunIntegrationTests)('product images (integration)', () => {
   });
 
   it('leaves an empty gallery, not an error, when the last image is deleted', async () => {
-    const product = await catalog.createProduct({ productCode: 'PRD-IMG7', name: 'Delete Only' }, actor);
+    const product = await catalog.createProduct({ categoryName: 'Tiles', variants: [{ code: 'PRD-IMG7' }], name: 'Delete Only' }, actor);
     const uploaded = await imageService.uploadImage(
       {
         productId: product.id,
@@ -192,7 +192,7 @@ describe.skipIf(!canRunIntegrationTests)('product images (integration)', () => {
   });
 
   it('rejects an incomplete reorder permutation', async () => {
-    const product = await catalog.createProduct({ productCode: 'PRD-IMG8', name: 'Reorder Guard' }, actor);
+    const product = await catalog.createProduct({ categoryName: 'Tiles', variants: [{ code: 'PRD-IMG8' }], name: 'Reorder Guard' }, actor);
     const crop = { cropX: 0, cropY: 0, cropWidth: 50, cropHeight: 50, rotationDeg: 0 };
     const after = await imageService.uploadImage(
       { productId: product.id, fileBuffer: await testJpeg(50, 50, { r: 9, g: 9, b: 9 }), crop },
@@ -209,7 +209,7 @@ describe.skipIf(!canRunIntegrationTests)('product images (integration)', () => {
   });
 
   it('IMG-9 — a caller without products.edit cannot upload, and one without products.view gets a 404-shaped refusal reading a variant', async () => {
-    const product = await catalog.createProduct({ productCode: 'PRD-IMG9', name: 'Permission Guard' }, actor);
+    const product = await catalog.createProduct({ categoryName: 'Tiles', variants: [{ code: 'PRD-IMG9' }], name: 'Permission Guard' }, actor);
     const uploaded = await imageService.uploadImage(
       {
         productId: product.id,
