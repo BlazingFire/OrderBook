@@ -101,25 +101,27 @@ export async function dispatchesByMonth(range: DateRange, runner: Runner = db())
 }
 
 /**
- * Aggregated across the whole range, not per month. Carries no `totalValue`:
- * `total_amount` is an order-level figure, and attributing it to one colour
- * on a multi-colour order has no single correct answer — an absent field
- * beats a fabricated one.
+ * Aggregated across the whole range, not per month, by the variant's colour
+ * or pattern text (`''` for a no-variant product — the UI's "—" bucket).
+ * Carries no `totalValue`: `total_amount` is an order-level figure, and
+ * attributing it to one variant on a multi-variant order has no single
+ * correct answer — an absent field beats a fabricated one.
  */
 export async function dispatchesByColour(range: DateRange, runner: Runner = db()): Promise<DispatchColourRow[]> {
   const tz = config.locale.timeZone;
   const scope = partyScopeSql('o.party_id', range.tenantId, range.scope);
   const { rows } = await runner.raw<{ rows: Array<{ colour: string; box_count: string }> }>(
-    `SELECT m.colour, SUM(-m.quantity_boxes) AS box_count
+    `SELECT COALESCE(v.label, '') AS colour, SUM(-m.quantity_boxes) AS box_count
        FROM orders o
        JOIN stock_movements m
          ON m.tenant_id = o.tenant_id AND m.reference_type = 'order' AND m.reference_id = o.id
         AND m.movement_type = 'outbound'
+       JOIN product_variants v ON v.id = m.variant_id
       WHERE o.tenant_id = ?
         AND o.dispatched_at >= (?::timestamp AT TIME ZONE ?)
         AND o.dispatched_at <  (?::timestamp AT TIME ZONE ?)
         AND o.deleted_at IS NULL${scope.sql}
-      GROUP BY m.colour
+      GROUP BY COALESCE(v.label, '')
       ORDER BY box_count DESC`,
     [range.tenantId, range.fromDate, tz, range.toDateExclusive, tz, ...scope.bindings],
   );

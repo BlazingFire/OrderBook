@@ -30,12 +30,12 @@ import {
   createRandom,
   DEFAULT_MAX_STOCK_LEVEL,
   DEFAULT_MIN_STOCK_LEVEL,
-  DEFAULT_OPENING_BOXES,
+  DEFAULT_OPENING_PIECES,
   DEFAULT_REORDER_LEVEL,
   SAMPLE_CUSTOM_FIELDS,
   SAMPLE_DELETIONS,
   SAMPLE_LEADS,
-  SAMPLE_MARKER_PRODUCT_CODE,
+  SAMPLE_MARKER_PARTY_KEY,
   SAMPLE_OPENING_STOCK,
   SAMPLE_OPTION_VALUES,
   SAMPLE_PARTIES,
@@ -45,20 +45,23 @@ import {
   SAMPLE_STOCK_ARRIVALS,
   SAMPLE_STOCK_COUNTS,
   SAMPLE_WINDOW_DAYS,
-  sampleVariantCode,
   type SampleLead,
-  type SampleProduct,
   type SampleUser,
 } from '../domain/sample-data.js';
+import { SWISWARE_COLOURS } from '../domain/swisware-catalogue.js';
+import { UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
 import { db } from '../db/knex.js';
 import { ValidationError } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import { renderTileSwatch } from '../lib/tile-swatch.js';
+import * as partyRepo from '../repositories/party.repository.js';
 import * as pipelineRepo from '../repositories/pipeline.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
+import * as productVariantRepo from '../repositories/product-variant.repository.js';
 import { permissionSetForRole } from '../repositories/role.repository.js';
 import { resolveDefaultTenantId } from '../repositories/tenant.repository.js';
 import * as catalog from './catalog.service.js';
+import { seedCatalogue } from './catalogue-seed.service.js';
 import { seedDummyUsers } from './developer.service.js';
 import * as fields from './fields.service.js';
 import { uploadImage } from './image.service.js';
@@ -99,7 +102,7 @@ export async function seedSampleData(
   // and ends sessions, which a press that is going to be refused must not do.
   // The tenant exists from the migrations, set up or not.
   const tenantId = await resolveDefaultTenantId();
-  if (await productRepo.findProductByCode(tenantId, SAMPLE_MARKER_PRODUCT_CODE)) {
+  if (await sampleDataPresent(tenantId)) {
     throw new ValidationError('validation.developer.sampleDataPresent');
   }
 
@@ -117,10 +120,9 @@ export async function seedSampleData(
 
   // Resolved as the events run; every later event looks ids up here.
   const partyIds = new Map<string, string>();
-  const productIds = new Map<string, string>();
-  const colourHex = new Map(
-    SAMPLE_OPTION_VALUES['stock.colour'].map((colour) => [colour.value, colour.hex ?? '#999999']),
-  );
+  /** Variant code → the ids a line, a stock movement or a party rate needs. */
+  const variantIds = new Map<string, { variantId: string; productId: string }>();
+  const colourHex = new Map(SWISWARE_COLOURS.map((colour) => [colour.value, colour.hex]));
 
   // --- Day 0–1: the company sets itself up — lists, fields, catalogue -------
 
@@ -153,24 +155,71 @@ export async function seedSampleData(
     });
   });
 
+  // The product master is the Swisware catalogue, loaded whole on day one
+  // as the administrator. Idempotent, so a Master that already holds it
+  // simply reports it as present.
+  schedule(clock.at(1, 0), async () => {
+    const loaded = await seedCatalogue({ actor: actors.admin });
+    counts.products += loaded.products;
+
+    // Every code the demo refers to, resolved once.
+    const codes = new Set<string>();
+    for (const product of SAMPLE_PRODUCTS) for (const code of Object.keys(product.weights)) codes.add(code);
+    for (const line of SAMPLE_LEADS.flatMap((lead) => lead.lines)) codes.add(line.code);
+    for (const variant of SAMPLE_PARTY_VARIANTS) codes.add(variant.code);
+    for (const entry of [...SAMPLE_STOCK_ARRIVALS, ...SAMPLE_STOCK_COUNTS]) codes.add(entry.code);
+    codes.add(SAMPLE_DELETIONS.productCode);
+    const live = await productVariantRepo.findLiveVariantsByCodes(tenantId, [...codes]);
+    for (const code of codes) {
+      const hit = live.get(code.toLowerCase());
+      if (!hit) throw new Error(`Sample code "${code}" is not in the Swisware catalogue`);
+      variantIds.set(code, hit);
+    }
+  });
+
+  // Then what the business enters into the master for the models it trades
+  // in: prices, an alias, and illustrative weights on the variants it quotes.
   SAMPLE_PRODUCTS.forEach((product, index) => {
-    const at = clock.at(1, index * 3);
-    schedule(at, async () => {
-      const created = await catalog.createProduct(
-        productInput(product, 1001 + index),
+    schedule(clock.at(1, 10 + index * 3), async () => {
+      const [firstCode] = Object.keys(product.weights);
+      const productId = requireVariant(variantIds, firstCode as string).productId;
+      const existing = await productRepo.findProductById(tenantId, productId);
+      if (!existing) throw new Error(`Sample product "${product.model}" vanished after the catalogue load`);
+
+      await catalog.updateProduct(
+        productId,
+        {
+          name: existing.name,
+          alias: product.alias ?? null,
+          grade: product.grade,
+          ...(product.productType ? { productType: product.productType } : {}),
+          rate: product.rate,
+          mrp: product.mrp,
+          purchaseRate: product.purchaseRate,
+          hsnCode: '6910',
+          gstRatePct: 18,
+          customFields: { launchYear: product.launchYear },
+          variants: existing.variants.map((variant) => ({
+            id: variant.id,
+            code: variant.code,
+            label: variant.label,
+            weightKg: product.weights[variant.code] ?? variant.weightKg,
+            sequence: variant.sequence,
+          })),
+        },
         actors.admin,
       );
-      productIds.set(product.code, created.id);
-      counts.products += 1;
     });
 
     if (withImages) {
-      schedule(clock.at(1, index * 3 + 1), async () => {
-        const productId = productIds.get(product.code);
-        if (!productId) return;
+      schedule(clock.at(1, 11 + index * 3), async () => {
+        const [firstCode] = Object.keys(product.weights);
+        const productId = requireVariant(variantIds, firstCode as string).productId;
+        const existing = await productRepo.findProductById(tenantId, productId);
+        const colour = existing?.variants.find((variant) => variant.label)?.label ?? 'White';
         try {
           const fileBuffer = await renderTileSwatch({
-            baseHex: colourHex.get(product.colours[0] ?? '') ?? '#999999',
+            baseHex: colourHex.get(colour.replace(/^(Vitrosa|Rustic) /, '')) ?? '#F4F4F0',
             pattern: product.pattern,
             seed: 7 + index,
           });
@@ -184,7 +233,7 @@ export async function seedSampleData(
                 cropWidth: 800,
                 cropHeight: 800,
                 rotationDeg: 0,
-                caption: `${product.name} — ${product.colours[0]}`,
+                caption: `${product.model} — ${colour}`,
               },
             },
             actors.admin,
@@ -193,7 +242,7 @@ export async function seedSampleData(
         } catch (error) {
           // A photo is decoration; a machine whose rasteriser cannot draw one
           // still gets the rest of the dataset.
-          log.warn(`Skipping the sample photo for ${product.code}: ${(error as Error).message}`);
+          log.warn(`Skipping the sample photo for ${product.model}: ${(error as Error).message}`);
         }
       });
     }
@@ -236,7 +285,7 @@ export async function seedSampleData(
       await catalog.upsertVariant(
         {
           partyId: requireId(partyIds, variant.party, 'party'),
-          productId: requireId(productIds, variant.product, 'product'),
+          productId: requireVariant(variantIds, variant.code).productId,
           alias: variant.alias ?? null,
           rate: variant.rate,
           packaging: variant.packaging ?? null,
@@ -270,25 +319,22 @@ export async function seedSampleData(
 
   let stockSequence = 0;
   for (const product of SAMPLE_PRODUCTS) {
-    if (product.discontinued) continue;
-    for (const colour of product.colours) {
-      const boxes = SAMPLE_OPENING_STOCK[`${product.code}/${colour}`] ?? DEFAULT_OPENING_BOXES;
+    for (const code of Object.keys(product.weights)) {
+      const pieces = SAMPLE_OPENING_STOCK[code] ?? DEFAULT_OPENING_PIECES;
       const slot = stockSequence++;
       schedule(clock.at(6 + (slot % 4), slot), async () => {
-        const productId = requireId(productIds, product.code, 'product');
+        const { variantId } = requireVariant(variantIds, code);
         await inventory.recordInbound(
-          { productId, colour, quantityBoxes: boxes, note: 'Opening stock' },
+          { variantId, quantityBoxes: pieces, note: 'Opening stock' },
           actors.management,
         );
         counts.stockMovements += 1;
         await inventory.setReorderLevel(
           {
-            productId,
-            colour,
+            variantId,
             reorderLevel: DEFAULT_REORDER_LEVEL,
             minStockLevel: DEFAULT_MIN_STOCK_LEVEL,
             maxStockLevel: DEFAULT_MAX_STOCK_LEVEL,
-            variantCode: sampleVariantCode(product.code, colour),
           },
           actors.management,
         );
@@ -300,9 +346,8 @@ export async function seedSampleData(
     schedule(clock.at(arrival.day, index), async () => {
       await inventory.recordInbound(
         {
-          productId: requireId(productIds, arrival.product, 'product'),
-          colour: arrival.colour,
-          quantityBoxes: arrival.boxes,
+          variantId: requireVariant(variantIds, arrival.code).variantId,
+          quantityBoxes: arrival.pieces,
           note: arrival.note,
         },
         actors.management,
@@ -315,9 +360,8 @@ export async function seedSampleData(
     schedule(clock.at(count.day, 30 + index), async () => {
       await inventory.recordAdjustment(
         {
-          productId: requireId(productIds, count.product, 'product'),
-          colour: count.colour,
-          quantityBoxes: count.countedBoxes,
+          variantId: requireVariant(variantIds, count.code).variantId,
+          quantityBoxes: count.countedPieces,
           note: count.note,
         },
         actors.management,
@@ -340,7 +384,7 @@ export async function seedSampleData(
       counts,
       schedule,
       partyIds,
-      productIds,
+      variantIds,
     });
   });
 
@@ -355,7 +399,7 @@ export async function seedSampleData(
   });
   schedule(clock.at(SAMPLE_WINDOW_DAYS - 1, 81), async () => {
     await catalog.deleteProduct(
-      requireId(productIds, SAMPLE_DELETIONS.product, 'product'),
+      requireVariant(variantIds, SAMPLE_DELETIONS.productCode).productId,
       actors.management,
     );
     counts.deleted += 1;
@@ -405,7 +449,7 @@ interface LeadContext {
   counts: SampleDataCounts;
   schedule: (at: Date, run: () => Promise<void>) => void;
   partyIds: Map<string, string>;
-  productIds: Map<string, string>;
+  variantIds: Map<string, { variantId: string; productId: string }>;
 }
 
 /**
@@ -443,18 +487,18 @@ function scheduleLeadHistory(lead: SampleLead, progress: LeadProgress, ctx: Lead
           ...(lead.priority ? { priority: lead.priority } : {}),
           ...(lead.siteLocation ? { siteLocation: lead.siteLocation } : {}),
         },
-        items: lead.lines.map((line): LineItemInput => ({
-          productId: requireId(ctx.productIds, line.product, 'product'),
-          packaging: line.packaging,
-          grade: line.grade ?? null,
-          rate: line.rate ?? null,
-          notes: line.notes ?? null,
-          quantities: line.quantities.map(([colour, quantity]) => ({
-            colour,
-            quantity,
-            variantCode: sampleVariantCode(line.product, colour),
-          })),
-        })),
+        items: lead.lines.map((line): LineItemInput => {
+          const ids = requireVariant(ctx.variantIds, line.code);
+          return {
+            productId: ids.productId,
+            variantId: ids.variantId,
+            quantity: line.quantity,
+            packaging: line.packaging,
+            grade: line.grade ?? null,
+            rate: line.rate ?? null,
+            notes: line.notes ?? null,
+          };
+        }),
       },
       owner,
     );
@@ -646,6 +690,32 @@ function requireId(ids: Map<string, string>, key: string, kind: string): string 
   return id;
 }
 
+function requireVariant(
+  ids: Map<string, { variantId: string; productId: string }>,
+  code: string,
+): { variantId: string; productId: string } {
+  const found = ids.get(code);
+  if (!found) throw new Error(`Sample variant "${code}" was referenced before the catalogue was loaded`);
+  return found;
+}
+
+/**
+ * Whether this dataset is already here: the first sample party's phone
+ * number is on a live party. (The products are the real catalogue, which a
+ * Master may hold without ever having been seeded with the demo.)
+ */
+async function sampleDataPresent(tenantId: string): Promise<boolean> {
+  const marker = SAMPLE_PARTIES.find((party) => party.key === SAMPLE_MARKER_PARTY_KEY);
+  if (!marker) return false;
+  const page = await partyRepo.listParties(tenantId, {
+    search: marker.phone,
+    limit: 5,
+    offset: 0,
+    scope: UNSCOPED_PARTY_ACCESS,
+  });
+  return page.items.some((party) => party.phone === marker.phone);
+}
+
 async function stageByName(
   tenantId: string,
   kind: 'lead' | 'order',
@@ -655,43 +725,6 @@ async function stageByName(
   const stage = stages.find((candidate) => candidate.name === name && !candidate.isArchived);
   if (!stage) throw new Error(`The ${kind} pipeline has no "${name}" stage to seed into`);
   return stage;
-}
-
-function productInput(product: SampleProduct, sinNumber: number) {
-  return {
-    productCode: product.code,
-    name: product.name,
-    alias: product.alias ?? null,
-    categoryName: product.category,
-    size: product.size,
-    sin: `SIN-${sinNumber}`,
-    grade: product.grade,
-    productType: product.productType,
-    weightKg: product.weightKg,
-    finish: product.finish,
-    series: product.series,
-    color: product.colours[0] ?? null,
-    thicknessMm: product.thicknessMm,
-    piecesPerBox: product.piecesPerBox,
-    boxCoverageSqft: product.boxCoverageSqft,
-    rate: product.rate,
-    pricePerSqft: product.pricePerSqft,
-    hsnCode: '6907',
-    mrp: product.mrp,
-    purchaseRate: product.purchaseRate,
-    gstRatePct: 18,
-    uom: 'box',
-    brand: product.brand,
-    shade: product.shade,
-    calibre: 'C1',
-    waterAbsorptionPct: product.waterAbsorptionPct,
-    peiRating: product.peiRating,
-    edgeType: product.edgeType,
-    surfaceTexture: product.finish,
-    application: product.application,
-    originPlant: product.originPlant,
-    customFields: { launchYear: product.launchYear },
-  };
 }
 
 /**
@@ -759,6 +792,7 @@ function createBackdater(tenantId: string): (since: Date, at: Date) => Promise<v
     orders: ['created_at', 'updated_at', 'dispatched_at', 'deleted_at'],
     parties: ['created_at', 'updated_at', 'deleted_at'],
     products: ['created_at', 'updated_at', 'deleted_at'],
+    product_variants: ['created_at', 'updated_at', 'deleted_at'],
     product_categories: ['created_at'],
     product_images: ['uploaded_at'],
     party_product_variants: ['created_at', 'updated_at'],

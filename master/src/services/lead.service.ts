@@ -361,11 +361,13 @@ export async function addRemark(
 }
 
 /**
- * Turn what a panel sent into stored lines.
+ * Turn what a panel sent into stored lines — one per variant.
  *
- * The party's variants are loaded once for the whole set rather than per line,
+ * The party's rates are loaded once for the whole set rather than per line,
  * and only when the lead is in `partyWiseMode` — a lead that is not in that
- * mode must take catalogue values even where a variant exists.
+ * mode must take catalogue values even where a party rate exists. The code
+ * and the weight come from the product's own variant, which has to exist on
+ * the product the line names and still be on offer.
  */
 export async function buildLines(
   tenantId: string,
@@ -373,18 +375,28 @@ export async function buildLines(
   drafts: LineDraft[],
   options: { partyWiseMode: boolean; canEditRate: boolean },
 ): Promise<LineSnapshot[]> {
-  const variants = options.partyWiseMode
+  const partyVariants = options.partyWiseMode
     ? await variantRepo.listForParty(tenantId, partyId)
     : [];
-  const variantByProduct = new Map(variants.map((variant) => [variant.productId, variant]));
+  const partyVariantByProduct = new Map(partyVariants.map((variant) => [variant.productId, variant]));
 
   const lines: LineSnapshot[] = [];
+  const products = new Map<string, Awaited<ReturnType<typeof productRepo.findProductById>>>();
 
   for (const [index, draft] of drafts.entries()) {
-    const product = await productRepo.findProductById(tenantId, draft.productId);
+    if (!products.has(draft.productId)) {
+      products.set(draft.productId, await productRepo.findProductById(tenantId, draft.productId));
+    }
+    const product = products.get(draft.productId) ?? null;
     if (!product) throw new ValidationError('validation.lead.productMissing');
 
-    const variant = variantByProduct.get(product.id) ?? null;
+    // A variant of another product, or one taken off the form, is refused
+    // rather than silently re-pointed: the line's code and weight are the
+    // variant's, and a wrong one would quote a different article.
+    const variant = product.variants.find((candidate) => candidate.id === draft.variantId);
+    if (!variant || !variant.isActive) throw new ValidationError('validation.lead.variantMissing');
+
+    const partyVariant = partyVariantByProduct.get(product.id) ?? null;
 
     const line = buildLineSnapshot(
       // A rate this actor may not set never reaches the snapshot builder, which
@@ -395,29 +407,27 @@ export async function buildLines(
         name: product.name,
         alias: product.alias,
         rate: product.rate ?? null,
-        productCode: product.productCode,
         sin: product.sin,
         size: product.size,
-        weightKg: product.weightKg,
         grade: product.grade,
         productType: product.productType,
       },
-      variant
+      { id: variant.id, code: variant.code, label: variant.label, weightKg: variant.weightKg },
+      partyVariant
         ? {
-            alias: variant.alias,
-            rate: variant.rate ?? null,
-            size: variant.size,
-            sin: variant.sin,
-            grade: variant.grade,
-            productType: variant.productType,
-            weightKg: variant.weightKg,
-            productName: variant.productName,
+            alias: partyVariant.alias,
+            rate: partyVariant.rate ?? null,
+            size: partyVariant.size,
+            sin: partyVariant.sin,
+            grade: partyVariant.grade,
+            productType: partyVariant.productType,
+            productName: partyVariant.productName,
           }
         : null,
       index + 1,
     );
 
-    if (line.quantities.length === 0) {
+    if (line.quantity <= 0) {
       throw new ValidationError('validation.lead.quantityRequired', { productName: line.productName });
     }
 

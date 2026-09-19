@@ -1,16 +1,23 @@
 /**
- * The sample dataset `sample-data.service.ts` seeds — a small ceramic-tile
+ * The sample dataset `sample-data.service.ts` seeds — a small sanitaryware
  * trade, written down rather than generated, so that what a person sees on a
  * demo Master reads like a business and not like `Product 17`.
+ *
+ * The product master itself is the Swisware catalogue
+ * (`swisware-catalogue.ts`), loaded first by `catalogue-seed.service.ts`.
+ * This file only says which of those models the demo trades in, at what
+ * rate, with which illustrative weights, and what happened to them.
  *
  * Pure data and pure rules only: no database, no clock. Every date is a day
  * offset from the start of the seeded window (`SAMPLE_WINDOW_DAYS` days before
  * "today"), and every reference between records is by the human key the seed
- * resolves — a product *code*, a party *key*, a colour *name* — never an id,
- * because ids are minted at seed time.
+ * resolves — a variant *code*, a party *key* — never an id, because ids are
+ * minted at seed time.
  *
  * Money is in paise, like the columns it lands in (`docs/schema/00-overview.md`
- * §2). Sizes and box coverages are the real ones for those tile formats.
+ * §2). Weights are **illustrative demo figures**, not catalogue data — the
+ * catalogue prints none, and the seed only sets them on the variants the demo
+ * quotes, so the "weight missing" flag is also on show.
  */
 
 import type { FieldListKey } from '@orderbook/shared';
@@ -19,10 +26,11 @@ import type { FieldListKey } from '@orderbook/shared';
 export const SAMPLE_WINDOW_DAYS = 170;
 
 /**
- * The code the seed checks before it writes anything. It is the first product
- * below: if that exists, this dataset has been seeded here before.
+ * The phone number the seed checks before it writes anything. It belongs to
+ * the first party below: if a party carries it, this dataset has been seeded
+ * here before.
  */
-export const SAMPLE_MARKER_PRODUCT_CODE = 'GVT-6060-CARR';
+export const SAMPLE_MARKER_PARTY_KEY = 'ganesh';
 
 export type SampleUser = 'admin' | 'management' | 'office';
 
@@ -33,55 +41,29 @@ export interface SampleOptionValue {
   hex?: string;
 }
 
-/** Every managed list gets values, so each picker on the Fields screen has rows. */
+/**
+ * Every managed list gets values, so each picker on the Fields screen has
+ * rows. `stock.colour` — the variant palette — is seeded by the catalogue
+ * loader from the catalogue's own colour range, so it is empty here.
+ */
 export const SAMPLE_OPTION_VALUES: Record<FieldListKey, readonly SampleOptionValue[]> = {
   // `lead.sourcePlatform` is seeded by the tenancy migration; nothing to add.
   'lead.sourcePlatform': [],
-  'stock.colour': [
-    { value: 'White', hex: '#F4F4F0' },
-    { value: 'Ivory', hex: '#F6F1DC' },
-    { value: 'Beige', hex: '#E4D5B7' },
-    { value: 'Light Grey', hex: '#C9CBCF' },
-    { value: 'Grey', hex: '#8E9196' },
-    { value: 'Charcoal', hex: '#4A4D52' },
-    { value: 'Black', hex: '#26282B' },
-    { value: 'Brown', hex: '#7A5230' },
-    { value: 'Walnut', hex: '#5C3D24' },
-    { value: 'Sky Blue', hex: '#6FA8DC' },
-    { value: 'Teal', hex: '#3C8C8A' },
-    { value: 'Terracotta', hex: '#B85C38' },
-  ],
+  'stock.colour': [],
   'product.productType': [
-    { value: 'GVT' },
-    { value: 'PGVT' },
-    { value: 'Double Charge' },
-    { value: 'Ceramic Wall' },
-    { value: 'Ceramic Floor' },
-    { value: 'Parking' },
-    { value: 'Elevation' },
-  ],
-  'product.brand': [
-    { value: 'Kavya Vitrified' },
-    { value: 'Shubh Ceramics' },
-    { value: 'Morbi Gold' },
-  ],
-  'product.shade': [{ value: 'Light' }, { value: 'Medium' }, { value: 'Dark' }],
-  'product.surfaceTexture': [
-    { value: 'Glossy' },
-    { value: 'Matt' },
-    { value: 'Satin' },
-    { value: 'Sugar' },
+    { value: 'Plain' },
+    { value: 'Designer' },
+    { value: 'Vitrosa' },
     { value: 'Rustic' },
-    { value: 'Carving' },
+    { value: 'Hydrographic' },
   ],
-  'product.originPlant': [
-    { value: 'Morbi Unit 1' },
-    { value: 'Morbi Unit 2' },
-    { value: 'Wankaner' },
-  ],
+  'product.brand': [{ value: 'Swisware' }, { value: 'Smruti Ceramics' }],
+  'product.shade': [],
+  'product.surfaceTexture': [{ value: 'Glossy' }, { value: 'Matt' }, { value: 'Rustic' }],
+  'product.originPlant': [{ value: 'Thangadh' }],
   'line.packaging': [
     { value: 'Carton' },
-    { value: 'Pallet' },
+    { value: 'Thermocol box' },
     { value: 'Wooden crate' },
     { value: 'Loose' },
   ],
@@ -126,241 +108,63 @@ export const SAMPLE_CUSTOM_FIELDS: readonly SampleCustomField[] = [
   { entity: 'product', key: 'launchYear', label: 'Launch year', fieldType: 'number' },
 ];
 
-// --- Catalogue -------------------------------------------------------------
+// --- The models the demo trades in ------------------------------------------
 
+/**
+ * One catalogue model the demo prices, weighs and quotes. The model itself
+ * (its category, name and variant codes) comes from the Swisware catalogue;
+ * this only adds what a business enters into the product master.
+ */
 export interface SampleProduct {
-  code: string;
-  name: string;
-  alias?: string;
+  /** The catalogue model's name, unique within its category. */
+  model: string;
   category: string;
-  productType: string;
-  size: string;
-  finish: string;
-  series: string;
-  thicknessMm: number;
-  piecesPerBox: number;
-  boxCoverageSqft: number;
-  /** Paise per box. */
+  alias?: string;
+  /** Paise per piece. */
   rate: number;
   mrp: number;
   purchaseRate: number;
-  /** Paise per square foot. */
-  pricePerSqft: number;
-  weightKg: number;
-  brand: string;
-  shade: string;
   grade: string;
-  waterAbsorptionPct: number;
-  peiRating: number;
-  edgeType: 'rectified' | 'non_rectified';
-  application: 'floor' | 'wall' | 'floor_wall' | 'outdoor';
-  originPlant: string;
-  /** The first colour is the product's own `color`; every one gets stock. */
-  colours: string[];
+  productType?: string;
+  /**
+   * Illustrative weight in kilograms per variant code. Variants left out keep
+   * `weightKg: null` — the demo shows the "weight missing" flag as well as
+   * the totals.
+   */
+  weights: Readonly<Record<string, number>>;
   /** Which swatch `tile-swatch.ts` draws for the photo. */
   pattern: 'marble' | 'wood' | 'stone' | 'plain';
   launchYear: number;
-  /**
-   * Never stocked and never quoted — so it can be deleted at the end. A
-   * product with boxes on the floor or a line on a live lead cannot go to the
-   * Recycle Bin (`liveReferencesToProduct`), and the bin should have one.
-   */
-  discontinued?: boolean;
 }
 
-const GVT = 'Glazed Vitrified Tiles';
-const DC = 'Double Charge Vitrified';
-const WALL = 'Ceramic Wall Tiles';
-const FLOOR = 'Ceramic Floor Tiles';
-const PARKING = 'Parking Tiles';
-const ELEVATION = 'Elevation Tiles';
+const TOILET = 'ONE PIECE TOILET';
+const BASIN = 'ONE PIECE BASIN';
+const WASH_BASIN = 'WASH BASIN';
+const TABLE_TOP = 'TABLE TOP WASH BASIN';
+const SET = 'PLAIN SET';
+const WC = 'WATER CLOSET';
+const PAN = 'ORISSA PAN';
+const URINAL = 'URINAL';
+const ACCESSORIES = 'ACCESSORIES';
 
 /* prettier-ignore */
 export const SAMPLE_PRODUCTS: readonly SampleProduct[] = [
-  {
-    code: 'GVT-6060-CARR', name: 'Carrara Statuario', alias: 'Carrara', category: GVT, productType: 'GVT',
-    size: '600x600', finish: 'Glossy', series: 'Marble', thicknessMm: 9, piecesPerBox: 4, boxCoverageSqft: 15.5,
-    rate: 68000, mrp: 82000, purchaseRate: 52000, pricePerSqft: 4400, weightKg: 28.5, brand: 'Kavya Vitrified',
-    shade: 'Light', grade: 'Premium', waterAbsorptionPct: 0.05, peiRating: 4, edgeType: 'rectified',
-    application: 'floor_wall', originPlant: 'Morbi Unit 1', colours: ['White', 'Ivory', 'Light Grey'],
-    pattern: 'marble', launchYear: 2024,
-  },
-  {
-    code: 'GVT-6060-ONYX', name: 'Onyx Honey', category: GVT, productType: 'GVT',
-    size: '600x600', finish: 'Glossy', series: 'Marble', thicknessMm: 9, piecesPerBox: 4, boxCoverageSqft: 15.5,
-    rate: 66000, mrp: 80000, purchaseRate: 50000, pricePerSqft: 4260, weightKg: 28.5, brand: 'Kavya Vitrified',
-    shade: 'Medium', grade: 'Premium', waterAbsorptionPct: 0.05, peiRating: 4, edgeType: 'rectified',
-    application: 'floor_wall', originPlant: 'Morbi Unit 1', colours: ['Ivory', 'Beige', 'Brown'],
-    pattern: 'marble', launchYear: 2024,
-  },
-  {
-    code: 'GVT-6012-CALA', name: 'Calacatta Gold', alias: 'Calacatta', category: GVT, productType: 'PGVT',
-    size: '600x1200', finish: 'Glossy', series: 'Marble', thicknessMm: 9, piecesPerBox: 2, boxCoverageSqft: 15.5,
-    rate: 145000, mrp: 172000, purchaseRate: 112000, pricePerSqft: 9350, weightKg: 30, brand: 'Kavya Vitrified',
-    shade: 'Light', grade: 'Premium', waterAbsorptionPct: 0.05, peiRating: 4, edgeType: 'rectified',
-    application: 'floor_wall', originPlant: 'Morbi Unit 2', colours: ['White', 'Ivory'],
-    pattern: 'marble', launchYear: 2025,
-  },
-  {
-    code: 'GVT-6012-STAT', name: 'Statuario Bianco', category: GVT, productType: 'PGVT',
-    size: '600x1200', finish: 'Matt', series: 'Marble', thicknessMm: 9, piecesPerBox: 2, boxCoverageSqft: 15.5,
-    rate: 138000, mrp: 165000, purchaseRate: 106000, pricePerSqft: 8900, weightKg: 30, brand: 'Kavya Vitrified',
-    shade: 'Light', grade: 'Premium', waterAbsorptionPct: 0.05, peiRating: 4, edgeType: 'rectified',
-    application: 'floor_wall', originPlant: 'Morbi Unit 2', colours: ['White', 'Light Grey'],
-    pattern: 'marble', launchYear: 2025,
-  },
-  {
-    code: 'GVT-8016-ARMA', name: 'Armani Grey', category: GVT, productType: 'PGVT',
-    size: '800x1600', finish: 'Glossy', series: 'Slab', thicknessMm: 9, piecesPerBox: 2, boxCoverageSqft: 27.5,
-    rate: 290000, mrp: 340000, purchaseRate: 228000, pricePerSqft: 10550, weightKg: 52, brand: 'Morbi Gold',
-    shade: 'Dark', grade: 'Premium', waterAbsorptionPct: 0.05, peiRating: 4, edgeType: 'rectified',
-    application: 'floor_wall', originPlant: 'Morbi Unit 2', colours: ['Grey', 'Charcoal'],
-    pattern: 'marble', launchYear: 2025,
-  },
-  {
-    code: 'GVT-6060-SUGA', name: 'Sugar Crystal', category: GVT, productType: 'GVT',
-    size: '600x600', finish: 'Sugar', series: 'Crystal', thicknessMm: 9, piecesPerBox: 4, boxCoverageSqft: 15.5,
-    rate: 72000, mrp: 86000, purchaseRate: 55000, pricePerSqft: 4650, weightKg: 28.5, brand: 'Kavya Vitrified',
-    shade: 'Light', grade: 'Premium', waterAbsorptionPct: 0.05, peiRating: 4, edgeType: 'rectified',
-    application: 'floor_wall', originPlant: 'Morbi Unit 1', colours: ['Ivory', 'Beige', 'Grey'],
-    pattern: 'stone', launchYear: 2024,
-  },
-  {
-    code: 'GVT-2012-TEAK', name: 'Teak Wood Plank', alias: 'Teak plank', category: GVT, productType: 'GVT',
-    size: '200x1200', finish: 'Matt', series: 'Wood', thicknessMm: 9, piecesPerBox: 6, boxCoverageSqft: 15.5,
-    rate: 64000, mrp: 78000, purchaseRate: 49000, pricePerSqft: 4130, weightKg: 27, brand: 'Shubh Ceramics',
-    shade: 'Dark', grade: 'Premium', waterAbsorptionPct: 0.08, peiRating: 4, edgeType: 'rectified',
-    application: 'floor_wall', originPlant: 'Wankaner', colours: ['Brown', 'Walnut'],
-    pattern: 'wood', launchYear: 2023,
-  },
-  {
-    code: 'DC-6060-CRYS', name: 'Crystal Super White', alias: 'Super white', category: DC, productType: 'Double Charge',
-    size: '600x600', finish: 'Glossy', series: 'Plain', thicknessMm: 8.5, piecesPerBox: 4, boxCoverageSqft: 15.5,
-    rate: 52000, mrp: 64000, purchaseRate: 40000, pricePerSqft: 3350, weightKg: 27, brand: 'Morbi Gold',
-    shade: 'Light', grade: 'Standard', waterAbsorptionPct: 0.05, peiRating: 5, edgeType: 'rectified',
-    application: 'floor', originPlant: 'Morbi Unit 1', colours: ['White'],
-    pattern: 'plain', launchYear: 2022,
-  },
-  {
-    code: 'DC-6060-GALA', name: 'Galaxy Black', category: DC, productType: 'Double Charge',
-    size: '600x600', finish: 'Glossy', series: 'Galaxy', thicknessMm: 8.5, piecesPerBox: 4, boxCoverageSqft: 15.5,
-    rate: 56000, mrp: 68000, purchaseRate: 43000, pricePerSqft: 3600, weightKg: 27, brand: 'Morbi Gold',
-    shade: 'Dark', grade: 'Standard', waterAbsorptionPct: 0.05, peiRating: 5, edgeType: 'rectified',
-    application: 'floor', originPlant: 'Morbi Unit 1', colours: ['Black', 'Charcoal'],
-    pattern: 'stone', launchYear: 2022,
-  },
-  {
-    code: 'DC-8080-PEAR', name: 'Pearl Cream', category: DC, productType: 'Double Charge',
-    size: '800x800', finish: 'Glossy', series: 'Pearl', thicknessMm: 10, piecesPerBox: 3, boxCoverageSqft: 20.66,
-    rate: 118000, mrp: 140000, purchaseRate: 91000, pricePerSqft: 5700, weightKg: 45, brand: 'Morbi Gold',
-    shade: 'Light', grade: 'Premium', waterAbsorptionPct: 0.05, peiRating: 5, edgeType: 'rectified',
-    application: 'floor', originPlant: 'Morbi Unit 2', colours: ['Ivory', 'Beige'],
-    pattern: 'marble', launchYear: 2023,
-  },
-  {
-    code: 'DC-6060-NANO', name: 'Nano Ivory', category: DC, productType: 'Double Charge',
-    size: '600x600', finish: 'Glossy', series: 'Nano', thicknessMm: 8.5, piecesPerBox: 4, boxCoverageSqft: 15.5,
-    rate: 56000, mrp: 66000, purchaseRate: 43000, pricePerSqft: 3600, weightKg: 27, brand: 'Shubh Ceramics',
-    shade: 'Light', grade: 'Standard', waterAbsorptionPct: 0.05, peiRating: 5, edgeType: 'rectified',
-    application: 'floor', originPlant: 'Wankaner', colours: ['Ivory', 'White'],
-    pattern: 'plain', launchYear: 2021,
-  },
-  {
-    code: 'CW-3060-AQUA', name: 'Aqua Marine', category: WALL, productType: 'Ceramic Wall',
-    size: '300x600', finish: 'Glossy', series: 'Aqua', thicknessMm: 8, piecesPerBox: 5, boxCoverageSqft: 9.68,
-    rate: 31000, mrp: 38000, purchaseRate: 23000, pricePerSqft: 3200, weightKg: 14, brand: 'Shubh Ceramics',
-    shade: 'Medium', grade: 'Standard', waterAbsorptionPct: 12, peiRating: 1, edgeType: 'non_rectified',
-    application: 'wall', originPlant: 'Wankaner', colours: ['Sky Blue', 'Teal', 'White'],
-    pattern: 'plain', launchYear: 2023,
-  },
-  {
-    code: 'CW-3060-FLOR', name: 'Floral Bloom', category: WALL, productType: 'Ceramic Wall',
-    size: '300x600', finish: 'Glossy', series: 'Floral', thicknessMm: 8, piecesPerBox: 5, boxCoverageSqft: 9.68,
-    rate: 34000, mrp: 41000, purchaseRate: 25000, pricePerSqft: 3510, weightKg: 14, brand: 'Shubh Ceramics',
-    shade: 'Light', grade: 'Standard', waterAbsorptionPct: 12, peiRating: 1, edgeType: 'non_rectified',
-    application: 'wall', originPlant: 'Wankaner', colours: ['Ivory', 'Beige'],
-    pattern: 'plain', launchYear: 2024,
-  },
-  {
-    code: 'CW-3045-SUBW', name: 'Subway Classic', alias: 'Subway', category: WALL, productType: 'Ceramic Wall',
-    size: '300x450', finish: 'Glossy', series: 'Subway', thicknessMm: 7.5, piecesPerBox: 6, boxCoverageSqft: 8.72,
-    rate: 26000, mrp: 32000, purchaseRate: 19000, pricePerSqft: 2980, weightKg: 11, brand: 'Shubh Ceramics',
-    shade: 'Light', grade: 'Commercial', waterAbsorptionPct: 14, peiRating: 1, edgeType: 'non_rectified',
-    application: 'wall', originPlant: 'Wankaner', colours: ['White', 'Black', 'Sky Blue'],
-    pattern: 'plain', launchYear: 2020,
-  },
-  {
-    code: 'CW-3060-METR', name: 'Metro Concrete', category: WALL, productType: 'Ceramic Wall',
-    size: '300x600', finish: 'Matt', series: 'Concrete', thicknessMm: 8, piecesPerBox: 5, boxCoverageSqft: 9.68,
-    rate: 33000, mrp: 40000, purchaseRate: 24500, pricePerSqft: 3410, weightKg: 14, brand: 'Kavya Vitrified',
-    shade: 'Medium', grade: 'Standard', waterAbsorptionPct: 11, peiRating: 1, edgeType: 'non_rectified',
-    application: 'wall', originPlant: 'Morbi Unit 1', colours: ['Grey', 'Light Grey', 'Charcoal'],
-    pattern: 'stone', launchYear: 2024,
-  },
-  {
-    code: 'CF-3030-TERR', name: 'Terra Rustic', category: FLOOR, productType: 'Ceramic Floor',
-    size: '300x300', finish: 'Matt', series: 'Terra', thicknessMm: 8, piecesPerBox: 10, boxCoverageSqft: 9.68,
-    rate: 24000, mrp: 30000, purchaseRate: 17500, pricePerSqft: 2480, weightKg: 15, brand: 'Shubh Ceramics',
-    shade: 'Dark', grade: 'Commercial', waterAbsorptionPct: 5, peiRating: 3, edgeType: 'non_rectified',
-    application: 'floor', originPlant: 'Wankaner', colours: ['Terracotta', 'Brown'],
-    pattern: 'stone', launchYear: 2019,
-  },
-  {
-    code: 'CF-4040-SLAT', name: 'Slate Stone', category: FLOOR, productType: 'Ceramic Floor',
-    size: '400x400', finish: 'Matt', series: 'Stone', thicknessMm: 8.5, piecesPerBox: 6, boxCoverageSqft: 10.33,
-    rate: 29000, mrp: 35000, purchaseRate: 21500, pricePerSqft: 2810, weightKg: 16, brand: 'Shubh Ceramics',
-    shade: 'Dark', grade: 'Standard', waterAbsorptionPct: 4, peiRating: 3, edgeType: 'non_rectified',
-    application: 'floor', originPlant: 'Wankaner', colours: ['Grey', 'Charcoal', 'Brown'],
-    pattern: 'stone', launchYear: 2021,
-  },
-  {
-    code: 'CF-2012-OAKW', name: 'Oakwood Plank', category: FLOOR, productType: 'Ceramic Floor',
-    size: '200x1200', finish: 'Matt', series: 'Wood', thicknessMm: 8.5, piecesPerBox: 6, boxCoverageSqft: 15.5,
-    rate: 56000, mrp: 68000, purchaseRate: 42000, pricePerSqft: 3610, weightKg: 25, brand: 'Kavya Vitrified',
-    shade: 'Medium', grade: 'Standard', waterAbsorptionPct: 3, peiRating: 4, edgeType: 'rectified',
-    application: 'floor', originPlant: 'Morbi Unit 1', colours: ['Brown', 'Walnut', 'Beige'],
-    pattern: 'wood', launchYear: 2023,
-  },
-  {
-    code: 'PK-3030-HEAV', name: 'Heavy Duty Chequered', alias: 'Chequered', category: PARKING, productType: 'Parking',
-    size: '300x300', finish: 'Matt', series: 'Heavy Duty', thicknessMm: 12, piecesPerBox: 10, boxCoverageSqft: 9.68,
-    rate: 23000, mrp: 28000, purchaseRate: 16500, pricePerSqft: 2380, weightKg: 22, brand: 'Morbi Gold',
-    shade: 'Medium', grade: 'Commercial', waterAbsorptionPct: 3, peiRating: 5, edgeType: 'non_rectified',
-    application: 'outdoor', originPlant: 'Morbi Unit 2', colours: ['Grey', 'Terracotta', 'Ivory'],
-    pattern: 'plain', launchYear: 2018,
-  },
-  {
-    code: 'PK-4040-COBB', name: 'Cobblestone', category: PARKING, productType: 'Parking',
-    size: '400x400', finish: 'Rustic', series: 'Cobble', thicknessMm: 12, piecesPerBox: 6, boxCoverageSqft: 10.33,
-    rate: 30000, mrp: 36000, purchaseRate: 22000, pricePerSqft: 2900, weightKg: 24, brand: 'Morbi Gold',
-    shade: 'Dark', grade: 'Standard', waterAbsorptionPct: 3, peiRating: 5, edgeType: 'non_rectified',
-    application: 'outdoor', originPlant: 'Morbi Unit 2', colours: ['Grey', 'Brown'],
-    pattern: 'stone', launchYear: 2022,
-  },
-  {
-    code: 'EL-3060-BRIC', name: 'Brick Wall', category: ELEVATION, productType: 'Elevation',
-    size: '300x600', finish: 'Rustic', series: 'Brick', thicknessMm: 10, piecesPerBox: 5, boxCoverageSqft: 9.68,
-    rate: 38000, mrp: 46000, purchaseRate: 28500, pricePerSqft: 3930, weightKg: 17, brand: 'Kavya Vitrified',
-    shade: 'Dark', grade: 'Standard', waterAbsorptionPct: 6, peiRating: 3, edgeType: 'non_rectified',
-    application: 'outdoor', originPlant: 'Morbi Unit 1', colours: ['Terracotta', 'Brown', 'Charcoal'],
-    pattern: 'stone', launchYear: 2023,
-  },
-  {
-    code: 'EL-3060-SAND', name: 'Sandstone Cladding', category: ELEVATION, productType: 'Elevation',
-    size: '300x600', finish: 'Sugar', series: 'Stone', thicknessMm: 10, piecesPerBox: 5, boxCoverageSqft: 9.68,
-    rate: 40000, mrp: 48000, purchaseRate: 30000, pricePerSqft: 4130, weightKg: 17, brand: 'Kavya Vitrified',
-    shade: 'Light', grade: 'Standard', waterAbsorptionPct: 6, peiRating: 3, edgeType: 'non_rectified',
-    application: 'outdoor', originPlant: 'Morbi Unit 1', colours: ['Beige', 'Ivory'],
-    pattern: 'stone', launchYear: 2024,
-  },
-  {
-    code: 'CW-2030-PLNW', name: 'Plain White 8x12', category: WALL, productType: 'Ceramic Wall',
-    size: '200x300', finish: 'Glossy', series: 'Basic', thicknessMm: 7, piecesPerBox: 16, boxCoverageSqft: 10.33,
-    rate: 18000, mrp: 22000, purchaseRate: 13000, pricePerSqft: 1740, weightKg: 12, brand: 'Shubh Ceramics',
-    shade: 'Light', grade: 'Commercial', waterAbsorptionPct: 15, peiRating: 1, edgeType: 'non_rectified',
-    application: 'wall', originPlant: 'Wankaner', colours: ['White'],
-    pattern: 'plain', launchYear: 2016, discontinued: true,
-  },
+  { model: '102', category: TOILET, alias: 'OPT 102', rate: 680000, mrp: 820000, purchaseRate: 520000, grade: 'Premium', productType: 'Plain', weights: { '102': 32.5 }, pattern: 'plain', launchYear: 2023 },
+  { model: '107', category: TOILET, alias: 'OPT 107', rate: 740000, mrp: 890000, purchaseRate: 565000, grade: 'Premium', productType: 'Plain', weights: { '107': 33 }, pattern: 'plain', launchYear: 2024 },
+  { model: '1181', category: TOILET, alias: 'Triangle red', rate: 890000, mrp: 1050000, purchaseRate: 690000, grade: 'Premium', productType: 'Designer', weights: { '1181': 33.5 }, pattern: 'stone', launchYear: 2025 },
+  { model: '1184', category: TOILET, alias: 'Triangle blue', rate: 890000, mrp: 1050000, purchaseRate: 690000, grade: 'Premium', productType: 'Designer', weights: { '1184': 33.5 }, pattern: 'stone', launchYear: 2025 },
+  { model: 'DAMRU', category: BASIN, rate: 260000, mrp: 320000, purchaseRate: 195000, grade: 'Premium', weights: { 'DAMRU-WHITE': 18, '41': 18.5, '42': 18.5, '46': 18.5 }, pattern: 'marble', launchYear: 2022 },
+  { model: 'NOVA', category: BASIN, rate: 250000, mrp: 310000, purchaseRate: 188000, grade: 'Premium', weights: { 'NOVA-WHITE': 17, '150': 17.5 }, pattern: 'wood', launchYear: 2023 },
+  { model: '18x12', category: WASH_BASIN, alias: 'WB 18x12', rate: 90000, mrp: 115000, purchaseRate: 66000, grade: 'Standard', weights: { 'WB-18X12': 7.5, 'WB-18X12-VITROSA-BLACK': 7.5, 'WB-18X12-RUSTIC-COFFEE-BROWN': 7.5 }, pattern: 'plain', launchYear: 2021 },
+  { model: '20x16', category: WASH_BASIN, alias: 'WB 20x16', rate: 120000, mrp: 150000, purchaseRate: 88000, grade: 'Standard', weights: { 'WB-20X16': 9.5 }, pattern: 'plain', launchYear: 2021 },
+  { model: 'SOFIYA SET', category: SET, alias: 'Sofiya', rate: 290000, mrp: 360000, purchaseRate: 215000, grade: 'Standard', weights: { 'SOFIYA-SET-WHITE': 21, 'SOFIYA-SET-VITROSA-MAGENTA': 21, 'SOFIYA-SET-VITROSA-MINT-GREEN': 21 }, pattern: 'plain', launchYear: 2022 },
+  { model: 'BIG STERLING SET', category: SET, alias: 'Big Sterling', rate: 360000, mrp: 450000, purchaseRate: 270000, grade: 'Premium', weights: { 'BIG-STERLING-SET-WHITE': 26, '3001': 27, 'BIG-STERLING-SET-RUSTIC-MAGENTA': 27 }, pattern: 'marble', launchYear: 2022 },
+  { model: 'E.W.C - S TRAP', category: WC, alias: 'EWC S', rate: 190000, mrp: 240000, purchaseRate: 142000, grade: 'Standard', weights: { 'EWC-S-TRAP': 22 }, pattern: 'plain', launchYear: 2020 },
+  { model: '20" O.P', category: PAN, alias: 'Orissa 20', rate: 70000, mrp: 90000, purchaseRate: 52000, grade: 'Commercial', weights: { '20-OP': 11 }, pattern: 'plain', launchYear: 2019 },
+  { model: 'HEXA URINAL', category: URINAL, rate: 110000, mrp: 140000, purchaseRate: 82000, grade: 'Standard', weights: { 'HEXA-URINAL': 8 }, pattern: 'plain', launchYear: 2020 },
+  { model: '7501', category: TABLE_TOP, alias: 'Table top 7501', rate: 180000, mrp: 225000, purchaseRate: 135000, grade: 'Premium', weights: { '7501': 10 }, pattern: 'plain', launchYear: 2024 },
+  { model: '7721', category: TABLE_TOP, alias: 'Vitrosa 7721', rate: 260000, mrp: 320000, purchaseRate: 195000, grade: 'Premium', productType: 'Vitrosa', weights: { '7721': 10.5 }, pattern: 'marble', launchYear: 2025 },
+  { model: 'DUAL FLUSH TANK CISTERN', category: ACCESSORIES, alias: 'Dual flush cistern', rate: 125000, mrp: 160000, purchaseRate: 92000, grade: 'Standard', weights: { 'DUAL-FLUSH-TANK-CISTERN': 3.2 }, pattern: 'plain', launchYear: 2021 },
 ];
 
 // --- Parties ---------------------------------------------------------------
@@ -388,19 +192,19 @@ export const SAMPLE_PARTIES: readonly SampleParty[] = [
     key: 'ganesh', name: 'Shree Ganesh Tiles & Sanitary', phone: '98250 11223', altPhone: '0281 245 6677',
     email: 'shreeganeshtiles@example.com', addressLine1: '12, Gondal Road', addressLine2: 'Near Mavdi Chowk',
     city: 'Rajkot', state: 'Gujarat', pincode: '360004', gstNumber: '24AABCS1234F1Z5',
-    notes: 'Largest dealer in Rajkot. Prefers Carrara and Calacatta. Payment within 30 days.',
+    notes: 'Largest dealer in Rajkot. Moves one-piece toilets and Damru basins. Payment within 30 days.',
     dealerType: 'Dealer', creditDays: 30,
   },
   {
     key: 'patel', name: 'Patel Ceramic Traders', phone: '99090 45678', email: 'patelceramic@example.com',
     addressLine1: 'Shop 4, Navrangpura Market', city: 'Ahmedabad', state: 'Gujarat', pincode: '380009',
-    gstNumber: '24AAFCP5678G1ZK', notes: 'Weekly orders for wall tiles. Ask for Kirtibhai.',
+    gstNumber: '24AAFCP5678G1ZK', notes: 'Weekly orders for wash basins and sets. Ask for Kirtibhai.',
     dealerType: 'Dealer', creditDays: 15,
   },
   {
-    key: 'omsai', name: 'Om Sai Marble & Tiles', phone: '98980 22334', addressLine1: 'Ring Road, Opp. Silk City Mall',
+    key: 'omsai', name: 'Om Sai Marble & Sanitary', phone: '98980 22334', addressLine1: 'Ring Road, Opp. Silk City Mall',
     city: 'Surat', state: 'Gujarat', pincode: '395002', gstNumber: '24AAGCO9012H1Z3',
-    notes: 'Stocks mainly vitrified. Wants sample boxes before every new series.', dealerType: 'Dealer', creditDays: 21,
+    notes: 'Stocks mainly Vitrosa basins. Wants a sample piece before every new pattern.', dealerType: 'Dealer', creditDays: 21,
   },
   {
     key: 'balaji', name: 'Balaji Buildcon', phone: '97250 33445', email: 'projects@balajibuildcon.example.com',
@@ -411,18 +215,18 @@ export const SAMPLE_PARTIES: readonly SampleParty[] = [
   {
     key: 'mehta', name: 'Mehta Constructions', phone: '98200 55667', email: 'purchase@mehtacon.example.com',
     addressLine1: 'Unit 21, Andheri Industrial Estate', city: 'Mumbai', state: 'Maharashtra', pincode: '400053',
-    gstNumber: '27AAACM7890K1ZP', notes: 'Handled by management only. Large slab orders.',
+    gstNumber: '27AAACM7890K1ZP', notes: 'Handled by management only. Large project orders.',
     dealerType: 'Builder', creditDays: 60,
   },
   {
-    key: 'anand', name: 'Anand Tiles Depot', phone: '98220 66778', addressLine1: '45, Market Yard Road',
+    key: 'anand', name: 'Anand Sanitary Depot', phone: '98220 66778', addressLine1: '45, Market Yard Road',
     city: 'Pune', state: 'Maharashtra', pincode: '411037', gstNumber: '27AABCA2345L1Z6',
     dealerType: 'Dealer', creditDays: 30,
   },
   {
     key: 'jaiambe', name: 'Jai Ambe Traders', phone: '94140 77889', addressLine1: 'Sanganer Road',
     addressLine2: 'Near Tonk Phatak', city: 'Jaipur', state: 'Rajasthan', pincode: '302015',
-    gstNumber: '08AADCJ6789M1ZR', notes: 'Wants matt finishes only.', dealerType: 'Dealer', creditDays: 30,
+    gstNumber: '08AADCJ6789M1ZR', notes: 'Wants plain white only — no patterns.', dealerType: 'Dealer', creditDays: 30,
   },
   {
     key: 'nakoda', name: 'Nakoda Ceramics', phone: '94600 88990', addressLine1: 'Sukhadia Circle',
@@ -432,18 +236,18 @@ export const SAMPLE_PARTIES: readonly SampleParty[] = [
   {
     key: 'vishwa', name: 'Vishwakarma Builders', phone: '98930 99001', email: 'site@vishwakarma.example.com',
     addressLine1: 'Plot 8, Scheme 78', city: 'Indore', state: 'Madhya Pradesh', pincode: '452010',
-    gstNumber: '23AAFCV4567P1ZV', notes: 'Township project — parking and elevation tiles.',
+    gstNumber: '23AAFCV4567P1ZV', notes: 'Township project — toilets and wash basins for every flat.',
     dealerType: 'Builder', creditDays: 45,
   },
   {
-    key: 'krishna', name: 'Krishna Tiles', phone: '99250 10112', addressLine1: 'Sector 21, GH Road',
+    key: 'krishna', name: 'Krishna Sanitary', phone: '99250 10112', addressLine1: 'Sector 21, GH Road',
     city: 'Gandhinagar', state: 'Gujarat', pincode: '382021', gstNumber: '24AAKCK8901Q1ZX',
     dealerType: 'Retail', creditDays: 0,
   },
   {
-    key: 'metro', name: 'Metro Tile Studio', phone: '98670 21223', email: 'hello@metrotilestudio.example.com',
+    key: 'metro', name: 'Metro Bath Studio', phone: '98670 21223', email: 'hello@metrobathstudio.example.com',
     addressLine1: 'Linking Road, Bandra West', city: 'Mumbai', state: 'Maharashtra', pincode: '400050',
-    gstNumber: '27AAMCM2345R1ZZ', notes: 'Architect-led studio. Slabs and premium marble looks.',
+    gstNumber: '27AAMCM2345R1ZZ', notes: 'Architect-led studio. Designer toilets and table-top basins.',
     dealerType: 'Architect', creditDays: 30,
   },
   {
@@ -467,53 +271,30 @@ export const SAMPLE_PARTIES: readonly SampleParty[] = [
     pincode: '360001', dealerType: 'Architect', creditDays: 15,
   },
   {
-    key: 'hariom', name: 'Hari Om Tile Mart', phone: '98790 76778', addressLine1: 'Bedi Gate',
+    key: 'hariom', name: 'Hari Om Sanitary Mart', phone: '98790 76778', addressLine1: 'Bedi Gate',
     city: 'Jamnagar', state: 'Gujarat', pincode: '361001', gstNumber: '24AAHCH8901V1ZH',
     notes: 'Closed down — kept for history.', dealerType: 'Dealer', creditDays: 0,
   },
 ];
 
-/** Party-wise rates: a dealer's negotiated price and their own name for a product. */
+/** Party-wise rates: a dealer's negotiated price and their own name for a model. */
 export interface SamplePartyVariant {
   party: string;
-  product: string;
+  /** Any variant code of the model — the rate is per model, not per colour. */
+  code: string;
   alias?: string;
-  /** Paise per box. */
+  /** Paise per piece. */
   rate: number;
   packaging?: string;
 }
 
 export const SAMPLE_PARTY_VARIANTS: readonly SamplePartyVariant[] = [
-  {
-    party: 'ganesh',
-    product: 'GVT-6060-CARR',
-    alias: 'Carrara 2x2',
-    rate: 62000,
-    packaging: 'Pallet',
-  },
-  {
-    party: 'ganesh',
-    product: 'GVT-6012-CALA',
-    alias: 'Calacatta 2x4',
-    rate: 134000,
-    packaging: 'Wooden crate',
-  },
-  {
-    party: 'ganesh',
-    product: 'DC-6060-CRYS',
-    alias: 'Super white DC',
-    rate: 48000,
-    packaging: 'Pallet',
-  },
-  { party: 'patel', product: 'CW-3060-AQUA', alias: 'Aqua 1x2', rate: 29000, packaging: 'Carton' },
-  { party: 'patel', product: 'CW-3045-SUBW', rate: 24500, packaging: 'Carton' },
-  {
-    party: 'omsai',
-    product: 'GVT-6060-SUGA',
-    alias: 'Sugar 2x2',
-    rate: 67000,
-    packaging: 'Pallet',
-  },
+  { party: 'ganesh', code: '102', alias: 'OPT 102', rate: 640000, packaging: 'Carton' },
+  { party: 'ganesh', code: 'DAMRU-WHITE', alias: 'Damru', rate: 245000, packaging: 'Thermocol box' },
+  { party: 'ganesh', code: 'BIG-STERLING-SET-WHITE', alias: 'Big Sterling', rate: 340000, packaging: 'Carton' },
+  { party: 'patel', code: 'WB-18X12', alias: 'WB 18x12', rate: 84000, packaging: 'Carton' },
+  { party: 'patel', code: 'SOFIYA-SET-WHITE', rate: 275000, packaging: 'Carton' },
+  { party: 'omsai', code: 'NOVA-WHITE', alias: 'Nova', rate: 236000, packaging: 'Thermocol box' },
 ];
 
 /** Who may see which party. Parties absent from here are open to everyone. */
@@ -537,142 +318,80 @@ export const SAMPLE_PARTY_ASSIGNMENTS: readonly SamplePartyAssignment[] = [
 
 // --- Stock -----------------------------------------------------------------
 
-/** Two letters per colour, for the per-colour stock codes staff type on a line. */
-const COLOUR_ABBREVIATIONS: Readonly<Record<string, string>> = {
-  White: 'WH',
-  Ivory: 'IV',
-  Beige: 'BG',
-  'Light Grey': 'LG',
-  Grey: 'GR',
-  Charcoal: 'CH',
-  Black: 'BK',
-  Brown: 'BR',
-  Walnut: 'WN',
-  'Sky Blue': 'SB',
-  Teal: 'TL',
-  Terracotta: 'TC',
-};
-
 /**
- * The short code for one product in one colour — `CARR-WH` for Carrara
- * Statuario in White. The last segment of the product code is unique across
- * the catalogue above, which is what keeps these unique per tenant.
+ * Opening stock per variant code, as pieces received from the factory in the
+ * first days of the window. Every weighed variant above gets stock; codes not
+ * listed here get `DEFAULT_OPENING_PIECES`, and a few are deliberately thin
+ * so the low-stock count on the dashboard is not zero.
  */
-export function sampleVariantCode(productCode: string, colour: string): string {
-  const suffix = productCode.slice(productCode.lastIndexOf('-') + 1);
-  const abbreviation =
-    COLOUR_ABBREVIATIONS[colour] ??
-    colour
-      .replace(/[^A-Za-z]/g, '')
-      .slice(0, 2)
-      .toUpperCase();
-  return `${suffix}-${abbreviation}`;
-}
-
-/**
- * Opening stock per colour, as boxes received from the factory in the first
- * days of the window. Colours not listed here for a product get
- * `DEFAULT_OPENING_BOXES`; a few are deliberately thin so the low-stock count
- * on the dashboard is not zero.
- */
-export const DEFAULT_OPENING_BOXES = 180;
-export const DEFAULT_REORDER_LEVEL = 40;
-export const DEFAULT_MIN_STOCK_LEVEL = 20;
-export const DEFAULT_MAX_STOCK_LEVEL = 600;
+export const DEFAULT_OPENING_PIECES = 40;
+export const DEFAULT_REORDER_LEVEL = 10;
+export const DEFAULT_MIN_STOCK_LEVEL = 5;
+export const DEFAULT_MAX_STOCK_LEVEL = 120;
 
 export const SAMPLE_OPENING_STOCK: Readonly<Record<string, number>> = {
-  'GVT-6060-CARR/White': 320,
-  'GVT-6060-CARR/Ivory': 260,
-  'GVT-6060-CARR/Light Grey': 90,
-  'GVT-6012-CALA/White': 140,
-  'GVT-6012-CALA/Ivory': 36,
-  'GVT-8016-ARMA/Grey': 48,
-  'GVT-8016-ARMA/Charcoal': 22,
-  'DC-6060-CRYS/White': 600,
-  'DC-8080-PEAR/Beige': 28,
-  'CW-3060-AQUA/Teal': 30,
-  'CW-3045-SUBW/Black': 24,
-  'CF-2012-OAKW/Walnut': 18,
-  'PK-3030-HEAV/Grey': 900,
-  'PK-3030-HEAV/Ivory': 15,
-  'EL-3060-BRIC/Charcoal': 12,
-  'GVT-2012-TEAK/Walnut': 34,
+  '102': 90,
+  '107': 60,
+  '1181': 8,
+  '1184': 3,
+  'DAMRU-WHITE': 75,
+  '41': 6,
+  '42': 24,
+  'NOVA-WHITE': 50,
+  'WB-18X12': 160,
+  'WB-18X12-RUSTIC-COFFEE-BROWN': 4,
+  'WB-20X16': 70,
+  'SOFIYA-SET-WHITE': 55,
+  'BIG-STERLING-SET-WHITE': 30,
+  'EWC-S-TRAP': 120,
+  '20-OP': 200,
+  'HEXA-URINAL': 45,
+  'DUAL-FLUSH-TANK-CISTERN': 80,
 };
 
 /** A physical count that disagreed with the ledger, at a point in the window. */
 export interface SampleStockCount {
   day: number;
-  product: string;
-  colour: string;
-  countedBoxes: number;
+  code: string;
+  countedPieces: number;
   note: string;
 }
 
 export const SAMPLE_STOCK_COUNTS: readonly SampleStockCount[] = [
-  {
-    day: 58,
-    product: 'DC-6060-CRYS',
-    colour: 'White',
-    countedBoxes: 492,
-    note: 'Monthly count — 8 boxes broken in godown',
-  },
-  {
-    day: 101,
-    product: 'CW-3045-SUBW',
-    colour: 'White',
-    countedBoxes: 106,
-    note: 'Found 6 extra boxes behind pallet row 3',
-  },
-  { day: 147, product: 'PK-3030-HEAV', colour: 'Grey', countedBoxes: 446, note: 'Quarterly count' },
+  { day: 58, code: '102', countedPieces: 62, note: 'Monthly count — 2 pieces chipped in godown' },
+  { day: 101, code: 'WB-18X12', countedPieces: 118, note: 'Found 4 extra pieces behind rack 3' },
+  { day: 147, code: '20-OP', countedPieces: 146, note: 'Quarterly count' },
 ];
 
 /** Stock that arrived later in the window, so the ledger is not one opening entry per row. */
 export interface SampleStockArrival {
   day: number;
-  product: string;
-  colour: string;
-  boxes: number;
+  code: string;
+  pieces: number;
   note: string;
 }
 
 export const SAMPLE_STOCK_ARRIVALS: readonly SampleStockArrival[] = [
-  {
-    day: 44,
-    product: 'GVT-6012-CALA',
-    colour: 'White',
-    boxes: 120,
-    note: 'Truck GJ-03-AX-4521 from Morbi Unit 2',
-  },
-  { day: 71, product: 'GVT-6060-CARR', colour: 'White', boxes: 200, note: 'Fresh lot, calibre C1' },
-  {
-    day: 96,
-    product: 'CW-3060-FLOR',
-    colour: 'Ivory',
-    boxes: 150,
-    note: 'Restock for wedding season',
-  },
-  { day: 118, product: 'DC-6060-GALA', colour: 'Black', boxes: 100, note: 'Truck GJ-03-BT-9910' },
-  {
-    day: 139,
-    product: 'GVT-8016-ARMA',
-    colour: 'Grey',
-    boxes: 40,
-    note: 'Slab lot — handle with crane',
-  },
-  { day: 160, product: 'CF-2012-OAKW', colour: 'Brown', boxes: 90, note: 'Restock' },
+  { day: 44, code: '102', pieces: 60, note: 'Truck GJ-03-AX-4521 from Thangadh' },
+  { day: 71, code: 'DAMRU-WHITE', pieces: 40, note: 'Fresh kiln lot' },
+  { day: 96, code: 'SOFIYA-SET-WHITE', pieces: 40, note: 'Restock for wedding season' },
+  { day: 118, code: '41', pieces: 30, note: 'Truck GJ-03-BT-9910' },
+  { day: 139, code: '1184', pieces: 12, note: 'Designer lot — handle with care' },
+  { day: 160, code: 'EWC-S-TRAP', pieces: 80, note: 'Restock' },
 ];
 
 // --- Leads, orders and their histories -------------------------------------
 
+/** One variant on a lead — the line's whole identity is the code. */
 export interface SampleLine {
-  product: string;
+  code: string;
+  quantity: number;
   /** `null` leaves packaging unset — a half-built lead that cannot convert yet. */
   packaging: string | null;
   grade?: string;
-  /** Paise per box, when the line was priced by hand rather than from the catalogue. */
+  /** Paise per piece, when the line was priced by hand rather than from the catalogue. */
   rate?: number;
   notes?: string;
-  quantities: Array<[colour: string, boxes: number]>;
 }
 
 export type SampleOrderPath =
@@ -729,8 +448,9 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
     day: 12, party: 'ganesh', owner: 'management', source: 'call', partyWise: true, priority: 'High',
     notes: 'Showroom refill for the new season.',
     lines: [
-      { product: 'GVT-6060-CARR', packaging: 'Pallet', grade: 'Premium', quantities: [['White', 60], ['Ivory', 40]] },
-      { product: 'DC-6060-CRYS', packaging: 'Pallet', grade: 'Standard', quantities: [['White', 100]] },
+      { code: '102', quantity: 20, packaging: 'Carton', grade: 'Premium' },
+      { code: 'DAMRU-WHITE', quantity: 15, packaging: 'Thermocol box', grade: 'Premium' },
+      { code: '41', quantity: 6, packaging: 'Thermocol box', grade: 'Premium' },
     ],
     remarks: ['Rate list shared on WhatsApp', 'Confirmed at party rate, advance of ₹50,000 received'],
     outcome: {
@@ -742,10 +462,10 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
     day: 15, party: 'balaji', owner: 'admin', source: 'referral', priority: 'High',
     siteLocation: 'Sun Residency, Alkapuri, Vadodara',
     lines: [
-      { product: 'DC-6060-NANO', packaging: 'Pallet', grade: 'Standard', quantities: [['Ivory', 120]] },
-      { product: 'CW-3060-AQUA', packaging: 'Carton', grade: 'Standard', quantities: [['Sky Blue', 40], ['White', 40]] },
+      { code: 'EWC-S-TRAP', quantity: 48, packaging: 'Carton', grade: 'Standard' },
+      { code: 'WB-18X12', quantity: 48, packaging: 'Carton', grade: 'Standard' },
     ],
-    remarks: ['Quoted for tower A — 48 flats', 'Site engineer approved the Nano Ivory sample'],
+    remarks: ['Quoted for tower A — 48 flats', 'Site engineer approved the EWC sample'],
     outcome: {
       kind: 'won', order: { kind: 'dispatched', afterDays: 14, note: 'Two trucks, unloaded at site' },
       dispatchAddress: 'Site — Sun Residency, Alkapuri', transport: 'Transporter', vehicle: 'GJ-06-BB-2210',
@@ -753,16 +473,17 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   },
   {
     day: 19, party: 'jaiambe', owner: 'office', source: 'whatsapp',
-    lines: [{ product: 'CF-4040-SLAT', packaging: 'Carton', grade: 'Standard', quantities: [['Grey', 50], ['Charcoal', 30]] }],
-    remarks: ['Asked for glossy option — told matt only in this series'],
+    lines: [{ code: '107', quantity: 10, packaging: 'Carton', grade: 'Standard' }],
+    remarks: ['Asked for ivory — told white only in this lot'],
     outcome: { kind: 'lost', remark: 'Went with a cheaper local supplier' },
   },
   {
     day: 24, party: 'omsai', owner: 'management', source: 'walk_in', partyWise: true, priority: 'Medium',
     lines: [
-      { product: 'GVT-6060-SUGA', packaging: 'Pallet', grade: 'Premium', quantities: [['Ivory', 80], ['Beige', 40]] },
+      { code: 'NOVA-WHITE', quantity: 12, packaging: 'Thermocol box', grade: 'Premium' },
+      { code: '150', quantity: 4, packaging: 'Thermocol box', grade: 'Premium' },
     ],
-    remarks: ['Sample box given from showroom stock'],
+    remarks: ['Sample piece given from showroom stock'],
     outcome: {
       kind: 'won', order: { kind: 'dispatched', afterDays: 11, note: 'Delivered to Ring Road shop' },
       dispatchAddress: 'Shop — Ring Road, Surat', transport: 'Own vehicle', vehicle: 'GJ-03-CC-7781',
@@ -770,16 +491,17 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   },
   {
     day: 31, party: 'nakoda', owner: 'office', source: 'website',
-    lines: [{ product: 'GVT-6060-ONYX', packaging: 'Pallet', grade: 'Premium', quantities: [['Beige', 30]] }],
+    lines: [{ code: '7501', quantity: 6, packaging: 'Thermocol box', grade: 'Premium' }],
     outcome: { kind: 'lost', remark: 'Budget cut — will revisit next season' },
   },
   {
     day: 36, party: 'vishwa', owner: 'admin', source: 'call', priority: 'High',
     siteLocation: 'Vishwakarma Township, Scheme 78, Indore',
-    notes: 'Township phase 1 — parking areas and boundary elevation.',
+    notes: 'Township phase 1 — every flat gets an EWC and a wash basin.',
     lines: [
-      { product: 'PK-3030-HEAV', packaging: 'Pallet', grade: 'Commercial', quantities: [['Grey', 300]] },
-      { product: 'EL-3060-BRIC', packaging: 'Carton', grade: 'Standard', quantities: [['Terracotta', 100], ['Brown', 60]] },
+      { code: 'EWC-S-TRAP', quantity: 120, packaging: 'Carton', grade: 'Commercial' },
+      { code: 'WB-18X12', quantity: 120, packaging: 'Carton', grade: 'Standard' },
+      { code: '20-OP', quantity: 40, packaging: 'Loose', grade: 'Commercial' },
     ],
     remarks: ['Quoted with freight included up to Indore', 'PO received by email'],
     outcome: {
@@ -790,8 +512,9 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   {
     day: 42, party: 'anand', owner: 'management', source: 'referral',
     lines: [
-      { product: 'CW-3060-METR', packaging: 'Carton', grade: 'Standard', quantities: [['Grey', 60], ['Light Grey', 60]] },
-      { product: 'CW-3045-SUBW', packaging: 'Carton', grade: 'Commercial', quantities: [['White', 80]] },
+      { code: 'SOFIYA-SET-WHITE', quantity: 12, packaging: 'Carton', grade: 'Standard' },
+      { code: 'SOFIYA-SET-VITROSA-MAGENTA', quantity: 4, packaging: 'Carton', grade: 'Standard' },
+      { code: 'HEXA-URINAL', quantity: 10, packaging: 'Carton', grade: 'Standard' },
     ],
     remarks: ['Referred by Shree Ganesh Tiles'],
     outcome: {
@@ -801,17 +524,17 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   },
   {
     day: 49, party: 'krishna', owner: 'office', source: 'walk_in',
-    lines: [{ product: 'CF-3030-TERR', packaging: 'Carton', grade: 'Commercial', quantities: [['Terracotta', 20]] }],
+    lines: [{ code: '20-OP', quantity: 10, packaging: 'Loose', grade: 'Commercial' }],
     outcome: { kind: 'lost', remark: 'Customer did not return after quotation' },
   },
   {
     day: 55, party: 'metro', owner: 'admin', source: 'website', priority: 'High',
     siteLocation: 'Penthouse project, Bandra West',
     lines: [
-      { product: 'GVT-8016-ARMA', packaging: 'Wooden crate', grade: 'Premium', quantities: [['Grey', 24]] },
-      { product: 'GVT-6012-CALA', packaging: 'Wooden crate', grade: 'Premium', rate: 141000, quantities: [['White', 40]] },
+      { code: '1181', quantity: 2, packaging: 'Wooden crate', grade: 'Premium' },
+      { code: '7721', quantity: 3, packaging: 'Wooden crate', grade: 'Premium', rate: 250000 },
     ],
-    remarks: ['Architect wants book-matched slabs — confirmed same lot', 'Confirmed on call, 50% advance'],
+    remarks: ['Architect wants the red triangle design — confirmed same lot', 'Confirmed on call, 50% advance'],
     outcome: {
       kind: 'won', order: { kind: 'dispatched', afterDays: 12, note: 'Crated, dispatched with insurance' },
       dispatchAddress: 'Site — Bandra West, Mumbai', transport: 'Transporter', vehicle: 'MH-02-DE-4410',
@@ -820,7 +543,8 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   {
     day: 63, party: 'ganesh', owner: 'management', source: 'call', partyWise: true,
     lines: [
-      { product: 'GVT-6012-CALA', packaging: 'Wooden crate', grade: 'Premium', quantities: [['White', 30], ['Ivory', 20]] },
+      { code: 'DAMRU-WHITE', quantity: 10, packaging: 'Thermocol box', grade: 'Premium' },
+      { code: '42', quantity: 6, packaging: 'Thermocol box', grade: 'Premium' },
     ],
     remarks: ['Second lot for the same showroom'],
     outcome: {
@@ -831,11 +555,11 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   {
     day: 70, party: 'sunrise', owner: 'admin', source: 'referral', priority: 'High',
     siteLocation: 'Sunrise Heights, Bopal — Tower B',
-    notes: 'Full flooring for tower B. Phase-wise delivery.',
+    notes: 'Full sanitaryware for tower B. Phase-wise delivery.',
     lines: [
-      { product: 'DC-6060-CRYS', packaging: 'Pallet', grade: 'Standard', quantities: [['White', 200]] },
-      { product: 'CW-3060-FLOR', packaging: 'Carton', grade: 'Standard', quantities: [['Ivory', 90]] },
-      { product: 'PK-3030-HEAV', packaging: 'Pallet', grade: 'Commercial', quantities: [['Grey', 150]] },
+      { code: '102', quantity: 60, packaging: 'Carton', grade: 'Premium' },
+      { code: 'WB-20X16', quantity: 60, packaging: 'Carton', grade: 'Standard' },
+      { code: 'DUAL-FLUSH-TANK-CISTERN', quantity: 60, packaging: 'Carton', grade: 'Standard' },
     ],
     remarks: ['Negotiated 4% on the whole lot', 'Work order signed'],
     outcome: {
@@ -845,15 +569,18 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   },
   {
     day: 78, party: 'laxmi', owner: 'management', source: 'whatsapp',
-    lines: [{ product: 'CW-3060-AQUA', packaging: 'Carton', grade: 'Standard', quantities: [['Teal', 25], ['Sky Blue', 25]] }],
+    lines: [
+      { code: 'WB-18X12-VITROSA-BLACK', quantity: 8, packaging: 'Carton', grade: 'Standard' },
+      { code: 'WB-18X12-RUSTIC-COFFEE-BROWN', quantity: 8, packaging: 'Carton', grade: 'Standard' },
+    ],
     outcome: { kind: 'lost', remark: 'Project postponed indefinitely' },
   },
   {
     day: 85, party: 'greenvalley', owner: 'admin', source: 'call', priority: 'Medium',
     siteLocation: 'Green Valley Phase 2, Gangapur Road, Nashik',
     lines: [
-      { product: 'PK-4040-COBB', packaging: 'Pallet', grade: 'Standard', quantities: [['Grey', 120], ['Brown', 60]] },
-      { product: 'EL-3060-SAND', packaging: 'Carton', grade: 'Standard', quantities: [['Beige', 80]] },
+      { code: 'EWC-S-TRAP', quantity: 40, packaging: 'Carton', grade: 'Standard' },
+      { code: '20-OP', quantity: 30, packaging: 'Loose', grade: 'Commercial' },
     ],
     remarks: ['Quoted ex-godown', 'Confirmed — wants delivery after monsoon'],
     outcome: {
@@ -864,8 +591,9 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   {
     day: 92, party: 'patel', owner: 'office', source: 'whatsapp', partyWise: true,
     lines: [
-      { product: 'CW-3060-AQUA', packaging: 'Carton', grade: 'Standard', quantities: [['Sky Blue', 40], ['White', 30]] },
-      { product: 'CW-3045-SUBW', packaging: 'Carton', grade: 'Commercial', quantities: [['White', 60], ['Black', 20]] },
+      { code: 'WB-18X12', quantity: 30, packaging: 'Carton', grade: 'Standard' },
+      { code: 'SOFIYA-SET-WHITE', quantity: 10, packaging: 'Carton', grade: 'Standard' },
+      { code: 'SOFIYA-SET-VITROSA-MINT-GREEN', quantity: 4, packaging: 'Carton', grade: 'Standard' },
     ],
     remarks: ['Weekly order — same as last month'],
     outcome: {
@@ -877,12 +605,12 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
     day: 99, party: 'royal', owner: 'management', source: 'referral',
     siteLocation: 'Bungalow at Kalawad Road, Rajkot',
     lines: [
-      { product: 'GVT-6012-STAT', packaging: 'Wooden crate', grade: 'Premium', quantities: [['White', 24]] },
-      { product: 'GVT-2012-TEAK', packaging: 'Carton', grade: 'Premium', quantities: [['Walnut', 30]] },
+      { code: '1184', quantity: 2, packaging: 'Wooden crate', grade: 'Premium' },
+      { code: '46', quantity: 2, packaging: 'Thermocol box', grade: 'Premium' },
     ],
-    remarks: ['Interior designer picked Statuario matt for living room'],
+    remarks: ['Interior designer picked the blue triangle for the guest bath'],
     outcome: {
-      kind: 'won', order: { kind: 'cancelled', remark: 'Client changed to imported marble' },
+      kind: 'won', order: { kind: 'cancelled', remark: 'Client changed to an imported range' },
       dispatchAddress: 'Site — Kalawad Road, Rajkot',
     },
   },
@@ -890,26 +618,27 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
     day: 106, party: 'mehta', owner: 'management', source: 'call', priority: 'High',
     siteLocation: 'Andheri commercial tower',
     lines: [
-      { product: 'GVT-8016-ARMA', packaging: 'Wooden crate', grade: 'Premium', quantities: [['Charcoal', 20], ['Grey', 20]] },
-      { product: 'DC-8080-PEAR', packaging: 'Pallet', grade: 'Premium', quantities: [['Ivory', 90]] },
+      { code: 'HEXA-URINAL', quantity: 24, packaging: 'Carton', grade: 'Standard' },
+      { code: 'WB-20X16', quantity: 30, packaging: 'Carton', grade: 'Standard' },
+      { code: 'EWC-S-TRAP', quantity: 36, packaging: 'Carton', grade: 'Standard' },
     ],
-    remarks: ['Lobby flooring — needs 10% extra for cutting', 'Purchase order no. MC/2026/118'],
+    remarks: ['Washrooms on all six floors', 'Purchase order no. MC/2026/118'],
     outcome: {
-      kind: 'won', order: { kind: 'dispatched', afterDays: 10, note: 'Crane loading at Morbi Unit 2' },
+      kind: 'won', order: { kind: 'dispatched', afterDays: 10, note: 'Loaded at Thangadh' },
       dispatchAddress: 'Site — Andheri East, Mumbai', transport: 'Transporter', vehicle: 'MH-04-GH-2288',
     },
   },
   {
     day: 113, party: 'omsai', owner: 'office', source: 'call', partyWise: true,
-    lines: [{ product: 'GVT-6060-ONYX', packaging: 'Pallet', grade: 'Premium', quantities: [['Ivory', 40], ['Brown', 20]] }],
-    outcome: { kind: 'lost', remark: 'Comparing with another Morbi unit — lost on rate' },
+    lines: [{ code: 'NOVA-WHITE', quantity: 8, packaging: 'Thermocol box', grade: 'Premium' }],
+    outcome: { kind: 'lost', remark: 'Comparing with another Thangadh unit — lost on rate' },
   },
   {
     day: 120, party: 'balaji', owner: 'admin', source: 'referral', priority: 'Medium',
     siteLocation: 'Sun Residency — tower B',
     lines: [
-      { product: 'DC-6060-NANO', packaging: 'Pallet', grade: 'Standard', quantities: [['Ivory', 50], ['White', 40]] },
-      { product: 'CW-3060-FLOR', packaging: 'Carton', grade: 'Standard', quantities: [['Beige', 60]] },
+      { code: 'EWC-S-TRAP', quantity: 40, packaging: 'Carton', grade: 'Standard' },
+      { code: 'WB-18X12', quantity: 40, packaging: 'Carton', grade: 'Standard' },
     ],
     remarks: ['Repeat of tower A order', 'Confirmed'],
     outcome: {
@@ -920,10 +649,10 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   {
     day: 127, party: 'jaiambe', owner: 'management', source: 'whatsapp',
     lines: [
-      { product: 'CF-2012-OAKW', packaging: 'Carton', grade: 'Standard', quantities: [['Brown', 60], ['Walnut', 10]] },
-      { product: 'CF-4040-SLAT', packaging: 'Carton', grade: 'Standard', quantities: [['Brown', 40]] },
+      { code: '107', quantity: 12, packaging: 'Carton', grade: 'Standard' },
+      { code: 'BIG-STERLING-SET-WHITE', quantity: 6, packaging: 'Carton', grade: 'Premium' },
     ],
-    remarks: ['Matt wood look — exactly what they asked for last time'],
+    remarks: ['Plain white — exactly what they asked for last time'],
     outcome: {
       kind: 'won', order: { kind: 'dispatched', afterDays: 7, note: 'Jaipur transport, 3 days transit' },
       dispatchAddress: 'Shop — Sanganer Road, Jaipur', transport: 'Transporter', vehicle: 'RJ-14-GC-5566',
@@ -931,8 +660,8 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   },
   {
     day: 134, party: 'nakoda', owner: 'office', source: 'website',
-    lines: [{ product: 'GVT-6060-SUGA', packaging: 'Pallet', grade: 'Premium', quantities: [['Grey', 30]] }],
-    remarks: ['Wants to see the sugar finish in daylight — photos sent'],
+    lines: [{ code: '7501', quantity: 8, packaging: 'Thermocol box', grade: 'Premium' }],
+    remarks: ['Wants to see the table top in daylight — photos sent'],
     outcome: { kind: 'won', order: { kind: 'inProgress' }, dispatchAddress: 'Shop — Sukhadia Circle, Udaipur', transport: 'Transporter' },
   },
   // --- Recent history: orders in progress and the live pipeline ---
@@ -940,10 +669,10 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
     day: 141, party: 'sunrise', owner: 'admin', source: 'referral', priority: 'High',
     siteLocation: 'Sunrise Heights, Bopal — Tower B (phase 2)',
     lines: [
-      { product: 'DC-6060-CRYS', packaging: 'Pallet', grade: 'Standard', quantities: [['White', 150]] },
-      { product: 'GVT-6060-CARR', packaging: 'Pallet', grade: 'Premium', quantities: [['White', 40]] },
+      { code: '102', quantity: 40, packaging: 'Carton', grade: 'Premium' },
+      { code: 'DAMRU-WHITE', quantity: 12, packaging: 'Thermocol box', grade: 'Premium' },
     ],
-    remarks: ['Phase 2 — lobby in Carrara', 'Confirmed against the same work order'],
+    remarks: ['Phase 2 — lobby washrooms get Damru basins', 'Confirmed against the same work order'],
     outcome: {
       kind: 'won', order: { kind: 'dispatched', afterDays: 9, note: 'Phase 2 dispatched' },
       dispatchAddress: 'Site — Bopal, Ahmedabad', transport: 'Transporter', vehicle: 'GJ-01-JT-6612',
@@ -951,8 +680,8 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   },
   {
     day: 148, party: 'anand', owner: 'management', source: 'call',
-    lines: [{ product: 'GVT-2012-TEAK', packaging: 'Carton', grade: 'Premium', quantities: [['Brown', 50]] }],
-    remarks: ['For a café interior — needs by month end'],
+    lines: [{ code: 'BIG-STERLING-SET-RUSTIC-MAGENTA', quantity: 4, packaging: 'Carton', grade: 'Premium' }],
+    remarks: ['For a café washroom — needs by month end'],
     outcome: {
       kind: 'won', order: { kind: 'inProgress' },
       dispatchAddress: 'Depot — Market Yard Road, Pune', transport: 'Transporter',
@@ -961,8 +690,8 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   {
     day: 152, party: 'ganesh', owner: 'management', source: 'call', partyWise: true, priority: 'Medium',
     lines: [
-      { product: 'DC-6060-CRYS', packaging: 'Pallet', grade: 'Standard', quantities: [['White', 100]] },
-      { product: 'GVT-6060-CARR', packaging: 'Pallet', grade: 'Premium', quantities: [['Light Grey', 30]] },
+      { code: '102', quantity: 24, packaging: 'Carton', grade: 'Premium' },
+      { code: 'BIG-STERLING-SET-WHITE', quantity: 6, packaging: 'Carton', grade: 'Premium' },
     ],
     remarks: ['Monthly refill'],
     outcome: {
@@ -974,10 +703,11 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
     day: 155, party: 'vishwa', owner: 'admin', source: 'call', priority: 'High',
     siteLocation: 'Vishwakarma Township — phase 2',
     lines: [
-      { product: 'PK-3030-HEAV', packaging: 'Pallet', grade: 'Commercial', quantities: [['Grey', 250], ['Terracotta', 60]] },
-      { product: 'PK-4040-COBB', packaging: 'Pallet', grade: 'Standard', quantities: [['Grey', 60]] },
+      { code: 'EWC-S-TRAP', quantity: 100, packaging: 'Carton', grade: 'Commercial' },
+      { code: '20-OP', quantity: 60, packaging: 'Loose', grade: 'Commercial' },
+      { code: 'DUAL-FLUSH-TANK-CISTERN', quantity: 100, packaging: 'Carton', grade: 'Standard' },
     ],
-    remarks: ['Phase 2 parking — PO awaited', 'PO received, loading next week'],
+    remarks: ['Phase 2 — PO awaited', 'PO received, loading next week'],
     outcome: {
       kind: 'won', order: { kind: 'inProgress' },
       dispatchAddress: 'Site — Scheme 78, Indore', transport: 'Transporter',
@@ -987,8 +717,8 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
     day: 158, party: 'metro', owner: 'admin', source: 'website', priority: 'High', followUpInDays: -3,
     siteLocation: 'Villa project, Alibaug',
     lines: [
-      { product: 'GVT-6012-CALA', packaging: 'Wooden crate', grade: 'Premium', quantities: [['Ivory', 30]] },
-      { product: 'GVT-6012-STAT', packaging: 'Wooden crate', grade: 'Premium', quantities: [['Light Grey', 20]] },
+      { code: '1184', quantity: 3, packaging: 'Wooden crate', grade: 'Premium' },
+      { code: '7721', quantity: 4, packaging: 'Wooden crate', grade: 'Premium' },
     ],
     remarks: ['Quoted with crating charges', 'Architect asking for 5% — need approval'],
     outcome: { kind: 'open', stage: 'Negotiating' },
@@ -996,7 +726,8 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   {
     day: 160, party: 'patel', owner: 'office', source: 'whatsapp', partyWise: true, followUpInDays: -1,
     lines: [
-      { product: 'CW-3060-METR', packaging: 'Carton', grade: 'Standard', quantities: [['Charcoal', 40], ['Grey', 40]] },
+      { code: 'WB-18X12', quantity: 40, packaging: 'Carton', grade: 'Standard' },
+      { code: 'WB-18X12-VITROSA-BLACK', quantity: 6, packaging: 'Carton', grade: 'Standard' },
     ],
     remarks: ['Quotation sent on WhatsApp'],
     outcome: { kind: 'open', stage: 'Quoted' },
@@ -1005,22 +736,26 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
     day: 162, party: 'royal', owner: 'management', source: 'referral', priority: 'Medium', followUpInDays: 2,
     siteLocation: 'Clinic interior, Rajkot',
     lines: [
-      { product: 'GVT-6060-SUGA', packaging: 'Pallet', grade: 'Premium', quantities: [['Beige', 25]] },
-      { product: 'CW-3060-FLOR', packaging: null, quantities: [['Ivory', 20]] },
+      { code: '7501', quantity: 3, packaging: 'Thermocol box', grade: 'Premium' },
+      { code: 'HEXA-URINAL', quantity: 4, packaging: null },
     ],
-    remarks: ['Rate list shared, waiting for wall tile selection'],
+    remarks: ['Rate list shared, waiting for the urinal selection'],
     outcome: { kind: 'open', stage: 'Quoted' },
   },
   {
     day: 164, party: 'laxmi', owner: 'management', source: 'call', followUpInDays: 0,
-    lines: [{ product: 'CF-3030-TERR', packaging: 'Carton', grade: 'Commercial', quantities: [['Terracotta', 60], ['Brown', 40]] }],
+    lines: [
+      { code: '20-OP', quantity: 40, packaging: 'Loose', grade: 'Commercial' },
+      { code: 'EWC-S-TRAP', quantity: 20, packaging: 'Carton', grade: 'Standard' },
+    ],
     remarks: ['Wants freight included — checking with transporter'],
     outcome: { kind: 'open', stage: 'Negotiating' },
   },
   {
     day: 165, party: 'krishna', owner: 'office', source: 'walk_in', followUpInDays: 5,
     lines: [
-      { product: 'CW-3045-SUBW', packaging: 'Carton', grade: 'Commercial', quantities: [['Sky Blue', 15], ['White', 15]] },
+      { code: 'WB-18X12', quantity: 6, packaging: 'Carton', grade: 'Standard' },
+      { code: 'DUAL-FLUSH-TANK-CISTERN', quantity: 6, packaging: 'Carton', grade: 'Standard' },
     ],
     outcome: { kind: 'open', stage: 'Quoted' },
   },
@@ -1029,42 +764,43 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
     siteLocation: 'Green Valley Phase 3',
     notes: 'Early enquiry for phase 3 — budget stage.',
     lines: [
-      { product: 'PK-4040-COBB', packaging: null, quantities: [['Grey', 200]] },
-      { product: 'EL-3060-SAND', packaging: null, quantities: [['Ivory', 100]] },
+      { code: 'EWC-S-TRAP', quantity: 80, packaging: null },
+      { code: 'WB-18X12', quantity: 80, packaging: null },
     ],
     outcome: { kind: 'open', stage: 'New' },
   },
   {
     day: 167, party: 'omsai', owner: 'office', source: 'whatsapp', partyWise: true, followUpInDays: 1,
-    lines: [{ product: 'GVT-6060-ONYX', packaging: 'Pallet', grade: 'Premium', quantities: [['Beige', 40]] }],
+    lines: [{ code: '150', quantity: 5, packaging: 'Thermocol box', grade: 'Premium' }],
     outcome: { kind: 'open', stage: 'New' },
   },
   {
     day: 168, party: 'nakoda', owner: 'management', source: 'referral', priority: 'Medium', followUpInDays: 3,
     lines: [
-      { product: 'DC-6060-GALA', packaging: 'Pallet', grade: 'Standard', quantities: [['Black', 60]] },
-      { product: 'DC-6060-NANO', packaging: 'Pallet', grade: 'Standard', quantities: [['Ivory', 60]] },
+      { code: '107', quantity: 10, packaging: 'Carton', grade: 'Standard' },
+      { code: 'NOVA-WHITE', quantity: 6, packaging: 'Thermocol box', grade: 'Premium' },
     ],
     remarks: ['Asked for a combined rate for both'],
     outcome: { kind: 'open', stage: 'New' },
   },
   {
     day: 169, party: 'anand', owner: 'office', source: 'call', followUpInDays: 7,
-    lines: [{ product: 'EL-3060-BRIC', packaging: 'Carton', grade: 'Standard', quantities: [['Charcoal', 30]] }],
+    lines: [{ code: 'HEXA-URINAL', quantity: 8, packaging: 'Carton', grade: 'Standard' }],
     outcome: { kind: 'open', stage: 'New' },
   },
 ];
 
 /**
  * What goes to the Recycle Bin at the end, so that screen is not empty: a
- * party that closed down, the discontinued product, and one of the lost
- * leads. Chosen so nothing above depends on them still being live — the party
- * has no leads, the product has no stock and no line, and a lost lead has no
- * order.
+ * party that closed down, one catalogue product the demo never stocks or
+ * quotes, and one of the lost leads. Chosen so nothing above depends on them
+ * still being live — the party has no leads, the product has no stock and no
+ * line, and a lost lead has no order.
  */
 export const SAMPLE_DELETIONS = {
   party: 'hariom',
-  product: 'CW-2030-PLNW',
+  /** A variant code of the product to bin. */
+  productCode: 'MERCH-CATALOGUE',
   /** Index into `SAMPLE_LEADS` — the first lost lead. */
   leadIndex: 2,
 } as const;

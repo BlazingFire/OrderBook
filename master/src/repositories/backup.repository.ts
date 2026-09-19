@@ -75,7 +75,6 @@ const EXCLUDED_TABLES = new Set([
  */
 const TRANSITIVELY_SCOPED: Record<string, { via: string; foreignKey: string }> = {
   pipeline_stages: { via: 'pipelines', foreignKey: 'pipeline_id' },
-  line_item_quantities: { via: 'line_items', foreignKey: 'line_item_id' },
 };
 
 export async function listUserTables(runner: Runner = db()): Promise<string[]> {
@@ -218,12 +217,14 @@ function stringifyJsonColumns(row: Record<string, unknown>): Record<string, unkn
  * success would break every write for as many attempts as it restored rows.
  *
  * Which sequences exist is asked of the catalogue rather than listed here, the
- * same choice the table list makes. The two display-code sequences are the
- * exception, and they fail from the other direction: `party_code`/`product_code`
- * are TEXT assembled from `nextval` in their repositories, so no column owns the
- * sequence, nothing in the catalogue connects it to the values it produced, and
+ * same choice the table list makes. The party display-code sequence is the
+ * exception, and it fails from the other direction: `party_code` is TEXT
+ * assembled from `nextval` in its repository, so no column owns the sequence,
+ * nothing in the catalogue connects it to the values it produced, and
  * `RESTART IDENTITY` does not touch it either. Restoring onto a fresh install
- * would hand out `P-0001` a second time and collide on the code's unique index.
+ * would hand out `P-0001` a second time and collide on the code's unique
+ * index. (Product codes are typed, never generated, so there is no product
+ * sequence to resync.)
  */
 async function resyncSequences(trx: Knex.Transaction, tables: readonly string[]): Promise<void> {
   await trx.raw(`
@@ -254,13 +255,6 @@ async function resyncSequences(trx: Knex.Transaction, tables: readonly string[])
     await trx.raw(
       `SELECT setval('party_code_seq',
                      COALESCE((SELECT max(substring(party_code from '[0-9]+$')::bigint) FROM parties), 0) + 1,
-                     false)`,
-    );
-  }
-  if (tables.includes('products')) {
-    await trx.raw(
-      `SELECT setval('product_code_seq',
-                     COALESCE((SELECT max(substring(product_code from '[0-9]+$')::bigint) FROM products), 0) + 1,
                      false)`,
     );
   }

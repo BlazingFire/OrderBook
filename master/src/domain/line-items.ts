@@ -2,52 +2,55 @@
  * Line-item rules: what gets snapshotted, what each line totals, and what a
  * line means for stock (docs/LEAD_GENERATION_FLOW.md §3.2, §8).
  *
- * Pure business rules — no database, no transport. The snapshot rule in
- * particular is the reason this is a module rather than a few lines inside a
- * repository: "frozen at add time" is a promise the conversion path has to
- * make too, and a promise implemented twice is a promise that gets broken once.
+ * A line is **one variant** of a product with one quantity — two colours of
+ * the same model are two lines, each carrying its own code, its own weight
+ * and its own totals. Pure business rules — no database, no transport. The
+ * snapshot rule in particular is the reason this is a module rather than a
+ * few lines inside a repository: "frozen at add time" is a promise the
+ * conversion path has to make too, and a promise implemented twice is a
+ * promise that gets broken once.
  */
 
-/** The catalogue values a line freezes when the product is picked. */
+/** The catalogue values a line freezes from the product model. */
 export interface ProductSnapshotSource {
   id: string;
   name: string;
   alias: string | null;
   rate: number | null;
-  productCode: string | null;
   sin: string | null;
   size: string | null;
-  weightKg: number | null;
   grade: string | null;
   productType: string | null;
 }
 
+/** The variant the line is for: where the code, the colour text and the weight come from. */
+export interface ProductVariantSnapshotSource {
+  id: string;
+  code: string;
+  label: string | null;
+  weightKg: number | null;
+}
+
 /** A party's negotiated overrides, used when a lead is in `partyWiseMode`. */
-export interface VariantSnapshotSource {
+export interface PartyVariantSnapshotSource {
   alias: string | null;
   rate: number | null;
   size: string | null;
   sin: string | null;
   grade: string | null;
   productType: string | null;
-  weightKg: number | null;
   productName: string | null;
-}
-
-export interface ColourQuantity {
-  colour: string;
-  quantity: number;
-  /** The product-and-colour code as typed, frozen with the rest of the line. */
-  variantCode?: string | null;
 }
 
 /** A line as it exists on a lead or an order, independent of storage. */
 export interface LineSnapshot {
   productId: string;
+  variantId: string;
   productName: string;
   alias: string | null;
   rate: number | null;
   code: string | null;
+  variantLabel: string | null;
   sin: string | null;
   size: string | null;
   weightKg: number | null;
@@ -58,16 +61,19 @@ export interface LineSnapshot {
   fromPartyVariant: boolean;
   imagePath: string | null;
   notes: string | null;
-  quantities: ColourQuantity[];
+  quantity: number;
 }
 
 /** What the client asserted about a line, before the server fills the gaps. */
 export interface LineDraft {
   productId: string;
+  variantId: string;
+  quantity: number;
   productName?: string | null;
   alias?: string | null;
   rate?: number | null;
   code?: string | null;
+  variantLabel?: string | null;
   sin?: string | null;
   size?: string | null;
   weightKg?: number | null;
@@ -80,7 +86,6 @@ export interface LineDraft {
   fromPartyVariant?: boolean;
   imagePath?: string | null;
   notes?: string | null;
-  quantities: ColourQuantity[];
 }
 
 /**
@@ -91,98 +96,84 @@ export interface LineDraft {
  * the customer was actually quoted, and re-deriving it from today's catalogue
  * would silently change an agreed price. The catalogue only fills blanks.
  *
- * `packaging` is never filled from either source — not from the product, and
- * not from the party variant. It comes from the person entering the line or it
- * stays empty (§3.2, §5.2).
+ * The code, the colour text and the weight come from the **variant**, never
+ * from the product or the party's rates — a party negotiates a price, not
+ * what a basin weighs. `packaging` is never filled from any source: it comes
+ * from the person entering the line or it stays empty (§3.2, §5.2).
  */
 export function buildLineSnapshot(
   draft: LineDraft,
   product: ProductSnapshotSource,
-  variant: VariantSnapshotSource | null,
+  variant: ProductVariantSnapshotSource,
+  partyVariant: PartyVariantSnapshotSource | null,
   sequence: number,
 ): LineSnapshot {
-  const fromVariant = variant !== null;
+  const fromPartyVariant = partyVariant !== null;
 
   return {
     productId: product.id,
-    productName: draft.productName ?? variant?.productName ?? product.name,
-    alias: firstDefined(draft.alias, variant?.alias, product.alias),
+    variantId: variant.id,
+    productName: draft.productName ?? partyVariant?.productName ?? product.name,
+    alias: firstDefined(draft.alias, partyVariant?.alias, product.alias),
     // `rateUnset` is a decision, not a gap, so it stops the fallback dead. A
-    // plain `null` rate still falls through to the variant and the catalogue,
-    // which is what makes a line meant to carry no price save at one.
-    rate: draft.rateUnset ? null : firstDefined(draft.rate, variant?.rate, product.rate),
-    code: draft.code ?? product.productCode,
-    sin: firstDefined(draft.sin, variant?.sin, product.sin),
-    size: firstDefined(draft.size, variant?.size, product.size),
-    weightKg: firstDefined(draft.weightKg, variant?.weightKg, product.weightKg),
-    grade: firstDefined(draft.grade, variant?.grade, product.grade),
-    productType: firstDefined(draft.productType, variant?.productType, product.productType),
+    // plain `null` rate still falls through to the party's rate and the
+    // catalogue, which is what makes a line meant to carry no price save at one.
+    rate: draft.rateUnset ? null : firstDefined(draft.rate, partyVariant?.rate, product.rate),
+    code: draft.code ?? variant.code,
+    variantLabel: draft.variantLabel ?? variant.label,
+    sin: firstDefined(draft.sin, partyVariant?.sin, product.sin),
+    size: firstDefined(draft.size, partyVariant?.size, product.size),
+    weightKg: firstDefined(draft.weightKg, variant.weightKg),
+    grade: firstDefined(draft.grade, partyVariant?.grade, product.grade),
+    productType: firstDefined(draft.productType, partyVariant?.productType, product.productType),
     // Deliberately only ever the caller's value.
     packaging: draft.packaging ?? null,
     sequence: draft.sequence ?? sequence,
-    fromPartyVariant: draft.fromPartyVariant ?? fromVariant,
+    fromPartyVariant: draft.fromPartyVariant ?? fromPartyVariant,
     imagePath: draft.imagePath ?? null,
     notes: draft.notes ?? null,
-    quantities: normalizeQuantities(draft.quantities),
+    quantity: normaliseQuantity(draft.quantity),
   };
 }
 
-/**
- * Collapse duplicate colours and drop empty ones.
- *
- * Two rows for the same colour on one line would each reserve stock separately
- * and each show as a row in the UI — a data shape nothing downstream expects.
- */
-export function normalizeQuantities(quantities: ColourQuantity[]): ColourQuantity[] {
-  const totals = new Map<string, { quantity: number; variantCode: string | null }>();
-
-  for (const entry of quantities) {
-    const colour = entry.colour.trim();
-    if (!colour) continue;
-    const quantity = Number(entry.quantity);
-    if (!Number.isFinite(quantity) || quantity <= 0) continue;
-
-    const code = entry.variantCode?.trim() || null;
-    const previous = totals.get(colour);
-    totals.set(colour, {
-      quantity: (previous?.quantity ?? 0) + quantity,
-      // The first code wins. Two rows for one colour are already a client
-      // mistake being repaired here; picking the earlier of two codes is at
-      // least the one that was typed first.
-      variantCode: previous?.variantCode ?? code,
-    });
-  }
-
-  return [...totals.entries()].map(([colour, entry]) => ({
-    colour,
-    quantity: entry.quantity,
-    variantCode: entry.variantCode,
-  }));
-}
-
-export function totalQuantity(line: { quantities: ColourQuantity[] }): number {
-  return line.quantities.reduce((sum, entry) => sum + entry.quantity, 0);
+/** A finite, non-negative number; anything else counts as nothing entered. */
+export function normaliseQuantity(value: unknown): number {
+  const quantity = Number(value);
+  if (!Number.isFinite(quantity) || quantity <= 0) return 0;
+  return quantity;
 }
 
 /** Smallest currency unit; null when the rate is unknown rather than zero. */
-export function lineTotal(line: LineSnapshot): number | null {
+export function lineTotal(line: { rate: number | null; quantity: number }): number | null {
   if (line.rate === null || line.rate === undefined) return null;
-  return Math.round(line.rate * totalQuantity(line));
+  return Math.round(line.rate * line.quantity);
 }
 
-export function orderTotalAmount(lines: LineSnapshot[]): number {
+/** Kilograms, three decimals; null when the variant's weight has not been entered. */
+export function lineWeightKg(line: { weightKg: number | null; quantity: number }): number | null {
+  if (line.weightKg === null || line.weightKg === undefined) return null;
+  return Math.round(line.weightKg * line.quantity * 1000) / 1000;
+}
+
+export function orderTotalAmount(lines: readonly LineSnapshot[]): number {
   return lines.reduce((sum, line) => sum + (lineTotal(line) ?? 0), 0);
 }
 
 /**
- * Total shipping weight. Always computed, even when a human overrides it —
- * the override is displayed instead of this figure, never in place of knowing it.
+ * Total shipping weight over the lines that have a weight. Always computed,
+ * even when a human overrides it — the override is displayed instead of this
+ * figure, never in place of knowing it. Lines whose variant has no weight yet
+ * contribute nothing; `linesWithoutWeight` says how many were left out.
  */
-export function computeTotalWeightKg(lines: LineSnapshot[]): number {
-  const total = lines.reduce((sum, line) => sum + (line.weightKg ?? 0) * totalQuantity(line), 0);
+export function computeTotalWeightKg(lines: readonly LineSnapshot[]): number {
+  const total = lines.reduce((sum, line) => sum + (lineWeightKg(line) ?? 0), 0);
   // Three decimals matches the column; float drift otherwise shows up as
   // 12.000000000000002 kg on a dispatch note.
   return Math.round(total * 1000) / 1000;
+}
+
+export function linesWithoutWeight(lines: readonly LineSnapshot[]): number {
+  return lines.filter((line) => line.weightKg === null).length;
 }
 
 function firstDefined<T>(...values: Array<T | null | undefined>): T | null {

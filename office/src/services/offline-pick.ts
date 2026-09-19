@@ -30,28 +30,19 @@ import type {
   PickPage,
   PickQuery,
   Product,
+  ProductCategory,
   ProductListPage,
   ProductListQuery,
-  ProductVariantPick,
   SyncSnapshot,
 } from '@orderbook/shared';
 import { PICK_DEFAULT_LIMIT, PICK_MAX_LIMIT, comparePicked, pickScore } from '@orderbook/shared';
 
 /** Which permission each pickable kind sits behind, offline as online. */
 const REQUIRED_PERMISSION: Record<PickKind, string> = {
+  category: 'products.view',
   product: 'products.view',
-  variant: 'products.view',
   party: 'parties.view',
 };
-
-/**
- * The stock half of a variant row, checked on top of the product half.
- *
- * Online `search.service` asks for both keys in the same order; a picker that
- * answered offline for somebody the Master would refuse is exactly the hole
- * this file's header warns about.
- */
-const VARIANT_STOCK_PERMISSION = 'inventory.view';
 
 export class OfflinePickForbidden extends Error {
   constructor(readonly permission: string) {
@@ -105,24 +96,33 @@ export function pickFromView(
   query: PickQuery,
   view: SyncSnapshot,
   permissions: readonly string[],
-): PickPage<Product> | PickPage<Party> | PickPage<ProductVariantPick> {
+): PickPage<ProductCategory> | PickPage<Product> | PickPage<Party> {
   const required = REQUIRED_PERMISSION[kind];
   if (!permissions.includes(required)) throw new OfflinePickForbidden(required);
 
-  if (kind === 'variant') {
-    if (!permissions.includes(VARIANT_STOCK_PERMISSION)) {
-      throw new OfflinePickForbidden(VARIANT_STOCK_PERMISSION);
-    }
-    return pickVariantsFromView(query, view);
+  if (kind === 'category') {
+    return pickFrom<ProductCategory>(
+      view.categories,
+      (category) => [category.name],
+      (category) => category.name,
+      query,
+    );
   }
 
   if (kind === 'product') {
+    // The lead screen's second stage: only the chosen category's models. The
+    // codes live on the variants, so a code typed here still finds its model.
+    const categoryId = query.categoryId?.trim();
+    const products = categoryId
+      ? view.products.filter((product) => product.categoryId === categoryId)
+      : view.products;
     return pickFrom<Product>(
-      view.products,
+      products,
       (product) => [
-        product.productCode,
+        ...product.variants.map((variant) => variant.code),
         product.name,
         product.alias,
+        ...product.variants.map((variant) => variant.label),
         product.barcode,
         product.brand,
       ],
@@ -137,61 +137,6 @@ export function pickFromView(
     (party) => party.name,
     query,
   );
-}
-
-/**
- * Product-colour rows built from the cached snapshot.
- *
- * `view.stock` is already one row per (product, colour) and already carries the
- * reserved figure, so `availableBoxes` is the same number the Master would
- * send. `rate` is copied from the product **only when the product carries one**
- * — the snapshot this panel holds was masked for its reader, so an absent rate
- * here means the same thing it means everywhere else and must not become zero.
- *
- * Rows whose product is not in the snapshot's page are skipped rather than
- * guessed at: a line needs the product's name and grade, and half a row is
- * worse than one the search does not offer.
- */
-function pickVariantsFromView(query: PickQuery, view: SyncSnapshot): PickPage<ProductVariantPick> {
-  const byId = new Map(view.products.map((product) => [product.id, product]));
-
-  const rows = view.stock.flatMap((level) => {
-    const product = byId.get(level.productId);
-    if (!product) return [];
-
-    const row: ProductVariantPick & { id: string } = {
-      // `pickFrom` ranks and pages by `id`; a variant's identity is its
-      // (product, colour) pair, which is exactly what the stock row is keyed on.
-      id: `${level.productId}|${level.colour}`,
-      variantCode: level.variantCode,
-      productId: level.productId,
-      productCode: product.productCode,
-      productName: product.name,
-      alias: product.alias,
-      sin: product.sin,
-      size: product.size,
-      grade: product.grade,
-      productType: product.productType,
-      weightKg: product.weightKg,
-      colour: level.colour,
-      availableBoxes: level.availableBoxes,
-    };
-    if (product.rate !== undefined) row.rate = product.rate;
-    return [row];
-  });
-
-  const page = pickFrom(
-    rows,
-    (row) => [row.variantCode, row.productCode, row.productName, row.sin, row.colour],
-    (row) => `${row.productName} ${row.colour}`,
-    query,
-  );
-
-  return {
-    // The synthetic `id` was for the ranking, not for the wire.
-    items: page.items.map(({ id: _id, ...row }) => row),
-    truncated: page.truncated,
-  };
 }
 
 const LIST_DEFAULT_LIMIT = 100;
@@ -229,29 +174,35 @@ export function listProductsFromView(
     term === '' ||
     [
       product.name,
-      product.productCode,
       product.alias,
-      product.series,
       product.barcode,
       product.brand,
       product.productType,
       product.categoryName,
+      ...product.variants.map((variant) => variant.code),
+      ...product.variants.map((variant) => variant.label),
     ].some((field) => (field ?? '').toLowerCase().includes(term));
 
-  const searched = view.products.filter(matches);
+  const missingWeight = (product: Product): boolean =>
+    product.variants.some((variant) => variant.isActive && variant.weightKg === null);
 
-  const counts = new Map<string, number>();
+  const searched = view.products.filter(
+    (product) => matches(product) && (!query.missingWeight || missingWeight(product)),
+  );
+
+  // The category facet, counted before the category filter — every chip
+  // stays clickable while one is selected, as on the Master.
+  const counts = new Map<string, { id: string; name: string; count: number }>();
   for (const product of searched) {
-    if (product.productType)
-      counts.set(product.productType, (counts.get(product.productType) ?? 0) + 1);
+    const entry = counts.get(product.categoryId);
+    if (entry) entry.count += 1;
+    else counts.set(product.categoryId, { id: product.categoryId, name: product.categoryName, count: 1 });
   }
-  const productTypes = [...counts.entries()]
-    .map(([value, count]) => ({ value, count }))
-    .sort((a, b) => a.value.localeCompare(b.value));
+  const categories = [...counts.values()].sort((a, b) => a.name.localeCompare(b.name));
 
   const filtered = (
-    query.productType
-      ? searched.filter((product) => product.productType === query.productType)
+    query.categoryId
+      ? searched.filter((product) => product.categoryId === query.categoryId)
       : searched
   ).sort((a, b) => a.name.localeCompare(b.name));
 
@@ -260,6 +211,6 @@ export function listProductsFromView(
     total: filtered.length,
     limit,
     offset,
-    productTypes,
+    categories,
   };
 }

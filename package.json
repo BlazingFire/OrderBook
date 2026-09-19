@@ -34,6 +34,7 @@
     "migrate": "npm run migrate --workspace @orderbook/master",
     "seed:dummy": "npm run build:shared && npm run seed:dummy --workspace @orderbook/master",
     "seed:sample": "npm run build:shared && npm run seed:sample --workspace @orderbook/master",
+    "seed:catalogue": "npm run build:shared && npm run seed:catalogue --workspace @orderbook/master",
     "typecheck": "npm run typecheck --workspaces --if-present && tsc -p tsconfig.test.json && tsc -p ui/tests/tsconfig.json && tsc -p electron/tsconfig.json --noEmit",
     "lint": "eslint .",
     "i18n:sync": "node tools/i18n-sync.mjs",

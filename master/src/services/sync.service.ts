@@ -66,6 +66,7 @@ import * as leadRepo from '../repositories/lead.repository.js';
 import * as orderRepo from '../repositories/order.repository.js';
 import * as partyRepo from '../repositories/party.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
+import * as productVariantRepo from '../repositories/product-variant.repository.js';
 import * as syncRepo from '../repositories/sync.repository.js';
 import type { TransactionContext } from '../repositories/transaction.js';
 import { publishChange, publishConflict } from './change-bus.js';
@@ -438,7 +439,12 @@ async function mergeUpdate(
     await assertMergeTargetAccessible(entity, current.values, id, actor);
 
     const columns = MERGEABLE_COLUMNS[entity] as Record<string, string>;
-    let fields = mutation.fields.filter((field) => field in columns);
+    // `variants` is not a column — it is a child table replaced as a set —
+    // but it merges like one field: the whole set wins or loses by HLC, and
+    // a losing set is recorded as one conflict a person can put back.
+    let fields = mutation.fields.filter(
+      (field) => field in columns || (entity === 'product' && field === 'variants'),
+    );
 
     /*
      * Money fields need the same permission every other product write path
@@ -483,9 +489,29 @@ async function mergeUpdate(
      * rather than bounced. The same `validateProductInput` the catalogue
      * service runs turns that into a refusal somebody can read and act on.
      */
+    const acceptedVariants =
+      entity === 'product' && Array.isArray(outcome.accepted.variants)
+        ? (outcome.accepted.variants as Array<Record<string, unknown>>).map((variant) => ({
+            ...(typeof variant.id === 'string' ? { id: variant.id } : {}),
+            code: String(variant.code ?? ''),
+            label: typeof variant.label === 'string' ? variant.label : null,
+            weightKg: typeof variant.weightKg === 'number' ? variant.weightKg : null,
+            ...(typeof variant.sequence === 'number' ? { sequence: variant.sequence } : {}),
+          }))
+        : null;
+
     if (entity === 'product') {
       try {
-        validateProductInput(outcome.accepted as unknown as ProductInput);
+        validateProductInput({
+          ...(outcome.accepted as unknown as ProductInput),
+          // The variant rule needs to know whether the model has variants,
+          // whether or not this push happens to say so.
+          hasVariants:
+            typeof outcome.accepted.hasVariants === 'boolean'
+              ? outcome.accepted.hasVariants
+              : Boolean(current.values.hasVariants),
+          ...(acceptedVariants ? { variants: acceptedVariants } : {}),
+        });
       } catch (error) {
         if (error instanceof ProductValidationError) throw new ValidationError(error.messageKey);
         throw error;
@@ -500,8 +526,11 @@ async function mergeUpdate(
       await requirePartyAccess(patch.party_id, 'manage', actor);
     }
 
-    if (Object.keys(patch).length > 0) {
+    if (Object.keys(patch).length > 0 || acceptedVariants) {
       await writeMergedColumns(entity, actor.tenantId, id, patch, outcome.fieldHlc, hlc, trx);
+    }
+    if (acceptedVariants) {
+      await productVariantRepo.replaceVariants(actor.tenantId, id, acceptedVariants, trx);
     }
 
     let storedConflicts: Awaited<ReturnType<typeof syncRepo.recordConflicts>> = [];

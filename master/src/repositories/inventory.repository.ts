@@ -1,5 +1,5 @@
 /**
- * Stock data access, now keyed per (product, colour)
+ * Stock data access, keyed per product variant
  * (docs/LEAD_GENERATION_FLOW.md §5.1).
  *
  * Three things work together:
@@ -18,7 +18,6 @@ import type { InventoryStockLevel, StockMovement, StockMovementType } from '@ord
 import type { Knex } from 'knex';
 import { v4 as uuid } from 'uuid';
 
-import { parseStockKey, stockKey } from '../domain/stock-key.js';
 import { db } from '../db/knex.js';
 import { firstCount, mapStockLevel, mapStockMovement, toNumber } from './mappers.js';
 import * as reservations from './reservation.repository.js';
@@ -26,28 +25,25 @@ import * as reservations from './reservation.repository.js';
 type Runner = Knex | Knex.Transaction;
 
 /**
- * Colour bucket for products that have never been given one. Matches the value
- * the rebuild migration used, so pre-existing stock lands in the same row.
- */
-export const DEFAULT_COLOUR = 'Default';
-
-/**
- * Driven from `inventory_stock` joined back to products, rather than from
- * products outward: a product now has one row *per colour*, so there is no
- * single row to left-join to. Products with no stock row at all are unioned in
- * at zero, so nothing vanishes from the inventory screen.
+ * Driven from `inventory_stock` joined back to its variant and product: a
+ * product has one row *per variant*, so there is no single row to left-join
+ * to. Variants that are reserved but have never been stocked are unioned in
+ * at zero by `listStockLevels`, so nothing vanishes from the inventory screen.
  */
 function stockQuery(tenantId: string, runner: Runner = db()) {
   return runner('inventory_stock as s')
-    .join('products as p', 'p.id', 's.product_id')
+    .join('product_variants as v', 'v.id', 's.variant_id')
+    .join('products as p', 'p.id', 'v.product_id')
     .leftJoin('product_categories as c', 'c.id', 'p.category_id')
     .where('s.tenant_id', tenantId)
     .andWhere('p.is_active', true)
+    .whereNull('p.deleted_at')
     .select(
       's.product_id',
-      's.colour',
-      's.variant_code',
-      'p.product_code',
+      's.variant_id',
+      'v.code as variant_code',
+      'v.label as variant_label',
+      'v.weight_kg',
       'p.name as product_name',
       'p.size',
       'p.box_coverage_sqft',
@@ -71,31 +67,27 @@ export async function listStockLevels(
     query.andWhere((builder) =>
       builder
         .whereILike('p.name', pattern)
-        .orWhereILike('p.product_code', pattern)
-        .orWhereILike('s.variant_code', pattern)
-        .orWhereILike('s.colour', pattern)
+        .orWhereILike('v.code', pattern)
+        .orWhereILike('v.label', pattern)
         .orWhereILike('c.name', pattern),
     );
   }
 
   const rows = await query
-    .orderBy(['p.name', 's.colour'])
+    .orderBy(['p.name', 'v.sequence', 'v.code'])
     .limit(options.limit)
     .offset(options.offset);
 
   const held = await reservations.reservedTotals(tenantId);
 
   const levels = rows.map((row) =>
-    mapStockLevel({
-      ...row,
-      reserved_boxes: held.get(stockKey(String(row.product_id), String(row.colour))) ?? 0,
-    }),
+    mapStockLevel({ ...row, reserved_boxes: held.get(String(row.variant_id)) ?? 0 }),
   );
 
-  // A colour can be reserved that has no stock row at all — someone sold blue
+  // A variant can be reserved that has no stock row at all — someone sold blue
   // basins the shop has never carried. Driving the list from `inventory_stock`
   // alone would hide exactly that case, which is the one worth seeing, so the
-  // reserved-but-unstocked pairs are folded in at zero.
+  // reserved-but-unstocked variants are folded in at zero.
   levels.push(...(await unstockedReservations(tenantId, held, levels)));
 
   // Filtered after the reservation totals are known, because "low" is judged on
@@ -103,7 +95,10 @@ export async function listStockLevels(
   const visible = options.lowOnly ? levels.filter((level) => level.isLow) : levels;
 
   return visible.sort(
-    (a, b) => a.productName.localeCompare(b.productName) || a.colour.localeCompare(b.colour),
+    (a, b) =>
+      a.productName.localeCompare(b.productName) ||
+      (a.variantLabel ?? '').localeCompare(b.variantLabel ?? '') ||
+      a.variantCode.localeCompare(b.variantCode),
   );
 }
 
@@ -111,8 +106,8 @@ export async function listStockLevels(
  * Stock rows that exist only as a reservation.
  *
  * Synthesised rather than written to `inventory_stock`, because nothing has
- * physically moved — inventing a zero row would put a product/colour pair in the
- * ledger's derived snapshot that no movement ever created.
+ * physically moved — inventing a zero row would put a variant in the ledger's
+ * derived snapshot that no movement ever created.
  */
 async function unstockedReservations(
   tenantId: string,
@@ -120,45 +115,41 @@ async function unstockedReservations(
   existing: InventoryStockLevel[],
   runner: Runner = db(),
 ): Promise<InventoryStockLevel[]> {
-  const known = new Set(existing.map((level) => stockKey(level.productId, level.colour)));
-  const missing = [...held.entries()].filter(([key]) => !known.has(key));
+  const known = new Set(existing.map((level) => level.variantId));
+  const missing = [...held.entries()].filter(([variantId]) => !known.has(variantId));
   if (missing.length === 0) return [];
 
-  const pairs = missing.map(([key, quantity]) => ({ ...parseStockKey(key), quantity }));
-
-  const products = await runner('products as p')
+  const variants = await runner('product_variants as v')
+    .join('products as p', 'p.id', 'v.product_id')
     .leftJoin('product_categories as c', 'c.id', 'p.category_id')
-    .where('p.tenant_id', tenantId)
+    .where('v.tenant_id', tenantId)
     .whereIn(
-      'p.id',
-      pairs.map((pair) => pair.productId),
+      'v.id',
+      missing.map(([variantId]) => variantId),
     )
     .select(
-      'p.id',
-      'p.product_code',
-      'p.name',
+      'v.id as variant_id',
+      'v.product_id',
+      'v.code as variant_code',
+      'v.label as variant_label',
+      'v.weight_kg',
+      'p.name as product_name',
       'p.size',
       'p.box_coverage_sqft',
       'c.name as category_name',
     );
 
-  const byId = new Map(products.map((product) => [String(product.id), product]));
+  const byId = new Map(variants.map((variant) => [String(variant.variant_id), variant]));
 
-  return pairs.flatMap((pair) => {
-    const product = byId.get(pair.productId);
-    if (!product) return [];
+  return missing.flatMap(([variantId, quantity]) => {
+    const variant = byId.get(variantId);
+    if (!variant) return [];
 
     return [
       mapStockLevel({
-        product_id: pair.productId,
-        colour: pair.colour,
-        product_code: product.product_code,
-        product_name: product.name,
-        size: product.size,
-        box_coverage_sqft: product.box_coverage_sqft,
-        category_name: product.category_name,
+        ...variant,
         quantity_boxes: 0,
-        reserved_boxes: pair.quantity,
+        reserved_boxes: quantity,
         reorder_level: null,
         updated_at: null,
       }),
@@ -168,27 +159,23 @@ async function unstockedReservations(
 
 export async function findStockLevel(
   tenantId: string,
-  productId: string,
-  colour: string,
+  variantId: string,
   runner: Runner = db(),
 ): Promise<InventoryStockLevel | null> {
-  const row = await stockQuery(tenantId, runner)
-    .andWhere('s.product_id', productId)
-    .andWhere('s.colour', colour)
-    .first();
+  const row = await stockQuery(tenantId, runner).andWhere('s.variant_id', variantId).first();
 
   const held = await reservations.reservedTotals(tenantId, runner);
-  const reserved = held.get(stockKey(productId, colour)) ?? 0;
+  const reserved = held.get(variantId) ?? 0;
 
   if (row) return mapStockLevel({ ...row, reserved_boxes: reserved });
 
-  // No stock row, but stock is reserved against this colour — report the
+  // No stock row, but stock is reserved against this variant — report the
   // shortfall rather than nothing.
   if (reserved === 0) return null;
 
   const [synthetic] = await unstockedReservations(
     tenantId,
-    new Map([[stockKey(productId, colour), reserved]]),
+    new Map([[variantId, reserved]]),
     [],
     runner,
   );
@@ -201,8 +188,9 @@ export async function listMovements(
 ): Promise<StockMovement[]> {
   const query = db()('stock_movements as m')
     .join('products as p', 'p.id', 'm.product_id')
+    .join('product_variants as v', 'v.id', 'm.variant_id')
     .where('m.tenant_id', tenantId)
-    .select('m.*', 'p.product_code', 'p.name as product_name');
+    .select('m.*', 'p.name as product_name', 'v.code as variant_code', 'v.label as variant_label');
 
   if (options.productId) query.andWhere('m.product_id', options.productId);
 
@@ -214,7 +202,7 @@ export async function listMovements(
 export interface MovementRequest {
   tenantId: string;
   productId: string;
-  colour: string;
+  variantId: string;
   movementType: StockMovementType;
   /** Signed delta in boxes. Negative removes stock. */
   deltaBoxes: number;
@@ -239,7 +227,7 @@ export async function applyMovement(
     await trx('stock_movements').insert({
       tenant_id: request.tenantId,
       product_id: request.productId,
-      colour: request.colour,
+      variant_id: request.variantId,
       movement_type: request.movementType,
       quantity_boxes: request.deltaBoxes,
       reference_type: request.referenceType ?? null,
@@ -249,15 +237,15 @@ export async function applyMovement(
     });
 
     await trx.raw(
-      `INSERT INTO inventory_stock (id, tenant_id, product_id, colour, quantity_boxes, updated_at)
+      `INSERT INTO inventory_stock (id, tenant_id, product_id, variant_id, quantity_boxes, updated_at)
             VALUES (?, ?, ?, ?, ?, now())
-       ON CONFLICT (tenant_id, product_id, colour) DO UPDATE
+       ON CONFLICT (tenant_id, variant_id) DO UPDATE
               SET quantity_boxes = inventory_stock.quantity_boxes + EXCLUDED.quantity_boxes,
                   updated_at     = now()`,
-      [uuid(), request.tenantId, request.productId, request.colour, request.deltaBoxes],
+      [uuid(), request.tenantId, request.productId, request.variantId, request.deltaBoxes],
     );
 
-    const level = await findStockLevel(request.tenantId, request.productId, request.colour, trx);
+    const level = await findStockLevel(request.tenantId, request.variantId, trx);
     if (!level) throw new Error('Stock level missing immediately after movement');
     return level;
   };
@@ -280,39 +268,36 @@ export async function applyMovement(
  */
 export async function setStockLevels(
   tenantId: string,
-  productId: string,
-  colour: string,
+  target: { productId: string; variantId: string },
   levels: {
     reorderLevel?: number | null;
     minStockLevel?: number | null;
     maxStockLevel?: number | null;
-    variantCode?: string | null;
   },
 ): Promise<InventoryStockLevel | null> {
-  const asserted: Array<[column: string, value: string | number | null]> = [];
+  const asserted: Array<[column: string, value: number | null]> = [];
 
   if (levels.reorderLevel !== undefined) asserted.push(['reorder_level', levels.reorderLevel]);
   if (levels.minStockLevel !== undefined) asserted.push(['min_stock_level', levels.minStockLevel]);
   if (levels.maxStockLevel !== undefined) asserted.push(['max_stock_level', levels.maxStockLevel]);
-  if (levels.variantCode !== undefined) asserted.push(['variant_code', levels.variantCode]);
 
   // Nothing asserted is not an error and not a write — it is a read.
-  if (asserted.length === 0) return findStockLevel(tenantId, productId, colour);
+  if (asserted.length === 0) return findStockLevel(tenantId, target.variantId);
 
   const columns = asserted.map(([column]) => column);
   const values = asserted.map(([, value]) => value);
 
   await db().raw(
     `INSERT INTO inventory_stock
-       (id, tenant_id, product_id, colour, quantity_boxes, ${columns.join(', ')}, updated_at)
+       (id, tenant_id, product_id, variant_id, quantity_boxes, ${columns.join(', ')}, updated_at)
      VALUES (?, ?, ?, ?, 0, ${columns.map(() => '?').join(', ')}, now())
-     ON CONFLICT (tenant_id, product_id, colour) DO UPDATE
+     ON CONFLICT (tenant_id, variant_id) DO UPDATE
             SET ${columns.map((column) => `${column} = EXCLUDED.${column}`).join(', ')},
                 updated_at = now()`,
-    [uuid(), tenantId, productId, colour, ...values],
+    [uuid(), tenantId, target.productId, target.variantId, ...values],
   );
 
-  return findStockLevel(tenantId, productId, colour);
+  return findStockLevel(tenantId, target.variantId);
 }
 
 /**
@@ -320,20 +305,6 @@ export async function setStockLevels(
  * about what a caller may leave out, not about what the operation means.
  */
 export const setReorderLevel = setStockLevels;
-
-/** Which colours a product currently has stock rows for. */
-export async function coloursFor(
-  tenantId: string,
-  productId: string,
-  runner: Runner = db(),
-): Promise<string[]> {
-  const rows = await runner('inventory_stock')
-    .where({ tenant_id: tenantId, product_id: productId })
-    .orderBy('colour')
-    .select<Array<{ colour: string }>>('colour');
-
-  return rows.map((row) => row.colour);
-}
 
 /**
  * Whether this order has already moved stock. The ledger is the only honest
@@ -350,21 +321,21 @@ export async function hasMovementForOrder(
   return row !== undefined;
 }
 
-/** Products at or below their reorder level, judged on free-to-sell stock. */
+/** Variants at or below their reorder level, judged on free-to-sell stock. */
 export async function countLowStock(tenantId: string): Promise<number> {
   const rows = await db()('inventory_stock')
     .where({ tenant_id: tenantId })
     .whereNotNull('reorder_level')
-    .select<
-      Array<{ product_id: string; colour: string; quantity_boxes: string; reorder_level: string }>
-    >('product_id', 'colour', 'quantity_boxes', 'reorder_level');
+    .select<Array<{ variant_id: string; quantity_boxes: string; reorder_level: string }>>(
+      'variant_id',
+      'quantity_boxes',
+      'reorder_level',
+    );
 
   const held = await reservations.reservedTotals(tenantId);
 
   return rows.filter((row) => {
-    const available =
-      Number(row.quantity_boxes) -
-      (held.get(stockKey(String(row.product_id), String(row.colour))) ?? 0);
+    const available = Number(row.quantity_boxes) - (held.get(String(row.variant_id)) ?? 0);
     return available <= Number(row.reorder_level);
   }).length;
 }
@@ -376,10 +347,10 @@ export async function countUnstockedReservations(tenantId: string): Promise<numb
 
   const rows = await db()('inventory_stock')
     .where({ tenant_id: tenantId })
-    .select<Array<{ product_id: string; colour: string }>>('product_id', 'colour');
+    .select<Array<{ variant_id: string }>>('variant_id');
 
-  const stocked = new Set(rows.map((row) => stockKey(row.product_id, row.colour)));
-  return [...held.keys()].filter((key) => !stocked.has(key)).length;
+  const stocked = new Set(rows.map((row) => String(row.variant_id)));
+  return [...held.keys()].filter((variantId) => !stocked.has(variantId)).length;
 }
 
 /** Total stock rows, used by the dashboard's product count sanity check. */

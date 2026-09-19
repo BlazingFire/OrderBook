@@ -317,6 +317,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.import.notAWholeNumber': '"{column}" एक पूर्ण संख्या होनी चाहिए',
   'validation.import.invalidValue': '"{column}" इनमें से एक होना चाहिए: {allowed}',
   'validation.import.duplicateInFile': '"{column}" पंक्ति {firstRow} में दोहराया गया है',
+  'validation.import.mixedVariants':
+    '{name} की कुछ पंक्तियों में वेरिएंट है और कुछ में नहीं — हर पंक्ति भरें या हर पंक्ति खाली छोड़ें',
+  'validation.import.codesSplit': '{name} के कोड पहले से एक से अधिक उत्पादों के हैं',
   'validation.import.rowFailed': 'पंक्ति सहेजी नहीं जा सकी: {reason}',
   'import.skip.codeExists': 'उत्पाद कोड "{productCode}" पहले से मौजूद है — छोड़ा गया',
   'validation.role.nameRequired': 'भूमिका को एक नाम दें',
@@ -4053,6 +4056,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.draft.showOptions': 'Show {field} options',
   // TODO(i18n-hi)
+  'validation.developer.administratorRequired':
+    'कैटलॉग लोड करने से पहले एक व्यवस्थापक सेट करें',
   'validation.developer.sampleDataPresent': "Sample data is already on this Master. Erase everything first to seed it again.",
   // TODO(i18n-hi)
   'developer.tool.sample.title': "Sample data",

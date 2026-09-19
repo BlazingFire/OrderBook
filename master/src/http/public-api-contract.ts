@@ -116,7 +116,7 @@ export const PUBLIC_API_ROUTES = [
     method: 'get',
     path: '/stock',
     permission: 'inventory.view',
-    summary: 'Stock levels by product and colour',
+    summary: 'Stock levels by product variant',
   },
   {
     operationId: 'stockInbound',

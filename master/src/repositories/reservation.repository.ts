@@ -6,12 +6,14 @@
  * dispatch; until then the hold only reduces what the *next* order can draw on.
  * Keeping the two separate is what makes "we have 40 boxes, 30 of them spoken
  * for" expressible, which a single running total cannot say.
+ *
+ * Keyed by variant: a white basin in stock does not satisfy a hold on a blue
+ * one, and the variant id is what a line, a stock row and a hold all share.
  */
 
 import type { StockReservation } from '@orderbook/shared';
 import type { Knex } from 'knex';
 
-import { stockKey } from '../domain/stock-key.js';
 import { db } from '../db/knex.js';
 import { allocatePermanentIds } from './identity.repository.js';
 import { mapStockReservation } from './mappers.js';
@@ -24,7 +26,7 @@ type Runner = Knex | Knex.Transaction;
 export interface NewReservation {
   lineItemId: string;
   productId: string;
-  colour: string;
+  variantId: string;
   quantity: number;
 }
 
@@ -44,7 +46,7 @@ export async function insertReservations(
       order_id: context.orderId,
       line_item_id: entry.lineItemId,
       product_id: entry.productId,
-      colour: entry.colour,
+      variant_id: entry.variantId,
       quantity: entry.quantity,
       status: 'active',
     })),
@@ -61,10 +63,11 @@ export async function loadForOrders(
 
   const rows = await runner(`${TABLE} as r`)
     .join('products as p', 'p.id', 'r.product_id')
+    .join('product_variants as v', 'v.id', 'r.variant_id')
     .where('r.tenant_id', tenantId)
     .whereIn('r.order_id', orderIds)
-    .orderBy(['r.order_id', 'r.colour'])
-    .select('r.*', 'p.name as product_name');
+    .orderBy(['r.order_id', 'v.sequence', 'v.code'])
+    .select('r.*', 'p.name as product_name', 'v.code as variant_code', 'v.label as variant_label');
 
   for (const row of rows) {
     const reservation = mapStockReservation(row);
@@ -80,18 +83,18 @@ export async function activeForOrder(
   tenantId: string,
   orderId: string,
   runner: Runner = db(),
-): Promise<Array<{ productId: string; colour: string; quantity: number }>> {
+): Promise<Array<{ productId: string; variantId: string; quantity: number }>> {
   const rows = await runner(TABLE)
     .where({ tenant_id: tenantId, order_id: orderId, status: 'active' })
-    .select<Array<{ product_id: string; colour: string; quantity: string }>>(
+    .select<Array<{ product_id: string; variant_id: string; quantity: string }>>(
       'product_id',
-      'colour',
+      'variant_id',
       'quantity',
     );
 
   return rows.map((row) => ({
     productId: row.product_id,
-    colour: row.colour,
+    variantId: row.variant_id,
     quantity: Number(row.quantity),
   }));
 }
@@ -125,24 +128,24 @@ export async function releaseForOrder(
  * Scoped to `status = 'released'` rather than the whole order, so restoring
  * an order a second time (or one that was never deleted) cannot resurrect a
  * reservation that was released for some other reason. `.returning(...)`
- * hands back exactly the (product, colour) pairs that moved, so the caller
- * can publish stock for them without a second query racing this one.
+ * hands back exactly the variants that moved, so the caller can publish stock
+ * for them without a second query racing this one.
  */
 export async function reactivateForOrder(
   tenantId: string,
   orderId: string,
   trx: TransactionContext,
-): Promise<Array<{ productId: string; colour: string }>> {
+): Promise<string[]> {
   const rows = await trx(TABLE)
     .where({ tenant_id: tenantId, order_id: orderId, status: 'released' })
     .update({ status: 'active', settled_at: null })
-    .returning<Array<{ product_id: string; colour: string }>>(['product_id', 'colour']);
+    .returning<Array<{ variant_id: string }>>(['variant_id']);
 
-  return rows.map((row) => ({ productId: row.product_id, colour: row.colour }));
+  return rows.map((row) => row.variant_id);
 }
 
 /**
- * How much of each (product, colour) is currently held.
+ * How much of each variant is currently held.
  *
  * Feeds the `reservedBoxes` figure on every stock level, which is what turns
  * "in stock" into the more useful "free to sell".
@@ -153,12 +156,11 @@ export async function reservedTotals(
 ): Promise<Map<string, number>> {
   const rows = await runner(TABLE)
     .where({ tenant_id: tenantId, status: 'active' })
-    .groupBy('product_id', 'colour')
-    .select<Array<{ product_id: string; colour: string; total: string }>>(
-      'product_id',
-      'colour',
+    .groupBy('variant_id')
+    .select<Array<{ variant_id: string; total: string }>>(
+      'variant_id',
       runner.raw('SUM(quantity) as total'),
     );
 
-  return new Map(rows.map((row) => [stockKey(row.product_id, row.colour), Number(row.total)]));
+  return new Map(rows.map((row) => [row.variant_id, Number(row.total)]));
 }

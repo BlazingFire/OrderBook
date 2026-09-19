@@ -3,12 +3,9 @@
  * that hold the raw string (`docs/backend-modules/04-API-CONTRACT.md` §5.2).
  *
  * One query per set, `GROUP BY` over every source table unioned together —
- * never one query per value, and never `stock_movements`. The ledger is
- * projected into the millions (`docs/schema/05`) and no index on it leads
- * with `colour`, so a colour-only probe would seq-scan it on every Fields
- * screen open. Three sources answer "is this colour in use" adequately;
- * `stock_movements` is read once, at migration time, for the initial seed —
- * a different question with a different cost.
+ * never one query per value, and never the stock ledger. `stock.colour` is
+ * the variant palette: a colour is "in use" when a product variant carries
+ * it as its label, or a lead or order line froze it as `variant_label`.
  */
 
 import type { FieldListKey } from '@orderbook/shared';
@@ -42,25 +39,18 @@ const SOURCES: Record<FieldListKey, readonly SourceDefinition[]> = {
   ],
   'stock.colour': [
     {
-      source: 'inventory_stock',
-      sql: `SELECT colour AS value, count(*) AS count
-              FROM inventory_stock
-             WHERE tenant_id = ?
-             GROUP BY colour`,
+      source: 'product_variants',
+      sql: `SELECT label AS value, count(*) AS count
+              FROM product_variants
+             WHERE tenant_id = ? AND label IS NOT NULL AND deleted_at IS NULL
+             GROUP BY label`,
     },
     {
-      source: 'line_item_quantities',
-      sql: `SELECT q.colour AS value, count(*) AS count
-              FROM line_item_quantities q
-              JOIN line_items li ON li.id = q.line_item_id AND li.tenant_id = ?
-             GROUP BY q.colour`,
-    },
-    {
-      source: 'stock_reservations',
-      sql: `SELECT colour AS value, count(*) AS count
-              FROM stock_reservations
-             WHERE tenant_id = ?
-             GROUP BY colour`,
+      source: 'line_items',
+      sql: `SELECT variant_label AS value, count(*) AS count
+              FROM line_items
+             WHERE tenant_id = ? AND variant_label IS NOT NULL
+             GROUP BY variant_label`,
     },
   ],
   'product.productType': [

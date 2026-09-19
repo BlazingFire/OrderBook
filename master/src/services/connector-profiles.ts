@@ -51,14 +51,19 @@ export const CONNECTOR_PROFILES: readonly ConnectorProfile[] = Object.freeze([
         pageSizeParam: 'per_page',
         pageSize: 100,
         fieldMaps: [
+          // `code` and `weightKg` are lifted onto the product's own variant by
+          // the run service; a remote item is one code, so it lands as a
+          // single-variant product.
+          { localField: 'code', remotePointer: '/sku', transform: 'upper', isRequired: true },
+          { localField: 'name', remotePointer: '/name', transform: 'trim', isRequired: true },
           {
-            localField: 'productCode',
-            remotePointer: '/sku',
-            transform: 'upper',
+            localField: 'categoryName',
+            remotePointer: '/category',
+            transform: 'trim',
             isRequired: true,
           },
-          { localField: 'name', remotePointer: '/name', transform: 'trim', isRequired: true },
           { localField: 'size', remotePointer: '/size', transform: 'trim' },
+          { localField: 'weightKg', remotePointer: '/weight' },
           // The remote quotes rupees; this product stores paise. Getting that
           // wrong is a hundredfold price error, so it is a named transform.
           { localField: 'rate', remotePointer: '/price', transform: 'rupees_to_paise' },

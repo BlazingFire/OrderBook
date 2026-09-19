@@ -18,6 +18,7 @@ import type {
   ProductInput,
   ProductListPage,
   ProductListQuery,
+  ProductVariantInput,
 } from '@orderbook/shared';
 import {
   columnPatch,
@@ -49,6 +50,7 @@ import { nextHlc } from '../repositories/identity.repository.js';
 import * as partyRepo from '../repositories/party.repository.js';
 import * as variantRepo from '../repositories/party-variant.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
+import * as productVariantRepo from '../repositories/product-variant.repository.js';
 import { publishChange } from './change-bus.js';
 import { requirePartyAccess } from './party-access.service.js';
 
@@ -318,7 +320,8 @@ export async function listProducts(
 
   const page = await productRepo.listProducts(actor.tenantId, {
     search: query.search,
-    productType: query.productType,
+    categoryId: query.categoryId,
+    missingWeight: query.missingWeight,
     ...clampPaging(query, PAGING),
   });
 
@@ -335,20 +338,57 @@ export async function getProduct(id: string, actor: ActorContext): Promise<Produ
   return maskProduct(product, productVisibility(actor));
 }
 
-export async function listCategories(actor: ActorContext): Promise<ProductCategory[]> {
+export async function listCategories(
+  actor: ActorContext,
+  options: { search?: string } = {},
+): Promise<ProductCategory[]> {
   requirePermission(actor, 'products.view');
-  return productRepo.listCategories(actor.tenantId);
+  return productRepo.listCategories(actor.tenantId, db(), options);
 }
 
-/** Backs the "type a code and the line fills itself" input (§3.2). */
+/** The product behind a variant code — the "type a code" lookup, by variant now. */
 export async function findProductByCode(
   code: string,
   actor: ActorContext,
 ): Promise<Product | null> {
   requirePermission(actor, 'products.view');
 
-  const product = await productRepo.findProductByCode(actor.tenantId, code);
+  const variant = await productVariantRepo.findVariantByCode(actor.tenantId, code);
+  if (!variant) return null;
+  const product = await productRepo.findProductById(actor.tenantId, variant.productId);
   return product ? maskProduct(product, productVisibility(actor)) : null;
+}
+
+/**
+ * The friendly half of the duplicate-code guard: names the exact code and
+ * the product that holds it. The database's partial unique index is the
+ * enforcement — two people can reach it at once, so this is a better
+ * message, not a substitute.
+ */
+async function assertCodesFree(
+  tenantId: string,
+  variants: readonly ProductVariantInput[],
+  ownProductId: string | null,
+): Promise<void> {
+  const taken = await productVariantRepo.findLiveVariantsByCodes(
+    tenantId,
+    variants.map((variant) => variant.code),
+  );
+  for (const variant of variants) {
+    const holder = taken.get(variant.code.trim().toLowerCase());
+    if (holder && holder.productId !== ownProductId) {
+      throw new ConflictError('error.conflict.productCodeTaken', { productCode: variant.code.trim() });
+    }
+  }
+}
+
+/** `hasVariants` as the form meant it: stated, or implied by a labelled row. */
+function resolveHasVariants(input: ProductInput, fallback: boolean | null): boolean {
+  if (input.hasVariants !== undefined) return input.hasVariants;
+  if (input.variants !== undefined) {
+    return input.variants.some((variant) => typeof variant.label === 'string' && variant.label.trim() !== '');
+  }
+  return fallback ?? false;
 }
 
 /**
@@ -373,18 +413,20 @@ export async function createProduct(input: ProductInput, actor: ActorContext): P
   const name = input.name?.trim();
   if (!name) throw new ValidationError('validation.product.nameRequired');
 
-  // The closed sets and ranges, checked before the database gets to. The same
-  // function runs on the offline merge path, where a CHECK violation would be
-  // recorded as a permanent rejection and replayed forever.
-  assertProductInput(input);
-
-  // Staff who do not have a code to hand get one generated rather than being
-  // blocked on inventing one at the counter.
-  const productCode = input.productCode?.trim() || (await productRepo.nextProductCode());
-
-  if (await productRepo.findProductByCode(actor.tenantId, productCode)) {
-    throw new ConflictError('error.conflict.productCodeTaken', { productCode });
+  if (!input.categoryId && !input.categoryName?.trim()) {
+    throw new ValidationError('validation.product.categoryRequired');
   }
+
+  // Every product has at least one variant: the one that carries its code.
+  const variants = input.variants ?? [];
+  const hasVariants = resolveHasVariants(input, null);
+
+  // The closed sets and ranges — and the variant set — checked before the
+  // database gets to. The same function runs on the offline merge path,
+  // where a CHECK violation would be recorded as a permanent rejection and
+  // replayed forever.
+  assertProductInput({ ...input, variants, hasVariants });
+  await assertCodesFree(actor.tenantId, variants, null);
 
   const product = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
@@ -397,7 +439,7 @@ export async function createProduct(input: ProductInput, actor: ActorContext): P
         // Without one, that value falls back to the catalogue default rather
         // than to whatever the caller sent.
         input: withPermittedPurchaseRate(
-          withPermittedRate({ ...input, name, productCode }, canEditRates(actor)),
+          withPermittedRate({ ...input, name, variants, hasVariants }, canEditRates(actor)),
           canEditCost(actor),
         ),
         hlc,
@@ -436,16 +478,6 @@ export async function updateProduct(
   const name = input.name?.trim();
   if (!name) throw new ValidationError('validation.product.nameRequired');
 
-  assertProductInput(input);
-
-  const productCode = input.productCode?.trim();
-  if (!productCode) throw new ValidationError('validation.product.codeRequired');
-
-  const clashing = await productRepo.findProductByCode(actor.tenantId, productCode);
-  if (clashing && clashing.id !== id) {
-    throw new ConflictError('error.conflict.productCodeTaken', { productCode });
-  }
-
   // Read first so the write below can *merge* field_hlc rather than replace
   // it wholesale — see the identical comment on `updateParty`. Without this,
   // an offline edit to any field replayed after this write would silently
@@ -453,8 +485,33 @@ export async function updateProduct(
   const existing = await productRepo.findProductById(actor.tenantId, id);
   if (!existing) throw new NotFoundError('Product');
 
+  // The variant set is validated against what the form said about variants,
+  // or against what the product already is when the form said nothing. A
+  // form that flips the switch off keeps one code; one that flips it on
+  // labels every row — `validateProductVariants` holds the rule.
+  const hasVariants = resolveHasVariants(input, existing.hasVariants);
+  const variants =
+    input.variants === undefined
+      ? undefined
+      : input.variants.map((variant) => ({
+          // The entity shape comes back through PATCH-style callers (the
+          // public API merges the stored product over the patch); only the
+          // input's fields travel on.
+          ...(variant.id ? { id: variant.id } : {}),
+          code: variant.code,
+          label: variant.label ?? null,
+          weightKg: variant.weightKg ?? null,
+          ...(variant.sequence !== undefined ? { sequence: variant.sequence } : {}),
+        }));
+
+  assertProductInput({ ...input, hasVariants, ...(variants ? { variants } : {}) });
+  if (variants) await assertCodesFree(actor.tenantId, variants, id);
+
   const permitted = withPermittedPurchaseRate(
-    withPermittedRate({ ...input, name, productCode }, canEditRates(actor)),
+    withPermittedRate(
+      { ...input, name, hasVariants, ...(variants ? { variants } : {}) },
+      canEditRates(actor),
+    ),
     canEditCost(actor),
   );
   const touchedColumns = Object.keys(columnPatch(permitted, PRODUCT_COLUMNS));
@@ -463,6 +520,9 @@ export async function updateProduct(
     const hlc = await nextHlc(trx);
     const fieldHlc = { ...existing.sync.fieldHlc };
     for (const column of touchedColumns) fieldHlc[fieldFor(PRODUCT_COLUMNS, column)] = hlc;
+    // The variant set is one field to the merge, replaced whole, never
+    // merged row by row — so it carries one stamp.
+    if (variants) fieldHlc.variants = hlc;
 
     return productRepo.updateProduct(actor.tenantId, id, permitted, { hlc, fieldHlc }, trx);
   });
@@ -526,6 +586,9 @@ export async function deleteProduct(
       { hlc, fieldHlc },
       trx,
     );
+    // The variants follow the product into the bin, which is what frees
+    // their codes for another product (the partial unique index).
+    await productVariantRepo.setDeletedAt(actor.tenantId, id, 'now', trx);
 
     await activityLog.recordActivity(
       {
@@ -550,11 +613,14 @@ export async function deleteProduct(
   return { id: product.id, deletedAt: product.updatedAt };
 }
 
-export async function restoreProduct(
-  id: string,
-  actor: ActorContext,
-  renameTo: string | undefined,
-): Promise<BinRestoreResult> {
+/**
+ * Restoring a product brings its variants — and their codes — back. A code
+ * another product has taken in the meantime cannot be handed back, and a
+ * product's codes are not something to rename on the way out of the bin
+ * (they are what the trade quotes), so the restore is refused and names the
+ * codes; the administrator moves them off the other product first.
+ */
+export async function restoreProduct(id: string, actor: ActorContext): Promise<BinRestoreResult> {
   requirePermission(actor, 'products.delete');
 
   const existing = await productRepo.findProductById(actor.tenantId, id, db(), {
@@ -562,30 +628,20 @@ export async function restoreProduct(
   });
   if (!existing) throw new NotFoundError('Product');
 
-  const desiredCode = renameTo ?? existing.productCode;
-  const clashing = await productRepo.findProductByCode(actor.tenantId, desiredCode);
-  if (clashing && clashing.id !== id) {
-    const suggestion = await suggestRestoredName(existing.productCode, async (candidate) => {
-      const row = await productRepo.findProductByCode(actor.tenantId, candidate);
-      return row !== null && row.id !== id;
-    });
+  const taken = await productVariantRepo.codesTakenElsewhere(actor.tenantId, id);
+  if (taken.length > 0) {
     throw new ConflictError(
-      'error.conflict.restoreCollision',
-      { field: 'productCode' },
-      { field: 'productCode', value: desiredCode, suggestion },
+      'validation.product.restoreCodesTaken',
+      { codes: taken.join(', ') },
+      { field: 'code', codes: taken },
     );
   }
 
   const product = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
     const fieldHlc = { ...existing.sync.fieldHlc, deletedAt: hlc };
-    const row = await productRepo.restoreProduct(
-      actor.tenantId,
-      id,
-      { hlc, fieldHlc },
-      trx,
-      renameTo,
-    );
+    const row = await productRepo.restoreProduct(actor.tenantId, id, { hlc, fieldHlc }, trx);
+    await productVariantRepo.setDeletedAt(actor.tenantId, id, null, trx);
 
     await activityLog.recordActivity(
       {
@@ -595,7 +651,7 @@ export async function restoreProduct(
         action: 'restored',
         actorType: actor.actorType,
         actorId: actor.actorId,
-        details: { name: existing.name, ...(renameTo ? { renamedCodeTo: renameTo } : {}) },
+        details: { name: existing.name },
       },
       actor,
       trx,
@@ -607,7 +663,7 @@ export async function restoreProduct(
   if (!product) throw new NotFoundError('Product');
 
   publishChange({ entity: 'product', action: 'restored', id, payload: product });
-  return { entityType: 'product', id, renamedTo: renameTo, alsoRestored: [] };
+  return { entityType: 'product', id, renamedTo: undefined, alsoRestored: [] };
 }
 
 // --- Party-specific variants ----------------------------------------------

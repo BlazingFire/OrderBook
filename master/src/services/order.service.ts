@@ -156,7 +156,7 @@ export async function convertLead(
       reservationPlan.map((entry) => ({
         lineItemId: lineItemIds[entry.lineIndex] ?? '',
         productId: entry.productId,
-        colour: entry.colour,
+        variantId: entry.variantId,
         quantity: entry.quantity,
       })),
       trx,
@@ -214,7 +214,7 @@ export async function convertLead(
   // view has to move even though no boxes left the building.
   await inventoryService.publishStockFor(
     actor.tenantId,
-    reservationPlan.map((entry) => ({ productId: entry.productId, colour: entry.colour })),
+    reservationPlan.map((entry) => entry.variantId),
   );
 
   return maskOrder(order, canSeeRates(actor));
@@ -397,7 +397,7 @@ export async function dispatchOrder(
         {
           tenantId: actor.tenantId,
           productId: movement.productId,
-          colour: movement.colour,
+          variantId: movement.variantId,
           movementType: 'outbound',
           deltaBoxes: movement.quantityBoxes,
           referenceType: 'order',
@@ -445,7 +445,7 @@ export async function dispatchOrder(
   // from a transaction that could still roll back.
   await inventoryService.publishStockFor(
     actor.tenantId,
-    movements.map((movement) => ({ productId: movement.productId, colour: movement.colour })),
+    movements.map((movement) => movement.variantId),
   );
 
   return maskOrder(order, canSeeRates(actor));
@@ -553,7 +553,7 @@ export async function deleteOrder(
   publishChange({ entity: 'order', action: 'deleted', id, payload: order });
   await publishStockFor(
     actor.tenantId,
-    releasedTargets.map((target) => ({ productId: target.productId, colour: target.colour })),
+    releasedTargets.map((target) => target.variantId),
   );
 
   return { id: order.id, deletedAt: order.updatedAt };
@@ -597,7 +597,7 @@ export async function restoreOrder(id: string, actor: ActorContext): Promise<Bin
       : []),
   ]);
 
-  let reactivatedTargets: Array<{ productId: string; colour: string }> = [];
+  let reactivatedTargets: string[] = [];
 
   const order = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);

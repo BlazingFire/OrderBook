@@ -12,6 +12,7 @@ import { Router } from 'express';
 import { DEVELOPER_RESET_CONFIRMATION, DEVELOPER_TOKEN_HEADER } from '@orderbook/shared';
 
 import { ValidationError } from '../../lib/errors.js';
+import { seedCatalogue } from '../../services/catalogue-seed.service.js';
 import { developerGate, resetAllData, seedDummyUsers } from '../../services/developer.service.js';
 import { seedSampleData } from '../../services/sample-data.service.js';
 import { asyncHandler } from '../async-handler.js';
@@ -61,5 +62,13 @@ developerRoutes.post(
   asyncHandler(async (req, res) => {
     developerGate.assertUnlocked(req.header(DEVELOPER_TOKEN_HEADER));
     res.status(201).json(await seedSampleData());
+  }),
+);
+
+developerRoutes.post(
+  '/load-catalogue',
+  asyncHandler(async (req, res) => {
+    developerGate.assertUnlocked(req.header(DEVELOPER_TOKEN_HEADER));
+    res.status(201).json(await seedCatalogue());
   }),
 );

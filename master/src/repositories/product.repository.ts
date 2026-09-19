@@ -1,6 +1,11 @@
 /**
- * Products — the catalogue a line item snapshots from. Syncable, so rows carry
+ * Products — the models a line item snapshots from. Syncable, so rows carry
  * text ids and sync bookkeeping.
+ *
+ * A product is a model in a category; its codes and weights live on
+ * `product_variants` (`product-variant.repository.ts`), and every read here
+ * carries the variants along, because a product without them cannot be put
+ * on a line, stocked or searched by code.
  *
  * `rate` is this table's sale price (it was `price_per_box` before the rebuild).
  * The line item copies it at add time and never re-reads it, which is why
@@ -12,9 +17,11 @@ import type { Product, ProductCategory, ProductInput, ProductListPage } from '@o
 import type { Knex } from 'knex';
 
 import { db } from '../db/knex.js';
+import { ValidationError } from '../lib/errors.js';
 import { allocatePermanentId, allocatePermanentIds } from './identity.repository.js';
 import { firstCount, mapProduct, mapProductCategory } from './mappers.js';
 import { loadImagesFor } from './product-image.repository.js';
+import { loadVariantsFor, replaceVariants } from './product-variant.repository.js';
 import type { TransactionContext } from './transaction.js';
 
 const TABLE = 'products';
@@ -33,9 +40,21 @@ function baseQuery(tenantId: string, runner: Runner = db(), options: { includeDe
   return query;
 }
 
+/** A product whose variants have a weight gap — the "weight missing" chip. */
+const MISSING_WEIGHT = `EXISTS (
+  SELECT 1 FROM product_variants v
+   WHERE v.product_id = p.id AND v.is_active AND v.weight_kg IS NULL
+)`;
+
 export async function listProducts(
   tenantId: string,
-  options: { search?: string; productType?: string; limit: number; offset: number },
+  options: {
+    search?: string;
+    categoryId?: string;
+    missingWeight?: boolean;
+    limit: number;
+    offset: number;
+  },
 ): Promise<ProductListPage> {
   const base = baseQuery(tenantId).andWhere('p.is_active', true);
 
@@ -44,29 +63,37 @@ export async function listProducts(
     base.andWhere((builder) =>
       builder
         .whereILike('p.name', pattern)
-        .orWhereILike('p.product_code', pattern)
         .orWhereILike('p.alias', pattern)
-        .orWhereILike('p.series', pattern)
         .orWhereILike('p.barcode', pattern)
         .orWhereILike('p.brand', pattern)
         .orWhereILike('p.product_type', pattern)
-        .orWhereILike('c.name', pattern),
+        .orWhereILike('c.name', pattern)
+        // The codes are on the variants; a code typed into the catalogue
+        // search still has to find its model.
+        .orWhereExists((sub) =>
+          sub
+            .select('v.id')
+            .from('product_variants as v')
+            .whereRaw('v.product_id = p.id')
+            .andWhere((inner) => inner.whereILike('v.code', pattern).orWhereILike('v.label', pattern)),
+        ),
     );
   }
 
-  // Counted over the search-filtered set *before* the type filter is applied,
-  // so every chip stays clickable while one of them is selected.
+  if (options.missingWeight) base.whereRaw(MISSING_WEIGHT);
+
+  // Counted over the search-filtered set *before* the category filter is
+  // applied, so every chip stays clickable while one of them is selected.
   const facetRows = await base
     .clone()
     .clearSelect()
     .clearOrder()
-    .whereNotNull('p.product_type')
-    .groupBy('p.product_type')
-    .orderBy('p.product_type', 'asc')
-    .select<Array<{ value: string; count: string }>>('p.product_type as value')
+    .groupBy('c.id', 'c.name')
+    .orderBy('c.name', 'asc')
+    .select<Array<{ id: string; name: string; count: string }>>('c.id as id', 'c.name as name')
     .count('p.id as count');
 
-  if (options.productType) base.andWhere('p.product_type', options.productType);
+  if (options.categoryId) base.andWhere('p.category_id', options.categoryId);
 
   const countRows = await base
     .clone()
@@ -80,17 +107,22 @@ export async function listProducts(
     .limit(options.limit)
     .offset(options.offset);
 
-  const images = await loadImagesFor(
-    tenantId,
-    rows.map((row) => String(row.id)),
-  );
+  const ids = rows.map((row) => String(row.id));
+  const [images, variants] = await Promise.all([
+    loadImagesFor(tenantId, ids),
+    loadVariantsFor(tenantId, ids),
+  ]);
 
   return {
-    items: rows.map((row) => mapProduct(row, images.get(String(row.id)) ?? [])),
+    items: rows.map((row) =>
+      mapProduct(row, images.get(String(row.id)) ?? [], variants.get(String(row.id)) ?? []),
+    ),
     total: firstCount(countRows),
     limit: options.limit,
     offset: options.offset,
-    productTypes: facetRows.map((row) => ({ value: String(row.value), count: Number(row.count) })),
+    categories: facetRows
+      .filter((row) => row.id !== null && row.id !== undefined)
+      .map((row) => ({ id: String(row.id), name: String(row.name), count: Number(row.count) })),
   };
 }
 
@@ -103,8 +135,33 @@ export async function findProductById(
   const row = await baseQuery(tenantId, runner, options).andWhere('p.id', id).first();
   if (!row) return null;
 
-  const images = await loadImagesFor(tenantId, [id], runner);
-  return mapProduct(row, images.get(id) ?? []);
+  const [images, variants] = await Promise.all([
+    loadImagesFor(tenantId, [id], runner),
+    loadVariantsFor(tenantId, [id], runner),
+  ]);
+  return mapProduct(row, images.get(id) ?? [], variants.get(id) ?? []);
+}
+
+/** Several products by id, variants attached — for the picker and the snapshot. */
+export async function findProductsByIds(
+  tenantId: string,
+  ids: string[],
+  runner: Runner = db(),
+): Promise<Map<string, Product>> {
+  const found = new Map<string, Product>();
+  if (ids.length === 0) return found;
+
+  const rows = await baseQuery(tenantId, runner, { includeDeleted: true }).whereIn('p.id', ids);
+  const rowIds = rows.map((row) => String(row.id));
+  const [images, variants] = await Promise.all([
+    loadImagesFor(tenantId, rowIds, runner),
+    loadVariantsFor(tenantId, rowIds, runner),
+  ]);
+  for (const row of rows) {
+    const id = String(row.id);
+    found.set(id, mapProduct(row, images.get(id) ?? [], variants.get(id) ?? []));
+  }
+  return found;
 }
 
 /**
@@ -118,28 +175,8 @@ export async function lockProduct(tenantId: string, id: string, trx: Transaction
 }
 
 /**
- * Backs the "type a code, the line fills itself" convenience input (§3.2),
- * and the duplicate-code guard on create/edit. Filters `deleted_at` — without
- * it, the database would permit reusing a deleted product's code (the
- * partial unique index allows it) while this lookup still refused it,
- * making the Recycle Bin's freed code silently pointless
- * (`docs/backend-modules/03-DATABASE.md` §6.2).
- */
-export async function findProductByCode(
-  tenantId: string,
-  code: string,
-  runner: Runner = db(),
-): Promise<Product | null> {
-  const row = await baseQuery(tenantId, runner)
-    .andWhereRaw('lower(p.product_code) = lower(?)', [code])
-    .first();
-  return row ? mapProduct(row) : null;
-}
-
-/**
- * The barcode lookup, mirroring `findProductByCode` including its live-only
- * filter — a scanner should find the product on the shelf, not one somebody
- * moved to the Recycle Bin last month.
+ * The barcode lookup, live-only — a scanner should find the product on the
+ * shelf, not one somebody moved to the Recycle Bin last month.
  */
 export async function findProductByBarcode(
   tenantId: string,
@@ -149,7 +186,7 @@ export async function findProductByBarcode(
   const row = await baseQuery(tenantId, runner)
     .andWhereRaw('lower(p.barcode) = lower(?)', [barcode])
     .first();
-  return row ? mapProduct(row) : null;
+  return row ? findProductById(tenantId, String(row.id), runner) : null;
 }
 
 export interface NewProduct {
@@ -167,6 +204,7 @@ export async function insertProduct(
 ): Promise<Product> {
   const id = product.id ?? (await allocatePermanentId(product.tenantId, 'product', trx));
   const categoryId = await resolveCategoryId(product.tenantId, product.input, trx);
+  if (!categoryId) throw new ValidationError('validation.product.categoryRequired');
 
   await trx(TABLE).insert({
     id,
@@ -176,6 +214,8 @@ export async function insertProduct(
     field_hlc: JSON.stringify(product.fieldHlc),
     temporary_id: product.temporaryId,
   });
+
+  await replaceVariants(product.tenantId, id, product.input.variants ?? [], trx);
 
   const created = await findProductById(product.tenantId, id, trx);
   if (!created) throw new Error('Product disappeared immediately after insert');
@@ -190,6 +230,9 @@ export async function updateProduct(
   trx: TransactionContext,
 ): Promise<Product | null> {
   const categoryId = await resolveCategoryId(tenantId, input, trx);
+  if ((input.categoryId !== undefined || input.categoryName !== undefined) && !categoryId) {
+    throw new ValidationError('validation.product.categoryRequired');
+  }
 
   const updated = await trx(TABLE)
     .where({ tenant_id: tenantId, id })
@@ -200,8 +243,12 @@ export async function updateProduct(
       version: trx.raw('version + 1'),
       updated_at: trx.fn.now(),
     });
+  if (!updated) return null;
 
-  return updated ? findProductById(tenantId, id, trx) : null;
+  // Absent means "leave the variants alone"; present replaces the set.
+  if (input.variants !== undefined) await replaceVariants(tenantId, id, input.variants, trx);
+
+  return findProductById(tenantId, id, trx);
 }
 
 export async function updateProductColumns(
@@ -249,7 +296,6 @@ export async function restoreProduct(
   id: string,
   meta: { hlc: string; fieldHlc: Record<string, string> },
   trx: TransactionContext,
-  renameCode?: string,
 ): Promise<Product | null> {
   const updated = await trx(TABLE)
     .where({ tenant_id: tenantId, id })
@@ -257,7 +303,6 @@ export async function restoreProduct(
     .update({
       deleted_at: null,
       deleted_by: null,
-      ...(renameCode ? { product_code: renameCode } : {}),
       version: trx.raw('version + 1'),
       hlc: meta.hlc,
       field_hlc: JSON.stringify(meta.fieldHlc),
@@ -265,48 +310,6 @@ export async function restoreProduct(
     });
 
   return updated ? findProductById(tenantId, id, trx, { includeDeleted: true }) : null;
-}
-
-export async function nextProductCode(): Promise<string> {
-  const { rows } = await db().raw<{ rows: [{ code: string }] }>(
-    `SELECT 'PRD-' || lpad(nextval('product_code_seq')::text, 4, '0') AS code`,
-  );
-  return rows[0].code;
-}
-
-/** A block of generated codes for a bulk import — one round trip, not one per row. */
-export async function nextProductCodes(count: number): Promise<string[]> {
-  if (count <= 0) return [];
-  const { rows } = await db().raw<{ rows: Array<{ code: string }> }>(
-    `SELECT 'PRD-' || lpad(nextval('product_code_seq')::text, 4, '0') AS code
-       FROM generate_series(1, ?)`,
-    [count],
-  );
-  return rows.map((row) => row.code);
-}
-
-/**
- * The live products behind a set of codes, keyed by lower-cased code.
- *
- * Live only, like `findProductByCode`: a code freed by the Recycle Bin is
- * reusable, and the database's partial unique index says the same.
- */
-export async function findLiveByCodes(
-  tenantId: string,
-  codes: readonly string[],
-  runner: Runner = db(),
-): Promise<Map<string, Product>> {
-  const found = new Map<string, Product>();
-  const wanted = [...new Set(codes.map((code) => code.trim().toLowerCase()).filter(Boolean))];
-
-  for (let at = 0; at < wanted.length; at += 1000) {
-    const rows = await baseQuery(tenantId, runner).whereRaw('lower(p.product_code) = ANY(?)', [
-      wanted.slice(at, at + 1000),
-    ]);
-    for (const row of rows) found.set(String(row.product_code).toLowerCase(), mapProduct(row));
-  }
-
-  return found;
 }
 
 /** Which of these barcodes are already on a live product, with that product's id. */
@@ -402,15 +405,18 @@ export async function countProducts(tenantId: string): Promise<number> {
 export async function listCategories(
   tenantId: string,
   runner: Runner = db(),
+  options: { search?: string } = {},
 ): Promise<ProductCategory[]> {
-  const rows = await runner(CATEGORY_TABLE).where({ tenant_id: tenantId }).orderBy('name', 'asc');
+  const query = runner(CATEGORY_TABLE).where({ tenant_id: tenantId }).orderBy('name', 'asc');
+  if (options.search?.trim()) query.whereILike('name', `%${options.search.trim()}%`);
+  const rows = await query;
   return rows.map(mapProductCategory);
 }
 
 /**
  * What blocks deleting this product: a live line item (its parent lead or
- * order not itself deleted) or non-zero on-hand/reserved stock in any
- * colour. On-hand boxes are physical goods in a warehouse; a catalogue entry
+ * order not itself deleted) or non-zero on-hand/reserved stock on any
+ * variant. On-hand boxes are physical goods in a warehouse; a catalogue entry
  * can be wrong, but the pallet is not.
  */
 export async function liveReferencesToProduct(
@@ -433,33 +439,49 @@ export async function liveReferencesToProduct(
     [tenantId, productId, tenantId, productId],
   );
 
-  const stockRows = await runner('inventory_stock')
-    .where({ tenant_id: tenantId, product_id: productId })
-    .andWhere((builder) => builder.whereNot('quantity_boxes', 0))
-    .select<Array<{ id: string; colour: string }>>('id', 'colour');
+  const stockRows = await runner('inventory_stock as s')
+    .join('product_variants as v', 'v.id', 's.variant_id')
+    .where({ 's.tenant_id': tenantId, 's.product_id': productId })
+    .andWhere((builder) => builder.whereNot('s.quantity_boxes', 0))
+    .select<Array<{ id: string; variant_id: string; code: string; label: string | null }>>(
+      's.id',
+      's.variant_id',
+      'v.code',
+      'v.label',
+    );
 
-  const { rows: reservedRows } = await runner.raw<{ rows: Array<{ colour: string }> }>(
-    `SELECT DISTINCT colour FROM stock_reservations
-      WHERE tenant_id = ? AND product_id = ? AND status = 'active'`,
+  const { rows: reservedRows } = await runner.raw<{
+    rows: Array<{ variant_id: string; code: string; label: string | null }>;
+  }>(
+    `SELECT DISTINCT r.variant_id, v.code, v.label
+       FROM stock_reservations r
+       JOIN product_variants v ON v.id = r.variant_id
+      WHERE r.tenant_id = ? AND r.product_id = ? AND r.status = 'active'`,
     [tenantId, productId],
   );
+
+  const variantLabel = (row: { code: string; label: string | null }): string =>
+    row.label ? `${row.label} (${row.code})` : row.code;
 
   // Every row here already has non-zero on-hand (filtered at the query), so
   // each one is a blocker on its own.
   const stockBlockers = stockRows.map((row) => ({
     entityType: 'inventory_stock' as const,
     id: row.id,
-    label: row.colour,
+    label: variantLabel(row),
   }));
 
-  // A colour with zero on-hand but an active reservation still blocks —
+  // A variant with zero on-hand but an active reservation still blocks —
   // `reservation.repository.ts` never guarantees a stock row exists for
-  // every reserved colour.
-  const reservedColours = new Set(reservedRows.map((row) => row.colour));
-  const stockRowColours = new Set(stockRows.map((row) => row.colour));
-  const reservationOnlyBlockers = [...reservedColours]
-    .filter((colour) => !stockRowColours.has(colour))
-    .map((colour) => ({ entityType: 'inventory_stock' as const, id: `${productId}:${colour}`, label: colour }));
+  // every reserved variant.
+  const stockedVariants = new Set(stockRows.map((row) => String(row.variant_id)));
+  const reservationOnlyBlockers = reservedRows
+    .filter((row) => !stockedVariants.has(String(row.variant_id)))
+    .map((row) => ({
+      entityType: 'inventory_stock' as const,
+      id: String(row.variant_id),
+      label: variantLabel(row),
+    }));
 
   return [
     ...lineRows.map((row) => ({

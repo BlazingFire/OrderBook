@@ -167,6 +167,8 @@ export const EN_MESSAGES = {
   'validation.connector.urlSelf': 'A connection cannot point back at this Master',
   'validation.developer.passwordRequired': 'Enter the developer password',
   'validation.developer.confirmationRequired': 'Type RESET to confirm',
+  'validation.developer.administratorRequired':
+    'Set up an administrator before loading the catalogue',
   'validation.developer.sampleDataPresent':
     'Sample data is already on this Master. Erase everything first to seed it again.',
   'validation.request.bodyRequired': 'That request needs a JSON body',
@@ -340,6 +342,9 @@ export const EN_MESSAGES = {
   'validation.import.invalidValue': '"{column}" must be one of: {allowed}',
   'validation.import.duplicateInFile': '"{column}" repeats row {firstRow}',
   'validation.import.rowFailed': 'The row could not be saved: {reason}',
+  'validation.import.mixedVariants':
+    '{name} names a variant on some rows and none on others — fill in every row or leave every row blank',
+  'validation.import.codesSplit': 'The codes under {name} already belong to more than one product',
   'import.skip.codeExists': 'Product code "{productCode}" already exists — skipped',
   'validation.role.nameRequired': 'Give the role a name',
   'validation.role.tierInvalid': 'Choose a valid tier',

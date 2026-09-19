@@ -888,6 +888,8 @@ export function createApp(): Express {
         .split(',')
         .map((id) => id.trim())
         .filter(Boolean),
+      // The lead screen's second stage: products inside the chosen category.
+      categoryId: typeof req.query.categoryId === 'string' ? req.query.categoryId : undefined,
     };
 
     void (async () => {
@@ -1492,15 +1494,10 @@ function leadPayloadProblem(body: unknown, options: { itemsRequired: boolean }):
     if (typeof item.productId !== 'string' || !item.productId) {
       return `${at} has no product`;
     }
-    if (!Array.isArray(item.quantities)) return `${at} has no quantities`;
-
-    const boxes = item.quantities.filter((entry) => {
-      if (typeof entry !== 'object' || entry === null) return false;
-      const quantity = (entry as Record<string, unknown>).quantity;
-      const colour = (entry as Record<string, unknown>).colour;
-      return typeof colour === 'string' && colour.trim() !== '' && Number(quantity) > 0;
-    });
-    if (boxes.length === 0) return `${at} needs a quantity for at least one colour`;
+    if (typeof item.variantId !== 'string' || !item.variantId) {
+      return `${at} has no variant`;
+    }
+    if (!(Number(item.quantity) > 0)) return `${at} needs a quantity`;
   }
 
   return null;

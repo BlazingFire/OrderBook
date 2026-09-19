@@ -172,7 +172,9 @@ export async function restoreEntity(input: RestoreInput, actor: ActorContext): P
       return catalogService.restoreParty(input.id, actor, input.renameTo);
     }
     case 'product': {
-      return catalogService.restoreProduct(input.id, actor, input.renameTo);
+      // No rename on the way out of the bin: a product's codes are what the
+      // trade quotes. A clash is refused and named instead.
+      return catalogService.restoreProduct(input.id, actor);
     }
     case 'lead': {
       return leadService.restoreLead(input.id, actor);

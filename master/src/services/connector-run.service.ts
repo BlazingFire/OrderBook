@@ -616,7 +616,7 @@ async function createLocal(
 ): Promise<{ id: string }> {
   return entity === 'party'
     ? catalogService.createParty(input as never, writer)
-    : catalogService.createProduct(input as never, writer);
+    : catalogService.createProduct(withVariantFields(input, null) as never, writer);
 }
 
 async function updateLocal(
@@ -626,5 +626,38 @@ async function updateLocal(
   writer: ActorContext,
 ): Promise<void> {
   if (entity === 'party') await catalogService.updateParty(id, merged as never, writer);
-  else await catalogService.updateProduct(id, merged as never, writer);
+  else await catalogService.updateProduct(id, withVariantFields(merged, merged) as never, writer);
+}
+
+/**
+ * A remote item is one code, so the mapped `code` and `weightKg` become the
+ * product's single variant. On an update the existing variant keeps its id
+ * (stock and lines are keyed by it); a product the administrator has since
+ * given colour variants is left alone — a connector cannot say which of
+ * them the remote code means, so the code and weight are dropped and the
+ * rest of the patch still lands.
+ */
+function withVariantFields(
+  input: Record<string, unknown>,
+  existing: Record<string, unknown> | null,
+): Record<string, unknown> {
+  const { code, weightKg, ...rest } = input;
+  const variants = existing?.variants as Array<{ id: string; label: string | null }> | undefined;
+
+  if (existing?.hasVariants === true) return rest;
+  if (typeof code !== 'string' || !code.trim()) return rest;
+
+  const current = variants?.[0];
+  return {
+    ...rest,
+    hasVariants: false,
+    variants: [
+      {
+        ...(current ? { id: current.id } : {}),
+        code: code.trim(),
+        label: null,
+        weightKg: typeof weightKg === 'number' && Number.isFinite(weightKg) ? weightKg : null,
+      },
+    ],
+  };
 }

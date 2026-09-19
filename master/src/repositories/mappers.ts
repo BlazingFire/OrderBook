@@ -15,7 +15,6 @@ import type {
   IsoTimestamp,
   Lead,
   LineItem,
-  LineItemQuantity,
   OfficePanel,
   OfficePanelDevice,
   OptionListItem,
@@ -27,6 +26,7 @@ import type {
   Product,
   ProductCategory,
   ProductImage,
+  ProductVariant,
   Role,
   StockMovement,
   StockReservation,
@@ -362,23 +362,34 @@ export function mapProductImage(row: Row): ProductImage {
   };
 }
 
-export function mapProduct(row: Row, images: ProductImage[] = []): Product {
+export function mapProductVariant(row: Row): ProductVariant {
+  return {
+    id: String(row.id),
+    productId: String(row.product_id),
+    code: String(row.code),
+    label: (row.label as string | null) ?? null,
+    weightKg: toNumber(row.weight_kg),
+    sequence: toRequiredNumber(row.sequence),
+    isActive: Boolean(row.is_active),
+  };
+}
+
+export function mapProduct(row: Row, images: ProductImage[] = [], variants: ProductVariant[] = []): Product {
   return {
     id: String(row.id),
     tenantId: String(row.tenant_id),
-    productCode: String(row.product_code),
     name: String(row.name),
     alias: (row.alias as string | null) ?? null,
-    categoryId: (row.category_id as string | null) ?? null,
-    categoryName: (row.category_name as string | null) ?? null,
+    categoryId: String(row.category_id ?? ''),
+    categoryName: String(row.category_name ?? ''),
     size: (row.size as string | null) ?? null,
     sin: (row.sin as string | null) ?? null,
     grade: (row.grade as string | null) ?? null,
     productType: (row.product_type as string | null) ?? null,
-    weightKg: toNumber(row.weight_kg),
+    hasVariants: Boolean(row.has_variants),
+    variants,
     finish: (row.finish as string | null) ?? null,
     series: (row.series as string | null) ?? null,
-    color: (row.color as string | null) ?? null,
     thicknessMm: toNumber(row.thickness_mm),
     piecesPerBox: toNumber(row.pieces_per_box),
     boxCoverageSqft: toNumber(row.box_coverage_sqft),
@@ -434,30 +445,25 @@ export function mapPartyProductVariant(row: Row): PartyProductVariant {
 
 // --- Lines, leads & orders -------------------------------------------------
 
-export function mapLineItemQuantity(row: Row): LineItemQuantity {
-  return {
-    id: String(row.id),
-    colour: String(row.colour),
-    quantity: toRequiredNumber(row.quantity),
-    variantCode:
-      row.variant_code === null || row.variant_code === undefined ? null : String(row.variant_code),
-  };
-}
+export function mapLineItem(row: Row): LineItem {
+  const quantity = toRequiredNumber(row.quantity);
+  const weightKg = toNumber(row.weight_kg);
 
-export function mapLineItem(row: Row, quantities: LineItemQuantity[]): LineItem {
   return {
     id: String(row.id),
     tenantId: String(row.tenant_id),
     parentType: row.parent_type as LineItem['parentType'],
     parentId: String(row.parent_id),
     productId: String(row.product_id),
+    variantId: String(row.variant_id),
     productName: String(row.product_name ?? ''),
     alias: (row.alias as string | null) ?? null,
     rate: toNumber(row.rate),
     code: (row.code as string | null) ?? null,
+    variantLabel: (row.variant_label as string | null) ?? null,
     sin: (row.sin as string | null) ?? null,
     size: (row.size as string | null) ?? null,
-    weightKg: toNumber(row.weight_kg),
+    weightKg,
     grade: (row.grade as string | null) ?? null,
     productType: (row.product_type as string | null) ?? null,
     packaging: (row.packaging as string | null) ?? null,
@@ -465,12 +471,31 @@ export function mapLineItem(row: Row, quantities: LineItemQuantity[]): LineItem 
     fromPartyVariant: Boolean(row.from_party_variant),
     imagePath: (row.image_path as string | null) ?? null,
     notes: (row.notes as string | null) ?? null,
-    quantities,
-    totalQuantity: toRequiredNumber(row.total_quantity),
+    quantity,
+    lineWeightKg: weightKg === null ? null : Math.round(weightKg * quantity * 1000) / 1000,
     lineTotal: toNumber(row.line_total),
     createdAt: toRequiredIso(row.created_at),
     updatedAt: toRequiredIso(row.updated_at),
   };
+}
+
+/**
+ * The weight figure a lead or order shows: the lines that have a weight,
+ * summed, plus how many were left out. Three decimals, like the column and
+ * `computeTotalWeightKg` — float drift would otherwise print as
+ * 12.000000000000002 kg on a dispatch note.
+ */
+export function summariseWeight(items: readonly LineItem[]): {
+  totalWeightKg: number;
+  linesWithoutWeight: number;
+} {
+  let total = 0;
+  let missing = 0;
+  for (const item of items) {
+    if (item.lineWeightKg === null) missing += 1;
+    else total += item.lineWeightKg;
+  }
+  return { totalWeightKg: Math.round(total * 1000) / 1000, linesWithoutWeight: missing };
 }
 
 export function mapTimelineEntry(row: Row): TimelineEntry {
@@ -515,6 +540,7 @@ export function mapLead(
     convertedOrderId: (row.converted_order_id as string | null) ?? null,
     convertedAt: toIso(row.converted_at),
     totalAmount: toRequiredNumber(row.total_amount),
+    ...summariseWeight(items),
     sourcePanelId: (row.source_panel_id as string | null) ?? null,
     createdByUserId: (row.created_by_user_id as string | null) ?? null,
     createdAt: toRequiredIso(row.created_at),
@@ -548,6 +574,7 @@ export function mapOrder(
     dispatchAddressLabel: (row.dispatch_address_label as string | null) ?? null,
     expectedDispatchDate: toIsoDate(row.expected_dispatch_date),
     totalWeightKg: toRequiredNumber(row.total_weight_kg),
+    linesWithoutWeight: summariseWeight(items).linesWithoutWeight,
     totalWeightKgOverride: override,
     // The override does not replace the computed figure, it relabels which one
     // the UI shows — so both travel and the source says which is authoritative.
@@ -579,7 +606,9 @@ export function mapStockReservation(row: Row): StockReservation {
     lineItemId: String(row.line_item_id),
     productId: String(row.product_id),
     productName: String(row.product_name ?? ''),
-    colour: String(row.colour),
+    variantId: String(row.variant_id),
+    variantCode: String(row.variant_code ?? ''),
+    variantLabel: (row.variant_label as string | null) ?? null,
     quantity: toRequiredNumber(row.quantity),
     status: row.status as StockReservation['status'],
     createdAt: toRequiredIso(row.created_at),
@@ -596,12 +625,13 @@ export function mapStockLevel(row: Row): InventoryStockLevel {
 
   return {
     productId: String(row.product_id),
-    productCode: String(row.product_code ?? ''),
     productName: String(row.product_name ?? ''),
     categoryName: (row.category_name as string | null) ?? null,
     size: (row.size as string | null) ?? null,
-    colour: String(row.colour),
-    variantCode: (row.variant_code as string | null) ?? null,
+    variantId: String(row.variant_id),
+    variantCode: String(row.variant_code ?? ''),
+    variantLabel: (row.variant_label as string | null) ?? null,
+    weightKg: toNumber(row.weight_kg),
     quantityBoxes,
     reservedBoxes,
     availableBoxes: available,
@@ -623,9 +653,10 @@ export function mapStockMovement(row: Row): StockMovement {
     id: Number(row.id),
     tenantId: String(row.tenant_id),
     productId: String(row.product_id),
-    productCode: String(row.product_code ?? ''),
     productName: String(row.product_name ?? ''),
-    colour: String(row.colour ?? ''),
+    variantId: String(row.variant_id),
+    variantCode: String(row.variant_code ?? ''),
+    variantLabel: (row.variant_label as string | null) ?? null,
     movementType: row.movement_type as StockMovement['movementType'],
     quantityBoxes: toRequiredNumber(row.quantity_boxes),
     referenceType: (row.reference_type as string | null) ?? null,

@@ -1,16 +1,16 @@
 /**
- * Inventory, now per (product, colour) and split between stock on the floor and
+ * Inventory, per product variant and split between stock on the floor and
  * stock reserved for orders (docs/LEAD_GENERATION_FLOW.md §5.1, §6).
  *
  * The policy worth knowing before changing anything here: **an order is never
- * blocked by insufficient stock.** A ceramic dealer routinely sells against a
- * factory order that has not arrived, so a shortfall is surfaced — as a
- * negative available figure — rather than refused.
+ * blocked by insufficient stock.** A dealer routinely sells against a factory
+ * order that has not arrived, so a shortfall is surfaced — as a negative
+ * available figure — rather than refused.
  */
 
 import type {
   InventoryStockLevel,
-  Product,
+  ProductVariant,
   ReorderLevelInput,
   StockAdjustmentInput,
   StockInboundInput,
@@ -21,12 +21,12 @@ import { ProductValidationError, validateStockLevels } from '@orderbook/shared';
 
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { clampLimit, clampPaging } from '../domain/paging.js';
-import { stockKey } from '../domain/stock-key.js';
 import { db } from '../db/knex.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as inventoryRepo from '../repositories/inventory.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
+import * as productVariantRepo from '../repositories/product-variant.repository.js';
 import { publishChange } from './change-bus.js';
 
 const PAGING = { defaultLimit: 200, maxLimit: 1000 };
@@ -64,8 +64,7 @@ export async function recordInbound(
 ): Promise<InventoryStockLevel> {
   requirePermission(actor, 'inventory.edit');
 
-  const colour = requireColour(input.colour);
-  const product = await assertProductExists(actor.tenantId, input.productId);
+  const { variant, productName } = await requireVariant(actor.tenantId, input.variantId);
 
   if (!Number.isFinite(input.quantityBoxes) || input.quantityBoxes <= 0) {
     throw new ValidationError('validation.stock.boxesArrivedRequired');
@@ -73,8 +72,8 @@ export async function recordInbound(
 
   const level = await inventoryRepo.applyMovement({
     tenantId: actor.tenantId,
-    productId: input.productId,
-    colour,
+    productId: variant.productId,
+    variantId: variant.id,
     movementType: 'inbound',
     deltaBoxes: input.quantityBoxes,
     referenceType: 'purchase',
@@ -86,21 +85,21 @@ export async function recordInbound(
     {
       tenantId: actor.tenantId,
       entityType: 'stock',
-      entityId: input.productId,
+      entityId: variant.productId,
       action: 'inbound',
       actorType: actor.actorType,
       actorId: actor.actorId,
-      details: { product: product.name, quantity: input.quantityBoxes, colour },
+      details: {
+        product: productName,
+        quantity: input.quantityBoxes,
+        variant: variant.label ?? variant.code,
+        code: variant.code,
+      },
     },
     actor,
     db(),
   );
-  publishChange({
-    entity: 'stock',
-    action: 'updated',
-    id: stockKey(input.productId, colour),
-    payload: level,
-  });
+  publishChange({ entity: 'stock', action: 'updated', id: variant.id, payload: level });
 
   return level;
 }
@@ -120,28 +119,23 @@ export async function recordAdjustment(
   // rewrites a figure nobody can re-derive, so it is granted separately.
   requirePermission(actor, 'stock.adjust');
 
-  const colour = requireColour(input.colour);
-  const product = await assertProductExists(actor.tenantId, input.productId);
+  const { variant, productName } = await requireVariant(actor.tenantId, input.variantId);
 
   if (!Number.isFinite(input.quantityBoxes) || input.quantityBoxes < 0) {
     throw new ValidationError('validation.stock.countedBoxesRequired');
   }
 
-  const current = await inventoryRepo.findStockLevel(actor.tenantId, input.productId, colour);
+  const current = await inventoryRepo.findStockLevel(actor.tenantId, variant.id);
   const delta = input.quantityBoxes - (current?.quantityBoxes ?? 0);
 
   if (delta === 0) {
-    return (
-      current ?? {
-        ...emptyLevel(input.productId, colour),
-      }
-    );
+    return current ?? emptyLevel(variant, productName);
   }
 
   const level = await inventoryRepo.applyMovement({
     tenantId: actor.tenantId,
-    productId: input.productId,
-    colour,
+    productId: variant.productId,
+    variantId: variant.id,
     movementType: 'adjustment',
     deltaBoxes: delta,
     referenceType: 'manual',
@@ -153,21 +147,22 @@ export async function recordAdjustment(
     {
       tenantId: actor.tenantId,
       entityType: 'stock',
-      entityId: input.productId,
+      entityId: variant.productId,
       action: 'adjusted',
       actorType: actor.actorType,
       actorId: actor.actorId,
-      details: { product: product.name, colour, countedBoxes: input.quantityBoxes, delta },
+      details: {
+        product: productName,
+        variant: variant.label ?? variant.code,
+        code: variant.code,
+        countedBoxes: input.quantityBoxes,
+        delta,
+      },
     },
     actor,
     db(),
   );
-  publishChange({
-    entity: 'stock',
-    action: 'updated',
-    id: stockKey(input.productId, colour),
-    payload: level,
-  });
+  publishChange({ entity: 'stock', action: 'updated', id: variant.id, payload: level });
 
   return level;
 }
@@ -194,64 +189,40 @@ export async function setReorderLevel(
 ): Promise<InventoryStockLevel> {
   requirePermission(actor, 'inventory.edit');
 
-  const colour = requireColour(input.colour);
-  await assertProductExists(actor.tenantId, input.productId);
+  const { variant } = await requireVariant(actor.tenantId, input.variantId);
 
   // The band, checked here as well as by the database's own CHECK — a person
   // waiting on a form deserves a sentence, not a constraint name.
   assertStockLevels(input);
 
-  let level: InventoryStockLevel | null;
-  try {
-    level = await inventoryRepo.setStockLevels(actor.tenantId, input.productId, colour, {
+  const level = await inventoryRepo.setStockLevels(
+    actor.tenantId,
+    { productId: variant.productId, variantId: variant.id },
+    {
       // Passed through as-is, `undefined` included: absent means untouched, and
       // the repository writes only what was asserted.
       reorderLevel: input.reorderLevel,
       minStockLevel: input.minStockLevel,
       maxStockLevel: input.maxStockLevel,
-      variantCode: normalizeVariantCode(input.variantCode),
-    });
-  } catch (error) {
-    // The partial unique index is the enforcement; this only turns it into a
-    // sentence. Two people can reach it at once, so a pre-check would be a
-    // race with a nicer message, not a substitute.
-    const pg = error as { code?: string; constraint?: string } | null;
-    if (pg?.code === '23505' && (pg.constraint ?? '').includes('variant_code')) {
-      throw new ValidationError('validation.stock.variantCodeTaken');
-    }
-    throw error;
-  }
+    },
+  );
   if (!level) throw new NotFoundError('Stock level');
 
-  publishChange({
-    entity: 'stock',
-    action: 'updated',
-    id: stockKey(input.productId, colour),
-    payload: level,
-  });
+  publishChange({ entity: 'stock', action: 'updated', id: variant.id, payload: level });
   return level;
 }
 
 /**
- * Push fresh stock figures for the given (product, colour) pairs.
+ * Push fresh stock figures for the given variants.
  *
  * Called after a transaction commits, never inside one — a panel that received
  * figures from a transaction which then rolled back would show numbers that
  * never existed, and nothing would arrive later to correct them.
  */
-export async function publishStockFor(
-  tenantId: string,
-  targets: Array<{ productId: string; colour: string }>,
-): Promise<void> {
-  const seen = new Set<string>();
-
-  for (const target of targets) {
-    const key = stockKey(target.productId, target.colour);
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    const level = await inventoryRepo.findStockLevel(tenantId, target.productId, target.colour);
-    if (level) publishChange({ entity: 'stock', action: 'updated', id: key, payload: level });
+export async function publishStockFor(tenantId: string, variantIds: readonly string[]): Promise<void> {
+  for (const variantId of new Set(variantIds)) {
+    const level = await inventoryRepo.findStockLevel(tenantId, variantId);
+    if (level) publishChange({ entity: 'stock', action: 'updated', id: variantId, payload: level });
   }
 }
 
@@ -259,56 +230,43 @@ export async function countLowStock(tenantId: string): Promise<number> {
   return inventoryRepo.countLowStock(tenantId);
 }
 
-export async function coloursFor(tenantId: string, productId: string): Promise<string[]> {
-  return inventoryRepo.coloursFor(tenantId, productId);
-}
-
 /**
- * The typed code, trimmed — or `null` when it is being cleared.
+ * The variant this movement is against, or a refusal.
  *
- * Blank and `null` mean the same thing here, unlike the stock bands above: a
- * code is a name somebody chose, and "" is not one. Clearing has to be
- * possible, because a code cannot move to another colour while this row still
- * holds it.
+ * Returns the product's name alongside because the audit entry needs it: the
+ * catalogue renders "recorded {quantity} boxes in for {product}", and with
+ * nothing to fill `{product}` the Activity log printed the placeholder.
  */
-function normalizeVariantCode(value: string | null | undefined): string | null | undefined {
-  if (value === undefined) return undefined;
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : null;
-}
-
-function requireColour(colour: string | undefined): string {
-  const trimmed = colour?.trim();
-  if (!trimmed) {
-    // Not defaulted: stock is tracked per colour, and silently filing boxes
-    // under "Default" would put real stock somewhere nobody looks for it.
-    throw new ValidationError('validation.stock.colourRequired');
+async function requireVariant(
+  tenantId: string,
+  variantId: string | undefined,
+): Promise<{ variant: ProductVariant; productName: string }> {
+  const id = variantId?.trim();
+  if (!id) {
+    // Not defaulted: stock is tracked per variant, and silently filing boxes
+    // under some first variant would put real stock somewhere nobody looks.
+    throw new ValidationError('validation.stock.variantRequired');
   }
-  return trimmed;
-}
 
-/**
- * The product this movement is against, or a 404.
- *
- * Returns it rather than merely asserting, because the audit entry needs its
- * name: the catalogue renders "recorded {quantity} boxes in for {product}", and
- * with nothing to fill `{product}` the Activity log printed the placeholder.
- */
-async function assertProductExists(tenantId: string, productId: string): Promise<Product> {
-  const product = await productRepo.findProductById(tenantId, productId);
+  const variant = await productVariantRepo.findVariantById(tenantId, id);
+  if (!variant) throw new NotFoundError('Product variant');
+
+  const product = await productRepo.findProductById(tenantId, variant.productId);
   if (!product) throw new NotFoundError('Product');
-  return product;
+
+  return { variant, productName: product.name };
 }
 
-function emptyLevel(productId: string, colour: string): InventoryStockLevel {
+function emptyLevel(variant: ProductVariant, productName: string): InventoryStockLevel {
   return {
-    productId,
-    productCode: '',
-    productName: '',
+    productId: variant.productId,
+    productName,
     categoryName: null,
     size: null,
-    colour,
-    variantCode: null,
+    variantId: variant.id,
+    variantCode: variant.code,
+    variantLabel: variant.label,
+    weightKg: variant.weightKg,
     quantityBoxes: 0,
     reservedBoxes: 0,
     availableBoxes: 0,

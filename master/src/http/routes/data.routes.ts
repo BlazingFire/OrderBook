@@ -200,6 +200,8 @@ dataRoutes.get(
           term: String(req.query.q ?? ''),
           limit: req.query.limit ? Number(req.query.limit) : undefined,
           include,
+          // The lead screen's second stage: products inside the chosen category.
+          categoryId: typeof req.query.categoryId === 'string' ? req.query.categoryId : undefined,
         },
         actorFromRequest(req),
       ),
@@ -259,7 +261,16 @@ dataRoutes.post(
 dataRoutes.get(
   '/products',
   asyncHandler(async (req, res) => {
-    res.json(await catalogService.listProducts(paging(req.query), actorFromRequest(req)));
+    res.json(
+      await catalogService.listProducts(
+        {
+          ...paging(req.query),
+          categoryId: typeof req.query.categoryId === 'string' ? req.query.categoryId : undefined,
+          missingWeight: req.query.missingWeight === 'true',
+        },
+        actorFromRequest(req),
+      ),
+    );
   }),
 );
 
@@ -305,7 +316,11 @@ dataRoutes.delete(
 dataRoutes.get(
   '/categories',
   asyncHandler(async (req, res) => {
-    res.json(await catalogService.listCategories(actorFromRequest(req)));
+    res.json(
+      await catalogService.listCategories(actorFromRequest(req), {
+        search: typeof req.query.search === 'string' ? req.query.search : undefined,
+      }),
+    );
   }),
 );
 
@@ -338,14 +353,6 @@ dataRoutes.get(
   }),
 );
 
-dataRoutes.get(
-  '/stock/colours/:productId',
-  asyncHandler(async (req, res) => {
-    const actor = actorFromRequest(req);
-    res.json(await inventoryService.coloursFor(actor.tenantId, String(req.params.productId)));
-  }),
-);
-
 dataRoutes.post(
   '/stock/inbound',
   asyncHandler(async (req, res) => {
@@ -363,11 +370,9 @@ dataRoutes.post(
 dataRoutes.post(
   '/stock/reorder-level',
   asyncHandler(async (req, res) => {
-    const { productId, colour } = req.body ?? {};
-    if (typeof productId !== 'string')
-      throw new ValidationError('validation.stock.productRequired');
-    if (typeof colour !== 'string')
-      throw new ValidationError('validation.stock.colourSelectRequired');
+    const { variantId } = req.body ?? {};
+    if (typeof variantId !== 'string' || !variantId)
+      throw new ValidationError('validation.stock.variantRequired');
 
     /*
      * Three distinct meanings, and the route has to keep them apart:
@@ -386,19 +391,10 @@ dataRoutes.post(
     res.json(
       await inventoryService.setReorderLevel(
         {
-          productId,
-          colour,
+          variantId,
           reorderLevel: level(body.reorderLevel),
           minStockLevel: level(body.minStockLevel),
           maxStockLevel: level(body.maxStockLevel),
-          // Same three meanings, one type narrower: absent leaves the code
-          // alone, empty or null clears it.
-          variantCode:
-            body.variantCode === undefined
-              ? undefined
-              : body.variantCode === null || body.variantCode === ''
-                ? null
-                : String(body.variantCode),
         },
         actorFromRequest(req),
       ),

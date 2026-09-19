@@ -87,12 +87,21 @@ async function runQuery(
 ): Promise<RankedRow[]> {
   switch (kind) {
     case 'product': {
+      // The vector already carries every variant code and label (the
+      // `product_variants_search_trg` trigger refreshes it), so a code typed
+      // here finds its model; the subtitle names the category and the codes.
       const { rows } = await runner.raw<{ rows: RankedRow[] }>(
         `SELECT p.id,
                 p.name AS title,
-                COALESCE(p.product_code, '') || COALESCE(' · ' || p.size, '') AS subtitle,
+                COALESCE(c.name, '')
+                  || COALESCE(' · ' || (
+                       SELECT string_agg(v.code, ', ' ORDER BY v.sequence, v.code)
+                         FROM product_variants v
+                        WHERE v.product_id = p.id AND v.is_active
+                     ), '') AS subtitle,
                 ts_rank(p.search_vector, ${TSQUERY}) AS rank
            FROM products p
+           LEFT JOIN product_categories c ON c.id = p.category_id
           WHERE p.tenant_id = ?
             AND p.is_active
             AND p.deleted_at IS NULL
@@ -139,7 +148,7 @@ async function runQuery(
       const { rows } = await runner.raw<{ rows: RankedRow[] }>(
         `SELECT li.parent_id AS id,
                 li.product_name AS title,
-                li.parent_id || COALESCE(' · ' || li.code, '') AS subtitle,
+                li.parent_id || COALESCE(' · ' || li.code, '') || COALESCE(' · ' || li.variant_label, '') AS subtitle,
                 MAX(ts_rank(li.search_vector, ${TSQUERY})) AS rank
            FROM line_items li
            JOIN ${parentTable} parent
@@ -148,7 +157,7 @@ async function runQuery(
             AND li.parent_type = ?
             AND parent.deleted_at IS NULL
             AND li.search_vector @@ ${TSQUERY}${partyScope.sql}
-          GROUP BY li.parent_id, li.product_name, li.code
+          GROUP BY li.parent_id, li.product_name, li.code, li.variant_label
           ORDER BY rank DESC
           LIMIT ?`,
         [term, tenantId, parentType, term, ...partyScope.bindings, limit],
@@ -192,7 +201,7 @@ async function runQuery(
  */
 export async function pickProducts(
   tenantId: string,
-  options: { term: string; limit: number; include: string[] },
+  options: { term: string; limit: number; include: string[]; categoryId?: string },
   runner: Runner = db(),
 ): Promise<{ rows: Row[]; truncated: boolean }> {
   const tsQuery = prefixTsQuery(options.term);
@@ -202,20 +211,29 @@ export async function pickProducts(
   // One more than asked for, so "there are more" is a fact rather than a guess.
   const fetch = options.limit + 1;
   const hasInclude = options.include.length > 0;
+  const hasCategory = typeof options.categoryId === 'string' && options.categoryId !== '';
+
+  // The codes live on the variants, so the prefix boost and the prefix
+  // filter both look there: typing `41` puts the model that sells `41` first.
+  const CODE_PREFIX = `EXISTS (
+    SELECT 1 FROM product_variants v
+     WHERE v.product_id = p.id AND v.is_active AND v.code ILIKE ? ESCAPE '\\'
+  )`;
 
   const { rows } = await runner.raw<{ rows: Row[] }>(
     `SELECT p.*, c.name AS category_name,
-            (COALESCE(p.product_code ILIKE ? ESCAPE '\\', false)
+            (${CODE_PREFIX}
              OR COALESCE(p.name ILIKE ? ESCAPE '\\', false)) AS exact_prefix,
             CASE WHEN ? THEN ts_rank(p.search_vector, to_tsquery('simple', ?)) ELSE 0 END AS rank
        FROM products p
        LEFT JOIN product_categories c ON c.id = p.category_id
       WHERE p.tenant_id = ?
+        AND (NOT ? OR p.category_id = ?)
         AND (
           (p.is_active AND p.deleted_at IS NULL AND (
             NOT ?
             OR p.search_vector @@ to_tsquery('simple', ?)
-            OR p.product_code ILIKE ? ESCAPE '\\'
+            OR ${CODE_PREFIX}
             OR p.name ILIKE ? ESCAPE '\\'
           ))
           OR (? AND p.id = ANY(?))
@@ -228,6 +246,8 @@ export async function pickProducts(
       hasQuery,
       tsQuery ?? '',
       tenantId,
+      hasCategory,
+      options.categoryId ?? '',
       hasQuery,
       tsQuery ?? '',
       pattern,
@@ -242,50 +262,36 @@ export async function pickProducts(
 }
 
 /**
- * One row per product-colour pair, for the new-lead screen's code box.
- *
- * Deliberately not `pickProducts` with a colour join: the ranking is different.
- * A person typing here has a variant code in their hand most of the time, so an
- * exact code match outranks everything, then a code prefix, then the product's
- * own text. Reservations are not joined — free-to-sell is worked out by the
- * service from the same totals every other stock read uses, so the two can
- * never disagree.
+ * Categories for the first stage of the lead screen's search: typing
+ * "toilet" offers *ONE PIECE TOILET* and nothing below it. A name that
+ * starts with the term outranks one that merely contains it, and an empty
+ * term lists everything, alphabetically — the stage is a menu as much as a
+ * search.
  */
-export async function pickVariants(
+export async function pickCategories(
   tenantId: string,
-  options: { term: string; limit: number },
+  options: { term: string; limit: number; include: string[] },
   runner: Runner = db(),
 ): Promise<{ rows: Row[]; truncated: boolean }> {
   const term = options.term.trim();
   const pattern = likePrefix(term);
   const contains = likeContains(term);
   const fetch = options.limit + 1;
+  const hasInclude = options.include.length > 0;
 
   const { rows } = await runner.raw<{ rows: Row[] }>(
-    `SELECT s.product_id, s.colour, s.variant_code, s.quantity_boxes,
-            s.reorder_level, s.min_stock_level, s.max_stock_level, s.updated_at,
-            p.product_code, p.name AS product_name, p.alias, p.sin, p.size,
-            p.grade, p.product_type, p.weight_kg, p.rate, p.box_coverage_sqft,
-            c.name AS category_name,
-            (LOWER(COALESCE(s.variant_code, '')) = LOWER(?)) AS exact_code,
-            COALESCE(s.variant_code ILIKE ? ESCAPE '\\', false) AS code_prefix
-       FROM inventory_stock s
-       JOIN products p ON p.id = s.product_id
-       LEFT JOIN product_categories c ON c.id = p.category_id
-      WHERE s.tenant_id = ?
-        AND p.is_active
-        AND p.deleted_at IS NULL
+    `SELECT c.*,
+            COALESCE(c.name ILIKE ? ESCAPE '\\', false) AS exact_prefix
+       FROM product_categories c
+      WHERE c.tenant_id = ?
         AND (
           ? = ''
-          OR s.variant_code ILIKE ? ESCAPE '\\'
-          OR p.product_code ILIKE ? ESCAPE '\\'
-          OR p.name ILIKE ? ESCAPE '\\'
-          OR p.sin ILIKE ? ESCAPE '\\'
-          OR s.colour ILIKE ? ESCAPE '\\'
+          OR c.name ILIKE ? ESCAPE '\\'
+          OR (? AND c.id = ANY(?))
         )
-      ORDER BY exact_code DESC, code_prefix DESC, p.name ASC, s.colour ASC
+      ORDER BY exact_prefix DESC, c.name ASC
       LIMIT ?`,
-    [term, pattern, tenantId, term, pattern, pattern, contains, pattern, contains, fetch],
+    [pattern, tenantId, term, contains, hasInclude, options.include, fetch],
   );
 
   return { rows: rows.slice(0, options.limit), truncated: rows.length > options.limit };

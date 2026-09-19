@@ -289,6 +289,9 @@ function provisionalLead(view: SyncSnapshot, mutation: Mutation): Lead {
     convertedOrderId: null,
     convertedAt: null,
     totalAmount: items.reduce((sum, line) => sum + (line.lineTotal ?? 0), 0),
+    totalWeightKg:
+      Math.round(items.reduce((sum, line) => sum + (line.lineWeightKg ?? 0), 0) * 1000) / 1000,
+    linesWithoutWeight: items.filter((line) => line.lineWeightKg === null).length,
     sourcePanelId: null,
     createdByUserId: null,
     createdAt: mutation.createdAt,
@@ -308,19 +311,10 @@ function provisionalLine(
   index: number,
 ): LineItem {
   const product = view.products.find((candidate) => candidate.id === item.productId);
+  const variant = product?.variants.find((candidate) => candidate.id === item.variantId);
 
-  const quantities = Array.isArray(item.quantities)
-    ? (
-        item.quantities as Array<{ colour: string; quantity: number; variantCode?: string | null }>
-      ).map((quantity, i) => ({
-        id: `${parentId}-${index}-${i}`,
-        colour: quantity.colour,
-        quantity: Number(quantity.quantity) || 0,
-        variantCode: quantity.variantCode ?? null,
-      }))
-    : [];
-
-  const totalQuantity = quantities.reduce((sum, quantity) => sum + quantity.quantity, 0);
+  const quantity = Number(item.quantity) || 0;
+  const weightKg = (item.weightKg as number | null | undefined) ?? variant?.weightKg ?? null;
 
   // Absence has to survive the optimistic overlay. When the person who queued
   // this line cannot see rates, the product they picked came to this panel with
@@ -340,13 +334,15 @@ function provisionalLine(
     parentType: 'lead',
     parentId,
     productId: String(item.productId ?? ''),
+    variantId: String(item.variantId ?? ''),
     productName: String(item.productName ?? product?.name ?? ''),
     alias: (item.alias as string | null) ?? product?.alias ?? null,
     rate,
-    code: (item.code as string | null) ?? product?.productCode ?? null,
+    code: (item.code as string | null) ?? variant?.code ?? null,
+    variantLabel: (item.variantLabel as string | null) ?? variant?.label ?? null,
     sin: (item.sin as string | null) ?? product?.sin ?? null,
     size: (item.size as string | null) ?? product?.size ?? null,
-    weightKg: (item.weightKg as number | null) ?? product?.weightKg ?? null,
+    weightKg,
     grade: (item.grade as string | null) ?? product?.grade ?? null,
     productType: (item.productType as string | null) ?? product?.productType ?? null,
     packaging: (item.packaging as string | null) ?? null,
@@ -354,9 +350,9 @@ function provisionalLine(
     fromPartyVariant: Boolean(item.fromPartyVariant),
     imagePath: null,
     notes: (item.notes as string | null) ?? null,
-    quantities,
-    totalQuantity,
-    lineTotal: rate === null ? null : Math.round(rate * totalQuantity),
+    quantity,
+    lineWeightKg: weightKg === null ? null : Math.round(weightKg * quantity * 1000) / 1000,
+    lineTotal: rate === null ? null : Math.round(rate * quantity),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -395,23 +391,36 @@ function provisionalParty(mutation: Mutation): Party {
 
 function provisionalProduct(mutation: Mutation): Product {
   const payload = mutation.payload as Record<string, never>;
+  const variants = Array.isArray(payload.variants)
+    ? (payload.variants as Array<Record<string, unknown>>)
+    : [];
 
   return {
     id: mutation.entityId,
     tenantId: '',
-    productCode: String(payload.productCode ?? 'pending'),
     name: String(payload.name ?? ''),
     alias: payload.alias ?? null,
-    categoryId: null,
-    categoryName: payload.categoryName ?? null,
+    categoryId: String(payload.categoryId ?? ''),
+    categoryName: String(payload.categoryName ?? ''),
     size: payload.size ?? null,
     sin: payload.sin ?? null,
     grade: payload.grade ?? null,
     productType: payload.productType ?? null,
-    weightKg: payload.weightKg ?? null,
+    hasVariants: Boolean(payload.hasVariants),
+    // The Master mints the variant ids; until it answers, these rows carry
+    // placeholder ids for display. The lead screen leaves a still-provisional
+    // product alone for exactly that reason.
+    variants: variants.map((variant, index) => ({
+      id: typeof variant.id === 'string' ? variant.id : `${mutation.entityId}-v${index + 1}`,
+      productId: mutation.entityId,
+      code: String(variant.code ?? ''),
+      label: typeof variant.label === 'string' && variant.label ? variant.label : null,
+      weightKg: typeof variant.weightKg === 'number' ? variant.weightKg : null,
+      sequence: typeof variant.sequence === 'number' ? variant.sequence : index + 1,
+      isActive: true,
+    })),
     finish: null,
     series: payload.series ?? null,
-    color: payload.color ?? null,
     thicknessMm: null,
     piecesPerBox: null,
     boxCoverageSqft: null,

@@ -12,6 +12,7 @@
     "migrate": "tsx src/db/migrate-cli.ts",
     "seed:dummy": "tsx src/db/seed-dummy-users-cli.ts",
     "seed:sample": "tsx src/db/seed-sample-data-cli.ts",
+    "seed:catalogue": "tsx src/db/seed-catalogue-cli.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

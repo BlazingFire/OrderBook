@@ -1,6 +1,6 @@
 /**
- * Line items and their colour quantities — one table serving both leads and
- * orders, discriminated by `(parent_type, parent_id)`.
+ * Line items — one table serving both leads and orders, discriminated by
+ * `(parent_type, parent_id)`, one row per variant.
  *
  * That shared table is what makes conversion a straight copy rather than a
  * translation between two shapes, and it is what lets one search index cover
@@ -9,16 +9,14 @@
 
 import type { LineItem, LineItemParentType } from '@orderbook/shared';
 import type { Knex } from 'knex';
-import { v4 as uuid } from 'uuid';
 
-import { lineTotal, totalQuantity, type LineSnapshot } from '../domain/line-items.js';
+import { lineTotal, type LineSnapshot } from '../domain/line-items.js';
 import { db } from '../db/knex.js';
 import { allocatePermanentIds } from './identity.repository.js';
-import { mapLineItem, mapLineItemQuantity } from './mappers.js';
+import { mapLineItem } from './mappers.js';
 import type { TransactionContext } from './transaction.js';
 
 const TABLE = 'line_items';
-const QUANTITY_TABLE = 'line_item_quantities';
 
 type Runner = Knex | Knex.Transaction;
 
@@ -37,40 +35,14 @@ export async function loadLinesFor(
     .orderBy(['parent_id', 'sequence'])
     .select('*');
 
-  const quantities = await loadQuantitiesFor(
-    rows.map((row) => String(row.id)),
-    runner,
-  );
-
   for (const row of rows) {
-    const id = String(row.id);
-    const line = mapLineItem(row, quantities.get(id) ?? []);
+    const line = mapLineItem(row);
     const bucket = byParent.get(line.parentId);
     if (bucket) bucket.push(line);
     else byParent.set(line.parentId, [line]);
   }
 
   return byParent;
-}
-
-async function loadQuantitiesFor(lineIds: string[], runner: Runner) {
-  const byLine = new Map<string, ReturnType<typeof mapLineItemQuantity>[]>();
-  if (lineIds.length === 0) return byLine;
-
-  const rows = await runner(QUANTITY_TABLE)
-    .whereIn('line_item_id', lineIds)
-    .orderBy('colour')
-    .select('*');
-
-  for (const row of rows) {
-    const lineId = String(row.line_item_id);
-    const quantity = mapLineItemQuantity(row);
-    const bucket = byLine.get(lineId);
-    if (bucket) bucket.push(quantity);
-    else byLine.set(lineId, [quantity]);
-  }
-
-  return byLine;
 }
 
 /**
@@ -93,10 +65,12 @@ export async function insertLines(
       parent_type: context.parentType,
       parent_id: context.parentId,
       product_id: line.productId,
+      variant_id: line.variantId,
       product_name: line.productName,
       alias: line.alias,
       rate: line.rate,
       code: line.code,
+      variant_label: line.variantLabel,
       sin: line.sin,
       size: line.size,
       weight_kg: line.weightKg,
@@ -107,22 +81,10 @@ export async function insertLines(
       from_party_variant: line.fromPartyVariant,
       image_path: line.imagePath,
       notes: line.notes,
-      total_quantity: totalQuantity(line),
+      quantity: line.quantity,
       line_total: lineTotal(line),
     })),
   );
-
-  const quantityRows = lines.flatMap((line, index) =>
-    line.quantities.map((quantity) => ({
-      id: uuid(),
-      line_item_id: ids[index],
-      colour: quantity.colour,
-      quantity: quantity.quantity,
-      variant_code: quantity.variantCode ?? null,
-    })),
-  );
-
-  if (quantityRows.length > 0) await trx(QUANTITY_TABLE).insert(quantityRows);
 
   return ids;
 }
@@ -131,8 +93,7 @@ export async function insertLines(
  * Replace a parent's whole line set.
  *
  * Wholesale rather than a per-line diff because lines carry no client-stable
- * identity — the panel sends the set it believes is correct. The delete
- * cascades to the quantity rows.
+ * identity — the panel sends the set it believes is correct.
  */
 export async function replaceLines(
   context: { tenantId: string; parentType: LineItemParentType; parentId: string },
@@ -161,10 +122,12 @@ export async function loadSnapshots(
 
   return (byParent.get(parentId) ?? []).map((line) => ({
     productId: line.productId,
+    variantId: line.variantId,
     productName: line.productName,
     alias: line.alias,
     rate: line.rate ?? null,
     code: line.code,
+    variantLabel: line.variantLabel,
     sin: line.sin,
     size: line.size,
     weightKg: line.weightKg,
@@ -175,9 +138,6 @@ export async function loadSnapshots(
     fromPartyVariant: line.fromPartyVariant,
     imagePath: line.imagePath,
     notes: line.notes,
-    quantities: line.quantities.map((quantity) => ({
-      colour: quantity.colour,
-      quantity: quantity.quantity,
-    })),
+    quantity: line.quantity,
   }));
 }

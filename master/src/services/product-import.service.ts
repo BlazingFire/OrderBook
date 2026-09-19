@@ -7,14 +7,18 @@
  * the database may have moved since the preview — and its result is the one
  * the screen shows.
  *
+ * **A row is a variant; a product is a group of rows** sharing a category
+ * and a model name (`domain/product-import.ts#groupImportRows`). Counts are
+ * reported in rows, the unit the person sees in the sheet.
+ *
  * **Writes go through the repositories in chunks, not through `createProduct`
  * five thousand times.** The single-product path costs two transactions, two
- * row locks and a socket fan-out per product; here each chunk of `BATCH` rows
- * takes one clock stamp, one block of ids, one category pass and one INSERT.
- * A chunk that fails is replayed row by row through the existing single-row
- * repository calls, so one clashing code costs that chunk its fast path and
- * costs the file nothing — the other rows land and the bad one is reported by
- * number.
+ * row locks and a socket fan-out per product; here each chunk of `BATCH`
+ * products takes one clock stamp, one block of ids per table, one category
+ * pass and two INSERTs. A chunk that fails is replayed product by product
+ * through the existing single-product repository call, so one clashing code
+ * costs that chunk its fast path and costs the file nothing — the other
+ * products land and the bad one is reported by row number.
  *
  * **One change event, not N.** Publishing a `product` event per row would
  * push the whole file through the change ring and force every other panel
@@ -28,17 +32,19 @@
  */
 
 import type {
+  Product,
   ProductImportIssue,
   ProductImportMode,
   ProductImportResult,
   ProductInput,
-  Product,
+  ProductVariantInput,
 } from '@orderbook/shared';
 import { columnPatch, fieldFor, MAX_PRODUCT_IMPORT_ISSUES, PRODUCT_COLUMNS } from '@orderbook/shared';
 
 import { requirePermission, type ActorContext } from '../domain/actor.js';
 import {
   findDuplicatesInFile,
+  groupImportRows,
   IMPORT_COLUMNS,
   IMPORT_HEADERS,
   isBlankRow,
@@ -46,6 +52,7 @@ import {
   parseImportRow,
   templateGuideRows,
   type ImportField,
+  type ImportGroup,
   type ParsedRow,
 } from '../domain/product-import.js';
 import { canEditCost, canEditRates } from '../domain/visibility.js';
@@ -57,32 +64,31 @@ import { readSheetRows } from '../lib/spreadsheet.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import { allocatePermanentIds, nextHlc } from '../repositories/identity.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
+import * as productVariantRepo from '../repositories/product-variant.repository.js';
 import { publishChange } from './change-bus.js';
 
 const log = createLogger('product-import');
 
-/** Rows per transaction. Large enough to amortise the locks, small enough to lose little on a clash. */
+/** Products per transaction. Large enough to amortise the locks, small enough to lose little on a clash. */
 const BATCH = 500;
 
 const ACCEPTED_EXTENSIONS = new Set(['csv', 'xlsx', 'txt']);
 
 /** Width of each template column, in Excel character units. */
 const TEMPLATE_WIDTHS: Partial<Record<ImportField, number>> = {
-  productCode: 14,
-  name: 36,
+  categoryName: 22,
+  name: 28,
+  variant: 20,
+  code: 14,
+  weightKg: 12,
   alias: 18,
-  categoryName: 18,
   productType: 14,
   brand: 14,
-  series: 16,
-  size: 12,
+  size: 18,
   barcode: 16,
-  application: 14,
-  surfaceTexture: 16,
-  originPlant: 16,
 };
 
-const TEXT_COLUMNS = new Set<ImportField>(['productCode', 'barcode', 'hsnCode']);
+const TEXT_COLUMNS = new Set<ImportField>(['code', 'barcode', 'hsnCode']);
 
 export async function productImportTemplate(
   format: 'csv' | 'xlsx',
@@ -121,7 +127,7 @@ interface ImportOptions {
   mode: ProductImportMode;
 }
 
-type UpdateRow = ParsedRow & { existing: Product };
+type UpdateGroup = ImportGroup & { existing: Product };
 
 export async function importProducts(
   file: ImportFile,
@@ -178,40 +184,65 @@ export async function importProducts(
   const duplicateIssues = findDuplicatesInFile(parsed, headerFor);
   const duplicateRows = new Set(duplicateIssues.map((issue) => issue.row));
   issues.push(...duplicateIssues);
-  const candidates = parsed.filter((entry) => !duplicateRows.has(entry.row));
 
-  // A blank code means "give me one". Assigned before the clash check so a
-  // generated code that collides with a hand-typed one in the same file is
-  // caught here rather than by the database.
-  const blank = candidates.filter((entry) => entry.input.productCode === '');
-  if (blank.length > 0) {
-    const codes = await productRepo.nextProductCodes(blank.length);
-    blank.forEach((entry, index) => {
-      entry.input = { ...entry.input, productCode: codes[index] as string };
-    });
-  }
-
-  const existing = await productRepo.findLiveByCodes(
-    actor.tenantId,
-    candidates.map((entry) => entry.input.productCode),
+  const grouped = groupImportRows(
+    parsed.filter((entry) => !duplicateRows.has(entry.row)),
+    headerFor,
   );
+  issues.push(...grouped.issues);
 
-  let creates: ParsedRow[] = [];
-  let updates: UpdateRow[] = [];
-  for (const entry of candidates) {
-    const hit = existing.get(entry.input.productCode.toLowerCase());
-    if (!hit) {
-      creates.push(entry);
+  // Which of the file's codes are already on a live variant — and on which
+  // product. A group whose codes all sit on one product is that product
+  // (update, or skipped); codes split across products cannot be reconciled.
+  const existingByCode = await productVariantRepo.findLiveVariantsByCodes(
+    actor.tenantId,
+    grouped.groups.flatMap((group) => group.input.variants?.map((variant) => variant.code) ?? []),
+  );
+  const existingIds = new Set([...existingByCode.values()].map((hit) => hit.productId));
+  const existingProducts = await productRepo.findProductsByIds(actor.tenantId, [...existingIds]);
+
+  let creates: ImportGroup[] = [];
+  let updates: UpdateGroup[] = [];
+  for (const group of grouped.groups) {
+    const owners = new Set<string>();
+    for (const variant of group.input.variants ?? []) {
+      const hit = existingByCode.get(variant.code.toLowerCase());
+      if (hit) owners.add(hit.productId);
+    }
+
+    if (owners.size === 0) {
+      creates.push(group);
+      continue;
+    }
+    if (owners.size > 1) {
+      for (const entry of group.rows) {
+        issues.push({
+          row: entry.row,
+          kind: 'error',
+          column: headerFor('code'),
+          messageKey: 'validation.import.codesSplit',
+          params: { name: group.input.name },
+        });
+      }
+      continue;
+    }
+
+    const [ownerId] = owners;
+    const existing = existingProducts.get(ownerId as string);
+    if (!existing) {
+      creates.push(group);
     } else if (options.mode === 'upsert') {
-      updates.push({ ...entry, existing: hit });
+      updates.push({ ...group, existing });
     } else {
-      issues.push({
-        row: entry.row,
-        kind: 'skipped',
-        column: headerFor('productCode'),
-        messageKey: 'import.skip.codeExists',
-        params: { productCode: entry.input.productCode },
-      });
+      for (const entry of group.rows) {
+        issues.push({
+          row: entry.row,
+          kind: 'skipped',
+          column: headerFor('code'),
+          messageKey: 'import.skip.codeExists',
+          params: { productCode: entry.input.variant.code },
+        });
+      }
     }
   }
 
@@ -219,38 +250,43 @@ export async function importProducts(
   // being updated is allowed to already hold its own barcode.
   const barcodeOwner = await productRepo.findLiveBarcodes(
     actor.tenantId,
-    [...creates, ...updates].map((entry) => entry.input.barcode ?? '').filter(Boolean),
+    [...creates, ...updates].map((group) => group.input.barcode ?? '').filter(Boolean),
   );
-  const barcodeTaken = (entry: ParsedRow, ownId: string | null): boolean => {
-    const barcode = (entry.input.barcode ?? '').trim().toLowerCase();
+  const barcodeTaken = (group: ImportGroup, ownId: string | null): boolean => {
+    const barcode = (group.input.barcode ?? '').trim().toLowerCase();
     if (!barcode) return false;
     const owner = barcodeOwner.get(barcode);
     return owner !== undefined && owner !== ownId;
   };
-  const refuseBarcode = (entry: ParsedRow): void => {
-    issues.push({
-      row: entry.row,
-      kind: 'error',
-      column: headerFor('barcode'),
-      messageKey: 'error.conflict.barcodeTaken',
-      params: { barcode: entry.input.barcode ?? '' },
-    });
+  const refuseBarcode = (group: ImportGroup): void => {
+    for (const entry of group.rows) {
+      issues.push({
+        row: entry.row,
+        kind: 'error',
+        column: headerFor('barcode'),
+        messageKey: 'error.conflict.barcodeTaken',
+        params: { barcode: group.input.barcode ?? '' },
+      });
+    }
   };
-  creates = creates.filter((entry) => {
-    if (!barcodeTaken(entry, null)) return true;
-    refuseBarcode(entry);
+  creates = creates.filter((group) => {
+    if (!barcodeTaken(group, null)) return true;
+    refuseBarcode(group);
     return false;
   });
-  updates = updates.filter((entry) => {
-    if (!barcodeTaken(entry, entry.existing.id)) return true;
-    refuseBarcode(entry);
+  updates = updates.filter((group) => {
+    if (!barcodeTaken(group, group.existing.id)) return true;
+    refuseBarcode(group);
     return false;
   });
 
+  const rowCount = (groups: readonly ImportGroup[]): number =>
+    groups.reduce((sum, group) => sum + group.rows.length, 0);
+
   const sample = [...creates, ...updates]
-    .sort((a, b) => a.row - b.row)
+    .sort((a, b) => (a.rows[0]?.row ?? 0) - (b.rows[0]?.row ?? 0))
     .slice(0, 5)
-    .map((entry) => entry.input);
+    .map((group) => group.input);
 
   if (options.dryRun) {
     return finish({
@@ -258,8 +294,8 @@ export async function importProducts(
       mode: options.mode,
       fileName: file.fileName,
       totalRows,
-      created: creates.length,
-      updated: updates.length,
+      created: rowCount(creates),
+      updated: rowCount(updates),
       issues,
       sample,
       ignoredColumns: match.ignored,
@@ -276,40 +312,57 @@ export async function importProducts(
         const ids = await allocatePermanentIds(actor.tenantId, 'product', chunk.length, trx);
         const categories = await productRepo.ensureCategories(
           actor.tenantId,
-          chunk.map((entry) => entry.input.categoryName ?? '').filter(Boolean),
+          chunk.map((group) => group.input.categoryName ?? ''),
           trx,
         );
         await productRepo.insertProductRows(
-          chunk.map((entry, index) => ({
+          chunk.map((group, index) => ({
             id: ids[index] as string,
-            input: entry.input,
-            categoryId: entry.input.categoryName
-              ? (categories.get(entry.input.categoryName.trim().toLowerCase()) ?? null)
-              : null,
+            input: group.input,
+            categoryId: categories.get((group.input.categoryName ?? '').trim().toLowerCase()) ?? null,
           })),
           { tenantId: actor.tenantId, hlc },
           trx,
         );
+
+        const variantRows = chunk.flatMap((group, index) =>
+          (group.input.variants ?? []).map((variant, sequence) => ({
+            productId: ids[index] as string,
+            input: variant,
+            sequence: sequence + 1,
+          })),
+        );
+        const variantIds = await allocatePermanentIds(
+          actor.tenantId,
+          'product_variant',
+          variantRows.length,
+          trx,
+        );
+        await productVariantRepo.insertVariantRows(
+          variantRows.map((row, index) => ({ ...row, id: variantIds[index] as string })),
+          actor.tenantId,
+          trx,
+        );
       });
-      created += chunk.length;
+      created += rowCount(chunk);
     } catch (error) {
       log.warn(
-        `A chunk of ${chunk.length} products did not insert as one; replaying row by row: ${
+        `A chunk of ${chunk.length} products did not insert as one; replaying product by product: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      for (const entry of chunk) {
+      for (const group of chunk) {
         try {
           await db().transaction(async (trx) => {
             const hlc = await nextHlc(trx);
             await productRepo.insertProduct(
-              { tenantId: actor.tenantId, input: entry.input, hlc, fieldHlc: {}, temporaryId: null },
+              { tenantId: actor.tenantId, input: group.input, hlc, fieldHlc: {}, temporaryId: null },
               trx,
             );
           });
-          created += 1;
+          created += group.rows.length;
         } catch (rowError) {
-          issues.push(classifyRowFailure(rowError, entry, headerFor));
+          issues.push(...classifyGroupFailure(rowError, group, headerFor));
         }
       }
     }
@@ -319,24 +372,24 @@ export async function importProducts(
     try {
       await db().transaction(async (trx) => {
         const hlc = await nextHlc(trx);
-        for (const entry of chunk) await applyUpdate(entry, hlc, actor.tenantId, trx);
+        for (const group of chunk) await applyUpdate(group, hlc, actor.tenantId, trx);
       });
-      updated += chunk.length;
+      updated += rowCount(chunk);
     } catch (error) {
       log.warn(
-        `A chunk of ${chunk.length} product updates did not apply as one; replaying row by row: ${
+        `A chunk of ${chunk.length} product updates did not apply as one; replaying product by product: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      for (const entry of chunk) {
+      for (const group of chunk) {
         try {
           await db().transaction(async (trx) => {
             const hlc = await nextHlc(trx);
-            await applyUpdate(entry, hlc, actor.tenantId, trx);
+            await applyUpdate(group, hlc, actor.tenantId, trx);
           });
-          updated += 1;
+          updated += group.rows.length;
         } catch (rowError) {
-          issues.push(classifyRowFailure(rowError, entry, headerFor));
+          issues.push(...classifyGroupFailure(rowError, group, headerFor));
         }
       }
     }
@@ -386,18 +439,58 @@ export async function importProducts(
  * One update inside the caller's transaction, stamping the per-field clocks
  * the way `catalog.service.ts#updateProduct` does — so an offline edit to a
  * field this import did not touch still merges instead of being overwritten.
+ *
+ * The file's rows are folded into the product's existing variant set rather
+ * than replacing it: a price list naming three of DAMRU's forty codes must
+ * not delete the other thirty-seven. A row matches an existing variant by
+ * code, else by label, else it is a new variant.
  */
 async function applyUpdate(
-  entry: UpdateRow,
+  group: UpdateGroup,
   hlc: string,
   tenantId: string,
   trx: Parameters<typeof productRepo.updateProduct>[4],
 ): Promise<void> {
-  const touched = Object.keys(columnPatch(entry.input, PRODUCT_COLUMNS));
-  const fieldHlc = { ...entry.existing.sync.fieldHlc };
+  const merged: ProductVariantInput[] = group.existing.variants.map((variant) => ({
+    id: variant.id,
+    code: variant.code,
+    label: variant.label,
+    weightKg: variant.weightKg,
+  }));
+
+  for (const incoming of group.input.variants ?? []) {
+    const byCode = merged.find((variant) => variant.code.toLowerCase() === incoming.code.toLowerCase());
+    const byLabel = merged.find(
+      (variant) => (variant.label ?? '').toLowerCase() === (incoming.label ?? '').toLowerCase(),
+    );
+    const target = byCode ?? byLabel;
+    if (target) {
+      target.code = incoming.code;
+      target.label = incoming.label ?? null;
+      if (incoming.weightKg !== undefined && incoming.weightKg !== null) target.weightKg = incoming.weightKg;
+    } else {
+      merged.push({ code: incoming.code, label: incoming.label ?? null, weightKg: incoming.weightKg ?? null });
+    }
+  }
+
+  const hasVariants = group.existing.hasVariants || Boolean(group.input.hasVariants);
+  const input: ProductInput = {
+    ...group.input,
+    hasVariants,
+    variants: merged.map((variant, index) => ({
+      ...variant,
+      // A one-form product that a sheet now gives colours: its single
+      // unlabelled row is the plain member, and needs a name to keep.
+      label: hasVariants ? (variant.label ?? 'Standard') : null,
+      sequence: index + 1,
+    })),
+  };
+
+  const touched = Object.keys(columnPatch(input, PRODUCT_COLUMNS));
+  const fieldHlc: Record<string, string> = { ...group.existing.sync.fieldHlc, variants: hlc };
   for (const column of touched) fieldHlc[fieldFor(PRODUCT_COLUMNS, column)] = hlc;
 
-  await productRepo.updateProduct(tenantId, entry.existing.id, entry.input, { hlc, fieldHlc }, trx);
+  await productRepo.updateProduct(tenantId, group.existing.id, input, { hlc, fieldHlc }, trx);
 }
 
 function chunks<T>(items: readonly T[], size: number): T[][] {
@@ -408,65 +501,64 @@ function chunks<T>(items: readonly T[], size: number): T[][] {
 
 /** The CHECK constraints the import can still trip, by name, and the token each one means. */
 const CHECK_TOKENS: Array<[needle: string, key: ProductImportIssue['messageKey']]> = [
+  ['weight', 'validation.product.weightPositive'],
   ['uom', 'validation.product.uom'],
-  ['edge_type', 'validation.product.edgeType'],
-  ['application', 'validation.product.application'],
-  ['pei_rating', 'validation.product.peiRating'],
   ['gst_rate_pct', 'validation.product.percentage'],
-  ['water_absorption_pct', 'validation.product.percentage'],
   ['mrp', 'validation.product.negativeAmount'],
   ['purchase_rate', 'validation.product.negativeAmount'],
 ];
 
 /**
- * Read a per-row failure off whatever the database or a repository threw.
+ * Read a per-product failure off whatever the database or a repository
+ * threw, and report it on every row of the group.
  *
  * The unique partial indexes are the source of truth for a clash — the
  * pre-checks only make the common case say "skipped" instead of "failed" —
  * so a race with a concurrent create lands here and is still named properly.
  */
-function classifyRowFailure(
+function classifyGroupFailure(
   error: unknown,
-  entry: ParsedRow,
+  group: ImportGroup,
   headerFor: (field: ImportField) => string,
-): ProductImportIssue {
+): ProductImportIssue[] {
   const pg = error as { code?: string; constraint?: string; message?: string } | null;
+
+  const perRow = (issue: Omit<ProductImportIssue, 'row'>): ProductImportIssue[] =>
+    group.rows.map((entry) => ({ row: entry.row, ...issue }));
 
   if (pg?.code === '23505') {
     if ((pg.constraint ?? '').includes('barcode')) {
-      return {
-        row: entry.row,
+      return perRow({
         kind: 'error',
         column: headerFor('barcode'),
         messageKey: 'error.conflict.barcodeTaken',
-        params: { barcode: entry.input.barcode ?? '' },
-      };
+        params: { barcode: group.input.barcode ?? '' },
+      });
     }
-    return {
+    return group.rows.map((entry) => ({
       row: entry.row,
       kind: 'error',
-      column: headerFor('productCode'),
+      column: headerFor('code'),
       messageKey: 'error.conflict.productCodeTaken',
-      params: { productCode: entry.input.productCode },
-    };
+      params: { productCode: entry.input.variant.code },
+    }));
   }
 
   if (pg?.code === '23514') {
     const constraint = pg.constraint ?? '';
     const hit = CHECK_TOKENS.find(([needle]) => constraint.includes(needle));
-    if (hit) return { row: entry.row, kind: 'error', messageKey: hit[1] };
+    if (hit) return perRow({ kind: 'error', messageKey: hit[1] });
   }
 
   if (error instanceof AppError) {
-    return { row: entry.row, kind: 'error', messageKey: error.messageKey, params: error.params };
+    return perRow({ kind: 'error', messageKey: error.messageKey, params: error.params });
   }
 
-  return {
-    row: entry.row,
+  return perRow({
     kind: 'error',
     messageKey: 'validation.import.rowFailed',
     params: { reason: error instanceof Error ? error.message : String(error) },
-  };
+  });
 }
 
 function finish(partial: {
@@ -481,7 +573,7 @@ function finish(partial: {
   ignoredColumns: string[];
 }): ProductImportResult {
   const sorted = [...partial.issues].sort((a, b) => a.row - b.row);
-  const skipped = sorted.filter((issue) => issue.kind === 'skipped').length;
+  const skipped = new Set(sorted.filter((issue) => issue.kind === 'skipped').map((issue) => issue.row)).size;
   // Issues are per cell; failures are per row.
   const failed = new Set(sorted.filter((issue) => issue.kind === 'error').map((issue) => issue.row)).size;
 
