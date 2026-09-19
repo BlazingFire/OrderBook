@@ -924,10 +924,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'catalog.parties.searchPlaceholder': 'Search name, code, phone…',
   // TODO(i18n-hi)
-  'catalog.products.column.code': 'Code',
-  // TODO(i18n-hi)
-  'catalog.products.column.grade': 'Grade',
-  // TODO(i18n-hi)
   'catalog.products.column.name': 'Product',
   // TODO(i18n-hi)
   'catalog.products.column.rate': 'Rate / box',
@@ -935,8 +931,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'catalog.products.column.size': 'Size',
   // TODO(i18n-hi)
   'catalog.products.column.stock': 'Free to sell, by colour',
-  // TODO(i18n-hi)
-  'catalog.products.column.type': 'Type',
   // TODO(i18n-hi)
   'catalog.products.created': '{name} saved — syncs when the Master is reachable',
   // TODO(i18n-hi)
@@ -957,17 +951,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'catalog.products.cachedPage': 'कैश किया पृष्ठ — मास्टर पैनल पहुँच से बाहर है',
   'catalog.products.loadFailed': 'कैटलॉग लोड नहीं हो सका',
   // TODO(i18n-hi)
-  'catalog.stock.free': 'free',
-  // TODO(i18n-hi)
   'catalog.stock.low': 'low',
   // TODO(i18n-hi)
   'catalog.stock.none': '—',
-  // TODO(i18n-hi)
-  'catalog.stock.onFloor': '{onFloor} on floor',
-  // TODO(i18n-hi)
-  'catalog.stock.onFloorReserved': '{onFloor} on floor, {reserved} reserved',
-  // TODO(i18n-hi)
-  'catalog.stock.short': 'Short {count}',
   // TODO(i18n-hi)
   'catalog.stock.tooltip': '{variant} — {onFloor} गोदाम में',
   // TODO(i18n-hi)
@@ -1483,8 +1469,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'inventory.action.stockIn': 'Stock in',
   // TODO(i18n-hi)
-  'inventory.boxesFree': '{count} boxes free',
-  // TODO(i18n-hi)
   'inventory.drawer.adjust': 'Adjust to physical count',
   // TODO(i18n-hi)
   'inventory.drawer.ledgerEmpty.description':
@@ -1507,12 +1491,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'inventory.error.load': 'Could not load inventory',
   // TODO(i18n-hi)
   'inventory.error.reorder': 'Could not save the reorder level',
-  // TODO(i18n-hi)
-  'inventory.field.boxes': 'Boxes',
-  // TODO(i18n-hi)
-  'inventory.field.colour': 'Colour',
-  // TODO(i18n-hi)
-  'inventory.field.colourPlaceholder': 'e.g. Ivory',
   // TODO(i18n-hi)
   'inventory.field.note': 'Note',
   // TODO(i18n-hi)
@@ -1542,8 +1520,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'inventory.movements.empty.title': 'No movements yet',
   // TODO(i18n-hi)
   'inventory.movements.table.change': 'Change',
-  // TODO(i18n-hi)
-  'inventory.movements.table.colour': 'Colour',
   // TODO(i18n-hi)
   'inventory.movements.table.note': 'Note',
   // TODO(i18n-hi)
@@ -1585,8 +1561,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'inventory.stockIn.titleForLine': 'स्टॉक इन — {product} ({variant})',
   // TODO(i18n-hi)
   'inventory.table.code': 'कोड',
-  // TODO(i18n-hi)
-  'inventory.table.colour': 'Colour',
   // TODO(i18n-hi)
   'inventory.table.free': 'Free to sell',
   // TODO(i18n-hi)
@@ -1776,8 +1750,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.detail.yes': 'Yes',
   // TODO(i18n-hi)
   'lead.list.col.amount': 'Amount',
-  // TODO(i18n-hi)
-  'lead.list.col.boxes': 'Boxes',
   // TODO(i18n-hi)
   'lead.list.col.followUp': 'Follow up',
   // TODO(i18n-hi)
@@ -2245,12 +2217,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'orders.badge.dispatched': 'dispatched',
   // TODO(i18n-hi)
   'orders.column.amount': 'Amount',
-  // TODO(i18n-hi)
-  'orders.column.boxes': 'Boxes',
-  // TODO(i18n-hi)
-  'orders.column.colour': 'Colour',
-  // TODO(i18n-hi)
-  'orders.column.colours': 'Colours',
   // TODO(i18n-hi)
   'orders.column.fromLead': 'From lead',
   // TODO(i18n-hi)
@@ -2880,8 +2846,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'partyAccess.title': 'Party access',
   // TODO(i18n-hi)
-  'product.codeRequired': 'Enter the product code',
-  // TODO(i18n-hi)
   'product.createFailed': 'Could not create the product',
   // TODO(i18n-hi)
   'product.detail.adjustAction': 'Adjust count',
@@ -2893,8 +2857,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'product.detail.rate': 'Rate / box',
   // TODO(i18n-hi)
   'product.detail.size': 'Size',
-  // TODO(i18n-hi)
-  'product.detail.stock.colour': 'Colour',
   // TODO(i18n-hi)
   'product.detail.stock.free': 'Free',
   // TODO(i18n-hi)
@@ -2908,10 +2870,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'product.detail.stock.reserved': 'Reserved',
   // TODO(i18n-hi)
   'product.detail.stockForm.adjustDone': '{variant} की स्टॉक गिनती सुधारी गई',
-  // TODO(i18n-hi)
-  'product.detail.stockForm.colour': 'Colour',
-  // TODO(i18n-hi)
-  'product.detail.stockForm.colourRequired': 'Choose a colour',
   // TODO(i18n-hi)
   'product.detail.stockForm.counted': 'Counted boxes on hand',
   // TODO(i18n-hi)
@@ -2933,20 +2891,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'product.detail.stockInAction': 'Stock in',
   // TODO(i18n-hi)
-  'product.detail.stockTitle': 'Stock by colour',
-  // TODO(i18n-hi)
   'product.detail.type': 'Type',
   // TODO(i18n-hi)
-  'product.detail.weight': 'Box weight',
-  // TODO(i18n-hi)
   'product.edit.title': 'Edit product',
-  // TODO(i18n-hi)
-  'product.field.series': 'सीरीज़',
-  'product.field.finish': 'फ़िनिश',
-  'product.field.color': 'रंग',
-  'product.field.thickness': 'मोटाई (मिमी)',
-  'product.field.piecesPerBox': 'प्रति बॉक्स पीस',
-  'product.field.boxCoverage': 'प्रति बॉक्स कवरेज (वर्ग फुट)',
   'product.field.hsnCode': 'HSN कोड',
   'product.field.mrp': 'एमआरपी',
   'product.field.purchaseRate': 'खरीद दर',
@@ -2955,28 +2902,12 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'product.field.uom': 'गिनती की इकाई',
   'product.field.barcode': 'बारकोड',
   'product.field.brand': 'ब्रांड',
-  'product.field.shade': 'शेड',
-  'product.field.calibre': 'कैलिबर',
-  'product.field.waterAbsorption': 'जल अवशोषण (%)',
-  'product.field.peiRating': 'PEI रेटिंग',
-  'product.field.edgeType': 'किनारा',
-  'product.field.surfaceTexture': 'सतह बनावट',
-  'product.field.application': 'कहाँ उपयोग',
-  'product.field.originPlant': 'उत्पादन संयंत्र',
   'product.group.identity': 'पहचान',
   'product.group.pricing': 'मूल्य',
-  'product.group.packing': 'पैकिंग',
-  'product.group.spec': 'टाइल विवरण',
   'product.group.photos': 'तस्वीरें',
   'product.uom.box': 'बॉक्स',
   'product.uom.sqft': 'वर्ग फुट',
   'product.uom.piece': 'पीस',
-  'product.edge.rectified': 'रेक्टिफ़ाइड',
-  'product.edge.non_rectified': 'नॉन-रेक्टिफ़ाइड',
-  'product.application.floor': 'फ़र्श',
-  'product.application.wall': 'दीवार',
-  'product.application.floor_wall': 'फ़र्श और दीवार',
-  'product.application.outdoor': 'बाहरी',
   'product.field.none': '—',
   'product.field.alias': 'Alias',
   // TODO(i18n-hi)
@@ -3504,8 +3435,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'sync.syncing': 'Syncing {count}',
   // TODO(i18n-hi)
-  'unit.boxes': 'boxes',
-  // TODO(i18n-hi)
   'unit.product': 'product',
   // TODO(i18n-hi)
   'unit.products': 'products',
@@ -3857,13 +3786,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'validation.stock.variantCodeTaken': 'Another colour already uses that code',
   // TODO(i18n-hi)
-  'lead.add.draft.addColour': '+ Add another colour of this product…',
-  // TODO(i18n-hi)
   'lead.add.draft.col.freeToSell': 'Free to sell',
   // TODO(i18n-hi)
   'lead.add.draft.col.quantity': 'Quantity',
-  // TODO(i18n-hi)
-  'lead.add.draft.colourOption': '{code} · {colour} · {free} free',
   // TODO(i18n-hi)
   'lead.add.draft.editing': 'editing saved product',
   // TODO(i18n-hi)
@@ -3889,11 +3814,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.draft.rateParty': 'party rate',
   // TODO(i18n-hi)
-  'lead.add.draft.ratePerBox': 'Rate per box',
-  // TODO(i18n-hi)
   'lead.add.draft.rateReset': 'Reset to {amount}',
-  // TODO(i18n-hi)
-  'lead.add.draft.removeColour': 'Remove colour {colour}',
   // TODO(i18n-hi)
   'lead.add.draft.saveChanges': 'Save changes',
   // TODO(i18n-hi)
@@ -3919,21 +3840,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.notes.placeholder': 'Anything the next person should know…',
   // TODO(i18n-hi)
-  'lead.add.products.codeHint':
-    'Each unique code is one product in one colour. Packaging is never filled in for you.',
-  // TODO(i18n-hi)
-  'lead.add.products.codePlaceholder': 'Search by unique code or product name',
-  // TODO(i18n-hi)
   'lead.add.products.col.code': 'कोड',
   // TODO(i18n-hi)
-  'lead.add.products.col.colour': 'Colour',
-  // TODO(i18n-hi)
-  'lead.add.products.col.free': 'Free',
-  // TODO(i18n-hi)
   'lead.add.products.col.product': 'Product',
-  // TODO(i18n-hi)
-  'lead.add.products.noHit':
-    'Nothing matches. A unique code covers one colour of one product — try the code, a product name, or a system code.',
   // TODO(i18n-hi)
   'lead.add.products.overFree': 'over free stock',
   // TODO(i18n-hi)
@@ -3970,14 +3879,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.party.ownRates': 'own rates applied',
   // TODO(i18n-hi)
   'lead.add.party.placeholder': 'Select party — name, code or phone',
-  // TODO(i18n-hi)
-  'unit.box': 'box',
-  // TODO(i18n-hi)
-  'inventory.error.variantCode': 'Could not save the code',
-  // TODO(i18n-hi)
-  'inventory.variantCodeLabel': 'Code for {product} {colour}',
-  // TODO(i18n-hi)
-  'inventory.table.variantCode': 'Code',
   // TODO(i18n-hi)
   'lead.add.bulkNote': '{count} products — the list scrolls',
   // TODO(i18n-hi)
@@ -4024,8 +3925,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.source.label': 'Source',
   // TODO(i18n-hi)
   'lead.add.summary.countOne': '{count} लाइन · {qty} पीस',
-  // TODO(i18n-hi)
-  'lead.add.line.boxesShort': '{count} bx',
   // TODO(i18n-hi)
   'lead.add.line.ofFree': 'of {free} free',
   // TODO(i18n-hi)
