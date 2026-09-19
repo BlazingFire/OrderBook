@@ -187,6 +187,38 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-19 — Product model → variant restructure, category-first lead search, Swisware catalogue (Claude)
+
+Scope: the owner's brief `Product_Flow_Restructure_Requirements.md` with the
+Swisware 2026 catalogue PDF (rendered page by page and transcribed). Decisions
+taken with the owner up front: seed the whole catalogue with weights blank;
+wipe the product-linked data on this install; hide the tile-only fields.
+Design and the reviewer's walk-through in
+`docs/ai-handoffs/product-model-variants.md`; the `HANDOFF.md` entry of the
+same date has the summary.
+
+**Files touched.** Migration `20260323000000_product_variants` (+ registry);
+`shared/src` contract (`ids`, `entities`, `inputs`, `pick`, `columns`,
+`product-validation`, `fields`, `developer`, `apply-change`, `socket`, both
+catalogues — new keys with Hindi, sixty dead keys removed); Master
+repositories, domain, services, routes, public API, connectors, import, sample
+data, the new `product-variant.repository.ts`, `swisware-catalogue.ts`,
+`catalogue-seed.service.ts`, `seed-catalogue-cli.ts`; Office server (`app.ts`,
+`local-store.ts`, `offline-pick.ts`); Office web (New lead, product form,
+Catalogue, product/lead/order detail, boards, dashboard, import modal, local
+search, api); Master web (Inventory, Leads & orders, Settings developer tool,
+Integrations, api); `ui/src` (`formatKg`, `SuggestInput` id,
+`ColourQuantityGrid` deleted); docs listed in the handoff. Branch
+`feature/product-variants` on top of `dda4ed5`; four commits; nothing pushed.
+
+**Verified.** `npm run verify` green at the end: lint, typecheck of every
+workspace, 117 files / 1459 tests passed, none skipped. New suites:
+`migration-product-variants`, `product-variants`, `catalogue-seed`. The
+persistent test cluster was migrated in place by the new migration (its
+idempotency guard is what makes re-running `up()` in a test safe). The live
+walk-through in the handoff §6 was run on the dev machine against
+`order_book_new`.
+
 ### 2026-09-19 — v1.0.3 Windows installers, with two packaged-only shell fixes (Claude)
 
 Scope: the owner asked for `.exe` setup files reflecting the current codebase

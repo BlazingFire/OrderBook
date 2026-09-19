@@ -77,6 +77,13 @@ installers until items 0 and 1 are both done and verified.**
     catalogue; see its implementer section. Its per-row report never touches
     the outbox, so it did not wait on 4.
 
+**Landed 2026-09-19 (Claude):**
+
+16. `product-model-variants.md` — the product master is category → model →
+    variant, with the code and weight on the variant, one lead line per
+    variant, inventory keyed by variant, the Swisware catalogue as the seed.
+    Kept as the design record until its live walk-through (§6) is signed off.
+
 **Decisions and documents:**
 
 15. `testing-plan-reconciliation.md` — four of the owner's QA findings are

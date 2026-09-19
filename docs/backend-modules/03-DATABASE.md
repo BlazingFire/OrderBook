@@ -1342,10 +1342,12 @@ Four reasons, in order of weight:
    text id with a prefix exists to let a panel mint an identifier before the Master has seen the
    record — a problem that does not arise here. A `UUID` generated in application code (the house
    default, `docs/schema/00-overview.md:61-70`) is enough.
-2. **`ENTITY_PREFIX` is a bijection over eleven syncable entities** (`shared/src/sync/ids.ts:62-74`).
-   Adding a twelfth means a `MutationKind`, a `MUTATION_PERMISSIONS` entry, a `COLUMN_MAP` entry, an
-   `id_sequences` seed and a `PREFIX_TO_ENTITY` inverse — five coordinated additions to buy a
-   capability nobody asked for.
+2. **`ENTITY_PREFIX` is a bijection over the syncable entities** (`shared/src/sync/ids.ts`; twelve
+   since `product_variant`/`VR` joined in 2026-09). Adding one more means a `MutationKind`, a
+   `MUTATION_PERMISSIONS` entry, a `COLUMN_MAP` entry, an `id_sequences` seed and a
+   `PREFIX_TO_ENTITY` inverse — five coordinated additions to buy a capability nobody asked for.
+   (The product variant took only the prefix and the `id_sequences` seed: it is never mutated on
+   its own, only as the `variants` field of a product.)
 3. **`layout` is not field-mergeable.** `field_hlc` keys by flat column name; a nested block-layout
    document has no flat field names, so two offline edits to different blocks are indistinguishable
    from two edits to the same one. The merge engine would either accept both and corrupt the layout

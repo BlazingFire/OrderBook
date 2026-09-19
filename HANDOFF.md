@@ -133,6 +133,50 @@ Everything through Stage 6 is pushed to **both `dev` and `main`** (they are at
 the same commit as of 2026-08-28). Stages 7–12 are on `dev` only, awaiting the
 owner's word to push.
 
+### The product master is category → model → variant (2026-09-19)
+
+The business is Swisware sanitaryware, not tiles, and the owner's brief
+(`Product_Flow_Restructure_Requirements.md`) restructured the product flow
+around it. On branch `feature/product-variants`, four commits, nothing pushed:
+
+- **Every code and every weight lives on `product_variants`** (id prefix
+  `VR`). A product is a model in a **mandatory** category; a model with no
+  colour or pattern choices has exactly one unlabelled variant, so one partial
+  unique index guards every code in the shop. `products.product_code`,
+  `weight_kg`, `color` and `product_code_seq` are gone; `has_variants` is new.
+  Weights are nullable on purpose (the catalogue has none) and flagged *weight
+  missing* everywhere until entered; `> 0` when given.
+- **A lead line is one variant** — `line_items.variant_id`, `variant_label`,
+  `quantity`; `line_item_quantities` is dropped. Two colours of one model are
+  two lines with their own code, weight and total. `Lead`/`Order` carry
+  `totalWeightKg` and `linesWithoutWeight`. Snapshots freeze the variant's
+  code and weight; a weight entered later leaves an order alone.
+- **Inventory is keyed by `variant_id`** on stock, movements and reservations;
+  the free-text colour columns are gone. The `stock` change event's id is the
+  variant id.
+- **The lead screen searches category first**, then the models inside it
+  (`PickKind` = `category` · `product` scoped by `categoryId` · `party`; the
+  `variant` kind is gone), then opens a draft card with one row per variant
+  and adds one line per filled row.
+- **The variant set is one mergeable field** (`fieldHlc.variants`), replaced
+  whole online and on the offline merge path through `replaceVariants`; a
+  removed variant that history quotes is deactivated, not deleted; a binned
+  product frees its codes and restore is refused while another product holds
+  one.
+- **Migration `20260323000000_product_variants` wipes every product-linked
+  table** (the owner's decision — a fresh master from the catalogue), is
+  idempotent, and `down()` throws. The Swisware catalogue (12 categories, 251
+  models, 549 variants, no weights) is pure data in
+  `master/src/domain/swisware-catalogue.ts`, loaded via Settings → Developer →
+  *Load the Swisware catalogue* or `npm run seed:catalogue`; the sample
+  dataset is rebuilt on top of it. The bulk import is one sheet row per
+  variant. The tile-only product fields are hidden from the form and the
+  template (columns kept).
+- Docs: `docs/ai-handoffs/product-model-variants.md` (decisions, design,
+  the reviewer's walk-through), `docs/schema/02` and `03`,
+  `docs/LEAD_GENERATION_FLOW.md` §3.2/§5, `docs/DEVELOPER_MODE.md`,
+  `docs/backend-modules/04-API-CONTRACT.md` §10.2a.
+
 ### The PDF Designer (Documents module) is removed (2026-09-19)
 
 The owner asked for the Documents module — templates, the page designer, the

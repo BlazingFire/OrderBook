@@ -69,20 +69,34 @@ offline draft is never lost to validation.
 
 ### 3.2 Per line item
 
-Picking a product snapshots these onto the line **at that moment**:
+**A line is one variant of one product** (2026-09). The product master is *category → model →
+variant*, where every variant owns the code, the colour or pattern text and the weight; a model
+with no colour choices has exactly one, unlabelled variant. White ×5 and Blue ×10 of the same
+model are therefore two lines, each with its own code, weight and total.
+
+Picking a variant snapshots these onto the line **at that moment**:
 
 | Field | Source |
 |---|---|
-| `productId` | Selected product — kept live for stock movement and traceability |
-| `productName`, `alias`, `rate`, `code`, `sin`, `size`, `weightKg`, `grade`, `productType` | Copied from the product, or from the party's variant when `partyWiseMode` is on |
-| `quantities[]` | **Required** — `{ colour, quantity }` per colour ordered |
+| `productId`, `variantId` | Selected model and variant — kept live for stock movement and traceability; the variant must belong to the product and still be active (`validation.lead.variantMissing`) |
+| `code`, `variantLabel`, `weightKg` | Copied from the **variant** — a party's rate never changes what a basin weighs |
+| `productName`, `alias`, `rate`, `sin`, `size`, `grade`, `productType` | Copied from the product, or from the party's rate record when `partyWiseMode` is on |
+| `quantity` | **Required**, greater than zero (`validation.lead.quantityRequired`) |
 | `packaging` | **Chosen manually** — never auto-filled, even in `partyWiseMode` |
 | `sequence` | Display order, auto-assigned |
 | `fromPartyVariant` | Auto-set `true` when the values came from a party variant |
 | `imagePath`, `notes` | Optional |
 
-**Convenience input:** typing a product's `code` into the line entry auto-fills the rest of the
-line. `packaging` is pointedly excluded from that auto-fill.
+**How a line is found, on the screen:** the search box offers **categories only** first — typing
+"toilet" shows *ONE PIECE TOILET* and never a product. The chosen category becomes a chip and the
+same box then searches the models inside it, by name or by any of their codes. Picking a model
+opens a card with one row per variant (code and weight already filled, a quantity to type);
+adding the card adds one line per row with a quantity. The category chip stays for the next
+product; Backspace on an empty box, or the chip's ✕, goes back to choosing a category.
+
+`packaging` is pointedly excluded from every auto-fill. A variant whose weight nobody has entered
+yet shows **weight missing** rather than a zero, on the card, on the line and in the footer, which
+also counts such lines beside the total weight it could compute.
 
 ### 3.3 Deliberately not on a lead
 
@@ -121,22 +135,27 @@ Trigger: a user holding **`lead.convert`** presses **Convert to Order**.
    discriminated by `(parent_type, parent_id)`, so conversion inserts copies with
    `parent_type = 'order'` — a straight copy, never a re-derivation. Snapshotted values are **not**
    re-read from the product.
-4. **Stock is reserved** — one `stock_reservations` row per `(product, colour)` on the order.
+4. **Stock is reserved** — one `stock_reservations` row per line, keyed by the line's variant.
    A white basin in stock does not satisfy a reservation for a blue one.
 5. **The lead is marked converted** — `converted_order_id` and `converted_at` are set. The lead is
    never deleted; it stays as history pointing at its order.
 6. **The order starts its own pipeline** — a separate configurable pipeline (seeded In Progress /
    Postpone / Dispatched), independent of the lead's.
 7. **Order-only fields open up**: `dispatchAddressLabel`, `expectedDispatchDate`, `totalWeightKg`
-   (always auto-summed from line weights) and `totalWeightKgOverride` — when the override is set
+   (always auto-summed from the lines' `weightKg × quantity`, over the lines that have a weight —
+   `linesWithoutWeight` counts the rest) and `totalWeightKgOverride` — when the override is set
    the UI labels the weight "manual" instead of "computed".
 
 ### 5.2 Guarantees that are explicitly tested
 
-- Conversion copies line items **unchanged** — no silent recalculation.
-- A line's snapshotted `rate` does **not** move when the product's rate is edited afterwards.
+- Conversion copies line items **unchanged** — product, variant, code, colour, weight, quantity —
+  no silent recalculation.
+- A line's snapshotted `rate` and `weightKg` do **not** move when the product or its variant is
+  edited afterwards; an order already raised is untouched by a weight entered later.
 - `packaging` is **never** auto-filled during conversion — it keeps exactly what was entered.
-- Reservations are per `(product, colour)`, never aggregated to a product total.
+- Reservations are per variant, never aggregated to a product total.
+- A variant of another product, or one taken off the form, is refused on a new lead; a line with
+  no quantity is refused.
 
 ---
 
@@ -179,18 +198,20 @@ The same shape is reused unchanged on orders.
 
 ### 8.1 Snapshotted at add time
 
-Frozen the moment the line is added; editing the product later does not change them.
+Frozen the moment the line is added; editing the product or its variant later does not change them.
 
-`productName`, `alias`, `rate`, `code`, `sin`, `size`, `weightKg`, `grade`, `productType`
+`productName`, `alias`, `rate`, `code`, `variantLabel`, `sin`, `size`, `weightKg`, `grade`,
+`productType`
 
 ### 8.2 Other fields
 
 | Field | Notes |
 |---|---|
-| `productId` | Live reference, for stock movement and traceability |
+| `productId`, `variantId` | Live references, for stock movement and traceability |
 | `sequence` | Display order |
 | `packaging` | Manual on every line — never auto-filled |
-| `quantities[]` | `{ colour, quantity }` child rows, not columns |
+| `quantity` | Pieces of this one variant; greater than zero |
+| `lineWeightKg` | Derived: `weightKg × quantity`, or null while the weight is missing |
 | `fromPartyVariant` | `true` when the values came from a party variant |
 | `imagePath`, `notes` | Optional |
 

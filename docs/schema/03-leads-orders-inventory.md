@@ -21,6 +21,10 @@ an id before the Master has ever seen the record (`LEAD_GENERATION_FLOW.md` §7)
 
 `id_map` keeps a temporary id resolvable forever, so a docket printed offline stays findable.
 
+The prefixes are the `ENTITY_PREFIX` table in `shared/src/sync/ids.ts`: `PT` party, `PR`
+product, `VR` product variant, `PV` party variant (a party's negotiated rate — the older of the
+two, which is why the product variant could not take `PV`), `LD` lead, `OD` order, and so on.
+
 ## `leads`
 
 ```sql
@@ -113,15 +117,17 @@ CREATE TABLE line_items (
   parent_type        TEXT NOT NULL CHECK (parent_type IN ('lead', 'order')),
   parent_id          TEXT NOT NULL,
   product_id         TEXT NOT NULL REFERENCES products(id),
+  variant_id         TEXT NOT NULL REFERENCES product_variants(id),   -- since 2026-09: a line is one variant
 
   -- Snapshotted at add time, frozen from then on.
   product_name       TEXT NOT NULL,
   alias              TEXT,
   rate               BIGINT,
-  code               TEXT,
+  code               TEXT,                       -- the variant's code as it was
+  variant_label      TEXT,                       -- the variant's colour or pattern as it was
   sin                TEXT,
   size               TEXT,
-  weight_kg          NUMERIC(10,3),
+  weight_kg          NUMERIC(10,3),              -- the variant's weight as it was, per piece
   grade              TEXT,
   product_type       TEXT,
 
@@ -130,7 +136,7 @@ CREATE TABLE line_items (
   from_party_variant BOOLEAN NOT NULL DEFAULT false,
   image_path         TEXT,
   notes              TEXT,
-  total_quantity     NUMERIC(12,2) NOT NULL DEFAULT 0,
+  quantity           NUMERIC(12,2) NOT NULL CHECK (quantity > 0),  -- was total_quantity
   line_total         BIGINT,
   search_vector      tsvector,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -139,6 +145,7 @@ CREATE TABLE line_items (
 
 CREATE INDEX idx_line_items_parent  ON line_items(tenant_id, parent_type, parent_id);
 CREATE INDEX idx_line_items_product ON line_items(tenant_id, product_id);
+CREATE INDEX idx_line_items_variant ON line_items(tenant_id, variant_id);
 CREATE INDEX idx_line_items_search  ON line_items USING GIN (tenant_id, search_vector);
 ```
 
@@ -152,19 +159,17 @@ what an order was quoted at. `rate` is copied at add time and never re-read.
 `packaging` is nullable in the schema but required by policy before conversion. It is deliberately
 never derived — not from the product, not from a party variant, not during conversion.
 
-```sql
-CREATE TABLE line_item_quantities (
-  id           UUID PRIMARY KEY,
-  line_item_id TEXT NOT NULL REFERENCES line_items(id) ON DELETE CASCADE,
-  colour       TEXT NOT NULL,
-  quantity     NUMERIC(12,2) NOT NULL DEFAULT 0
-);
-CREATE UNIQUE INDEX idx_line_item_qty_colour ON line_item_quantities(line_item_id, colour);
-```
-
-Colours are child rows, not columns: one line routinely covers several and the count is not known
-in advance. The unique index stops a line carrying two rows for the same colour, which would
-reserve stock twice.
+**A line is one variant** (2026-09). White ×5 and Blue ×10 of the same model are two lines,
+each with its own code, its own weight and its own total. The `line_item_quantities` child table
+of the tile-era model (one line, many colour rows) is gone: the colour is now the variant, and
+the variant is what stock is keyed by, so a line and a reservation are the same grain. `code`,
+`variant_label` and `weight_kg` are copied off the variant when the line is added and never
+re-read — a weight entered on the product later does not move an order's line (the same rule
+`rate` has always followed). `Lead.totalWeightKg` and `Order.totalWeightKg` sum `weight_kg ×
+quantity` over the lines that have a weight; `linesWithoutWeight` counts the rest, because an
+unentered weight is a fact to show, not a zero to add. The CHECK on `quantity` is what makes "a
+line with nothing on it" impossible to store; the service refuses it first with
+`validation.lead.quantityRequired`.
 
 ## `timeline_entries`
 
@@ -219,13 +224,13 @@ Three tables, and the split between them is the point.
 CREATE TABLE inventory_stock (
   id             UUID PRIMARY KEY,
   tenant_id      UUID NOT NULL REFERENCES tenants(id),
-  product_id     TEXT NOT NULL REFERENCES products(id),
-  colour         TEXT NOT NULL,
-  quantity_boxes NUMERIC(12,2) NOT NULL DEFAULT 0,
+  product_id     TEXT NOT NULL REFERENCES products(id),           -- denormalised; the variant's product
+  variant_id     TEXT NOT NULL REFERENCES product_variants(id),   -- since 2026-09 (was colour TEXT)
+  quantity_boxes NUMERIC(12,2) NOT NULL DEFAULT 0,               -- pieces, despite the name
   reorder_level  NUMERIC(12,2),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE UNIQUE INDEX idx_inventory_product_colour ON inventory_stock(tenant_id, product_id, colour);
+CREATE UNIQUE INDEX idx_inventory_variant ON inventory_stock(tenant_id, variant_id);
 
 CREATE TABLE stock_reservations (
   id           TEXT PRIMARY KEY,
@@ -233,7 +238,7 @@ CREATE TABLE stock_reservations (
   order_id     TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
   line_item_id TEXT NOT NULL REFERENCES line_items(id) ON DELETE CASCADE,
   product_id   TEXT NOT NULL REFERENCES products(id),
-  colour       TEXT NOT NULL,
+  variant_id   TEXT NOT NULL REFERENCES product_variants(id),   -- since 2026-09 (was colour TEXT)
   quantity     NUMERIC(12,2) NOT NULL,
   status       TEXT NOT NULL DEFAULT 'active'
                CHECK (status IN ('active', 'released', 'consumed')),
@@ -241,14 +246,14 @@ CREATE TABLE stock_reservations (
   settled_at   TIMESTAMPTZ
 );
 CREATE INDEX idx_reservations_order   ON stock_reservations(tenant_id, order_id);
-CREATE INDEX idx_reservations_product ON stock_reservations(tenant_id, product_id, colour)
+CREATE INDEX idx_reservations_variant ON stock_reservations(tenant_id, variant_id)
     WHERE status = 'active';
 
 CREATE TABLE stock_movements (
   id                 BIGSERIAL PRIMARY KEY,
   tenant_id          UUID NOT NULL REFERENCES tenants(id),
   product_id         TEXT NOT NULL REFERENCES products(id),
-  colour             TEXT NOT NULL,
+  variant_id         TEXT NOT NULL REFERENCES product_variants(id),   -- since 2026-09 (was colour TEXT)
   movement_type      TEXT NOT NULL CHECK (movement_type IN ('inbound','outbound','adjustment')),
   quantity_boxes     NUMERIC(10,2) NOT NULL,   -- signed delta, never an absolute
   reference_type     TEXT,
@@ -259,9 +264,15 @@ CREATE TABLE stock_movements (
 );
 ```
 
-**Everything is keyed per (product, colour).** A white basin in stock does not satisfy a
-reservation for a blue one, so aggregating to a product total would be wrong rather than merely
-imprecise.
+**Everything is keyed per variant.** A white basin in stock does not satisfy a reservation for a
+blue one, so aggregating to a product total would be wrong rather than merely imprecise. Until
+2026-09 the key was `(product_id, colour)` with the colour as free text that a stock movement
+happened to create; now it is the `product_variants` row the code belongs to, which is also what
+the lead line points at — so a reservation, a movement and a line are the same grain and there is
+nothing to match up by name. `product_id` stays on all three, denormalised, for the product-level
+listings and the delete guard. (`stock_movements.variant_id` also carries a `(tenant_id,
+variant_id)` index, `idx_stock_movements_variant`, for the per-variant ledger the inventory
+screen opens.)
 
 `stock_movements` is the append-only ledger of signed deltas; `inventory_stock` is the derived
 snapshot; `stock_reservations` is what is committed but not yet gone. Together they let the system
@@ -271,8 +282,8 @@ say "40 on the floor, 30 spoken for, 10 free to sell" — which a single running
 |---|---|---|
 | Stock arrives | `inbound` movement, `reference_type = 'purchase'` | Adds boxes |
 | Physical count | `adjustment` movement, signed difference | Corrects the figure |
-| Lead **converted** | one `stock_reservations` row per (line, colour) | Reduces *free to sell*; the ledger is untouched |
-| Order **dispatched** | `outbound` movement per (product, colour), reservations → `consumed` | Boxes actually leave |
+| Lead **converted** | one `stock_reservations` row per line (= per variant) | Reduces *free to sell*; the ledger is untouched |
+| Order **dispatched** | `outbound` movement per variant (lines of one variant summed), reservations → `consumed` | Pieces actually leave |
 | Order cancelled | reservations → `released` | Hold disappears, ledger never involved |
 
 Three rules the implementation depends on:
@@ -286,7 +297,7 @@ Three rules the implementation depends on:
 
 **Stock is allowed to go negative, and an order is never blocked by insufficient stock.** A ceramic
 dealer routinely sells against a factory order that has not arrived; the shortfall is surfaced
-instead. A (product, colour) that is reserved but has no stock row at all is synthesised into the
+instead. A variant that is reserved but has no stock row at all is synthesised into the
 inventory view at zero, precisely because that is the case worth seeing.
 
 ## 7. What changed from the previous model, and why
@@ -304,3 +315,18 @@ inventory view at zero, precisely because that is the case worth seeing.
 Migration `20260302000000_lead_order_rebuild` performs all of this on existing data: leads keep
 their history, and a lead that had already reached `order` becomes a real order whose reservations
 are recorded as **consumed**, since it had already taken its stock under the old rules.
+
+### And again in 2026-09: the variant restructure
+
+| Before | Now | Why |
+|---|---|---|
+| `products.product_code`, `weight_kg`, `color` | `product_variants` rows — one per colour/pattern, one for a plain product | A sanitaryware model is sold in many coded variants, each with its own code and weight (`02-parties-and-products.md`) |
+| `line_items` + `line_item_quantities` (one line, many colour rows) | One line per variant: `variant_id`, `variant_label`, `quantity` | The colour *is* the variant, and the variant is what stock is keyed by |
+| `inventory_stock` / `stock_reservations` / `stock_movements` keyed by `(product_id, colour)` text | Keyed by `variant_id` | A line, a hold and a movement share one grain; nothing is matched by a typed colour name |
+| `products.category_id` optional | `NOT NULL` | The lead screen finds products category-first |
+| Pick kinds `product`, `variant`, `party` | `category`, `product` (scoped by `categoryId`), `party` | The two-stage search the brief asked for |
+
+Migration `20260323000000_product_variants` does **not** convert tile data: it wipes every
+product-linked table (the owner's decision — a fresh master from the Swisware catalogue) and
+`down()` throws. The catalogue is loaded through Settings → Developer or `npm run
+seed:catalogue`; the sample dataset is built on top of it (`docs/DEVELOPER_MODE.md`).

@@ -48,6 +48,14 @@ Normalized into its own table rather than a free-text column on `products`, so t
 set of types stays consistent (no "Floor Tile" vs "floor tile" vs "Floor Tiles"
 drift) and can be managed from a settings screen later without a migration.
 
+Since `20260323000000_product_variants` a category is **mandatory** on every
+product (`products.category_id` is `NOT NULL`): the lead screen finds products
+category-first — typing "toilet" offers *ONE PIECE TOILET*, never a product —
+so a product outside every category would be unreachable from the one screen
+that sells it. The catalogue's twelve categories are seeded by the Swisware
+loader (`docs/DEVELOPER_MODE.md`); a product form that names a category the
+Master does not hold creates it.
+
 ```sql
 CREATE TABLE product_categories (
   id         UUID PRIMARY KEY,
@@ -56,14 +64,21 @@ CREATE TABLE product_categories (
 );
 ```
 
-## `products`
+## `products` (the model)
+
+A row is a **model** — DAMRU, 102, HEXA URINAL — the thing a category lists and a
+name is typed for. It carries no code and no weight: those belong to its
+variants (next section), and a model with no colour or pattern choices has
+exactly one variant. The DDL below is the tile-era original; the
+2026-09 restructure that removed `product_code`, `weight_kg` and `color` and
+added `has_variants` is described under *Product variants*.
 
 ```sql
 CREATE TABLE products (
   id                UUID PRIMARY KEY,
-  product_code      TEXT NOT NULL UNIQUE,            -- printed/scanned code staff search by
+  product_code      TEXT NOT NULL UNIQUE,            -- printed/scanned code staff search by (DROPPED 2026-09 — see product_variants)
   name              TEXT NOT NULL,
-  category_id       UUID REFERENCES product_categories(id),
+  category_id       UUID REFERENCES product_categories(id),   -- NOT NULL since 2026-09
   size              TEXT,                            -- e.g. "600x600mm"
   finish            TEXT,                            -- e.g. glossy / matte / rustic
   series            TEXT,
@@ -151,6 +166,85 @@ The reorder point was **not** renamed — `reorder_level` already carries
 `countLowStock`, `mapStockLevel`, a route and a mutation kind — and `isLow` is
 still driven by it alone, because a second low-stock rule would make the
 dashboard's figure ambiguous.
+
+### Product variants (2026-09-19)
+
+`20260323000000_product_variants` moved the product master from a tile trade
+to a sanitaryware one — category → **model** → **variant** — where a model
+(DAMRU) is sold in many coded variants (41, 42, … each a pattern; White;
+Rustic Coffee Brown) and every variant owns its own code and its own weight.
+The owner's brief (`Product_Flow_Restructure_Requirements.md`) is the source of
+the rules; the design choices are recorded in
+`docs/ai-handoffs/product-model-variants.md`.
+
+```sql
+CREATE TABLE product_variants (
+  id         TEXT PRIMARY KEY,                       -- 'VR' + 10 digits (shared/src/sync/ids.ts)
+  tenant_id  UUID NOT NULL REFERENCES tenants(id),
+  product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  code       TEXT NOT NULL,                          -- the code staff type; unique across the shop
+  label      TEXT,                                   -- colour or pattern; NULL on a no-variant product
+  weight_kg  NUMERIC(10,3) CHECK (weight_kg IS NULL OR weight_kg > 0),
+  sequence   INTEGER NOT NULL DEFAULT 0,             -- the order the form shows them in
+  is_active  BOOLEAN NOT NULL DEFAULT true,          -- false once removed from the form but still quoted somewhere
+  deleted_at TIMESTAMPTZ,                            -- mirrored from products.deleted_at on bin/restore
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX idx_product_variants_code_tenant ON product_variants (tenant_id, lower(code)) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX idx_product_variants_label       ON product_variants (product_id, lower(coalesce(label, '')));
+CREATE INDEX        idx_product_variants_product     ON product_variants (tenant_id, product_id, sequence);
+CREATE INDEX        idx_products_category            ON products (tenant_id, category_id);
+
+ALTER TABLE products
+  DROP COLUMN product_code, DROP COLUMN weight_kg, DROP COLUMN color,
+  ADD COLUMN has_variants BOOLEAN NOT NULL DEFAULT false,
+  ALTER COLUMN category_id SET NOT NULL;
+DROP SEQUENCE product_code_seq;
+```
+
+**Every product has at least one variant.** A product with no colour or
+pattern choices (`has_variants = false`) has exactly one row with `label NULL`
+— which is what lets **one** partial unique index guard every code in the shop
+whichever kind of product it belongs to, and what lets a lead line, a stock
+row and a reservation always point at a `variant_id`. The label index's
+`coalesce(label, '')` is what stops a second unlabelled row on one model.
+
+The partial code index (`WHERE deleted_at IS NULL`) is why `deleted_at` is
+mirrored from the product: a binned product frees its codes for another
+product — the ordinary way a single-code product is regrouped into a model —
+and restoring it is refused, naming the codes, while another live product
+holds one (`validation.product.restoreCodesTaken`). Codes are what the trade
+quotes, so they are never renamed on the way out of the bin the way party
+names are.
+
+`is_active = false` is a variant taken off the form that history still quotes
+(a line, a movement, a stock row with pieces on it, an active reservation):
+`replaceVariants` deactivates such a row rather than deleting it, keeps its
+id and its code, and refuses it on new leads (`validation.lead.variantMissing`).
+An unreferenced row is simply deleted.
+
+`weight_kg` is nullable on purpose: the catalogue carries no weights and
+inventing one would put a number on a dispatch note that nobody measured. A
+blank weight is flagged "weight missing" on every screen and left out of every
+total (`Lead.totalWeightKg` counts the rest in `linesWithoutWeight`); when
+given it must be positive, both here and in `validateProductVariants`.
+
+`products.search_vector` now includes the variants' codes and labels at
+weight A: `products_search_refresh()` aggregates them, and an AFTER trigger on
+`product_variants` (`product_variants_search_refresh()`) re-fires the product's
+own BEFORE UPDATE trigger, so a code edited on a variant is searchable at once
+even though the product row itself did not change.
+
+**The migration wipes every product-linked record** — products, categories,
+image rows, party-wise rates, the stock ledger and snapshot, reservations,
+leads, orders, their lines and timelines — because the owner chose a fresh
+product master from the catalogue over migrating tile data that no longer
+describes the business, and leads and orders cannot outlive the products they
+quote. Users, roles, parties, settings, pipelines and option lists stay;
+`activity_log` keeps its history of the wiped ids; image files on disk are left
+alone. It is idempotent (skipped once `products.product_code` is gone) and
+`down()` throws — restore from a backup.
 
 ## `product_images`
 

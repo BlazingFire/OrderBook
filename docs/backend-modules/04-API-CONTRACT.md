@@ -1008,13 +1008,12 @@ write.
 a set is opened, not folded into the list, so the cheap read the screens and panels do constantly is
 not dragged down by grouped scans.
 
-**The usage count deliberately excludes `stock_movements`.** The count groups over
-`line_item_quantities` (joined to `line_items` for the tenant filter — `line_item_quantities` has no
-`tenant_id` of its own), `inventory_stock` and `stock_reservations`. No index leads with `colour` on
-any of them; `idx_inventory_product_colour` is `(tenant_id, product_id, colour)`, the wrong leading
-column for a colour-only probe. `stock_movements` is the append-only ledger, projected into the
-millions by `docs/schema/05` — including it would seq-scan the ledger every time somebody opened
-Fields → Colours. Three sources answer "is this colour in use" adequately.
+**The usage count deliberately excludes `stock_movements`.** Since the 2026-09 variant
+restructure the colour lives on `product_variants.label` and is frozen onto `line_items.variant_label`;
+the count groups over those two (stock, reservations and movements no longer carry a colour of
+their own — they point at the variant). `stock_movements` is the append-only ledger, projected into
+the millions by `docs/schema/05` — including it would seq-scan the ledger every time somebody opened
+Fields → Colours. Two sources answer "is this colour in use" adequately.
 
 | Error | Status | `details` | Trigger |
 |---|---|---|---|
@@ -1924,6 +1923,33 @@ flag. Nothing in this batch is queued into the outbox.
 | `GET /api/documents/exports/:id/file` | same | `document:exportFile` | Bytes through the ack. Size **open (O-2)** |
 | `GET /api/dashboard` | *(none — cached)* | — | Rides on `SyncSnapshot.dashboard`; served from `/api/snapshot` and the SSE `snapshot` event |
 | — | `POST /api/dashboard/refresh` | `dashboard:get` | The one live pull. 503 offline; the cached figures stay on screen with their `asOf` label |
+
+### 10.2a The product-variant surface (2026-09)
+
+Not part of the six modules above, but the same forwarding pattern, and the contract every screen
+now assumes (`docs/ai-handoffs/product-model-variants.md` has the design):
+
+| Master endpoint | Office route | Notes |
+|---|---|---|
+| `GET /api/pick/category?q=` | same, answered from the cached snapshot offline | The lead screen's first stage. `PickKind` is `'category' \| 'product' \| 'party'`; the tile-era `'variant'` kind is gone |
+| `GET /api/pick/product?q=&categoryId=` | same | The second stage: models inside one category, matched on name, alias, barcode, brand and every variant's code and label; each row carries `variants[]` |
+| `GET /api/products?search=&categoryId=&missingWeight=true` | same | `ProductListPage.categories` is the facet, counted over the search without the category filter |
+| `GET /api/categories?search=` | — | |
+| `POST /api/products` · `PUT /api/products/:id` | queued | `ProductInput` carries `categoryId` or `categoryName` (one required on create), `hasVariants` and `variants: ProductVariantInput[]`; the set is validated by `validateProductVariants` on both the online and the offline-merge path, and replaced whole (`fieldHlc.variants` carries one stamp) |
+| `GET /api/products/by-code/:code` | — | Resolves through the variant that holds the code |
+| `POST /api/stock/inbound` · `POST /api/stock/adjust` · `POST /api/stock/reorder-level` | same | Bodies name a `variantId`; `/api/stock/colours/:productId` no longer exists |
+| `GET /api/stock/movements?productId=&variantId=` | — | Either scope |
+| `POST /api/developer/load-catalogue` | — | Developer-unlocked; returns `LoadCatalogueResult { categories, products, variants, skipped }` |
+
+Lead and order line bodies (`LineItemInput`) name a `productId`, a `variantId` and one `quantity`;
+`quantities[]` is gone. `Lead` and `Order` carry `totalWeightKg` and `linesWithoutWeight`; every
+line carries `variantId`, `variantLabel`, `quantity`, `lineWeightKg`. Stock levels, reservations and
+movements are keyed by `variantId` and carry `variantCode` / `variantLabel`; the `stock` change event's
+`id` is the variant id.
+
+Restoring a product from the Recycle Bin is refused with `validation.product.restoreCodesTaken`
+(409, `details: { field: 'code', codes }`) while another live product holds one of its codes —
+codes are never renamed on the way out of the bin the way party names are.
 
 ### 10.3 What is Master-only, and why
 

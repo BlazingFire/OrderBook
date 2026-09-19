@@ -93,19 +93,74 @@ machine it seeds whichever database that names, not a fresh one.
 Everything else in the database is untouched — other users, parties, products,
 leads and orders stay exactly as they were.
 
+## The Swisware catalogue
+
+The product master is the Swisware sanitaryware catalogue (Smruti Ceramics,
+2026 edition): twelve categories — ONE PIECE TOILET, ONE PIECE BASIN, WATER
+CLOSET, UNDER COUNTER BASIN, LAB SINK, WASH BASIN, TABLE TOP WASH BASIN, PLAIN
+SET, URINAL, ORISSA PAN, ACCESSORIES, MERCHANDISE — holding 251 models and 549
+variants. It is transcribed as pure data in
+`master/src/domain/swisware-catalogue.ts` and loaded by
+`master/src/services/catalogue-seed.service.ts`, which replays it through the
+ordinary catalogue service as the installation's first administrator, so what
+lands is exactly what a person typing it in would have produced: categories,
+models, variants, activity entries, and the colour palette (`stock.colour`)
+the variant labels draw their swatches from.
+
+**From the app** — Settings → Developer → unlock → *Load the Swisware
+catalogue*. The result reports the categories, models and variants created and
+the models it left alone.
+
+**From a checkout:**
+
+```bash
+npm run seed:catalogue
+```
+
+The CLI (`master/src/db/seed-catalogue-cli.ts`) uses the same `.env` and the
+same database, prints the counts, and shuts down.
+
+Three rules govern the transcription, and they are the owner's brief's rather
+than choices made here:
+
+- **A model is grouped only where the catalogue names it.** "DAMRU VITROSA"
+  41…100 are variants of the DAMRU basin because the page says so; the designer
+  one-piece toilets 1111…1199 are separate single-code products because no
+  model name appears, and grouping them by how the pictures look is what the
+  brief forbids. Variant labels are `Vitrosa <code>` for a coded pattern, the
+  catalogue's own colour caption for a colour variant, `White` for the plain
+  member of a model.
+- **Codes are the catalogue's codes.** Where the catalogue prints none (the
+  plain basins, the sets, the urinals, the pans, the accessories) the product
+  gets a transparent slug of its name — `HEXA-URINAL`, `DAMRU-WHITE` — for the
+  administrator to replace with the real one on the product form.
+- **No weights.** The catalogue carries none, and inventing one from a picture
+  would put a number on a dispatch note nobody measured. Every variant lands
+  with a blank weight, shows as *weight missing* on every screen and is left
+  out of every total until somebody enters it — the Office panel's Catalogue
+  has a *Missing weight* filter for exactly that job.
+
+It is **idempotent by model**: a model whose codes are all already live is
+skipped, so a second press changes nothing and reports everything under
+*skipped*. A model some of whose codes exist is skipped too, rather than
+half-created — the administrator has been editing it, and the catalogue must
+not undo that. It adds to whatever else is there and never deletes.
+
 ## Sample data
 
 A fresh Master with three sign-ins and nothing to look at teaches nobody
-anything. *Sample data* fills it with six months of a small ceramic-tile trade so
-every screen on both panels has something to show: sixteen parties across
-Gujarat, Maharashtra, Rajasthan and Madhya Pradesh; twenty-three products in six
-categories, each with a generated photo; opening stock and later arrivals,
-physical counts, reorder bands and a per-colour stock code on every row; thirty-three
-leads at every pipeline stage with remarks along the way; the won ones converted
-to orders — in progress, postponed, cancelled, and fourteen dispatched across
-the months so the reports have a curve; party-wise rates, party-access
-assignments, custom fields on all four entities, values in every option list,
-and one party, one product and one lead in the Recycle Bin.
+anything. *Sample data* fills it with six months of a small sanitaryware trade
+so every screen on both panels has something to show: the whole Swisware
+catalogue, loaded first (above), with prices, an alias and illustrative weights
+entered on the sixteen models the demo trades in, each with a generated photo;
+sixteen parties across Gujarat, Maharashtra, Rajasthan and Madhya Pradesh;
+opening stock and later arrivals, physical counts and reorder bands per variant;
+thirty-three leads at every pipeline stage with remarks along the way, their
+lines one variant each; the won ones converted to orders — in progress,
+postponed, cancelled, and fourteen dispatched across the months so the reports
+have a curve; party-wise rates, party-access assignments, custom fields on all
+four entities, values in every option list, and one party, one product and one
+lead in the Recycle Bin.
 
 **From the app** — Settings → Developer → unlock → *Seed sample data*. The result
 lists what was made, and the three sign-ins beside it.
@@ -148,12 +203,14 @@ on the Activity log screen shows it).
   same warning applies: an existing `admin` has its password overwritten with
   `Admin@1234` and its sessions ended, and on a Master nobody has set up it
   runs first-time setup itself under *OrderBook Test Company*.
-- **It runs once per installation.** The first product code in the dataset is
-  the marker; if it exists, the tool refuses before touching anything — the
-  users included — and says so. To start over, *Erase everything* first.
+- **It runs once per installation.** The first sample party (by its phone
+  number) is the marker; if it exists, the tool refuses before touching
+  anything — the users included — and says so. To start over, *Erase
+  everything* first. The catalogue load inside it is idempotent on its own, so
+  a Master that already holds the catalogue simply keeps it.
 - **It adds to whatever is there.** On a development database that already has
   real records the sample ones land beside them; the refusal above is the only
-  guard, and it only knows about its own products.
+  guard, and it only knows about its own party.
 
 ## Reset
 
