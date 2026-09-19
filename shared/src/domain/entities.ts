@@ -390,24 +390,59 @@ export interface ProductCategory {
   createdAt: IsoTimestamp;
 }
 
+/**
+ * One sellable variant of a product model — a colour, a pattern, or the
+ * product itself when it comes in only one form.
+ *
+ * Every product code and every weight lives here, never on the product: a
+ * model like DAMRU is sold as `41`, `42`, … each with its own code and weight,
+ * and a one-form product is simply a model with exactly one variant whose
+ * `label` is null. That uniformity is what lets a lead line, a stock row and
+ * a reservation all point at a variant id whatever kind of product it is.
+ */
+export interface ProductVariant {
+  id: RecordId;
+  productId: RecordId;
+  /** The business code the counter quotes. Unique across the whole catalogue. */
+  code: string;
+  /** Colour or pattern text ("Blue", "Vitrosa 41", "White + Blue"); null on a no-variant product. */
+  label: string | null;
+  /** Kilograms, or null while nobody has entered it — flagged, never guessed. */
+  weightKg: number | null;
+  /** Form order. */
+  sequence: number;
+  /**
+   * False once an administrator removed the variant from the form while a
+   * line, a stock row or a reservation still pointed at it: the history keeps
+   * its row, the pickers stop offering it.
+   */
+  isActive: boolean;
+}
+
 export interface Product {
   id: RecordId;
   tenantId: Uuid;
-  /** The guide's `code`. Typing it into a line auto-fills the rest. */
-  productCode: string;
+  /** The model's name — "DAMRU", "102", "Golden Set". Codes live on the variants. */
   name: string;
   alias: string | null;
-  categoryId: RecordId | null;
-  categoryName: string | null;
+  /** Every product belongs to a category; the category-first search depends on it. */
+  categoryId: RecordId;
+  categoryName: string;
   size: string | null;
   /** Stock-item number carried through from the catalogue. */
   sin: string | null;
   grade: string | null;
   productType: string | null;
-  weightKg: number | null;
+  /**
+   * True when the administrator said the model comes in colours or patterns.
+   * Stored rather than derived so a model with one variant *so far* still
+   * shows the variant selector instead of silently behaving as a plain product.
+   */
+  hasVariants: boolean;
+  /** At least one, in form order; exactly one with a null label when `hasVariants` is false. */
+  variants: ProductVariant[];
   finish: string | null;
   series: string | null;
-  color: string | null;
   thicknessMm: number | null;
   piecesPerBox: number | null;
   boxCoverageSqft: number | null;
@@ -588,44 +623,35 @@ export interface PartyProductVariant {
 
 export type LineItemParentType = 'lead' | 'order';
 
-export interface LineItemQuantity {
-  id: Uuid;
-  colour: string;
-  quantity: number;
-  /**
-   * The short code the counter actually typed for this product-and-colour,
-   * frozen alongside the rest of the line.
-   *
-   * `LineItem.code` is the *product* code, which names the product across every
-   * colour it comes in — so it cannot say which colour was ordered. Without this
-   * the code somebody read down the phone is unrecoverable the moment the lead
-   * is saved, and a reprinted docket cannot show it. Null for a colour that had
-   * no code when the line was added.
-   */
-  variantCode: string | null;
-}
-
 /**
- * One product on a lead or an order. The snapshot fields are frozen at add
- * time: editing the product afterwards must not rewrite what an order was
- * quoted at (docs/LEAD_GENERATION_FLOW.md §8.3).
+ * One variant on a lead or an order: one code, one weight, one quantity.
+ *
+ * Two colours of the same model are two lines, each with its own total — the
+ * snapshot fields are frozen at add time, so editing the product afterwards
+ * must not rewrite what an order was quoted at
+ * (docs/LEAD_GENERATION_FLOW.md §8.3).
  */
 export interface LineItem {
   id: RecordId;
   tenantId: Uuid;
   parentType: LineItemParentType;
   parentId: RecordId;
-  /** Live reference — kept for stock movement and traceability. */
+  /** Live references — kept for stock movement and traceability. */
   productId: RecordId;
+  variantId: RecordId;
 
   // Snapshotted at add time
   productName: string;
   alias: string | null;
   /** Gated by `field.saleRate.view`; absent, not null, when not permitted. */
   rate?: number | null;
+  /** The variant's code as it was when the line was added. */
   code: string | null;
+  /** The variant's colour or pattern text; null for a no-variant product. */
+  variantLabel: string | null;
   sin: string | null;
   size: string | null;
+  /** The variant's weight in kilograms, or null when it had not been entered. */
   weightKg: number | null;
   grade: string | null;
   productType: string | null;
@@ -636,11 +662,11 @@ export interface LineItem {
   fromPartyVariant: boolean;
   imagePath: string | null;
   notes: string | null;
-  quantities: LineItemQuantity[];
+  quantity: number;
 
-  /** Sum of `quantities`, denormalized for list screens. */
-  totalQuantity: number;
-  /** `rate` × `totalQuantity`; absent alongside `rate` when not permitted. */
+  /** `weightKg` × `quantity`, or null when the weight is missing. */
+  lineWeightKg: number | null;
+  /** `rate` × `quantity`; absent alongside `rate` when not permitted. */
   lineTotal?: number | null;
 
   createdAt: IsoTimestamp;
@@ -693,6 +719,10 @@ export interface Lead {
 
   /** Gated alongside line rates by `field.saleRate.view`. */
   totalAmount?: number;
+  /** Sum of the lines' `lineWeightKg`, over the lines that have a weight. */
+  totalWeightKg: number;
+  /** How many lines carry no weight yet — when non-zero, `totalWeightKg` is a partial figure. */
+  linesWithoutWeight: number;
 
   sourcePanelId: Uuid | null;
   createdByUserId: Uuid | null;
@@ -721,8 +751,10 @@ export interface Order {
 
   dispatchAddressLabel: string | null;
   expectedDispatchDate: IsoDate | null;
-  /** Always populated: summed from line weights. */
+  /** Always populated: summed from line weights, over the lines that have one. */
   totalWeightKg: number;
+  /** How many lines carry no weight — when non-zero, the computed figure is partial. */
+  linesWithoutWeight: number;
   /** Set only when a human overrode the computed figure. */
   totalWeightKgOverride: number | null;
   /** Which of the two the UI should label — "computed" or "manual". */
@@ -752,8 +784,8 @@ export interface Order {
 export type ReservationStatus = 'active' | 'released' | 'consumed';
 
 /**
- * Stock held for an order, per (product, colour) — a white basin in stock does
- * not satisfy a reservation for a blue one (docs/LEAD_GENERATION_FLOW.md §5.1).
+ * Stock held for an order, per variant — a white basin in stock does not
+ * satisfy a reservation for a blue one (docs/LEAD_GENERATION_FLOW.md §5.1).
  */
 export interface StockReservation {
   id: RecordId;
@@ -762,7 +794,9 @@ export interface StockReservation {
   lineItemId: RecordId;
   productId: RecordId;
   productName: string;
-  colour: string;
+  variantId: RecordId;
+  variantCode: string;
+  variantLabel: string | null;
   quantity: number;
   status: ReservationStatus;
   createdAt: IsoTimestamp;
@@ -770,29 +804,23 @@ export interface StockReservation {
 }
 
 /**
- * Current stock for one (product, colour). `quantityBoxes` is what is on the
- * floor; `reservedBoxes` is committed to orders not yet dispatched; the
- * difference is what a new order can actually draw on. All three may go
- * negative — selling against an undelivered factory order is routine, so the
- * shortfall is surfaced rather than blocked.
+ * Current stock for one variant. `quantityBoxes` is what is on the floor;
+ * `reservedBoxes` is committed to orders not yet dispatched; the difference
+ * is what a new order can actually draw on. All three may go negative —
+ * selling against an undelivered factory order is routine, so the shortfall
+ * is surfaced rather than blocked.
  */
 export interface InventoryStockLevel {
   productId: RecordId;
-  productCode: string;
   productName: string;
   categoryName: string | null;
   size: string | null;
-  colour: string;
-  /**
-   * A short code naming this one product in this one colour, or null when
-   * nobody has given the pair one.
-   *
-   * Not `productCode`, which names the product across every colour it comes
-   * in: this is the number somebody types at the counter to reach exactly one
-   * row. Optional by design — see `20260320000000_product_variant_codes.ts`
-   * for why no back-fill invented them.
-   */
-  variantCode: string | null;
+  variantId: RecordId;
+  /** The variant's own code — the number somebody types at the counter. */
+  variantCode: string;
+  /** Colour or pattern text; null on a no-variant product. */
+  variantLabel: string | null;
+  weightKg: number | null;
   quantityBoxes: number;
   reservedBoxes: number;
   availableBoxes: number;
@@ -816,9 +844,10 @@ export interface StockMovement {
   id: number;
   tenantId: Uuid;
   productId: RecordId;
-  productCode: string;
   productName: string;
-  colour: string;
+  variantId: RecordId;
+  variantCode: string;
+  variantLabel: string | null;
   movementType: StockMovementType;
   /** Signed delta, never an absolute value. */
   quantityBoxes: number;

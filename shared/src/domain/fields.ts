@@ -47,11 +47,13 @@ const FIELD_SETS: readonly FieldSetDefinition[] = [
     hasHex: false,
     usedBy: ['leads'],
   },
+  // The variant palette: what the product form suggests for a variant's
+  // colour text, and where the swatch beside it takes its hex from.
   {
     listKey: 'stock.colour',
     labelToken: 'fieldSet.stock.colour',
     hasHex: true,
-    usedBy: ['inventory', 'leads', 'orders'],
+    usedBy: ['products', 'leads', 'orders'],
   },
   {
     listKey: 'product.productType',

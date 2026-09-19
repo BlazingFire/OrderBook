@@ -55,20 +55,20 @@ export const PARTY_COLUMNS = {
 /**
  * `categoryName` is deliberately absent: it is a convenience the repository
  * resolves to an id (creating the category if it is new), never a column.
+ * `variants` is absent too — a child table, replaced as a set by the
+ * repository, never merged field by field.
  */
 export const PRODUCT_COLUMNS = {
-  productCode: 'product_code',
   name: 'name',
   alias: 'alias',
   categoryId: 'category_id',
+  hasVariants: 'has_variants',
   size: 'size',
   sin: 'sin',
   grade: 'grade',
   productType: 'product_type',
-  weightKg: 'weight_kg',
   finish: 'finish',
   series: 'series',
-  color: 'color',
   thicknessMm: 'thickness_mm',
   piecesPerBox: 'pieces_per_box',
   boxCoverageSqft: 'box_coverage_sqft',

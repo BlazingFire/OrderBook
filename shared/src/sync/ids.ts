@@ -39,6 +39,7 @@ export const SYNCABLE_ENTITIES = [
   'party',
   'product',
   'product_category',
+  'product_variant',
   'party_variant',
   'timeline_entry',
   'reservation',
@@ -66,6 +67,8 @@ export const ENTITY_PREFIX: Record<SyncableEntity, string> = {
   party: 'PT',
   product: 'PR',
   product_category: 'PC',
+  // `PV` was taken by party variants first; `VR` keeps the two distinct.
+  product_variant: 'VR',
   party_variant: 'PV',
   timeline_entry: 'TL',
   reservation: 'RS',

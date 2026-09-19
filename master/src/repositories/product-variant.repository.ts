@@ -1,0 +1,354 @@
+/**
+ * Product variants — the rows that own every product code and weight
+ * (`docs/schema/02-parties-and-products.md` §`product_variants`).
+ *
+ * A product has at least one. One with no colour or pattern choices has
+ * exactly one row with a null label, so "the product's code" and "the
+ * variant's code" are the same column everywhere: the unique index over
+ * `(tenant_id, lower(code))` is what guards duplicates for both kinds of
+ * product, and a line item, a stock row or a reservation always points at a
+ * variant id whichever kind it came from.
+ *
+ * Imported as `productVariantRepo` — `variantRepo` already means a party's
+ * negotiated rates (`party-variant.repository.ts`) throughout the services.
+ */
+
+import type { ProductVariant, ProductVariantInput } from '@orderbook/shared';
+import type { Knex } from 'knex';
+
+import { db } from '../db/knex.js';
+import { ConflictError } from '../lib/errors.js';
+import { allocatePermanentIds } from './identity.repository.js';
+import { mapProductVariant } from './mappers.js';
+import type { TransactionContext } from './transaction.js';
+
+const TABLE = 'product_variants';
+
+/**
+ * Prefix for the per-row placeholder `replaceVariants` parks codes and labels
+ * on mid-save. ASCII Unit Separator: valid in a TEXT column (NUL is not) and
+ * impossible in a code or label somebody typed.
+ */
+const PARKED = String.fromCharCode(0x1f);
+
+type Runner = Knex | Knex.Transaction;
+
+/** Every variant of each product, in the order the form shows them. */
+export async function loadVariantsFor(
+  tenantId: string,
+  productIds: string[],
+  runner: Runner = db(),
+): Promise<Map<string, ProductVariant[]>> {
+  const byProduct = new Map<string, ProductVariant[]>();
+  if (productIds.length === 0) return byProduct;
+
+  const rows = await runner(TABLE)
+    .where({ tenant_id: tenantId })
+    .whereIn('product_id', productIds)
+    .orderBy([
+      { column: 'sequence', order: 'asc' },
+      { column: 'code', order: 'asc' },
+    ])
+    .select('*');
+
+  for (const row of rows) {
+    const variant = mapProductVariant(row);
+    const bucket = byProduct.get(variant.productId);
+    if (bucket) bucket.push(variant);
+    else byProduct.set(variant.productId, [variant]);
+  }
+
+  return byProduct;
+}
+
+/** A live variant (its product not in the Recycle Bin), with the product it belongs to. */
+export async function findVariantById(
+  tenantId: string,
+  id: string,
+  runner: Runner = db(),
+): Promise<ProductVariant | null> {
+  const row = await runner(`${TABLE} as v`)
+    .join('products as p', 'p.id', 'v.product_id')
+    .where('v.tenant_id', tenantId)
+    .andWhere('v.id', id)
+    .whereNull('p.deleted_at')
+    .first('v.*');
+  return row ? mapProductVariant(row) : null;
+}
+
+/**
+ * The live variant behind a code, case-insensitively.
+ *
+ * Live only — the unique index is partial on the same tombstone, so a code
+ * freed by the Recycle Bin is reusable and this lookup agrees with the
+ * database about it.
+ */
+export async function findVariantByCode(
+  tenantId: string,
+  code: string,
+  runner: Runner = db(),
+): Promise<ProductVariant | null> {
+  const row = await runner(TABLE)
+    .where({ tenant_id: tenantId })
+    .whereNull('deleted_at')
+    .whereRaw('lower(code) = lower(?)', [code.trim()])
+    .first('*');
+  return row ? mapProductVariant(row) : null;
+}
+
+/** Which of these codes are already on a live variant, keyed by lower-cased code. */
+export async function findLiveVariantsByCodes(
+  tenantId: string,
+  codes: readonly string[],
+  runner: Runner = db(),
+): Promise<Map<string, { variantId: string; productId: string }>> {
+  const found = new Map<string, { variantId: string; productId: string }>();
+  const wanted = [...new Set(codes.map((code) => code.trim().toLowerCase()).filter(Boolean))];
+
+  for (let at = 0; at < wanted.length; at += 1000) {
+    const rows = await runner(TABLE)
+      .where({ tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .whereRaw('lower(code) = ANY(?)', [wanted.slice(at, at + 1000)])
+      .select<Array<{ id: string; product_id: string; code: string }>>('id', 'product_id', 'code');
+    for (const row of rows) {
+      found.set(String(row.code).toLowerCase(), {
+        variantId: String(row.id),
+        productId: String(row.product_id),
+      });
+    }
+  }
+
+  return found;
+}
+
+/**
+ * Variants of this product that something still points at: a line on any
+ * lead or order, a stock row with boxes on it, a ledger entry, or an active
+ * reservation. Such a row is deactivated rather than deleted when the
+ * administrator takes it off the form — the history that quotes it stays
+ * readable.
+ */
+export async function referencedVariantIds(
+  tenantId: string,
+  productId: string,
+  runner: Runner = db(),
+): Promise<Set<string>> {
+  const { rows } = await runner.raw<{ rows: Array<{ id: string }> }>(
+    `SELECT v.id
+       FROM product_variants v
+      WHERE v.tenant_id = ? AND v.product_id = ?
+        AND (
+          EXISTS (SELECT 1 FROM line_items li WHERE li.variant_id = v.id)
+          OR EXISTS (SELECT 1 FROM inventory_stock s WHERE s.variant_id = v.id AND s.quantity_boxes <> 0)
+          OR EXISTS (SELECT 1 FROM stock_movements m WHERE m.variant_id = v.id)
+          OR EXISTS (SELECT 1 FROM stock_reservations r WHERE r.variant_id = v.id AND r.status = 'active')
+        )`,
+    [tenantId, productId],
+  );
+  return new Set(rows.map((row) => String(row.id)));
+}
+
+/**
+ * Make the product's variant set equal to `inputs`.
+ *
+ * Rows are matched by id first, then by label (case-insensitively, a null
+ * label matching only a null label), so a form that re-sends a row without
+ * its id still updates the row rather than duplicating it. Matched rows are
+ * updated and reactivated; new rows are inserted with fresh ids; rows left
+ * out are deleted, unless something references them, in which case they are
+ * deactivated and keep their id.
+ *
+ * A code already on another live product surfaces as `error.conflict.productCodeTaken`
+ * — the partial unique index is the enforcement, this only turns it into a
+ * sentence a person can act on.
+ */
+export async function replaceVariants(
+  tenantId: string,
+  productId: string,
+  inputs: readonly ProductVariantInput[],
+  trx: TransactionContext,
+): Promise<ProductVariant[]> {
+  const existing = await trx(TABLE)
+    .where({ tenant_id: tenantId, product_id: productId })
+    .forUpdate()
+    .select<Array<{ id: string; label: string | null }>>('id', 'label');
+
+  const byId = new Map(existing.map((row) => [String(row.id), row]));
+  const byLabel = new Map(existing.map((row) => [labelKey(row.label), String(row.id)]));
+  const claimed = new Set<string>();
+
+  const updates: Array<{ id: string; input: ProductVariantInput; sequence: number }> = [];
+  const inserts: Array<{ input: ProductVariantInput; sequence: number }> = [];
+
+  inputs.forEach((input, index) => {
+    const sequence = input.sequence ?? index + 1;
+    const matchedId =
+      input.id && byId.has(input.id) && !claimed.has(input.id)
+        ? input.id
+        : (() => {
+            const candidate = byLabel.get(labelKey(input.label ?? null));
+            return candidate && !claimed.has(candidate) ? candidate : null;
+          })();
+
+    if (matchedId) {
+      claimed.add(matchedId);
+      updates.push({ id: matchedId, input, sequence });
+    } else {
+      inserts.push({ input, sequence });
+    }
+  });
+
+  const removed = existing.map((row) => String(row.id)).filter((id) => !claimed.has(id));
+  const referenced = removed.length > 0 ? await referencedVariantIds(tenantId, productId, trx) : new Set<string>();
+
+  try {
+    // Deactivate or delete first, so a label freed by a removed row can be
+    // taken by a new one within the same save.
+    for (const id of removed) {
+      if (referenced.has(id)) {
+        await trx(TABLE)
+          .where({ tenant_id: tenantId, id })
+          .update({ is_active: false, updated_at: trx.fn.now() });
+      } else {
+        await trx(TABLE).where({ tenant_id: tenantId, id }).delete();
+      }
+    }
+
+    // Park the codes and labels of every row about to change on a per-row
+    // placeholder first. Two rows swapping labels (or codes) would otherwise
+    // collide on the unique indexes halfway through, whichever order the
+    // updates ran in.
+    for (const update of updates) {
+      await trx(TABLE)
+        .where({ tenant_id: tenantId, id: update.id })
+        .update({ code: `${PARKED}${update.id}`, label: `${PARKED}${update.id}` });
+    }
+
+    for (const update of updates) {
+      await trx(TABLE)
+        .where({ tenant_id: tenantId, id: update.id })
+        .update({
+          code: update.input.code.trim(),
+          label: normaliseLabel(update.input.label),
+          weight_kg: update.input.weightKg ?? null,
+          sequence: update.sequence,
+          is_active: true,
+          updated_at: trx.fn.now(),
+        });
+    }
+
+    if (inserts.length > 0) {
+      const ids = await allocatePermanentIds(tenantId, 'product_variant', inserts.length, trx);
+      await trx(TABLE).insert(
+        inserts.map((entry, index) => ({
+          id: ids[index],
+          tenant_id: tenantId,
+          product_id: productId,
+          code: entry.input.code.trim(),
+          label: normaliseLabel(entry.input.label),
+          weight_kg: entry.input.weightKg ?? null,
+          sequence: entry.sequence,
+          is_active: true,
+        })),
+      );
+    }
+  } catch (error) {
+    throw translateUniqueViolation(error, inputs);
+  }
+
+  const variants = await loadVariantsFor(tenantId, [productId], trx);
+  return variants.get(productId) ?? [];
+}
+
+/**
+ * Many variants in one INSERT for the bulk import, ids already allocated by
+ * the caller alongside the product ids. No re-read, like `insertProductRows`.
+ */
+export async function insertVariantRows(
+  rows: ReadonlyArray<{ id: string; productId: string; input: ProductVariantInput; sequence: number }>,
+  tenantId: string,
+  trx: TransactionContext,
+): Promise<void> {
+  if (rows.length === 0) return;
+
+  await trx(TABLE).insert(
+    rows.map((row) => ({
+      id: row.id,
+      tenant_id: tenantId,
+      product_id: row.productId,
+      code: row.input.code.trim(),
+      label: normaliseLabel(row.input.label),
+      weight_kg: row.input.weightKg ?? null,
+      sequence: row.sequence,
+      is_active: true,
+    })),
+  );
+}
+
+/**
+ * Mirror the product's tombstone onto its variants, so the code index frees
+ * (or reclaims) their codes together with the product.
+ */
+export async function setDeletedAt(
+  tenantId: string,
+  productId: string,
+  deletedAt: 'now' | null,
+  trx: TransactionContext,
+): Promise<void> {
+  await trx(TABLE)
+    .where({ tenant_id: tenantId, product_id: productId })
+    .update({ deleted_at: deletedAt === 'now' ? trx.fn.now() : null, updated_at: trx.fn.now() });
+}
+
+/** Codes of this product that a *different* live product now holds. */
+export async function codesTakenElsewhere(
+  tenantId: string,
+  productId: string,
+  runner: Runner = db(),
+): Promise<string[]> {
+  const { rows } = await runner.raw<{ rows: Array<{ code: string }> }>(
+    `SELECT mine.code
+       FROM product_variants mine
+      WHERE mine.tenant_id = ? AND mine.product_id = ?
+        AND EXISTS (
+          SELECT 1 FROM product_variants other
+           WHERE other.tenant_id = mine.tenant_id
+             AND other.product_id <> mine.product_id
+             AND other.deleted_at IS NULL
+             AND lower(other.code) = lower(mine.code)
+        )
+      ORDER BY mine.sequence`,
+    [tenantId, productId],
+  );
+  return rows.map((row) => String(row.code));
+}
+
+function labelKey(label: string | null | undefined): string {
+  const trimmed = label?.trim();
+  return trimmed ? trimmed.toLowerCase() : '';
+}
+
+function normaliseLabel(label: string | null | undefined): string | null {
+  const trimmed = label?.trim();
+  return trimmed ? trimmed : null;
+}
+
+/**
+ * `23505` on the code index becomes the catalogue's own conflict. Postgres
+ * does not say which value collided in a way worth parsing, so the message
+ * names the first code in the set that another live product holds — found
+ * by a lookup the caller can no longer do, because the transaction is
+ * already aborted. The message therefore names the codes being saved.
+ */
+function translateUniqueViolation(error: unknown, inputs: readonly ProductVariantInput[]): unknown {
+  const pg = error as { code?: string; constraint?: string } | null;
+  if (pg?.code !== '23505') return error;
+  const constraint = pg.constraint ?? '';
+  if (constraint.includes('code')) {
+    return new ConflictError('error.conflict.productCodeTaken', {
+      productCode: inputs.map((input) => input.code.trim()).join(', '),
+    });
+  }
+  return error;
+}

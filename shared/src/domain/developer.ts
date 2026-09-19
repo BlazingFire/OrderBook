@@ -103,6 +103,18 @@ export interface SeedSampleDataResult {
   to: string;
 }
 
+/**
+ * What loading the Swisware catalogue produced. Idempotent: a second press
+ * reports everything under `skipped` and writes nothing.
+ */
+export interface LoadCatalogueResult {
+  categories: number;
+  products: number;
+  variants: number;
+  /** Models already present (every one of their codes found), left alone. */
+  skipped: number;
+}
+
 export interface SampleDataCounts {
   parties: number;
   products: number;

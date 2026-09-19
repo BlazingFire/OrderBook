@@ -36,20 +36,42 @@ export interface PartyInput {
   customFields?: Record<string, unknown>;
 }
 
+/**
+ * One variant as the product form sends it. `id` names an existing row on an
+ * edit — it must be preserved, because stock rows, reservations and lines are
+ * keyed by it; a row without one (or with an id the product does not have) is
+ * matched by label, and otherwise inserted.
+ */
+export interface ProductVariantInput {
+  id?: RecordId;
+  code: string;
+  /** Colour or pattern text; omitted or null on a no-variant product. */
+  label?: string | null;
+  /** Kilograms; omitted or null while unknown. Must be greater than zero when given. */
+  weightKg?: number | null;
+  /** Form order; defaults to the array position. */
+  sequence?: number;
+}
+
 export interface ProductInput {
-  productCode: string;
   name: string;
   alias?: string | null;
+  /** One of the two is required on create — a name creates the category when it is new. */
   categoryId?: RecordId | null;
   categoryName?: string | null;
+  /**
+   * The variant set. Required on create (at least one). On an update, absent
+   * means "leave the variants alone" and present replaces the whole set.
+   */
+  variants?: ProductVariantInput[];
+  /** Defaults on create to whether any variant carries a label. */
+  hasVariants?: boolean;
   size?: string | null;
   sin?: string | null;
   grade?: string | null;
   productType?: string | null;
-  weightKg?: number | null;
   finish?: string | null;
   series?: string | null;
-  color?: string | null;
   thicknessMm?: number | null;
   piecesPerBox?: number | null;
   boxCoverageSqft?: number | null;
@@ -121,28 +143,26 @@ export interface PartyProductVariantInput {
   packaging?: string | null;
 }
 
-export interface LineItemQuantityInput {
-  colour: string;
-  quantity: number;
-  /** The product-and-colour code as typed; see `LineItemQuantity.variantCode`. */
-  variantCode?: string | null;
-}
-
 /**
- * One line on a lead or order.
+ * One line on a lead or order — one variant, one quantity.
  *
  * The snapshot fields are accepted from the client rather than re-derived on the
  * server, because an offline panel builds the line from its cached catalogue and
- * that snapshot *is* the agreed spec. The server validates the product exists
- * and fills any snapshot field the client left out — it never overwrites one the
- * client sent, which is what keeps an offline quote intact.
+ * that snapshot *is* the agreed spec. The server validates that the variant
+ * exists on the product and fills any snapshot field the client left out — it
+ * never overwrites one the client sent, which is what keeps an offline quote
+ * intact.
  */
 export interface LineItemInput {
   productId: RecordId;
+  /** Which variant of the product — the code and weight resolve from it. */
+  variantId: RecordId;
+  quantity: number;
   productName?: string | null;
   alias?: string | null;
   rate?: number | null;
   code?: string | null;
+  variantLabel?: string | null;
   sin?: string | null;
   size?: string | null;
   weightKg?: number | null;
@@ -171,7 +191,6 @@ export interface LineItemInput {
   fromPartyVariant?: boolean;
   imagePath?: string | null;
   notes?: string | null;
-  quantities: LineItemQuantityInput[];
 }
 
 export interface LeadInput {
@@ -230,10 +249,9 @@ export interface OrderDispatchInput {
   note?: string | null;
 }
 
-/** Stock arriving from the factory or a purchase. */
+/** Stock arriving from the factory or a purchase, for one variant. */
 export interface StockInboundInput {
-  productId: RecordId;
-  colour: string;
+  variantId: RecordId;
   quantityBoxes: number;
   note?: string | null;
 }
@@ -244,14 +262,13 @@ export interface StockInboundInput {
  * differences. The service turns it into a signed movement.
  */
 export interface StockAdjustmentInput {
-  productId: RecordId;
-  colour: string;
+  variantId: RecordId;
   quantityBoxes: number;
   note?: string | null;
 }
 
 /**
- * The stock band for one (product, colour).
+ * The stock band for one variant.
  *
  * Every level is optional and **absent means untouched** — the same partial
  * patch rule the product columns follow. That is what stops the existing
@@ -259,17 +276,10 @@ export interface StockAdjustmentInput {
  * clearing them every time somebody uses it.
  */
 export interface StockLevelsInput {
-  productId: RecordId;
-  colour: string;
+  variantId: RecordId;
   reorderLevel?: number | null;
   minStockLevel?: number | null;
   maxStockLevel?: number | null;
-  /**
-   * The short code for this one product in this one colour. Absent leaves it
-   * alone; `null` or an empty string clears it, which is the only way to hand
-   * a code somebody has finished with to another row.
-   */
-  variantCode?: string | null;
 }
 
 /**
@@ -403,20 +413,23 @@ export interface Paginated<T> {
   offset: number;
 }
 
-/** The catalogue's list query: the common shape plus a type-chip filter. */
+/** The catalogue's list query: the common shape plus the category chip and the weight gap. */
 export interface ProductListQuery extends ListQuery {
-  productType?: string;
+  categoryId?: string;
+  /** Only products with at least one variant whose weight has not been entered. */
+  missingWeight?: boolean;
 }
 
 /**
- * One page of the catalogue, with the facet the type chips are drawn from.
+ * One page of the catalogue, with the facet the category chips are drawn from.
  *
- * The facet is counted over the *search-filtered* set without the type filter
- * applied, so every chip stays clickable while one is selected. Optional on
- * the wire: a 1.0.3 Master answers `product:list` with a plain `Paginated`.
+ * The facet is counted over the *search-filtered* set without the category
+ * filter applied, so every chip stays clickable while one is selected.
+ * Optional on the wire: a 1.0.3 Master answers `product:list` with a plain
+ * `Paginated`.
  */
 export interface ProductListPage extends Paginated<Product> {
-  productTypes?: Array<{ value: string; count: number }>;
+  categories?: Array<{ id: string; name: string; count: number }>;
 }
 
 /**

@@ -40,6 +40,7 @@ import * as productsBulkPermissionGrant from './20260319000000_products_bulk_per
 import * as productVariantCodes from './20260320000000_product_variant_codes.js';
 import * as lineItemVariantCodes from './20260321000000_line_item_variant_codes.js';
 import * as dropDocumentDesigner from './20260322000000_drop_document_designer.js';
+import * as productVariants from './20260323000000_product_variants.js';
 
 export interface Migration {
   name: string;
@@ -114,6 +115,12 @@ export const migrations: Migration[] = [
   {
     name: '20260321000000_line_item_variant_codes',
     ...lineItemVariantCodes,
+  },
+  // Category -> product model -> variant. Wipes the tile-era product master
+  // (owner's decision, 2026-09-19) and re-keys lines and stock by variant.
+  {
+    name: '20260323000000_product_variants',
+    ...productVariants,
   },
   // Stage 7 of `docs/backend-modules/` — pinned after every timestamp above,
   // not last by timestamp. Its `20260309` slot was reserved before

@@ -117,11 +117,9 @@ function upsertBy<T, K extends keyof T>(list: T[], item: T, key: K): T[] {
   return next;
 }
 
-/** Stock rows have no id of their own — a row is one (product, colour) pair. */
+/** Stock rows have no id of their own — a row is one variant. */
 function upsertStock(list: InventoryStockLevel[], item: InventoryStockLevel): InventoryStockLevel[] {
-  const index = list.findIndex(
-    (entry) => entry.productId === item.productId && entry.colour === item.colour,
-  );
+  const index = list.findIndex((entry) => entry.variantId === item.variantId);
   if (index === -1) return [item, ...list];
 
   const next = [...list];

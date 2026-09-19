@@ -99,11 +99,11 @@ import type {
   StockListQuery,
 } from '../domain/inputs.js';
 import type {
+  CategoryPickPage,
   PartyPickPage,
   PickKind,
   PickQuery,
   ProductPickPage,
-  VariantPickPage,
 } from '../domain/pick.js';
 import type { BinCounts, BinEntry, BinRestoreResult } from '../domain/recycle-bin.js';
 import type { SyncPushRequest, SyncPushResponse } from '../sync/mutations.js';
@@ -514,7 +514,7 @@ export interface ClientToServerEvents {
    */
   pick: (
     payload: { kind: PickKind; query: PickQuery },
-    ack: CommandAck<ProductPickPage | PartyPickPage | VariantPickPage>,
+    ack: CommandAck<CategoryPickPage | ProductPickPage | PartyPickPage>,
   ) => void;
 
   'category:list': (ack: CommandAck<ProductCategory[]>) => void;

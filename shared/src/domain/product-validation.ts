@@ -19,7 +19,7 @@
  * as invalid would make a two-field patch impossible.
  */
 
-import type { ProductInput } from './inputs.js';
+import type { ProductInput, ProductVariantInput } from './inputs.js';
 import type { MessageKey } from '../i18n/keys.js';
 
 export const PRODUCT_UOMS = ['box', 'sqft', 'piece'] as const;
@@ -83,6 +83,62 @@ export function validateProductInput(input: ProductInput): void {
 
   assertNonNegative(input.mrp);
   assertNonNegative(input.purchaseRate);
+
+  if (input.variants !== undefined) {
+    validateProductVariants(input.variants, input.hasVariants ?? input.variants.some((v) => hasText(v.label)));
+  }
+}
+
+function hasText(value: string | null | undefined): boolean {
+  return typeof value === 'string' && value.trim() !== '';
+}
+
+/**
+ * The variant set, on the same two paths.
+ *
+ * Every row needs a code; codes and labels must be unique within the set
+ * (case-insensitively — `blue` and `Blue` are one colour, and the database's
+ * indexes agree); a weight, when given, is a positive number. A product
+ * without variants is exactly one row with no label; one with variants has
+ * a label on every row, so the lead screen always has something to offer.
+ *
+ * Uniqueness *across* products is the database's job (the partial unique
+ * index on the code) and the service's friendly pre-check — this function
+ * sees one product at a time.
+ */
+export function validateProductVariants(
+  variants: readonly ProductVariantInput[],
+  hasVariants: boolean,
+): void {
+  if (variants.length === 0) throw new ProductValidationError('validation.product.variantRequired');
+
+  const codes = new Set<string>();
+  const labels = new Set<string>();
+
+  for (const variant of variants) {
+    const code = typeof variant.code === 'string' ? variant.code.trim() : '';
+    if (!code) throw new ProductValidationError('validation.product.variantCodeRequired');
+    const codeKey = code.toLowerCase();
+    if (codes.has(codeKey)) throw new ProductValidationError('validation.product.variantCodeDuplicate');
+    codes.add(codeKey);
+
+    const label = hasText(variant.label) ? String(variant.label).trim() : '';
+    if (hasVariants && !label) throw new ProductValidationError('validation.product.variantLabelRequired');
+    const labelKey = label.toLowerCase();
+    if (labels.has(labelKey)) throw new ProductValidationError('validation.product.variantLabelDuplicate');
+    labels.add(labelKey);
+
+    const weight = variant.weightKg;
+    if (weight !== undefined && weight !== null) {
+      if (typeof weight !== 'number' || !Number.isFinite(weight) || weight <= 0) {
+        throw new ProductValidationError('validation.product.weightPositive');
+      }
+    }
+  }
+
+  if (!hasVariants && (variants.length !== 1 || hasText(variants[0]?.label))) {
+    throw new ProductValidationError('validation.product.variantLabelUnexpected');
+  }
 }
 
 /**

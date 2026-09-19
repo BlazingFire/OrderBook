@@ -294,6 +294,19 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.pick.unknownKind': 'यह ऐसी चीज़ नहीं है जिसे यह पैनल खोज सके',
   'validation.product.nameRequired': 'उत्पाद का नाम आवश्यक है',
   'validation.product.codeRequired': 'उत्पाद कोड आवश्यक है',
+  'validation.product.categoryRequired': 'इस उत्पाद के लिए एक श्रेणी चुनें',
+  'validation.product.variantRequired': 'उत्पाद में कम से कम एक कोड होना चाहिए',
+  'validation.product.variantCodeRequired': 'हर वेरिएंट के लिए कोड आवश्यक है',
+  'validation.product.variantCodeDuplicate': 'इस उत्पाद के दो वेरिएंट का कोड एक ही है',
+  'validation.product.variantLabelRequired': 'हर वेरिएंट के लिए रंग या वेरिएंट का नाम आवश्यक है',
+  'validation.product.variantLabelDuplicate': 'इस उत्पाद के दो वेरिएंट का नाम एक ही है',
+  'validation.product.variantLabelUnexpected':
+    'बिना वेरिएंट वाले उत्पाद में एक ही कोड होता है — और जोड़ने के लिए वेरिएंट चालू करें',
+  'validation.product.weightPositive': 'वज़न शून्य से बड़ी संख्या होनी चाहिए',
+  'validation.product.restoreCodesTaken':
+    'पुनर्स्थापित नहीं किया जा सकता — {codes} अब किसी अन्य उत्पाद में उपयोग हो रहा है',
+  'validation.lead.variantMissing': 'चुने गए उत्पाद वेरिएंट में से एक अब मौजूद नहीं है',
+  'validation.stock.variantRequired': 'चुनें कि यह स्टॉक किस उत्पाद वेरिएंट का है',
   // --- Bulk product import: file-level refusals and per-row issues ----------
   'validation.import.fileRequired': 'कोई CSV या Excel फ़ाइल चुनें',
   'validation.import.unsupportedFormat': 'केवल .csv और .xlsx फ़ाइलें आयात की जा सकती हैं',

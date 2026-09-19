@@ -12,40 +12,22 @@
  * pick would 403 people who have a working filter today.
  */
 
-import type { Party, Product, RecordId } from './entities.js';
-
-export type PickKind = 'product' | 'party' | 'variant';
+import type { Party, Product, ProductCategory } from './entities.js';
 
 /**
- * One product in one colour, as the new-lead screen reaches it.
- *
- * A flattened join rather than a `Product` because that is the unit the
- * counter works in: a code, a colour, what is free to sell in that colour, and
- * enough of the product to fill a line. `product` search answers with the
- * product across all its colours; this answers with one row per colour.
+ * `category` answers the first stage of the lead screen's search — typing
+ * "toilet" offers *ONE PIECE TOILET*, never a product — and `product` the
+ * second, scoped to the chosen category through `PickQuery.categoryId`.
+ * Products come back whole, variants included, so the third stage (which
+ * colour, which code, which weight) needs no further round trip.
  */
-export interface ProductVariantPick {
-  /** The short code somebody types, when the pair has been given one. */
-  variantCode: string | null;
-  productId: RecordId;
-  productCode: string;
-  productName: string;
-  alias: string | null;
-  sin: string | null;
-  size: string | null;
-  grade: string | null;
-  productType: string | null;
-  weightKg: number | null;
-  colour: string;
-  /** Boxes that may be sold now — on hand less what orders already hold. */
-  availableBoxes: number;
-  /** Absent, not null, without `field.saleRate.view` — never zero. */
-  rate?: number | null;
-}
+export type PickKind = 'category' | 'product' | 'party';
 
 export interface PickQuery {
   term?: string;
   limit?: number;
+  /** For `product`: only models inside this category. */
+  categoryId?: string;
   /**
    * Ids that must come back whatever the term matches.
    *
@@ -70,12 +52,12 @@ export interface PickPage<T> {
 
 export type ProductPickPage = PickPage<Product>;
 export type PartyPickPage = PickPage<Party>;
-export type VariantPickPage = PickPage<ProductVariantPick>;
+export type CategoryPickPage = PickPage<ProductCategory>;
 
 /** How many rows a picker asks for when the caller does not say. */
 export const PICK_DEFAULT_LIMIT = 20;
 export const PICK_MAX_LIMIT = 50;
 
 export function isPickKind(value: unknown): value is PickKind {
-  return value === 'product' || value === 'party' || value === 'variant';
+  return value === 'category' || value === 'product' || value === 'party';
 }

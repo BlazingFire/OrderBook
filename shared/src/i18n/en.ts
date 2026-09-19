@@ -316,6 +316,19 @@ export const EN_MESSAGES = {
   'validation.pick.unknownKind': 'That is not something this panel can look up',
   'validation.product.nameRequired': 'Product name is required',
   'validation.product.codeRequired': 'Product code is required',
+  'validation.product.categoryRequired': 'Choose a category for this product',
+  'validation.product.variantRequired': 'A product needs at least one code',
+  'validation.product.variantCodeRequired': 'Every variant needs a code',
+  'validation.product.variantCodeDuplicate': 'Two variants of this product share a code',
+  'validation.product.variantLabelRequired': 'Every variant needs a colour or variant name',
+  'validation.product.variantLabelDuplicate': 'Two variants of this product share a name',
+  'validation.product.variantLabelUnexpected':
+    'A product without variants carries one code — switch variants on to add more',
+  'validation.product.weightPositive': 'Weight must be a number greater than zero',
+  'validation.product.restoreCodesTaken':
+    'Cannot restore — another product now uses {codes}',
+  'validation.lead.variantMissing': 'One of the selected product variants no longer exists',
+  'validation.stock.variantRequired': 'Choose which product variant this stock is for',
   // --- Bulk product import: file-level refusals and per-row issues ----------
   'validation.import.fileRequired': 'Choose a CSV or Excel file',
   'validation.import.unsupportedFormat': 'Only .csv and .xlsx files can be imported',
