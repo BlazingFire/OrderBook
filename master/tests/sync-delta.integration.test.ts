@@ -138,7 +138,7 @@ describe.skipIf(!canRunIntegrationTests)('reconnect delta (integration)', () => 
     // list and every role's complete permission array — the disclosure the live
     // fan-out refuses by name.
     for (const event of delta!.events) {
-      expect(['role', 'user', 'document_export']).not.toContain(event.entity);
+      expect(['role', 'user']).not.toContain(event.entity);
     }
   });
 

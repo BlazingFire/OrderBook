@@ -46,8 +46,6 @@ import * as catalogService from '../services/catalog.service.js';
 import { onChange, onConflict } from '../services/change-bus.js';
 import * as conflictService from '../services/conflict.service.js';
 import * as dashboardService from '../services/dashboard.service.js';
-import * as documentService from '../services/document.service.js';
-import * as documentRenderService from '../services/document-render.service.js';
 import * as fieldsService from '../services/fields.service.js';
 import * as inventoryService from '../services/inventory.service.js';
 import * as leadService from '../services/lead.service.js';
@@ -140,11 +138,10 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
      *
      * Image traffic moved to `/api/panel/...` over HTTP, so this can be what
      * the command channel actually needs. `flush` batches at
-     * `config.sync.batchSize` mutations and a document asset is capped at
-     * 512 KB, both comfortably inside 4 MB.
+     * `config.sync.batchSize` mutations, comfortably inside 4 MB.
      *
      * Acks travel server→client and are **not** capped by this, so the
-     * document preview and the report export are unaffected.
+     * report export is unaffected.
      */
     maxHttpBufferSize: 4 * 1024 * 1024,
     // Snapshots and command acks are JSON and compress well; below a kilobyte
@@ -262,18 +259,6 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
     },
   };
 }
-
-/**
- * Company directory data, which an Office Panel has no business receiving
- * unsolicited. It can still *ask*, and the service checks `users.manage` then.
- *
- * `document_export` is here because an export row names the lead or order it
- * was rendered for, and a panel may hold `documents.view` without holding
- * `leads.view` — broadcasting the row would hand it a subject id and label it
- * is not entitled to. `document_template` is deliberately **not** here: a
- * template is configuration gated by `documents.view` and carries no record
- * data at all.
- */
 
 async function authenticate(socket: PanelSocket): Promise<void> {
   const auth = socket.handshake.auth as SocketAuthPayload | undefined;
@@ -693,53 +678,6 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   );
   socket.on('report:export', (payload, ack) =>
     run(ack, (actor) => reportService.exportReport(payload.report, payload.query, actor)),
-  );
-
-  // PDF Designer. Every one delegates to the identical service function the
-  // HTTP route calls — the service's own `requirePermission` is the only gate
-  // on this path, because no Express middleware runs here.
-  socket.on('document:listTemplates', (query, ack) =>
-    run(ack, (actor) => documentService.listTemplates(query, actor)),
-  );
-  socket.on('document:getTemplate', (id, ack) =>
-    run(ack, (actor) => documentService.getTemplate(id, actor)),
-  );
-  socket.on('document:createTemplate', (input, ack) =>
-    run(ack, (actor) => documentService.createTemplate(input, actor)),
-  );
-  socket.on('document:updateTemplate', (payload, ack) =>
-    run(ack, (actor) => documentService.updateTemplate(payload.id, payload.input, actor)),
-  );
-  socket.on('document:deleteTemplate', (payload, ack) =>
-    run(ack, (actor) => documentService.deleteTemplate(payload.id, payload.expectedVersion, actor)),
-  );
-  socket.on('document:restoreTemplate', (id, ack) =>
-    run(ack, (actor) => documentService.restoreTemplate(id, actor)),
-  );
-  socket.on('document:uploadAsset', (input, ack) =>
-    run(ack, (actor) => documentService.uploadAsset(input, actor)),
-  );
-  socket.on('document:listAssets', (ack) => run(ack, (actor) => documentService.listAssets(actor)));
-  socket.on('document:deleteAsset', (id, ack) =>
-    run(ack, (actor) => documentService.deleteAsset(id, actor)),
-  );
-  socket.on('document:assetFile', (id, ack) =>
-    run(ack, (actor) => documentRenderService.fetchAssetFile(id, actor)),
-  );
-  socket.on('document:render', (input, ack) =>
-    run(ack, (actor) => documentRenderService.renderDocument(input, actor)),
-  );
-  socket.on('document:preview', (input, ack) =>
-    run(ack, (actor) => documentRenderService.previewDocument(input, actor)),
-  );
-  socket.on('document:listExports', (query, ack) =>
-    run(ack, (actor) => documentRenderService.listExports(query, actor)),
-  );
-  socket.on('document:getExport', (id, ack) =>
-    run(ack, (actor) => documentRenderService.getExport(id, actor)),
-  );
-  socket.on('document:exportFile', (id, ack) =>
-    run(ack, (actor) => documentRenderService.fetchExportFile(id, actor)),
   );
 
   // The one live pull; everything else rides on `SyncSnapshot.dashboard` and

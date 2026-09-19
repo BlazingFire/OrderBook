@@ -3,7 +3,7 @@
  * somebody else.
  *
  * The first version of this printed the raw key set as one flat run of chips —
- * fifty-six `documents.create`-shaped tokens in alphabetical order. That is the
+ * fifty-odd `leads.create`-shaped tokens in alphabetical order. That is the
  * data, but it is not an answer to the only question anyone opens this to ask,
  * which is *what can a person with this role do*. Alphabetical order also
  * scatters each module across the wall: `leads.bulk` and `leads.view` sit six

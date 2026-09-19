@@ -46,13 +46,6 @@ import type {
   ChainVerifyInput,
 } from '../domain/activity.js';
 import type {
-  DocumentAsset,
-  DocumentExport,
-  DocumentFilePayload,
-  DocumentRenderResult,
-  DocumentTemplate,
-} from '../domain/documents.js';
-import type {
   DispatchesReport,
   LeadOutcomesReport,
   ReportKind,
@@ -67,10 +60,6 @@ import type {
   CustomFieldDefinitionInput,
   CustomFieldDefinitionUpdateInput,
   CustomFieldReorderInput,
-  DocumentAssetInput,
-  DocumentExportQuery,
-  DocumentTemplateInput,
-  DocumentTemplateQuery,
   LeadConvertInput,
   LeadInput,
   LeadListQuery,
@@ -93,7 +82,6 @@ import type {
   PartyInput,
   PartyProductVariantInput,
   PipelineStageInput,
-  PreviewDocumentInput,
   ProductImageReorderInput,
   ProductImageUpdateInput,
   ProductInput,
@@ -101,7 +89,6 @@ import type {
   ProductListQuery,
   RecycleBinQuery,
   RemarkInput,
-  RenderDocumentInput,
   ReorderLevelInput,
   RestoreInput,
   SearchQuery,
@@ -263,8 +250,6 @@ export type ChangedEntity =
   | 'sync_conflict'
   | 'role'
   | 'user'
-  | 'document_template'
-  | 'document_export'
   /**
    * The whole catalogue moved at once — a bulk import. There is no single row
    * to upsert, and publishing one `product` event per imported row would push
@@ -371,8 +356,8 @@ export const SNAPSHOT_FORCING_ENTITIES: readonly ChangedEntity[] = [
 /**
  * Not in a panel's snapshot at all, so nothing about them can go stale on one.
  *
- * `role`, `user` and `document_export` are additionally withheld from panels
- * outright (`DIRECTORY_ENTITIES` in the hub). `office_panel` is the one that
+ * `role` and `user` are additionally withheld from panels outright
+ * (`DIRECTORY_ENTITIES` in the hub). `office_panel` is the one that
  * makes this third bucket worth having rather than folding into the one above:
  * every panel's periodic self-report publishes one, so treating it as
  * snapshot-forcing would mean a reconnecting panel almost always found a
@@ -382,8 +367,6 @@ export const PANEL_IRRELEVANT_ENTITIES: readonly ChangedEntity[] = [
   'office_panel',
   'role',
   'user',
-  'document_template',
-  'document_export',
 ];
 
 /**
@@ -712,49 +695,6 @@ export interface ClientToServerEvents {
   'ai:status': (ack: CommandAck<AiStatus>) => void;
   'ai:insights': (ack: CommandAck<Insight[]>) => void;
   'ai:apply': (payload: { runId: Uuid; fields: string[] }, ack: CommandAck<null>) => void;
-
-  // --- PDF Designer (docs/backend-modules/04-API-CONTRACT.md §6) ------------
-  'document:listTemplates': (
-    query: DocumentTemplateQuery,
-    ack: CommandAck<CursorPage<DocumentTemplate>>,
-  ) => void;
-  'document:getTemplate': (id: Uuid, ack: CommandAck<DocumentTemplate>) => void;
-  'document:createTemplate': (
-    input: DocumentTemplateInput,
-    ack: CommandAck<DocumentTemplate>,
-  ) => void;
-  'document:updateTemplate': (
-    payload: { id: Uuid; input: DocumentTemplateInput & { expectedVersion: number } },
-    ack: CommandAck<DocumentTemplate>,
-  ) => void;
-  'document:deleteTemplate': (
-    payload: { id: Uuid; expectedVersion: number },
-    ack: CommandAck<{ id: Uuid; deletedAt: IsoTimestamp }>,
-  ) => void;
-  'document:restoreTemplate': (id: Uuid, ack: CommandAck<DocumentTemplate>) => void;
-  'document:uploadAsset': (input: DocumentAssetInput, ack: CommandAck<DocumentAsset>) => void;
-  /**
-   * Not among the thirteen `04-API-CONTRACT.md` §9.3 lists. The designer has
-   * to offer a logo picker, and the contract gives it upload and fetch-by-id
-   * but no way to discover what a tenant already has — a gap, not a decision.
-   */
-  'document:listAssets': (ack: CommandAck<DocumentAsset[]>) => void;
-  'document:deleteAsset': (id: Uuid, ack: CommandAck<{ id: Uuid }>) => void;
-  /**
-   * Binary travels as `Uint8Array`. Socket.IO's default parser sends it as a
-   * separate attachment rather than inline JSON, which avoids base64's 33%
-   * inflation on a ~200 KB file.
-   */
-  'document:assetFile': (id: Uuid, ack: CommandAck<DocumentFilePayload>) => void;
-  /** Returns metadata, never bytes — the browser then fetches the file itself. */
-  'document:render': (input: RenderDocumentInput, ack: CommandAck<DocumentRenderResult>) => void;
-  'document:preview': (input: PreviewDocumentInput, ack: CommandAck<DocumentFilePayload>) => void;
-  'document:listExports': (
-    query: DocumentExportQuery,
-    ack: CommandAck<CursorPage<DocumentExport>>,
-  ) => void;
-  'document:getExport': (id: string, ack: CommandAck<DocumentExport>) => void;
-  'document:exportFile': (id: string, ack: CommandAck<DocumentFilePayload>) => void;
 
   // --- Dashboard (docs/backend-modules/04-API-CONTRACT.md §7) ---------------
   /** The one live pull — everything else rides on `SyncSnapshot.dashboard` and the `dashboard:changed` push. */

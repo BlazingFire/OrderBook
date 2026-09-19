@@ -1,9 +1,8 @@
 /**
  * The only cross-table SQL in the Recycle Bin module: a `UNION ALL` over the
- * soft-deletable tables — **nine branches**, complete as of Stage 6. Six
- * landed with the Bin itself, two with Fields and one with the PDF Designer.
- * `BIN_BRANCH_TYPES` is exported so a test can prove this list still covers
- * every member of `RECYCLE_BIN_ENTITIES`.
+ * soft-deletable tables — **eight branches**. Six landed with the Bin itself
+ * and two with Fields. `BIN_BRANCH_TYPES` is exported so a test can prove this
+ * list still covers every member of `RECYCLE_BIN_ENTITIES`.
  *
  * Branches the caller may not see are omitted from the SQL entirely — that
  * is simultaneously the permission filter, the entity-type filter and the
@@ -48,8 +47,7 @@ interface BranchDefinition {
   /**
    * The party-id expression to narrow this branch by, for the three branches
    * that hang off a party. Absent means the branch is not party-scoped — a
-   * product, a role, a user and a document template belong to the company, not
-   * to a customer.
+   * product, a role and a user belong to the company, not to a customer.
    */
   partyIdExpr?: string;
 }
@@ -133,16 +131,6 @@ const BRANCHES: BranchDefinition[] = [
     sql: `SELECT 'custom_field_definition' AS entity_type, id::text AS id, label AS label, entity AS sublabel,
                  deleted_at, ${CURSOR_TEXT} AS deleted_at_text, deleted_by, version
             FROM custom_field_definitions
-           WHERE tenant_id = ? AND deleted_at IS NOT NULL`,
-  },
-  // Stage 6 (PDF Designer) — the ninth and last branch. `document_exports` is
-  // deliberately not a tenth: a document that was sent to a customer is a
-  // record of what was sent, not something to put back.
-  {
-    entityType: 'document_template',
-    sql: `SELECT 'document_template' AS entity_type, id::text AS id, name AS label, document_type AS sublabel,
-                 deleted_at, ${CURSOR_TEXT} AS deleted_at_text, deleted_by, version
-            FROM document_templates
            WHERE tenant_id = ? AND deleted_at IS NOT NULL`,
   },
 ];

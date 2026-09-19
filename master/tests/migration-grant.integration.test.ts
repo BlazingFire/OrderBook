@@ -15,14 +15,23 @@
  * every other test here.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { db } from '../src/db/knex.js';
 import { up as grantNewModuleKeys } from '../src/db/migrations/20260309000000_new_module_permission_grant.js';
+import { up as dropDocumentDesigner } from '../src/db/migrations/20260322000000_drop_document_designer.js';
 import { canRunIntegrationTests } from './helpers/db.js';
 import { resetData, setupDatabase, teardownDatabase, testTenantId } from './helpers/fixtures.js';
 
-/** Frozen here for the same reason the migration inlines them. */
+/**
+ * Frozen here for the same reason the migration inlines them.
+ *
+ * The five `documents.*` keys no longer exist in the live catalogue: the PDF
+ * Designer was removed and `20260322000000_drop_document_designer` strips them
+ * from every stored role. They stay in this list because the migration under
+ * test still grants them — it is a historical fact, not a live surface — and
+ * `GRANT-8` below accounts for the difference explicitly.
+ */
 const NEW_KEYS = [
   'documents.create',
   'documents.delete',
@@ -67,6 +76,12 @@ describe.skipIf(!canRunIntegrationTests)('new-module permission grant (integrati
   beforeAll(setupDatabase);
   afterAll(teardownDatabase);
   beforeEach(resetData);
+  // Every test below re-runs the grant against the shared test database, and
+  // the grant still hands out the five `documents.*` keys the catalogue no
+  // longer knows. Left on the three seeded roles, they would fail every later
+  // suite that saves a shipped role back through the editor — so the strip
+  // that follows the grant in the registry follows it here too.
+  afterEach(() => dropDocumentDesigner(db()));
 
   it('GRANT-1: an admin role missing the new keys is granted every one of them', async () => {
     const id = await insertRole({ tier: 'admin', permissions: ['leads.view', 'users.manage'] });
@@ -149,13 +164,29 @@ describe.skipIf(!canRunIntegrationTests)('new-module permission grant (integrati
     expect(granted).toEqual([...granted].sort());
   });
 
-  it('GRANT-8: every key it grants is a real key in the live catalogue', async () => {
+  it('GRANT-8: every key it grants is a real key in the live catalogue, or one a later migration removes', async () => {
     // The migration inlines its list on purpose, which means the list can
     // drift out of the catalogue. It cannot import the catalogue to check —
     // that is the `20260301` defect — so the *test* does the comparison.
+    //
+    // A key that has since left the catalogue is only acceptable when a later
+    // migration strips it again; otherwise an upgraded installation would
+    // hold a key the product cannot enforce or display.
     const { PERMISSIONS } = await import('@orderbook/shared');
+    const removedLater = new Set([
+      // `20260322000000_drop_document_designer`.
+      'documents.create',
+      'documents.delete',
+      'documents.edit',
+      'documents.render',
+      'documents.view',
+    ]);
 
     for (const key of NEW_KEYS) {
+      if (removedLater.has(key)) {
+        expect(PERMISSIONS as readonly string[], `${key} was removed and must stay out`).not.toContain(key);
+        continue;
+      }
       expect(PERMISSIONS as readonly string[], `${key} is not in the catalogue`).toContain(key);
     }
   });

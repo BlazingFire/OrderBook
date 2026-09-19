@@ -1,15 +1,8 @@
 /**
  * A report as a printable table.
  *
- * Separate from `renderPdf`, deliberately, and the reason is a permission
- * rather than a layout. That renderer's `DocumentColumnKey` is a **closed
- * eight-member union** — it is what keeps a rate column out of a rate-blind
- * quotation, because a column the type cannot name is a column the renderer
- * cannot draw. Widening it to take arbitrary report columns would spend that
- * guarantee on a feature that does not need it.
- *
- * So this is a second, much smaller renderer over the same primitives: same
- * fonts, same page furniture, same `mm()`. What it draws is a header row, some
+ * A small renderer over the primitives: the vendored fonts, `mm()`, and text
+ * runs that switch faces per script. What it draws is a header row, some
  * rows, and an optional totals line.
  *
  * The redaction rule it implements is the tabular one, not the JSON one: **a
@@ -31,7 +24,7 @@ import {
   type TextStyle,
 } from './primitives.js';
 
-/** Points, at 72 per inch. The same two sizes the document renderer offers. */
+/** Points, at 72 per inch. */
 const PAGE_SIZES: Record<ReportPaperSize, [number, number]> = {
   a4: [595.28, 841.89],
   letter: [612, 792],
@@ -78,8 +71,7 @@ export async function renderReportPdf(table: ReportTablePdf): Promise<Buffer> {
   });
 
   // The vendored SIL faces. Without them PDFKit falls back to Helvetica, which
-  // has no Devanagari glyphs — a Hindi party name would print as blank boxes on
-  // a document already handed to a customer.
+  // has no Devanagari glyphs — a Hindi party name would print as blank boxes.
   registerFonts(doc);
 
   const chunks: Buffer[] = [];

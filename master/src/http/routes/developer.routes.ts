@@ -1,5 +1,5 @@
 /**
- * `/api/developer` — unlock, status, lock, and the two actions behind them.
+ * `/api/developer` — unlock, status, lock, and the three actions behind them.
  *
  * `requireAuth` and nothing more: the developer is any signed-in person, not
  * a permission holder (`shared/src/domain/developer.ts`). The developer token,
@@ -13,6 +13,7 @@ import { DEVELOPER_RESET_CONFIRMATION, DEVELOPER_TOKEN_HEADER } from '@orderbook
 
 import { ValidationError } from '../../lib/errors.js';
 import { developerGate, resetAllData, seedDummyUsers } from '../../services/developer.service.js';
+import { seedSampleData } from '../../services/sample-data.service.js';
 import { asyncHandler } from '../async-handler.js';
 import { requireAuth } from '../middleware/require-auth.js';
 
@@ -52,5 +53,13 @@ developerRoutes.post(
   asyncHandler(async (req, res) => {
     developerGate.assertUnlocked(req.header(DEVELOPER_TOKEN_HEADER));
     res.status(201).json(await seedDummyUsers());
+  }),
+);
+
+developerRoutes.post(
+  '/seed-sample-data',
+  asyncHandler(async (req, res) => {
+    developerGate.assertUnlocked(req.header(DEVELOPER_TOKEN_HEADER));
+    res.status(201).json(await seedSampleData());
   }),
 );

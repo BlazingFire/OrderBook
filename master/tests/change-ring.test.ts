@@ -97,8 +97,6 @@ describe('every changed entity is in exactly one bucket', () => {
     'sync_conflict',
     'role',
     'user',
-    'document_template',
-    'document_export',
     'catalog',
   ];
 

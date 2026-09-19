@@ -187,6 +187,93 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-19 — v1.0.3 Windows installers, with two packaged-only shell fixes (Claude)
+
+Scope: the owner asked for `.exe` setup files reflecting the current codebase
+and, mid-session, said the installers need none of the sample/seed-data work
+another session was writing — so the build is `da9e992` + the fixes below,
+from an isolated snapshot; that session's uncommitted files were excluded, not
+waited for. Full account in the `HANDOFF.md` entry of the same date.
+
+**Files touched.** `electron/shell.ts` (`here` via `fileURLToPath`; the
+installer is launched through `shell.openPath`, awaited, instead of `spawn`),
+`master/electron-builder.yml` and `office/electron-builder.yml`
+(`'!**/node_modules/**/*'` under `files`), `HANDOFF.md`, this file. Nothing
+committed; nothing pushed.
+
+**Verified.** `npm run verify` on the pre-edit tree: lint and typecheck clean,
+122 files / 1528 tests passed, none skipped. After the edits:
+`tsc -p electron/tsconfig.json --noEmit`, `eslint electron/shell.ts`, and the
+four `electron/tests` suites (45 tests). On the built installers: `7z l`,
+`asar list` (shell + `@orderbook/shared` only, 1.7 MB, no unpacked dir),
+`resources/panel` tree checks, manifest SHA-256/size re-hashed, the setup
+file's `requestedExecutionLevel level="requireAdministrator"` confirmed, and
+`spawn(setup.exe)` reproduced as `EACCES`. Both panels booted from
+`win-unpacked/resources/panel` under Electron's Node against a throwaway data
+dir (Master: fresh PG 17 cluster from `vendor/postgres`, 25 migrations, UI
+served, clean shutdown). Not done: an NSIS install on a real machine.
+
+**Audit that found the blockers.** 6 finder lenses (staged-file completeness,
+shell ↔ install layout, production dependency tree, recent structural drift,
+electron-builder/NSIS config, version + update path) × 3 adversarial
+verifiers per finding (reproduce, reachability, severity); 112 agents, 41
+raw findings, none refuted. Surviving warnings, not fixed here: unsigned
+manifests (in-app offer needs `ORDERBOOK_ALLOW_UNSIGNED_RELEASES=1` per
+panel; `docs/UPDATES.md` §Setting it up and `.env.example` say otherwise for
+USB-stick sites); `ORDERBOOK_MASTER_SETTINGS_FILE` set by the shell is read
+by nothing in `master/src`; Office storage relocation reverts on restart
+(`electron/office.main.ts` re-sends `ORDERBOOK_OFFICE_DATA_DIR`, and
+`office/src/lib/env-file.ts` lets the environment win); Electron-branded exe
+metadata from `signAndEditExecutable: false`; `docs/UPDATES.md` lists the
+signed fields without `platform`; `release.mjs vendorPostgres()` hardcodes
+`windows-x64` so `--os mac` would throw rather than vendor darwin binaries.
+
+### 2026-09-18 — Sample data: six months of a tile trade for demos and fresh installs (Claude)
+
+Scope: the owner's request for two or three test users and dummy data — leads,
+orders and everything else — so that every screen and dashboard has something
+to show. The users already existed (`seed:dummy`); the data is new, as one
+Master-side tool (*Settings → Developer → Seed sample data*) and one CLI
+(`npm run seed:sample`). `docs/DEVELOPER_MODE.md` § *Sample data* and the
+`HANDOFF.md` entry of the same date carry the design.
+
+**Headline.** A written dataset (`master/src/domain/sample-data.ts`: 16 parties,
+23 products, 33 leads with scripted histories) is replayed through the ordinary
+services as the three test users, oldest event first, on a 170-day timeline —
+and each event's timestamps are then moved back to its day, one UPDATE per
+table, with the append-only trigger on `activity_log` taken down and put back
+inside the same transaction. Nothing is inserted by hand, so the activity log,
+timelines, reservations, stock ledger and party-access rules are what real use
+would have left. Product photos are SVG swatches rasterised with sharp and
+pushed through the real upload pipeline. The tool refuses a second run before
+it touches the users.
+
+**Files touched.** New: `master/src/domain/sample-data.ts`,
+`master/src/services/sample-data.service.ts`, `master/src/lib/tile-swatch.ts`,
+`master/src/db/seed-sample-data-cli.ts`,
+`master/tests/{sample-data.integration,tile-swatch}.test.ts`. Modified:
+`shared/src/domain/developer.ts`, `shared/src/i18n/{en,hi}.ts`,
+`master/src/http/routes/developer.routes.ts`, `master/web/src/api.ts`,
+`master/web/src/screens/SettingsScreen.tsx`, `package.json`,
+`master/package.json`, `docs/DEVELOPER_MODE.md`, `HANDOFF.md`.
+
+**Verified.** `npm run verify` exit 0 — lint, typecheck in every workspace, and 124 files / 1537 tests passed, integration suites included against a live PostgreSQL. Beyond the gate: `npm run seed:sample` run against
+this machine's live Master (external PostgreSQL via `DATABASE_URL`) and both
+panels walked in a browser — Master dashboard, leads & orders, inventory,
+reports (dispatches April–September), activity log with *Verify chain* intact
+over 329 entries, recycle bin, party access, fields, the Developer tab's
+refusal on a second press; Office dashboard, lead board, catalogue with photos
+and product detail as the `office` user, who cannot see the party restricted
+to management.
+
+**Two things found by running it.** The `activity_log_no_update` trigger
+refused the first backdate outright — the guard is right, and the fix is the
+transactional take-down the 20260310 migration already established, not a
+weaker guard. And the management role does not hold `party.accessAll`, so
+"the manager dispatches the office user's order" fails on a party assigned to
+the office user alone; the administrator does that work in the seed, as an
+administrator would.
+
 ### 2026-09-07 — Bulk product import (CSV/Excel), templates, and the paged catalogue (Claude)
 
 Scope: the owner's request for bulk product import from CSV or Excel with

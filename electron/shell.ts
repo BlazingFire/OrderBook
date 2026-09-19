@@ -31,6 +31,7 @@ import { once } from 'node:events';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell as electronShell } from 'electron';
 
@@ -67,7 +68,15 @@ const STOP_GRACE_MS = 10_000;
 
 export function runPanelShell(config: PanelShellConfig): void {
   const ORIGIN = `http://localhost:${config.port}`;
-  const here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
+  /*
+   * `fileURLToPath`, not `URL#pathname`: the latter keeps the URL's percent
+   * encoding, so under the default `C:\Program Files\OrderBook … Panel`
+   * install this came out as `C:\Program%20Files\…` — a path that exists
+   * nowhere. The server root below is unaffected (it uses `resourcesPath`
+   * when packaged); the preload script is not, and without it the window has
+   * no `orderbook` bridge, which the page reads as "not the desktop app".
+   */
+  const here = path.dirname(fileURLToPath(import.meta.url));
 
   let serverProcess: ChildProcess | null = null;
   let mainWindow: BrowserWindow | null = null;
@@ -567,11 +576,22 @@ export function runPanelShell(config: PanelShellConfig): void {
     await stopServer();
 
     try {
-      if (process.platform === 'darwin') {
-        void electronShell.openPath(verdict.path);
-      } else {
-        spawn(verdict.path, [], { detached: true, stdio: 'ignore' }).unref();
-      }
+      /*
+       * Through the OS shell on every platform, never `spawn`.
+       *
+       * The Windows setup file is a per-machine NSIS installer and carries a
+       * `requireAdministrator` manifest. `spawn` is `CreateProcess`, which
+       * cannot elevate: it fails with ERROR_ELEVATION_REQUIRED, which Node
+       * reports as an *asynchronous* `EACCES` that no try/catch here could
+       * see — so the server had been stopped, the app quit, and nothing was
+       * installed. `ShellExecute` is what a double-click does, and it is the
+       * call that raises the UAC prompt. `openPath` resolves to an empty
+       * string on success and to the reason otherwise, a declined prompt
+       * included, so it is awaited before quitting rather than fired and
+       * forgotten.
+       */
+      const failure = await electronShell.openPath(verdict.path);
+      if (failure) throw new Error(failure);
 
       say(`Installing ${prepared.version} from ${verdict.path}`);
       app.quit();

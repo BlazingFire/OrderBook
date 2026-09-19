@@ -20,7 +20,7 @@
  *    that could would make the rule documentation rather than structure.
  *  · **No `DELETE`, anywhere.** Deleting is a Recycle Bin operation with
  *    blockers, a restore path and a person accountable for it.
- *  · **No users, roles, panels, documents or storage.** A key is for a shop's
+ *  · **No users, roles, panels or storage.** A key is for a shop's
  *    other software to read and correct catalogue data, not to administer the
  *    installation.
  */

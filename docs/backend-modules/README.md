@@ -1,5 +1,12 @@
 # Backend modules — specification set
 
+> **2026-09-19 — the PDF Designer (Stage 6) has since been removed from the product.** Everything
+> this set says about `document_templates`, `document_assets`, `document_exports`,
+> `/api/documents/*`, the `document:*` socket commands, the `documents` permission module and the
+> `document_template` Recycle Bin entity is historical: migration
+> `20260322000000_drop_document_designer` dropped the tables and stripped the keys. The Reports
+> PDF export (§3) is unaffected and still ships. Nothing below has been rewritten to reflect this.
+
 Status: **specification. Nothing in this set is built.** Reading it end to end should be enough to
 authorise the work, and enough for somebody who was not in the room to implement it without asking
 what was meant.

@@ -133,6 +133,170 @@ Everything through Stage 6 is pushed to **both `dev` and `main`** (they are at
 the same commit as of 2026-08-28). Stages 7–12 are on `dev` only, awaiting the
 owner's word to push.
 
+### The PDF Designer (Documents module) is removed (2026-09-19)
+
+The owner asked for the Documents module — templates, the page designer, the
+export history, logo/signature assets — to go. **The Reports PDF export stays**
+(`ReportFormat` is still `'csv' | 'pdf'`), which is what decided what survived
+under `master/src/pdf/`: `table-renderer.ts`, `fonts.ts`, a `primitives.ts`
+trimmed to what the table draws, and `text.ts` (the script splitter, moved in
+from `domain/document-text.ts`). `renderer.ts` and `elements.ts` are gone, as
+is everything named `document*` in `master/src`, `shared/src`, both `web/`
+apps and `ui/src` (`DocumentsScreen`, `PageDesigner*`,
+`pageDesignerGeometry`), plus the socket commands, Office forwarding routes,
+`documents` permission module, `documents.render` capability,
+`document_template` Recycle Bin entity, `document_template`/`document_export`
+`ChangedEntity` members, the `nav.*.documents` entries and every `documents.*`
+/ `designer.*` string in both catalogues. `writeDurable` — which
+`github-releases.ts` also used — moved to `master/src/lib/durable-file.ts`.
+
+- **Migration `20260322000000_drop_document_designer`** drops the three tables
+  and strips the five `documents.*` keys from every stored role (soft-deleted
+  included; idempotent; `down()` empty). `20260308` and `20260318` stay in the
+  registry because they have run on real installations and Knex refuses to
+  start when a completed migration goes missing. `data/documents/` on disk is
+  deliberately not deleted by anything.
+- **The five `activity.document_*` tokens stay in `en.ts`/`hi.ts`.** The log
+  is append-only and installed Masters hold rows carrying them;
+  `activity-tokens.lock.json` enforces exactly this.
+- The four vendored fonts, `pdfkit`, `fontkit` and the boot-time
+  `assertFontsPresent()` stay for the report export (`config.pdf.fontsDir`,
+  `error.pdf.fontMissing`). `pdfjs-dist` is dropped from devDependencies —
+  only the deleted render tests read PDFs back through it.
+- Tests: `document-*.test.ts` deleted; the surviving font and primitive
+  suites are `pdf-fonts.test.ts` and `pdf-primitives.test.ts` (the
+  `splitByScript` cases live in the latter now); `migration-grant` still
+  tests the frozen `20260309` grant, and
+  `migration-drop-documents.integration.test.ts` covers the strip.
+- `docs/backend-modules/` (Stage 6 = PDF Designer throughout) and the
+  `docs/overhaul/` references to it are now historical; `docs/backend-modules/README.md`
+  says so at the top.
+
+### v1.0.3 Windows installers built; two packaged-only shell bugs fixed (2026-09-19)
+
+The owner asked for fresh `.exe` setup files from the current codebase, and
+said the installers do not need the in-progress sample-data work — so they
+were built from the committed `da9e992` plus the three fixes below, in an
+isolated snapshot, while another session's uncommitted files stayed out.
+`npm run verify` was green on that tree first (122 files / 1528 tests, none
+skipped). Output, unsigned, in `C:\OrderBook-Releases\{master-panel,office-panel}`:
+`OrderBook-Master-1.0.3-Setup.exe` (126 MB) and `OrderBook-Office-1.0.3-Setup.exe`
+(81 MB), each beside `latest.json` + `latest-win32.json` whose SHA-256 and size
+were re-checked against the file.
+
+**Before building, a 112-agent audit of the packaging pipeline** (six lenses,
+three adversarial verifiers per finding) found two blockers that no test could
+see because both only exist in a packaged install — and both have been in the
+1.0.1/1.0.2 installers too:
+
+- **`electron/shell.ts` derived `here` from `URL#pathname`**, which keeps
+  percent-encoding, so under the default `C:\Program Files\OrderBook … Panel`
+  install the preload path was `C:\Program%20Files\…\preload.cjs`. Electron
+  could not load it, `window.orderbook` was undefined, and the page silently
+  behaved as "not the desktop app": no in-app update install, no uninstall, no
+  data-directory move. Now `fileURLToPath(import.meta.url)`, the idiom the
+  servers already use.
+- **"Install update" `spawn()`ed the setup file.** A `perMachine` NSIS
+  installer carries a `requireAdministrator` manifest, and `CreateProcess`
+  cannot elevate — it fails with `ERROR_ELEVATION_REQUIRED`, which Node reports
+  as an *asynchronous* `EACCES` that the surrounding try/catch never saw, after
+  the server had already been stopped. Reproduced against the built 1.0.3
+  setup file: `spawn -> EACCES`, nothing launched. Now `shell.openPath` on every
+  platform (ShellExecute, which raises the UAC prompt), awaited, with a
+  non-empty result thrown into the existing catch that restarts the server.
+
+Also applied, verified by simulation through app-builder-lib's own matcher and
+then by `asar list` on the built output: `'!**/node_modules/**/*'` in both
+`electron-builder.yml` files. electron-builder was packing a second,
+never-loaded copy of each panel's whole production tree (PostgreSQL binaries
+included) into `app.asar` beside the staged copy under `resources/panel`.
+`app.asar` is now 1.7 MB on both panels and holds only the shell plus
+`@orderbook/shared`; there is no `app.asar.unpacked`.
+
+**Verified on the built output, not the source.** Both installers were
+inspected (`7z l`, `asar list`, the `resources/panel` tree: dist, web bundle,
+217/85 packages, all four fonts, `vendor/postgres` with `share/postgres.bki`,
+uninstall scripts, no `.env`). Then each panel was booted from
+`win-unpacked/resources/panel` under Electron's own Node with no
+`DATABASE_URL` and a throwaway data dir: the Office was ready in 1 s; the
+Master created a PostgreSQL 17 cluster from the vendored binaries, applied all
+25 migrations, served `/` and a bundled asset, and stopped its database on the
+shutdown message. Nobody has yet run the NSIS install itself on a real machine.
+
+**Known, not fixed here** (audit warnings; see the 2026-09-19 change-log entry
+in `docs/AI_COLLABORATION.md`): manifests are unsigned, so an installed 1.0.3
+will not *offer* a folder or LAN release without
+`ORDERBOOK_ALLOW_UNSIGNED_RELEASES=1` on every panel (running the `.exe` by
+hand is unaffected); the Master never reads the `ORDERBOOK_MASTER_SETTINGS_FILE`
+the shell passes, so that flag on a Master has to be a Windows environment
+variable; an Office storage relocation reverts on the next launch because the
+shell re-sends `ORDERBOOK_OFFICE_DATA_DIR` and the env wins over
+`office-settings.env`; `signAndEditExecutable: false` leaves Electron's icon
+and version strings on the installed exe (do not flip it without Windows
+Developer Mode — winCodeSign's archive needs symlinks to extract); and a
+1.0.3 build is never offered in-app to a PC already on any 1.0.3 build.
+
+### Sample data for demos and fresh installs (2026-09-18)
+
+The owner asked for two or three test users and enough dummy data — leads,
+orders "and all other things" — that every screen and the dashboards show
+something. The users already existed (`seed:dummy`, 2026-09-07); what was
+missing was the data. It now comes from one tool, **Settings → Developer →
+Seed sample data** on the Master, or `npm run seed:sample` from a checkout.
+`docs/DEVELOPER_MODE.md` § *Sample data* is the full description.
+
+**What it makes.** Six months of a small ceramic-tile trade: 16 parties, 23
+products in six categories each with a generated photo through the real image
+pipeline, opening stock plus later arrivals and physical counts, reorder bands
+and a per-colour stock code on every row (the codes the new-lead flow was
+rebuilt around on 2026-09-10), 33 leads at every stage with remarks, 19 orders
+across all four order stages of which 14 are dispatched across the months, 6
+party-wise rates, 5 party-access assignments, 7 custom fields, values in every
+option list, and one party, one product and one lead in the Recycle Bin. The
+dataset is prose-quality on purpose — names, cities, GST numbers, remarks —
+because "Product 17" teaches nobody what a screen is for.
+
+**How it is made — the decision that matters.** Every record goes through the
+ordinary services as one of the three test users, never through raw inserts:
+that is what makes the activity log, timelines, reservations, stock ledger and
+party-access behaviour come out as real use leaves them. The services stamp
+`now()`, so the seed schedules every event on a 170-day timeline
+(`master/src/domain/sample-data.ts`), runs them oldest-first, and after each
+one moves the timestamps that event created back to its day (one UPDATE per
+table, per event). Two facts learned by running it rather than reading:
+`activity_log` is append-only by trigger, so the backdate takes the
+`activity_log_no_update` trigger down and up **inside the same transaction**
+(the precedent is `20260310000000_activity_log_actor_name.ts`), and the hash
+chain — which covers content and sequence, not `created_at` — verifies
+afterwards, asserted by the integration test and shown by *Verify chain*; and
+the management role does **not** hold `party.accessAll`, so order-side work
+on an office user's assigned parties is done by the administrator.
+
+**Guards.** The tool refuses to run twice (marker: the first sample product
+code) and does so *before* it seeds the users — a refused press must not re-arm
+anybody's password. It seeds the test users first otherwise, with the same
+consequence `seed:dummy` documents: an existing `admin` becomes
+`Admin@1234`. Photos are best-effort: a machine whose rasteriser cannot draw
+one still gets the rest.
+
+**Files.** New: `master/src/domain/sample-data.ts` (the dataset),
+`master/src/services/sample-data.service.ts`, `master/src/lib/tile-swatch.ts`
+(SVG → PNG swatches; no text, so no font dependency),
+`master/src/db/seed-sample-data-cli.ts`,
+`master/tests/sample-data.integration.test.ts`, `master/tests/tile-swatch.test.ts`.
+Modified: `shared/src/domain/developer.ts` (`SeedSampleDataResult`),
+`master/src/http/routes/developer.routes.ts` (`POST /api/developer/seed-sample-data`),
+`master/web/src/{api.ts,screens/SettingsScreen.tsx}`, both `i18n` catalogues
+(Hindi stubbed by `i18n:sync`), both `package.json` (`seed:sample`),
+`docs/DEVELOPER_MODE.md`.
+
+**Verified.** `npm run verify` exit 0 — 124 files / 1537 tests (the change log in `docs/AI_COLLABORATION.md`
+has the detail); the seed run against this machine's live Master and both
+panels walked in a browser — dashboard, leads & orders, inventory, reports
+(dispatches April–September), activity log with an intact chain, recycle bin,
+party access, fields, the Developer tab's refusal on a second press, and the
+Office panel's dashboard, board and catalogue with photos as the `office` user.
+
 ### Developer mode, reset, test users, uninstaller and the Settings rebuild (2026-09-07)
 
 The owner asked for four things in one message: dummy users for the three role

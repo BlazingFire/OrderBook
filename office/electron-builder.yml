@@ -29,6 +29,13 @@ buildDependenciesFromSource: false
 files:
   - electron/dist/**/*
   - package.json
+  # electron-builder adds the app's production `node_modules` to the asar
+  # whatever `files` says, and resolves them through the hoisted workspace
+  # root — which put a second, never-loaded copy of the whole panel runtime
+  # (PostgreSQL binaries included, on the Master) inside `app.asar` beside the
+  # staged one under `resources/panel`. The shell imports nothing from
+  # `node_modules`, so none of it belongs in the archive.
+  - '!**/node_modules/**/*'
 
 extraResources:
   - from: staging

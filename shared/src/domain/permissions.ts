@@ -49,7 +49,6 @@ export const MODULES = [
   'reports',
   'roles',
   'logs',
-  'documents',
 ] as const;
 
 export type PermissionModule = (typeof MODULES)[number];
@@ -77,9 +76,6 @@ export const MODULE_ACTIONS: Record<PermissionModule, readonly PermissionAction[
   roles: ['view', 'create', 'edit', 'delete'],
   // No create/edit/delete: the trail is append-only and the triggers refuse both.
   logs: ['view', 'export'],
-  // No export/bulk: rendering is a capability (`documents.render`) because it
-  // is an act performed on a record, and there is no bulk surface.
-  documents: ['view', 'create', 'edit', 'delete'],
 };
 
 // --- Capabilities ----------------------------------------------------------
@@ -98,11 +94,6 @@ interface CapabilityDefinition {
 export const CAPABILITIES: readonly CapabilityDefinition[] = [
   { key: 'lead.convert', group: 'workflow', labelToken: 'permission.lead.convert' },
   { key: 'orders.dispatch', group: 'workflow', labelToken: 'permission.orders.dispatch' },
-  // `workflow`, not `admin`: rendering is an act performed on a record, beside
-  // `lead.convert` and `orders.dispatch`, not an administrative setting. Always
-  // enforced alongside the subject's own view key, so a document can never be
-  // a way to read a lead you may not open.
-  { key: 'documents.render', group: 'workflow', labelToken: 'permission.documents.render' },
   {
     key: 'record.reassignOwner',
     group: 'workflow',
@@ -269,9 +260,6 @@ const MINIMUM_TIER: Record<string, RoleTier> = {
   'orders.delete': 'management',
   'parties.delete': 'management',
   'products.delete': 'management',
-  // Matches the other `*.delete` keys. It also governs restore, so it is the
-  // one key that can put a deleted template back.
-  'documents.delete': 'management',
   'leads.bulk': 'management',
   'orders.bulk': 'management',
   'parties.bulk': 'management',

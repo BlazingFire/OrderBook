@@ -68,7 +68,12 @@ describe('the migration registry matches the directory', () => {
    * file to restore ascending order would make Knex see an unrun migration and
    * apply it a second time.
    */
-  const DELIBERATELY_LAST = ['20260309000000_new_module_permission_grant'];
+  const DELIBERATELY_LAST = [
+    '20260309000000_new_module_permission_grant',
+    // Strips keys the grant above still hands out, so it has to run after it
+    // — on a fresh database as much as on an upgraded one.
+    '20260322000000_drop_document_designer',
+  ];
 
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {
     const names = namesInArray(registrySource());

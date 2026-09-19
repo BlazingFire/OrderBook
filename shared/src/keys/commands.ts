@@ -49,7 +49,7 @@ export interface CommandDef {
  * The Master's nav order, matching its own sidebar — Work then Admin, in the
  * order `workItems`/`adminItems` declare them.
  *
- * Fourteen screens and nine usable numbers, so the tail has no chord. That is
+ * Thirteen screens and nine usable numbers, so the tail has no chord. That is
  * deliberate rather than a limit worked around: Alt+0 reads as "the tenth" to
  * nobody, and the palette reaches every one of them by name.
  */
@@ -58,7 +58,6 @@ const MASTER_NAV: Array<[id: string, token: MessageKey]> = [
   ['orders', 'nav.master.leadsOrders'],
   ['inventory', 'nav.master.inventory'],
   ['reports', 'nav.master.reports'],
-  ['documents', 'nav.master.documents'],
   ['conflicts', 'nav.master.conflicts'],
   ['panels', 'nav.master.panels'],
   ['access', 'nav.master.access'],
@@ -176,10 +175,6 @@ export const COMMANDS: readonly CommandDef[] = [
    * shadowed the Electron Edit menu's own undo accelerator, so pressing it
    * while typing into a lead cancelled the browser's undo and did not
    * substitute one.
-   *
-   * The page designer's own Ctrl+Z and Ctrl+D are unaffected: it listens on its
-   * own surface (`ui/src/PageDesigner.tsx`) and never went through this
-   * registry.
    *
    * `nav.prev` / `nav.next` (Alt+Arrow) went with them. They additionally bound
    * a chord `matchesChord` can never match, because `codeFor` has no entry for

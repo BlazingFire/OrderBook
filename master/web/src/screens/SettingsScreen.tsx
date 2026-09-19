@@ -20,6 +20,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type {
   MasterIdentity,
   SeedDummyUsersResult,
+  SeedSampleDataResult,
   SettingKey,
   SettingView,
   StorageUsage,
@@ -274,6 +275,7 @@ const RELOAD_AFTER_RESET_MS = 1500;
 function DeveloperTab() {
   const session = useDeveloperSession(api.developer);
   const [seeded, setSeeded] = useState<SeedDummyUsersResult | null>(null);
+  const [sampled, setSampled] = useState<SeedSampleDataResult | null>(null);
   const { token } = session;
 
   // Built unconditionally: it owns the "delete the data too?" switch, and a
@@ -290,6 +292,15 @@ function DeveloperTab() {
           done: t('developer.tool.seed.done'),
           run: async () => setSeeded(await api.developer.seedDummyUsers(token)),
           result: seeded ? <SeedResult result={seeded} /> : undefined,
+        },
+        {
+          id: 'sample-data',
+          title: t('developer.tool.sample.title'),
+          description: t('developer.tool.sample.description'),
+          action: t('developer.tool.sample.action'),
+          done: t('developer.tool.sample.done'),
+          run: async () => setSampled(await api.developer.seedSampleData(token)),
+          result: sampled ? <SampleDataResult result={sampled} /> : undefined,
         },
         {
           id: 'reset-all',
@@ -390,6 +401,51 @@ function SeedResult({ result }: { result: SeedDummyUsersResult }) {
           </span>
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * What the sample seed produced: the sign-ins it made on the way (the same
+ * table the test-user seed shows) and a count of each kind of record, so the
+ * person knows what to go and look at.
+ */
+function SampleDataResult({ result }: { result: SeedSampleDataResult }) {
+  const { counts } = result;
+  const lines: Array<[string, number]> = [
+    [t('developer.tool.sample.count.parties'), counts.parties],
+    [t('developer.tool.sample.count.products'), counts.products],
+    [t('developer.tool.sample.count.images'), counts.images],
+    [t('developer.tool.sample.count.stockMovements'), counts.stockMovements],
+    [t('developer.tool.sample.count.leads'), counts.leads],
+    [t('developer.tool.sample.count.orders'), counts.orders],
+    [t('developer.tool.sample.count.dispatched'), counts.dispatched],
+    [t('developer.tool.sample.count.remarks'), counts.remarks],
+    [t('developer.tool.sample.count.optionValues'), counts.optionValues],
+    [t('developer.tool.sample.count.customFields'), counts.customFields],
+    [t('developer.tool.sample.count.partyVariants'), counts.partyVariants],
+    [t('developer.tool.sample.count.partyAssignments'), counts.partyAssignments],
+    [t('developer.tool.sample.count.deleted'), counts.deleted],
+  ];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}>
+      <p className="ob-small" style={{ margin: 0 }}>
+        {t('developer.tool.sample.span', { from: result.from, to: result.to })}
+      </p>
+      <DataTable
+        rows={lines.map(([label, count]) => ({ label, count }))}
+        rowKey={(row) => row.label}
+        columns={[
+          { key: 'label', header: t('developer.tool.sample.what'), render: (row) => row.label },
+          {
+            key: 'count',
+            header: t('developer.tool.sample.howMany'),
+            render: (row) => <span className="ob-mono">{row.count}</span>,
+          },
+        ]}
+      />
+      <SeedResult result={result} />
     </div>
   );
 }

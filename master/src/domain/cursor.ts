@@ -1,6 +1,6 @@
 /**
  * THE single opaque base64url cursor codec. Every keyset-paged module in this
- * batch (Recycle Bin, Logs, document exports, …) builds its own payload shape
+ * batch (Recycle Bin, Logs, …) builds its own payload shape
  * on top of this one codec rather than inventing a second encoder —
  * `01-ARCHITECTURE.md` §4.2: a cursor is a token a client round-trips, and
  * three encoders would mean three formats a client cannot tell apart and

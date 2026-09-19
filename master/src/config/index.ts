@@ -64,17 +64,6 @@ export const config = {
   },
 
   /**
-   * The PDF Designer's disk layout.
-   *
-   * Deliberately **not** under `uploadsDir`: that directory is served by
-   * `express.static` with no authentication (`master/src/http/app.ts`), and a
-   * rendered quotation carries prices, a customer's address and — depending on
-   * the actor who rendered it — figures somebody else may not see. Documents
-   * are reachable only through the authenticated route, which resolves the
-   * path from this config plus the stored `storage_key`, never from any
-   * client-supplied string.
-   */
-  /**
    * Where setup files for both panels are kept.
    *
    * Deliberately **outside** `dataDir` and outside the program folder: it is a
@@ -122,24 +111,9 @@ export const config = {
     pollMinutes: Number(process.env.ORDERBOOK_RELEASES_POLL_MINUTES ?? '180'),
   },
 
-  documents: {
-    dir: path.join(dataDir, 'documents'),
-    /** `<exportsDir>/<storageKey>.pdf` — the rendered files themselves. */
-    exportsDir: path.join(dataDir, 'documents', 'exports'),
-    /** Logo and signature images a template draws. */
-    assetsDir: path.join(dataDir, 'documents', 'assets'),
-    /** The four vendored SIL OFL faces. Committed, not fetched — this product never has a network. */
+  pdf: {
+    /** The four vendored SIL OFL faces the report export draws with. Committed, not fetched — this product never has a network. */
     fontsDir: path.join(packageRoot, 'assets', 'fonts'),
-    /**
-     * 512 KB raw (~700 KB once base64-encoded). Bounded by the *Office*
-     * Panel's `express.json` limit of 1 MB, not the Master's 2 MB, because an
-     * asset upload is forwarded through it — raising this without raising that
-     * produces a 413 only Office users ever see.
-     */
-    maxAssetBytes: 512 * 1024,
-    maxPreviewBytes: 4 * 1024 * 1024,
-    /** No automatic pruning. Retention is an open question nobody has answered yet. */
-    retainExports: null,
   },
 
   session: {

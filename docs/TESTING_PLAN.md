@@ -47,7 +47,7 @@ Screen: **FirstRunScreen**.
 2. [ ] After confirming, app proceeds to Sign In screen (or auto-signs-in) — no error.
 3. [ ] Restart Master app — confirm it does **not** re-run first-run setup (setup status persisted).
 4. **Restore path (separate pass, optional but recommended once):**
-   - [ ] From a second clean install, choose "Restore from backup" and point at a backup file (produced later in Section 11) + passphrase — confirm it restores parties/leads/users instead of creating a blank site.
+   - [ ] From a second clean install, choose "Restore from backup" and point at a backup file (produced later in Section 10) + passphrase — confirm it restores parties/leads/users instead of creating a blank site.
 
 ---
 
@@ -183,45 +183,23 @@ Run once with each combination:
 
 ---
 
-## 10. Documents / PDF Page Designer (test on both Master and Office)
-
-Screen: shared **DocumentsScreen** (Templates + Exports tabs).
-
-1. **Templates tab:**
-   - [ ] Create a new template, pick a starter design from the template picker — confirm it seeds the layout.
-   - [ ] Confirm picking a different starter *after* creation has no effect (expected/known behavior — not a bug).
-   - [ ] Set document type (`quotation` / `order_confirmation` / `dispatch_note`), paper size, orientation, margins.
-   - [ ] Use the visual canvas: drag-position an element, bind it to a data field (e.g., party name, order total).
-   - [ ] Preview against a real lead/order record — confirm bound fields render actual data.
-   - [ ] Save the template.
-   - [ ] Edit the same template from a **second** panel while the first still has it open (stale state) — confirm the `ConflictBanner` with field-level diff appears on save.
-   - [ ] Soft-delete a template, confirm it's excluded from the picker used elsewhere, restore it.
-2. **Exports tab:**
-   - [ ] Generate a real export (e.g., dispatch a quotation PDF from a lead/order) — confirm it appears in Exports with correct metadata.
-   - [ ] Download an export file, confirm the PDF opens and matches what was sent.
-   - [ ] Confirm there is **no delete action** on an export (immutable by design) — verify this on both Master and Office.
-3. **Parity check:** repeat template creation once on Master and once on Office (PC-B) — confirm both produce an identical-looking PDF (shared rendering code, only transport differs).
-4. **Assets:** upload an image asset (e.g., a logo) to a template, confirm it appears correctly in the rendered PDF.
-
----
-
-## 11. Settings, Storage, Backup/Restore (Master, PC-A)
+## 10. Settings, Storage, Backup/Restore (Master, PC-A)
 
 Screen: **SettingsScreen**.
 
 - [ ] View storage usage numbers — confirm they look sane (non-zero, grows after adding data).
 - [ ] Export a full backup (passphrase-protected) — save the file.
 - [ ] Preview a restore from that backup file without committing — confirm preview shows what would change.
-- [ ] Perform the actual restore into a **separate clean Master install** (see Section 2, restore path) and confirm parties/leads/users/templates all come back correctly, including custom fields and role/permission setup.
+- [ ] Perform the actual restore into a **separate clean Master install** (see Section 2, restore path) and confirm parties/leads/users all come back correctly, including custom fields and role/permission setup.
 - [ ] Check password vault status indicator reflects actual vault state.
 - [ ] Office `SettingsScreen` — confirm it only exposes local UI prefs (theme, density, scale, motion) and has no server-side settings.
 
 ---
 
-## 12. Reports & Logs (Master only)
+## 11. Reports & Logs (Master only)
 
 - [ ] **ReportsScreen:** run Dispatches report, Lead-Outcomes report, Top-Parties report — confirm numbers match manually-counted test data from Sections 5 & 8.
-- [ ] Export a report, confirm file downloads and matches on-screen figures.
+- [ ] Export a report as CSV and as PDF, confirm both download and match on-screen figures (a Hindi party name must print in the PDF, not as blank boxes).
 - [ ] **LogsScreen:** confirm actions taken throughout this test pass (sign-ins, lead creation, deletes, role changes) appear in the audit log with correct actor/timestamp.
 - [ ] Use log filters/facets to narrow by action type or user.
 - [ ] Run the hash-chain integrity **verify** action — confirm it reports "intact" on an untampered log.
@@ -229,7 +207,7 @@ Screen: **SettingsScreen**.
 
 ---
 
-## 13. Integrations (Master only)
+## 12. Integrations (Master only)
 
 Screen: **IntegrationsScreen**.
 
@@ -240,7 +218,7 @@ Screen: **IntegrationsScreen**.
 
 ---
 
-## 14. AI Assistant / Insights (if enabled in this build)
+## 13. AI Assistant / Insights (if enabled in this build)
 
 Screen: **AssistantScreen** (shared).
 
@@ -251,7 +229,7 @@ Screen: **AssistantScreen** (shared).
 
 ---
 
-## 15. Auto-update flow (do this last — it replaces the running app)
+## 14. Auto-update flow (do this last — it replaces the running app)
 
 Setup: build a **newer** version (e.g., bump to `1.0.3` via `npm run release -- 1.0.3`) and drop the output into `C:\OrderBook-Releases\{master,office}-panel\` on the Master PC, exactly as the release script's own instructions say.
 
@@ -270,7 +248,7 @@ Setup: build a **newer** version (e.g., bump to `1.0.3` via `npm run release -- 
 
 ---
 
-## 16. Cross-cutting regression pass
+## 15. Cross-cutting regression pass
 
 After all sections above, do one more full-data sanity check:
 

@@ -36,7 +36,7 @@ import { LEGACY_RELEASE_PLATFORM } from '@orderbook/shared';
 
 import { config } from '../config/index.js';
 import { createLogger } from '../lib/logger.js';
-import { writeDurable } from '../lib/document-files.js';
+import { writeDurable } from '../lib/durable-file.js';
 import { verifyManifest } from '../lib/release-signature.js';
 
 const log = createLogger('github-releases');

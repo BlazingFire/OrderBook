@@ -39,6 +39,7 @@ import * as documentLayoutV2 from './20260318000000_document_layout_v2.js';
 import * as productsBulkPermissionGrant from './20260319000000_products_bulk_permission_grant.js';
 import * as productVariantCodes from './20260320000000_product_variant_codes.js';
 import * as lineItemVariantCodes from './20260321000000_line_item_variant_codes.js';
+import * as dropDocumentDesigner from './20260322000000_drop_document_designer.js';
 
 export interface Migration {
   name: string;
@@ -114,13 +115,26 @@ export const migrations: Migration[] = [
     name: '20260321000000_line_item_variant_codes',
     ...lineItemVariantCodes,
   },
-  // Stage 7 of `docs/backend-modules/` — last in the array, not last by
-  // timestamp. Its `20260309` slot was reserved before `20260310`/`20260311`
-  // were claimed by concurrent work; what matters is that it runs after every
-  // module whose keys it grants, and array order is what Knex follows here.
+  // Stage 7 of `docs/backend-modules/` — pinned after every timestamp above,
+  // not last by timestamp. Its `20260309` slot was reserved before
+  // `20260310`/`20260311` were claimed by concurrent work; what matters is
+  // that it runs after every module whose keys it grants, and array order is
+  // what Knex follows here.
   {
     name: '20260309000000_new_module_permission_grant',
     ...newModulePermissionGrant,
+  },
+  // Drops the PDF Designer's tables and strips its five keys. It has to sit
+  // *after* the `20260309` grant, which still hands those keys out (a
+  // migration is a frozen fact): on a fresh database the grant would
+  // otherwise re-add them the moment this had removed them, and the shipped
+  // roles would carry keys the product cannot enforce or display. `20260308`
+  // and `20260318` above stay listed: they have run on real installations,
+  // and a completed migration missing from this array stops the Master from
+  // starting at all.
+  {
+    name: '20260322000000_drop_document_designer',
+    ...dropDocumentDesigner,
   },
 ];
 

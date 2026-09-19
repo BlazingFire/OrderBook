@@ -1,13 +1,13 @@
 /**
- * The four vendored SIL OFL faces, registered with PDFKit once per process.
+ * The four vendored SIL OFL faces, registered with PDFKit once per document.
  *
  * **Fails loudly at startup when a face is missing**, rather than at first
- * print. PDFKit's fallback for an unregistered font is Helvetica, one of the
+ * export. PDFKit's fallback for an unregistered font is Helvetica, one of the
  * 14 standard PDF fonts — which has no Devanagari glyphs at all, so a missing
  * `NotoSansDevanagari-Regular.ttf` would not error: it would silently render
- * every Hindi party name as a row of blank boxes on a document already sent to
- * a customer. A startup crash naming the missing file is strictly better than
- * a document nobody notices is wrong.
+ * every Hindi party name as a row of blank boxes on a report somebody has
+ * already printed. A startup crash naming the missing file is strictly better
+ * than a page nobody notices is wrong.
  *
  * Infrastructure, a peer of `realtime/` — it knows about PDFKit and the disk,
  * and holds no business rule.
@@ -18,8 +18,8 @@ import path from 'node:path';
 import type PDFDocument from 'pdfkit';
 
 import { config } from '../config/index.js';
-import type { ScriptTag } from '../domain/document-text.js';
 import { AppError } from '../lib/errors.js';
+import type { ScriptTag } from './text.js';
 
 /** The PDFKit font names the rest of the module refers to faces by. */
 export type FaceName = 'body' | 'bodyBold' | 'devanagari' | 'mono';
@@ -30,9 +30,9 @@ export type FaceName = 'body' | 'bodyBold' | 'devanagari' | 'mono';
  * a space glyph whose `loca` entry points past the end of the `glyf` table:
  * fontkit throws `RangeError: Offset is outside the bounds of the DataView`
  * from `_getCBox` the moment PDFKit subsets a string containing a space —
- * which is every page footer this renderer draws. The one IBM Plex source
- * that survives (the official `@ibm/plex-mono` WOFF2) is not subset by PDFKit
- * at all and adds ~260 KB to every rendered document, against ~4 KB here.
+ * which is every page this renderer draws. The one IBM Plex source that
+ * survives (the official `@ibm/plex-mono` WOFF2) is not subset by PDFKit at
+ * all and adds ~260 KB to every rendered file, against ~4 KB here.
  *
  * Source Code Pro is SIL OFL 1.1 like the other three, covers everything this
  * renderer needs including `₹`, and subsets correctly. Swapping it back is one
@@ -46,7 +46,7 @@ const FACE_FILES: Record<FaceName, string> = {
 };
 
 export function fontPath(face: FaceName): string {
-  return path.join(config.documents.fontsDir, FACE_FILES[face]);
+  return path.join(config.pdf.fontsDir, FACE_FILES[face]);
 }
 
 /**
@@ -59,7 +59,7 @@ export function assertFontsPresent(): void {
     const file = fontPath(face);
     if (!existsSync(file)) {
       throw new AppError(
-        'error.documents.fontMissing',
+        'error.pdf.fontMissing',
         { file: FACE_FILES[face] },
         500,
         'font_missing',
@@ -75,7 +75,7 @@ export function assertFontsPresent(): void {
  * Per-document rather than a process-wide cache: PDFKit's font registry lives
  * on the `PDFDocument` instance, so there is nothing global to warm. The files
  * themselves are read by fontkit each time, which for four TTFs totalling
- * ~1 MB is not worth optimising against a render that also does layout.
+ * ~1 MB is not worth optimising against an export that also does layout.
  */
 export function registerFonts(doc: typeof PDFDocument.prototype): void {
   for (const face of Object.keys(FACE_FILES) as FaceName[]) {

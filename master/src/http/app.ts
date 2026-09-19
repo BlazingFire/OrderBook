@@ -13,7 +13,6 @@ import { avatarFilesRoutes, avatarRoutes } from './routes/avatar.routes.js';
 import { aiRoutes } from './routes/ai.routes.js';
 import { authRoutes } from './routes/auth.routes.js';
 import { dataRoutes } from './routes/data.routes.js';
-import { documentRoutes } from './routes/document.routes.js';
 import { fieldsRoutes } from './routes/fields.routes.js';
 import { imageFilesRoutes, imagesRoutes } from './routes/images.routes.js';
 import { integrationRoutes } from './routes/integration.routes.js';
@@ -71,7 +70,6 @@ export function createApp(): Express {
   app.use('/api/fields', fieldsRoutes);
   app.use('/api/logs', logRoutes);
   app.use('/api/reports', reportRoutes);
-  app.use('/api/documents', documentRoutes);
   app.use('/api/products/:productId/images', imagesRoutes);
   // An Office Panel's server, not a browser: pairing credentials plus the
   // acting user's token, so image bytes stop riding the command socket.
@@ -100,10 +98,8 @@ export function createApp(): Express {
   // out every product image variant with no session, no `products.view` and no
   // tenant check — routing straight around `imageFilesRoutes` and
   // `image.service.ts#resolveImageFile`, whose whole job is to answer 404 to a
-  // caller who may not see the product. `config.documents` already keeps export
-  // files out of `uploadsDir` for exactly this reason; images had landed inside
-  // it. Anything under the data directory that a client may read needs a route
-  // that checks a permission first.
+  // caller who may not see the product. Anything under the data directory that
+  // a client may read needs a route that checks a permission first.
 
   // The built Master Panel UI. Unknown non-API paths fall through to index.html
   // so client-side routes survive a browser refresh.

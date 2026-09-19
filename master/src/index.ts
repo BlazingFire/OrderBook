@@ -28,7 +28,6 @@ import { closeDatabase, db, initDatabase, runMigrations } from './db/knex.js';
 import { startDiscoveryResponder, type DiscoveryResponder } from './discovery/responder.js';
 import { createApp } from './http/app.js';
 import { createBootApp } from './http/boot-app.js';
-import { ensureDocumentDirectories, sweepOrphanTemporaries } from './lib/document-files.js';
 import { createLogger } from './lib/logger.js';
 import { toErrorMessage } from './lib/errors.js';
 import { loadOrCreateKey } from './lib/secret-box.js';
@@ -205,10 +204,6 @@ async function main(): Promise<void> {
     bootStep('Preparing folders');
     await fs.mkdir(config.uploadsDir, { recursive: true });
 
-    // A missing document font must stop startup here, naming the file. PDFKit's
-    // fallback for an unregistered face is Helvetica, which has no Devanagari
-    // glyphs — so the alternative to failing now is silently printing every
-    // Hindi name as blank boxes on a document already sent to a customer.
     // A pre-flight, not the only initialiser: `secret-box.ts` creates the key
     // lazily on first use, because no integration suite runs `main()`. Calling
     // it here means an unwritable `dataDir/secrets` is loud on the boot screen
@@ -216,10 +211,12 @@ async function main(): Promise<void> {
     bootStep('Preparing secure storage');
     loadOrCreateKey();
 
-    bootStep('Checking document fonts');
+    // A missing PDF font must stop startup here, naming the file. PDFKit's
+    // fallback for an unregistered face is Helvetica, which has no Devanagari
+    // glyphs — so the alternative to failing now is silently printing every
+    // Hindi name as blank boxes on an exported report.
+    bootStep('Checking PDF fonts');
     assertFontsPresent();
-    await ensureDocumentDirectories();
-    await sweepOrphanTemporaries();
 
     bootStep('Starting the database');
     postgres = await startPostgres();

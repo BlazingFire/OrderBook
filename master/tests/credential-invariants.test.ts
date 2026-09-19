@@ -169,33 +169,6 @@ describe('the two-layer permission check', () => {
     expect(guards.length).toBe(handlers.length);
   });
 
-  it('guards every Documents route (Stage 6 extends the pattern to its own router)', () => {
-    const routes = read('http/routes/document.routes.ts');
-
-    const handlers = routes
-      .split('\n')
-      .filter((line) => /documentRoutes\.(get|post|put|delete)\(/.test(line));
-    const guards = routes
-      .split('\n')
-      .filter((line) => !line.trim().startsWith('*') && line.includes('needs('));
-
-    // Zero exemptions. `/render` and `/preview` guard `documents.render` here
-    // and are checked AGAIN in the service for the subject's own view key,
-    // which middleware cannot do because the subject is in the body — so a
-    // guard count is necessary but not by itself sufficient, and the
-    // second half is pinned by `document-render.integration.test.ts`.
-    expect(guards.length).toBe(handlers.length);
-    // Fifteen, not the thirteen `04-API-CONTRACT.md` §9.3 lists: the
-    // contract gives the designer asset upload and fetch-by-id but no way to
-    // discover what a tenant already has, so `GET /api/documents/assets` was
-    // added alongside a matching `document:listAssets` command and Office
-    // forwarding route — and no way to remove a wrong upload, so
-    // `DELETE /api/documents/assets/:id` was added the same way, alongside
-    // `document:deleteAsset` and its own Office forwarding route. All three
-    // surfaces agree at fifteen.
-    expect(handlers.length).toBe(15);
-  });
-
   it('guards every panel-management route (`panels.manage` gates admission, revoke and rename)', () => {
     const routes = read('http/routes/panel.routes.ts');
 

@@ -1236,68 +1236,6 @@ export function createApp(): Express {
     })();
   });
 
-  // PDF Designer (docs/backend-modules/04-API-CONTRACT.md §6). Online-only,
-  // like every other module in this batch: nothing is queued into the outbox.
-  // A queued render would emit a legally-shaped quotation hours later against
-  // a lead whose lines had since changed, which is worse than failing now.
-  app.get('/api/documents/templates', (req, res) =>
-    forward(res, 'document:listTemplates', {
-      documentType: typeof req.query.documentType === 'string' ? req.query.documentType : undefined,
-      cursor: typeof req.query.cursor === 'string' ? req.query.cursor : undefined,
-      limit: req.query.limit ? Number(req.query.limit) : undefined,
-    }),
-  );
-  app.get('/api/documents/templates/:id', (req, res) =>
-    forward(res, 'document:getTemplate', req.params.id),
-  );
-  app.post('/api/documents/templates', (req, res) =>
-    forward(res, 'document:createTemplate', req.body),
-  );
-  app.put('/api/documents/templates/:id', (req, res) =>
-    forward(res, 'document:updateTemplate', { id: req.params.id, input: req.body }),
-  );
-  app.delete('/api/documents/templates/:id', (req, res) =>
-    forward(res, 'document:deleteTemplate', {
-      id: req.params.id,
-      expectedVersion: req.body?.expectedVersion,
-    }),
-  );
-  app.post('/api/documents/templates/:id/restore', (req, res) =>
-    forward(res, 'document:restoreTemplate', req.params.id),
-  );
-
-  app.post('/api/documents/assets', (req, res) => forward(res, 'document:uploadAsset', req.body));
-  app.get('/api/documents/assets', (_req, res) => forward(res, 'document:listAssets'));
-  app.delete('/api/documents/assets/:id', (req, res) =>
-    forward(res, 'document:deleteAsset', req.params.id),
-  );
-  app.get('/api/documents/assets/:id/file', (req, res) =>
-    forwardFile(res, 'document:assetFile', req.params.id, 'inline'),
-  );
-
-  app.post('/api/documents/render', (req, res) => forward(res, 'document:render', req.body));
-  app.post('/api/documents/preview', (req, res) =>
-    forwardFile(res, 'document:preview', req.body, 'inline'),
-  );
-
-  app.get('/api/documents/exports', (req, res) =>
-    forward(res, 'document:listExports', {
-      subjectKind:
-        req.query.subjectKind === 'lead' || req.query.subjectKind === 'order'
-          ? req.query.subjectKind
-          : undefined,
-      subjectId: typeof req.query.subjectId === 'string' ? req.query.subjectId : undefined,
-      cursor: typeof req.query.cursor === 'string' ? req.query.cursor : undefined,
-      limit: req.query.limit ? Number(req.query.limit) : undefined,
-    }),
-  );
-  app.get('/api/documents/exports/:id', (req, res) =>
-    forward(res, 'document:getExport', req.params.id),
-  );
-  app.get('/api/documents/exports/:id/file', (req, res) =>
-    forwardFile(res, 'document:exportFile', req.params.id, 'attachment'),
-  );
-
   // Dashboard (docs/backend-modules/04-API-CONTRACT.md §7.2). The only live
   // pull — everything else rides on `SyncSnapshot.dashboard`, cached on
   // disk, and the `dashboard:changed` push. Cached figures stay on screen
@@ -1907,7 +1845,7 @@ function requireUser(_req: Request, res: Response, next: NextFunction): void {
  * `forward` passed the Master's `missingPermission` through as
  * `details.permission` and the other two silently dropped it, so a control the
  * browser should have hidden stayed on screen for anybody who happened to use
- * an export or a document.
+ * an export.
  *
  * The distinction it exists to keep is between **silence** and a **refusal**.
  * `unreachable` means the Master did not answer and the caller may retry;
@@ -1970,41 +1908,6 @@ async function forwardCsv(
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(result.csv);
-  } catch (error) {
-    failForward(res, error);
-  }
-}
-
-/**
- * The binary sibling of `forwardCsv`, for the three commands whose success
- * value is a file rather than JSON (`document:preview`, `document:exportFile`,
- * `document:assetFile`).
- *
- * The bytes are buffered whole into the socket ack and then out again — the
- * same disclosed limitation the CSV exports carry (open question O-2 in
- * `04-API-CONTRACT.md` §12). There is no streaming transport between the two
- * servers for an ack-shaped command, so a Master-side stream would have to be
- * re-buffered here anyway; one function serving both transports was judged
- * more valuable than a leaner Master-only path. A rendered quotation is a few
- * hundred KB, well inside the ack budget — this is a real ceiling for a
- * hypothetical 200-page document, not for the documents this product makes.
- */
-async function forwardFile(
-  res: Response,
-  event: string,
-  payload: unknown,
-  disposition: 'inline' | 'attachment',
-): Promise<void> {
-  try {
-    const result = (await masterConnection.command(event as never, payload)) as {
-      fileName: string;
-      contentType: string;
-      bytes: ArrayBufferLike | Uint8Array;
-    };
-
-    res.setHeader('Content-Type', result.contentType);
-    res.setHeader('Content-Disposition', `${disposition}; filename="${result.fileName}"`);
-    res.send(Buffer.from(result.bytes as Uint8Array));
   } catch (error) {
     failForward(res, error);
   }

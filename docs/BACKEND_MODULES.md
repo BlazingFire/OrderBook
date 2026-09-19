@@ -1,5 +1,10 @@
 # Backend build plan — the six new modules
 
+> **2026-09-19 — the PDF Designer (§5.5) was built and has since been removed.** Migration
+> `20260322000000_drop_document_designer` dropped its three tables and stripped the `documents.*`
+> keys; the `documents` module, `documents.render` capability and `document_template` Bin entity no
+> longer exist. Everything below about it is historical. The Reports PDF export is unaffected.
+
 Status: **planning complete, nothing built.** This is the backend half of `docs/UI_REDESIGN.md`.
 It covers the six modules the supplied design implies but the product does not have: **Fields
 management**, **Logs**, **Recycle Bin**, **Reports**, **PDF Designer**, and the **i18n /

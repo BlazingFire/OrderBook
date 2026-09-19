@@ -35,7 +35,6 @@ import { db, runMigrations } from '../db/knex.js';
 import { resetRateLimits } from '../http/middleware/api-key-rate-limit.js';
 import { resetApiKeyFailures } from '../http/middleware/require-api-key.js';
 import { resetPublicApiTenantCache } from '../http/routes/public-api.routes.js';
-import { ensureDocumentDirectories } from '../lib/document-files.js';
 import { TooManyRequestsError, UnauthorizedError, ValidationError } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
@@ -181,14 +180,16 @@ export async function resetAllData(): Promise<ResetAllResult> {
   // out of the first, and the last is where somebody reads what happened.
   for (const dir of [
     config.uploadsDir,
-    config.documents.dir,
+    // The removed PDF Designer's folder. Nothing writes it any more, but an
+    // installation upgraded from before `20260322` still carries it, and a
+    // reset that promises the pre-setup state should not leave it behind.
+    path.join(config.dataDir, 'documents'),
     path.join(config.dataDir, 'secrets'),
     path.join(config.dataDir, 'tmp'),
   ]) {
     await fs.rm(dir, { recursive: true, force: true });
   }
   await fs.mkdir(config.uploadsDir, { recursive: true });
-  await ensureDocumentDirectories();
   // The next `loadOrCreateKey()` mints a fresh `vault.key`; the old one would
   // only ever have unsealed rows that no longer exist.
   resetSecretBox();

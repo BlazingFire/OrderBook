@@ -8,14 +8,6 @@
  * identity, never from the body — a client must not be able to name a tenant).
  */
 
-import type { StoredDocumentLayout } from './document-layout.js';
-import type {
-  DocumentAssetKind,
-  DocumentSubjectKind,
-  DocumentType,
-  PageOrientation,
-  PaperSize,
-} from './documents.js';
 import type {
   CustomFieldEntity,
   CustomFieldType,
@@ -436,7 +428,7 @@ export interface ProductListPage extends Paginated<Product> {
  *
  * A sibling of `Paginated<T>`, not a replacement: existing offset-based list
  * endpoints keep `Paginated<T>`, and every new keyset-paged surface in this
- * batch (Recycle Bin, Logs, document exports, …) uses this instead. There are
+ * batch (Recycle Bin, Logs, …) uses this instead. There are
  * no page numbers anywhere in the new surface.
  */
 export interface CursorQuery {
@@ -542,79 +534,6 @@ export interface PipelineStageInput {
 export interface StageReorderInput {
   pipelineId: Uuid;
   ids: Uuid[];
-}
-
-// --- PDF Designer (docs/backend-modules/04-API-CONTRACT.md §6) -------------
-
-export interface DocumentTemplateInput {
-  name: string;
-  documentType: DocumentType;
-  paperSize?: PaperSize;
-  orientation?: PageOrientation;
-  margins?: { top: number; right: number; bottom: number; left: number };
-
-  showRates?: boolean;
-  showColourChips?: boolean;
-  showTerms?: boolean;
-  showLogo?: boolean;
-  showSignature?: boolean;
-  showPageNumbers?: boolean;
-  showWatermark?: boolean;
-  showPartyBlock?: boolean;
-
-  watermarkText?: string | null;
-  termsText?: string | null;
-  footerText?: string | null;
-  accentColour?: string | null;
-  locale?: string | null;
-
-  /**
-   * Either shape.
-   *
-   * The designer sends placed elements; an older client — or an Office panel
-   * that has not been updated — sends the ordered blocks it has always sent.
-   * `normaliseLayout` converts on the way in, so both are accepted and only one
-   * is ever stored.
-   */
-  layout?: StoredDocumentLayout;
-  logoAssetId?: Uuid | null;
-  signatureAssetId?: Uuid | null;
-  isDefault?: boolean;
-}
-
-/**
- * A base64 data URL rather than multipart, deliberately: `express.json`
- * already parses at both ends, so the asset upload needs no `multer` and no
- * second parser sitting on untrusted input in the global chain.
- */
-export interface DocumentAssetInput {
-  kind: DocumentAssetKind;
-  dataUrl: string;
-}
-
-export interface RenderDocumentInput {
-  templateId: Uuid;
-  subjectKind: DocumentSubjectKind;
-  subjectId: RecordId;
-}
-
-/**
- * Takes a whole template rather than an id, so the designer can preview edits
- * it has not saved. Nothing is persisted either way.
- */
-export interface PreviewDocumentInput {
-  template: DocumentTemplateInput;
-  subjectKind: DocumentSubjectKind;
-  subjectId: RecordId;
-}
-
-export interface DocumentTemplateQuery extends CursorQuery {
-  documentType?: DocumentType;
-}
-
-export interface DocumentExportQuery extends CursorQuery {
-  subjectKind?: DocumentSubjectKind;
-  subjectId?: RecordId;
 }
 
 // --- Office Panel administration -------------------------------------------

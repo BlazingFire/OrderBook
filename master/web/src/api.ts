@@ -25,6 +25,7 @@ import type {
   DeveloperUnlock,
   ResetAllResult,
   SeedDummyUsersResult,
+  SeedSampleDataResult,
   AiRun,
   AiStartInput,
   AiStatus,
@@ -79,16 +80,6 @@ import type {
   ProductCategory,
   ProductInput,
   RecycleBinQuery,
-  DocumentAsset,
-  DocumentAssetInput,
-  DocumentExport,
-  DocumentExportQuery,
-  DocumentRenderResult,
-  DocumentTemplate,
-  DocumentTemplateInput,
-  DocumentTemplateQuery,
-  PreviewDocumentInput,
-  RenderDocumentInput,
   ReportKind,
   ReportRangeInput,
   RestoreInput,
@@ -793,78 +784,6 @@ export const api = {
     return `/api/reports/${kind}/export${qs ? `?${qs}` : ''}`;
   },
 
-  // --- PDF Designer (docs/backend-modules/04-API-CONTRACT.md §6) ----------
-  // Online-only. `render` answers with metadata and the browser then fetches
-  // the file from `downloadPath`, so a retry does not re-render and the exact
-  // bytes a customer received stay addressable.
-  documentTemplates: (query: DocumentTemplateQuery = {}) => {
-    const params = new URLSearchParams();
-    if (query.documentType) params.set('documentType', query.documentType);
-    if (query.cursor) params.set('cursor', query.cursor);
-    if (query.limit) params.set('limit', String(query.limit));
-    const qs = params.toString();
-    return request<CursorPage<DocumentTemplate>>(`/api/documents/templates${qs ? `?${qs}` : ''}`);
-  },
-  documentTemplate: (id: string) => request<DocumentTemplate>(`/api/documents/templates/${id}`),
-  createDocumentTemplate: (input: DocumentTemplateInput) =>
-    post<DocumentTemplate>('/api/documents/templates', input),
-  updateDocumentTemplate: (
-    id: string,
-    input: DocumentTemplateInput & { expectedVersion: number },
-  ) =>
-    request<DocumentTemplate>(`/api/documents/templates/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(input),
-    }),
-  deleteDocumentTemplate: (id: string, expectedVersion: number) =>
-    request<{ id: string; deletedAt: string }>(`/api/documents/templates/${id}`, {
-      method: 'DELETE',
-      body: JSON.stringify({ expectedVersion }),
-    }),
-  restoreDocumentTemplate: (id: string) =>
-    post<DocumentTemplate>(`/api/documents/templates/${id}/restore`),
-
-  documentAssets: () => request<DocumentAsset[]>('/api/documents/assets'),
-  uploadDocumentAsset: (input: DocumentAssetInput) =>
-    post<DocumentAsset>('/api/documents/assets', input),
-  documentAssetUrl: (id: string) => `/api/documents/assets/${id}/file`,
-
-  renderDocument: (input: RenderDocumentInput) =>
-    post<DocumentRenderResult>('/api/documents/render', input),
-  /** The preview is bytes, not JSON — the caller turns it into an object URL. */
-  previewDocument: async (input: PreviewDocumentInput): Promise<Blob> => {
-    const response = await fetch('/api/documents/preview', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
-    });
-    if (!response.ok) {
-      const detail = (await response.json().catch(() => null)) as {
-        error?: string;
-        message?: string;
-        details?: Record<string, unknown>;
-      } | null;
-      throw new ApiError(
-        detail?.message ?? 'Preview failed',
-        detail?.error ?? 'internal_error',
-        detail?.details ?? {},
-      );
-    }
-    return response.blob();
-  },
-
-  documentExports: (query: DocumentExportQuery = {}) => {
-    const params = new URLSearchParams();
-    if (query.subjectKind) params.set('subjectKind', query.subjectKind);
-    if (query.subjectId) params.set('subjectId', query.subjectId);
-    if (query.cursor) params.set('cursor', query.cursor);
-    if (query.limit) params.set('limit', String(query.limit));
-    const qs = params.toString();
-    return request<CursorPage<DocumentExport>>(`/api/documents/exports${qs ? `?${qs}` : ''}`);
-  },
-  documentExport: (id: string) => request<DocumentExport>(`/api/documents/exports/${id}`),
-  documentExportUrl: (id: string) => `/api/documents/exports/${id}/file`,
-
   // --- Integrations (Stage 11) ---------------------------------------------
 
   apiKeys: () => request<ApiKey[]>('/api/integrations/keys'),
@@ -927,5 +846,7 @@ export const api = {
       }),
     seedDummyUsers: (token: string) =>
       postAsDeveloper<SeedDummyUsersResult>('/api/developer/seed-dummy-users', token),
+    seedSampleData: (token: string) =>
+      postAsDeveloper<SeedSampleDataResult>('/api/developer/seed-sample-data', token),
   },
 };

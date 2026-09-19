@@ -85,3 +85,38 @@ export interface ResetAllResult {
   /** What the panel is now: the Master returns to first-run, the Office to unpaired. */
   state: 'first-run' | 'unpaired';
 }
+
+/**
+ * What `seedSampleData` produced — the test users it seeded on the way (the
+ * same three as `SeedDummyUsersResult`, so a fresh install gets sign-ins and
+ * something to look at in one press) and how much of each kind of record now
+ * exists to look at.
+ */
+export interface SeedSampleDataResult {
+  users: DummyUserCredential[];
+  /** Set only when the seed had to run first-time setup itself. Shown once. */
+  pairingPassword: string | null;
+  companyName: string | null;
+  counts: SampleDataCounts;
+  /** The first and last calendar day the generated history spans (ISO dates). */
+  from: string;
+  to: string;
+}
+
+export interface SampleDataCounts {
+  parties: number;
+  products: number;
+  /** Product photos generated and stored through the image pipeline. */
+  images: number;
+  optionValues: number;
+  customFields: number;
+  partyVariants: number;
+  partyAssignments: number;
+  stockMovements: number;
+  leads: number;
+  orders: number;
+  dispatched: number;
+  remarks: number;
+  /** Records sent to the Recycle Bin so that screen has something to show. */
+  deleted: number;
+}

@@ -61,7 +61,6 @@ import {
   type SidebarMode,
 } from '@orderbook/ui';
 import { searchLocalView } from './localSearch';
-import { DocumentsScreen } from './screens/DocumentsScreen';
 import { AddLeadScreen } from './screens/AddLeadScreen';
 import { CatalogScreen } from './screens/CatalogScreen';
 import { PartyAccessScreen } from './screens/PartyAccessScreen';
@@ -83,7 +82,6 @@ type Tab =
   | 'partyAccess'
   | 'products'
   | 'conflicts'
-  | 'documents'
   | 'settings'
   | 'updates'
   /* A screen, not a mode: as a boolean it was cleared by `goToTab`, so
@@ -550,11 +548,6 @@ function OfficePanel() {
           can('party.assign') || can('party.accessAll')
             ? { id: 'partyAccess', label: t('nav.partyAccess'), icon: 'shield' as const }
             : null,
-          // Absent rather than greyed, like every other permission-gated entry
-          // in this group.
-          can('documents.view')
-            ? { id: 'documents', label: t('nav.documents'), icon: 'copy' as const }
-            : null,
         ] satisfies Array<NavItem | null>
       ).filter((item): item is NonNullable<typeof item> => item !== null),
     },
@@ -587,7 +580,6 @@ function OfficePanel() {
     partyAccess: 'partyAccess',
     products: 'products',
     conflicts: 'conflicts',
-    documents: 'documents',
     settings: 'settings',
     updates: 'updates',
   };
@@ -885,20 +877,6 @@ function OfficePanel() {
             cancel: api.aiCancel,
           }}
         />
-      ),
-    },
-    {
-      /*
-       * In `alwaysAvailable`, not `needsView`.
-       *
-       * Documents are read live from the Master rather than out of the merged
-       * snapshot, so a panel that has never received one can still open the
-       * screen — and an offline panel gets an honest network error instead of
-       * an empty list that reads as "this company has no templates".
-       */
-      id: 'documents',
-      render: () => (
-        <DocumentsScreen revision={view?.pendingCount ?? 0} permissions={permissions} view={view} />
       ),
     },
     {

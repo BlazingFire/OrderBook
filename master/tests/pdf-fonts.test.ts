@@ -37,14 +37,14 @@ const VENDORED = [
 ];
 
 function open(file: string): fontkit.Font {
-  const buffer = readFileSync(path.join(config.documents.fontsDir, file));
+  const buffer = readFileSync(path.join(config.pdf.fontsDir, file));
   return fontkit.create(buffer) as fontkit.Font;
 }
 
-describe('vendored document fonts', () => {
+describe('vendored PDF fonts', () => {
   it('PDF-1: every face the renderer registers is actually present on disk', () => {
     for (const file of VENDORED) {
-      expect(existsSync(path.join(config.documents.fontsDir, file))).toBe(true);
+      expect(existsSync(path.join(config.pdf.fontsDir, file))).toBe(true);
     }
   });
 
@@ -76,11 +76,11 @@ describe('vendored document fonts', () => {
     expect(matra).toBeLessThan(consonant);
   });
 
-  it('PDF-4: every face can shape a space — the glyph PDFKit subsets on every footer', () => {
+  it('PDF-4: every face can shape a space — the glyph PDFKit subsets on every page', () => {
     // This is not a hypothetical. The IBM Plex Mono build this project first
     // vendored had a space glyph whose `loca` entry pointed past the end of
     // the `glyf` table; fontkit threw from `_getCBox` the moment PDFKit
-    // subset any string containing a space, which is every page footer. The
+    // subset any string containing a space, which is every page. The
     // face was replaced with Source Code Pro and this gate added so a future
     // font swap cannot reintroduce it silently.
     for (const file of VENDORED) {
@@ -91,7 +91,7 @@ describe('vendored document fonts', () => {
     }
   });
 
-  it('PDF-5: the mono face covers the rupee sign, which every priced document prints', () => {
+  it('PDF-5: the mono face covers the rupee sign, which every priced report prints', () => {
     const font = open('SourceCodePro-Regular.ttf');
     expect(font.hasGlyphForCodePoint('₹'.codePointAt(0)!)).toBe(true);
   });

@@ -79,15 +79,10 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
 
   'permission.logs.view': 'गतिविधि लॉग देखें',
   'permission.logs.export': 'गतिविधि लॉग निर्यात करें',
-  'permission.documents.view': 'दस्तावेज़ देखें',
-  'permission.documents.create': 'दस्तावेज़ बनाएँ',
-  'permission.documents.edit': 'दस्तावेज़ संपादित करें',
-  'permission.documents.delete': 'दस्तावेज़ हटाएँ',
   'permission.logs.verifyChain': 'ऑडिट श्रृंखला सत्यापित करें',
   'permission.recycleBin.view': 'रीसायकल बिन देखें',
   'permission.recycleBin.viewAll': 'सबके द्वारा हटाई गई वस्तुएँ देखें',
   'permission.fields.view': 'पाइपलाइन, चरण और कस्टम फ़ील्ड देखें',
-  'permission.documents.render': 'दस्तावेज़ बनाएँ (रेंडर करें)',
   'permission.party.accessAll': 'हर पार्टी देखें, चाहे सौंपी गई हो या नहीं',
   'permission.party.assign': 'तय करें कि कौन किस पार्टी को देख और प्रबंधित कर सकता है',
 
@@ -99,7 +94,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'module.reports': 'रिपोर्ट',
   'module.roles': 'भूमिकाएँ',
   'module.logs': 'लॉग',
-  'module.documents': 'दस्तावेज़',
 
   'fieldSet.lead.sourcePlatform': 'लीड स्रोत',
   'fieldSet.stock.colour': 'रंग',
@@ -340,8 +334,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.cursor.malformed': 'परिणामों के इस पृष्ठ का लिंक अब मान्य नहीं है',
   'error.conflict.parentDeleted': 'एक या अधिक संबंधित रिकॉर्ड अभी भी रीसायकल बिन में हैं',
   'error.conflict.restoreCollision': 'एक मौजूदा रिकॉर्ड पहले से ही इस {field} का उपयोग कर रहा है',
-  'error.conflict.assetInUse':
-    'यह छवि एक दस्तावेज़ टेम्पलेट पर उपयोग हो रही है — पहले उसे वहाँ से हटाएँ',
   'error.conflict.passwordNotStored':
     'इस व्यक्ति के लिए अभी कोई पासवर्ड संग्रहीत नहीं है। अगली बार जब वे इस नेटवर्क पर साइन इन करेंगे तब वह याद रखा जाएगा।',
   'error.conflict.vaultUnreadable':
@@ -362,58 +354,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.reports.range.tooWide': 'वह सीमा {maxMonths} महीनों से अधिक फैली हुई है',
   'validation.reports.kind.unknown': 'यह इस उत्पाद द्वारा बनाई जाने वाली रिपोर्ट नहीं है',
 
-  'validation.documents.name.required': 'टेम्पलेट का नाम आवश्यक है',
-  'validation.documents.documentType.unknown': 'यह दस्तावेज़ इस उत्पाद द्वारा नहीं बनाया जाता',
-  'validation.documents.paperSize.unknown': 'इस उत्पाद द्वारा समर्थित कागज़ का आकार चुनें',
-  'validation.documents.orientation.unknown': 'पोर्ट्रेट या लैंडस्केप चुनें',
-  'validation.documents.margins.invalid': 'मार्जिन {min}mm और {max}mm के बीच होने चाहिए',
-  'validation.documents.margins.exceedsPage': 'उन मार्जिन से दस्तावेज़ के लिए जगह नहीं बचती',
-  'validation.documents.accentColour.invalid': 'रंग #RRGGBB के रूप में दर्ज करें',
-  'validation.documents.watermarkText.required':
-    'वॉटरमार्क का पाठ दर्ज करें, या वॉटरमार्क बंद करें',
-  'validation.documents.locale.unknown': 'यह भाषा इस उत्पाद में उपलब्ध नहीं है',
-  'validation.documents.layout.duplicateKind': 'एक दस्तावेज़ में दो {kind} अनुभाग नहीं हो सकते',
-  'validation.documents.layout.missingLines': 'दस्तावेज़ में वस्तु-सूची अनुभाग आवश्यक है',
-  'validation.documents.layout.headerNotFirst': 'शीर्षलेख सबसे पहले आना चाहिए',
-  'validation.documents.layout.signatureNotLast': 'हस्ताक्षर सबसे अंत में आना चाहिए',
-  'validation.documents.layout.termsTooLong': 'शर्तें {max} अक्षरों से लंबी नहीं हो सकतीं',
-  'validation.documents.layout.blockKindUnknown': 'यह अनुभाग दस्तावेज़ में नहीं हो सकता',
-  // TODO(i18n-hi)
-  'validation.documents.layout.duplicateTable': 'A document can only have one line-items table',
-  // TODO(i18n-hi)
-  'validation.documents.layout.elementKindUnknown': 'That is not something a page can contain',
-  // TODO(i18n-hi)
-  'validation.documents.layout.duplicateElementId': 'Two items on the page share one identifier',
-  // TODO(i18n-hi)
-  'validation.documents.layout.elementEmpty': 'An item on the page has no width or height',
-  // TODO(i18n-hi)
-  'validation.documents.layout.elementOffPage':
-    'An item falls outside this paper size. Move it, or use Fit to page.',
-  // TODO(i18n-hi)
-  'validation.documents.layout.tooManyElements': 'A page can hold at most {max} items',
-  // TODO(i18n-hi)
-  'validation.documents.layout.textTooLong': 'That text is longer than {max} characters',
-  // TODO(i18n-hi)
-  'validation.documents.layout.placeholderInLiteral':
-    'Use a field for that, rather than typing it in braces',
-  // TODO(i18n-hi)
-  'validation.documents.layout.fontSizeOutOfRange': 'Choose a readable text size',
-  // TODO(i18n-hi)
-  'validation.documents.layout.maxCharsOutOfRange':
-    'A character limit must be between zero and {max}',
-  // TODO(i18n-hi)
-  'validation.documents.layout.colourInvalid': 'A colour looks like #2F6FEB',
-  'validation.documents.subjectKind.unknown': 'दस्तावेज़ किसी लीड या ऑर्डर के लिए बनाया जाता है',
-  'validation.documents.templateType.mismatch':
-    'वह टेम्पलेट {documentType} बनाता है, जो इस रिकॉर्ड पर लागू नहीं होता',
-  'validation.documents.asset.unsupportedType': 'PNG या JPEG अपलोड करें',
-  'validation.documents.asset.tooLarge': 'वह इमेज {maxBytes} बाइट से बड़ी है',
-  'validation.documents.asset.kindUnknown': 'यह इमेज दस्तावेज़ में उपयोग नहीं होती',
-  'validation.documents.asset.malformed': 'वह इमेज पढ़ी नहीं जा सकी',
-  'error.conflict.nameTaken.documentTemplate': '"{value}" नाम का टेम्पलेट पहले से मौजूद है',
-  'error.conflict.subjectDeleted': 'वह रिकॉर्ड रीसायकल बिन में है — पहले उसे पुनर्स्थापित करें',
-  'error.documents.renderFailed': 'दस्तावेज़ नहीं बनाया जा सका',
-  'error.documents.fontMissing': 'इस इंस्टॉलेशन में एक दस्तावेज़ फ़ॉन्ट नहीं मिला: {file}',
+  'error.pdf.fontMissing': 'इस इंस्टॉलेशन में एक PDF फ़ॉन्ट नहीं मिला: {file}',
 
   'validation.image.fileRequired': 'एक इमेज फ़ाइल चुनें',
   'validation.image.tooLarge': 'वह फ़ाइल बहुत बड़ी है',
@@ -1208,423 +1149,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'dashboard.sync.title': 'Sync',
   // TODO(i18n-hi)
   'dashboard.sync.toReview': '{count} to review',
-  // TODO(i18n-hi)
-  'documents.cancel': 'Cancel',
-  // TODO(i18n-hi)
-  'documents.editor.accentColour': 'Accent colour',
-  // TODO(i18n-hi)
-  'documents.editor.accentHint': 'Hex like #2F6FEB. Blank uses the app accent.',
-  // TODO(i18n-hi)
-  'documents.editor.default': 'Default template',
-  // TODO(i18n-hi)
-  'documents.editor.defaultHint': 'One default per document type.',
-  // TODO(i18n-hi)
-  'documents.editor.defaultLabel': 'Use this one unless another is chosen',
-  // TODO(i18n-hi)
-  'documents.editor.documentType': 'Document',
-  // TODO(i18n-hi)
-  'documents.editor.footerText': 'Footer text',
-  // TODO(i18n-hi)
-  'documents.editor.group.branding': 'Company marks',
-  // TODO(i18n-hi)
-  'documents.editor.group.content': 'What the document says',
-  // TODO(i18n-hi)
-  'documents.editor.group.margins': 'Margins (mm)',
-  // TODO(i18n-hi)
-  'documents.editor.group.pageFurniture': 'Around the page',
-  // TODO(i18n-hi)
-  'documents.editor.margin.bottom': 'Bottom',
-  // TODO(i18n-hi)
-  'documents.editor.margin.left': 'Left',
-  // TODO(i18n-hi)
-  'documents.editor.margin.right': 'Right',
-  // TODO(i18n-hi)
-  'documents.editor.margin.top': 'Top',
-  // TODO(i18n-hi)
-  'documents.editor.name': 'Name',
-  // TODO(i18n-hi)
-  'documents.editor.newTitle': 'New template',
-  // TODO(i18n-hi)
-  'documents.editor.orientation': 'Orientation',
-  // TODO(i18n-hi)
-  'documents.editor.overwriteMine': 'Overwrite with mine',
-  // TODO(i18n-hi)
-  'documents.editor.paperSize': 'Paper size',
-  // TODO(i18n-hi)
-  'documents.editor.reloadTheirs': 'Reload theirs',
-  // TODO(i18n-hi)
-  'documents.editor.save': 'Save',
-  // TODO(i18n-hi)
-  'documents.layout.title': 'Page layout',
-  // TODO(i18n-hi)
-  'documents.layout.help':
-    'Where each piece sits on the paper. The table grows with the number of lines, and anything set to follow it moves down.',
-  // TODO(i18n-hi)
-  'documents.starter.quotationClassic.name': 'Quotation — Classic',
-  // TODO(i18n-hi)
-  'documents.starter.quotationClassic.description':
-    'The standard layout: header, party, line items and a total.',
-  // TODO(i18n-hi)
-  'documents.starter.quotationCompact.name': 'Quotation — Compact',
-  // TODO(i18n-hi)
-  'documents.starter.quotationCompact.description':
-    'A tighter page with a centred header and products grouped together.',
-  // TODO(i18n-hi)
-  'documents.starter.orderConfirmation.name': 'Order Confirmation',
-  // TODO(i18n-hi)
-  'documents.starter.orderConfirmation.description':
-    'A quotation with a signature line, for an order the party has agreed to.',
-  // TODO(i18n-hi)
-  'documents.starter.dispatchNote.name': 'Dispatch Note',
-  // TODO(i18n-hi)
-  'documents.starter.dispatchNote.description':
-    'No rates — what travels with the goods, for a driver and a storeman to read.',
-  // TODO(i18n-hi)
-  'documents.starter.proforma.name': 'Proforma Invoice',
-  // TODO(i18n-hi)
-  'documents.starter.proforma.description':
-    'A quotation marked as a proforma, watermarked and signed for reference.',
-  // TODO(i18n-hi)
-  'documents.starter.letterhead.name': 'Letterhead',
-  // TODO(i18n-hi)
-  'documents.starter.letterhead.description':
-    'Company stationery with a small table — no rates, no party block.',
-  'documents.starter.taxInvoice.name': 'टैक्स इनवॉइस',
-  'documents.starter.taxInvoice.description':
-    'दरों सहित वह पर्चा जो खरीदार अपने रिकॉर्ड में रखता है, हस्ताक्षर सहित।',
-  'documents.starter.counterQuote.name': 'काउंटर कोटेशन — A5',
-  'documents.starter.counterQuote.description':
-    'आधे पन्ने का छोटा कोटेशन, शोरूम काउंटर पर तुरंत बनाने के लिए।',
-  'documents.starter.creditNote.name': 'क्रेडिट नोट',
-  'documents.starter.creditNote.description':
-    'लौटाए गए या कम भेजे गए माल के बदले जारी, वॉटरमार्क और हस्ताक्षर सहित।',
-  'documents.starter.orderConfirmationWide.name': 'ऑर्डर पुष्टि — चौड़ा',
-  'documents.starter.orderConfirmationWide.description':
-    'लैंडस्केप पन्ना, जब एक लाइन में इतने रंग हों कि चौड़ाई कम पड़ जाए।',
-  'documents.starter.workOrder.name': 'उत्पादन वर्क ऑर्डर',
-  'documents.starter.workOrder.description':
-    'भट्ठी तक जाने वाला पर्चा — नाप और रंग दिखते हैं, दरें नहीं।',
-  'documents.starter.packingList.name': 'पैकिंग सूची',
-  'documents.starter.packingList.description':
-    'गाड़ी में चढ़ते डिब्बों से मिलान का पर्चा, उत्पाद के अनुसार समूहित।',
-  'documents.starter.deliveryChallan.name': 'डिलीवरी चालान',
-  'documents.starter.deliveryChallan.description':
-    'माल के साथ चलने वाला बिना दर का दस्तावेज़, दूसरे छोर पर हस्ताक्षर के लिए।',
-  'documents.starter.sampleDispatch.name': 'सैंपल डिस्पैच नोट',
-  'documents.starter.sampleDispatch.description':
-    'नमूनों के लिए, SAMPLE वॉटरमार्क सहित — बिक्री का पर्चा नहीं।',
-  // TODO(i18n-hi)
-  'documents.gallery.title': 'Start from a design',
-  // TODO(i18n-hi)
-  'documents.gallery.blank': 'Start blank',
-  // TODO(i18n-hi)
-  'documents.gallery.blankDescription': 'An empty {type} with nothing filled in.',
-  // TODO(i18n-hi)
-  'documents.gallery.use': 'Use this design',
-  // TODO(i18n-hi)
-  // TODO(i18n-hi)
-  'designer.binding.companyName': 'Company name',
-  // TODO(i18n-hi)
-  'designer.binding.title': 'Document title',
-  // TODO(i18n-hi)
-  'designer.binding.reference': 'Reference',
-  // TODO(i18n-hi)
-  'designer.binding.issuedOn': 'Date',
-  // TODO(i18n-hi)
-  'designer.binding.terms': 'Terms',
-  // TODO(i18n-hi)
-  'designer.binding.footer': 'Footer text',
-  // TODO(i18n-hi)
-  'designer.binding.boxCount': 'Total boxes',
-  // TODO(i18n-hi)
-  'designer.binding.grandTotal': 'Grand total',
-  // TODO(i18n-hi)
-  'designer.binding.lineCount': 'Number of lines',
-  // TODO(i18n-hi)
-  'designer.binding.partyName': 'Party name',
-  // TODO(i18n-hi)
-  'designer.binding.partyCode': 'Party code',
-  // TODO(i18n-hi)
-  'designer.binding.partyAddress': 'Party address',
-  // TODO(i18n-hi)
-  'designer.binding.partyCity': 'Party city',
-  // TODO(i18n-hi)
-  'designer.binding.partyState': 'Party state',
-  // TODO(i18n-hi)
-  'designer.binding.partyPincode': 'Party pincode',
-  // TODO(i18n-hi)
-  'designer.binding.partyPhone': 'Party phone',
-  // TODO(i18n-hi)
-  'designer.binding.partyEmail': 'Party email',
-  // TODO(i18n-hi)
-  'designer.binding.partyGst': 'Party GST number',
-  'designer.inspector.empty': 'Pick something on the page to change it.',
-  // TODO(i18n-hi)
-  'designer.kind.text': 'Text',
-  // TODO(i18n-hi)
-  'designer.kind.field': 'Field',
-  // TODO(i18n-hi)
-  'designer.kind.image': 'Image',
-  // TODO(i18n-hi)
-  'designer.kind.rule': 'Line',
-  // TODO(i18n-hi)
-  'designer.kind.box': 'Box',
-  // TODO(i18n-hi)
-  'designer.kind.table': 'Line items',
-  // TODO(i18n-hi)
-  'designer.add.text': 'Add text',
-  // TODO(i18n-hi)
-  'designer.add.field': 'Add field',
-  // TODO(i18n-hi)
-  'designer.add.image': 'Add image',
-  // TODO(i18n-hi)
-  'designer.add.rule': 'Add line',
-  // TODO(i18n-hi)
-  'designer.add.box': 'Add box',
-  // TODO(i18n-hi)
-  'designer.field.x': 'Left (mm)',
-  // TODO(i18n-hi)
-  'designer.field.y': 'Top (mm)',
-  // TODO(i18n-hi)
-  'designer.field.width': 'Width (mm)',
-  // TODO(i18n-hi)
-  'designer.field.height': 'Height (mm)',
-  // TODO(i18n-hi)
-  'designer.field.text': 'Text',
-  // TODO(i18n-hi)
-  'designer.field.binding': 'Shows',
-  // TODO(i18n-hi)
-  'designer.field.label': 'Label',
-  // TODO(i18n-hi)
-  'designer.field.labelHelp': 'Printed before the value, on the same line. Leave empty for none.',
-  // TODO(i18n-hi)
-  'designer.field.size': 'Size (pt)',
-  // TODO(i18n-hi)
-  'designer.field.face': 'Typeface',
-  // TODO(i18n-hi)
-  'designer.field.align': 'Alignment',
-  // TODO(i18n-hi)
-  'designer.field.fit': 'If it does not fit',
-  // TODO(i18n-hi)
-  'designer.field.fitHelp': 'What to do when the text is longer than the box.',
-  'designer.field.colour': 'रंग',
-  'designer.field.colourHelp':
-    '#1F2A3B जैसा हेक्स रंग। खाली छोड़ने पर टेम्पलेट का एक्सेंट रंग लगेगा।',
-  'designer.field.fill': 'भराव',
-  'designer.field.stroke': 'किनारा',
-  'designer.field.radius': 'कोने की त्रिज्या (mm)',
-  'designer.field.thickness': 'मोटाई (mm)',
-  'designer.field.slot': 'कौन-सी छवि',
-  'designer.slot.logo': 'कंपनी लोगो',
-  'designer.slot.signature': 'हस्ताक्षर',
-  'designer.field.colourInvalid': '#1F2A3B जैसा हेक्स रंग लिखें, या खाली छोड़ दें।',
-  // TODO(i18n-hi)
-  'designer.field.maxChars': 'Character limit',
-  // TODO(i18n-hi)
-  'designer.field.maxCharsHelp':
-    'Longer values are cut to this before they are measured. Zero means no limit.',
-  // TODO(i18n-hi)
-  'designer.field.bold': 'Bold',
-  // TODO(i18n-hi)
-  'designer.field.followsTable': 'Move down as the table grows',
-  // TODO(i18n-hi)
-  'designer.field.band': 'Repeats on',
-  // TODO(i18n-hi)
-  'designer.field.bandHelp': 'Header and footer are drawn on every page. Body is drawn once.',
-  // TODO(i18n-hi)
-  'designer.face.body': 'Text',
-  // TODO(i18n-hi)
-  'designer.face.mono': 'Code',
-  // TODO(i18n-hi)
-  'designer.align.left': 'Left',
-  // TODO(i18n-hi)
-  'designer.align.centre': 'Centre',
-  // TODO(i18n-hi)
-  'designer.align.right': 'Right',
-  // TODO(i18n-hi)
-  'designer.fit.wrap': 'Wrap onto more lines',
-  // TODO(i18n-hi)
-  'designer.fit.shrink': 'Shrink to fit the box',
-  // TODO(i18n-hi)
-  'designer.fit.truncate': 'Cut with an ellipsis',
-  // TODO(i18n-hi)
-  'designer.fit.clip': 'Keep whole lines only',
-  // TODO(i18n-hi)
-  'designer.band.header': 'Every page, at the top',
-  // TODO(i18n-hi)
-  'designer.band.body': 'Once',
-  // TODO(i18n-hi)
-  'designer.band.footer': 'Every page, at the foot',
-  // TODO(i18n-hi)
-  'designer.order.front': 'To front',
-  // TODO(i18n-hi)
-  'designer.order.forward': 'Forward',
-  // TODO(i18n-hi)
-  'designer.order.backward': 'Backward',
-  // TODO(i18n-hi)
-  'designer.order.back': 'To back',
-  // TODO(i18n-hi)
-  'designer.remove': 'Remove',
-  // TODO(i18n-hi)
-  'designer.distribute': 'Space evenly',
-  // TODO(i18n-hi)
-  'designer.fitToPage': 'पन्ने में समाएँ',
-  'designer.undo': 'Undo',
-  // TODO(i18n-hi)
-  'designer.newText': 'New text',
-  // TODO(i18n-hi)
-  'designer.group.custom': 'Your fields',
-  // TODO(i18n-hi)
-  'designer.hint':
-    'Drag to move, or drag an edge to resize. Arrow keys nudge, Alt turns off snapping.',
-  // TODO(i18n-hi)
-  'documents.editor.saveFailed': 'Could not save the template',
-  // TODO(i18n-hi)
-  'documents.editor.saved': 'Saved “{name}”',
-  // TODO(i18n-hi)
-  'documents.editor.showColourChips': 'Colour swatches beside each line',
-  // TODO(i18n-hi)
-  'documents.editor.showLogo': 'Logo',
-  // TODO(i18n-hi)
-  'documents.editor.showPageNumbers': 'Page numbers',
-  // TODO(i18n-hi)
-  'documents.editor.showPartyBlock': 'Party name and address block',
-  // TODO(i18n-hi)
-  'documents.editor.showRates': 'Rates and amounts',
-  // TODO(i18n-hi)
-  'documents.editor.showSignature': 'Signature block',
-  // TODO(i18n-hi)
-  'documents.editor.showTerms': 'Terms',
-  // TODO(i18n-hi)
-  'documents.editor.showWatermark': 'Watermark',
-  // TODO(i18n-hi)
-  'documents.editor.termsHint': 'Up to {max} characters.',
-  // TODO(i18n-hi)
-  'documents.editor.termsText': 'Terms',
-  // TODO(i18n-hi)
-  'documents.editor.theirs': 'theirs',
-  // TODO(i18n-hi)
-  'documents.editor.watermarkText': 'Watermark text',
-  // TODO(i18n-hi)
-  'documents.editor.yours': 'yours',
-  // TODO(i18n-hi)
-  'documents.exports.colDocument': 'File',
-  // TODO(i18n-hi)
-  'documents.exports.colPages': 'Pages',
-  // TODO(i18n-hi)
-  'documents.exports.colRates': 'Rates',
-  // TODO(i18n-hi)
-  'documents.exports.colRenderedBy': 'Rendered by',
-  // TODO(i18n-hi)
-  'documents.exports.colSize': 'Size',
-  // TODO(i18n-hi)
-  'documents.exports.colSubject': 'For',
-  // TODO(i18n-hi)
-  'documents.exports.colTemplate': 'Template',
-  // TODO(i18n-hi)
-  'documents.exports.colType': 'Document',
-  // TODO(i18n-hi)
-  'documents.exports.colWhen': 'When',
-  // TODO(i18n-hi)
-  'documents.exports.description':
-    'Every document that was rendered, kept as the record of what was sent. Exports are never deleted.',
-  // TODO(i18n-hi)
-  'documents.exports.download': 'Download',
-  // TODO(i18n-hi)
-  'documents.exports.empty.description':
-    'Documents rendered from a lead or an order appear here with the file that was sent.',
-  // TODO(i18n-hi)
-  'documents.exports.empty.title': 'Nothing rendered yet',
-  // TODO(i18n-hi)
-  'documents.exports.loadFailed': 'Could not load the export history',
-  // TODO(i18n-hi)
-  'documents.exports.renderedByPanel': 'Office panel',
-  // TODO(i18n-hi)
-  'documents.exports.sectionTitle': 'Export history',
-  // TODO(i18n-hi)
-  'documents.exports.withRates': 'Included',
-  // TODO(i18n-hi)
-  'documents.exports.withoutRates': 'Omitted',
-  // TODO(i18n-hi)
-  'documents.loadMore': 'Load more',
-  // TODO(i18n-hi)
-  'documents.noAccess.description': 'Your role does not include {permission}.',
-  // TODO(i18n-hi)
-  'documents.noAccess.title': 'Documents are not open to you',
-  // TODO(i18n-hi)
-  'documents.orientation.landscape': 'Landscape',
-  // TODO(i18n-hi)
-  'documents.orientation.portrait': 'Portrait',
-  // TODO(i18n-hi)
-  'documents.preview.action': 'Preview',
-  // TODO(i18n-hi)
-  'documents.preview.description':
-    'Renders what is on this form, saved or not, against a real record — nothing is stored.',
-  // TODO(i18n-hi)
-  'documents.preview.failed': 'Could not build the preview',
-  // TODO(i18n-hi)
-  'documents.preview.loadingSubjects': 'Finding a record to preview against…',
-  // TODO(i18n-hi)
-  'documents.preview.noSubjects': 'Nothing to preview this template against yet.',
-  // TODO(i18n-hi)
-  'documents.preview.popupBlocked':
-    'Your browser blocked the preview tab. Allow pop-ups for OrderBook, then preview again.',
-  // TODO(i18n-hi)
-  'documents.preview.subject': 'Preview against',
-  // TODO(i18n-hi)
-  'documents.preview.subjectsFailed': 'Could not load anything to preview against',
-  // TODO(i18n-hi)
-  'documents.preview.title': 'Preview',
-  // TODO(i18n-hi)
-  'documents.tab.exports': 'Export history',
-  // TODO(i18n-hi)
-  'documents.tab.templates': 'Templates',
-  // TODO(i18n-hi)
-  'documents.templates.colName': 'Template',
-  // TODO(i18n-hi)
-  'documents.templates.colPaper': 'Paper',
-  // TODO(i18n-hi)
-  'documents.templates.colRates': 'Rates',
-  // TODO(i18n-hi)
-  'documents.templates.colType': 'Document',
-  // TODO(i18n-hi)
-  'documents.templates.colUpdated': 'Updated',
-  // TODO(i18n-hi)
-  'documents.templates.create': 'New template',
-  // TODO(i18n-hi)
-  'documents.templates.defaultBadge': 'default',
-  // TODO(i18n-hi)
-  'documents.templates.delete': 'Delete',
-  // TODO(i18n-hi)
-  'documents.templates.deleteConfirmBody':
-    'It goes to the Recycle Bin and can be restored. Documents already rendered from it are untouched — they keep the name they were sent under.',
-  // TODO(i18n-hi)
-  'documents.templates.deleteConfirmTitle': 'Delete the “{name}” template?',
-  // TODO(i18n-hi)
-  'documents.templates.deleteFailed': 'Could not delete the template',
-  // TODO(i18n-hi)
-  'documents.templates.deleted': 'Deleted “{name}”',
-  // TODO(i18n-hi)
-  'documents.templates.empty.description':
-    'A template decides what a quotation, order confirmation or dispatch note looks like.',
-  // TODO(i18n-hi)
-  'documents.templates.empty.title': 'No templates yet',
-  // TODO(i18n-hi)
-  'documents.templates.loadFailed': 'Could not load templates',
-  // TODO(i18n-hi)
-  'documents.templates.ratesHidden': 'Hidden',
-  // TODO(i18n-hi)
-  'documents.templates.ratesShown': 'Shown',
-  // TODO(i18n-hi)
-  'documents.templates.sectionTitle': 'Templates',
-  // TODO(i18n-hi)
-  'documents.title': 'Documents',
-  // TODO(i18n-hi)
-  'documents.type.dispatchNote': 'Dispatch note',
-  // TODO(i18n-hi)
-  'documents.type.orderConfirmation': 'Order confirmation',
-  // TODO(i18n-hi)
-  'documents.type.quotation': 'Quotation',
   // TODO(i18n-hi)
   'fields.action.cancel': 'Cancel',
   // TODO(i18n-hi)
@@ -2628,8 +2152,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'nav.dashboard': 'Dashboard',
   // TODO(i18n-hi)
-  'nav.documents': 'Documents',
-  // TODO(i18n-hi)
   'nav.leads': 'Leads',
   // TODO(i18n-hi)
   'nav.master.access': 'Roles & users',
@@ -2639,8 +2161,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'nav.master.conflicts': 'Conflicts',
   // TODO(i18n-hi)
   'nav.master.dashboard': 'Dashboard',
-  // TODO(i18n-hi)
-  'nav.master.documents': 'Documents',
   // TODO(i18n-hi)
   'nav.master.editRole': 'Edit role · {name}',
   // TODO(i18n-hi)
@@ -3544,8 +3064,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'recycleBin.entity.custom_field_definition': 'Custom field',
   // TODO(i18n-hi)
-  'recycleBin.entity.document_template': 'Document template',
-  // TODO(i18n-hi)
   'recycleBin.entity.lead': 'Lead',
   // TODO(i18n-hi)
   'recycleBin.entity.option_list_item': 'Option value',
@@ -4234,7 +3752,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'developer.tool.resetAll.detail.records': 'Every record — parties, products, leads and orders',
   // TODO(i18n-hi)
-  'developer.tool.resetAll.detail.files': 'Uploads and generated documents',
+  'developer.tool.resetAll.detail.files': 'Uploads',
   // TODO(i18n-hi)
   'developer.tool.resetAll.detail.people': 'Users and roles',
   // TODO(i18n-hi)
@@ -4288,7 +3806,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'developer.tool.uninstall.detail.program': 'The program, its shortcuts and its firewall rules',
   // TODO(i18n-hi)
-  'developer.tool.uninstall.detail.data': 'The database, uploads, documents and settings',
+  'developer.tool.uninstall.detail.data': 'The database, uploads and settings',
   // TODO(i18n-hi)
   'developer.tool.uninstall.browserOnly':
     'Open this panel in its desktop app to uninstall it — a browser tab cannot remove a program from the computer it is looking at.',
@@ -4521,4 +4039,46 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.panel.truncated': 'Showing the first {shown} — narrow the search to see the rest',
   // TODO(i18n-hi)
   'lead.add.draft.showOptions': 'Show {field} options',
+  // TODO(i18n-hi)
+  'validation.developer.sampleDataPresent': "Sample data is already on this Master. Erase everything first to seed it again.",
+  // TODO(i18n-hi)
+  'developer.tool.sample.title': "Sample data",
+  // TODO(i18n-hi)
+  'developer.tool.sample.description': "Fills this Master with six months of a small tile trade — parties, products with photos, stock, leads at every stage, orders in progress and dispatched, remarks, party-wise rates, party access, custom fields and a few records in the Recycle Bin — so every screen has something to show. Seeds the three test users first, exactly as \"Seed test users\" does. Runs once per installation; erase everything to start over.",
+  // TODO(i18n-hi)
+  'developer.tool.sample.action': "Seed sample data",
+  // TODO(i18n-hi)
+  'developer.tool.sample.done': "Sample data is ready — open the dashboard",
+  // TODO(i18n-hi)
+  'developer.tool.sample.span': "History runs from {from} to {to}.",
+  // TODO(i18n-hi)
+  'developer.tool.sample.what': "Created",
+  // TODO(i18n-hi)
+  'developer.tool.sample.howMany': "Count",
+  // TODO(i18n-hi)
+  'developer.tool.sample.count.parties': "Parties",
+  // TODO(i18n-hi)
+  'developer.tool.sample.count.products': "Products",
+  // TODO(i18n-hi)
+  'developer.tool.sample.count.images': "Product photos",
+  // TODO(i18n-hi)
+  'developer.tool.sample.count.stockMovements': "Stock movements",
+  // TODO(i18n-hi)
+  'developer.tool.sample.count.leads': "Leads",
+  // TODO(i18n-hi)
+  'developer.tool.sample.count.orders': "Orders",
+  // TODO(i18n-hi)
+  'developer.tool.sample.count.dispatched': "Orders dispatched",
+  // TODO(i18n-hi)
+  'developer.tool.sample.count.remarks': "Remarks",
+  // TODO(i18n-hi)
+  'developer.tool.sample.count.optionValues': "Option list values",
+  // TODO(i18n-hi)
+  'developer.tool.sample.count.customFields': "Custom fields",
+  // TODO(i18n-hi)
+  'developer.tool.sample.count.partyVariants': "Party-wise rates",
+  // TODO(i18n-hi)
+  'developer.tool.sample.count.partyAssignments': "Party access assignments",
+  // TODO(i18n-hi)
+  'developer.tool.sample.count.deleted': "In the Recycle Bin",
 };

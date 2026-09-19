@@ -23,7 +23,7 @@ import { levelFor, resolvePartyScope } from '../domain/party-scope.js';
  * equivalent *request* path correctly requires `users.manage`. No panel
  * consumes these events, so withholding them costs nothing.
  */
-export const DIRECTORY_ENTITIES = new Set<ChangedEntity>(['role', 'user', 'document_export']);
+export const DIRECTORY_ENTITIES = new Set<ChangedEntity>(['role', 'user']);
 
 /**
  * Entities whose rows hang off one party, and therefore cannot be broadcast to

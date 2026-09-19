@@ -61,7 +61,6 @@ import {
 import { AccessScreen } from './screens/AccessScreen';
 import { ConflictsScreen } from './screens/ConflictsScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
-import { DocumentsScreen } from './screens/DocumentsScreen';
 import { FieldsScreen } from './screens/FieldsScreen';
 import { PartyAccessScreen } from './screens/PartyAccessScreen';
 import { FirstRunScreen } from './screens/FirstRunScreen';
@@ -84,7 +83,6 @@ type Tab =
   | 'orders'
   | 'inventory'
   | 'reports'
-  | 'documents'
   | 'access'
   | 'partyAccess'
   | 'assistant'
@@ -102,20 +100,19 @@ type Route = '' | 'gallery';
  * Which entities each screen's data is derived from.
  *
  * There used to be one counter and a six-entity allow-list in front of it, so
- * a change to an option list, a custom field, a document template or an export
- * moved nothing — those screens simply never refetched — while a change to a
- * lead made the Fields screen refetch for no reason. A counter per entity fixes
+ * a change to an option list or a custom field moved nothing — those screens
+ * simply never refetched — while a change to a lead made the Fields screen
+ * refetch for no reason. A counter per entity fixes
  * both directions at once.
  */
 const SCREEN_ENTITIES: Record<string, readonly string[]> = {
   records: ['lead', 'order', 'party', 'product', 'stock', 'reservation'],
   inventory: ['stock', 'product', 'reservation'],
   reports: ['lead', 'order', 'party', 'stock'],
-  documents: ['document_template', 'document_export'],
   fields: ['option_list', 'custom_field', 'pipeline'],
   access: ['user', 'role'],
   partyAccess: ['party'],
-  recycleBin: ['lead', 'order', 'party', 'product', 'role', 'user', 'document_template'],
+  recycleBin: ['lead', 'order', 'party', 'product', 'role', 'user'],
   conflicts: ['sync_conflict'],
 };
 
@@ -395,7 +392,6 @@ function MasterPanel() {
   const canViewLogs = user.permissions.includes('logs.view');
   const canViewRecycleBin = user.permissions.includes('recycleBin.view');
   const canViewReports = user.permissions.includes('reports.view');
-  const canViewDocuments = user.permissions.includes('documents.view');
 
   let railState: 'synced' | 'syncing' | 'offline' | 'offlinePending' | 'conflict';
   if (openConflicts > 0) railState = 'conflict';
@@ -445,10 +441,9 @@ function MasterPanel() {
       count:
         summary?.lowStockCount && summary.lowStockCount > 0 ? summary.lowStockCount : undefined,
     },
-    // Reports and Documents sit under Work rather than Admin: both are things
-    // a manager produces during the day, not settings anyone administers.
+    // Reports sit under Work rather than Admin: a report is something a manager
+    // produces during the day, not a setting anyone administers.
     canViewReports ? { id: 'reports', label: t('nav.master.reports'), icon: 'calendar' } : null,
-    canViewDocuments ? { id: 'documents', label: t('nav.master.documents'), icon: 'copy' } : null,
     {
       id: 'conflicts',
       label: t('nav.master.conflicts'),
@@ -684,15 +679,6 @@ function MasterPanel() {
       id: 'reports',
       render: () => (
         <ReportsScreen revision={revisionOf(revisions, 'reports')} permissions={user.permissions} />
-      ),
-    },
-    {
-      id: 'documents',
-      render: () => (
-        <DocumentsScreen
-          revision={revisionOf(revisions, 'documents')}
-          permissions={user.permissions}
-        />
       ),
     },
     {
