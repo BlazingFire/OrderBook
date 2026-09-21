@@ -2,6 +2,12 @@
 
 ## Context
 
+> **2026-09-21:** pricing (rates, amounts, totals, the `field.*Rate.*` permissions and field-level
+> masking) has since been removed from the product, and the product master trimmed to name ·
+> category · alias · size · colour switch, with variants of code · colour · weight. Where a
+> workstream below describes money or the wider product attributes it is historical — see
+> `docs/ai-handoffs/product-master-trim.md`.
+
 The owner reported that the two panels "close automatically sometimes" and asked, in one message, for
 a stability fix plus fourteen further changes spanning the Electron shell, the UI system, the data
 model, security, performance, an AI section and an external-API layer.

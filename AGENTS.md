@@ -11,8 +11,9 @@ cooperating Electron-wrapped web apps:
 - **Office Panel** — other PCs on the same LAN; thin clients that create leads,
   manage parties/products, and push leads to orders. No database of its own.
 
-It is order management, not billing: money shows only behind the opt-in
-`pricing.enabled` company setting (off by default). There is no AI assistant.
+It is order management, not billing: the software carries **no money at all**
+— no rates, amounts or totals anywhere (pricing was removed on 2026-09-21).
+There is no AI assistant.
 
 ## Source of truth — read these before assuming
 

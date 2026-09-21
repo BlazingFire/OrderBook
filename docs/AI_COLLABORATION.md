@@ -187,6 +187,44 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-21 — Product master trimmed, pricing removed, multi-colour lines (Claude)
+
+Scope: the owner had the Swisware 2026 catalogue PDF extracted to a
+spreadsheet, asked how the product Add flow works and how category and model
+number are modelled, and then decided the product master is too wide. The
+brief — *only* name, category, alias, size, code/colour/weight and photos,
+plus a **multi colour** switch, *remove other fields completely from
+backend, frontend and database* — and the three answers given (remove
+pricing whole; keep custom fields on products; the line's colour comes from
+the Settings colour list) are recorded in
+`docs/ai-handoffs/product-master-trim.md`.
+
+**Files touched.** Migration `20260324000000_product_master_trim` (+ registry,
+pinned last); `shared/src/domain` (entities, inputs, columns, validator,
+permissions, settings, fields, reports, connectors; `visibility.ts` deleted)
+and both message catalogues (81 keys removed, 20 added); Master domain,
+services, repositories and routes (`pricing-gate.ts` and
+`domain/visibility.ts` deleted; the import template, the catalogue seed and
+the sample data reshaped); the Office server's snapshot path and offline
+store; the Office product form, import modal, catalogue, product detail,
+New lead screen (colour select, no rate controls), lead/order detail, the
+boards, dashboard and party detail; the Master's Reports, Leads & orders and
+Integrations screens; `formatMoney` out of the UI kit. Tests: one new
+migration suite; `line-items-domain`, `lead`, `partial-patch`,
+`product-attributes`, `mappers`, `permissions`, `public-api`, `pick`,
+`reports`, `product-import(-domain)`, `sync`, `connector-*`, `settings`,
+`catalogue-seed`, `http-api`, `spreadsheet`, the Office `outbox`,
+`lead-route`, `offline-pick` and `snapshot-for-user` (renamed) suites
+rewritten; `pricing-gate.integration.test.ts` removed. Docs: `docs/schema/02`,
+`03`, `06`, `docs/LEAD_GENERATION_FLOW.md`, `docs/DEVELOPER_MODE.md`,
+`HANDOFF.md`, `AGENTS.md`, the new handoff.
+
+**Verified.** `npm run lint` 0, `npm run typecheck` 0 (all workspaces, both
+shells, the test tsconfigs); `vitest run` — see the HANDOFF *Verify gate*
+entry for the run this session finished with. The laptop's live
+`order_book_new` was migrated by starting the Master, and the walk-through
+in the handoff's §6 was run in the browser.
+
 ### 2026-09-19 — Merge of the v1.1.0 line into the variant restructure (Claude)
 
 Scope: the owner asked for local and remote `main` to be aligned, then for

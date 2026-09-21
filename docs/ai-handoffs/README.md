@@ -39,8 +39,8 @@ the AI assistant inside a remaining brief is moot — the feature is gone.
 **Cross-cutting — other briefs depend on these:**
 
 4. `office-write-refusal-visibility.md`
-5. `close-money-field-gate-gaps.md` — `mrp` is still ungated in the sync
-   filter and the public-API write guards.
+5. ~~`close-money-field-gate-gaps.md`~~ — moot since 2026-09-21: pricing is
+   gone, so there is no money field left to gate.
 
 **Security, landable on their own:**
 
@@ -55,7 +55,8 @@ the AI assistant inside a remaining brief is moot — the feature is gone.
 9. `self-service-password-change.md` — `changeOwnPassword` has no caller.
 10. `session-loss-and-password-change.md` (the rest)
 11. `recycle-bin-delete-actions-and-purge.md` — part 2 needs an owner decision.
-12. `office-product-form-gates-and-slimming.md` (remaining items)
+12. ~~`office-product-form-gates-and-slimming.md`~~ — moot since 2026-09-21:
+    the form has no gated field left, and the slimming happened by decision.
 13. `office-product-image-flow.md` (the rest)
 14. `party-access-truncation-and-routing.md`
 
@@ -67,6 +68,15 @@ the AI assistant inside a remaining brief is moot — the feature is gone.
     Kept as the design record until its live walk-through (§6) is signed off.
     Its §6a also closes bug 2 of item 1 above: a temporary `partyId` on a
     lead is now resolved through `id_map` in `lead.service.ts`.
+
+**Landed 2026-09-21 (Claude):**
+
+16. `product-master-trim.md` — the product master trimmed to name · category
+    · alias · size · *made in every colour* switch, with variants of code ·
+    colour · weight; pricing removed whole (no rates, amounts, totals,
+    `field.*Rate.*` keys or masking anywhere); a lead line on a multi-colour
+    model names a colour from the colour list. Kept as the design record
+    until its walk-through (§6) is signed off.
 
 **Earlier rounds, still open:** `design-audit-high-priority.md`,
 `fix-broken-popover-menu-css.md`, `office-panel-report-hardening.md`,

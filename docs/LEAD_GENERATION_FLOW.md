@@ -59,7 +59,7 @@ immediately, given a temporary ID, and pushed to the Master when the link return
 | `stageId` | Auto-set | The lead pipeline's first configured stage (also the first Kanban column) |
 | `lineItems[]` | **Required** — at least one | See §3.2 |
 | `followUpDate` | Optional | Drives the reminder surfaced in the panel |
-| `partyWiseMode` | Optional toggle | Pulls that party's saved product variants (rate/size/packaging overrides) instead of catalogue defaults |
+| `partyWiseMode` | Optional toggle | Pulls that party's saved product records (their own name/alias/size for a model, and a packaging suggestion) instead of catalogue defaults |
 | `notes` | Optional | Free text |
 | `timeline[]` | Auto-generated | Stage changes log themselves; users may add remarks |
 
@@ -79,8 +79,9 @@ Picking a variant snapshots these onto the line **at that moment**:
 | Field | Source |
 |---|---|
 | `productId`, `variantId` | Selected model and variant — kept live for stock movement and traceability; the variant must belong to the product and still be active (`validation.lead.variantMissing`) |
-| `code`, `variantLabel`, `weightKg` | Copied from the **variant** — a party's rate never changes what a basin weighs |
-| `productName`, `alias`, `rate`, `sin`, `size`, `grade`, `productType` | Copied from the product, or from the party's rate record when `partyWiseMode` is on |
+| `code`, `variantLabel`, `weightKg` | Copied from the **variant** — a party's record never changes what a basin weighs |
+| `productName`, `alias`, `size` | Copied from the product, or from the party's record when `partyWiseMode` is on |
+| `colour` | **Chosen manually**, from the company's colour list, and only on a model with `multiColour` on (`validation.lead.colourUnexpected` otherwise). Blank means the variant's own colour |
 | `quantity` | **Required**, greater than zero (`validation.lead.quantityRequired`) |
 | `packaging` | **Chosen manually** — never auto-filled, even in `partyWiseMode` |
 | `sequence` | Display order, auto-assigned |
@@ -91,8 +92,10 @@ Picking a variant snapshots these onto the line **at that moment**:
 "toilet" shows *ONE PIECE TOILET* and never a product. The chosen category becomes a chip and the
 same box then searches the models inside it, by name or by any of their codes. Picking a model
 opens a card with one row per variant (code and weight already filled, a quantity to type);
-adding the card adds one line per row with a quantity. The category chip stays for the next
-product; Backspace on an empty box, or the chip's ✕, goes back to choosing a category.
+adding the card adds one line per row with a quantity. On a model made in every colour the card
+also offers a *Colour* select over the colour list — one colour per card, copied onto every line
+it adds; the same model in a second colour is the card added again. The category chip stays for
+the next product; Backspace on an empty box, or the chip's ✕, goes back to choosing a category.
 
 `packaging` is pointedly excluded from every auto-fill. A variant whose weight nobody has entered
 yet shows **weight missing** rather than a zero, on the card, on the line and in the footer, which
@@ -150,7 +153,7 @@ Trigger: a user holding **`lead.convert`** presses **Convert to Order**.
 
 - Conversion copies line items **unchanged** — product, variant, code, colour, weight, quantity —
   no silent recalculation.
-- A line's snapshotted `rate` and `weightKg` do **not** move when the product or its variant is
+- A line's snapshotted `weightKg` and `colour` do **not** move when the product or its variant is
   edited afterwards; an order already raised is untouched by a weight entered later.
 - `packaging` is **never** auto-filled during conversion — it keeps exactly what was entered.
 - Reservations are per variant, never aggregated to a product total.
@@ -200,8 +203,7 @@ The same shape is reused unchanged on orders.
 
 Frozen the moment the line is added; editing the product or its variant later does not change them.
 
-`productName`, `alias`, `rate`, `code`, `variantLabel`, `sin`, `size`, `weightKg`, `grade`,
-`productType`
+`productName`, `categoryName`, `alias`, `code`, `variantLabel`, `colour`, `size`, `weightKg`
 
 ### 8.2 Other fields
 
@@ -217,9 +219,9 @@ Frozen the moment the line is added; editing the product or its variant later do
 
 ### 8.3 Why the snapshot exists
 
-An order printed last month must keep the rate and spec it was quoted at. Without the copy, editing
-a product's rate would silently rewrite the history of every order ever printed — which is exactly
-what §5.2's conversion guarantees exist to prevent.
+An order printed last month must keep the spec it was quoted at — the code, the colour, the
+weight. Without the copy, correcting a product's weight would silently rewrite the history of
+every order ever printed — which is exactly what §5.2's conversion guarantees exist to prevent.
 
 ---
 
@@ -239,7 +241,6 @@ Every rule from the guide's §9 is preserved:
 | Line items indexed separately from products | `line_items.search_vector` indexes the **snapshot** text, so searching an old product name still finds the historical leads and orders that show it |
 | A hit resolves back to its parent | `line_items.parent_type` + `parent_id` route the result to the right detail screen |
 | Filter by tenant first, never rely on ranking | Every search query is `WHERE tenant_id = ? AND search_vector @@ ...`; the GIN indexes are composite on `(tenant_id, search_vector)` |
-| Respect field-level permissions | A caller without `field.saleRate.view` gets results with `rate` **absent** — key omitted, not nulled |
 | Universal search consumes the indexes, it does not own one | `search.service.ts` queries the three vectors and merges; adding a new entity means adding a vector to the merge |
 
 What the guide says to avoid is avoided: no in-memory `.filter()` over full tables, no external
@@ -254,7 +255,7 @@ excluded from the vector itself.
  [Office Panel — user with leads.create]
         |
         v
- Pick party (required) -> add line items (product, colours+qty, packaging) -> Save
+ Pick party (required) -> add line items (product, variant+qty, colour, packaging) -> Save
         |                                   |
         |                    Saved to the local store instantly
         |                    (temporary ID when offline)

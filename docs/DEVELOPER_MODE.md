@@ -139,6 +139,11 @@ than choices made here:
   with a blank weight, shows as *weight missing* on every screen and is left
   out of every total until somebody enters it — the Office panel's Catalogue
   has a *Missing weight* filter for exactly that job.
+- **"All colours available in all items" is the colour switch.** The sections
+  the catalogue prints under that heading — the water closets, the pedestal
+  sets, the urinals and the pans — land with *Made in every colour* on, so a
+  lead line on them may name a colour from the colour list; the one-piece and
+  table-top ranges, which only say "also available in Ivory", land with it off.
 
 It is **idempotent by model**: a model whose codes are all already live is
 skipped, so a second press changes nothing and reports everything under
@@ -151,8 +156,8 @@ not undo that. It adds to whatever else is there and never deletes.
 A fresh Master with three sign-ins and nothing to look at teaches nobody
 anything. *Sample data* fills it with six months of a small sanitaryware trade
 so every screen on both panels has something to show: the whole Swisware
-catalogue, loaded first (above), with prices, an alias and illustrative weights
-entered on the sixteen models the demo trades in, each with a generated photo;
+catalogue, loaded first (above), with an alias and illustrative weights entered
+on the sixteen models the demo trades in, each with a generated photo;
 sixteen parties across Gujarat, Maharashtra, Rajasthan and Madhya Pradesh;
 opening stock and later arrivals, physical counts and reorder bands per variant;
 thirty-three leads at every pipeline stage with remarks along the way, their

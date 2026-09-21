@@ -22,8 +22,8 @@ an id before the Master has ever seen the record (`LEAD_GENERATION_FLOW.md` §7)
 `id_map` keeps a temporary id resolvable forever, so a docket printed offline stays findable.
 
 The prefixes are the `ENTITY_PREFIX` table in `shared/src/sync/ids.ts`: `PT` party, `PR`
-product, `VR` product variant, `PV` party variant (a party's negotiated rate — the older of the
-two, which is why the product variant could not take `PV`), `LD` lead, `OD` order, and so on.
+product, `VR` product variant, `PV` party variant (a party's own record of a product — the older
+of the two, which is why the product variant could not take `PV`), `LD` lead, `OD` order, and so on.
 
 ## `leads`
 
@@ -39,7 +39,7 @@ CREATE TABLE leads (
   party_wise_mode    BOOLEAN NOT NULL DEFAULT false,
   notes              TEXT,
   custom_fields      JSONB NOT NULL DEFAULT '{}',
-  total_amount       BIGINT NOT NULL DEFAULT 0,
+  -- total_amount BIGINT was here until 2026-09-21: pricing is gone whole.
   converted_order_id TEXT REFERENCES orders(id),
   converted_at       TIMESTAMPTZ,
   source_panel_id    UUID REFERENCES office_panels(id),
@@ -87,7 +87,7 @@ CREATE TABLE orders (
   total_weight_kg_override NUMERIC(12,3),
   notes                    TEXT,
   custom_fields            JSONB NOT NULL DEFAULT '{}',
-  total_amount             BIGINT NOT NULL DEFAULT 0,
+  -- total_amount BIGINT was here until 2026-09-21: pricing is gone whole.
   dispatched_at            TIMESTAMPTZ,
   source_panel_id          UUID REFERENCES office_panels(id),
   created_by_user_id       UUID REFERENCES users(id),
@@ -121,15 +121,13 @@ CREATE TABLE line_items (
 
   -- Snapshotted at add time, frozen from then on.
   product_name       TEXT NOT NULL,
+  category_name      TEXT,                       -- the category the line was entered under
   alias              TEXT,
-  rate               BIGINT,
   code               TEXT,                       -- the variant's code as it was
   variant_label      TEXT,                       -- the variant's colour or pattern as it was
-  sin                TEXT,
+  colour             TEXT,                       -- since 2026-09-21: the colour chosen on a multi-colour line
   size               TEXT,
   weight_kg          NUMERIC(10,3),              -- the variant's weight as it was, per piece
-  grade              TEXT,
-  product_type       TEXT,
 
   packaging          TEXT,
   sequence           INTEGER NOT NULL DEFAULT 0,
@@ -137,7 +135,6 @@ CREATE TABLE line_items (
   image_path         TEXT,
   notes              TEXT,
   quantity           NUMERIC(12,2) NOT NULL CHECK (quantity > 0),  -- was total_quantity
-  line_total         BIGINT,
   search_vector      tsvector,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -154,22 +151,32 @@ conversion a **straight copy** rather than a translation between two shapes — 
 search index cover both.
 
 The snapshot columns are the heart of the design: editing a product afterwards must not rewrite
-what an order was quoted at. `rate` is copied at add time and never re-read.
+what an order was quoted at. Every snapshot column is copied at add time and never re-read.
 
 `packaging` is nullable in the schema but required by policy before conversion. It is deliberately
 never derived — not from the product, not from a party variant, not during conversion.
 
 **A line is one variant** (2026-09). White ×5 and Blue ×10 of the same model are two lines,
-each with its own code, its own weight and its own total. The `line_item_quantities` child table
-of the tile-era model (one line, many colour rows) is gone: the colour is now the variant, and
-the variant is what stock is keyed by, so a line and a reservation are the same grain. `code`,
+each with its own code and its own weight. The `line_item_quantities` child table of the
+tile-era model (one line, many colour rows) is gone: the colour is now the variant, and the
+variant is what stock is keyed by, so a line and a reservation are the same grain. `code`,
 `variant_label` and `weight_kg` are copied off the variant when the line is added and never
-re-read — a weight entered on the product later does not move an order's line (the same rule
-`rate` has always followed). `Lead.totalWeightKg` and `Order.totalWeightKg` sum `weight_kg ×
-quantity` over the lines that have a weight; `linesWithoutWeight` counts the rest, because an
-unentered weight is a fact to show, not a zero to add. The CHECK on `quantity` is what makes "a
-line with nothing on it" impossible to store; the service refuses it first with
-`validation.lead.quantityRequired`.
+re-read — a weight entered on the product later does not move an order's line.
+`Lead.totalWeightKg` and `Order.totalWeightKg` sum `weight_kg × quantity` over the lines that
+have a weight; `linesWithoutWeight` counts the rest, because an unentered weight is a fact to
+show, not a zero to add. The CHECK on `quantity` is what makes "a line with nothing on it"
+impossible to store; the service refuses it first with `validation.lead.quantityRequired`.
+
+**`colour` is the exception to "the colour is the variant"** (2026-09-21). Some models are made
+in every colour of the company's colour list — the catalogue prints "ALL COLOURS AVAILABLE IN
+ALL ITEMS" over its water closets, pedestal sets, urinals and pans — and nobody wants sixteen
+variants per model to say so. Such a model carries `products.multi_colour = true`, and a line on
+it may name a colour from the `stock.colour` option list; the line still points at the variant it
+quotes, stock stays per variant, and the colour is frozen and copied onto the order like the rest
+of the snapshot. A colour on any other product is refused (`validation.lead.colourUnexpected`).
+
+There is no money on a line (2026-09-21): `rate` and `line_total` went with pricing, together
+with `leads.total_amount` and `orders.total_amount`.
 
 ## `timeline_entries`
 
@@ -194,7 +201,9 @@ history reads as one story. Nothing updates or deletes here — a history you ca
 
 ## `party_product_variants`
 
-A party's negotiated rate and spec for a product, used when a lead is in `party_wise_mode`.
+A party's own record of a product — what they call it, and how it ships to them — used when a
+lead is in `party_wise_mode`. It carried the party's negotiated rate until pricing was removed
+(2026-09-21).
 
 ```sql
 CREATE TABLE party_product_variants (
@@ -202,8 +211,7 @@ CREATE TABLE party_product_variants (
   tenant_id    UUID NOT NULL REFERENCES tenants(id),
   party_id     TEXT NOT NULL REFERENCES parties(id) ON DELETE CASCADE,
   product_id   TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-  product_name TEXT, alias TEXT, rate BIGINT, size TEXT, sin TEXT,
-  grade TEXT, product_type TEXT, weight_kg NUMERIC(10,3),
+  product_name TEXT, alias TEXT, size TEXT, weight_kg NUMERIC(10,3),
   packaging    TEXT,
   version INTEGER NOT NULL DEFAULT 1, hlc TEXT,
   field_hlc JSONB NOT NULL DEFAULT '{}', temporary_id TEXT,
@@ -330,3 +338,14 @@ Migration `20260323000000_product_variants` does **not** convert tile data: it w
 product-linked table (the owner's decision — a fresh master from the Swisware catalogue) and
 `down()` throws. The catalogue is loaded through Settings → Developer or `npm run
 seed:catalogue`; the sample dataset is built on top of it (`docs/DEVELOPER_MODE.md`).
+
+### And once more on 2026-09-21: the trim, and pricing gone
+
+| Before | Now | Why |
+|---|---|---|
+| `line_items.rate`, `line_total`; `leads.total_amount`, `orders.total_amount`; `party_product_variants.rate` | Gone | The owner removed pricing whole: the software carries no amounts (`docs/ai-handoffs/product-master-trim.md`) |
+| `line_items.sin`, `grade`, `product_type`; the same on `party_product_variants` | Gone | Snapshots of product columns that no longer exist |
+| — | `line_items.colour` | The colour chosen on a line of a `multi_colour` model, frozen with the rest of the snapshot |
+
+Migration `20260324000000_product_master_trim` drops the columns in place — no wipe — and
+`down()` throws.

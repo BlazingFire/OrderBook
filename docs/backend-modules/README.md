@@ -6,6 +6,12 @@
 > `document_template` Recycle Bin entity is historical: migration
 > `20260322000000_drop_document_designer` dropped the tables and stripped the keys. The Reports
 > PDF export (§3) is unaffected and still ships. Nothing below has been rewritten to reflect this.
+>
+> **2026-09-21 — pricing has since been removed from the product, and the product master trimmed.**
+> Everything this set says about rates, amounts, totals, `field.*Rate.*` permissions, field-level
+> masking and `totalValue` on reports is historical: migration `20260324000000_product_master_trim`
+> dropped the columns and stripped the keys (`docs/ai-handoffs/product-master-trim.md`). The
+> snapshot guard is now `office/tests/snapshot-for-user.test.ts` (key set and permissions only).
 
 Status: **specification. Nothing in this set is built.** Reading it end to end should be enough to
 authorise the work, and enough for somebody who was not in the room to implement it without asking

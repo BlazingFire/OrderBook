@@ -19,10 +19,11 @@ also shipped in an Electron shell:
   create leads, manage parties/products and promote leads to orders. No
   database of its own; keeps a snapshot cache and an outbox for offline work.
 
-It is order management, not billing: money shows only behind the opt-in
-company setting `pricing.enabled` (off by default). The AI assistant was
-removed for good on 2026-09-11; the PDF Designer (Documents module) on
-2026-09-19 — the Reports PDF export stays.
+It is order management, not billing: since 2026-09-21 the software carries
+**no money at all** — no rates, amounts or totals anywhere (the opt-in
+`pricing.enabled` switch and everything behind it were removed at the
+owner's decision). The AI assistant was removed for good on 2026-09-11; the
+PDF Designer (Documents module) on 2026-09-19 — the Reports PDF export stays.
 
 ### Where the truth lives
 
@@ -37,6 +38,7 @@ removed for good on 2026-09-11; the PDF Designer (Documents module) on
 | Manual QA script | `docs/TESTING_PLAN.md` |
 | Fields, Logs, Recycle Bin, Reports, i18n design (the PDF Designer chapters are historical) | `docs/BACKEND_MODULES.md` + `docs/backend-modules/` |
 | The product master: category → model → variant, weights, the Swisware seed | `docs/ai-handoffs/product-model-variants.md`, `docs/schema/02`, `03` |
+| The product trim, pricing removed, multi-colour lines (2026-09-21) | `docs/ai-handoffs/product-master-trim.md` |
 | The 2026-08/09 overhaul designs (stages 0–12, all implemented) | `docs/overhaul/` |
 | Multi-agent workflow and per-session change log | `docs/AI_COLLABORATION.md` |
 
@@ -45,7 +47,7 @@ as design rationale. They were written before the code and several of their
 stated facts did not survive contact with the tree — check a design's claim
 against the code before acting on it.
 
-## Current state (2026-09-19)
+## Current state (2026-09-21)
 
 - **Version 1.1.0** on `main`, which on 2026-09-19 merged two lines that had
   diverged for eight days: the v1.1.0 line (pricing switch, assistant removed,
@@ -61,9 +63,9 @@ against the code before acting on it.
   (below) and the items under "Owed work".
 - **Verify gate:** `npm run verify` = `lint` + `typecheck` (all workspaces,
   both Electron shells, the test tsconfigs) + `vitest run`. Last full green
-  run: 2026-09-21 on the laptop, on the merged tree — lint and typecheck
-  clean, 117 test files / 1427 tests, none skipped — integration suites
-  against the embedded PostgreSQL 17 test cluster. On the
+  run: 2026-09-21 (evening) on the laptop, after the product trim — lint and
+  typecheck clean, 117 test files / 1401 tests, none skipped — integration
+  suites against the embedded PostgreSQL 17 test cluster. On the
   owner's other PC the integration suites could not start that cluster on
   2026-09-14 (`initdb: could not create/change permissions`) — that is the
   machine, not the code. Run the three steps separately and check each exit
@@ -73,6 +75,11 @@ against the code before acting on it.
   on this PC is fixed at the source: both `web` workspaces' `build` scripts
   point `TEMP`/`TMP` at a project-local `.tmp/` (gitignored) before `vite
   build`, so `start:master` / `start:office` work without any manual step.
+  **Fixed 2026-09-21:** that script's `if not exist … mkdir … && …` was
+  parsed by cmd as one `if` body, so once `.tmp/` existed every later build
+  exited 0 *without running `vite build`* — the bundles on disk were from
+  2026-09-19. The `if` is parenthesised now; check the bundle's timestamp
+  if a UI change ever seems not to land.
 - **Installers:** `C:\OrderBook-Releases` still holds the 1.0.3 setup files.
   `npm run release` (electron-builder) hangs on this PC — same machine-level
   permission sickness as PostgreSQL above. Build inputs are refreshed; a
@@ -83,11 +90,15 @@ against the code before acting on it.
   laptop). **The first Master started from this `main` runs migration
   `20260323000000_product_variants`, which wipes every product-linked table**
   (products, categories, images, party-wise rates, stock, reservations,
-  leads, orders, lines, timelines — the owner's decision of 2026-09-19); then
-  Settings → Developer → *Load the Swisware catalogue* (or `npm run
-  seed:catalogue`) loads the 12 / 251 / 549 catalogue with blank weights. The
-  v1.1.0 `reload:catalog --with-catalog` script now calls that same loader
-  (its CSV path is gone).
+  leads, orders, lines, timelines — the owner's decision of 2026-09-19), and
+  then **`20260324000000_product_master_trim`, which drops every product,
+  line, lead, order and party-record column that pricing and the tile trade
+  had added** (in place, no wipe — the owner's decision of 2026-09-21; `down()`
+  throws). Then Settings → Developer → *Load the Swisware catalogue* (or `npm
+  run seed:catalogue`) loads the 12 / 251 / 549 catalogue with blank weights.
+  The v1.1.0 `reload:catalog --with-catalog` script calls that same loader
+  (its CSV path is gone). The laptop's `order_book_new` was migrated on
+  2026-09-21.
 
 ## How to run
 
@@ -152,11 +163,14 @@ docs/          all prose; nothing source-of-truth lives in a code comment
   chosen key as a controlled prop. A record opens as a full sub-screen with a
   back button and a nested sidebar entry — not a modal, not a drawer.
   `Ctrl+F` focuses `<Input data-screen-search>` on the visible screen.
-- **Company switches** (`pricing.enabled`, `inventory.freeToSell`) ride on
-  `SignedInUser.features` (Master) and `SyncSnapshot.features` (panels), built
-  by `master/src/services/company-features.ts`. Pricing off strips the four
-  `field.*Rate.*` keys from every resolved permission set
-  (`master/src/services/pricing-gate.ts`) so the existing masking does the rest.
+- **Company switch** (`inventory.freeToSell`) rides on `SignedInUser.features`
+  (Master) and `SyncSnapshot.features` (panels), built by
+  `master/src/services/company-features.ts`. There is no pricing switch and
+  no field-level masking any more (2026-09-21).
+- **Product master:** a product is name · category · alias · size · *made in
+  every colour* switch · custom fields, with variants of code · colour ·
+  weight. A lead line on a multi-colour product may name a colour from the
+  `stock.colour` option list (`line_items.colour`); stock stays per variant.
 
 ## Working agreements
 
@@ -176,8 +190,9 @@ docs/          all prose; nothing source-of-truth lives in a code comment
   workspaces. `.env` is gitignored and never committed.
 - **Desktop only.** Design floor is 1024×768; "all screen sizes" means
   laptop-to-4K at 79–157 % scale, not a phone layout.
-- **No pricing by default, no AI.** Do not reintroduce money on a screen
-  outside the `pricing.enabled` gate; do not bring the assistant back.
+- **No pricing, no AI.** Do not reintroduce money anywhere — no rate, amount
+  or total on any screen, document, report or API; do not bring the assistant
+  back.
 - **Before you stop, `git status` for `??`.** An uncommitted migration is
   indistinguishable from a deleted one to every other machine.
 - **Guards must be seen to fail.** Before accepting a test written to catch a
@@ -242,18 +257,18 @@ docs/          all prose; nothing source-of-truth lives in a code comment
 
 **Code:** the briefs in `docs/ai-handoffs/` are open or partial (the README
 there is the queue). The blocking ones: the Master has no Parties screen
-(`createParty` has no caller); `mrp` is ungated in the sync filter and
-public-API write guards; the four image mutations return the unmasked
-product; a refused acting token on the socket falls back to a default actor.
-(The temporary-`partyId` remap on a lead was fixed on 2026-09-19.)
+(`createParty` has no caller); a refused acting token on the socket falls
+back to a default actor. (The temporary-`partyId` remap on a lead was fixed
+on 2026-09-19; the `mrp` gate and the unmasked image mutations went away with
+pricing on 2026-09-21.)
 
 **Master-side New lead.** v1.1.0 gave the Master a New lead page through a
 shared `ui/NewLeadScreen` built on `colour_policy`; the variant restructure
 replaced that model and the screen could not be kept. `POST /api/leads` on
 the Master stays. To bring the page back, port the Office `AddLeadScreen`
 into `ui/` behind a transport (parties/categories/models picks, option
-lists, party rates, free stock per variant, last rates, create) the way the
-v1.1.0 adapter did — the Office screen is the one that was walked through.
+lists, party records, free stock per variant, create) the way the v1.1.0
+adapter did — the Office screen is the one that was walked through.
 
 **Weights.** The catalogue's 549 variants land with no weight; the Office
 Catalogue's *Missing weight* filter is the worklist. Uncoded catalogue items
@@ -347,6 +362,34 @@ panels (last-write-wins is the default); app name/branding.
   is hex now; `parseToken` rejoins everything after the second separator.
 
 ## Recent sessions
+
+### 2026-09-21 — Product master trimmed, pricing removed, multi-colour lines; catalogue PDF extracted (Claude)
+
+The owner extracted the Swisware 2026 catalogue PDF to a spreadsheet (an
+8-per-page sample, `SWISWARE 2026 - Sample (8 per page).xlsx` on the laptop's
+Desktop, with a `Catalogue` sheet and an `Import` sheet in the app's template
+shape), asked how the product Add flow works, and then decided the product
+master is too wide: *only* name, category, alias, size, the variants' code,
+colour and weight, photos — plus a **multi colour** switch so a lead line on
+such a product can name a colour. Asked back, they chose to **remove pricing
+completely** (not just the catalogue price), keep custom fields on products,
+and have the line's colour come from the colour list in Settings.
+
+Migration `20260324000000_product_master_trim` drops 26 product columns, the
+money on lines/leads/orders/party records, adds `products.multi_colour` and
+`line_items.colour`, redefines both search functions first, deletes the
+`pricing.enabled` row, the `product.*`/`line.grade` option lists, connector
+maps and conflicts on the dropped fields, and strips the four rate keys from
+every role. Removed with it: `shared/domain/visibility.ts`,
+`master/domain/visibility.ts`, `master/services/pricing-gate.ts`, the money
+columns of every report, the paise connector transforms, `formatMoney`, the
+rate controls of the New lead screen; 81 message keys. The product form is
+name · category · alias · size · variants · *Made in every colour?* · photos;
+the New lead card offers a *Colour* select on a multi-colour model; the
+import template is eight columns. The Swisware seed marks the water closets,
+sets, urinals and pans multi-colour. Design record:
+`docs/ai-handoffs/product-master-trim.md`; verify gate re-run (see *Verify
+gate* above).
 
 ### 2026-09-19 — Product model → variant, Swisware catalogue, PDF Designer removed, sample data; merged with the v1.1.0 line (Claude)
 

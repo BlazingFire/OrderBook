@@ -69,9 +69,49 @@ CREATE TABLE product_categories (
 A row is a **model** — DAMRU, 102, HEXA URINAL — the thing a category lists and a
 name is typed for. It carries no code and no weight: those belong to its
 variants (next section), and a model with no colour or pattern choices has
-exactly one variant. The DDL below is the tile-era original; the
-2026-09 restructure that removed `product_code`, `weight_kg` and `color` and
-added `has_variants` is described under *Product variants*.
+exactly one variant.
+
+**What a product is, since 2026-09-21** (`docs/ai-handoffs/product-master-trim.md`):
+
+```sql
+-- The live shape. Everything below the plumbing line is what a person fills in.
+CREATE TABLE products (
+  id             TEXT PRIMARY KEY,                       -- 'PR' + 10 digits
+  tenant_id      UUID NOT NULL REFERENCES tenants(id),
+  name           TEXT NOT NULL,                          -- the model: DAMRU, 102, HEXA URINAL
+  category_id    TEXT NOT NULL REFERENCES product_categories(id),
+  alias          TEXT,                                   -- a short counter name
+  size           TEXT,                                   -- free text: '9" · L-27 B-15 H-26', '18x12'
+  has_variants   BOOLEAN NOT NULL DEFAULT false,         -- the form's "comes in variants" switch
+  multi_colour   BOOLEAN NOT NULL DEFAULT false,         -- made in every colour of the colour list
+  custom_fields  JSONB NOT NULL DEFAULT '{}',            -- values of admin-defined fields
+  -- plumbing
+  is_active      BOOLEAN NOT NULL DEFAULT true,
+  version        INTEGER NOT NULL DEFAULT 1,
+  hlc            TEXT,
+  field_hlc      JSONB NOT NULL DEFAULT '{}',
+  temporary_id   TEXT,
+  search_vector  tsvector,                               -- name, variant codes + labels, alias, size
+  deleted_at     TIMESTAMPTZ,
+  deleted_by     TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+`multi_colour` marks a model the factory makes in any colour of the company's colour list
+(the `stock.colour` option list) — the catalogue prints "ALL COLOURS AVAILABLE IN ALL ITEMS"
+over its water closets, pedestal sets, urinals and pans. A lead line on such a model may name a
+colour (`line_items.colour`, `03-leads-orders-inventory.md`); the colour is a line attribute,
+not a stock key. Everything else that once sat on this table — `sin`, `grade`, `product_type`,
+`brand`, `barcode`, `hsn_code`, `uom`, the five money columns, the thirteen tile-era attributes
+and the `parameters` bag — was dropped by `20260324000000_product_master_trim` at the owner's
+decision that a product is a name, a category, an alias, a size and its variants.
+
+The rest of this section is the history that got here. The DDL immediately below is the
+tile-era original; the 2026-09 restructure that removed `product_code`, `weight_kg` and `color`
+and added `has_variants` is described under *Product variants*; the trade attributes of
+2026-08-29 are described after it and are gone.
 
 ```sql
 CREATE TABLE products (
@@ -113,10 +153,12 @@ list with the user (see `PROJECT_PLAN.md` §12) and promote anything used often 
 of `parameters` into a typed column in a follow-up migration; that's a cheap,
 additive change and not a reason to block Phase 1 on a perfect field list.
 
-### The trade and ceramic attributes (2026-08-29)
+### The trade and ceramic attributes (2026-08-29) — removed 2026-09-21
 
 `20260315000000_product_trade_and_ceramic_attributes` did exactly the promotion
-the paragraph above describes, once the owner named the field set:
+the paragraph above describes, once the owner named the field set. Every one of
+these columns was dropped again by `20260324000000_product_master_trim`; the
+DDL stays as the record of what the migration in between added:
 
 ```sql
 ALTER TABLE products
@@ -151,7 +193,7 @@ masked by **key absence**, which is why `Product.purchaseRate` is declared
 optional: anything writing `purchaseRate ?? 0` would read "may not see cost" as
 "cost is zero", so margin arithmetic stays server-side.
 
-**Batch or lot is deliberately not a product column**, and that is a refusal of
+**Batch or lot is deliberately not a product column**, and that was a refusal of
 the requirement as literally written. One product receives many lots, so the
 column is false the second time stock arrives. `stock_movements` gained
 `batch_no`, `shade` and `calibre` instead, which answers "which lot is this"
@@ -161,11 +203,11 @@ from. That model means re-keying `inventory_stock` from
 item quantities, dispatch settlement and the document renderer: a workstream,
 not a column.
 
-`inventory_stock` gained `min_stock_level` and `max_stock_level`, both advisory.
-The reorder point was **not** renamed — `reorder_level` already carries
-`countLowStock`, `mapStockLevel`, a route and a mutation kind — and `isLow` is
-still driven by it alone, because a second low-stock rule would make the
-dashboard's figure ambiguous.
+`inventory_stock` gained `min_stock_level` and `max_stock_level`, both advisory,
+and those two stay. The reorder point was **not** renamed — `reorder_level`
+already carries `countLowStock`, `mapStockLevel`, a route and a mutation kind —
+and `isLow` is still driven by it alone, because a second low-stock rule would
+make the dashboard's figure ambiguous.
 
 ### Product variants (2026-09-19)
 
@@ -183,7 +225,7 @@ CREATE TABLE product_variants (
   tenant_id  UUID NOT NULL REFERENCES tenants(id),
   product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   code       TEXT NOT NULL,                          -- the code staff type; unique across the shop
-  label      TEXT,                                   -- colour or pattern; NULL on a no-variant product
+  label      TEXT,                                   -- the colour (or pattern — "Vitrosa 41"); NULL on a no-variant product
   weight_kg  NUMERIC(10,3) CHECK (weight_kg IS NULL OR weight_kg > 0),
   sequence   INTEGER NOT NULL DEFAULT 0,             -- the order the form shows them in
   is_active  BOOLEAN NOT NULL DEFAULT true,          -- false once removed from the form but still quoted somewhere

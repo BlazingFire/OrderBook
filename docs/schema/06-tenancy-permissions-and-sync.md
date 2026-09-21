@@ -81,14 +81,16 @@ Seed values are **inlined and frozen** in each migration rather than imported fr
 `@orderbook/shared`: `20260301` imported the live catalogue, which meant editing that catalogue
 retroactively changed what an already-applied migration had done.
 
-Two kinds of permission live in the same column:
+One kind of permission lives in the column (since 2026-09-21):
 
-- **module actions** (`leads.create`, `lead.convert`, `orders.dispatch`, …). A missing one is a
-  **403 that names the permission**, so an operator can tell a broken screen from one they lack
-  access to.
-- **field actions** (`field.saleRate.view`). A missing one omits the key from the response —
-  **absent, not null**. `rate: null` is a factual claim that the line has no price, which is a
-  different and wrong statement, and one a client would happily total to zero.
+- **module actions and capabilities** (`leads.create`, `lead.convert`, `orders.dispatch`, …). A
+  missing one is a **403 that names the permission**, so an operator can tell a broken screen
+  from one they lack access to.
+
+There used to be a second kind — **field actions** (`field.saleRate.view`), where a missing key
+omitted a value from the response, absent rather than null. They went with pricing:
+`20260324000000_product_master_trim` strips the four keys from every stored role, and no record
+carries a value that one role may see and another may not.
 
 ---
 
