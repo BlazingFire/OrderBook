@@ -14,22 +14,17 @@
  * that is turned off — and the SPA catch-all for non-API paths never matches an
  * `/api` path, so nothing else would answer.
  *
- * **PATCH is read-merge-write against an unmasked repository read.** The
- * services are full replaces that demand a name and a code, so a two-field
- * PATCH cannot reach them unmerged; and merging against a *masked* read would
- * let a key without `field.saleRate.view` silently write the catalogue price to
- * nothing, because the mask removes the key and the writer would treat it as
- * cleared. A body that names a money field the key may not **edit** is refused
- * outright — see `WRITE_GUARDS` for why that verb, and not `view`.
+ * **PATCH is read-merge-write against the repository read.** The services are
+ * full replaces that demand a name and a code, so a two-field PATCH cannot
+ * reach them unmerged.
  */
 
 import { Router, type Request, type Response } from 'express';
 import type { ActivityLogQuery } from '@orderbook/shared';
-import { hasPermission } from '@orderbook/shared';
 
 import type { ActorContext } from '../../domain/actor.js';
 import { appVersion } from '../../lib/app-version.js';
-import { ForbiddenError, NotFoundError, ValidationError } from '../../lib/errors.js';
+import { NotFoundError, ValidationError } from '../../lib/errors.js';
 import * as partyRepo from '../../repositories/party.repository.js';
 import * as productRepo from '../../repositories/product.repository.js';
 import * as catalogService from '../../services/catalog.service.js';
@@ -50,34 +45,6 @@ import { paging } from '../query.js';
 
 type Handler = (req: Request, res: Response, actor: ActorContext) => Promise<void>;
 
-/**
- * The money fields a key may not write, and the permission each one needs.
- *
- * **The gate is the `edit` permission, not `view`, and the difference was a
- * live defect.** `withPermittedRate` in the service layer *drops* a rate the
- * caller may not edit — deliberately, so an offline panel replaying a day-old
- * draft is not refused outright — so a key holding `field.saleRate.view` but
- * not `field.saleRate.edit` sent a price, got a 201, and had it silently
- * discarded. A silent no-op is the worst answer available: the caller is told
- * it worked.
- *
- * Two permissions per field, because they are two questions. `view` still
- * matters on the way out, where masking removes the key entirely.
- */
-const WRITE_GUARDS = [
-  { fields: ['rate', 'pricePerSqft'], permission: 'field.saleRate.edit' },
-  { fields: ['purchaseRate'], permission: 'field.purchaseRate.edit' },
-] as const;
-
-function refuseMaskedFields(body: Record<string, unknown>, actor: ActorContext): void {
-  for (const guard of WRITE_GUARDS) {
-    const named = guard.fields.find((field) => Object.prototype.hasOwnProperty.call(body, field));
-    if (named && !hasPermission(actor.permissions, guard.permission)) {
-      throw new ForbiddenError(guard.permission);
-    }
-  }
-}
-
 function body(req: Request): Record<string, unknown> {
   const value: unknown = req.body;
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -89,10 +56,9 @@ function body(req: Request): Record<string, unknown> {
 /**
  * Merge a patch over the record as it actually is.
  *
- * The base is the **unmasked** repository row, so the fields the caller did not
- * name keep the values they have — including the ones this key cannot read.
- * Only the keys the caller actually sent are taken from the patch, which is
- * what makes this a PATCH and not a replace.
+ * The base is the repository row, so the fields the caller did not name keep
+ * the values they have. Only the keys the caller actually sent are taken from
+ * the patch, which is what makes this a PATCH and not a replace.
  */
 function merge<T extends Record<string, unknown>>(existing: T, patch: Record<string, unknown>): T {
   const merged: Record<string, unknown> = { ...existing };
@@ -121,7 +87,6 @@ const HANDLERS: Record<PublicApiOperationId, Handler> = {
   },
   createParty: async (req, res, actor) => {
     const input = body(req);
-    refuseMaskedFields(input, actor);
     res.status(201).json(await catalogService.createParty(input as never, actor));
   },
   getParty: async (req, res, actor) => {
@@ -129,7 +94,6 @@ const HANDLERS: Record<PublicApiOperationId, Handler> = {
   },
   patchParty: async (req, res, actor) => {
     const patch = body(req);
-    refuseMaskedFields(patch, actor);
 
     const existing = await partyRepo.findPartyById(actor.tenantId, String(req.params.id));
     if (!existing) throw new NotFoundError('Party');
@@ -148,7 +112,6 @@ const HANDLERS: Record<PublicApiOperationId, Handler> = {
   },
   createProduct: async (req, res, actor) => {
     const input = body(req);
-    refuseMaskedFields(input, actor);
     res.status(201).json(await catalogService.createProduct(input as never, actor));
   },
   getProduct: async (req, res, actor) => {
@@ -156,7 +119,6 @@ const HANDLERS: Record<PublicApiOperationId, Handler> = {
   },
   patchProduct: async (req, res, actor) => {
     const patch = body(req);
-    refuseMaskedFields(patch, actor);
 
     const existing = await productRepo.findProductById(actor.tenantId, String(req.params.id));
     if (!existing) throw new NotFoundError('Product');

@@ -26,6 +26,11 @@
  * colour caption for a colour variant (`Vitrosa Magenta`, `Rustic Coffee
  * Brown`), `White` for the plain member of a model, and a numeric suffix when
  * a caption repeats within one model.
+ *
+ * `multiColour` follows the catalogue's own headings: the water closets, the
+ * pedestal sets, the urinals and the pans are printed under "ALL COLOURS
+ * AVAILABLE IN ALL ITEMS", so a lead line on them may name a colour; the
+ * one-piece and table-top ranges only say "also available in Ivory".
  */
 
 export interface CatalogueVariant {
@@ -37,13 +42,19 @@ export interface CatalogueVariant {
 export interface CatalogueModel {
   name: string;
   size?: string;
-  /** Free text, drives the catalogue's type chips ("Designer", "Vitrosa"…). */
-  productType?: string;
+  /** Overrides the category's rule for one model. */
+  multiColour?: boolean;
   variants: readonly CatalogueVariant[];
 }
 
 export interface CatalogueCategory {
   name: string;
+  /**
+   * "ALL COLOURS AVAILABLE IN ALL ITEMS" printed over the section: every
+   * model is made in any colour of the colour range, so a lead line may name
+   * one. Off where the catalogue only says "also available in Ivory".
+   */
+  multiColour?: boolean;
   models: readonly CatalogueModel[];
 }
 
@@ -85,12 +96,12 @@ export function catalogueSlug(name: string): string {
 }
 
 /** A product the catalogue prints with a code and no variants. */
-function coded(code: string, name: string, extra: { size?: string; productType?: string } = {}): CatalogueModel {
+function coded(code: string, name: string, extra: { size?: string } = {}): CatalogueModel {
   return { name, ...extra, variants: [{ code, label: null }] };
 }
 
 /** A product the catalogue prints without a code: the slug is the code until replaced. */
-function plain(name: string, extra: { size?: string; productType?: string; codePrefix?: string } = {}): CatalogueModel {
+function plain(name: string, extra: { size?: string; codePrefix?: string } = {}): CatalogueModel {
   const { codePrefix, ...rest } = extra;
   const slug = catalogueSlug(name);
   return { name, ...rest, variants: [{ code: codePrefix ? `${codePrefix}-${slug}` : slug, label: null }] };
@@ -120,7 +131,7 @@ function white(model: string): CatalogueVariant {
 function model(
   name: string,
   variants: readonly CatalogueVariant[],
-  extra: { size?: string; productType?: string } = {},
+  extra: { size?: string } = {},
 ): CatalogueModel {
   return { name, ...extra, variants: [white(name), ...variants] };
 }
@@ -128,26 +139,26 @@ function model(
 const ONE_PIECE_TOILET: CatalogueCategory = {
   name: 'ONE PIECE TOILET',
   models: [
-    coded('102', '102', { size: '9" · L-27 B-15 H-26', productType: 'Plain' }),
-    coded('111', '111', { size: '9" · L-27 B-14 H-25', productType: 'Plain' }),
-    coded('103', '103', { size: '9" · L-27 B-14 H-27', productType: 'Plain' }),
-    coded('105', '105', { size: '9" · L-26 B-14 H-27', productType: 'Plain' }),
-    coded('107', '107', { size: '9" · L-26 B-14 H-30', productType: 'Plain' }),
-    coded('108', '108', { size: '9" · L-25 B-14 H-27', productType: 'Plain' }),
-    coded('109', '109', { size: '9" · L-26 B-14 H-29', productType: 'Plain' }),
-    coded('110', '110', { size: '9" · L-25 B-14 H-27', productType: 'Plain' }),
-    coded('112', '112', { size: '9" · L-26 B-14 H-28', productType: 'Plain' }),
-    coded('113', '113', { size: '9" · L-25 B-14 H-28', productType: 'Plain' }),
-    coded('115', '115', { size: '9" · L-26 B-14 H-29', productType: 'Plain' }),
-    coded('116', '116', { size: '9" · L-26 B-14 H-29', productType: 'Plain' }),
-    coded('118', '118', { size: '9" · L-26 B-14 H-30', productType: 'Plain' }),
-    coded('204', '204', { size: '4" · L-27 B-14 H-27', productType: 'Plain' }),
-    coded('SYPHONIC', 'SYPHONIC', { size: '9" · L-26 B-14 H-30', productType: 'Plain' }),
+    coded('102', '102', { size: '9" · L-27 B-15 H-26' }),
+    coded('111', '111', { size: '9" · L-27 B-14 H-25' }),
+    coded('103', '103', { size: '9" · L-27 B-14 H-27' }),
+    coded('105', '105', { size: '9" · L-26 B-14 H-27' }),
+    coded('107', '107', { size: '9" · L-26 B-14 H-30' }),
+    coded('108', '108', { size: '9" · L-25 B-14 H-27' }),
+    coded('109', '109', { size: '9" · L-26 B-14 H-29' }),
+    coded('110', '110', { size: '9" · L-25 B-14 H-27' }),
+    coded('112', '112', { size: '9" · L-26 B-14 H-28' }),
+    coded('113', '113', { size: '9" · L-25 B-14 H-28' }),
+    coded('115', '115', { size: '9" · L-26 B-14 H-29' }),
+    coded('116', '116', { size: '9" · L-26 B-14 H-29' }),
+    coded('118', '118', { size: '9" · L-26 B-14 H-30' }),
+    coded('204', '204', { size: '4" · L-27 B-14 H-27' }),
+    coded('SYPHONIC', 'SYPHONIC', { size: '9" · L-26 B-14 H-30' }),
     ...[
       1111, 1113, 1115, 1123, 1127, 1133, 1141, 1143, 1144, 1151, 1152, 1153, 1155, 1156, 1171,
       1181, 1183, 1184, 1185, 1190, 1191, 1192, 1193, 1194, 1195, 1196, 1197, 1198, 1199, 1158,
       1159, 1160, 1161, 1162, 1163, 1164, 1165, 1166, 1167, 1168, 1169,
-    ].map((code) => coded(String(code), String(code), { productType: 'Designer' })),
+    ].map((code) => coded(String(code), String(code))),
   ],
 };
 
@@ -191,6 +202,7 @@ const ONE_PIECE_BASIN: CatalogueCategory = {
 };
 
 const WATER_CLOSET: CatalogueCategory = {
+  multiColour: true,
   name: 'WATER CLOSET',
   models: [
     plain('E.W.C - ECO CONCEALED'),
@@ -203,7 +215,6 @@ const WATER_CLOSET: CatalogueCategory = {
     plain('ANGLO INDIAN - P TRAP'),
     {
       name: 'ECO CONCEALED DESIGNER',
-      productType: 'Designer',
       variants: ['E-01', 'E-02', 'E-03', 'E-06', 'E-07', 'E-08', 'E-09'].map((code) => ({
         code,
         label: `Design ${code}`,
@@ -285,10 +296,9 @@ const TABLE_TOP_WASH_BASIN: CatalogueCategory = {
       7854, 7855, 7857, 7858, 7859, 7514, 7516, 7517, 7525, 7760, 7761, 7762, 7767, 7768, 7769, 7840,
       7842, 7843, 7844, 7845, 7847, 7848, 7914, 7915, 7916, 7917, 7918, 7920, 7953, 7941, 7943, 7945,
       7946, 7931, 7933, 7934, 7935,
-    ].map((code) => coded(String(code), String(code), { productType: 'Vitrosa' })),
+    ].map((code) => coded(String(code), String(code))),
     {
       name: 'TABLE TOP HYDROGRAPHIC',
-      productType: 'Hydrographic',
       variants: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'].map((letter) => ({
         code: `TT-HYDRO-${letter}`,
         label: `Hydrographic ${letter}`,
@@ -303,6 +313,7 @@ function set(name: string, size: string, variants: readonly CatalogueVariant[] =
 }
 
 const PLAIN_SET: CatalogueCategory = {
+  multiColour: true,
   name: 'PLAIN SET',
   models: [
     set('GOLDEN SET', '18x14'),
@@ -353,7 +364,6 @@ const PLAIN_SET: CatalogueCategory = {
     set('DOLPHIN SET', '18x20'),
     {
       name: 'SET HYDROGRAPHIC',
-      productType: 'Hydrographic',
       variants: ['B', 'C', 'G', 'H', 'I', 'L'].map((letter) => ({
         code: `SET-HYDRO-${letter}`,
         label: `Hydrographic ${letter}`,
@@ -363,6 +373,7 @@ const PLAIN_SET: CatalogueCategory = {
 };
 
 const URINAL: CatalogueCategory = {
+  multiColour: true,
   name: 'URINAL',
   models: [
     plain('HEXA URINAL'),
@@ -380,6 +391,7 @@ const URINAL: CatalogueCategory = {
 };
 
 const ORISSA_PAN: CatalogueCategory = {
+  multiColour: true,
   name: 'ORISSA PAN',
   models: [
     plain('20" O.P', { size: '20"' }),

@@ -16,20 +16,11 @@ import {
   DEVELOPER_TOKEN_HEADER,
   IMAGE_VARIANTS,
   isPickKind,
-  maskLead,
-  maskOrder,
-  maskProduct,
-  type ProductVisibility,
-  maskVariant,
   MAX_IMAGE_SOURCE_BYTES,
   MAX_PRODUCT_IMPORT_BYTES,
   MUTATION_PERMISSIONS,
   type DataChangedEvent,
-  type Lead,
-  type Order,
   type PanelHealth,
-  type PartyProductVariant,
-  type Product,
   type SyncSnapshot,
 } from '@orderbook/shared';
 
@@ -1539,20 +1530,14 @@ async function queue(
 }
 
 /**
- * Re-apply field masking to the cached snapshot for whoever is signed in *now*.
+ * Re-shape the cached snapshot for whoever is signed in *now*.
  *
  * The snapshot on disk was built by the Master for whoever was signed in when
- * the link last worked, and it is masked for *them*. If the link drops while a
- * rate-permitted person is signed in and a rate-blind person then signs in
- * offline on the same panel, serving the file unchanged hands them the rates.
- *
- * So the panel masks again, from the session's own permission set, using the
- * same shared helpers the Master uses — the key is deleted, never blanked, or
- * the UI would render a confident ₹0.00 instead of nothing.
- *
- * The permissions it carries are replaced too: the browser renders controls from
- * the session rather than the snapshot, but leaving the previous person's set in
- * a payload is a trap for the next thing that reads it.
+ * the link last worked. The permissions it carries are replaced: the browser
+ * renders controls from the session rather than the snapshot, but leaving the
+ * previous person's set in a payload is a trap for the next thing that reads
+ * it. The dashboard figures and the party scope are re-applied for the same
+ * reason.
  */
 type LocalView = SyncSnapshot & { pendingCount: number };
 
@@ -1578,11 +1563,10 @@ const DASHBOARD_FIGURE_PERMISSIONS: Record<
 };
 
 /**
- * The cached snapshot on disk was built for whoever was signed in *then* —
- * the same reason `field.saleRate.view` is re-masked below. Re-filters
- * `dashboard` for whoever is signed in *now*, stripping a figure the current
- * session may not see rather than trusting the cached one already omitted
- * it correctly for this reader.
+ * The cached snapshot on disk was built for whoever was signed in *then*.
+ * Re-filters `dashboard` for whoever is signed in *now*, stripping a figure
+ * the current session may not see rather than trusting the cached one already
+ * omitted it correctly for this reader.
  */
 function filterDashboardForCurrentUser(
   dashboard: SyncSnapshot['dashboard'],
@@ -1612,7 +1596,7 @@ function filterDashboardForCurrentUser(
  * 10-TESTING.md` §6.8 (`DSH-1`) calls out for this snapshot. The map is the
  * inventory the pure test pins; `forCurrentUser` below is what actually runs.
  */
-type SnapshotPolicy = 'mask-rates' | 'replace' | 'gate' | 'passthrough';
+type SnapshotPolicy = 'replace' | 'gate' | 'passthrough';
 
 export const SNAPSHOT_POLICY: Record<keyof SyncSnapshot, SnapshotPolicy> = {
   // The Master's boot id and change-ring position. Neither is company data —
@@ -1621,11 +1605,11 @@ export const SNAPSHOT_POLICY: Record<keyof SyncSnapshot, SnapshotPolicy> = {
   bootId: 'passthrough',
   seq: 'passthrough',
   parties: 'passthrough',
-  products: 'mask-rates',
+  products: 'passthrough',
   categories: 'passthrough',
-  partyVariants: 'mask-rates',
-  leads: 'mask-rates',
-  orders: 'mask-rates',
+  partyVariants: 'passthrough',
+  leads: 'passthrough',
+  orders: 'passthrough',
   stock: 'passthrough',
   pipelines: 'passthrough',
   optionLists: 'passthrough',
@@ -1646,9 +1630,7 @@ export const SNAPSHOT_POLICY: Record<keyof SyncSnapshot, SnapshotPolicy> = {
   partyGrants: 'gate',
   builtForUserId: 'passthrough',
   // Not company data — just says whether `products` above is the complete
-  // catalogue or one clamped/permission-emptied page. Re-masking `products`
-  // for the current user does not change whether the *Master's* build of
-  // this snapshot was complete, so this passes through unchanged.
+  // catalogue or one clamped/permission-emptied page.
   productsComplete: 'passthrough',
   // The company's switches. Not per-person — the same company for whoever is
   // signed in — and the stock figures beside them were already shaped by the
@@ -1695,67 +1677,13 @@ function withoutAnotherPersonsParties(view: LocalView): LocalView {
 
 function forCurrentUser(view: LocalView): LocalView {
   const permissions = userSession.sessionPermissions();
-  const visible = productVisibilityOf(permissions);
   const scoped = withoutAnotherPersonsParties(view);
 
   return {
     ...scoped,
     permissions,
-    leads: scoped.leads.map((lead) => maskLead(lead, visible.rates)),
-    orders: scoped.orders.map((order) => maskOrder(order, visible.rates)),
-    products: scoped.products.map((product) => maskProduct(product, visible)),
-    partyVariants: scoped.partyVariants.map((variant) => maskVariant(variant, visible.rates)),
     dashboard: filterDashboardForCurrentUser(scoped.dashboard, permissions),
   };
-}
-
-/**
- * What this panel's signed-in person may see of a product's two prices.
- *
- * Two axes, not one: a sales desk quotes the sale rate all day and must never
- * see what the company paid.
- */
-function productVisibilityOf(permissions: readonly string[]): ProductVisibility {
-  return {
-    rates: permissions.includes('field.saleRate.view'),
-    cost: permissions.includes('field.purchaseRate.view'),
-  };
-}
-
-/**
- * The same masking `forCurrentUser` applies to a snapshot, applied to one
- * live `data:changed` event instead. `payload` is `unknown` on the wire —
- * the Master types it per entity, not per transport — so this only masks the
- * four entities `SNAPSHOT_POLICY` marks `'mask-rates'` and passes everything
- * else through untouched.
- */
-function maskChangeEvent(event: DataChangedEvent): DataChangedEvent {
-  const visible = productVisibilityOf(userSession.sessionPermissions());
-
-  /*
-   * **Both** axes, and this line is the reason the whole two-dimension change
-   * exists. It used to short-circuit on the sale-rate key alone, which is not a
-   * `maskProduct` call site — so it kept compiling when the signature changed,
-   * and every Office user holding `field.saleRate.view` received the raw
-   * `purchaseRate` on every live product change.
-   */
-  if (visible.rates && visible.cost) return event;
-
-  switch (event.entity) {
-    case 'lead':
-      return { ...event, payload: maskLead(event.payload as Lead, visible.rates) };
-    case 'order':
-      return { ...event, payload: maskOrder(event.payload as Order, visible.rates) };
-    case 'product':
-      return { ...event, payload: maskProduct(event.payload as Product, visible) };
-    case 'party_variant':
-      return {
-        ...event,
-        payload: maskVariant(event.payload as PartyProductVariant, visible.rates),
-      };
-    default:
-      return event;
-  }
 }
 
 /**
@@ -1982,16 +1910,10 @@ function broadcast(type: string, data: unknown): void {
 /*
  * Registered once, at module load, rather than per stream.
  *
- * `change` deliberately keeps sending the small masked per-record frame rather
- * than being folded into `schedulePushView`: routing it into a whole-view push
+ * `change` deliberately keeps sending the small per-record frame rather than
+ * being folded into `schedulePushView`: routing it into a whole-view push
  * would replace a few hundred bytes with the entire snapshot, which is the
  * amplifier this file is removing.
- *
- * Masked here because this is the last point that knows who is signed in: the
- * Master publishes the raw record to every paired panel, nothing else on that
- * connection being permission-scoped to one person. Without it, editing any
- * lead or order pushed `rate`/`lineTotal`/`totalAmount` into the event stream
- * of a browser whose own `/api/snapshot` had gone to the trouble of hiding them.
  */
 /**
  * Reconcile this panel's local product-image cache against what the Master's
@@ -2053,9 +1975,7 @@ masterConnection.setMaxListeners?.(0);
 masterConnection.on('status', (status: unknown) => broadcast('status', status));
 masterConnection.on('snapshot', schedulePushView);
 masterConnection.on('snapshot', (snapshot: SyncSnapshot) => void sweepImageCache(snapshot));
-masterConnection.on('change', (event: DataChangedEvent) =>
-  broadcast('change', maskChangeEvent(event)),
-);
+masterConnection.on('change', (event: DataChangedEvent) => broadcast('change', event));
 masterConnection.on('conflict', (value: unknown) => broadcast('conflict', value));
 sync.onSyncEvent(schedulePushView);
 

@@ -33,7 +33,6 @@ import { clampPaging } from '../domain/paging.js';
 import { resolvePartyScope, UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
 import { assertStageMove, defaultStage, findStage, stageChangeMessage } from '../domain/pipeline.js';
 import { assertParentsLive } from '../domain/recycle-bin.js';
-import { canSeeRates, maskOrder } from '../domain/visibility.js';
 import { db } from '../db/knex.js';
 import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
@@ -66,8 +65,7 @@ export async function listOrders(
     partyScope: resolvePartyScope(actor),
   });
 
-  const allowed = canSeeRates(actor);
-  return { ...page, items: page.items.map((order) => maskOrder(order, allowed)) };
+  return page;
 }
 
 export async function getOrder(id: string, actor: ActorContext): Promise<Order> {
@@ -78,7 +76,7 @@ export async function getOrder(id: string, actor: ActorContext): Promise<Order> 
   const order = await orderRepo.findOrderById(actor.tenantId, id, resolvePartyScope(actor));
   if (!order) throw new NotFoundError('Order');
 
-  return maskOrder(order, canSeeRates(actor));
+  return order;
 }
 
 /**
@@ -102,9 +100,7 @@ export async function convertLead(
   // manage — there is no `createOrder` to guard as well.
   await requirePartyAccess(lead.partyId, 'manage', actor);
 
-  // Read the lines back as domain snapshots rather than reusing the masked
-  // entities: a converter without `field.saleRate.view` must still carry the
-  // rate across, they just may not see it.
+  // Read the lines back as domain snapshots, the shape the copy rule takes.
   const leadLines = await lineItemRepo.loadSnapshots(actor.tenantId, 'lead', lead.id);
   assertConvertible({ convertedOrderId: lead.convertedOrderId, items: leadLines });
 
@@ -216,7 +212,7 @@ export async function convertLead(
     reservationPlan.map((entry) => entry.variantId),
   );
 
-  return maskOrder(order, canSeeRates(actor));
+  return order;
 }
 
 export async function updateOrder(
@@ -276,7 +272,7 @@ export async function updateOrder(
   if (!order) throw new NotFoundError('Order');
 
   publishChange({ entity: 'order', action: 'updated', id, payload: order });
-  return maskOrder(order, canSeeRates(actor));
+  return order;
 }
 
 export async function setStage(
@@ -292,7 +288,7 @@ export async function setStage(
   // not a 404 that reads as "somebody deleted it".
   await requirePartyAccess(existing.partyId, 'manage', actor);
 
-  if (existing.stageId === input.stageId) return maskOrder(existing, canSeeRates(actor));
+  if (existing.stageId === input.stageId) return existing;
 
   const stages = await pipelineRepo.stagesFor(actor.tenantId, 'order');
   const from = findStage(stages, existing.stageId);
@@ -341,7 +337,7 @@ export async function setStage(
   if (!order) throw new NotFoundError('Order');
 
   publishChange({ entity: 'order', action: 'updated', id: input.id, payload: order });
-  return maskOrder(order, canSeeRates(actor));
+  return order;
 }
 
 /**
@@ -447,7 +443,7 @@ export async function dispatchOrder(
     movements.map((movement) => movement.variantId),
   );
 
-  return maskOrder(order, canSeeRates(actor));
+  return order;
 }
 
 export async function countOrders(actor: ActorContext): Promise<number> {

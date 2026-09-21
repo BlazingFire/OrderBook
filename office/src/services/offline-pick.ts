@@ -10,8 +10,7 @@
  *
  *  · It must be handed `forCurrentUser(view)`, **never** `getView()` raw. The
  *    raw view is the snapshot as the Master built it for whoever was signed in
- *    when the link last worked — it carries another person's restricted parties
- *    and it carries `rate` for somebody who has no `field.saleRate.view`.
+ *    when the link last worked — it carries another person's restricted parties.
  *  · It must gate on the session's own permissions. Offline there is no
  *    `requirePermission` to lean on; this is its counterpart, and without it the
  *    picker is the one read path with no permission check at all.
@@ -127,8 +126,6 @@ export function pickFromView(
         product.name,
         product.alias,
         ...product.variants.map((variant) => variant.label),
-        product.barcode,
-        product.brand,
       ],
       (product) => product.name,
       query,
@@ -179,9 +176,6 @@ export function listProductsFromView(
     [
       product.name,
       product.alias,
-      product.barcode,
-      product.brand,
-      product.productType,
       product.categoryName,
       ...product.variants.map((variant) => variant.code),
       ...product.variants.map((variant) => variant.label),

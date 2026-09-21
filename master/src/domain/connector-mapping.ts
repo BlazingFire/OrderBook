@@ -7,10 +7,7 @@
  *
  * **Transforms are a closed set of names, never an expression.** A mapping is
  * data a shopkeeper enters; an expression language would make that form a code
- * path running with the connector's authority. `rupees_to_paise` exists because
- * this product stores money in paise and almost every other system does not —
- * getting that wrong is a hundredfold price error, so it is a named, tested
- * conversion rather than a note in the documentation.
+ * path running with the connector's authority.
  */
 
 import { createHash } from 'node:crypto';
@@ -32,16 +29,6 @@ export function applyTransform(value: unknown, transform: ConnectorTransform | n
       // What a phone number needs: a remote `+91 98250-11111` is the same
       // number as `9825011111`, and the catalogue stores one of them.
       return String(value).replace(/\D/g, '');
-    case 'rupees_to_paise': {
-      const rupees = Number(value);
-      // `Math.round`, not truncation: 12.345 rupees is 1234.5 paise, and
-      // dropping the half systematically shorts every price by up to a paisa.
-      return Number.isFinite(rupees) ? Math.round(rupees * 100) : null;
-    }
-    case 'paise_passthrough': {
-      const paise = Number(value);
-      return Number.isFinite(paise) ? Math.round(paise) : null;
-    }
     case null:
     default:
       return value;

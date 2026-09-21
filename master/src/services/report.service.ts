@@ -2,10 +2,8 @@
  * Reports — `dispatchReport`, `leadOutcomeReport`, `topPartiesReport`,
  * `exportReport` (`docs/backend-modules/04-API-CONTRACT.md` §3). Per
  * report: permission, resolve the range from local date components, call
- * the repository, zero-fill the month list, then include a money field only
- * when `canSeeRates(actor)` — absent, never null or zero, for a rate-blind
- * caller. Totals are computed here from the repository's own rows under the
- * same rule — a client must never sum masked buckets itself.
+ * the repository, zero-fill the month list. Totals are computed here from the
+ * repository's own rows.
  */
 
 import type {
@@ -26,7 +24,6 @@ import type {
 import { REPORT_COLUMNS, t } from '@orderbook/shared';
 import { requirePermission, type ActorContext } from '../domain/actor.js';
 import { resolvePartyScope } from '../domain/party-scope.js';
-import { canSeeRates } from '../domain/visibility.js';
 import { renderReportPdf } from '../pdf/table-renderer.js';
 import { QUIET_AFTER_DAYS } from '../domain/lead-outcome.js';
 import { resolveReportRange, type DateComponents } from '../domain/report-range.js';
@@ -77,7 +74,6 @@ function clampTopLimit(limit: number | undefined): number {
 export async function dispatchReport(input: ReportRangeInput, actor: ActorContext): Promise<DispatchesReport> {
   requirePermission(actor, 'reports.view');
   const { range, fromDate, toDateExclusive } = buildRange(input);
-  const ratesIncluded = canSeeRates(actor);
 
   const [monthRows, colourRows] = await Promise.all([
     reportRepo.dispatchesByMonth({ tenantId: actor.tenantId, fromDate, toDateExclusive, scope: resolvePartyScope(actor) }),
@@ -92,7 +88,6 @@ export async function dispatchReport(input: ReportRangeInput, actor: ActorContex
       orderCount: row?.orderCount ?? 0,
       boxCount: row?.boxCount ?? 0,
     };
-    if (ratesIncluded) bucket.totalValue = row?.totalValue ?? 0;
     return bucket;
   });
 
@@ -102,13 +97,12 @@ export async function dispatchReport(input: ReportRangeInput, actor: ActorContex
     (acc, bucket) => {
       acc.orderCount += bucket.orderCount;
       acc.boxCount += bucket.boxCount;
-      if (ratesIncluded) acc.totalValue = (acc.totalValue ?? 0) + (bucket.totalValue ?? 0);
       return acc;
     },
-    { orderCount: 0, boxCount: 0 } as { orderCount: number; boxCount: number; totalValue?: number },
+    { orderCount: 0, boxCount: 0 },
   );
 
-  return { range, months, colours, totals, ratesIncluded };
+  return { range, months, colours, totals };
 }
 
 const OUTCOMES: readonly LeadOutcome[] = ['converted', 'lost', 'quiet', 'open'];
@@ -143,41 +137,27 @@ export async function topPartiesReport(
   requirePermission(actor, 'reports.view');
   const { range, fromDate, toDateExclusive } = buildRange(input);
   const limit = clampTopLimit(input.limit);
-  const ratesIncluded = canSeeRates(actor);
 
   const [partyRows, cityRows] = await Promise.all([
-    ratesIncluded
-      ? reportRepo.topPartiesByValue({ tenantId: actor.tenantId, fromDate, toDateExclusive, scope: resolvePartyScope(actor) }, limit)
-      : reportRepo.topPartiesByOrderCount({ tenantId: actor.tenantId, fromDate, toDateExclusive, scope: resolvePartyScope(actor) }, limit),
+    reportRepo.topPartiesByOrderCount({ tenantId: actor.tenantId, fromDate, toDateExclusive, scope: resolvePartyScope(actor) }, limit),
     reportRepo.topPartiesByCity({ tenantId: actor.tenantId, fromDate, toDateExclusive, scope: resolvePartyScope(actor) }),
   ]);
 
-  const parties: TopPartyRow[] = partyRows.map((row) => {
-    const item: TopPartyRow = {
-      partyId: row.partyId,
-      partyName: row.partyName,
-      partyCode: row.partyCode,
-      city: row.city,
-      orderCount: row.orderCount,
-    };
-    if (ratesIncluded) item.totalValue = row.totalValue;
-    return item;
-  });
+  const parties: TopPartyRow[] = partyRows.map((row) => ({
+    partyId: row.partyId,
+    partyName: row.partyName,
+    partyCode: row.partyCode,
+    city: row.city,
+    orderCount: row.orderCount,
+  }));
 
-  const cities: TopCityRow[] = cityRows.map((row) => {
-    const item: TopCityRow = { city: row.city, partyCount: row.partyCount, orderCount: row.orderCount };
-    if (ratesIncluded) item.totalValue = row.totalValue;
-    return item;
-  });
+  const cities: TopCityRow[] = cityRows.map((row) => ({
+    city: row.city,
+    partyCount: row.partyCount,
+    orderCount: row.orderCount,
+  }));
 
-  return {
-    range,
-    parties,
-    cities,
-    orderedBy: ratesIncluded ? 'value' : 'orderCount',
-    limit,
-    ratesIncluded,
-  };
+  return { range, parties, cities, limit };
 }
 
 /**
@@ -227,7 +207,6 @@ async function reportRows(
         month: month.month,
         orderCount: month.orderCount,
         boxCount: month.boxCount,
-        totalValue: month.totalValue,
       })),
     };
   }
@@ -256,7 +235,6 @@ async function reportRows(
         partyCode: party.partyCode ?? '',
         city: party.city ?? '',
         orderCount: party.orderCount,
-        totalValue: party.totalValue,
       })),
     };
   }
@@ -293,19 +271,7 @@ export async function exportReport(
   const { rows, range } = await reportRows(kind, input, actor);
   const columns = chosenColumns(kind, input.columns);
 
-  /*
-   * The tabular redaction rule, and it is deliberately not the JSON one.
-   *
-   * On the wire a masked money field is **absent**, because a missing property
-   * is the only way to say "not yours" without claiming a value. A table has a
-   * fixed shape: dropping the column would silently change what every other
-   * column means by position, and a `0` would be a factual claim that the
-   * figure is nothing. So the header stays and the cells go empty.
-   */
-  const allowed = canSeeRates(actor);
-
   const cell = (row: Record<string, unknown>, column: (typeof columns)[number]): unknown => {
-    if (column.money && !allowed) return '';
     const value = row[column.key];
     return value === null || value === undefined ? '' : value;
   };
@@ -314,25 +280,23 @@ export async function exportReport(
 
   /*
    * A totals row, when asked for. Only the numeric columns sum — a total of a
-   * month name is nonsense, and a total of a redacted money column would
-   * reconstruct exactly the figure the redaction withheld.
+   * month name is nonsense.
    */
   let totals: unknown[] | undefined;
   if (input.totals) {
     // The label goes in the first column that cannot hold a number, not
     // unconditionally in position 0 — `?columns=` can narrow and reorder the
-    // list, and a caller who puts a numeric or money column first would
+    // list, and a caller who puts a numeric column first would
     // otherwise have its grand total silently replaced with the word
     // "Totals". Computed once, outside the map, so exactly one cell gets the
     // label even when several columns qualify; -1 (no safe column at all)
     // leaves every cell to fall through to the sum/blank logic below.
     const labelIndex = columns.findIndex(
-      (column) => !column.money && !rows.some((row) => typeof row[column.key] === 'number'),
+      (column) => !rows.some((row) => typeof row[column.key] === 'number'),
     );
 
     totals = columns.map((column, index) => {
       if (index === labelIndex) return label('reports.export.totals');
-      if (column.money && !allowed) return '';
 
       const sum = rows.reduce((running, row) => {
         const value = row[column.key];
@@ -381,7 +345,7 @@ export async function exportReport(
     subtitle: `${range.fromDate} — ${range.toDateExclusive}`,
     columns: columns.map((column) => ({
       label: label(column.labelToken),
-      numeric: column.money || typeof rows[0]?.[column.key] === 'number',
+      numeric: typeof rows[0]?.[column.key] === 'number',
     })),
     rows: body.map((row) => row.map((value) => String(value))),
     totals: totals?.map((value) => String(value)),

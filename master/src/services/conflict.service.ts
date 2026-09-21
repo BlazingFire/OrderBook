@@ -25,8 +25,8 @@ import { publishChange } from './change-bus.js';
 /**
  * Wire field → column, for restoring a losing value. Reuses the merge's own
  * map rather than a second, hand-maintained copy — this one used to list
- * only 4 of `product`'s ~19 mergeable fields, so restoring the losing value
- * of anything else (weightKg, mrp, purchaseRate, grade, ...) threw
+ * only 4 of `product`'s mergeable fields, so restoring the losing value of
+ * anything else (weightKg, size, ...) threw
  * `cannotRestoreField` even though the merge itself had correctly detected
  * the clash and the losing value really was recoverable. `conflict.entity`
  * is a plain `string` (not `MergeableEntity`), so the wider `Record` type

@@ -21,12 +21,11 @@ import type {
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { normalizeCustomFields } from '../domain/custom-fields.js';
 import { assertOptionValueChange } from '../domain/field-values.js';
-import { buildLineSnapshot, type LineDraft, type LineSnapshot } from '../domain/line-items.js';
+import { buildLineSnapshot, LineColourError, type LineDraft, type LineSnapshot } from '../domain/line-items.js';
 import { clampPaging } from '../domain/paging.js';
 import { resolvePartyScope, UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
 import { assertStageMove, defaultStage, findStage, stageChangeMessage } from '../domain/pipeline.js';
 import { assertParentsLive } from '../domain/recycle-bin.js';
-import { canEditRates, canSeeRates, maskLead, withPermittedRate } from '../domain/visibility.js';
 import { db } from '../db/knex.js';
 import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
@@ -56,8 +55,7 @@ export async function listLeads(
     partyScope: resolvePartyScope(actor),
   });
 
-  const allowed = canSeeRates(actor);
-  return { ...page, items: page.items.map((lead) => maskLead(lead, allowed)) };
+  return page;
 }
 
 export async function getLead(id: string, actor: ActorContext): Promise<Lead> {
@@ -68,7 +66,7 @@ export async function getLead(id: string, actor: ActorContext): Promise<Lead> {
   const lead = await leadRepo.findLeadById(actor.tenantId, id, resolvePartyScope(actor));
   if (!lead) throw new NotFoundError('Lead');
 
-  return maskLead(lead, canSeeRates(actor));
+  return lead;
 }
 
 export async function createLead(input: LeadInput, actor: ActorContext): Promise<Lead> {
@@ -100,7 +98,6 @@ export async function createLead(input: LeadInput, actor: ActorContext): Promise
   const customFields = normalizeCustomFields(input.customFields, definitions);
   const lines = await buildLines(actor.tenantId, partyId, input.items, {
     partyWiseMode: input.partyWiseMode ?? false,
-    canEditRate: canEditRates(actor),
   });
 
   const id = await db().transaction(async (trx) => {
@@ -161,7 +158,7 @@ export async function createLead(input: LeadInput, actor: ActorContext): Promise
   }, actor, db());
   publishChange({ entity: 'lead', action: 'created', id: lead.id, payload: lead });
 
-  return maskLead(lead, canSeeRates(actor));
+  return lead;
 }
 
 export async function updateLead(
@@ -219,7 +216,6 @@ export async function updateLead(
       ? null
       : await buildLines(actor.tenantId, partyId ?? existing.partyId, input.items, {
           partyWiseMode: input.partyWiseMode ?? existing.partyWiseMode,
-          canEditRate: canEditRates(actor),
         });
 
   await db().transaction(async (trx) => {
@@ -247,7 +243,7 @@ export async function updateLead(
   }, actor, db());
   publishChange({ entity: 'lead', action: 'updated', id, payload: lead });
 
-  return maskLead(lead, canSeeRates(actor));
+  return lead;
 }
 
 export async function setStage(
@@ -263,7 +259,7 @@ export async function setStage(
   // not a 404 that reads as "somebody deleted it".
   await requirePartyAccess(existing.partyId, 'manage', actor);
 
-  if (existing.stageId === input.stageId) return maskLead(existing, canSeeRates(actor));
+  if (existing.stageId === input.stageId) return existing;
 
   const stages = await pipelineRepo.stagesFor(actor.tenantId, 'lead');
   const from = findStage(stages, existing.stageId);
@@ -326,7 +322,7 @@ export async function setStage(
   }, actor, db());
   publishChange({ entity: 'lead', action: 'updated', id: input.id, payload: lead });
 
-  return maskLead(lead, canSeeRates(actor));
+  return lead;
 }
 
 export async function addRemark(
@@ -363,23 +359,24 @@ export async function addRemark(
   if (!lead) throw new NotFoundError('Lead');
 
   publishChange({ entity: 'lead', action: 'updated', id: input.id, payload: lead });
-  return maskLead(lead, canSeeRates(actor));
+  return lead;
 }
 
 /**
  * Turn what a panel sent into stored lines — one per variant.
  *
- * The party's rates are loaded once for the whole set rather than per line,
- * and only when the lead is in `partyWiseMode` — a lead that is not in that
- * mode must take catalogue values even where a party rate exists. The code
- * and the weight come from the product's own variant, which has to exist on
- * the product the line names and still be on offer.
+ * The party's own product records are loaded once for the whole set rather
+ * than per line, and only when the lead is in `partyWiseMode` — a lead that
+ * is not in that mode must take catalogue values even where a party record
+ * exists. The code and the weight come from the product's own variant, which
+ * has to exist on the product the line names and still be on offer. A colour
+ * is accepted only on a multi-colour product.
  */
 async function buildLines(
   tenantId: string,
   partyId: string,
   drafts: LineDraft[],
-  options: { partyWiseMode: boolean; canEditRate: boolean },
+  options: { partyWiseMode: boolean },
 ): Promise<LineSnapshot[]> {
   const partyVariants = options.partyWiseMode
     ? await variantRepo.listForParty(tenantId, partyId)
@@ -404,35 +401,34 @@ async function buildLines(
 
     const partyVariant = partyVariantByProduct.get(product.id) ?? null;
 
-    const line = buildLineSnapshot(
-      // A rate this actor may not set never reaches the snapshot builder, which
-      // takes the client's value in preference to the catalogue's by design.
-      withPermittedRate(draft, options.canEditRate),
-      {
-        id: product.id,
-        name: product.name,
-        categoryName: product.categoryName,
-        alias: product.alias,
-        rate: product.rate ?? null,
-        sin: product.sin,
-        size: product.size,
-        grade: product.grade,
-        productType: product.productType,
-      },
-      { id: variant.id, code: variant.code, label: variant.label, weightKg: variant.weightKg },
-      partyVariant
-        ? {
-            alias: partyVariant.alias,
-            rate: partyVariant.rate ?? null,
-            size: partyVariant.size,
-            sin: partyVariant.sin,
-            grade: partyVariant.grade,
-            productType: partyVariant.productType,
-            productName: partyVariant.productName,
-          }
-        : null,
-      index + 1,
-    );
+    let line: LineSnapshot;
+    try {
+      line = buildLineSnapshot(
+        draft,
+        {
+          id: product.id,
+          name: product.name,
+          categoryName: product.categoryName,
+          alias: product.alias,
+          size: product.size,
+          multiColour: product.multiColour,
+        },
+        { id: variant.id, code: variant.code, label: variant.label, weightKg: variant.weightKg },
+        partyVariant
+          ? {
+              alias: partyVariant.alias,
+              size: partyVariant.size,
+              productName: partyVariant.productName,
+            }
+          : null,
+        index + 1,
+      );
+    } catch (error) {
+      if (error instanceof LineColourError) {
+        throw new ValidationError('validation.lead.colourUnexpected', { productName: product.name });
+      }
+      throw error;
+    }
 
     if (line.quantity <= 0) {
       throw new ValidationError('validation.lead.quantityRequired', { productName: line.productName });

@@ -33,16 +33,6 @@ import { actorUserId, requirePermission, type ActorContext } from '../domain/act
 import { clampPaging } from '../domain/paging.js';
 import { resolvePartyScope } from '../domain/party-scope.js';
 import { suggestRestoredName } from '../domain/recycle-bin.js';
-import {
-  canEditCost,
-  canEditRates,
-  canSeeRates,
-  maskProduct,
-  maskVariant,
-  productVisibility,
-  withPermittedPurchaseRate,
-  withPermittedRate,
-} from '../domain/visibility.js';
 import { db } from '../db/knex.js';
 import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
@@ -325,8 +315,7 @@ export async function listProducts(
     ...clampPaging(query, PAGING),
   });
 
-  const visible = productVisibility(actor);
-  return { ...page, items: page.items.map((product) => maskProduct(product, visible)) };
+  return page;
 }
 
 export async function getProduct(id: string, actor: ActorContext): Promise<Product> {
@@ -335,7 +324,7 @@ export async function getProduct(id: string, actor: ActorContext): Promise<Produ
   const product = await productRepo.findProductById(actor.tenantId, id);
   if (!product) throw new NotFoundError('Product');
 
-  return maskProduct(product, productVisibility(actor));
+  return product;
 }
 
 export async function listCategories(
@@ -355,8 +344,7 @@ export async function findProductByCode(
 
   const variant = await productVariantRepo.findVariantByCode(actor.tenantId, code);
   if (!variant) return null;
-  const product = await productRepo.findProductById(actor.tenantId, variant.productId);
-  return product ? maskProduct(product, productVisibility(actor)) : null;
+  return productRepo.findProductById(actor.tenantId, variant.productId);
 }
 
 /**
@@ -433,15 +421,7 @@ export async function createProduct(input: ProductInput, actor: ActorContext): P
     return productRepo.insertProduct(
       {
         tenantId: actor.tenantId,
-        // Two permissioned prices, two independent gates. `products.create`
-        // says you may add a product; `field.saleRate.edit` says you may price
-        // it; `field.purchaseRate.edit` says you may record what it cost.
-        // Without one, that value falls back to the catalogue default rather
-        // than to whatever the caller sent.
-        input: withPermittedPurchaseRate(
-          withPermittedRate({ ...input, name, variants, hasVariants }, canEditRates(actor)),
-          canEditCost(actor),
-        ),
+        input: { ...input, name, variants, hasVariants },
         hlc,
         fieldHlc: {},
         temporaryId: null,
@@ -465,7 +445,7 @@ export async function createProduct(input: ProductInput, actor: ActorContext): P
   );
   publishChange({ entity: 'product', action: 'created', id: product.id, payload: product });
 
-  return maskProduct(product, productVisibility(actor));
+  return product;
 }
 
 export async function updateProduct(
@@ -507,13 +487,7 @@ export async function updateProduct(
   assertProductInput({ ...input, hasVariants, ...(variants ? { variants } : {}) });
   if (variants) await assertCodesFree(actor.tenantId, variants, id);
 
-  const permitted = withPermittedPurchaseRate(
-    withPermittedRate(
-      { ...input, name, hasVariants, ...(variants ? { variants } : {}) },
-      canEditRates(actor),
-    ),
-    canEditCost(actor),
-  );
+  const permitted = { ...input, name, hasVariants, ...(variants ? { variants } : {}) };
   const touchedColumns = Object.keys(columnPatch(permitted, PRODUCT_COLUMNS));
 
   const product = await db().transaction(async (trx) => {
@@ -544,7 +518,7 @@ export async function updateProduct(
   );
   publishChange({ entity: 'product', action: 'updated', id: product.id, payload: product });
 
-  return maskProduct(product, productVisibility(actor));
+  return product;
 }
 
 /**
@@ -673,13 +647,11 @@ export async function listVariantsForParty(
   actor: ActorContext,
 ): Promise<PartyProductVariant[]> {
   requirePermission(actor, 'parties.view');
-  // A party variant is a negotiated price for one party, so it is exactly as
-  // private as the party it belongs to.
+  // A party variant is one party's own version of a product, so it is exactly
+  // as private as the party it belongs to.
   await requirePartyAccess(partyId, 'view', actor);
 
-  const variants = await variantRepo.listForParty(actor.tenantId, partyId);
-  const allowed = canSeeRates(actor);
-  return variants.map((variant) => maskVariant(variant, allowed));
+  return variantRepo.listForParty(actor.tenantId, partyId);
 }
 
 export async function upsertVariant(
@@ -698,14 +670,7 @@ export async function upsertVariant(
 
   const variant = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
-    // A party variant is, in practice, mostly a negotiated price. Letting it
-    // through unguarded would make the whole permission avoidable by pricing
-    // the product per-party instead.
-    return variantRepo.upsertVariant(
-      { tenantId: actor.tenantId, hlc },
-      withPermittedRate(input, canEditRates(actor)),
-      trx,
-    );
+    return variantRepo.upsertVariant({ tenantId: actor.tenantId, hlc }, input, trx);
   });
 
   publishChange({
@@ -715,7 +680,7 @@ export async function upsertVariant(
     payload: variant,
   });
 
-  return maskVariant(variant, canSeeRates(actor));
+  return variant;
 }
 
 export async function countParties(actor: ActorContext): Promise<number> {

@@ -52,70 +52,13 @@ const SOURCES: Record<FieldListKey, readonly SourceDefinition[]> = {
              WHERE tenant_id = ? AND variant_label IS NOT NULL
              GROUP BY variant_label`,
     },
-  ],
-  'product.productType': [
-    {
-      source: 'products',
-      sql: `SELECT product_type AS value, count(*) AS count
-              FROM products
-             WHERE tenant_id = ? AND deleted_at IS NULL AND product_type IS NOT NULL
-             GROUP BY product_type`,
-    },
+    // The colour chosen on a multi-colour line is a use of the list as well.
     {
       source: 'line_items',
-      sql: `SELECT product_type AS value, count(*) AS count
+      sql: `SELECT colour AS value, count(*) AS count
               FROM line_items
-             WHERE tenant_id = ? AND product_type IS NOT NULL
-             GROUP BY product_type`,
-    },
-    {
-      source: 'party_product_variants',
-      sql: `SELECT product_type AS value, count(*) AS count
-              FROM party_product_variants
-             WHERE tenant_id = ? AND product_type IS NOT NULL
-             GROUP BY product_type`,
-    },
-  ],
-  /*
-   * The four ceramic vocabularies. Each has exactly one source — the products
-   * table — because unlike `product_type` these are not snapshotted onto a line
-   * item: a lead's line carries the size and grade it was quoted at, not the
-   * brand.
-   */
-  'product.brand': [
-    {
-      source: 'products',
-      sql: `SELECT brand AS value, count(*) AS count
-              FROM products
-             WHERE tenant_id = ? AND deleted_at IS NULL AND brand IS NOT NULL
-             GROUP BY brand`,
-    },
-  ],
-  'product.shade': [
-    {
-      source: 'products',
-      sql: `SELECT shade AS value, count(*) AS count
-              FROM products
-             WHERE tenant_id = ? AND deleted_at IS NULL AND shade IS NOT NULL
-             GROUP BY shade`,
-    },
-  ],
-  'product.surfaceTexture': [
-    {
-      source: 'products',
-      sql: `SELECT surface_texture AS value, count(*) AS count
-              FROM products
-             WHERE tenant_id = ? AND deleted_at IS NULL AND surface_texture IS NOT NULL
-             GROUP BY surface_texture`,
-    },
-  ],
-  'product.originPlant': [
-    {
-      source: 'products',
-      sql: `SELECT origin_plant AS value, count(*) AS count
-              FROM products
-             WHERE tenant_id = ? AND deleted_at IS NULL AND origin_plant IS NOT NULL
-             GROUP BY origin_plant`,
+             WHERE tenant_id = ? AND colour IS NOT NULL
+             GROUP BY colour`,
     },
   ],
   'line.packaging': [
@@ -132,33 +75,6 @@ const SOURCES: Record<FieldListKey, readonly SourceDefinition[]> = {
               FROM party_product_variants
              WHERE tenant_id = ? AND packaging IS NOT NULL
              GROUP BY packaging`,
-    },
-  ],
-  'line.grade': [
-    {
-      source: 'line_items',
-      sql: `SELECT grade AS value, count(*) AS count
-              FROM line_items
-             WHERE tenant_id = ? AND grade IS NOT NULL
-             GROUP BY grade`,
-    },
-    // `products` and `party_product_variants` both carry a grade a line copies
-    // from, so a grade in use on the catalogue is in use even before it reaches
-    // a lead — deleting it out from under them is the case this count exists to
-    // stop.
-    {
-      source: 'products',
-      sql: `SELECT grade AS value, count(*) AS count
-              FROM products
-             WHERE tenant_id = ? AND grade IS NOT NULL
-             GROUP BY grade`,
-    },
-    {
-      source: 'party_product_variants',
-      sql: `SELECT grade AS value, count(*) AS count
-              FROM party_product_variants
-             WHERE tenant_id = ? AND grade IS NOT NULL
-             GROUP BY grade`,
     },
   ],
 };

@@ -87,9 +87,7 @@ export async function seedCatalogue(options: SeedCatalogueOptions = {}): Promise
           name: model.name,
           categoryName: category.name,
           size: model.size ?? null,
-          productType: model.productType ?? null,
-          brand: 'Swisware',
-          uom: 'piece',
+          multiColour: model.multiColour ?? category.multiColour ?? false,
           hasVariants: model.variants.length > 1 || model.variants[0]?.label !== null,
           variants: model.variants.map((variant, index) => ({
             code: variant.code,

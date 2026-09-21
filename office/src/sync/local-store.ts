@@ -17,7 +17,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { maskLineItem } from '@orderbook/shared';
 import type {
   Lead,
   LineItem,
@@ -284,7 +283,6 @@ function provisionalLead(view: SyncSnapshot, mutation: Mutation): Lead {
     missingFields: [],
     convertedOrderId: null,
     convertedAt: null,
-    totalAmount: items.reduce((sum, line) => sum + (line.lineTotal ?? 0), 0),
     totalWeightKg:
       Math.round(items.reduce((sum, line) => sum + (line.lineWeightKg ?? 0), 0) * 1000) / 1000,
     linesWithoutWeight: items.filter((line) => line.lineWeightKg === null).length,
@@ -305,15 +303,14 @@ function provisionalLine(
   parentId: string,
   item: Record<string, unknown>,
   index: number,
-  /** Set when the lead is party-wise: the party's own variant rate wins, as on the Master. */
+  /** Set when the lead is party-wise: the party's own record names the product, as on the Master. */
   variantPartyId?: string,
 ): LineItem {
   const product = view.products.find((candidate) => candidate.id === item.productId);
   // The product variant is where the code, the colour text and the weight
-  // come from; the party's own rate record is where a party-wise price comes
-  // from. Two different things that used to share one name.
+  // come from; the party's own record is where a party-wise name comes from.
   const variant = product?.variants.find((candidate) => candidate.id === item.variantId);
-  const partyRate = variantPartyId
+  const partyRecord = variantPartyId
     ? view.partyVariants.find(
         (candidate) => candidate.partyId === variantPartyId && candidate.productId === item.productId,
       )
@@ -322,38 +319,21 @@ function provisionalLine(
   const quantity = Number(item.quantity) || 0;
   const weightKg = (item.weightKg as number | null | undefined) ?? variant?.weightKg ?? null;
 
-  // Absence has to survive the optimistic overlay. When the person who queued
-  // this line cannot see rates, the product they picked came to this panel with
-  // no `rate` key at all — materialising `rate: null` here would turn "hidden"
-  // into "this line is free", which is precisely the distinction §6 is about.
-  const rateHidden =
-    item.rate === undefined && product !== undefined && !('rate' in (product as object));
-  // `rateUnset` stops the catalogue fallback here too, or the board would show
-  // a price for a line the counter deliberately left to be quoted. Otherwise the
-  // same ladder as `buildLineSnapshot` on the Master — sent rate, party variant,
-  // catalogue — so a queued lead shows the figure the ack will confirm.
-  const rate = item.rateUnset
-    ? null
-    : ((item.rate as number | null | undefined) ?? partyRate?.rate ?? product?.rate ?? null);
-
-  const line: LineItem = {
+  return {
     id: `${parentId}-line-${index}`,
     tenantId: product?.tenantId ?? '',
     parentType: 'lead',
     parentId,
     productId: String(item.productId ?? ''),
     variantId: String(item.variantId ?? ''),
-    productName: String(item.productName ?? product?.name ?? ''),
+    productName: String(item.productName ?? partyRecord?.productName ?? product?.name ?? ''),
     categoryName: (item.categoryName as string | null) ?? product?.categoryName ?? null,
-    alias: (item.alias as string | null) ?? product?.alias ?? null,
-    rate,
+    alias: (item.alias as string | null) ?? partyRecord?.alias ?? product?.alias ?? null,
     code: (item.code as string | null) ?? variant?.code ?? null,
     variantLabel: (item.variantLabel as string | null) ?? variant?.label ?? null,
-    sin: (item.sin as string | null) ?? product?.sin ?? null,
-    size: (item.size as string | null) ?? product?.size ?? null,
+    colour: (item.colour as string | null) ?? null,
+    size: (item.size as string | null) ?? partyRecord?.size ?? product?.size ?? null,
     weightKg,
-    grade: (item.grade as string | null) ?? product?.grade ?? null,
-    productType: (item.productType as string | null) ?? product?.productType ?? null,
     packaging: (item.packaging as string | null) ?? null,
     sequence: index + 1,
     fromPartyVariant: Boolean(item.fromPartyVariant),
@@ -361,14 +341,9 @@ function provisionalLine(
     notes: (item.notes as string | null) ?? null,
     quantity,
     lineWeightKg: weightKg === null ? null : Math.round(weightKg * quantity * 1000) / 1000,
-    lineTotal: rate === null ? null : Math.round(rate * quantity),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
-
-  // Same helper the Master masks with, so the two cannot disagree about what
-  // "hidden" looks like on the wire.
-  return maskLineItem(line, !rateHidden);
 }
 
 function provisionalParty(mutation: Mutation): Party {
@@ -412,9 +387,6 @@ function provisionalProduct(mutation: Mutation): Product {
     categoryId: String(payload.categoryId ?? ''),
     categoryName: String(payload.categoryName ?? ''),
     size: payload.size ?? null,
-    sin: payload.sin ?? null,
-    grade: payload.grade ?? null,
-    productType: payload.productType ?? null,
     hasVariants: Boolean(payload.hasVariants),
     // The Master mints the variant ids; until it answers, these rows carry
     // placeholder ids for display. The lead screen leaves a still-provisional
@@ -428,32 +400,7 @@ function provisionalProduct(mutation: Mutation): Product {
       sequence: typeof variant.sequence === 'number' ? variant.sequence : index + 1,
       isActive: true,
     })),
-    finish: null,
-    series: payload.series ?? null,
-    thicknessMm: null,
-    piecesPerBox: null,
-    boxCoverageSqft: null,
-    rate: payload.rate ?? null,
-    pricePerSqft: null,
-    hsnCode: null,
-    // The attributes a person can actually type into the offline Add Product
-    // form. The rest stay null until the Master answers — a provisional row is
-    // what was typed, not a guess at what the catalogue will hold.
-    mrp: payload.mrp ?? null,
-    purchaseRate: payload.purchaseRate ?? null,
-    gstRatePct: payload.gstRatePct ?? null,
-    uom: String(payload.uom ?? 'box'),
-    barcode: payload.barcode ?? null,
-    brand: payload.brand ?? null,
-    shade: payload.shade ?? null,
-    calibre: payload.calibre ?? null,
-    waterAbsorptionPct: null,
-    peiRating: null,
-    edgeType: payload.edgeType ?? null,
-    surfaceTexture: payload.surfaceTexture ?? null,
-    application: payload.application ?? null,
-    originPlant: payload.originPlant ?? null,
-    parameters: {},
+    multiColour: Boolean(payload.multiColour),
     customFields: {},
     isActive: true,
     createdAt: mutation.createdAt,

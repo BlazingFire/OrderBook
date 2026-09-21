@@ -9,7 +9,6 @@ import type { Knex } from 'knex';
 
 import { evaluateCompleteness } from '../domain/custom-fields.js';
 import type { LineSnapshot } from '../domain/line-items.js';
-import { orderTotalAmount } from '../domain/line-items.js';
 import { UNSCOPED_PARTY_ACCESS, type PartyScope } from '../domain/party-scope.js';
 import { db } from '../db/knex.js';
 import * as customFields from './custom-field.repository.js';
@@ -189,7 +188,6 @@ export async function insertLead(
     party_wise_mode: lead.partyWiseMode,
     notes: lead.notes,
     custom_fields: JSON.stringify(lead.customFields),
-    total_amount: orderTotalAmount(lines),
     source_panel_id: lead.sourcePanelId,
     created_by_user_id: lead.createdByUserId,
     hlc: lead.hlc,
@@ -239,7 +237,7 @@ export async function replaceLeadLines(
   await lineItems.replaceLines({ tenantId, parentType: 'lead', parentId: id }, lines, trx);
   await trx(TABLE)
     .where({ tenant_id: tenantId, id })
-    .update({ total_amount: orderTotalAmount(lines), updated_at: trx.fn.now() });
+    .update({ updated_at: trx.fn.now() });
 }
 
 /**

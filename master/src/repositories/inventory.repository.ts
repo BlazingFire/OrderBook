@@ -46,7 +46,6 @@ function stockQuery(tenantId: string, runner: Runner = db()) {
       'v.weight_kg',
       'p.name as product_name',
       'p.size',
-      'p.box_coverage_sqft',
       'c.name as category_name',
       's.quantity_boxes',
       's.reorder_level',
@@ -147,7 +146,6 @@ async function unstockedReservations(
       'v.weight_kg',
       'p.name as product_name',
       'p.size',
-      'p.box_coverage_sqft',
       'c.name as category_name',
     );
 

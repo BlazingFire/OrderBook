@@ -13,7 +13,7 @@ import type { Knex } from 'knex';
 
 import { evaluateCompleteness } from '../domain/custom-fields.js';
 import type { LineSnapshot } from '../domain/line-items.js';
-import { computeTotalWeightKg, orderTotalAmount } from '../domain/line-items.js';
+import { computeTotalWeightKg } from '../domain/line-items.js';
 import { UNSCOPED_PARTY_ACCESS, type PartyScope } from '../domain/party-scope.js';
 import { db } from '../db/knex.js';
 import * as customFields from './custom-field.repository.js';
@@ -179,7 +179,6 @@ export async function insertOrder(
     total_weight_kg: computeTotalWeightKg(lines),
     notes: order.notes,
     custom_fields: JSON.stringify(order.customFields),
-    total_amount: orderTotalAmount(lines),
     source_panel_id: order.sourcePanelId,
     created_by_user_id: order.createdByUserId,
     hlc: order.hlc,

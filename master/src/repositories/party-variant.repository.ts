@@ -1,5 +1,5 @@
 /**
- * Party-specific product variants — the rate and spec agreed with one customer,
+ * Party-specific product variants — the name and spec agreed with one customer,
  * used when a lead is in `partyWiseMode` (docs/LEAD_GENERATION_FLOW.md §3.1).
  */
 
@@ -42,7 +42,7 @@ export async function listForParty(
  *
  * This one is easy to miss: it feeds the Office Panel's offline snapshot
  * directly rather than through a service, so an unscoped version would leave
- * another party's rates sitting on a panel's disk no screen ever asked for.
+ * another party's records sitting on a panel's disk no screen ever asked for.
  */
 export async function listAll(
   tenantId: string,
@@ -79,11 +79,7 @@ export async function upsertVariant(
 
   const columns = {
     alias: input.alias ?? null,
-    rate: input.rate ?? null,
     size: input.size ?? null,
-    sin: input.sin ?? null,
-    grade: input.grade ?? null,
-    product_type: input.productType ?? null,
     weight_kg: input.weightKg ?? null,
     packaging: input.packaging ?? null,
     hlc: context.hlc,

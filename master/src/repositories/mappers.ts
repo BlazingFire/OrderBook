@@ -4,9 +4,7 @@
  * loss), so every value crossing out of a repository is normalised here rather
  * than in each caller.
  *
- * Mappers return the **complete** record, rate included. Field-level masking is
- * a service-layer concern: a repository that already stripped `rate` could not
- * be used by the code that has to compute a total.
+ * Mappers return the **complete** record.
  */
 
 import type {
@@ -377,36 +375,9 @@ export function mapProduct(row: Row, images: ProductImage[] = [], variants: Prod
     categoryId: String(row.category_id ?? ''),
     categoryName: String(row.category_name ?? ''),
     size: (row.size as string | null) ?? null,
-    sin: (row.sin as string | null) ?? null,
-    grade: (row.grade as string | null) ?? null,
-    productType: (row.product_type as string | null) ?? null,
     hasVariants: Boolean(row.has_variants),
     variants,
-    finish: (row.finish as string | null) ?? null,
-    series: (row.series as string | null) ?? null,
-    thicknessMm: toNumber(row.thickness_mm),
-    piecesPerBox: toNumber(row.pieces_per_box),
-    boxCoverageSqft: toNumber(row.box_coverage_sqft),
-    rate: toNumber(row.rate),
-    pricePerSqft: toNumber(row.price_per_sqft),
-    hsnCode: (row.hsn_code as string | null) ?? null,
-    mrp: toNumber(row.mrp),
-    purchaseRate: toNumber(row.purchase_rate),
-    gstRatePct: toNumber(row.gst_rate_pct),
-    // NOT NULL with a default in the database, so the fallback is a belt for a
-    // row read through a projection that did not select it.
-    uom: String(row.uom ?? 'box'),
-    barcode: (row.barcode as string | null) ?? null,
-    brand: (row.brand as string | null) ?? null,
-    shade: (row.shade as string | null) ?? null,
-    calibre: (row.calibre as string | null) ?? null,
-    waterAbsorptionPct: toNumber(row.water_absorption_pct),
-    peiRating: toNumber(row.pei_rating),
-    edgeType: (row.edge_type as string | null) ?? null,
-    surfaceTexture: (row.surface_texture as string | null) ?? null,
-    application: (row.application as string | null) ?? null,
-    originPlant: (row.origin_plant as string | null) ?? null,
-    parameters: toJsonObject(row.parameters),
+    multiColour: Boolean(row.multi_colour),
     customFields: toJsonObject(row.custom_fields),
     isActive: Boolean(row.is_active),
     createdAt: toRequiredIso(row.created_at),
@@ -424,11 +395,7 @@ export function mapPartyProductVariant(row: Row): PartyProductVariant {
     productId: String(row.product_id),
     productName: (row.product_name as string | null) ?? null,
     alias: (row.alias as string | null) ?? null,
-    rate: toNumber(row.rate),
     size: (row.size as string | null) ?? null,
-    sin: (row.sin as string | null) ?? null,
-    grade: (row.grade as string | null) ?? null,
-    productType: (row.product_type as string | null) ?? null,
     weightKg: toNumber(row.weight_kg),
     packaging: (row.packaging as string | null) ?? null,
     createdAt: toRequiredIso(row.created_at),
@@ -453,14 +420,11 @@ export function mapLineItem(row: Row): LineItem {
     productName: String(row.product_name ?? ''),
     categoryName: (row.category_name as string | null) ?? null,
     alias: (row.alias as string | null) ?? null,
-    rate: toNumber(row.rate),
     code: (row.code as string | null) ?? null,
     variantLabel: (row.variant_label as string | null) ?? null,
-    sin: (row.sin as string | null) ?? null,
+    colour: (row.colour as string | null) ?? null,
     size: (row.size as string | null) ?? null,
     weightKg,
-    grade: (row.grade as string | null) ?? null,
-    productType: (row.product_type as string | null) ?? null,
     packaging: (row.packaging as string | null) ?? null,
     sequence: toRequiredNumber(row.sequence),
     fromPartyVariant: Boolean(row.from_party_variant),
@@ -468,7 +432,6 @@ export function mapLineItem(row: Row): LineItem {
     notes: (row.notes as string | null) ?? null,
     quantity,
     lineWeightKg: weightKg === null ? null : Math.round(weightKg * quantity * 1000) / 1000,
-    lineTotal: toNumber(row.line_total),
     createdAt: toRequiredIso(row.created_at),
     updatedAt: toRequiredIso(row.updated_at),
   };
@@ -534,7 +497,6 @@ export function mapLead(
     missingFields: completeness.missingFields,
     convertedOrderId: (row.converted_order_id as string | null) ?? null,
     convertedAt: toIso(row.converted_at),
-    totalAmount: toRequiredNumber(row.total_amount),
     ...summariseWeight(items),
     sourcePanelId: (row.source_panel_id as string | null) ?? null,
     createdByUserId: (row.created_by_user_id as string | null) ?? null,
@@ -578,7 +540,6 @@ export function mapOrder(
     customFields: toJsonObject(row.custom_fields),
     incomplete: completeness.incomplete,
     missingFields: completeness.missingFields,
-    totalAmount: toRequiredNumber(row.total_amount),
     dispatchedAt: toIso(row.dispatched_at),
     sourcePanelId: (row.source_panel_id as string | null) ?? null,
     createdByUserId: (row.created_by_user_id as string | null) ?? null,
@@ -616,7 +577,6 @@ export function mapStockLevel(row: Row): InventoryStockLevel {
   const reservedBoxes = toRequiredNumber(row.reserved_boxes);
   const available = quantityBoxes - reservedBoxes;
   const reorderLevel = toNumber(row.reorder_level);
-  const coverage = toNumber(row.box_coverage_sqft);
 
   return {
     productId: String(row.product_id),
@@ -630,7 +590,6 @@ export function mapStockLevel(row: Row): InventoryStockLevel {
     quantityBoxes,
     reservedBoxes,
     availableBoxes: available,
-    quantitySqft: coverage === null ? 0 : Math.round(quantityBoxes * coverage * 100) / 100,
     reorderLevel,
     minStockLevel: toNumber(row.min_stock_level),
     maxStockLevel: toNumber(row.max_stock_level),

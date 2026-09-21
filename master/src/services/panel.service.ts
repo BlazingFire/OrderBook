@@ -36,7 +36,7 @@ import { createLogger } from '../lib/logger.js';
 import { panelLink } from '../realtime/panel-link.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as panelRepo from '../repositories/office-panel.repository.js';
-import { permissionSetForRole } from './pricing-gate.js';
+import { permissionSetForRole } from '../repositories/role.repository.js';
 import { roleIdForTier } from '../repositories/user.repository.js';
 import { publishChange } from './change-bus.js';
 import { getIdentity, verifyPairingPassword } from './setup.service.js';

@@ -51,7 +51,7 @@ import * as connectorRepo from '../repositories/connector.repository.js';
 import { nextHlc } from '../repositories/identity.repository.js';
 import * as partyRepo from '../repositories/party.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
-import { permissionSetForRole } from './pricing-gate.js';
+import { permissionSetForRole } from '../repositories/role.repository.js';
 import * as syncRepo from '../repositories/sync.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
 import * as catalogService from './catalog.service.js';

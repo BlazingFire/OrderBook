@@ -55,7 +55,6 @@ import {
   type ImportGroup,
   type ParsedRow,
 } from '../domain/product-import.js';
-import { canEditCost, canEditRates } from '../domain/visibility.js';
 import { db } from '../db/knex.js';
 import { AppError, ValidationError } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
@@ -82,13 +81,11 @@ const TEMPLATE_WIDTHS: Partial<Record<ImportField, number>> = {
   code: 14,
   weightKg: 12,
   alias: 18,
-  productType: 14,
-  brand: 14,
   size: 18,
-  barcode: 16,
+  multiColour: 12,
 };
 
-const TEXT_COLUMNS = new Set<ImportField>(['code', 'barcode', 'hsnCode']);
+const TEXT_COLUMNS = new Set<ImportField>(['code']);
 
 export async function productImportTemplate(
   format: 'csv' | 'xlsx',
@@ -109,9 +106,9 @@ export async function productImportTemplate(
       header: column.field,
       width: TEMPLATE_WIDTHS[column.field] ?? 12,
       text: TEXT_COLUMNS.has(column.field),
-      values: column.values,
+      ...(column.kind === 'boolean' ? { values: ['yes', 'no'] } : {}),
     })),
-    guide: [['column', 'required', 'kind', 'allowed values', 'note'], ...templateGuideRows()],
+    guide: [['column', 'required', 'kind', 'note'], ...templateGuideRows()],
   });
 
   return { bytes, contentType: XLSX_CONTENT_TYPE, fileName: 'products-template.xlsx' };
@@ -165,7 +162,6 @@ export async function importProducts(
     return (at >= 0 ? headerRow[at] : undefined) || field;
   };
 
-  const allowed = { rates: canEditRates(actor), cost: canEditCost(actor) };
   const issues: ProductImportIssue[] = [];
   const parsed: ParsedRow[] = [];
   let totalRows = 0;
@@ -174,7 +170,7 @@ export async function importProducts(
     if (isBlankRow(cells)) return;
     totalRows += 1;
     const row = headerIndex + 2 + offset;
-    const outcome = parseImportRow(cells, match, headerRow, row, allowed);
+    const outcome = parseImportRow(cells, match, headerRow, row);
     if (outcome.input) parsed.push({ row, input: outcome.input });
     else issues.push(...outcome.issues);
   });
@@ -201,8 +197,8 @@ export async function importProducts(
   const existingIds = new Set([...existingByCode.values()].map((hit) => hit.productId));
   const existingProducts = await productRepo.findProductsByIds(actor.tenantId, [...existingIds]);
 
-  let creates: ImportGroup[] = [];
-  let updates: UpdateGroup[] = [];
+  const creates: ImportGroup[] = [];
+  const updates: UpdateGroup[] = [];
   for (const group of grouped.groups) {
     const owners = new Set<string>();
     for (const variant of group.input.variants ?? []) {
@@ -245,40 +241,6 @@ export async function importProducts(
       }
     }
   }
-
-  // Barcodes are unique across live products too. For an update, the product
-  // being updated is allowed to already hold its own barcode.
-  const barcodeOwner = await productRepo.findLiveBarcodes(
-    actor.tenantId,
-    [...creates, ...updates].map((group) => group.input.barcode ?? '').filter(Boolean),
-  );
-  const barcodeTaken = (group: ImportGroup, ownId: string | null): boolean => {
-    const barcode = (group.input.barcode ?? '').trim().toLowerCase();
-    if (!barcode) return false;
-    const owner = barcodeOwner.get(barcode);
-    return owner !== undefined && owner !== ownId;
-  };
-  const refuseBarcode = (group: ImportGroup): void => {
-    for (const entry of group.rows) {
-      issues.push({
-        row: entry.row,
-        kind: 'error',
-        column: headerFor('barcode'),
-        messageKey: 'error.conflict.barcodeTaken',
-        params: { barcode: group.input.barcode ?? '' },
-      });
-    }
-  };
-  creates = creates.filter((group) => {
-    if (!barcodeTaken(group, null)) return true;
-    refuseBarcode(group);
-    return false;
-  });
-  updates = updates.filter((group) => {
-    if (!barcodeTaken(group, group.existing.id)) return true;
-    refuseBarcode(group);
-    return false;
-  });
 
   const rowCount = (groups: readonly ImportGroup[]): number =>
     groups.reduce((sum, group) => sum + group.rows.length, 0);
@@ -502,10 +464,6 @@ function chunks<T>(items: readonly T[], size: number): T[][] {
 /** The CHECK constraints the import can still trip, by name, and the token each one means. */
 const CHECK_TOKENS: Array<[needle: string, key: ProductImportIssue['messageKey']]> = [
   ['weight', 'validation.product.weightPositive'],
-  ['uom', 'validation.product.uom'],
-  ['gst_rate_pct', 'validation.product.percentage'],
-  ['mrp', 'validation.product.negativeAmount'],
-  ['purchase_rate', 'validation.product.negativeAmount'],
 ];
 
 /**
@@ -539,14 +497,6 @@ function classifyGroupFailure(
   }
 
   if (pg?.code === '23505') {
-    if ((pg.constraint ?? '').includes('barcode')) {
-      return perRow({
-        kind: 'error',
-        column: headerFor('barcode'),
-        messageKey: 'error.conflict.barcodeTaken',
-        params: { barcode: group.input.barcode ?? '' },
-      });
-    }
     return group.rows.map((entry) => ({
       row: entry.row,
       kind: 'error',

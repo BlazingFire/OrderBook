@@ -1,7 +1,7 @@
 /**
  * Sample data for a demo or a fresh development Master: parties, products
  * with photos, stock, leads at every stage, orders in progress and
- * dispatched, remarks, party-wise rates, party access, custom fields and a
+ * dispatched, remarks, party-wise records, party access, custom fields and a
  * few records in the Recycle Bin — six months of a small tile trade
  * (`domain/sample-data.ts` holds the dataset).
  *
@@ -120,7 +120,7 @@ export async function seedSampleData(
 
   // Resolved as the events run; every later event looks ids up here.
   const partyIds = new Map<string, string>();
-  /** Variant code → the ids a line, a stock movement or a party rate needs. */
+  /** Variant code → the ids a line, a stock movement or a party record needs. */
   const variantIds = new Map<string, { variantId: string; productId: string }>();
   const colourHex = new Map(SWISWARE_COLOURS.map((colour) => [colour.value, colour.hex]));
 
@@ -178,7 +178,7 @@ export async function seedSampleData(
   });
 
   // Then what the business enters into the master for the models it trades
-  // in: prices, an alias, and illustrative weights on the variants it quotes.
+  // in: an alias, and illustrative weights on the variants it quotes.
   SAMPLE_PRODUCTS.forEach((product, index) => {
     schedule(clock.at(1, 10 + index * 3), async () => {
       const [firstCode] = Object.keys(product.weights);
@@ -191,13 +191,6 @@ export async function seedSampleData(
         {
           name: existing.name,
           alias: product.alias ?? null,
-          grade: product.grade,
-          ...(product.productType ? { productType: product.productType } : {}),
-          rate: product.rate,
-          mrp: product.mrp,
-          purchaseRate: product.purchaseRate,
-          hsnCode: '6910',
-          gstRatePct: 18,
           customFields: { launchYear: product.launchYear },
           variants: existing.variants.map((variant) => ({
             id: variant.id,
@@ -248,7 +241,7 @@ export async function seedSampleData(
     }
   });
 
-  // --- Day 2–4: the party book, party-wise rates, and who may see whom ------
+  // --- Day 2–4: the party book, party-wise records, and who may see whom ----
 
   SAMPLE_PARTIES.forEach((party, index) => {
     // Builders and architects are the management user's accounts; dealers the
@@ -287,7 +280,6 @@ export async function seedSampleData(
           partyId: requireId(partyIds, variant.party, 'party'),
           productId: requireVariant(variantIds, variant.code).productId,
           alias: variant.alias ?? null,
-          rate: variant.rate,
           packaging: variant.packaging ?? null,
         },
         actors.admin,
@@ -494,8 +486,7 @@ function scheduleLeadHistory(lead: SampleLead, progress: LeadProgress, ctx: Lead
             variantId: ids.variantId,
             quantity: line.quantity,
             packaging: line.packaging,
-            grade: line.grade ?? null,
-            rate: line.rate ?? null,
+            colour: line.colour ?? null,
             notes: line.notes ?? null,
           };
         }),

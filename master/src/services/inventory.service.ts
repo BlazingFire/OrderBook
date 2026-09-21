@@ -293,7 +293,6 @@ function emptyLevel(variant: ProductVariant, productName: string): InventoryStoc
     quantityBoxes: 0,
     reservedBoxes: 0,
     availableBoxes: 0,
-    quantitySqft: 0,
     reorderLevel: null,
     minStockLevel: null,
     maxStockLevel: null,

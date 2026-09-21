@@ -10,7 +10,7 @@
 import type { LineItem, LineItemParentType } from '@orderbook/shared';
 import type { Knex } from 'knex';
 
-import { lineTotal, type LineSnapshot } from '../domain/line-items.js';
+import type { LineSnapshot } from '../domain/line-items.js';
 import { db } from '../db/knex.js';
 import { allocatePermanentIds } from './identity.repository.js';
 import { mapLineItem } from './mappers.js';
@@ -69,21 +69,17 @@ export async function insertLines(
       product_name: line.productName,
       category_name: line.categoryName,
       alias: line.alias,
-      rate: line.rate,
       code: line.code,
       variant_label: line.variantLabel,
-      sin: line.sin,
+      colour: line.colour,
       size: line.size,
       weight_kg: line.weightKg,
-      grade: line.grade,
-      product_type: line.productType,
       packaging: line.packaging,
       sequence: line.sequence,
       from_party_variant: line.fromPartyVariant,
       image_path: line.imagePath,
       notes: line.notes,
       quantity: line.quantity,
-      line_total: lineTotal(line),
     })),
   );
 
@@ -127,14 +123,11 @@ export async function loadSnapshots(
     productName: line.productName,
     categoryName: line.categoryName,
     alias: line.alias,
-    rate: line.rate ?? null,
     code: line.code,
     variantLabel: line.variantLabel,
-    sin: line.sin,
+    colour: line.colour,
     size: line.size,
     weightKg: line.weightKg,
-    grade: line.grade,
-    productType: line.productType,
     packaging: line.packaging,
     sequence: line.sequence,
     fromPartyVariant: line.fromPartyVariant,

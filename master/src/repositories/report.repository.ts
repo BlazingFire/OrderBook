@@ -42,7 +42,6 @@ export interface DispatchMonthRow {
   month: string;
   orderCount: number;
   boxCount: number;
-  totalValue: number | null;
 }
 
 export interface DispatchColourRow {
@@ -56,12 +55,11 @@ export async function dispatchesByMonth(range: DateRange, runner: Runner = db())
   const orderAggScope = partyScopeSql('orders.party_id', range.tenantId, range.scope);
   const boxAggScope = partyScopeSql('o.party_id', range.tenantId, range.scope);
   const { rows } = await runner.raw<{
-    rows: Array<{ month: string; order_count: string; box_count: string; total_value: string | null }>;
+    rows: Array<{ month: string; order_count: string; box_count: string }>;
   }>(
     `WITH order_agg AS (
        SELECT to_char(date_trunc('month', dispatched_at AT TIME ZONE ?), 'YYYY-MM') AS month,
-              count(*) AS order_count,
-              SUM(total_amount) AS total_value
+              count(*) AS order_count
          FROM orders
         WHERE tenant_id = ?
           AND dispatched_at >= (?::timestamp AT TIME ZONE ?)
@@ -82,7 +80,7 @@ export async function dispatchesByMonth(range: DateRange, runner: Runner = db())
           AND o.deleted_at IS NULL${boxAggScope.sql}
         GROUP BY 1
      )
-     SELECT oa.month, oa.order_count, COALESCE(ba.box_count, 0) AS box_count, oa.total_value
+     SELECT oa.month, oa.order_count, COALESCE(ba.box_count, 0) AS box_count
        FROM order_agg oa
        LEFT JOIN box_agg ba ON ba.month = oa.month
       ORDER BY oa.month`,
@@ -96,16 +94,12 @@ export async function dispatchesByMonth(range: DateRange, runner: Runner = db())
     month: row.month,
     orderCount: toNumber(row.order_count) ?? 0,
     boxCount: toNumber(row.box_count) ?? 0,
-    totalValue: toNumber(row.total_value),
   }));
 }
 
 /**
  * Aggregated across the whole range, not per month, by the variant's colour
  * or pattern text (`''` for a no-variant product — the UI's "—" bucket).
- * Carries no `totalValue`: `total_amount` is an order-level figure, and
- * attributing it to one variant on a multi-variant order has no single
- * correct answer — an absent field beats a fabricated one.
  */
 export async function dispatchesByColour(range: DateRange, runner: Runner = db()): Promise<DispatchColourRow[]> {
   const tz = config.locale.timeZone;
@@ -174,58 +168,15 @@ export interface TopPartyRowInternal {
   partyCode: string | null;
   city: string | null;
   orderCount: number;
-  totalValue: number;
 }
 
 /**
- * Anchored on `orders.dispatched_at`, not `created_at` — "dispatched value
- * in the selected period", goods that left, matching `dispatchesByMonth`'s
- * anchor so the two reports never disagree about what a period means.
- * Served by `idx_orders_dispatched`, not `idx_orders_party` (whose second
- * column is the grouping key, not the filtered one).
+ * Anchored on `orders.dispatched_at`, not `created_at` — "dispatched in the
+ * selected period", goods that left, matching `dispatchesByMonth`'s anchor so
+ * the two reports never disagree about what a period means. Served by
+ * `idx_orders_dispatched`, not `idx_orders_party` (whose second column is the
+ * grouping key, not the filtered one).
  */
-export async function topPartiesByValue(
-  range: DateRange,
-  limit: number,
-  runner: Runner = db(),
-): Promise<TopPartyRowInternal[]> {
-  const tz = config.locale.timeZone;
-  const scope = partyScopeSql('o.party_id', range.tenantId, range.scope);
-  const { rows } = await runner.raw<{
-    rows: Array<{
-      party_id: string;
-      party_name: string;
-      party_code: string | null;
-      city: string | null;
-      order_count: string;
-      total_value: string;
-    }>;
-  }>(
-    `SELECT p.id AS party_id, p.name AS party_name, p.party_code, p.city,
-            count(o.id) AS order_count, SUM(o.total_amount) AS total_value
-       FROM orders o
-       JOIN parties p ON p.id = o.party_id
-      WHERE o.tenant_id = ?
-        AND o.dispatched_at >= (?::timestamp AT TIME ZONE ?)
-        AND o.dispatched_at <  (?::timestamp AT TIME ZONE ?)
-        AND o.deleted_at IS NULL${scope.sql}
-      GROUP BY p.id, p.name, p.party_code, p.city
-      ORDER BY total_value DESC
-      LIMIT ?`,
-    [range.tenantId, range.fromDate, tz, range.toDateExclusive, tz, ...scope.bindings, limit],
-  );
-
-  return rows.map((row) => ({
-    partyId: row.party_id,
-    partyName: row.party_name,
-    partyCode: row.party_code,
-    city: row.city,
-    orderCount: toNumber(row.order_count) ?? 0,
-    totalValue: toNumber(row.total_value) ?? 0,
-  }));
-}
-
-/** Same ordering rule, by `orderCount` — used when the caller may not see rates. */
 export async function topPartiesByOrderCount(
   range: DateRange,
   limit: number,
@@ -240,11 +191,10 @@ export async function topPartiesByOrderCount(
       party_code: string | null;
       city: string | null;
       order_count: string;
-      total_value: string;
     }>;
   }>(
     `SELECT p.id AS party_id, p.name AS party_name, p.party_code, p.city,
-            count(o.id) AS order_count, SUM(o.total_amount) AS total_value
+            count(o.id) AS order_count
        FROM orders o
        JOIN parties p ON p.id = o.party_id
       WHERE o.tenant_id = ?
@@ -252,7 +202,7 @@ export async function topPartiesByOrderCount(
         AND o.dispatched_at <  (?::timestamp AT TIME ZONE ?)
         AND o.deleted_at IS NULL${scope.sql}
       GROUP BY p.id, p.name, p.party_code, p.city
-      ORDER BY order_count DESC
+      ORDER BY order_count DESC, p.name
       LIMIT ?`,
     [range.tenantId, range.fromDate, tz, range.toDateExclusive, tz, ...scope.bindings, limit],
   );
@@ -263,7 +213,6 @@ export async function topPartiesByOrderCount(
     partyCode: row.party_code,
     city: row.city,
     orderCount: toNumber(row.order_count) ?? 0,
-    totalValue: toNumber(row.total_value) ?? 0,
   }));
 }
 
@@ -271,7 +220,6 @@ export interface TopCityRowInternal {
   city: string | null;
   partyCount: number;
   orderCount: number;
-  totalValue: number;
 }
 
 /** `NULL` and blank collapse into one bucket (`city: null`) — the server never invents "Unknown". */
@@ -279,12 +227,11 @@ export async function topPartiesByCity(range: DateRange, runner: Runner = db()):
   const tz = config.locale.timeZone;
   const scope = partyScopeSql('o.party_id', range.tenantId, range.scope);
   const { rows } = await runner.raw<{
-    rows: Array<{ city: string | null; party_count: string; order_count: string; total_value: string }>;
+    rows: Array<{ city: string | null; party_count: string; order_count: string }>;
   }>(
     `SELECT NULLIF(btrim(MIN(btrim(p.city))), '') AS city,
             count(DISTINCT p.id) AS party_count,
-            count(o.id) AS order_count,
-            SUM(o.total_amount) AS total_value
+            count(o.id) AS order_count
        FROM orders o
        JOIN parties p ON p.id = o.party_id
       WHERE o.tenant_id = ?
@@ -292,7 +239,7 @@ export async function topPartiesByCity(range: DateRange, runner: Runner = db()):
         AND o.dispatched_at <  (?::timestamp AT TIME ZONE ?)
         AND o.deleted_at IS NULL${scope.sql}
       GROUP BY lower(btrim(COALESCE(p.city, '')))
-      ORDER BY total_value DESC`,
+      ORDER BY order_count DESC, city`,
     [range.tenantId, range.fromDate, tz, range.toDateExclusive, tz, ...scope.bindings],
   );
 
@@ -300,6 +247,5 @@ export async function topPartiesByCity(range: DateRange, runner: Runner = db()):
     city: row.city,
     partyCount: toNumber(row.party_count) ?? 0,
     orderCount: toNumber(row.order_count) ?? 0,
-    totalValue: toNumber(row.total_value) ?? 0,
   }));
 }

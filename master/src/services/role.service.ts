@@ -29,24 +29,13 @@ import * as activityLog from '../repositories/activity-log.repository.js';
 import { nextHlc } from '../repositories/identity.repository.js';
 import * as roleRepo from '../repositories/role.repository.js';
 import { publishChange } from './change-bus.js';
-import { pricingEnabled } from './pricing-gate.js';
 
 /** Fields the offline merge can arbitrate over, in wire-format names. */
 const ROLE_FIELDS = ['name', 'tier', 'permissions'] as const;
 
-/**
- * The catalogue the grid renders from — minus the Pricing group while the
- * company's pricing switch is off, because a cell that grants nothing is worse
- * than a missing one: an administrator ticks it believing something changed.
- */
-export async function permissionCatalogue(tenantId: string): Promise<PermissionCatalogue> {
-  const catalogue = buildPermissionCatalogue();
-  if (await pricingEnabled(tenantId)) return catalogue;
-  return {
-    ...catalogue,
-    capabilities: catalogue.capabilities.filter((capability) => capability.group !== 'pricing'),
-    groups: catalogue.groups.filter((group) => group.key !== 'pricing'),
-  };
+/** The catalogue the grid renders from. */
+export async function permissionCatalogue(): Promise<PermissionCatalogue> {
+  return buildPermissionCatalogue();
 }
 
 export async function listRoles(actor: ActorContext): Promise<Role[]> {

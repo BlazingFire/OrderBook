@@ -64,9 +64,7 @@ export async function listProducts(
       builder
         .whereILike('p.name', pattern)
         .orWhereILike('p.alias', pattern)
-        .orWhereILike('p.barcode', pattern)
-        .orWhereILike('p.brand', pattern)
-        .orWhereILike('p.product_type', pattern)
+        .orWhereILike('p.size', pattern)
         .orWhereILike('c.name', pattern)
         // The codes are on the variants; a code typed into the catalogue
         // search still has to find its model.
@@ -295,27 +293,6 @@ export async function restoreProduct(
     });
 
   return updated ? findProductById(tenantId, id, trx, { includeDeleted: true }) : null;
-}
-
-/** Which of these barcodes are already on a live product, with that product's id. */
-export async function findLiveBarcodes(
-  tenantId: string,
-  barcodes: readonly string[],
-  runner: Runner = db(),
-): Promise<Map<string, string>> {
-  const found = new Map<string, string>();
-  const wanted = [...new Set(barcodes.map((code) => code.trim().toLowerCase()).filter(Boolean))];
-
-  for (let at = 0; at < wanted.length; at += 1000) {
-    const rows = await runner(TABLE)
-      .where({ tenant_id: tenantId })
-      .whereNull('deleted_at')
-      .whereRaw('lower(barcode) = ANY(?)', [wanted.slice(at, at + 1000)])
-      .select<Array<{ id: string; barcode: string }>>('id', 'barcode');
-    for (const row of rows) found.set(String(row.barcode).toLowerCase(), String(row.id));
-  }
-
-  return found;
 }
 
 /**

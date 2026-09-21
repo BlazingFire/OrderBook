@@ -64,10 +64,6 @@ export const CONNECTOR_PROFILES: readonly ConnectorProfile[] = Object.freeze([
           },
           { localField: 'size', remotePointer: '/size', transform: 'trim' },
           { localField: 'weightKg', remotePointer: '/weight' },
-          // The remote quotes rupees; this product stores paise. Getting that
-          // wrong is a hundredfold price error, so it is a named transform.
-          { localField: 'rate', remotePointer: '/price', transform: 'rupees_to_paise' },
-          { localField: 'hsnCode', remotePointer: '/hsn', transform: 'digits' },
         ],
       },
     ],

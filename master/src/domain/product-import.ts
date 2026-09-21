@@ -10,17 +10,12 @@
  * product with several variants; a model that never names a variant is a
  * product with one code. `groupImportRows` does that folding.
  *
- * **Headers are the wire field keys** (`code`, `name`, `rate`, …), which is
+ * **Headers are the wire field keys** (`code`, `name`, `size`, …), which is
  * what the blank template writes and what round-trips exactly. A person who
  * types their own header row gets a lot of latitude anyway: matching ignores
  * case, spaces and punctuation, and knows the labels the Add Product form uses
- * plus the usual trade shorthand (`SKU`, `HSN`, `EAN`, `GST`, `Colour`).
+ * plus the usual trade shorthand (`SKU`, `Model`, `Colour`, `Weight`).
  * Whatever they wrote is what an issue echoes back as `column`.
- *
- * **Money is in rupees in the sheet and paise in the database**, the same
- * conversion the form makes (`ProductDrawer.tsx`'s `toPaise`). A price column
- * the actor may not set is refused per row rather than silently dropped — a
- * 201 that discarded the price is the worst answer available.
  *
  * Validates only what a row asserts: a blank cell leaves the key absent, so a
  * four-column file of categories, models, codes and names imports without
@@ -28,35 +23,25 @@
  */
 
 import type { MessageParams, ProductImportIssue, ProductInput, ProductVariantInput } from '@orderbook/shared';
-import { PRODUCT_UOMS, ProductValidationError, validateProductInput } from '@orderbook/shared';
+import { ProductValidationError, validateProductInput } from '@orderbook/shared';
 
 /** Product-level fields a sheet may carry. */
-export type ProductField = Exclude<
-  keyof ProductInput,
-  'categoryId' | 'parameters' | 'customFields' | 'variants' | 'hasVariants'
->;
+export type ProductField = Exclude<keyof ProductInput, 'categoryId' | 'customFields' | 'variants' | 'hasVariants'>;
 
 /** The three columns that describe the row's variant rather than its model. */
 export type VariantField = 'variant' | 'code' | 'weightKg';
 
 export type ImportField = ProductField | VariantField;
 
-type ImportKind = 'text' | 'money' | 'number' | 'int' | 'enum';
-
-type MoneyPermission ='field.saleRate.edit' | 'field.purchaseRate.edit';
+type ImportKind = 'text' | 'number' | 'boolean';
 
 export interface ImportColumn {
   field: ImportField;
   kind: ImportKind;
   required?: true;
-  /** The closed set an `enum` column accepts, in canonical form. */
-  values?: readonly string[];
   min?: number;
-  max?: number;
   /** `true` when `min` is a floor the value must clear, not merely reach. */
   exclusiveMin?: true;
-  /** A money column only this permission may fill in. */
-  permission?: MoneyPermission;
   /** One line for the template's Guide sheet. */
   note: string;
 }
@@ -69,18 +54,8 @@ export const IMPORT_COLUMNS: readonly ImportColumn[] = [
   { field: 'code', kind: 'text', required: true, note: 'Required. Unique across the whole catalogue.' },
   { field: 'weightKg', kind: 'number', min: 0, exclusiveMin: true, note: 'Weight of one piece in kilograms. Blank until known.' },
   { field: 'alias', kind: 'text', note: 'A short name staff use at the counter.' },
-  { field: 'productType', kind: 'text', note: 'Free text — e.g. Plain, Designer, Vitrosa.' },
-  { field: 'brand', kind: 'text', note: '' },
   { field: 'size', kind: 'text', note: 'e.g. 18x12, L-27 B-15 H-26' },
-  { field: 'sin', kind: 'text', note: 'Stock item number from the catalogue.' },
-  { field: 'grade', kind: 'text', note: '' },
-  { field: 'hsnCode', kind: 'text', note: 'Kept as text so leading zeros survive.' },
-  { field: 'barcode', kind: 'text', note: 'Unique across live products. Kept as text.' },
-  { field: 'uom', kind: 'enum', values: PRODUCT_UOMS, note: 'What the product is counted in. Defaults to box.' },
-  { field: 'rate', kind: 'money', permission: 'field.saleRate.edit', min: 0, note: 'Sale rate per unit, in rupees.' },
-  { field: 'mrp', kind: 'money', permission: 'field.saleRate.edit', min: 0, note: 'Printed on the box, in rupees.' },
-  { field: 'purchaseRate', kind: 'money', permission: 'field.purchaseRate.edit', min: 0, note: 'What the company pays, in rupees.' },
-  { field: 'gstRatePct', kind: 'number', min: 0, max: 100, note: 'Percentage, 0 to 100.' },
+  { field: 'multiColour', kind: 'boolean', note: 'yes when the model is made in every colour of the colour list, so a lead line can name one. Defaults to no.' },
 ];
 
 /** The template's header row, in order. */
@@ -108,35 +83,25 @@ const HEADER_ALIASES: Record<string, ImportField> = Object.fromEntries(
       ['code', ['productcode', 'variantcode', 'sku', 'itemcode', 'articlecode', 'article']],
       ['weightKg', ['weight', 'weightkgs', 'kg', 'kgs']],
       ['alias', ['shortname', 'nickname']],
-      ['productType', ['type']],
-      ['brand', ['make']],
       ['size', ['dimensions']],
-      ['sin', ['stockitemnumber']],
-      ['grade', ['quality']],
-      ['hsnCode', ['hsn']],
-      ['barcode', ['ean', 'ean13', 'upc']],
-      ['uom', ['unit', 'unitofmeasure', 'countedin', 'units']],
-      ['rate', ['price', 'saleprice', 'salerate', 'rateperunit', 'sellingprice']],
-      ['mrp', []],
-      ['purchaseRate', ['cost', 'costprice', 'purchaseprice', 'buyingprice']],
-      ['gstRatePct', ['gst', 'gstrate', 'gstpercent', 'tax', 'taxrate']],
+      ['multiColour', ['multicolor', 'allcolours', 'allcolors', 'anycolour', 'anycolor']],
     ] as Array<[ImportField, string[]]>
   ).flatMap(([field, aliases]) =>
     [field, ...aliases].map((alias): [string, ImportField] => [normalizeHeader(alias), field]),
   ),
 );
 
-/**
- * What an enum column accepts besides its canonical values, after
- * `normalizeEnum`. Sheets say "Boxes", "pcs" and "nos".
- */
-const ENUM_SYNONYMS: Partial<Record<ImportField, Record<string, string>>> = {
-  uom: { boxes: 'box', bx: 'box', sq_ft: 'sqft', square_feet: 'sqft', squarefeet: 'sqft', pieces: 'piece', pcs: 'piece', pc: 'piece', nos: 'piece' },
+/** What a boolean column accepts: sheets say "yes", "Y", "true", "1", "no", "N", "false", "0". */
+const BOOLEAN_WORDS: Record<string, boolean> = {
+  yes: true,
+  y: true,
+  true: true,
+  '1': true,
+  no: false,
+  n: false,
+  false: false,
+  '0': false,
 };
-
-function normalizeEnum(value: string): string {
-  return value.trim().toLowerCase().replace(/[\s-]+/g, '_');
-}
 
 export interface HeaderMatch {
   /** The column each header cell maps to, or null for one nothing knows. */
@@ -174,13 +139,6 @@ export function matchHeaders(headerRow: readonly string[]): HeaderMatch {
   return { byIndex, ignored, missing };
 }
 
-export interface MoneyPermissions {
-  /** Holds `field.saleRate.edit`. */
-  rates: boolean;
-  /** Holds `field.purchaseRate.edit`. */
-  cost: boolean;
-}
-
 /** One sheet row, understood: the model's fields and the row's own variant. */
 export interface ImportRow {
   /** Product-level fields; `categoryName` and `name` are always present. */
@@ -200,15 +158,10 @@ export function isBlankRow(cells: readonly string[]): boolean {
 }
 
 function parseNumber(text: string): number {
-  // "1,200.50", "Rs 1200", "₹ 850" — strip separators and currency marks.
-  return Number(text.replace(/^(rs\.?|inr)\s*/i, '').replace(/[,\s₹]/g, ''));
+  // "1,200.50", "12.5 kg" — strip separators and the unit.
+  return Number(text.replace(/\s*kgs?$/i, '').replace(/[,\s]/g, ''));
 }
 
-function rangeIssueKey(column: ImportColumn): ProductImportIssue['messageKey'] {
-  if (column.field === 'gstRatePct') return 'validation.product.percentage';
-  if (column.field === 'weightKg') return 'validation.product.weightPositive';
-  return 'validation.product.negativeAmount';
-}
 
 /**
  * One row → one `ImportRow`, or the issues that stop it.
@@ -221,7 +174,6 @@ export function parseImportRow(
   match: HeaderMatch,
   headerRow: readonly string[],
   row: number,
-  allowed: MoneyPermissions,
 ): { input: ImportRow | null; issues: ProductImportIssue[] } {
   const issues: ProductImportIssue[] = [];
   const product: Record<string, unknown> = {};
@@ -245,54 +197,34 @@ export function parseImportRow(
     const header = (headerRow[index] ?? column.field).trim() || column.field;
     const target = VARIANT_FIELDS.has(column.field) ? variant : product;
 
-    if (column.permission) {
-      const held = column.permission === 'field.saleRate.edit' ? allowed.rates : allowed.cost;
-      if (!held) {
-        issue(column, index, 'error.forbidden.missingPermission', { permission: column.permission });
-        return;
-      }
-    }
-
     switch (column.kind) {
       case 'text':
         target[column.field] = raw;
         return;
 
-      case 'enum': {
-        const canonical = normalizeEnum(raw);
-        const synonyms = ENUM_SYNONYMS[column.field] ?? {};
-        const values = column.values ?? [];
-        const resolved = values.includes(canonical) ? canonical : synonyms[canonical];
-        if (!resolved) {
-          issue(column, index, 'validation.import.invalidValue', {
-            column: header,
-            allowed: values.join(', '),
-          });
+      case 'boolean': {
+        const resolved = BOOLEAN_WORDS[raw.trim().toLowerCase()];
+        if (resolved === undefined) {
+          issue(column, index, 'validation.import.invalidValue', { column: header, allowed: 'yes, no' });
           return;
         }
         target[column.field] = resolved;
         return;
       }
 
-      case 'money':
-      case 'number':
-      case 'int': {
+      case 'number': {
         const value = parseNumber(raw);
         if (!Number.isFinite(value)) {
           issue(column, index, 'validation.import.notANumber', { column: header });
           return;
         }
-        if (column.kind === 'int' && !Number.isInteger(value)) {
-          issue(column, index, 'validation.import.notAWholeNumber', { column: header });
-          return;
-        }
         const belowMin =
           column.min !== undefined && (column.exclusiveMin ? value <= column.min : value < column.min);
-        if (belowMin || (column.max !== undefined && value > column.max)) {
-          issue(column, index, rangeIssueKey(column));
+        if (belowMin) {
+          issue(column, index, 'validation.product.weightPositive');
           return;
         }
-        target[column.field] = column.kind === 'money' ? Math.round(value * 100) : value;
+        target[column.field] = value;
         return;
       }
     }
@@ -337,8 +269,8 @@ export function parseImportRow(
 }
 
 /**
- * Second and later occurrences of a code, a barcode, or the same variant of
- * the same model within the file.
+ * Second and later occurrences of a code, or the same variant of the same
+ * model within the file.
  *
  * Reported against the *later* row and pointing at the first, so the person
  * fixes the duplicate rather than the original. Case-insensitive, matching the
@@ -350,7 +282,6 @@ export function findDuplicatesInFile(
 ): ProductImportIssue[] {
   const issues: ProductImportIssue[] = [];
   const firstCode = new Map<string, number>();
-  const firstBarcode = new Map<string, number>();
   const firstVariant = new Map<string, number>();
 
   const duplicate = (row: number, field: ImportField, first: number): void => {
@@ -369,13 +300,6 @@ export function findDuplicatesInFile(
       const first = firstCode.get(code);
       if (first === undefined) firstCode.set(code, row);
       else duplicate(row, 'code', first);
-    }
-
-    const barcode = (input.product.barcode ?? '').trim().toLowerCase();
-    if (barcode) {
-      const first = firstBarcode.get(barcode);
-      if (first === undefined) firstBarcode.set(barcode, row);
-      else duplicate(row, 'barcode', first);
     }
 
     const variantKey = `${groupKey(input)}${(input.variant.label ?? '').trim().toLowerCase()}`;
@@ -468,8 +392,7 @@ export function templateGuideRows(): string[][] {
   return IMPORT_COLUMNS.map((column) => [
     column.field,
     column.required ? 'yes' : '',
-    column.kind === 'money' ? 'rupees' : column.kind === 'enum' ? 'one of' : column.kind,
-    column.values ? column.values.join(', ') : '',
+    column.kind === 'boolean' ? 'yes / no' : column.kind,
     column.note,
   ]);
 }

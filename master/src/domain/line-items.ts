@@ -1,14 +1,14 @@
 /**
- * Line-item rules: what gets snapshotted, what each line totals, and what a
+ * Line-item rules: what gets snapshotted, what each line weighs, and what a
  * line means for stock (docs/LEAD_GENERATION_FLOW.md §3.2, §8).
  *
  * A line is **one variant** of a product with one quantity — two colours of
- * the same model are two lines, each carrying its own code, its own weight
- * and its own totals. Pure business rules — no database, no transport. The
- * snapshot rule in particular is the reason this is a module rather than a
- * few lines inside a repository: "frozen at add time" is a promise the
- * conversion path has to make too, and a promise implemented twice is a
- * promise that gets broken once.
+ * the same model are two lines, each carrying its own code and its own
+ * weight. Pure business rules — no database, no transport. The snapshot rule
+ * in particular is the reason this is a module rather than a few lines inside
+ * a repository: "frozen at add time" is a promise the conversion path has to
+ * make too, and a promise implemented twice is a promise that gets broken
+ * once.
  */
 
 /** The catalogue values a line freezes from the product model. */
@@ -17,11 +17,9 @@ export interface ProductSnapshotSource {
   name: string;
   categoryName: string | null;
   alias: string | null;
-  rate: number | null;
-  sin: string | null;
   size: string | null;
-  grade: string | null;
-  productType: string | null;
+  /** Whether the model is made in any colour of the company's list — see `colour` below. */
+  multiColour: boolean;
 }
 
 /** The variant the line is for: where the code, the colour text and the weight come from. */
@@ -32,14 +30,10 @@ export interface ProductVariantSnapshotSource {
   weightKg: number | null;
 }
 
-/** A party's negotiated overrides, used when a lead is in `partyWiseMode`. */
+/** A party's own version of the product, used when a lead is in `partyWiseMode`. */
 export interface PartyVariantSnapshotSource {
   alias: string | null;
-  rate: number | null;
   size: string | null;
-  sin: string | null;
-  grade: string | null;
-  productType: string | null;
   productName: string | null;
 }
 
@@ -50,14 +44,12 @@ export interface LineSnapshot {
   productName: string;
   categoryName: string | null;
   alias: string | null;
-  rate: number | null;
   code: string | null;
   variantLabel: string | null;
-  sin: string | null;
+  /** The colour chosen on the line; only ever on a multi-colour product. */
+  colour: string | null;
   size: string | null;
   weightKg: number | null;
-  grade: string | null;
-  productType: string | null;
   packaging: string | null;
   sequence: number;
   fromPartyVariant: boolean;
@@ -74,21 +66,24 @@ export interface LineDraft {
   productName?: string | null;
   categoryName?: string | null;
   alias?: string | null;
-  rate?: number | null;
   code?: string | null;
   variantLabel?: string | null;
-  sin?: string | null;
+  colour?: string | null;
   size?: string | null;
   weightKg?: number | null;
-  grade?: string | null;
-  productType?: string | null;
   packaging?: string | null;
-  /** "No rate on this line" — see `LineItemInput.rateUnset`. */
-  rateUnset?: boolean;
   sequence?: number;
   fromPartyVariant?: boolean;
   imagePath?: string | null;
   notes?: string | null;
+}
+
+/** Thrown for a colour on a product that is not made in colours; the caller translates. */
+export class LineColourError extends Error {
+  constructor() {
+    super('validation.lead.colourUnexpected');
+    this.name = 'LineColourError';
+  }
 }
 
 /**
@@ -97,12 +92,14 @@ export interface LineDraft {
  * Values the client supplied win. That looks backwards until you remember the
  * panel may have been offline for a day: the snapshot it captured is the spec
  * the customer was actually quoted, and re-deriving it from today's catalogue
- * would silently change an agreed price. The catalogue only fills blanks.
+ * would silently change an agreed line. The catalogue only fills blanks.
  *
  * The code, the colour text and the weight come from the **variant**, never
- * from the product or the party's rates — a party negotiates a price, not
- * what a basin weighs. `packaging` is never filled from any source: it comes
- * from the person entering the line or it stays empty (§3.2, §5.2).
+ * from the product or the party's record — a party has its own name for a
+ * basin, not its own weight for it. `packaging` and `colour` are never filled
+ * from any source: they come from the person entering the line or they stay
+ * empty (§3.2, §5.2). A colour is accepted only on a `multiColour` product —
+ * anywhere else it would name a colour the factory does not make.
  */
 export function buildLineSnapshot(
   draft: LineDraft,
@@ -112,6 +109,8 @@ export function buildLineSnapshot(
   sequence: number,
 ): LineSnapshot {
   const fromPartyVariant = partyVariant !== null;
+  const colour = typeof draft.colour === 'string' && draft.colour.trim() !== '' ? draft.colour.trim() : null;
+  if (colour !== null && !product.multiColour) throw new LineColourError();
 
   return {
     productId: product.id,
@@ -120,17 +119,11 @@ export function buildLineSnapshot(
     // The main product the line was sold under, frozen like the name (v1.1.0).
     categoryName: draft.categoryName ?? product.categoryName,
     alias: firstDefined(draft.alias, partyVariant?.alias, product.alias),
-    // `rateUnset` is a decision, not a gap, so it stops the fallback dead. A
-    // plain `null` rate still falls through to the party's rate and the
-    // catalogue, which is what makes a line meant to carry no price save at one.
-    rate: draft.rateUnset ? null : firstDefined(draft.rate, partyVariant?.rate, product.rate),
     code: draft.code ?? variant.code,
     variantLabel: draft.variantLabel ?? variant.label,
-    sin: firstDefined(draft.sin, partyVariant?.sin, product.sin),
+    colour,
     size: firstDefined(draft.size, partyVariant?.size, product.size),
     weightKg: firstDefined(draft.weightKg, variant.weightKg),
-    grade: firstDefined(draft.grade, partyVariant?.grade, product.grade),
-    productType: firstDefined(draft.productType, partyVariant?.productType, product.productType),
     // Deliberately only ever the caller's value.
     packaging: draft.packaging ?? null,
     sequence: draft.sequence ?? sequence,
@@ -148,20 +141,10 @@ export function normaliseQuantity(value: unknown): number {
   return quantity;
 }
 
-/** Smallest currency unit; null when the rate is unknown rather than zero. */
-export function lineTotal(line: { rate: number | null; quantity: number }): number | null {
-  if (line.rate === null || line.rate === undefined) return null;
-  return Math.round(line.rate * line.quantity);
-}
-
 /** Kilograms, three decimals; null when the variant's weight has not been entered. */
 export function lineWeightKg(line: { weightKg: number | null; quantity: number }): number | null {
   if (line.weightKg === null || line.weightKg === undefined) return null;
   return Math.round(line.weightKg * line.quantity * 1000) / 1000;
-}
-
-export function orderTotalAmount(lines: readonly LineSnapshot[]): number {
-  return lines.reduce((sum, line) => sum + (lineTotal(line) ?? 0), 0);
 }
 
 /**

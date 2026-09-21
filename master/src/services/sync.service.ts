@@ -56,7 +56,6 @@ import {
 
 import { actorCan, type ActorContext } from '../domain/actor.js';
 import { UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
-import { canEditCost, canEditRates } from '../domain/visibility.js';
 import { requirePartyAccess } from './party-access.service.js';
 import { db } from '../db/knex.js';
 import { ForbiddenError, NotFoundError, toErrorMessage, ValidationError } from '../lib/errors.js';
@@ -442,31 +441,9 @@ async function mergeUpdate(
     // `variants` is not a column — it is a child table replaced as a set —
     // but it merges like one field: the whole set wins or loses by HLC, and
     // a losing set is recorded as one conflict a person can put back.
-    let fields = mutation.fields.filter(
+    const fields = mutation.fields.filter(
       (field) => field in columns || (entity === 'product' && field === 'variants'),
     );
-
-    /*
-     * Money fields need the same permission every other product write path
-     * already enforces (`catalog.service.ts`'s createProduct/updateProduct,
-     * `upsertVariant`, and the public API's `WRITE_GUARDS`) — this merge path
-     * wrote `rate`/`pricePerSqft`/`purchaseRate` unconditionally, so a role
-     * with `products.edit` but not `field.saleRate.edit`/
-     * `field.purchaseRate.edit` could change a product's price or cost
-     * through an offline sync push. Dropped from the field list rather than
-     * rejected outright: `mergeFields` only ever reads `incoming.values[field]`
-     * for a field present in this list, so filtering it here is what actually
-     * withholds the value, matching how an offline replay silently drops any
-     * other field the actor did not need to touch.
-     */
-    if (entity === 'product') {
-      if (!canEditRates(actor)) {
-        fields = fields.filter((field) => field !== 'rate' && field !== 'pricePerSqft');
-      }
-      if (!canEditCost(actor)) {
-        fields = fields.filter((field) => field !== 'purchaseRate');
-      }
-    }
 
     const outcome = mergeFields(
       { values: current.values, fieldHlc: current.fieldHlc },

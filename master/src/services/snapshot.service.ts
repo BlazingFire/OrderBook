@@ -22,7 +22,6 @@ import * as variantRepo from '../repositories/party-variant.repository.js';
 import * as pipelineRepo from '../repositories/pipeline.repository.js';
 import * as syncRepo from '../repositories/sync.repository.js';
 import { resolvePartyScope } from '../domain/party-scope.js';
-import { canSeeRates, maskVariant } from '../domain/visibility.js';
 import * as catalogService from './catalog.service.js';
 import { companyFeatures } from './company-features.js';
 import * as dashboardService from './dashboard.service.js';
@@ -69,7 +68,7 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
 
   // The six collections above come from services that scope themselves. These
   // two call repositories directly, so they have to be given the scope by hand
-  // — and both leak without it: a variant is another party's negotiated rate,
+  // — and both leak without it: a variant is another party's own product record,
   // and a conflict names the lead or order it belongs to.
   const partyScope = resolvePartyScope(actor);
 
@@ -85,7 +84,6 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
       companyFeatures(actor.tenantId),
     ]);
 
-  const allowed = canSeeRates(actor);
 
   // This person's own Party Access grants over the parties above. The panel
   // uses them for two things: the "My parties" toggle, and leaving a view-only
@@ -108,7 +106,7 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
     parties,
     products,
     categories,
-    partyVariants: variants.map((variant) => maskVariant(variant, allowed)),
+    partyVariants: variants,
     leads,
     orders,
     stock,

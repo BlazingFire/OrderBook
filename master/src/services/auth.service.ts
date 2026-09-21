@@ -31,7 +31,6 @@ import * as roleRepo from '../repositories/role.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
 import { companyFeatures } from './company-features.js';
 import { rememberPassword } from './password-vault.service.js';
-import { gatePricing, permissionSetForRole, pricingEnabled } from './pricing-gate.js';
 import { clearRecentReauth, sweepRecentReauth } from './reauth-cache.js';
 
 const log = createLogger('auth');
@@ -42,8 +41,6 @@ interface Session {
   roleId: string | null;
   /** The role version this session's permissions were derived from. */
   roleVersion: number;
-  /** Whether `pricing.enabled` was on when `permissions` was derived. */
-  pricing: boolean;
   permissions: string[];
   expiresAt: number;
 }
@@ -186,7 +183,7 @@ async function attemptSignIn(
 
   failures.delete(key);
 
-  const permissionSet = await permissionSetForRole(credential.tenantId, credential.roleId);
+  const permissionSet = await roleRepo.permissionSetForRole(credential.tenantId, credential.roleId);
   if (!permissionSet) {
     // The last terminal branch that wrote nothing. Somebody holding the right
     // password and getting nowhere is exactly what an administrator is trying
@@ -225,7 +222,6 @@ async function attemptSignIn(
     tenantId: credential.tenantId,
     roleId: credential.roleId,
     roleVersion,
-    pricing: await pricingEnabled(credential.tenantId),
     // Intersected with the tier ceiling here as well as on save: a role row
     // that arrived over sync from a tampered replica carrying an admin key on
     // an office tier is stripped now and never enters the session.
@@ -297,9 +293,7 @@ export async function resolveSessionWithPermissions(
     return null;
   }
 
-  const permissionSet = found.role
-    ? await gatePricing(session.tenantId, roleRepo.permissionSetFromRow(session.tenantId, found.role))
-    : null;
+  const permissionSet = found.role ? roleRepo.permissionSetFromRow(session.tenantId, found.role) : null;
 
   if (!permissionSet) {
     if (token) sessions.delete(token);
@@ -307,19 +301,12 @@ export async function resolveSessionWithPermissions(
   }
 
   const currentVersion = found.role?.version ?? 0;
-  const pricing = await pricingEnabled(session.tenantId);
 
-  // The role moved (edited, or the user was reassigned), or the company's
-  // pricing switch flipped: rebuild in place, so the very next permission
-  // check uses the new set.
-  if (
-    currentVersion !== session.roleVersion ||
-    found.user.roleId !== session.roleId ||
-    pricing !== session.pricing
-  ) {
+  // The role moved (edited, or the user was reassigned): rebuild in place, so
+  // the very next permission check uses the new set.
+  if (currentVersion !== session.roleVersion || found.user.roleId !== session.roleId) {
     session.roleId = found.user.roleId;
     session.roleVersion = currentVersion;
-    session.pricing = pricing;
     session.permissions = effectivePermissions(permissionSet.permissions, permissionSet.tier);
   }
 

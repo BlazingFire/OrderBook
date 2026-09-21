@@ -3,7 +3,7 @@
  *
  * Search is just another read path, so it goes through the same permission
  * engine as everything else: a caller may only search the entities they can
- * view, and results carry no rate unless they hold `field.saleRate.view`.
+ * view.
  *
  * This service merges the per-entity indexes; it does not maintain one of its
  * own. Adding a searchable entity later means adding its vector to the merge,
@@ -26,7 +26,6 @@ import { PICK_DEFAULT_LIMIT, PICK_MAX_LIMIT } from '@orderbook/shared';
 import { actorCan, requirePermission, type ActorContext } from '../domain/actor.js';
 import { clampLimit } from '../domain/paging.js';
 import { resolvePartyScope } from '../domain/party-scope.js';
-import { maskProduct, productVisibility } from '../domain/visibility.js';
 import { mapParty, mapProduct, mapProductCategory } from '../repositories/mappers.js';
 import { loadVariantsFor } from '../repositories/product-variant.repository.js';
 import * as searchRepo from '../repositories/search.repository.js';
@@ -107,7 +106,6 @@ export async function pick(
       include,
       ...(categoryId ? { categoryId } : {}),
     });
-    const visible = productVisibility(actor);
 
     // Whole products, variants included: the third stage of the lead screen
     // (which colour, which code, which weight) needs no further round trip.
@@ -118,7 +116,7 @@ export async function pick(
 
     return {
       items: page.rows.map((row) =>
-        maskProduct(mapProduct(row, [], variants.get(String(row.id)) ?? []), visible),
+        mapProduct(row, [], variants.get(String(row.id)) ?? []),
       ),
       truncated: page.truncated,
     };

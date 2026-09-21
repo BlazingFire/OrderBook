@@ -41,7 +41,7 @@ const needs = requirePermissionMiddleware;
 accessRoutes.get(
   '/permission-catalogue',
   asyncHandler(async (req, res) => {
-    res.json(await roleService.permissionCatalogue(actorFromRequest(req).tenantId));
+    res.json(await roleService.permissionCatalogue());
   }),
 );
 
