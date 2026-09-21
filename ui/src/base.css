@@ -1240,17 +1240,28 @@ html[data-window-blur='true'] .ob-busy rect {
   white-space: nowrap;
 }
 
+/*
+ * The strip is a band its controls sit inside, not a box they fill.
+ *
+ * It used to be a fixed `height` with horizontal padding only, so a 30px
+ * search field left five pixels of air above and below it and the row read as
+ * wedged between the topbar and the table. Worse, when a screen's filters did
+ * overflow, the horizontal scrollbar was drawn *inside* that fixed height and
+ * took its few pixels out of the controls' share. Padding on all four sides
+ * with `min-height` as a floor gives both their own room: the band is never
+ * shorter than the token, and grows if what a screen published needs more.
+ */
 .ob-filterbar {
-  height: var(--shell-filterbar-h);
+  min-height: var(--shell-filterbar-h);
   flex: none;
   display: flex;
   align-items: center;
   gap: var(--s-8);
-  padding: 0 var(--s-20);
+  padding: var(--s-8) var(--s-20);
   background: var(--bg-surface);
   border-bottom: 1px solid var(--line);
   /* At the 1366x768 floor a full row of stage chips can outgrow the strip;
-   * scroll horizontally inside the 40px band rather than breaking the shell
+   * scroll horizontally inside the band rather than breaking the shell
    * (whose own overflow is hidden) or clipping chips vertically. */
   overflow-x: auto;
   overflow-y: hidden;

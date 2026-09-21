@@ -125,7 +125,11 @@
 
   /* ---- Shell dimensions (§8) --------------------------------------------- */
   --shell-topbar-h: 3.4286rem;
-  --shell-filterbar-h: 2.8571rem;
+  /* The filter strip's FLOOR, not its height (`.ob-filterbar` pads and uses
+     `min-height`): 46px is a 30px control with 8px of air above and below it.
+     It was 40px and unpadded, which crammed the search field against both
+     edges of the band. */
+  --shell-filterbar-h: 3.2857rem;
   --shell-footer-h: 1.8571rem;
   --shell-sidebar-w: 14.8571rem;
   --shell-sidebar-collapsed-w: 3.7143rem;

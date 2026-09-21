@@ -65,7 +65,7 @@ export function AppShell({
   collapsed: boolean;
   onToggleCollapsed: () => void;
   topbar: ReactNode;
-  /** The 40px strip under the topbar — list screens only (§8). Omit elsewhere. */
+  /** The strip under the topbar — list screens only (§8). Omit elsewhere. */
   filterbar?: ReactNode;
   footer: ReactNode;
   rail: RailState;

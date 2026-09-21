@@ -1,4 +1,4 @@
-/** FilterBar (§8) — the 40px strip under the topbar on list screens only. */
+/** FilterBar (§8) — the strip under the topbar on list screens only. */
 
 import type { ReactNode } from 'react';
 

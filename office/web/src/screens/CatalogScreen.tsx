@@ -21,9 +21,20 @@
  * catalogue (`SNAPSHOT_LIMIT`, 500 rows); it used to be the whole list, which
  * meant a shop that imported five thousand products could see the first five
  * hundred and reach the rest from nowhere. Online, the list now asks the
- * Master — search, category filter and "load more" all run there. Offline, the
- * panel's server pages the cached snapshot instead and says so, and the
- * screen shows a "cached page" pill rather than pretending.
+ * Master — search and "load more" both run there. Offline, the panel's server
+ * pages the cached snapshot instead and says so, and the screen shows a
+ * "cached page" pill rather than pretending.
+ *
+ * **Products no longer carry a row of category chips.** A catalogue with
+ * twenty-odd categories turned the one-line filter strip into a horizontally
+ * scrolling chip rail that crowded out the search box and the two buttons
+ * beside it, and hid the categories past the right edge anyway. Category is
+ * still a column on every row and still something the search matches — the
+ * Master's query ILIKEs the category name alongside the code, name, alias and
+ * size (`product.repository.ts`), and `matchesProduct` does the same for the
+ * offline set — so typing "lab sink" narrows the list exactly as the chip did.
+ * The one chip kept is "missing weight", which is a to-do list rather than a
+ * facet and has no equivalent to type.
  *
  * Two things still come from `view.products`, deliberately: a product created
  * on this panel and not yet acknowledged (its `sync.hlc` is empty) is shown at
@@ -88,7 +99,6 @@ const REFETCH_DEBOUNCE_MS = 500;
 interface ProductPage {
   items: Product[];
   total: number;
-  categories: Array<{ id: string; name: string; count: number }>;
   /** The panel's server answered from its cached snapshot — the Master was unreachable. */
   offline: boolean;
 }
@@ -102,12 +112,7 @@ function missingWeight(product: Product): boolean {
   return product.variants.some((variant) => variant.isActive && variant.weightKg === null);
 }
 
-function matchesProduct(
-  product: Product,
-  term: string,
-  categoryFilter: string | null,
-  weightFilter: boolean,
-): boolean {
+function matchesProduct(product: Product, term: string, weightFilter: boolean): boolean {
   return (
     (!term ||
       product.name.toLowerCase().includes(term) ||
@@ -118,7 +123,6 @@ function matchesProduct(
       ) ||
       (product.alias ?? '').toLowerCase().includes(term) ||
       product.categoryName.toLowerCase().includes(term)) &&
-    (!categoryFilter || product.categoryId === categoryFilter) &&
     (!weightFilter || missingWeight(product))
   );
 }
@@ -152,7 +156,6 @@ export function CatalogScreen({
   const [editingParty, setEditingParty] = useState<Party | null>(null);
 
   const [productSearch, setProductSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [weightFilter, setWeightFilter] = useState(false);
   const [productDrawerOpen, setProductDrawerOpen] = useState(false);
   const [openProductId, setOpenProductId] = useState<string | null>(null);
@@ -199,7 +202,6 @@ export function CatalogScreen({
       .listProducts(
         {
           search: productTerm || undefined,
-          categoryId: categoryFilter ?? undefined,
           missingWeight: weightFilter || undefined,
           limit: PAGE,
           offset: 0,
@@ -210,7 +212,6 @@ export function CatalogScreen({
         setPage({
           items: result.items,
           total: result.total,
-          categories: result.categories ?? [],
           offline: result.offline === true,
         });
         setLoadFailed(false);
@@ -225,7 +226,7 @@ export function CatalogScreen({
       });
 
     return () => controller.abort();
-  }, [tab, productTerm, categoryFilter, weightFilter, revision]);
+  }, [tab, productTerm, weightFilter, revision]);
 
   /*
    * What the snapshot says about products, as one string: ids and clocks.
@@ -251,7 +252,6 @@ export function CatalogScreen({
     try {
       const result = await api.listProducts({
         search: productTerm || undefined,
-        categoryId: categoryFilter ?? undefined,
         missingWeight: weightFilter || undefined,
         limit: PAGE,
         offset: page.items.length,
@@ -284,11 +284,9 @@ export function CatalogScreen({
   const pending = useMemo(
     () =>
       view.products.filter(
-        (product) =>
-          !product.sync.hlc &&
-          matchesProduct(product, productTermLower, categoryFilter, weightFilter),
+        (product) => !product.sync.hlc && matchesProduct(product, productTermLower, weightFilter),
       ),
-    [view.products, productTermLower, categoryFilter, weightFilter],
+    [view.products, productTermLower, weightFilter],
   );
 
   const products = useMemo(() => {
@@ -392,24 +390,7 @@ export function CatalogScreen({
           data-screen-search
           style={{ width: rem(400) }}
         />
-        <FilterChip
-          active={categoryFilter === null}
-          count={page ? page.total + pending.length : undefined}
-          onClick={() => setCategoryFilter(null)}
-        >
-          {t('catalog.filter.all')}
-        </FilterChip>
-        {(page?.categories ?? []).map((facet) => (
-          <FilterChip
-            key={facet.id}
-            active={categoryFilter === facet.id}
-            count={facet.count}
-            onClick={() => setCategoryFilter((current) => (current === facet.id ? null : facet.id))}
-          >
-            {facet.name}
-          </FilterChip>
-        ))}
-        {/* Off by itself: it is a to-do list, not a category. */}
+        {/* The only chip left: it is a to-do list, not a category. */}
         <FilterChip active={weightFilter} onClick={() => setWeightFilter((current) => !current)}>
           {t('catalog.products.filter.missingWeight')}
         </FilterChip>
@@ -716,7 +697,7 @@ export function CatalogScreen({
     );
   }
 
-  const filtered = productTerm !== '' || categoryFilter !== null || weightFilter;
+  const filtered = productTerm !== '' || weightFilter;
   const shownTotal = (page?.total ?? 0) + pending.length;
 
   return (

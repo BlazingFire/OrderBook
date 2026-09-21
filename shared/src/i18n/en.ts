@@ -744,7 +744,7 @@ export const EN_MESSAGES = {
   'catalog.products.empty.title': 'No products yet',
   'catalog.products.new': 'New product',
   'catalog.products.searchLabel': 'Search products',
-  'catalog.products.searchPlaceholder': 'Search code, name, alias…',
+  'catalog.products.searchPlaceholder': 'Search code, name, alias, category…',
   'catalog.products.import': 'Import',
   'catalog.products.loadMore': 'Load more',
   'catalog.products.shown': 'Showing {shown} of {total}',
