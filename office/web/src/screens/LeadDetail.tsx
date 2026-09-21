@@ -34,7 +34,6 @@ import {
   Timeline,
   formatDateTime,
   formatKg,
-  formatMoney,
   t,
   useColourHex,
 } from '@orderbook/ui';
@@ -53,8 +52,6 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
   const [expectedDate, setExpectedDate] = useState('');
   const [busy, setBusy] = useState(false);
   const colourHex = useColourHex(view.optionLists);
-  // Off with the company's pricing switch, or without the role's key.
-  const showMoney = view.permissions.includes('field.saleRate.view');
 
   const pipeline = view.pipelines.find((candidate) => candidate.kind === 'lead');
   const stages = [...(pipeline?.stages ?? [])].sort((a, b) => a.sequence - b.sequence);
@@ -109,8 +106,15 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
                         <span>{item.variantLabel}</span>
                       </span>
                     )}
+                    {/* The colour chosen on a multi-colour line, beside the variant's own. */}
+                    {item.colour && (
+                      <span className="ob-colourname ob-small">
+                        <ColourChip name={item.colour} hex={colourHex(item.colour)} />
+                        <span>{item.colour}</span>
+                      </span>
+                    )}
                     <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
-                      {[item.categoryName, item.size, item.grade].filter(Boolean).join(' · ')}
+                      {[item.categoryName, item.size].filter(Boolean).join(' · ')}
                     </span>
                   </div>
                   <div className="ob-line-meta">
@@ -136,22 +140,6 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
                   <span className="ob-data ob-body-strong">
                     {item.quantity} {t('unit.pieces')}
                   </span>
-                  {showMoney && (
-                    /*
-                     * Three states, and the em dash only covers one of them. A
-                     * rate that is present-and-null was deliberately left to be
-                     * quoted; a rate that is absent is one this role may not
-                     * see, and saying "to be quoted" there would be a claim
-                     * about somebody else's price.
-                     */
-                    <span className="ob-data ob-small">
-                      {item.lineTotal != null
-                        ? formatMoney(item.lineTotal)
-                        : 'rate' in item && item.rate === null
-                          ? t('lead.add.line.rateUnset')
-                          : '—'}
-                    </span>
-                  )}
                 </div>
               </div>
             ))}
@@ -168,14 +156,6 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
                   { count: lead.linesWithoutWeight },
                 )}
               </StatusPill>
-            )}
-            {showMoney && lead.totalAmount !== undefined && (
-              <>
-                <span className="ob-small" style={{ marginLeft: 'var(--s-8)' }}>
-                  {t('lead.detail.total')}
-                </span>
-                <span className="ob-body-strong ob-data">{formatMoney(lead.totalAmount)}</span>
-              </>
             )}
           </div>
         </Card>

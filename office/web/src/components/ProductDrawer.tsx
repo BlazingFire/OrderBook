@@ -2,30 +2,24 @@
  * Create or edit a product without leaving the Catalog screen.
  *
  * A product is a **model in a category** with one or more **variants**, and
- * every variant owns a code and a weight. The form says so in its shape: the
- * *Codes & weight* group is a switch — "Does this product come in variants?" —
- * and either one code-and-weight pair (No) or a table of colour · code · weight
- * rows (Yes). Nothing else on the form knows about codes.
+ * every variant owns a code, a colour and a weight. The form says so in its
+ * shape: the *Codes & weight* group is a switch — "Does this product come in
+ * variants?" — and either one code-and-weight pair (No) or a table of colour ·
+ * code · weight rows (Yes). Nothing else on the form knows about codes.
  *
  * The category is a suggest field over the categories the panel already holds;
  * a name that matches none creates one on the Master. Required, because the
  * lead screen finds products by category first.
  *
- * The tile-era attributes (finish, shade, PEI rating, calibre…) are no longer
- * offered. Their columns stay in the database and a record that holds them
- * keeps them — a save from here simply does not name them, and the Master
- * leaves what it is not told about alone.
+ * *Made in every colour* is the second switch. Some models are made in any
+ * colour of the company's colour list ("all colours available in all items"
+ * in the catalogue), and nobody wants sixteen variants per model to say so:
+ * with it on, a lead line on this product may name a colour from the list.
+ *
+ * That is the whole form: name, category, alias, size, the variants and the
+ * colour switch. The product master carries nothing else (2026-09-21).
  *
  * The name is kept for its call sites; it is a modal.
- *
- * **The purchase rate is hidden entirely without the key, not disabled.** A
- * disabled field with a value in it is a disclosure; a disabled field with no
- * value in it is a permanent tease. The Master masks the field by *absence*, so
- * "the key is not there" and "the person may not see cost" are the same test.
- *
- * The sale rate has no client-side gate, deliberately: the Master ignores a
- * rate from anybody without `field.saleRate.edit` whatever the panel sends, so
- * a gate here would be a courtesy — and this screen is not handed a `can()`.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -37,7 +31,7 @@ import type {
   ProductInput,
   ProductVariantInput,
 } from '@orderbook/shared';
-import { PRODUCT_UOMS, ProductValidationError, validateProductVariants } from '@orderbook/shared';
+import { ProductValidationError, validateProductVariants } from '@orderbook/shared';
 
 import { api } from '../api';
 import {
@@ -49,7 +43,6 @@ import {
   Modal,
   NumberInput,
   Segmented,
-  Select,
   SuggestInput,
   rem,
   t,
@@ -71,10 +64,8 @@ interface ProductDrawerProps {
   product?: Product | null;
   /** The categories this panel holds, for the suggest field. */
   categories: ProductCategory[];
-  /** For the colour swatch beside a variant label (`stock.colour`). */
+  /** For the colour swatch beside a variant colour (`stock.colour`). */
   optionLists: OptionListItem[];
-  /** Holds `field.saleRate.view`; off with the company's pricing switch (v1.1.0). */
-  showMoney: boolean;
   onClose: () => void;
   onCreated?: (product: CreatedProduct) => void;
   onUpdated?: (name: string) => void;
@@ -86,17 +77,7 @@ const EMPTY = {
   name: '',
   categoryName: '',
   alias: '',
-  productType: '',
-  brand: '',
-  barcode: '',
-  hsnCode: '',
-  rate: '',
-  mrp: '',
-  purchaseRate: '',
-  gstRatePct: '',
-  uom: 'piece',
   size: '',
-  grade: '',
   /** The one code and weight of a product with no variants. */
   code: '',
   weightKg: '',
@@ -115,17 +96,8 @@ interface VariantRow {
 
 const EMPTY_ROW: VariantRow = { id: null, label: '', code: '', weightKg: '' };
 
-/** Money is entered in rupees and stored in paise. */
-function toPaise(value: string): number | null {
-  return value.trim() ? Math.round(Number(value) * 100) : null;
-}
-
 function toNumber(value: string): number | null {
   return value.trim() ? Number(value) : null;
-}
-
-function fromPaise(value: number | null | undefined): string {
-  return value != null ? String(value / 100) : '';
 }
 
 export function ProductDrawer({
@@ -133,7 +105,6 @@ export function ProductDrawer({
   product,
   categories,
   optionLists,
-  showMoney,
   onClose,
   onCreated,
   onUpdated,
@@ -144,6 +115,7 @@ export function ProductDrawer({
 
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [hasVariants, setHasVariants] = useState(false);
+  const [multiColour, setMultiColour] = useState(false);
   const [rows, setRows] = useState<VariantRow[]>([EMPTY_ROW]);
   const [busy, setBusy] = useState(false);
 
@@ -161,17 +133,6 @@ export function ProductDrawer({
   const setRow = (index: number, patch: Partial<VariantRow>): void =>
     setRows((current) => current.map((row, at) => (at === index ? { ...row, ...patch } : row)));
 
-  /**
-   * Whether this panel's signed-in person may see what the company pays.
-   *
-   * Read from the record rather than from a permission list: the Master masks
-   * the purchase rate by **key absence**, so an editing product that carries no
-   * `purchaseRate` property is exactly the case where the field must not
-   * render. On a new product there is nothing to disclose, so it is offered —
-   * and the Master drops it if they may not set one.
-   */
-  const canSeeCost = !editing || 'purchaseRate' in editing;
-
   useEffect(() => {
     if (!open) return;
 
@@ -181,21 +142,12 @@ export function ProductDrawer({
         name: editing.name,
         categoryName: editing.categoryName,
         alias: editing.alias ?? '',
-        productType: editing.productType ?? '',
-        brand: editing.brand ?? '',
-        barcode: editing.barcode ?? '',
-        hsnCode: editing.hsnCode ?? '',
-        rate: fromPaise(editing.rate),
-        mrp: fromPaise(editing.mrp),
-        purchaseRate: fromPaise(editing.purchaseRate),
-        gstRatePct: editing.gstRatePct != null ? String(editing.gstRatePct) : '',
-        uom: editing.uom || 'piece',
         size: editing.size ?? '',
-        grade: editing.grade ?? '',
         code: !editing.hasVariants && single ? single.code : '',
         weightKg: !editing.hasVariants && single?.weightKg != null ? String(single.weightKg) : '',
       });
       setHasVariants(editing.hasVariants);
+      setMultiColour(editing.multiColour);
       // Deactivated variants stay off the table: they are history's, not the
       // form's, and re-adding the same label brings the old row back.
       setRows(
@@ -213,6 +165,7 @@ export function ProductDrawer({
     } else {
       setDraft(EMPTY);
       setHasVariants(false);
+      setMultiColour(false);
       setRows([EMPTY_ROW]);
     }
 
@@ -288,21 +241,10 @@ export function ProductDrawer({
       name,
       categoryName,
       alias: text('alias'),
-      productType: text('productType'),
-      brand: text('brand'),
-      barcode: text('barcode'),
-      hsnCode: text('hsnCode'),
-      gstRatePct: toNumber(draft.gstRatePct),
-      uom: draft.uom as ProductInput['uom'],
       size: text('size'),
-      grade: text('grade'),
+      multiColour,
       hasVariants,
       variants,
-      // Sent only when the field was rendered. Sending `null` for a hidden
-      // field would clear a price this person was never shown — and with the
-      // company's pricing switch off, nobody is shown one.
-      ...(showMoney ? { rate: toPaise(draft.rate), mrp: toPaise(draft.mrp) } : {}),
-      ...(showMoney && canSeeCost ? { purchaseRate: toPaise(draft.purchaseRate) } : {}),
     };
 
     setBusy(true);
@@ -347,28 +289,6 @@ export function ProductDrawer({
           value={draft[field]}
           onChange={(event) => set(field, event.target.value.replace(/[^0-9.]/g, ''))}
         />
-      )}
-    </Field>
-  );
-
-  /** A closed set. A native select, because that is exactly what one is. */
-  const choice = (
-    field: keyof Draft,
-    label: string,
-    values: readonly string[],
-    labelFor: (value: string) => string,
-    blank = true,
-  ) => (
-    <Field label={label}>
-      {(id) => (
-        <Select id={id} value={draft[field]} onChange={(event) => set(field, event.target.value)}>
-          {blank && <option value="">{t('product.field.none')}</option>}
-          {values.map((value) => (
-            <option key={value} value={value}>
-              {labelFor(value)}
-            </option>
-          ))}
-        </Select>
       )}
     </Field>
   );
@@ -452,30 +372,7 @@ export function ProductDrawer({
             )}
           </Field>
           {text('alias', t('product.field.alias'))}
-          {text('brand', t('product.field.brand'))}
-          {text('productType', t('product.field.type'))}
-          {text('barcode', t('product.field.barcode'), { className: 'ob-mono' })}
-        </FieldGroup>
-
-        <FieldGroup title={t('product.group.pricing')}>
-          {showMoney && numeric('rate', t('product.field.rate'), t('product.field.rateHint'))}
-          {showMoney && numeric('mrp', t('product.field.mrp'))}
-          {showMoney &&
-            canSeeCost &&
-            numeric(
-              'purchaseRate',
-              t('product.field.purchaseRate'),
-              t('product.field.purchaseRateHint'),
-            )}
-          {numeric('gstRatePct', t('product.field.gstRate'))}
-          {text('hsnCode', t('product.field.hsnCode'), { className: 'ob-mono' })}
-          {choice(
-            'uom',
-            t('product.field.uom'),
-            PRODUCT_UOMS,
-            (value) => t(`product.uom.${value}` as never),
-            false,
-          )}
+          {text('size', t('product.field.size'), { placeholder: t('product.field.sizePlaceholder') })}
         </FieldGroup>
 
         <FieldGroup title={t('product.group.codes')}>
@@ -602,9 +499,24 @@ export function ProductDrawer({
           )}
         </FieldGroup>
 
-        <FieldGroup title={t('product.group.sizeGrade')}>
-          {text('size', t('product.field.size'))}
-          {text('grade', t('product.field.grade'))}
+        <FieldGroup title={t('product.group.colours')}>
+          <Field label={t('product.multiColour.label')} span={3}>
+            {() => (
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 'var(--s-12)' }}>
+                <Segmented<'no' | 'yes'>
+                  value={multiColour ? 'yes' : 'no'}
+                  options={[
+                    { value: 'no', label: t('product.multiColour.no') },
+                    { value: 'yes', label: t('product.multiColour.yes') },
+                  ]}
+                  onChange={(next) => setMultiColour(next === 'yes')}
+                />
+                <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
+                  {multiColour ? t('product.multiColour.yesHint') : t('product.multiColour.noHint')}
+                </span>
+              </div>
+            )}
+          </Field>
         </FieldGroup>
 
         {liveProduct && (

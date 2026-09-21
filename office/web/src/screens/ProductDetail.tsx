@@ -42,14 +42,11 @@ import {
   Select,
   StatusPill,
   formatKg,
-  formatMoney,
   rem,
   t,
   useColourHex,
   type DataTableColumn,
 } from '@orderbook/ui';
-
-const RATE_PERMISSION = 'field.saleRate.view';
 
 type StockMode = 'none' | 'inbound' | 'adjust';
 
@@ -77,8 +74,6 @@ export function ProductDetail({
 }) {
   const colourHex = useColourHex(view.optionLists);
   const [mode, setMode] = useState<StockMode>('none');
-  // Off with the company's pricing switch, or without the role's key.
-  const showMoney = view.permissions.includes(RATE_PERMISSION);
   // Absent means an older Master, which sends every figure — read as "on".
   const freeToSell = view.features?.freeToSell ?? true;
 
@@ -180,28 +175,13 @@ export function ProductDetail({
       <Card>
         <KeyValueList
           items={[
-            { label: t('product.field.brand'), value: product.brand ?? '—' },
             { label: t('product.detail.category'), value: product.categoryName },
-            { label: t('product.detail.type'), value: product.productType ?? '—' },
+            { label: t('product.field.alias'), value: product.alias ?? '—' },
             { label: t('product.detail.size'), value: product.size ?? '—' },
-            { label: t('product.detail.grade'), value: product.grade ?? '—' },
-            ...(showMoney
-              ? [
-                  {
-                    label: t('product.detail.rate'),
-                    value:
-                      product.rate === undefined ? (
-                        <span
-                          className="ob-redacted"
-                          title={`Missing permission: ${RATE_PERMISSION}`}
-                          aria-label="Hidden"
-                        />
-                      ) : (
-                        formatMoney(product.rate)
-                      ),
-                  },
-                ]
-              : []),
+            {
+              label: t('product.multiColour.label'),
+              value: product.multiColour ? t('product.multiColour.detailYes') : t('product.multiColour.detailNo'),
+            },
           ]}
         />
       </Card>

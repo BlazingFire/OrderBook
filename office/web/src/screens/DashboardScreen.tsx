@@ -16,10 +16,7 @@
  * panel's own offline entries included.
  *
  * The pipeline breakdown (`view.dashboard.pipelineBreakdown`) names the
- * stages; the money beside each bar is summed from the snapshot's leads
- * because stages with no name on this panel (a missing breakdown row) still
- * need a figure. `totalAmount` is absent, not null, when the role lacks
- * `field.saleRate.view` — that reads as "cannot be summed", never as zero.
+ * stages and counts the leads in each.
  */
 
 import type { ReactNode } from 'react';
@@ -31,7 +28,6 @@ import {
   EmptyState,
   Timeline,
   formatDateTime,
-  formatMoney,
   rem,
   t,
 } from '@orderbook/ui';
@@ -221,10 +217,6 @@ export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead }: Prop
   const canViewLeads = view.permissions.includes('leads.view');
   const canViewOrders = view.permissions.includes('orders.view');
   const canViewConflicts = view.permissions.includes('sync.resolveConflicts');
-  // Off with the company's pricing switch, or without the role's key: no
-  // Amount figures at all, rather than ones that are redacted top to bottom.
-  const showMoney = view.permissions.includes('field.saleRate.view');
-
   const nothingYet = view.leads.length === 0 && view.orders.length === 0 && view.stock.length === 0;
   if (nothingYet) {
     return (
@@ -264,9 +256,6 @@ export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead }: Prop
     (sum, order) => sum + order.items.reduce((s, item) => s + item.quantity, 0),
     0,
   );
-  const dispatchedAmount = dispatchedThisWeek.some((order) => order.totalAmount === undefined)
-    ? undefined
-    : dispatchedThisWeek.reduce((sum, order) => sum + (order.totalAmount ?? 0), 0);
   const dispatchedUnit =
     dispatchedThisWeek.length === 1
       ? t('dashboard.dispatched.unitOne')
@@ -302,17 +291,6 @@ export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead }: Prop
   const stagedLeads = stages.reduce((sum, stage) => sum + stage.leadCount, 0);
   const asOf = view.dashboard?.asOf ?? null;
 
-  const stageMoney = new Map<string, number | undefined>();
-  const moneyUnknown = new Set<string>();
-  if (showMoney) {
-    for (const lead of openLeads) {
-      if (lead.totalAmount === undefined) {
-        moneyUnknown.add(lead.stageId);
-      } else {
-        stageMoney.set(lead.stageId, (stageMoney.get(lead.stageId) ?? 0) + lead.totalAmount);
-      }
-    }
-  }
   const pipelineMax = Math.max(1, ...stages.map((stage) => stage.leadCount));
 
   const activity = describeActivity(view, canViewLeads, canViewOrders).slice(0, 5);
@@ -371,16 +349,10 @@ export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead }: Prop
             note={
               dispatchedThisWeek.length === 0
                 ? t('dashboard.dispatched.none')
-                : dispatchedAmount === undefined
-                  ? t('dashboard.dispatched.countOnly', {
-                      count: dispatchedThisWeek.length,
-                      unit: dispatchedUnit,
-                    })
-                  : t('dashboard.dispatched.summary', {
-                      amount: formatMoney(dispatchedAmount),
-                      count: dispatchedThisWeek.length,
-                      unit: dispatchedUnit,
-                    })
+                : t('dashboard.dispatched.countOnly', {
+                    count: dispatchedThisWeek.length,
+                    unit: dispatchedUnit,
+                  })
             }
           />
         )}
@@ -471,20 +443,6 @@ export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead }: Prop
                     >
                       {stage.leadCount.toLocaleString('en-IN')}
                     </span>
-                    <span
-                      className="ob-data ob-small"
-                      style={{
-                        textAlign: 'right',
-                        color: 'var(--fg-secondary)',
-                        fontVariantNumeric: 'tabular-nums',
-                      }}
-                    >
-                      {showMoney
-                        ? moneyUnknown.has(stage.stageId)
-                          ? '—'
-                          : formatMoney(stageMoney.get(stage.stageId) ?? 0)
-                        : ''}
-                    </span>
                   </div>
                 ))}
               </div>
@@ -527,12 +485,7 @@ export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead }: Prop
           ) : (
             <div className="ob-lines">
               {followUpsDue.slice(0, 8).map((lead) => (
-                <FollowUpRow
-                  key={lead.id}
-                  lead={lead}
-                  showMoney={showMoney}
-                  onOpen={() => onOpenLead(lead.id)}
-                />
+                <FollowUpRow key={lead.id} lead={lead} onOpen={() => onOpenLead(lead.id)} />
               ))}
             </div>
           )}
@@ -565,15 +518,7 @@ function formatRelativeDay(iso: string): string {
   return formatDateTime(iso);
 }
 
-function FollowUpRow({
-  lead,
-  showMoney,
-  onOpen,
-}: {
-  lead: Lead;
-  showMoney: boolean;
-  onOpen: () => void;
-}) {
+function FollowUpRow({ lead, onOpen }: { lead: Lead; onOpen: () => void }) {
   return (
     <button
       type="button"
@@ -602,11 +547,6 @@ function FollowUpRow({
         <span className="ob-small" style={{ color: 'var(--fg-secondary)' }}>
           {lead.stageName}
         </span>
-        {showMoney && (
-          <span className="ob-data ob-body-strong">
-            {lead.totalAmount !== undefined ? formatMoney(lead.totalAmount) : '—'}
-          </span>
-        )}
       </span>
     </button>
   );

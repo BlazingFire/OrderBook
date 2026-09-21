@@ -840,7 +840,7 @@ const LOCAL_FIELDS: Record<ConnectorEntity, string[]> = {
     'gstNumber',
     'notes',
   ],
-  product: ['code', 'name', 'categoryName', 'alias', 'size', 'grade', 'rate', 'hsnCode', 'weightKg'],
+  product: ['code', 'name', 'categoryName', 'alias', 'size', 'weightKg', 'multiColour'],
 };
 
 /**

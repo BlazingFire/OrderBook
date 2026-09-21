@@ -1049,7 +1049,6 @@ function OfficePanel() {
           render: () => (
             <AddLeadScreen
               view={view}
-              canEditRate={can('field.saleRate.edit')}
               focusNonce={newLeadNonce}
               onSaved={(id) => {
                 setTab('leads');

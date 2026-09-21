@@ -39,7 +39,7 @@ export function searchLocalView(view: LocalView, term: string): SearchHit[] {
     // have to find the model they belong to.
     const codes = product.variants.map((variant) => variant.code);
     const labels = product.variants.map((variant) => variant.label);
-    if (!matches(needle, product.name, product.alias, product.sin, ...codes, ...labels)) continue;
+    if (!matches(needle, product.name, product.alias, product.size, ...codes, ...labels)) continue;
     hits.push({
       kind: 'product',
       id: product.id,

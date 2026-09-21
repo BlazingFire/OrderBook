@@ -64,7 +64,6 @@ import {
   SkeletonTable,
   StatusPill,
   formatKg,
-  formatMoney,
   rem,
   t,
   useColourHex,
@@ -76,8 +75,6 @@ import {
 } from '@orderbook/ui';
 import { PartyDetail } from './PartyDetail';
 import { ProductDetail } from './ProductDetail';
-
-const RATE_PERMISSION = 'field.saleRate.view';
 
 /** Rows per fetch. `DataTable` virtualises past 100, so a page is cheap to show. */
 const PAGE = 100;
@@ -145,9 +142,6 @@ export function CatalogScreen({
 }) {
   const toast = useToast();
   const colourHex = useColourHex(view.optionLists);
-  // Off with the company's pricing switch, or without the role's key: no
-  // Rate column and no rate fields, rather than redacted ones.
-  const showMoney = view.permissions.includes(RATE_PERMISSION);
   // Absent means an older Master, which sends every figure — read as "on".
   const freeToSell = view.features?.freeToSell ?? true;
 
@@ -639,13 +633,6 @@ export function CatalogScreen({
       ),
     },
     {
-      key: 'brand',
-      header: t('catalog.products.column.brand'),
-      priority: 3,
-      width: rem(90),
-      render: (product) => product.brand ?? '—',
-    },
-    {
       key: 'size',
       header: t('catalog.products.column.size'),
       priority: 3,
@@ -672,20 +659,14 @@ export function CatalogScreen({
         return low === high ? formatKg(low) : t('product.weight.range', { low: formatKg(low), high: formatKg(high) });
       },
     },
-    ...(showMoney
-      ? [
-          {
-            key: 'rate',
-            header: t('catalog.products.column.rate'),
-            width: rem(100),
-            align: 'right',
-            // `rate` is absent, not null, when the role cannot see it (UI-11).
-            render: (product: Product) => formatMoney(product.rate ?? null),
-            redactedReason: (product: Product) =>
-              product.rate === undefined ? RATE_PERMISSION : undefined,
-          } satisfies DataTableColumn<Product>,
-        ]
-      : []),
+    {
+      key: 'colours',
+      header: t('catalog.products.column.colours'),
+      priority: 3,
+      width: rem(96),
+      render: (product) =>
+        product.multiColour ? <StatusPill tone="accent">{t('product.multiColour.pill')}</StatusPill> : '—',
+    },
     {
       key: 'stock',
       header: t(freeToSell ? 'catalog.products.column.stock' : 'catalog.products.column.stockOnHand'),
@@ -727,7 +708,6 @@ export function CatalogScreen({
           product={editingProduct}
           categories={view.categories}
           optionLists={view.optionLists}
-          showMoney={showMoney}
           onClose={() => setEditingProduct(null)}
           onUpdated={onProductUpdated}
           onError={onDrawerError}
@@ -801,7 +781,6 @@ export function CatalogScreen({
         open={productDrawerOpen}
         categories={view.categories}
         optionLists={view.optionLists}
-        showMoney={showMoney}
         onClose={() => setProductDrawerOpen(false)}
         onCreated={onProductCreated}
         onError={onDrawerError}
@@ -811,7 +790,6 @@ export function CatalogScreen({
         product={editingProduct}
         categories={view.categories}
         optionLists={view.optionLists}
-        showMoney={showMoney}
         onClose={() => setEditingProduct(null)}
         onUpdated={onProductUpdated}
         onError={onDrawerError}
@@ -819,7 +797,6 @@ export function CatalogScreen({
 
       <ProductImportModal
         open={importOpen}
-        showMoney={showMoney}
         onClose={() => setImportOpen(false)}
         onImported={() => setRevision((current) => current + 1)}
         onError={onDrawerError}

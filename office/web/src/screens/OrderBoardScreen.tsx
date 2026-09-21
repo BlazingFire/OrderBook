@@ -43,7 +43,6 @@ import {
   Timeline,
   formatDateTime,
   formatKg,
-  formatMoney,
   rem,
   t,
   useColourHex,
@@ -65,7 +64,6 @@ interface Props {
   onStageChange: (stageId: string | null) => void;
 }
 
-const SALE_RATE_PERMISSION = 'field.saleRate.view';
 const DISPATCH_PERMISSION = 'orders.dispatch';
 
 function sortedStages(pipeline: LocalView['pipelines'][number] | undefined): PipelineStage[] {
@@ -125,8 +123,6 @@ export function OrderBoardScreen({
 }: Props) {
   const [scope, setScope] = useState<PartyScopeFilter>('all');
   const colourHex = useColourHex(view.optionLists);
-  // Off with the company's pricing switch, or without the role's key.
-  const showMoney = view.permissions.includes(SALE_RATE_PERMISSION);
   // Absent means an older Master, which sends every figure — read as "on".
   const freeToSell = view.features?.freeToSell ?? true;
 
@@ -212,7 +208,6 @@ export function OrderBoardScreen({
           order={openOrder}
           stages={stages}
           canDispatch={canDispatch}
-          showMoney={showMoney}
           freeToSell={freeToSell}
           onClose={() => onOpenId(null)}
           onError={onError}
@@ -289,19 +284,6 @@ export function OrderBoardScreen({
         </span>
       ),
     },
-    ...(showMoney
-      ? [
-          {
-            key: 'amount',
-            header: t('orders.column.amount'),
-            width: rem(110),
-            align: 'right',
-            render: (order: Order) => formatMoney(order.totalAmount ?? null),
-            redactedReason: (order: Order) =>
-              order.totalAmount === undefined ? SALE_RATE_PERMISSION : undefined,
-          } satisfies DataTableColumn<Order>,
-        ]
-      : []),
     {
       key: 'stage',
       header: t('orders.column.stage'),
@@ -349,7 +331,6 @@ function OrderDetailBody({
   order,
   stages,
   canDispatch,
-  showMoney,
   freeToSell,
   onClose,
   onError,
@@ -358,7 +339,6 @@ function OrderDetailBody({
   order: Order;
   stages: PipelineStage[];
   canDispatch: boolean;
-  showMoney: boolean;
   /** Off, the reservations that hold this order's stock are not a thing on screen. */
   freeToSell: boolean;
   onClose: () => void;
@@ -395,10 +375,10 @@ function OrderDetailBody({
                   <th>{t('orders.column.code')}</th>
                   <th>{t('orders.column.product')}</th>
                   <th>{t('orders.column.variant')}</th>
+                  <th>{t('orders.column.colour')}</th>
                   <th>{t('orders.column.packaging')}</th>
                   <th className="num">{t('orders.column.qty')}</th>
                   <th className="num">{t('orders.column.lineWeight')}</th>
-                  {showMoney && <th className="num">{t('orders.detail.lineTotal')}</th>}
                 </tr>
               </thead>
               <tbody>
@@ -418,6 +398,10 @@ function OrderDetailBody({
                         '—'
                       )}
                     </td>
+                    <td>
+                      {/* The colour chosen on a multi-colour line — frozen like the rest of the line. */}
+                      {item.colour ? <ColourName name={item.colour} hex={colourHex(item.colour)} /> : '—'}
+                    </td>
                     <td>{item.packaging ?? '—'}</td>
                     <td className="num">{item.quantity.toLocaleString('en-IN')}</td>
                     <td className="num">
@@ -429,19 +413,6 @@ function OrderDetailBody({
                         formatKg(item.lineWeightKg)
                       )}
                     </td>
-                    {showMoney && (
-                      <td className="num">
-                        {item.lineTotal === undefined ? (
-                          <span
-                            className="ob-redacted"
-                            title={`Missing permission: ${SALE_RATE_PERMISSION}`}
-                            aria-label="Hidden"
-                          />
-                        ) : (
-                          formatMoney(item.lineTotal)
-                        )}
-                      </td>
-                    )}
                   </tr>
                 ))}
               </tbody>

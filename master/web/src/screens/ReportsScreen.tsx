@@ -8,11 +8,6 @@
  * they are rendered under that field rather than as a page banner — and the
  * last report that *did* resolve stays on screen while the operator fixes the
  * month, since it is labelled with its own range and is still true.
- *
- * Money is absent, not zero, when the caller cannot see rates (`ratesIncluded`
- * on the report says which). A column of em dashes would imply the figures
- * exist and happen to be blank, so the money columns are dropped entirely and
- * the omission is stated once.
  */
 
 import { useEffect, useState } from 'react';
@@ -43,7 +38,6 @@ import {
   Select,
   SkeletonRows,
   Tabs,
-  formatMoney,
   rem,
   t,
   type DataTableColumn,
@@ -297,14 +291,6 @@ function NoActivity({ description }: { description: string }) {
   );
 }
 
-function RatesHiddenNote() {
-  return (
-    <p className="ob-small" style={{ margin: 0, color: 'var(--fg-tertiary)' }}>
-      {t('reports.ratesHidden', { permission: 'field.saleRate.view' })}
-    </p>
-  );
-}
-
 function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
     <Card>
@@ -335,7 +321,7 @@ function DispatchesView({ report }: { report: DispatchesReport }) {
     },
     // Only the month is pinned: DataTable turns a column with no width into a
     // `1fr` track, and a table whose every track is fixed leaves the rest of
-    // the row as dead space when the money column is dropped.
+    // the row as dead space.
     {
       key: 'orders',
       header: t('reports.column.orders'),
@@ -348,16 +334,6 @@ function DispatchesView({ report }: { report: DispatchesReport }) {
       align: 'right',
       render: (row) => row.boxCount,
     },
-    ...(report.ratesIncluded
-      ? [
-          {
-            key: 'value',
-            header: t('reports.column.value'),
-            align: 'right' as const,
-            render: (row: DispatchMonthBucket) => formatMoney(row.totalValue ?? null),
-          },
-        ]
-      : []),
   ];
 
   const colourColumns: DataTableColumn<DispatchColourBucket>[] = [
@@ -373,18 +349,10 @@ function DispatchesView({ report }: { report: DispatchesReport }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-24)' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--s-12)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--s-12)' }}>
         <StatCard label={t('reports.stat.orders')} value={report.totals.orderCount} />
         <StatCard label={t('reports.stat.boxes')} value={report.totals.boxCount} />
-        {report.ratesIncluded && (
-          <StatCard
-            label={t('reports.stat.value')}
-            value={formatMoney(report.totals.totalValue ?? null)}
-          />
-        )}
       </div>
-
-      {!report.ratesIncluded && <RatesHiddenNote />}
 
       <Section title={t('reports.dispatches.byMonth')}>
         <DataTable
@@ -488,17 +456,6 @@ function TopPartiesView({ report }: { report: TopPartiesReport }) {
       align: 'right',
       render: (row) => row.orderCount,
     },
-    ...(report.ratesIncluded
-      ? [
-          {
-            key: 'value',
-            header: t('reports.column.value'),
-            width: rem(160),
-            align: 'right' as const,
-            render: (row: TopPartyRow) => formatMoney(row.totalValue ?? null),
-          },
-        ]
-      : []),
   ];
 
   const cityColumns: DataTableColumn<TopCityRow>[] = [
@@ -517,31 +474,13 @@ function TopPartiesView({ report }: { report: TopPartiesReport }) {
       align: 'right',
       render: (row) => row.orderCount,
     },
-    ...(report.ratesIncluded
-      ? [
-          {
-            key: 'value',
-            header: t('reports.column.value'),
-            width: rem(160),
-            align: 'right' as const,
-            render: (row: TopCityRow) => formatMoney(row.totalValue ?? null),
-          },
-        ]
-      : []),
   ];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-24)' }}>
-      {!report.ratesIncluded && <RatesHiddenNote />}
-
       <Section title={t('reports.topParties.parties')}>
-        {/* Which ranking this is depends on the caller: a rate-blind role gets
-            the same parties ordered by order count, so saying "top 10" without
-            saying by what would be the wrong claim for half the roles. */}
         <p className="ob-small" style={{ margin: 0 }}>
-          {report.orderedBy === 'value'
-            ? t('reports.topParties.orderedByValue', { limit: report.limit })
-            : t('reports.topParties.orderedByCount', { limit: report.limit })}
+          {t('reports.topParties.orderedByCount', { limit: report.limit })}
         </p>
         <DataTable
           columns={partyColumns}

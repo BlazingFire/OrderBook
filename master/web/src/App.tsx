@@ -771,7 +771,6 @@ function MasterPanel() {
       render: () => (
         <LeadsOrdersScreen
           revision={revisionOf(revisions, 'records')}
-          permissions={user.permissions}
           view={subKeyOf('orders') as 'leads' | 'orders' | 'converted'}
           onViewChange={(view) => selectSubPage('orders', view)}
         />

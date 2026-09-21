@@ -23,7 +23,6 @@ import {
   Tabs,
   formatDateTime,
   formatKg,
-  formatMoney,
   rem,
   t,
   useFilterBar,
@@ -36,8 +35,6 @@ type View = 'leads' | 'orders' | 'converted';
 interface Props {
   /** Bumped by the live socket whenever lead or order data changes. */
   revision: number;
-  /** The signed-in caller's own resolved permissions. */
-  permissions: string[];
   /** Which list is showing — chosen here or from the sidebar's sub-pages. */
   view: View;
   onViewChange: (view: View) => void;
@@ -58,10 +55,12 @@ function summariseItems(items: LineItem[]): { text: string; title: string } {
   // BASIN › DAMRU [Vitrosa 41] ×5" is what the counter would say.
   const lines = items.map((item) => {
     const main = item.categoryName ? `${item.categoryName} › ` : '';
-    const variant = item.variantLabel ? ` [${item.variantLabel}]` : '';
+    // The colour chosen on a multi-colour line rides beside the variant's own.
+    const variant = [item.variantLabel, item.colour].filter(Boolean).join(' · ');
+    const variantText = variant ? ` [${variant}]` : '';
     const pack = item.packaging ? ` · ${item.packaging}` : '';
-    const short = `${main}${item.productName}${variant} ×${item.quantity}${pack}`;
-    const full = [main + item.productName + variant, item.code, item.packaging, item.grade]
+    const short = `${main}${item.productName}${variantText} ×${item.quantity}${pack}`;
+    const full = [main + item.productName + variantText, item.code, item.packaging]
       .filter(Boolean)
       .join(' · ');
     return { short, full };
@@ -72,10 +71,7 @@ function summariseItems(items: LineItem[]): { text: string; title: string } {
   };
 }
 
-export function LeadsOrdersScreen({ revision, permissions, view, onViewChange }: Props) {
-  // Off with the company's pricing switch, or without the role's key: no
-  // Amount column at all, rather than one reading "—" top to bottom.
-  const showMoney = permissions.includes('field.saleRate.view');
+export function LeadsOrdersScreen({ revision, view, onViewChange }: Props) {
   /**
    * "All" is everything this person may see — which, for somebody without
    * `party.accessAll`, already excludes other people's parties, so it is never
@@ -239,17 +235,6 @@ export function LeadsOrdersScreen({ revision, permissions, view, onViewChange }:
         </span>
       ),
     },
-    ...(showMoney
-      ? [
-          {
-            key: 'amount',
-            header: t('leadsOrders.orders.column.amount'),
-            width: rem(120),
-            align: 'right',
-            render: (order: Order) => formatMoney(order.totalAmount ?? null),
-          } satisfies DataTableColumn<Order>,
-        ]
-      : []),
     {
       key: 'stage',
       header: t('leadsOrders.orders.column.stage'),
@@ -369,17 +354,6 @@ export function LeadsOrdersScreen({ revision, permissions, view, onViewChange }:
         </span>
       ),
     },
-    ...(showMoney
-      ? [
-          {
-            key: 'amount',
-            header: t('leadsOrders.leads.column.amount'),
-            width: rem(120),
-            align: 'right',
-            render: (lead: Lead) => formatMoney(lead.totalAmount ?? null),
-          } satisfies DataTableColumn<Lead>,
-        ]
-      : []),
     {
       key: 'stage',
       header: t('leadsOrders.leads.column.stage'),

@@ -238,8 +238,6 @@ export function PermissionGrid({
   );
 }
 
-/** The one place the absent-versus-null rule is explained to the person about to turn it off. */
-function capabilityHint(key: string): string | undefined {
-  if (key === 'field.saleRate.view') return t('access.permissions.saleRateHint');
+function capabilityHint(_key: string): string | undefined {
   return undefined;
 }

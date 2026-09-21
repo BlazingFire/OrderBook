@@ -35,7 +35,6 @@ import {
   Modal,
   Segmented,
   StatusPill,
-  formatMoney,
   rem,
   t,
   type DataTableColumn,
@@ -47,8 +46,6 @@ const MAX_MB = Math.round(MAX_PRODUCT_IMPORT_BYTES / (1024 * 1024));
 
 interface ProductImportModalProps {
   open: boolean;
-  /** Holds `field.saleRate.view`; off with the company's pricing switch. */
-  showMoney: boolean;
   onClose: () => void;
   /** Something was written; the catalogue should refetch. */
   onImported: (result: ProductImportResult) => void;
@@ -76,7 +73,6 @@ function describe(error: unknown): string {
 
 export function ProductImportModal({
   open,
-  showMoney,
   onClose,
   onImported,
   onError,
@@ -385,18 +381,12 @@ export function ProductImportModal({
                         </span>
                       ),
                     },
-                    ...(showMoney
-                      ? [
-                          {
-                            key: 'rate',
-                            header: t('catalog.products.column.rate'),
-                            width: rem(100),
-                            align: 'right' as const,
-                            render: (row: ProductImportResult['sample'][number]) =>
-                              formatMoney(row.rate ?? null),
-                          },
-                        ]
-                      : []),
+                    {
+                      key: 'size',
+                      header: t('catalog.products.column.size'),
+                      width: rem(110),
+                      render: (row) => row.size ?? '—',
+                    },
                   ]}
                   rows={result.sample}
                   rowKey={(row) => `${row.categoryName ?? ''}:${row.name}`}

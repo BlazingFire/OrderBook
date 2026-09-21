@@ -1,11 +1,5 @@
 /** Display helpers shared across screens. */
 
-/** Money is stored in the smallest unit (paise); show it as rupees. */
-export function formatMoney(smallestUnit: number | null): string {
-  if (smallestUnit === null) return '—';
-  return `₹${(smallestUnit / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
 /**
  * A weight in kilograms, to three decimals at most — the precision the master
  * stores. `null` is an unentered weight, shown as a dash rather than a zero so

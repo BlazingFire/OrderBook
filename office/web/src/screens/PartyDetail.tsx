@@ -32,19 +32,19 @@ import {
   KeyValueList,
   StatusPill,
   formatDateTime,
-  formatMoney,
   rem,
   t,
   type DataTableColumn,
 } from '@orderbook/ui';
 
-const RATE_PERMISSION = 'field.saleRate.view';
-
-interface RateRow {
+/** A party's own version of a catalogue model: what they call it, and how it ships to them. */
+interface OwnRecordRow {
   key: string;
   product: string;
-  catalogueRate: number | null | undefined;
-  ownRate: number | null | undefined;
+  ownName: string | null;
+  alias: string | null;
+  size: string | null;
+  packaging: string | null;
 }
 
 export function PartyDetail({
@@ -56,18 +56,17 @@ export function PartyDetail({
   view: LocalView;
   onEdit: () => void;
 }) {
-  // Off with the company's pricing switch, or without the role's key: the
-  // party's own rates are a section about money and nothing else.
-  const showMoney = view.permissions.includes(RATE_PERMISSION);
-  const rateRows: RateRow[] = view.partyVariants
+  const recordRows: OwnRecordRow[] = view.partyVariants
     .filter((variant) => variant.partyId === party.id)
     .map((variant) => {
       const product = view.products.find((candidate) => candidate.id === variant.productId);
       return {
         key: variant.id,
-        product: variant.productName ?? product?.name ?? '—',
-        catalogueRate: product?.rate,
-        ownRate: variant.rate,
+        product: product?.name ?? '—',
+        ownName: variant.productName,
+        alias: variant.alias,
+        size: variant.size,
+        packaging: variant.packaging,
       };
     });
 
@@ -87,27 +86,20 @@ export function PartyDetail({
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
     .slice(0, 5);
 
-  const rateColumns: DataTableColumn<RateRow>[] = [
-    { key: 'product', header: t('party.detail.rates.product'), render: (row) => row.product },
+  const recordColumns: DataTableColumn<OwnRecordRow>[] = [
+    { key: 'product', header: t('party.detail.records.product'), render: (row) => row.product },
     {
-      key: 'catalogue',
-      header: t('party.detail.rates.catalogue'),
-      width: rem(110),
-      align: 'right',
-      render: (row) => (
-        <span style={{ color: 'var(--fg-tertiary)', textDecoration: 'line-through' }}>
-          {formatMoney(row.catalogueRate ?? null)}
-        </span>
-      ),
-      redactedReason: (row) => (row.catalogueRate === undefined ? RATE_PERMISSION : undefined),
+      key: 'ownName',
+      header: t('party.detail.records.ownName'),
+      render: (row) => <span className="ob-body-strong">{row.ownName ?? '—'}</span>,
     },
+    { key: 'alias', header: t('product.field.alias'), width: rem(110), render: (row) => row.alias ?? '—' },
+    { key: 'size', header: t('product.field.size'), width: rem(110), render: (row) => row.size ?? '—' },
     {
-      key: 'own',
-      header: t('party.detail.rates.own'),
-      width: rem(110),
-      align: 'right',
-      render: (row) => <span className="ob-body-strong">{formatMoney(row.ownRate ?? null)}</span>,
-      redactedReason: (row) => (row.ownRate === undefined ? RATE_PERMISSION : undefined),
+      key: 'packaging',
+      header: t('orders.column.packaging'),
+      width: rem(120),
+      render: (row) => row.packaging ?? '—',
     },
   ];
 
@@ -161,26 +153,24 @@ export function PartyDetail({
         </div>
       </Card>
 
-      {showMoney && (
-        <div>
-          <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
-            {t('party.detail.ratesTitle')}
-          </div>
-          <DataTable
-            columns={rateColumns}
-            rows={rateRows}
-            rowKey={(row) => row.key}
-            empty={
-              <p
-                className="ob-small"
-                style={{ margin: 0, padding: 'var(--s-16)', color: 'var(--fg-tertiary)' }}
-              >
-                {t('party.detail.rates.none')}
-              </p>
-            }
-          />
+      <div>
+        <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
+          {t('party.detail.recordsTitle')}
         </div>
-      )}
+        <DataTable
+          columns={recordColumns}
+          rows={recordRows}
+          rowKey={(row) => row.key}
+          empty={
+            <p
+              className="ob-small"
+              style={{ margin: 0, padding: 'var(--s-16)', color: 'var(--fg-tertiary)' }}
+            >
+              {t('party.detail.records.none')}
+            </p>
+          }
+        />
+      </div>
 
       <div>
         <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
@@ -209,12 +199,6 @@ export function PartyDetail({
                   {lead.id}
                 </span>
                 <span className="ob-small">{lead.stageName}</span>
-                <span style={{ flex: 1 }} />
-                {showMoney && (
-                  <span className="ob-data">
-                    {lead.totalAmount !== undefined ? formatMoney(lead.totalAmount) : '—'}
-                  </span>
-                )}
               </div>
             ))}
           </div>

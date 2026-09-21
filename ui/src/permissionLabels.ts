@@ -6,7 +6,7 @@
  * does not read — passing one through it renders the token itself. Until the
  * planned shared `ui/` workspace hoists both tables together
  * (docs/UI_REDESIGN.md §7), the key is turned into a name here rather than
- * shown raw: `leads` reads as Leads, `field.saleRate.edit` as Sale rate edit.
+ * shown raw: `leads` reads as Leads, `stock.adjust` as Stock adjust.
  *
  * Deliberately the only place that happens, so the grid and the read-only
  * summary of the same role cannot disagree about what a key is called.

@@ -14,33 +14,27 @@
  * chosen category becomes a chip in front of the box and the same box then
  * searches the models inside it, by name or by any of their codes. Choosing a
  * model replaces the search field with the model itself and opens a draft card
- * underneath: packaging, grade and rate at the top, one row per variant below —
- * code and weight read off the variant, a quantity to type. Nothing joins the
+ * underneath: packaging (and, on a model made in every colour, the colour) at
+ * the top, one row per variant below — code and weight read off the variant, a
+ * quantity to type. Nothing joins the
  * lead until that card is added, so a half-filled product cannot ride along
  * unnoticed, and the search field comes straight back for the next one, with
  * the category still chosen.
  *
  * The unit of a lead is **one variant** (`LineItem.variantId`). A card with
- * quantities against White and Blue adds two lines, each with its own code,
- * weight and total; the Added-products panel shows them as two.
+ * quantities against White and Blue adds two lines, each with its own code and
+ * weight; the Added-products panel shows them as two.
  *
  * Three rules are enforced visibly rather than only on the server:
  *  · **Packaging is never auto-filled.** Picking a model fills every other field
  *    and pointedly leaves packaging empty — the draft cannot be added until
  *    somebody chooses one.
- *  · **A rate can be switched off.** "To be quoted later" and "nobody has typed
- *    it yet" are different facts, and the line stores them differently: the
- *    switch sends `rateUnset`, which stops the catalogue fallback that an empty
- *    field falls into.
- *  · **A party's own rates change where money comes from**, but a party's saved
- *    packaging is only ever a suggestion.
- *
- * The rate a line opens on is the last rate actually used for this party and
- * this product, read out of the leads and orders already in this panel's
- * snapshot; failing that the party's own rate, failing that the catalogue. The
- * note under the field says which of the three it is, and a changed rate
- * offers to go back. No endpoint and no request — it works with the Master
- * switched off, like everything else here.
+ *  · **A colour is offered only on a model made in every colour** (the
+ *    product's `multiColour` switch), and only from the company's colour list.
+ *    It is one colour per card: the same model in a second colour is the card
+ *    added again. Blank means the variant's own colour.
+ *  · **A party's own record renames the product for that party**, but a
+ *    party's saved packaging is only ever a suggestion.
  *
  * Weights are the variant's and may not have been entered yet. A line without
  * one shows "weight missing" rather than a zero, and the footer counts such
@@ -53,10 +47,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type {
-  Lead,
   LineItemInput,
   OptionListItem,
-  Order,
   Party,
   PartyProductVariant,
   Product,
@@ -69,6 +61,7 @@ import { PartyDrawer, type CreatedParty } from '../components/PartyDrawer';
 import {
   Button,
   Card,
+  ColourChip,
   ConflictBanner,
   DateField,
   Input,
@@ -77,7 +70,6 @@ import {
   StatusPill,
   Textarea,
   formatKg,
-  formatMoney,
   rem,
   t,
   useColourHex,
@@ -91,8 +83,6 @@ import {
 
 interface Props {
   view: LocalView;
-  /** From the signed-in person's own resolved set, not the snapshot's. */
-  canEditRate: boolean;
   /** Bumped by the shell each time the form is asked for; see the focus effect. */
   focusNonce?: number;
   /** Carries the queued lead's temporary id, so the shell can name it. */
@@ -124,30 +114,12 @@ interface ProductFacts {
   productName: string;
   categoryName: string;
   alias: string | null;
-  sin: string | null;
   size: string | null;
-  grade: string | null;
-  productType: string | null;
   packaging: string;
-  /** The rupee text as typed; see `ratePaise`. `null` is a rate this person may not see. */
-  rateText: string | null;
-  /**
-   * False when this line deliberately carries no price — quoted later.
-   *
-   * Distinct from a blank `rateText`, which is a rate nobody has got to yet and
-   * which the server fills from the catalogue. This one sends `rateUnset` and
-   * the line stays priceless all the way to the docket.
-   */
-  rateOn: boolean;
-  /**
-   * True once somebody has typed in the rate cell.
-   *
-   * Which is the difference between a rate the line *derived* and a rate a
-   * person *decided*. Changing the party re-rates every untouched line and must
-   * leave the decided ones exactly where they were, or choosing a party
-   * silently overwrites somebody's negotiation.
-   */
-  rateTouched: boolean;
+  /** Whether the model is made in every colour — decides whether the colour field is offered. */
+  multiColour: boolean;
+  /** The colour chosen for the card, from the colour list; blank is the variant's own. */
+  colour: string;
   fromPartyVariant: boolean;
   notes: string;
 }
@@ -165,14 +137,6 @@ interface DraftProduct extends ProductFacts {
 interface DraftLine extends ProductFacts, VariantFacts {
   key: string;
   quantity: number;
-}
-
-/** Where a line's opening rate came from, for the note under the field. */
-interface RateOrigin {
-  /** In paise, or null when this person may not see rates at all. */
-  rate: number | null;
-  note: string;
-  fromPartyVariant: boolean;
 }
 
 const QUICK_FOLLOW_UPS = [
@@ -198,39 +162,10 @@ function isoDate(daysFromToday: number): string {
   return `${day.getFullYear()}-${month}-${String(day.getDate()).padStart(2, '0')}`;
 }
 
-/**
- * The line's rate in paise, or null when there is no rate to show.
- *
- * The draft holds the rupee text somebody typed rather than the paise number,
- * because a controlled field rendered back from paise cannot be typed into: the
- * "." in "12." parses to 12, the state does not change, and React restores the
- * field to "12" as the key is pressed — so ₹12.50 is entered as ₹1250.
- *
- * A blank or unparseable field is unknown rather than free, the same rule the
- * order total follows.
- */
-function ratePaise(line: { rateText: string | null }): number | null {
-  if (line.rateText === null || !line.rateText.trim()) return null;
-  const rupees = Number(line.rateText);
-  return Number.isFinite(rupees) ? Math.round(rupees * 100) : null;
-}
-
-/** What a line is worth, or null when it has no rate to be worth anything at. */
-function lineTotal(line: DraftLine): number | null {
-  if (!line.rateOn) return null;
-  const rate = ratePaise(line);
-  return rate === null ? null : Math.round(rate * line.quantity);
-}
-
 /** Weight × quantity to three decimals, or null while the weight is unknown. */
 function lineWeight(line: { weightKg: number | null; quantity: number }): number | null {
   if (line.weightKg === null) return null;
   return Math.round(line.weightKg * line.quantity * 1000) / 1000;
-}
-
-/** A short, local date for the "last used" note — never a full timestamp. */
-function shortDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
 /** The variant's name as a line shows it: the colour, or the code when it has none. */
@@ -238,7 +173,7 @@ function variantName(facts: { variantLabel: string | null; code: string }): stri
   return facts.variantLabel ?? facts.code;
 }
 
-export function AddLeadScreen({ view, canEditRate, focusNonce = 0, onSaved, onCancel }: Props) {
+export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props) {
   const colourHex = useColourHex(view.optionLists);
 
   const [partyId, setPartyId] = useState('');
@@ -321,10 +256,11 @@ export function AddLeadScreen({ view, canEditRate, focusNonce = 0, onSaved, onCa
     [view.optionLists],
   );
 
-  const gradeOptions = useMemo(
+  /** The company's colour list — what a multi-colour line may name. */
+  const colourOptions = useMemo(
     () =>
       view.optionLists.filter(
-        (option: OptionListItem) => option.listKey === 'line.grade' && option.isActive,
+        (option: OptionListItem) => option.listKey === 'stock.colour' && option.isActive,
       ),
     [view.optionLists],
   );
@@ -359,8 +295,8 @@ export function AddLeadScreen({ view, canEditRate, focusNonce = 0, onSaved, onCa
   const selectedParty =
     view.parties.find((party) => party.id === partyId) ?? seenParties.current.get(partyId) ?? null;
 
-  /** The party's own rates, which are also what makes the "own rates" badge true. */
-  const partyRatesFor = useMemo(
+  /** The party's own product records, which are also what makes the "party-wise" badge true. */
+  const partyRecordFor = useMemo(
     () =>
       new Map(
         view.partyVariants
@@ -369,68 +305,13 @@ export function AddLeadScreen({ view, canEditRate, focusNonce = 0, onSaved, onCa
       ),
     [partyId, view.partyVariants],
   );
-  const partyWiseMode = partyRatesFor.size > 0;
-
-  /*
-   * A rate this role may not see is absent on every product alike, so the whole
-   * money column goes with it rather than rendering a confident zero.
-   */
-  const canSeeRates = view.permissions.includes('field.saleRate.view');
-
-  /**
-   * The last rate this party actually paid for each product, newest first.
-   *
-   * Read out of the leads and orders already on the snapshot rather than asked
-   * of the Master: it is the same data the Master would answer from, it costs
-   * no request, and it is still right with the link down. A record whose rate
-   * is absent — this role may not see rates — contributes nothing rather than
-   * a zero.
-   */
-  const lastRateFor = useMemo(() => {
-    const best = new Map<string, { rate: number; at: string }>();
-
-    const consider = (record: Lead | Order): void => {
-      if (record.partyId !== partyId) return;
-      for (const item of record.items) {
-        if (item.rate === undefined || item.rate === null) continue;
-        const previous = best.get(item.productId);
-        if (previous && previous.at >= record.createdAt) continue;
-        best.set(item.productId, { rate: item.rate, at: record.createdAt });
-      }
-    };
-
-    for (const lead of view.leads) consider(lead);
-    for (const order of view.orders) consider(order);
-    return best;
-  }, [partyId, view.leads, view.orders]);
+  const partyWiseMode = partyRecordFor.size > 0;
 
   /** Free stock per variant, from the snapshot. Absent means unknown, not zero. */
   const freeFor = useMemo(
     () => new Map(view.stock.map((level) => [level.variantId, level.availableBoxes])),
     [view.stock],
   );
-
-  function rateOriginFor(productId: string): RateOrigin {
-    if (!canSeeRates) return { rate: null, note: '', fromPartyVariant: false };
-
-    const last = lastRateFor.get(productId);
-    if (last) {
-      return {
-        rate: last.rate,
-        note: t('lead.add.draft.rateLast', { date: shortDate(last.at) }),
-        fromPartyVariant: false,
-      };
-    }
-
-    const variant = partyRatesFor.get(productId);
-    if (variant?.rate !== undefined && variant?.rate !== null) {
-      return { rate: variant.rate, note: t('lead.add.draft.rateParty'), fromPartyVariant: true };
-    }
-
-    const product = view.products.find((candidate) => candidate.id === productId);
-    const rate = product?.rate ?? null;
-    return { rate, note: t('lead.add.draft.rateCatalogue'), fromPartyVariant: false };
-  }
 
   // --- Party search -------------------------------------------------------
 
@@ -532,32 +413,6 @@ export function AddLeadScreen({ view, canEditRate, focusNonce = 0, onSaved, onCa
     window.setTimeout(() => searchRef.current?.focus(), 0);
   }
 
-  /**
-   * Re-rate the lines nobody has priced by hand.
-   *
-   * Choosing a party changes what every line on the voucher costs. It used to
-   * change only the lines added *after* the switch, so a voucher built before
-   * the party was chosen quietly quoted catalogue prices — the kind of wrong
-   * that reaches a customer. Only untouched lines move: a rate somebody typed
-   * is a decision, and so is a rate somebody switched off.
-   */
-  useEffect(() => {
-    setLines((current) =>
-      current.map((line) => {
-        if (line.rateTouched || !line.rateOn) return line;
-        const origin = rateOriginFor(line.productId);
-        return {
-          ...line,
-          rateText: origin.rate === null ? null : String(origin.rate / 100),
-          fromPartyVariant: origin.fromPartyVariant,
-        };
-      }),
-    );
-    // `rateOriginFor` closes over exactly these; listing the function instead
-    // would re-run this on every render and undo somebody's typing.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [partyId, lastRateFor, partyRatesFor, view.products]);
-
   // --- Draft --------------------------------------------------------------
 
   function rowFor(variant: ProductVariant, qty = ''): DraftRow {
@@ -572,25 +427,20 @@ export function AddLeadScreen({ view, canEditRate, focusNonce = 0, onSaved, onCa
   }
 
   function openDraft(product: Product): void {
-    const origin = rateOriginFor(product.id);
-    const partyRate = partyRatesFor.get(product.id) ?? null;
+    const partyRecord = partyRecordFor.get(product.id) ?? null;
 
     setDraft({
       productId: product.id,
-      productName: partyRate?.productName ?? product.name,
+      productName: partyRecord?.productName ?? product.name,
       categoryName: product.categoryName,
-      alias: partyRate?.alias ?? product.alias,
-      sin: partyRate?.sin ?? product.sin,
-      size: partyRate?.size ?? product.size,
-      grade: partyRate?.grade ?? product.grade,
-      productType: partyRate?.productType ?? product.productType,
+      alias: partyRecord?.alias ?? product.alias,
+      size: partyRecord?.size ?? product.size,
       // Left empty on purpose (§3.2). The party's saved packaging is offered
       // below as a suggestion, never applied.
       packaging: '',
-      rateText: origin.rate === null ? null : String(origin.rate / 100),
-      rateOn: true,
-      rateTouched: false,
-      fromPartyVariant: origin.fromPartyVariant,
+      multiColour: product.multiColour,
+      colour: '',
+      fromPartyVariant: partyRecord !== null,
       notes: '',
       // Every variant the model comes in, blank until somebody types. A
       // variant taken off the form stays sellable on old lines, not new ones.
@@ -621,9 +471,7 @@ export function AddLeadScreen({ view, canEditRate, focusNonce = 0, onSaved, onCa
 
   function draftIsReady(candidate: DraftProduct): boolean {
     const filled = candidate.rows.filter((row) => Number(row.qty) > 0);
-    if (!candidate.packaging.trim() || filled.length === 0) return false;
-    if (!canSeeRates || !candidate.rateOn) return true;
-    return (ratePaise(candidate) ?? 0) > 0;
+    return Boolean(candidate.packaging.trim()) && filled.length > 0;
   }
 
   /** One line per variant with a quantity — a card with two colours filled adds two. */
@@ -698,12 +546,12 @@ export function AddLeadScreen({ view, canEditRate, focusNonce = 0, onSaved, onCa
   const panelTerm = lineQuery.trim().toLowerCase();
 
   /*
-   * Matched on the same words the row shows — code, product, colour, system
-   * code and category — so what somebody reads is what they can search.
+   * Matched on the same words the row shows — code, product, colour and
+   * category — so what somebody reads is what they can search.
    */
   const matchedLines = panelTerm
     ? lines.filter((line) =>
-        [line.code, line.productName, line.variantLabel ?? '', line.sin ?? '', line.categoryName]
+        [line.code, line.productName, line.variantLabel ?? '', line.colour, line.categoryName]
           .join(' ')
           .toLowerCase()
           .includes(panelTerm),
@@ -779,26 +627,14 @@ export function AddLeadScreen({ view, canEditRate, focusNonce = 0, onSaved, onCa
         alias: line.alias,
         code: line.code,
         variantLabel: line.variantLabel,
-        sin: line.sin,
+        // Only a multi-colour model carries one; the Master refuses it elsewhere.
+        colour: line.colour.trim() || null,
         size: line.size,
         weightKg: line.weightKg,
-        grade: line.grade,
-        productType: line.productType,
         packaging: line.packaging.trim(),
         sequence: index + 1,
         fromPartyVariant: line.fromPartyVariant,
         notes: line.notes.trim() || null,
-        /*
-         * Three states, not two. A rate this role cannot see is sent as no key
-         * at all so the server fills it from the catalogue exactly as it would
-         * have; a rate switched off is sent as `rateUnset`, which stops that
-         * fallback dead; anything else is what was typed.
-         */
-        ...(canSeeRates
-          ? line.rateOn
-            ? { rate: ratePaise(line) }
-            : { rate: null, rateUnset: true }
-          : {}),
       }));
 
       const queued = await api.createLead({
@@ -819,20 +655,6 @@ export function AddLeadScreen({ view, canEditRate, focusNonce = 0, onSaved, onCa
   }
 
   const totalQty = lines.reduce((sum, line) => sum + line.quantity, 0);
-  /**
-   * The order total, or null when any line's rate is hidden from this person.
-   *
-   * `rate ?? 0` treated a rate this role may not see as free, so a rate-blind
-   * user was shown a confident ₹0.00 total in perfect good faith — the exact
-   * failure the masking rule exists to prevent (`roles-ui.md` §6). A line whose
-   * rate was deliberately switched off is a different matter: it is genuinely
-   * worth nothing yet, and contributes nothing rather than voiding the total.
-   */
-  const total = lines.reduce<number | null>((sum, line) => {
-    if (!line.rateOn) return sum;
-    const amount = lineTotal(line);
-    return sum === null || amount === null ? null : sum + amount;
-  }, 0);
   /*
    * The weight is summed over the lines that have one and the rest are counted,
    * the same way the Master reports it: a missing weight is a fact to show, not
@@ -857,7 +679,7 @@ export function AddLeadScreen({ view, canEditRate, focusNonce = 0, onSaved, onCa
   /*
    * Enter forward, Escape back — one field at a time, down the whole column:
    * party, source, follow-up, the product search, the draft card's packaging,
-   * grade, rate and quantities, then the notes and any custom fields.
+   * colour and quantities, then the notes and any custom fields.
    *
    * A select opens its list on Enter instead of skipping past it, and the
    * native popup then owns the arrows and its own Enter; the Enter after it
@@ -1235,10 +1057,8 @@ export function AddLeadScreen({ view, canEditRate, focusNonce = 0, onSaved, onCa
                   <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
                     {draft.categoryName}
                   </span>
-                  {draft.sin && (
-                    <span className="ob-mono ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                      {draft.sin}
-                    </span>
+                  {draft.multiColour && (
+                    <StatusPill tone="accent">{t('product.multiColour.pill')}</StatusPill>
                   )}
                   <span style={{ flex: 1, minWidth: 0 }} />
                   <Button variant="primary" disabled={!draftIsReady(draft)} onClick={saveDraft}>
@@ -1407,16 +1227,7 @@ export function AddLeadScreen({ view, canEditRate, focusNonce = 0, onSaved, onCa
                         <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                           <span className="ob-ellipsis">{row.name}</span>
                           <span className="ob-mono ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                            {[
-                              row.sin,
-                              row.size,
-                              // Absent is a rate this role may not see; null is
-                              // a catalogue with no price yet. Neither is worth
-                              // a dash in the list.
-                              row.rate === undefined || row.rate === null
-                                ? null
-                                : `${formatMoney(row.rate)}/${t('unit.piece')}`,
-                            ]
+                            {[row.size, row.multiColour ? t('product.multiColour.pill') : null]
                               .filter(Boolean)
                               .join(' · ')}
                           </span>
@@ -1463,13 +1274,10 @@ export function AddLeadScreen({ view, canEditRate, focusNonce = 0, onSaved, onCa
             {draft && (
               <DraftCard
                 draft={draft}
-                canEditRate={canEditRate}
-                canSeeRates={canSeeRates}
                 ready={draftIsReady(draft)}
                 packagingOptions={packagingOptions}
-                gradeOptions={gradeOptions}
-                suggestedPackaging={partyRatesFor.get(draft.productId)?.packaging ?? null}
-                rateOrigin={rateOriginFor(draft.productId)}
+                colourOptions={colourOptions}
+                suggestedPackaging={partyRecordFor.get(draft.productId)?.packaging ?? null}
                 colourHex={colourHex}
                 onPatch={patchDraft}
                 onQty={setRowQty}
@@ -1549,7 +1357,10 @@ export function AddLeadScreen({ view, canEditRate, focusNonce = 0, onSaved, onCa
             </div>
             <span style={{ flex: 1 }} />
             <span className="ob-title" style={{ margin: 0, fontVariantNumeric: 'tabular-nums' }}>
-              {formatMoney(total)}
+              {totalQty.toLocaleString('en-IN')}{' '}
+              <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
+                {t('unit.pieces')}
+              </span>
             </span>
           </div>
         </div>
@@ -1762,10 +1573,10 @@ function WeightCell({ kg }: { kg: number | null }) {
 /**
  * One variant already on the lead, as the panel draws it.
  *
- * Collapsed it is one line — code, name, colour, quantity, money — so twenty
- * lines can be scanned for the one that is wrong. Opened it shows the weight,
- * what was ordered against what is free, the packaging, grade and rate, and
- * the two things that can be done about it.
+ * Collapsed it is one line — code, name, colour, quantity — so twenty lines
+ * can be scanned for the one that is wrong. Opened it shows the weight, what
+ * was ordered against what is free, the packaging, and the two things that
+ * can be done about it.
  *
  * The tick box sits outside the toggle rather than inside it: expanding a row
  * to read it must not select it for removal.
@@ -1790,14 +1601,9 @@ function LeadLine({
   onRemove: () => void;
 }) {
   const over = line.availableBoxes !== null && line.quantity > line.availableBoxes;
-  const amount = lineTotal(line);
   const kg = lineWeight(line);
 
-  const meta = [
-    line.packaging.trim() || t('lead.add.line.noPackaging'),
-    line.grade ?? '—',
-    line.rateOn ? `${formatMoney(ratePaise(line))}/${t('unit.piece')}` : t('lead.add.line.toQuote'),
-  ].join(' · ');
+  const meta = line.packaging.trim() || t('lead.add.line.noPackaging');
 
   return (
     <div className="ob-lead-line" data-open={open ? 'true' : undefined}>
@@ -1830,6 +1636,12 @@ function LeadLine({
                 {line.variantLabel}
               </span>
             )}
+            {line.colour && (
+              <span className="ob-small" style={{ fontWeight: 450, color: 'var(--fg-secondary)' }}>
+                {' · '}
+                {line.colour}
+              </span>
+            )}
           </span>
           {over && (
             <span
@@ -1848,17 +1660,6 @@ function LeadLine({
           >
             {t('lead.add.line.qtyShort', { count: line.quantity })}
           </span>
-          <span
-            className="ob-small"
-            style={{
-              flex: 'none',
-              fontWeight: line.rateOn ? 600 : 450,
-              color: line.rateOn ? undefined : 'var(--fg-tertiary)',
-              fontVariantNumeric: 'tabular-nums',
-            }}
-          >
-            {line.rateOn ? formatMoney(amount) : t('lead.add.line.rateNa')}
-          </span>
         </button>
       </div>
 
@@ -1869,6 +1670,12 @@ function LeadLine({
             style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}
           >
             <VariantName facts={line} hex={colourHex(line.variantLabel ?? '')} />
+            {line.colour && (
+              <span className="ob-colourname ob-micro">
+                <ColourChip name={line.colour} hex={colourHex(line.colour)} />
+                <span>{line.colour}</span>
+              </span>
+            )}
             <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
               {line.categoryName}
             </span>
@@ -1923,61 +1730,44 @@ function LeadLine({
 /**
  * The card one model is built in before it joins the lead.
  *
- * Nothing here is on the voucher yet, which is the point: packaging, a rate and
- * at least one quantity are all decided in one place, and Add is refused until
- * they are. The hint along the bottom says which of the three is missing rather
- * than making somebody guess at a disabled button.
+ * Nothing here is on the voucher yet, which is the point: packaging, the
+ * colour where the model offers one, and at least one quantity are all decided
+ * in one place, and Add is refused until they are. The hint along the bottom
+ * says what is missing rather than making somebody guess at a disabled button.
  *
  * One row per variant, the code and weight already filled from the master —
  * the only thing to type is how many. A row left blank simply adds nothing.
  */
 function DraftCard({
   draft,
-  canEditRate,
-  canSeeRates,
   ready,
   packagingOptions,
-  gradeOptions,
+  colourOptions,
   suggestedPackaging,
-  rateOrigin,
   colourHex,
   onPatch,
   onQty,
   onSave,
 }: {
   draft: DraftProduct;
-  canEditRate: boolean;
-  canSeeRates: boolean;
   ready: boolean;
   packagingOptions: OptionListItem[];
-  gradeOptions: OptionListItem[];
+  colourOptions: OptionListItem[];
   suggestedPackaging: string | null;
-  rateOrigin: RateOrigin;
   colourHex: (name: string) => string | undefined;
   onPatch: (patch: Partial<DraftProduct>) => void;
   onQty: (variantId: string, qty: string) => void;
   onSave: () => void;
 }) {
   const filled = draft.rows.filter((row) => Number(row.qty) > 0);
-  const rate = ratePaise(draft);
   const pieces = filled.reduce((sum, row) => sum + Number(row.qty), 0);
-  const preview = rate === null ? null : rate * pieces;
   const previewKg = filled.reduce((sum, row) => sum + (lineWeight({ weightKg: row.weightKg, quantity: Number(row.qty) }) ?? 0), 0);
 
   const hint = !draft.packaging.trim()
     ? t('lead.add.draft.hintPackaging')
     : filled.length === 0
       ? t('lead.add.draft.hintQuantity')
-      : !canSeeRates || !draft.rateOn
-        ? t('lead.add.draft.hintNoRate')
-        : (rate ?? 0) > 0
-          ? t('lead.add.draft.hintTotal', { amount: formatMoney(preview) })
-          : t('lead.add.draft.hintRateOrOff');
-
-  function step(delta: number): void {
-    const current = Number(draft.rateText ?? '0') || 0;
-    onPatch({ rateText: String(Math.max(0, current + delta)), rateTouched: true });
-  }
+      : t('lead.add.draft.hintPieces', { count: pieces });
 
   function stepQty(row: DraftRow, delta: number): void {
     const current = Number(row.qty) || 0;
@@ -1985,14 +1775,14 @@ function DraftCard({
   }
 
   /*
-   * The grade the line already carries has to stay pickable even when nobody
-   * has put it on the list — it came off the product, and a select that cannot
+   * The colour a modified line already carries has to stay pickable even when
+   * an administrator has since taken it off the list — a select that cannot
    * show its own value silently rewrites the line the moment it renders.
    */
-  const gradeValues = [
-    ...gradeOptions.map((option) => ({ value: option.value, label: option.label })),
-    ...(draft.grade && !gradeOptions.some((option) => option.value === draft.grade)
-      ? [{ value: draft.grade, label: draft.grade }]
+  const colourValues = [
+    ...colourOptions.map((option) => ({ value: option.value, label: option.label })),
+    ...(draft.colour && !colourOptions.some((option) => option.value === draft.colour)
+      ? [{ value: draft.colour, label: draft.colour }]
       : []),
   ];
 
@@ -2019,7 +1809,9 @@ function DraftCard({
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: `minmax(0, 1fr) minmax(0, 1fr) minmax(${rem(160)}, ${rem(220)})`,
+            gridTemplateColumns: draft.multiColour
+              ? `minmax(0, 1fr) minmax(${rem(160)}, ${rem(240)})`
+              : 'minmax(0, 1fr)',
             gap: 'var(--s-12)',
             marginBottom: 'var(--s-12)',
           }}
@@ -2062,129 +1854,39 @@ function DraftCard({
             )}
           </label>
 
-          <label className="ob-small" style={{ display: 'block', color: 'var(--fg-secondary)' }}>
-            {t('lead.add.draft.grade')}
-            {/* The same control as packaging beside it: a grade is a short word
-                from a short list, and the two sitting in one row must not be a
-                dropdown and a text box. */}
-            <SuggestInput
-              value={draft.grade ?? ''}
-              optionsLabel={t('lead.add.draft.showOptions', {
-                field: t('lead.add.draft.grade'),
-              })}
-              options={gradeValues.map((option) => ({
-                value: option.value,
-                label: option.label,
-              }))}
-              onChange={(next) => onPatch({ grade: next || null })}
-            />
-          </label>
-
-          {canSeeRates && (
-            <div className="ob-small" style={{ color: 'var(--fg-secondary)' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
-                <span>{t('lead.add.draft.ratePerPiece')}</span>
-                <button
-                  type="button"
-                  className="ob-rate-switch"
-                  role="switch"
-                  aria-checked={draft.rateOn}
-                  aria-label={t('lead.add.draft.rateSwitch')}
-                  title={t('lead.add.draft.rateSwitchHint')}
-                  disabled={!canEditRate}
-                  onClick={() => onPatch({ rateOn: !draft.rateOn, rateTouched: true })}
-                >
-                  <span aria-hidden="true" className="ob-rate-switch__knob" />
-                </button>
-                <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                  {draft.rateOn ? t('lead.add.draft.rateOn') : t('lead.add.draft.rateOff')}
-                </span>
-              </span>
-
-              {draft.rateOn ? (
-                <span
-                  className="ob-rate-field"
-                  data-invalid={(rate ?? 0) > 0 ? undefined : 'true'}
-                  style={{ marginTop: rem(4) }}
-                >
-                  <span
-                    aria-hidden="true"
-                    style={{ padding: `0 ${rem(2)} 0 ${rem(9)}`, color: 'var(--fg-tertiary)' }}
-                  >
-                    ₹
-                  </span>
-                  <input
-                    value={draft.rateText ?? ''}
-                    inputMode="numeric"
-                    // A courtesy only — the Master ignores a rate from anybody
-                    // without `field.saleRate.edit`, whatever the panel sends.
-                    disabled={!canEditRate}
-                    aria-label={t('lead.add.draft.ratePerPiece')}
-                    onChange={(event) =>
-                      onPatch({
-                        rateText: event.target.value.replace(/[^0-9.]/g, ''),
-                        rateTouched: true,
-                      })
-                    }
-                    onKeyDown={(event) => {
-                      const by = event.shiftKey ? 10 : 1;
-                      if (event.key === 'ArrowUp') {
-                        event.preventDefault();
-                        step(by);
-                      }
-                      if (event.key === 'ArrowDown') {
-                        event.preventDefault();
-                        step(-by);
-                      }
-                    }}
-                  />
-                </span>
-              ) : (
-                <span
-                  className="ob-small"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    height: rem(32),
-                    marginTop: rem(4),
-                    padding: `0 ${rem(9)}`,
-                    border: '1px dashed var(--line-strong)',
-                    borderRadius: 'var(--r-sm)',
-                    color: 'var(--fg-tertiary)',
-                  }}
-                >
-                  {t('lead.add.draft.noRate')}
-                </span>
-              )}
-
-              <span
-                style={{
-                  display: 'flex',
-                  alignItems: 'baseline',
-                  gap: rem(8),
-                  marginTop: rem(4),
-                }}
+          {draft.multiColour && (
+            <label className="ob-small" style={{ display: 'block', color: 'var(--fg-secondary)' }}>
+              {t('lead.add.draft.colour')}
+              {/* A native select over the company's colour list, not a free
+                  field: the owner's rule is that a colour on a line is one
+                  the factory makes, and the list (Settings → Fields) is where
+                  that is decided. Blank is the variant's own colour. */}
+              <Select
+                value={draft.colour}
+                aria-label={t('lead.add.draft.colour')}
+                onChange={(event) => onPatch({ colour: event.target.value })}
               >
-                <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                  {draft.rateOn ? rateOrigin.note : t('lead.add.draft.rateLater')}
-                </span>
-                {draft.rateOn && rateOrigin.rate !== null && rate !== rateOrigin.rate && (
-                  <button
-                    type="button"
-                    className="ob-btn ob-btn--ghost ob-micro"
-                    style={{ padding: 0, color: 'var(--accent)', textDecoration: 'underline' }}
-                    onClick={() =>
-                      onPatch({
-                        rateText: String((rateOrigin.rate ?? 0) / 100),
-                        rateTouched: false,
-                      })
-                    }
-                  >
-                    {t('lead.add.draft.rateReset', { amount: formatMoney(rateOrigin.rate) })}
-                  </button>
+                <option value="">{t('lead.add.draft.colourAsVariant')}</option>
+                {colourValues.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+              <span
+                className="ob-micro"
+                style={{ display: 'flex', alignItems: 'center', gap: rem(6), marginTop: rem(4), color: 'var(--fg-tertiary)' }}
+              >
+                {draft.colour ? (
+                  <>
+                    <ColourChip name={draft.colour} hex={colourHex(draft.colour)} />
+                    {t('lead.add.draft.colourHint')}
+                  </>
+                ) : (
+                  t('lead.add.draft.colourAsVariantHint')
                 )}
               </span>
-            </div>
+            </label>
           )}
         </div>
 

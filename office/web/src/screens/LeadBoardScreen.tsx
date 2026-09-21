@@ -30,7 +30,6 @@ import {
   Segmented,
   StatusPill,
   formatKg,
-  formatMoney,
   rem,
   t,
   useColourHex,
@@ -58,11 +57,12 @@ function leadPieces(lead: Lead): number {
 }
 
 /** The colours on the lead's lines — a pattern or a one-form product has none to show. */
+/** The colours on the card: the variant's own, or the colour chosen on a multi-colour line. */
 function leadColours(lead: Lead): string[] {
   return Array.from(
     new Set(
       lead.items
-        .map((item) => item.variantLabel)
+        .map((item) => item.colour ?? item.variantLabel)
         .filter((label): label is string => label !== null),
     ),
   );
@@ -99,8 +99,6 @@ export function LeadBoardScreen({ view, openId, onOpenId, canConvert, onError, o
   const [menuId, setMenuId] = useState<string | null>(null);
   const colourHex = useColourHex(view.optionLists);
   const toast = useToast();
-  // Off with the company's pricing switch, or without the role's key.
-  const showMoney = view.permissions.includes('field.saleRate.view');
 
   const pipeline = view.pipelines.find((candidate) => candidate.kind === 'lead');
   const stages = [...(pipeline?.stages ?? [])].sort((a, b) => a.sequence - b.sequence);
@@ -296,18 +294,6 @@ export function LeadBoardScreen({ view, openId, onOpenId, canConvert, onError, o
           formatKg(lead.totalWeightKg)
         ),
     },
-    ...(showMoney
-      ? [
-          {
-            key: 'amount',
-            header: t('lead.list.col.amount'),
-            width: rem(110),
-            align: 'right',
-            render: (lead: Lead) =>
-              lead.totalAmount !== undefined ? formatMoney(lead.totalAmount) : '—',
-          } satisfies DataTableColumn<Lead>,
-        ]
-      : []),
     {
       key: 'followUp',
       header: t('lead.list.col.followUp'),
@@ -339,17 +325,6 @@ export function LeadBoardScreen({ view, openId, onOpenId, canConvert, onError, o
           onMove={(lead, stageId) => void move(lead, stageId)}
           onOpen={(lead) => onOpenId(lead.id)}
           emptyMessage={t('lead.board.emptyColumn')}
-          renderColumnExtra={(stageId) => {
-            if (!showMoney) return null;
-            const stageTotal = filtered
-              .filter((lead) => lead.stageId === stageId)
-              .reduce((sum, lead) => sum + (lead.totalAmount ?? 0), 0);
-            return stageTotal > 0 ? (
-              <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                {formatMoney(stageTotal)}
-              </span>
-            ) : null;
-          }}
           renderCard={(lead) => {
             const pieces = leadPieces(lead);
             const colours = leadColours(lead);
@@ -489,11 +464,6 @@ export function LeadBoardScreen({ view, openId, onOpenId, canConvert, onError, o
                         <ColourChip key={colour} name={colour} hex={colourHex(colour)} />
                       ))}
                     </span>
-                    {showMoney && (
-                      <span className="ob-small" style={{ fontWeight: 500 }}>
-                        {lead.totalAmount !== undefined ? formatMoney(lead.totalAmount) : '—'}
-                      </span>
-                    )}
                   </div>
                 )}
 

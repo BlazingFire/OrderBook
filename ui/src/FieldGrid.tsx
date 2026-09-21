@@ -29,8 +29,8 @@ export function FieldGrid({ children }: { children: ReactNode }) {
  * One labelled group of fields.
  *
  * The heading is what makes a dense form readable rather than merely small:
- * "Pricing" over four money fields tells somebody they can skip the whole block
- * if they are not pricing anything.
+ * "Codes & weight" over the variant rows tells somebody what the block is for
+ * before they read a single field.
  */
 export function FieldGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
