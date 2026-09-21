@@ -47,7 +47,7 @@ export interface ApiKeyAuthRow extends ApiKeyRow {
   owner_deactivated: boolean;
 }
 
-export function digest(secret: string): string {
+function digest(secret: string): string {
   return createHash('sha256').update(secret).digest('hex');
 }
 
@@ -212,15 +212,6 @@ export async function revokeKey(
     .update({ revoked_at: runner.fn.now(), updated_at: runner.fn.now() })
     .returning<ApiKeyRow[]>('*');
 
-  return row ?? null;
-}
-
-export async function findById(
-  tenantId: string,
-  id: string,
-  runner: Runner = db(),
-): Promise<ApiKeyRow | null> {
-  const row = await runner(TABLE).where({ tenant_id: tenantId, id }).first<ApiKeyRow | undefined>();
   return row ?? null;
 }
 

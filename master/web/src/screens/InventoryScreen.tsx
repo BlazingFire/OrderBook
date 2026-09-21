@@ -60,6 +60,15 @@ import {
 
 interface Props {
   revision: number;
+  /** Which slice is showing — chosen here or from the sidebar's sub-pages. */
+  filter: 'all' | 'low';
+  onFilterChange: (filter: 'all' | 'low') => void;
+  /**
+   * The company's free-to-sell switch. Off, the Master already reports free as
+   * the floor count and nothing reserved; this drops the two columns that
+   * would then only repeat the first.
+   */
+  freeToSell: boolean;
 }
 
 const MOVEMENT_TYPE_KEY = {
@@ -81,13 +90,13 @@ function variantName(level: { variantCode: string; variantLabel: string | null }
   return level.variantLabel ? `${level.variantLabel} · ${level.variantCode}` : level.variantCode;
 }
 
-export function InventoryScreen({ revision }: Props) {
+export function InventoryScreen({ revision, filter, onFilterChange, freeToSell }: Props) {
   const [levels, setLevels] = useState<InventoryStockLevel[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [optionLists, setOptionLists] = useState<OptionListItem[]>([]);
   const colourHex = useColourHex(optionLists);
   const [search, setSearch] = useState('');
-  const [lowOnly, setLowOnly] = useState(false);
+  const lowOnly = filter === 'low';
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [stockInOpen, setStockInOpen] = useState(false);
@@ -182,27 +191,30 @@ export function InventoryScreen({ revision }: Props) {
 
   useFilterBar(
     <>
-      <div className="ob-search">
+      <div className="ob-search" style={{ width: rem(400) }}>
         <Input
           value={search}
           placeholder={t('inventory.search.placeholder')}
           aria-label={t('inventory.search.placeholder')}
+          data-screen-search
           onChange={(event) => setSearch(event.target.value)}
         />
       </div>
-      <FilterChip active={!lowOnly} onClick={() => setLowOnly(false)}>
+      <FilterChip active={!lowOnly} onClick={() => onFilterChange('all')}>
         {t('inventory.filter.all')}
       </FilterChip>
-      <FilterChip active={lowOnly} onClick={() => setLowOnly(true)}>
+      <FilterChip active={lowOnly} onClick={() => onFilterChange('low')}>
         {t('inventory.filter.lowOnly')}
       </FilterChip>
       <span style={{ flex: 1 }} />
-      <span
-        className="ob-small"
-        style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}
-      >
-        {t('inventory.filterNote')}
-      </span>
+      {freeToSell && (
+        <span
+          className="ob-small"
+          style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}
+        >
+          {t('inventory.filterNote')}
+        </span>
+      )}
     </>,
   );
 
@@ -289,27 +301,31 @@ export function InventoryScreen({ revision }: Props) {
       align: 'right',
       render: (level) => level.quantityBoxes,
     },
-    {
-      key: 'reserved',
-      header: t('inventory.table.reserved'),
-      width: rem(90),
-      align: 'right',
-      render: (level) => String(level.reservedBoxes),
-    },
-    {
-      key: 'free',
-      header: t('inventory.table.free'),
-      width: rem(90),
-      align: 'right',
-      render: (level) => (
-        <span
-          className="ob-body-strong"
-          style={{ color: level.availableBoxes < 0 ? 'var(--state-conflict)' : undefined }}
-        >
-          {level.availableBoxes}
-        </span>
-      ),
-    },
+    ...(freeToSell
+      ? [
+          {
+            key: 'reserved',
+            header: t('inventory.table.reserved'),
+            width: rem(90),
+            align: 'right' as const,
+            render: (level: InventoryStockLevel) => String(level.reservedBoxes),
+          },
+          {
+            key: 'free',
+            header: t('inventory.table.free'),
+            width: rem(90),
+            align: 'right' as const,
+            render: (level: InventoryStockLevel) => (
+              <span
+                className="ob-body-strong"
+                style={{ color: level.availableBoxes < 0 ? 'var(--state-conflict)' : undefined }}
+              >
+                {level.availableBoxes}
+              </span>
+            ),
+          },
+        ]
+      : []),
     {
       key: 'reorder',
       header: t('inventory.table.reorder'),
@@ -473,7 +489,11 @@ export function InventoryScreen({ revision }: Props) {
     return (
       <div className="ob-detail">
         <section
-          style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--s-8)' }}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${freeToSell ? 3 : 1}, 1fr)`,
+            gap: 'var(--s-8)',
+          }}
         >
           <Card>
             <div className="ob-eyebrow">{t('inventory.table.onHand')}</div>
@@ -484,28 +504,32 @@ export function InventoryScreen({ revision }: Props) {
               {level.quantityBoxes}
             </div>
           </Card>
-          <Card>
-            <div className="ob-eyebrow">{t('inventory.table.reserved')}</div>
-            <div
-              className="ob-display"
-              style={{ marginTop: 'var(--s-6)', fontVariantNumeric: 'tabular-nums' }}
-            >
-              {level.reservedBoxes}
-            </div>
-          </Card>
-          <Card>
-            <div className="ob-eyebrow">{t('inventory.table.free')}</div>
-            <div
-              className="ob-display"
-              style={{
-                marginTop: 'var(--s-6)',
-                fontVariantNumeric: 'tabular-nums',
-                color: level.availableBoxes < 0 ? 'var(--state-conflict)' : undefined,
-              }}
-            >
-              {level.availableBoxes}
-            </div>
-          </Card>
+          {freeToSell && (
+            <>
+              <Card>
+                <div className="ob-eyebrow">{t('inventory.table.reserved')}</div>
+                <div
+                  className="ob-display"
+                  style={{ marginTop: 'var(--s-6)', fontVariantNumeric: 'tabular-nums' }}
+                >
+                  {level.reservedBoxes}
+                </div>
+              </Card>
+              <Card>
+                <div className="ob-eyebrow">{t('inventory.table.free')}</div>
+                <div
+                  className="ob-display"
+                  style={{
+                    marginTop: 'var(--s-6)',
+                    fontVariantNumeric: 'tabular-nums',
+                    color: level.availableBoxes < 0 ? 'var(--state-conflict)' : undefined,
+                  }}
+                >
+                  {level.availableBoxes}
+                </div>
+              </Card>
+            </>
+          )}
         </section>
 
         <section className="ob-detail-section">
@@ -542,7 +566,9 @@ export function InventoryScreen({ revision }: Props) {
         title={t('inventory.section.stockLevels')}
         action={
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
-            <span className="ob-pill">{t('inventory.piecesFree', { count: totalFree })}</span>
+            <span className="ob-pill">
+              {t(freeToSell ? 'inventory.piecesFree' : 'inventory.piecesOnHand', { count: totalFree })}
+            </span>
             <Button
               variant="primary"
               size="sm"
@@ -571,7 +597,6 @@ export function InventoryScreen({ revision }: Props) {
           rows={levels}
           rowKey={(level) => level.variantId}
           onRowOpen={openLine}
-          openOn="click"
           selectedId={openVariantId ?? undefined}
           empty={
             <EmptyState

@@ -14,8 +14,8 @@
  */
 
 import type { MessageKey, MessageParams } from '../i18n/keys.js';
-import type { AiRun, AiStartInput, AiStatus, AiStreamEvent, Insight } from '../domain/ai.js';
 import type {
+  CompanyFeatures,
   CustomFieldDefinition,
   DashboardSummary,
   InventoryStockLevel,
@@ -444,6 +444,12 @@ export interface SyncSnapshot {
    * the sweep rather than trusting an absent flag.
    */
   productsComplete?: boolean;
+  /**
+   * The company switches the panel's screens read (`domain/entities.ts`).
+   * Optional so a panel built against this field still reads a snapshot from
+   * an older Master; absent means "as before", every figure shown.
+   */
+  features?: CompanyFeatures;
 }
 
 /** Office Panel → Master. Each carries an ack callback. */
@@ -681,20 +687,6 @@ export interface ClientToServerEvents {
     >,
   ) => void;
 
-  /*
-   * --- The assistant ------------------------------------------------------
-   *
-   * `ai:start` acks the moment the run row exists and the request is away,
-   * **never** on completion: `MasterConnection.command` hard-fails after
-   * fifteen seconds and would report the Master unreachable while the model was
-   * still typing. Every token afterwards arrives on `ai:event`.
-   */
-  'ai:start': (input: AiStartInput, ack: CommandAck<{ runId: Uuid }>) => void;
-  'ai:cancel': (runId: Uuid, ack: CommandAck<null>) => void;
-  'ai:listRuns': (ack: CommandAck<AiRun[]>) => void;
-  'ai:status': (ack: CommandAck<AiStatus>) => void;
-  'ai:insights': (ack: CommandAck<Insight[]>) => void;
-  'ai:apply': (payload: { runId: Uuid; fields: string[] }, ack: CommandAck<null>) => void;
 
   // --- Dashboard (docs/backend-modules/04-API-CONTRACT.md §7) ---------------
   /** The one live pull — everything else rides on `SyncSnapshot.dashboard` and the `dashboard:changed` push. */
@@ -721,8 +713,6 @@ export interface ServerToClientEvents {
    */
   'sync:delta': (delta: SyncDelta) => void;
   'data:changed': (event: DataChangedEvent) => void;
-  /** One fragment of an answer, one tool step, or the finished run. */
-  'ai:event': (event: AiStreamEvent & { runId: Uuid }) => void;
   'panels:changed': (panels: OfficePanelWithPresence[]) => void;
   'dashboard:changed': (summary: DashboardSummary) => void;
   /** Raised when a merge shadowed somebody's value, so panels can surface it. */
@@ -768,11 +758,6 @@ export interface SocketData {
   deviceCode?: string;
   userId?: Uuid;
   permissions?: string[];
-  /**
-   * Assistant runs this socket started, so its `ai:event` listener can filter
-   * on set membership rather than resolving an actor per streamed token.
-   */
-  aiRuns?: Set<Uuid>;
   /**
    * Set by `auth:assume` when a person is signed in on this panel. Stored as the
    * token rather than the resolved permissions so every command re-resolves it —

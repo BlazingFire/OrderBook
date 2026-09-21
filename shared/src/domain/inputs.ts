@@ -159,6 +159,7 @@ export interface LineItemInput {
   variantId: RecordId;
   quantity: number;
   productName?: string | null;
+  categoryName?: string | null;
   alias?: string | null;
   rate?: number | null;
   code?: string | null;

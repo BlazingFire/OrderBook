@@ -55,9 +55,6 @@ import { resolvePanelActor } from '../services/panel-actor.service.js';
 import * as logService from '../services/log.service.js';
 import * as reportService from '../services/report.service.js';
 import * as imageService from '../services/image.service.js';
-import * as aiService from '../services/ai.service.js';
-import { abortRunsOf, onAiEvent } from '../services/ai.service.js';
-import * as insightService from '../services/ai-insight.service.js';
 import * as panelService from '../services/panel.service.js';
 import * as partyAccessService from '../services/party-access.service.js';
 import * as recycleBinService from '../services/recycle-bin.service.js';
@@ -297,25 +294,8 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
     await socket.join(ROOM_MASTER_ADMINS);
     adminSocketCount += 1;
 
-    /*
-     * The assistant's tokens ride this socket rather than a stream of their own.
-     *
-     * Filtered by `socket.data.userId`, which the handshake already set: a run
-     * is one person's question, and its answer is not for the other
-     * administrators watching the same room.
-     */
-    const stopAi = onAiEvent((event) => {
-      if (socket.data.userId && event.userId === socket.data.userId) {
-        socket.emit('ai:event', { ...event.payload, runId: event.runId });
-      }
-    });
-
     socket.on('disconnect', () => {
       adminSocketCount = Math.max(0, adminSocketCount - 1);
-      stopAi();
-      // A run whose watcher has gone is a run generating into nothing, on
-      // somebody's token budget.
-      if (socket.data.userId) abortRunsOf(socket.data.userId);
     });
 
     socket.emit('panels:changed', await panelService.listPanelsWithPresence(actor.tenantId));
@@ -348,34 +328,6 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
   registerAuthCommands(socket, sendSnapshot);
 
   /*
-   * One `ai:event` listener per panel socket, filtered by the runs this socket
-   * actually started.
-   *
-   * Membership in a `Set`, deliberately, and not "resolve the actor and compare
-   * the user id": `actorFor()` reads a session and its role, so comparing that
-   * way would have cost a database round trip **per streamed token, per paired
-   * panel** — a five-hundred-token answer with three panels open is fifteen
-   * hundred role queries for one question. That is the amplifier class of
-   * defect this file has already had removed twice.
-   *
-   * Filtering by run rather than by person is also the more correct rule: a
-   * panel should receive the answer to the question asked *at it*, not to one
-   * the same person happened to ask at the Master.
-   */
-  const ownRuns = new Set<string>();
-  const stopPanelAi = onAiEvent((event) => {
-    if (!ownRuns.has(event.runId)) return;
-
-    socket.emit('ai:event', { ...event.payload, runId: event.runId });
-    // A finished run is never spoken of again, so the set stays the size of
-    // what is in flight rather than growing for the life of the connection.
-    if (event.payload.type === 'done' || event.payload.type === 'error') {
-      ownRuns.delete(event.runId);
-    }
-  });
-  socket.data.aiRuns = ownRuns;
-
-  /*
    * Catch the panel up in one round trip before incremental changes resume.
    *
    * A cursor in the handshake — rather than a command the panel sends after
@@ -396,7 +348,6 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
   }
 
   socket.on('disconnect', () => {
-    stopPanelAi();
     void (async () => {
       // Only if this socket is still the one on file: a panel that reconnected
       // before its old socket finished tearing down has already replaced the
@@ -429,38 +380,6 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
     respond(ack, async () => {
       const panelId = socket.data.panelId;
       if (panelId) await panelService.recordPanelReport(panelId, report);
-      return null;
-    }),
-  );
-
-  /*
-   * The assistant, forwarded like every other command.
-   *
-   * `ai:start` acks as soon as the run exists — never on completion — because
-   * `MasterConnection.command` gives up after fifteen seconds and would report
-   * this Master unreachable while the model was still answering.
-   */
-  socket.on('ai:start', (input, ack) =>
-    run(ack, async (actor) => {
-      const started = await aiService.startRun(actor, input);
-      // Claimed here so the listener above knows this socket is the one
-      // waiting for it.
-      socket.data.aiRuns?.add(started.runId);
-      return started;
-    }),
-  );
-  socket.on('ai:cancel', (runId, ack) =>
-    run(ack, async (actor) => {
-      await aiService.cancelRun(actor, runId);
-      return null;
-    }),
-  );
-  socket.on('ai:listRuns', (ack) => run(ack, (actor) => aiService.listOwnRuns(actor)));
-  socket.on('ai:status', (ack) => run(ack, (actor) => aiService.status(actor)));
-  socket.on('ai:insights', (ack) => run(ack, (actor) => insightService.listInsights(actor)));
-  socket.on('ai:apply', ({ runId, fields }, ack) =>
-    run(ack, async (actor) => {
-      await aiService.applyProposal(actor, runId, fields);
       return null;
     }),
   );
@@ -1067,7 +986,7 @@ function scheduleDashboard(io: RealtimeHub['io']): void {
 }
 
 /** Test seam: drop a pending flush so a suite does not leak a timer. */
-export function cancelScheduledDashboard(): void {
+function cancelScheduledDashboard(): void {
   if (dashboardTimer) clearTimeout(dashboardTimer);
   dashboardTimer = null;
 }

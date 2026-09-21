@@ -183,7 +183,41 @@ All six steps passed on the build after these fixes, which the same session made
   strings still said boxes, colours or tiles (`Rate / box`, `by colour`,
   `each colour`, the sample-data blurb, the product search's label).
 
+## 6b. Merged with the v1.1.0 line (2026-09-19)
+
+`origin/main` held four commits (11–14 Sep, from the other PC) that this work
+never saw: the pricing switch, the assistant's removal, sidebar sub-pages,
+the free-to-sell switch, an Office dashboard rebuild, the esbuild temp-dir
+fix, a dead-code pass — and a *different* answer to the same brief:
+`products.colour_policy` (fixed/selectable) with a shared keyboard-first
+`ui/NewLeadScreen` on both panels. The owner asked for both lines. What was
+decided, file by file, when the two collided:
+
+- **The product model is the variant model.** `20260322…colour_policy` stays
+  in the registry (it ran on that PC); `20260323…product_variants` drops the
+  `colour_policy` column and every `colourPolicy` code path went. The
+  v1.1.0 `line_items.category_name` snapshot is kept and filled.
+- **Money and stock switches govern the new screens too**: `showMoney`
+  gates the rate on the product drawer, catalogue, product/lead/order detail
+  and Leads & orders; `freeToSell` gates reserved/free columns and the
+  Master's stock pill (`inventory.piecesFree` / `piecesOnHand`).
+- **The v1.1.0 New lead screen and the Master's New lead page were not
+  kept** — they are built on colour policy. `POST /api/leads` on the Master
+  stays. See §7.
+- **v1.1.0's category picker rule** (only categories holding live products,
+  the chosen one exempt) is merged into `pickCategories` and the offline
+  picker; `product-hierarchy.integration.test.ts` and
+  `free-to-sell.integration.test.ts` were rewritten onto variants.
+- **Documents stayed removed** (the owner's later decision), including the
+  v1.1.0 designer shell; the assistant stayed removed (v1.1.0's decision).
+- `reload:catalog --with-catalog` now runs `seedCatalogue` instead of a CSV.
+
 ## 7. Left open
+
+- **Master-side New lead page.** Port the Office `AddLeadScreen` into `ui/`
+  behind a transport (parties/categories/models picks, option lists, party
+  rates, free stock per variant, last rates, create) the way the v1.1.0
+  adapters did; `POST /api/leads` is already there.
 
 - Weights: the catalogue's 549 variants land blank; entering them is the
   administrator's job, helped by the *Missing weight* filter.

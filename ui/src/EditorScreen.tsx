@@ -16,13 +16,15 @@ import { Button } from './Button.js';
 export interface EditorScreenProps {
   title: string;
   meta?: ReactNode;
+  /** Trailing controls for a shell like the PDF designer — Preview, Save, Cancel. */
+  actions?: ReactNode;
   /** Returns false when the operation refused to close — an unsaved draft. */
   onBack: () => boolean;
   backLabel: string;
   children: ReactNode;
 }
 
-export function EditorScreen({ title, meta, onBack, backLabel, children }: EditorScreenProps) {
+export function EditorScreen({ title, meta, actions, onBack, backLabel, children }: EditorScreenProps) {
   return (
     <div className="ob-editorscreen">
       <header className="ob-editorscreen-head">
@@ -33,6 +35,7 @@ export function EditorScreen({ title, meta, onBack, backLabel, children }: Edito
           {title}
         </h1>
         {meta && <div className="ob-editorscreen-meta">{meta}</div>}
+        {actions && <div className="ob-editorscreen-actions">{actions}</div>}
       </header>
       <div className="ob-editorscreen-body">{children}</div>
     </div>

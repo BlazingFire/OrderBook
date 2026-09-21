@@ -267,6 +267,10 @@ export async function pickProducts(
  * starts with the term outranks one that merely contains it, and an empty
  * term lists everything, alphabetically — the stage is a menu as much as a
  * search.
+ *
+ * Only categories holding a live product are offered (the v1.1.0 rule): an
+ * empty category is a dead end the counter cannot add anything from. An
+ * `include`d id comes back regardless, so a chosen chip never vanishes.
  */
 export async function pickCategories(
   tenantId: string,
@@ -285,8 +289,16 @@ export async function pickCategories(
        FROM product_categories c
       WHERE c.tenant_id = ?
         AND (
-          ? = ''
-          OR c.name ILIKE ? ESCAPE '\\'
+          (
+            (? = '' OR c.name ILIKE ? ESCAPE '\\')
+            AND EXISTS (
+              SELECT 1 FROM products p
+               WHERE p.tenant_id = c.tenant_id
+                 AND p.category_id = c.id
+                 AND p.is_active
+                 AND p.deleted_at IS NULL
+            )
+          )
           OR (? AND c.id = ANY(?))
         )
       ORDER BY exact_prefix DESC, c.name ASC

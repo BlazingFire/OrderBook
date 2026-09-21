@@ -935,38 +935,6 @@ export function createApp(): Express {
     })();
   });
 
-  /*
-   * The assistant, forwarded like everything else.
-   *
-   * Master-online-only and deliberately not queued: an answer to a question
-   * asked an hour ago, delivered when the link returns, is not something
-   * anybody wants. Offline these produce the ordinary 503 `error.unavailable`
-   * that `forward` already gives every other Master-only path.
-   */
-  app.get(
-    '/api/ai/status',
-    (_req, res) =>
-      void (async () => {
-        try {
-          res.json(await masterConnection.command('ai:status' as never));
-        } catch {
-          // Never an error. A panel that cannot reach the Master renders the same
-          // "not available" as one whose Master has no model configured.
-          res.json({ enabled: false });
-        }
-      })(),
-  );
-  app.get('/api/ai/runs', (_req, res) => forward(res, 'ai:listRuns'));
-  app.post('/api/ai/runs', (req, res) => forward(res, 'ai:start', req.body));
-  app.delete('/api/ai/runs/:id', (req, res) => forward(res, 'ai:cancel', String(req.params.id)));
-  app.get('/api/ai/insights', (_req, res) => forward(res, 'ai:insights'));
-  app.post('/api/ai/proposals/:runId/apply', (req, res) =>
-    forward(res, 'ai:apply', {
-      runId: String(req.params.runId),
-      fields: Array.isArray(req.body?.fields) ? req.body.fields : [],
-    }),
-  );
-
   app.get('/api/conflicts', (_req, res) => forward(res, 'conflict:list'));
   app.post('/api/conflicts/:id/resolve', (req, res) =>
     forward(res, 'conflict:resolve', {
@@ -1644,7 +1612,7 @@ function filterDashboardForCurrentUser(
  * 10-TESTING.md` §6.8 (`DSH-1`) calls out for this snapshot. The map is the
  * inventory the pure test pins; `forCurrentUser` below is what actually runs.
  */
-export type SnapshotPolicy = 'mask-rates' | 'replace' | 'gate' | 'passthrough';
+type SnapshotPolicy = 'mask-rates' | 'replace' | 'gate' | 'passthrough';
 
 export const SNAPSHOT_POLICY: Record<keyof SyncSnapshot, SnapshotPolicy> = {
   // The Master's boot id and change-ring position. Neither is company data —
@@ -1682,6 +1650,10 @@ export const SNAPSHOT_POLICY: Record<keyof SyncSnapshot, SnapshotPolicy> = {
   // for the current user does not change whether the *Master's* build of
   // this snapshot was complete, so this passes through unchanged.
   productsComplete: 'passthrough',
+  // The company's switches. Not per-person — the same company for whoever is
+  // signed in — and the stock figures beside them were already shaped by the
+  // Master to match, so a stale switch here can only be as stale as `stock`.
+  features: 'passthrough',
 };
 
 /**
@@ -2085,10 +2057,6 @@ masterConnection.on('change', (event: DataChangedEvent) =>
   broadcast('change', maskChangeEvent(event)),
 );
 masterConnection.on('conflict', (value: unknown) => broadcast('conflict', value));
-// The assistant's tokens, on the stream the browser already has open. One more
-// event type rather than one more stream: a second one would mean a second
-// keep-alive, a second reconnect and a second teardown.
-masterConnection.on('ai', (value: unknown) => broadcast('ai', value));
 sync.onSyncEvent(schedulePushView);
 
 /**

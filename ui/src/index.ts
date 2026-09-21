@@ -18,8 +18,6 @@
  */
 
 export * from './AppShell.js';
-export * from './AssistantScreen.js';
-export * from './AiSupportScreen.js';
 export * from './Avatar.js';
 export * from './AvatarPicker.js';
 export * from './BusyMark.js';
@@ -40,7 +38,6 @@ export * from './FilterBarSlot.js';
 export * from './Form.js';
 export * from './GalleryScreen.js';
 export * from './ImageCropModal.js';
-export * from './InsightCards.js';
 export * from './KanbanBoard.js';
 export * from './KeyboardProvider.js';
 export * from './Logo.js';
@@ -59,6 +56,7 @@ export * from './Splash.js';
 export * from './SuggestInput.js';
 export * from './States.js';
 export * from './SubNavSlot.js';
+export * from './subPages.js';
 export * from './Tabs.js';
 export * from './Toast.js';
 export * from './Tooltip.js';

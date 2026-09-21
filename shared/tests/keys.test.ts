@@ -195,7 +195,10 @@ describe('the command catalogue', () => {
     // Master's. Copying the Master's order would put Alt+4 on a screen the
     // office sidebar shows somewhere else.
     expect(office[3]?.tab).toBe('conflicts');
+    // Nine modules since Documents left with the PDF Designer, so every one
+    // has an Alt+N — App update included, as the ninth.
     expect(office.map((command) => command.navOrder)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(office[8]?.defaultChord).toBe('Alt+9');
   });
 
   it('has a unique id for every command', () => {

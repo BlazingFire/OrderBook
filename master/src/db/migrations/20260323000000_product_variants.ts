@@ -171,6 +171,8 @@ export async function up(knex: Knex): Promise<void> {
       DROP COLUMN IF EXISTS product_code,
       DROP COLUMN IF EXISTS weight_kg,
       DROP COLUMN IF EXISTS color,
+      -- The v1.1.0 colour rule (fixed/selectable): a variant is its own colour now.
+      DROP COLUMN IF EXISTS colour_policy,
       ADD COLUMN IF NOT EXISTS has_variants BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE products ALTER COLUMN category_id SET NOT NULL;
     DROP SEQUENCE IF EXISTS product_code_seq;

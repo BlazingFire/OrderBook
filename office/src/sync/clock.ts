@@ -46,20 +46,6 @@ export async function observe(remoteHlc: string): Promise<void> {
   schedulePersist();
 }
 
-/** The per-field clock a panel believes is current, for the merge's base map. */
-export async function currentHlc(): Promise<string> {
-  const current = await load();
-  return tickHlc(current, Date.now()).hlc;
-}
-
-export async function flushClock(): Promise<void> {
-  if (persistTimer) {
-    clearTimeout(persistTimer);
-    persistTimer = null;
-  }
-  if (state) await persist(state);
-}
-
 async function load(): Promise<HlcState> {
   if (state) return state;
 

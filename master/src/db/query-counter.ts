@@ -33,7 +33,7 @@ interface Scope {
 const storage = new AsyncLocalStorage<Scope>();
 
 /** Whether the counter reports anything. Never in production. */
-export function queryCountingEnabled(): boolean {
+function queryCountingEnabled(): boolean {
   return process.env.NODE_ENV !== 'production';
 }
 
@@ -49,20 +49,6 @@ export function attachQueryCounter(knex: Knex): void {
     const scope = storage.getStore();
     if (scope) scope.count += 1;
   });
-}
-
-/**
- * Run something with its own query count.
- *
- * The direct seam for a test that does not want to go through HTTP. Note that
- * an HTTP request handled by the server does **not** inherit a scope opened
- * around a `supertest` call — the handler runs in the socket's async context,
- * not the caller's — which is exactly why the middleware below exists.
- */
-export async function countQueries<T>(run: () => Promise<T>): Promise<{ result: T; queries: number }> {
-  const scope: Scope = { count: 0 };
-  const result = await storage.run(scope, run);
-  return { result, queries: scope.count };
 }
 
 /**

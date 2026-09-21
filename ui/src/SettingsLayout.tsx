@@ -17,7 +17,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { DeveloperStatus, DeveloperUnlock } from '@orderbook/shared';
 
-import { Button } from './Button.js';
+import { Button, IconButton } from './Button.js';
 import { Card } from './Card.js';
 import { Input, Slider, Switch } from './Form.js';
 import { Modal } from './Modal.js';
@@ -211,6 +211,11 @@ export function SettingRow({
   );
 }
 
+/** Steps are fractional; summing them drifts (0.1 + 0.2), so land on the grid. */
+function roundScale(value: number): number {
+  return Math.round(value / SCALE_STEP) * SCALE_STEP;
+}
+
 function currentRootSize(): string {
   return getComputedStyle(document.documentElement).getPropertyValue('--root-size').trim();
 }
@@ -261,7 +266,16 @@ export function AppearanceSettings() {
           label={t('settings.scale.label')}
           hint={t('settings.scale.note', { size: currentRootSize() })}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
+            {/* One step either side of the slider, for a mouse that cannot land
+                on a 4% notch and a person who wants "a bit bigger" without
+                aiming. Clamped the way the slider itself clamps. */}
+            <IconButton
+              icon="minus"
+              label={t('settings.scale.smaller')}
+              disabled={scale <= SCALE_MIN}
+              onClick={() => pickScale(Math.max(SCALE_MIN, roundScale(scale - SCALE_STEP)))}
+            />
             <Slider
               value={scale}
               min={SCALE_MIN}
@@ -269,6 +283,12 @@ export function AppearanceSettings() {
               step={SCALE_STEP}
               label={t('settings.scale.label')}
               onChange={pickScale}
+            />
+            <IconButton
+              icon="plus"
+              label={t('settings.scale.larger')}
+              disabled={scale >= SCALE_MAX}
+              onClick={() => pickScale(Math.min(SCALE_MAX, roundScale(scale + SCALE_STEP)))}
             />
             <span className="ob-mono ob-small" style={{ minWidth: '3.5rem', textAlign: 'right' }}>
               {Math.round((scale / SCALE_DEFAULT) * 100)}%

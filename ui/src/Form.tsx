@@ -12,7 +12,6 @@ import { forwardRef, useId } from 'react';
 import type {
   InputHTMLAttributes,
   ReactNode,
-  SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from 'react';
 
@@ -105,21 +104,6 @@ export function Textarea({
     />
   );
 }
-
-/**
- * `forwardRef` like `Input`, so a screen can hand focus to a select the way it
- * hands focus to a text field — the New Lead flow moves from the party it just
- * chose to the source select, and there is no other way to reach it.
- */
-export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
-  function Select({ className, children, ...rest }, ref) {
-    return (
-      <select ref={ref} className={['ob-select', className].filter(Boolean).join(' ')} {...rest}>
-        {children}
-      </select>
-    );
-  },
-);
 
 export function DateField({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
   return (

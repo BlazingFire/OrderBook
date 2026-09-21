@@ -442,10 +442,6 @@ export async function resetPassword(
   return { userId: input.userId, username: existing.username, password };
 }
 
-export async function countUsers(tenantId: string): Promise<number> {
-  return userRepo.countUsers(tenantId);
-}
-
 // G4 used to live here as `assertAnotherAdminRemains`, whose comment claimed the
 // count and the change it guarded were "serialised by the same lock". They were
 // not: the count took no lock, the connection runs at READ COMMITTED, and two

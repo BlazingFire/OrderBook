@@ -227,6 +227,7 @@ export function LogsScreen({ permissions }: Props) {
             value={filters.q}
             placeholder={t('logs.filter.searchPlaceholder')}
             aria-label={t('logs.filter.searchPlaceholder')}
+            data-screen-search
             onChange={(event) => setFilter({ q: event.target.value })}
           />
         </div>
@@ -524,7 +525,6 @@ export function LogsScreen({ permissions }: Props) {
               rows={entries}
               rowKey={(entry) => entry.id}
               onRowOpen={setOpenEntry}
-              openOn="click"
               selectedId={openEntry?.id}
               empty={
                 <EmptyState

@@ -7,26 +7,14 @@
  * instead of creating it.
  */
 
-import type { Tenant } from '@orderbook/shared';
 import type { Knex } from 'knex';
 import { randomUUID } from 'node:crypto';
 
 import { db } from '../db/knex.js';
-import { mapTenant } from './mappers.js';
 
 const TABLE = 'tenants';
 
 type Runner = Knex | Knex.Transaction;
-
-export async function listTenants(runner: Runner = db()): Promise<Tenant[]> {
-  const rows = await runner(TABLE).orderBy('created_at').select('*');
-  return rows.map(mapTenant);
-}
-
-export async function findTenantById(id: string, runner: Runner = db()): Promise<Tenant | null> {
-  const row = await runner(TABLE).where({ id }).first();
-  return row ? mapTenant(row) : null;
-}
 
 /**
  * The tenant this installation belongs to.
@@ -42,12 +30,4 @@ export async function resolveDefaultTenantId(runner: Runner = db()): Promise<str
   const id = randomUUID();
   await runner(TABLE).insert({ id, name: 'Default', slug: 'default', is_active: true });
   return id;
-}
-
-export async function renameTenant(id: string, name: string): Promise<Tenant | null> {
-  const [row] = await db()(TABLE)
-    .where({ id })
-    .update({ name, updated_at: db().fn.now() })
-    .returning('*');
-  return row ? mapTenant(row) : null;
 }

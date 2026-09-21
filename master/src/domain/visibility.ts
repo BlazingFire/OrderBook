@@ -16,7 +16,6 @@ import type { ActorContext } from './actor.js';
 
 export {
   maskLead,
-  maskLineItem,
   maskOrder,
   maskProduct,
   maskVariant,
@@ -56,7 +55,7 @@ export function canEditRates(actor: ActorContext): boolean {
  * secrets with different audiences: a sales desk quotes the sale rate all day
  * and must never see the margin.
  */
-export function canSeeCost(actor: ActorContext): boolean {
+function canSeeCost(actor: ActorContext): boolean {
   return hasPermission(actor.permissions, 'field.purchaseRate.view');
 }
 

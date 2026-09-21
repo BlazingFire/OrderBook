@@ -77,6 +77,10 @@ export function ProductDetail({
 }) {
   const colourHex = useColourHex(view.optionLists);
   const [mode, setMode] = useState<StockMode>('none');
+  // Off with the company's pricing switch, or without the role's key.
+  const showMoney = view.permissions.includes(RATE_PERMISSION);
+  // Absent means an older Master, which sends every figure — read as "on".
+  const freeToSell = view.features?.freeToSell ?? true;
 
   const levels = new Map(
     view.stock.filter((level) => level.productId === product.id).map((level) => [level.variantId, level]),
@@ -134,33 +138,41 @@ export function ProductDetail({
       align: 'right',
       render: ({ onHand }) => onHand ?? '—',
     },
-    {
-      key: 'reserved',
-      header: t('product.detail.stock.reserved'),
-      width: rem(84),
-      align: 'right',
-      render: ({ reserved }) => reserved ?? '—',
-    },
-    {
-      key: 'free',
-      header: t('product.detail.stock.free'),
-      width: rem(84),
-      align: 'right',
-      render: ({ free }) =>
-        free === null ? (
-          '—'
-        ) : (
-          <span
-            className="ob-body-strong"
-            style={{
-              color:
-                free < 0 ? 'var(--state-conflict)' : free === 0 ? 'var(--fg-tertiary)' : 'var(--fg-primary)',
-            }}
-          >
-            {free}
-          </span>
-        ),
-    },
+    ...(freeToSell
+      ? [
+          {
+            key: 'reserved',
+            header: t('product.detail.stock.reserved'),
+            width: rem(84),
+            align: 'right' as const,
+            render: ({ reserved }: VariantRow) => reserved ?? '—',
+          },
+          {
+            key: 'free',
+            header: t('product.detail.stock.free'),
+            width: rem(84),
+            align: 'right' as const,
+            render: ({ free }: VariantRow) =>
+              free === null ? (
+                '—'
+              ) : (
+                <span
+                  className="ob-body-strong"
+                  style={{
+                    color:
+                      free < 0
+                        ? 'var(--state-conflict)'
+                        : free === 0
+                          ? 'var(--fg-tertiary)'
+                          : 'var(--fg-primary)',
+                  }}
+                >
+                  {free}
+                </span>
+              ),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -168,23 +180,28 @@ export function ProductDetail({
       <Card>
         <KeyValueList
           items={[
+            { label: t('product.field.brand'), value: product.brand ?? '—' },
             { label: t('product.detail.category'), value: product.categoryName },
             { label: t('product.detail.type'), value: product.productType ?? '—' },
             { label: t('product.detail.size'), value: product.size ?? '—' },
             { label: t('product.detail.grade'), value: product.grade ?? '—' },
-            {
-              label: t('product.detail.rate'),
-              value:
-                product.rate === undefined ? (
-                  <span
-                    className="ob-redacted"
-                    title={`Missing permission: ${RATE_PERMISSION}`}
-                    aria-label="Hidden"
-                  />
-                ) : (
-                  formatMoney(product.rate)
-                ),
-            },
+            ...(showMoney
+              ? [
+                  {
+                    label: t('product.detail.rate'),
+                    value:
+                      product.rate === undefined ? (
+                        <span
+                          className="ob-redacted"
+                          title={`Missing permission: ${RATE_PERMISSION}`}
+                          aria-label="Hidden"
+                        />
+                      ) : (
+                        formatMoney(product.rate)
+                      ),
+                  },
+                ]
+              : []),
           ]}
         />
       </Card>

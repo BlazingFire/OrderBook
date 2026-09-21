@@ -1,10 +1,10 @@
 /**
  * The owner's view of every lead and order.
  *
- * Read-mostly by design: leads are raised on the Office Panels, and the
- * Master's API has no endpoint to create one (docs/LEAD_GENERATION_FLOW.md §2).
- * What the owner can do here is progress a record, convert a lead, and dispatch
- * an order — the decisions that belong to whoever is watching the whole board.
+ * Leads are raised on the Office Panels and, since the hierarchy flow, on the
+ * Master itself under Leads & orders › New lead. What the owner can do here is
+ * progress a record, convert a lead, and dispatch an order — the decisions
+ * that belong to whoever is watching the whole board.
  */
 
 import { useEffect, useState } from 'react';
@@ -36,6 +36,11 @@ type View = 'leads' | 'orders' | 'converted';
 interface Props {
   /** Bumped by the live socket whenever lead or order data changes. */
   revision: number;
+  /** The signed-in caller's own resolved permissions. */
+  permissions: string[];
+  /** Which list is showing — chosen here or from the sidebar's sub-pages. */
+  view: View;
+  onViewChange: (view: View) => void;
 }
 
 /**
@@ -49,19 +54,28 @@ interface Props {
  * later columns would then stand out of line with every other row's.
  */
 function summariseItems(items: LineItem[]): { text: string; title: string } {
-  // One line is one variant, so the colour rides beside the name: "DAMRU
-  // [Vitrosa 41] ×5" is what the counter would say.
-  const lines = items.map(
-    (item) =>
-      `${item.productName}${item.variantLabel ? ` [${item.variantLabel}]` : ''} ×${item.quantity}${
-        item.packaging ? ` · ${item.packaging}` : ''
-      }`,
-  );
-  return { text: lines.join(', '), title: lines.join('\n') };
+  // One line is one variant, so the colour rides beside the name: "ONE PIECE
+  // BASIN › DAMRU [Vitrosa 41] ×5" is what the counter would say.
+  const lines = items.map((item) => {
+    const main = item.categoryName ? `${item.categoryName} › ` : '';
+    const variant = item.variantLabel ? ` [${item.variantLabel}]` : '';
+    const pack = item.packaging ? ` · ${item.packaging}` : '';
+    const short = `${main}${item.productName}${variant} ×${item.quantity}${pack}`;
+    const full = [main + item.productName + variant, item.code, item.packaging, item.grade]
+      .filter(Boolean)
+      .join(' · ');
+    return { short, full };
+  });
+  return {
+    text: lines.map((line) => line.short).join(', '),
+    title: lines.map((line) => line.full).join('\n'),
+  };
 }
 
-export function LeadsOrdersScreen({ revision }: Props) {
-  const [view, setView] = useState<View>('leads');
+export function LeadsOrdersScreen({ revision, permissions, view, onViewChange }: Props) {
+  // Off with the company's pricing switch, or without the role's key: no
+  // Amount column at all, rather than one reading "—" top to bottom.
+  const showMoney = permissions.includes('field.saleRate.view');
   /**
    * "All" is everything this person may see — which, for somebody without
    * `party.accessAll`, already excludes other people's parties, so it is never
@@ -225,13 +239,17 @@ export function LeadsOrdersScreen({ revision }: Props) {
         </span>
       ),
     },
-    {
-      key: 'amount',
-      header: t('leadsOrders.orders.column.amount'),
-      width: rem(120),
-      align: 'right',
-      render: (order) => formatMoney(order.totalAmount ?? null),
-    },
+    ...(showMoney
+      ? [
+          {
+            key: 'amount',
+            header: t('leadsOrders.orders.column.amount'),
+            width: rem(120),
+            align: 'right',
+            render: (order: Order) => formatMoney(order.totalAmount ?? null),
+          } satisfies DataTableColumn<Order>,
+        ]
+      : []),
     {
       key: 'stage',
       header: t('leadsOrders.orders.column.stage'),
@@ -351,13 +369,17 @@ export function LeadsOrdersScreen({ revision }: Props) {
         </span>
       ),
     },
-    {
-      key: 'amount',
-      header: t('leadsOrders.leads.column.amount'),
-      width: rem(120),
-      align: 'right',
-      render: (lead) => formatMoney(lead.totalAmount ?? null),
-    },
+    ...(showMoney
+      ? [
+          {
+            key: 'amount',
+            header: t('leadsOrders.leads.column.amount'),
+            width: rem(120),
+            align: 'right',
+            render: (lead: Lead) => formatMoney(lead.totalAmount ?? null),
+          } satisfies DataTableColumn<Lead>,
+        ]
+      : []),
     {
       key: 'stage',
       header: t('leadsOrders.leads.column.stage'),
@@ -430,7 +452,7 @@ export function LeadsOrdersScreen({ revision }: Props) {
         <h1 className="ob-title" style={{ margin: 0 }}>
           {t('leadsOrders.title')}
         </h1>
-        <Tabs tabs={tabItems} activeId={view} onChange={(id) => setView(id as View)} />
+        <Tabs tabs={tabItems} activeId={view} onChange={(id) => onViewChange(id as View)} />
       </div>
 
       {error && <ConflictBanner>{error}</ConflictBanner>}

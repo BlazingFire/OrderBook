@@ -47,7 +47,6 @@ import { invalidatePipelineCache } from '../repositories/pipeline.repository.js'
 import { invalidateRoleCache } from '../repositories/role.repository.js';
 import { resolveDefaultTenantId } from '../repositories/tenant.repository.js';
 import { insertUser, roleIdForTier } from '../repositories/user.repository.js';
-import { invalidateInsightCache } from './ai-insight.service.js';
 import { invalidateSessionsForUser, resetAuthState } from './auth.service.js';
 import { rememberPassword } from './password-vault.service.js';
 import { invalidateSettingsCache } from './settings.service.js';
@@ -201,7 +200,6 @@ export async function resetAllData(): Promise<ResetAllResult> {
   invalidateRoleCache();
   invalidatePipelineCache();
   invalidateFieldCache();
-  invalidateInsightCache();
   resetPublicApiTenantCache();
   resetRateLimits();
   resetApiKeyFailures();

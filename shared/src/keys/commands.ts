@@ -65,6 +65,7 @@ const MASTER_NAV: Array<[id: string, token: MessageKey]> = [
   ['fields', 'nav.master.fields'],
   ['logs', 'nav.master.logs'],
   ['recycleBin', 'nav.master.recycleBin'],
+  ['integrations', 'nav.master.integrations'],
   ['settings', 'nav.master.settings'],
   ['updates', 'nav.updates'],
 ];

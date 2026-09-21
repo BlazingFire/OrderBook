@@ -28,7 +28,7 @@ type Runner = Knex | Knex.Transaction;
  * `domain/recycle-bin.ts`'s `encodeBinCursor` (repositories must not import
  * domain guards, `01-ARCHITECTURE.md` §3.1's file-order table).
  */
-export interface BinEntryRow {
+interface BinEntryRow {
   entityType: RecycleBinEntityType;
   id: string;
   label: string;
@@ -136,16 +136,6 @@ const BRANCHES: BranchDefinition[] = [
            WHERE tenant_id = ? AND deleted_at IS NOT NULL`,
   },
 ];
-
-/**
- * Exported so a test can assert the branch list covers every declared Bin
- * entity. Adding a type to `RECYCLE_BIN_ENTITIES` without adding a branch here
- * produces no error anywhere — the type checks pass, the route accepts it, and
- * the entity is simply invisible in the Bin forever.
- */
-export const BIN_BRANCH_TYPES: readonly RecycleBinEntityType[] = BRANCHES.map(
-  (branch) => branch.entityType,
-);
 
 interface BinRow {
   entity_type: RecycleBinEntityType;

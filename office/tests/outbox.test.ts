@@ -11,7 +11,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { isTemporaryId } from '@orderbook/shared';
+import { isTemporaryId, type SyncSnapshot } from '@orderbook/shared';
 
 let dataDir: string;
 
@@ -267,6 +267,42 @@ describe('local view', () => {
     // An empty hlc is how the UI knows to draw the pending badge.
     expect(view?.leads[0]?.sync.hlc).toBe('');
     expect(view?.pendingCount).toBe(1);
+  });
+
+  it('prices a queued party-wise line from the party variant, as the Master will', async () => {
+    const { outbox, localStore } = await loadModules();
+    // A rate-less line is what the New Lead form sends now; the Master resolves
+    // variant before catalogue, so the pending figure must not be the catalogue.
+    await localStore.setSnapshot({
+      ...snapshot,
+      products: [
+        {
+          id: 'PR0000000001',
+          tenantId: 't1',
+          name: 'Glazed',
+          rate: 45000,
+          variants: [{ id: 'VR1', productId: 'PR0000000001', code: 'GLZ-100', label: null, weightKg: 4 }],
+        },
+      ],
+      partyVariants: [
+        { id: 'PV1', tenantId: 't1', partyId: 'PT0000000001', productId: 'PR0000000001', rate: 40000 },
+      ],
+    } as unknown as SyncSnapshot);
+
+    await outbox.enqueue({
+      kind: 'lead.create',
+      entity: 'lead',
+      entityId: 'A3F9K2000000002',
+      payload: {
+        partyId: 'PT0000000001',
+        partyWiseMode: true,
+        items: [{ productId: 'PR0000000001', variantId: 'VR1', quantity: 2 }],
+      },
+    });
+
+    const view = await localStore.getView();
+    expect(view?.leads[0]?.items[0]?.rate).toBe(40000);
+    expect(view?.leads[0]?.totalAmount).toBe(80000);
   });
 
   it('applies a queued stage change on top of a synced lead', async () => {

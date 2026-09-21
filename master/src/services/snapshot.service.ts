@@ -24,6 +24,7 @@ import * as syncRepo from '../repositories/sync.repository.js';
 import { resolvePartyScope } from '../domain/party-scope.js';
 import { canSeeRates, maskVariant } from '../domain/visibility.js';
 import * as catalogService from './catalog.service.js';
+import { companyFeatures } from './company-features.js';
 import * as dashboardService from './dashboard.service.js';
 import * as inventoryService from './inventory.service.js';
 import * as leadService from './lead.service.js';
@@ -72,15 +73,17 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
   // and a conflict names the lead or order it belongs to.
   const partyScope = resolvePartyScope(actor);
 
-  const [variants, pipelines, optionLists, customFields, conflicts, serverHlc, dashboard] = await Promise.all([
-    variantRepo.listAll(actor.tenantId, partyScope),
-    pipelineRepo.listPipelines(actor.tenantId),
-    customFieldRepo.listOptions(actor.tenantId),
-    customFieldRepo.listDefinitions(actor.tenantId),
-    syncRepo.listConflicts(actor.tenantId, { limit: 100, scope: partyScope }),
-    peekHlc(),
-    dashboardService.getDashboardSummary(actor),
-  ]);
+  const [variants, pipelines, optionLists, customFields, conflicts, serverHlc, dashboard, features] =
+    await Promise.all([
+      variantRepo.listAll(actor.tenantId, partyScope),
+      pipelineRepo.listPipelines(actor.tenantId),
+      customFieldRepo.listOptions(actor.tenantId),
+      customFieldRepo.listDefinitions(actor.tenantId),
+      syncRepo.listConflicts(actor.tenantId, { limit: 100, scope: partyScope }),
+      peekHlc(),
+      dashboardService.getDashboardSummary(actor),
+      companyFeatures(actor.tenantId),
+    ]);
 
   const allowed = canSeeRates(actor);
 
@@ -126,5 +129,6 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
     // SNAPSHOT_LIMIT — either way it is not the complete catalogue, and the
     // Office image cache sweep must not treat it as one.
     productsComplete: canProducts && products.length < SNAPSHOT_LIMIT,
+    features,
   };
 }

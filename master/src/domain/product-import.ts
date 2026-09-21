@@ -41,9 +41,9 @@ export type VariantField = 'variant' | 'code' | 'weightKg';
 
 export type ImportField = ProductField | VariantField;
 
-export type ImportKind = 'text' | 'money' | 'number' | 'int' | 'enum';
+type ImportKind = 'text' | 'money' | 'number' | 'int' | 'enum';
 
-export type MoneyPermission = 'field.saleRate.edit' | 'field.purchaseRate.edit';
+type MoneyPermission ='field.saleRate.edit' | 'field.purchaseRate.edit';
 
 export interface ImportColumn {
   field: ImportField;

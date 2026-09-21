@@ -6,13 +6,13 @@
  * does, inside a `render:` callback that `ScreenHost` invokes on every one of
  * its own renders. So the object's *identity* changes constantly while its
  * *behaviour* never does. A hook that depends on the identity therefore re-runs
- * on every render: `AiSupportScreen` turned one status read into one settings
- * lookup per sync delta on the machine that owns the database, for as long as
- * the tab was open.
+ * on every render: a since-removed screen turned one status read into one
+ * settings lookup per sync delta on the machine that owns the database, for as
+ * long as the tab was open.
  *
- * This has now been fixed twice. The first fix left a prose postmortem in
- * `AssistantScreen.tsx`; an agent editing that very file two hundred lines away
- * wrote the bug again. So the rule is a test.
+ * This has now been fixed twice. The first fix left a prose postmortem in that
+ * file; an agent editing it two hundred lines away wrote the bug again. So the
+ * rule is a test.
  *
  * The remedy is always the same: hold the prop in a ref, assign
  * `ref.current = transport` during render, read `ref.current` inside the hook,

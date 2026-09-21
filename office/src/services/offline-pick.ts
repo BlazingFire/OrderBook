@@ -101,8 +101,12 @@ export function pickFromView(
   if (!permissions.includes(required)) throw new OfflinePickForbidden(required);
 
   if (kind === 'category') {
+    // Only categories that hold live products are offered — the same live
+    // check the Master's own `EXISTS` clause makes, here as a set built from
+    // the cached page.
+    const stocked = new Set(view.products.map((product) => product.categoryId));
     return pickFrom<ProductCategory>(
-      view.categories,
+      view.categories.filter((category) => stocked.has(category.id)),
       (category) => [category.name],
       (category) => category.name,
       query,

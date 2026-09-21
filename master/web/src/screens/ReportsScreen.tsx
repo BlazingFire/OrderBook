@@ -55,6 +55,9 @@ interface Props {
   revision: number;
   /** The signed-in user's resolved permissions, as the shell already holds them. */
   permissions: string[];
+  /** Which report is showing — chosen here or from the sidebar's sub-pages. */
+  kind: ReportKind;
+  onKindChange: (kind: ReportKind) => void;
 }
 
 /** Tagged so a report from the previous tab can never render under the new one. */
@@ -85,11 +88,10 @@ const PERIOD_KEY: Record<ReportPeriod, string> = {
   custom: 'reports.period.custom',
 };
 
-export function ReportsScreen({ revision, permissions }: Props) {
+export function ReportsScreen({ revision, permissions, kind, onKindChange }: Props) {
   const canView = permissions.includes('reports.view');
   const canExport = permissions.includes('reports.export');
 
-  const [kind, setKind] = useState<ReportKind>('dispatches');
   const [period, setPeriod] = useState<ReportPeriod>('last6Months');
   const [fromMonth, setFromMonth] = useState('');
   const [toMonth, setToMonth] = useState('');
@@ -177,7 +179,7 @@ export function ReportsScreen({ revision, permissions }: Props) {
         <h1 className="ob-title" style={{ margin: 0 }}>
           {t('reports.title')}
         </h1>
-        <Tabs tabs={tabItems} activeId={kind} onChange={(id) => setKind(id as ReportKind)} />
+        <Tabs tabs={tabItems} activeId={kind} onChange={(id) => onKindChange(id as ReportKind)} />
       </div>
 
       <Card>

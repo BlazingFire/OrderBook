@@ -45,7 +45,7 @@ const log = createLogger('master-link');
 /** How often a connected panel repeats its self-description. */
 const REPORT_INTERVAL_MS = 5 * 60 * 1000;
 
-export type ConnectionState = 'unpaired' | 'connecting' | 'connected' | 'disconnected';
+type ConnectionState = 'unpaired' | 'connecting' | 'connected' | 'disconnected';
 
 /**
  * A command the Master answered with a refusal, or that never reached it.
@@ -75,7 +75,7 @@ export class MasterCommandError extends Error {
   }
 }
 
-export interface ConnectionStatus {
+interface ConnectionStatus {
   state: ConnectionState;
   masterHost: string | null;
   masterPort: number | null;
@@ -278,18 +278,6 @@ class MasterConnection extends EventEmitter {
     socket.on('data:changed', (event) => {
       this.applyChange(event);
       this.emit('change', event);
-    });
-
-    /*
-     * Exactly one assistant listener, attached here at construction.
-     *
-     * Not one per run and not one per open browser stream: this emitter already
-     * carries four listeners per stream, and a per-run listener would grow that
-     * with every question anybody asked. The HTTP layer fans out from a single
-     * set of open streams instead.
-     */
-    socket.on('ai:event', (event) => {
-      this.emit('ai', event);
     });
 
     // Pushed by the Master when it stops honouring this panel's session, so an

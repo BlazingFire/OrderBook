@@ -19,7 +19,7 @@ import { db } from '../db/knex.js';
 import type { TransactionContext } from './transaction.js';
 
 /** The Master's device code. Fixed, and never a valid panel code. */
-export const MASTER_DEVICE_CODE = 'MASTER';
+const MASTER_DEVICE_CODE = 'MASTER';
 
 type Runner = Knex | Knex.Transaction;
 

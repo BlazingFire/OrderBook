@@ -39,7 +39,7 @@ const TABLE = 'users';
  * Truncated because this is a change marker, not a MAC; the full digest would
  * imply a security property it is not providing.
  */
-export function credentialFingerprint(passwordHash: string): string {
+function credentialFingerprint(passwordHash: string): string {
   return createHash('sha256').update(passwordHash).digest('hex').slice(0, 16);
 }
 

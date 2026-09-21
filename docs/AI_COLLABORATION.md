@@ -32,7 +32,7 @@ What is actually true:
   are append-only and only durably updated when a turn **commits**, so a
   still-streaming conversation is never a complete, readable file.
 - **The `.claude/` folder in this repo** is not a GUI. It holds
-  `settings.local.json` and vendored skills — configuration, not a session.
+  `settings.local.json` — configuration, not a session.
 
 ### What this means for collaboration
 
@@ -80,8 +80,8 @@ no agent can open the one you already have in the GUI.
 1. **Put durable decisions in `HANDOFF.md`** (this repo's running record).
    Anything worth remembering — a decision, a gotcha, a completed stage —
    belongs there, not in a chat transcript that dies with the session.
-2. **Write plans as files.** Claude Code has a `writing-plans` skill (vendored
-   under `.claude/skills/`) that produces handoff plans for other models to
+2. **Write plans as files.** Claude Code's `writing-plans` skill (installed
+   globally, not vendored) produces handoff plans for other models to
    execute. Command Code writes plans to `~/.commandcode/plans/`. Both are
    better handoffs than pasted chat.
 3. **Prefer the source of truth over any summary.** `docs/PROJECT_PLAN.md` is
@@ -90,9 +90,10 @@ no agent can open the one you already have in the GUI.
 4. **Status lives in git, not in memory.** Commit granular work; the log is the
    shared timeline all three agents can read (`git log`). Uncommitted work is
    invisible to the others.
-5. **Vendored skills** (`.claude/skills/` and `.agents/skills/`, kept
-   byte-identical to upstream per `.prettierignore`) are shared tooling — read
-   them, don't edit them.
+5. **Project skills** live in `.commandcode/skills/` (team-shared, tracked) and
+   `.agents/skills/ui-consistency/` (the Muse Code shape of the same rule).
+   Third-party skills are installed globally on each machine, not vendored —
+   the vendored copies were removed on 2026-09-14.
 
 ---
 
@@ -135,8 +136,8 @@ Use this when passing a task from one agent to another:
    verified, what's left. The next agent reads the file, not the chat.
 4. **Update `HANDOFF.md`** when the task closes.
 
-This mirrors the "improve" skill's model (`plans/` + execute/reconcile) already
-vendored in this repo, and keeps every agent working from durable state.
+This mirrors the "improve" skill's model (`plans/` + execute/reconcile) and
+keeps every agent working from durable state.
 
 ---
 
@@ -172,8 +173,7 @@ For OrderBook specifically: `npm run typecheck` covers the web workspaces and
 | Shared UI package | `ui/src/` (consumed as source by both panels) |
 | Electron shell | `electron/` (main process + supervisor) |
 | Release/build tooling | `tools/` (`release.mjs`, `make-icons.mjs`, …) |
-| AI assistant (product feature) | `master/src/ai/`, docs in `docs/overhaul/workstream-I.md` |
-| AI dev skills (vendored) | `.claude/skills/` + `.agents/skills/` |
+| Project skills | `.commandcode/skills/` + `.agents/skills/ui-consistency/` |
 
 ---
 
@@ -186,6 +186,33 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
+
+### 2026-09-19 — Merge of the v1.1.0 line into the variant restructure (Claude)
+
+Scope: the owner asked for local and remote `main` to be aligned, then for
+both lines to survive. `origin/main` (11–14 Sep, other PC) and the laptop's
+`main` had diverged at `da9e992` with contradictory decisions — two product
+hierarchies, two New lead screens, the Designer kept vs removed, the
+assistant removed vs kept. Resolution rules and the file-by-file record are
+in `docs/ai-handoffs/product-model-variants.md` §6b; the short form: the
+variant model wins the hierarchy, every other v1.1.0 feature is kept, both
+removals stand.
+
+**Files touched.** 67 conflicted files resolved by hand (shared contract,
+migrations registry, Master repositories/services, Office server, both web
+shells and every product/lead/order screen, both catalogues, HANDOFF and
+the docs); the v1.1.0 `NewLeadScreen` (ui + Master adapter) and
+`documentBlocks.ts` deleted; `catalog-reload-cli.ts` moved onto
+`seedCatalogue`; `free-to-sell` and `product-hierarchy` suites rewritten
+onto variants; `keys.test.ts` and `outbox.test.ts` adjusted. Ten lead-screen
+rate keys the auto-merge had dropped were restored to both catalogues; four
+v1.1.0 keys the merged screens use were carried over with their Hindi.
+
+**Verified.** `npm run verify` on the merged tree, run 2026-09-21 before the
+merge commit: `lint` 0, `typecheck` 0, `vitest run` 117 files / 1427 tests
+passed, none skipped (every integration suite ran against the embedded
+PostgreSQL 17 cluster). The merge was committed and pushed the same day, so
+local and `origin/main` agree again.
 
 ### 2026-09-19 — Product model → variant restructure, category-first lead search, Swisware catalogue (Claude)
 
@@ -309,6 +336,267 @@ weaker guard. And the management role does not hold `party.accessAll`, so
 "the manager dispatches the office user's order" fails on a party assigned to
 the office user alone; the administrator does that work in the seed, as an
 administrator would.
+### 2026-09-14 — Build fix, dead code, bloat removal, handoff rewrite (Claude)
+
+Scope: owner's "commit all to main, update handoff and project files, remove
+bloatware code and bloat files". Root cause of the `vite build` failure
+(`remove …\esbuild-…: Access is denied`) is a Windows temp-folder lock; both
+`web` workspaces' `build` scripts now point `TEMP`/`TMP` at a project-local
+`.tmp/` (gitignored) — `start:master` and `start:office` verified through real
+`npm`/`cmd.exe`. Deleted the vendored third-party skills (`.claude/skills/`,
+four of `.agents/skills/`, `skills-lock.json`, 138 files; all installed
+globally already), `docs/IMAGE_PIPELINE_FRONTEND_BRIEF.md`, and the four
+`docs/ai-handoffs/` briefs verified done — every one of the 22 was checked
+against the current tree, 18 remain open/partial and the README there is the
+verified queue. Knip-driven dead-code pass: 43 symbols deleted, 48
+un-exported, `master/src/domain/i18n-tokens.ts` removed. `HANDOFF.md`
+rewritten from a 3,110-line log into a current-state document (history stays
+in git); `AGENTS.md`, `opencode.md`, `README.md`, this file and the
+`repo-conventions` skill brought in line. `updates.test.ts` UPD-7 fixed
+(`1.1.0` → `9.9.9`; it was publishing the app's own version as "new").
+Verified: `npm run lint`, `npm run typecheck` exit 0; unit suites green;
+integration suites still blocked by the machine's PostgreSQL permission
+failure.
+
+### 2026-09-13 — Project skill .agents/skills/ui-consistency (Muse Code)
+
+Scope: owner's `/create-skill` (UI consistency, project scope). Created
+`.agents/skills/ui-consistency/SKILL.md` through the workspace file-write path:
+the sandboxed shell can neither read nor write `.agents/` (PowerShell
+`New-Item`/`Get-Content` and the validator all get access-denied), while the
+file channel writes and reads it fine. Content mirrors the
+`.commandcode/skills/ui-consistency` team skill in Muse-native shape; that
+team skill is untouched and no vendored skill was modified.
+
+Verified: file reads back correct via the file channel; `muse skills validate`
+(run as `C:\Users\Z\.local\bin\muse.exe`, found off-PATH) fails with
+`invalid-skill-package: Access is denied (os error 5)` on the skill path —
+environmental, not a content diagnostic. Owner to re-run
+`muse skills validate .agents/skills/ui-consistency --json` in an unsandboxed
+terminal; expect valid:true with zero diagnostics.
+
+### 2026-09-13 — Three team skills: ui-consistency, domain-flows, test-guardrails (Muse Code)
+
+Scope: owner's "install more skills, make new plugins, keep UI consistent,
+don't break anything". Authored three team skills under `.commandcode/skills/`
+(the tracked team-shared location; vendored `.claude/skills` and
+`.agents/skills` untouched): `ui-consistency` (one-kit rule, scale contract,
+i18n), `domain-flows` (entities, Socket.IO contract, single-writer,
+leads-to-orders, migrations permanent), `test-guardrails` (test layout, the
+`master/web` + `office/web` zero-coverage blind spot, integration skip
+behaviour). External installs (ponytail, caveman, memsearch, rufflo) are
+user-terminal steps — this sandbox has no node/npx/python on PATH and profile
+writes are denied — so commands were handed over, nothing installed from here.
+
+Verified: `npm run verify` could not run in this sandbox (no Node.js on PATH:
+`where.exe node`/`npx` find nothing, no `C:\Program Files\nodejs`); the change
+is markdown-only (three SKILL.md files + this entry), outside the
+eslint/typecheck/vitest surface. `master/web/src` and `office/web/src`
+confirmed at zero test files each. Owner to run `npm run verify` locally.
+
+### 2026-09-13 — Commit + rebuild checkpoint (Command Code)
+
+Scope: owner's "commit all to main and update all exe and everything else".
+Committed the whole working tree to `main` (pricing switch, assistant
+removal, sidebar sub-pages, product hierarchy + new-lead flow, catalogue
+reload script, new-lead/product-drawer/import rebuilds, dashboard + lead
+detail rebuilds, designer shell). The installer rebuild was attempted but this
+machine refuses: `node tools/release.mjs` and direct `electron-builder` both
+hang indefinitely (no output, node spinning in kernel time, no children) —
+same machine-level sickness as PostgreSQL and esbuild's TEMP files. All build
+inputs are refreshed and committed (both `web/dist`, both server `dist`, both
+`electron/dist`), so `npm run release` works on a healthy machine; the
+releases folder still serves the 1.0.3 exes as latest.
+`.gitignore` now keeps operator fixtures and local logs untracked by design:
+`CATA.pdf`, `dummy-data/`, `vitest-out.txt`, `.claude/launch.json`.
+
+Verified: `npm run lint` + `npm run typecheck` exit 0; all 80 unit suites
+green (937 tests). The 42 integration suites (563 tests) cannot start their
+shared PostgreSQL cluster on this machine (initdb/postgres refuse every
+directory, including fresh dirs outside TEMP, while plain file creation
+works) — the identical failure on a stashed clean tree proves it is
+environmental, not the change.
+
+### 2026-09-12 — Product field order follows lead generation (Command Code)
+
+Scope: the owner's "first brand then main product name then code then
+dimensions then colour etc — set all according to lead generation". UI-only
+reorder, no migration. Add Product walks Brand → Main product → Code → Model
+name → … → Size → Thickness → Colour + selectable toggle → Grade → rest of
+spec (`EMPTY`/hydration/`save()` keys reordered, Brand takes `autoFocus`);
+catalogue table gains a Brand column and reads
+photo → code → name → brand → type → size → colour → grade → rate? → stock;
+ProductDetail facts read Brand → Main product → Code → Type → Size → Colour
+(with selectable marker) → Grade → Weight → Rate?; import template columns
+lead with brand → main → code → dimensions → colour, preview gains
+Brand/Main/Colour sample columns, and `swisware-2026.csv` is regenerated to
+the new header order (548 lines / 547 rows). New key
+`catalog.products.column.brand` in en + real hi; header assertions in
+`panel-catalog-route` and `product-import` updated.
+
+Verified: `npm run lint` + `npm run typecheck` exit 0; affected suites green
+(panel-catalog-route, product-import-domain, product-hierarchy,
+document-model, offline-pick, i18n-coverage). Full `verify` attempted: 1
+failure in 1500, the template-header regex in `product-import.integration`,
+fixed; other red runs are the documented shared-cluster contention. Both-web
+`tsc -b` passes; `vite build` fails in this sandbox on an esbuild
+`%TEMP%` file lock that hits untouched trees identically.
+
+### 2026-09-12 — PDF Designer Canva-style shell inside the Documents editor (Command Code)
+
+Scope: the owner's screenshot — Templates + Blocks rails left, live A4 sheet
+centre, Template Options right, Preview with real lead + Save template on top.
+Lives in the Documents → Templates → New/Edit editor (`EditorScreen`), not a
+new nav item; no Light/Dark toggle (app theme wins).
+
+**What changed.** `TemplateEditor` (`ui/src/DocumentsScreen.tsx`) is reskinned
+into the `DesignerShell` 3-column grid; `LayoutCard` stays as an exported stub
+for a reviewable diff. Blocks are one `DocumentBlock` each through the existing
+`blocksToElements()` converter (`ui/src/documentBlocks.ts`), shifted to the
+drop point (`shiftBundle` in `pageDesignerGeometry.ts`, unit-tested) and placed
+via a consumed-once `pendingInsert` on `PageDesigner` (one undo entry, table
+refused twice, 200-element ceiling, signature bottom-pinned by the converter).
+Margins are Narrow/Normal/Wide presets (Normal = shipped default); Paper is
+A4/A5 with Letter/orientation/accent/default/margins/texts kept under a More
+settings disclosure. Enabling the watermark with empty text seeds DRAFT (the
+save would otherwise refuse). Preview keeps the popup-safe flow against a real
+lead/order; `EditorScreen` gains an optional `actions` slot; new
+`documents.designer.*` i18n keys (Hindi via `npm run i18n:sync`).
+
+**Untouched.** Renderer, bindings, redaction order (`field.saleRate.view`),
+routes, settings keys, template columns, starters, both panel adapters.
+
+**Verified.** `npm run lint` + `npm run typecheck` exit 0; `npm run build`
+succeeds for both panels; 187 focused tests green (`ui/tests`,
+`document-layout/model/template/bindings`, `document-render.integration`
+incl. PDF-55, `screen-reachability`, `i18n-call-sites`, `ui-conventions`,
+`no-duplicate-ui`, `no-transport-dep`). Full `npm run verify` was attempted:
+240 integration failures, all from the shared-cluster contention this repo
+already documents (shutting-down cluster, duplicate keys, deadlocks) — every
+one of those files passes in isolation. Owner still to click through: each
+type, every option, Narrow/Normal/Wide + A4/A5 + Letter disclosure, drag and
+click-insert each block, preview vs lead/order, save/reload/conflict, Office
+online, rate-blind user.
+
+### 2026-09-12 — Office dashboard rebuilt around the screenshot (Command Code)
+
+Scope: the owner's screenshot — four stat cards, a per-stage lead pipeline
+with money beside each bar, recent activity with Today-time stamps, and
+follow-ups as lead id + party + stage + amount rows. Rebuilt
+`office/web/src/screens/DashboardScreen.tsx` to that arrangement: 4 cards
+(Open leads, Open orders, Dispatched this week, Sync), pipeline bars with
+per-stage amounts summed from the snapshot, activity from the leads'/orders'
+own timelines (system entries for moves/conversions/dispatches, typed remarks
+with the actor named, offline leads flagged), and follow-up rows that open
+the lead. Conversion renders "Order OR… created from LD…", dispatch renders
+"Order OR… marked {stage}" with the real stage name, offline reads "Lead
+saved offline on Panel {device}". 13 new `dashboard.*` keys in en + hi
+(`npm run i18n:sync`).
+
+Verified: shared + i18n call-site suites green (34 tests), eslint clean on
+all four touched files. Repo-wide `npm run verify` NOT green — pre-existing
+working-tree breakage: unused `LayoutCard` stub in `ui/src/DocumentsScreen.tsx`
+fails lint + typecheck, and the full test run inherits unrelated integration
+failures from the dirty tree (duplicate-key/DB shutdown noise).
+
+### 2026-09-12 — Empty state + sample parties (Command Code)
+
+Scope: the owner's follow-up "remove all products zero products zero leads
+make few parties". Re-ran the wipe with no import (products 547 → 0,
+categories 41 → 0, leads/orders/lines/inventory already 0), then created 3
+sample parties via `createParty` (P-0001 Patel Tiles & Sanitary, Morbi;
+P-0002 Shree Balaji Traders, Rajkot; P-0003 New Home Ceramics, Ahmedabad).
+The script now takes `--with-catalog` / `--with-parties` flags
+(`wipe:business`, `reload:catalog`, `seed:parties`).
+
+Verified: master typecheck + eslint on the script green. Repo-wide
+lint/typecheck fail on a pre-existing unused `LayoutCard` in
+`ui/src/DocumentsScreen.tsx` (working-tree change, not this task). Full
+`npm run verify` NOT re-run.
+
+### 2026-09-12 — Catalogue reload: wipe + SWISWARE 2026 import (Command Code)
+
+Scope: the owner's "REMOVE ALL PRODUCTS AND UPLOAD CATA.PDF FILE PRODUCTS"
+message. CATA.pdf is a 28-page image-only catalogue (no text layer —
+verified with pypdf/pymupdf), already transcribed as
+`dummy-data/swisware-2026.csv` (547 rows, 41 categories, SW-0001…SW-0547,
+checked against the rendered PDF pages). Added one-shot operator script
+`master/src/services/catalog-reload-cli.ts` (`reload:catalog`) that truncates
+all business tables (products, categories, images, leads, orders, line items,
+inventory, reservations, movements, timeline, variants, parties, access,
+sync/conflict bookkeeping, activity), resets the id counters and sequences,
+then imports the CSV through the real `importProducts` service. Ran it
+against the live database: 5002 live products wiped, 547 created, 0 failed.
+Users, roles, settings and panels kept. Production data action only — the
+script is not imported by app code or tests; no migration added (migrations
+are append-only history).
+
+Verified: `npm run lint` and `npm run typecheck` green across all workspaces;
+`product-import` + `product-hierarchy` integration suites pass (18 tests).
+Full `npm run verify` NOT re-run in this session.
+
+### 2026-09-12 — Product hierarchy + keyboard-first lead entry on both panels (Command Code)
+
+Scope: the owner's SWISWARE 2026 catalogue message — Brand → main product →
+sub-product with a per-model colour rule — implemented end to end. Brand and
+main product reuse `products.brand` and `product_categories`; new are
+`products.colour_policy` (`fixed` default | `selectable`, migration
+`20260322…`, editable on the product drawer after `color` plus a new Main
+product field) and the `line_items.category_name` snapshot. Lead entry is one
+shared `ui/src/NewLeadScreen.tsx` behind a transport: Office adapter queues
+through the outbox (offline unchanged), Master adapter over `api.pick` plus a
+new `POST /api/leads` (same `leadService.createLead` the socket hub uses),
+mounted as Leads & orders › New lead. Flow is party → source → follow-up →
+main-product picker → repeatable sub-product picker (Enter adds, caret stays)
+→ Shift+Q/Next → per-row colour/packaging/grade/quantity walk → Enter commits
+the group → Ctrl+Enter review modal → Ctrl+Enter saves. Pick gains a
+`category` kind and a `categoryId` filter (Master + Office offline mirror).
+Document columns become `# | Main product | Model | Code | Colour |
+Packing | Grade | Boxes` (`size` retired from the default set but kept as a
+column key for old layouts); colour reads as text (`showColourChips: false`
+everywhere). Transcription: `dummy-data/swisware-2026.csv`, 547 rows across
+43 main products, importable via Products › Import.
+
+Verified: `npm run verify` green (122 files / 1498 tests, incl. new
+`product-hierarchy.integration.test.ts`, new PDF-90 model gate, rewritten
+`POST /api/leads` API gate, offline-pick category cases), both panels build.
+One open item: the legacy Office screen is backed up to the session scratchpad
+only — delete it once the counter has run the new flow.
+
+### 2026-09-11 — Pricing switch, assistant removed, sidebar sub-pages, Documents sub-screens (Claude)
+
+Scope: nine owner requests in one message, implemented here at the owner's
+instruction. The HANDOFF entry of the same date carries the reasoning; the
+list, by request:
+
+1. Leads open in the list view by default (`LeadBoardScreen`).
+2. Money is a company setting, `pricing.enabled`, off by default. Off strips
+   the four `field.*Rate.*` keys from every resolved permission set
+   (`master/src/services/pricing-gate.ts`) and drops the Pricing group from the
+   permission catalogue; every screen that still drew an Amount/Rate column
+   regardless now drops it on `field.saleRate.view` absent. The test fixture
+   seeds the switch on; `pricing-gate.integration.test.ts` turns it off.
+3. Sidebar items with children carry a fold chevron; the tier unfolds on its
+   own around the current page (`AppShell`, `ui/tests/app-shell-nav.test.tsx`).
+4. – 6. Products and Parties search boxes are 400px; Party access is 260px.
+7. Documents has Templates/Exports as sidebar children in both panels; the
+   template editor and starter gallery are `EditorScreen` sub-screens with a
+   nested sidebar entry, not modals.
+8. The AI assistant is removed end to end (18 files deleted, ~95 i18n keys,
+   three permissions, six settings, socket events, proxy routes, CSS). The
+   migration and the three `activity.ai_run.*` tokens stay, by the repo's own
+   append-only rules.
+9. The sidebar mark is a button to the Dashboard.
+
+Four follow-ups the same evening: every module with more than one view folds
+its views into the sidebar (`subPages` in each App.tsx, `ui/src/subPages.ts`);
+Ctrl+F focuses the visible screen's `data-screen-search` box and falls back to
+the palette; −/+ buttons on the UI scale slider; the Office lead detail is a
+two-column layout with line items as compact rows.
+
+Verified: `npm run lint` and `npm run typecheck` exit 0; the new UI test
+passes; the full suite result is recorded in the HANDOFF entry. Visual check
+of both panels needs a signed-in session, which the owner does at the PC.
 
 ### 2026-09-07 — Bulk product import (CSV/Excel), templates, and the paged catalogue (Claude)
 

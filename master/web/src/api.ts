@@ -27,9 +27,6 @@ import type {
   SeedDummyUsersResult,
   LoadCatalogueResult,
   SeedSampleDataResult,
-  AiRun,
-  AiStartInput,
-  AiStatus,
   ApiKey,
   ApiKeyInput,
   Connector,
@@ -40,12 +37,12 @@ import type {
   ConnectorRun,
   ConnectorTestResult,
   DispatchesReport,
-  Insight,
   FieldCatalogue,
   FieldUsageBreakdown,
   InventoryStockLevel,
   LeadOutcomesReport,
   Lead,
+  LeadInput,
   MasterIdentity,
   MessageKey,
   MessageParams,
@@ -570,8 +567,7 @@ export const api = {
     maxStockLevel?: number | null;
   }) => post<InventoryStockLevel>('/api/stock/reorder-level', input),
 
-  // Leads are read-only here: they are raised in the Office Panel, and the
-  // Master's API has no create endpoint at all (docs/LEAD_GENERATION_FLOW.md §2).
+  createLead: (input: LeadInput) => post<Lead>('/api/leads', input),
   leads: (
     options: { stageIds?: string[]; includeConverted?: boolean; scope?: PartyScopeFilter } = {},
   ) => {
@@ -678,6 +674,7 @@ export const api = {
     const params = new URLSearchParams({ q: query.term });
     if (query.categoryId) params.set('categoryId', query.categoryId);
     if (query.include?.length) params.set('include', query.include.join(','));
+    if (query.categoryId) params.set('categoryId', query.categoryId);
     return request<{ items: T[]; truncated: boolean }>(
       `/api/pick/${kind}?${params.toString()}`,
       query.signal ? { signal: query.signal } : undefined,
@@ -814,18 +811,6 @@ export const api = {
   runConnector: (id: string, mode: 'dry_run' | 'import') =>
     post<ConnectorRun & { runId: number }>(`/api/integrations/connectors/${id}/run`, { mode }),
   connectorRuns: (id: string) => request<ConnectorRun[]>(`/api/integrations/connectors/${id}/runs`),
-
-  // --- The assistant (Stage 12) --------------------------------------------
-
-  aiStatus: () => request<AiStatus>('/api/ai/status'),
-  aiRuns: () => request<AiRun[]>('/api/ai/runs'),
-  aiAsk: (input: AiStartInput) => post<{ runId: string }>('/api/ai/runs', input),
-  aiCancel: (runId: string) => request<void>(`/api/ai/runs/${runId}`, { method: 'DELETE' }),
-  aiInsights: () => request<Insight[]>('/api/ai/insights'),
-  aiTest: () =>
-    post<{ ok: boolean; supportsTools: boolean; model: string; error?: string }>('/api/ai/test'),
-  aiApply: (runId: string, fields: string[]) =>
-    post<void>(`/api/ai/proposals/${runId}/apply`, { fields }),
 
   // --- Developer mode (`shared/src/domain/developer.ts`) --------------------
   // The unlock token rides in a header, never in the path: these URLs reach

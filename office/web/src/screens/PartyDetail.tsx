@@ -56,6 +56,9 @@ export function PartyDetail({
   view: LocalView;
   onEdit: () => void;
 }) {
+  // Off with the company's pricing switch, or without the role's key: the
+  // party's own rates are a section about money and nothing else.
+  const showMoney = view.permissions.includes(RATE_PERMISSION);
   const rateRows: RateRow[] = view.partyVariants
     .filter((variant) => variant.partyId === party.id)
     .map((variant) => {
@@ -158,24 +161,26 @@ export function PartyDetail({
         </div>
       </Card>
 
-      <div>
-        <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
-          {t('party.detail.ratesTitle')}
+      {showMoney && (
+        <div>
+          <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
+            {t('party.detail.ratesTitle')}
+          </div>
+          <DataTable
+            columns={rateColumns}
+            rows={rateRows}
+            rowKey={(row) => row.key}
+            empty={
+              <p
+                className="ob-small"
+                style={{ margin: 0, padding: 'var(--s-16)', color: 'var(--fg-tertiary)' }}
+              >
+                {t('party.detail.rates.none')}
+              </p>
+            }
+          />
         </div>
-        <DataTable
-          columns={rateColumns}
-          rows={rateRows}
-          rowKey={(row) => row.key}
-          empty={
-            <p
-              className="ob-small"
-              style={{ margin: 0, padding: 'var(--s-16)', color: 'var(--fg-tertiary)' }}
-            >
-              {t('party.detail.rates.none')}
-            </p>
-          }
-        />
-      </div>
+      )}
 
       <div>
         <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
@@ -205,9 +210,11 @@ export function PartyDetail({
                 </span>
                 <span className="ob-small">{lead.stageName}</span>
                 <span style={{ flex: 1 }} />
-                <span className="ob-data">
-                  {lead.totalAmount !== undefined ? formatMoney(lead.totalAmount) : '—'}
-                </span>
+                {showMoney && (
+                  <span className="ob-data">
+                    {lead.totalAmount !== undefined ? formatMoney(lead.totalAmount) : '—'}
+                  </span>
+                )}
               </div>
             ))}
           </div>

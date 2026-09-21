@@ -60,6 +60,9 @@ interface Props {
   onOpenId: (id: string | null) => void;
   canDispatch: boolean;
   onError: (message: string) => void;
+  /** The stage showing, or null for all — chosen here or from the sidebar's sub-pages. */
+  stageId: string | null;
+  onStageChange: (stageId: string | null) => void;
 }
 
 const SALE_RATE_PERMISSION = 'field.saleRate.view';
@@ -111,10 +114,21 @@ function onMyParties<T extends { partyId: string }>(
   return rows.filter((row) => mine.has(row.partyId));
 }
 
-export function OrderBoardScreen({ view, openId, onOpenId, canDispatch, onError }: Props) {
-  const [stageFilter, setStageFilter] = useState<string | null>(null);
+export function OrderBoardScreen({
+  view,
+  openId,
+  onOpenId,
+  canDispatch,
+  onError,
+  stageId: stageFilter,
+  onStageChange: setStageFilter,
+}: Props) {
   const [scope, setScope] = useState<PartyScopeFilter>('all');
   const colourHex = useColourHex(view.optionLists);
+  // Off with the company's pricing switch, or without the role's key.
+  const showMoney = view.permissions.includes(SALE_RATE_PERMISSION);
+  // Absent means an older Master, which sends every figure — read as "on".
+  const freeToSell = view.features?.freeToSell ?? true;
 
   const pipeline = view.pipelines.find((candidate) => candidate.kind === 'order');
   const stages = sortedStages(pipeline);
@@ -198,6 +212,8 @@ export function OrderBoardScreen({ view, openId, onOpenId, canDispatch, onError 
           order={openOrder}
           stages={stages}
           canDispatch={canDispatch}
+          showMoney={showMoney}
+          freeToSell={freeToSell}
           onClose={() => onOpenId(null)}
           onError={onError}
           colourHex={colourHex}
@@ -273,15 +289,19 @@ export function OrderBoardScreen({ view, openId, onOpenId, canDispatch, onError 
         </span>
       ),
     },
-    {
-      key: 'amount',
-      header: t('orders.column.amount'),
-      width: rem(110),
-      align: 'right',
-      render: (order) => formatMoney(order.totalAmount ?? null),
-      redactedReason: (order) =>
-        order.totalAmount === undefined ? SALE_RATE_PERMISSION : undefined,
-    },
+    ...(showMoney
+      ? [
+          {
+            key: 'amount',
+            header: t('orders.column.amount'),
+            width: rem(110),
+            align: 'right',
+            render: (order: Order) => formatMoney(order.totalAmount ?? null),
+            redactedReason: (order: Order) =>
+              order.totalAmount === undefined ? SALE_RATE_PERMISSION : undefined,
+          } satisfies DataTableColumn<Order>,
+        ]
+      : []),
     {
       key: 'stage',
       header: t('orders.column.stage'),
@@ -310,7 +330,6 @@ export function OrderBoardScreen({ view, openId, onOpenId, canDispatch, onError 
         rows={filteredOrders}
         rowKey={(order) => order.id}
         onRowOpen={(order) => onOpenId(order.id)}
-        openOn="click"
         empty={
           orders.length === 0 ? (
             <EmptyState
@@ -330,6 +349,8 @@ function OrderDetailBody({
   order,
   stages,
   canDispatch,
+  showMoney,
+  freeToSell,
   onClose,
   onError,
   colourHex,
@@ -337,6 +358,9 @@ function OrderDetailBody({
   order: Order;
   stages: PipelineStage[];
   canDispatch: boolean;
+  showMoney: boolean;
+  /** Off, the reservations that hold this order's stock are not a thing on screen. */
+  freeToSell: boolean;
   onClose: () => void;
   onError: (message: string) => void;
   colourHex: (colour: string) => string | undefined;
@@ -374,7 +398,7 @@ function OrderDetailBody({
                   <th>{t('orders.column.packaging')}</th>
                   <th className="num">{t('orders.column.qty')}</th>
                   <th className="num">{t('orders.column.lineWeight')}</th>
-                  <th className="num">{t('orders.detail.lineTotal')}</th>
+                  {showMoney && <th className="num">{t('orders.detail.lineTotal')}</th>}
                 </tr>
               </thead>
               <tbody>
@@ -383,7 +407,9 @@ function OrderDetailBody({
                     <td className="ob-mono">{item.code ?? '—'}</td>
                     <td>
                       {item.productName}
-                      {item.size && <div className="ob-small">{item.size}</div>}
+                      <div className="ob-small">
+                        {[item.categoryName, item.size].filter(Boolean).join(' · ')}
+                      </div>
                     </td>
                     <td>
                       {item.variantLabel ? (
@@ -403,17 +429,19 @@ function OrderDetailBody({
                         formatKg(item.lineWeightKg)
                       )}
                     </td>
-                    <td className="num">
-                      {item.lineTotal === undefined ? (
-                        <span
-                          className="ob-redacted"
-                          title={`Missing permission: ${SALE_RATE_PERMISSION}`}
-                          aria-label="Hidden"
-                        />
-                      ) : (
-                        formatMoney(item.lineTotal)
-                      )}
-                    </td>
+                    {showMoney && (
+                      <td className="num">
+                        {item.lineTotal === undefined ? (
+                          <span
+                            className="ob-redacted"
+                            title={`Missing permission: ${SALE_RATE_PERMISSION}`}
+                            aria-label="Hidden"
+                          />
+                        ) : (
+                          formatMoney(item.lineTotal)
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -422,6 +450,7 @@ function OrderDetailBody({
         </Section>
       </Card>
 
+      {freeToSell && (
       <Card>
         <Section title={t('orders.detail.reservations')}>
           {order.reservations.length === 0 ? (
@@ -467,6 +496,7 @@ function OrderDetailBody({
           )}
         </Section>
       </Card>
+      )}
 
       <Card>
         <Section title={t('orders.detail.weight')}>

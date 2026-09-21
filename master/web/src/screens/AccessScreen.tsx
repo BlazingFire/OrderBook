@@ -50,12 +50,20 @@ interface Props {
   currentUserId: string;
   /** The caller's own tier. A picker must never offer a role above it. */
   currentUserTier: RoleTier;
+  /** Which tab is showing — chosen here or from the sidebar's sub-pages. */
+  tab: Tab;
+  onTabChange: (tab: Tab) => void;
 }
 
 type Tab = 'users' | 'roles';
 
-export function AccessScreen({ permissions, currentUserId, currentUserTier }: Props) {
-  const [tab, setTab] = useState<Tab>('users');
+export function AccessScreen({
+  permissions,
+  currentUserId,
+  currentUserTier,
+  tab,
+  onTabChange,
+}: Props) {
   const [catalogue, setCatalogue] = useState<PermissionCatalogue | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -173,7 +181,7 @@ export function AccessScreen({ permissions, currentUserId, currentUserTier }: Pr
    */
   useTopbarActions(
     tabItems.length > 1 && !roleEditorOpen && !userEditorOpen ? (
-      <Segmented options={tabItems} value={active} onChange={setTab} />
+      <Segmented options={tabItems} value={active} onChange={onTabChange} />
     ) : null,
   );
 
@@ -456,6 +464,7 @@ function UsersTab({
           <Input
             aria-label={t('access.users.searchLabel')}
             placeholder={t('access.users.searchPlaceholder')}
+            data-screen-search
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
@@ -855,7 +864,6 @@ function UsersTab({
           columns={columns}
           rows={visible}
           rowKey={(user) => user.id}
-          openOn="click"
           selectedId={openUserId ?? undefined}
           onRowOpen={(user) => setOpenUserId(user.id)}
           empty={
@@ -1431,7 +1439,6 @@ function RolesTab({
           columns={columns}
           rows={roles}
           rowKey={(role) => role.id}
-          openOn="click"
           selectedId={openRoleId ?? undefined}
           onRowOpen={(role) => setOpenRoleId(role.id)}
           empty={<EmptyState title={t('access.roles.empty')} />}

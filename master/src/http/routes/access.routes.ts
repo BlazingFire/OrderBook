@@ -38,9 +38,12 @@ const needs = requirePermissionMiddleware;
 
 // --- The catalogue the permission grid renders from -----------------------
 
-accessRoutes.get('/permission-catalogue', (_req, res) => {
-  res.json(roleService.permissionCatalogue());
-});
+accessRoutes.get(
+  '/permission-catalogue',
+  asyncHandler(async (req, res) => {
+    res.json(await roleService.permissionCatalogue(actorFromRequest(req).tenantId));
+  }),
+);
 
 // --- Roles ----------------------------------------------------------------
 

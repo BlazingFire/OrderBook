@@ -89,14 +89,6 @@ export async function readVaultEntry(
   };
 }
 
-export async function deleteVaultEntry(
-  tenantId: string,
-  userId: string,
-  trx: TransactionContext,
-): Promise<void> {
-  await trx(TABLE).where({ tenant_id: tenantId, user_id: userId }).delete();
-}
-
 /**
  * Empty the vault, for one tenant or for all of them.
  *

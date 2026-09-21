@@ -19,78 +19,57 @@ Claude, per `docs/AI_COLLABORATION.md`) for whichever agent implements it
 Name files `<short-task-slug>.md`. Keep exactly one open brief per task so
 two agents don't pick up the same work.
 
-## Queue order, as of 2026-09-03
+## Queue, as of 2026-09-14
 
-Several briefs depend on each other, so this order is not arbitrary. Work down
-it unless the owner says otherwise.
-
-**Release-blocking — the draft GitHub release `v1.0.3` is HELD. Owner's decision
-2026-09-03: fix forward, do not revert; do not publish the draft or build
-installers until items 0 and 1 are both done and verified.**
-
-0. `guardrails-for-autonomous-commits.md` — **first, by the owner's explicit
-   instruction.** Seven small grep-a-directory tests. Write each against the
-   still-broken `d52bdef` code and watch it fail before the fixes land, so the
-   guards are proven rather than assumed. Merge its item 3 with
-   `web-reachability-and-dead-api-tests.md`; they are the same file.
-1. `v103-release-blockers.md` — four confirmed blockers in `d52bdef`, found by a
-   46-agent adversarial audit. Two ordinary budget refusals permanently disable
-   AI installation-wide; an Office panel on a different version than its Master
-   crashes entirely; the "RAM cap" lowers V8's ceiling on small machines and
-   raises it on large ones while its monitor cannot fire; and the new screen
-   refetches on every sync delta. Also fixes the wrong `HANDOFF.md` entry.
+Every brief here was re-checked against the current tree on 2026-09-14; the
+four that were done (`dead-screens-cleanup`, `guardrails-for-autonomous-commits`,
+`product-csv-import`, `v103-release-blockers`) were deleted. Anything about
+the AI assistant inside a remaining brief is moot — the feature is gone.
 
 **Blocking — the owner cannot use these features at all:**
 
-1. `fix-office-new-lead-unreachable.md` — the Office panel cannot create a lead.
-   Two bugs that must ship together, or the visible failure becomes silent data
-   loss.
-2. `add-master-party-screen.md` — the Master panel has no way to add a party;
-   the screen was never built.
-3. `web-reachability-and-dead-api-tests.md` — the missing invariants that let
-   both of the above ship. Land right after them so they cannot come back.
+1. `fix-office-new-lead-unreachable.md` — bug 1 (unreachable screen) is fixed;
+   bug 2 (a temp `partyId` on a lead was not remapped) is fixed on 2026-09-19
+   in `lead.service.ts` — see item 15. Delete the brief once its text is folded.
+2. `add-master-party-screen.md` — `createParty` in `master/web/src/api.ts`
+   still has no caller; no Parties screen on the Master.
+3. `web-reachability-and-dead-api-tests.md` — test 1 exists; test 2 (no
+   zero-caller `api.ts` export) is missing.
 
 **Cross-cutting — other briefs depend on these:**
 
-4. `office-write-refusal-visibility.md` — a refused Office write is invisible to
-   whoever wrote it. This is what makes several other failures silent.
-5. `close-money-field-gate-gaps.md` — `mrp`/`pricePerSqft` permission gaps.
-   Supersedes section 3 of `office-product-form-gates-and-slimming.md`.
+4. `office-write-refusal-visibility.md`
+5. `close-money-field-gate-gaps.md` — `mrp` is still ungated in the sync
+   filter and the public-API write guards.
 
 **Security, landable on their own:**
 
-6. `session-loss-and-password-change.md` §2 — the socket path silently
-   downgrades a refused acting token instead of refusing it.
-7. `office-product-image-flow.md` §1 — all four image mutations return the
-   unmasked product, leaking rates to the browser.
+6. `session-loss-and-password-change.md` §2 — `hub.ts` still falls back to a
+   default actor after a refused acting token.
+7. `office-product-image-flow.md` §1 — the four image mutations still return
+   the unmasked product.
 
 **Owner-reported QA items:**
 
 8. `signin-attempts-and-lockout-feedback.md`
-9. `session-loss-and-password-change.md` (the rest) — needs
-   `self-service-password-change.md` first.
-10. `recycle-bin-delete-actions-and-purge.md` — part 2 needs an owner decision.
-11. `office-product-form-gates-and-slimming.md`
-12. `office-product-image-flow.md` (the rest)
-13. `party-access-truncation-and-routing.md`
-14. `product-csv-import.md` — **done 2026-09-07 (Claude)**, with the paged
-    catalogue; see its implementer section. Its per-row report never touches
-    the outbox, so it did not wait on 4.
+9. `self-service-password-change.md` — `changeOwnPassword` has no caller.
+10. `session-loss-and-password-change.md` (the rest)
+11. `recycle-bin-delete-actions-and-purge.md` — part 2 needs an owner decision.
+12. `office-product-form-gates-and-slimming.md` (remaining items)
+13. `office-product-image-flow.md` (the rest)
+14. `party-access-truncation-and-routing.md`
 
 **Landed 2026-09-19 (Claude):**
 
-16. `product-model-variants.md` — the product master is category → model →
+15. `product-model-variants.md` — the product master is category → model →
     variant, with the code and weight on the variant, one lead line per
     variant, inventory keyed by variant, the Swisware catalogue as the seed.
     Kept as the design record until its live walk-through (§6) is signed off.
-
-**Decisions and documents:**
-
-15. `testing-plan-reconciliation.md` — four of the owner's QA findings are
-    steps in `docs/TESTING_PLAN.md` for screens that were never built.
-    Worth doing before the next manual pass.
+    Its §6a also closes bug 2 of item 1 above: a temporary `partyId` on a
+    lead is now resolved through `id_map` in `lead.service.ts`.
 
 **Earlier rounds, still open:** `design-audit-high-priority.md`,
 `fix-broken-popover-menu-css.md`, `office-panel-report-hardening.md`,
-`fields-and-ai-domain-cleanup.md`, `debounce-list-search.md`,
-`reset-appearance-action.md`, `self-service-password-change.md`.
+`fields-and-ai-domain-cleanup.md` (only the `productType` `usedBy` and two
+stale comments remain), `debounce-list-search.md`,
+`reset-appearance-action.md`, `testing-plan-reconciliation.md`.

@@ -167,7 +167,7 @@ describe('the releases folder', () => {
   });
 
   it('UPD-7: refuses a setup file whose checksum does not match — the gate that matters', async () => {
-    const manifest = await publish('master', '1.1.0', { corrupt: true });
+    const manifest = await publish('master', '9.9.9', { corrupt: true });
     const service = await loadService();
 
     await expect(service.verifyRelease('master', manifest)).rejects.toThrow(/checksum/i);

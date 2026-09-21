@@ -32,11 +32,11 @@ import type {
   StockReservation,
   SyncConflict,
   SyncMeta,
-  Tenant,
   TimelineEntry,
   User,
   UserAvatar,
 } from '@orderbook/shared';
+import { isPermission } from '@orderbook/shared';
 
 export function toNumber(value: unknown): number | null {
   if (value === null || value === undefined) return null;
@@ -120,7 +120,7 @@ function toStringArray(value: unknown): string[] {
 type Row = Record<string, unknown>;
 
 /** The sync bookkeeping every syncable record carries. */
-export function mapSyncMeta(row: Row): SyncMeta {
+function mapSyncMeta(row: Row): SyncMeta {
   return {
     version: toRequiredNumber(row.version),
     hlc: String(row.hlc ?? ''),
@@ -131,17 +131,6 @@ export function mapSyncMeta(row: Row): SyncMeta {
 
 // --- Tenancy & access ------------------------------------------------------
 
-export function mapTenant(row: Row): Tenant {
-  return {
-    id: String(row.id),
-    name: String(row.name),
-    slug: String(row.slug),
-    isActive: Boolean(row.is_active),
-    createdAt: toRequiredIso(row.created_at),
-    updatedAt: toRequiredIso(row.updated_at),
-  };
-}
-
 export function mapRole(row: Row): Role {
   return {
     id: String(row.id),
@@ -149,7 +138,12 @@ export function mapRole(row: Row): Role {
     name: String(row.name),
     tier: row.tier as Role['tier'],
     // Stored as one JSONB array; sorted on write so the order is stable.
-    permissions: toStringArray(row.permissions),
+    // Filtered through the frozen catalogue, as `permissionSetFromRow` already
+    // does: a key a migration granted and a later build removed must neither
+    // keep granting nor surface — the grid would draw it checked-but-disabled,
+    // resubmit it on save, and the save would be refused as unknown, leaving
+    // every role that ever held it uneditable through the product.
+    permissions: toStringArray(row.permissions).filter(isPermission),
     isSystem: Boolean(row.is_system),
     userCount: toRequiredNumber(row.user_count),
     deletedAt: toIso(row.deleted_at),
@@ -233,7 +227,7 @@ export function mapOfficePanel(row: Row): OfficePanel {
  * figure coerced to 0 would render as a full disk on every panel paired before
  * this existed.
  */
-export function mapOfficePanelDevice(row: Row): OfficePanelDevice {
+function mapOfficePanelDevice(row: Row): OfficePanelDevice {
   return {
     hostname: (row.hostname as string | null) ?? null,
     platform: (row.platform as string | null) ?? null,
@@ -457,6 +451,7 @@ export function mapLineItem(row: Row): LineItem {
     productId: String(row.product_id),
     variantId: String(row.variant_id),
     productName: String(row.product_name ?? ''),
+    categoryName: (row.category_name as string | null) ?? null,
     alias: (row.alias as string | null) ?? null,
     rate: toNumber(row.rate),
     code: (row.code as string | null) ?? null,

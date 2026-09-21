@@ -100,10 +100,6 @@ export async function remapIds(mapping: Map<string, string>): Promise<void> {
   );
 }
 
-export async function clearOutbox(): Promise<void> {
-  await mutate(() => []);
-}
-
 async function load(): Promise<Mutation[]> {
   if (cached) return cached;
 

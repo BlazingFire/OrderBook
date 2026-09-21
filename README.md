@@ -27,9 +27,12 @@ Documentation and code are kept strictly separate.
 
 ```
 docs/       all documentation
-shared/     types, Socket.IO event contract, UDP discovery protocol
+shared/     types, Socket.IO event contract, UDP discovery protocol, i18n catalogue
+ui/         the one React kit and shared screens both panels render from
 master/     Master Panel — server (src/) + React frontend (web/)
 office/     Office Panel — server (src/) + React frontend (web/)
+electron/   the desktop shell wrapping each panel
+tools/      release, icon, i18n-sync and uninstall scripts
 ```
 
 ## Running it

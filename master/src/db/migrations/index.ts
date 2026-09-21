@@ -39,6 +39,7 @@ import * as documentLayoutV2 from './20260318000000_document_layout_v2.js';
 import * as productsBulkPermissionGrant from './20260319000000_products_bulk_permission_grant.js';
 import * as productVariantCodes from './20260320000000_product_variant_codes.js';
 import * as lineItemVariantCodes from './20260321000000_line_item_variant_codes.js';
+import * as productColourPolicyAndLineCategory from './20260322000000_product_colour_policy_and_line_category.js';
 import * as dropDocumentDesigner from './20260322000000_drop_document_designer.js';
 import * as productVariants from './20260323000000_product_variants.js';
 
@@ -115,6 +116,13 @@ export const migrations: Migration[] = [
   {
     name: '20260321000000_line_item_variant_codes',
     ...lineItemVariantCodes,
+  },
+  // The v1.1.0 line's colour rule and line category snapshot. It has run on
+  // installations that took that line, so it stays listed; the variant
+  // restructure below supersedes `colour_policy` and drops the column.
+  {
+    name: '20260322000000_product_colour_policy_and_line_category',
+    ...productColourPolicyAndLineCategory,
   },
   // Category -> product model -> variant. Wipes the tile-era product master
   // (owner's decision, 2026-09-19) and re-keys lines and stock by variant.

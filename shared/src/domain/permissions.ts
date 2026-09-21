@@ -122,11 +122,6 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
 
   { key: 'stock.adjust', group: 'stock', labelToken: 'permission.stock.adjust' },
 
-  // Asking is a normal part of a working day, so it sits with the work keys and
-  // takes no tier ceiling: the assistant cannot read anything its caller could
-  // not already read.
-  { key: 'ai.use', group: 'workflow', labelToken: 'permission.ai.use' },
-
   { key: 'users.manage', group: 'admin', labelToken: 'permission.users.manage' },
   /**
    * Reading back a stored plaintext password on the Master.
@@ -154,16 +149,6 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
    */
   { key: 'api.manage', group: 'admin', labelToken: 'permission.api.manage' },
 
-  /*
-   * The assistant, in three keys rather than one.
-   *
-   * Asking it a question is an office-tier thing to do — it can only read what
-   * the person asking could already read. Accepting a change it suggested is
-   * not: that is a write, so it needs a supervisor. Pointing this installation
-   * at a model, and reading what everybody has spent, is administration.
-   */
-  { key: 'ai.write', group: 'admin', labelToken: 'permission.ai.write' },
-  { key: 'ai.manage', group: 'admin', labelToken: 'permission.ai.manage' },
   // No `MINIMUM_TIER` entry — office tier by default, same as `logs.view`/`logs.export`.
   { key: 'logs.verifyChain', group: 'admin', labelToken: 'permission.logs.verifyChain' },
   {
@@ -247,8 +232,6 @@ const MINIMUM_TIER: Record<string, RoleTier> = {
   'settings.manage': 'admin',
   'storage.manage': 'admin',
   'api.manage': 'admin',
-  'ai.manage': 'admin',
-  'ai.write': 'management',
   'sync.resolveConflicts': 'admin',
   'roles.view': 'admin',
   'roles.create': 'admin',

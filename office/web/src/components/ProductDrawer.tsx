@@ -73,6 +73,8 @@ interface ProductDrawerProps {
   categories: ProductCategory[];
   /** For the colour swatch beside a variant label (`stock.colour`). */
   optionLists: OptionListItem[];
+  /** Holds `field.saleRate.view`; off with the company's pricing switch (v1.1.0). */
+  showMoney: boolean;
   onClose: () => void;
   onCreated?: (product: CreatedProduct) => void;
   onUpdated?: (name: string) => void;
@@ -131,6 +133,7 @@ export function ProductDrawer({
   product,
   categories,
   optionLists,
+  showMoney,
   onClose,
   onCreated,
   onUpdated,
@@ -289,8 +292,6 @@ export function ProductDrawer({
       brand: text('brand'),
       barcode: text('barcode'),
       hsnCode: text('hsnCode'),
-      rate: toPaise(draft.rate),
-      mrp: toPaise(draft.mrp),
       gstRatePct: toNumber(draft.gstRatePct),
       uom: draft.uom as ProductInput['uom'],
       size: text('size'),
@@ -298,8 +299,10 @@ export function ProductDrawer({
       hasVariants,
       variants,
       // Sent only when the field was rendered. Sending `null` for a hidden
-      // field would clear a cost this person was never shown.
-      ...(canSeeCost ? { purchaseRate: toPaise(draft.purchaseRate) } : {}),
+      // field would clear a price this person was never shown — and with the
+      // company's pricing switch off, nobody is shown one.
+      ...(showMoney ? { rate: toPaise(draft.rate), mrp: toPaise(draft.mrp) } : {}),
+      ...(showMoney && canSeeCost ? { purchaseRate: toPaise(draft.purchaseRate) } : {}),
     };
 
     setBusy(true);
@@ -455,9 +458,10 @@ export function ProductDrawer({
         </FieldGroup>
 
         <FieldGroup title={t('product.group.pricing')}>
-          {numeric('rate', t('product.field.rate'), t('product.field.rateHint'))}
-          {numeric('mrp', t('product.field.mrp'))}
-          {canSeeCost &&
+          {showMoney && numeric('rate', t('product.field.rate'), t('product.field.rateHint'))}
+          {showMoney && numeric('mrp', t('product.field.mrp'))}
+          {showMoney &&
+            canSeeCost &&
             numeric(
               'purchaseRate',
               t('product.field.purchaseRate'),

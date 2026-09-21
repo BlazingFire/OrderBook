@@ -174,21 +174,6 @@ export async function lockProduct(tenantId: string, id: string, trx: Transaction
   await trx('products').where({ tenant_id: tenantId, id }).forUpdate().first();
 }
 
-/**
- * The barcode lookup, live-only — a scanner should find the product on the
- * shelf, not one somebody moved to the Recycle Bin last month.
- */
-export async function findProductByBarcode(
-  tenantId: string,
-  barcode: string,
-  runner: Runner = db(),
-): Promise<Product | null> {
-  const row = await baseQuery(tenantId, runner)
-    .andWhereRaw('lower(p.barcode) = lower(?)', [barcode])
-    .first();
-  return row ? findProductById(tenantId, String(row.id), runner) : null;
-}
-
 export interface NewProduct {
   tenantId: string;
   input: ProductInput;

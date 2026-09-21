@@ -10,7 +10,6 @@ import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { attachSession } from './middleware/require-auth.js';
 import { accessRoutes } from './routes/access.routes.js';
 import { avatarFilesRoutes, avatarRoutes } from './routes/avatar.routes.js';
-import { aiRoutes } from './routes/ai.routes.js';
 import { authRoutes } from './routes/auth.routes.js';
 import { dataRoutes } from './routes/data.routes.js';
 import { fieldsRoutes } from './routes/fields.routes.js';
@@ -86,7 +85,6 @@ export function createApp(): Express {
   // exactly like `/api/avatars` already does.
   app.use('/uploads/avatars', avatarFilesRoutes);
   // Before the catch-all below, which would otherwise swallow `/api/settings`.
-  app.use('/api/ai', aiRoutes);
   app.use('/api/integrations', integrationRoutes);
   app.use('/api/settings', settingsRoutes);
   // Before the catch-all — the developer routes need `requireAuth` and nothing more.

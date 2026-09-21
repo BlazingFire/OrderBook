@@ -17,7 +17,7 @@ import type {
   StockListQuery,
   StockMovement,
 } from '@orderbook/shared';
-import { ProductValidationError, validateStockLevels } from '@orderbook/shared';
+import { ProductValidationError, validateStockLevels, withoutReservations } from '@orderbook/shared';
 
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { clampLimit, clampPaging } from '../domain/paging.js';
@@ -28,6 +28,7 @@ import * as inventoryRepo from '../repositories/inventory.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
 import * as productVariantRepo from '../repositories/product-variant.repository.js';
 import { publishChange } from './change-bus.js';
+import { freeToSell } from './company-features.js';
 
 const PAGING = { defaultLimit: 200, maxLimit: 1000 };
 const MOVEMENT_PAGING = { defaultLimit: 50, maxLimit: 200 };
@@ -41,8 +42,19 @@ export async function listStock(
   return inventoryRepo.listStockLevels(actor.tenantId, {
     search: query.search,
     lowOnly: query.lowOnly,
+    reservations: await freeToSell(actor.tenantId),
     ...clampPaging(query, PAGING),
   });
+}
+
+/**
+ * A single level as the company's free-to-sell switch has it read: as
+ * computed while the switch is on, collapsed to the floor count while it is
+ * off. Every level this service returns or publishes passes through here, so
+ * a panel never sees a reserved figure the switch says does not exist.
+ */
+async function outgoing(tenantId: string, level: InventoryStockLevel): Promise<InventoryStockLevel> {
+  return (await freeToSell(tenantId)) ? level : withoutReservations(level);
 }
 
 export async function listMovements(
@@ -71,7 +83,7 @@ export async function recordInbound(
     throw new ValidationError('validation.stock.boxesArrivedRequired');
   }
 
-  const level = await inventoryRepo.applyMovement({
+  const moved = await inventoryRepo.applyMovement({
     tenantId: actor.tenantId,
     productId: variant.productId,
     variantId: variant.id,
@@ -81,6 +93,7 @@ export async function recordInbound(
     note: input.note ?? null,
     createdByUserId: actorUserId(actor),
   });
+  const level = await outgoing(actor.tenantId, moved);
 
   await activityLog.recordDetachedActivity(
     {
@@ -130,10 +143,10 @@ export async function recordAdjustment(
   const delta = input.quantityBoxes - (current?.quantityBoxes ?? 0);
 
   if (delta === 0) {
-    return current ?? emptyLevel(variant, productName);
+    return outgoing(actor.tenantId, current ?? emptyLevel(variant, productName));
   }
 
-  const level = await inventoryRepo.applyMovement({
+  const moved = await inventoryRepo.applyMovement({
     tenantId: actor.tenantId,
     productId: variant.productId,
     variantId: variant.id,
@@ -143,6 +156,7 @@ export async function recordAdjustment(
     note: input.note ?? null,
     createdByUserId: actorUserId(actor),
   });
+  const level = await outgoing(actor.tenantId, moved);
 
   await activityLog.recordDetachedActivity(
     {
@@ -196,7 +210,7 @@ export async function setReorderLevel(
   // waiting on a form deserves a sentence, not a constraint name.
   assertStockLevels(input);
 
-  const level = await inventoryRepo.setStockLevels(
+  const stored = await inventoryRepo.setStockLevels(
     actor.tenantId,
     { productId: variant.productId, variantId: variant.id },
     {
@@ -207,7 +221,8 @@ export async function setReorderLevel(
       maxStockLevel: input.maxStockLevel,
     },
   );
-  if (!level) throw new NotFoundError('Stock level');
+  if (!stored) throw new NotFoundError('Stock level');
+  const level = await outgoing(actor.tenantId, stored);
 
   publishChange({ entity: 'stock', action: 'updated', id: variant.id, payload: level });
   return level;
@@ -223,12 +238,19 @@ export async function setReorderLevel(
 export async function publishStockFor(tenantId: string, variantIds: readonly string[]): Promise<void> {
   for (const variantId of new Set(variantIds)) {
     const level = await inventoryRepo.findStockLevel(tenantId, variantId);
-    if (level) publishChange({ entity: 'stock', action: 'updated', id: variantId, payload: level });
+    if (level) {
+      publishChange({
+        entity: 'stock',
+        action: 'updated',
+        id: variantId,
+        payload: await outgoing(tenantId, level),
+      });
+    }
   }
 }
 
 export async function countLowStock(tenantId: string): Promise<number> {
-  return inventoryRepo.countLowStock(tenantId);
+  return inventoryRepo.countLowStock(tenantId, await freeToSell(tenantId));
 }
 
 /**

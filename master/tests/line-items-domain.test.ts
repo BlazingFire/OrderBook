@@ -28,6 +28,7 @@ import {
 const PRODUCT = {
   id: 'PR0000000001',
   name: 'Pedestal standard',
+  categoryName: null,
   alias: null,
   rate: 18_000,
   sin: null,

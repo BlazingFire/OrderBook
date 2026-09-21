@@ -1,43 +1,40 @@
 /**
- * Dashboard (6-UI-DESIGN.md, Dashboard.dc.html) — the landing screen.
+ * Dashboard — the landing screen, rebuilt around the mockup in 07-UI-SPEC §9.
  *
- * Built entirely from the panel's already-synced `LocalView`: no new endpoint
- * and no aggregate the Master doesn't already send. Every figure here is
- * something another screen in this panel already shows in full — this is
- * just the first thing a person sees when they open the panel, so cards are
- * gated by the same permissions the sidebar uses to hide those screens.
+ * Four stat cards, then two columns: the lead pipeline with its per-stage
+ * bars beside recent activity, and follow-ups underneath the pipeline. Every
+ * figure is derived from the panel's already-synced `LocalView`, the same
+ * arithmetic the old screen used — only the arrangement changed, so cards are
+ * still gated by the permissions the sidebar uses to hide their screens.
  *
- * The counters are derived from the snapshot rather than read off
- * `view.dashboard`, deliberately: the snapshot is patched in place by the
- * `change` SSE frames, so it is *fresher* than that summary, which only moves
- * on a whole-snapshot push. Two numbers for one figure on one screen is worse
- * than a little arithmetic. What the summary is used for is what this panel
- * cannot derive — the stage breakdown with its names, order and colours, and
- * the `asOf` stamp that lets an offline panel say how old its figures are.
+ * Recent activity reads from the leads' and orders' own timelines: the Master
+ * writes a system entry on every move, conversion and dispatch, and the
+ * snapshot carries those timelines, so no new endpoint and no `/api/logs`
+ * call is needed. A log-driven feed would be the spec's card 8, but `logs`
+ * is Master-online-only on the Office panel — it must fail hard offline —
+ * and the timelines already in memory answer the same question with the
+ * panel's own offline entries included.
  *
- * The two panes at the bottom are the shortcut the screen exists for: the open
- * leads and open orders somebody would otherwise navigate to, with a row click
- * opening that record's own sub-screen directly.
+ * The pipeline breakdown (`view.dashboard.pipelineBreakdown`) names the
+ * stages; the money beside each bar is summed from the snapshot's leads
+ * because stages with no name on this panel (a missing breakdown row) still
+ * need a figure. `totalAmount` is absent, not null, when the role lacks
+ * `field.saleRate.view` — that reads as "cannot be summed", never as zero.
  */
 
 import type { ReactNode } from 'react';
-import type { Lead, Order } from '@orderbook/shared';
+import type { Lead } from '@orderbook/shared';
 
 import type { LocalView } from '../api';
 import {
   Card,
-  DataTable,
   EmptyState,
-  InsightCards,
-  Section,
+  Timeline,
   formatDateTime,
   formatMoney,
   rem,
   t,
-  type DataTableColumn,
 } from '@orderbook/ui';
-
-import { api } from '../api';
 
 type DashboardTab = 'leads' | 'orders' | 'conflicts' | 'parties' | 'products';
 
@@ -47,7 +44,6 @@ interface Props {
   linkDown: boolean;
   onNavigate: (tab: DashboardTab) => void;
   onOpenLead: (id: string) => void;
-  onOpenOrder: (id: string) => void;
 }
 
 /** Local calendar date as `YYYY-MM-DD`, matching `Lead.followUpDate`'s format. */
@@ -68,21 +64,6 @@ function startOfWeek(): Date {
   monday.setHours(0, 0, 0, 0);
   return monday;
 }
-
-/** Newest first, on a copy — `view.leads` and `view.orders` are the live snapshot. */
-function newestFirst<T extends { updatedAt: string }>(rows: T[]): T[] {
-  return [...rows].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-}
-
-/**
- * How many rows a pane shows.
- *
- * Well under `DataTable`'s virtualization threshold on purpose: above it the
- * table measures the nearest `.ob-pane` as its scroller, which inside a
- * half-width card is the wrong element. Raising this past ~50 means checking
- * that path first.
- */
-const PANE_ROWS = 8;
 
 function StatCard({
   label,
@@ -132,12 +113,117 @@ function StatCard({
   return <Card style={{ borderColor }}>{body}</Card>;
 }
 
-export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead, onOpenOrder }: Props) {
+interface ActivityItem {
+  id: string;
+  text: string;
+  when: string;
+  sortKey: string;
+  tone: 'ok' | 'offline' | 'default';
+}
+
+function describeActivity(
+  view: LocalView,
+  canViewLeads: boolean,
+  canViewOrders: boolean,
+): ActivityItem[] {
+  const items: ActivityItem[] = [];
+
+  if (canViewLeads) {
+    for (const lead of view.leads) {
+      const offline = !lead.sync.hlc;
+      for (const entry of lead.timeline) {
+        const tone = entry.kind === 'remark' ? 'default' : offline ? 'offline' : 'default';
+        const when = entry.createdAt;
+        if (entry.kind === 'remark') {
+          // A typed note is somebody's words, not a stock fact — show whose.
+          items.push({
+            id: `lead-${lead.id}-${entry.id}`,
+            text: entry.actorName ? `${entry.message} · ${entry.actorName}` : entry.message,
+            when,
+            sortKey: when,
+            tone,
+          });
+          continue;
+        }
+        // `Converted to order OR…` is written by the convert path; anything else
+        // is a stage move and reads as one. Either way the actor rides along,
+        // the way the board's own history shows it.
+        const match = /^Converted to order (\S+)\s*$/.exec(entry.message);
+        const base = match?.[1]
+          ? t('dashboard.activity.convertedOrder', { orderId: match[1], leadId: lead.id })
+          : entry.message;
+        items.push({
+          id: `lead-${lead.id}-${entry.id}`,
+          text: entry.actorName ? `${base} · ${entry.actorName}` : base,
+          when,
+          sortKey: when,
+          tone,
+        });
+      }
+      if (offline) {
+        // The temporary id's head is the panel's device code — the only name
+        // an offline lead's origin has until the Master promotes it.
+        const device = lead.sync.temporaryId?.slice(0, 6) ?? lead.id.slice(0, 6);
+        items.push({
+          id: `lead-offline-${lead.id}`,
+          text: t('dashboard.activity.leadSavedOffline', { device }),
+          when: lead.createdAt,
+          sortKey: lead.createdAt,
+          tone: 'offline',
+        });
+      }
+    }
+  }
+
+  if (canViewOrders) {
+    for (const order of view.orders) {
+      for (const entry of order.timeline) {
+        if (entry.kind === 'remark') {
+          items.push({
+            id: `order-${order.id}-${entry.id}`,
+            text: entry.actorName ? `${entry.message} · ${entry.actorName}` : entry.message,
+            when: entry.createdAt,
+            sortKey: entry.createdAt,
+            tone: 'default',
+          });
+          continue;
+        }
+        // `Dispatched — …` is written by the dispatch path; a move into a
+        // terminal stage reads the same way, with the stage named. The actor
+        // rides along, the way the detail screens show it.
+        const dispatch = /^Dispatched\b/.exec(entry.message);
+        const moved = /^Moved from .* to (.+)\s*$/.exec(entry.message);
+        const stage = dispatch
+          ? view.pipelines
+              .find((pipeline) => pipeline.kind === 'order')
+              ?.stages.find((candidate) => candidate.id === entry.toStageId)?.name ??
+            order.stageName
+          : moved?.[1];
+        const line =
+          stage !== undefined
+            ? t('dashboard.activity.orderReady', { orderId: order.id, stage })
+            : entry.message;
+        items.push({
+          id: `order-${order.id}-${entry.id}`,
+          text: entry.actorName ? `${line} · ${entry.actorName}` : line,
+          when: entry.createdAt,
+          sortKey: entry.createdAt,
+          tone: stage !== undefined ? 'ok' : 'default',
+        });
+      }
+    }
+  }
+
+  return items.sort((a, b) => b.sortKey.localeCompare(a.sortKey));
+}
+
+export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead }: Props) {
   const canViewLeads = view.permissions.includes('leads.view');
   const canViewOrders = view.permissions.includes('orders.view');
-  const canViewParties = view.permissions.includes('parties.view');
-  const canViewProducts = view.permissions.includes('products.view');
   const canViewConflicts = view.permissions.includes('sync.resolveConflicts');
+  // Off with the company's pricing switch, or without the role's key: no
+  // Amount figures at all, rather than ones that are redacted top to bottom.
+  const showMoney = view.permissions.includes('field.saleRate.view');
 
   const nothingYet = view.leads.length === 0 && view.orders.length === 0 && view.stock.length === 0;
   if (nothingYet) {
@@ -159,7 +245,7 @@ export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead, onOpen
   // than no card at all.
   const followUpsDue = openLeads.filter(
     (lead) => lead.followUpDate !== null && lead.followUpDate <= today,
-  ).length;
+  );
 
   const openOrders = view.orders.filter((order) => !order.dispatchedAt);
   const boxesReserved = openOrders.reduce(
@@ -178,9 +264,6 @@ export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead, onOpen
     (sum, order) => sum + order.items.reduce((s, item) => s + item.quantity, 0),
     0,
   );
-  // `totalAmount` is absent, not null, on every order alike when the role
-  // lacks `field.saleRate.view` (§9.1) — treat that as "cannot be summed",
-  // never as zero.
   const dispatchedAmount = dispatchedThisWeek.some((order) => order.totalAmount === undefined)
     ? undefined
     : dispatchedThisWeek.reduce((sum, order) => sum + (order.totalAmount ?? 0), 0);
@@ -188,8 +271,6 @@ export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead, onOpen
     dispatchedThisWeek.length === 1
       ? t('dashboard.dispatched.unitOne')
       : t('dashboard.dispatched.unitMany');
-
-  const lowStock = view.stock.filter((level) => level.isLow).length;
 
   const openConflicts = view.conflicts.filter((conflict) => !conflict.resolvedAt).length;
   const pendingCount = view.pendingCount;
@@ -221,83 +302,26 @@ export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead, onOpen
   const stagedLeads = stages.reduce((sum, stage) => sum + stage.leadCount, 0);
   const asOf = view.dashboard?.asOf ?? null;
 
-  const leadColumns: DataTableColumn<Lead>[] = [
-    { key: 'party', header: t('lead.list.col.party'), render: (lead) => lead.partyName },
-    {
-      key: 'stage',
-      header: t('lead.list.col.stage'),
-      width: rem(104),
-      priority: 2,
-      render: (lead) => <span className="ob-small">{lead.stageName}</span>,
-    },
-    {
-      key: 'followUp',
-      header: t('lead.list.col.followUp'),
-      width: rem(96),
-      priority: 3,
-      render: (lead) => (
-        <span
-          className="ob-small"
-          style={{
-            color:
-              lead.followUpDate !== null && lead.followUpDate <= today
-                ? 'var(--state-conflict)'
-                : undefined,
-          }}
-        >
-          {lead.followUpDate ?? '—'}
-        </span>
-      ),
-    },
-    {
-      key: 'amount',
-      header: t('lead.list.col.amount'),
-      width: rem(96),
-      align: 'right',
-      render: (lead) => formatMoney(lead.totalAmount ?? null),
-      redactedReason: (lead) =>
-        lead.totalAmount === undefined ? 'field.saleRate.view' : undefined,
-    },
-  ];
+  const stageMoney = new Map<string, number | undefined>();
+  const moneyUnknown = new Set<string>();
+  if (showMoney) {
+    for (const lead of openLeads) {
+      if (lead.totalAmount === undefined) {
+        moneyUnknown.add(lead.stageId);
+      } else {
+        stageMoney.set(lead.stageId, (stageMoney.get(lead.stageId) ?? 0) + lead.totalAmount);
+      }
+    }
+  }
+  const pipelineMax = Math.max(1, ...stages.map((stage) => stage.leadCount));
 
-  const orderColumns: DataTableColumn<Order>[] = [
-    { key: 'party', header: t('orders.column.party'), render: (order) => order.partyName },
-    {
-      key: 'stage',
-      header: t('orders.column.stage'),
-      width: rem(104),
-      priority: 2,
-      render: (order) => <span className="ob-small">{order.stageName}</span>,
-    },
-    {
-      key: 'qty',
-      header: t('orders.column.qty'),
-      width: rem(72),
-      align: 'right',
-      priority: 3,
-      render: (order) =>
-        order.items.reduce((sum, item) => sum + item.quantity, 0).toLocaleString('en-IN'),
-    },
-    {
-      key: 'amount',
-      header: t('orders.column.amount'),
-      width: rem(96),
-      align: 'right',
-      render: (order) => formatMoney(order.totalAmount ?? null),
-      redactedReason: (order) =>
-        order.totalAmount === undefined ? 'field.saleRate.view' : undefined,
-    },
-  ];
+  const activity = describeActivity(view, canViewLeads, canViewOrders).slice(0, 5);
 
   return (
     <div
       className="ob-measure-wide"
       style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}
     >
-      {/* Nothing at all on a quiet day, and the figures on it are SQL rather
-          than anything a model produced. */}
-      <InsightCards load={api.aiInsights} />
-
       <div
         style={{
           display: 'grid',
@@ -313,20 +337,6 @@ export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead, onOpen
               dueToday > 0
                 ? t('dashboard.leads.dueToday', { count: dueToday })
                 : t('dashboard.leads.noneDueToday')
-            }
-            onClick={() => onNavigate('leads')}
-          />
-        )}
-
-        {canViewLeads && (
-          <StatCard
-            label={t('dashboard.stat.followUpsDue')}
-            value={followUpsDue.toLocaleString('en-IN')}
-            valueColor={followUpsDue > 0 ? 'var(--state-conflict)' : undefined}
-            note={
-              followUpsDue > 0
-                ? t('dashboard.stat.followUpsDue.noteSome')
-                : t('dashboard.stat.followUpsDue.noteNone')
             }
             onClick={() => onNavigate('leads')}
           />
@@ -375,111 +385,20 @@ export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead, onOpen
           />
         )}
 
-        {/* Absent, not zero, for a role that cannot see stock at all: the
-            snapshot simply carries no levels for them, and "0 low" would be a
-            claim about the business rather than about the reader. */}
-        {canViewProducts && view.stock.length > 0 && (
-          <StatCard
-            label={t('dashboard.stat.lowStock')}
-            value={lowStock.toLocaleString('en-IN')}
-            valueColor={lowStock > 0 ? 'var(--state-offline)' : undefined}
-            note={
-              lowStock > 0
-                ? t('dashboard.stat.lowStock.noteSome')
-                : t('dashboard.stat.lowStock.noteNone')
-            }
-            onClick={() => onNavigate('products')}
-          />
-        )}
-
-        {canViewParties && (
-          <StatCard
-            label={t('nav.parties')}
-            value={view.parties.length.toLocaleString('en-IN')}
-            note={t('dashboard.stat.parties.note')}
-            onClick={() => onNavigate('parties')}
-          />
-        )}
-
-        {canViewProducts && (
-          <StatCard
-            label={t('nav.products')}
-            value={view.products.length.toLocaleString('en-IN')}
-            // The snapshot holds one page of a large catalogue, so this is the
-            // working set rather than the count — say which.
-            note={
-              view.productsComplete
-                ? t('dashboard.stat.products.note')
-                : t('dashboard.stat.products.partial')
-            }
-            onClick={() => onNavigate('products')}
-          />
-        )}
-
         <StatCard
           label={t('dashboard.sync.title')}
           value={syncValue}
           valueColor={syncColor}
-          note={syncNote}
+          note={
+            linkDown && asOf
+              ? t('dashboard.asOf.stale', { when: formatDateTime(asOf) })
+              : syncNote
+          }
           borderColor={syncColor}
           onClick={canViewConflicts ? () => onNavigate('conflicts') : undefined}
         />
       </div>
 
-      {/* The one figure this panel cannot derive: stage names, their order and
-          their colours, over leads the snapshot may not carry. */}
-      {canViewLeads && stages.length > 0 && (
-        <Card>
-          <Section title={t('dashboard.pipeline.title')}>
-            <div
-              style={{
-                display: 'flex',
-                height: rem(8),
-                borderRadius: 'var(--r-md)',
-                overflow: 'hidden',
-                background: 'var(--bg-sunken)',
-              }}
-            >
-              {stagedLeads > 0 &&
-                stages.map((stage) => (
-                  <div
-                    key={stage.stageId}
-                    style={{
-                      flex: stage.leadCount,
-                      background: stage.colourHex ?? 'var(--line-strong)',
-                    }}
-                    title={`${stage.stageName} · ${stage.leadCount}`}
-                  />
-                ))}
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s-8) var(--s-16)' }}>
-              {stages.map((stage) => (
-                <span
-                  key={stage.stageId}
-                  className="ob-small"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-6)' }}
-                >
-                  <span
-                    style={{
-                      width: rem(8),
-                      height: rem(8),
-                      borderRadius: '50%',
-                      background: stage.colourHex ?? 'var(--line-strong)',
-                    }}
-                  />
-                  {stage.stageName}
-                  <span style={{ color: 'var(--fg-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
-                    {stage.leadCount.toLocaleString('en-IN')}
-                  </span>
-                </span>
-              ))}
-            </div>
-          </Section>
-        </Card>
-      )}
-
-      {/* Half and half — and one full-width pane rather than a dangling gap for
-          a role holding only one of the two permissions. */}
       <div
         style={{
           display: 'grid',
@@ -490,48 +409,135 @@ export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead, onOpen
       >
         {canViewLeads && (
           <Card>
-            <Section
-              title={t('dashboard.leads.title')}
-              action={
-                <button className="ob-btn ob-btn--ghost" onClick={() => onNavigate('leads')}>
-                  {t('dashboard.pane.viewAll')}
-                </button>
-              }
-            >
-              <DataTable
-                columns={leadColumns}
-                rows={newestFirst(openLeads).slice(0, PANE_ROWS)}
-                rowKey={(lead) => lead.id}
-                onRowOpen={(lead) => onOpenLead(lead.id)}
-                openOn="click"
-                empty={<EmptyState title={t('dashboard.pane.leads.empty')} />}
-              />
-            </Section>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
+              <div className="ob-eyebrow" style={{ flex: 1 }}>
+                {t('dashboard.pipeline.title')}
+              </div>
+              <button className="ob-btn ob-btn--ghost" onClick={() => onNavigate('leads')}>
+                {t('dashboard.pipeline.openBoard')}
+              </button>
+            </div>
+            {stages.length === 0 || stagedLeads === 0 ? (
+              <div style={{ marginTop: 'var(--s-12)' }}>
+                <EmptyState
+                  title={t('dashboard.pipeline.emptyTitle')}
+                  description={t('dashboard.pipeline.emptyDescription')}
+                />
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 'var(--s-8)',
+                  marginTop: 'var(--s-12)',
+                }}
+              >
+                {stages.map((stage) => (
+                  <div
+                    key={stage.stageId}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: `${rem(88)} 1fr ${rem(24)} ${rem(96)}`,
+                      alignItems: 'center',
+                      gap: 'var(--s-8)',
+                    }}
+                  >
+                    <span className="ob-small" style={{ color: 'var(--fg-secondary)' }}>
+                      {stage.stageName}
+                    </span>
+                    <span
+                      style={{
+                        display: 'block',
+                        height: rem(8),
+                        borderRadius: 'var(--r-md)',
+                        background: 'var(--bg-sunken)',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: 'block',
+                          height: '100%',
+                          width: `${Math.round((stage.leadCount / pipelineMax) * 100)}%`,
+                          background: 'var(--accent)',
+                          borderRadius: 'var(--r-md)',
+                        }}
+                      />
+                    </span>
+                    <span
+                      className="ob-data ob-small"
+                      style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                    >
+                      {stage.leadCount.toLocaleString('en-IN')}
+                    </span>
+                    <span
+                      className="ob-data ob-small"
+                      style={{
+                        textAlign: 'right',
+                        color: 'var(--fg-secondary)',
+                        fontVariantNumeric: 'tabular-nums',
+                      }}
+                    >
+                      {showMoney
+                        ? moneyUnknown.has(stage.stageId)
+                          ? '—'
+                          : formatMoney(stageMoney.get(stage.stageId) ?? 0)
+                        : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </Card>
         )}
 
-        {canViewOrders && (
-          <Card>
-            <Section
-              title={t('dashboard.orders.title')}
-              action={
-                <button className="ob-btn ob-btn--ghost" onClick={() => onNavigate('orders')}>
-                  {t('dashboard.pane.viewAll')}
-                </button>
-              }
-            >
-              <DataTable
-                columns={orderColumns}
-                rows={newestFirst(openOrders).slice(0, PANE_ROWS)}
-                rowKey={(order) => order.id}
-                onRowOpen={(order) => onOpenOrder(order.id)}
-                openOn="click"
-                empty={<EmptyState title={t('dashboard.pane.orders.empty')} />}
-              />
-            </Section>
-          </Card>
-        )}
+        <Card>
+          <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
+            {t('dashboard.activity.title')}
+          </div>
+          {activity.length === 0 ? (
+            <EmptyState
+              title={t('dashboard.activity.emptyTitle')}
+              description={t('dashboard.activity.emptyDescription')}
+            />
+          ) : (
+            <Timeline
+              entries={activity.map((item) => ({
+                id: item.id,
+                label: item.text,
+                when: item.when === item.sortKey ? formatRelativeDay(item.when) : item.when,
+                tone: item.tone,
+              }))}
+            />
+          )}
+        </Card>
       </div>
+
+      {canViewLeads && (
+        <Card>
+          <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
+            {t('dashboard.followUp.title')}
+          </div>
+          {followUpsDue.length === 0 ? (
+            <EmptyState
+              title={t('dashboard.followUp.emptyTitle')}
+              description={t('dashboard.followUp.emptyDescription')}
+            />
+          ) : (
+            <div className="ob-lines">
+              {followUpsDue.slice(0, 8).map((lead) => (
+                <FollowUpRow
+                  key={lead.id}
+                  lead={lead}
+                  showMoney={showMoney}
+                  onOpen={() => onOpenLead(lead.id)}
+                />
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* An offline panel is showing the past. Say so, rather than letting the
           figures pass for current. */}
@@ -543,5 +549,65 @@ export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead, onOpen
         </div>
       )}
     </div>
+  );
+}
+
+/** "Today 11:45" for this week's entries, the full timestamp otherwise. */
+function formatRelativeDay(iso: string): string {
+  const when = new Date(iso);
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfWhen = new Date(when.getFullYear(), when.getMonth(), when.getDate());
+  const daysAgo = Math.round((startOfToday.getTime() - startOfWhen.getTime()) / 86_400_000);
+  const time = when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (daysAgo <= 0) return t('dashboard.activity.today', { time });
+  if (daysAgo === 1) return t('dashboard.activity.yesterday', { time });
+  return formatDateTime(iso);
+}
+
+function FollowUpRow({
+  lead,
+  showMoney,
+  onOpen,
+}: {
+  lead: Lead;
+  showMoney: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="ob-line"
+      style={{
+        width: '100%',
+        textAlign: 'left',
+        background: 'none',
+        border: 'none',
+        borderTop: '1px solid var(--line)',
+        cursor: 'pointer',
+        font: 'inherit',
+        color: 'inherit',
+        paddingLeft: 0,
+        paddingRight: 0,
+      }}
+      onClick={onOpen}
+    >
+      <span className="ob-line-body">
+        <span className="ob-line-head">
+          <span className="ob-mono ob-small">{lead.id}</span>
+          <span className="ob-body-strong">{lead.partyName}</span>
+        </span>
+      </span>
+      <span className="ob-line-figures" style={{ flexDirection: 'row', gap: 'var(--s-12)' }}>
+        <span className="ob-small" style={{ color: 'var(--fg-secondary)' }}>
+          {lead.stageName}
+        </span>
+        {showMoney && (
+          <span className="ob-data ob-body-strong">
+            {lead.totalAmount !== undefined ? formatMoney(lead.totalAmount) : '—'}
+          </span>
+        )}
+      </span>
+    </button>
   );
 }

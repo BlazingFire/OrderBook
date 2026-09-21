@@ -21,6 +21,7 @@ export type IconName =
   | 'close'
   | 'search'
   | 'plus'
+  | 'minus'
   | 'more'
   | 'chevron-down'
   | 'chevron-up'
@@ -58,6 +59,7 @@ const PATHS: Record<IconName, string> = {
   close: 'M4 4l8 8M12 4l-8 8',
   search: 'M7 11.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9zM13.5 13.5L10.3 10.3',
   plus: 'M8 3v10M3 8h10',
+  minus: 'M3 8h10',
   more: 'M4 8h.01M8 8h.01M12 8h.01',
   'chevron-down': 'M3.5 6l4.5 4.5L12.5 6',
   'chevron-up': 'M3.5 10l4.5-4.5L12.5 10',

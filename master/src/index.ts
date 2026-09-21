@@ -38,22 +38,12 @@ import { createRealtimeHub, type RealtimeHub } from './realtime/hub.js';
 import { purgeExpiredSessions } from './services/auth.service.js';
 import { startConnectorScheduler } from './services/connector-scheduler.js';
 import { startReleasePolling } from './services/update.service.js';
-import { failStaleAiRuns, sweepExpiredAiRuns } from './services/ai.service.js';
 import { isSetupComplete, refreshStoredLanIp } from './services/setup.service.js';
 import { startMemoryMonitor } from './lib/memory-monitor.js';
 
 const log = createLogger('master');
 
 const SESSION_SWEEP_INTERVAL_MS = 15 * 60 * 1000;
-
-/**
- * How often expired assistant transcripts are deleted.
- *
- * Hourly rather than daily: `ai.retentionDays` is a promise about how long a
- * question is kept, and a sweep that runs once a day makes that promise off by
- * up to a day.
- */
-const AI_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 
 /*
  * Everything shutdown has to tear down, at module scope so the handlers can be
@@ -258,17 +248,6 @@ async function main(): Promise<void> {
     // Same shape: the poller owns its timers and hands back the way to stop
     // them. A no-op unless a releases repository is configured.
     disposables.push(startReleasePolling());
-
-    // Anything still `running` belonged to the process that just died.
-    await failStaleAiRuns().catch(() => 0);
-
-    const aiSweep = setInterval(() => {
-      void sweepExpiredAiRuns().catch((error: unknown) => {
-        log.warn(`Could not sweep AI transcripts: ${toErrorMessage(error)}`);
-      });
-    }, AI_SWEEP_INTERVAL_MS);
-    aiSweep.unref?.();
-    disposables.push(() => clearInterval(aiSweep));
 
     // Start memory pressure monitoring — warns at 75%, critical at 90% of
     // the heap ceiling. It logs; it does not intervene. There is no GC hint:

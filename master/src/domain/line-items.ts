@@ -15,6 +15,7 @@
 export interface ProductSnapshotSource {
   id: string;
   name: string;
+  categoryName: string | null;
   alias: string | null;
   rate: number | null;
   sin: string | null;
@@ -47,6 +48,7 @@ export interface LineSnapshot {
   productId: string;
   variantId: string;
   productName: string;
+  categoryName: string | null;
   alias: string | null;
   rate: number | null;
   code: string | null;
@@ -70,6 +72,7 @@ export interface LineDraft {
   variantId: string;
   quantity: number;
   productName?: string | null;
+  categoryName?: string | null;
   alias?: string | null;
   rate?: number | null;
   code?: string | null;
@@ -114,6 +117,8 @@ export function buildLineSnapshot(
     productId: product.id,
     variantId: variant.id,
     productName: draft.productName ?? partyVariant?.productName ?? product.name,
+    // The main product the line was sold under, frozen like the name (v1.1.0).
+    categoryName: draft.categoryName ?? product.categoryName,
     alias: firstDefined(draft.alias, partyVariant?.alias, product.alias),
     // `rateUnset` is a decision, not a gap, so it stops the fallback dead. A
     // plain `null` rate still falls through to the party's rate and the

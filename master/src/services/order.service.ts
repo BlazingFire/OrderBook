@@ -29,7 +29,6 @@ import {
   planReservations,
 } from '../domain/conversion.js';
 import { normalizeCustomFields } from '../domain/custom-fields.js';
-import { computeTotalWeightKg } from '../domain/line-items.js';
 import { clampPaging } from '../domain/paging.js';
 import { resolvePartyScope, UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
 import { assertStageMove, defaultStage, findStage, stageChangeMessage } from '../domain/pipeline.js';
@@ -449,46 +448,6 @@ export async function dispatchOrder(
   );
 
   return maskOrder(order, canSeeRates(actor));
-}
-
-export async function addRemark(
-  input: { id: string; message: string },
-  actor: ActorContext,
-): Promise<Order> {
-  requirePermission(actor, 'orders.edit');
-
-  const message = input.message?.trim();
-  if (!message) throw new ValidationError('validation.remark.textRequired');
-
-  const existing = await orderRepo.findOrderById(actor.tenantId, input.id, UNSCOPED_PARTY_ACCESS);
-  if (!existing) throw new NotFoundError('Order');
-  await requirePartyAccess(existing.partyId, 'manage', actor);
-
-  await db().transaction(async (trx) => {
-    await timelineRepo.appendEntry(
-      {
-        tenantId: actor.tenantId,
-        parentType: 'order',
-        parentId: input.id,
-        kind: 'remark',
-        message,
-        actorUserId: actorUserId(actor),
-      },
-      trx,
-    );
-  });
-
-  const order = await orderRepo.findOrderById(actor.tenantId, input.id, UNSCOPED_PARTY_ACCESS);
-  if (!order) throw new NotFoundError('Order');
-
-  publishChange({ entity: 'order', action: 'updated', id: input.id, payload: order });
-  return maskOrder(order, canSeeRates(actor));
-}
-
-/** Recomputed weight, for callers that need it without a round trip. */
-export async function recomputeWeight(tenantId: string, orderId: string): Promise<number> {
-  const lines = await lineItemRepo.loadSnapshots(tenantId, 'order', orderId);
-  return computeTotalWeightKg(lines);
 }
 
 export async function countOrders(actor: ActorContext): Promise<number> {

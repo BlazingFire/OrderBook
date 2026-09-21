@@ -49,8 +49,6 @@ const VARIANT_SPECS = [
   { name: 'micro', size: 64, quality: 60 },
 ] as const;
 
-export type AvatarVariantName = (typeof VARIANT_SPECS)[number]['name'];
-
 /**
  * Every legitimate avatarId is minted by `randomUUID()` at upload time
  * (below) — nothing else ever produces one. Format-validating a route param

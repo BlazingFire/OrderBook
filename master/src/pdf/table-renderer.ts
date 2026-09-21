@@ -36,7 +36,7 @@ const CELL_STYLE = { size: 9, colour: '#1C2530' };
 const TOTAL_STYLE = { size: 9, bold: true, colour: '#1C2530' };
 const ROW_HEIGHT = 16;
 
-export interface ReportTableColumn {
+interface ReportTableColumn {
   label: string;
   /** Right-aligned and summed. Numbers and money; never a name or a date. */
   numeric?: boolean;

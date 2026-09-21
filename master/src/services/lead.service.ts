@@ -375,7 +375,7 @@ export async function addRemark(
  * and the weight come from the product's own variant, which has to exist on
  * the product the line names and still be on offer.
  */
-export async function buildLines(
+async function buildLines(
   tenantId: string,
   partyId: string,
   drafts: LineDraft[],
@@ -411,6 +411,7 @@ export async function buildLines(
       {
         id: product.id,
         name: product.name,
+        categoryName: product.categoryName,
         alias: product.alias,
         rate: product.rate ?? null,
         sin: product.sin,

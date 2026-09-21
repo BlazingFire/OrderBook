@@ -32,7 +32,7 @@ import type { ActorContext } from '../../domain/actor.js';
 import { UnauthorizedError } from '../../lib/errors.js';
 import { createLogger } from '../../lib/logger.js';
 import * as apiKeyRepo from '../../repositories/api-key.repository.js';
-import { permissionSetForRole } from '../../repositories/role.repository.js';
+import { permissionSetForRole } from '../../services/pricing-gate.js';
 import { consume, noteUsed } from './api-key-rate-limit.js';
 
 const log = createLogger('api-key');
@@ -54,10 +54,6 @@ function noteFailure(prefix: string): void {
   // One line per failure is what makes a spray visible in the shell's log
   // without giving the database a write per guess.
   log.warn(`Rejected API key ${prefix} (${count} failed attempts since start)`);
-}
-
-export function failureCount(prefix: string): number {
-  return failures.get(prefix) ?? 0;
 }
 
 export function resetApiKeyFailures(): void {

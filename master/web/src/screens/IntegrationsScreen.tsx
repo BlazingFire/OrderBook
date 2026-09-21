@@ -48,10 +48,18 @@ import {
 
 import { api } from '../api';
 
-type Tab = 'keys' | 'connectors';
+export type Tab = 'keys' | 'connectors';
 
-export function IntegrationsScreen({ canManage }: { canManage: boolean }) {
-  const [tab, setTab] = useState<Tab>('keys');
+export function IntegrationsScreen({
+  canManage,
+  tab,
+  onTabChange,
+}: {
+  canManage: boolean;
+  /** Which tab is showing — chosen here or from the sidebar's sub-pages. */
+  tab: Tab;
+  onTabChange: (tab: Tab) => void;
+}) {
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,7 +96,7 @@ export function IntegrationsScreen({ canManage }: { canManage: boolean }) {
           { value: 'connectors' as const, label: t('integrations.tab.connectors') },
         ]}
         value={tab}
-        onChange={setTab}
+        onChange={onTabChange}
       />
     ),
   );

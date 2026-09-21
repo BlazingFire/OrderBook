@@ -1,4 +1,13 @@
-import { useState } from 'react';
+import {
+  Children,
+  forwardRef,
+  isValidElement,
+  useEffect,
+  useState,
+  type ChangeEvent,
+  type ReactNode,
+  type SelectHTMLAttributes,
+} from 'react';
 
 import { Input } from './Form.js';
 import { rem } from './rem.js';
@@ -178,4 +187,176 @@ export function SuggestInput({
       )}
     </span>
   );
+}
+
+/**
+ * The pick-only sibling of `SuggestInput`, wearing the `<select>` API so the
+ * screens that already render `<Select value onChange><option>…</Select>` keep
+ * working unchanged. Same field, same chevron, same list — the shop asked for
+ * one dropdown, not a native picker beside a custom one.
+ *
+ * Typing filters the list; nothing off the list is ever emitted, and a blur
+ * puts the chosen label back. `onChange` receives an object whose only real
+ * property is `target.value` — every caller in the tree reads exactly that and
+ * nothing else.
+ */
+export const Select = forwardRef<HTMLInputElement, SelectHTMLAttributes<HTMLSelectElement>>(
+  function Select(
+    { value, defaultValue, onChange, children, className, style, disabled, ...rest },
+    ref,
+  ) {
+    const options = optionsOf(children);
+    const [inner, setInner] = useState(String(defaultValue ?? ''));
+    const current = value === undefined ? inner : String(value);
+    const chosen = options.find((option) => option.value === current);
+    const label = chosen?.label ?? '';
+
+    const [text, setText] = useState(label);
+    const [open, setOpen] = useState(false);
+    const [active, setActive] = useState(0);
+    const [filtering, setFiltering] = useState(false);
+    useEffect(() => setText(label), [label]);
+
+    const term = text.trim().toLowerCase();
+    const matches =
+      filtering && term
+        ? options.filter((option) => option.label.toLowerCase().includes(term))
+        : options;
+    const highlighted = matches.length > 0 ? Math.min(active, matches.length - 1) : -1;
+    const listOpen = open && matches.length > 0;
+
+    function commit(next: string): void {
+      setOpen(false);
+      setFiltering(false);
+      if (next === current) {
+        setText(label);
+        return;
+      }
+      setInner(next);
+      onChange?.({ target: { value: next } } as unknown as ChangeEvent<HTMLSelectElement>);
+    }
+
+    return (
+      <span style={{ position: 'relative', display: 'block', ...style }}>
+        <Input
+          ref={ref}
+          {...(rest as object)}
+          className={className}
+          value={text}
+          disabled={disabled}
+          autoComplete="off"
+          role="combobox"
+          aria-expanded={listOpen}
+          aria-autocomplete="list"
+          style={{ width: '100%', paddingRight: rem(28) }}
+          onChange={(event) => {
+            setText(event.target.value);
+            setFiltering(true);
+            setOpen(true);
+            setActive(0);
+          }}
+          onFocus={(event) => {
+            event.target.select();
+            setFiltering(false);
+            setActive(Math.max(0, options.findIndex((option) => option.value === current)));
+            setOpen(true);
+          }}
+          onBlur={() => {
+            setOpen(false);
+            setFiltering(false);
+            setText(label);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowDown') {
+              event.preventDefault();
+              setOpen(true);
+              setActive((now) => Math.min(now + 1, Math.max(0, matches.length - 1)));
+              return;
+            }
+            if (event.key === 'ArrowUp') {
+              event.preventDefault();
+              setActive((now) => Math.max(0, now - 1));
+              return;
+            }
+            if (event.key === 'Enter' && listOpen) {
+              // Not claimed, for the same reason as `SuggestInput`: the walk on
+              // `document` steps to the next field on this very press.
+              const pick = highlighted >= 0 ? matches[highlighted] : undefined;
+              if (pick) commit(pick.value);
+              return;
+            }
+            if (event.key === 'Escape' && listOpen) {
+              event.preventDefault();
+              setOpen(false);
+              setText(label);
+            }
+          }}
+        />
+        {options.length > 0 && !disabled && (
+          <button
+            type="button"
+            tabIndex={-1}
+            // Mouse-only: keyboard users open the list with ArrowDown.
+            aria-hidden="true"
+            className="ob-suggest-toggle"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              setFiltering(false);
+              setActive(0);
+              setOpen((now) => !now);
+            }}
+          >
+            ▾
+          </button>
+        )}
+        {listOpen && (
+          <div role="listbox" className="ob-suggest">
+            {matches.map((option, index) => (
+              <button
+                key={option.value}
+                type="button"
+                role="option"
+                aria-selected={option.value === current}
+                className="ob-suggest-row"
+                style={{
+                  gridTemplateColumns: 'minmax(0, 1fr)',
+                  background: index === highlighted ? 'var(--bg-selected)' : undefined,
+                }}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  commit(option.value);
+                }}
+                onMouseEnter={() => setActive(index)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </span>
+    );
+  },
+);
+
+/** `<option value>label</option>` children, flattened, in order. */
+function optionsOf(children: ReactNode): Array<{ value: string; label: string }> {
+  const out: Array<{ value: string; label: string }> = [];
+  Children.forEach(children, (child) => {
+    if (!isValidElement<{ value?: unknown; children?: ReactNode }>(child)) return;
+    if (child.type !== 'option') {
+      out.push(...optionsOf(child.props.children));
+      return;
+    }
+    const label = textOf(child.props.children);
+    out.push({ value: String(child.props.value ?? label), label });
+  });
+  return out;
+}
+
+function textOf(node: ReactNode): string {
+  if (node == null || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(textOf).join('');
+  if (isValidElement<{ children?: ReactNode }>(node)) return textOf(node.props.children);
+  return '';
 }

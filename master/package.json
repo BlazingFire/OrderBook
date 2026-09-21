@@ -1,6 +1,6 @@
 {
   "name": "@orderbook/master",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "main": "electron/dist/master.main.js",
@@ -10,6 +10,9 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "migrate": "tsx src/db/migrate-cli.ts",
+    "reload:catalog": "tsx src/services/catalog-reload-cli.ts",
+    "wipe:business": "tsx src/services/catalog-reload-cli.ts",
+    "seed:parties": "tsx src/services/catalog-reload-cli.ts --with-parties",
     "seed:dummy": "tsx src/db/seed-dummy-users-cli.ts",
     "seed:sample": "tsx src/db/seed-sample-data-cli.ts",
     "seed:catalogue": "tsx src/db/seed-catalogue-cli.ts",

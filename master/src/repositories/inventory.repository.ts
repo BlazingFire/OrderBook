@@ -19,8 +19,8 @@ import type { Knex } from 'knex';
 import { v4 as uuid } from 'uuid';
 
 import { db } from '../db/knex.js';
-import { firstCount, mapStockLevel, mapStockMovement, toNumber } from './mappers.js';
-import * as reservations from './reservation.repository.js';
+import { mapStockLevel, mapStockMovement } from './mappers.js';
+import * as reservationsRepo from './reservation.repository.js';
 
 type Runner = Knex | Knex.Transaction;
 
@@ -58,7 +58,18 @@ function stockQuery(tenantId: string, runner: Runner = db()) {
 
 export async function listStockLevels(
   tenantId: string,
-  options: { search?: string; lowOnly?: boolean; limit: number; offset: number },
+  options: {
+    search?: string;
+    lowOnly?: boolean;
+    limit: number;
+    offset: number;
+    /**
+     * False with the company's free-to-sell switch off: nothing is held back,
+     * so free is the floor count, low stock is judged on it, and a colour that
+     * exists only as a reservation is not a row.
+     */
+    reservations?: boolean;
+  },
 ): Promise<InventoryStockLevel[]> {
   const query = stockQuery(tenantId);
 
@@ -78,7 +89,8 @@ export async function listStockLevels(
     .limit(options.limit)
     .offset(options.offset);
 
-  const held = await reservations.reservedTotals(tenantId);
+  const held =
+    options.reservations === false ? new Map<string, number>() : await reservationsRepo.reservedTotals(tenantId);
 
   const levels = rows.map((row) =>
     mapStockLevel({ ...row, reserved_boxes: held.get(String(row.variant_id)) ?? 0 }),
@@ -164,7 +176,7 @@ export async function findStockLevel(
 ): Promise<InventoryStockLevel | null> {
   const row = await stockQuery(tenantId, runner).andWhere('s.variant_id', variantId).first();
 
-  const held = await reservations.reservedTotals(tenantId, runner);
+  const held = await reservationsRepo.reservedTotals(tenantId, runner);
   const reserved = held.get(variantId) ?? 0;
 
   if (row) return mapStockLevel({ ...row, reserved_boxes: reserved });
@@ -322,8 +334,11 @@ export async function hasMovementForOrder(
   return row !== undefined;
 }
 
-/** Variants at or below their reorder level, judged on free-to-sell stock. */
-export async function countLowStock(tenantId: string): Promise<number> {
+/**
+ * Variants at or below their reorder level — judged on free-to-sell stock, or
+ * on the floor count while the company's free-to-sell switch is off.
+ */
+export async function countLowStock(tenantId: string, reservations = true): Promise<number> {
   const rows = await db()('inventory_stock')
     .where({ tenant_id: tenantId })
     .whereNotNull('reorder_level')
@@ -333,44 +348,10 @@ export async function countLowStock(tenantId: string): Promise<number> {
       'reorder_level',
     );
 
-  const held = await reservations.reservedTotals(tenantId);
+  const held = reservations ? await reservationsRepo.reservedTotals(tenantId) : new Map<string, number>();
 
   return rows.filter((row) => {
     const available = Number(row.quantity_boxes) - (held.get(String(row.variant_id)) ?? 0);
     return available <= Number(row.reorder_level);
   }).length;
-}
-
-/** Everything reserved but not stocked is short by definition. */
-export async function countUnstockedReservations(tenantId: string): Promise<number> {
-  const held = await reservations.reservedTotals(tenantId);
-  if (held.size === 0) return 0;
-
-  const rows = await db()('inventory_stock')
-    .where({ tenant_id: tenantId })
-    .select<Array<{ variant_id: string }>>('variant_id');
-
-  const stocked = new Set(rows.map((row) => String(row.variant_id)));
-  return [...held.keys()].filter((variantId) => !stocked.has(variantId)).length;
-}
-
-/** Total stock rows, used by the dashboard's product count sanity check. */
-export async function countStockRows(tenantId: string): Promise<number> {
-  const rows = await db()('inventory_stock')
-    .where({ tenant_id: tenantId })
-    .count<Array<{ count: string }>>('id as count');
-  return firstCount(rows);
-}
-
-/** Box coverage, for the sqft mirror shown next to box quantities. */
-export async function boxCoverage(
-  tenantId: string,
-  productId: string,
-  runner: Runner = db(),
-): Promise<number> {
-  const row = await runner('products')
-    .where({ tenant_id: tenantId, id: productId })
-    .first<{ box_coverage_sqft: string | null } | undefined>('box_coverage_sqft');
-
-  return toNumber(row?.box_coverage_sqft) ?? 0;
 }

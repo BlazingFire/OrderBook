@@ -53,7 +53,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type {
-  CustomFieldDefinition,
   Lead,
   LineItemInput,
   OptionListItem,
@@ -66,7 +65,6 @@ import type {
 } from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
-import { CustomFields } from '../components/CustomFields';
 import { PartyDrawer, type CreatedParty } from '../components/PartyDrawer';
 import {
   Button,
@@ -95,6 +93,8 @@ interface Props {
   view: LocalView;
   /** From the signed-in person's own resolved set, not the snapshot's. */
   canEditRate: boolean;
+  /** Bumped by the shell each time the form is asked for; see the focus effect. */
+  focusNonce?: number;
   /** Carries the queued lead's temporary id, so the shell can name it. */
   onSaved: (id: string) => void;
   onCancel: () => void;
@@ -238,7 +238,7 @@ function variantName(facts: { variantLabel: string | null; code: string }): stri
   return facts.variantLabel ?? facts.code;
 }
 
-export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
+export function AddLeadScreen({ view, canEditRate, focusNonce = 0, onSaved, onCancel }: Props) {
   const colourHex = useColourHex(view.optionLists);
 
   const [partyId, setPartyId] = useState('');
@@ -252,7 +252,6 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
   const [otherSource, setOtherSource] = useState('');
   const [followUpDate, setFollowUpDate] = useState('');
   const [notes, setNotes] = useState('');
-  const [customFields, setCustomFields] = useState<Record<string, unknown>>({});
 
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -274,7 +273,7 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
   const partyRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const otherRef = useRef<HTMLInputElement>(null);
-  const sourceRef = useRef<HTMLSelectElement>(null);
+  const sourceRef = useRef<HTMLInputElement>(null);
   /**
    * The form column, for the Enter/Escape walk.
    *
@@ -808,7 +807,6 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
         followUpDate: followUpDate || null,
         partyWiseMode,
         notes: notes.trim() || null,
-        customFields,
         items,
       });
 
@@ -869,6 +867,22 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
   useEscapeToPrevious(formRef);
 
   /*
+   * Where the cursor goes when this form is asked for. A blank form starts at
+   * the party picker, because that is the first thing a lead needs; a form
+   * with anything already on it is left exactly as it was — somebody switched
+   * tabs mid-lead and came back, and moving their cursor would be a second
+   * interruption. The screen stays mounted while hidden, so the draft itself
+   * never needs restoring.
+   */
+  const blank = !partyId && !partyQuery && lines.length === 0 && !draft && !notes.trim();
+  useEffect(() => {
+    if (focusNonce === 0 || !blank) return;
+    const timer = window.setTimeout(() => partyRef.current?.focus(), 0);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusNonce]);
+
+  /*
    * Resetting throws away a lead somebody is part-way through typing, so it asks
    * first — but only when there is something to lose.
    */
@@ -876,10 +890,6 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
     partyId || lines.length > 0 || draft || notes.trim()
       ? () => window.confirm(t('lead.add.discardConfirm'))
       : null,
-  );
-
-  const leadFieldDefinitions = view.customFields.filter(
-    (definition: CustomFieldDefinition) => definition.entity === 'lead',
   );
 
   const summary =
@@ -1490,11 +1500,6 @@ export function AddLeadScreen({ view, canEditRate, onSaved, onCancel }: Props) {
               placeholder={t('lead.add.notes.placeholder')}
               aria-label={t('lead.add.details.notes')}
               onChange={(event) => setNotes(event.target.value)}
-            />
-            <CustomFields
-              definitions={leadFieldDefinitions}
-              values={customFields}
-              onChange={setCustomFields}
             />
           </section>
 

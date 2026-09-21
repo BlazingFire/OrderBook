@@ -49,48 +49,9 @@ export interface SettingDefinition<T> {
   secret?: boolean;
 }
 
-/** How the AI section reaches a model. `off` is the shipped default. */
-export type AiProviderSetting =
-  { kind: 'off' } | { kind: 'openaiCompatible'; baseUrl: string; model: string };
-
-function asPositiveNumber(raw: unknown): number {
-  const value = Number(raw);
-  if (!Number.isFinite(value) || value < 0)
-    throw new TypeError('expected a number of at least zero');
-  return Math.floor(value);
-}
-
 function asBoolean(raw: unknown): boolean {
   if (typeof raw !== 'boolean') throw new TypeError('expected a boolean');
   return raw;
-}
-
-function asString(raw: unknown): string {
-  if (typeof raw !== 'string') throw new TypeError('expected a string');
-  return raw;
-}
-
-function asRecord(raw: unknown): Record<string, unknown> {
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-    throw new TypeError('expected an object');
-  }
-  return raw as Record<string, unknown>;
-}
-
-function asAiProvider(raw: unknown): AiProviderSetting {
-  const value = asRecord(raw);
-
-  if (value.kind === 'off') return { kind: 'off' };
-
-  if (value.kind === 'openaiCompatible') {
-    return {
-      kind: 'openaiCompatible',
-      baseUrl: asString(value.baseUrl),
-      model: asString(value.model),
-    };
-  }
-
-  throw new TypeError('unknown AI provider kind');
 }
 
 /**
@@ -114,77 +75,41 @@ export const SETTINGS = {
     parse: (raw: unknown): boolean => asBoolean(raw),
   },
 
-  'ai.provider': {
-    labelToken: 'setting.ai.provider.label',
-    descriptionToken: 'setting.ai.provider.help',
-    fallback: { kind: 'off' } as AiProviderSetting,
-    parse: (raw: unknown): AiProviderSetting => asAiProvider(raw),
-  },
-
-  'ai.apiKey': {
-    labelToken: 'setting.ai.apiKey.label',
-    descriptionToken: 'setting.ai.apiKey.help',
-    fallback: '',
-    parse: (raw: unknown): string => asString(raw),
-    secret: true,
-  },
-
   /**
-   * Whether a person may apply a change the assistant suggested.
+   * Whether the software deals in money at all.
    *
-   * Separate from the `ai.write` permission, and both are required: the
-   * permission says who, this says whether the installation allows it at all.
-   * A shop that wants the assistant only as a reader turns this off once
-   * instead of auditing every role.
+   * Off by default: this is order management, and most desks never need a
+   * rate. While it is off the four `field.*Rate.*` permissions are stripped
+   * from every resolved permission set (`master/src/services/pricing-gate.ts`),
+   * so every rate, amount and total disappears from screens, documents, reports
+   * and the API by the same rule a role without those keys already follows —
+   * and the Pricing group leaves the permission grid, since ticking it would
+   * change nothing. Nothing stored is touched; switching it back on restores
+   * every figure.
    */
-  'ai.allowWrites': {
-    labelToken: 'setting.ai.allowWrites.label',
-    descriptionToken: 'setting.ai.allowWrites.help',
+  'pricing.enabled': {
+    labelToken: 'setting.pricing.enabled.label',
+    descriptionToken: 'setting.pricing.enabled.help',
     fallback: false,
     parse: (raw: unknown): boolean => asBoolean(raw),
   },
 
   /**
-   * How many days a transcript is kept.
+   * Whether stock is split into on-hand, reserved and free to sell.
    *
-   * Prompts and answers are the most sensitive thing this feature stores — a
-   * question is often about a particular customer — so they age out. The
-   * `activity_log` entry does not, but it carries only figures.
+   * Off by default: a counter that never reserves ahead has one number per
+   * colour, the boxes on the floor, and a second and third column beside it
+   * are noise. While it is off every stock figure the Master hands out reads
+   * on-hand as free (`withoutReservations` in `domain/inventory-view.ts`),
+   * low stock is judged on the floor count, and the screens drop the
+   * reserved/free columns and the reservation panels. Orders still reserve
+   * quietly underneath, so switching it back on shows the true picture.
    */
-  'ai.retentionDays': {
-    labelToken: 'setting.ai.retentionDays.label',
-    descriptionToken: 'setting.ai.retentionDays.help',
-    fallback: 90,
-    parse: (raw: unknown): number => asPositiveNumber(raw),
-  },
-
-  /**
-   * A ceiling on tokens spent per day against a paid provider.
-   *
-   * Zero means no ceiling, which is the right default for a model running on a
-   * machine in the building: there is nothing to spend.
-   */
-  'ai.dailyTokenBudget': {
-    labelToken: 'setting.ai.dailyTokenBudget.label',
-    descriptionToken: 'setting.ai.dailyTokenBudget.help',
-    fallback: 0,
-    parse: (raw: unknown): number => asPositiveNumber(raw),
-  },
-
-  /**
-   * How many AI runs may execute simultaneously.
-   *
-   * Keeps a burst of questions from exhausting memory on a shop PC that also
-   * runs PostgreSQL. Zero is not allowed — the server needs at least one.
-   */
-  'ai.maxConcurrentRuns': {
-    labelToken: 'setting.ai.maxConcurrentRuns.label',
-    descriptionToken: 'setting.ai.maxConcurrentRuns.help',
-    fallback: 2,
-    parse: (raw: unknown): number => {
-      const n = asPositiveNumber(raw);
-      return n < 1 ? 1 : Math.min(n, 8);
-    },
+  'inventory.freeToSell': {
+    labelToken: 'setting.inventory.freeToSell.label',
+    descriptionToken: 'setting.inventory.freeToSell.help',
+    fallback: false,
+    parse: (raw: unknown): boolean => asBoolean(raw),
   },
 
   /**

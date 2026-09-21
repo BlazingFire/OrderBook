@@ -138,5 +138,3 @@ export const config = {
       : DEFAULT_LOCALE,
   },
 } as const;
-
-export type Config = typeof config;

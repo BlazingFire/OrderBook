@@ -48,10 +48,6 @@ let loaded = false;
  */
 let revision = 0;
 
-export function snapshotRevision(): number {
-  return revision;
-}
-
 /**
  * Store the snapshot, and — in the **same disk write** — the cursor that
  * describes it.
@@ -266,7 +262,7 @@ function provisionalLead(view: SyncSnapshot, mutation: Mutation): Lead {
   const stage = pipeline?.stages.find((candidate) => candidate.isDefault) ?? pipeline?.stages[0];
 
   const items = (payload.items ?? []).map((item, index) =>
-    provisionalLine(view, mutation.entityId, item, index),
+    provisionalLine(view, mutation.entityId, item, index, payload.partyWiseMode ? payload.partyId : undefined),
   );
 
   return {
@@ -309,9 +305,19 @@ function provisionalLine(
   parentId: string,
   item: Record<string, unknown>,
   index: number,
+  /** Set when the lead is party-wise: the party's own variant rate wins, as on the Master. */
+  variantPartyId?: string,
 ): LineItem {
   const product = view.products.find((candidate) => candidate.id === item.productId);
+  // The product variant is where the code, the colour text and the weight
+  // come from; the party's own rate record is where a party-wise price comes
+  // from. Two different things that used to share one name.
   const variant = product?.variants.find((candidate) => candidate.id === item.variantId);
+  const partyRate = variantPartyId
+    ? view.partyVariants.find(
+        (candidate) => candidate.partyId === variantPartyId && candidate.productId === item.productId,
+      )
+    : undefined;
 
   const quantity = Number(item.quantity) || 0;
   const weightKg = (item.weightKg as number | null | undefined) ?? variant?.weightKg ?? null;
@@ -323,10 +329,12 @@ function provisionalLine(
   const rateHidden =
     item.rate === undefined && product !== undefined && !('rate' in (product as object));
   // `rateUnset` stops the catalogue fallback here too, or the board would show
-  // a price for a line the counter deliberately left to be quoted.
+  // a price for a line the counter deliberately left to be quoted. Otherwise the
+  // same ladder as `buildLineSnapshot` on the Master — sent rate, party variant,
+  // catalogue — so a queued lead shows the figure the ack will confirm.
   const rate = item.rateUnset
     ? null
-    : ((item.rate as number | null | undefined) ?? product?.rate ?? null);
+    : ((item.rate as number | null | undefined) ?? partyRate?.rate ?? product?.rate ?? null);
 
   const line: LineItem = {
     id: `${parentId}-line-${index}`,
@@ -336,6 +344,7 @@ function provisionalLine(
     productId: String(item.productId ?? ''),
     variantId: String(item.variantId ?? ''),
     productName: String(item.productName ?? product?.name ?? ''),
+    categoryName: (item.categoryName as string | null) ?? product?.categoryName ?? null,
     alias: (item.alias as string | null) ?? product?.alias ?? null,
     rate,
     code: (item.code as string | null) ?? variant?.code ?? null,
