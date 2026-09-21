@@ -36,7 +36,7 @@ let actor: ActorContext;
 async function seedLeadFixture() {
   const party = await catalogService.createParty({ name: 'Patel Tiles' }, actor);
   const product = await catalogService.createProduct(
-    { categoryName: 'Tiles', variants: [{ code: 'GVT-01' }], name: 'Carrara White', rate: 45_000 },
+    { categoryName: 'Tiles', variants: [{ code: 'GVT-01' }], name: 'Carrara White' },
     actor,
   );
   return { party, product };

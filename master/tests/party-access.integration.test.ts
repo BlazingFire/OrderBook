@@ -61,7 +61,6 @@ const DESK_KEYS = [
   'inventory.view',
   'reports.view',
   'logs.view',
-  'field.saleRate.view',
 ];
 
 /** A signed-in desk user. The `userId` is what a grant is written against. */
@@ -84,7 +83,7 @@ async function makePerson(username: string): Promise<string> {
 
 async function seedProduct() {
   return catalog.createProduct(
-    { categoryName: 'Tiles', variants: [{ code: 'PA-01' }], name: 'Glazed Tile', rate: 42_000 },
+    { categoryName: 'Tiles', variants: [{ code: 'PA-01' }], name: 'Glazed Tile' },
     admin,
   );
 }
@@ -342,7 +341,7 @@ describe.skipIf(!canRunIntegrationTests)('party access (integration)', () => {
       const product = await seedProduct();
       await seedLead(theirs.id, product, admin);
 
-      await catalog.upsertVariant({ partyId: theirs.id, productId: product.id, rate: 1 }, admin);
+      await catalog.upsertVariant({ partyId: theirs.id, productId: product.id }, admin);
 
       const owner = await makePerson('owner');
       await partyAccess.replaceAssignments(

@@ -269,10 +269,10 @@ describe('local view', () => {
     expect(view?.pendingCount).toBe(1);
   });
 
-  it('prices a queued party-wise line from the party variant, as the Master will', async () => {
+  it("names a queued party-wise line the party's own way, as the Master will", async () => {
     const { outbox, localStore } = await loadModules();
-    // A rate-less line is what the New Lead form sends now; the Master resolves
-    // variant before catalogue, so the pending figure must not be the catalogue.
+    // The Master resolves the party's record before the catalogue, so the
+    // pending line must not show the catalogue name.
     await localStore.setSnapshot({
       ...snapshot,
       products: [
@@ -280,12 +280,21 @@ describe('local view', () => {
           id: 'PR0000000001',
           tenantId: 't1',
           name: 'Glazed',
-          rate: 45000,
+          alias: null,
+          size: null,
+          multiColour: false,
           variants: [{ id: 'VR1', productId: 'PR0000000001', code: 'GLZ-100', label: null, weightKg: 4 }],
         },
       ],
       partyVariants: [
-        { id: 'PV1', tenantId: 't1', partyId: 'PT0000000001', productId: 'PR0000000001', rate: 40000 },
+        {
+          id: 'PV1',
+          tenantId: 't1',
+          partyId: 'PT0000000001',
+          productId: 'PR0000000001',
+          productName: 'Glazed (Patel)',
+          alias: 'GLZ',
+        },
       ],
     } as unknown as SyncSnapshot);
 
@@ -301,8 +310,10 @@ describe('local view', () => {
     });
 
     const view = await localStore.getView();
-    expect(view?.leads[0]?.items[0]?.rate).toBe(40000);
-    expect(view?.leads[0]?.totalAmount).toBe(80000);
+    expect(view?.leads[0]?.items[0]?.productName).toBe('Glazed (Patel)');
+    expect(view?.leads[0]?.items[0]?.alias).toBe('GLZ');
+    expect(view?.leads[0]?.items[0]?.lineWeightKg).toBe(8);
+    expect(view?.leads[0]?.totalWeightKg).toBe(8);
   });
 
   it('applies a queued stage change on top of a synced lead', async () => {
@@ -329,7 +340,6 @@ describe('local view', () => {
           missingFields: [],
           convertedOrderId: null,
           convertedAt: null,
-          totalAmount: 0,
           totalWeightKg: 0,
           linesWithoutWeight: 0,
           sourcePanelId: null,

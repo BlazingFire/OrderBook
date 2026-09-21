@@ -38,7 +38,6 @@ async function damru() {
     {
       name: 'DAMRU',
       categoryName: CATEGORY,
-      rate: 42_000,
       hasVariants: true,
       variants: [
         { code: '41', label: 'Vitrosa 41', weightKg: 18.5 },

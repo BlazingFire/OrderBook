@@ -3,13 +3,13 @@
  *
  * `columnsFrom()` in both the product and party repositories used to enumerate
  * every column with `?? null` and spread the result straight into `.update()`,
- * which made an update a full record replace. The only product form in the app
- * edits 8 of ~20 columns, so saving it nulled the twelve it does not know
- * about; the 5-field party drawer did the same to six party columns.
+ * which made an update a full record replace. The product form saved a subset
+ * of the columns, so saving it nulled the ones it does not know about; the
+ * 5-field party drawer did the same to six party columns.
  *
  * These tests fail if that behaviour ever returns. They deliberately assert on
- * the columns no form currently edits, because those are the ones a partial
- * patch exists to protect.
+ * the columns a narrow patch does not name, because those are the ones a
+ * partial patch exists to protect.
  *
  * See `shared/src/domain/columns.ts` for the contract: **`undefined` means not
  * asserted, `null` means clear it.**
@@ -33,58 +33,30 @@ describe.skipIf(!canRunIntegrationTests)('partial patch semantics (integration)'
   });
 
   describe('products', () => {
-    /** Every column the shipped 8-field drawer does not send. */
+    /** Every product column, filled. */
     const fullProduct = {
-      categoryName: 'Floor tiles',
-      variants: [{ code: 'GVT-600', weightKg: 28.5 }],
-      name: 'Glazed Vitrified 600x600',
-      alias: 'GVT 600',
-      size: '600x600',
-      sin: 'SIN-11',
-      grade: 'Premium',
-      productType: 'Floor',
-      finish: 'Glossy',
-      series: 'Marble Look',
-      thicknessMm: 9.2,
-      piecesPerBox: 4,
-      boxCoverageSqft: 15.5,
-      rate: 42_000,
-      pricePerSqft: 2_700,
-      hsnCode: '69072100',
-      parameters: { waterAbsorption: '0.5%' },
-      customFields: { plant: 'Morbi 2' },
+      categoryName: 'PLAIN SET',
+      variants: [{ code: 'GOLDEN-SET-WHITE', weightKg: 28.5 }],
+      name: 'GOLDEN SET',
+      alias: 'Golden',
+      size: '18x14',
+      multiColour: true,
+      customFields: { plant: 'Thangadh 2' },
     };
 
     it('leaves every unasserted column intact when only the name changes', async () => {
       const created = await catalog.createProduct(fullProduct, actor);
 
-      // Exactly what the 8-field drawer sends — note the twelve absent keys.
-      const after = await catalog.updateProduct(
-        created.id,
-        {
-          name: 'Glazed Vitrified 600x600 (v2)',
-          alias: 'GVT 600',
-          size: '600x600',
-          sin: 'SIN-11',
-          grade: 'Premium',
-          productType: 'Floor',
-          rate: 42_000,
-        },
-        actor,
-      );
+      // A one-field patch — note the absent keys.
+      const after = await catalog.updateProduct(created.id, { name: 'GOLDEN SET (v2)' }, actor);
 
-      expect(after.name).toBe('Glazed Vitrified 600x600 (v2)');
-      expect(after.finish).toBe('Glossy');
-      expect(after.series).toBe('Marble Look');
-      expect(after.thicknessMm).toBe(9.2);
+      expect(after.name).toBe('GOLDEN SET (v2)');
+      expect(after.alias).toBe('Golden');
+      expect(after.size).toBe('18x14');
+      expect(after.multiColour).toBe(true);
       // The variant set was not named either, so it stays: the code and the weight.
-      expect(after.variants.map((variant) => [variant.code, variant.weightKg])).toEqual([['GVT-600', 28.5]]);
-      expect(after.piecesPerBox).toBe(4);
-      expect(after.boxCoverageSqft).toBe(15.5);
-      expect(after.pricePerSqft).toBe(2_700);
-      expect(after.hsnCode).toBe('69072100');
-      expect(after.parameters).toEqual({ waterAbsorption: '0.5%' });
-      expect(after.customFields).toEqual({ plant: 'Morbi 2' });
+      expect(after.variants.map((variant) => [variant.code, variant.weightKg])).toEqual([['GOLDEN-SET-WHITE', 28.5]]);
+      expect(after.customFields).toEqual({ plant: 'Thangadh 2' });
     });
 
     it('still clears a column when the caller explicitly sends null', async () => {
@@ -92,13 +64,14 @@ describe.skipIf(!canRunIntegrationTests)('partial patch semantics (integration)'
 
       const after = await catalog.updateProduct(
         created.id,
-        { name: fullProduct.name, finish: null },
+        { name: fullProduct.name, alias: null, multiColour: false },
         actor,
       );
 
-      expect(after.finish).toBeNull();
+      expect(after.alias).toBeNull();
+      expect(after.multiColour).toBe(false);
       // …and the neighbours it did not name are still untouched.
-      expect(after.series).toBe('Marble Look');
+      expect(after.size).toBe('18x14');
     });
   });
 

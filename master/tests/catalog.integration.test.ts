@@ -125,16 +125,16 @@ describe.skipIf(!canRunIntegrationTests)('catalog service (integration)', () => 
       expect(await catalog.listCategories(actor)).toHaveLength(1);
     });
 
-    it('stores flexible attributes in the JSONB column and reads them back', async () => {
-      const product = await single('One', 'A1', { parameters: { glaze: 'matte', batch: 7 } });
-      expect(product.parameters).toEqual({ glaze: 'matte', batch: 7 });
+    it('stores custom field values in the JSONB column and reads them back', async () => {
+      const product = await single('One', 'A1', { customFields: { glaze: 'matte', batch: 7 } });
+      expect(product.customFields).toEqual({ glaze: 'matte', batch: 7 });
     });
 
-    it('supports querying into JSONB parameters, which is why the column is JSONB', async () => {
-      await single('Matte one', 'A1', { parameters: { glaze: 'matte' } });
-      await single('Glossy one', 'A2', { parameters: { glaze: 'glossy' } });
+    it('supports querying into the JSONB custom fields, which is why the column is JSONB', async () => {
+      await single('Matte one', 'A1', { customFields: { glaze: 'matte' } });
+      await single('Glossy one', 'A2', { customFields: { glaze: 'glossy' } });
 
-      const rows = await db()('products').whereRaw(`parameters->>'glaze' = ?`, ['matte']);
+      const rows = await db()('products').whereRaw(`custom_fields->>'glaze' = ?`, ['matte']);
       expect(rows).toHaveLength(1);
       expect(rows[0]?.name).toBe('Matte one');
     });

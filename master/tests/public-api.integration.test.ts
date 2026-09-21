@@ -5,11 +5,8 @@
  *
  *  · a key outliving the permission its owner lost — the intersection is
  *    computed per request for exactly this reason;
- *  · a PATCH nulling the eighteen columns the caller did not mention, which is
- *    what a full-replace update does to a partial body;
- *  · a key without `field.saleRate.view` writing the catalogue price to
- *    nothing, because masking removes the key and a naive merge reads that as
- *    "cleared";
+ *  · a PATCH nulling the columns the caller did not mention, which is what a
+ *    full-replace update does to a partial body;
  *  · the whole surface answering at all while the feature is switched off.
  */
 
@@ -184,18 +181,13 @@ describe.skipIf(!canRunIntegrationTests)('public API (integration)', () => {
           variants: [{ code: 'RST-300', weightKg: 12 }],
           alias: 'Rustic',
           size: '300x300',
-          rate: 12_500,
-          hsnCode: '6907',
+          multiColour: true,
         },
         actor,
       );
 
-      const { userId } = await seedOwner('owner-patch', [
-        'products.view',
-        'products.edit',
-        'field.saleRate.view',
-      ]);
-      const token = await issue(userId, ['products.view', 'products.edit', 'field.saleRate.view']);
+      const { userId } = await seedOwner('owner-patch', ['products.view', 'products.edit']);
+      const token = await issue(userId, ['products.view', 'products.edit']);
 
       const response = await request(app)
         .patch(`/api/v1/products/${product.id}`)
@@ -204,111 +196,14 @@ describe.skipIf(!canRunIntegrationTests)('public API (integration)', () => {
         .expect(200);
 
       expect(response.body.alias).toBe('Rustic Matt');
-      // The eighteen columns nobody mentioned.
+      // The columns nobody mentioned.
       expect(response.body.name).toBe('Rustic 300');
       expect(response.body.categoryName).toBe('Basins');
       expect(response.body.variants).toEqual([
         expect.objectContaining({ id: product.variants[0]!.id, code: 'RST-300', weightKg: 12 }),
       ]);
       expect(response.body.size).toBe('300x300');
-      expect(response.body.hsnCode).toBe('6907');
-      expect(response.body.rate).toBe(12_500);
-    });
-
-    it('will not let a rate-blind key null the price, by naming it or by omitting it', async () => {
-      const actor = await testActor();
-      const product = await catalogService.createProduct(
-        { name: 'Rustic 301', categoryName: 'Basins', variants: [{ code: 'RST-301' }], rate: 9_900 },
-        actor,
-      );
-
-      const { userId } = await seedOwner('owner-blind', ['products.view', 'products.edit']);
-      const token = await issue(userId, ['products.view', 'products.edit']);
-
-      // Naming it is a refusal, not a silent no-op.
-      await request(app)
-        .patch(`/api/v1/products/${product.id}`)
-        .set('Authorization', `Bearer ${token}`)
-        .send({ rate: 0 })
-        .expect(403);
-
-      // Not naming it leaves it alone — the merge base is the unmasked row.
-      await request(app)
-        .patch(`/api/v1/products/${product.id}`)
-        .set('Authorization', `Bearer ${token}`)
-        .send({ alias: 'Blind edit' })
-        .expect(200);
-
-      const after = await catalogService.getProduct(product.id, actor);
-      expect(after.rate).toBe(9_900);
-      expect(after.alias).toBe('Blind edit');
-    });
-  });
-
-  describe('writing a money field', () => {
-    it('refuses a key that may read the rate but not edit it, rather than dropping it', async () => {
-      // Found by driving a running Master, not by a unit test: the guard used to
-      // check `field.saleRate.view`, so a key with view-but-not-edit passed it
-      // and `withPermittedRate` then discarded the price downstream. The caller
-      // got a 201 and believed the price was set. A refusal is the only honest
-      // answer — a silent no-op is the worst one available.
-      const { userId } = await seedOwner('owner-viewonly', [
-        'products.view',
-        'products.create',
-        'products.edit',
-        'field.saleRate.view',
-      ]);
-      const token = await issue(userId, [
-        'products.view',
-        'products.create',
-        'products.edit',
-        'field.saleRate.view',
-      ]);
-
-      await request(app)
-        .post('/api/v1/products')
-        .set('Authorization', `Bearer ${token}`)
-        .send({ name: 'View only', categoryName: 'Basins', variants: [{ code: 'VIEW-1' }], rate: 12_500 })
-        .expect(403);
-
-      const actor = await testActor();
-      const product = await catalogService.createProduct(
-        { name: 'View only two', categoryName: 'Basins', variants: [{ code: 'VIEW-2' }], rate: 9_900 },
-        actor,
-      );
-
-      await request(app)
-        .patch(`/api/v1/products/${product.id}`)
-        .set('Authorization', `Bearer ${token}`)
-        .send({ rate: 1 })
-        .expect(403);
-
-      // And the price it was not allowed to touch is still there.
-      expect((await catalogService.getProduct(product.id, actor)).rate).toBe(9_900);
-    });
-
-    it('lets a key holding the edit permission through', async () => {
-      const { userId } = await seedOwner('owner-editrate', [
-        'products.view',
-        'products.create',
-        'field.saleRate.view',
-        'field.saleRate.edit',
-      ]);
-      const token = await issue(userId, [
-        'products.view',
-        'products.create',
-        'field.saleRate.view',
-        'field.saleRate.edit',
-      ]);
-
-      const response = await request(app)
-        .post('/api/v1/products')
-        .set('Authorization', `Bearer ${token}`)
-        .send({ name: 'Edit rate', categoryName: 'Basins', variants: [{ code: 'EDIT-1' }], rate: 12_500 })
-        .expect(201);
-
-      // The figure actually landed, which is the half a silent drop hid.
-      expect(response.body.rate).toBe(12_500);
+      expect(response.body.multiColour).toBe(true);
     });
   });
 

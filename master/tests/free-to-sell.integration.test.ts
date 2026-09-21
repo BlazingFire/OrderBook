@@ -34,7 +34,6 @@ async function seedReserved() {
     {
       name: 'Pedestal Basin',
       categoryName: 'Basins',
-      rate: 30_000,
       variants: [{ code: 'BSN-01', weightKg: 12 }],
     },
     actor,

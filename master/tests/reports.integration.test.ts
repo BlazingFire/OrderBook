@@ -157,16 +157,6 @@ describe.skipIf(!canRunIntegrationTests)('Reports (integration)', () => {
       expect(report.totals.orderCount).not.toBe('11' as unknown as number);
     });
 
-    it('RPT-12/13: a caller without field.saleRate.view gets no totalValue key at all, on buckets and totals', async () => {
-      await createDispatchedOrder('Vadodara');
-      const noRates = await actorWith(['reports.view']);
-      const report = await reportService.dispatchReport({ period: 'thisMonth' }, noRates);
-
-      expect(report.ratesIncluded).toBe(false);
-      for (const bucket of report.months) expect('totalValue' in bucket).toBe(false);
-      expect('totalValue' in report.totals).toBe(false);
-    });
-
     it('RPT-16: reports.view names the missing permission', async () => {
       const noReports = await actorWith([]);
       await expect(reportService.dispatchReport({}, noReports)).rejects.toMatchObject({
@@ -224,12 +214,10 @@ describe.skipIf(!canRunIntegrationTests)('Reports (integration)', () => {
       expect(unknown?.partyCount).toBe(1);
     });
 
-    it('RPT-14: orders by orderCount and says so when value is hidden', async () => {
-      const noRates = await actorWith(['reports.view']);
-      const report = await reportService.topPartiesReport({ period: 'thisMonth' }, noRates);
-      expect(report.orderedBy).toBe('orderCount');
-      expect(report.ratesIncluded).toBe(false);
-      for (const party of report.parties) expect('totalValue' in party).toBe(false);
+    it('RPT-14: orders parties by their order count', async () => {
+      const report = await reportService.topPartiesReport({ period: 'thisMonth' }, await testActor());
+      const counts = report.parties.map((party) => party.orderCount);
+      expect(counts).toEqual([...counts].sort((a, b) => b - a));
     });
   });
 
@@ -240,23 +228,6 @@ describe.skipIf(!canRunIntegrationTests)('Reports (integration)', () => {
         code: 'forbidden',
         details: { permission: 'reports.export' },
       });
-    });
-
-    it('produces a CSV with an empty cell for a redacted total, never 0', async () => {
-      await createDispatchedOrder('ExportCity');
-      const noRates = await actorWith(['reports.view', 'reports.export']);
-      const exported = await reportService.exportReport(
-        'dispatches',
-        { period: 'thisMonth' },
-        noRates,
-      );
-      const { csv, rowCount } = exported as { csv: string; rowCount: number };
-
-      expect(rowCount).toBeGreaterThan(0);
-      const lines = csv.trim().split('\r\n');
-      expect(lines[0]).toBe('month,orderCount,boxCount,totalValue');
-      const dataLine = lines[1] ?? '';
-      expect(dataLine.endsWith(',')).toBe(true); // trailing totalValue cell is empty
     });
 
     it('narrows and reorders to the columns asked for', async () => {
@@ -288,7 +259,7 @@ describe.skipIf(!canRunIntegrationTests)('Reports (integration)', () => {
       );
 
       const lines = (exported as { csv: string }).csv.trim().split('\r\n');
-      expect(lines[0]).toBe('month,orderCount,boxCount,totalValue');
+      expect(lines[0]).toBe('month,orderCount,boxCount');
     });
 
     it('appends a totals row that sums only the numeric columns', async () => {
@@ -307,23 +278,6 @@ describe.skipIf(!canRunIntegrationTests)('Reports (integration)', () => {
       // A total of a month name is nonsense, so the first cell is the label.
       expect(totals[0]).toBe('Total');
       expect(Number(totals[1])).toBeGreaterThan(0);
-    });
-
-    it('never sums a money column it just redacted', async () => {
-      await createDispatchedOrder('ExportCity');
-      const noRates = await actorWith(['reports.view', 'reports.export']);
-
-      const exported = await reportService.exportReport(
-        'dispatches',
-        { period: 'thisMonth', totals: true },
-        noRates,
-      );
-
-      const lines = (exported as { csv: string }).csv.trim().split('\r\n');
-      const totals = (lines[lines.length - 1] ?? '').split(',');
-
-      // A total would reconstruct exactly the figure the redaction withheld.
-      expect(totals[totals.length - 1]).toBe('');
     });
 
     it('renders a PDF when one is asked for', async () => {

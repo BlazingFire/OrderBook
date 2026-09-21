@@ -1,57 +1,39 @@
 /**
- * The trade and ceramic attributes, and the three ways they could have gone
- * quietly wrong.
+ * The product master's fields, and the two ways they could have gone quietly
+ * wrong.
  *
- * 1. **Cost leaking through the sale-rate gate.** What the company pays is a
- *    different secret with a different audience from what it charges, and the
- *    two used to be one boolean.
- * 2. **A partial write clearing what it was not asked about.** Setting the
+ * 1. **A partial write clearing what it was not asked about.** Setting the
  *    reorder level must not null the min and max the screen has never heard of.
- * 3. **A CHECK violation on the offline merge path.** That path has no
+ * 2. **A CHECK violation on the offline merge path.** That path has no
  *    validation layer; a constraint error there is recorded as a permanent
  *    rejection and replayed forever, so an offline edit would be destroyed
- *    rather than bounced with a reason.
+ *    rather than bounced with a reason. The shared validator runs first.
+ *
+ * The master is small on purpose (2026-09-21): name, category, alias, size,
+ * the colour switch, and the variants' codes, colours and weights. Nothing
+ * else is stored, so nothing else is tested here.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { db } from '../src/db/knex.js';
 import type { ActorContext } from '../src/domain/actor.js';
 import { ValidationError } from '../src/lib/errors.js';
 import * as catalog from '../src/services/catalog.service.js';
 import * as inventory from '../src/services/inventory.service.js';
 import { canRunIntegrationTests } from './helpers/db.js';
-import {
-  actorWith,
-  resetData,
-  setupDatabase,
-  teardownDatabase,
-  testActor,
-} from './helpers/fixtures.js';
+import { resetData, setupDatabase, teardownDatabase, testActor } from './helpers/fixtures.js';
 
 let admin: ActorContext;
 
 async function seedProduct() {
   return catalog.createProduct(
     {
-      categoryName: 'Tiles',
-      variants: [{ code: 'ATTR-1' }],
-      name: 'Glazed Vitrified Tile',
-      rate: 42_000,
-      mrp: 55_000,
-      purchaseRate: 31_000,
-      gstRatePct: 18,
-      uom: 'box',
-      barcode: '8901234567890',
-      brand: 'Kajaria',
-      shade: 'Ivory Light',
-      calibre: 'C2',
-      waterAbsorptionPct: 0.5,
-      peiRating: 4,
-      edgeType: 'rectified',
-      surfaceTexture: 'Matt',
-      application: 'floor_wall',
-      originPlant: 'Morbi II',
+      categoryName: 'WATER CLOSET',
+      variants: [{ code: 'EWC-S-TRAP', weightKg: 22 }],
+      name: 'E.W.C - S TRAP',
+      alias: 'EWC S',
+      size: 'S trap',
+      multiColour: true,
     },
     admin,
   );
@@ -65,106 +47,39 @@ describe.skipIf(!canRunIntegrationTests)('product attributes (integration)', () 
     admin = await testActor();
   });
 
-  it('stores every attribute and reads it back', async () => {
+  it('stores every field and reads it back', async () => {
     const product = await seedProduct();
 
     expect(product).toMatchObject({
-      mrp: 55_000,
-      purchaseRate: 31_000,
-      gstRatePct: 18,
-      uom: 'box',
-      barcode: '8901234567890',
-      brand: 'Kajaria',
-      shade: 'Ivory Light',
-      calibre: 'C2',
-      waterAbsorptionPct: 0.5,
-      peiRating: 4,
-      edgeType: 'rectified',
-      surfaceTexture: 'Matt',
-      application: 'floor_wall',
-      originPlant: 'Morbi II',
+      name: 'E.W.C - S TRAP',
+      categoryName: 'WATER CLOSET',
+      alias: 'EWC S',
+      size: 'S trap',
+      multiColour: true,
+      hasVariants: false,
     });
+    expect(product.variants.map((variant) => [variant.code, variant.label, variant.weightKg])).toEqual([
+      ['EWC-S-TRAP', null, 22],
+    ]);
   });
 
-  describe('the two price gates are independent', () => {
-    it('withholds the purchase rate from somebody who may see the sale rate', async () => {
-      await seedProduct();
-
-      const desk = await actorWith(['products.view', 'field.saleRate.view']);
-      const page = await catalog.listProducts({}, desk);
-      const product = page.items[0]!;
-
-      // Absent, not null. `purchaseRate: null` is a factual claim that the
-      // product cost nothing, and a client would total it in good faith.
-      expect('purchaseRate' in product).toBe(false);
-      expect(product.rate).toBe(42_000);
-      // MRP is printed on the box; hiding it would be theatre.
-      expect(product.mrp).toBe(55_000);
-    });
-
-    it('withholds the sale rate but keeps the purchase rate for a buyer', async () => {
-      await seedProduct();
-
-      const buyer = await actorWith(['products.view', 'field.purchaseRate.view']);
-      const product = (await catalog.listProducts({}, buyer)).items[0]!;
-
-      expect('rate' in product).toBe(false);
-      expect(product.purchaseRate).toBe(31_000);
-    });
-
-    it('ignores a purchase rate from an editor who may not set one', async () => {
-      const product = await seedProduct();
-
-      const clerk = await actorWith(['products.view', 'products.edit', 'field.saleRate.edit']);
-      await catalog.updateProduct(
-        product.id,
-        { name: product.name, purchaseRate: 1 },
-        clerk,
-      );
-
-      const stored = await db()('products').where({ id: product.id }).first<{ purchase_rate: number }>();
-      expect(Number(stored?.purchase_rate)).toBe(31_000);
-    });
-  });
-
-  describe('a rate-blind edit leaves the price alone', () => {
-    it('does not null the rate when somebody who cannot price renames a product', async () => {
-      const product = await seedProduct();
-
-      const clerk = await actorWith(['products.view', 'products.edit']);
-      await catalog.updateProduct(
-        product.id,
-        { name: 'Renamed Tile' },
-        clerk,
-      );
-
-      // This is the behaviour the partial patch bought. It used to write
-      // `rate: null` — the masked key came back undefined and the old
-      // whole-record write turned that into a null.
-      const stored = await db()('products')
-        .where({ id: product.id })
-        .first<{ name: string; rate: number; mrp: number }>();
-
-      expect(stored?.name).toBe('Renamed Tile');
-      expect(Number(stored?.rate)).toBe(42_000);
-      expect(Number(stored?.mrp)).toBe(55_000);
-    });
+  it('defaults the colour switch to off', async () => {
+    const product = await catalog.createProduct(
+      { categoryName: 'ONE PIECE TOILET', variants: [{ code: '102' }], name: '102' },
+      admin,
+    );
+    expect(product.multiColour).toBe(false);
   });
 
   describe('validation refuses a bad value before the database does', () => {
     it.each([
-      ['uom', { uom: 'crate' }],
-      ['edgeType', { edgeType: 'bevelled' }],
-      ['application', { application: 'ceiling' }],
-      ['peiRating', { peiRating: 9 }],
-      ['gstRatePct', { gstRatePct: 250 }],
-      ['purchaseRate', { purchaseRate: -1 }],
-    ])('refuses a bad %s with a readable message', async (_field, patch) => {
+      ['a weight of zero', [{ code: 'BAD-1', weightKg: 0 }]],
+      ['a negative weight', [{ code: 'BAD-2', weightKg: -3 }]],
+      ['a blank code', [{ code: '   ' }]],
+      ['no variants at all', []],
+    ])('refuses %s with a readable message', async (_case, variants) => {
       await expect(
-        catalog.createProduct(
-          { categoryName: 'Tiles', variants: [{ code: `BAD-${_field}` }], name: 'Bad Tile', ...patch },
-          admin,
-        ),
+        catalog.createProduct({ categoryName: 'Tiles', name: 'Bad Tile', variants }, admin),
       ).rejects.toBeInstanceOf(ValidationError);
     });
   });
@@ -218,11 +133,11 @@ describe.skipIf(!canRunIntegrationTests)('product attributes (integration)', () 
   });
 
   describe('search', () => {
-    it('finds a product by its barcode and its brand', async () => {
+    it('finds a product by its alias and its size', async () => {
       await seedProduct();
 
-      expect((await catalog.listProducts({ search: '8901234567890' }, admin)).items).toHaveLength(1);
-      expect((await catalog.listProducts({ search: 'Kajaria' }, admin)).items).toHaveLength(1);
+      expect((await catalog.listProducts({ search: 'EWC S' }, admin)).items).toHaveLength(1);
+      expect((await catalog.listProducts({ search: 'S trap' }, admin)).items).toHaveLength(1);
     });
   });
 });

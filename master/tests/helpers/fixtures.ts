@@ -228,15 +228,11 @@ export async function resetData(): Promise<void> {
   `);
   await db()('master_clock').update({ physical: 0, counter: 0 });
 
-  // Pricing and free-to-sell on for every suite. Both switches ship off — off
-  // strips the four rate keys from every resolved permission set, and off
-  // reports every stock figure as the floor count — so every masking test
-  // that grants `field.saleRate.view` and expects a rate, and every
-  // reservation test that expects a reserved figure, would fail for a reason
-  // it is not about. `pricing-gate.integration.test.ts` and
-  // `free-to-sell.integration.test.ts` are the ones that turn them off.
+  // Free-to-sell on for every suite. The switch ships off — off reports every
+  // stock figure as the floor count — so every reservation test that expects
+  // a reserved figure would fail for a reason it is not about.
+  // `free-to-sell.integration.test.ts` is the one that turns it off.
   await db().transaction(async (trx) => {
-    await upsertSetting(seededTenantId, 'pricing.enabled', true, false, 1, null, trx);
     await upsertSetting(seededTenantId, 'inventory.freeToSell', true, false, 1, null, trx);
   });
 

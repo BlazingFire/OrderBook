@@ -72,7 +72,7 @@ describe.skipIf(!canRunIntegrationTests)('reconnect delta (integration)', () => 
   it('leaves a replaying panel holding what a snapshot-taking one holds', async () => {
     const party = await seedParty('Delta Traders');
     const product = await catalog.createProduct(
-      { categoryName: 'Tiles', variants: [{ code: 'DL-01' }], name: 'Glazed Tile', rate: 42_000 },
+      { categoryName: 'Tiles', variants: [{ code: 'DL-01' }], name: 'Glazed Tile' },
       admin,
     );
 
@@ -84,7 +84,7 @@ describe.skipIf(!canRunIntegrationTests)('reconnect delta (integration)', () => 
     await seedLead(party.id, product);
     await catalog.updateParty(party.id, { name: 'Delta Traders Ltd' }, admin);
     await catalog.createProduct(
-      { categoryName: 'Tiles', variants: [{ code: 'DL-02' }], name: 'Matt Tile', rate: 39_000 },
+      { categoryName: 'Tiles', variants: [{ code: 'DL-02' }], name: 'Matt Tile' },
       admin,
     );
 
@@ -115,7 +115,7 @@ describe.skipIf(!canRunIntegrationTests)('reconnect delta (integration)', () => 
 
     const party = await seedParty('Variant Traders');
     const product = await catalog.createProduct(
-      { categoryName: 'Tiles', variants: [{ code: 'DL-03' }], name: 'Rustic Tile', rate: 12_000 },
+      { categoryName: 'Tiles', variants: [{ code: 'DL-03' }], name: 'Rustic Tile' },
       admin,
     );
 
@@ -123,7 +123,7 @@ describe.skipIf(!canRunIntegrationTests)('reconnect delta (integration)', () => 
     // but not as a flat id-keyed list a replayed delta can upsert into, so
     // its presence forces the full snapshot instead — this is `buildDelta`'s
     // own REPLAYABLE_ENTITIES gate, not `applyChangeToSnapshot`'s.
-    await catalog.upsertVariant({ partyId: party.id, productId: product.id, rate: 9_000 }, admin);
+    await catalog.upsertVariant({ partyId: party.id, productId: product.id }, admin);
 
     expect(await buildDelta(cursor, admin)).toBeNull();
   });

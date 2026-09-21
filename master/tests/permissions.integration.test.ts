@@ -1,13 +1,9 @@
 /**
- * Role-based access and field-level visibility
- * (docs/LEAD_GENERATION_FLOW.md §1, §9.5).
+ * Role-based access (docs/LEAD_GENERATION_FLOW.md §1, §9.5).
  *
- * Two things are asserted that a screenshot could not show:
- *  · a refusal **names the permission it wanted**, so an operator can tell a
- *    broken screen from one they lack access to;
- *  · a gated field is **absent**, not null. `rate: null` is a factual claim that
- *    the line has no price, which is a different and wrong statement — and one a
- *    client would happily total to zero.
+ * The thing asserted that a screenshot could not show: a refusal **names the
+ * permission it wanted**, so an operator can tell a broken screen from one
+ * they lack access to.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -33,7 +29,7 @@ let admin: ActorContext;
 async function seed() {
   const party = await catalog.createParty({ name: 'Permission Traders' }, admin);
   const product = await catalog.createProduct(
-    { categoryName: 'Tiles', variants: [{ code: 'PRM-01' }], name: 'Glazed Tile', rate: 55_000 },
+    { categoryName: 'Tiles', variants: [{ code: 'PRM-01' }], name: 'Glazed Tile' },
     admin,
   );
   return { party, product };
@@ -68,7 +64,6 @@ const OFFICE_KEYS = [
   'parties.create',
   'products.view',
   'inventory.view',
-  'field.saleRate.view',
 ];
 
 describe.skipIf(!canRunIntegrationTests)('permissions (integration)', () => {
@@ -175,128 +170,6 @@ describe.skipIf(!canRunIntegrationTests)('permissions (integration)', () => {
           officeUser,
         ),
       ).rejects.toThrow(/Missing permission: record\.reassignOwner/);
-    });
-  });
-
-  describe('field-level visibility', () => {
-    it('omits the rate entirely rather than nulling it', async () => {
-      const lead = await seedLead();
-      const blind = await actorWith(['leads.view', 'orders.view', 'products.view']);
-
-      const seen = await leads.getLead(lead.id, blind);
-
-      expect('totalAmount' in seen).toBe(false);
-      expect('rate' in (seen.items[0] ?? {})).toBe(false);
-      expect('lineTotal' in (seen.items[0] ?? {})).toBe(false);
-      // Everything else is still there — masking is not redaction.
-      expect(seen.items[0]?.productName).toBe('Glazed Tile');
-      expect(seen.items[0]?.quantity).toBe(4);
-    });
-
-    it('ignores a rate from somebody without field.saleRate.edit', async () => {
-      const { party, product } = await seed();
-
-      // Holds `leads.create` and can even *see* rates — but may not set one.
-      // Before this was enforced the key existed in the catalogue, rendered as
-      // a togglable cell, and changed nothing: unticking it did not stop
-      // anybody pricing anything.
-      const pricer = await actorWith(['leads.create', 'leads.view', 'field.saleRate.view']);
-
-      const lead = await leads.createLead(
-        {
-          partyId: party.id,
-          items: [
-            {
-              productId: product.id,
-              variantId: product.variants[0]!.id,
-              quantity: 4,
-              packaging: 'carton',
-              rate: 1,
-            },
-          ],
-        },
-        pricer,
-      );
-
-      // Dropped, not rejected — so the line falls back to the catalogue price
-      // rather than the 1 they asked for, and an offline panel replaying a day
-      // of legitimate work is not refused wholesale.
-      expect(lead.items[0]?.rate).toBe(55_000);
-    });
-
-    it('takes the rate from somebody who holds field.saleRate.edit', async () => {
-      const { party, product } = await seed();
-      const pricer = await actorWith([
-        'leads.create',
-        'leads.view',
-        'field.saleRate.view',
-        'field.saleRate.edit',
-      ]);
-
-      const lead = await leads.createLead(
-        {
-          partyId: party.id,
-          items: [
-            {
-              productId: product.id,
-              variantId: product.variants[0]!.id,
-              quantity: 4,
-              packaging: 'carton',
-              rate: 61_000,
-            },
-          ],
-        },
-        pricer,
-      );
-
-      expect(lead.items[0]?.rate).toBe(61_000);
-    });
-
-    it('ignores a product rate from somebody without field.saleRate.edit', async () => {
-      const pricer = await actorWith(['products.create', 'products.view', 'field.saleRate.view']);
-
-      const product = await catalog.createProduct(
-        { categoryName: 'Tiles', variants: [{ code: 'PRM-02' }], name: 'Unpriced Tile', rate: 9 },
-        pricer,
-      );
-
-      // `products.create` says you may add a product; pricing it is a separate
-      // permission, or the pricing key is avoidable via the catalogue.
-      expect(product.rate ?? null).toBeNull();
-    });
-
-    it('shows the rate to a role that holds field.saleRate.view', async () => {
-      const lead = await seedLead();
-      const sighted = await actorWith(['leads.view', 'field.saleRate.view']);
-
-      const seen = await leads.getLead(lead.id, sighted);
-
-      expect(seen.items[0]?.rate).toBe(55_000);
-      expect(seen.totalAmount).toBe(220_000);
-    });
-
-    it('masks the product catalogue the same way', async () => {
-      await seed();
-      const blind = await actorWith(['products.view']);
-
-      const page = await catalog.listProducts({}, blind);
-
-      expect('rate' in (page.items[0] ?? {})).toBe(false);
-      expect(page.items[0]?.name).toBe('Glazed Tile');
-    });
-
-    it('carries the rate through conversion even when the converter cannot see it', async () => {
-      const lead = await seedLead();
-      const blindConverter = await actorWith(['leads.view', 'lead.convert', 'orders.view']);
-
-      const order = await orders.convertLead({ leadId: lead.id }, blindConverter);
-
-      // They may not read the price, but the order must still carry it.
-      expect('rate' in (order.items[0] ?? {})).toBe(false);
-      const stored = await db()('line_items')
-        .where({ parent_type: 'order', parent_id: order.id })
-        .first();
-      expect(Number(stored?.rate)).toBe(55_000);
     });
   });
 

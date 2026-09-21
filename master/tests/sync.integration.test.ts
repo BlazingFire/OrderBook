@@ -72,7 +72,7 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
   async function seed() {
     const party = await catalog.createParty({ name: 'Offline Traders' }, actor);
     const product = await catalog.createProduct(
-      { categoryName: 'Tiles', variants: [{ code: 'OFF-01' }], name: 'Matte Tile', rate: 20_000 },
+      { categoryName: 'Tiles', variants: [{ code: 'OFF-01' }], name: 'Matte Tile' },
       actor,
     );
     return { party, product };
@@ -556,8 +556,7 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
         categoryName: 'Tiles',
         variants: [{ code: 'MRG-01', weightKg: 20 }],
         name: 'Merge Tile',
-        rate: 20_000,
-        uom: 'box',
+        size: '600x600',
       },
       actor,
     );
@@ -575,8 +574,8 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
             kind: 'product.update',
             entity: 'product',
             entityId: product.id,
-            fields: ['brand', 'shade'],
-            payload: { brand: 'Somany', shade: 'Beige Dark' },
+            fields: ['alias', 'multiColour'],
+            payload: { alias: 'Merge', multiColour: true },
             baseFieldHlc: product.sync.fieldHlc,
           }),
         ],
@@ -585,10 +584,12 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
     );
 
     expect(response.results[0]?.status).not.toBe('rejected');
-    expect((await reload(product.id)).brand).toBe('Somany');
+    const after = await reload(product.id);
+    expect(after.alias).toBe('Merge');
+    expect(after.multiColour).toBe(true);
   });
 
-  it('refuses a value the column could never hold, with a reason', async () => {
+  it('refuses a variant set the rules could never accept, with a reason', async () => {
     const product = await existingProduct();
 
     const response = await sync.applyPush(
@@ -598,8 +599,8 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
             kind: 'product.update',
             entity: 'product',
             entityId: product.id,
-            fields: ['uom'],
-            payload: { uom: 'crate' },
+            fields: ['variants'],
+            payload: { variants: [{ code: 'MRG-01', label: null, weightKg: -4 }] },
             baseFieldHlc: product.sync.fieldHlc,
           }),
         ],
@@ -609,12 +610,12 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
 
     const result = response.results[0];
     expect(result?.status).toBe('rejected');
-    // A sentence, not `new row for relation "products" violates check
-    // constraint "products_uom_check"`.
-    expect(result?.error ?? '').toMatch(/unit of measure/i);
+    // A sentence, not `new row for relation "product_variants" violates
+    // check constraint "product_variants_weight_check"`.
+    expect(result?.error ?? '').toMatch(/weight/i);
 
     // …and nothing was written.
-    expect((await reload(product.id)).uom).toBe('box');
+    expect((await reload(product.id)).variants[0]?.weightKg).toBe(20);
   });
 
   it('does not merge a category assignment', async () => {

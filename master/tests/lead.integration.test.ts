@@ -3,13 +3,15 @@
  * explicitly tested (docs/LEAD_GENERATION_FLOW.md §5.2):
  *
  *   1. Conversion copies line items unchanged — no silent recalculation.
- *   2. A line's snapshotted rate and weight do not move when the product or
- *      its variant is edited afterwards.
+ *   2. A line's snapshotted weight does not move when the product or its
+ *      variant is edited afterwards.
  *   3. `packaging` is never auto-filled during conversion.
  *   4. Reservations are per variant, never aggregated to the product.
  *
  * A line is one variant with one quantity; the code and the weight resolve
- * from the variant, and two colours of one model are two lines.
+ * from the variant, and two colours of one model are two lines. A colour
+ * chosen on a multi-colour model rides on the line and is frozen like the
+ * rest of it.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -30,17 +32,24 @@ import * as orders from '../src/services/order.service.js';
 
 let actor: ActorContext;
 
-/** A one-form product and a model with three colour variants, one unweighed. */
+/** A one-form product, a model with three colour variants (one unweighed), and a model made in every colour. */
 async function seed() {
   const party = await catalog.createParty({ name: 'Patel Sanitary' }, actor);
   const plain = await catalog.createProduct(
     {
       name: '102',
       categoryName: 'ONE PIECE TOILET',
-      rate: 45_000,
       size: '9" · L-27 B-15 H-26',
-      grade: 'Premium',
       variants: [{ code: '102', weightKg: 32.5 }],
+    },
+    actor,
+  );
+  const anyColour = await catalog.createProduct(
+    {
+      name: 'E.W.C - S TRAP',
+      categoryName: 'WATER CLOSET',
+      multiColour: true,
+      variants: [{ code: 'EWC-S-TRAP', weightKg: 22 }],
     },
     actor,
   );
@@ -48,7 +57,6 @@ async function seed() {
     {
       name: 'XYZ',
       categoryName: 'ONE PIECE TOILET',
-      rate: 50_000,
       hasVariants: true,
       variants: [
         { code: '1111', label: 'White', weightKg: 32 },
@@ -67,6 +75,8 @@ async function seed() {
     party,
     plain,
     plainVariant: plain.variants[0]!,
+    anyColour,
+    anyColourVariant: anyColour.variants[0]!,
     model,
     white: byLabel('White'),
     blue: byLabel('Blue'),
@@ -108,7 +118,7 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
       expect(second.id).toBe('LD0000000002');
     });
 
-    it('resolves the code and the weight from the variant and totals the line', async () => {
+    it('resolves the code and the weight from the variant and weighs the line', async () => {
       const { party, plain, plainVariant } = await seed();
 
       const lead = await leads.createLead(
@@ -117,18 +127,47 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
       );
 
       const item = lead.items[0];
-      expect(item?.rate).toBe(45_000);
       expect(item?.code).toBe('102');
       expect(item?.variantLabel).toBeNull();
+      expect(item?.colour).toBeNull();
       expect(item?.size).toBe('9" · L-27 B-15 H-26');
-      expect(item?.grade).toBe('Premium');
       expect(item?.quantity).toBe(12);
       expect(item?.weightKg).toBe(32.5);
       expect(item?.lineWeightKg).toBe(390);
-      expect(item?.lineTotal).toBe(540_000);
-      expect(lead.totalAmount).toBe(540_000);
       expect(lead.totalWeightKg).toBe(390);
       expect(lead.linesWithoutWeight).toBe(0);
+    });
+
+    it('keeps a colour chosen on a model made in every colour', async () => {
+      const { party, anyColour, anyColourVariant } = await seed();
+
+      const lead = await leads.createLead(
+        {
+          partyId: party.id,
+          items: [
+            line(anyColour.id, anyColourVariant.id, 10, { colour: 'Ivory' }),
+            line(anyColour.id, anyColourVariant.id, 5),
+          ],
+        },
+        actor,
+      );
+
+      // Two lines of the same variant, one in a colour and one as it comes:
+      // the colour is a line attribute, so both point at the one variant.
+      expect(lead.items.map((item) => item.colour)).toEqual(['Ivory', null]);
+      expect(lead.items.map((item) => item.variantId)).toEqual([anyColourVariant.id, anyColourVariant.id]);
+      expect(lead.items.map((item) => item.code)).toEqual(['EWC-S-TRAP', 'EWC-S-TRAP']);
+    });
+
+    it('refuses a colour on a product that is not made in colours', async () => {
+      const { party, plain, plainVariant } = await seed();
+
+      await expect(
+        leads.createLead(
+          { partyId: party.id, items: [line(plain.id, plainVariant.id, 1, { colour: 'Ivory' })] },
+          actor,
+        ),
+      ).rejects.toThrow(/not made in colours/i);
     });
 
     it('takes the code and the weight from the chosen colour of a model', async () => {
@@ -223,24 +262,6 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
 
       expect(lead.stageName).toBe('New');
       expect(lead.timeline.map((entry) => entry.message)).toContain('Lead created');
-    });
-
-    it('keeps a rate switched off rather than pricing the line from the catalogue', async () => {
-      const { party, plain, plainVariant } = await seed();
-
-      const lead = await leads.createLead(
-        {
-          partyId: party.id,
-          items: [line(plain.id, plainVariant.id, 10, { rate: null, rateUnset: true })],
-        },
-        actor,
-      );
-
-      // The product is priced at 45_000 and a plain `rate: null` would land
-      // there — that fallback is what keeps an offline draft priced at all.
-      expect(lead.items[0]?.rate).toBeNull();
-      expect(lead.items[0]?.lineTotal).toBeNull();
-      expect(lead.totalAmount).toBe(0);
     });
 
     it('rejects a lead with no products', async () => {
@@ -363,28 +384,37 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
         expect(after?.productId).toBe(before.productId);
         expect(after?.variantId).toBe(before.variantId);
         expect(after?.productName).toBe(before.productName);
-        expect(after?.rate).toBe(before.rate);
         expect(after?.code).toBe(before.code);
         expect(after?.variantLabel).toBe(before.variantLabel);
+        expect(after?.colour).toBe(before.colour);
         expect(after?.size).toBe(before.size);
-        expect(after?.grade).toBe(before.grade);
         expect(after?.weightKg).toBe(before.weightKg);
         expect(after?.quantity).toBe(before.quantity);
         expect(after?.lineWeightKg).toBe(before.lineWeightKg);
-        expect(after?.lineTotal).toBe(before.lineTotal);
       }
     });
 
-    it('does not move the snapshotted rate or weight when the master is edited afterwards', async () => {
+    it('carries a chosen colour onto the order', async () => {
+      const { party, anyColour, anyColourVariant } = await seed();
+      const lead = await leads.createLead(
+        { partyId: party.id, items: [line(anyColour.id, anyColourVariant.id, 4, { colour: 'Ivory' })] },
+        actor,
+      );
+
+      const order = await orders.convertLead({ leadId: lead.id }, actor);
+
+      expect(order.items[0]?.colour).toBe('Ivory');
+    });
+
+    it('does not move the snapshotted weight when the master is edited afterwards', async () => {
       const { model, white, blue, red, lead } = await convertible();
 
       // The catalogue changes *between* quoting and converting — the exact case
-      // §8.3 exists to guard against: a new price, and a corrected weight.
+      // §8.3 exists to guard against: a corrected weight.
       await catalog.updateProduct(
         model.id,
         {
           name: 'XYZ',
-          rate: 99_000,
           variants: [
             { id: white.id, code: '1111', label: 'White', weightKg: 40 },
             { id: blue.id, code: '1112', label: 'Blue', weightKg: 41 },
@@ -396,9 +426,7 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
 
       const order = await orders.convertLead({ leadId: lead.id }, actor);
 
-      expect(order.items.map((item) => item.rate)).toEqual([50_000, 50_000]);
       expect(order.items.map((item) => item.weightKg)).toEqual([32, 32.5]);
-      expect(order.totalAmount).toBe(500_000);
       // 4 × 32 + 6 × 32.5, from the frozen figures, not the corrected ones.
       expect(order.totalWeightKg).toBe(323);
     });

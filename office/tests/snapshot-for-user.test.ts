@@ -1,5 +1,5 @@
 /**
- * `docs/backend-modules/10-TESTING.md` §6.8, `DSH-1`/`DSH-2`. Pure — drives
+ * `docs/backend-modules/10-TESTING.md` §6.8, `DSH-1`. Pure — drives
  * `GET /api/snapshot` through `createApp()` with `localStore.getView` and the
  * signed-in session mocked, in the `module-forwarding.test.ts` style, so no
  * cluster is needed and the suite cannot silently skip.
@@ -7,10 +7,8 @@
  * `DSH-1`: the fixture below is typed `SyncSnapshot` (compiles only when
  * every key is present, per `office/src/http/app.ts`'s `SNAPSHOT_POLICY`
  * being `Record<keyof SyncSnapshot, SnapshotPolicy>`), and `forCurrentUser`
- * must hand back exactly that key set.
- *
- * `DSH-2`: every `mask-rates` key loses its gated field by absence, not by
- * `null`, for a session without `field.saleRate.view`.
+ * must hand back exactly that key set — with the permissions replaced by the
+ * session's own and the dashboard gated for it.
  */
 
 import request from 'supertest';
@@ -59,9 +57,6 @@ const FIXTURE: SyncSnapshot = {
       categoryId: 'PC0000000001',
       categoryName: 'Basins',
       size: null,
-      sin: null,
-      grade: null,
-      productType: null,
       hasVariants: false,
       variants: [
         {
@@ -74,32 +69,7 @@ const FIXTURE: SyncSnapshot = {
           isActive: true,
         },
       ],
-      finish: null,
-      series: null,
-      thicknessMm: null,
-      piecesPerBox: null,
-      boxCoverageSqft: null,
-      rate: 1250,
-      pricePerSqft: 50,
-      hsnCode: null,
-      mrp: 1500,
-      // Present in the fixture on purpose: this suite exists to prove what
-      // *leaves* the panel, and a field that is never set cannot be shown to
-      // have been withheld.
-      purchaseRate: 900,
-      gstRatePct: 18,
-      uom: 'box',
-      barcode: null,
-      brand: null,
-      shade: null,
-      calibre: null,
-      waterAbsorptionPct: null,
-      peiRating: null,
-      edgeType: null,
-      surfaceTexture: null,
-      application: null,
-      originPlant: null,
-      parameters: {},
+      multiColour: false,
       customFields: {},
       isActive: true,
       createdAt: NOW,
@@ -117,11 +87,7 @@ const FIXTURE: SyncSnapshot = {
       productId: 'PR0000000001',
       productName: 'Ivory Basin',
       alias: null,
-      rate: 1100,
       size: null,
-      sin: null,
-      grade: null,
-      productType: null,
       weightKg: null,
       packaging: null,
       createdAt: NOW,
@@ -149,7 +115,6 @@ const FIXTURE: SyncSnapshot = {
       missingFields: [],
       convertedOrderId: null,
       convertedAt: null,
-      totalAmount: 2500,
       totalWeightKg: 0,
       linesWithoutWeight: 0,
       sourcePanelId: null,
@@ -182,7 +147,6 @@ const FIXTURE: SyncSnapshot = {
       customFields: {},
       incomplete: false,
       missingFields: [],
-      totalAmount: 4200,
       linesWithoutWeight: 0,
       dispatchedAt: null,
       sourcePanelId: null,
@@ -208,7 +172,6 @@ const FIXTURE: SyncSnapshot = {
       quantityBoxes: 10,
       reservedBoxes: 2,
       availableBoxes: 8,
-      quantitySqft: 100,
       minStockLevel: null,
       maxStockLevel: null,
       reorderLevel: 5,
@@ -287,7 +250,7 @@ const FAKE_SESSION = {
   signedInAt: NOW,
 };
 
-describe('snapshot masking (DSH-1, DSH-2)', () => {
+describe('snapshot for the current user (DSH-1)', () => {
   beforeEach(() => {
     vi.spyOn(userSession, 'currentSession').mockReturnValue(FAKE_SESSION as never);
     vi.spyOn(localStore, 'getView').mockResolvedValue({ ...FIXTURE, pendingCount: 0 });
@@ -307,64 +270,16 @@ describe('snapshot masking (DSH-1, DSH-2)', () => {
     expect(Object.keys(response.body).sort()).toEqual(expectedKeys);
   });
 
-  it('deletes rate fields for a session without field.saleRate.view, rather than nulling them', async () => {
-    vi.spyOn(userSession, 'sessionPermissions').mockReturnValue(['leads.create']);
+  it("replaces the cached permissions with the session's own", async () => {
+    vi.spyOn(userSession, 'sessionPermissions').mockReturnValue(['leads.create', 'orders.view']);
 
     const response = await request(createApp()).get('/api/snapshot');
 
     expect(response.status).toBe(200);
-    expect('rate' in response.body.products[0]).toBe(false);
-    expect('pricePerSqft' in response.body.products[0]).toBe(false);
-    expect('rate' in response.body.partyVariants[0]).toBe(false);
-    expect('totalAmount' in response.body.leads[0]).toBe(false);
-    expect('totalAmount' in response.body.orders[0]).toBe(false);
-  });
-
-  it('keeps rate fields for a session with field.saleRate.view', async () => {
-    vi.spyOn(userSession, 'sessionPermissions').mockReturnValue([
-      'leads.create',
-      'field.saleRate.view',
-    ]);
-
-    const response = await request(createApp()).get('/api/snapshot');
-
-    expect(response.status).toBe(200);
-    expect(response.body.products[0].rate).toBe(1250);
-    expect(response.body.leads[0].totalAmount).toBe(2500);
-  });
-
-  /**
-   * The two prices are separate secrets with separate audiences: a sales desk
-   * quotes the sale rate all day and must never see the margin. They used to be
-   * one boolean, which is how the purchase rate reached everybody holding
-   * `field.saleRate.view`.
-   */
-  it('withholds the purchase rate from a session that may only see the sale rate', async () => {
-    vi.spyOn(userSession, 'sessionPermissions').mockReturnValue([
-      'leads.create',
-      'field.saleRate.view',
-    ]);
-
-    const response = await request(createApp()).get('/api/snapshot');
-
-    expect(response.status).toBe(200);
-    expect(response.body.products[0].rate).toBe(1250);
-    expect('purchaseRate' in response.body.products[0]).toBe(false);
-    // Printed on the box; hiding it would be theatre.
-    expect(response.body.products[0].mrp).toBe(1500);
-  });
-
-  it('keeps the purchase rate for a session that holds its own key', async () => {
-    vi.spyOn(userSession, 'sessionPermissions').mockReturnValue([
-      'leads.create',
-      'field.saleRate.view',
-      'field.purchaseRate.view',
-    ]);
-
-    const response = await request(createApp()).get('/api/snapshot');
-
-    expect(response.status).toBe(200);
-    expect(response.body.products[0].purchaseRate).toBe(900);
+    expect(response.body.permissions).toEqual(['leads.create', 'orders.view']);
+    // The records themselves pass through whole — nothing on them is gated per person.
+    expect(response.body.products[0].multiColour).toBe(false);
+    expect(response.body.partyVariants[0].productName).toBe('Ivory Basin');
   });
 
   /**

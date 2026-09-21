@@ -21,10 +21,8 @@ import {
   type ParsedRow,
 } from '../src/domain/product-import.js';
 
-const ALL = { rates: true, cost: true };
-
-function parse(headers: string[], cells: string[], allowed = ALL, row = 2) {
-  return parseImportRow(cells, matchHeaders(headers), headers, row, allowed);
+function parse(headers: string[], cells: string[], row = 2) {
+  return parseImportRow(cells, matchHeaders(headers), headers, row);
 }
 
 const BASE = ['categoryName', 'name', 'code'];
@@ -38,16 +36,15 @@ describe('header matching', () => {
   });
 
   it('maps the field keys, the form labels and the trade shorthand to the same fields', () => {
-    const match = matchHeaders(['Category', 'Model', 'Colour', 'SKU', 'Weight (kg)', 'Rate', 'GST', 'HSN']);
+    const match = matchHeaders(['Category', 'Model', 'Colour', 'SKU', 'Weight (kg)', 'Dimensions', 'All colours']);
     expect(match.byIndex.map((column) => column?.field)).toEqual([
       'categoryName',
       'name',
       'variant',
       'code',
       'weightKg',
-      'rate',
-      'gstRatePct',
-      'hsnCode',
+      'size',
+      'multiColour',
     ]);
     expect(match.ignored).toEqual([]);
     expect(match.missing).toEqual([]);
@@ -66,7 +63,7 @@ describe('header matching', () => {
   });
 
   it('names the required columns a file lacks', () => {
-    expect(matchHeaders(['code', 'rate']).missing).toEqual(['categoryName', 'name']);
+    expect(matchHeaders(['code', 'size']).missing).toEqual(['categoryName', 'name']);
     expect(matchHeaders(['categoryName', 'name']).missing).toEqual(['code']);
   });
 
@@ -79,10 +76,10 @@ describe('header matching', () => {
 });
 
 describe('parsing one row', () => {
-  it('splits the row into the model and its variant, converting money and keeping codes as text', () => {
+  it('splits the row into the model and its variant, keeping codes as text', () => {
     const { input, issues } = parse(
-      [...BASE, 'variant', 'weightKg', 'rate', 'mrp', 'barcode', 'alias'],
-      ['ONE PIECE BASIN', 'DAMRU', '00041', 'Vitrosa 41', '18.5', '1,200.50', 'Rs 1500', '0089012345', ''],
+      [...BASE, 'variant', 'weightKg', 'size', 'multiColour', 'alias'],
+      ['ONE PIECE BASIN', 'DAMRU', '00041', 'Vitrosa 41', '18.5 kg', 'L-16 H-31', 'yes', ''],
     );
 
     expect(issues).toEqual([]);
@@ -90,9 +87,8 @@ describe('parsing one row', () => {
       product: {
         categoryName: 'ONE PIECE BASIN',
         name: 'DAMRU',
-        rate: 120050,
-        mrp: 150000,
-        barcode: '0089012345',
+        size: 'L-16 H-31',
+        multiColour: true,
       },
       variant: { code: '00041', label: 'Vitrosa 41', weightKg: 18.5 },
     });
@@ -104,71 +100,46 @@ describe('parsing one row', () => {
     expect(input?.variant).toEqual({ code: 'HEXA', label: null, weightKg: null });
   });
 
-  it('normalises the unit and its everyday synonyms', () => {
-    expect(parse([...BASE, 'uom'], ['Pans', 'Orissa', 'OP-20', 'pcs']).input?.product.uom).toBe('piece');
-    expect(parse([...BASE, 'uom'], ['Pans', 'Orissa', 'OP-20', 'Boxes']).input?.product.uom).toBe('box');
+  it('reads the colour switch in the words a sheet uses', () => {
+    for (const word of ['yes', 'Y', 'TRUE', '1']) {
+      expect(parse([...BASE, 'multiColour'], ['Pans', 'Orissa', 'OP-20', word]).input?.product.multiColour).toBe(true);
+    }
+    for (const word of ['no', 'n', 'false', '0']) {
+      expect(parse([...BASE, 'multiColour'], ['Pans', 'Orissa', 'OP-20', word]).input?.product.multiColour).toBe(false);
+    }
   });
 
-  it('names the column and the allowed values for a value outside the set', () => {
-    const { input, issues } = parse([...BASE, 'Counted in'], ['Pans', 'Orissa', 'OP-20', 'crates']);
+  it('names the column and the allowed values for a switch word it does not know', () => {
+    const { input, issues } = parse([...BASE, 'All colours'], ['Pans', 'Orissa', 'OP-20', 'maybe']);
     expect(input).toBeNull();
     expect(issues).toEqual([
       {
         row: 2,
         kind: 'error',
-        column: 'Counted in',
+        column: 'All colours',
         messageKey: 'validation.import.invalidValue',
-        params: { column: 'Counted in', allowed: 'box, sqft, piece' },
+        params: { column: 'All colours', allowed: 'yes, no' },
       },
     ]);
   });
 
   it('reports every bad cell in the row, not just the first', () => {
     const { issues } = parse(
-      [...BASE, 'rate', 'weightKg', 'gstRatePct'],
-      ['Pans', 'Orissa', 'OP-20', 'twelve', '0', '150'],
-      ALL,
+      [...BASE, 'weightKg', 'multiColour'],
+      ['Pans', 'Orissa', 'OP-20', '0', 'sometimes'],
       9,
     );
     expect(issues.map((issue) => [issue.row, issue.column, issue.messageKey])).toEqual([
-      [9, 'rate', 'validation.import.notANumber'],
       [9, 'weightKg', 'validation.product.weightPositive'],
-      [9, 'gstRatePct', 'validation.product.percentage'],
+      [9, 'multiColour', 'validation.import.invalidValue'],
     ]);
   });
 
-  it('refuses a price the actor may not set, per row, and names the permission', () => {
-    const { input, issues } = parse(
-      [...BASE, 'rate', 'purchaseRate'],
-      ['Pans', 'Orissa', 'OP-20', '100', '80'],
-      { rates: false, cost: false },
-    );
-    expect(input).toBeNull();
-    expect(issues).toEqual([
-      {
-        row: 2,
-        kind: 'error',
-        column: 'rate',
-        messageKey: 'error.forbidden.missingPermission',
-        params: { permission: 'field.saleRate.edit' },
-      },
-      {
-        row: 2,
-        kind: 'error',
-        column: 'purchaseRate',
-        messageKey: 'error.forbidden.missingPermission',
-        params: { permission: 'field.purchaseRate.edit' },
-      },
+  it('refuses a weight that is not a number', () => {
+    const { issues } = parse([...BASE, 'weightKg'], ['Pans', 'Orissa', 'OP-20', 'twelve']);
+    expect(issues.map((issue) => [issue.column, issue.messageKey])).toEqual([
+      ['weightKg', 'validation.import.notANumber'],
     ]);
-  });
-
-  it('lets a blank price cell through for an actor without the permission', () => {
-    const { input, issues } = parse([...BASE, 'rate'], ['Pans', 'Orissa', 'OP-20', ''], {
-      rates: false,
-      cost: false,
-    });
-    expect(issues).toEqual([]);
-    expect(input?.product).toEqual({ categoryName: 'Pans', name: 'Orissa' });
   });
 
   it('requires a category, a model name and a code', () => {
@@ -189,10 +160,6 @@ describe('parsing one row', () => {
     ]);
   });
 
-  it('refuses a negative amount', () => {
-    const { issues } = parse([...BASE, 'mrp'], ['Pans', 'Orissa', 'OP-20', '-5']);
-    expect(issues.map((issue) => issue.messageKey)).toEqual(['validation.product.negativeAmount']);
-  });
 });
 
 function row(
@@ -218,11 +185,10 @@ describe('the file as a whole', () => {
     expect(isBlankRow(['', 'x'])).toBe(false);
   });
 
-  it('flags the second and later occurrences of a code, a barcode or a variant, pointing at the first', () => {
+  it('flags the second and later occurrences of a code or a variant, pointing at the first', () => {
     const rows = [
-      row(2, 'Basins', 'Damru', 'A-1', 'White', { barcode: '111' }),
+      row(2, 'Basins', 'Damru', 'A-1', 'White'),
       row(3, 'Basins', 'Damru', 'a-1', 'Blue'),
-      row(4, 'Basins', 'Damru', 'B-2', 'Red', { barcode: '111' }),
       row(5, 'Basins', 'damru', 'C-3', 'white'),
     ];
     const headerFor = (field: string) => (field === 'code' ? 'Code' : field);
@@ -234,13 +200,6 @@ describe('the file as a whole', () => {
         column: 'Code',
         messageKey: 'validation.import.duplicateInFile',
         params: { column: 'Code', firstRow: 2 },
-      },
-      {
-        row: 4,
-        kind: 'error',
-        column: 'barcode',
-        messageKey: 'validation.import.duplicateInFile',
-        params: { column: 'barcode', firstRow: 2 },
       },
       {
         row: 5,
@@ -255,8 +214,8 @@ describe('the file as a whole', () => {
   it('folds rows sharing a category and model into one product with variants', () => {
     const { groups, issues } = groupImportRows(
       [
-        row(2, 'Basins', 'Damru', '41', 'Vitrosa 41', { rate: 100 }),
-        row(3, 'basins', 'DAMRU', '42', 'Vitrosa 42', { rate: 999 }),
+        row(2, 'Basins', 'Damru', '41', 'Vitrosa 41', { size: 'L-16 H-31' }),
+        row(3, 'basins', 'DAMRU', '42', 'Vitrosa 42', { size: 'L-99 H-99' }),
         row(4, 'Urinals', 'Hexa', 'HEXA'),
       ],
       (field) => field,
@@ -268,7 +227,7 @@ describe('the file as a whole', () => {
         categoryName: 'Basins',
         name: 'Damru',
         // The first row's model fields win.
-        rate: 100,
+        size: 'L-16 H-31',
         hasVariants: true,
         variants: [
           { code: '41', label: 'Vitrosa 41', weightKg: null, sequence: 1 },
@@ -301,7 +260,7 @@ describe('the file as a whole', () => {
   it('writes one guide row per template column', () => {
     const guide = templateGuideRows();
     expect(guide).toHaveLength(IMPORT_HEADERS.length);
-    expect(guide.find((row) => row[0] === 'uom')?.[3]).toBe('box, sqft, piece');
+    expect(guide.find((row) => row[0] === 'multiColour')?.[2]).toBe('yes / no');
     expect(guide.find((row) => row[0] === 'name')?.[1]).toBe('yes');
     expect(guide.find((row) => row[0] === 'code')?.[1]).toBe('yes');
   });

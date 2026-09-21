@@ -91,8 +91,7 @@ describe.skipIf(!canRunIntegrationTests)('the Swisware catalogue seed (integrati
       name: 'DAMRU',
       categoryName: 'ONE PIECE BASIN',
       hasVariants: true,
-      brand: 'Swisware',
-      uom: 'piece',
+      multiColour: false,
     });
     // The plain member first, then the patterns in the catalogue's order.
     expect(damru!.variants.slice(0, 3)).toEqual([

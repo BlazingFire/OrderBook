@@ -68,7 +68,7 @@ describe('reading xlsx', () => {
     const columns = [
       { header: 'productCode', width: 14, text: true },
       { header: 'name', width: 30 },
-      { header: 'uom', width: 10, values: ['box', 'sqft', 'piece'] },
+      { header: 'multiColour', width: 10, values: ['yes', 'no'] },
     ];
     const bytes = await buildXlsxTemplate({
       columns,
@@ -80,7 +80,7 @@ describe('reading xlsx', () => {
 
     expect(sheetKindOf(bytes)).toBe('xlsx');
     const rows = await readSheetRows(bytes);
-    expect(rows).toEqual([['productCode', 'name', 'uom']]);
+    expect(rows).toEqual([['productCode', 'name', 'multiColour']]);
 
     // The dropdown is what the template exists for; check it was written.
     const workbook = new ExcelJS.Workbook();
@@ -88,7 +88,7 @@ describe('reading xlsx', () => {
     const sheet = workbook.getWorksheet('Products');
     expect(sheet?.getCell('C2').dataValidation).toMatchObject({
       type: 'list',
-      formulae: ['"box,sqft,piece"'],
+      formulae: ['"yes,no"'],
     });
     expect(sheet?.views[0]).toMatchObject({ state: 'frozen', ySplit: 1 });
     expect(workbook.getWorksheet('Guide')?.getRow(2).values).toEqual([undefined, 'productCode', 'Unique']);

@@ -311,7 +311,7 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       expect(response.body.items).toHaveLength(1);
       expect(response.body.items[0]).toMatchObject({
         id: 'LD0000000001',
-        totalAmount: 540_000,
+        totalWeightKg: 240,
         stageName: 'New',
       });
     });

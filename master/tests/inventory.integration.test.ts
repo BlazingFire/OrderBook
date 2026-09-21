@@ -30,7 +30,6 @@ async function seed() {
     {
       name: 'Pedestal Basin',
       categoryName: 'PLAIN SET',
-      rate: 30_000,
       hasVariants: true,
       variants: [
         { code: 'BSN-W', label: 'White', weightKg: 12 },

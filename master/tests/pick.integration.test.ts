@@ -40,20 +40,17 @@ async function seed() {
       categoryName: 'Floor tiles',
       variants: [{ code: 'GLZ-100' }],
       name: 'Glazed Vitrified Tile',
-      rate: 40_000,
-      purchaseRate: 30_000,
     },
     admin,
   );
   const glossy = await catalog.createProduct(
-    { categoryName: 'Wall tiles', variants: [{ code: 'GLS-200' }], name: 'Glossy Wall Tile', rate: 22_000 },
+    { categoryName: 'Wall tiles', variants: [{ code: 'GLS-200' }], name: 'Glossy Wall Tile' },
     admin,
   );
   const rustic = await catalog.createProduct(
     {
       categoryName: 'Floor tiles',
       name: 'Rustic Floor Tile',
-      rate: 18_000,
       hasVariants: true,
       variants: [
         { code: 'RST-300', label: 'Terracotta' },
@@ -177,16 +174,6 @@ describe.skipIf(!canRunIntegrationTests)('the picker (integration)', () => {
     // A picker that silently shows the first two of three teaches people that
     // the thing they want is not there.
     expect(page.truncated).toBe(true);
-  });
-
-  it('masks the purchase rate it has no business showing', async () => {
-    await seed();
-
-    const desk = await actorWith(['products.view', 'field.saleRate.view']);
-    const page = await pickProducts('gla', desk);
-
-    expect('purchaseRate' in page.items[0]!).toBe(false);
-    expect(page.items[0]?.rate).toBe(40_000);
   });
 
   it('refuses rather than answering an empty list', async () => {

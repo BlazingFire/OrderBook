@@ -48,7 +48,7 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
 
   describe('the permission catalogue', () => {
     it('offers every key exactly once, with a tier for each', async () => {
-      const catalogue = await roleService.permissionCatalogue(admin.tenantId);
+      const catalogue = await roleService.permissionCatalogue();
 
       const fromGrid = catalogue.modules.flatMap((module) =>
         module.actions.map((action) => `${module.key}.${action}`),
@@ -62,7 +62,7 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
     });
 
     it('does not offer an action a module never declares', async () => {
-      const catalogue = await roleService.permissionCatalogue(admin.tenantId);
+      const catalogue = await roleService.permissionCatalogue();
       const orders = catalogue.modules.find((module) => module.key === 'orders');
 
       // An order is only ever created by converting a lead, so there is no such

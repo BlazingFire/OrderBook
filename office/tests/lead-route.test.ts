@@ -82,12 +82,11 @@ describe('POST /api/leads', () => {
     expect(submitted).toMatchObject({ kind: 'lead.create', entity: 'lead' });
   });
 
-  it('carries the variant, the quantity and the rate-off flag through to the outbox verbatim', async () => {
+  it('carries the variant, the quantity and the chosen colour through to the outbox verbatim', async () => {
     const lead = soundLead();
     lead.items[0] = {
       ...lead.items[0],
-      rate: null as never,
-      rateUnset: true,
+      colour: 'Ivory',
     } as never;
 
     await request(createApp()).post('/api/leads').send(lead);
@@ -95,7 +94,7 @@ describe('POST /api/leads', () => {
     const payload = (submitted as { payload: Record<string, unknown> }).payload;
     const item = (payload.items as Array<Record<string, unknown>>)[0] ?? {};
 
-    expect(item.rateUnset).toBe(true);
+    expect(item.colour).toBe('Ivory');
     expect(item.variantId).toBe('VR0000000001');
     expect(item.quantity).toBe(4);
   });

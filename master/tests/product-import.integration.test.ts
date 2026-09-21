@@ -59,11 +59,11 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
   it('imports a valid file — folding rows into models — and publishes one catalog event', async () => {
     const result = await run(
       csv([
-        [...HEAD, 'weightKg', 'rate', 'uom'],
-        ['ONE PIECE BASIN', 'DAMRU', 'White', 'DAMRU-WHITE', '18', '2600', 'pcs'],
-        ['ONE PIECE BASIN', 'DAMRU', 'Vitrosa 41', '41', '', '3400', ''],
+        [...HEAD, 'weightKg', 'size', 'multiColour'],
+        ['ONE PIECE BASIN', 'DAMRU', 'White', 'DAMRU-WHITE', '18', 'L-16 H-31', 'yes'],
+        ['ONE PIECE BASIN', 'DAMRU', 'Vitrosa 41', '41', '', '', ''],
         ['One piece basin', 'Damru', 'Vitrosa 42', '42', '18.5', '', ''],
-        ['ONE PIECE TOILET', '102', '', '102', '32.5', '6800', 'piece'],
+        ['ONE PIECE TOILET', '102', '', '102', '32.5', '9" · L-27 B-15 H-26', 'no'],
       ]),
     );
 
@@ -81,14 +81,14 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
     const products = await byName();
     expect(products.size).toBe(2);
     const damru = products.get('DAMRU');
-    expect(damru).toMatchObject({ categoryName: 'ONE PIECE BASIN', rate: 260000, uom: 'piece', hasVariants: true });
+    expect(damru).toMatchObject({ categoryName: 'ONE PIECE BASIN', size: 'L-16 H-31', multiColour: true, hasVariants: true });
     expect(damru?.variants.map((variant) => [variant.code, variant.label, variant.weightKg])).toEqual([
       ['DAMRU-WHITE', 'White', 18],
       ['41', 'Vitrosa 41', null],
       ['42', 'Vitrosa 42', 18.5],
     ]);
     const toilet = products.get('102');
-    expect(toilet).toMatchObject({ categoryName: 'ONE PIECE TOILET', rate: 680000, hasVariants: false });
+    expect(toilet).toMatchObject({ categoryName: 'ONE PIECE TOILET', size: '9" · L-27 B-15 H-26', multiColour: false, hasVariants: false });
     expect(toilet?.variants.map((variant) => [variant.code, variant.label, variant.weightKg])).toEqual([
       ['102', null, 32.5],
     ]);
@@ -107,11 +107,11 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
   });
 
   it('names exactly the rows that are wrong and imports the rest', async () => {
-    const rows: Array<Array<string | number>> = [[...HEAD, 'weightKg', 'uom']];
-    for (let i = 1; i <= 20; i += 1) rows.push(['Tiles', `Tile ${i}`, '', `T-${i}`, i, 'box']);
-    rows[4] = ['Tiles', '', '', 'T-4', 3, 'box']; // row 5: no name
-    rows[9] = ['Tiles', 'Tile 9', '', 'T-9', 0, 'box']; // row 10: weight not above zero
-    rows[15] = ['Tiles', 'Tile 15', '', 'T-15', 1, 'crates']; // row 16: not a unit
+    const rows: Array<Array<string | number>> = [[...HEAD, 'weightKg', 'multiColour']];
+    for (let i = 1; i <= 20; i += 1) rows.push(['Tiles', `Tile ${i}`, '', `T-${i}`, i, 'no']);
+    rows[4] = ['Tiles', '', '', 'T-4', 3, 'no']; // row 5: no name
+    rows[9] = ['Tiles', 'Tile 9', '', 'T-9', 0, 'no']; // row 10: weight not above zero
+    rows[15] = ['Tiles', 'Tile 15', '', 'T-15', 1, 'maybe']; // row 16: not a yes or a no
 
     const result = await run(csv(rows));
 
@@ -165,19 +165,19 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
   it('updates existing models by code in upsert mode, folding new variants in and stamping only the touched fields', async () => {
     await run(
       csv([
-        [...HEAD, 'weightKg', 'rate', 'brand'],
-        ['Basins', 'Damru', 'White', 'D-W', '18', '100', 'Swisware'],
-        ['Basins', 'Damru', 'Vitrosa 41', '41', '', '100', 'Swisware'],
+        [...HEAD, 'weightKg', 'size', 'alias'],
+        ['Basins', 'Damru', 'White', 'D-W', '18', 'L-16 H-31', 'Damru'],
+        ['Basins', 'Damru', 'Vitrosa 41', '41', '', 'L-16 H-31', 'Damru'],
       ]),
     );
     const before = (await byName()).get('Damru');
 
     const result = await run(
       csv([
-        [...HEAD, 'weightKg', 'rate'],
-        ['basins', 'DAMRU', 'Vitrosa 41', '41', '18.5', '150'],
-        ['Basins', 'Damru', 'Vitrosa 42', '42', '18.5', '150'],
-        ['Urinals', 'Hexa', '', 'HEXA', '8', '200'],
+        [...HEAD, 'weightKg', 'size'],
+        ['basins', 'DAMRU', 'Vitrosa 41', '41', '18.5', 'L-16 H-32'],
+        ['Basins', 'Damru', 'Vitrosa 42', '42', '18.5', 'L-16 H-32'],
+        ['Urinals', 'Hexa', '', 'HEXA', '8', ''],
       ]),
       admin,
       false,
@@ -187,7 +187,7 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
     expect(result).toMatchObject({ created: 1, updated: 2, skipped: 0, failed: 0 });
     const after = await catalog.getProduct(before!.id, admin);
     // The sheet's spelling of the model name wins, as any other field would.
-    expect(after).toMatchObject({ name: 'DAMRU', rate: 15000, brand: 'Swisware' });
+    expect(after).toMatchObject({ name: 'DAMRU', size: 'L-16 H-32', alias: 'Damru' });
     // The white variant the sheet did not mention is still there, id intact;
     // the one it did mention got its weight; the new one was added.
     expect(after?.variants.map((variant) => [variant.code, variant.label, variant.weightKg])).toEqual([
@@ -197,35 +197,9 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
     ]);
     expect(after?.variants[0]?.id).toBe(before?.variants[0]?.id);
     expect(after?.sync.version).toBe((before?.sync.version ?? 0) + 1);
-    expect(after?.sync.fieldHlc.rate).toBe(after?.sync.hlc);
+    expect(after?.sync.fieldHlc.size).toBe(after?.sync.hlc);
     expect(after?.sync.fieldHlc.variants).toBe(after?.sync.hlc);
-    expect(after?.sync.fieldHlc.brand).toBeUndefined();
-  });
-
-  it('refuses a barcode another live product already carries', async () => {
-    await catalog.createProduct(
-      { name: 'Existing', categoryName: 'Basins', barcode: '890123', variants: [{ code: 'X-1' }] },
-      admin,
-    );
-
-    const result = await run(
-      csv([
-        [...HEAD, 'barcode'],
-        ['Basins', 'Clash', '', 'X-2', '890123'],
-        ['Basins', 'Fine', '', 'X-3', '890124'],
-      ]),
-    );
-
-    expect(result).toMatchObject({ created: 1, failed: 1 });
-    expect(result.issues).toEqual([
-      {
-        row: 2,
-        kind: 'error',
-        column: 'barcode',
-        messageKey: 'error.conflict.barcodeTaken',
-        params: { barcode: '890123' },
-      },
-    ]);
+    expect(after?.sync.fieldHlc.alias).toBeUndefined();
   });
 
   it('flags a code repeated inside the file and imports its first occurrence only', async () => {
@@ -259,32 +233,11 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
     ).rejects.toThrow(/products\.edit/);
   });
 
-  it('refuses a price cell per row for an actor without the edit key, and imports the priceless rows', async () => {
-    const seller = await actorWith(['products.bulk', 'products.create', 'products.view']);
-
-    const result = await run(
-      csv([
-        [...HEAD, 'rate'],
-        ['Basins', 'Priced', '', 'R-1', '100'],
-        ['Basins', 'Unpriced', '', 'R-2', ''],
-      ]),
-      seller,
-    );
-
-    expect(result).toMatchObject({ created: 1, failed: 1 });
-    expect(result.issues[0]).toMatchObject({
-      row: 2,
-      column: 'rate',
-      messageKey: 'error.forbidden.missingPermission',
-      params: { permission: 'field.saleRate.edit' },
-    });
-  });
-
   it('predicts on a dry run exactly what the real run then does, and writes nothing', async () => {
     const file = csv([
-      [...HEAD, 'uom'],
-      ['Basins', 'One', '', 'S-1', 'box'],
-      ['Basins', '', '', 'S-2', 'box'],
+      [...HEAD, 'size'],
+      ['Basins', 'One', '', 'S-1', '18x12'],
+      ['Basins', '', '', 'S-2', '18x12'],
     ]);
 
     const preview = await run(file, admin, true);
@@ -296,7 +249,7 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
         {
           categoryName: 'Basins',
           name: 'One',
-          uom: 'box',
+          size: '18x12',
           hasVariants: false,
           variants: [{ code: 'S-1', label: null, weightKg: null, sequence: 1 }],
         },

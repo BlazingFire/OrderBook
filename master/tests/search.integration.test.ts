@@ -40,10 +40,7 @@ describe.skipIf(!canRunIntegrationTests)('search (integration)', () => {
         variants: [{ code: 'SAN-77' }],
         name: 'Cascade Basin',
         alias: 'Waterfall',
-        sin: 'SIN-4412',
         size: '550x400',
-        grade: 'A',
-        rate: 80_000,
       },
       actor,
     );
@@ -51,10 +48,10 @@ describe.skipIf(!canRunIntegrationTests)('search (integration)', () => {
   }
 
   describe('finding reference data', () => {
-    it('matches a product by name, code, alias and stock number', async () => {
+    it('matches a product by name, code, alias and size', async () => {
       await seed();
 
-      for (const term of ['Cascade', 'SAN-77', 'Waterfall', 'SIN-4412']) {
+      for (const term of ['Cascade', 'SAN-77', 'Waterfall', '550x400']) {
         const hits = await search.search({ term }, actor);
         expect(hits.some((hit) => hit.kind === 'product' && hit.title === 'Cascade Basin')).toBe(
           true,

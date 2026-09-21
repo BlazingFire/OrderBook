@@ -62,24 +62,18 @@ describe('JSON pointers', () => {
 });
 
 describe('transforms', () => {
-  it('converts rupees to paise, rounding rather than truncating', () => {
-    // 12.345 rupees is 1234.5 paise; truncating shorts every price by up to a
-    // paisa, systematically and in the shop's favour, which is worse than
-    // rounding because nobody notices.
-    expect(applyTransform('12.345', 'rupees_to_paise')).toBe(1235);
-    expect(applyTransform(100, 'rupees_to_paise')).toBe(10_000);
-  });
-
   it('keeps only digits for a phone number', () => {
     expect(applyTransform('+91 98250-11111', 'digits')).toBe('919825011111');
   });
 
-  it('passes null through untouched, whatever the transform', () => {
-    expect(applyTransform(null, 'upper')).toBeNull();
+  it('trims, uppercases and lowercases text', () => {
+    expect(applyTransform('  Shree ', 'trim')).toBe('Shree');
+    expect(applyTransform('rst-300', 'upper')).toBe('RST-300');
+    expect(applyTransform('RST-300', 'lower')).toBe('rst-300');
   });
 
-  it('answers null for a price that is not a number, rather than NaN', () => {
-    expect(applyTransform('unpriced', 'rupees_to_paise')).toBeNull();
+  it('passes null through untouched, whatever the transform', () => {
+    expect(applyTransform(null, 'upper')).toBeNull();
   });
 });
 
@@ -87,7 +81,7 @@ describe('mapping a row', () => {
   const maps = [
     fieldMap({ localField: 'name', remotePointer: '/name', transform: 'trim', isRequired: true }),
     fieldMap({ localField: 'phone', remotePointer: '/mobile', transform: 'digits' }),
-    fieldMap({ localField: 'rate', remotePointer: '/price', transform: 'rupees_to_paise' }),
+    fieldMap({ localField: 'size', remotePointer: '/size', transform: 'trim' }),
   ];
 
   it('leaves an unresolved field absent rather than null', () => {
@@ -107,8 +101,8 @@ describe('mapping a row', () => {
     // Same mapped result from two differently-shaped remote rows: a remote that
     // reformats a field it does not otherwise change must not make every row
     // look modified.
-    const a = mapRow({ name: 'Shree', price: '125' }, maps);
-    const b = mapRow({ name: '  Shree ', price: 125 }, maps);
+    const a = mapRow({ name: 'Shree', size: '18x12' }, maps);
+    const b = mapRow({ name: '  Shree ', size: ' 18x12 ' }, maps);
     expect(a.hash).toBe(b.hash);
   });
 
@@ -119,9 +113,9 @@ describe('mapping a row', () => {
 
 describe('what would change', () => {
   it('compares loosely, so a stringified number is not a change', () => {
-    // Reporting `"12500"` against a stored `12500` as a difference would make
+    // Reporting `"12.5"` against a stored `12.5` as a difference would make
     // every run rewrite every row, and every rewrite is an audit entry.
-    expect(changedFields({ rate: 12_500 }, { rate: '12500' })).toEqual([]);
+    expect(changedFields({ weightKg: 12.5 }, { weightKg: '12.5' })).toEqual([]);
   });
 
   it('reports a real change, and a field going from empty to set', () => {

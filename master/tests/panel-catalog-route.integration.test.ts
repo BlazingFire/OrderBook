@@ -61,7 +61,7 @@ async function importerToken(): Promise<string> {
     {
       name: 'Catalogue manager',
       tier: 'management',
-      permissions: ['products.view', 'products.create', 'products.edit', 'products.bulk', 'field.saleRate.edit'],
+      permissions: ['products.view', 'products.create', 'products.edit', 'products.bulk'],
     },
     admin,
   );
@@ -147,7 +147,7 @@ describe.skipIf(!canRunIntegrationTests)('the panel catalogue import routes (int
   it('previews on dryRun without writing, then imports as the signed-in person', async () => {
     const token = await importerToken();
     const file = Buffer.from(
-      'categoryName,name,code,rate\r\nBasins,Ivory,R-1,120.50\r\nBasins,,R-2,10\r\n',
+      'categoryName,name,code,size\r\nBasins,Ivory,R-1,18x12\r\nBasins,,R-2,18x12\r\n',
       'utf8',
     );
 
@@ -167,7 +167,7 @@ describe.skipIf(!canRunIntegrationTests)('the panel catalogue import routes (int
       name: 'Ivory',
       categoryName: 'Basins',
       variants: [expect.objectContaining({ code: 'R-1' })],
-      rate: 12050,
+      size: '18x12',
     });
 
     // The person, not the machine, is on the audit row.

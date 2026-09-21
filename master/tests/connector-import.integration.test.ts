@@ -51,8 +51,6 @@ async function seedRunner(): Promise<string> {
         'products.view',
         'products.create',
         'products.edit',
-        'field.saleRate.view',
-        'field.saleRate.edit',
       ].sort(),
     },
     actor,
@@ -96,7 +94,7 @@ async function makeConnector(
           isRequired: true,
           onConflict,
         },
-        { localField: 'rate', remotePointer: '/price', transform: 'rupees_to_paise' },
+        { localField: 'size', remotePointer: '/size', transform: 'trim' },
       ],
     },
   ]);
@@ -130,7 +128,7 @@ describe.skipIf(!canRunIntegrationTests)('connector import (integration)', () =>
   it('writes nothing on a dry run, then creates and links on the import', async () => {
     const actor = await testActor();
     const connector = await makeConnector(await seedRunner());
-    remoteRows = [{ id: 'R-1', sku: 'rst-300', name: 'Rustic 300', price: '125' }];
+    remoteRows = [{ id: 'R-1', sku: 'rst-300', name: 'Rustic 300', size: ' 18x12 ' }];
 
     const dry = await connectorRunService.runConnector(actor, connector.id, 'dry_run');
     expect(dry.status).toBe('ok');
@@ -145,8 +143,8 @@ describe.skipIf(!canRunIntegrationTests)('connector import (integration)', () =>
     const products = await catalogService.listProducts({}, actor);
     expect(products.items).toHaveLength(1);
     expect(products.items[0]?.variants.map((variant) => variant.code)).toEqual(['RST-300']);
-    // Rupees on the wire, paise in the catalogue.
-    expect(products.items[0]?.rate).toBe(12_500);
+    // Trimmed on the way in.
+    expect(products.items[0]?.size).toBe('18x12');
 
     const links = await db()('api_connector_links').where({ connector_id: connector.id });
     expect(links).toHaveLength(1);
@@ -155,7 +153,7 @@ describe.skipIf(!canRunIntegrationTests)('connector import (integration)', () =>
   it('skips an unchanged row on the second run, writing nothing at all', async () => {
     const actor = await testActor();
     const connector = await makeConnector(await seedRunner());
-    remoteRows = [{ id: 'R-1', sku: 'RST-300', name: 'Rustic 300', price: '125' }];
+    remoteRows = [{ id: 'R-1', sku: 'RST-300', name: 'Rustic 300', size: ' 18x12 ' }];
 
     await connectorRunService.runConnector(actor, connector.id, 'dry_run');
     await connectorRunService.runConnector(actor, connector.id, 'import');
