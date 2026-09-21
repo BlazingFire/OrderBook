@@ -67,38 +67,8 @@ export interface ProductInput {
   /** Defaults on create to whether any variant carries a label. */
   hasVariants?: boolean;
   size?: string | null;
-  sin?: string | null;
-  grade?: string | null;
-  productType?: string | null;
-  finish?: string | null;
-  series?: string | null;
-  thicknessMm?: number | null;
-  piecesPerBox?: number | null;
-  boxCoverageSqft?: number | null;
-  rate?: number | null;
-  pricePerSqft?: number | null;
-  hsnCode?: string | null;
-
-  // Trade and ceramic attributes. Every one optional, because an update is a
-  // **partial patch**: an absent key means "leave it alone", and a present
-  // `null` means "clear it". A client that sends only what it changed cannot
-  // wipe a column it never showed the person.
-  mrp?: number | null;
-  purchaseRate?: number | null;
-  gstRatePct?: number | null;
-  uom?: string | null;
-  barcode?: string | null;
-  brand?: string | null;
-  shade?: string | null;
-  calibre?: string | null;
-  waterAbsorptionPct?: number | null;
-  peiRating?: number | null;
-  edgeType?: string | null;
-  surfaceTexture?: string | null;
-  application?: string | null;
-  originPlant?: string | null;
-
-  parameters?: Record<string, unknown>;
+  /** Made in any colour of the company's colour list — a lead line may then name one. */
+  multiColour?: boolean;
   customFields?: Record<string, unknown>;
 }
 
@@ -133,11 +103,7 @@ export interface PartyProductVariantInput {
   partyId: RecordId;
   productId: RecordId;
   alias?: string | null;
-  rate?: number | null;
   size?: string | null;
-  sin?: string | null;
-  grade?: string | null;
-  productType?: string | null;
   weightKg?: number | null;
   /** Recorded as a suggestion; never auto-filled onto a line. */
   packaging?: string | null;
@@ -161,14 +127,15 @@ export interface LineItemInput {
   productName?: string | null;
   categoryName?: string | null;
   alias?: string | null;
-  rate?: number | null;
   code?: string | null;
   variantLabel?: string | null;
-  sin?: string | null;
+  /**
+   * A colour from the company's colour list, allowed only on a `multiColour`
+   * product (`validation.lead.colourUnexpected`); null means the variant's own.
+   */
+  colour?: string | null;
   size?: string | null;
   weightKg?: number | null;
-  grade?: string | null;
-  productType?: string | null;
   /**
    * Chosen by hand on every line, never auto-filled (§3.2).
    *
@@ -177,17 +144,6 @@ export interface LineItemInput {
    * `validation.lead.packagingMissing`.
    */
   packaging?: string | null;
-  /**
-   * "No rate on this line" — a price to be quoted later, as opposed to one
-   * nobody has typed yet.
-   *
-   * `rate` alone cannot say it: absent already means "you may not see rates",
-   * and `null` falls through to the party variant and then the catalogue, so a
-   * line meant to carry no price silently saves at the catalogue rate. This
-   * flag is the fourth state, and it is honoured only for an actor who may set
-   * rates at all.
-   */
-  rateUnset?: boolean;
   sequence?: number;
   fromPartyVariant?: boolean;
   imagePath?: string | null;

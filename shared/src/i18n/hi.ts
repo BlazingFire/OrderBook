@@ -17,10 +17,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'permission.lead.convert': 'लीड को ऑर्डर में बदलें',
   'permission.orders.dispatch': 'ऑर्डर भेजें',
   'permission.record.reassignOwner': 'रिकॉर्ड का स्वामी बदलें',
-  'permission.field.saleRate.view': 'बिक्री दर देखें',
-  'permission.field.purchaseRate.view': 'खरीद दर देखें',
-  'permission.field.purchaseRate.edit': 'खरीद दर संपादित करें',
-  'permission.field.saleRate.edit': 'बिक्री दर संपादित करें',
   'permission.stock.adjust': 'भौतिक गणना से स्टॉक समायोजित करें',
   'permission.users.manage': 'उपयोगकर्ता प्रबंधित करें',
   'permission.users.viewPassword': 'संग्रहीत पासवर्ड दिखाएँ',
@@ -85,13 +81,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
 
   'fieldSet.lead.sourcePlatform': 'लीड स्रोत',
   'fieldSet.stock.colour': 'रंग',
-  'fieldSet.product.productType': 'उत्पाद प्रकार',
-  'fieldSet.product.brand': 'ब्रांड',
-  'fieldSet.product.shade': 'शेड',
-  'fieldSet.product.surfaceTexture': 'सतह बनावट',
-  'fieldSet.product.originPlant': 'उत्पादन संयंत्र',
   'fieldSet.line.packaging': 'पैकेजिंग',
-  'fieldSet.line.grade': 'ग्रेड',
 
   'action.view': 'देखें',
   'action.create': 'बनाएँ',
@@ -101,7 +91,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'action.bulk': 'थोक',
 
   'capabilityGroup.workflow': 'कार्यप्रवाह',
-  'capabilityGroup.pricing': 'मूल्य निर्धारण',
   'capabilityGroup.stock': 'स्टॉक',
   'capabilityGroup.admin': 'प्रशासन',
 
@@ -117,10 +106,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'setting.inventory.freeToSell.label': 'बिक्री-योग्य स्टॉक ट्रैक करें',
   'setting.inventory.freeToSell.help':
     'चालू होने पर हर स्टॉक आँकड़ा तीन हिस्सों में दिखता है — उपलब्ध, खुले ऑर्डरों के लिए आरक्षित, और बिक्री-योग्य — और कम स्टॉक बिक्री-योग्य पर आँका जाता है। बंद होने पर हर वेरिएंट के लिए एक ही संख्या दिखती है, फ़र्श पर रखे पीस, और आरक्षित/बिक्री-योग्य कहीं नहीं दिखते। ऑर्डर नीचे अपना स्टॉक रोके रखते हैं, इसलिए वापस चालू करने पर सही तस्वीर दिखती है।',
-  'setting.pricing.enabled.label': 'दरें और राशियाँ दिखाएँ',
-  'setting.pricing.enabled.help':
-    'बंद होने पर कहीं भी कोई दर, राशि या कुल नहीं दिखता — स्क्रीन, दस्तावेज़, रिपोर्ट या API में — और मूल्य-निर्धारण अनुमतियों का कोई असर नहीं होता। संग्रहीत कुछ भी नहीं खोता; इसे फिर चालू करने पर हर आँकड़ा वापस दिखता है।',
-
   'error.notFound': '{what} नहीं मिला',
   'error.forbidden.missingPermission': 'अनुमति नहीं है: {permission}',
   'error.forbidden.passwordRevealDisabled':
@@ -172,7 +157,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'error.conflict.alreadySetUp': 'यह मास्टर पैनल पहले ही सेटअप किया जा चुका है',
   'error.conflict.notSetUp': 'यह मास्टर पैनल अभी तक सेटअप नहीं किया गया है',
   'error.conflict.productCodeTaken': 'उत्पाद कोड "{productCode}" पहले से उपयोग में है',
-  'error.conflict.barcodeTaken': 'बारकोड "{barcode}" पहले से किसी और उत्पाद पर है',
   'error.conflict.nameTaken.role': '"{value}" नाम की भूमिका पहले से मौजूद है',
   'error.conflict.nameTaken.username': 'उपयोगकर्ता नाम "{value}" पहले से लिया जा चुका है',
   'error.conflict.staleVersion':
@@ -260,13 +244,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.updates.noneAvailable': 'इंस्टॉल करने के लिए कोई नया संस्करण नहीं है',
   'validation.partyAccess.levelInvalid': 'पहुँच स्तर view या manage होना चाहिए',
   'validation.partyAccess.userUnknown': '{userId} आईडी वाला कोई सक्रिय खाता नहीं है',
-  'validation.product.uom': 'वह इकाई चुनें जिसमें यह उत्पाद गिना जाता है',
-  'validation.product.edgeType': 'यह किनारे का प्रकार नहीं है',
-  'validation.product.application': 'यह टाइल इस जगह के लिए मान्य नहीं है',
-  'validation.product.peiRating': 'PEI रेटिंग 0 से 5 तक होती है',
   'validation.product.colourPolicy': 'बिक्री पर रंग या तो तय होगा या चुना जाएगा',
-  'validation.product.percentage': 'शून्य से सौ के बीच प्रतिशत भरें',
-  'validation.product.negativeAmount': 'यह राशि ऋणात्मक नहीं हो सकती',
   'validation.stock.levelRange': 'अधिकतम, न्यूनतम से कम नहीं हो सकता',
   'validation.stock.levelNegative': 'स्टॉक स्तर ऋणात्मक नहीं हो सकता',
   'validation.pick.unknownKind': 'यह ऐसी चीज़ नहीं है जिसे यह पैनल खोज सके',
@@ -284,6 +262,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.product.restoreCodesTaken':
     'पुनर्स्थापित नहीं किया जा सकता — {codes} अब किसी अन्य उत्पाद में उपयोग हो रहा है',
   'validation.lead.variantMissing': 'चुने गए उत्पाद वेरिएंट में से एक अब मौजूद नहीं है',
+  'validation.lead.colourUnexpected': '{productName} रंगों में नहीं बनता — उस लाइन से रंग हटाएँ',
   'validation.stock.variantRequired': 'चुनें कि यह स्टॉक किस उत्पाद वेरिएंट का है',
   // --- Bulk product import: file-level refusals and per-row issues ----------
   'validation.import.fileRequired': 'कोई CSV या Excel फ़ाइल चुनें',
@@ -292,7 +271,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.import.emptyFile': 'फ़ाइल में आयात करने के लिए कोई पंक्ति नहीं है',
   'validation.import.missingColumn': 'फ़ाइल में "{column}" कॉलम नहीं है',
   'validation.import.notANumber': '"{column}" एक संख्या होनी चाहिए',
-  'validation.import.notAWholeNumber': '"{column}" एक पूर्ण संख्या होनी चाहिए',
   'validation.import.invalidValue': '"{column}" इनमें से एक होना चाहिए: {allowed}',
   'validation.import.duplicateInFile': '"{column}" पंक्ति {firstRow} में दोहराया गया है',
   'validation.import.mixedVariants':
@@ -495,9 +473,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'access.permissions.modules': 'Modules',
   // TODO(i18n-hi)
   'access.permissions.notApplicable': 'This module has no such action — it cannot exist.',
-  // TODO(i18n-hi)
-  'access.permissions.saleRateHint':
-    'Without this the rate is never sent to the person’s machine — the column disappears rather than showing blank.',
   // TODO(i18n-hi)
   'access.permissions.selectAll': 'Select all',
   // TODO(i18n-hi)
@@ -907,9 +882,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'catalog.products.column.name': 'Product',
   // TODO(i18n-hi)
-  'catalog.products.column.rate': 'दर',
-  // TODO(i18n-hi)
   'catalog.products.column.size': 'Size',
+  'catalog.products.column.colours': 'रंग',
+  'product.multiColour.pill': 'कोई भी रंग',
+  'product.multiColour.detailYes': 'हाँ — लीड लाइन पर रंग सूची का कोई भी रंग चुना जा सकता है',
+  'product.multiColour.detailNo': 'नहीं — केवल ऊपर के वेरिएंट',
   // TODO(i18n-hi)
   'catalog.products.column.stock': 'बिक्री के लिए उपलब्ध, वेरिएंट अनुसार',
   // TODO(i18n-hi)
@@ -1056,8 +1033,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'dashboard.dispatched.countOnly': '{count} {unit} dispatched',
   // TODO(i18n-hi)
   'dashboard.dispatched.none': 'Nothing dispatched yet this week',
-  // TODO(i18n-hi)
-  'dashboard.dispatched.summary': '{amount} across {count} {unit}',
   // TODO(i18n-hi)
   'dashboard.dispatched.title': 'Dispatched this week',
   // TODO(i18n-hi)
@@ -1717,7 +1692,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.detail.party': 'Party',
   // TODO(i18n-hi)
-  'lead.detail.partyRates': 'Party rates',
+  'lead.detail.partyRates': 'पार्टी-वार रिकॉर्ड',
   // TODO(i18n-hi)
   'lead.detail.phone': 'Phone',
   // TODO(i18n-hi)
@@ -1728,8 +1703,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.detail.total': 'Lead total',
   // TODO(i18n-hi)
   'lead.detail.yes': 'Yes',
-  // TODO(i18n-hi)
-  'lead.list.col.amount': 'Amount',
   // TODO(i18n-hi)
   'lead.list.col.followUp': 'Follow up',
   // TODO(i18n-hi)
@@ -1758,8 +1731,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'leadsOrders.error.moveOrder': 'Could not move the order',
   // TODO(i18n-hi)
-  'leadsOrders.leads.column.amount': 'Amount',
-  // TODO(i18n-hi)
   'leadsOrders.leads.column.created': 'Created',
   // TODO(i18n-hi)
   'leadsOrders.leads.column.lead': 'Lead',
@@ -1785,8 +1756,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'leadsOrders.leads.empty.open.title': 'No open leads',
   // TODO(i18n-hi)
   'leadsOrders.leads.incomplete': 'incomplete',
-  // TODO(i18n-hi)
-  'leadsOrders.orders.column.amount': 'Amount',
   // TODO(i18n-hi)
   'leadsOrders.orders.column.fromLead': 'From lead',
   // TODO(i18n-hi)
@@ -1906,8 +1875,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'integrations.mapping.transform.upper': 'Upper case',
   'integrations.mapping.transform.lower': 'Lower case',
   'integrations.mapping.transform.digits': 'Digits only',
-  'integrations.mapping.transform.rupees_to_paise': 'Rupees to paise',
-  'integrations.mapping.transform.paise_passthrough': 'Already paise',
   'integrations.mapping.onConflict': 'If they differ',
   'integrations.mapping.remoteWins': 'Take theirs',
   'integrations.mapping.localWins': 'Keep ours',
@@ -2162,13 +2129,12 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'orders.badge.dispatched': 'dispatched',
   // TODO(i18n-hi)
-  'orders.column.amount': 'Amount',
-  // TODO(i18n-hi)
   'orders.column.fromLead': 'From lead',
   // TODO(i18n-hi)
   'orders.column.order': 'Order',
   // TODO(i18n-hi)
   'orders.column.packaging': 'Packaging',
+  'orders.column.colour': 'रंग',
   // TODO(i18n-hi)
   'orders.column.party': 'Party',
   // TODO(i18n-hi)
@@ -2197,8 +2163,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
     'Dispatched {when} — reservations consumed, ledger entries written.',
   // TODO(i18n-hi)
   'orders.detail.history': 'History',
-  // TODO(i18n-hi)
-  'orders.detail.lineTotal': 'Line total',
   // TODO(i18n-hi)
   'orders.detail.noDispatchPermission': 'Your role does not include {permission}.',
   // TODO(i18n-hi)
@@ -2628,15 +2592,10 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'party.detail.phone': 'Phone',
   // TODO(i18n-hi)
-  'party.detail.rates.catalogue': 'Catalogue',
-  // TODO(i18n-hi)
-  'party.detail.rates.none': 'No party rates — catalogue rates apply.',
-  // TODO(i18n-hi)
-  'party.detail.rates.own': 'This party',
-  // TODO(i18n-hi)
-  'party.detail.rates.product': 'Product',
-  // TODO(i18n-hi)
-  'party.detail.ratesTitle': 'Party rates — override the catalogue',
+  'party.detail.records.none': 'कोई पार्टी-वार रिकॉर्ड नहीं — कैटलॉग के नाम लागू होते हैं।',
+  'party.detail.records.ownName': 'पार्टी का नाम',
+  'party.detail.records.product': 'कैटलॉग मॉडल',
+  'party.detail.recordsTitle': 'पार्टी के अपने उत्पाद रिकॉर्ड',
   // TODO(i18n-hi)
   'party.detail.since': 'Since',
   // TODO(i18n-hi)
@@ -2663,7 +2622,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'import.template.csv': 'खाली CSV',
   'import.template.xlsx': 'खाली Excel',
   'import.template.hint':
-    'खाली टेम्पलेट डाउनलोड करें, उसे भरें और वापस अपलोड करें। कीमतें रुपये में हैं; Guide शीट में हर कॉलम की जानकारी है।',
+    'खाली टेम्पलेट डाउनलोड करें, उसे भरें और वापस अपलोड करें। हर वेरिएंट की एक पंक्ति; Guide शीट में हर कॉलम की जानकारी है।',
   'import.mode.label': 'पहले से मौजूद उत्पाद कोड',
   'import.mode.create': 'छोड़ दें',
   'import.mode.upsert': 'अपडेट करें',
@@ -2692,7 +2651,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'import.another': 'एक और फ़ाइल आयात करें',
   'reports.column.orderCount': 'ऑर्डर',
   'reports.column.boxCount': 'बॉक्स',
-  'reports.column.totalValue': 'कुल मूल्य',
   'reports.column.partyId': 'पार्टी आईडी',
   'reports.column.partyName': 'पार्टी',
   'reports.column.partyCode': 'कोड',
@@ -2798,10 +2756,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'product.detail.editAction': 'Edit product',
   // TODO(i18n-hi)
-  'product.detail.grade': 'Grade',
-  // TODO(i18n-hi)
-  'product.detail.rate': 'दर',
-  // TODO(i18n-hi)
   'product.detail.size': 'Size',
   // TODO(i18n-hi)
   'product.detail.stock.free': 'Free',
@@ -2837,31 +2791,14 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'product.detail.stockInAction': 'Stock in',
   // TODO(i18n-hi)
-  'product.detail.type': 'Type',
-  // TODO(i18n-hi)
   'product.edit.title': 'Edit product',
-  'product.field.hsnCode': 'HSN कोड',
-  'product.field.mrp': 'एमआरपी',
-  'product.field.purchaseRate': 'खरीद दर',
-  'product.field.purchaseRateHint': 'कंपनी जो चुकाती है। खरीद-दर कुंजी के बिना छिपी रहती है।',
-  'product.field.gstRate': 'जीएसटी दर (%)',
-  'product.field.uom': 'गिनती की इकाई',
-  'product.field.barcode': 'बारकोड',
-  'product.field.brand': 'ब्रांड',
   'product.group.identity': 'पहचान',
-  'product.group.pricing': 'मूल्य',
   'product.group.photos': 'तस्वीरें',
-  'product.uom.box': 'बॉक्स',
-  'product.uom.sqft': 'वर्ग फुट',
-  'product.uom.piece': 'पीस',
-  'product.field.none': '—',
   'product.field.alias': 'Alias',
   // TODO(i18n-hi)
   'product.field.code': 'कोड',
-  // TODO(i18n-hi)
-  'product.field.grade': 'Grade',
-  // TODO(i18n-hi)
   // --- Product photos: the strip and the crop editor -----------------------
+  // TODO(i18n-hi)
   'photo.add': 'फ़ोटो जोड़ें',
   'photo.primary': 'मुख्य',
   'photo.setPrimary': 'मुख्य बनाएँ',
@@ -2904,14 +2841,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'product.field.name': 'Product name',
   // TODO(i18n-hi)
-  'product.field.rate': 'प्रति पीस दर',
-  // TODO(i18n-hi)
-  'product.field.rateHint':
-    'Entered in rupees; the Master ignores this without field.saleRate.edit',
-  // TODO(i18n-hi)
   'product.field.size': 'Size',
-  // TODO(i18n-hi)
-  'product.field.type': 'Type',
   // TODO(i18n-hi)
   'product.field.weight': 'वज़न (kg)',
   // TODO(i18n-hi)
@@ -3047,8 +2977,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'reports.column.quiet': 'Went quiet',
   // TODO(i18n-hi)
-  'reports.column.value': 'Value',
-  // TODO(i18n-hi)
   'reports.kind.dispatches': 'डिस्पैच',
   'reports.kind.leadOutcomes': 'लीड परिणाम',
   'reports.kind.topParties': 'शीर्ष पार्टियाँ',
@@ -3102,14 +3030,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'reports.range.toMonthHint': 'Leave empty to run up to this month',
   // TODO(i18n-hi)
-  'reports.ratesHidden':
-    'Money is left out — pricing is switched off, or your role does not include {permission}.',
-  // TODO(i18n-hi)
   'reports.stat.boxes': 'Boxes dispatched',
   // TODO(i18n-hi)
   'reports.stat.orders': 'Orders dispatched',
-  // TODO(i18n-hi)
-  'reports.stat.value': 'Value dispatched',
   // TODO(i18n-hi)
   'reports.tab.dispatches': 'Dispatches',
   // TODO(i18n-hi)
@@ -3127,10 +3050,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'reports.topParties.empty.description': 'No party ordered in these months. Try a wider range.',
   // TODO(i18n-hi)
-  'reports.topParties.orderedByCount':
-    'Top {limit} by number of orders — your role does not include rates.',
-  // TODO(i18n-hi)
-  'reports.topParties.orderedByValue': 'Top {limit} by order value.',
+  'reports.topParties.orderedByCount': 'ऑर्डर संख्या के अनुसार शीर्ष {limit}।',
   // TODO(i18n-hi)
   'reports.topParties.parties': 'Parties',
   // TODO(i18n-hi)
@@ -3651,7 +3571,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.draft.editing': 'editing saved product',
   // TODO(i18n-hi)
-  'lead.add.draft.grade': 'Grade',
+  'lead.add.draft.colour': 'रंग',
+  'lead.add.draft.colourAsVariant': 'वेरिएंट के अनुसार',
+  'lead.add.draft.colourAsVariantHint': 'हर लाइन अपने वेरिएंट का रंग रखती है। इस मॉडल को दूसरे रंग में लेने के लिए एक चुनें।',
+  'lead.add.draft.colourHint': 'इस कार्ड की हर लाइन पर यह रंग रहेगा।',
+  'lead.add.draft.hintPieces': 'इस कार्ड पर {count} पीस — लीड में जोड़ें',
   // TODO(i18n-hi)
   'lead.add.draft.hintPackaging': 'Choose packaging to save this product',
   // TODO(i18n-hi)
@@ -3662,14 +3586,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.draft.packaging': 'Packaging',
   // TODO(i18n-hi)
   'lead.add.draft.quantityTitle': 'मात्रा — पीस',
-  // TODO(i18n-hi)
-  'lead.add.draft.rateCatalogue': 'catalogue rate',
-  // TODO(i18n-hi)
-  'lead.add.draft.rateLast': 'last used {date}',
-  // TODO(i18n-hi)
-  'lead.add.draft.rateParty': 'party rate',
-  // TODO(i18n-hi)
-  'lead.add.draft.rateReset': 'Reset to {amount}',
   // TODO(i18n-hi)
   'lead.add.draft.saveChanges': 'Save changes',
   // TODO(i18n-hi)
@@ -3732,7 +3648,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.party.create': '+ Create a new party',
   // TODO(i18n-hi)
-  'lead.add.party.ownRates': 'own rates applied',
+  'lead.add.party.ownRates': 'पार्टी-वार नाम लागू',
   // TODO(i18n-hi)
   'lead.add.party.placeholder': 'Select party — name, code or phone',
   // TODO(i18n-hi)
@@ -3766,8 +3682,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.followUp.label': 'Follow up',
   // TODO(i18n-hi)
   'lead.add.line.noPackaging': 'no packaging',
-  // TODO(i18n-hi)
-  'lead.add.line.rateUnset': 'not set — to be quoted',
   // TODO(i18n-hi)
   'lead.add.line.remove': 'Remove {product}',
   // TODO(i18n-hi)
@@ -3820,7 +3734,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'developer.tool.sample.title': "Sample data",
   // TODO(i18n-hi)
-  'developer.tool.sample.description': 'इस Master को छह महीने के एक छोटे सैनिटरीवेयर व्यापार से भरता है — Swisware कैटलॉग, बेचे जाने वाले मॉडलों पर दाम और वज़न, पार्टियाँ, प्रति वेरिएंट स्टॉक, हर चरण पर लीड, चालू और भेजे गए ऑर्डर, टिप्पणियाँ, पार्टी-वार दरें, पार्टी एक्सेस, कस्टम फ़ील्ड और Recycle Bin में कुछ रिकॉर्ड — ताकि हर स्क्रीन पर कुछ दिखे। पहले तीन टेस्ट उपयोगकर्ता बनाता है, ठीक "Seed test users" की तरह। प्रति इंस्टॉलेशन एक बार चलता है; फिर से शुरू करने के लिए सब मिटाएँ।',
+  'developer.tool.sample.description': 'इस Master को छह महीने के एक छोटे सैनिटरीवेयर व्यापार से भरता है — Swisware कैटलॉग, बेचे जाने वाले मॉडलों पर वज़न, पार्टियाँ, प्रति वेरिएंट स्टॉक, हर चरण पर लीड, चालू और भेजे गए ऑर्डर, टिप्पणियाँ, पार्टी-वार रिकॉर्ड, पार्टी एक्सेस, कस्टम फ़ील्ड और Recycle Bin में कुछ रिकॉर्ड — ताकि हर स्क्रीन पर कुछ दिखे। पहले तीन टेस्ट उपयोगकर्ता बनाता है, ठीक "Seed test users" की तरह। प्रति इंस्टॉलेशन एक बार चलता है; फिर से शुरू करने के लिए सब मिटाएँ।',
   // TODO(i18n-hi)
   'developer.tool.sample.action': "Seed sample data",
   // TODO(i18n-hi)
@@ -3852,7 +3766,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'developer.tool.sample.count.customFields': "Custom fields",
   // TODO(i18n-hi)
-  'developer.tool.sample.count.partyVariants': "Party-wise rates",
+  'developer.tool.sample.count.partyVariants': 'पार्टी-वार रिकॉर्ड',
   // TODO(i18n-hi)
   'developer.tool.sample.count.partyAssignments': "Party access assignments",
   // TODO(i18n-hi)
@@ -3870,7 +3784,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.products.variantCount': '{count} वेरिएंट',
   'lead.add.products.noCategory': 'कोई श्रेणी नहीं मिली — कैटलॉग पहले श्रेणी से व्यवस्थित है।',
   'lead.add.products.noProduct': 'इस श्रेणी में कोई मॉडल इससे मेल नहीं खाता।',
-  'lead.add.draft.ratePerPiece': 'प्रति पीस दर',
   'lead.add.draft.quantityTitleVariants': 'मात्रा — प्रति वेरिएंट पीस',
   'lead.add.draft.col.lineWeight': 'लाइन वज़न',
   'lead.add.line.qtyShort': '{count} पीस',
@@ -3902,14 +3815,20 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'product.field.category': 'श्रेणी',
   'product.field.categoryHint': 'लीड स्क्रीन इसे यहीं ढूँढती है। नया नाम श्रेणी बना देता है।',
   'product.field.weightHint': 'प्रति पीस। तौलने तक खाली छोड़ें — यह “नहीं” दिखेगा, शून्य नहीं।',
+  'product.group.colours': 'रंग',
+  'product.multiColour.label': 'हर रंग में बनता है?',
+  'product.multiColour.no': 'नहीं — केवल ऊपर के वेरिएंट',
+  'product.multiColour.yes': 'हाँ — रंग सूची का कोई भी रंग',
+  'product.multiColour.noHint': 'लीड लाइन वेरिएंट को जैसा है वैसा दर्ज करती है।',
+  'product.multiColour.yesHint': 'इस उत्पाद की लीड लाइन पर रंग सूची (सेटिंग्स → फ़ील्ड → रंग) से एक रंग भी चुना जा सकता है।',
+  'product.field.sizePlaceholder': 'जैसे 18x12, L-27 B-15 H-26',
   'product.group.codes': 'कोड और वज़न',
-  'product.group.sizeGrade': 'साइज़ और ग्रेड',
   'product.variants.hasVariants': 'वेरिएंट (रंग या पैटर्न) में आता है?',
   'product.variants.no': 'नहीं — एक कोड',
   'product.variants.yes': 'हाँ — हर वेरिएंट का अपना कोड',
   'product.variants.noHint': 'एक उत्पाद, एक कोड, एक वज़न।',
   'product.variants.yesHint': 'हर रंग या पैटर्न लीड पर अपनी लाइन है, अपने कोड और वज़न के साथ।',
-  'product.variants.col.label': 'रंग / वेरिएंट',
+  'product.variants.col.label': 'रंग',
   'product.variants.col.code': 'कोड',
   'product.variants.col.weight': 'वज़न (kg)',
   'product.variants.labelPlaceholder': 'जैसे White, Vitrosa 41',
@@ -3957,8 +3876,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.draft.col.free': 'उपलब्ध',
   'inventory.field.productSearchPlaceholder': 'उत्पाद खोजने के लिए नाम या कोड लिखें',
 
-  // --- Carried over from the v1.1.0 line (pricing switch, sub-pages, free-to-sell) ---
-  'catalog.products.column.brand': 'ब्रांड',
+  // --- Carried over from the v1.1.0 line (sub-pages, free-to-sell) ---
   'catalog.products.column.stockOnHand': 'स्टॉक, रंग अनुसार',
   'nav.fold': 'उप-पृष्ठ छिपाएँ',
   'nav.home': 'डैशबोर्ड पर जाएँ',
@@ -3979,17 +3897,4 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'dashboard.pipeline.emptyTitle': "No open leads",
   'dashboard.pipeline.openBoard': "Open board",
   'lead.add.draft.hintRate': 'Enter a rate',
-  'lead.add.draft.hintTotal': 'Line total {amount}',
-
-  // --- The lead screen's rate switch, kept from the laptop line ---
-  'lead.add.draft.hintNoRate': 'Saves without a rate',
-  'lead.add.draft.hintRateOrOff': 'Enter a rate or switch it off',
-  'lead.add.draft.noRate': 'No rate on this line',
-  'lead.add.draft.rateLater': 'quote it later — no amount on this line',
-  'lead.add.draft.rateOff': 'Off',
-  'lead.add.draft.rateOn': 'On',
-  'lead.add.draft.rateSwitch': 'Use a rate on this product',
-  'lead.add.draft.rateSwitchHint': 'Switch off to save this product without a rate',
-  'lead.add.line.rateNa': 'rate n/a',
-  'lead.add.line.toQuote': 'rate to quote',
 };

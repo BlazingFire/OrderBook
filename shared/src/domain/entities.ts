@@ -441,10 +441,6 @@ export interface Product {
   categoryId: RecordId;
   categoryName: string;
   size: string | null;
-  /** Stock-item number carried through from the catalogue. */
-  sin: string | null;
-  grade: string | null;
-  productType: string | null;
   /**
    * True when the administrator said the model comes in colours or patterns.
    * Stored rather than derived so a model with one variant *so far* still
@@ -453,67 +449,13 @@ export interface Product {
   hasVariants: boolean;
   /** At least one, in form order; exactly one with a null label when `hasVariants` is false. */
   variants: ProductVariant[];
-  finish: string | null;
-  series: string | null;
-  thicknessMm: number | null;
-  piecesPerBox: number | null;
-  boxCoverageSqft: number | null;
   /**
-   * Sale rate in the smallest currency unit. Optional because it is gated by
-   * `field.saleRate.view` — a caller without it receives the key *absent*.
+   * True when the model is made in any colour of the company's colour list
+   * ("all colours available in all items" in the catalogue), so a lead line
+   * may name a colour on top of the variant it quotes. The colour is a line
+   * attribute, not a stock key: stock stays per variant.
    */
-  rate?: number | null;
-  pricePerSqft?: number | null;
-  hsnCode: string | null;
-
-  // --- Trade fields ---------------------------------------------------------
-
-  /**
-   * Maximum retail price, in the smallest currency unit.
-   *
-   * **Readable by everyone and never masked; writable only under
-   * `field.saleRate.edit`.** Both halves of that are deliberate: an MRP is
-   * printed on the box, so hiding it would be theatre — but it is still a price
-   * on the product record, and setting it is a pricing decision.
-   */
-  mrp: number | null;
-  /**
-   * What the company pays, in the smallest currency unit.
-   *
-   * Optional because it is gated by `field.purchaseRate.view` and masked by
-   * **key absence** — the `?` is what makes that legal. Anything writing
-   * `purchaseRate ?? 0` is reading "may not see cost" as "cost is zero", so
-   * margin arithmetic belongs on the server.
-   */
-  purchaseRate?: number | null;
-  gstRatePct: number | null;
-  /** `box` | `sqft` | `piece`. Not null: every row asserts a unit. */
-  uom: string;
-  barcode: string | null;
-  brand: string | null;
-
-  // --- Ceramic and tile spec ------------------------------------------------
-
-  /**
-   * The production shade. **Not the batch or lot** — one product receives many
-   * lots, so a lot column would be false the second inbound. Which lot a
-   * particular quantity came from is answered by `stock_movements`.
-   */
-  shade: string | null;
-  /** Free-form: plant codes vary by manufacturer and are not a closed set. */
-  calibre: string | null;
-  waterAbsorptionPct: number | null;
-  /** Abrasion resistance, 0–5. */
-  peiRating: number | null;
-  /** `rectified` | `non_rectified`. */
-  edgeType: string | null;
-  surfaceTexture: string | null;
-  /** `floor` | `wall` | `floor_wall` | `outdoor`. */
-  application: string | null;
-  originPlant: string | null;
-
-  /** Free-form ceramic specs that have no dedicated column yet. */
-  parameters: Record<string, unknown>;
+  multiColour: boolean;
   customFields: Record<string, unknown>;
   isActive: boolean;
   createdAt: IsoTimestamp;
@@ -604,8 +546,8 @@ export interface ProductImage {
 }
 
 /**
- * A party's own version of a product — the rate and spec agreed with that
- * customer. Used when a lead is in `partyWiseMode`.
+ * A party's own version of a product — the name, size and packaging agreed
+ * with that customer. Used when a lead is in `partyWiseMode`.
  *
  * `packaging` is recorded for reference but is deliberately **never** copied
  * onto a line automatically; the UI offers it as a suggestion the user must
@@ -618,11 +560,7 @@ export interface PartyProductVariant {
   productId: RecordId;
   productName: string | null;
   alias: string | null;
-  rate?: number | null;
   size: string | null;
-  sin: string | null;
-  grade: string | null;
-  productType: string | null;
   weightKg: number | null;
   /** Suggestion only — see the note above. */
   packaging: string | null;
@@ -638,7 +576,7 @@ export type LineItemParentType = 'lead' | 'order';
 /**
  * One variant on a lead or an order: one code, one weight, one quantity.
  *
- * Two colours of the same model are two lines, each with its own total — the
+ * Two colours of the same model are two lines, each with its own weight — the
  * snapshot fields are frozen at add time, so editing the product afterwards
  * must not rewrite what an order was quoted at
  * (docs/LEAD_GENERATION_FLOW.md §8.3).
@@ -657,18 +595,18 @@ export interface LineItem {
   /** The main product (category) the line was entered under — snapshot like `productName`. */
   categoryName: string | null;
   alias: string | null;
-  /** Gated by `field.saleRate.view`; absent, not null, when not permitted. */
-  rate?: number | null;
   /** The variant's code as it was when the line was added. */
   code: string | null;
   /** The variant's colour or pattern text; null for a no-variant product. */
   variantLabel: string | null;
-  sin: string | null;
+  /**
+   * The colour chosen on the line, from the company's colour list — only on a
+   * `multiColour` product, and null when the variant's own colour was meant.
+   */
+  colour: string | null;
   size: string | null;
   /** The variant's weight in kilograms, or null when it had not been entered. */
   weightKg: number | null;
-  grade: string | null;
-  productType: string | null;
 
   /** Chosen manually on every line — never auto-filled. */
   packaging: string | null;
@@ -680,8 +618,6 @@ export interface LineItem {
 
   /** `weightKg` × `quantity`, or null when the weight is missing. */
   lineWeightKg: number | null;
-  /** `rate` × `quantity`; absent alongside `rate` when not permitted. */
-  lineTotal?: number | null;
 
   createdAt: IsoTimestamp;
   updatedAt: IsoTimestamp;
@@ -731,8 +667,6 @@ export interface Lead {
   convertedOrderId: RecordId | null;
   convertedAt: IsoTimestamp | null;
 
-  /** Gated alongside line rates by `field.saleRate.view`. */
-  totalAmount?: number;
   /** Sum of the lines' `lineWeightKg`, over the lines that have a weight. */
   totalWeightKg: number;
   /** How many lines carry no weight yet — when non-zero, `totalWeightKg` is a partial figure. */
@@ -778,8 +712,6 @@ export interface Order {
   customFields: Record<string, unknown>;
   incomplete: boolean;
   missingFields: string[];
-
-  totalAmount?: number;
 
   dispatchedAt: IsoTimestamp | null;
   sourcePanelId: Uuid | null;
@@ -838,7 +770,6 @@ export interface InventoryStockLevel {
   quantityBoxes: number;
   reservedBoxes: number;
   availableBoxes: number;
-  quantitySqft: number;
   reorderLevel: number | null;
   /**
    * The band a buyer works to. Advisory: nothing refuses a movement for

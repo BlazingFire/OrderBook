@@ -19,11 +19,9 @@
  *
  * Before this, `columnsFrom()` listed every column with `?? null` and the
  * result was spread straight into `.update()` — making every update a full
- * record replace. The only product form in the app edits 8 of ~20 columns, so
- * saving it nulled `finish`, `series`, `color`, `thickness_mm`,
- * `pieces_per_box`, `box_coverage_sqft`, `price_per_sqft`, `hsn_code`,
- * `parameters` and `custom_fields`. Parties had the same shape and the same
- * bug.
+ * record replace. The only product form in the app edited a subset of the
+ * columns, so saving it nulled every column it did not show (`custom_fields`
+ * among them). Parties had the same shape and the same bug.
  *
  * The offline path already worked this way — `office/src/http/app.ts` builds
  * its mutation `fields` from `Object.keys(payload)` — so a partial patch is
@@ -35,7 +33,7 @@
  */
 
 /** Columns holding JSON, which therefore need serialising on the way in. */
-export const JSON_COLUMNS = new Set(['custom_fields', 'parameters']);
+export const JSON_COLUMNS = new Set(['custom_fields']);
 
 export const PARTY_COLUMNS = {
   name: 'name',
@@ -64,32 +62,7 @@ export const PRODUCT_COLUMNS = {
   categoryId: 'category_id',
   hasVariants: 'has_variants',
   size: 'size',
-  sin: 'sin',
-  grade: 'grade',
-  productType: 'product_type',
-  finish: 'finish',
-  series: 'series',
-  thicknessMm: 'thickness_mm',
-  piecesPerBox: 'pieces_per_box',
-  boxCoverageSqft: 'box_coverage_sqft',
-  rate: 'rate',
-  pricePerSqft: 'price_per_sqft',
-  hsnCode: 'hsn_code',
-  mrp: 'mrp',
-  purchaseRate: 'purchase_rate',
-  gstRatePct: 'gst_rate_pct',
-  uom: 'uom',
-  barcode: 'barcode',
-  brand: 'brand',
-  shade: 'shade',
-  calibre: 'calibre',
-  waterAbsorptionPct: 'water_absorption_pct',
-  peiRating: 'pei_rating',
-  edgeType: 'edge_type',
-  surfaceTexture: 'surface_texture',
-  application: 'application',
-  originPlant: 'origin_plant',
-  parameters: 'parameters',
+  multiColour: 'multi_colour',
   customFields: 'custom_fields',
 } as const satisfies Record<string, string>;
 

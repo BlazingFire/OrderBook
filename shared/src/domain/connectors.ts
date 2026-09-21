@@ -41,7 +41,7 @@ export const CONNECTOR_MIN_INTERVAL_MIN = 5;
 /** The fields `conflict.service.ts` can restore, and so the only ones `flag` fits. */
 export const CONNECTOR_FLAGGABLE_FIELDS: Readonly<Record<ConnectorEntity, readonly string[]>> = {
   party: ['name', 'phone', 'notes', 'customFields'],
-  product: ['name', 'alias', 'rate', 'customFields'],
+  product: ['name', 'alias', 'customFields'],
 };
 
 export interface Connector {
@@ -135,17 +135,9 @@ export interface ConnectorFieldMap {
   isRequired: boolean;
 }
 
-export type ConnectorTransform =
-  'trim' | 'upper' | 'lower' | 'digits' | 'rupees_to_paise' | 'paise_passthrough';
+export type ConnectorTransform = 'trim' | 'upper' | 'lower' | 'digits';
 
-export const CONNECTOR_TRANSFORMS: readonly ConnectorTransform[] = [
-  'trim',
-  'upper',
-  'lower',
-  'digits',
-  'rupees_to_paise',
-  'paise_passthrough',
-];
+export const CONNECTOR_TRANSFORMS: readonly ConnectorTransform[] = ['trim', 'upper', 'lower', 'digits'];
 
 export interface ConnectorFieldMapInput {
   localField: string;

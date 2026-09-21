@@ -18,7 +18,6 @@ export * from './domain/inventory-view.js';
 export * from './domain/settings.js';
 export * from './domain/version.js';
 export * from './domain/developer.js';
-export * from './domain/visibility.js';
 export * from './i18n/index.js';
 export * from './keys/bindings.js';
 export * from './keys/chord.js';

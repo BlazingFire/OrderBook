@@ -76,25 +76,6 @@ export const SETTINGS = {
   },
 
   /**
-   * Whether the software deals in money at all.
-   *
-   * Off by default: this is order management, and most desks never need a
-   * rate. While it is off the four `field.*Rate.*` permissions are stripped
-   * from every resolved permission set (`master/src/services/pricing-gate.ts`),
-   * so every rate, amount and total disappears from screens, documents, reports
-   * and the API by the same rule a role without those keys already follows —
-   * and the Pricing group leaves the permission grid, since ticking it would
-   * change nothing. Nothing stored is touched; switching it back on restores
-   * every figure.
-   */
-  'pricing.enabled': {
-    labelToken: 'setting.pricing.enabled.label',
-    descriptionToken: 'setting.pricing.enabled.help',
-    fallback: false,
-    parse: (raw: unknown): boolean => asBoolean(raw),
-  },
-
-  /**
    * Whether stock is split into on-hand, reserved and free to sell.
    *
    * Off by default: a counter that never reserves ahead has one number per

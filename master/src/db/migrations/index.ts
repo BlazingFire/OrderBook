@@ -42,6 +42,7 @@ import * as lineItemVariantCodes from './20260321000000_line_item_variant_codes.
 import * as productColourPolicyAndLineCategory from './20260322000000_product_colour_policy_and_line_category.js';
 import * as dropDocumentDesigner from './20260322000000_drop_document_designer.js';
 import * as productVariants from './20260323000000_product_variants.js';
+import * as productMasterTrim from './20260324000000_product_master_trim.js';
 
 export interface Migration {
   name: string;
@@ -150,6 +151,14 @@ export const migrations: Migration[] = [
   {
     name: '20260322000000_drop_document_designer',
     ...dropDocumentDesigner,
+  },
+  // The product master trimmed to name/category/alias/size + code/colour/weight,
+  // pricing removed whole, `multi_colour` added (owner's decision, 2026-09-21).
+  // Last for the same reason as the Designer drop: `20260303`, `20260309` and
+  // `20260315` still hand out the four rate keys it strips.
+  {
+    name: '20260324000000_product_master_trim',
+    ...productMasterTrim,
   },
 ];
 

@@ -73,6 +73,9 @@ describe('the migration registry matches the directory', () => {
     // Strips keys the grant above still hands out, so it has to run after it
     // — on a fresh database as much as on an upgraded one.
     '20260322000000_drop_document_designer',
+    // Strips the four rate keys that `20260303`, `20260309` and `20260315`
+    // still grant, for the same reason.
+    '20260324000000_product_master_trim',
   ];
 
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {

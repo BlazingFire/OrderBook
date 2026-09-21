@@ -1,6 +1,6 @@
 /**
- * The closed sets and ranges a product's new columns are constrained to,
- * checked *before* the database gets to.
+ * The rules a product's variant set is constrained to, checked *before* the
+ * database gets to.
  *
  * This exists because of one path with no validation layer at all. The offline
  * merge (`sync.service.ts#mergeUpdate`) writes columns directly — it is
@@ -22,10 +22,6 @@
 import type { ProductInput, ProductVariantInput } from './inputs.js';
 import type { MessageKey } from '../i18n/keys.js';
 
-export const PRODUCT_UOMS = ['box', 'sqft', 'piece'] as const;
-export const PRODUCT_EDGE_TYPES = ['rectified', 'non_rectified'] as const;
-export const PRODUCT_APPLICATIONS = ['floor', 'wall', 'floor_wall', 'outdoor'] as const;
-
 /** Thrown with a catalogue token, so the message reaches a person translated. */
 export class ProductValidationError extends Error {
   constructor(readonly messageKey: MessageKey) {
@@ -34,56 +30,12 @@ export class ProductValidationError extends Error {
   }
 }
 
-function asserted(value: unknown): boolean {
-  return value !== undefined && value !== null && value !== '';
-}
-
-function assertPercentage(value: number | null | undefined): void {
-  if (value === undefined || value === null) return;
-  if (!Number.isFinite(value) || value < 0 || value > 100) {
-    throw new ProductValidationError('validation.product.percentage');
-  }
-}
-
-function assertNonNegative(value: number | null | undefined): void {
-  if (value === undefined || value === null) return;
-  if (!Number.isFinite(value) || value < 0) {
-    throw new ProductValidationError('validation.product.negativeAmount');
-  }
-}
-
+/**
+ * The product master holds no closed sets or ranges any more — a model is a
+ * name, a category, an alias, a size and a colour switch — so the product-level
+ * check is only that the variant set, when asserted, obeys its rules.
+ */
 export function validateProductInput(input: ProductInput): void {
-  if (asserted(input.uom) && !(PRODUCT_UOMS as readonly string[]).includes(String(input.uom))) {
-    throw new ProductValidationError('validation.product.uom');
-  }
-
-  if (
-    asserted(input.edgeType) &&
-    !(PRODUCT_EDGE_TYPES as readonly string[]).includes(String(input.edgeType))
-  ) {
-    throw new ProductValidationError('validation.product.edgeType');
-  }
-
-  if (
-    asserted(input.application) &&
-    !(PRODUCT_APPLICATIONS as readonly string[]).includes(String(input.application))
-  ) {
-    throw new ProductValidationError('validation.product.application');
-  }
-
-  if (input.peiRating !== undefined && input.peiRating !== null) {
-    const rating = Number(input.peiRating);
-    if (!Number.isInteger(rating) || rating < 0 || rating > 5) {
-      throw new ProductValidationError('validation.product.peiRating');
-    }
-  }
-
-  assertPercentage(input.gstRatePct);
-  assertPercentage(input.waterAbsorptionPct);
-
-  assertNonNegative(input.mrp);
-  assertNonNegative(input.purchaseRate);
-
   if (input.variants !== undefined) {
     validateProductVariants(input.variants, input.hasVariants ?? input.variants.some((v) => hasText(v.label)));
   }

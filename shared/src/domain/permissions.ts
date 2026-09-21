@@ -6,15 +6,13 @@
  * draws the permission grid. A key can therefore never mean one thing on one
  * side and something else on the other.
  *
- * Three kinds of entry live here:
+ * Two kinds of entry live here:
  *   module actions   `leads.edit`           "may this role do X to Y"
  *   capabilities     `lead.convert`         fine-grained, grouped, not a matrix cell
- *   field actions    `field.saleRate.view`  "may this role *see* X"
  *
- * The field kind matters: a role without `field.saleRate.view` must receive
- * records with `rate` **absent**, not nulled. A null says "this line has no
- * rate", which is a different and wrong statement — and one a client will
- * happily total to zero.
+ * There is no third, field-level kind any more: the four rate keys went with
+ * pricing (2026-09-21), and no record carries a value that one role may see
+ * and another may not.
  *
  * The grid is rendered from `MODULE_ACTIONS` and `CAPABILITIES` rather than from
  * a list typed into the UI, so a new capability reaches the screen with one
@@ -80,7 +78,7 @@ export const MODULE_ACTIONS: Record<PermissionModule, readonly PermissionAction[
 
 // --- Capabilities ----------------------------------------------------------
 
-export const CAPABILITY_GROUPS = ['workflow', 'pricing', 'stock', 'admin'] as const;
+export const CAPABILITY_GROUPS = ['workflow', 'stock', 'admin'] as const;
 
 export type CapabilityGroup = (typeof CAPABILITY_GROUPS)[number];
 
@@ -98,26 +96,6 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
     key: 'record.reassignOwner',
     group: 'workflow',
     labelToken: 'permission.record.reassignOwner',
-  },
-
-  { key: 'field.saleRate.view', group: 'pricing', labelToken: 'permission.field.saleRate.view' },
-  { key: 'field.saleRate.edit', group: 'pricing', labelToken: 'permission.field.saleRate.edit' },
-  /*
-   * What the company pays is more sensitive than what it charges: a sale rate
-   * is quoted to customers all day, while a purchase rate is the margin. Both
-   * are `management` at minimum, which is safe against the tier ceiling by
-   * construction — any role holding `field.saleRate.edit` is already management
-   * or above.
-   */
-  {
-    key: 'field.purchaseRate.view',
-    group: 'pricing',
-    labelToken: 'permission.field.purchaseRate.view',
-  },
-  {
-    key: 'field.purchaseRate.edit',
-    group: 'pricing',
-    labelToken: 'permission.field.purchaseRate.edit',
   },
 
   { key: 'stock.adjust', group: 'stock', labelToken: 'permission.stock.adjust' },
@@ -204,14 +182,6 @@ export function isPermission(value: unknown): value is Permission {
   return typeof value === 'string' && PERMISSION_SET.has(value);
 }
 
-/** Permissions that gate a *field* rather than an action. */
-export const FIELD_PERMISSIONS = [
-  'field.saleRate.view',
-  'field.saleRate.edit',
-  'field.purchaseRate.view',
-  'field.purchaseRate.edit',
-] as const;
-
 // --- The tier ceiling ------------------------------------------------------
 
 /**
@@ -248,9 +218,6 @@ const MINIMUM_TIER: Record<string, RoleTier> = {
   'parties.bulk': 'management',
   'products.bulk': 'management',
   'record.reassignOwner': 'management',
-  'field.saleRate.edit': 'management',
-  'field.purchaseRate.view': 'management',
-  'field.purchaseRate.edit': 'management',
 
   // Recycle Bin: viewing your own deletions is office tier; seeing everyone
   // else's is management — a wider disclosure than the delete key itself.
@@ -351,7 +318,6 @@ export const ROLE_TEMPLATES: ReadonlyArray<{
       'reports.view',
       'reports.export',
       'lead.convert',
-      'field.saleRate.view',
     ],
   },
   {

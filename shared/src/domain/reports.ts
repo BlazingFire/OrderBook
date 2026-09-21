@@ -1,8 +1,6 @@
 /**
- * Reports' wire types (`docs/backend-modules/04-API-CONTRACT.md` §3). Every
- * money field is declared optional so redaction can *delete* the key rather
- * than nulling it — the same absent-not-zero rule the wire contract uses
- * everywhere else.
+ * Reports' wire types (`docs/backend-modules/04-API-CONTRACT.md` §3): counts
+ * of orders, pieces and parties. The software carries no amounts.
  */
 
 import type { IsoDate, RecordId } from './entities.js';
@@ -32,20 +30,17 @@ export interface ReportRange {
 export interface ReportTotals {
   orderCount: number;
   boxCount: number;
-  totalValue?: number;
 }
 
 export interface DispatchMonthBucket {
   month: string;
   orderCount: number;
   boxCount: number;
-  totalValue?: number;
 }
 
 export interface DispatchColourBucket {
   colour: string;
   boxCount: number;
-  totalValue?: number;
 }
 
 export interface DispatchesReport {
@@ -54,7 +49,6 @@ export interface DispatchesReport {
   months: DispatchMonthBucket[];
   colours: DispatchColourBucket[];
   totals: ReportTotals;
-  ratesIncluded: boolean;
 }
 
 export type LeadOutcome = 'converted' | 'lost' | 'quiet' | 'open';
@@ -81,23 +75,19 @@ export interface TopPartyRow {
   partyCode: string | null;
   city: string | null;
   orderCount: number;
-  totalValue?: number;
 }
 
 export interface TopCityRow {
   city: string | null;
   partyCount: number;
   orderCount: number;
-  totalValue?: number;
 }
 
 export interface TopPartiesReport {
   range: ReportRange;
   parties: TopPartyRow[];
   cities: TopCityRow[];
-  orderedBy: 'value' | 'orderCount';
   limit: number;
-  ratesIncluded: boolean;
 }
 
 export type ReportKind = 'dispatches' | 'lead-outcomes' | 'top-parties';
@@ -115,20 +105,10 @@ export type ReportFormat = 'csv' | 'pdf';
 export type ReportPaperSize = 'a4' | 'letter';
 export type ReportOrientation = 'portrait' | 'landscape';
 
-/**
- * One column of an exported report.
- *
- * `money` is the field that carries the rule. **A redacted money column keeps
- * its header and empties its cells** — it is not dropped and it is never
- * zeroed. Absent-key is the JSON wire rule, where a missing property is the
- * only way to say "not yours"; a table has a fixed shape, so dropping the
- * column would silently change what every other column means by position, and
- * a `0` would be a factual claim that the figure is nothing.
- */
+/** One column of an exported report. */
 export interface ReportColumn {
   key: string;
   labelToken: MessageKey;
-  money?: boolean;
 }
 
 export const REPORT_COLUMNS: Record<ReportKind, readonly ReportColumn[]> = {
@@ -136,7 +116,6 @@ export const REPORT_COLUMNS: Record<ReportKind, readonly ReportColumn[]> = {
     { key: 'month', labelToken: 'reports.column.month' },
     { key: 'orderCount', labelToken: 'reports.column.orderCount' },
     { key: 'boxCount', labelToken: 'reports.column.boxCount' },
-    { key: 'totalValue', labelToken: 'reports.column.totalValue', money: true },
   ],
   'lead-outcomes': [
     { key: 'month', labelToken: 'reports.column.month' },
@@ -151,7 +130,6 @@ export const REPORT_COLUMNS: Record<ReportKind, readonly ReportColumn[]> = {
     { key: 'partyCode', labelToken: 'reports.column.partyCode' },
     { key: 'city', labelToken: 'reports.column.city' },
     { key: 'orderCount', labelToken: 'reports.column.orderCount' },
-    { key: 'totalValue', labelToken: 'reports.column.totalValue', money: true },
   ],
 };
 
@@ -167,7 +145,7 @@ export interface ReportExportOptions {
   format?: ReportFormat;
   /** Column keys, in the order asked for. Omitted means every column. */
   columns?: string[];
-  /** Append a totals row. Text columns are blank in it; counts and money sum. */
+  /** Append a totals row. Text columns are blank in it; counts sum. */
   totals?: boolean;
   paperSize?: ReportPaperSize;
   orientation?: ReportOrientation;
