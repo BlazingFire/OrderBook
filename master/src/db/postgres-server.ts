@@ -52,11 +52,13 @@ function candidateBinDirs(): string[] {
    * Binaries bundled into the packaged app (production on the shop PC).
    *
    * Two layouts, tried in that order, both written by `vendorPostgres()` in
-   * `tools/release.mjs`. A universal macOS build carries both architectures
-   * under `vendor/postgres/<arch>/` because one app file runs on Intel and
-   * Apple silicon and the server binaries do not; every other target vendors
-   * one architecture and keeps the flat layout. No platform conditional here:
-   * Windows and Linux simply miss the first candidate.
+   * `tools/release.mjs`. A universal macOS build carries both `darwin-*`
+   * packages under `vendor/postgres/<arch>/`, because one app file runs on
+   * Intel and Apple silicon and nothing guarantees a package's binaries run on
+   * both (in 17.10.0-beta.17 each package happens to ship the same universal
+   * binaries); every other target vendors one architecture and keeps the flat
+   * layout. No platform conditional here: Windows and Linux simply miss the
+   * first candidate.
    */
   candidates.push(path.join(config.packageRoot, 'vendor', 'postgres', process.arch, 'bin'));
   candidates.push(path.join(config.packageRoot, 'vendor', 'postgres', 'bin'));

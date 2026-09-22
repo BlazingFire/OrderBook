@@ -190,6 +190,41 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-22 (release) — macOS universal build fixed; relative library links on every OS (Claude)
+
+Scope: the owner asked for the macOS release build to be fixed.
+
+**Root cause.** `fs.cp` without `verbatimSymlinks` rewrites relative
+symlinks as absolute paths. `vendorPostgres()` and the staging copy used it on
+PostgreSQL's `native/lib` (SONAME links), so every packaged Master — Linux
+AppImage/.deb included — linked into the build machine's `node_modules`. On
+macOS, `@electron/universal` refused to merge files that resolved outside the
+app. Second cause: the Apple silicon runner installs only arm64 platform
+packages, so the universal app lacked Intel PostgreSQL and Intel `sharp`.
+
+**Changed.** `tools/release.mjs`: `verbatimSymlinks` on both copies;
+`TARGETS.mac.universal`; `ensureUniversalPackages()` (fetch every non-dev
+`*darwin-(arm64|x64)` lockfile package missing on disk at its pinned version,
+refetch a wrong version, run its postinstall only if `allowScripts` approves it
+and refuse otherwise); `universalSiblings()` (stage the other-arch twin of every
+darwin package in the production tree); `assertUsablePostgres` now checks every
+`pg-symlinks.json` link resolves. Both panels' `electron-builder.yml`:
+`mac.x64ArchFiles: Contents/Resources/panel/**` and `mac.publish: null`; the
+signing comment corrected (no ad-hoc fallback in electron-builder 25). The bash
+fetch step in `release.yml` is gone. `master/tests/packaging-invariants.test.ts`
++3 guards, each seen failing against the previous code.
+
+**Verified.** Release workflow, build-only on `dev` at `27c8bd2`: Windows,
+Linux and macOS legs all green (the mac leg had never passed). Locally:
+`node tools/release.mjs --os linux --panel master` built the AppImage and .deb;
+`linux-unpacked` has 0 absolute and 0 dangling links; a copy of its
+`vendor/postgres` moved elsewhere runs `postgres --version` with every library
+resolved from its own `lib/`. The link check was exercised on the real tree
+(14 links, 0 missing) and on a copy with a library deleted (2 missing).
+An independent review walked `@electron/universal` 2.0.1 and electron-builder
+25.1.8 source and found no blocking bug. **Not verified:** launching the Mac
+app on real Intel and Apple silicon machines.
+
 ### 2026-09-22 (consolidation) — Every branch onto `main`, `dev` reset, dead code removed (Claude)
 
 Scope: the owner asked for all work on `main`, the other branches gone, a fresh

@@ -171,13 +171,18 @@ mac:
   # identical Mach-O file unless it matches this pattern. The Electron binaries
   # themselves differ per half and are still merged.
   x64ArchFiles: Contents/Resources/panel/**
+  # As under `linux:` — `npm run release` makes electron-builder's publish
+  # policy "always", and with a GitHub token in the environment it would try
+  # to publish the .dmg itself. `publish()` in tools/release.mjs owns that.
+  publish: null
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: installer/entitlements.mac.plist
   entitlementsInherit: installer/entitlements.mac.plist
   # An identity is picked up from the keychain when one is present; without
-  # one electron-builder ad-hoc signs, which runs locally but not on another
-  # Mac without a right-click Open. Notarisation needs APPLE_ID,
+  # one electron-builder 25 skips signing altogether (it has no ad-hoc
+  # fallback), so hardenedRuntime and the entitlements only take effect once
+  # an identity exists, and a downloaded copy needs a right-click Open. Notarisation needs APPLE_ID,
   # APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID in the environment — an
   # account and a purchase, not a code change.
   notarize: false

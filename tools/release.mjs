@@ -315,7 +315,9 @@ const DARWIN_ARCH = /(^|[-/])darwin-(arm64|x64)$/;
  * machine, so an Apple silicon build machine has `@img/sharp-darwin-arm64` and
  * `@embedded-postgres/darwin-arm64` and neither Intel counterpart. A universal
  * app made from that tree starts on an Intel Mac and fails the first time it
- * decodes a photo or creates its database.
+ * decodes a photo (`sharp` loads `@img/sharp-<platform>-<arch>`), and
+ * `vendorPostgres()` refuses to run without both `darwin-*` PostgreSQL
+ * packages.
  *
  * Every non-dev `…darwin-arm64` / `…darwin-x64` package the lockfile pins is
  * fetched at its pinned version if it is missing — `npm pack`, then unpacked
@@ -335,7 +337,13 @@ function ensureUniversalPackages() {
     if (!DARWIN_ARCH.test(name) || entry.dev) continue;
 
     const dir = path.join(ROOT, 'node_modules', ...name.split('/'));
-    if (existsSync(path.join(dir, 'package.json'))) continue;
+    const installed = path.join(dir, 'package.json');
+    // Present at the pinned version is done; present at any other version is
+    // a stale copy from an older lockfile and is replaced.
+    if (existsSync(installed)) {
+      if (JSON.parse(readFileSync(installed, 'utf8')).version === entry.version) continue;
+      rmSync(dir, { recursive: true, force: true });
+    }
 
     const tarball = execFileSync('npm', ['pack', `${name}@${entry.version}`, '--silent'], {
       cwd: tmpdir(),
@@ -352,7 +360,15 @@ function ensureUniversalPackages() {
 
     const manifest = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
     const postinstall = manifest.scripts?.postinstall;
-    if (postinstall && allow[`${name}@${entry.version}`] === true) {
+    if (postinstall) {
+      // Refused rather than skipped: `@embedded-postgres/*` recreates its
+      // library links in this script, and a package without them builds
+      // cleanly and fails on the customer's first boot.
+      if (allow[`${name}@${entry.version}`] !== true) {
+        throw new Error(
+          `${name}@${entry.version} needs its postinstall and package.json allowScripts does not approve it`,
+        );
+      }
       execFileSync(postinstall, { cwd: dir, shell: true, stdio: 'inherit' });
     }
     console.log(`  fetched ${name}@${entry.version} for the universal build`);
@@ -400,11 +416,12 @@ function universalSiblings(tree) {
  *
  * macOS is the two-package case. `arch: [universal]` produces one app that
  * runs on both Intel and Apple silicon, but `extraResources` is copied
- * identically into both halves of the merge, so a single-arch vendor ships an
- * app that starts on the build machine and cannot create a database on the
- * other half of its own audience. `candidateBinDirs()` in
+ * identically into both halves of the merge, so the staged tree has to hold
+ * whatever each architecture needs. `candidateBinDirs()` in
  * `master/src/db/postgres-server.ts` looks under `process.arch` first for
- * exactly this layout.
+ * exactly this layout. (In 17.10.0-beta.17 the two `darwin-*` packages ship
+ * byte-identical universal binaries, so this carries the same ~130 MB twice;
+ * vendoring one when the trees match is a size saving still to take.)
  */
 async function vendorPostgres() {
   const packages = RELEASE_TARGET.postgres;
@@ -465,6 +482,25 @@ async function assertUsablePostgres(dir, pkg) {
     // them set, so this is a real check on macOS and Linux and a no-op on win32.
     if (exe === '' && (info.mode & 0o111) === 0) {
       throw new Error(`${file} is not executable (mode ${(info.mode & 0o777).toString(8)})`);
+    }
+  }
+
+  /*
+   * Every library link the package declares, present and resolving.
+   *
+   * `postgres` links against the link names (`libzstd.1.dylib`,
+   * `libpq.so.5`), not the files they point at, so a tree whose links were
+   * never recreated, or were rewritten to a path on this machine, still has
+   * a `bin/` and a `share/` and fails only at runtime. `existsSync` follows
+   * the link, so a dangling one reads as missing.
+   */
+  const links = JSON.parse(
+    await readFile(path.join(dir, 'pg-symlinks.json'), 'utf8').catch(() => '[]'),
+  );
+  for (const { target } of links) {
+    const link = path.join(dir, target.replace(/^native\//, ''));
+    if (!existsSync(link)) {
+      throw new Error(`${pkg} vendored without the library link ${path.relative(dir, link)}`);
     }
   }
 

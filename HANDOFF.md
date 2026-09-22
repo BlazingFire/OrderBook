@@ -78,8 +78,9 @@ against the code before acting on it.
   (resolves `tsc`/`vite` from `node_modules/.bin` by path, points
   `TEMP`/`TMP` at a gitignored `.tmp/` for the Windows esbuild/Defender lock).
 - **Releases:** `.github/workflows/release.yml` builds on a three-OS matrix
-  (Windows setup + standalone, macOS `.dmg`, Linux AppImage + `.deb`; the
-  macOS leg currently fails — see "Owed work"). A push
+  (Windows setup + standalone, macOS universal `.dmg` + `.zip`, Linux
+  AppImage + `.deb`) — **all three legs green since 2026-09-22** (build-only
+  run on `dev` at `27c8bd2`). A push
   to `main` whose `package.json` version has no release yet publishes
   `v<version>`; unsigned (no `RELEASE_KEY` secret) it is a **draft**, which no
   panel installs. A manual run on any branch builds into a draft pre-release
@@ -319,14 +320,16 @@ docs/          all prose; nothing source-of-truth lives in a code comment
   consolidation has been run in a browser).
 - An install / update / uninstall rehearsal on a real Windows PC, and a run of
   the standalone `.exe` (`docs/PRODUCTION_READINESS.md` §2 item 4).
-- **The macOS build fails in CI.** Its first real runs (2026-09-22) found two
-  problems. The Apple silicon runner installs only its own PostgreSQL
-  package; a workflow step now fetches the Intel one. After that,
-  electron-builder's universal merge refuses with *"the number of mach-o files
-  is not the same between the arm64 and x64 builds"* — the vendored
-  PostgreSQL dylibs differ between the two halves. Not fixed. Options: build
-  separate `x64` and `arm64` `.dmg`s instead of `universal`, or declare the
-  vendored tree in `mac.x64ArchFiles`. Windows and Linux legs are green.
+- **The macOS app has been built, never run.** CI produces the universal
+  `.dmg`, unsigned (electron-builder 25 has no ad-hoc fallback, so without an
+  identity nothing is signed and a downloaded copy needs a right-click Open).
+  Launch it on an Intel and an Apple silicon Mac: first boot must create the
+  database, and a product photo upload exercises `sharp`.
+- **Rebuild the v1.2.0 draft before publishing it.** Its Linux files were
+  built before the library-link fix (they carry absolute links into the
+  build machine and cannot start PostgreSQL elsewhere) and it has no macOS
+  files. Delete the draft `v1.2.0` release on GitHub, then run the Release
+  workflow on `main` with *publish* ticked.
 - Responsive gate: 1024×768 / 1366×768 / 1920×1080 / 3840×2160 at 79 % /
   100 % / 157 %, sidebar in all three modes.
 
@@ -369,6 +372,12 @@ terms, multiple contacts); concurrent edits of one lead from two panels
   `activity.<entity>.<action>` string.
 - **electron-builder runs `npm install --omit=dev`** and prunes the root
   `node_modules`; both `electron-builder.yml` set `npmRebuild: false`.
+- **`fs.cp` rewrites a relative symlink as an absolute one** unless given
+  `verbatimSymlinks: true`. PostgreSQL's `native/lib` is mostly SONAME links,
+  so every packaged Master once carried links into the build machine's
+  `node_modules`: it worked where it was built and nowhere else. Both copies
+  in `tools/release.mjs` now keep links verbatim, and `assertUsablePostgres`
+  checks every link in `pg-symlinks.json` resolves.
 - **A build output folder keeps the last build.** Match the exact filename and
   clear the folder first. macOS `universal` needs both architectures'
   PostgreSQL vendored (`extraResources` is identical in both halves).
@@ -391,6 +400,13 @@ terms, multiple contacts); concurrent edits of one lead from two panels
 Condensed. The full entries are in `git show 5b8ebe2:HANDOFF.md` and in
 `docs/AI_COLLABORATION.md`.
 
+- **2026-09-22 — macOS build fixed, library links fixed on every OS
+  (Claude).** Vendored PostgreSQL links kept relative (`verbatimSymlinks`);
+  the universal Mac build fetches and stages both architectures of every
+  native package (`ensureUniversalPackages`, `universalSiblings`) and leaves
+  the staged panel out of the lipo (`x64ArchFiles`). All three Release legs
+  green; a local Linux build has 0 absolute links and a relocated copy of its
+  PostgreSQL loads every library.
 - **2026-09-22 — Branch consolidation and cleanup (Claude).** Merged
   amazing-lovelace, hopeful-lovelace and vibrant-ride into `main`, reset `dev`
   to `main`, and listed the rest for the owner to delete. Removed dead code: 15
