@@ -39,10 +39,11 @@ contextBridge.exposeInMainWorld('orderbook', {
   chooseDirectory: (): Promise<string | null> =>
     ipcRenderer.invoke('orderbook:chooseDirectory') as Promise<string | null>,
 
-  getShellSettings: (): Promise<{ openAtLogin: boolean; logFile: string }> =>
+  getShellSettings: (): Promise<{ openAtLogin: boolean; logFile: string; standalone: boolean }> =>
     ipcRenderer.invoke('orderbook:getShellSettings') as Promise<{
       openAtLogin: boolean;
       logFile: string;
+      standalone: boolean;
     }>,
 
   setShellSettings: (value: { openAtLogin: boolean }): Promise<boolean> =>

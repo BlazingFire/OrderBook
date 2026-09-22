@@ -47,17 +47,27 @@ as design rationale. They were written before the code and several of their
 stated facts did not survive contact with the tree — check a design's claim
 against the code before acting on it.
 
-## Current state (2026-09-21)
+## Current state (2026-09-22)
 
-- **Version 1.1.0** on `main`, which on 2026-09-19 merged two lines that had
-  diverged for eight days: the v1.1.0 line (pricing switch, assistant removed,
-  sidebar sub-pages, free-to-sell switch, esbuild fix, dead-code pass) and the
-  laptop line (PDF Designer removed, sample data, the product model → variant
-  restructure). Where the two decided the same thing differently, the later
-  decision won: the product hierarchy is the **variant** model, not
-  `colour_policy`; the Designer is gone; the assistant is gone. `main` is the
-  working branch; the owner commits and pushes to it directly. `dev` and the
-  `claude/*` branches are historical and behind — do not branch from them.
+- **Version 1.2.0** — the first build meant for customers, on branch
+  `claude/amazing-lovelace-r5851k` until the owner merges it to `main`. It
+  adds the **standalone `.exe`** beside each setup file, the **pre-update
+  database copy**, the **additive-migrations guard**, and fixes the thirteen
+  update tests that kept CI red on `main`. The rule from here on is the
+  owner's: *an update replaces the software and never the data* —
+  `docs/PRODUCTION_READINESS.md` is the checklist for shipping under it, and
+  its §2 lists what only the owner can decide (signing key, 1.0.3 data,
+  code-signing certificate).
+- **Version 1.1.0** was the previous `main`, which on 2026-09-19 merged two
+  lines that had diverged for eight days: the v1.1.0 line (pricing switch,
+  assistant removed, sidebar sub-pages, free-to-sell switch, esbuild fix,
+  dead-code pass) and the laptop line (PDF Designer removed, sample data, the
+  product model → variant restructure). Where the two decided the same thing
+  differently, the later decision won: the product hierarchy is the
+  **variant** model, not `colour_policy`; the Designer is gone; the assistant
+  is gone. `main` is the working branch; the owner commits and pushes to it
+  directly. `dev` and the older `claude/*` branches are historical and behind
+  — do not branch from them.
 - **Every stage of the overhaul programme is implemented**, plus everything
   listed under "Recent sessions". What is still owed is manual verification
   (below) and the items under "Owed work".
@@ -71,20 +81,24 @@ against the code before acting on it.
   machine, not the code. Run the three steps separately and check each exit
   code.
 - **Builds:** `npm run build` is green for shared, both servers and both
-  web bundles. The esbuild "`remove …\esbuild-…: Access is denied`" failure
-  on this PC is fixed at the source: both `web` workspaces' `build` scripts
-  point `TEMP`/`TMP` at a project-local `.tmp/` (gitignored) before `vite
-  build`, so `start:master` / `start:office` work without any manual step.
-  **Fixed 2026-09-21:** that script's `if not exist … mkdir … && …` was
-  parsed by cmd as one `if` body, so once `.tmp/` existed every later build
-  exited 0 *without running `vite build`* — the bundles on disk were from
-  2026-09-19. The `if` is parenthesised now; check the bundle's timestamp
-  if a UI change ever seems not to land.
+  web bundles, **on every OS** since 2026-09-22: both `web` workspaces'
+  `build` scripts run `tools/build-web.mjs`, a Node script that points
+  `TEMP`/`TMP` at a project-local `.tmp/` (gitignored) and then runs `tsc -b`
+  and `vite build`. That replaces the `cmd.exe` one-liner of 2026-09-14/21,
+  which fixed the esbuild "`remove …\esbuild-…: Access is denied`" failure on
+  this PC but was a syntax error for `sh`, so the CI workflow's build step
+  had failed on every push since and a Mac could not build the panels. If a
+  UI change ever seems not to land, check the bundle's timestamp.
 - **Installers:** `C:\OrderBook-Releases` still holds the 1.0.3 setup files.
   `npm run release` (electron-builder) hangs on this PC — same machine-level
   permission sickness as PostgreSQL above. Build inputs are refreshed; a
   release run on a healthy machine (or after a reboot / Defender exclusion
-  for the repo) should work.
+  for the repo) should work. **GitHub builds them too:** every push to `main`
+  runs `.github/workflows/release.yml` on a Windows runner; 1.0.2, 1.0.3 and
+  1.1.0 exist there as unsigned **drafts** (no `RELEASE_KEY`), which no panel
+  installs. A manual run of the workflow on any branch builds without
+  publishing, into a draft pre-release named after the commit. Each panel
+  now produces `-Setup.exe` **and** `-Standalone.exe` (+ `.sha256`).
 - **Live databases:** external PostgreSQL via `.env` `DATABASE_URL` on both
   of the owner's machines (`order_book` on the PC, `order_book_new` on the
   laptop). **The first Master started from this `main` runs migration
@@ -319,6 +333,16 @@ panels (last-write-wins is the default); app name/branding.
   validates before running anything). Keep both, make both `IF NOT EXISTS`.
 - **A migration must never import a live shared constant.** Inline what it
   writes; a migration is a historical fact.
+- **A migration after 1.2.0 must never destroy data.**
+  `master/tests/migration-data-safety.test.ts` reads every `up()` after
+  `20260324000000_product_master_trim` and fails on TRUNCATE, DROP TABLE,
+  DROP COLUMN, DELETE FROM and their Knex spellings (comments stripped first).
+  It is a tripwire, not a proof: an `UPDATE … SET x = NULL` gets past it, so
+  read a migration for what it loses, not only for what the regex finds.
+- **The update tests describe Windows builds and pin `process.platform` to
+  `win32`** (`updates.test.ts`, `github-releases.test.ts`). Before that they
+  passed on the owner's PCs and failed on every Linux/Mac runner, and CI on
+  `main` was red for it. Do not "fix" a fixture by giving it the host platform.
 - **`master/tests/i18n-tokens.test.ts` is load-bearing.** Every literal
   `(entityType, action)` given to `recordActivity` needs an
   `activity.<entity>.<action>` string or the Logs screen renders the raw key.
@@ -426,6 +450,74 @@ Traps this leaves:
 - **`master/tests/github-releases.test.ts` and `master/tests/updates.test.ts`
   fail on this branch already** (13 tests). Verified by stashing and re-running;
   they are about the releases folder, not any recent change.
+### 2026-09-22 (evening) — 1.2.0: standalone `.exe`, pre-update database copy, additive-migrations guard, CI green (Claude)
+
+The owner asked for an updated `.exe` build of the 1.0.3 Master and Office
+panels, made *standalone*, and added mid-session that this version goes to
+customers and that from now on an update must replace the software and never
+lose data. Delivered on `claude/amazing-lovelace-r5851k`:
+
+- **Version 1.2.0** across every package (`npm version … --workspaces`).
+- **Standalone build.** electron-builder's `portable` target added to both
+  `electron-builder.yml`s (`requestExecutionLevel: user`, fixed
+  `unpackDirName`, `OrderBook-<Panel>-<version>-Standalone.exe`). The shell
+  detects it from the launcher's `PORTABLE_EXECUTABLE_FILE`
+  (`electron/lib/standalone.ts`): it refuses `applyUpdate`, reports
+  `standalone` through `getShellSettings`, registers the login item against
+  the real `.exe` rather than the `%TEMP%` copy, and says on the uninstall
+  dialog that the file is the person's to delete. Both Updates screens show
+  `updates.standaloneBody` instead of the Install button. `tools/release.mjs`
+  expects and publishes the standalone file with a `.sha256`; the workflow
+  adds both to the release assets.
+- **Pre-update database copy** (`master/src/db/cluster-snapshot.ts`, wired
+  into `index.ts` before `startPostgres()`): the stopped cluster is copied to
+  `<data>/backups/before-<version>-<stamp>/` on the first boot of a version,
+  `booted-version` is written after the migrations succeed, the newest two
+  copies are kept. Fails soft; skipped for `DATABASE_URL`, a live postmaster,
+  a full drive, or `ORDERBOOK_UPGRADE_SNAPSHOT=0`.
+- **Additive-migrations guard** (`master/tests/migration-data-safety.test.ts`):
+  every migration after `20260324000000_product_master_trim` must be free of
+  TRUNCATE / DROP TABLE / DROP COLUMN / DELETE FROM and the Knex equivalents
+  in `up()`. Seen to fail on a probe migration, then removed.
+- **CI on `main` was red**, twice over — thirteen tests in `updates.test.ts`
+  and `github-releases.test.ts` describe Windows fixtures and compared them
+  to the runner's platform (both suites now pin `process.platform` to
+  `win32`), and the workflow's `npm run build` step died on the web
+  workspaces' `cmd.exe` build one-liner (now `tools/build-web.mjs`, see
+  *Builds* above). On the branch: 120 files / 1424 tests pass on the Ubuntu
+  runner, integration suites included, and the build step passes.
+- **The Windows build is proven on GitHub's runner:** the release workflow,
+  dispatched on the branch, produced all eight files (Master Setup and
+  Standalone 131 MB each, Office Setup and Standalone 84 MB each, two
+  `.sha256`, two manifests) into the draft pre-release `build-1.2.0-<sha>`.
+- **Release workflow:** a manual run on any branch now builds into a draft
+  pre-release named `build-<version>-<sha>` (never seen by a panel) instead
+  of publishing; `publish: true` or a push to `main` publishes for real, with
+  the tag on the built commit (`--target`).
+- **Docs:** `docs/PRODUCTION_READINESS.md` (the checklist for shipping to
+  customers, and the list of decisions only the owner can make),
+  `docs/UPDATES.md`, `README.md`, `AGENTS.md`, `.env.example`.
+
+Not done here, and not doable from a Linux container: an install / update /
+uninstall rehearsal on a real Windows PC, and a run of the standalone build.
+`docs/PRODUCTION_READINESS.md` §2 item 4 is that rehearsal.
+
+Traps this leaves:
+
+- **A 1.0.3 machine updated to 1.2.0 loses its products, leads and orders**
+  — the variant and trim migrations run on its first boot. The automatic
+  copy keeps the old cluster, but nothing brings those rows forward. The
+  owner decides what happens to any such machine before 1.2.0 ships.
+- **No installed panel will offer an update by itself until the signing key
+  exists** (or the machine sets `ORDERBOOK_ALLOW_UNSIGNED_RELEASES=1`).
+  `TRUSTED_RELEASE_KEYS` is still empty; the three GitHub releases are
+  unsigned drafts. Ordering rule in `docs/UPDATES.md`.
+- The pre-update copy is a **stopped-cluster file copy**; it is skipped when
+  `postmaster.pid` names a live process (an orphan from a hard kill). The
+  next clean start takes it.
+- The standalone Master gets **no firewall rules** — Windows asks on first
+  run, once, because the unpack folder is fixed. Cancelling that prompt
+  breaks discovery silently, exactly as the installer's hook comment warns.
 
 ### 2026-09-22 (later still) — Crop editor: horizontal, load states, every image format (Claude)
 

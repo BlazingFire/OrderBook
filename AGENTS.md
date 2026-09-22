@@ -41,6 +41,11 @@ There is no AI assistant.
 - **Branching:** work lands on `main` directly. `dev` is historical and behind.
 - **Never delete or rewrite a migration** that may have run anywhere
   (`master/src/db/migrations/`, pinned by `migration-registry.test.ts`).
+- **Migrations after 1.2.0 only add.** Customers run this software; an update
+  replaces the program and never the data. No truncate, dropped table or
+  column, or deleted rows in `up()` — `migration-data-safety.test.ts` fails
+  the build otherwise, and an exemption is the owner's decision, not a fix.
+  See `docs/PRODUCTION_READINESS.md`.
 - **Documentation and code live separately** — prose in `docs/`, source in the
   workspaces. No source-of-truth doc buried in a code comment.
 - **Single-writer**: the Master owns all persistent state. Office panels forward

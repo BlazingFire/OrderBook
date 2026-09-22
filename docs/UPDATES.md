@@ -118,6 +118,51 @@ directory precisely so an installer cannot delete them), and migrations run on
 next boot. Downgrading is not supported — a migration that has run is not
 expected to un-run.
 
+Two more things hold that line from 1.2.0 on, the version customers run:
+
+- **Migrations only add.** `master/tests/migration-data-safety.test.ts` fails
+  `npm run verify` on any migration after `20260324000000_product_master_trim`
+  whose `up()` truncates, drops a table or column, or deletes rows. Two
+  migrations before that line did exactly those things, by the owner's
+  decision at the time; nothing after it may, without the owner's sign-off
+  and a written record.
+- **The database is copied before a new version's first boot.** With the
+  cluster still stopped, the Master copies `<data>\postgres` to
+  `<data>\backups\before-<version>-<stamp>\postgres`, writes a `README.txt`
+  with the restore steps beside it, keeps the newest two copies and removes
+  older ones. It is skipped when this version has booted here before
+  (`<data>\booted-version`), on a first run, when a PostgreSQL process is
+  still holding the cluster, when the drive lacks the room, and on any
+  machine with `ORDERBOOK_UPGRADE_SNAPSHOT=0`; a copy that cannot be taken is
+  logged and the boot goes on. External databases (`DATABASE_URL`) are not
+  copied — whoever runs them keeps their backups.
+
+To go back after a bad update: quit the Master, rename `<data>\postgres` aside,
+copy the `postgres` folder out of the newest `backups\before-…`, and reinstall
+the previous build. The `README.txt` in the copy says the same.
+
+## The standalone build
+
+Beside each `-Setup.exe` the release makes an `OrderBook-<Panel>-<version>-
+Standalone.exe`: the same panel as one file that runs without being installed
+(electron-builder's `portable` target). It unpacks under `%TEMP%` on each
+launch, needs no administrator rights, and keeps its data in exactly the same
+directory as the installed build — so a customer can start on the standalone
+file and move to the installer later, or replace one standalone file with a
+newer one, without touching a record.
+
+What it cannot do is install an update over itself: there is no installer to
+hand the setup file to, and running one would leave two copies sharing one
+database. The Updates screen says to replace the file instead, and the shell
+refuses to launch an installer from a standalone build. Windows asks about the
+firewall on its first run, since no installer added the rules.
+
+The standalone file is not in `latest.json` — the manifest describes what the
+update path installs — but it is published with a `.sha256` beside it so a
+copy that crossed a USB stick can be checked (`certutil -hashfile <file>
+SHA256`). The Master's releases-folder sweep leaves standalone files alone;
+old ones are the operator's to delete.
+
 ## What stops a bad update
 
 Roughly in the order an attacker meets them:

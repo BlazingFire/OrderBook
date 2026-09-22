@@ -2297,6 +2297,8 @@ export const EN_MESSAGES = {
     '{count} panel(s) are on a different version from this Master ({version}). They keep working — a panel is never blocked for being out of step.',
   'updates.someUnknown':
     '{count} panel(s) have not reported a version yet. They will the next time they connect.',
+  'updates.standaloneBody':
+    'This is the standalone build, which cannot install an update over itself. Get the new standalone file, close this window, and replace the old file with it. The database and every setting stay exactly where they are.',
   'updates.statusLabel': 'Against the Master',
   'updates.table.version': 'Version',
   'updates.thisMachine': 'This Master',

@@ -44,6 +44,7 @@ import {
   writeDataDirOverride,
   writeShellSettings,
 } from './lib/settings.js';
+import { detectStandaloneBuild, loginItemOptions } from './lib/standalone.js';
 import { canRestart, isExpectedExit, pruneRestarts, RESTART_LIMIT } from './lib/supervisor.js';
 import { uninstallCommand, uninstallScriptsDir } from './lib/uninstall.js';
 
@@ -77,6 +78,13 @@ export function runPanelShell(config: PanelShellConfig): void {
    * no `orderbook` bridge, which the page reads as "not the desktop app".
    */
   const here = path.dirname(fileURLToPath(import.meta.url));
+
+  /**
+   * The standalone `.exe`, or `null` for an installed build. Decided once:
+   * the launcher's variables do not change while the process lives, and three
+   * handlers below turn on the answer (see `lib/standalone.ts`).
+   */
+  const standalone = detectStandaloneBuild(process.env, app.isPackaged);
 
   let serverProcess: ChildProcess | null = null;
   let mainWindow: BrowserWindow | null = null;
@@ -524,6 +532,18 @@ export function runPanelShell(config: PanelShellConfig): void {
    * still ask for an update; it cannot choose what gets installed.
    */
   ipcMain.handle('orderbook:applyUpdate', async (): Promise<boolean> => {
+    /*
+     * The standalone build has no installer to hand the setup file to. Running
+     * it would install a second, per-machine copy beside this one and leave
+     * the person with two panels sharing one data directory. The Updates
+     * screen already knows (`getShellSettings().standalone`) and does not offer
+     * the button; this is the guard for a page that asks anyway.
+     */
+    if (standalone) {
+      say('Refused to update: this is the standalone build, which is replaced by hand');
+      return false;
+    }
+
     const outcome = await pollHealth();
     if (outcome.kind !== 'ready') {
       say('Refused to update: the panel did not answer its own health check');
@@ -657,14 +677,22 @@ export function runPanelShell(config: PanelShellConfig): void {
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
 
+  /*
+   * `loginItemOptions` on every login-item call, read and write alike: a
+   * standalone build must register the `.exe` the person keeps, not the copy
+   * under %TEMP% it is running from, which is gone by the next morning.
+   */
   ipcMain.handle('orderbook:getShellSettings', () => ({
-    openAtLogin: app.isPackaged ? app.getLoginItemSettings().openAtLogin : false,
+    openAtLogin: app.isPackaged
+      ? app.getLoginItemSettings(loginItemOptions(standalone)).openAtLogin
+      : false,
     logFile: logPath(),
+    standalone: standalone !== null,
   }));
 
   ipcMain.handle('orderbook:setShellSettings', (_event, value: unknown) => {
     const openAtLogin = (value as { openAtLogin?: unknown } | null)?.openAtLogin === true;
-    if (app.isPackaged) app.setLoginItemSettings({ openAtLogin });
+    if (app.isPackaged) app.setLoginItemSettings({ openAtLogin, ...loginItemOptions(standalone) });
     return true;
   });
 
@@ -711,9 +739,13 @@ export function runPanelShell(config: PanelShellConfig): void {
       cancelId: 1,
       title: `Uninstall ${config.productName}?`,
       message: `${config.productName} will be removed from this computer.`,
-      detail: keepData
-        ? 'The database, the uploaded photos and the settings stay on this computer, so installing the panel again picks them up where they were.'
-        : 'The database, the uploaded photos and the settings will be deleted as well. Every party, lead and order kept on this computer goes with them. This cannot be undone.',
+      detail:
+        (keepData
+          ? 'The database, the uploaded photos and the settings stay on this computer, so installing the panel again picks them up where they were.'
+          : 'The database, the uploaded photos and the settings will be deleted as well. Every party, lead and order kept on this computer goes with them. This cannot be undone.') +
+        (standalone
+          ? `\n\nThis is the standalone build, so there is no program folder to remove. Delete the file yourself afterwards: ${standalone.executable}`
+          : ''),
     });
 
     if (choice.response !== 0) return false;
@@ -804,6 +836,7 @@ export function runPanelShell(config: PanelShellConfig): void {
   void app.whenReady().then(async () => {
     log = openLogFile(logPath(), !app.isPackaged);
     say(`${config.productName} ${app.getVersion()} starting`);
+    if (standalone) say(`Standalone build, launched from ${standalone.executable}`);
 
     process.on('uncaughtException', (error) => say(`Uncaught exception: ${String(error)}`));
     process.on('unhandledRejection', (reason) => say(`Unhandled rejection: ${String(reason)}`));
@@ -816,7 +849,7 @@ export function runPanelShell(config: PanelShellConfig): void {
       // launch and silently re-enabled auto-start for anyone who turned it off.
       const settings = readShellSettings(settingsPath());
       if (!settings.autoStartDefaultApplied) {
-        app.setLoginItemSettings({ openAtLogin: true });
+        app.setLoginItemSettings({ openAtLogin: true, ...loginItemOptions(standalone) });
         writeShellSettings(settingsPath(), { ...settings, autoStartDefaultApplied: true });
       }
     }
