@@ -247,32 +247,6 @@ table:not(:where([class*='ob-'])) td {
 
 /* --- Colour quantity rows -------------------------------------------------- */
 
-/* --- Sync bar ---------------------------------------------------------------*/
-
-.sync-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--s-12);
-  flex-wrap: wrap;
-  padding: var(--s-8) var(--s-12);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--bg-surface);
-  margin-bottom: var(--s-12);
-  font-size: var(--t-small-size);
-}
-
-.sync-bar.offline {
-  background: var(--state-offline-tint);
-  border-color: var(--state-offline);
-}
-
-.sync-bar .spacer {
-  flex: 1 1 auto;
-}
-
-/* --- Timeline ---------------------------------------------------------------- */
-
 /* --- Misc --------------------------------------------------------------------- */
 
 .num {

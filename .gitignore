@@ -43,8 +43,8 @@ Thumbs.db
 .claude/launch.json
 
 # Operator-supplied catalogue source and working fixtures — untracked by
-# design (see docs/ai-handoffs/product-csv-import.md). The reload script reads
-# them from a dev machine, never from a packaged panel.
+# design. The reload script reads them from a dev machine, never from a
+# packaged panel.
 CATA.pdf
 dummy-data/
 

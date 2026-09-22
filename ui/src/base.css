@@ -1740,38 +1740,6 @@ html[data-window-blur='true'] .ob-busy rect {
   cursor: default;
 }
 
-.ob-radio-box {
-  width: 1.1429rem;
-  height: 1.1429rem;
-  flex: none;
-  border: 1px solid var(--line-strong);
-  border-radius: 50%;
-  background: var(--bg-surface);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: border-color var(--d-fast) var(--e-standard);
-}
-.ob-radio-box::after {
-  content: '';
-  width: 0.5714rem;
-  height: 0.5714rem;
-  border-radius: 50%;
-  background: var(--accent);
-  transform: scale(0);
-  transition: transform var(--d-fast) var(--e-standard);
-}
-.ob-check-row input:checked + .ob-radio-box {
-  border-color: var(--accent);
-}
-.ob-check-row input:checked + .ob-radio-box::after {
-  transform: scale(1);
-}
-.ob-check-row input:focus-visible + .ob-radio-box {
-  outline: 2px solid var(--line-focus);
-  outline-offset: 2px;
-}
-
 .ob-switch {
   width: 2.1429rem;
   height: 1.2857rem;
@@ -2220,27 +2188,6 @@ html[data-window-blur='true'] .ob-busy rect {
 }
 
 /* ===========================================================================
- * Tooltip — 400ms delay, keyboard-reachable (§10)
- * ======================================================================== */
-
-.ob-tooltip {
-  position: fixed;
-  z-index: var(--z-toast);
-  max-width: 15.7143rem;
-  padding: var(--s-4) var(--s-8);
-  border-radius: var(--r-sm);
-  background: var(--porcelain-90);
-  color: var(--porcelain-00);
-  font-size: var(--t-micro-size);
-  line-height: var(--t-micro-line);
-  box-shadow: var(--sh-2);
-  pointer-events: none;
-  animation: ob-pop-in var(--d-fast) var(--e-standard);
-  /* porcelain-90/00 invert with the theme (dark chip on light, light chip on
-   * dark) via the ramp itself — no separate dark-mode override needed. */
-}
-
-/* ===========================================================================
  * Tabs — underline style, distinct from the segmented control
  * ======================================================================== */
 
@@ -2453,23 +2400,6 @@ html[data-window-blur='true'] .ob-busy rect {
   display: block;
   width: 100%;
   text-align: left;
-}
-.ob-linkbtn {
-  background: none;
-  border: none;
-  padding: 0;
-  color: inherit;
-  font: inherit;
-  font-weight: inherit;
-  cursor: pointer;
-  text-decoration: underline dotted;
-}
-.ob-linkbtn:hover:not(:disabled) {
-  color: var(--accent);
-}
-.ob-linkbtn:disabled {
-  text-decoration: none;
-  cursor: default;
 }
 
 .ob-capgrid {
@@ -2736,25 +2666,6 @@ html[data-window-blur='true'] .ob-busy rect {
   height: 1.5714rem;
   border-radius: var(--r-sm);
   border: 1px solid var(--swatch-ring);
-}
-
-/* --- Office Panels: fleet figures and the per-panel detail grid -------------
-   Both are `auto-fit` rather than a fixed column count: the Master runs on a
-   shop PC whose browser window is whatever size somebody left it, and a
-   four-across row of figures that cannot fit becomes four squashed columns
-   rather than two comfortable rows. */
-
-.ob-panel-figures {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10.7143rem, 1fr));
-  gap: var(--s-12);
-}
-
-.ob-panel-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(22.8571rem, 1fr));
-  gap: var(--s-16);
-  align-items: start;
 }
 
 /* --- Slider (Settings' UI scale) -------------------------------------------
@@ -3103,8 +3014,8 @@ html[data-window-blur='true'] .ob-busy rect {
 }
 
 /* ---------------------------------------------------------------------------
- * The new-lead screen's chips, its picked-product bar, its rate switch and
- * its saved product rows (New Lead Flow).
+ * The new-lead screen's chips, its picked-product bar and its saved product
+ * rows (New Lead Flow).
  *
  * Here rather than inline for the same reason as the block above: hover,
  * focus and the switch's knob transition cannot be written as style objects,
@@ -3343,100 +3254,6 @@ html[data-window-blur='true'] .ob-busy rect {
   overflow-x: hidden;
 }
 
-/*
- * The new-lead hierarchy flow: two equal pickers side by side (they are the
- * same control twice — main product, then its models — so they share a size),
- * a box the models collect in, one detail row per model, and the review list.
- *
- * Code and name are large because they are what the counter reads back down
- * the phone; dimensions are small and muted because they are what nobody asks
- * about. The panel never shrinks away: it is the running record of a lead
- * that can hold any number of products, so it scrolls on its own.
- */
-.ob-lead-pickers {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: var(--s-12);
-}
-
-.ob-lead-selected {
-  box-sizing: border-box;
-  margin-top: var(--s-8);
-  padding: var(--s-8) var(--s-12);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--bg-surface);
-}
-
-.ob-lead-selected__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-4);
-  max-height: 12rem;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-.ob-lead-selected__row {
-  display: flex;
-  align-items: center;
-  gap: var(--s-8);
-  padding: var(--s-4) var(--s-6);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--bg-sunken);
-}
-
-.ob-lead-details {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-8);
-  margin-top: var(--s-8);
-}
-
-.ob-lead-detail {
-  box-sizing: border-box;
-  padding: var(--s-8) var(--s-12);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--bg-surface);
-}
-
-.ob-lead-detail__head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--s-8);
-  margin-bottom: var(--s-6);
-  min-width: 0;
-}
-
-.ob-lead-detail__fields {
-  display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr) minmax(0, 0.8fr) minmax(0, 0.6fr);
-  gap: var(--s-8);
-  align-items: center;
-}
-
-.ob-lead-review {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-6);
-  margin-top: var(--s-12);
-  max-height: 50vh;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-.ob-lead-review__row {
-  display: flex;
-  align-items: center;
-  gap: var(--s-8);
-  min-width: 0;
-}
-
 /* The bar that appears once anything in the panel is ticked. */
 .ob-lead-selbar {
   display: flex;
@@ -3463,14 +3280,6 @@ html[data-window-blur='true'] .ob-busy rect {
   flex: none;
   border-radius: 50%;
   background: var(--state-offline);
-}
-
-/* A select that reads as an affordance rather than a field: "add one more". */
-.ob-select--dashed {
-  border-style: dashed;
-  border-color: var(--line-strong);
-  color: var(--fg-secondary);
-  background: var(--bg-surface);
 }
 
 /*

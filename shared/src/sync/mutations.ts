@@ -38,10 +38,6 @@ export const MUTATION_KINDS = [
 
 export type MutationKind = (typeof MUTATION_KINDS)[number];
 
-export function isMutationKind(value: unknown): value is MutationKind {
-  return (MUTATION_KINDS as readonly unknown[]).includes(value);
-}
-
 /**
  * Which permission each mutation kind sits behind.
  *

@@ -11,5 +11,4 @@ export * from './hi.js';
 export * from './keys.js';
 export * from './locales.js';
 export * from './panel-scoped.js';
-export * from './pseudo.js';
 export * from './translate.js';

@@ -28,8 +28,6 @@ export const MAX_PRODUCT_IMPORT_ISSUES = 1000;
  */
 export type ProductImportMode = 'create' | 'upsert';
 
-export const PRODUCT_IMPORT_MODES: readonly ProductImportMode[] = ['create', 'upsert'];
-
 export type ProductImportFormat = 'csv' | 'xlsx';
 
 export interface ProductImportIssue {

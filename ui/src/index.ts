@@ -61,7 +61,6 @@ export * from './SubNavSlot.js';
 export * from './subPages.js';
 export * from './Tabs.js';
 export * from './Toast.js';
-export * from './Tooltip.js';
 export * from './TopbarSlot.js';
 export * from './breakpoints.js';
 export * from './config.js';

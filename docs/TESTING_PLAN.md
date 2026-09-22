@@ -1,12 +1,12 @@
-# OrderBook — Manual QA Test Plan (v1.0.2)
+# OrderBook — Manual QA Test Plan (v1.2.0)
 
 Three PCs on one LAN:
 
-- **PC-A** — Master Panel (`OrderBook-Master-1.0.2-Setup.exe`)
-- **PC-B** — Office Panel #1 (`OrderBook-Office-1.0.2-Setup.exe`)
+- **PC-A** — Master Panel (`OrderBook-Master-1.2.0-Setup.exe`)
+- **PC-B** — Office Panel #1 (`OrderBook-Office-1.2.0-Setup.exe`)
 - **PC-C** — Office Panel #2 (same installer)
 
-Test in the order below — later sections depend on state created earlier (users, parties, leads, templates). Log every failure with: step number, expected result, actual result, screenshot, and the exact panel + user account used.
+Test in the order below — later sections depend on state created earlier (users, parties, leads). Log every failure with: step number, expected result, actual result, screenshot, and the exact panel + user account used.
 
 ---
 
@@ -14,14 +14,14 @@ Test in the order below — later sections depend on state created earlier (user
 
 - [ ] Confirm PC-A, PC-B, PC-C are on the same subnet, can ping each other by IP.
 - [ ] Note Windows Firewall state on each PC (on/off) — needed for Section 9.
-- [ ] Copy `OrderBook-Master-1.0.2-Setup.exe` to PC-A, `OrderBook-Office-1.0.2-Setup.exe` to PC-B and PC-C.
+- [ ] Copy `OrderBook-Master-1.2.0-Setup.exe` to PC-A, `OrderBook-Office-1.2.0-Setup.exe` to PC-B and PC-C.
 - [ ] Confirm none of the three PCs has a prior OrderBook install/data directory (`%APPDATA%\OrderBook`) unless this run is specifically testing upgrade/restore.
 
 ---
 
 ## 1. Master installation (PC-A)
 
-1. Run `OrderBook-Master-1.0.2-Setup.exe`.
+1. Run `OrderBook-Master-1.2.0-Setup.exe`.
    - [ ] SmartScreen warning appears (unsigned build) — confirm "More info → Run anyway" works and is the only way through.
    - [ ] Installer lets you choose install directory (not one-click).
    - [ ] Desktop shortcut and Start Menu shortcut created.
@@ -140,7 +140,7 @@ Screen: **ConnectionScreen** (first screen before sign-in on Office).
 
 Do this for **both** PC-B and PC-C independently.
 
-1. Install `OrderBook-Office-1.0.2-Setup.exe` (same SmartScreen/shortcut checks as Section 1).
+1. Install `OrderBook-Office-1.2.0-Setup.exe` (same SmartScreen/shortcut checks as Section 1).
 2. **Auto-discovery path:**
    - [ ] Launch Office, choose "Auto" — Master (PC-A) appears in the discovered list, correctly showing whether pairing is open.
    - [ ] On Master, open the pairing window (**PanelsScreen** → open pairing).
@@ -174,7 +174,7 @@ ownership note in §5.
 
 1. Products & categories:
    - [ ] Create a category, then a product under it.
-   - [ ] Look up a product by its code.
+   - [ ] Look up a product by one of its variant codes.
    - [ ] Upload, reorder and delete product images; confirm the variants render
          (micro in a table row, thumb in the form).
    - [ ] Import products from CSV/Excel with a template; confirm the row-numbered
@@ -184,13 +184,9 @@ ownership note in §5.
          not proxy — every photo 404'd and it read as "there is no image flow".
 2. Permission gates — sign in with a role lacking each key in turn:
    - [ ] Without `products.create`, the **New product** button is **absent**, not greyed.
-   - [ ] Without `field.saleRate.edit`, the rate and MRP fields do not render —
-         on a **new** product as well as on an edit.
-   - [ ] Without `field.purchaseRate.edit`, the purchase rate does not render on
-         a new product. It used to, and the Master discarded what was typed
-         without telling anybody.
+   - [ ] Without `parties.create`, the **New party** button is **absent**, not greyed.
    - [ ] Pressing Enter in the **Name** field advances to the next field rather
-         than saving the whole 29-field form.
+         than saving the form.
 
 ---
 
@@ -235,25 +231,12 @@ Run once with each combination:
 
 ---
 
-## 10. Documents / PDF Page Designer (test on both Master and Office)
+## 10. Standalone build (Windows)
 
-Screen: shared **DocumentsScreen** (Templates + Exports tabs).
-
-1. **Templates tab:**
-   - [ ] Create a new template, pick a starter design from the template picker — confirm it seeds the layout.
-   - [ ] Confirm picking a different starter *after* creation has no effect (expected/known behavior — not a bug).
-   - [ ] Set document type (`quotation` / `order_confirmation` / `dispatch_note`), paper size, orientation, margins.
-   - [ ] Use the visual canvas: drag-position an element, bind it to a data field (e.g., party name, order total).
-   - [ ] Preview against a real lead/order record — confirm bound fields render actual data.
-   - [ ] Save the template.
-   - [ ] Edit the same template from a **second** panel while the first still has it open (stale state) — confirm the `ConflictBanner` with field-level diff appears on save.
-   - [ ] Soft-delete a template, confirm it's excluded from the picker used elsewhere, restore it.
-2. **Exports tab:**
-   - [ ] Generate a real export (e.g., dispatch a quotation PDF from a lead/order) — confirm it appears in Exports with correct metadata.
-   - [ ] Download an export file, confirm the PDF opens and matches what was sent.
-   - [ ] Confirm there is **no delete action** on an export (immutable by design) — verify this on both Master and Office.
-3. **Parity check:** repeat template creation once on Master and once on Office (PC-B) — confirm both produce an identical-looking PDF (shared rendering code, only transport differs).
-4. **Assets:** upload an image asset (e.g., a logo) to a template, confirm it appears correctly in the rendered PDF.
+1. [ ] Run `OrderBook-Master-1.2.0-Standalone.exe` on a PC with no installation — it starts without administrator rights and writes nothing under Program Files.
+2. [ ] Its Updates screen says to replace the file rather than offering Install.
+3. [ ] Install `OrderBook-Master-1.2.0-Setup.exe` over the same data folder — every record is still there.
+4. [ ] Start a newer version once: `%APPDATA%\OrderBook\master\backups\before-<version>-…` appears with a README naming the restore steps.
 
 ---
 
@@ -264,7 +247,7 @@ Screen: **SettingsScreen**.
 - [ ] View storage usage numbers — confirm they look sane (non-zero, grows after adding data).
 - [ ] Export a full backup (passphrase-protected) — save the file.
 - [ ] Preview a restore from that backup file without committing — confirm preview shows what would change.
-- [ ] Perform the actual restore into a **separate clean Master install** (see Section 2, restore path) and confirm parties/leads/users/templates all come back correctly, including custom fields and role/permission setup.
+- [ ] Perform the actual restore into a **separate clean Master install** (see Section 2, restore path) and confirm parties/leads/users all come back correctly, including custom fields and role/permission setup.
 - [ ] Check password vault status indicator reflects actual vault state.
 - [ ] Office `SettingsScreen` — confirm it only exposes local UI prefs (theme, density, scale, motion) and has no server-side settings.
 
@@ -294,14 +277,14 @@ Screen: **IntegrationsScreen**.
 
 ## 14. Auto-update flow (do this last — it replaces the running app)
 
-Setup: build a **newer** version (e.g., bump to `1.0.3` via `npm run release -- 1.0.3`) and drop the output into `C:\OrderBook-Releases\{master,office}-panel\` on the Master PC, exactly as the release script's own instructions say.
+Setup: build a **newer** version (e.g., bump to `1.2.1` via `npm run release -- 1.2.1`) and drop the output into `C:\OrderBook-Releases\{master,office}-panel\` on the Master PC, exactly as the release script's own instructions say.
 
 1. **Master update (PC-A):**
-   - [ ] Open **UpdatesScreen** — confirm it detects `1.0.3` is available with correct version/notes.
-   - [ ] Trigger install — confirm the app quits, the new installer runs, and relaunching shows `1.0.3` in the UI (check About/version display or window title).
+   - [ ] Open **UpdatesScreen** — confirm it detects `1.2.1` is available with correct version/notes.
+   - [ ] Trigger install — confirm the app quits, the new installer runs, and relaunching shows `1.2.1` in the UI (check About/version display or window title).
    - [ ] Confirm all data (parties/leads/users) is intact after the update — installer must not touch `%APPDATA%\OrderBook`.
 2. **Office update (PC-B, PC-C):**
-   - [ ] Confirm Office's **UpdatesScreen** asks Master over the LAN (`/office/latest`) and detects `1.0.3`.
+   - [ ] Confirm Office's **UpdatesScreen** asks Master over the LAN (`/office/latest`) and detects `1.2.1`.
    - [ ] Trigger download — confirm progress is shown, and the downloaded file's hash is verified against the manifest before install.
    - [ ] Confirm install/relaunch succeeds and Office reconnects/re-pairs with Master automatically.
 3. **Failure paths** (fails soft — never crashes):
@@ -315,7 +298,7 @@ Setup: build a **newer** version (e.g., bump to `1.0.3` via `npm run release -- 
 
 After all sections above, do one more full-data sanity check:
 
-- [ ] All 3 panels show identical counts for parties, leads, orders, templates on their respective dashboards.
+- [ ] All 3 panels show identical counts for parties, leads, orders on their respective dashboards.
 - [ ] Sign out and back in on all 3 panels — data still consistent.
 - [ ] Reboot all 3 PCs, relaunch all apps — Master re-serves the embedded Postgres correctly, both Office panels reconnect and re-sync without manual pairing.
 

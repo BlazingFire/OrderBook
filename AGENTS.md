@@ -45,8 +45,8 @@ There is no AI assistant.
 
 - **Branching:** `main` is the only long-lived branch, and `dev` (re-cut from `main` on
   2026-09-22) is where day-to-day work happens before it lands on `main`. Every other
-  branch was merged or retired on 2026-09-22; their tips are `archive/*` tags. Do not
-  branch from an archive tag.
+  branch was merged or retired on 2026-09-22 (list in `HANDOFF.md`). Do not branch
+  from one.
 - **Never delete or rewrite a migration** that may have run anywhere
   (`master/src/db/migrations/`, pinned by `migration-registry.test.ts`).
 - **Migrations after 1.2.0 only add.** Customers run this software; an update

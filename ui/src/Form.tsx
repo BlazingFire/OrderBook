@@ -1,7 +1,7 @@
 import { rem } from './rem.js';
 /**
  * Form foundation (§9): Input, NumberInput, Select, Textarea, DateField,
- * Checkbox, Radio, Switch, Label, HelperText, FieldError, and FormField — the
+ * Checkbox, Switch, Label, HelperText, FieldError, and FormField — the
  * label/control/help/error composite every screen builds a field from.
  *
  * Numeric entry is right-aligned tabular figures with no steppers; a screen
@@ -159,37 +159,6 @@ export function Checkbox({
           <span style={{ width: rem(8), height: 2, background: 'currentColor', borderRadius: 1 }} />
         )}
       </span>
-      {label != null && <span>{label}</span>}
-    </label>
-  );
-}
-
-export function Radio({
-  checked,
-  onChange,
-  label,
-  disabled,
-  name,
-  value,
-}: {
-  checked: boolean;
-  onChange: () => void;
-  label?: ReactNode;
-  disabled?: boolean;
-  name: string;
-  value: string;
-}) {
-  return (
-    <label className="ob-check-row" data-disabled={disabled || undefined}>
-      <input
-        type="radio"
-        name={name}
-        value={value}
-        checked={checked}
-        disabled={disabled}
-        onChange={onChange}
-      />
-      <span className="ob-radio-box" aria-hidden="true" />
       {label != null && <span>{label}</span>}
     </label>
   );

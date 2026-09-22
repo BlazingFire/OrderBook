@@ -124,19 +124,6 @@ export const MERGEABLE_COLUMNS = {
 export type MergeableEntity = keyof typeof MERGEABLE_COLUMNS;
 
 /**
- * The wire fields this input actually asserts.
- *
- * Used to stamp per-field clocks: a write must claim only the fields it set,
- * or it takes ownership of fields it never touched.
- */
-export function assertedFields<M extends Record<string, string>>(
-  input: Partial<Record<keyof M, unknown>>,
-  columns: M,
-): string[] {
-  return Object.keys(columns).filter((field) => input[field as keyof M] !== undefined);
-}
-
-/**
  * Build a column patch from only the keys the caller set.
  *
  * Generic in the map so that passing `PARTY_COLUMNS` alongside a `ProductInput`

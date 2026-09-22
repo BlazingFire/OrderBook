@@ -52,10 +52,12 @@ against the code before acting on it.
 
 ## Current state (2026-09-22, after the branch consolidation)
 
-- **Branches:** `main` is the only long-lived branch; `dev` is a fresh copy of
-  `main` cut on 2026-09-22 to develop on. Every other branch was merged or
-  retired that day (see "Branch consolidation" below). Work lands on `main`
-  (directly or through `dev`); do not resurrect an old branch.
+- **Branches:** `main` is the only long-lived branch; `dev` was reset to
+  `main` on 2026-09-22 to develop on. Every other branch was merged or
+  retired that day (see "Branch consolidation" below) and is **to be deleted
+  on GitHub by the owner** — the session's git access could push `main` and
+  `dev` but was refused (403) for branch deletion and tags. Work lands on
+  `main` (directly or through `dev`); do not branch from an old branch.
 - **Version 1.2.0**, the first build meant for customers. It adds the
   **standalone `.exe`** beside each Windows setup file, the **pre-update
   database copy** (`master/src/db/cluster-snapshot.ts`), and the
@@ -110,21 +112,23 @@ against the code before acting on it.
 
 ## Branch consolidation (2026-09-22)
 
-Everything was brought onto `main`, then every other branch was deleted from
-GitHub and `dev` was re-cut from `main`.
+Everything was brought onto `main` and `dev` was reset to `main`. The other
+branches below are safe to delete: their work is in `main` or superseded.
 
 | Branch | What it held | Outcome |
 |---|---|---|
 | `claude/amazing-lovelace-r5851k` | 1.2.0: standalone `.exe`, pre-update DB copy, migration guard, CI fixes | merged |
 | `claude/hopeful-lovelace-q6f57v` | 29 commits (09-16..18): company settings, privilege fixes, Master Parties screen, lead/order delete, clean-install tool, Mac/Linux builds | merged onto main's model (see below) |
 | `claude/vibrant-ride-tb43f7` | filter strip spacing, category chips dropped | merged (main had already dropped the chips) |
-| `claude/serene-hawking-3dee4n`, `claude/zealous-cori-u233hm`, `claude/ecstatic-brahmagupta-u4z2ke` | already in main | deleted |
-| `claude/exciting-brown-ufq4ka` | a TypeScript lib fix | obsolete — main typechecks without it; deleted |
-| `claude/backend-ui-development-e25geo`, `ceramic-offline-web-app-6wjqq5`, `claude-md-docs-0zohib`, `master-panel-office-admin-wjuqka`, `office-panel-user-signin-0x229o`, `refactor-production-codebase-7gbz9v` | August work on the pre-rewrite history (main was re-rooted since); every feature they carried is in main in later form | deleted |
-| old `dev` | 30 commits behind main, nothing unique | deleted and re-cut from `main` |
+| `claude/serene-hawking-3dee4n`, `claude/zealous-cori-u233hm` | already in main | delete |
+| `claude/exciting-brown-ufq4ka` | a TypeScript lib fix | obsolete — main typechecks without it; delete |
+| `claude/backend-ui-development-e25geo`, `ceramic-offline-web-app-6wjqq5`, `claude-md-docs-0zohib`, `master-panel-office-admin-wjuqka`, `office-panel-user-signin-0x229o`, `refactor-production-codebase-7gbz9v` | August work on the pre-rewrite history (main was re-rooted since); every feature they carried is in main in later form | delete |
+| `dev` | 30 commits behind main, nothing unique | **reset to `main`** (kept) |
 
-Each deleted branch's tip is kept as a tag **`archive/<branch-name>`** on
-GitHub, so nothing is lost; `git checkout archive/<name>` restores it.
+The merged three (`amazing-lovelace`, `hopeful-lovelace`, `vibrant-ride`) are
+safe to delete too. Deleting the six August branches drops history that exists
+nowhere else; if that matters, tag them first
+(`git tag archive/<name> origin/<name> && git push origin archive/<name>`).
 
 **How hopeful-lovelace was merged.** It was cut before the variant
 restructure and the pricing removal, so it was merged onto main's model:
@@ -381,10 +385,13 @@ Condensed. The full entries are in `git show 5b8ebe2:HANDOFF.md` and in
 `docs/AI_COLLABORATION.md`.
 
 - **2026-09-22 — Branch consolidation and cleanup (Claude).** Merged
-  amazing-lovelace, hopeful-lovelace and vibrant-ride into `main`, deleted
-  every other branch (tips kept as `archive/*` tags), re-cut `dev`, removed
-  dead code and stale docs, rewrote this file. Verified: lint 0, typecheck 0,
-  1699 tests with integration suites.
+  amazing-lovelace, hopeful-lovelace and vibrant-ride into `main`, reset `dev`
+  to `main`, and listed the rest for the owner to delete. Removed dead code: 15
+  unused exports in `shared/` and `ui/` (`maskFields`, `Tooltip`, `Radio`, …),
+  `shared/src/i18n/pseudo.ts`, 203 unused i18n keys in both catalogues, 22
+  dead CSS rules, and the pricing leftovers in the design gallery and image
+  service. Refreshed the stale docs and rewrote this file. Verified: lint 0,
+  typecheck 0, build 0, 140 files / 1699 tests with integration suites.
 - **2026-09-22 — 1.2.0 standalone builds (Claude, amazing-lovelace).**
   Standalone `.exe`, pre-update database copy, additive-migrations guard,
   cross-platform web build, CI green; the Release workflow built all eight
@@ -421,7 +428,7 @@ work went.
 
 | Session | What it did | Where the work is |
 |---|---|---|
-| Repository cleanup and branch reset (this one) | Consolidation above | `main` |
+| Repository cleanup and branch reset (this one) | Consolidation and cleanup above | `main` and `dev` |
 | Orderbook standalone version | 1.2.0 standalone `.exe`, backup on first boot | merged to `main`; the three owner decisions are under "Owed work" |
 | Lead and product add improvements | lead-add trims, suggest keyboard, Grade, icons | already on `main` (`ecd5f8b`) |
 | Product page UI/UX implementation | product redesign, image picker formats and load states | already on `main` |

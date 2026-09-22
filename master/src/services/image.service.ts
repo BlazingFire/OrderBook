@@ -93,14 +93,8 @@ async function reloadProduct(tenantId: string, productId: string): Promise<Produ
   return product;
 }
 
-/**
- * Announce the change with the whole record, and answer the caller with it.
- *
- * One function so every image mutation publishes the same way. It used to
- * mask the answer as well, while products still carried money fields; since
- * pricing was removed there is nothing on a product a caller may not see.
- */
-function publishAndMask(product: Product, _actor: ActorContext): Product {
+/** Announce the change with the whole record, and answer the caller with it. */
+function publishUpdated(product: Product): Product {
   publishChange({ entity: 'product', action: 'updated', id: product.id, payload: product });
   return product;
 }
@@ -280,7 +274,7 @@ export async function uploadImage(request: UploadImageRequest, actor: ActorConte
   });
 
   const updated = await reloadProduct(actor.tenantId, request.productId);
-  return publishAndMask(updated, actor);
+  return publishUpdated(updated);
 }
 
 export async function updateImageCaption(
@@ -321,7 +315,7 @@ export async function updateImageCaption(
   });
 
   const updated = await reloadProduct(actor.tenantId, productId);
-  return publishAndMask(updated, actor);
+  return publishUpdated(updated);
 }
 
 export async function reorderImages(input: ProductImageReorderInput, actor: ActorContext): Promise<Product> {
@@ -355,7 +349,7 @@ export async function reorderImages(input: ProductImageReorderInput, actor: Acto
   });
 
   const updated = await reloadProduct(actor.tenantId, input.productId);
-  return publishAndMask(updated, actor);
+  return publishUpdated(updated);
 }
 
 /**
@@ -408,7 +402,7 @@ export async function deleteImage(imageId: string, actor: ActorContext): Promise
   });
 
   const updated = await reloadProduct(actor.tenantId, productId);
-  return publishAndMask(updated, actor);
+  return publishUpdated(updated);
 }
 
 export interface ImageFile {

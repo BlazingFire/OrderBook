@@ -1,6 +1,6 @@
 /**
  * Small data-rendering primitives (§9 Data): ColourChip, StatusPill, Timeline,
- * KeyValueList, IdField, FingerprintField.
+ * KeyValueList, IdField.
  */
 
 import { useMemo, useState } from 'react';
@@ -125,22 +125,6 @@ export function IdField({ value }: { value: string }) {
           setTimeout(() => setCopied(false), 1200);
         }}
       />
-    </span>
-  );
-}
-
-/** Groups a colon-separated fingerprint into 4-pair chunks, wrapping only at a group boundary. */
-export function FingerprintField({ value }: { value: string }) {
-  const pairs = value.split(':');
-  const groups: string[] = [];
-  for (let i = 0; i < pairs.length; i += 4) {
-    groups.push(pairs.slice(i, i + 4).join(':'));
-  }
-  return (
-    <span className="ob-fingerprint">
-      {groups.map((g, i) => (
-        <span key={i}>{g}</span>
-      ))}
     </span>
   );
 }

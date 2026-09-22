@@ -85,8 +85,6 @@ interface SampleRow {
   colourIndex: number;
   onHand: number;
   reserved: number;
-  /** Absent key = redacted by permission (§9.1): must render an em dash. */
-  rate?: number;
 }
 
 const TABLE_ROWS: SampleRow[] = [
@@ -97,7 +95,6 @@ const TABLE_ROWS: SampleRow[] = [
     colourIndex: 0,
     onHand: 840,
     reserved: 120,
-    rate: 26000,
   },
   { id: 'r2', code: 'PR-0101', product: 'Product A', colourIndex: 3, onHand: 0, reserved: 0 },
   {
@@ -107,7 +104,6 @@ const TABLE_ROWS: SampleRow[] = [
     colourIndex: 2,
     onHand: 204,
     reserved: 0,
-    rate: 18050,
   },
 ];
 
@@ -493,9 +489,6 @@ export function GalleryScreen() {
                 <th>Colour</th>
                 <th className="num">On hand</th>
                 <th className="num">Reserved</th>
-                <th className="num" title="Hidden — your role does not include products.rate.view">
-                  Rate
-                </th>
               </tr>
             </thead>
             <tbody>
@@ -524,16 +517,6 @@ export function GalleryScreen() {
                     <td className="num">{row.onHand.toLocaleString('en-IN')}</td>
                     <td className="num" style={{ color: 'var(--fg-secondary)' }}>
                       {row.reserved.toLocaleString('en-IN')}
-                    </td>
-                    <td className="num">
-                      {row.rate === undefined ? (
-                        <span
-                          className="ob-redacted"
-                          title="Hidden — your role does not include products.rate.view"
-                        />
-                      ) : (
-                        `₹${(row.rate / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
-                      )}
                     </td>
                   </tr>
                 );

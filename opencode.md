@@ -31,8 +31,8 @@ This file only says where the truth lives and what is open. Do not duplicate
 - **Offline-only runtime**: nothing loads from a CDN or calls the internet.
 - **Docs and code live separately** — prose in `docs/`, source in the workspaces.
 - **No pricing anywhere (removed 2026-09-21); no AI assistant.**
-- **Work lands on `main`**, directly or through `dev` (re-cut from `main` 2026-09-22).
-  Old branches are `archive/*` tags only.
+- **Work lands on `main`**, directly or through `dev` (reset to `main` 2026-09-22).
+  Every other branch is retired.
 - **A guard must be seen to fail** against the defect it targets before it is accepted.
 
 ## What is open (as of 2026-09-22)

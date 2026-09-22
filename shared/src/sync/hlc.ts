@@ -59,16 +59,6 @@ export function parseHlc(value: Hlc): HlcParts {
   return { physical, counter, deviceCode };
 }
 
-export function isHlc(value: unknown): value is Hlc {
-  if (typeof value !== 'string') return false;
-  try {
-    parseHlc(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Total order over HLC timestamps. Because the encoding is fixed-width, this is
  * just a string comparison — but it is worth having as a named function so call
@@ -76,10 +66,6 @@ export function isHlc(value: unknown): value is Hlc {
  */
 export function compareHlc(a: Hlc, b: Hlc): number {
   return a < b ? -1 : a > b ? 1 : 0;
-}
-
-export function maxHlc(a: Hlc, b: Hlc): Hlc {
-  return compareHlc(a, b) >= 0 ? a : b;
 }
 
 /**

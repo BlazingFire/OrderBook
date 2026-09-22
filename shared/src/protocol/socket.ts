@@ -108,8 +108,6 @@ import type {
 import type { BinCounts, BinEntry, BinRestoreResult } from '../domain/recycle-bin.js';
 import type { SyncPushRequest, SyncPushResponse } from '../sync/mutations.js';
 
-export const SOCKET_PATH = '/socket.io';
-
 /** Socket.IO rooms the Master uses to target broadcasts. */
 export const ROOM_OFFICE_PANELS = 'office-panels';
 export const ROOM_MASTER_ADMINS = 'master-admins';

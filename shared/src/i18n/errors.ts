@@ -16,15 +16,6 @@ export interface ErrorPayload {
   details?: Record<string, unknown>;
 }
 
-export function hasMessageKey(value: unknown): value is { messageKey: MessageKey } {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'messageKey' in value &&
-    typeof (value as { messageKey: unknown }).messageKey === 'string'
-  );
-}
-
 /** The coarse `error.<code>`-family token for a failure whose thrower named no finer one. */
 const CODE_TOKENS: Record<string, MessageKey> = {
   validation_error: 'error.generic.validation',

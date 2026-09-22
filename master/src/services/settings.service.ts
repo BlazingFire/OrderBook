@@ -123,8 +123,7 @@ export async function readSettings(actor: ActorContext): Promise<SettingView[]> 
     const updatedBy = row?.updatedBy ?? null;
 
     if (isSecretDefinition(key)) {
-      // `configured` and no `value` property at all — absent, not null, the
-      // rule masked rates follow. A value that cannot be opened reads as not
+      // `configured` and no `value` property at all — absent, not null. A value that cannot be opened reads as not
       // configured rather than as an error: it is unusable either way, and the
       // administrator's next move is the same one.
       let configured = false;

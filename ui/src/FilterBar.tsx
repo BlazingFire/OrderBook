@@ -1,10 +1,6 @@
-/** FilterBar (§8) — the strip under the topbar on list screens only. */
+/** FilterBar pieces (§8) — the chips and dividers a list screen publishes into the strip under the topbar. */
 
 import type { ReactNode } from 'react';
-
-export function FilterBar({ children }: { children: ReactNode }) {
-  return <div className="ob-filterbar">{children}</div>;
-}
 
 export function FilterChip({
   active,

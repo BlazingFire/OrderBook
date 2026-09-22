@@ -7,9 +7,9 @@
  * carries the variants along, because a product without them cannot be put
  * on a line, stocked or searched by code.
  *
- * `rate` is this table's sale price (it was `price_per_box` before the rebuild).
- * The line item copies it at add time and never re-reads it, which is why
- * editing a product here cannot change what an existing order was quoted at.
+ * A line item copies what it needs from the product at add time and never
+ * re-reads it, which is why editing a product here cannot change what an
+ * existing order recorded.
  */
 
 import { columnPatch, PRODUCT_COLUMNS } from '@orderbook/shared';

@@ -1,6 +1,8 @@
 # UI redesign — plan
 
-Status: **Phase 1 (foundation) landed — inside `office/web` only; Phases 2–4 not started.**
+Status: **implemented and historical.** The kit this plan describes is `ui/` (`@orderbook/ui`),
+and both panels render from it. The document is kept because source comments cite it as design
+rationale; check any claim below against the tree before acting on it.
 This is the working document for porting the supplied Claude Design UI system onto OrderBook's
 two real frontends. Update it as phases land, the same way `docs/LEAD_GENERATION_FLOW.md` and
 `docs/ROLES_AND_USERS.md` track their modules.

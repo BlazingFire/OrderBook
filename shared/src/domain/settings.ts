@@ -80,8 +80,8 @@ export interface SettingDefinition<T> {
   parse: (raw: unknown) => T;
   /**
    * Stored sealed with AES-256-GCM. The read endpoint answers
-   * `{ configured: boolean }` and never the value — absent, not null, the same
-   * rule masked rates follow in `visibility.ts`.
+   * `{ configured: boolean }` and never the value — absent, not null, so a
+   * client that forgot to strip it cannot pass by comparing against `null`.
    */
   secret?: boolean;
 }

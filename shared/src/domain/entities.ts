@@ -235,22 +235,6 @@ export interface OfficePanelDevice {
   reportedAt: IsoTimestamp | null;
 }
 
-/** An `OfficePanelDevice` with nothing known yet. */
-export const UNREPORTED_PANEL_DEVICE: OfficePanelDevice = {
-  hostname: null,
-  platform: null,
-  osVersion: null,
-  appVersion: null,
-  nodeVersion: null,
-  dataDir: null,
-  imagesDir: null,
-  storageBytes: null,
-  diskFreeBytes: null,
-  diskTotalBytes: null,
-  localPort: null,
-  startedAt: null,
-  reportedAt: null,
-};
 
 /**
  * Figures that are only true while the panel is connected, so they are held in
@@ -356,14 +340,6 @@ export interface OptionListItem {
 }
 
 export type CustomFieldType = 'text' | 'number' | 'date' | 'select' | 'boolean';
-export const CUSTOM_FIELD_TYPES: readonly CustomFieldType[] = [
-  'text',
-  'number',
-  'date',
-  'select',
-  'boolean',
-];
-
 export type CustomFieldEntity = 'lead' | 'order' | 'party' | 'product';
 export const CUSTOM_FIELD_ENTITIES: readonly CustomFieldEntity[] = [
   'lead',
@@ -376,9 +352,6 @@ export function isCustomFieldEntity(value: unknown): value is CustomFieldEntity 
   return (CUSTOM_FIELD_ENTITIES as readonly unknown[]).includes(value);
 }
 
-export function isCustomFieldType(value: unknown): value is CustomFieldType {
-  return (CUSTOM_FIELD_TYPES as readonly unknown[]).includes(value);
-}
 
 export interface CustomFieldDefinition {
   id: Uuid;

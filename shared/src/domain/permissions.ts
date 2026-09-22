@@ -246,11 +246,6 @@ export function isPermittedForTier(permission: Permission, tier: RoleTier): bool
   return tierRank(tier) >= tierRank(minimumTierFor(permission));
 }
 
-/** Every key a tier is allowed to hold. */
-export function allowedForTier(tier: RoleTier): Permission[] {
-  return PERMISSIONS.filter((permission) => isPermittedForTier(permission, tier));
-}
-
 /**
  * The keys a role would lose by moving to a lower tier.
  *
@@ -347,24 +342,6 @@ export interface PermissionSet {
 
 export function hasPermission(set: PermissionSet | null, permission: Permission): boolean {
   return set !== null && set.permissions.includes(permission);
-}
-
-/**
- * Strip field-gated keys from an outgoing record. Deletes rather than nulls, per
- * the rule above — and returns a copy so a cached row is never mutated in place.
- */
-export function maskFields<T extends Record<string, unknown>>(
-  record: T,
-  set: PermissionSet | null,
-  gated: ReadonlyArray<{ key: keyof T & string; permission: Permission }>,
-): Partial<T> {
-  const masked: Partial<T> = { ...record };
-
-  for (const { key, permission } of gated) {
-    if (!hasPermission(set, permission)) delete masked[key];
-  }
-
-  return masked;
 }
 
 // --- The catalogue served to the UI ---------------------------------------

@@ -299,11 +299,6 @@ export function preparedInstaller(): PreparedInstaller | null {
   return prepared;
 }
 
-/** Test seam — the module lives as long as the process does. */
-export function forgetPreparedInstaller(): void {
-  prepared = null;
-}
-
 /**
  * The verified path of the Master's own setup file, for the desktop shell to
  * run and quit behind.

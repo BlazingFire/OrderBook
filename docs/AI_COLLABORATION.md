@@ -190,7 +190,47 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
-### 2026-09-22 (latest) — Lead-add trims and defaults, the suggest field's keyboard, Grade restored (Claude)
+### 2026-09-22 (consolidation) — Every branch onto `main`, `dev` reset, dead code removed (Claude)
+
+Scope: the owner asked for all work on `main`, the other branches gone, a fresh
+`dev`, the docs brought current (the sessions that produced the work are being
+deleted), and extra files and code removed. `HANDOFF.md` has the full account.
+
+**Merged into `main`:** `claude/vibrant-ride-tb43f7`, `claude/amazing-lovelace-r5851k`
+(1.2.0), and `claude/hopeful-lovelace-q6f57v` — the last onto main's variant
+model, with pricing, `catalog.defaultUom` and the `select` setting control
+dropped as moot and the stock-related switches adapted to per-variant stock.
+The release workflow combines hopeful's three-OS matrix with main's build-only
+draft path and standalone assets. `dev` was force-reset to `main` (it had
+nothing unique). **Branch deletion and tag pushes were refused (403)** by this
+session's git access; the branches to delete are listed in `HANDOFF.md`.
+
+**Removed as dead:** 15 exports with no caller in `shared/` and `ui/`
+(`maskFields`, `allowedForTier`, `assertedFields`, `UNREPORTED_PANEL_DEVICE`,
+`isCustomFieldType`/`CUSTOM_FIELD_TYPES`, `PRODUCT_IMPORT_MODES`,
+`hasMessageKey`, `SOCKET_PATH`, `isHlc`, `maxHlc`, `isMutationKind`, `FilterBar`,
+`FingerprintField`, `Radio`, `Tooltip`), `shared/src/i18n/pseudo.ts`,
+`forgetPreparedInstaller`, the api-client members the reachability guard found,
+203 i18n keys no source references (old lead flow, `panel.*`, `startup.*`,
+product-detail stock, rates) from both catalogues, 22 dead CSS rules, the
+pricing column in the design gallery, the stale image-service masking, and the
+tests for removed features. Kept deliberately: `master/src/domain/lead-outcome.ts`
+(the TypeScript twin two report tests check the SQL against), the breakpoint
+constants (a documented contract), and the `activity.*` keys of removed
+features (old log rows still render through them).
+
+**Docs:** `HANDOFF.md` rewritten as current state with a table of the retired
+sessions; `NEXT_PHASE`, `CODE_MAP`, the handoff queue, `TESTING_PLAN`,
+`UI_REDESIGN` (status), `AGENTS`, `README` and `opencode.md` refreshed; the
+product-form brief closed as moot; `.agents/skills/ui-consistency` re-synced
+with `.commandcode/skills/ui-consistency`.
+
+**Verified:** `npm run lint` 0, `npm run typecheck` 0, `npm run build` 0,
+`vitest run` 140 files / 1699 tests with every integration suite executing
+(PostgreSQL 16, run as the `postgres` user on a copy of the tree). Not
+verified: anything in a browser or Electron.
+
+### 2026-09-22 — Lead-add trims and defaults, the suggest field's keyboard, Grade restored (Claude)
 
 Four of the owner's five instructions. The fifth — "there is an old UI/UX, I
 updated it and you applied the old one" — was **not acted on**: asked which

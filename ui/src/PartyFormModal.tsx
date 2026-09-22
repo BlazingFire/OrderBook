@@ -7,8 +7,7 @@
  * offers five of a party's fourteen fields is not a shorter form — it is a form
  * that quietly cannot record an address, so somebody writes it in the notes.
  *
- * Lives in `ui/` and takes a **transport**, like `NewLeadScreen` and
- * `DocumentsScreen`: the two panels reach the same data differently — the
+ * Lives in `ui/` and takes a **transport**: the two panels reach the same data differently — the
  * Office queues through its offline outbox and gets back an id, the Master
  * writes straight to its own database and gets back the whole record — so this
  * component speaks one narrow interface and never a panel's api client. It was

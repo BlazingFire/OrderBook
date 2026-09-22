@@ -847,14 +847,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'backup.restore.passphraseLabel': 'Backup passphrase',
   // TODO(i18n-hi)
-  'backup.restore.previewAppVersion': 'App version',
-  // TODO(i18n-hi)
-  'backup.restore.previewCreated': 'Created',
-  // TODO(i18n-hi)
-  'backup.restore.previewScope': 'Scope',
-  // TODO(i18n-hi)
-  'backup.restore.previewSource': 'Source',
-  // TODO(i18n-hi)
   'backup.restore.title': 'Restore from backup',
   // TODO(i18n-hi)
   'backup.restore.working': 'Restoring…',
@@ -1542,15 +1534,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.details.notes': 'Notes',
   // TODO(i18n-hi)
-  'lead.add.details.source': 'Where did this come from?',
-  // TODO(i18n-hi)
-  'lead.add.details.title': '3. Lead details',
-  // TODO(i18n-hi)
   'lead.add.errors.generic': 'Could not save the lead',
-  // TODO(i18n-hi)
-  'lead.add.errors.missingPackaging': 'Choose packaging for {names}',
-  // TODO(i18n-hi)
-  'lead.add.errors.missingQuantities': 'Add a quantity for {names}',
   // TODO(i18n-hi)
   'lead.add.errors.noProducts': 'Add at least one product',
   // TODO(i18n-hi)
@@ -1558,48 +1542,15 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.party.change': 'Change',
   // TODO(i18n-hi)
-  'lead.add.party.newParty': '+ New party',
-  // TODO(i18n-hi)
   'lead.add.party.search': 'Search party by name, code or phone',
-  // TODO(i18n-hi)
-  'lead.add.party.searchPlaceholder': 'Start typing…',
   // TODO(i18n-hi)
   'lead.add.party.title': '1. Party',
   // TODO(i18n-hi)
-  'lead.add.party.useRates': "Use this party's own rates and specs where they exist",
-  // TODO(i18n-hi)
-  'lead.add.products.add': 'Add',
-  // TODO(i18n-hi)
-  'lead.add.products.byCode': 'Add by product code',
-  // TODO(i18n-hi)
-  'lead.add.products.byCodePlaceholder': 'e.g. {example}',
-  // TODO(i18n-hi)
-  'lead.add.products.freeToSell': 'Free to sell',
-  // TODO(i18n-hi)
-  'lead.add.products.grade': 'Grade',
-  // TODO(i18n-hi)
-  'lead.add.products.keyboardHint':
-    'Tab moves down the quantity column · ↑↓ adjust by 1 · Shift ±10',
-  // TODO(i18n-hi)
   'lead.add.products.packagingPlaceholder': 'e.g. carton, pallet',
-  // TODO(i18n-hi)
-  'lead.add.products.packagingRequired': 'Packaging *',
-  // TODO(i18n-hi)
-  'lead.add.products.partyRate': 'party rate',
-  // TODO(i18n-hi)
-  'lead.add.products.rate': 'Rate per box',
-  // TODO(i18n-hi)
-  'lead.add.products.rateHint': 'Your role cannot set rates',
   // TODO(i18n-hi)
   'lead.add.products.remove': 'Remove',
   // TODO(i18n-hi)
   'lead.add.products.searchLabel': 'उत्पाद खोजें — पहले श्रेणी, फिर मॉडल',
-  // TODO(i18n-hi)
-  'lead.add.products.searchPlaceholder': 'Start typing…',
-  // TODO(i18n-hi)
-  'lead.add.products.short': 'short',
-  // TODO(i18n-hi)
-  'lead.add.products.size': 'Size',
   // TODO(i18n-hi)
   'lead.add.products.title': '2. Products',
   // TODO(i18n-hi)
@@ -1612,8 +1563,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.savingHint': 'Saves on this machine first — offline is the normal path',
   // TODO(i18n-hi)
   'lead.add.title': 'New lead',
-  // TODO(i18n-hi)
-  'lead.add.total': 'Total: {amount}',
   // TODO(i18n-hi)
   'lead.badge.converted': 'converted',
   // TODO(i18n-hi)
@@ -2224,244 +2173,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'orders.waitingPipeline': 'Waiting for the pipeline configuration from the Master Panel…',
   // TODO(i18n-hi)
-  'panel.access.description':
-    'When nobody is signed in at that desk, the panel still acts — accepting a lead, syncing what it holds. This is the role it acts under then. A person signed in on the panel always acts under their own role instead.',
-  // TODO(i18n-hi)
-  'panel.access.fallback': 'Office (the default)',
-  // TODO(i18n-hi)
-  'panel.access.fallbackHint': 'No role chosen, so the seeded Office role stands in.',
-  // TODO(i18n-hi)
-  'panel.access.permissionCount': '{count} permissions',
-  // TODO(i18n-hi)
-  'panel.access.permissions': 'That role may',
-  // TODO(i18n-hi)
-  'panel.access.role': 'Role for the unattended panel',
-  // TODO(i18n-hi)
-  'panel.access.save': 'Save the role',
-  // TODO(i18n-hi)
-  'panel.access.tier': 'Tier',
-  // TODO(i18n-hi)
-  'panel.access.title': 'What this panel may do on its own',
-  // TODO(i18n-hi)
-  'panel.action.refresh': 'Refresh from the panel',
-  // TODO(i18n-hi)
-  'panel.action.refreshed': 'Updated from {name}',
-  // TODO(i18n-hi)
-  'panel.back': 'All panels',
-  // TODO(i18n-hi)
-  'panel.credentials.description':
-    'A panel proves itself to the Master with its ID and a secret. The ID never changes; the secret can be reissued at any time.',
-  // TODO(i18n-hi)
-  'panel.credentials.neverRotated': 'Unchanged since this panel was paired.',
-  // TODO(i18n-hi)
-  'panel.credentials.new.close': 'I have written it down',
-  // TODO(i18n-hi)
-  'panel.credentials.new.delivered':
-    'The panel has already taken it and is still connected — there is nothing further to do.',
-  // TODO(i18n-hi)
-  'panel.credentials.new.once':
-    'This is shown once and is not stored anywhere. Write it down before closing.',
-  // TODO(i18n-hi)
-  'panel.credentials.new.title': 'The new secret for {name}',
-  // TODO(i18n-hi)
-  'panel.credentials.new.undelivered':
-    'The panel was offline. Enter this on that PC’s Manual Connection screen to bring it back.',
-  // TODO(i18n-hi)
-  'panel.credentials.pairing.description':
-    'The one an operator types on a panel’s Manual Connection screen belongs to this Master, not to any one panel. It is on the Settings screen.',
-  // TODO(i18n-hi)
-  'panel.credentials.pairing.title': 'Pairing password',
-  // TODO(i18n-hi)
-  'panel.credentials.rotate': 'Reissue the secret',
-  // TODO(i18n-hi)
-  'panel.credentials.rotate.confirm': 'Reissue it',
-  // TODO(i18n-hi)
-  'panel.credentials.rotate.connected':
-    'That panel is connected, so it will be handed the new secret and carry on working. Nobody has to touch that PC.',
-  // TODO(i18n-hi)
-  'panel.credentials.rotate.failed': 'Could not reissue the secret',
-  // TODO(i18n-hi)
-  'panel.credentials.rotate.offline':
-    'That panel is offline and cannot be told. It will be locked out until somebody pairs that PC again by hand.',
-  // TODO(i18n-hi)
-  'panel.credentials.rotate.title': 'Reissue the secret for {name}?',
-  // TODO(i18n-hi)
-  'panel.credentials.rotatedAt': 'Last reissued {when}',
-  // TODO(i18n-hi)
-  'panel.credentials.secretLabel': 'Secret',
-  // TODO(i18n-hi)
-  'panel.credentials.secretStored': 'Stored as a hash — it cannot be read back, only replaced.',
-  // TODO(i18n-hi)
-  'panel.credentials.title': 'How this panel signs in',
-  // TODO(i18n-hi)
-  'panel.danger.disconnect': 'Drop the connection',
-  // TODO(i18n-hi)
-  'panel.danger.disconnectFailed': 'Could not drop that connection',
-  // TODO(i18n-hi)
-  'panel.danger.disconnectHint':
-    'Ends the panel’s current link. It reconnects on its own within seconds — a way to clear a stuck session without going to that PC.',
-  // TODO(i18n-hi)
-  'panel.danger.disconnected': 'Dropped {name}’s connection',
-  // TODO(i18n-hi)
-  'panel.danger.remove': 'Remove this panel',
-  // TODO(i18n-hi)
-  'panel.danger.removeHint':
-    'Ends the pairing for good. That PC drops to its connection screen and has to be paired again.',
-  // TODO(i18n-hi)
-  'panel.danger.title': 'Connection',
-  // TODO(i18n-hi)
-  'panel.field.address': 'Address on the network',
-  // TODO(i18n-hi)
-  'panel.field.appVersion': 'OrderBook version',
-  // TODO(i18n-hi)
-  'panel.field.deviceCode': 'Device code',
-  // TODO(i18n-hi)
-  'panel.field.deviceCodeHint': 'Stamped into every record this panel raises offline.',
-  // TODO(i18n-hi)
-  'panel.field.hostname': 'PC name',
-  // TODO(i18n-hi)
-  'panel.field.lastAction': 'Last action',
-  // TODO(i18n-hi)
-  'panel.field.leads': 'Leads raised',
-  // TODO(i18n-hi)
-  'panel.field.localPort': 'Opens in a browser at',
-  // TODO(i18n-hi)
-  'panel.field.name': 'Name',
-  // TODO(i18n-hi)
-  'panel.field.nobody': 'Nobody',
-  // TODO(i18n-hi)
-  'panel.field.nodeVersion': 'Node version',
-  // TODO(i18n-hi)
-  'panel.field.notes': 'Note',
-  // TODO(i18n-hi)
-  'panel.field.notesHint': 'Where this PC is, or who uses it. Only the Master shows this.',
-  // TODO(i18n-hi)
-  'panel.field.orders': 'Orders raised',
-  // TODO(i18n-hi)
-  'panel.field.paired': 'Paired',
-  // TODO(i18n-hi)
-  'panel.field.panelId': 'Panel ID',
-  // TODO(i18n-hi)
-  'panel.field.pendingMutations': 'Changes waiting to reach here',
-  // TODO(i18n-hi)
-  'panel.field.platform': 'System',
-  // TODO(i18n-hi)
-  'panel.field.signedInUser': 'Signed in on that PC',
-  // TODO(i18n-hi)
-  'panel.field.snapshotAt': 'Copy of the data dated',
-  // TODO(i18n-hi)
-  'panel.field.startedAt': 'Running since',
-  // TODO(i18n-hi)
-  'panel.field.unknown': 'Not reported yet',
-  // TODO(i18n-hi)
-  'panel.load.failed': 'Could not open that panel',
-  // TODO(i18n-hi)
-  'panel.overview.identity': 'This panel',
-  // TODO(i18n-hi)
-  'panel.overview.link': 'Connection',
-  // TODO(i18n-hi)
-  'panel.overview.machine': 'The PC it runs on',
-  // TODO(i18n-hi)
-  'panel.overview.neverReported':
-    'This panel has not described itself yet. It does so the moment it next connects.',
-  // TODO(i18n-hi)
-  'panel.overview.reportedAt': 'Details as of {when}',
-  // TODO(i18n-hi)
-  'panel.overview.work': 'What it has raised',
-  // TODO(i18n-hi)
-  'panel.refresh.offline': 'That panel is offline, so these figures are the last it sent.',
-  // TODO(i18n-hi)
-  'panel.save.failed': 'Could not save that change',
-  // TODO(i18n-hi)
-  'panel.status.connected': 'Connected',
-  // TODO(i18n-hi)
-  'panel.status.connectedSince': 'Connected since {when}',
-  // TODO(i18n-hi)
-  'panel.status.lastSeen': 'Last seen {when}',
-  // TODO(i18n-hi)
-  'panel.status.neverSeen': 'Has never connected',
-  // TODO(i18n-hi)
-  'panel.status.offline': 'Offline',
-  // TODO(i18n-hi)
-  'panel.status.removed': 'Removed',
-  // TODO(i18n-hi)
-  'panel.storage.cachedImages': 'Photos cached',
-  // TODO(i18n-hi)
-  'panel.storage.change': 'Move to another folder',
-  // TODO(i18n-hi)
-  'panel.storage.change.confirm': 'Move the files',
-  // TODO(i18n-hi)
-  'panel.storage.change.description':
-    'The panel checks the folder on its own PC and refuses if it cannot write there or the drive is too small.',
-  // TODO(i18n-hi)
-  'panel.storage.change.done': 'Moved {count} files to {path}',
-  // TODO(i18n-hi)
-  'panel.storage.change.failed': 'That panel could not move its files',
-  // TODO(i18n-hi)
-  'panel.storage.change.hint': 'The full path, e.g. D:\\OrderBook\\panel-data',
-  // TODO(i18n-hi)
-  'panel.storage.change.label': 'New folder on that PC',
-  // TODO(i18n-hi)
-  'panel.storage.change.move': 'Copy what is already there',
-  // TODO(i18n-hi)
-  'panel.storage.change.moveHint':
-    'Leave this on. Turning it off starts the panel empty and abandons any work it has not sent yet.',
-  // TODO(i18n-hi)
-  'panel.storage.change.oldFolder':
-    'The old folder at {path} was left in place. Delete it from that PC once you are satisfied.',
-  // TODO(i18n-hi)
-  'panel.storage.change.title': 'Move {name}’s files',
-  // TODO(i18n-hi)
-  'panel.storage.description':
-    'An Office Panel holds no database. What lives here is its queue of unsent work, its copy of the data, and the photos it has viewed.',
-  // TODO(i18n-hi)
-  'panel.storage.free': 'Free on that drive',
-  // TODO(i18n-hi)
-  'panel.storage.images': 'Photo cache',
-  // TODO(i18n-hi)
-  'panel.storage.offline':
-    'The folder can only be moved while that panel is connected — it is the panel that does the moving.',
-  // TODO(i18n-hi)
-  'panel.storage.path': 'Folder on that PC',
-  // TODO(i18n-hi)
-  'panel.storage.title': 'Where this panel keeps its files',
-  // TODO(i18n-hi)
-  'panel.storage.total': 'Drive size',
-  // TODO(i18n-hi)
-  'panel.storage.used': 'Used by this panel',
-  // TODO(i18n-hi)
-  'panel.tab.access': 'What it may do',
-  // TODO(i18n-hi)
-  'panel.tab.activity': 'Activity',
-  // TODO(i18n-hi)
-  'panel.tab.credentials': 'ID & password',
-  // TODO(i18n-hi)
-  'panel.tab.overview': 'Overview',
-  // TODO(i18n-hi)
-  'panel.tab.storage': 'Storage',
-  // TODO(i18n-hi)
   'panels.action.open': 'Open',
   // TODO(i18n-hi)
   'panels.action.remove': 'Remove',
   // TODO(i18n-hi)
   'panels.action.rename': 'Rename',
-  // TODO(i18n-hi)
-  'panels.activity.column.what': 'What happened',
-  // TODO(i18n-hi)
-  'panels.activity.column.when': 'When',
-  // TODO(i18n-hi)
-  'panels.activity.column.who': 'Who',
-  // TODO(i18n-hi)
-  'panels.activity.denied': 'Your role does not include {permission}, so the trail is hidden.',
-  // TODO(i18n-hi)
-  'panels.activity.empty.description':
-    'Work raised at a panel, and changes made to one, appear here.',
-  // TODO(i18n-hi)
-  'panels.activity.empty.title': 'Nothing recorded yet',
-  // TODO(i18n-hi)
-  'panels.activity.error': 'Could not read the activity trail',
-  // TODO(i18n-hi)
-  'panels.activity.title': 'Everything the panels have done',
   // TODO(i18n-hi)
   'panels.add.action': 'Add Office Panel',
   // TODO(i18n-hi)
@@ -2551,14 +2267,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'panels.status.removed': 'Removed',
   // TODO(i18n-hi)
-  'panels.summary.connected': 'Connected now',
-  // TODO(i18n-hi)
-  'panels.summary.offline': 'Offline',
-  // TODO(i18n-hi)
-  'panels.summary.pending': 'Changes waiting',
-  // TODO(i18n-hi)
-  'panels.summary.total': 'Paired',
-  // TODO(i18n-hi)
   'panels.table.address': 'Address',
   // TODO(i18n-hi)
   'panels.table.deviceCode': 'Device code',
@@ -2622,8 +2330,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'party.group.contact': 'संपर्क',
   'party.group.address': 'पता',
   'party.group.tax': 'कर और टिप्पणियाँ',
-  'lead.add.products.pasteUnknown': 'इन कोड के लिए कोई उत्पाद नहीं: {codes}',
-  'lead.add.products.lookingUp': 'कोड खोजा जा रहा है…',
   // --- Bulk product import: the Office catalogue's import dialog -----------
   'import.title': 'उत्पाद आयात करें',
   'import.chooseFile': 'फ़ाइल चुनें',
@@ -2766,39 +2472,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'product.detail.editAction': 'Edit product',
   // TODO(i18n-hi)
   'product.detail.size': 'Size',
-  // TODO(i18n-hi)
-  'product.detail.stock.free': 'Free',
-  // TODO(i18n-hi)
-  'product.detail.stock.none': 'No stock recorded for this product yet.',
-  // TODO(i18n-hi)
-  'product.detail.stock.note':
-    'Zero stock never blocks a lead — you can quote stock you have not made yet.',
-  // TODO(i18n-hi)
-  'product.detail.stock.onHand': 'On hand',
-  // TODO(i18n-hi)
-  'product.detail.stock.reserved': 'Reserved',
-  // TODO(i18n-hi)
-  'product.detail.stockForm.adjustDone': '{variant} की स्टॉक गिनती सुधारी गई',
-  // TODO(i18n-hi)
-  'product.detail.stockForm.counted': 'Counted boxes on hand',
-  // TODO(i18n-hi)
-  'product.detail.stockForm.failed': 'Could not record the stock movement',
-  // TODO(i18n-hi)
-  'product.detail.stockForm.inboundDone': '{variant} के {count} पीस स्टॉक में जोड़े गए',
-  // TODO(i18n-hi)
-  'product.detail.stockForm.note': 'Note',
-  // TODO(i18n-hi)
-  'product.detail.stockForm.noteHint': 'Optional — recorded on the stock ledger',
-  // TODO(i18n-hi)
-  'product.detail.stockForm.quantity': 'Boxes received',
-  // TODO(i18n-hi)
-  'product.detail.stockForm.quantityInvalid': 'Enter a quantity',
-  // TODO(i18n-hi)
-  'product.detail.stockForm.save': 'Save',
-  // TODO(i18n-hi)
-  'product.detail.stockForm.saving': 'Saving…',
-  // TODO(i18n-hi)
-  'product.detail.stockInAction': 'Stock in',
   // TODO(i18n-hi)
   'product.edit.title': 'Edit product',
   'product.group.identity': 'पहचान',
@@ -3184,8 +2857,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'shell.noModules':
     "Your role does not include access to any of this panel's screens. Ask an administrator if you think that is wrong.",
   // TODO(i18n-hi)
-  'shell.starting': 'Starting…',
-  // TODO(i18n-hi)
   'shell.waitingFirstSync':
     'Waiting for the first sync with the Master Panel. Once it has happened, this panel keeps working whether or not the Master is reachable.',
   // TODO(i18n-hi)
@@ -3255,21 +2926,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'splash.step.server': 'Contacting the server',
   // TODO(i18n-hi)
   'splash.step.session': 'Restoring your session',
-  // TODO(i18n-hi)
-  'startup.failed.title': 'This PC’s server could not start',
-  // TODO(i18n-hi)
-  'startup.failed.unknown':
-    'The server stopped while starting up and did not say why. The server window that opened alongside this one will have the details.',
-  // TODO(i18n-hi)
-  'startup.waiting.body':
-    'The panel is still starting up. On a first run it spends a little while building its database — this screen clears itself as soon as it is ready.',
-  // TODO(i18n-hi)
-  'startup.waiting.slow':
-    'Still no answer. Check the server window that opened alongside this one for an error, and make sure nothing else is using its port.',
-  // TODO(i18n-hi)
-  'startup.waiting.step': '{step}… this screen clears itself as soon as the panel is ready.',
-  // TODO(i18n-hi)
-  'startup.waiting.title': 'Waiting for this PC’s server',
   // TODO(i18n-hi)
   'sync.flushNow': 'Sync now',
   // TODO(i18n-hi)
@@ -3553,8 +3209,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'validation.stock.variantCodeTaken': 'Another colour already uses that code',
   // TODO(i18n-hi)
-  'lead.add.draft.col.freeToSell': 'Free to sell',
-  // TODO(i18n-hi)
   'lead.add.draft.col.quantity': 'Quantity',
   // TODO(i18n-hi)
   'lead.add.draft.editing': 'editing saved product',
@@ -3598,12 +3252,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.line.modifyProduct': '{product} में बदलाव करें',
   'lead.add.line.removeProduct': '{product} हटाएँ',
   // TODO(i18n-hi)
-  'lead.add.line.packaging': 'Packaging',
-  // TODO(i18n-hi)
-  'lead.add.line.rate': 'Rate',
-  // TODO(i18n-hi)
-  'lead.add.line.systemCode': 'System code',
-  // TODO(i18n-hi)
   'lead.add.notes.placeholder': 'Anything the next person should know…',
   // TODO(i18n-hi)
   'lead.add.products.col.code': 'कोड',
@@ -3611,7 +3259,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.products.col.product': 'Product',
   // TODO(i18n-hi)
   'lead.add.products.overFree': 'over free stock',
-  'lead.add.products.overOnHand': 'उपलब्ध स्टॉक से अधिक',
   // TODO(i18n-hi)
   'lead.add.progress': '{done} of {total} required steps',
   // TODO(i18n-hi)
@@ -3627,15 +3274,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.step.notesHint': 'optional — can be added later',
   // TODO(i18n-hi)
-  'lead.add.step.optional': 'optional',
-  // TODO(i18n-hi)
-  'lead.add.step.productsHint': 'at least one',
-  // TODO(i18n-hi)
   'lead.add.step.required': 'required',
   // TODO(i18n-hi)
   'lead.add.step.source': 'Source platform',
-  // TODO(i18n-hi)
-  'lead.add.step.sourceHint': 'where the enquiry came from',
   // TODO(i18n-hi)
   'lead.add.summary.count': '{count} लाइनें · {qty} पीस',
   // TODO(i18n-hi)
@@ -3647,32 +3288,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.party.placeholder': 'Select party — name, code or phone',
   // TODO(i18n-hi)
-  'lead.add.bulkNote': '{count} products — the list scrolls',
-  // TODO(i18n-hi)
   'lead.add.draft.title': 'Details for this product',
-  'lead.add.flow.mainProduct': 'मुख्य उत्पाद',
-  'lead.add.flow.mainProductPlaceholder': 'मुख्य उत्पाद खोजें — जैसे one piece toilet',
-  'lead.add.flow.mainProductHint': 'पहले रेंज चुनें, फिर नीचे उसके मॉडल।',
-  'lead.add.flow.subProduct': 'उप उत्पाद',
-  'lead.add.flow.subProductPlaceholder': 'मॉडल खोजें — जैसे 102, Damru, 7511',
-  'lead.add.flow.subProductHint': 'खोजने के लिए लिखें, तीर से चलें, Enter से नीचे बॉक्स में जोड़ें।',
-  'lead.add.flow.next': 'आगे',
-  'lead.add.flow.nextHint': 'Shift+Q पैकेजिंग, ग्रेड और मात्रा पर ले जाता है।',
-  'lead.add.flow.selectedTitle': 'चुने गए मॉडल',
-  'lead.add.flow.selectedEmpty': 'अभी कुछ नहीं — Enter से ऊपर का मॉडल इस बॉक्स में जोड़ें।',
-  'lead.add.flow.removeModel': '{model} हटाएँ',
-  'lead.add.flow.backToModels': 'मॉडलों पर वापस',
-  'lead.add.flow.addProduct': 'उत्पाद जोड़ें',
-  'lead.add.flow.addedPrefix': 'जुड़ा',
-  'lead.add.flow.noMainProduct': 'पहले मुख्य उत्पाद चुनें',
-  'lead.add.flow.reviewTitle': 'लीड जाँचें',
-  'lead.add.flow.reviewHint': 'Ctrl+Enter से पूरा करें, Esc से फॉर्म पर वापस।',
-  'lead.add.flow.complete': 'लीड पूरी करें',
-  'lead.add.flow.completing': 'सहेज रहे हैं…',
-  'lead.add.flow.fixedColour': 'तय रंग',
-  'lead.add.flow.noHit': 'कुछ नहीं मिला।',
-  'lead.add.flow.chooseColour': 'रंग चुनें',
-  'lead.add.flow.modelCount': '{count} मॉडल',
   // TODO(i18n-hi)
   'lead.add.followUp.label': 'Follow up',
   // TODO(i18n-hi)
@@ -3695,7 +3311,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.summary.countOne': '{count} लाइन · {qty} पीस',
   // TODO(i18n-hi)
   'lead.add.line.ofFree': 'of {free} free',
-  'lead.add.line.ofOnHand': '{free} स्टॉक में से',
   // TODO(i18n-hi)
   'lead.add.panel.clear': 'Clear',
   // TODO(i18n-hi)
@@ -3782,7 +3397,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.draft.quantityTitleVariants': 'मात्रा — प्रति वेरिएंट पीस',
   'lead.add.draft.col.lineWeight': 'लाइन वज़न',
   'lead.add.line.qtyShort': '{count} पीस',
-  'lead.add.line.weight': 'वज़न',
   'lead.add.line.lineWeight': 'इस लाइन पर {kg}',
   'lead.add.summary.weight': 'कुल {kg}',
   'lead.add.summary.noWeight': '{count} लाइनों का वज़न नहीं है — उत्पाद पर दर्ज करें',
@@ -3836,12 +3450,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'product.detail.code': 'उत्पाद कोड',
   'product.detail.weight': 'वज़न',
   'product.detail.variantsTitle': 'वेरिएंट और स्टॉक',
-  'product.detail.stock.variant': 'वेरिएंट',
-  'product.detail.stock.code': 'कोड',
-  'product.detail.stock.weight': 'वज़न',
-  'product.detail.stock.oneForm': 'एक रूप',
-  'product.detail.stockForm.variant': 'वेरिएंट',
-  'product.detail.stockForm.variantRequired': 'वेरिएंट चुनें',
   'unit.piece': 'पीस',
   'unit.pieces': 'पीस',
   'unit.line': 'लाइन',
@@ -3895,7 +3503,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'dashboard.pipeline.emptyDescription': "Leads you create appear here, online or off.",
   'dashboard.pipeline.emptyTitle': "No open leads",
   'dashboard.pipeline.openBoard': "Open board",
-  'lead.add.draft.hintRate': 'Enter a rate',
   // TODO(i18n-hi)
   'updates.standaloneBody': "This is the standalone build, which cannot install an update over itself. Get the new standalone file, close this window, and replace the old file with it. The database and every setting stay exactly where they are.",
   'common.confirm': 'पुष्टि करें',

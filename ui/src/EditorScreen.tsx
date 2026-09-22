@@ -23,7 +23,7 @@ export interface EditorScreenProps {
   /** Omit where the topbar already names the record. */
   title?: string;
   meta?: ReactNode;
-  /** Trailing controls for a shell like the PDF designer — Preview, Save, Cancel. */
+  /** Trailing controls — Save, Cancel. */
   actions?: ReactNode;
   /** Returns false when the operation refused to close — an unsaved draft. */
   onBack: () => boolean;
