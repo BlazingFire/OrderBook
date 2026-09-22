@@ -288,12 +288,20 @@ export function ProductDrawer({
     .map((option) => ({ value: option.value, label: option.label }));
 
   /**
-   * Enter inside the variants table stays inside it: on to the next row, a new
-   * row after the last, or the save when the last row is still blank. Left to
-   * the walk, Enter on the last weight would save a half-typed table.
+   * Enter on a row's **last cell**: on to the next row, a new row after the
+   * last, or the save when the last row is still blank. Left to the walk,
+   * Enter on the last weight would save a half-typed table.
+   *
+   * The row's other two cells are deliberately not wired to this. It used to
+   * sit on all three, which meant Enter anywhere in a row jumped to the *next*
+   * row — so colour → code → weight could only be walked with Tab, and Enter
+   * on the colour of a single blank row ran the save and answered with a
+   * validation error about the code nobody had reached yet. Colour and code
+   * are ordinary steps of `useEnterToAdvance`, which walks them in DOM order;
+   * only the end of a row is this function's business.
    */
   function onRowKeyDown(event: KeyboardEvent<HTMLElement>, index: number): void {
-    if (event.key !== 'Enter') return;
+    if (event.key !== 'Enter' || event.defaultPrevented) return;
     event.preventDefault();
     const row = rows[index];
     const blank = row && !row.label.trim() && !row.code.trim() && !row.weightKg.trim();
@@ -429,7 +437,7 @@ export function ProductDrawer({
                 >
                   <span style={{ display: 'flex', alignItems: 'center', gap: rem(8), minWidth: 0 }}>
                     <ColourChip hex={colourHex(row.label)} name={row.label || '—'} />
-                    <span style={{ flex: 1, minWidth: 0 }} onKeyDown={(event) => onRowKeyDown(event, index)}>
+                    <span style={{ flex: 1, minWidth: 0 }}>
                       <SuggestInput
                         value={row.label}
                         invalid={!row.label.trim()}
@@ -448,7 +456,6 @@ export function ProductDrawer({
                     invalid={!row.code.trim()}
                     aria-label={`${t('product.variants.col.code')} ${index + 1}`}
                     onChange={(event) => setRow(index, { code: event.target.value })}
-                    onKeyDown={(event) => onRowKeyDown(event, index)}
                   />
                   <NumberInput
                     value={row.weightKg}

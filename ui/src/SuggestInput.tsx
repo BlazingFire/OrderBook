@@ -3,14 +3,39 @@ import {
   forwardRef,
   isValidElement,
   useEffect,
+  useRef,
   useState,
   type ChangeEvent,
   type ReactNode,
+  type RefObject,
   type SelectHTMLAttributes,
 } from 'react';
 
 import { Input } from './Form.js';
 import { rem } from './rem.js';
+
+/**
+ * Keep the highlighted row on screen as the arrows move it.
+ *
+ * `.ob-suggest` caps the list at 18rem and scrolls it, so on a twelve-category
+ * list the fourth ArrowDown moved a highlight nobody could see any more. `block: 'nearest'` scrolls only when it has to, which is what
+ * keeps the list still while the highlight is walking the visible rows.
+ *
+ * `?.()` because jsdom implements no layout and no `scrollIntoView` at all —
+ * the component tests render this field, and an unguarded call would fail
+ * them for a reason that has nothing to do with what they assert.
+ */
+function useHighlightInView(
+  listRef: RefObject<HTMLDivElement | null>,
+  highlighted: number,
+  listOpen: boolean,
+): void {
+  useEffect(() => {
+    if (!listOpen || highlighted < 0) return;
+    const rows = listRef.current?.querySelectorAll<HTMLElement>('[role="option"]');
+    rows?.[highlighted]?.scrollIntoView?.({ block: 'nearest' });
+  }, [listRef, highlighted, listOpen]);
+}
 
 /**
  * A field somebody can type into *or* pick from — the two halves of one
@@ -64,6 +89,18 @@ export function SuggestInput({
    * makes the dropdown half of this a dropdown.
    */
   const [filtering, setFiltering] = useState(true);
+  /**
+   * Whether the person asked for this list, or it merely appeared under the
+   * caret when the field took focus.
+   *
+   * Escape is claimed only for a list that was asked for. A list that opened
+   * on focus is not something anybody is trying to get out of, and swallowing
+   * the key there is what made Escape in the product dialog do nothing the
+   * first time it was pressed — the list closed, invisibly, and the dialog
+   * stayed.
+   */
+  const [summoned, setSummoned] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const term = value.trim().toLowerCase();
   const matches =
@@ -77,9 +114,12 @@ export function SuggestInput({
   const highlighted = matches.length > 0 ? Math.min(active, matches.length - 1) : -1;
   const listOpen = open && matches.length > 0;
 
+  useHighlightInView(listRef, highlighted, listOpen);
+
   function commit(next: string): void {
     onChange(next);
     setOpen(false);
+    setSummoned(false);
   }
 
   return (
@@ -99,24 +139,49 @@ export function SuggestInput({
           onChange(event.target.value);
           setFiltering(true);
           setOpen(true);
+          setSummoned(true);
           setActive(0);
         }}
         onFocus={() => {
           setFiltering(true);
           setOpen(true);
         }}
-        onBlur={() => setOpen(false)}
+        onBlur={() => {
+          setOpen(false);
+          setSummoned(false);
+        }}
         onKeyDown={(event) => {
-          if (event.key === 'ArrowDown') {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
             event.preventDefault();
-            setFiltering(true);
-            setOpen(true);
-            setActive((current) => Math.min(current + 1, Math.max(0, matches.length - 1)));
-            return;
-          }
-          if (event.key === 'ArrowUp') {
-            event.preventDefault();
-            setActive((current) => Math.max(0, current - 1));
+            setSummoned(true);
+            /*
+             * The first press only opens the list.
+             *
+             * Moving the highlight in the same press would skip whatever is at
+             * the top of a list that had not been showing.
+             */
+            if (!listOpen) {
+              setOpen(true);
+              return;
+            }
+            /*
+             * Stepped from `highlighted`, not from `active`.
+             *
+             * `active` is the raw counter and `highlighted` is it clamped to
+             * the rows that exist. Once a narrowed list had left the two apart
+             * — type three letters after arrowing down a long list — the next
+             * arrow moved `active` where nobody could see it and the highlight
+             * sat still for several presses.
+             *
+             * And **no `setFiltering(true)` here**: flipping it re-narrowed a
+             * list the chevron had opened in full, so the rows moved under the
+             * highlight on the very press that was meant to walk them.
+             */
+            setActive(
+              event.key === 'ArrowDown'
+                ? Math.min(highlighted + 1, matches.length - 1)
+                : Math.max(highlighted - 1, 0),
+            );
             return;
           }
           if (event.key === 'Enter' && listOpen) {
@@ -129,11 +194,13 @@ export function SuggestInput({
             return;
           }
           if (event.key === 'Escape' && listOpen) {
-            // Claimed only while there is a list to close, so a field that is
-            // merely focused does not swallow the Escape a surrounding screen
-            // uses to step backwards.
-            event.preventDefault();
             setOpen(false);
+            // Claimed only for a list somebody asked for — see `summoned`. A
+            // list that merely opened on focus closes and lets the key through
+            // to the dialog or screen around it, which is where Escape means
+            // something.
+            if (summoned) event.preventDefault();
+            setSummoned(false);
           }
         }}
       />
@@ -152,6 +219,7 @@ export function SuggestInput({
             event.preventDefault();
             setFiltering(false);
             setActive(0);
+            setSummoned(true);
             setOpen((current) => !current);
           }}
         >
@@ -160,7 +228,7 @@ export function SuggestInput({
       )}
 
       {listOpen && (
-        <div role="listbox" className="ob-suggest">
+        <div role="listbox" className="ob-suggest" ref={listRef}>
           {matches.map((option, index) => (
             <button
               key={option.value}
@@ -215,6 +283,9 @@ export const Select = forwardRef<HTMLInputElement, SelectHTMLAttributes<HTMLSele
     const [open, setOpen] = useState(false);
     const [active, setActive] = useState(0);
     const [filtering, setFiltering] = useState(false);
+    /** As in `SuggestInput`: a list opened on focus must not eat Escape. */
+    const [summoned, setSummoned] = useState(false);
+    const listRef = useRef<HTMLDivElement>(null);
     useEffect(() => setText(label), [label]);
 
     const term = text.trim().toLowerCase();
@@ -225,9 +296,12 @@ export const Select = forwardRef<HTMLInputElement, SelectHTMLAttributes<HTMLSele
     const highlighted = matches.length > 0 ? Math.min(active, matches.length - 1) : -1;
     const listOpen = open && matches.length > 0;
 
+    useHighlightInView(listRef, highlighted, listOpen);
+
     function commit(next: string): void {
       setOpen(false);
       setFiltering(false);
+      setSummoned(false);
       if (next === current) {
         setText(label);
         return;
@@ -253,6 +327,7 @@ export const Select = forwardRef<HTMLInputElement, SelectHTMLAttributes<HTMLSele
             setText(event.target.value);
             setFiltering(true);
             setOpen(true);
+            setSummoned(true);
             setActive(0);
           }}
           onFocus={(event) => {
@@ -264,18 +339,23 @@ export const Select = forwardRef<HTMLInputElement, SelectHTMLAttributes<HTMLSele
           onBlur={() => {
             setOpen(false);
             setFiltering(false);
+            setSummoned(false);
             setText(label);
           }}
           onKeyDown={(event) => {
-            if (event.key === 'ArrowDown') {
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
               event.preventDefault();
-              setOpen(true);
-              setActive((now) => Math.min(now + 1, Math.max(0, matches.length - 1)));
-              return;
-            }
-            if (event.key === 'ArrowUp') {
-              event.preventDefault();
-              setActive((now) => Math.max(0, now - 1));
+              setSummoned(true);
+              if (!listOpen) {
+                setOpen(true);
+                return;
+              }
+              // From `highlighted`, not `active` — see `SuggestInput`.
+              setActive(
+                event.key === 'ArrowDown'
+                  ? Math.min(highlighted + 1, matches.length - 1)
+                  : Math.max(highlighted - 1, 0),
+              );
               return;
             }
             if (event.key === 'Enter' && listOpen) {
@@ -286,9 +366,10 @@ export const Select = forwardRef<HTMLInputElement, SelectHTMLAttributes<HTMLSele
               return;
             }
             if (event.key === 'Escape' && listOpen) {
-              event.preventDefault();
               setOpen(false);
               setText(label);
+              if (summoned) event.preventDefault();
+              setSummoned(false);
             }
           }}
         />
@@ -303,6 +384,7 @@ export const Select = forwardRef<HTMLInputElement, SelectHTMLAttributes<HTMLSele
               event.preventDefault();
               setFiltering(false);
               setActive(0);
+              setSummoned(true);
               setOpen((now) => !now);
             }}
           >
@@ -310,7 +392,7 @@ export const Select = forwardRef<HTMLInputElement, SelectHTMLAttributes<HTMLSele
           </button>
         )}
         {listOpen && (
-          <div role="listbox" className="ob-suggest">
+          <div role="listbox" className="ob-suggest" ref={listRef}>
             {matches.map((option, index) => (
               <button
                 key={option.value}

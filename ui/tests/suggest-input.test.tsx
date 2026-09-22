@@ -94,12 +94,46 @@ describe('a field somebody can type into or pick from', () => {
   it('LEAD-31: the arrow keys pick a different row', () => {
     render(<Card />);
     const input = field();
-    input.focus();
-    fireEvent.change(input, { target: { value: '' } });
+    // `fireEvent.focus`, not `input.focus()`: React 17 and later listen for
+    // `focusin`, which jsdom's `.focus()` does not dispatch — so the DOM call
+    // alone leaves the list shut and this would be testing the closed-list
+    // case below instead of the one it is named for.
+    fireEvent.focus(input);
     fireEvent.keyDown(input, { key: 'ArrowDown' });
     fireEvent.keyDown(input, { key: 'Enter' });
 
     // First row is index 0, so one ArrowDown lands on the second.
+    expect(screen.getByTestId('value').textContent).toBe('Carton');
+  });
+
+  it('LEAD-31: the first arrow on a shut list opens it without skipping the top row', () => {
+    render(<Card />);
+    const input = field();
+    fireEvent.focus(input);
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(screen.queryByRole('option', { name: 'Box' })).toBeNull();
+
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    // Not 'Carton'. A list that was not showing has nothing to move *from*,
+    // and moving anyway walks straight past whatever is at the top of it.
+    expect(screen.getByTestId('value').textContent).toBe('Box');
+  });
+
+  it('LEAD-31: the arrows walk the chevron\'s full list without re-narrowing it', () => {
+    render(<Card initial="Carton" />);
+    const input = field();
+    fireEvent.mouseDown(screen.getByLabelText('Show packaging options'));
+    expect(screen.getAllByRole('option')).toHaveLength(3);
+
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+
+    // The defect this pins: ArrowDown used to turn filtering back on, so a
+    // field already holding "Carton" went from three rows to one on the very
+    // press that was meant to walk them — the rows moved under the highlight.
+    expect(screen.getAllByRole('option')).toHaveLength(3);
+    fireEvent.keyDown(input, { key: 'Enter' });
     expect(screen.getByTestId('value').textContent).toBe('Carton');
   });
 
@@ -128,5 +162,21 @@ describe('a field somebody can type into or pick from', () => {
 
     const spare = !fireEvent.keyDown(input, { key: 'Escape' });
     expect(spare).toBe(false);
+  });
+
+  it('LEAD-31: a list that merely opened on focus leaves Escape for the dialog', () => {
+    render(<Card />);
+    const input = field();
+    fireEvent.focus(input);
+    expect(screen.queryByRole('option', { name: 'Box' })).toBeTruthy();
+
+    const claimed = !fireEvent.keyDown(input, { key: 'Escape' });
+
+    // The list still closes — but the key is not claimed, so the Modal's own
+    // Escape (on `document`, which honours `defaultPrevented`) still runs. In
+    // the product dialog the first Escape used to do nothing anybody could
+    // see: it shut a list that had opened itself, and the dialog stayed put.
+    expect(screen.queryByRole('option', { name: 'Box' })).toBeNull();
+    expect(claimed).toBe(false);
   });
 });
