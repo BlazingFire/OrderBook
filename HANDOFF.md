@@ -78,7 +78,8 @@ against the code before acting on it.
   (resolves `tsc`/`vite` from `node_modules/.bin` by path, points
   `TEMP`/`TMP` at a gitignored `.tmp/` for the Windows esbuild/Defender lock).
 - **Releases:** `.github/workflows/release.yml` builds on a three-OS matrix
-  (Windows setup + standalone, macOS `.dmg`, Linux AppImage + `.deb`). A push
+  (Windows setup + standalone, macOS `.dmg`, Linux AppImage + `.deb`; the
+  macOS leg currently fails — see "Owed work"). A push
   to `main` whose `package.json` version has no release yet publishes
   `v<version>`; unsigned (no `RELEASE_KEY` secret) it is a **draft**, which no
   panel installs. A manual run on any branch builds into a draft pre-release
@@ -318,8 +319,14 @@ docs/          all prose; nothing source-of-truth lives in a code comment
   consolidation has been run in a browser).
 - An install / update / uninstall rehearsal on a real Windows PC, and a run of
   the standalone `.exe` (`docs/PRODUCTION_READINESS.md` §2 item 4).
-- The macOS build — configured and guarded by
-  `master/tests/packaging-invariants.test.ts`, never executed.
+- **The macOS build fails in CI.** Its first real runs (2026-09-22) found two
+  problems. The Apple silicon runner installs only its own PostgreSQL
+  package; a workflow step now fetches the Intel one. After that,
+  electron-builder's universal merge refuses with *"the number of mach-o files
+  is not the same between the arm64 and x64 builds"* — the vendored
+  PostgreSQL dylibs differ between the two halves. Not fixed. Options: build
+  separate `x64` and `arm64` `.dmg`s instead of `universal`, or declare the
+  vendored tree in `mac.x64ArchFiles`. Windows and Linux legs are green.
 - Responsive gate: 1024×768 / 1366×768 / 1920×1080 / 3840×2160 at 79 % /
   100 % / 157 %, sidebar in all three modes.
 
