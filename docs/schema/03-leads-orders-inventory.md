@@ -130,6 +130,7 @@ CREATE TABLE line_items (
   weight_kg          NUMERIC(10,3),              -- the variant's weight as it was, per piece
 
   packaging          TEXT,
+  grade              TEXT,                       -- since 2026-09-22: the grade this line is sold as
   sequence           INTEGER NOT NULL DEFAULT 0,
   from_party_variant BOOLEAN NOT NULL DEFAULT false,
   image_path         TEXT,
@@ -174,6 +175,17 @@ variants per model to say so. Such a model carries `products.multi_colour = true
 it may name a colour from the `stock.colour` option list; the line still points at the variant it
 quotes, stock stays per variant, and the colour is frozen and copied onto the order like the rest
 of the snapshot. A colour on any other product is refused (`validation.lead.colourUnexpected`).
+
+**`grade` is a line attribute, not a catalogue one** (2026-09-22). The trim of 2026-09-21 dropped
+grade from `products`, `party_product_variants` *and* `line_items`; a day later the owner asked for
+it back on the lead's product card, and `20260325000000_line_item_grade` restores the line's column
+alone. The catalogue's stay dropped deliberately: the same variant goes out as one grade on one
+line and another on the next, so a grade is what was *sold*, never what the article *is*. Like
+`packaging` it is never derived — not from the product, not from a party variant, not during
+conversion — and the values come from the `line.grade` option list, which ships empty for a company
+to fill under Settings → Fields. It is not in the line's search vector: nobody searches lines by
+grade, and adding a term would mean rewriting `line_items_search_refresh` and reindexing every row
+for it.
 
 There is no money on a line (2026-09-21): `rate` and `line_total` went with pricing, together
 with `leads.total_amount` and `orders.total_amount`.
@@ -349,3 +361,15 @@ seed:catalogue`; the sample dataset is built on top of it (`docs/DEVELOPER_MODE.
 
 Migration `20260324000000_product_master_trim` drops the columns in place — no wipe — and
 `down()` throws.
+
+### And a correction on 2026-09-22: the line's grade comes back
+
+| Before | Now | Why |
+|---|---|---|
+| `line_items.grade` dropped by the trim | Back, as a line attribute only | The owner asked for a Grade pick on the lead's product card; a grade is what a line was sold as, not a property of the article |
+| `line.grade` option list deleted by the trim | A managed set again, shipped empty | The pick has to come from somewhere a person can maintain — Settings → Fields |
+
+Migration `20260325000000_line_item_grade` adds the column back and seeds nothing. It is
+registered **after** the trim rather than in timestamp order, because on a fresh database the
+trim — itself pinned last — would otherwise drop the column a moment after this added it.
+`products.grade` and `party_product_variants.grade` stay gone.

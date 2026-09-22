@@ -426,6 +426,7 @@ export function mapLineItem(row: Row): LineItem {
     size: (row.size as string | null) ?? null,
     weightKg,
     packaging: (row.packaging as string | null) ?? null,
+    grade: (row.grade as string | null) ?? null,
     sequence: toRequiredNumber(row.sequence),
     fromPartyVariant: Boolean(row.from_party_variant),
     imagePath: (row.image_path as string | null) ?? null,

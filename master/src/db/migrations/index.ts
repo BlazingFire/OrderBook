@@ -43,6 +43,7 @@ import * as productColourPolicyAndLineCategory from './20260322000000_product_co
 import * as dropDocumentDesigner from './20260322000000_drop_document_designer.js';
 import * as productVariants from './20260323000000_product_variants.js';
 import * as productMasterTrim from './20260324000000_product_master_trim.js';
+import * as lineItemGrade from './20260325000000_line_item_grade.js';
 
 export interface Migration {
   name: string;
@@ -159,6 +160,14 @@ export const migrations: Migration[] = [
   {
     name: '20260324000000_product_master_trim',
     ...productMasterTrim,
+  },
+  // Puts `line_items.grade` back (owner's decision, 2026-09-22). After the
+  // trim rather than in timestamp order, because the trim is pinned to the end
+  // and drops that very column: ahead of it, a fresh database would add the
+  // column and then lose it again a moment later.
+  {
+    name: '20260325000000_line_item_grade',
+    ...lineItemGrade,
   },
 ];
 

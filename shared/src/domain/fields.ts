@@ -9,11 +9,16 @@ import { CUSTOM_FIELD_ENTITIES, type CustomFieldEntity } from './entities.js';
 import type { MessageKey } from '../i18n/keys.js';
 
 /**
- * The three managed option-list sets. Inlined literals, never referenced from a
+ * The four managed option-list sets. Inlined literals, never referenced from a
  * migration (`03-DATABASE.md` §2: a migration is a fixed historical fact, not
  * a view of today's code).
  */
-export const FIELD_LIST_KEYS = ['lead.sourcePlatform', 'stock.colour', 'line.packaging'] as const;
+export const FIELD_LIST_KEYS = [
+  'lead.sourcePlatform',
+  'stock.colour',
+  'line.packaging',
+  'line.grade',
+] as const;
 
 export type FieldListKey = (typeof FIELD_LIST_KEYS)[number];
 
@@ -49,6 +54,21 @@ const FIELD_SETS: readonly FieldSetDefinition[] = [
   {
     listKey: 'line.packaging',
     labelToken: 'fieldSet.line.packaging',
+    hasHex: false,
+    usedBy: ['leads', 'orders'],
+  },
+  /*
+   * The grades a line may be sold as. Restored on 2026-09-22 after the product
+   * trim removed it the day before: the owner asked for Grade back as a
+   * *pick* on the lead's product card, which means the values have to be
+   * somewhere a person can maintain them, and this screen is that somewhere.
+   *
+   * It ships with nothing in it, like `line.packaging` — the grades a
+   * particular company sells by are not ours to guess.
+   */
+  {
+    listKey: 'line.grade',
+    labelToken: 'fieldSet.line.grade',
     hasHex: false,
     usedBy: ['leads', 'orders'],
   },

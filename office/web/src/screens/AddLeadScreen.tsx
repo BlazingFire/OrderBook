@@ -14,9 +14,9 @@
  * chosen category becomes a chip in front of the box and the same box then
  * searches the models inside it, by name or by any of their codes. Choosing a
  * model replaces the search field with the model itself and opens a draft card
- * underneath: packaging (and, on a model made in every colour, the colour) at
- * the top, one row per variant below — code and weight read off the variant, a
- * quantity to type. Nothing joins the
+ * underneath: packaging, grade (and, on a model made in every colour, the
+ * colour) at the top, one row per variant below — code and weight read off the
+ * variant, a quantity to type. Nothing joins the
  * lead until that card is added, so a half-filled product cannot ride along
  * unnoticed, and the search field comes straight back for the next one, with
  * the category still chosen.
@@ -120,6 +120,11 @@ interface ProductFacts {
   multiColour: boolean;
   /** The colour chosen for the card, from the colour list; blank is the variant's own. */
   colour: string;
+  /**
+   * The grade every line off this card is sold as, from the company's grade
+   * list. Blank means no grade — a legal answer, and the starting one.
+   */
+  grade: string;
   fromPartyVariant: boolean;
   notes: string;
 }
@@ -185,7 +190,16 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
 
   const [sourcePlatform, setSourcePlatform] = useState('');
   const [otherSource, setOtherSource] = useState('');
-  const [followUpDate, setFollowUpDate] = useState('');
+  /*
+   * Today, not blank.
+   *
+   * Every lead gets followed up, and the date the enquiry came in is the one
+   * somebody would have typed. A blank required-looking field on a form nobody
+   * has touched reads as a fault — the same reasoning that fills the source
+   * below. The quick chips and the picker both overwrite it, and clearing it is
+   * one press of the chip that matches.
+   */
+  const [followUpDate, setFollowUpDate] = useState(() => isoDate(0));
   const [notes, setNotes] = useState('');
 
   const [query, setQuery] = useState('');
@@ -252,6 +266,18 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
     () =>
       view.optionLists.filter(
         (option: OptionListItem) => option.listKey === 'line.packaging' && option.isActive,
+      ),
+    [view.optionLists],
+  );
+
+  /**
+   * The company's grade list. Ships empty, like packaging — a shop's grade
+   * ladder is its own, and Settings → Fields is where it is kept.
+   */
+  const gradeOptions = useMemo(
+    () =>
+      view.optionLists.filter(
+        (option: OptionListItem) => option.listKey === 'line.grade' && option.isActive,
       ),
     [view.optionLists],
   );
@@ -440,6 +466,9 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
       packaging: '',
       multiColour: product.multiColour,
       colour: '',
+      // Not carried over from the party's record either — there is no grade on
+      // one. Blank until somebody picks.
+      grade: '',
       fromPartyVariant: partyRecord !== null,
       notes: '',
       // Every variant the model comes in, blank until somebody types. A
@@ -546,12 +575,19 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
   const panelTerm = lineQuery.trim().toLowerCase();
 
   /*
-   * Matched on the same words the row shows — code, product, colour and
+   * Matched on the same words the row shows — code, product, colour, grade and
    * category — so what somebody reads is what they can search.
    */
   const matchedLines = panelTerm
     ? lines.filter((line) =>
-        [line.code, line.productName, line.variantLabel ?? '', line.colour, line.categoryName]
+        [
+          line.code,
+          line.productName,
+          line.variantLabel ?? '',
+          line.colour,
+          line.grade,
+          line.categoryName,
+        ]
           .join(' ')
           .toLowerCase()
           .includes(panelTerm),
@@ -629,6 +665,7 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
         variantLabel: line.variantLabel,
         // Only a multi-colour model carries one; the Master refuses it elsewhere.
         colour: line.colour.trim() || null,
+        grade: line.grade.trim() || null,
         size: line.size,
         weightKg: line.weightKg,
         packaging: line.packaging.trim(),
@@ -797,16 +834,15 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
                       borderRadius: 'var(--r-md)',
                     }}
                   >
-                    <span className="ob-body-strong">{selectedParty.name}</span>
-                    <span className="ob-mono ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                      {selectedParty.partyCode}
-                    </span>
-                    {selectedParty.phone && (
-                      <span className="ob-small" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                        {selectedParty.phone}
-                      </span>
-                    )}
-                    {selectedParty.city && <span className="ob-small">{selectedParty.city}</span>}
+                    {/*
+                     * The name and nothing else (owner's instruction,
+                     * 2026-09-22). The code, the phone number and the town
+                     * belong to the *picker*, where they tell two Sharma
+                     * Traders apart; once one has been chosen they are four
+                     * more things to read on the field somebody is typing
+                     * past, and the party is already decided.
+                     */}
+                    <span className="ob-body-strong ob-ellipsis">{selectedParty.name}</span>
                     {partyWiseMode && (
                       <StatusPill tone="ok">{t('lead.add.party.ownRates')}</StatusPill>
                     )}
@@ -1276,6 +1312,7 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
                 draft={draft}
                 ready={draftIsReady(draft)}
                 packagingOptions={packagingOptions}
+                gradeOptions={gradeOptions}
                 colourOptions={colourOptions}
                 suggestedPackaging={partyRecordFor.get(draft.productId)?.packaging ?? null}
                 colourHex={colourHex}
@@ -1603,7 +1640,8 @@ function LeadLine({
   const over = line.availableBoxes !== null && line.quantity > line.availableBoxes;
   const kg = lineWeight(line);
 
-  const meta = line.packaging.trim() || t('lead.add.line.noPackaging');
+  const meta = [line.packaging.trim(), line.grade.trim()].filter(Boolean).join(' · ') ||
+    t('lead.add.line.noPackaging');
 
   return (
     <div className="ob-lead-line" data-open={open ? 'true' : undefined}>
@@ -1642,6 +1680,12 @@ function LeadLine({
                 {line.colour}
               </span>
             )}
+            {line.grade && (
+              <span className="ob-small" style={{ fontWeight: 450, color: 'var(--fg-secondary)' }}>
+                {' · '}
+                {line.grade}
+              </span>
+            )}
           </span>
           {over && (
             <span
@@ -1674,6 +1718,11 @@ function LeadLine({
               <span className="ob-colourname ob-micro">
                 <ColourChip name={line.colour} hex={colourHex(line.colour)} />
                 <span>{line.colour}</span>
+              </span>
+            )}
+            {line.grade && (
+              <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
+                {t('lead.add.line.grade')}: {line.grade}
               </span>
             )}
             <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
@@ -1742,6 +1791,7 @@ function DraftCard({
   draft,
   ready,
   packagingOptions,
+  gradeOptions,
   colourOptions,
   suggestedPackaging,
   colourHex,
@@ -1752,6 +1802,7 @@ function DraftCard({
   draft: DraftProduct;
   ready: boolean;
   packagingOptions: OptionListItem[];
+  gradeOptions: OptionListItem[];
   colourOptions: OptionListItem[];
   suggestedPackaging: string | null;
   colourHex: (name: string) => string | undefined;
@@ -1786,6 +1837,14 @@ function DraftCard({
       : []),
   ];
 
+  /** Same guard as the colour above: a modified line's grade stays pickable. */
+  const gradeValues = [
+    ...gradeOptions.map((option) => ({ value: option.value, label: option.label })),
+    ...(draft.grade && !gradeOptions.some((option) => option.value === draft.grade)
+      ? [{ value: draft.grade, label: draft.grade }]
+      : []),
+  ];
+
   return (
     <Card padded={false} style={{ marginTop: 'var(--s-8)' }}>
       <div
@@ -1806,12 +1865,22 @@ function DraftCard({
       </div>
 
       <div style={{ padding: `${rem(12)} ${rem(14)} ${rem(14)}` }}>
+        {/*
+          * Packaging, grade, and — on a model made in every colour — the
+          * colour. Answers about the card as a whole, decided once and copied
+          * onto every line it adds.
+          *
+          * `auto-fit` rather than a fixed two- or three-column track, because
+          * this card sits in a column that shares the screen with the
+          * Added-products panel: three tracks with real minimums overflowed it
+          * once the form column got down to its own flex basis. The `min(100%,
+          * …)` floor is what makes the wrap safe — a bare minimum wider than
+          * the container is an overflow, not a wrap.
+          */}
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: draft.multiColour
-              ? `minmax(0, 1fr) minmax(${rem(160)}, ${rem(240)})`
-              : 'minmax(0, 1fr)',
+            gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${rem(170)}), 1fr))`,
             gap: 'var(--s-12)',
             marginBottom: 'var(--s-12)',
           }}
@@ -1852,6 +1921,37 @@ function DraftCard({
                 {t('lead.add.products.useSuggested', { value: suggestedPackaging })}
               </Button>
             )}
+          </label>
+
+          <label className="ob-small" style={{ display: 'block', color: 'var(--fg-secondary)' }}>
+            {t('lead.add.draft.grade')}
+            {/* A pick, not a free field (owner's instruction, 2026-09-22): a
+                grade is one of a short ladder the company sells by, and the
+                ladder is decided in Settings → Fields, not retyped per lead.
+                Blank is the first option and the default — plenty of lines
+                carry no grade at all. */}
+            <Select
+              value={draft.grade}
+              aria-label={t('lead.add.draft.grade')}
+              onChange={(event) => onPatch({ grade: event.target.value })}
+            >
+              <option value="">{t('lead.add.draft.gradeNone')}</option>
+              {gradeValues.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+            <span
+              className="ob-micro"
+              style={{ display: 'block', marginTop: rem(4), color: 'var(--fg-tertiary)' }}
+            >
+              {gradeValues.length === 0
+                ? t('lead.add.draft.gradeEmpty')
+                : draft.grade
+                  ? t('lead.add.draft.gradeHint')
+                  : t('lead.add.draft.gradeNoneHint')}
+            </span>
           </label>
 
           {draft.multiColour && (

@@ -144,6 +144,15 @@ export interface LineItemInput {
    * `validation.lead.packagingMissing`.
    */
   packaging?: string | null;
+  /**
+   * A grade from the company's `line.grade` list, or null.
+   *
+   * Not checked against the list on the way in, for the same reason packaging
+   * is not: the panel that sent it may have been offline for a day, and a
+   * grade an administrator has since retired is still what the customer was
+   * quoted. The *picker* is what keeps new lines on the list.
+   */
+  grade?: string | null;
   sequence?: number;
   fromPartyVariant?: boolean;
   imagePath?: string | null;

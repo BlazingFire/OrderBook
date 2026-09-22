@@ -94,6 +94,7 @@ export const EN_MESSAGES = {
   'fieldSet.lead.sourcePlatform': 'Lead source',
   'fieldSet.stock.colour': 'Colour',
   'fieldSet.line.packaging': 'Packaging',
+  'fieldSet.line.grade': 'Grade',
 
   // --- action.* — the grid's column headers ---
   'action.view': 'View',
@@ -1125,6 +1126,11 @@ export const EN_MESSAGES = {
   'lead.add.draft.hintQuantity': 'Enter a quantity for at least one variant',
   'lead.add.draft.hintRate': 'Enter a rate',
   'lead.add.draft.new': 'new product',
+  'lead.add.draft.grade': 'Grade',
+  'lead.add.draft.gradeNone': 'No grade',
+  'lead.add.draft.gradeHint': 'Every line this card adds will carry this grade.',
+  'lead.add.draft.gradeNoneHint': 'The lines this card adds will carry no grade.',
+  'lead.add.draft.gradeEmpty': 'No grades listed yet — add them under Settings → Fields.',
   'lead.add.draft.packaging': 'Packaging',
   'lead.add.draft.quantityTitle': 'Quantity — pieces',
   'lead.add.draft.showOptions': 'Show {field} options',
@@ -1569,6 +1575,7 @@ export const EN_MESSAGES = {
   'orders.column.fromLead': 'From lead',
   'orders.column.order': 'Order',
   'orders.column.packaging': 'Packaging',
+  'orders.column.grade': 'Grade',
   'orders.column.colour': 'Colour',
   'orders.column.party': 'Party',
   'orders.column.product': 'Product',

@@ -159,6 +159,29 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
       expect(lead.items.map((item) => item.code)).toEqual(['EWC-S-TRAP', 'EWC-S-TRAP']);
     });
 
+    it('keeps the grade the panel chose, on any product, and carries it to the order', async () => {
+      const { party, plain, plainVariant } = await seed();
+
+      const lead = await leads.createLead(
+        {
+          partyId: party.id,
+          items: [
+            line(plain.id, plainVariant.id, 3, { grade: 'A' }),
+            line(plain.id, plainVariant.id, 2),
+          ],
+        },
+        actor,
+      );
+
+      // A grade needs no switch on the product — it says what *this line* was
+      // sold as, so one variant goes out as A on one line and ungraded on the
+      // next. `20260325000000_line_item_grade` is the column behind this.
+      expect(lead.items.map((item) => item.grade)).toEqual(['A', null]);
+
+      const order = await orders.convertLead({ leadId: lead.id }, actor);
+      expect(order.items.map((item) => item.grade)).toEqual(['A', null]);
+    });
+
     it('refuses a colour on a product that is not made in colours', async () => {
       const { party, plain, plainVariant } = await seed();
 
@@ -387,6 +410,7 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
         expect(after?.code).toBe(before.code);
         expect(after?.variantLabel).toBe(before.variantLabel);
         expect(after?.colour).toBe(before.colour);
+        expect(after?.grade).toBe(before.grade);
         expect(after?.size).toBe(before.size);
         expect(after?.weightKg).toBe(before.weightKg);
         expect(after?.quantity).toBe(before.quantity);

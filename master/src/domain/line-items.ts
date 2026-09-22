@@ -51,6 +51,8 @@ export interface LineSnapshot {
   size: string | null;
   weightKg: number | null;
   packaging: string | null;
+  /** The grade this line is sold as, from the company's `line.grade` list. */
+  grade: string | null;
   sequence: number;
   fromPartyVariant: boolean;
   imagePath: string | null;
@@ -72,6 +74,7 @@ export interface LineDraft {
   size?: string | null;
   weightKg?: number | null;
   packaging?: string | null;
+  grade?: string | null;
   sequence?: number;
   fromPartyVariant?: boolean;
   imagePath?: string | null;
@@ -96,10 +99,10 @@ export class LineColourError extends Error {
  *
  * The code, the colour text and the weight come from the **variant**, never
  * from the product or the party's record — a party has its own name for a
- * basin, not its own weight for it. `packaging` and `colour` are never filled
- * from any source: they come from the person entering the line or they stay
- * empty (§3.2, §5.2). A colour is accepted only on a `multiColour` product —
- * anywhere else it would name a colour the factory does not make.
+ * basin, not its own weight for it. `packaging`, `grade` and `colour` are never
+ * filled from any source: they come from the person entering the line or they
+ * stay empty (§3.2, §5.2). A colour is accepted only on a `multiColour`
+ * product — anywhere else it would name a colour the factory does not make.
  */
 export function buildLineSnapshot(
   draft: LineDraft,
@@ -126,6 +129,9 @@ export function buildLineSnapshot(
     weightKg: firstDefined(draft.weightKg, variant.weightKg),
     // Deliberately only ever the caller's value.
     packaging: draft.packaging ?? null,
+    // The same rule, and for the same reason: no product, variant or party
+    // record carries a grade to fall back on. Blank is a legal answer.
+    grade: draft.grade?.trim() || null,
     sequence: draft.sequence ?? sequence,
     fromPartyVariant: draft.fromPartyVariant ?? fromPartyVariant,
     imagePath: draft.imagePath ?? null,

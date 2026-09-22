@@ -84,6 +84,7 @@ Picking a variant snapshots these onto the line **at that moment**:
 | `colour` | **Chosen manually**, from the company's colour list, and only on a model with `multiColour` on (`validation.lead.colourUnexpected` otherwise). Blank means the variant's own colour |
 | `quantity` | **Required**, greater than zero (`validation.lead.quantityRequired`) |
 | `packaging` | **Chosen manually** — never auto-filled, even in `partyWiseMode` |
+| `grade` | **Chosen manually**, from the company's `line.grade` list. Allowed on any product — a grade says what this line was sold as, not what the article is. Blank is a legal answer |
 | `sequence` | Display order, auto-assigned |
 | `fromPartyVariant` | Auto-set `true` when the values came from a party variant |
 | `imagePath`, `notes` | Optional |
@@ -92,14 +93,16 @@ Picking a variant snapshots these onto the line **at that moment**:
 "toilet" shows *ONE PIECE TOILET* and never a product. The chosen category becomes a chip and the
 same box then searches the models inside it, by name or by any of their codes. Picking a model
 opens a card with one row per variant (code and weight already filled, a quantity to type);
-adding the card adds one line per row with a quantity. On a model made in every colour the card
-also offers a *Colour* select over the colour list — one colour per card, copied onto every line
-it adds; the same model in a second colour is the card added again. The category chip stays for
-the next product; Backspace on an empty box, or the chip's ✕, goes back to choosing a category.
+adding the card adds one line per row with a quantity. The card decides packaging and *Grade* for
+everything it adds — Grade a pick over the `line.grade` list, blank by default — and on a model
+made in every colour it also offers a *Colour* select over the colour list; one colour per card,
+copied onto every line it adds, and the same model in a second colour is the card added again.
+The category chip stays for the next product; Backspace on an empty box, or the chip's ✕, goes
+back to choosing a category.
 
-`packaging` is pointedly excluded from every auto-fill. A variant whose weight nobody has entered
-yet shows **weight missing** rather than a zero, on the card, on the line and in the footer, which
-also counts such lines beside the total weight it could compute.
+`packaging` and `grade` are pointedly excluded from every auto-fill. A variant whose weight nobody
+has entered yet shows **weight missing** rather than a zero, on the card, on the line and in the
+footer, which also counts such lines beside the total weight it could compute.
 
 ### 3.3 Deliberately not on a lead
 
@@ -212,6 +215,7 @@ Frozen the moment the line is added; editing the product or its variant later do
 | `productId`, `variantId` | Live references, for stock movement and traceability |
 | `sequence` | Display order |
 | `packaging` | Manual on every line — never auto-filled |
+| `grade` | Manual on every line, from `line.grade`; never auto-filled. Copied to the order like the rest of the snapshot |
 | `quantity` | Pieces of this one variant; greater than zero |
 | `lineWeightKg` | Derived: `weightKg × quantity`, or null while the weight is missing |
 | `fromPartyVariant` | `true` when the values came from a party variant |
@@ -255,7 +259,7 @@ excluded from the vector itself.
  [Office Panel — user with leads.create]
         |
         v
- Pick party (required) -> add line items (product, variant+qty, colour, packaging) -> Save
+ Pick party (required) -> add line items (product, variant+qty, colour, grade, packaging) -> Save
         |                                   |
         |                    Saved to the local store instantly
         |                    (temporary ID when offline)

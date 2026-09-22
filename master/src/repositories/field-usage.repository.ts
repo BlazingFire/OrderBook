@@ -77,6 +77,17 @@ const SOURCES: Record<FieldListKey, readonly SourceDefinition[]> = {
              GROUP BY packaging`,
     },
   ],
+  // Lines only. No product, variant or party record carries a grade — see
+  // `LineItem.grade`.
+  'line.grade': [
+    {
+      source: 'line_items',
+      sql: `SELECT grade AS value, count(*) AS count
+              FROM line_items
+             WHERE tenant_id = ? AND grade IS NOT NULL
+             GROUP BY grade`,
+    },
+  ],
 };
 
 interface RawRow {

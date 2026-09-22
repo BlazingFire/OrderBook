@@ -123,6 +123,9 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
                     ) : (
                       <StatusPill tone="conflict">{t('lead.detail.packagingNotChosen')}</StatusPill>
                     )}
+                    {/* The grade the line was sold as. Absent on plenty of
+                        lines, so there is no "not chosen" state for it. */}
+                    {item.grade && <StatusPill>{item.grade}</StatusPill>}
                     {/* The weight frozen on the line, and what this line adds to the total. */}
                     {item.weightKg === null ? (
                       <StatusPill tone="offline">{t('product.weight.missing')}</StatusPill>

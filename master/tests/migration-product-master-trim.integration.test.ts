@@ -64,7 +64,12 @@ describe.skipIf(!canRunIntegrationTests)('product master trim migration (integra
   it('TRIM-2: no table carries money, and a line carries its colour', async () => {
     const lines = await columnsOf('line_items');
     expect(lines).toContain('colour');
-    for (const gone of ['rate', 'line_total', 'sin', 'grade', 'product_type']) {
+    // `grade` is not in this list any more: the trim drops it and
+    // `20260325000000_line_item_grade`, which runs after it, puts the *line's*
+    // one back at the owner's request. The catalogue's grade columns below
+    // stay gone — that is the half of the trim that still holds.
+    expect(lines).toContain('grade');
+    for (const gone of ['rate', 'line_total', 'sin', 'product_type']) {
       expect(lines, gone).not.toContain(gone);
     }
     expect(await columnsOf('leads')).not.toContain('total_amount');

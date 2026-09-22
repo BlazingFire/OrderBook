@@ -101,6 +101,22 @@ describe('the colour on a line', () => {
   });
 });
 
+describe('the grade on a line', () => {
+  it('is only ever what the panel sent — nothing in the catalogue carries one', () => {
+    expect(buildLineSnapshot(draft(), PRODUCT, WHITE, PARTY_RECORD, 1).grade).toBeNull();
+    expect(buildLineSnapshot(draft({ grade: '' }), PRODUCT, WHITE, null, 1).grade).toBeNull();
+    expect(buildLineSnapshot(draft({ grade: '   ' }), PRODUCT, WHITE, null, 1).grade).toBeNull();
+  });
+
+  it('is kept, trimmed, on any product — a grade is not a colour', () => {
+    // Unlike the colour above, a grade needs no switch on the product: it says
+    // what *this line* was sold as, so the same variant may go out as A on one
+    // lead and B on another.
+    expect(buildLineSnapshot(draft({ grade: ' A ' }), PRODUCT, WHITE, null, 1).grade).toBe('A');
+    expect(buildLineSnapshot(draft({ grade: 'B' }), ANY_COLOUR, WHITE, null, 1).grade).toBe('B');
+  });
+});
+
 describe('quantities and weights', () => {
   it('treats a blank, negative or unparsable quantity as nothing entered', () => {
     expect(normaliseQuantity('')).toBe(0);

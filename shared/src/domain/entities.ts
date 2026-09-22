@@ -610,6 +610,15 @@ export interface LineItem {
 
   /** Chosen manually on every line — never auto-filled. */
   packaging: string | null;
+  /**
+   * The grade the line is sold as, from the company's `line.grade` list.
+   *
+   * Removed with the product trim on 2026-09-21 and put back on 2026-09-22 at
+   * the owner's request — as a line attribute only. No product, variant or
+   * party record carries a grade: two lines of the same variant may be sold as
+   * different grades, which is exactly why it cannot live on the catalogue.
+   */
+  grade: string | null;
   sequence: number;
   fromPartyVariant: boolean;
   imagePath: string | null;

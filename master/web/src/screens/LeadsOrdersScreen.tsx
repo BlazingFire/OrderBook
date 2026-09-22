@@ -58,9 +58,11 @@ function summariseItems(items: LineItem[]): { text: string; title: string } {
     // The colour chosen on a multi-colour line rides beside the variant's own.
     const variant = [item.variantLabel, item.colour].filter(Boolean).join(' · ');
     const variantText = variant ? ` [${variant}]` : '';
-    const pack = item.packaging ? ` · ${item.packaging}` : '';
+    // Packaging and grade are the two things said about the line itself.
+    const meta = [item.packaging, item.grade].filter(Boolean).join(' · ');
+    const pack = meta ? ` · ${meta}` : '';
     const short = `${main}${item.productName}${variantText} ×${item.quantity}${pack}`;
-    const full = [main + item.productName + variantText, item.code, item.packaging]
+    const full = [main + item.productName + variantText, item.code, item.packaging, item.grade]
       .filter(Boolean)
       .join(' · ');
     return { short, full };

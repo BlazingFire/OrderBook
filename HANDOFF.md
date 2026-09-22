@@ -171,6 +171,9 @@ docs/          all prose; nothing source-of-truth lives in a code comment
   every colour* switch · custom fields, with variants of code · colour ·
   weight. A lead line on a multi-colour product may name a colour from the
   `stock.colour` option list (`line_items.colour`); stock stays per variant.
+  A line also carries a **grade** from the `line.grade` list
+  (`line_items.grade`, 2026-09-22) — a line attribute, never a catalogue one,
+  so the same variant can be sold as two grades on two lines.
 
 ## Working agreements
 
@@ -362,6 +365,67 @@ panels (last-write-wins is the default); app name/branding.
   is hex now; `parseToken` rejoins everything after the second separator.
 
 ## Recent sessions
+
+### 2026-09-22 (latest) — Lead-add trims, the suggest field's keyboard, Grade back on a line (Claude)
+
+Four of the owner's five instructions; see `docs/AI_COLLABORATION.md` for the
+full record.
+
+- **The chosen party shows only its name** on the Office New-lead screen. The
+  code, phone and town stay in the picker, where they disambiguate — the
+  owner chose that split when asked.
+- **The follow-up date defaults to today again.** It did on the v1.1.0 shared
+  `ui/NewLeadScreen` and was lost when the variant restructure replaced that
+  screen with the Office's own.
+- **`ui/src/SuggestInput.tsx`'s keyboard was wrong four ways** — this is what
+  "Esc and Enter are not working properly in product add" and "when arrow key up
+  down in category dropdown box item will also move" were. ArrowDown re-enabled
+  filtering, so a chevron-opened list re-narrowed under the highlight; both
+  arrows stepped from the unclamped counter, so the highlight could sit still
+  for several presses; an arrow on a shut list opened it *and* skipped the top
+  row; and Escape was claimed even by a list that had opened itself on focus,
+  which is why the first Escape in the product dialog appeared to do nothing.
+  Fixed, with the highlighted row scrolled into view, and four tests in
+  `ui/tests/suggest-input.test.tsx` — each watched failing against the code it
+  was written for.
+- **Enter in the product form's variants table** walks colour → code → weight
+  now. The row handler was on all three cells, so Enter anywhere jumped a row,
+  and on a single blank row it ran the save and produced a validation error
+  about a field nobody had reached.
+- **Grade is back on a lead line**, as a pick over the `line.grade` option list
+  (the owner chose pick-only). Only the *line's* column returns — `products` and
+  `party_product_variants` stay trimmed — via migration
+  `20260325000000_line_item_grade`, registered **after** the trim that dropped
+  it. `line.grade` is a managed set in Settings → Fields again and ships empty.
+
+**Not done, deliberately:** the owner also said an old UI/UX had been applied in
+place of one they had updated. Asked which screen, they answered *"Right now
+stay as it is."* The product screens were diffed against the live `Product page
+UI recreation` artifact first and match it.
+
+Traps this leaves:
+
+- **`20260325000000_line_item_grade` is in `DELIBERATELY_LAST`.** The registry
+  test pins the array's tail to that list; the migration has to stay behind
+  `20260324000000_product_master_trim`, which is itself pinned last and drops
+  `line_items.grade`. Put it in timestamp order and a *fresh* database gains the
+  column and loses it a moment later.
+- **The `line.grade` list ships empty**, so the card's Grade select offers only
+  *No grade* until somebody fills it in under Settings → Fields. The screen says
+  so rather than showing an empty dropdown. `master/src/domain/sample-data.ts`
+  seeds A/B/C, but that is the demo seed, not a live default.
+- **A grade is not validated against the list on the way in**, the same as
+  packaging: a panel that was offline for a day may be sending a value an
+  administrator has since retired, and that is still what the customer was
+  quoted. The picker is what keeps new lines on the list.
+- **Integration suites can run in a Linux container** as a non-root user
+  (`canRunIntegrationTests` is false for uid 0 because PostgreSQL refuses to
+  start as root). With PostgreSQL 16 present, `su postgres -s /bin/bash -c
+  'TMPDIR=… HOME=… npx vitest run'` ran all 117 files — worth knowing before
+  reporting a green run that actually skipped 45 files.
+- **`master/tests/github-releases.test.ts` and `master/tests/updates.test.ts`
+  fail on this branch already** (13 tests). Verified by stashing and re-running;
+  they are about the releases folder, not any recent change.
 
 ### 2026-09-22 (later still) — Crop editor: horizontal, load states, every image format (Claude)
 

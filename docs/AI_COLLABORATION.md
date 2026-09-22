@@ -187,6 +187,91 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-22 (latest) — Lead-add trims and defaults, the suggest field's keyboard, Grade restored (Claude)
+
+Four of the owner's five instructions. The fifth — "there is an old UI/UX, I
+updated it and you applied the old one" — was **not acted on**: asked which
+screen, the owner answered *"Right now stay as it is."* The product screens in
+the tree were diffed against the live `Product page UI recreation` artifact
+first and match it (form groups, list columns, and the artifact's bundled CSS is
+this repo's own, minus only the scrollbar block added after it was published).
+
+1. **The chosen party is its name and nothing else** (`AddLeadScreen`). The
+   party code, phone number and town came off the chip. They stay in the
+   *picker*, where they tell two similarly-named parties apart — the owner was
+   asked and chose that split.
+2. **The follow-up date defaults to today.** `useState('')` →
+   `useState(() => isoDate(0))`. This existed on the v1.1.0 shared
+   `ui/NewLeadScreen` (`useState(() => isoDate(0))`, line 135 of `e9b6086`) and
+   was lost when the variant restructure replaced that screen with the Office's
+   own.
+3. **The suggest field's keyboard, which is what "Esc and Enter are not working
+   properly in product add" was.** Four defects in `ui/src/SuggestInput.tsx`
+   (both the type-or-pick field and the `Select` built on it), each pinned by a
+   test that was watched failing first:
+   - ArrowDown called `setFiltering(true)`, so a list opened by the chevron
+     re-narrowed to the field's own value on the first arrow — *the rows moved
+     under the highlight*, which is the "item will also move" in the
+     instruction.
+   - Both arrows stepped from the raw `active` counter rather than from
+     `highlighted`, its clamp. Once a narrowed list had left the two apart, the
+     highlight sat still for several presses.
+   - A press on a shut list moved the highlight *and* opened it, walking past
+     the top row. It now only opens.
+   - Escape was claimed whenever a list was open — including one that had opened
+     by itself when the field took focus. In the product dialog that made the
+     first Escape do nothing anybody could see: it shut a list nobody had asked
+     for, and the dialog stayed. A `summoned` flag now decides; an unasked-for
+     list closes and lets the key through.
+   The highlighted row is also scrolled into view (`block: 'nearest'`), which
+   the 18rem-capped list needed.
+4. **Enter inside the product form's variants table** (`ProductDrawer`). The
+   row handler sat on all three cells, so Enter anywhere in a row jumped to the
+   *next* row — colour → code → weight could only be walked with Tab — and Enter
+   on the colour of a single blank row ran the save, which answered with a
+   validation error about the code nobody had reached. It is on the weight cell
+   alone now; `useEnterToAdvance` walks the rest in DOM order.
+5. **Grade restored on a lead line**, as a pick (the owner chose pick-only over
+   the type-or-pick control it used to be). `20260324000000_product_master_trim`
+   had dropped it from `products`, `party_product_variants` and `line_items`
+   the day before; only the **line's** column comes back — a grade says what
+   a line was sold as, not what the article is, so the same variant can go out
+   as A on one line and ungraded on the next. `line.grade` is a managed set
+   again (Settings → Fields) and **ships empty**: a company's grade ladder is
+   not ours to guess. Full path: `fields.ts` set · `LineItem`/`LineItemInput` ·
+   `buildLineSnapshot` (trimmed, never derived) · insert/load/map ·
+   `field-usage` · the Office snapshot (which passes option lists through
+   untouched) · the draft card's select · the panel row, lead detail, order
+   lines and the Master's lead summary.
+
+**Migration `20260325000000_line_item_grade`** adds `line_items.grade TEXT` and
+nothing else. It is registered **after** the trim rather than in timestamp
+order, and added to `DELIBERATELY_LAST` in `migration-registry.test.ts`, because
+the trim is itself pinned last and drops that very column — ahead of it, a fresh
+database would gain the column and lose it a moment later. The search vector is
+untouched: a grade term would mean rewriting `line_items_search_refresh` and
+reindexing every row for a word nobody searches lines by.
+
+**Verified:** `npm run lint`, `npm run typecheck` and `npx vitest run` all green
+— 117 files, 1407 tests, **integration suites actually ran** (PostgreSQL 16 in
+the container, driven as a non-root user). The two exceptions are
+`master/tests/github-releases.test.ts` and `master/tests/updates.test.ts`,
+13 failures between them that are **identical on a clean checkout of this
+branch** — confirmed by stashing the change and re-running. They are about the
+releases folder, not this work. Not verified in a browser or Electron.
+
+**Files modified:** `ui/src/SuggestInput.tsx`, `ui/tests/suggest-input.test.tsx`
+(+4 cases), `office/web/src/components/ProductDrawer.tsx`,
+`office/web/src/screens/AddLeadScreen.tsx` · `LeadDetail.tsx` ·
+`OrderBoardScreen.tsx`, `master/web/src/screens/LeadsOrdersScreen.tsx`,
+`shared/src/domain/{fields,entities,inputs}.ts`, `shared/src/i18n/en.ts` + `hi.ts`
+(7 keys), `master/src/domain/{line-items,sample-data}.ts`,
+`master/src/repositories/{line-item,mappers,field-usage}*.ts`,
+`master/src/db/migrations/20260325000000_line_item_grade.ts` (new) + `index.ts`,
+`office/src/sync/local-store.ts`, `master/tests/{line-items-domain,
+lead.integration,migration-registry,migration-product-master-trim.integration}`,
+`docs/schema/03-leads-orders-inventory.md`, `docs/LEAD_GENERATION_FLOW.md`.
+
 ### 2026-09-22 (later still) — Crop editor made horizontal, with real load states and every image format (Claude)
 
 Three changes to `ui/src/ImageCropModal.tsx` and the photo picker that feeds it.

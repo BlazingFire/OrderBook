@@ -377,6 +377,7 @@ function OrderDetailBody({
                   <th>{t('orders.column.variant')}</th>
                   <th>{t('orders.column.colour')}</th>
                   <th>{t('orders.column.packaging')}</th>
+                  <th>{t('orders.column.grade')}</th>
                   <th className="num">{t('orders.column.qty')}</th>
                   <th className="num">{t('orders.column.lineWeight')}</th>
                 </tr>
@@ -403,6 +404,7 @@ function OrderDetailBody({
                       {item.colour ? <ColourName name={item.colour} hex={colourHex(item.colour)} /> : '—'}
                     </td>
                     <td>{item.packaging ?? '—'}</td>
+                    <td>{item.grade ?? '—'}</td>
                     <td className="num">{item.quantity.toLocaleString('en-IN')}</td>
                     <td className="num">
                       {/* The weight frozen on the line when it was raised — a later

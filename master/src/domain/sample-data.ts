@@ -55,6 +55,13 @@ export const SAMPLE_OPTION_VALUES: Record<FieldListKey, readonly SampleOptionVal
     { value: 'Wooden crate' },
     { value: 'Loose' },
   ],
+  /*
+   * Demo values only. The live list ships empty — a company's grade ladder is
+   * its own, and Settings → Fields is where it puts one (see
+   * `shared/src/domain/fields.ts`). This file is the sample-data seed nobody
+   * runs on a real installation.
+   */
+  'line.grade': [{ value: 'A' }, { value: 'B' }, { value: 'C' }],
 };
 
 // --- Custom fields ---------------------------------------------------------

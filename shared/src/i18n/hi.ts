@@ -82,6 +82,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'fieldSet.lead.sourcePlatform': 'लीड स्रोत',
   'fieldSet.stock.colour': 'रंग',
   'fieldSet.line.packaging': 'पैकेजिंग',
+  'fieldSet.line.grade': 'ग्रेड',
 
   'action.view': 'देखें',
   'action.create': 'बनाएँ',
@@ -2134,6 +2135,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'orders.column.order': 'Order',
   // TODO(i18n-hi)
   'orders.column.packaging': 'Packaging',
+  'orders.column.grade': 'ग्रेड',
   'orders.column.colour': 'रंग',
   // TODO(i18n-hi)
   'orders.column.party': 'Party',
@@ -3581,6 +3583,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.draft.colourAsVariant': 'वेरिएंट के अनुसार',
   'lead.add.draft.colourAsVariantHint': 'हर लाइन अपने वेरिएंट का रंग रखती है। इस मॉडल को दूसरे रंग में लेने के लिए एक चुनें।',
   'lead.add.draft.colourHint': 'इस कार्ड की हर लाइन पर यह रंग रहेगा।',
+  'lead.add.draft.grade': 'ग्रेड',
+  'lead.add.draft.gradeNone': 'कोई ग्रेड नहीं',
+  'lead.add.draft.gradeHint': 'इस कार्ड की हर लाइन पर यह ग्रेड रहेगा।',
+  'lead.add.draft.gradeNoneHint': 'इस कार्ड से जुड़ने वाली लाइनों पर कोई ग्रेड नहीं रहेगा।',
+  'lead.add.draft.gradeEmpty': 'अभी कोई ग्रेड सूची में नहीं है — इन्हें सेटिंग्स → फ़ील्ड्स में जोड़ें।',
   'lead.add.draft.hintPieces': 'इस कार्ड पर {count} पीस — लीड में जोड़ें',
   // TODO(i18n-hi)
   'lead.add.draft.hintPackaging': 'Choose packaging to save this product',

@@ -335,6 +335,7 @@ function provisionalLine(
     size: (item.size as string | null) ?? partyRecord?.size ?? product?.size ?? null,
     weightKg,
     packaging: (item.packaging as string | null) ?? null,
+    grade: (item.grade as string | null) ?? null,
     sequence: index + 1,
     fromPartyVariant: Boolean(item.fromPartyVariant),
     imagePath: null,

@@ -76,6 +76,10 @@ describe('the migration registry matches the directory', () => {
     // Strips the four rate keys that `20260303`, `20260309` and `20260315`
     // still grant, for the same reason.
     '20260324000000_product_master_trim',
+    // Restores `line_items.grade`, which the trim above drops. Its timestamp
+    // is already the highest, so this is not a reordering so much as a pin:
+    // it has to stay behind a migration that is itself pinned out of order.
+    '20260325000000_line_item_grade',
   ];
 
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {
