@@ -87,8 +87,9 @@ is true.
    folder on a USB stick. Only the Master ever fetches; Office panels always
    take the office build from their Master over the LAN.
 7. **Keep CI green.** `.github/workflows/ci.yml` was red on `main` for the
-   thirteen update tests that only passed on Windows; they are fixed in 1.2.0.
-   A red `main` means nobody knows whether the release build is sound.
+   thirteen update tests that only passed on Windows and for a web build
+   script written in `cmd.exe` syntax; both are fixed in 1.2.0. A red `main`
+   means nobody knows whether the release build is sound.
 8. **Do not ship a seeded database.** `npm run seed:dummy` /
    `seed:sample` / the Developer tools exist for demos and tests. A customer
    PC starts from first-run setup, which shows the administrator credentials

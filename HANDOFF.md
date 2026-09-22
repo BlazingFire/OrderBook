@@ -81,15 +81,14 @@ against the code before acting on it.
   machine, not the code. Run the three steps separately and check each exit
   code.
 - **Builds:** `npm run build` is green for shared, both servers and both
-  web bundles. The esbuild "`remove …\esbuild-…: Access is denied`" failure
-  on this PC is fixed at the source: both `web` workspaces' `build` scripts
-  point `TEMP`/`TMP` at a project-local `.tmp/` (gitignored) before `vite
-  build`, so `start:master` / `start:office` work without any manual step.
-  **Fixed 2026-09-21:** that script's `if not exist … mkdir … && …` was
-  parsed by cmd as one `if` body, so once `.tmp/` existed every later build
-  exited 0 *without running `vite build`* — the bundles on disk were from
-  2026-09-19. The `if` is parenthesised now; check the bundle's timestamp
-  if a UI change ever seems not to land.
+  web bundles, **on every OS** since 2026-09-22: both `web` workspaces'
+  `build` scripts run `tools/build-web.mjs`, a Node script that points
+  `TEMP`/`TMP` at a project-local `.tmp/` (gitignored) and then runs `tsc -b`
+  and `vite build`. That replaces the `cmd.exe` one-liner of 2026-09-14/21,
+  which fixed the esbuild "`remove …\esbuild-…: Access is denied`" failure on
+  this PC but was a syntax error for `sh`, so the CI workflow's build step
+  had failed on every push since and a Mac could not build the panels. If a
+  UI change ever seems not to land, check the bundle's timestamp.
 - **Installers:** `C:\OrderBook-Releases` still holds the 1.0.3 setup files.
   `npm run release` (electron-builder) hangs on this PC — same machine-level
   permission sickness as PostgreSQL above. Build inputs are refreshed; a
@@ -417,9 +416,17 @@ lose data. Delivered on `claude/amazing-lovelace-r5851k`:
   every migration after `20260324000000_product_master_trim` must be free of
   TRUNCATE / DROP TABLE / DROP COLUMN / DELETE FROM and the Knex equivalents
   in `up()`. Seen to fail on a probe migration, then removed.
-- **CI on `main` was red** — thirteen tests in `updates.test.ts` and
-  `github-releases.test.ts` describe Windows fixtures and compared them to
-  the runner's platform. Both suites now pin `process.platform` to `win32`.
+- **CI on `main` was red**, twice over — thirteen tests in `updates.test.ts`
+  and `github-releases.test.ts` describe Windows fixtures and compared them
+  to the runner's platform (both suites now pin `process.platform` to
+  `win32`), and the workflow's `npm run build` step died on the web
+  workspaces' `cmd.exe` build one-liner (now `tools/build-web.mjs`, see
+  *Builds* above). On the branch: 120 files / 1424 tests pass on the Ubuntu
+  runner, integration suites included, and the build step passes.
+- **The Windows build is proven on GitHub's runner:** the release workflow,
+  dispatched on the branch, produced all eight files (Master Setup and
+  Standalone 131 MB each, Office Setup and Standalone 84 MB each, two
+  `.sha256`, two manifests) into the draft pre-release `build-1.2.0-<sha>`.
 - **Release workflow:** a manual run on any branch now builds into a draft
   pre-release named `build-<version>-<sha>` (never seen by a panel) instead
   of publishing; `publish: true` or a push to `main` publishes for real, with

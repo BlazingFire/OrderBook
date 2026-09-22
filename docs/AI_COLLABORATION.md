@@ -198,7 +198,9 @@ without losing data. The `HANDOFF.md` entry of the same date has the summary;
 **Files touched.** Version 1.2.0 in every `package.json` and the lockfile.
 New: `electron/lib/standalone.ts` (+ `electron/tests/standalone.test.ts`),
 `master/src/db/cluster-snapshot.ts` (+ `master/tests/cluster-snapshot.test.ts`),
-`master/tests/migration-data-safety.test.ts`, `docs/PRODUCTION_READINESS.md`.
+`master/tests/migration-data-safety.test.ts`, `docs/PRODUCTION_READINESS.md`,
+`tools/build-web.mjs` (the web workspaces' `build` script, cross-platform;
+both `web/package.json` point at it).
 Changed: both `electron-builder.yml` (portable target), `electron/shell.ts`,
 `electron/preload.cts`, `shared/src/protocol/desktop.ts`, both
 `UpdatesScreen.tsx`, `shared/src/i18n/en.ts` + `hi.ts` (one key, via
@@ -215,11 +217,16 @@ integration suites run on the CI workflow's Ubuntu runner — check that run
 for the branch, not this note, for their result. The thirteen
 `updates` / `github-releases` tests that failed on the Linux CI runner pass.
 The migration guard was broken on purpose with a probe migration carrying a
-`DROP COLUMN` (one test red, naming it) and put back. Not verified: a packaged
-build on Windows — this session ran on Linux, where neither electron-builder's
-Windows targets nor the panels' `cmd.exe` build scripts run — so the release
-workflow was dispatched on the branch to build every file on GitHub's
-Windows runner (result recorded in the session's final message and the PR).
+`DROP COLUMN` (one test red, naming it) and put back. On GitHub, for the
+branch's first commit: the CI workflow ran 120 files / 1424 tests green on
+Ubuntu (integration suites included) and then failed its `npm run build`
+step on the `cmd.exe` web build one-liner — the pre-existing failure behind
+every red CI run since 2026-09-21 — which `tools/build-web.mjs` replaces;
+`npm run build` then passed on Linux in the container. The Release workflow,
+dispatched on the branch in build-only mode, produced all eight Windows files
+(Master Setup and Standalone 131 MB each, Office Setup and Standalone 84 MB
+each, two `.sha256`, two manifests) into the draft pre-release
+`build-1.2.0-6de23b7`. Not verified: running any of them on a Windows PC.
 
 ### 2026-09-22 (later still) — Crop editor made horizontal, with real load states and every image format (Claude)
 
