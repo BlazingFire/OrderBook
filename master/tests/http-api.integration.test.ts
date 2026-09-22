@@ -506,6 +506,38 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
     });
   });
 
+  describe('updates', () => {
+    /*
+     * Two routers share the `/api/updates` prefix: the panels' routes (on their
+     * pairing credentials) and the Master's own (on the browser session). The
+     * panels' router used to guard itself with `.use(requirePanel)`, which ran
+     * for every path under the prefix, so the Master's own Updates screen was
+     * refused with "panel credentials invalid" before its router was reached.
+     */
+    it("answers the Master's own Updates screen on its session", async () => {
+      const { password } = await initialize();
+      const agent = await signedInAgent(password);
+
+      const response = await agent.get('/api/updates/status').expect(200);
+      expect(response.body).toHaveProperty('master');
+      expect(response.body).toHaveProperty('office');
+    });
+
+    it('still refuses a signed-out caller', async () => {
+      await initialize();
+      await request(app).get('/api/updates/status').expect(401);
+    });
+
+    it("still keeps the panels' routes on panel credentials", async () => {
+      const { password } = await initialize();
+      const agent = await signedInAgent(password);
+
+      // A browser session is not a pairing: the office build is for panels.
+      const response = await agent.get('/api/updates/office/latest').expect(401);
+      expect(response.body.messageKey).toBe('error.unauthorized.panelCredentialsInvalid');
+    });
+  });
+
   describe('unknown API routes', () => {
     it('returns 404 JSON to a signed-in admin rather than the SPA shell', async () => {
       const { password } = await initialize();

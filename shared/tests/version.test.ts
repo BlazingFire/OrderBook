@@ -51,20 +51,22 @@ describe('version comparison', () => {
 });
 
 /**
- * All seven package.json files must agree on the version.
+ * Every package.json in the repository must agree on the version.
  *
  * A missed workspace would ship silently — the Updates screen compares
  * versions, and a mismatched workspace would read as "behind" or "ahead"
- * when it is actually the same release.
+ * when it is actually the same release. The list is the root manifest's own
+ * `workspaces`, the same list `tools/release.mjs#setVersion` bumps, so a new
+ * workspace is covered without anybody editing this file; a hand-written list
+ * here once left out `cleaner/`.
  */
 const WORKSPACES = [
   'package.json',
-  'shared/package.json',
-  'ui/package.json',
-  'master/package.json',
-  'master/web/package.json',
-  'office/package.json',
-  'office/web/package.json',
+  ...(
+    JSON.parse(readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')) as {
+      workspaces: string[];
+    }
+  ).workspaces.map((dir) => `${dir}/package.json`),
 ];
 
 describe('cross-workspace version agreement', () => {

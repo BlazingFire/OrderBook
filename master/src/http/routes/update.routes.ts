@@ -56,13 +56,21 @@ function askingPlatform(value: unknown): ReleasePlatform {
     : LEGACY_RELEASE_PLATFORM;
 }
 
-/** Reachable by a paired panel, on its pairing credentials. See the header. */
+/**
+ * Reachable by a paired panel, on its pairing credentials. See the header.
+ *
+ * `requirePanel` is on each route, never `publicUpdateRoutes.use(...)`: this
+ * router and `updateRoutes` below share the `/api/updates` prefix in
+ * `http/app.ts`, and a router-level guard runs for every path under it. It
+ * did, and refused the Master's own browser — which carries a session, not
+ * panel credentials — before `updateRoutes` was ever reached, so the Master's
+ * Updates screen could never load.
+ */
 export const publicUpdateRoutes: Router = Router();
-
-publicUpdateRoutes.use(requirePanel);
 
 publicUpdateRoutes.get(
   '/office/latest',
+  requirePanel,
   asyncHandler(async (req, res) => {
     res.json(
       await updateService.availability('office', '0.0.0', askingPlatform(req.query.platform)),
@@ -72,6 +80,7 @@ publicUpdateRoutes.get(
 
 publicUpdateRoutes.get(
   '/office/download',
+  requirePanel,
   asyncHandler(async (req, res) => {
     const manifest = await updateService.readManifest('office', askingPlatform(req.query.platform));
     if (!manifest) throw new NotFoundError('Office release');

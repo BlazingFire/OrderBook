@@ -6,7 +6,7 @@
  */
 
 import { existsSync } from 'node:fs';
-import { readFile, rm } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -243,5 +243,25 @@ describe.skipIf(!canRunIntegrationTests)('product images (integration)', () => {
     // The permitted actor can still read it.
     const file = await imageService.resolveImageFile(imageId, 'thumb', actor);
     expect(existsSync(file.path)).toBe(true);
+  });
+
+  it('sweeps orphaned image folders on boot and leaves the avatars folder alone', async () => {
+    /*
+     * `sweepOrphanImageVariants()` runs on every Master boot and removes any
+     * entry under `imagesDir/<tenant>/` that is not a product image id. User
+     * avatars live beside those folders, in `imagesDir/<tenant>/avatars/`, and
+     * the sweep used to delete that whole folder every time the Master started.
+     */
+    const avatar = path.join(testTenantImagesDir, 'avatars', 'AV-under-test', 'thumb.webp');
+    const orphan = path.join(testTenantImagesDir, 'IM-orphan-under-test', 'thumb.webp');
+    for (const file of [avatar, orphan]) {
+      await mkdir(path.dirname(file), { recursive: true });
+      await writeFile(file, 'not really an image');
+    }
+
+    await imageService.sweepOrphanImageVariants();
+
+    expect(existsSync(avatar)).toBe(true);
+    expect(existsSync(orphan)).toBe(false);
   });
 });

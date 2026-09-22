@@ -216,15 +216,12 @@ async function readJson(file) {
  * identical to.
  */
 async function setVersion(version) {
-  const files = [
-    'package.json',
-    'shared/package.json',
-    'ui/package.json',
-    'master/package.json',
-    'master/web/package.json',
-    'office/package.json',
-    'office/web/package.json',
-  ];
+  // Every workspace, read from the root manifest rather than listed here: a
+  // hand-written list once left out `cleaner/`, whose electron-builder names
+  // its file from its own package.json, so a bumped release could not find
+  // the file it had just built.
+  const { workspaces } = await readJson(path.join(ROOT, 'package.json'));
+  const files = ['package.json', ...workspaces.map((dir) => `${dir}/package.json`)];
 
   for (const relative of files) {
     const file = path.join(ROOT, relative);

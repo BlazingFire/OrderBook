@@ -36,7 +36,7 @@ import * as activityLog from '../repositories/activity-log.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
 import { nextHlc } from '../repositories/identity.repository.js';
 import { publishChange } from './change-bus.js';
-import { throughRasterGate } from './image.service.js';
+import { AVATARS_DIR, throughRasterGate } from './image.service.js';
 
 /**
  * Three square sizes, and no more. `full` is what a profile screen shows,
@@ -62,7 +62,7 @@ const VARIANT_SPECS = [
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function avatarDir(tenantId: string, avatarId: string): string {
-  return path.join(config.imagesDir, tenantId, 'avatars', avatarId);
+  return path.join(config.imagesDir, tenantId, AVATARS_DIR, avatarId);
 }
 
 /**

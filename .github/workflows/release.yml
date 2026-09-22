@@ -90,7 +90,11 @@ jobs:
       - name: Decide what this run does
         id: version
         env:
-          GH_TOKEN: ${{ github.token }}
+          # The same repository and token `create-release` and the upload use:
+          # with a separate releases repository configured, looking for the tag
+          # here would never find it and every push would try to publish again.
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
+          REPO: ${{ vars.RELEASES_REPO || github.repository }}
           RELEASE_KEY: ${{ secrets.RELEASE_KEY }}
           EVENT: ${{ github.event_name }}
           WANT_PUBLISH: ${{ inputs.publish }}
@@ -99,7 +103,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
           released=false
-          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          if gh release view "v$version" --repo "$REPO" >/dev/null 2>&1; then
             released=true
           fi
 
@@ -154,6 +158,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
           REPO: ${{ vars.RELEASES_REPO || github.repository }}
+          # Through the environment, never pasted into the script: a commit
+          # message containing a quote or `$(…)` would otherwise break out of
+          # the argument and run as shell.
+          NOTES: ${{ github.event.head_commit.message }}
         run: |
           version='${{ needs.check.outputs.version }}'
           tag='${{ needs.check.outputs.tag }}'
@@ -188,7 +196,7 @@ jobs:
             --repo "$REPO" \
             --target "$GITHUB_SHA" \
             --title "OrderBook $version" \
-            --notes "${{ github.event.head_commit.message }}" \
+            --notes "$NOTES" \
             $draft
 
   build:

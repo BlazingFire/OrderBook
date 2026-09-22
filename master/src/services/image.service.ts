@@ -430,6 +430,14 @@ export async function resolveImageFile(imageId: string, variant: string, actor: 
 }
 
 /**
+ * The folder under `imagesDir/<tenant>/` that holds users' avatars rather
+ * than a product image. Named once, here, because both the avatar service
+ * (which writes it) and the orphan sweep below (which must leave it alone)
+ * depend on the same spelling.
+ */
+export const AVATARS_DIR = 'avatars';
+
+/**
  * Delete variant folders that no `product_images` row names.
  *
  * **At startup only, and that is a correctness requirement rather than a
@@ -468,6 +476,10 @@ export async function sweepOrphanImageVariants(): Promise<number> {
 
     for (const imageId of entries) {
       if (known.has(imageId)) continue;
+      // Users' avatars live beside the product image folders, in
+      // `<tenant>/avatars/` (`avatarDir()` in `avatar.service.ts`), and are not
+      // product images. The sweep used to delete that folder on every boot.
+      if (imageId === AVATARS_DIR) continue;
       await rm(path.join(tenantDir, imageId), { recursive: true, force: true }).catch(() => {});
       removed += 1;
     }
