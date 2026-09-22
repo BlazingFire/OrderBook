@@ -1254,7 +1254,8 @@ html[data-window-blur='true'] .ob-busy rect {
    * (whose own overflow is hidden) or clipping chips vertically. */
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: thin;
+  /* No `scrollbar-width` here: it would switch this one strip to the platform
+   * bar and drop the custom one `reset.css` gives everything else. */
 }
 .ob-filterbar > * {
   flex: none;

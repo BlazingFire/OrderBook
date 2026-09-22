@@ -634,14 +634,12 @@ export function CatalogScreen({
       >
         <ProductDetail
           product={openProduct}
-          view={view}
           onEdit={() => {
             setEditingProduct(openProduct);
             setOpenProductId(null);
             setPhotoPatch(null);
           }}
           onPhotosChanged={setPhotoPatch}
-          onMessage={(message) => toast.push(message)}
           onError={onDrawerError}
         />
         <ProductDrawer

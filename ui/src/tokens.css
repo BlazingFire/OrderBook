@@ -25,6 +25,10 @@
   --glaze-50: #14509e;
   --glaze-60: #0f4088;
   --glaze-05: #e3ecf8;
+  /* Only the scrollbar thumb uses these: a bar the eye can find without it
+   * competing with the accent, which on this ramp is a much darker blue. */
+  --glaze-30: #8fafd6;
+  --glaze-40: #5b87be;
 
   --kiln-amber: #b26a00;
   --kiln-amber-05: #fbf0dc;
@@ -53,6 +57,11 @@
   --accent: var(--glaze-50);
   --accent-hover: var(--glaze-60);
   --accent-tint: var(--glaze-05);
+
+  --scrollbar-thumb: var(--glaze-30);
+  --scrollbar-thumb-hover: var(--glaze-40);
+  --scrollbar-track: var(--bg-canvas);
+  --scrollbar-track-line: var(--line);
 
   --state-offline: var(--kiln-amber);
   --state-offline-tint: var(--kiln-amber-05);
@@ -130,6 +139,9 @@
   --shell-sidebar-w: 14.8571rem;
   --shell-sidebar-collapsed-w: 3.7143rem;
   --rail-w: 3px;
+  /* A gutter, not a measurement against text — px like the radii, so the bar
+   * stays the same physical width at every scale. */
+  --scrollbar-w: 10px;
 
   /* ---- Layering ----------------------------------------------------------- */
   --z-popover: 40;
@@ -165,6 +177,10 @@
   --glaze-50: #5b9bf0;
   --glaze-60: #7db0f4;
   --glaze-05: #16283f;
+  /* Muted against the dark canvas; the hover step is the light theme's resting
+   * thumb, so hovering still reads as "brighter" in both themes. */
+  --glaze-30: #3d5f86;
+  --glaze-40: #5b87be;
 
   --kiln-amber: #e0a040;
   --kiln-amber-05: #2e2313;

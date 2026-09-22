@@ -187,6 +187,52 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-22 (later) — Stock removed from the product detail; custom scrollbar project-wide (Claude)
+
+Two corrections from the owner after seeing the redesign running.
+
+1. **Variants-and-stock removed from `ProductDetail`.** The table, the
+   "Stock in" / "Adjust count" buttons and the whole `StockMovementForm` are
+   gone — none of it is in the artifact. It was pre-existing code the first
+   pass had kept; the owner asked for it out. Stock lives on the Master's
+   Inventory screen (reorder band, per-variant ledger, both movement forms),
+   which is where single-writer puts it. `ProductDetail` shed its `view` and
+   `onMessage` props, `StockMode`, `VariantRow`, the `DataTable` columns and
+   nine imports; 482 lines down to 168.
+2. **The artifact's custom scrollbar, applied to the whole project.** It was
+   the one block of the artifact's CSS the repo did not already carry. Rules in
+   `ui/src/reset.css` (imported by `ui/src/styles.css`, which both panels
+   import); colours tokenised in `ui/src/tokens.css` as `--scrollbar-*` over two
+   new ramp steps `--glaze-30`/`--glaze-40`, with dark-theme values, plus
+   `--scrollbar-w: 10px`. No raw hex reached a stylesheet.
+
+**The @supports guard is load-bearing.** The artifact states
+`scrollbar-width`/`scrollbar-color` alongside the `::-webkit-scrollbar` rules.
+Measured in a headed Chromium: with both, the bar renders in flat platform
+colours — `scrollbar-color` beats the pseudo-elements — losing the 6px inset
+thumb, its radius and the track hairline. The standard properties are therefore
+confined to `@supports not selector(::-webkit-scrollbar)`, so Chromium takes the
+webkit rules and Firefox takes the standard ones. `.ob-filterbar`'s own
+`scrollbar-width: thin` was removed for the same reason.
+
+**Trap for the next agent:** headless Chromium forces overlay scrollbars and
+reserves 0px, so it renders none of this and a headless screenshot proves
+nothing. Verify with `xvfb-run` and `headless: false`; a correct run measures
+`offsetWidth - clientWidth` = 10px plus borders.
+
+**Files modified:** `office/web/src/screens/ProductDetail.tsx`,
+`office/web/src/screens/CatalogScreen.tsx` (dropped two props),
+`ui/src/reset.css`, `ui/src/tokens.css`, `ui/src/base.css`.
+
+**Left in place deliberately:** `api.stockInbound`/`api.stockAdjust` now have no
+`office/web` caller, and ~10 `product.detail.stock*` keys are unused. The Master
+still implements the routes and the feature still exists there.
+
+**Verified.** `npm run lint` and `npm run typecheck` exit 0; `npm test` 818
+passed with the same 13 pre-existing `updates`/`github-releases` failures that
+fail on a clean `HEAD`. The scrollbar was rendered headed in both themes and
+measured at a 10px reserved gutter.
+
 ### 2026-09-22 — Product screens redesigned: photo card, details card, six-column list (Claude)
 
 Scope: the owner redesigned the Products page, the product detail and the

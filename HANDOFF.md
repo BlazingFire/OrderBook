@@ -363,6 +363,38 @@ panels (last-write-wins is the default); app name/branding.
 
 ## Recent sessions
 
+### 2026-09-22 (later) — Stock off the product detail; the custom scrollbar lands (Claude)
+
+Two corrections the owner made after seeing the redesign running:
+
+- **The variants-and-stock table and the "Stock in" / "Adjust count" forms are
+  gone** from the Office product detail. They are not in the artifact. They
+  pre-dated the redesign — the first pass kept them because the list had just
+  lost its Stock column — but stock is the Master's job: `master/web`'s
+  Inventory screen owns the reorder band, the per-variant ledger and both
+  movement forms, which is where the single-writer rule puts it. `ProductDetail`
+  is now the two cards the artifact draws and nothing else, and no longer takes
+  `view` or `onMessage`.
+- **The artifact's custom scrollbar is now project-wide**, in `ui/src/reset.css`
+  with its colours tokenised in `tokens.css` for both themes. It was the one
+  part of the artifact's CSS the repo did not already have.
+
+Traps this leaves:
+
+- The scrollbar states `scrollbar-width`/`scrollbar-color` **only** inside
+  `@supports not selector(::-webkit-scrollbar)`. Do not lift them out. Chromium
+  — which is what Electron ships — lets `scrollbar-color` beat the
+  `::-webkit-scrollbar-*` colours, so stating both flattens the bar to stock
+  platform colours and loses the inset rounded thumb and the track hairline.
+  Verified headed; **headless Chromium forces overlay scrollbars and reserves
+  0px**, so a headless screenshot can never confirm this — use `xvfb-run` with
+  `headless: false`.
+- `.ob-filterbar` lost its own `scrollbar-width: thin` for the same reason.
+- `api.stockInbound` / `api.stockAdjust` now have no caller in `office/web`, and
+  roughly ten `product.detail.stock*` message keys are unused. Both were left in
+  place — the Master still implements the routes, and the keys describe a
+  feature that still exists there.
+
 ### 2026-09-22 — Product screens redesigned from the owner's artifact (Claude)
 
 The owner redesigned Products (list), product detail and the add/edit product
