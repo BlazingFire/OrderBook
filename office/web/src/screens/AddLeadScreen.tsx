@@ -65,6 +65,7 @@ import {
   ColourName,
   ConflictBanner,
   DateField,
+  Icon,
   Input,
   Select,
   SuggestInput,
@@ -1784,12 +1785,35 @@ function LeadLine({
                 {line.quantity} {t('lead.add.line.ofFree', { free: line.availableBoxes })}
               </span>
             )}
-            <Button variant="ghost" size="sm" onClick={onModify}>
-              {t('lead.add.line.modify')}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={onRemove}>
-              {t('lead.add.products.remove')}
-            </Button>
+            {/*
+             * Icons on a tinted square, not words (owner's instruction). Two
+             * verbs repeated down a list of twenty lines is twenty times the
+             * same two words; the pencil and the bin are read once. The square
+             * is what makes them look pressable — as bare ghost text they read
+             * as part of the sentence in front of them.
+             *
+             * `title` for the pointer, `aria-label` naming the product for
+             * everything else: "Remove" on its own, twenty times over, tells a
+             * screen reader nothing about which line is about to go.
+             */}
+            <button
+              type="button"
+              className="ob-lead-line__act"
+              title={t('lead.add.line.modify')}
+              aria-label={t('lead.add.line.modifyProduct', { product: line.productName })}
+              onClick={onModify}
+            >
+              <Icon name="edit" size={14} />
+            </button>
+            <button
+              type="button"
+              className="ob-lead-line__act ob-lead-line__act--danger"
+              title={t('lead.add.products.remove')}
+              aria-label={t('lead.add.line.removeProduct', { product: line.productName })}
+              onClick={onRemove}
+            >
+              <Icon name="trash" size={14} />
+            </button>
           </span>
         </div>
       )}

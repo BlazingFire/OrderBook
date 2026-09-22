@@ -3615,6 +3615,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.line.grade': 'Grade',
   // TODO(i18n-hi)
   'lead.add.line.modify': 'Modify',
+  'lead.add.line.modifyProduct': '{product} में बदलाव करें',
+  'lead.add.line.removeProduct': '{product} हटाएँ',
   // TODO(i18n-hi)
   'lead.add.line.packaging': 'Packaging',
   // TODO(i18n-hi)

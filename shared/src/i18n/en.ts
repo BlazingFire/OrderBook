@@ -1142,6 +1142,8 @@ export const EN_MESSAGES = {
   'lead.add.followUp.tomorrow': 'Tomorrow',
   'lead.add.line.grade': 'Grade',
   'lead.add.line.modify': 'Modify',
+  'lead.add.line.modifyProduct': 'Modify {product}',
+  'lead.add.line.removeProduct': 'Remove {product}',
   'lead.add.line.packaging': 'Packaging',
   'lead.add.line.rate': 'Rate',
   'lead.add.line.systemCode': 'System code',

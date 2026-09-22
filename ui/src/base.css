@@ -3157,6 +3157,46 @@ html[data-window-blur='true'] .ob-busy rect {
   gap: var(--s-6);
 }
 
+/*
+ * Modify and Remove, as icons on a square of their own.
+ *
+ * The square is the point: as bare ghost text the two verbs read as the end of
+ * the sentence in front of them rather than as things you can press. Tinted
+ * rather than bordered, because a border at this size is most of the control.
+ *
+ * `.ob-icon-btn` is the topbar's affordance and is deliberately background-less
+ * until hover; these have to look pressable at rest, in a row that is already
+ * full of words.
+ */
+.ob-lead-line__act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--ctl-h-sm);
+  height: var(--ctl-h-sm);
+  padding: 0;
+  border: none;
+  border-radius: var(--r-sm);
+  background: var(--bg-sunken);
+  color: var(--fg-secondary);
+  cursor: pointer;
+  transition:
+    background-color var(--d-fast) var(--e-standard),
+    color var(--d-fast) var(--e-standard);
+}
+
+.ob-lead-line__act:hover {
+  background: var(--bg-hover);
+  color: var(--fg-primary);
+}
+
+/* The destructive one, so a slip of the mouse is never a silent one. */
+.ob-lead-line__act--danger:hover {
+  background: var(--state-conflict-tint);
+  color: var(--state-conflict);
+}
+
 /* The panel's own scroller: the page below it must stay reachable. */
 .ob-lead-lines {
   display: flex;
