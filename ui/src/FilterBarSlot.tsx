@@ -1,8 +1,8 @@
 /**
- * Lets the active list screen publish its own filter bar (§8's 40px strip
- * under the topbar, list screens only) without the shell needing to know
- * what each screen's filters look like, and without prop-drilling a setter
- * through App.tsx for every screen. A screen calls `useFilterBar(<...>)`;
+ * Lets the active list screen publish its own filter bar (§8's strip under the
+ * topbar, list screens only) without the shell needing to know what each
+ * screen's filters look like, and without prop-drilling a setter through
+ * App.tsx for every screen. A screen calls `useFilterBar(<...>)`;
  * `FilterBarOutlet` renders whatever the currently-mounted screen published.
  *
  * **The setter and the value are two separate contexts on purpose.** A screen
@@ -49,7 +49,7 @@ export function FilterBarProvider({ children }: { children: ReactNode }) {
 }
 
 /** Renders nothing when no mounted screen has published a filter bar — the
- * 40px strip exists only for list screens, never as an empty gap (§8). */
+ * strip exists only for list screens, never as an empty gap (§8). */
 export function FilterBarOutlet() {
   const node = useContext(FilterBarNodeContext);
   return node ? <div className="ob-filterbar">{node}</div> : null;

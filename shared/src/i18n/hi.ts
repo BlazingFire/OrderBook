@@ -903,7 +903,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'catalog.products.searchLabel': 'Search products',
   // TODO(i18n-hi)
-  'catalog.products.searchPlaceholder': 'Search code, name, alias…',
+  'catalog.products.searchPlaceholder': 'Search code, name, alias, category…',
   'catalog.products.import': 'आयात करें',
   'catalog.products.loadMore': 'और दिखाएँ',
   'catalog.products.shown': '{total} में से {shown} दिखाए जा रहे हैं',
