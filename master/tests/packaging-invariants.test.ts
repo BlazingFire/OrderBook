@@ -133,6 +133,44 @@ describe('release targets', () => {
     // binaries would ship to an audience of two architectures.
     expect(targets.mac?.postgres.sort()).toEqual(['darwin-arm64', 'darwin-x64']);
   });
+
+  it('keeps the vendored libraries\' symlinks relative on every copy', () => {
+    // `native/lib` is mostly SONAME links (`libpq.so.5 -> libpq.so.5.17`), and
+    // `fs.cp` rewrites a relative link as an absolute path into the build
+    // machine's node_modules unless told otherwise. The app then works where
+    // it was built and nowhere else; the macOS universal merge surfaced it by
+    // refusing files that resolved outside the app. Two copies carry the tree:
+    // into `master/vendor`, and from there into the staging folder.
+    const lines = code(RELEASE);
+    const bodyOf = (signature: string): string => {
+      const from = lines.slice(lines.findIndex((l) => l.includes(signature)));
+      return from.slice(0, from.findIndex((l) => l === '}') + 1).join('\n');
+    };
+
+    const vendor = bodyOf('async function vendorPostgres');
+    expect(vendor).toMatch(/cp\(source, dest, \{[^}]*verbatimSymlinks: true/);
+
+    const stage = bodyOf('async function stage');
+    const partsCopy = stage.slice(stage.indexOf('for (const part of parts)'));
+    expect(partsCopy.slice(0, partsCopy.indexOf('}\n'))).toContain('verbatimSymlinks: true');
+  });
+
+  it('fetches and stages the other architecture of every native package for macOS', () => {
+    // npm installs a platform package only for the machine's own cpu, so an
+    // Apple silicon runner has `sharp-darwin-arm64` and no Intel twin. A
+    // universal app built from that starts on an Intel Mac and fails on the
+    // first photo.
+    const block = RELEASE.slice(RELEASE.indexOf('  mac: {'), RELEASE.indexOf('  linux: {'));
+    expect(block).toMatch(/universal: true/);
+
+    const lines = code(RELEASE).join('\n');
+    expect(lines).toMatch(/if \(RELEASE_TARGET\.universal\) ensureUniversalPackages\(\);/);
+    expect(lines).toMatch(/if \(RELEASE_TARGET\.universal\) tree\.push\(\.\.\.universalSiblings\(tree\)\);/);
+    // Before PostgreSQL is vendored, which needs the Intel package on disk.
+    expect(lines.indexOf('ensureUniversalPackages();')).toBeLessThan(
+      lines.indexOf('await vendorPostgres();'),
+    );
+  });
 });
 
 describe('electron-builder configuration', () => {
@@ -192,6 +230,16 @@ describe('electron-builder configuration', () => {
         for (const artifact of named) expect(artifact).toMatch(/\.\$\{ext\}$/);
       });
     }
+
+    it(`${panel} leaves the staged panel out of the universal lipo`, () => {
+      // Everything under Resources/panel is staged once and lands identically
+      // in both halves, both architectures' binaries included. @electron/universal
+      // refuses a Mach-O file that is the same in both halves unless this
+      // pattern covers it.
+      const mac = yml.slice(yml.indexOf('\nmac:\n'));
+      const body = mac.slice(0, (/^\w+:$/m.exec(mac.slice(6))?.index ?? mac.length) + 6);
+      expect(body).toMatch(/^ {2}x64ArchFiles: Contents\/Resources\/panel\/\*\*$/m);
+    });
 
     it(`${panel} names its Linux executable`, () => {
       // Without `executableName` the binary is named from the npm package and

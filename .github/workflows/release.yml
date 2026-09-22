@@ -226,29 +226,6 @@ jobs:
         # part of `npm ci`.
         run: npm ci
 
-      - name: Fetch the other Mac architecture's PostgreSQL
-        # The macOS build is universal, so it vendors both architectures'
-        # PostgreSQL (`TARGETS.mac.postgres` in tools/release.mjs). npm installs
-        # only the package whose `cpu` matches the runner, so on an Apple
-        # silicon runner the Intel one is missing and the release refuses to
-        # continue. Fetched at the lockfile's exact version, then its own
-        # postinstall recreates the library symlinks the tarball cannot carry.
-        if: matrix.os == 'mac'
-        shell: bash
-        run: |
-          for arch in x64 arm64; do
-            pkg="@embedded-postgres/darwin-$arch"
-            dir="node_modules/$pkg"
-            if [ -d "$dir/native" ]; then continue; fi
-            version="$(node -p "require('./package-lock.json').packages['node_modules/$pkg'].version")"
-            tarball="$(npm pack "$pkg@$version" --silent)"
-            mkdir -p "$dir"
-            tar -xzf "$tarball" -C "$dir" --strip-components=1
-            rm "$tarball"
-            (cd "$dir" && node scripts/hydrate-symlinks.js)
-            echo "Fetched $pkg@$version"
-          done
-
       - name: Write the release key
         id: key
         shell: bash

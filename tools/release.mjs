@@ -38,8 +38,9 @@
 
 import { createHash, createPrivateKey, sign as nodeSign } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { createReadStream, readFileSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -141,6 +142,14 @@ const TARGETS = {
     postgres: ['darwin-x64', 'darwin-arm64'],
     buildsOn: ['darwin'],
     standalone: null,
+    /**
+     * Both architectures of every native package ship, not just the build
+     * machine's — see `ensureUniversalPackages()`. electron-builder packs the
+     * app twice and merges; everything staged under `Contents/Resources/panel`
+     * is identical in both halves, so it has to already hold what each
+     * architecture needs.
+     */
+    universal: true,
   },
   linux: {
     builderFlag: '--linux',
@@ -296,6 +305,86 @@ async function sha256(file) {
   return hash.digest('hex');
 }
 
+/** A lockfile key or tree path naming a single-architecture macOS package. */
+const DARWIN_ARCH = /(^|[-/])darwin-(arm64|x64)$/;
+
+/**
+ * Put both macOS architectures of every production native package on disk.
+ *
+ * npm installs an optional platform package only when its `cpu` matches the
+ * machine, so an Apple silicon build machine has `@img/sharp-darwin-arm64` and
+ * `@embedded-postgres/darwin-arm64` and neither Intel counterpart. A universal
+ * app made from that tree starts on an Intel Mac and fails the first time it
+ * decodes a photo or creates its database.
+ *
+ * Every non-dev `…darwin-arm64` / `…darwin-x64` package the lockfile pins is
+ * fetched at its pinned version if it is missing — `npm pack`, then unpacked
+ * where npm would have put it — and its postinstall runs only if the root
+ * `allowScripts` approves that exact package and version, the same gate
+ * `npm install` applies. Needs the network, as every release build already
+ * does for electron-builder's toolchain.
+ */
+function ensureUniversalPackages() {
+  const lock = JSON.parse(readFileSync(path.join(ROOT, 'package-lock.json'), 'utf8'));
+  const allow = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).allowScripts ?? {};
+
+  for (const [key, entry] of Object.entries(lock.packages ?? {})) {
+    const name = key.slice('node_modules/'.length);
+    // Top-level installs only; a nested copy is some other package's business.
+    if (!key.startsWith('node_modules/') || name.includes('node_modules/')) continue;
+    if (!DARWIN_ARCH.test(name) || entry.dev) continue;
+
+    const dir = path.join(ROOT, 'node_modules', ...name.split('/'));
+    if (existsSync(path.join(dir, 'package.json'))) continue;
+
+    const tarball = execFileSync('npm', ['pack', `${name}@${entry.version}`, '--silent'], {
+      cwd: tmpdir(),
+      encoding: 'utf8',
+      shell: process.platform === 'win32',
+    })
+      .trim()
+      .split(/\r?\n/)
+      .pop();
+    const tarballPath = path.join(tmpdir(), tarball);
+    mkdirSync(dir, { recursive: true });
+    execFileSync('tar', ['-xzf', tarballPath, '-C', dir, '--strip-components=1']);
+    rmSync(tarballPath, { force: true });
+
+    const manifest = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    const postinstall = manifest.scripts?.postinstall;
+    if (postinstall && allow[`${name}@${entry.version}`] === true) {
+      execFileSync(postinstall, { cwd: dir, shell: true, stdio: 'inherit' });
+    }
+    console.log(`  fetched ${name}@${entry.version} for the universal build`);
+  }
+}
+
+/**
+ * The other-architecture twin of every macOS platform package in `tree`.
+ *
+ * `npm ls` reports the packages npm resolved for this machine's `cpu`, so the
+ * production tree names `sharp-darwin-arm64` and not its Intel twin even once
+ * `ensureUniversalPackages()` has put that twin on disk. Staging both is what
+ * lets `sharp` (and anything like it) find its binary on either kind of Mac.
+ */
+function universalSiblings(tree) {
+  const have = new Set(tree);
+  const siblings = [];
+  for (const source of tree) {
+    const match = DARWIN_ARCH.exec(source);
+    if (!match) continue;
+    const other = match[2] === 'arm64' ? 'x64' : 'arm64';
+    const twin = source.slice(0, match.index + match[1].length) + `darwin-${other}`;
+    if (have.has(twin)) continue;
+    if (!existsSync(twin)) {
+      throw new Error(`${path.relative(ROOT, twin)} is missing — the universal build needs both architectures`);
+    }
+    have.add(twin);
+    siblings.push(twin);
+  }
+  return siblings;
+}
+
 /**
  * Copy the PostgreSQL server binaries into the path the Master already looks in.
  *
@@ -339,7 +428,14 @@ async function vendorPostgres() {
     // `process.arch` rather than the package so the runtime lookup matches.
     const arch = pkg.slice(pkg.indexOf('-') + 1);
     const dest = packages.length === 1 ? target : path.join(target, arch);
-    await cp(source, dest, { recursive: true });
+    // `verbatimSymlinks`, because `native/lib` is mostly SONAME symlinks
+    // (`libpq.so.5 -> libpq.so.5.17`) and `cp` otherwise rewrites each one as
+    // an absolute path into *this machine's* node_modules. The build machine
+    // still resolves them, so the packaged app works where it was built and
+    // cannot load its own libraries anywhere else; the macOS universal merge
+    // is where that first showed, refusing to pair files that resolved
+    // outside the app.
+    await cp(source, dest, { recursive: true, verbatimSymlinks: true });
     await assertUsablePostgres(dest, pkg);
     console.log(`  vendored ${pkg} into ${path.relative(ROOT, dest)}`);
   }
@@ -435,7 +531,13 @@ async function stage(panel) {
   if (config.vendorPostgres) parts.push('vendor');
 
   for (const part of parts) {
-    await cp(path.join(panelRoot, part), path.join(staging, part), { recursive: true });
+    // `verbatimSymlinks` for the same reason as in `vendorPostgres()`: the
+    // vendored libraries' relative links must stay relative on the way into
+    // the staging folder, or they point back at `master/vendor` on this disk.
+    await cp(path.join(panelRoot, part), path.join(staging, part), {
+      recursive: true,
+      verbatimSymlinks: true,
+    });
   }
 
   /*
@@ -447,6 +549,7 @@ async function stage(panel) {
    * copies real files, which is what a setup file lays down anyway.
    */
   const tree = await productionTree(panel);
+  if (RELEASE_TARGET.universal) tree.push(...universalSiblings(tree));
   for (const source of tree) {
     const relative = path.relative(path.join(ROOT, 'node_modules'), source);
     await cp(source, path.join(staging, 'node_modules', relative), {
@@ -491,6 +594,7 @@ async function build(panel, version) {
   await rm(shellDist, { recursive: true, force: true });
   await cp(path.join(ROOT, 'electron', 'dist'), shellDist, { recursive: true });
 
+  if (RELEASE_TARGET.universal) ensureUniversalPackages();
   if (config.vendorPostgres) await vendorPostgres();
   if (!config.serverless) await stage(panel);
 

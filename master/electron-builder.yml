@@ -170,6 +170,13 @@ mac:
   # Hardened runtime is required for notarisation; the entitlements let the
   # Electron renderer JIT and let the vendored PostgreSQL binaries, signed with
   # the same identity, load their own dylibs.
+  # Everything under Resources/panel is staged once and copied into both
+  # halves of the universal merge, so its Mach-O files (the vendored
+  # PostgreSQL of both architectures, both `sharp` binaries) are identical in
+  # each half and are not to be lipo'd — @electron/universal refuses an
+  # identical Mach-O file unless it matches this pattern. The Electron binaries
+  # themselves differ per half and are still merged.
+  x64ArchFiles: Contents/Resources/panel/**
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: installer/entitlements.mac.plist
