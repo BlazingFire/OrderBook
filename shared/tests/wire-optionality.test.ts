@@ -68,6 +68,21 @@ const GUARDED: Guarded[] = [
       'serverTime',
     ],
   },
+  {
+    /*
+     * `CompanyFeatures` crosses the boundary twice — inside
+     * `SyncSnapshot.features` and inside `SignedInUser.features` — and neither
+     * crossing validates anything: the Office forwards the Master's answer and
+     * the browser casts it.
+     *
+     * Guarded from the day it held one field, so the next switch cannot be
+     * declared required by hand and argued about afterwards. `freeToSell` is
+     * genuine history: it is what a 1.0.2 Master already sends.
+     */
+    file: 'src/domain/entities.ts',
+    type: 'CompanyFeatures',
+    sinceAlways: ['freeToSell'],
+  },
 ];
 
 /** The property names an interface declares, and whether each is optional. */

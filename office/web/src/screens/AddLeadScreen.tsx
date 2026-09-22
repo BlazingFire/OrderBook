@@ -55,9 +55,10 @@ import type {
   ProductCategory,
   ProductVariant,
 } from '@orderbook/shared';
+import { resolveCompanyFeatures } from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
-import { PartyDrawer, type CreatedParty } from '../components/PartyDrawer';
+import { partyFormTransport } from '../partyFormTransport';
 import {
   Button,
   Card,
@@ -67,10 +68,12 @@ import {
   DateField,
   Icon,
   Input,
+  PartyFormModal,
   Select,
   SuggestInput,
   StatusPill,
   Textarea,
+  type CreatedParty,
   formatKg,
   rem,
   t,
@@ -182,6 +185,10 @@ function variantName(facts: { variantLabel: string | null; code: string }): stri
 
 export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props) {
   const colourHex = useColourHex(view.optionLists);
+  // The company's switches, each absence resolved to the setting's own
+  // declared fallback at this panel's edge.
+  const features = resolveCompanyFeatures(view.features);
+  const packagingRequired = features.packagingRequiredOnConvert;
 
   const [partyId, setPartyId] = useState('');
   const [partyQuery, setPartyQuery] = useState('');
@@ -193,7 +200,7 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
   const [sourcePlatform, setSourcePlatform] = useState('');
   const [otherSource, setOtherSource] = useState('');
   /*
-   * Today, not blank.
+   * The company's default (`leads.followUpDefaultDays`, 0 = today), not blank.
    *
    * Every lead gets followed up, and the date the enquiry came in is the one
    * somebody would have typed. A blank required-looking field on a form nobody
@@ -201,7 +208,7 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
    * below. The quick chips and the picker both overwrite it, and clearing it is
    * one press of the chip that matches.
    */
-  const [followUpDate, setFollowUpDate] = useState(() => isoDate(0));
+  const [followUpDate, setFollowUpDate] = useState(() => isoDate(features.followUpDefaultDays));
   const [notes, setNotes] = useState('');
 
   const [query, setQuery] = useState('');
@@ -502,7 +509,9 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
 
   function draftIsReady(candidate: DraftProduct): boolean {
     const filled = candidate.rows.filter((row) => Number(row.qty) > 0);
-    return Boolean(candidate.packaging.trim()) && filled.length > 0;
+    // `leads.packagingRequiredOnConvert` off: a shop that packs to order
+    // cannot state the packaging at the counter, so a line may go in without.
+    return (!packagingRequired || Boolean(candidate.packaging.trim())) && filled.length > 0;
   }
 
   /** One line per variant with a quantity — a card with two colours filled adds two. */
@@ -1313,6 +1322,7 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
               <DraftCard
                 draft={draft}
                 ready={draftIsReady(draft)}
+                packagingRequired={packagingRequired}
                 packagingOptions={packagingOptions}
                 gradeOptions={gradeOptions}
                 colourOptions={colourOptions}
@@ -1513,7 +1523,8 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
         </aside>
       </div>
 
-      <PartyDrawer
+      <PartyFormModal
+        transport={partyFormTransport}
         open={partyDrawerOpen}
         onClose={() => setPartyDrawerOpen(false)}
         onCreated={(party: CreatedParty) => {
@@ -1835,6 +1846,7 @@ function LeadLine({
 function DraftCard({
   draft,
   ready,
+  packagingRequired,
   packagingOptions,
   gradeOptions,
   colourOptions,
@@ -1846,6 +1858,8 @@ function DraftCard({
 }: {
   draft: DraftProduct;
   ready: boolean;
+  /** `leads.packagingRequiredOnConvert`, already coalesced by the screen. */
+  packagingRequired: boolean;
   packagingOptions: OptionListItem[];
   gradeOptions: OptionListItem[];
   colourOptions: OptionListItem[];
@@ -1859,7 +1873,7 @@ function DraftCard({
   const pieces = filled.reduce((sum, row) => sum + Number(row.qty), 0);
   const previewKg = filled.reduce((sum, row) => sum + (lineWeight({ weightKg: row.weightKg, quantity: Number(row.qty) }) ?? 0), 0);
 
-  const hint = !draft.packaging.trim()
+  const hint = packagingRequired && !draft.packaging.trim()
     ? t('lead.add.draft.hintPackaging')
     : filled.length === 0
       ? t('lead.add.draft.hintQuantity')
@@ -1945,7 +1959,7 @@ function DraftCard({
             <SuggestInput
               autoFocus
               value={draft.packaging}
-              invalid={!draft.packaging.trim()}
+              invalid={packagingRequired && !draft.packaging.trim()}
               placeholder={t('lead.add.products.packagingPlaceholder')}
               optionsLabel={t('lead.add.draft.showOptions', {
                 field: t('lead.add.draft.packaging'),

@@ -1,0 +1,9 @@
+{
+  "name": "@orderbook/cleaner",
+  "version": "1.2.0",
+  "private": true,
+  "type": "module",
+  "main": "electron/dist/cleaner.main.js",
+  "description": "Detects and removes every trace of OrderBook on this PC, then runs a setup file.",
+  "scripts": {}
+}

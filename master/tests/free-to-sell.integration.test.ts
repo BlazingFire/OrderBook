@@ -22,6 +22,18 @@ import { resetData, setupDatabase, teardownDatabase, testActor } from './helpers
 
 let actor: ActorContext;
 
+/**
+ * Every company switch at its declared fallback — what a company that has
+ * never opened the Settings screen gets, which is what `resetData()` leaves.
+ */
+const DEFAULT_FEATURES = {
+  freeToSell: true,
+  offlineSignInEnabled: true,
+  adjustmentNoteRequired: false,
+  followUpDefaultDays: 0,
+  packagingRequiredOnConvert: true,
+};
+
 async function levelFor(variantId: string) {
   const levels = await inventory.listStock({ limit: 100 }, actor);
   return levels.find((level) => level.variantId === variantId);
@@ -73,7 +85,13 @@ describe.skipIf(!canRunIntegrationTests)('the free-to-sell switch (integration)'
     expect(await inventory.countLowStock(actor.tenantId)).toBe(0);
 
     const snapshot = await buildSnapshot(actor);
-    expect(snapshot.features).toEqual({ freeToSell: false });
+    // Kept as a strict `toEqual` on the whole object rather than relaxed to
+    // `toMatchObject`, and it is the second catcher for the defect
+    // `master/tests/company-features-complete.test.ts` exists for: every field
+    // beyond `freeToSell` is optional, so one left unresolved typechecks
+    // cleanly and reaches every panel as `undefined`. Adding a switch is meant
+    // to bring you here.
+    expect(snapshot.features).toEqual({ ...DEFAULT_FEATURES, freeToSell: false });
     expect(snapshot.stock.find((level) => level.productId === product.id)?.reservedBoxes).toBe(0);
   });
 
@@ -83,6 +101,6 @@ describe.skipIf(!canRunIntegrationTests)('the free-to-sell switch (integration)'
     await settings.writeSetting(actor, 'inventory.freeToSell', true);
 
     expect(await levelFor(variant.id)).toMatchObject({ reservedBoxes: 15, availableBoxes: 25 });
-    expect((await buildSnapshot(actor)).features).toEqual({ freeToSell: true });
+    expect((await buildSnapshot(actor)).features).toEqual(DEFAULT_FEATURES);
   });
 });

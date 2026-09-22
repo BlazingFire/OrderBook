@@ -24,7 +24,14 @@
  * has to have exactly one answer.
  */
 
-import type { PanelUserSession, SessionRejection, SignedInUser } from '@orderbook/shared';
+import type {
+  MessageKey,
+  MessageParams,
+  PanelUserSession,
+  SessionRejection,
+  SignedInUser,
+} from '@orderbook/shared';
+import { SETTINGS } from '@orderbook/shared';
 
 import { createLogger } from '../lib/logger.js';
 import { mintVerifier, verifyAgainst } from '../lib/password.js';
@@ -33,15 +40,55 @@ import * as attempts from './sign-in-attempts.store.js';
 import { cacheAvatar } from './avatar-cache.js';
 import { masterFetch } from '../lib/master-fetch.js';
 import * as userStore from './user-store.js';
+import * as localStore from '../sync/local-store.js';
 
 const log = createLogger('user-session');
 
+/**
+ * A refusal this panel can explain.
+ *
+ * `messageKey`/`params` carry the Master's own structured answer through rather
+ * than flattening it. The Master distinguishes four outcomes — `signInFailed`,
+ * `tooManyAttempts`, `accountDeactivated`, `noRole` — and serialises each with
+ * a key, its placeholders and a code (`master/src/realtime/hub.ts`'s own doc
+ * comment exists to stop that being lost). This class used to take the English
+ * `message` alone, so all four collapsed into one sentence and one code, and
+ * every sign-in failure on a Hindi panel rendered in English.
+ */
 export class SignInError extends Error {
   constructor(
     message: string,
-    readonly code: 'invalid_credentials' | 'unknown_here' | 'inactive' | 'locked_out',
+    readonly code:
+      | 'invalid_credentials'
+      | 'unknown_here'
+      | 'inactive'
+      | 'locked_out'
+      | 'offline_disabled',
+    readonly messageKey?: MessageKey,
+    readonly params?: MessageParams,
+    readonly details?: Record<string, unknown>,
   ) {
     super(message);
+  }
+}
+
+/**
+ * The Master's stable code, mapped onto the panel's narrower union.
+ *
+ * `invalid_credentials` is the default rather than the answer: it is what an
+ * unrecognised code means for the person in front of the screen, but a lockout
+ * and a deactivated account are different facts and the panel can say so.
+ */
+function signInCodeFor(code: string | undefined): SignInError['code'] {
+  switch (code) {
+    case 'locked_out':
+      return 'locked_out';
+    case 'inactive':
+      return 'inactive';
+    case 'unknown_here':
+      return 'unknown_here';
+    default:
+      return 'invalid_credentials';
   }
 }
 
@@ -83,16 +130,34 @@ export async function signIn(username: string, password: string): Promise<PanelS
   const trimmed = (username ?? '').trim();
 
   if (!trimmed || !password) {
-    throw new SignInError('Enter your username and password', 'invalid_credentials');
+    throw new SignInError(
+      'Enter your username and password',
+      'invalid_credentials',
+      'signin.credentialsRequired',
+    );
   }
 
   // Checked before the credential read, so a locked-out username costs an
   // attacker a round trip rather than a scrypt derivation.
   const locked = await attempts.lockedFor(trimmed);
   if (locked > 0) {
+    /*
+     * This panel's own offline counter, not the Master's.
+     *
+     * Decided deliberately: the panel throttles what it can see, which while
+     * offline is the only throttle there is, and while online the Master's
+     * check runs first and its answer wins (it reaches this code path through
+     * `signInAgainstMaster`'s refusal, carrying its own `{seconds}`). Two
+     * numbers that disagree between two states would be worse than none, so
+     * the panel only ever reports the one that actually applies to the attempt
+     * it is refusing.
+     */
+    const seconds = Math.max(1, Math.ceil(locked / 1000));
     throw new SignInError(
-      `Too many failed attempts. Try again in ${Math.ceil(locked / 1000)} seconds.`,
+      `Too many failed attempts. Try again in ${seconds} seconds.`,
       'locked_out',
+      'error.unauthorized.tooManyAttempts',
+      { seconds },
     );
   }
 
@@ -108,7 +173,16 @@ export async function signIn(username: string, password: string): Promise<PanelS
   } catch (error) {
     // Counted here rather than in each path, so the offline route cannot be
     // added to later without inheriting the throttle.
-    if (error instanceof SignInError) await attempts.recordFailure(trimmed);
+    //
+    // `offline_disabled` is the one exclusion, and it is not a nicety: the
+    // lockout is checked ABOVE the online/offline branch, so three refusals
+    // from the company's own switch would lock somebody out of their ONLINE
+    // sign-in too — the person typed the right password every time and the
+    // panel would tell them to wait a minute before trying a door that was
+    // never shut.
+    if (error instanceof SignInError && error.code !== 'offline_disabled') {
+      await attempts.recordFailure(trimmed);
+    }
     throw error;
   }
 }
@@ -131,6 +205,19 @@ async function signInAgainstMaster(username: string, password: string): Promise<
     if (error instanceof MasterCommandError && error.unreachable) {
       log.warn(`Master unreachable during sign-in, trying this panel's own record`);
       return await signInOffline(username, password);
+    }
+
+    // The Master's own refusal, carried through rather than flattened. It was
+    // built with `code`, `messageKey`, `params` and `details` all intact one
+    // layer down, and this line used to discard every one of them.
+    if (error instanceof MasterCommandError) {
+      throw new SignInError(
+        error.message,
+        signInCodeFor(error.code),
+        error.messageKey,
+        error.params,
+        error.details,
+      );
     }
 
     throw new SignInError((error as Error).message, 'invalid_credentials');
@@ -190,6 +277,38 @@ async function signInAgainstMaster(username: string, password: string): Promise<
 }
 
 async function signInOffline(username: string, password: string): Promise<PanelSession> {
+  /*
+   * The company's switch, read off the cached snapshot.
+   *
+   * Gated here rather than at the two call sites above, for the same reason the
+   * failure count lives in one place: there are two ways in — the link being
+   * down, and the Master answering `unreachable` — and a third would inherit
+   * this automatically.
+   *
+   * `getSetting` is not available to this function by construction: it runs
+   * precisely because the Master cannot be asked. `cachedFeatures()` reads the
+   * snapshot file this panel already owns, so it works with the Master off and
+   * after a restart, when memory is empty and only the file survives.
+   *
+   * Both absences resolve to the setting's declared fallback, which is `true`.
+   * A snapshot from a Master too old to carry the field, and no snapshot at
+   * all, both mean "nobody has told me otherwise" — and fail-closed here would
+   * tell the person at the counter that only somebody who has signed in before
+   * may sign in, which is a lie they cannot fix without the Master. It would
+   * also buy nothing: anyone who can delete `snapshot.json` can edit the flag
+   * inside it instead.
+   */
+  const features = await localStore.cachedFeatures();
+  if (
+    (features?.offlineSignInEnabled ?? SETTINGS['security.offlineSignInEnabled'].fallback) === false
+  ) {
+    throw new SignInError(
+      'Signing in needs the Master Panel. This company does not allow signing in while it is off.',
+      'offline_disabled',
+      'error.generic.offlineSignInDisabled',
+    );
+  }
+
   const known = await userStore.findByUsername(username);
 
   // Deliberately the same message as a wrong password. "You have never signed in

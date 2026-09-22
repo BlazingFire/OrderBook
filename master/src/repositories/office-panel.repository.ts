@@ -158,12 +158,23 @@ export async function countWorkFromPanel(
   };
 }
 
-export async function countPanelsNamed(tenantId: string, prefix: string): Promise<number> {
-  const row = await db()(TABLE)
+/**
+ * The names already in use under a prefix, for minting the next default.
+ *
+ * This replaced a `count`, which was wrong in a way nobody would notice until
+ * it mattered: pair two panels ("Office Panel 1", "Office Panel 2"), rename the
+ * first to "Reception", and the count of `Office Panel%` is 1 again — so the
+ * next auto-paired panel is also named "Office Panel 2". Nothing enforces name
+ * uniqueness (only `(tenant_id, device_code)` is unique, and `updatePanel`
+ * checks nothing), so the duplicate simply exists, on the exact screen an
+ * administrator uses to decide which panel to revoke or which PC to walk to.
+ */
+export async function panelNamesMatching(tenantId: string, prefix: string): Promise<string[]> {
+  const rows = await db()(TABLE)
+    .select('name')
     .where({ tenant_id: tenantId })
-    .whereILike('name', `${prefix}%`)
-    .count<Array<{ count: string }>>('id as count');
-  return Number(row[0]?.count ?? 0);
+    .whereILike('name', `${prefix}%`);
+  return rows.map((row) => String((row as { name: unknown }).name));
 }
 
 /** Which role a panel's commands act under. Null means the seeded Office role. */

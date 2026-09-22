@@ -132,9 +132,30 @@ export interface User {
  * on the Master and with the snapshot on a panel, so both UIs draw the same
  * screen without a second request.
  */
+/**
+ * The company switches a screen — or an offline panel — reads without asking.
+ *
+ * Every field beyond `freeToSell` is **optional**, and that is enforced by
+ * `shared/tests/wire-optionality.test.ts` rather than left to judgement. This
+ * type crosses the Master/Office boundary twice, inside `SyncSnapshot.features`
+ * and inside `SignedInUser.features`, and neither crossing validates a payload:
+ * the Office forwards the Master's answer and the browser casts it. A shop
+ * mid-update runs a Master and a panel on different versions as its *normal*
+ * state, so a field a 1.0.2 Master does not know about arrives as `undefined`
+ * whatever the type says. Absent means "as before", and every reader coalesces
+ * to the setting's own declared fallback.
+ */
 export interface CompanyFeatures {
   /** `inventory.freeToSell`: whether stock is split into on hand / reserved / free. */
   freeToSell: boolean;
+  /** `security.offlineSignInEnabled`: read off the cached snapshot, with the Master off. */
+  offlineSignInEnabled?: boolean;
+  /** `inventory.adjustmentNoteRequired`: so a form can ask before the Master refuses. */
+  adjustmentNoteRequired?: boolean;
+  /** `leads.followUpDefaultDays`: the follow-up date a new lead starts with. */
+  followUpDefaultDays?: number;
+  /** `leads.packagingRequiredOnConvert`: whether the lead screens ask for packaging. */
+  packagingRequiredOnConvert?: boolean;
 }
 
 export interface SignedInUser extends User {
@@ -157,7 +178,15 @@ export interface OfficePanel {
   /** The 6-char code this panel stamps into temporary ids and HLC timestamps. */
   deviceCode: string;
   lanIp: string | null;
-  macAddress: string | null;
+  /*
+   * `mac_address` was on this record, on the mapper, and rendered on the Panels
+   * detail card — and **nothing ever wrote it**. `insertPanel` did not set it,
+   * `updateDeviceReport` did not set it, and no other writer existed, so an
+   * administrator opening a panel's card saw a permanent em dash with no signal
+   * that this had never been implemented rather than "not reported yet".
+   * Removed from the type, the mapper and the screen. The column stays: dropping
+   * it is a migration, and this is not one.
+   */
   status: OfficePanelStatus;
   /** Free text an administrator keeps against the panel — which desk it is on. */
   notes: string | null;

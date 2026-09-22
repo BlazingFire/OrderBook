@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';" />
+    <title>OrderBook Clean Install</title>
+    <!--
+      One static file, no framework and no build step.
+
+      Every other screen in this product is React built by vite, and this one
+      deliberately is not. A rescue tool runs on a PC where the install is
+      broken; one that needs a bundler to have run correctly is the wrong
+      shape. The colours are copied from `ui/src/tokens.css` rather than
+      imported for the same reason — this page has to open even if nothing
+      else on the machine works.
+    -->
+    <style>
+      :root {
+        --bg-page: #0a0f11;
+        --bg-surface: #151c1f;
+        --bg-sunken: #0e1315;
+        --fg-primary: #e6edf0;
+        --fg-secondary: #9aa9b0;
+        --fg-tertiary: #7e8e96;
+        --line: #263136;
+        --accent: #5b9bf0;
+        --danger: #e8706b;
+        --danger-bg: #331716;
+        --good: #4fb483;
+        --warn: #e0a040;
+        --warn-bg: #2e2313;
+        --radius: 8px;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font: 14px/1.5 'Segoe UI', -apple-system, system-ui, sans-serif;
+        background: var(--bg-page);
+        color: var(--fg-primary);
+        padding: 24px;
+      }
+      h1 { font-size: 20px; margin: 0 0 4px; }
+      h2 { font-size: 15px; margin: 0 0 8px; }
+      p { margin: 0 0 12px; color: var(--fg-secondary); }
+      .step {
+        background: var(--bg-surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 16px;
+        margin-bottom: 12px;
+      }
+      .step[hidden] { display: none; }
+      .step.done { opacity: 0.6; }
+      button {
+        font: inherit;
+        padding: 8px 14px;
+        border-radius: 6px;
+        border: 1px solid var(--line);
+        background: var(--bg-sunken);
+        color: var(--fg-primary);
+        cursor: pointer;
+      }
+      button:hover:not(:disabled) { border-color: var(--accent); }
+      button:disabled { opacity: 0.45; cursor: default; }
+      button.primary { background: var(--accent); color: #0a0f11; border-color: var(--accent); }
+      button.danger { background: var(--danger); color: #0a0f11; border-color: var(--danger); }
+      input[type='text'] {
+        font: inherit;
+        padding: 8px 10px;
+        border-radius: 6px;
+        border: 1px solid var(--line);
+        background: var(--bg-sunken);
+        color: var(--fg-primary);
+        width: 220px;
+      }
+      ul { margin: 0; padding-left: 18px; }
+      li { margin-bottom: 2px; font-family: ui-monospace, 'Cascadia Mono', Menlo, monospace; font-size: 12px; }
+      .muted { color: var(--fg-tertiary); font-size: 12px; }
+      .section-name { color: var(--fg-secondary); font-size: 12px; margin: 10px 0 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+      .banner { border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; }
+      .banner.danger { background: var(--danger-bg); border: 1px solid var(--danger); }
+      .banner.warn { background: var(--warn-bg); border: 1px solid var(--warn); }
+      .banner.good { border: 1px solid var(--good); }
+      .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      pre {
+        background: var(--bg-sunken);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 10px;
+        max-height: 180px;
+        overflow: auto;
+        font-size: 12px;
+        margin: 8px 0 0;
+        white-space: pre-wrap;
+      }
+      .ok { color: var(--good); }
+      .bad { color: var(--danger); }
+    </style>
+  </head>
+  <body>
+    <h1>OrderBook Clean Install</h1>
+    <p>
+      Finds everything OrderBook has left on this PC, removes it, checks that it is gone, and then
+      runs a setup file you choose.
+    </p>
+
+    <section class="step" id="step-detect">
+      <h2>1 &middot; What is on this PC</h2>
+      <p>Nothing is changed by this step.</p>
+      <div class="row"><button class="primary" id="detect">Scan this PC</button></div>
+      <div id="detect-result"></div>
+    </section>
+
+    <section class="step" id="step-backup" hidden>
+      <h2>2 &middot; Keep a copy first</h2>
+      <p id="backup-what"></p>
+      <div class="row">
+        <button id="choose-backup">Choose a folder&hellip;</button>
+        <span class="muted" id="backup-target">No folder chosen</span>
+      </div>
+      <div class="row" style="margin-top: 10px">
+        <button class="primary" id="backup" disabled>Copy the data</button>
+        <button id="skip-backup">Skip &mdash; I do not need it</button>
+      </div>
+      <div id="backup-result"></div>
+    </section>
+
+    <section class="step" id="step-wipe" hidden>
+      <h2>3 &middot; Remove everything</h2>
+      <div class="banner danger">
+        <strong>This cannot be undone.</strong>
+        <span id="wipe-what"></span>
+      </div>
+      <div class="row">
+        <span>Type <strong>DELETE</strong> to continue:</span>
+        <input type="text" id="confirm" autocomplete="off" spellcheck="false" />
+        <button class="danger" id="wipe" disabled>Remove everything</button>
+      </div>
+      <pre id="wipe-log" hidden></pre>
+    </section>
+
+    <section class="step" id="step-verify" hidden>
+      <h2>4 &middot; Check it is really gone</h2>
+      <div id="verify-result"></div>
+    </section>
+
+    <section class="step" id="step-install" hidden>
+      <h2>5 &middot; Install again</h2>
+      <p>Choose the setup file to run. It is checked against the release it claims to be from.</p>
+      <div class="row">
+        <button id="choose-setup">Choose the setup file&hellip;</button>
+        <span class="muted" id="setup-target">No file chosen</span>
+      </div>
+      <div id="setup-result"></div>
+      <div class="row" style="margin-top: 10px">
+        <button class="primary" id="install" disabled>Run the setup</button>
+      </div>
+    </section>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const show = (id) => $(id).removeAttribute('hidden');
+      const escape = (text) =>
+        String(text).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+      let dataFolders = [];
+      let backupInto = null;
+      let setupPath = null;
+      let setupAccepted = false;
+
+      function fail(where, error) {
+        $(where).innerHTML =
+          '<div class="banner danger">' + escape(error && error.message ? error.message : error) + '</div>';
+      }
+
+      // --- 1. detect --------------------------------------------------------
+      $('detect').addEventListener('click', async () => {
+        $('detect').disabled = true;
+        $('detect').textContent = 'Scanning…';
+        try {
+          const report = await window.cleaner.detect();
+          dataFolders = report.dataFolders;
+          renderDetection(report);
+        } catch (error) {
+          fail('detect-result', error);
+          $('detect').disabled = false;
+          $('detect').textContent = 'Scan this PC';
+        }
+      });
+
+      function renderDetection(report) {
+        const found = report.findings;
+        if (found.length === 0 && report.notes.length === 0) {
+          $('detect-result').innerHTML =
+            '<div class="banner good">Nothing of OrderBook’s is on this PC. You can install straight away.</div>';
+          $('step-detect').classList.add('done');
+          show('step-install');
+          return;
+        }
+
+        const bySection = new Map();
+        for (const finding of found) {
+          if (!bySection.has(finding.section)) bySection.set(finding.section, []);
+          bySection.get(finding.section).push(finding);
+        }
+
+        let html = '<div class="banner warn">Found <strong>' + found.length + '</strong> item';
+        html += found.length === 1 ? '' : 's';
+        html += ' to remove.</div>';
+
+        for (const [section, items] of bySection) {
+          html += '<div class="section-name">' + escape(section) + '</div><ul>';
+          for (const item of items) {
+            html += '<li>' + escape(item.what) + ': ' + escape(item.path) + '</li>';
+          }
+          html += '</ul>';
+        }
+
+        if (report.notes.length) {
+          html += '<div class="section-name">Also</div><ul>';
+          for (const note of report.notes) html += '<li>' + escape(note.message) + '</li>';
+          html += '</ul>';
+        }
+
+        $('detect-result').innerHTML = html;
+        $('step-detect').classList.add('done');
+
+        if (dataFolders.length) {
+          $('backup-what').textContent =
+            'These hold this company’s records — the database, the uploaded photos and the settings: ' +
+            dataFolders.join(', ');
+          show('step-backup');
+        } else {
+          startWipeStep();
+        }
+      }
+
+      // --- 2. backup --------------------------------------------------------
+      $('choose-backup').addEventListener('click', async () => {
+        const chosen = await window.cleaner.chooseBackupFolder();
+        if (!chosen) return;
+        backupInto = chosen;
+        $('backup-target').textContent = chosen;
+        $('backup').disabled = false;
+      });
+
+      $('backup').addEventListener('click', async () => {
+        $('backup').disabled = true;
+        $('backup').textContent = 'Copying…';
+        try {
+          const result = await window.cleaner.backup({ into: backupInto, sources: dataFolders });
+          let html = '<div class="banner ' + (result.failures.length ? 'warn' : 'good') + '">Copied ' +
+            result.copied.length + ' of ' + dataFolders.length + '.</div>';
+          if (result.failures.length) {
+            html += '<ul>';
+            for (const failure of result.failures) {
+              html += '<li class="bad">' + escape(failure.from) + ' — ' + escape(failure.reason) + '</li>';
+            }
+            html += '</ul>';
+          }
+          $('backup-result').innerHTML = html;
+          $('step-backup').classList.add('done');
+          startWipeStep();
+        } catch (error) {
+          fail('backup-result', error);
+          $('backup').disabled = false;
+          $('backup').textContent = 'Copy the data';
+        }
+      });
+
+      $('skip-backup').addEventListener('click', () => {
+        $('backup-result').innerHTML = '<div class="banner warn">No copy was taken.</div>';
+        $('step-backup').classList.add('done');
+        startWipeStep();
+      });
+
+      // --- 3. wipe ----------------------------------------------------------
+      function startWipeStep() {
+        $('wipe-what').textContent = dataFolders.length
+          ? 'Every party, lead and order kept on this PC goes with it.'
+          : 'No data folder was found, so only the program files and settings go.';
+        show('step-wipe');
+      }
+
+      // The typed word gates the button here, and the main process checks it
+      // again when the call arrives — a page can be made to say anything.
+      $('confirm').addEventListener('input', (event) => {
+        $('wipe').disabled = event.target.value !== 'DELETE';
+      });
+
+      window.cleaner.onLine((line) => {
+        const log = $('wipe-log');
+        log.removeAttribute('hidden');
+        log.textContent += line + '\n';
+        log.scrollTop = log.scrollHeight;
+      });
+
+      $('wipe').addEventListener('click', async () => {
+        $('wipe').disabled = true;
+        $('confirm').disabled = true;
+        $('wipe').textContent = 'Removing…';
+        try {
+          await window.cleaner.wipe({ confirmation: $('confirm').value });
+          $('step-wipe').classList.add('done');
+          show('step-verify');
+          await verify();
+        } catch (error) {
+          fail('wipe-log', error);
+          $('wipe').disabled = false;
+          $('confirm').disabled = false;
+          $('wipe').textContent = 'Remove everything';
+        }
+      });
+
+      // --- 4. verify --------------------------------------------------------
+      async function verify() {
+        $('verify-result').innerHTML = '<p>Checking…</p>';
+        try {
+          const { leftovers } = await window.cleaner.verify();
+          if (leftovers.length === 0) {
+            $('verify-result').innerHTML =
+              '<div class="banner good">Nothing left. This PC is as it was before OrderBook was installed.</div>';
+          } else {
+            // Said plainly rather than swallowed: a sweep that exits zero and
+            // leaves files behind is the failure this step exists to catch.
+            let html =
+              '<div class="banner warn"><strong>' + leftovers.length +
+              '</strong> item(s) could not be removed. Close anything still using them, or run this tool as an administrator, then scan again.</div><ul>';
+            for (const item of leftovers) {
+              html += '<li class="bad">' + escape(item.what) + ': ' + escape(item.path) + '</li>';
+            }
+            $('verify-result').innerHTML = html + '</ul>';
+          }
+          $('step-verify').classList.add('done');
+          show('step-install');
+        } catch (error) {
+          fail('verify-result', error);
+        }
+      }
+
+      // --- 5. install -------------------------------------------------------
+      $('choose-setup').addEventListener('click', async () => {
+        const chosen = await window.cleaner.chooseSetupFile();
+        if (!chosen) return;
+        setupPath = chosen;
+        setupAccepted = false;
+        $('setup-target').textContent = chosen;
+        $('install').disabled = true;
+        $('setup-result').innerHTML = '<p>Checking the file…</p>';
+
+        try {
+          const { verdict, panel } = await window.cleaner.checkSetupFile({ setupPath });
+          if (!verdict.ok) {
+            $('setup-result').innerHTML =
+              '<div class="banner danger"><strong>Refused.</strong> ' + escape(verdict.detail) + '</div>';
+            return;
+          }
+          if (verdict.manifest === null) {
+            $('setup-result').innerHTML =
+              '<div class="banner warn">No release information sits beside this file, so nothing vouches for it. ' +
+              'Run it only if you know where it came from.</div>';
+          } else {
+            $('setup-result').innerHTML =
+              '<div class="banner good">Checked: the ' + escape(panel || verdict.manifest.panel) +
+              ' panel, version ' + escape(verdict.manifest.version) +
+              ', and the bytes match what was published.</div>';
+          }
+          setupAccepted = true;
+          $('install').disabled = false;
+        } catch (error) {
+          fail('setup-result', error);
+        }
+      });
+
+      $('install').addEventListener('click', async () => {
+        $('install').disabled = true;
+        try {
+          await window.cleaner.install({ setupPath, accepted: setupAccepted });
+          $('setup-result').innerHTML +=
+            '<div class="banner good">The setup is running. You can close this window.</div>';
+        } catch (error) {
+          fail('setup-result', error);
+          $('install').disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

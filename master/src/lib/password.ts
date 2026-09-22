@@ -16,6 +16,8 @@ import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:cry
 import { promisify } from 'node:util';
 import bcrypt from 'bcryptjs';
 
+import { ValidationError } from './errors.js';
+
 const scrypt = promisify(scryptCallback) as (
   password: string,
   salt: Buffer,
@@ -101,4 +103,32 @@ export function generateTemporaryPassword(length = 12): string {
   const bytes = randomBytes(length);
 
   return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
+}
+
+/**
+ * The shortest password anybody may *choose*.
+ *
+ * Kept here with the hashing rather than beside one of the three callers,
+ * because it was beside one of them: `changeOwnPassword` enforced eight
+ * characters on somebody changing their own password, while an administrator
+ * creating a user or resetting theirs could set a password of one character
+ * and the server took it. The weaker path was the one that mints accounts.
+ *
+ * `validation.password.tooShort` names the number in both catalogues, so the
+ * two move together.
+ */
+export const PASSWORD_MIN_LENGTH = 8;
+
+/**
+ * Applies to a password somebody typed, never to `generateTemporaryPassword()`
+ * — a generated secret is already longer than this and is not the caller's to
+ * get wrong. Callers that fall back to a generated one therefore check the
+ * supplied value first and only then fall back, rather than checking the
+ * result, which would make the minimum look enforced while never seeing an
+ * unsafe input at all.
+ */
+export function assertPasswordLongEnough(password: string): void {
+  if (password.length < PASSWORD_MIN_LENGTH) {
+    throw new ValidationError('validation.password.tooShort');
+  }
 }

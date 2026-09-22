@@ -148,3 +148,31 @@ multipart caller, not just images.
 
 ---
 *Implementer: append what changed and what you verified below this line.*
+
+---
+
+## Landed 2026-09-17 (Claude) — §0 and §1
+
+- **§0 the dev-server proxy** — `/uploads` is proxied on both panels now. Product
+  images and avatars are served from there, not from `/api`, so every photo 404'd
+  through the Vite dev server while working perfectly in the packaged app. This
+  may well be the whole of what the owner hit; ask them whether they were testing
+  a dev server or the packaged panel.
+- **§1 the data leak** — all four image mutations returned the raw product.
+  `publishAndMask` now pairs the raw record (for `publishChange`, which the Office
+  re-masks per signed-in user) with the masked one (for the caller), so a fifth
+  mutation added later cannot get the pairing wrong. A test covering all four is
+  in `master/tests/images.integration.test.ts` — **not run here**, needs PostgreSQL.
+
+### Still open — §2, §3, §4 and the "also confirmed" list
+
+§2 is the substantive one: **there is still no way to look at a product photo.**
+`ProductDetail.tsx` has no reference to `product.images` at all, so the `large`
+(800px) and `master` (2048px) variants encoded on every upload are never
+requested by anything. For a ceramics catalogue that is the primary use of a
+photo.
+
+§3 (the whole image UI is hardcoded English — `ProductImages.tsx` imports no `t`)
+and §4 (offline upload gives a raw Node error; `postFile` drops `messageKey`, and
+needs its own longer timeout) are untouched, as is everything under "also
+confirmed".

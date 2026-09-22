@@ -20,28 +20,10 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
-import { EN_MESSAGES } from '@orderbook/shared';
+import { EN_MESSAGES, PANEL_SCOPED_KEYS } from '@orderbook/shared';
 import { describe, expect, it } from 'vitest';
 
 const ROOT = path.resolve(__dirname, '..', '..');
-
-/**
- * Keys whose sentence differs between panels. Each `strings.ts` prefixes
- * these with its own panel name before looking them up.
- */
-const PANEL_SCOPED = [
-  'app.panel',
-  'backup.export.title',
-  'backup.restore.confirmWipe',
-  'settings.storage.title',
-  'sync.conflictReview',
-  'sync.offline',
-  'sync.offlinePending',
-  'sync.pendingChanges',
-  'sync.popoverTitle.offline',
-  'sync.popoverTitle.offlinePending',
-  'sync.popoverTitle.synced',
-];
 
 /** `t('key'` / `t("key"` — a template literal deliberately does not match. */
 const CALL = /\bt\(\s*(['"])([A-Za-z0-9_.]+)\1/g;
@@ -93,7 +75,7 @@ describe.each([
     for (const [key, files] of keysUsedIn(webDir)) {
       // ui/ is shared between panels, so panel-scoped keys are checked under
       // both prefixes — the same key will appear in both panels' catalogues.
-      const resolved = panel && PANEL_SCOPED.includes(key) ? `${panel}.${key}` : key;
+      const resolved = panel && PANEL_SCOPED_KEYS.includes(key) ? `${panel}.${key}` : key;
       if (!(resolved in catalogue)) missing.push(`${key} (${files[0]})`);
     }
 
@@ -103,7 +85,7 @@ describe.each([
 
 describe('panel-scoped keys', () => {
   it('exist under both panel prefixes, so neither panel renders a raw key', () => {
-    const absent = PANEL_SCOPED.flatMap((key) =>
+    const absent = PANEL_SCOPED_KEYS.flatMap((key) =>
       ['master', 'office']
         .map((panel) => `${panel}.${key}`)
         .filter((scoped) => !(scoped in catalogue)),
@@ -113,6 +95,6 @@ describe('panel-scoped keys', () => {
   });
 
   it('are not also present unprefixed, which would silently shadow the split', () => {
-    expect(PANEL_SCOPED.filter((key) => key in catalogue)).toEqual([]);
+    expect(PANEL_SCOPED_KEYS.filter((key) => key in catalogue)).toEqual([]);
   });
 });

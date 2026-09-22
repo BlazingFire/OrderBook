@@ -19,7 +19,7 @@ import {
 import { config } from '../config/index.js';
 import { createLogger } from '../lib/logger.js';
 import { primaryLanAddress } from '../lib/network.js';
-import { isAcceptingPairing } from '../services/panel.service.js';
+import { isAutoPairingOpen } from '../services/panel.service.js';
 import { getIdentity } from '../services/setup.service.js';
 
 const log = createLogger('discovery');
@@ -81,7 +81,10 @@ async function handleMessage(
     companyName: identity.companyName,
     lanIp: primaryLanAddress() ?? '127.0.0.1',
     httpPort: config.http.port,
-    acceptingPairing: isAcceptingPairing(),
+    // The same question `pairPanel` will ask, not just the window — advertising
+    // `true` while the setting is off would have a panel select this Master and
+    // then be refused, with the Master's own screen waiting for it forever.
+    acceptingPairing: await isAutoPairingOpen(identity.tenantId),
   });
 
   socket.send(encodeDiscoveryMessage(reply), remote.port, remote.address, (error) => {

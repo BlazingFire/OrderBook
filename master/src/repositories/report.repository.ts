@@ -18,7 +18,6 @@ import type { Knex } from 'knex';
 
 import { config } from '../config/index.js';
 import { db } from '../db/knex.js';
-import { QUIET_AFTER_DAYS } from '../domain/lead-outcome.js';
 import type { PartyScope } from '../domain/party-scope.js';
 import { partyScopeSql } from './party-access.repository.js';
 import { toNumber } from './mappers.js';
@@ -134,10 +133,22 @@ export interface LeadOutcomeRow {
  * agree, which is why both are pinned by `RPT-9`. `converted_order_id` wins
  * outright; a terminal, unconverted lead is `lost` regardless of which
  * terminal stage it is in; otherwise a date-difference against
- * `QUIET_AFTER_DAYS` (computed as a plain date subtraction, never through a
- * JS `Date`) decides `quiet` vs `open`.
+ * the company's `leads.quietAfterDays` (computed as a plain date subtraction,
+ * never through a JS `Date`) decides `quiet` vs `open`. The caller reads the
+ * setting and passes it, so both halves are given the same number rather than
+ * each reading its own.
  */
-export async function leadOutcomesByMonth(range: DateRange, runner: Runner = db()): Promise<LeadOutcomeRow[]> {
+export async function leadOutcomesByMonth(
+  range: DateRange,
+  /**
+   * A second parameter, deliberately not a field on `DateRange`. That type is
+   * shared by six repository functions and exists so no report can forget a
+   * field; an optional one reintroduces exactly that failure, and a required
+   * one breaks five unrelated construction sites.
+   */
+  quietAfterDays: number,
+  runner: Runner = db(),
+): Promise<LeadOutcomeRow[]> {
   const tz = config.locale.timeZone;
   const scope = partyScopeSql('l.party_id', range.tenantId, range.scope);
   const { rows } = await runner.raw<{ rows: Array<{ month: string; outcome: LeadOutcomeRow['outcome']; count: string }> }>(
@@ -156,7 +167,7 @@ export async function leadOutcomesByMonth(range: DateRange, runner: Runner = db(
         AND l.created_at <  (?::timestamp AT TIME ZONE ?)
         AND l.deleted_at IS NULL${scope.sql}
       GROUP BY 1, 2`,
-    [tz, tz, tz, QUIET_AFTER_DAYS, range.tenantId, range.fromDate, tz, range.toDateExclusive, tz, ...scope.bindings],
+    [tz, tz, tz, quietAfterDays, range.tenantId, range.fromDate, tz, range.toDateExclusive, tz, ...scope.bindings],
   );
 
   return rows.map((row) => ({ month: row.month, outcome: row.outcome, count: toNumber(row.count) ?? 0 }));

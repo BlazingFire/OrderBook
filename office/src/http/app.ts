@@ -381,9 +381,11 @@ export function createApp(): Express {
       const { username, password } = req.body ?? {};
 
       if (typeof username !== 'string' || typeof password !== 'string') {
-        res
-          .status(400)
-          .json({ error: 'invalid_request', message: 'Enter your username and password' });
+        res.status(400).json({
+          error: 'invalid_request',
+          message: 'Enter your username and password',
+          messageKey: 'signin.credentialsRequired',
+        });
         return;
       }
 
@@ -391,7 +393,16 @@ export function createApp(): Express {
         res.json({ session: await userSession.signIn(username, password) });
       } catch (error) {
         if (error instanceof userSession.SignInError) {
-          res.status(401).json({ error: error.code, message: error.message });
+          // The same spread this file already uses for a forwarded refusal.
+          // Without it the Master's `messageKey` and its `{seconds}`/`{count}`
+          // placeholders died here, and the browser rendered English.
+          res.status(401).json({
+            error: error.code,
+            message: error.message,
+            ...(error.messageKey ? { messageKey: error.messageKey } : {}),
+            ...(error.params ? { params: error.params } : {}),
+            ...(error.details ? { details: error.details } : {}),
+          });
           return;
         }
         log.error('Sign-in failed unexpectedly', error);
@@ -434,13 +445,32 @@ export function createApp(): Express {
   app.get('/api/sync', async (_req, res) => {
     res.json({
       pendingCount: await outbox.pendingCount(),
-      rejections: sync.recentRejections(),
+      rejections: await sync.recentRejections(),
       ...masterConnection.getStatus(),
     });
   });
 
   app.post('/api/sync/flush', async (_req, res) => {
     res.json(await sync.flush());
+  });
+
+  /**
+   * Somebody has read the refusals, so stop holding them.
+   *
+   * Deliberately not gated on `sync.resolveConflicts`: that permission sits at
+   * the admin tier, and the people whose writes get refused are shop-floor
+   * sales staff. Gating the *notification* on a permission they do not hold is
+   * how a refused lead came to vanish with nothing ever telling the person who
+   * typed it. Dismissing a message about your own work is not an admin action.
+   */
+  app.post('/api/sync/rejections/acknowledge', async (req, res) => {
+    const body = req.body as { mutationIds?: unknown } | undefined;
+    const ids = Array.isArray(body?.mutationIds)
+      ? body.mutationIds.filter((id): id is string => typeof id === 'string')
+      : undefined;
+
+    await sync.acknowledgeRejections(ids);
+    res.json({ rejections: await sync.recentRejections() });
   });
 
   /**
@@ -1633,8 +1663,14 @@ export const SNAPSHOT_POLICY: Record<keyof SyncSnapshot, SnapshotPolicy> = {
   // catalogue or one clamped/permission-emptied page.
   productsComplete: 'passthrough',
   // The company's switches. Not per-person — the same company for whoever is
-  // signed in — and the stock figures beside them were already shaped by the
-  // Master to match, so a stale switch here can only be as stale as `stock`.
+  // signed in — so nothing here is re-masked for the reader.
+  //
+  // This used to say a stale switch "can only be as stale as `stock`". That
+  // was wrong, and only looked right for `inventory.freeToSell`: `stock` is
+  // replayable and gets live upserts, while `features` had no change event of
+  // any kind, so it was refreshed exactly once per snapshot. `'setting'` is a
+  // `ChangedEntity` now and forces a fresh snapshot, which is what finally
+  // makes the sentence above true.
   features: 'passthrough',
 };
 

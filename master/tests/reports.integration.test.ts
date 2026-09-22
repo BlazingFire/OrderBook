@@ -8,12 +8,15 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import type { ActorContext } from '../src/domain/actor.js';
+import { config } from '../src/config/index.js';
 import { db } from '../src/db/knex.js';
 import * as catalogService from '../src/services/catalog.service.js';
 import * as inventoryService from '../src/services/inventory.service.js';
 import * as leadService from '../src/services/lead.service.js';
 import * as orderService from '../src/services/order.service.js';
 import * as reportService from '../src/services/report.service.js';
+import * as settingsService from '../src/services/settings.service.js';
+import { classifyLeadOutcome } from '../src/domain/lead-outcome.js';
 import { canRunIntegrationTests } from './helpers/db.js';
 import { actorWith, resetData, setupDatabase, teardownDatabase, testActor } from './helpers/fixtures.js';
 
@@ -55,6 +58,77 @@ async function createDispatchedOrder(
 
 async function setDispatchedAt(orderId: string, iso: string): Promise<void> {
   await db()('orders').where({ id: orderId }).update({ dispatched_at: iso });
+}
+
+/** A lead that is neither converted nor in a terminal stage — the "open" shape. */
+async function createOpenLead(city: string): Promise<string> {
+  const party = await catalogService.createParty({ name: `RPT Open ${city} ${Date.now()}`, city }, actor);
+  const code = `RPO-${Math.random().toString(36).slice(2, 8)}`;
+  const product = await catalogService.createProduct(
+    { name: `RPT Basin ${code}`, categoryName: 'Basins', variants: [{ code }] },
+    actor,
+  );
+  const lead = await leadService.createLead(
+    {
+      partyId: party.id,
+      items: [
+        { productId: product.id, variantId: product.variants[0]!.id, packaging: 'Box', quantity: 5 },
+      ],
+    },
+    actor,
+  );
+  return lead.id;
+}
+
+function totalFor(
+  report: Awaited<ReturnType<typeof reportService.leadOutcomeReport>>,
+  outcome: 'converted' | 'lost' | 'quiet' | 'open',
+): number {
+  return report.months.reduce((sum, month) => sum + month[outcome], 0);
+}
+
+/**
+ * The same facts the SQL reads, as calendar components in the report's own
+ * timezone — so the two halves are compared on one set of inputs rather than
+ * on whatever the test runner's clock happens to say.
+ */
+async function factsFor(leadId: string) {
+  const tz = config.locale.timeZone;
+  const { rows } = await db().raw<{
+    rows: Array<{
+      converted_order_id: string | null;
+      is_terminal: boolean;
+      last_y: number;
+      last_m: number;
+      last_d: number;
+      now_y: number;
+      now_m: number;
+      now_d: number;
+    }>;
+  }>(
+    `SELECT l.converted_order_id,
+            s.is_terminal,
+            extract(year  from (l.updated_at AT TIME ZONE ?))::int AS last_y,
+            extract(month from (l.updated_at AT TIME ZONE ?))::int AS last_m,
+            extract(day   from (l.updated_at AT TIME ZONE ?))::int AS last_d,
+            extract(year  from (now() AT TIME ZONE ?))::int AS now_y,
+            extract(month from (now() AT TIME ZONE ?))::int AS now_m,
+            extract(day   from (now() AT TIME ZONE ?))::int AS now_d
+       FROM leads l
+       JOIN pipeline_stages s ON s.id = l.stage_id
+      WHERE l.id = ?`,
+    [tz, tz, tz, tz, tz, tz, leadId],
+  );
+
+  const row = rows[0]!;
+  return {
+    lead: {
+      convertedOrderId: row.converted_order_id,
+      isTerminal: row.is_terminal,
+      lastActivityAt: { year: row.last_y, month: row.last_m, day: row.last_d },
+    },
+    asOf: { year: row.now_y, month: row.now_m, day: row.now_d },
+  };
 }
 
 describe.skipIf(!canRunIntegrationTests)('Reports (integration)', () => {
@@ -179,6 +253,48 @@ describe.skipIf(!canRunIntegrationTests)('Reports (integration)', () => {
     it('echoes the quietAfterDays threshold actually applied', async () => {
       const report = await reportService.leadOutcomeReport({ period: 'thisMonth' }, actor);
       expect(report.quietAfterDays).toBeGreaterThan(0);
+    });
+
+    it("applies the company's own quiet threshold, and echoes the one it applied", async () => {
+      // The SQL half of this rule and the pure `classifyLeadOutcome` half have
+      // to agree, and both now take the number from `leads.quietAfterDays`.
+      // A 30 left hardcoded on either side is invisible at the default, so
+      // everything here is asserted at a threshold that is not 30.
+      const leadId = await createOpenLead('Rajkot');
+      await db()('leads')
+        .where({ id: leadId })
+        .update({ updated_at: db().raw("now() - interval '10 days'") });
+
+      await settingsService.writeSetting(actor, 'leads.quietAfterDays', 7);
+      const strict = await reportService.leadOutcomeReport({ period: 'thisMonth' }, actor);
+      expect(strict.quietAfterDays).toBe(7);
+      expect(totalFor(strict, 'quiet')).toBe(1);
+      expect(totalFor(strict, 'open')).toBe(0);
+
+      await settingsService.writeSetting(actor, 'leads.quietAfterDays', 14);
+      const lenient = await reportService.leadOutcomeReport({ period: 'thisMonth' }, actor);
+      expect(lenient.quietAfterDays).toBe(14);
+      expect(totalFor(lenient, 'quiet')).toBe(0);
+      expect(totalFor(lenient, 'open')).toBe(1);
+    });
+
+    it('classifies a lead the same way in SQL and in the pure classifier', async () => {
+      // Same lead, same threshold, both halves asked. The pure half has no
+      // production caller, so nothing but this comparison can see it drift.
+      const leadId = await createOpenLead('Bhuj');
+      await db()('leads')
+        .where({ id: leadId })
+        .update({ updated_at: db().raw("now() - interval '10 days'") });
+
+      await settingsService.writeSetting(actor, 'leads.quietAfterDays', 7);
+
+      const report = await reportService.leadOutcomeReport({ period: 'thisMonth' }, actor);
+      const inSql = (['converted', 'lost', 'quiet', 'open'] as const).find(
+        (outcome) => totalFor(report, outcome) === 1,
+      );
+
+      const facts = await factsFor(leadId);
+      expect(classifyLeadOutcome(facts.lead, facts.asOf, report.quietAfterDays)).toBe(inSql);
     });
   });
 

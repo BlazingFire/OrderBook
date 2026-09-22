@@ -107,6 +107,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'setting.inventory.freeToSell.label': 'बिक्री-योग्य स्टॉक ट्रैक करें',
   'setting.inventory.freeToSell.help':
     'चालू होने पर हर स्टॉक आँकड़ा तीन हिस्सों में दिखता है — उपलब्ध, खुले ऑर्डरों के लिए आरक्षित, और बिक्री-योग्य — और कम स्टॉक बिक्री-योग्य पर आँका जाता है। बंद होने पर हर वेरिएंट के लिए एक ही संख्या दिखती है, फ़र्श पर रखे पीस, और आरक्षित/बिक्री-योग्य कहीं नहीं दिखते। ऑर्डर नीचे अपना स्टॉक रोके रखते हैं, इसलिए वापस चालू करने पर सही तस्वीर दिखती है।',
+  'setting.catalog.importCreatesCategories.label': 'उत्पाद आयात को नई श्रेणियाँ बनाने दें',
+  'setting.catalog.importCreatesCategories.help':
+    'चालू रहने पर बल्क आयात शीट में लिखी श्रेणी के अनुसार उत्पाद रखता है, और श्रेणी नई हो तो बना देता है। बंद रहने पर श्रेणी पहले से होनी चाहिए — जिस पंक्ति में ऐसी श्रेणी लिखी है जो आपके पास नहीं है वह पंक्ति संख्या सहित अस्वीकार होगी ताकि आप वर्तनी ठीक कर सकें, और जिस पंक्ति में कोई श्रेणी नहीं है वह पहले की तरह आयात होगी।',
   'error.notFound': '{what} नहीं मिला',
   'error.forbidden.missingPermission': 'अनुमति नहीं है: {permission}',
   'error.forbidden.passwordRevealDisabled':
@@ -141,7 +144,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'error.unauthorized.noRole':
     'इस खाते की कोई भूमिका नहीं है। किसी प्रशासक से भूमिका देने को कहें।',
   'error.unauthorized.currentPasswordIncorrect': 'आपका मौजूदा पासवर्ड सही नहीं है',
-  'error.unauthorized.tooManyAttempts': 'बहुत अधिक विफल प्रयास। एक मिनट में फिर कोशिश करें।',
+  'error.unauthorized.tooManyAttempts': 'बहुत अधिक विफल प्रयास। {seconds} सेकंड में फिर कोशिश करें।',
   'error.unauthorized.pairingNotAccepting':
     'मास्टर पैनल अभी नए पैनल स्वीकार नहीं कर रहा है। मास्टर पर "ऑफ़िस पैनल जोड़ें" खोलकर फिर कोशिश करें।',
   'error.unauthorized.incorrectPairingPassword': 'जोड़ी पासवर्ड गलत है',
@@ -189,6 +192,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'error.generic.invalidCredentials': 'उपयोगकर्ता नाम या पासवर्ड गलत है',
   'error.generic.lockedOut': 'बहुत अधिक विफल प्रयास। बाद में फिर कोशिश करें।',
   'error.generic.unknownHere': 'यह इस पैनल पर उपलब्ध नहीं है',
+  'error.generic.offlineSignInDisabled':
+    'साइन इन के लिए मास्टर पैनल चाहिए। यह कंपनी उसके बंद रहते साइन इन करने की अनुमति नहीं देती।',
 
   'validation.backup.passphraseTooShort': 'निर्यात पासफ़्रेज़ कम से कम {min} अक्षरों का होना चाहिए',
   'validation.backup.passphraseRequired': 'निर्यात पासफ़्रेज़ दर्ज करें',
@@ -210,6 +215,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.remark.textRequired': 'टिप्पणी में कुछ पाठ होना चाहिए',
   'validation.stock.boxesArrivedRequired': 'कितने बॉक्स आए यह दर्ज करें',
   'validation.stock.countedBoxesRequired': 'गिने गए बॉक्सों की संख्या दर्ज करें',
+  'validation.stock.adjustmentNoteRequired': 'बताइए कि यह गिनती क्यों सुधारी जा रही है',
   'validation.stock.reorderLevelNegative': 'पुनःऑर्डर स्तर ऋणात्मक नहीं हो सकता',
   'validation.stock.colourRequired': 'यह स्टॉक किस रंग के लिए है यह चुनें',
   'validation.stock.productRequired': 'एक उत्पाद चुनें',
@@ -277,6 +283,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.import.mixedVariants':
     '{name} की कुछ पंक्तियों में वेरिएंट है और कुछ में नहीं — हर पंक्ति भरें या हर पंक्ति खाली छोड़ें',
   'validation.import.codesSplit': '{name} के कोड पहले से एक से अधिक उत्पादों के हैं',
+  'validation.import.unknownCategory':
+    '"{categoryName}" नाम की कोई श्रेणी नहीं है — यह कंपनी आयात से नई श्रेणी बनाने की अनुमति नहीं देती',
   'validation.import.rowFailed': 'पंक्ति सहेजी नहीं जा सकी: {reason}',
   'import.skip.codeExists': 'उत्पाद कोड "{productCode}" पहले से मौजूद है — छोड़ा गया',
   'validation.role.nameRequired': 'भूमिका को एक नाम दें',
@@ -2485,7 +2493,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'panels.detail.identity': 'Identity',
   // TODO(i18n-hi)
-  'panels.detail.mac': 'MAC address',
   // TODO(i18n-hi)
   'panels.detail.network': 'Network',
   // TODO(i18n-hi)
@@ -3062,29 +3069,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'reports.topParties.parties': 'Parties',
   // TODO(i18n-hi)
-  'settings.appearance.density': 'Density',
-  // TODO(i18n-hi)
-  'settings.appearance.densityComfortable': 'Comfortable',
-  // TODO(i18n-hi)
-  'settings.appearance.densityCompact': 'Compact',
-  // TODO(i18n-hi)
-  'settings.appearance.densityLarge': 'Large',
-  // TODO(i18n-hi)
-  'settings.appearance.densityNote': 'Row and control heights only — text size is the scale above.',
-  // TODO(i18n-hi)
-  'settings.appearance.motion': 'Motion',
-  // TODO(i18n-hi)
-  'settings.appearance.motionHint': "Also honours the system's reduced-motion setting",
-  // TODO(i18n-hi)
-  'settings.appearance.motionLabel': 'Turn animation off',
-  // TODO(i18n-hi)
   'settings.appearance.subtitle': 'Per-machine — never synced',
-  // TODO(i18n-hi)
-  'settings.appearance.theme': 'Theme',
-  // TODO(i18n-hi)
-  'settings.appearance.themeDark': 'Dark',
-  // TODO(i18n-hi)
-  'settings.appearance.themeLight': 'Light',
   // TODO(i18n-hi)
   'settings.appearance.title': 'Appearance',
   // TODO(i18n-hi)
@@ -3134,6 +3119,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'settings.density.note': 'Row and control heights only — text size is the scale above.',
   // TODO(i18n-hi)
+  'settings.language.label': 'भाषा',
+  'settings.language.hint': 'भाषा बदलने पर यह पैनल फिर से लोड होगा।',
   'settings.machine.company': 'Company',
   // TODO(i18n-hi)
   'settings.machine.connection': 'Connection',
@@ -3153,8 +3140,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'settings.motion.label': 'Motion',
   // TODO(i18n-hi)
   'settings.motion.turnOff': 'Turn animation off',
-  // TODO(i18n-hi)
-  'settings.perMachine': 'Per-machine — never synced',
   // TODO(i18n-hi)
   'settings.storage.database': 'Database',
   // TODO(i18n-hi)
@@ -3178,10 +3163,10 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // --- The Settings screen's frame.
   // TODO(i18n-hi)
   'settings.title': 'Settings',
-  // TODO(i18n-hi)
-  'settings.subtitle':
-    'Per-machine preferences, this installation’s details, and the maintenance tools.',
-  // TODO(i18n-hi)
+  'master.settings.subtitle':
+    'आपकी कंपनी एक बार जो तय करती है, साथ ही इस PC की अपनी पसंद और जानकारी।',
+  'office.settings.subtitle':
+    'इस PC की अपनी पसंद, मास्टर से इसका कनेक्शन, और रखरखाव के साधन।',
   'settings.tab.appearance': 'Appearance',
   // TODO(i18n-hi)
   'settings.tab.shortcuts': 'Shortcuts',
@@ -3244,6 +3229,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'storage.change': 'Change',
   // TODO(i18n-hi)
+  'storage.free': 'इस ड्राइव पर {size} खाली',
   'storage.folder': 'Folder',
   // TODO(i18n-hi)
   'storage.browse': 'Browse…',
@@ -3402,12 +3388,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
     'Clear the filters, scroll and unsaved entry on this screen and load it fresh.',
   // TODO(i18n-hi)
   'lead.add.discardConfirm': 'Discard this lead and start over?',
-  // TODO(i18n-hi)
-  'settings.appearance.scale': 'UI scale',
-  // TODO(i18n-hi)
-  'settings.appearance.scaleReset': 'Reset',
-  // TODO(i18n-hi)
-  'settings.appearance.scaleNote': 'Root {size} — this screen resizes live',
   // TODO(i18n-hi)
   'settings.scale.label': 'UI scale',
   // TODO(i18n-hi)
@@ -3918,4 +3898,83 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.draft.hintRate': 'Enter a rate',
   // TODO(i18n-hi)
   'updates.standaloneBody': "This is the standalone build, which cannot install an update over itself. Get the new standalone file, close this window, and replace the old file with it. The database and every setting stay exactly where they are.",
+  'common.confirm': 'पुष्टि करें',
+  'nav.master.parties': 'पार्टियाँ',
+  'parties.created': '{name} सहेजा गया',
+  'parties.updated': '{name} अपडेट किया गया',
+  'parties.deleted': '{name} हटाया गया',
+  'parties.deleteFailed': 'पार्टी हटाई नहीं जा सकी',
+  'parties.deleteBlocked': '{items} में अब भी उपयोग में है — पहले उन्हें निपटाएँ',
+  'parties.delete.title': '{name} को हटाएँ?',
+  'parties.delete.body': 'यह रीसायकल बिन में जाता है और वापस लाया जा सकता है।',
+  'parties.delete.confirm': 'पार्टी हटाएँ',
+  'parties.error.load': 'पार्टियाँ लोड नहीं हो सकीं',
+  'parties.loadMore': 'और लोड करें',
+  'parties.summary': '{total} में से {shown} दिख रहे हैं',
+  'leadsOrders.delete.lead': 'लीड हटाएँ',
+  'leadsOrders.delete.order': 'ऑर्डर हटाएँ',
+  'leadsOrders.delete.lead.title': 'लीड {id} हटाएँ?',
+  'leadsOrders.delete.order.title': 'ऑर्डर {id} हटाएँ?',
+  'leadsOrders.delete.body': 'यह रीसायकल बिन में जाता है और वापस लाया जा सकता है।',
+  'leadsOrders.delete.failed': 'वह रिकॉर्ड हटाया नहीं जा सका',
+  'leadsOrders.delete.blocked': '{items} में अब भी उपयोग में है — पहले उन्हें निपटाएँ',
+  'signIn.notice.sessionEnded': 'आपका सत्र समाप्त हो गया। फिर से साइन इन करें।',
+  'signIn.notice.passwordChanged': 'आपका पासवर्ड बदल गया। नए पासवर्ड से साइन इन करें।',
+  'access.changePassword.title': 'अपना पासवर्ड बदलें',
+  'access.changePassword.current': 'वर्तमान पासवर्ड',
+  'access.changePassword.new': 'नया पासवर्ड',
+  'access.changePassword.confirm': 'नया पासवर्ड दोबारा लिखें',
+  'access.changePassword.mismatch': 'दोनों नए पासवर्ड मेल नहीं खाते',
+  'access.changePassword.submit': 'पासवर्ड बदलें',
+  'access.changePassword.failed': 'पासवर्ड बदला नहीं जा सका',
+  'access.changePassword.signsYouOut': 'इसे बदलने पर आप हर जगह से साइन आउट हो जाएँगे, इस विंडो सहित।',
+  'action.changePassword': 'पासवर्ड बदलें',
+  'sync.changesRefused.one': '{count} बदलाव अस्वीकार किया गया',
+  'sync.changesRefused.other': '{count} बदलाव अस्वीकार किए गए',
+  'sync.couldNotSync': 'मास्टर के साथ सिंक नहीं हो सका',
+  'sync.rejections.title': 'मास्टर ने अस्वीकार किया',
+  'sync.rejections.description': 'ये इस पैनल पर सहेजे गए थे और मास्टर ने इन्हें नहीं लिया। ये दुकान के रिकॉर्ड में नहीं हैं।',
+  'sync.rejections.dismiss': 'हटाएँ',
+  'sync.rejections.dismissFailed': 'इन्हें हटाया नहीं जा सका',
+  'sync.rejections.noReason': 'कोई कारण नहीं बताया गया',
+  'action.reviewRefusals': 'देखें क्या अस्वीकार हुआ',
+  'error.unauthorized.signInFailedRemaining.one': 'साइन-इन विफल — {count} प्रयास बचा है',
+  'error.unauthorized.signInFailedRemaining.other': 'साइन-इन विफल — {count} प्रयास बचे हैं',
+  'signin.credentialsRequired': 'अपना उपयोगकर्ता नाम और पासवर्ड दर्ज करें',
+  'signin.forgetAction': 'इस पैनल से हटाएँ',
+  'lead.add.discard': 'ड्राफ़्ट हटाएँ',
+  'table.sortBy': '{column} से क्रमबद्ध करें',
+  'settings.appearance.resetAll': 'दिखावट रीसेट करें',
+  'partyAccess.showing': 'अब तक {shown} दिख रहे हैं।',
+  'settingGroup.access': 'कौन अंदर आ सकता है',
+  'settingGroup.stock': 'स्टॉक और दाम',
+  'settingGroup.leads': 'लीड और फ़ॉलो-अप',
+  'settingGroup.integrations': 'अन्य सॉफ़्टवेयर',
+  'setting.unit.hours': 'घंटे',
+  'setting.unit.days': 'दिन',
+  'setting.unit.boxes': 'बॉक्स',
+  'setting.number.none': 'कोई नहीं',
+  'setting.panels.autoPairingEnabled.label': 'नए ऑफ़िस पैनल को बिना पासवर्ड जुड़ने दें',
+  'setting.panels.autoPairingEnabled.help': 'जब तक ऑफ़िस पैनल जोड़ें खुला है, इस WiFi का कोई भी PC एक क्लिक में जुड़ सकता है। पैनल सेट हो जाने पर इसे बंद कर दें — फिर जुड़ने के लिए पेयरिंग पासवर्ड हमेशा ज़रूरी होगा।',
+  'setting.security.developerModeEnabled.label': 'इस PC पर डेवलपर मोड की अनुमति दें',
+  'setting.security.developerModeEnabled.help': 'डेवलपर मोड सारा डेटा मिटा सकता है और टेस्ट उपयोगकर्ता बना सकता है, और इसका पासवर्ड OrderBook की हर कॉपी में एक ही है। इसे बंद करने पर ऐप के अंदर का अनइंस्टॉलर भी बंद हो जाता है — OrderBook को Windows Settings → Apps से तब भी हटाया जा सकता है।',
+  'setting.security.sessionHours.label': 'इतने समय बाद साइन आउट करें',
+  'setting.security.sessionHours.help': 'कोई व्यक्ति दोबारा पासवर्ड डाले बिना कितनी देर साइन इन रहेगा। जो पहले से साइन इन हैं उनका समय वही रहेगा; यह उनके अगले साइन-इन से लागू होगा।',
+  'setting.inventory.defaultReorderLevel.label': 'इससे कम होने पर स्टॉक कम',
+  'setting.inventory.defaultReorderLevel.help': 'उन रंगों के लिए जिनका अपना कोई स्तर तय नहीं है। कोई नहीं चाहिए तो खाली छोड़ें। जिन रंगों का स्टॉक बिल्कुल नहीं है वे भी कम गिने जाएँगे।',
+  'setting.security.offlineSignInEnabled.label': 'मास्टर पैनल बंद होने पर भी साइन इन करने दें',
+  'setting.security.offlineSignInEnabled.help':
+    'चालू रहने पर जो व्यक्ति पहले इस पैनल पर साइन इन कर चुका है वह मास्टर पैनल बंद होने पर भी दोबारा साइन इन कर सकता है, और उसे वही अनुमतियाँ मिलती हैं जो इस पैनल ने आख़िरी बार सहेजी थीं। बंद रहने पर हर साइन इन के लिए मास्टर चाहिए। जो पैनल पहले से ऑफ़लाइन है वह दोबारा जुड़ने तक अपना पिछला उत्तर ही रखता है।',
+  'setting.inventory.adjustmentNoteRequired.label': 'स्टॉक गिनती सुधारते समय कारण अनिवार्य करें',
+  'setting.inventory.adjustmentNoteRequired.help':
+    'सुधार उस आँकड़े को बदल देता है जिसे दोबारा निकाला नहीं जा सकता। यह चालू होने पर सुधार करने वाले को कारण लिखना होगा। जो गिनती पहले से मेल खाती है उसकी पुष्टि करने पर कुछ दर्ज नहीं होता, इसलिए उसके लिए कारण नहीं चाहिए।',
+  'setting.leads.followUpDefaultDays.label': 'नई लीड पर इतने दिन बाद संपर्क करें',
+  'setting.leads.followUpDefaultDays.help':
+    'नई लीड इसी फ़ॉलो-अप तारीख़ के साथ शुरू होती है। 0 का अर्थ है आज। पूछताछ लेने वाला इसे बदल सकता है, और कल / 3 दिन में / अगले हफ़्ते वाले बटन पहले जैसे ही रहते हैं।',
+  'setting.leads.packagingRequiredOnConvert.label': 'लीड को ऑर्डर बनाने से पहले पैकेजिंग अनिवार्य है',
+  'setting.leads.packagingRequiredOnConvert.help':
+    'बंद रहने पर जिस लीड की पंक्तियों में पैकेजिंग नहीं है वह भी ऑर्डर बन सकती है। पहले से भरी हुई पैकेजिंग दोनों स्थितियों में सुरक्षित रहती है।',
+  'setting.leads.quietAfterDays.label': 'लीड इतने दिन बाद शांत मानी जाएगी',
+  'setting.leads.quietAfterDays.help': 'लीड आउटकम रिपोर्ट किसी लीड को कितने दिन तक बिना छेड़े खुला गिनती रहे।',
+  'error.unauthorized.developerDisabled': 'इस PC के लिए डेवलपर मोड बंद है। एक प्रशासक इसे सेटिंग्स → कौन अंदर आ सकता है में चालू कर सकता है।',
 };

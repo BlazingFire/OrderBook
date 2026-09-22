@@ -17,7 +17,13 @@ import type {
   StockListQuery,
   StockMovement,
 } from '@orderbook/shared';
-import { ProductValidationError, validateStockLevels, withoutReservations } from '@orderbook/shared';
+import {
+  ProductValidationError,
+  isBlankNote,
+  validateStockLevels,
+  withDefaultReorderLevel,
+  withoutReservations,
+} from '@orderbook/shared';
 
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { clampLimit, clampPaging } from '../domain/paging.js';
@@ -29,6 +35,7 @@ import * as productRepo from '../repositories/product.repository.js';
 import * as productVariantRepo from '../repositories/product-variant.repository.js';
 import { publishChange } from './change-bus.js';
 import { freeToSell } from './company-features.js';
+import { getSetting } from './settings.service.js';
 
 const PAGING = { defaultLimit: 200, maxLimit: 1000 };
 const MOVEMENT_PAGING = { defaultLimit: 50, maxLimit: 200 };
@@ -43,18 +50,22 @@ export async function listStock(
     search: query.search,
     lowOnly: query.lowOnly,
     reservations: await freeToSell(actor.tenantId),
+    defaultReorderLevel: await getSetting(actor.tenantId, 'inventory.defaultReorderLevel'),
     ...clampPaging(query, PAGING),
   });
 }
 
 /**
- * A single level as the company's free-to-sell switch has it read: as
- * computed while the switch is on, collapsed to the floor count while it is
- * off. Every level this service returns or publishes passes through here, so
- * a panel never sees a reserved figure the switch says does not exist.
+ * A single level as the company's switches have it read: collapsed to the floor
+ * count while free-to-sell is off, then judged against the company's default
+ * low-stock level if the line has none of its own. Every level this service
+ * returns or publishes passes through here, so a panel never sees a reserved
+ * figure the switch says does not exist — and `emptyLevel`'s hardcoded
+ * `isLow: false` is corrected here rather than at its own site.
  */
 async function outgoing(tenantId: string, level: InventoryStockLevel): Promise<InventoryStockLevel> {
-  return (await freeToSell(tenantId)) ? level : withoutReservations(level);
+  const base = (await freeToSell(tenantId)) ? level : withoutReservations(level);
+  return withDefaultReorderLevel(base, await getSetting(tenantId, 'inventory.defaultReorderLevel'));
 }
 
 export async function listMovements(
@@ -144,6 +155,24 @@ export async function recordAdjustment(
 
   if (delta === 0) {
     return outgoing(actor.tenantId, current ?? emptyLevel(variant, productName));
+  }
+
+  /*
+   * Below the `delta === 0` return, never above it.
+   *
+   * Confirming a count that already matches writes no movement and no activity
+   * row, so a reason collected there would be taken and thrown away — a form
+   * that asks for something it then discards. Above this line is the tempting
+   * placement and it is the wrong one.
+   *
+   * A note of spaces counts as no note: `isBlankNote` is shared with both
+   * panels' forms so the server cannot refuse something a form let through.
+   */
+  if (
+    isBlankNote(input.note) &&
+    (await getSetting(actor.tenantId, 'inventory.adjustmentNoteRequired'))
+  ) {
+    throw new ValidationError('validation.stock.adjustmentNoteRequired');
   }
 
   const moved = await inventoryRepo.applyMovement({
@@ -250,7 +279,11 @@ export async function publishStockFor(tenantId: string, variantIds: readonly str
 }
 
 export async function countLowStock(tenantId: string): Promise<number> {
-  return inventoryRepo.countLowStock(tenantId, await freeToSell(tenantId));
+  return inventoryRepo.countLowStock(
+    tenantId,
+    await freeToSell(tenantId),
+    await getSetting(tenantId, 'inventory.defaultReorderLevel'),
+  );
 }
 
 /**

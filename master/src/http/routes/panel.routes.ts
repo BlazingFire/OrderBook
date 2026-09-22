@@ -99,9 +99,16 @@ panelRoutes.post('/pairing-window/close', needs('panels.manage'), (_req, res) =>
   res.status(204).end();
 });
 
-panelRoutes.get('/pairing-window', (_req, res) => {
-  res.json({ accepting: panelService.isAcceptingPairing() });
-});
+panelRoutes.get(
+  '/pairing-window',
+  asyncHandler(async (req, res) => {
+    // The same question the pairing route and the discovery reply ask. The
+    // Master's own screen reads this, so answering on the window alone would
+    // show "waiting for a panel" for a panel that will be refused on arrival.
+    const actor = actorFromRequest(req);
+    res.json({ accepting: await panelService.isAutoPairingOpen(actor.tenantId) });
+  }),
+);
 
 panelRoutes.post(
   '/:id/revoke',

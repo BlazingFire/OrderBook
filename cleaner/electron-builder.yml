@@ -1,0 +1,107 @@
+# The standalone clean-install tool, on all three platforms.
+#
+# The two panels build one target each (Windows NSIS, macOS dmg) because that
+# is where they are deployed. This one builds everywhere it can, because the
+# machine that needs it is by definition a machine where something is wrong —
+# and the tool has to be reachable from a USB stick rather than from the
+# installation it is there to remove.
+#
+# It ships no server. Where a panel stages `dist`, `web/dist`, its production
+# dependency tree and (on the Master) 100 MB of PostgreSQL, this carries one
+# static HTML page and the two uninstall scripts. That is why `tools/release.mjs`
+# skips `stage()` and `vendorPostgres()` for it entirely.
+appId: com.orderbook.cleaner
+productName: OrderBook Clean Install
+copyright: OrderBook
+
+directories:
+  output: ../build/cleaner
+  buildResources: installer
+
+# Same reasoning as the panels: electron-builder would otherwise run
+# `npm install --omit=dev` against this workspace and strip the repo's dev
+# dependencies.
+npmRebuild: false
+buildDependenciesFromSource: false
+
+# Never auto-updated, and it must not look as though it might be.
+#
+# The panels publish update metadata because a Master polls for their releases
+# and hands them to its panels. This tool is run once, by hand, from wherever
+# somebody put it — and it would be a strange thing to update in place, since
+# the copy that matters is the one on the USB stick. Without this,
+# electron-builder tries to compute a release channel for the AppImage and
+# fails outright in `computeChannelNames`.
+publish: null
+
+files:
+  - electron/dist/**/*
+  - package.json
+
+extraResources:
+  # The same two scripts both panels ship, from the same folder, so there is
+  # one copy in the repository and it is the one every entry point runs.
+  - from: ../tools/uninstall
+    to: uninstall
+  - from: web
+    to: web
+
+icon: installer/icon.png
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  signAndEditExecutable: false
+
+nsis:
+  oneClick: false
+  # Per-machine, because the sweep reads HKLM and %ProgramFiles% and stops
+  # processes belonging to other users' sessions. Without elevation it would
+  # report leftovers it simply could not see.
+  perMachine: true
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  # This tool's whole purpose is to leave nothing behind, so its own
+  # uninstaller takes its own folder with it.
+  deleteAppDataOnUninstall: true
+  artifactName: OrderBook-CleanInstall-${version}-Setup.${ext}
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+  category: Utility
+  # Without this the binary is named from the npm package and lands as
+  # `@orderbookcleaner` — an at-sign and no product name, which is both odd in
+  # a process list and invisible to anything matching on what this is called.
+  executableName: orderbook-clean-install
+  # No .desktop is installed by an AppImage until somebody integrates it, which
+  # suits a tool that is run once from a USB stick and then deleted.
+  synopsis: Remove every trace of OrderBook, then install it fresh
+  artifactName: OrderBook-CleanInstall-${version}-Setup.${ext}
+
+mac:
+  category: public.app-category.utilities
+  target:
+    - target: dmg
+      arch: [universal]
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: installer/entitlements.mac.plist
+  entitlementsInherit: installer/entitlements.mac.plist
+  # Unsigned and un-notarised, like the panels. Gatekeeper will need the
+  # right-click → Open route on first run.
+  notarize: false
+  artifactName: OrderBook-CleanInstall-${version}-Setup.${ext}
+
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications

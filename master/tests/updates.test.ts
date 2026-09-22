@@ -16,31 +16,13 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { ReleaseManifest } from '@orderbook/shared';
+import type { ReleaseManifest, ReleasePlatform } from '@orderbook/shared';
 
 import type * as UpdateService from '../src/services/update.service.js';
 
 let root: string;
-
-/*
- * Every fixture here describes a Windows build, because every build shipped so
- * far is one — and the reader refuses a manifest whose platform is not the
- * asking panel's, which it takes from `process.platform` when the caller does
- * not say. So this suite passed on the owner's Windows PCs and failed thirteen
- * tests on the Linux CI runner (and on a Mac) with every fixture reported as
- * "a win32 release, and this panel is linux". The fixtures are right and the
- * platform under test is Windows; pin it for the suite rather than the OS the
- * tests happen to run on.
- */
-const HOST_PLATFORM = process.platform;
-beforeAll(() => {
-  Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
-});
-afterAll(() => {
-  Object.defineProperty(process, 'platform', { value: HOST_PLATFORM, configurable: true });
-});
 
 /**
  * Fresh module graph per test, so `config` re-reads the env var.
@@ -58,10 +40,27 @@ async function loadService(): Promise<typeof UpdateService> {
   return import('../src/services/update.service.js');
 }
 
+/**
+ * The platform the assertions below run under.
+ *
+ * `availability()` and `prepareMasterUpdate()` default to `process.platform`
+ * and refuse a manifest for any other OS, so a fixture pinned to `win32` made
+ * four of these tests pass only on Windows — they went red on a Linux or macOS
+ * checkout with `it is a win32 release, and this panel is linux`, which reads
+ * like a product bug and is not one. The tests that are *about* platform pass
+ * theirs explicitly; the rest publish for whatever host they are running on.
+ */
+const HOST_PLATFORM = process.platform as ReleasePlatform;
+
 async function publish(
   panel: 'master' | 'office',
   version: string,
-  options: { corrupt?: boolean; missingFile?: boolean; wrongSize?: boolean } = {},
+  options: {
+    corrupt?: boolean;
+    missingFile?: boolean;
+    wrongSize?: boolean;
+    platform?: ReleasePlatform;
+  } = {},
 ): Promise<ReleaseManifest> {
   const dir = path.join(root, panel === 'master' ? 'master-panel' : 'office-panel');
   await mkdir(dir, { recursive: true });
@@ -73,8 +72,9 @@ async function publish(
     panel,
     // These fixtures write `latest.json`, the legacy name, and every legacy
     // manifest describes a Windows build — which is what the reader defaults
-    // an absent field to. Stated here so the fixture and the reader agree.
-    platform: 'win32',
+    // an absent field to. Stated here so the fixture and the reader agree; a
+    // test that needs the manifest to match the running host passes its own.
+    platform: options.platform ?? 'win32',
     version,
     file,
     sizeBytes: options.wrongSize ? body.length + 99 : body.length,
@@ -150,7 +150,7 @@ describe('the releases folder', () => {
   });
 
   it('UPD-3: offers a newer build, and only a newer one', async () => {
-    await publish('master', '1.1.0');
+    await publish('master', '1.1.0', { platform: HOST_PLATFORM });
     const service = await loadService();
 
     expect((await service.availability('master', '1.0.0')).available?.version).toBe('1.1.0');
@@ -160,7 +160,9 @@ describe('the releases folder', () => {
   });
 
   it('UPD-4: ignores a manifest whose setup file is not beside it', async () => {
-    await publish('master', '1.1.0', { missingFile: true });
+    // Host platform, or the manifest is discarded for being the wrong OS and
+    // the assertion below passes without ever reaching the missing-file check.
+    await publish('master', '1.1.0', { missingFile: true, platform: HOST_PLATFORM });
     const service = await loadService();
 
     // Worse than no manifest: it would render an Install button that cannot work.
@@ -168,7 +170,7 @@ describe('the releases folder', () => {
   });
 
   it('UPD-5: ignores a manifest whose size disagrees with the file on disk', async () => {
-    await publish('master', '1.1.0', { wrongSize: true });
+    await publish('master', '1.1.0', { wrongSize: true, platform: HOST_PLATFORM });
     const service = await loadService();
 
     expect((await service.availability('master', '1.0.0')).available).toBeNull();
@@ -185,7 +187,10 @@ describe('the releases folder', () => {
   });
 
   it('UPD-7: refuses a setup file whose checksum does not match — the gate that matters', async () => {
-    const manifest = await publish('master', '9.9.9', { corrupt: true });
+    const manifest = await publish('master', '9.9.9', {
+      corrupt: true,
+      platform: HOST_PLATFORM,
+    });
     const service = await loadService();
 
     await expect(service.verifyRelease('master', manifest)).rejects.toThrow(/checksum/i);
@@ -193,7 +198,7 @@ describe('the releases folder', () => {
   });
 
   it('UPD-8: hands back a path only once the checksum has passed', async () => {
-    await publish('master', '9.9.9');
+    await publish('master', '9.9.9', { platform: HOST_PLATFORM });
     const service = await loadService();
 
     const { path: file, manifest } = await service.prepareMasterUpdate();
@@ -273,7 +278,7 @@ describe('the releases folder', () => {
   });
 
   it('UPD-10: keeps the two panels’ folders separate', async () => {
-    await publish('office', '2.0.0');
+    await publish('office', '2.0.0', { platform: HOST_PLATFORM });
     const service = await loadService();
 
     expect((await service.availability('office', '1.0.0')).available?.version).toBe('2.0.0');

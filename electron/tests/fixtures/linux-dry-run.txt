@@ -1,0 +1,46 @@
+
+OrderBook uninstall  (DRY RUN - nothing will be changed)
+  Panels: master office
+  Data:   ERASED - database, uploads, documents, settings, logs
+
+-- OrderBook Master Panel
+[dry-run] would quit "OrderBook Master Panel" and stop every process under: /opt/OrderBook Master Panel /home/pat/Applications/OrderBook Master Panel /home/pat/.local/share/OrderBook Master Panel
+[dry-run] would remove application: /opt/OrderBook Master Panel (absent)
+[dry-run] would remove application: /home/pat/Applications/OrderBook Master Panel (absent)
+[dry-run] would remove application: /home/pat/.local/share/OrderBook Master Panel (absent)
+[dry-run] would remove profile: /home/pat/.config/OrderBook Master Panel (absent)
+[dry-run] would remove cache: /home/pat/.cache/OrderBook Master Panel (absent)
+[dry-run] would remove updater cache: /home/pat/.cache/com.orderbook.master-updater (absent)
+[dry-run] would remove updater cache: /home/pat/.config/com.orderbook.master-updater (absent)
+[dry-run] would remove desktop entry: /home/pat/.local/share/applications/OrderBook Master Panel.desktop (absent)
+[dry-run] would remove desktop entry: /home/pat/.local/share/applications/com.orderbook.master.desktop (absent)
+[dry-run] would remove desktop entry: /usr/share/applications/OrderBook Master Panel.desktop (absent)
+[dry-run] would remove desktop icon: /home/pat/Desktop/OrderBook Master Panel.desktop (absent)
+[dry-run] would remove autostart entry: /home/pat/.config/autostart/OrderBook Master Panel.desktop (absent)
+[dry-run] would remove autostart entry: /home/pat/.config/autostart/com.orderbook.master.desktop (absent)
+[dry-run] would remove data folder: /home/pat/.config/OrderBook/master
+[dry-run] would remove the folder named in /home/pat/.config/OrderBook/master-location.json, if any
+[dry-run] would remove location pointer: /home/pat/.config/OrderBook/master-location.json (absent)
+[dry-run] would remove settings file: /home/pat/.config/OrderBook/master-settings.env (absent)
+-- OrderBook Office Panel
+[dry-run] would quit "OrderBook Office Panel" and stop every process under: /opt/OrderBook Office Panel /home/pat/Applications/OrderBook Office Panel /home/pat/.local/share/OrderBook Office Panel
+[dry-run] would remove application: /opt/OrderBook Office Panel (absent)
+[dry-run] would remove application: /home/pat/Applications/OrderBook Office Panel (absent)
+[dry-run] would remove application: /home/pat/.local/share/OrderBook Office Panel (absent)
+[dry-run] would remove profile: /home/pat/.config/OrderBook Office Panel (absent)
+[dry-run] would remove cache: /home/pat/.cache/OrderBook Office Panel (absent)
+[dry-run] would remove updater cache: /home/pat/.cache/com.orderbook.office-updater (absent)
+[dry-run] would remove updater cache: /home/pat/.config/com.orderbook.office-updater (absent)
+[dry-run] would remove desktop entry: /home/pat/.local/share/applications/OrderBook Office Panel.desktop (absent)
+[dry-run] would remove desktop entry: /home/pat/.local/share/applications/com.orderbook.office.desktop (absent)
+[dry-run] would remove desktop entry: /usr/share/applications/OrderBook Office Panel.desktop (absent)
+[dry-run] would remove desktop icon: /home/pat/Desktop/OrderBook Office Panel.desktop (absent)
+[dry-run] would remove autostart entry: /home/pat/.config/autostart/OrderBook Office Panel.desktop (absent)
+[dry-run] would remove autostart entry: /home/pat/.config/autostart/com.orderbook.office.desktop (absent)
+[dry-run] would remove data folder: /home/pat/.config/OrderBook/office
+[dry-run] would remove the folder named in /home/pat/.config/OrderBook/office-location.json, if any
+[dry-run] would remove location pointer: /home/pat/.config/OrderBook/office-location.json (absent)
+[dry-run] would remove settings file: /home/pat/.config/OrderBook/office-settings.env (absent)
+[dry-run] would remove releases folder: /OrderBook-Releases (absent)
+
+Dry run complete. Nothing was changed.

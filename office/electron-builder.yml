@@ -100,6 +100,55 @@ nsis:
   include: installer/installer.nsh
   artifactName: OrderBook-Office-${version}-Setup.${ext}
 
+# Linux. Two artefacts from one build, because they answer different questions.
+# The AppImage is what `tools/release.mjs` matches on and what somebody runs
+# off a USB stick with nothing installed; the .deb is what installs into
+# `/opt/OrderBook Office Panel` with a desktop entry, which is what a shop PC that should
+# come up running OrderBook actually needs — and what the Linux branch of
+# `tools/uninstall/uninstall-orderbook.sh` already knows how to sweep.
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+  category: Office
+  # Without this the binary is named from the npm package and ships as
+  # `@orderbookoffice` — an at-sign and no product name, which the uninstall
+  # script's path and process matching would not recognise.
+  executableName: orderbook-office
+  synopsis: OrderBook Office Panel — creates leads and orders against the Master
+  # electron-builder reads the publish configuration while naming update
+  # channels for the AppImage and dies in `computeChannelNames` on a null
+  # provider. Nothing here publishes through electron-builder — `publish()` in
+  # tools/release.mjs writes the releases folder itself — so saying so outright
+  # is both true and what keeps the build alive.
+  publish: null
+  # fpm refuses to build a .deb without a homepage and a maintainer, and reads
+  # both from package.json, which has neither — this is a private monorepo, not
+  # a published npm package. Declaring them here keeps that true.
+  #
+  # `.local` is deliberate rather than a placeholder: this product never reaches
+  # the internet at runtime, and a real-looking address on a package nobody can
+  # write to would be worse than an obviously internal one.
+  maintainer: OrderBook <releases@orderbook.local>
+  artifactName: OrderBook-Office-${version}-Setup.${ext}
+
+deb:
+  # `depends` defaults include gconf2/gconf-service, which no longer exist on
+  # Debian 11+ or Ubuntu 22.04+ and make the package uninstallable there. This
+  # is the modern Electron set.
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libsecret-1-0
+  artifactName: OrderBook-Office-${version}-Setup.${ext}
+
 # macOS. Built only on a Mac — electron-builder refuses the target anywhere
 # else, so the Windows workflow is unaffected. `npm run release` defaults to the
 # host platform and takes `--os mac` to be explicit. Two artefacts: the .dmg is

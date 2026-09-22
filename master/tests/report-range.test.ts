@@ -130,4 +130,35 @@ describe('classifyLeadOutcome', () => {
       classifyLeadOutcome({ convertedOrderId: null, isTerminal: false, lastActivityAt: asOf }, asOf),
     ).toBe('open');
   });
+
+  it("moves the boundary with the company's own number, not this module's default", () => {
+    // `leads.quietAfterDays` is a company setting now, and this classifier is
+    // the JS half of a rule whose other half is SQL. A 30 left hardcoded in
+    // here would go unnoticed: this half has no production caller, so nothing
+    // but a test at a threshold that is *not* 30 can see it.
+    const quiet = { convertedOrderId: null, isTerminal: false, lastActivityAt: asOf };
+    const sevenDaysBefore = { year: 2026, month: 3, day: 8 };
+    const facts = { ...quiet, lastActivityAt: sevenDaysBefore };
+
+    expect(daysBetween(sevenDaysBefore, asOf)).toBe(7);
+    expect(classifyLeadOutcome(facts, asOf, 7)).toBe('quiet');
+    expect(classifyLeadOutcome(facts, asOf, 8)).toBe('open');
+
+    // And the default still applies when nothing is passed, so an installation
+    // that has never set the key keeps the documented 30.
+    expect(classifyLeadOutcome(facts, asOf)).toBe('open');
+  });
+
+  it('a threshold of zero makes every open lead quiet, rather than reading as unset', () => {
+    // 0 is outside what the setting accepts (its floor is 1), but the
+    // classifier takes a plain number and a caller passing 0 must get the
+    // arithmetic, not a silent fall back to 30.
+    expect(
+      classifyLeadOutcome(
+        { convertedOrderId: null, isTerminal: false, lastActivityAt: asOf },
+        asOf,
+        0,
+      ),
+    ).toBe('quiet');
+  });
 });

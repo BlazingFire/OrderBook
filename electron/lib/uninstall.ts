@@ -98,5 +98,89 @@ export function uninstallCommand(request: UninstallRequest): UninstallCommand | 
     };
   }
 
+  if (platform === 'linux') {
+    /*
+     * The same script, run directly rather than through a terminal.
+     *
+     * macOS needs Terminal because `/Applications` belongs to root and the
+     * script's `sudo` has to have somewhere to ask. A Linux install is
+     * per-user — the AppImage sits in `~/Applications`, the profile and data
+     * under `$XDG_CONFIG_HOME` — so there is normally nothing to elevate for,
+     * and the script already falls back to `sudo` on its own for the case
+     * where somebody put the AppImage in `/opt` by hand. Picking a terminal
+     * emulator for an arbitrary desktop is a guess with no good default.
+     */
+    return {
+      file: 'bash',
+      args: [
+        path.posix.join(scriptsDir, 'uninstall-orderbook.sh'),
+        '--panel',
+        panel,
+        '--yes',
+        ...(keepData ? ['--keep-data'] : []),
+      ],
+    };
+  }
+
+  return null;
+}
+
+/**
+ * The command for a whole-machine sweep, dry or real.
+ *
+ * `uninstallCommand` above covers one panel, because that is what a panel
+ * uninstalling itself needs. The standalone clean-install tool cleans whatever
+ * it finds on the PC, so it asks for `all` — which both scripts have always
+ * accepted — and for a dry run, which no panel has ever needed.
+ *
+ * Here rather than in `cleaner/` on purpose: the flag spellings are a contract
+ * with the two scripts, and `uninstall.test.ts` pins every place they appear.
+ * A command line assembled in the cleaner would be one more place, in the one
+ * tool whose whole job is to erase things correctly.
+ *
+ * macOS deliberately does NOT go through `osascript` here, unlike
+ * `uninstallCommand`. That wrapper exists so a sudo prompt has a Terminal to
+ * appear in, but it also hands the script's output to Terminal instead of to
+ * us — and this tool has to read what the script says. The cost is that a sudo
+ * prompt has nowhere to go, which is why the tool tells the operator to run it
+ * with administrator rights when it finds anything it will not be able to
+ * remove as the current user.
+ */
+export function sweepCommand(request: {
+  readonly platform: NodeJS.Platform;
+  readonly panel: 'master' | 'office' | 'all';
+  readonly dryRun: boolean;
+  readonly scriptsDir: string;
+}): UninstallCommand | null {
+  const { platform, panel, dryRun, scriptsDir } = request;
+
+  if (platform === 'win32') {
+    return {
+      file: 'powershell.exe',
+      args: [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        path.join(scriptsDir, 'uninstall-orderbook.ps1'),
+        '-Panel',
+        panel,
+        ...(dryRun ? ['-DryRun'] : ['-Yes']),
+      ],
+    };
+  }
+
+  if (platform === 'darwin' || platform === 'linux') {
+    return {
+      file: 'bash',
+      args: [
+        path.posix.join(scriptsDir, 'uninstall-orderbook.sh'),
+        '--panel',
+        panel,
+        ...(dryRun ? ['--dry-run'] : ['--yes']),
+      ],
+    };
+  }
+
   return null;
 }

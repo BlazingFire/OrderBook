@@ -387,12 +387,28 @@ export function groupImportRows(
   return { groups, issues };
 }
 
-/** The Guide sheet: one row per column, so the template explains itself. */
-export function templateGuideRows(): string[][] {
+/**
+ * The Guide sheet: one row per column, so the template explains itself.
+ *
+ * `createsCategories` is the company's answer, passed in rather than read
+ * here — this module is pure. It is not cosmetic: with the category switch
+ * off, the standing note "Created if it does not exist yet." is the opposite
+ * of what the importer will do, and the template is the one thing a person
+ * reads before filling the sheet in.
+ */
+export function templateGuideRows(createsCategories: boolean): string[][] {
   return IMPORT_COLUMNS.map((column) => [
     column.field,
     column.required ? 'yes' : '',
     column.kind === 'boolean' ? 'yes / no' : column.kind,
-    column.note,
+    noteFor(column, createsCategories),
   ]);
+}
+
+/** The note that is the company's answer rather than a fixed sentence. */
+function noteFor(column: (typeof IMPORT_COLUMNS)[number], createsCategories: boolean): string {
+  if (column.field === 'categoryName' && !createsCategories) {
+    return 'Must already exist — an import cannot create one.';
+  }
+  return column.note;
 }

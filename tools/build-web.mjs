@@ -1,48 +1,89 @@
 #!/usr/bin/env node
 /**
- * Build one web workspace: `tsc -b`, then `vite build`, with the temp
- * directory pointed at a project-local `.tmp/`.
+ * Build a panel's web bundle, with a temp directory Vite is allowed to delete.
  *
- * Run from a web workspace's `build` script (`node ../../tools/build-web.mjs`).
+ * ## Why this exists at all
  *
- * Why a script and not a one-liner in `package.json`: the one-liner was
- * `cmd.exe` syntax — `if not exist … mkdir …` and `set TEMP=…` — because on
- * the owner's PC esbuild's temp files under the system `%TEMP%` fail with
- * "Access is denied" and pointing `TEMP`/`TMP` at a folder inside the
- * repository is the fix (HANDOFF.md, 2026-09-14 and 2026-09-21). But `npm`
- * hands a script to `sh` everywhere else, and `sh` reads that line as a
- * syntax error — so `npm run build` failed on the Linux CI runner on every
- * push since, and a Mac could not build the panels at all. Node is the one
- * shell every machine here has.
+ * On Windows, `vite build` fails with
+ * `remove C:\Users\…\AppData\Local\Temp\esbuild-…: Access is denied`. esbuild
+ * unpacks a helper binary into the OS temp folder and removes it on exit;
+ * Defender (or any scanner) holds a lock on the freshly written executable long
+ * enough that the removal loses the race. Pointing `TEMP`/`TMP` at a
+ * project-local, gitignored `.tmp/` moves the whole dance somewhere nothing is
+ * watching.
  *
- * `INIT_CWD` is where `npm run` was invoked — the repository root when run
- * through `--workspace` — so `.tmp/` lands in one place, and that place is
- * gitignored. It falls back to the workspace itself when the script is run
- * directly.
+ * ## Why it is a script rather than an npm script
+ *
+ * It was an npm script, written in `cmd` — `if not exist "%INIT_CWD%\.tmp"
+ * mkdir … && set "TEMP=…" && …`. That is not a shell command anywhere but
+ * Windows, so `npm run build` simply could not run on Linux or macOS: it died
+ * with `sh: 1: Syntax error` before compiling anything. The fix for a Windows
+ * problem had made the build Windows-only, which among other things means no
+ * CI runner can build this project.
+ *
+ * Node runs the same everywhere, `tools/` is where this repo already puts that
+ * kind of thing (`copy-shell.mjs`, `i18n-sync.mjs`), and setting an environment
+ * variable for a child process needs no shell at all.
  */
 
 import { spawnSync } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const tmp = path.join(process.env.INIT_CWD ?? process.cwd(), '.tmp');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+/**
+ * The repo's own `tsc` and `vite`, resolved by path rather than by PATH.
+ *
+ * Not fussiness: this machine had a **global TypeScript 6.0.2** ahead of the
+ * project's pinned 5.9.3 on PATH, and TS 6 rejects the side-effect CSS imports
+ * in `main.tsx` (TS2882) that 5.9 accepts. The build failed with two type
+ * errors in code that is fine. Spawning by absolute path means the build uses
+ * the compiler the lockfile promises, whatever else is installed.
+ */
+function bin(name) {
+  const local = path.join(ROOT, 'node_modules', '.bin', name);
+  const exe = process.platform === 'win32' ? `${local}.cmd` : local;
+  // Falling back to the bare name keeps a checkout with a hoisted or otherwise
+  // unusual layout working, rather than failing on a missing file.
+  return existsSync(exe) ? exe : name;
+}
+
+/**
+ * The workspace being built.
+ *
+ * `process.cwd()`, not `INIT_CWD`. npm sets the cwd of a workspace script to
+ * that workspace; `INIT_CWD` is where the *user* typed the command, which for
+ * `npm run build --workspace @orderbook/master-web` is the repo root. The
+ * `cmd` script this replaced used `%INIT_CWD%` and got away with it only
+ * because it used it for the temp folder alone — `tsc` still inherited npm's
+ * cwd. Using it for both put `tsc -b` at the root, looking for a tsconfig.json
+ * that does not exist there.
+ */
+const workspace = process.cwd();
+const tmp = path.join(workspace, '.tmp');
+
 mkdirSync(tmp, { recursive: true });
 
-const env = { ...process.env, TEMP: tmp, TMP: tmp, TMPDIR: tmp };
+const env = { ...process.env, TEMP: tmp, TMP: tmp };
 
-for (const [command, args] of [
-  ['tsc', ['-b']],
-  ['vite', ['build']],
+for (const [command, ...args] of [
+  [bin('tsc'), '-b'],
+  [bin('vite'), 'build'],
 ]) {
-  // `shell` on Windows only: `tsc` and `vite` on PATH there are `.cmd` shims,
-  // which `spawn` cannot start without one. Elsewhere they are executables.
+  // `shell: true` on Windows only, where the resolved binaries are `.cmd` shims
+  // that `spawn` cannot execute directly. Elsewhere it would be an extra
+  // process and an extra quoting hazard for no benefit.
   const result = spawnSync(command, args, {
-    stdio: 'inherit',
+    cwd: workspace,
     env,
+    stdio: 'inherit',
     shell: process.platform === 'win32',
   });
+
   if (result.error) {
-    console.error(`Could not start ${command}: ${result.error.message}`);
+    console.error(`Could not run ${command}: ${result.error.message}`);
     process.exit(1);
   }
   if (result.status !== 0) process.exit(result.status ?? 1);

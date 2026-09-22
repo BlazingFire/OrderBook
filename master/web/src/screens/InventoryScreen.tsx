@@ -69,6 +69,8 @@ interface Props {
    * would then only repeat the first.
    */
   freeToSell: boolean;
+  /** `inventory.adjustmentNoteRequired`, already coalesced by the shell. */
+  adjustmentNoteRequired: boolean;
 }
 
 const MOVEMENT_TYPE_KEY = {
@@ -90,12 +92,23 @@ function variantName(level: { variantCode: string; variantLabel: string | null }
   return level.variantLabel ? `${level.variantLabel} · ${level.variantCode}` : level.variantCode;
 }
 
-export function InventoryScreen({ revision, filter, onFilterChange, freeToSell }: Props) {
+export function InventoryScreen({
+  revision,
+  filter,
+  onFilterChange,
+  freeToSell,
+  adjustmentNoteRequired,
+}: Props) {
   const [levels, setLevels] = useState<InventoryStockLevel[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [optionLists, setOptionLists] = useState<OptionListItem[]>([]);
   const colourHex = useColourHex(optionLists);
   const [search, setSearch] = useState('');
+  // The input stays wired to the raw value so typing feels instant; only the
+  // network-triggering effect waits. Without this the screen fired a full
+  // request per keystroke, so fast typing produced a burst of overlapping
+  // requests for characters the person had already typed past.
+  const debouncedSearch = useDebounced(search);
   const lowOnly = filter === 'low';
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -114,7 +127,7 @@ export function InventoryScreen({ revision, filter, onFilterChange, freeToSell }
   const load = useCallback(async () => {
     try {
       const [stock, recent] = await Promise.all([
-        api.stock({ search: search || undefined, lowOnly }),
+        api.stock({ search: debouncedSearch || undefined, lowOnly }),
         api.stockMovements(),
       ]);
       setLevels(stock);
@@ -122,7 +135,7 @@ export function InventoryScreen({ revision, filter, onFilterChange, freeToSell }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : t('inventory.error.load'));
     }
-  }, [search, lowOnly]);
+  }, [debouncedSearch, lowOnly]);
 
   useEffect(() => {
     void load();
@@ -210,7 +223,12 @@ export function InventoryScreen({ revision, filter, onFilterChange, freeToSell }
       {freeToSell && (
         <span
           className="ob-small"
-          style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}
+          style={{
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            minWidth: 0,
+          }}
         >
           {t('inventory.filterNote')}
         </span>
@@ -749,6 +767,8 @@ export function InventoryScreen({ revision, filter, onFilterChange, freeToSell }
         )}
         <MovementForm
           description={t('inventory.physicalCount.description')}
+          levels={levels}
+          noteRequired={adjustmentNoteRequired}
           submitLabel={t('inventory.physicalCount.submit')}
           busy={busy}
           lock={lineLock}
@@ -783,12 +803,21 @@ function MovementForm({
   submitLabel,
   busy,
   lock,
+  levels = [],
+  noteRequired,
   onSubmit,
 }: {
   description: string;
   submitLabel: string;
   busy: boolean;
   lock?: LineLock | null;
+  /**
+   * The lines this screen loaded, for the adjustment's "does this change the
+   * count" check. Only the adjust form passes it.
+   */
+  levels?: readonly InventoryStockLevel[];
+  /** `inventory.adjustmentNoteRequired`, already coalesced by the screen. */
+  noteRequired?: boolean;
   onSubmit: (input: { variantId: string; quantityBoxes: number; note?: string }) => Promise<void>;
 }) {
   const [query, setQuery] = useState('');
@@ -830,6 +859,21 @@ function MovementForm({
     // One form, one variant: nothing to choose, so it is chosen.
     setVariantId(active.length === 1 ? active[0]!.id : '');
   }
+
+  /*
+   * Whether this particular submission needs a reason.
+   *
+   * `levels` is the search/lowOnly-filtered, clamped page this screen loaded,
+   * NOT the stock table — so a line missing from it means "this screen does not
+   * know today's count", never zero. Treating absence as zero would compute no
+   * delta for a count of 0 and let a write-off through unasked, which is the
+   * exact correction the setting exists to police. Over-ask instead: the server
+   * discards the note on a no-op anyway, so over-asking is recoverable and
+   * under-asking is not.
+   */
+  const known = levels.find((level) => level.variantId === variantId);
+  const noteNeeded =
+    noteRequired === true && (known === undefined || Number(quantity) !== known.quantityBoxes);
 
   return (
     <>
@@ -905,12 +949,16 @@ function MovementForm({
         )}
       </FormField>
 
-      <FormField label={t('inventory.field.note')}>
+      <FormField
+        label={t('inventory.field.note')}
+        hint={noteNeeded ? t('validation.stock.adjustmentNoteRequired') : undefined}
+      >
         {(id) => (
           <Input
             id={id}
             value={note}
             placeholder={t('inventory.field.notePlaceholder')}
+            aria-invalid={noteNeeded && note.trim() === '' ? true : undefined}
             onChange={(event) => setNote(event.target.value)}
           />
         )}
@@ -920,7 +968,9 @@ function MovementForm({
         <Button
           variant="primary"
           busy={busy}
-          disabled={busy || !variantId || quantity === ''}
+          disabled={
+            busy || !variantId || quantity === '' || (noteNeeded && note.trim() === '')
+          }
           onClick={() =>
             // Nothing is reset here: a successful write closes the modal, which
             // unmounts this form, and after a rejected one the pieces and note

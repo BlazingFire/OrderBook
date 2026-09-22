@@ -28,7 +28,11 @@ import {
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { assertParentsLive, suggestRestoredName } from '../domain/recycle-bin.js';
 import { db } from '../db/knex.js';
-import { generateTemporaryPassword, hashPassword } from '../lib/password.js';
+import {
+  assertPasswordLongEnough,
+  generateTemporaryPassword,
+  hashPassword,
+} from '../lib/password.js';
 import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
 import * as accessGuard from '../repositories/access-guard.repository.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
@@ -91,7 +95,12 @@ export async function createUser(
     username,
   );
 
-  const password = input.password?.trim() || generateTemporaryPassword();
+  // Checked on the supplied value, before the fallback: a generated password
+  // always clears the minimum, so checking `password` would enforce nothing.
+  const supplied = input.password?.trim();
+  if (supplied) assertPasswordLongEnough(supplied);
+
+  const password = supplied || generateTemporaryPassword();
   const passwordHash = await hashPassword(password);
 
   const id = await db().transaction(async (trx) => {
@@ -399,7 +408,11 @@ export async function resetPassword(
   const existing = await userRepo.findById(actor.tenantId, input.userId);
   if (!existing) throw new NotFoundError('User');
 
-  const password = input.password?.trim() || generateTemporaryPassword();
+  // Same rule as `createUser`, and the same reason it is on the supplied value.
+  const supplied = input.password?.trim();
+  if (supplied) assertPasswordLongEnough(supplied);
+
+  const password = supplied || generateTemporaryPassword();
   const passwordHash = await hashPassword(password);
 
   await db().transaction(async (trx) => {

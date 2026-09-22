@@ -31,6 +31,7 @@ import { v4 as uuid } from 'uuid';
 import { db } from '../db/knex.js';
 import type { ActorContext } from '../domain/actor.js';
 import { systemActor } from '../domain/actor.js';
+import { normalisePanelReport } from '../domain/panel-report.js';
 import { NotFoundError, UnauthorizedError, ValidationError } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import { panelLink } from '../realtime/panel-link.js';
@@ -39,6 +40,7 @@ import * as panelRepo from '../repositories/office-panel.repository.js';
 import { permissionSetForRole } from '../repositories/role.repository.js';
 import { roleIdForTier } from '../repositories/user.repository.js';
 import { publishChange } from './change-bus.js';
+import { getSetting } from './settings.service.js';
 import { getIdentity, verifyPairingPassword } from './setup.service.js';
 
 const log = createLogger('pairing');
@@ -80,12 +82,30 @@ export function isAcceptingPairing(): boolean {
   return Date.now() < pairingWindowClosesAt;
 }
 
+/**
+ * Whether a panel may join right now with no password.
+ *
+ * Both halves in one place, because three readers ask the question and they
+ * must agree. If the discovery reply said yes while `pairPanel` said no, a
+ * panel would select this Master, POST auto, and be refused — while the
+ * Master's own screen sat waiting for a panel that could never arrive.
+ *
+ * The window alone used to be the whole answer, which meant that while the Add
+ * Office Panel screen was open, any machine on the shop's WiFi could become a
+ * trusted panel with one click. `panels.manage` says who may open the window;
+ * only this setting says whether an open window may admit a stranger.
+ */
+export async function isAutoPairingOpen(tenantId: string): Promise<boolean> {
+  if (!isAcceptingPairing()) return false;
+  return getSetting(tenantId, 'panels.autoPairingEnabled');
+}
+
 export async function pairPanel(request: PairingRequest, remoteIp: string | null): Promise<PairingSuccess> {
   const identity = await getIdentity();
   if (!identity) throw new ValidationError('validation.panel.setupIncomplete');
 
   if (request.mode === 'auto') {
-    if (!isAcceptingPairing()) {
+    if (!(await isAutoPairingOpen(identity.tenantId))) {
       throw new UnauthorizedError('error.unauthorized.pairingNotAccepting');
     }
   } else {
@@ -334,8 +354,18 @@ export function isPanelConnected(panelId: string): boolean {
  */
 export async function recordPanelReport(
   panelId: string,
-  report: OfficePanelReportInput,
+  incoming: unknown,
 ): Promise<OfficePanel | null> {
+  /*
+   * The choke point both callers share — the five-minute `panel:report` and an
+   * administrator pressing Refresh — so neither can be the one that forgets.
+   * Untyped `unknown` on purpose: the payload arrives as JSON from a machine
+   * that may be running an older build, and typing it as the input it is
+   * *supposed* to be is what let an unparseable `startedAt` reach Postgres's
+   * date serializer and 500 the panel detail screen.
+   */
+  const report = normalisePanelReport(incoming);
+
   const panel = await panelRepo.updateDeviceReport(panelId, report);
   if (!panel) return null;
 
@@ -365,7 +395,7 @@ export async function refreshPanelReport(
   const panel = await panelRepo.findPanelById(panelId);
   if (!panel || panel.tenantId !== tenantId) throw new NotFoundError('Panel');
 
-  const report = await requestFromPanel<OfficePanelReportInput>(panelId, 'panel:describe');
+  const report = await requestFromPanel<unknown>(panelId, 'panel:describe');
   await recordPanelReport(panelId, report);
 
   return getPanelDetail(tenantId, panelId);
@@ -505,9 +535,31 @@ export function disconnectPanel(panelId: string): boolean {
   return dropped;
 }
 
+const DEFAULT_PANEL_PREFIX = 'Office Panel';
+
+/**
+ * The next unused default name.
+ *
+ * Highest suffix plus one, not count plus one — see `panelNamesMatching`. A
+ * name under the prefix whose tail is not a number ("Office Panel — Reception")
+ * is ignored rather than counted, so it cannot pull the sequence backwards.
+ */
 async function defaultPanelName(tenantId: string): Promise<string> {
-  const existing = await panelRepo.countPanelsNamed(tenantId, 'Office Panel');
-  return `Office Panel ${existing + 1}`;
+  const names = await panelRepo.panelNamesMatching(tenantId, DEFAULT_PANEL_PREFIX);
+  return nextPanelName(names);
+}
+
+/**
+ * Exported for its test — the repository read is the only thing that needs a
+ * database, and the rule worth pinning is this arithmetic.
+ */
+export function nextPanelName(existing: readonly string[]): string {
+  const highest = existing.reduce((max, name) => {
+    const suffix = Number(name.slice(DEFAULT_PANEL_PREFIX.length).trim());
+    return Number.isInteger(suffix) && suffix > max ? suffix : max;
+  }, 0);
+
+  return `${DEFAULT_PANEL_PREFIX} ${highest + 1}`;
 }
 
 function withPresence(panel: OfficePanel): OfficePanelWithPresence {

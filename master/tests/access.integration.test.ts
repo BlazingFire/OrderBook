@@ -324,6 +324,47 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
       expect(serialised).not.toContain('password_hash');
     });
 
+    it('refuses a password shorter than the minimum, on both the paths an admin uses', async () => {
+      // `changeOwnPassword` had enforced eight characters since it was
+      // written, while these two hashed whatever arrived. The weaker pair was
+      // the one that mints accounts and the one that resets a locked-out
+      // person's password, so a shop could be talked into a one-character
+      // password over the phone and the server would take it.
+      const role = await officeRole();
+
+      await expect(
+        userService.createUser(
+          { username: 'kamal', displayName: 'Kamal V', roleId: role.id, password: 'short' },
+          admin,
+        ),
+      ).rejects.toThrow(/at least 8/);
+
+      const { user } = await userService.createUser(
+        { username: 'kamal', displayName: 'Kamal V', roleId: role.id },
+        admin,
+      );
+
+      await expect(
+        userService.resetPassword({ userId: user.id, password: 'short' }, admin),
+      ).rejects.toThrow(/at least 8/);
+    });
+
+    it('still generates a password when none is supplied, on both paths', async () => {
+      // The check is on the supplied value, so leaving the field empty must
+      // still produce a readable temporary password rather than a refusal.
+      const role = await officeRole();
+
+      const created = await userService.createUser(
+        { username: 'nisha', displayName: 'Nisha R', roleId: role.id },
+        admin,
+      );
+      expect(created.secret.password.length).toBeGreaterThanOrEqual(8);
+
+      const reset = await userService.resetPassword({ userId: created.user.id }, admin);
+      expect(reset.password.length).toBeGreaterThanOrEqual(8);
+      expect(reset.password).not.toBe(created.secret.password);
+    });
+
     it('refuses a duplicate username but frees a deleted one', async () => {
       const role = await officeRole();
       const { user } = await userService.createUser(

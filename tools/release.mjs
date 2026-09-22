@@ -65,6 +65,32 @@ const PANELS = {
     vendorPostgres: false,
     extras: [],
   },
+  /*
+   * The standalone clean-install tool. Not a panel, and the flags say so.
+   *
+   * It ships no server: no `dist`, no `web/dist`, no production dependency
+   * tree, no PostgreSQL. Its `extraResources` carry the two uninstall scripts
+   * and one static HTML page, both declared in its own
+   * `electron-builder.yml`, so there is nothing for `stage()` to assemble.
+   *
+   * It is also NOT published into the releases folder. That folder is what a
+   * Master serves to its panels over the LAN, and every file in it is
+   * something a panel may be told to install — a tool that erases the machine
+   * has no business in that stream. It is handed over deliberately, on a USB
+   * stick or a download, which is the only way it is ever wanted.
+   */
+  cleaner: {
+    dir: 'cleaner',
+    folder: null,
+    label: 'Clean Install',
+    vendorPostgres: false,
+    extras: [],
+    /** No server to compile, and nothing to stage. */
+    serverless: true,
+    /** Kept out of the releases folder — see above. */
+    publish: false,
+    artifact: 'CleanInstall',
+  },
 };
 
 const args = process.argv.slice(2);
@@ -107,10 +133,12 @@ const TARGETS = {
     builderFlag: '--mac',
     platform: 'darwin',
     // `arch: [universal]` in the yml, so one file covers Intel and Apple
-    // silicon — but the PostgreSQL binaries are per-architecture and the
-    // package for this machine's own arch is the one that must be vendored.
+    // silicon — which means *both* architectures' PostgreSQL binaries have to
+    // ship. `extraResources` is copied identically into both halves of the
+    // merge, so vendoring only the build machine's arch produces an app that
+    // starts everywhere and can create a database on half of it.
     ext: 'dmg',
-    postgres: [`darwin-${process.arch === 'arm64' ? 'arm64' : 'x64'}`],
+    postgres: ['darwin-x64', 'darwin-arm64'],
     buildsOn: ['darwin'],
     standalone: null,
   },
@@ -274,24 +302,83 @@ async function sha256(file) {
  * `native/` holds `bin`, `lib` and `share` — all three are needed: `initdb`
  * reads its templates out of `share`, and dropping it produces a cluster that
  * cannot be created with an error that names none of this.
+ *
+ * The packages come from `RELEASE_TARGET.postgres`, which is why the shape of
+ * the vendored tree depends on the target rather than on the build host:
+ *
+ * - one package  → `master/vendor/postgres/{bin,lib,share}`
+ * - two packages → `master/vendor/postgres/<arch>/{bin,lib,share}`
+ *
+ * macOS is the two-package case. `arch: [universal]` produces one app that
+ * runs on both Intel and Apple silicon, but `extraResources` is copied
+ * identically into both halves of the merge, so a single-arch vendor ships an
+ * app that starts on the build machine and cannot create a database on the
+ * other half of its own audience. `candidateBinDirs()` in
+ * `master/src/db/postgres-server.ts` looks under `process.arch` first for
+ * exactly this layout.
  */
 async function vendorPostgres() {
-  const source = path.join(ROOT, 'node_modules', '@embedded-postgres', 'windows-x64', 'native');
+  const packages = RELEASE_TARGET.postgres;
   const target = path.join(ROOT, 'master', 'vendor', 'postgres');
+  await rm(target, { recursive: true, force: true });
 
-  try {
-    await stat(path.join(source, 'bin'));
-  } catch {
-    throw new Error(
-      `PostgreSQL binaries are missing from ${source}.\n` +
-        'npm blocks the postinstall that downloads them; run:\n' +
-        '  npm install-scripts approve @embedded-postgres/windows-x64',
-    );
+  for (const pkg of packages) {
+    const source = path.join(ROOT, 'node_modules', '@embedded-postgres', pkg, 'native');
+
+    try {
+      await stat(path.join(source, 'bin'));
+    } catch {
+      throw new Error(
+        `PostgreSQL binaries are missing from ${source}.\n` +
+          'npm blocks the postinstall that hydrates them; run:\n' +
+          `  npm install-scripts approve @embedded-postgres/${pkg}`,
+      );
+    }
+
+    // One package keeps today's flat layout; two get an arch level, named for
+    // `process.arch` rather than the package so the runtime lookup matches.
+    const arch = pkg.slice(pkg.indexOf('-') + 1);
+    const dest = packages.length === 1 ? target : path.join(target, arch);
+    await cp(source, dest, { recursive: true });
+    await assertUsablePostgres(dest, pkg);
+    console.log(`  vendored ${pkg} into ${path.relative(ROOT, dest)}`);
+  }
+}
+
+/**
+ * Fail the build rather than the shop's first boot.
+ *
+ * Every way this copy can go wrong — the wrong package, a `share/` that did
+ * not come along, binaries that lost their executable bit passing through a
+ * zip or a Windows checkout — surfaces at runtime as `initdb` failing with a
+ * message that names none of it, on a machine with no developer on it. Here it
+ * costs a `stat` per file.
+ */
+async function assertUsablePostgres(dir, pkg) {
+  const exe = RELEASE_TARGET.platform === 'win32' ? '.exe' : '';
+
+  for (const name of ['initdb', 'pg_ctl', 'postgres']) {
+    const file = path.join(dir, 'bin', `${name}${exe}`);
+    let info;
+    try {
+      info = await stat(file);
+    } catch {
+      throw new Error(`${pkg} vendored without ${name}${exe} — expected ${file}`);
+    }
+    // 0o111 is the three executable bits. Windows has no such bit and reports
+    // them set, so this is a real check on macOS and Linux and a no-op on win32.
+    if (exe === '' && (info.mode & 0o111) === 0) {
+      throw new Error(`${file} is not executable (mode ${(info.mode & 0o777).toString(8)})`);
+    }
   }
 
-  await rm(target, { recursive: true, force: true });
-  await cp(source, target, { recursive: true });
-  console.log(`  vendored PostgreSQL into ${path.relative(ROOT, target)}`);
+  const share = await readdir(path.join(dir, 'share')).catch(() => []);
+  if (share.length === 0) {
+    throw new Error(
+      `${pkg} vendored without share/ — initdb reads its templates from there ` +
+        'and fails with an error that names none of this.',
+    );
+  }
 }
 
 /**
@@ -385,9 +472,10 @@ async function build(panel, version) {
   const config = PANELS[panel];
   const panelRoot = path.join(ROOT, config.dir);
 
-  console.log(`\n== ${config.label} Panel ${version} ==`);
+  console.log(`\n== ${config.label} ${version} ==`);
 
-  run('npm', ['run', 'build', '--workspace', `@orderbook/${panel}`]);
+  // A serverless target has no `dist` or `web/dist` to build.
+  if (!config.serverless) run('npm', ['run', 'build', '--workspace', `@orderbook/${panel}`]);
 
   /*
    * One shell, compiled once, copied into whichever panel is being packaged.
@@ -404,7 +492,7 @@ async function build(panel, version) {
   await cp(path.join(ROOT, 'electron', 'dist'), shellDist, { recursive: true });
 
   if (config.vendorPostgres) await vendorPostgres();
-  await stage(panel);
+  if (!config.serverless) await stage(panel);
 
   /*
    * `electronVersion` is passed rather than written into the yml.
@@ -441,12 +529,18 @@ async function build(panel, version) {
    * rather than the build.
    */
   const outDir = path.join(ROOT, 'build', panel);
-  const expected = `OrderBook-${config.label}-${version}-Setup.${RELEASE_TARGET.ext}`;
+  // `artifact` where the folder name and the filename differ: the tool is
+  // "Clean Install" to a reader and `CleanInstall` in a filename, because a
+  // space in an artifact name is a different kind of trouble on three OSes.
+  const name = config.artifact ?? config.label;
+  const expected = `OrderBook-${name}-${version}-Setup.${RELEASE_TARGET.ext}`;
   // The standalone `.exe` built beside the setup file, on the targets that
-  // have one. Both come out of the one electron-builder run above.
-  const standalone = RELEASE_TARGET.standalone
-    ? `OrderBook-${config.label}-${version}-${RELEASE_TARGET.standalone}.${RELEASE_TARGET.ext}`
-    : null;
+  // have one. Both come out of the one electron-builder run above. The
+  // clean-install tool declares no portable target, so it has none.
+  const standalone =
+    RELEASE_TARGET.standalone && config.publish !== false
+      ? `OrderBook-${name}-${version}-${RELEASE_TARGET.standalone}.${RELEASE_TARGET.ext}`
+      : null;
   const files = await readdir(outDir);
 
   for (const name of [expected, standalone].filter(Boolean)) {
@@ -538,10 +632,19 @@ async function main() {
   const version = await currentVersion();
 
   const notes = process.env.ORDERBOOK_RELEASE_NOTES ?? '';
-  const panels = only ? [only] : Object.keys(PANELS);
+  /*
+   * The default is the two panels, not everything in `PANELS`.
+   *
+   * A plain `npm run release` publishes a folder somebody copies to the Master
+   * PC, and the clean-install tool does not belong in it — see its entry
+   * above. It is built on request: `npm run release -- --panel cleaner`.
+   */
+  const panels = only ? [only] : Object.keys(PANELS).filter((name) => PANELS[name].publish !== false);
 
   for (const panel of panels) {
-    if (!PANELS[panel]) throw new Error(`Unknown panel "${panel}" — expected master or office`);
+    if (!PANELS[panel]) {
+      throw new Error(`Unknown target "${panel}" — expected ${Object.keys(PANELS).join(', ')}`);
+    }
   }
 
   console.log(`Releasing ${version} to ${RELEASES_DIR}`);
@@ -549,6 +652,10 @@ async function main() {
 
   for (const panel of panels) {
     const built = await build(panel, version);
+    if (PANELS[panel].publish === false) {
+      console.log(`  built ${path.relative(ROOT, built.setup)} (not published — hand it over directly)`);
+      continue;
+    }
     await publish(panel, version, built, notes);
   }
 

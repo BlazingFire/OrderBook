@@ -114,6 +114,48 @@ export const EN_MESSAGES = {
   'roleTemplate.dispatch': 'Dispatch',
 
   // --- setting.* — label and help for every key in `domain/settings.ts` ---
+  // --- Headings the company settings are grouped under. Words a shopkeeper
+  // --- would use over the phone, not the module names the keys are built from.
+  'settingGroup.access': 'Who can get in',
+  'settingGroup.stock': 'Stock and prices',
+  'settingGroup.leads': 'Leads and follow-up',
+  'settingGroup.integrations': 'Other software',
+
+  // --- Units rendered beside a number setting's field.
+  'setting.unit.hours': 'hours',
+  'setting.unit.days': 'days',
+  'setting.unit.boxes': 'boxes',
+  /** The placeholder in a number setting that may be left empty. */
+  'setting.number.none': 'None',
+
+  'setting.panels.autoPairingEnabled.label': 'Let a new Office Panel join without the password',
+  'setting.panels.autoPairingEnabled.help':
+    'While Add Office Panel is open, any PC on this WiFi can join with one click. Switch this off once your panels are set up and joining will always need the pairing password.',
+  'setting.security.developerModeEnabled.label': 'Allow developer mode on this PC',
+  'setting.security.developerModeEnabled.help':
+    'Developer mode can erase all data and seed test users, and its password is the same on every copy of OrderBook. Switching it off also switches off the in-app uninstaller — OrderBook can still be removed from Windows Settings → Apps.',
+  'setting.security.sessionHours.label': 'Sign people out after',
+  'setting.security.sessionHours.help':
+    'How long somebody stays signed in without typing their password again. Anyone already signed in keeps the time they were given; this applies from their next sign-in.',
+  'setting.inventory.defaultReorderLevel.label': 'Low stock below',
+  'setting.inventory.defaultReorderLevel.help':
+    'Used for any colour you have not given its own low-stock level. Leave it empty for none. Colours with no stock at all count as low.',
+  'setting.security.offlineSignInEnabled.label': 'Allow signing in while the Master Panel is off',
+  'setting.security.offlineSignInEnabled.help':
+    'On, somebody who has signed in on a panel before can sign in on it again with the Master Panel switched off, using the permissions that panel last cached. Off, every sign-in needs the Master. A panel that is already offline keeps its last answer until it reconnects.',
+  'setting.inventory.adjustmentNoteRequired.label': 'Require a reason when a stock count is corrected',
+  'setting.inventory.adjustmentNoteRequired.help':
+    'A correction rewrites a figure nobody can work out again. With this on, the person doing it has to type why. Confirming a count that already matches writes nothing and needs no reason.',
+  'setting.leads.followUpDefaultDays.label': 'Follow up a new lead after',
+  'setting.leads.followUpDefaultDays.help':
+    'The follow-up date a new lead starts with. 0 means today. Whoever is taking the enquiry can still change it, and the Tomorrow / In 3 days / Next week buttons are unchanged.',
+  'setting.leads.packagingRequiredOnConvert.label': 'Packaging is required before converting a lead',
+  'setting.leads.packagingRequiredOnConvert.help':
+    'Off, a lead whose lines have no packaging can still become an order. Packaging already entered is kept either way.',
+  'setting.leads.quietAfterDays.label': 'A lead has gone quiet after',
+  'setting.leads.quietAfterDays.help':
+    'How long a lead can sit untouched before the Lead Outcomes report stops counting it as open.',
+
   'setting.security.passwordRevealEnabled.label': 'Remember passwords so they can be shown again',
   'setting.security.passwordRevealEnabled.help':
     'While this is on, every password typed on this network is kept in a form an administrator can read back. Turning it off deletes every one already kept.',
@@ -123,6 +165,9 @@ export const EN_MESSAGES = {
   'setting.inventory.freeToSell.label': 'Track free-to-sell stock',
   'setting.inventory.freeToSell.help':
     'On splits every stock figure into on hand, reserved for open orders, and free to sell, and judges low stock on what is free. Off shows one number per variant — the pieces on the floor — and hides reserved and free everywhere. Orders still hold their stock underneath, so turning it back on shows the true picture.',
+  'setting.catalog.importCreatesCategories.label': 'Let a product import create new categories',
+  'setting.catalog.importCreatesCategories.help':
+    'On, a bulk import files a product under whatever category the sheet names, creating it if it is new. Off, the category must already exist — a row naming one you do not have is refused by number so you can fix the spelling, and a row with no category is imported as before.',
 
   // --- error.* — one per AppError subclass and per stable code ---
   'error.notFound': '{what} not found',
@@ -157,10 +202,28 @@ export const EN_MESSAGES = {
   'error.unauthorized.apiKeyExpired': 'That API key has expired or been revoked',
   'error.unauthorized': 'Not signed in',
   'error.unauthorized.signInFailed': 'Sign-in failed',
+  'error.unauthorized.developerDisabled':
+    'Developer mode is switched off for this PC. An administrator can switch it on in Settings → Who can get in.',
+  'signin.credentialsRequired': 'Enter your username and password',
+  // The countable form. The sequence a person actually experiences is
+  // 3 → 2 → 1 → locked for 60s → 3 again, because `recordFailure` zeroes the
+  // counter when it applies the lock; the copy says exactly that and no more.
+  //
+  // Safe to show: the failure map is keyed by the *attempted* username whether
+  // or not the account exists, both branches share one `recordFailure` and one
+  // generic message, and a missing user still pays a full scrypt hash — so the
+  // count leaks nothing about whether the account is real. Keep it that way.
+  'error.unauthorized.signInFailedRemaining.one': 'Sign-in failed — {count} attempt left',
+  'error.unauthorized.signInFailedRemaining.other': 'Sign-in failed — {count} attempts left',
   'error.unauthorized.accountDeactivated': 'This account has been deactivated',
   'error.unauthorized.noRole': 'This account has no role. Ask an administrator to assign one.',
   'error.unauthorized.currentPasswordIncorrect': 'Your current password is not correct',
-  'error.unauthorized.tooManyAttempts': 'Too many failed attempts. Try again in a minute.',
+  // `{seconds}` because the fixed "in a minute" is simply wrong once fifty of
+  // the sixty have gone. `auth.service.ts` holds `lockedUntil` — the exact
+  // millisecond the lock lifts — on the line above the throw, and passed
+  // nothing.
+  'error.unauthorized.tooManyAttempts':
+    'Too many failed attempts. Try again in {seconds} seconds.',
   'error.unauthorized.pairingNotAccepting':
     'The Master Panel is not accepting new panels right now. Open "Add Office Panel" on the Master and try again.',
   'error.unauthorized.incorrectPairingPassword': 'Incorrect pairing password',
@@ -208,6 +271,8 @@ export const EN_MESSAGES = {
   'error.generic.invalidCredentials': 'Incorrect username or password',
   'error.generic.lockedOut': 'Too many failed attempts. Try again later',
   'error.generic.unknownHere': 'That is not available on this panel',
+  'error.generic.offlineSignInDisabled':
+    'Signing in needs the Master Panel. This company does not allow signing in while it is off.',
 
   // --- validation.* — field-level messages, one per distinct throw site ---
   'validation.backup.passphraseTooShort':
@@ -233,6 +298,7 @@ export const EN_MESSAGES = {
   'validation.remark.textRequired': 'A remark needs some text',
   'validation.stock.boxesArrivedRequired': 'Enter how many boxes arrived',
   'validation.stock.countedBoxesRequired': 'Enter the counted number of boxes',
+  'validation.stock.adjustmentNoteRequired': 'Say why you are correcting this count',
   'validation.stock.reorderLevelNegative': 'A reorder level cannot be negative',
   'validation.stock.colourRequired': 'Choose which colour this stock is for',
   'validation.stock.productRequired': 'Select a product',
@@ -299,6 +365,8 @@ export const EN_MESSAGES = {
   'validation.import.notANumber': '"{column}" must be a number',
   'validation.import.invalidValue': '"{column}" must be one of: {allowed}',
   'validation.import.duplicateInFile': '"{column}" repeats row {firstRow}',
+  'validation.import.unknownCategory':
+    'There is no category named "{categoryName}" — this company does not let an import create one',
   'validation.import.rowFailed': 'The row could not be saved: {reason}',
   'validation.import.mixedVariants':
     '{name} names a variant on some rows and none on others — fill in every row or leave every row blank',
@@ -485,6 +553,8 @@ export const EN_MESSAGES = {
   'common.edit': 'Edit',
   'common.close': 'Close',
   'common.delete': 'Delete',
+  'common.confirm': 'Confirm',
+  'table.sortBy': 'Sort by {column}',
   'common.search': 'Search',
   'common.restore': 'Restore',
   'common.export': 'Export',
@@ -510,6 +580,8 @@ export const EN_MESSAGES = {
    * readings are correct for their own panel. Everything else is shared.
    */
   'lead.add.discardConfirm': 'Discard this lead and start over?',
+  /** The confirm button in the dialog `lead.add.discardConfirm` titles. */
+  'lead.add.discard': 'Discard the draft',
   'screen.reset': 'Reset this screen',
   'screen.resetHint':
     'Clear the filters, scroll and unsaved entry on this screen and load it fresh.',
@@ -1547,6 +1619,7 @@ export const EN_MESSAGES = {
   'nav.master.leadsOrders': 'Leads & orders',
   'nav.master.logs': 'Activity log',
   'nav.master.panels': 'Office panels',
+  'nav.master.parties': 'Parties',
   'nav.master.partyAccess': 'Party access',
   'nav.master.recycleBin': 'Recycle bin',
   'nav.master.reports': 'Reports',
@@ -1763,7 +1836,6 @@ export const EN_MESSAGES = {
   'panels.detail.history': 'History',
   'panels.detail.id': 'Panel ID',
   'panels.detail.identity': 'Identity',
-  'panels.detail.mac': 'MAC address',
   'panels.detail.network': 'Network',
   'panels.detail.revokedNote':
     'This panel was removed. It has to pair again before it can connect.',
@@ -1806,6 +1878,59 @@ export const EN_MESSAGES = {
   'panels.table.status': 'Status',
   'panels.table.storage': 'Storage',
   'party.createFailed': 'Could not create the party',
+
+  // --- The Master's own Parties screen ---
+  // Deliberately not `catalog.parties.created`: that text says "syncs when the
+  // Master is reachable", which is false on the Master itself.
+  // --- Writes the Master refused ---
+  // `sync.changesRefused` is deliberately a count pair: the panel says how many
+  // were thrown away, and a number glued into a sentence does not translate.
+  'sync.changesRefused.one': '{count} change was refused',
+  'sync.changesRefused.other': '{count} changes were refused',
+  'sync.couldNotSync': 'Could not sync with the Master',
+  'sync.rejections.title': 'Refused by the Master',
+  'sync.rejections.description':
+    'These were saved on this panel and the Master would not take them. They are not in the shop’s records.',
+  'sync.rejections.dismiss': 'Dismiss',
+  'sync.rejections.dismissFailed': 'Could not dismiss those',
+  'sync.rejections.noReason': 'No reason was given',
+  'action.reviewRefusals': 'See what was refused',
+
+  // --- Change your own password ---
+  'access.changePassword.title': 'Change your password',
+  'access.changePassword.current': 'Current password',
+  'access.changePassword.new': 'New password',
+  'access.changePassword.confirm': 'Confirm new password',
+  'access.changePassword.mismatch': 'The two new passwords do not match',
+  'access.changePassword.submit': 'Change password',
+  'access.changePassword.failed': 'Could not change the password',
+  'access.changePassword.signsYouOut':
+    'Changing it signs you out everywhere, including this window.',
+  'action.changePassword': 'Change password',
+
+  // --- Session loss, told at the sign-in screen the window was dropped to ---
+  'signIn.notice.sessionEnded': 'Your session ended. Sign in again.',
+  'signIn.notice.passwordChanged': 'Your password changed. Sign in with the new one.',
+
+  'leadsOrders.delete.lead': 'Delete lead',
+  'leadsOrders.delete.order': 'Delete order',
+  'leadsOrders.delete.lead.title': 'Delete lead {id}?',
+  'leadsOrders.delete.order.title': 'Delete order {id}?',
+  'leadsOrders.delete.body': 'It goes to the Recycle Bin and can be restored.',
+  'leadsOrders.delete.failed': 'Could not delete that record',
+  'leadsOrders.delete.blocked': 'Still in use by {items} — deal with those first',
+
+  'parties.created': '{name} saved',
+  'parties.updated': '{name} updated',
+  'parties.deleted': '{name} deleted',
+  'parties.deleteFailed': 'Could not delete the party',
+  'parties.deleteBlocked': 'Still in use by {items} — deal with those first',
+  'parties.delete.title': 'Delete {name}?',
+  'parties.delete.body': 'It goes to the Recycle Bin and can be restored.',
+  'parties.delete.confirm': 'Delete party',
+  'parties.error.load': 'Could not load parties',
+  'parties.loadMore': 'Load more',
+  'parties.summary': 'Showing {shown} of {total}',
   'party.detail.access.manage':
     'This party is assigned to you. You can see and change its records.',
   'party.detail.access.open':
@@ -1926,6 +2051,8 @@ export const EN_MESSAGES = {
   'partyAccess.searchPlaceholder': 'Search parties',
   'partyAccess.staleSave': 'Somebody else changed this party’s access first. Reload to see it.',
   'partyAccess.summary': '{restricted} of {total} parties are restricted.',
+  /** Appended when the list is showing fewer rows than the total above. */
+  'partyAccess.showing': 'Showing {shown} so far.',
   'partyAccess.title': 'Party access',
   'product.createFailed': 'Could not create the product',
   'product.detail.adjustAction': 'Adjust count',
@@ -2112,21 +2239,7 @@ export const EN_MESSAGES = {
   'reports.topParties.empty.description': 'No party ordered in these months. Try a wider range.',
   'reports.topParties.orderedByCount': 'Top {limit} by number of orders.',
   'reports.topParties.parties': 'Parties',
-  'settings.appearance.density': 'Density',
-  'settings.appearance.densityComfortable': 'Comfortable',
-  'settings.appearance.densityCompact': 'Compact',
-  'settings.appearance.densityLarge': 'Large',
-  'settings.appearance.densityNote': 'Row and control heights only — text size is the scale above.',
-  'settings.appearance.scale': 'UI scale',
-  'settings.appearance.scaleReset': 'Reset',
-  'settings.appearance.scaleNote': 'Root {size} — this screen resizes live',
-  'settings.appearance.motion': 'Motion',
-  'settings.appearance.motionHint': "Also honours the system's reduced-motion setting",
-  'settings.appearance.motionLabel': 'Turn animation off',
   'settings.appearance.subtitle': 'Per-machine — never synced',
-  'settings.appearance.theme': 'Theme',
-  'settings.appearance.themeDark': 'Dark',
-  'settings.appearance.themeLight': 'Light',
   'settings.appearance.title': 'Appearance',
   'settings.company.title': 'Company settings',
   'settings.company.subtitle': 'Decided once for the whole company — not per machine.',
@@ -2158,9 +2271,12 @@ export const EN_MESSAGES = {
   'settings.density.note': 'Row and control heights only — text size is the scale above.',
   'settings.scale.label': 'UI scale',
   'settings.scale.reset': 'Reset',
+  'settings.appearance.resetAll': 'Reset appearance',
   'settings.scale.smaller': 'Smaller',
   'settings.scale.larger': 'Larger',
   'settings.scale.note': 'Root {size} — this screen resizes live',
+  'settings.language.label': 'Language',
+  'settings.language.hint': 'Changing the language reloads this panel.',
   'settings.machine.company': 'Company',
   'settings.machine.connection': 'Connection',
   'settings.machine.networkLink': 'Network link',
@@ -2171,7 +2287,6 @@ export const EN_MESSAGES = {
   'settings.motion.hint': "Also honours the system's reduced-motion setting",
   'settings.motion.label': 'Motion',
   'settings.motion.turnOff': 'Turn animation off',
-  'settings.perMachine': 'Per-machine — never synced',
   'settings.storage.database': 'Database',
   'settings.storage.free': 'Free space on this drive',
   'settings.storage.total': 'Total used by this software',
@@ -2186,8 +2301,15 @@ export const EN_MESSAGES = {
   // --- The Settings screen's frame. Each panel picks the tabs it has, so a
   // label here may go unused on one panel and be the only word on the other.
   'settings.title': 'Settings',
-  'settings.subtitle':
-    'Per-machine preferences, this installation’s details, and the maintenance tools.',
+  // Panel-scoped (`ui/src/i18n.ts`): the Master now lands on the company
+  // settings, and the shared wording called the whole screen "per-machine
+  // preferences" — contradicted two rows down by "Decided once for the whole
+  // company". That contradiction became the first sentence an administrator
+  // read.
+  'master.settings.subtitle':
+    'Decisions your company makes once, plus this PC’s own preferences and details.',
+  'office.settings.subtitle':
+    'This PC’s own preferences, its connection to the Master, and the maintenance tools.',
   'settings.tab.appearance': 'Appearance',
   'settings.tab.shortcuts': 'Shortcuts',
   'settings.tab.company': 'Company',
@@ -2219,8 +2341,11 @@ export const EN_MESSAGES = {
   'signin.forgetConfirm':
     'Remove {name} from this panel? While the Master Panel is unreachable they will not be able to sign in here until it is back.',
   'signin.forgetFailed': 'Could not remove that person from this panel',
+  /** The confirm button in the dialog `signin.forgetConfirm` titles. */
+  'signin.forgetAction': 'Remove from this panel',
   'storage.title': 'Where this panel keeps its files',
   'storage.change': 'Change',
+  'storage.free': '{size} free on this drive',
   'storage.folder': 'Folder',
   'storage.browse': 'Browse…',
   'storage.move': 'Move the files here',

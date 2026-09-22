@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Render the application icon for both panels from the logo lattice.
+ * Render the application icon for both panels and the clean-install tool.
  *
- * electron-builder takes a single `icon.png` (1024×1024) from each panel's
+ * electron-builder takes a single `icon.png` (1024×1024) from each app's
  * `buildResources` folder and produces the `.ico` and `.icns` itself, so one
- * PNG per panel is the whole asset. The geometry is `ui/src/logoCells.ts` and
+ * PNG per app is the whole asset. The geometry is `ui/src/logoCells.ts` and
  * the colour is `--glaze-50` from `ui/src/tokens.css`, read at build time so
  * the icon cannot drift from the mark drawn in the sidebar.
  *
@@ -47,13 +47,24 @@ function svg(background) {
 </svg>`;
 }
 
-const panels = [
+const apps = [
   { dir: 'master', background: '#111318' },
   // A shade lighter, so a desk that has both installed can tell the two apart.
   { dir: 'office', background: '#1c2230' },
+  /*
+   * The clean-install tool, in the warning colour rather than a third shade of
+   * the same blue-grey.
+   *
+   * It is the one of the three that erases a company's database, and it will
+   * sit in a downloads folder beside two icons it would otherwise be a near
+   * match for. Somebody reaching for the Master at a glance must not open this
+   * instead. `--kiln-red-05` from `tokens.css`, the same dark red every
+   * destructive surface in the product already uses.
+   */
+  { dir: 'cleaner', background: '#331716' },
 ];
 
-for (const { dir, background } of panels) {
+for (const { dir, background } of apps) {
   const target = path.join(ROOT, dir, 'installer', 'icon.png');
   await writeFile(target, await sharp(Buffer.from(svg(background))).png().toBuffer());
   console.log(`icon -> ${path.relative(ROOT, target)}`);

@@ -24,7 +24,11 @@ import type { ActorContext } from '../src/domain/actor.js';
 import { hashPassword } from '../src/lib/password.js';
 import * as panelRepo from '../src/repositories/office-panel.repository.js';
 import * as authService from '../src/services/auth.service.js';
-import { resolvePanelActor } from '../src/services/panel-actor.service.js';
+import {
+  RefusedActingTokenError,
+  resolvePanelActor,
+  resolvePanelActorAllowingRefusal,
+} from '../src/services/panel-actor.service.js';
 import * as roleService from '../src/services/role.service.js';
 import * as userService from '../src/services/user.service.js';
 
@@ -141,8 +145,27 @@ describe.skipIf(!canRunIntegrationTests)('the actor behind an Office Panel comma
     expect(actor.deviceCode).toBe(DEVICE_CODE);
   });
 
-  it('falls back to the panel’s own role when the token is invented', async () => {
-    const { actor, tokenAccepted } = await resolvePanelActor({
+  it('refuses an invented token rather than downgrading to the panel’s own role', async () => {
+    // The defect this pins: `resolvePanelActor` returned `(actor, tokenAccepted)`
+    // and left enforcement to the caller. `require-panel.ts` refused with a 401;
+    // `hub.ts` cleared the token, emitted `session:rejected` — and then ran the
+    // command under the panel's machine role. A stale or modified panel could
+    // trade a refused user session for the panel's own authority on the socket
+    // path, on exactly the boundary the HTTP path guards. Enforcement lives in
+    // the service now, so a third caller cannot inherit it.
+    await expect(
+      resolvePanelActor({
+        tenantId,
+        panelId,
+        deviceCode: DEVICE_CODE,
+        actingUserToken: 'not-a-real-token',
+      }),
+    ).rejects.toBeInstanceOf(RefusedActingTokenError);
+
+    // The reporting variant — used only by the broadcast fan-out, which must
+    // decide what a socket receives rather than raise at it — still answers
+    // with the panel's own tokenless actor.
+    const { actor, tokenAccepted } = await resolvePanelActorAllowingRefusal({
       tenantId,
       panelId,
       deviceCode: DEVICE_CODE,
@@ -158,15 +181,24 @@ describe.skipIf(!canRunIntegrationTests)('the actor behind an Office Panel comma
     const { token } = await signedInManager();
     const otherTenant = randomUUID();
 
-    const { actor, tokenAccepted } = await resolvePanelActor({
+    // The token is genuine; it simply does not belong here. Honouring it would
+    // be a cross-company leak, which the tenant check exists to make impossible.
+    await expect(
+      resolvePanelActor({
+        tenantId: otherTenant,
+        panelId,
+        deviceCode: DEVICE_CODE,
+        actingUserToken: token,
+      }),
+    ).rejects.toBeInstanceOf(RefusedActingTokenError);
+
+    const { actor, tokenAccepted } = await resolvePanelActorAllowingRefusal({
       tenantId: otherTenant,
       panelId,
       deviceCode: DEVICE_CODE,
       actingUserToken: token,
     });
 
-    // The token is genuine; it simply does not belong here. Honouring it would
-    // be a cross-company leak, which the tenant check exists to make impossible.
     expect(tokenAccepted).toBe(false);
     expect(actor.userId).toBeNull();
   });
@@ -184,15 +216,25 @@ describe.skipIf(!canRunIntegrationTests)('the actor behind an Office Panel comma
 
     await userService.updateUser(userId, { isActive: false, expectedVersion: 1 }, admin);
 
-    const after = await resolvePanelActor({
+    // No re-login, no restart, no waiting for a cache to expire: the next
+    // command resolves the session again, finds nothing, and is refused rather
+    // than quietly re-run as the machine.
+    await expect(
+      resolvePanelActor({
+        tenantId,
+        panelId,
+        deviceCode: DEVICE_CODE,
+        actingUserToken: token,
+      }),
+    ).rejects.toBeInstanceOf(RefusedActingTokenError);
+
+    const after = await resolvePanelActorAllowingRefusal({
       tenantId,
       panelId,
       deviceCode: DEVICE_CODE,
       actingUserToken: token,
     });
 
-    // No re-login, no restart, no waiting for a cache to expire: the next
-    // command resolves the session again and finds nothing.
     expect(after.tokenAccepted).toBe(false);
     expect(after.actor.actorType).toBe('office_panel');
   });

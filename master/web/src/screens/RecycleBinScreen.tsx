@@ -43,6 +43,7 @@ import {
   useFilterBar,
   useToast,
   type DataTableColumn,
+  useDebounced,
 } from '@orderbook/ui';
 
 interface Props {
@@ -116,6 +117,11 @@ export function RecycleBinScreen({ permissions, revision, type, onTypeChange }: 
     permissions.includes(RESTORE_PERMISSION[type]);
 
   const [search, setSearch] = useState('');
+  // The input keeps the raw value so typing feels instant; only the fetch
+  // below waits. `filtered` a few hundred lines down deliberately keeps
+  // reading the raw one — it drives whether a "clear filters" affordance
+  // shows, which should react to what was typed, not lag behind it.
+  const debouncedSearch = useDebounced(search);
   const [deletedBy, setDeletedBy] = useState('');
   const [entries, setEntries] = useState<BinEntry[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -144,7 +150,7 @@ export function RecycleBinScreen({ permissions, revision, type, onTypeChange }: 
   // never merely because a fresh object was built during a re-render.
   const filters = () => ({
     types: type ? [type] : undefined,
-    search: search.trim() || undefined,
+    search: debouncedSearch.trim() || undefined,
     deletedBy: deletedBy || undefined,
   });
 
@@ -178,7 +184,7 @@ export function RecycleBinScreen({ permissions, revision, type, onTypeChange }: 
     // `filters` is rebuilt every render; the three values it reads are listed
     // individually, so depending on it would refetch in a loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canView, type, search, deletedBy, revision, refresh]);
+  }, [canView, type, debouncedSearch, deletedBy, revision, refresh]);
 
   useEffect(() => {
     if (!canView) return;

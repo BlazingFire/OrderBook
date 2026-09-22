@@ -51,7 +51,11 @@ import * as inventoryService from '../services/inventory.service.js';
 import * as leadService from '../services/lead.service.js';
 import * as panelCredentialRepo from '../repositories/panel-credential.repository.js';
 import * as orderService from '../services/order.service.js';
-import { resolvePanelActor } from '../services/panel-actor.service.js';
+import {
+  RefusedActingTokenError,
+  resolvePanelActor,
+  resolvePanelActorAllowingRefusal,
+} from '../services/panel-actor.service.js';
 import * as logService from '../services/log.service.js';
 import * as reportService from '../services/report.service.js';
 import * as imageService from '../services/image.service.js';
@@ -734,26 +738,32 @@ async function panelActor(socket: PanelSocket, panelId: string): Promise<ActorCo
   const tenantId = socket.data.tenantId;
   if (!tenantId) throw new AppError('error.internal.panelNoTenant', {}, 500, 'internal');
 
-  const token = socket.data.actingUserToken;
+  try {
+    const { actor } = await resolvePanelActor({
+      tenantId,
+      panelId,
+      deviceCode: socket.data.deviceCode ?? null,
+      actingUserToken: socket.data.actingUserToken,
+    });
 
-  const { actor, tokenAccepted, rejection } = await resolvePanelActor({
-    tenantId,
-    panelId,
-    deviceCode: socket.data.deviceCode ?? null,
-    actingUserToken: token,
-  });
+    return actor;
+  } catch (error) {
+    if (!(error instanceof RefusedActingTokenError)) throw error;
 
-  if (!tokenAccepted && token) {
     socket.data.actingUserToken = undefined;
 
     // Told, not left to be discovered. Clearing the token silently meant the
     // panel carried on showing somebody as signed in — and kept their offline
     // verifier — until it happened to issue another command. An idle panel
     // issues none, so "until it happens to" could be all evening.
-    socket.emit('session:rejected', rejection ?? 'expired');
-  }
+    socket.emit('session:rejected', error.rejection);
 
-  return actor;
+    // Rethrown, not swallowed. This used to return the panel's own machine
+    // actor and let the command run — the socket path's silent downgrade, on a
+    // boundary the HTTP middleware refuses outright. `respond()` turns this
+    // into a proper ack with a code and a `messageKey`.
+    throw error;
+  }
 }
 
 /**
@@ -933,7 +943,17 @@ async function actorForRecipient(socket: { data: SocketData }): Promise<ActorCon
   const panelId = socket.data.panelId;
   if (!panelId) return null;
 
-  const { actor } = await resolvePanelActor({
+  /*
+   * Reported, not thrown: this decides what a socket *receives*, and a refused
+   * token here means nobody is signed in on that panel — which is the panel's
+   * own tokenless actor, not a failure to raise at somebody who is not asking
+   * for anything. Clearing the token and signing the person out belongs on the
+   * command path (`panelActor`), so a background fan-out cannot do it.
+   */
+  // On a refusal the resolution's `actor` is already the panel's own tokenless
+  // one, which is exactly what this path wants — so there is nothing to branch
+  // on here beyond not throwing.
+  const { actor } = await resolvePanelActorAllowingRefusal({
     tenantId,
     panelId,
     deviceCode: socket.data.deviceCode ?? null,

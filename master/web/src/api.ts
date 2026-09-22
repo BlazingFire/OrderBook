@@ -1,7 +1,9 @@
 /** Thin wrapper over the Master's local HTTP API. */
 
 import { DEVELOPER_RESET_CONFIRMATION, DEVELOPER_TOKEN_HEADER } from '@orderbook/shared';
+import { publishSessionEnded } from '@orderbook/ui';
 import type {
+  Locale,
   PickKind,
   ActivityLogEntry,
   DesktopBridge,
@@ -42,7 +44,6 @@ import type {
   InventoryStockLevel,
   LeadOutcomesReport,
   Lead,
-  LeadInput,
   MasterIdentity,
   MessageKey,
   MessageParams,
@@ -68,7 +69,6 @@ import type {
   UpdateAvailability,
   PartyScopeFilter,
   PartyInput,
-  PartyProductVariant,
   Pipeline,
   PipelineStage,
   PipelineStageInput,
@@ -212,6 +212,18 @@ async function send<T>(
       params?: MessageParams;
     } | null;
 
+    /*
+     * A 401 is not an ordinary failure — the session this window is rendering
+     * as signed in no longer exists. Announced once, here, because every caller
+     * routes through this function: the alternative was eleven screens each
+     * showing a generic error toast while the shell went on believing it was
+     * signed in. Still thrown afterwards, so the caller's own error path runs
+     * exactly as before.
+     */
+    if (response.status === 401) {
+      publishSessionEnded(detail?.messageKey ?? 'signIn.notice.sessionEnded');
+    }
+
     throw new ApiError(
       detail?.message ?? 'Request failed',
       detail?.error ?? 'internal_error',
@@ -284,6 +296,24 @@ function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 const post = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) });
+
+/**
+ * `?search=&limit=&offset=` for a paged list route, omitting whatever is absent.
+ *
+ * The Master clamps an unasked-for limit to its own default of 50
+ * (`master/src/services/*.service.ts`'s `PAGING`), so a screen that wants more
+ * than one page has to say so — and a screen that reports `rows.length` as the
+ * company total is reporting a page size. Both mistakes are easier to avoid
+ * with one helper than with template literals per call site.
+ */
+function pagedQuery(search?: string, limit?: number, offset?: number): string {
+  const params = new URLSearchParams();
+  if (search) params.set('search', search);
+  if (limit !== undefined) params.set('limit', String(limit));
+  if (offset) params.set('offset', String(offset));
+  const query = params.toString();
+  return query ? `?${query}` : '';
+}
 
 /** `post`, plus the developer unlock token the route checks instead of a permission. */
 const postAsDeveloper = <T>(path: string, token: string, body?: unknown) =>
@@ -376,7 +406,8 @@ export const api = {
   signOut: () => post<void>('/api/auth/sign-out'),
   // Carries the caller's own resolved permissions, so the UI renders from what
   // the trusted process granted rather than guessing from the role name.
-  me: () => request<{ user: SignedInUser; sessionToken: string }>('/api/auth/me'),
+  me: () =>
+    request<{ user: SignedInUser; sessionToken: string; defaultLocale: Locale }>('/api/auth/me'),
 
   dashboard: () => request<DashboardSummary>('/api/dashboard'),
   storage: () => request<StorageUsage>('/api/storage'),
@@ -401,7 +432,6 @@ export const api = {
 
   pipelines: () => request<Pipeline[]>('/api/pipelines'),
   optionLists: () => request<OptionListItem[]>('/api/option-lists'),
-  customFields: () => request<CustomFieldDefinition[]>('/api/custom-fields'),
 
   // --- App update ----------------------------------------------------------
 
@@ -519,18 +549,17 @@ export const api = {
   panelActivity: (id: string, limit = 50) =>
     request<{ entries: ActivityLogEntry[] }>(`/api/panels/${id}/activity?limit=${limit}`),
 
-  parties: (search?: string) =>
-    request<Paginated<Party>>(
-      `/api/parties${search ? `?search=${encodeURIComponent(search)}` : ''}`,
-    ),
+  parties: (search?: string, limit?: number, offset?: number) =>
+    request<Paginated<Party>>(`/api/parties${pagedQuery(search, limit, offset)}`),
   createParty: (input: PartyInput) => post<Party>('/api/parties', input),
-  partyVariants: (partyId: string) =>
-    request<PartyProductVariant[]>(`/api/parties/${partyId}/variants`),
-
-  products: (search?: string) =>
-    request<Paginated<Product>>(
-      `/api/products${search ? `?search=${encodeURIComponent(search)}` : ''}`,
-    ),
+  /**
+   * `baseFieldHlc` is what the form last saw for each field. Sent so the
+   * Master's merge can tell an ordinary sequential edit from a real clash
+   * against whatever an Office panel changed in the meantime — the same
+   * envelope the Office's own `updateParty` sends.
+   */
+  updateParty: (id: string, input: PartyInput & { baseFieldHlc?: Record<string, string> }) =>
+    request<Party>(`/api/parties/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   createProduct: (input: ProductInput) => post<Product>('/api/products', input),
   categories: () => request<ProductCategory[]>('/api/categories'),
 
@@ -567,7 +596,6 @@ export const api = {
     maxStockLevel?: number | null;
   }) => post<InventoryStockLevel>('/api/stock/reorder-level', input),
 
-  createLead: (input: LeadInput) => post<Lead>('/api/leads', input),
   leads: (
     options: { stageIds?: string[]; includeConverted?: boolean; scope?: PartyScopeFilter } = {},
   ) => {

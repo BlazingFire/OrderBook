@@ -17,6 +17,7 @@
  */
 
 import { useState } from 'react';
+import { resolveCompanyFeatures } from '@orderbook/shared';
 import type { Lead } from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
@@ -52,6 +53,8 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
   const [expectedDate, setExpectedDate] = useState('');
   const [busy, setBusy] = useState(false);
   const colourHex = useColourHex(view.optionLists);
+  // `leads.packagingRequiredOnConvert`. Resolved at this panel's edge.
+  const packagingRequired = resolveCompanyFeatures(view.features).packagingRequiredOnConvert;
 
   const pipeline = view.pipelines.find((candidate) => candidate.kind === 'lead');
   const stages = [...(pipeline?.stages ?? [])].sort((a, b) => a.sequence - b.sequence);
@@ -68,7 +71,9 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
     }
   }
 
-  const missingPackaging = lead.items.filter((item) => !item.packaging?.trim());
+  const missingPackaging = packagingRequired
+    ? lead.items.filter((item) => !item.packaging?.trim())
+    : [];
   const totalPieces = lead.items.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
@@ -118,10 +123,18 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
                     </span>
                   </div>
                   <div className="ob-line-meta">
+                    {/* The "not chosen" pill is gated too, not just the
+                        conversion button — it used to render unconditionally,
+                        so with the switch off every line still wore a red
+                        conflict pill about a rule the company had turned off. */}
                     {item.packaging ? (
                       <StatusPill>{item.packaging}</StatusPill>
                     ) : (
-                      <StatusPill tone="conflict">{t('lead.detail.packagingNotChosen')}</StatusPill>
+                      packagingRequired && (
+                        <StatusPill tone="conflict">
+                          {t('lead.detail.packagingNotChosen')}
+                        </StatusPill>
+                      )
                     )}
                     {/* The grade the line was sold as. Absent on plenty of
                         lines, so there is no "not chosen" state for it. */}

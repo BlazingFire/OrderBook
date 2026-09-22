@@ -1,6 +1,6 @@
 /**
  * The i18n subsystem's own barrel, nested rather than flattened into
- * `shared/src/index.ts` — nine files would otherwise bury the eleven lines
+ * `shared/src/index.ts` — ten files would otherwise bury the eleven lines
  * that describe the rest of the product's public surface.
  */
 
@@ -10,5 +10,6 @@ export * from './errors.js';
 export * from './hi.js';
 export * from './keys.js';
 export * from './locales.js';
+export * from './panel-scoped.js';
 export * from './pseudo.js';
 export * from './translate.js';

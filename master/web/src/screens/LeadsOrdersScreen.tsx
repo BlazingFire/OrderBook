@@ -5,17 +5,27 @@
  * Master itself under Leads & orders › New lead. What the owner can do here is
  * progress a record, convert a lead, and dispatch an order — the decisions
  * that belong to whoever is watching the whole board.
+ *
+ * **Delete lives here too**, under `leads.delete` / `orders.delete`. The routes
+ * and the permissions shipped long ago; `api.deleteLead` and `api.deleteOrder`
+ * simply had no caller in either panel, so four of the Recycle Bin's nine
+ * entity types could never reach the bin in the first place. A delete is soft —
+ * the record goes to the Recycle Bin and can be restored — and the server
+ * refuses it with a 409 when something live still points at the record, which
+ * is rendered as the reason rather than as a generic failure.
  */
 
 import { useEffect, useState } from 'react';
 import type { Lead, LineItem, Order, PartyScopeFilter, Pipeline } from '@orderbook/shared';
 
-import { api } from '../api';
+import { ApiError, api } from '../api';
 import {
   Button,
+  ConfirmDialog,
   ConflictBanner,
   DataTable,
   EmptyState,
+  IconButton,
   Segmented,
   Select,
   SkeletonTable,
@@ -35,9 +45,18 @@ type View = 'leads' | 'orders' | 'converted';
 interface Props {
   /** Bumped by the live socket whenever lead or order data changes. */
   revision: number;
+  /** The signed-in caller's own resolved permissions. */
+  permissions: string[];
   /** Which list is showing — chosen here or from the sidebar's sub-pages. */
   view: View;
   onViewChange: (view: View) => void;
+  /**
+   * `leads.packagingRequiredOnConvert`, already coalesced by the shell.
+   *
+   * A prop rather than a read here, because this screen's `view` is a tab name
+   * — it has no snapshot to resolve from.
+   */
+  packagingRequired: boolean;
 }
 
 /**
@@ -73,7 +92,13 @@ function summariseItems(items: LineItem[]): { text: string; title: string } {
   };
 }
 
-export function LeadsOrdersScreen({ revision, view, onViewChange }: Props) {
+export function LeadsOrdersScreen({
+  revision,
+  permissions,
+  view,
+  onViewChange,
+  packagingRequired,
+}: Props) {
   /**
    * "All" is everything this person may see — which, for somebody without
    * `party.accessAll`, already excludes other people's parties, so it is never
@@ -87,6 +112,15 @@ export function LeadsOrdersScreen({ revision, view, onViewChange }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  /** The record a delete is being confirmed for, and which list it came from. */
+  const [pendingDelete, setPendingDelete] = useState<{
+    kind: 'lead' | 'order';
+    id: string;
+    label: string;
+  } | null>(null);
+
+  const canDeleteLeads = permissions.includes('leads.delete');
+  const canDeleteOrders = permissions.includes('orders.delete');
 
   useEffect(() => {
     void api
@@ -127,6 +161,47 @@ export function LeadsOrdersScreen({ revision, view, onViewChange }: Props) {
       cancelled = true;
     };
   }, [view, scope, revision]);
+
+  /**
+   * A refused delete is usually not a failure to report as one. The server
+   * answers 409 with `blockedBy` naming what still points at the record —
+   * `live_reference` for a line item, `stock_on_hand` for reserved stock,
+   * `dispatched` for an order already gone out — and the operator needs that,
+   * not "could not delete".
+   */
+  function deleteFailureMessage(caught: unknown, fallback: string): string {
+    if (caught instanceof ApiError && caught.isConflict) {
+      const labels = caught.blockedBy
+        .map((blocker) => (blocker as { label?: string }).label)
+        .filter((label): label is string => Boolean(label));
+      return labels.length > 0
+        ? t('leadsOrders.delete.blocked', { items: labels.slice(0, 3).join(', ') })
+        : t('error.conflict.blockedByLiveReferences');
+    }
+    return caught instanceof Error ? caught.message : fallback;
+  }
+
+  async function confirmDelete(): Promise<void> {
+    if (!pendingDelete) return;
+    const { kind, id } = pendingDelete;
+
+    setBusyId(id);
+    setError(null);
+    try {
+      await (kind === 'lead' ? api.deleteLead(id) : api.deleteOrder(id));
+      setPendingDelete(null);
+      // The list is rebuilt from the server rather than spliced: a delete can
+      // cascade, and a spliced list would show the cascade's other victims
+      // until something else happened to refetch.
+      if (kind === 'lead') setLeads((current) => current.filter((lead) => lead.id !== id));
+      else setOrders((current) => current.filter((order) => order.id !== id));
+    } catch (caught) {
+      setError(deleteFailureMessage(caught, t('leadsOrders.delete.failed')));
+      setPendingDelete(null);
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   const leadStages = pipelines.find((pipeline) => pipeline.kind === 'lead')?.stages ?? [];
   const orderStages = pipelines.find((pipeline) => pipeline.kind === 'order')?.stages ?? [];
@@ -265,9 +340,17 @@ export function LeadsOrdersScreen({ revision, view, onViewChange }: Props) {
     {
       key: 'actions',
       header: '',
-      width: rem(240),
+      width: rem(280),
       render: (order) => (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--s-8)',
+            justifyContent: 'flex-end',
+            width: '100%',
+          }}
+        >
           {order.dispatchedAt ? (
             <StatusPill tone="ok">
               {t('leadsOrders.orders.dispatched', { when: formatDateTime(order.dispatchedAt) })}
@@ -287,6 +370,17 @@ export function LeadsOrdersScreen({ revision, view, onViewChange }: Props) {
             >
               {t('leadsOrders.orders.dispatch')}
             </Button>
+          )}
+          {/* Absent, not greyed, without the permission — the house rule. */}
+          {canDeleteOrders && (
+            <IconButton
+              icon="trash"
+              label={t('leadsOrders.delete.order')}
+              disabled={busyId === order.id}
+              onClick={() =>
+                setPendingDelete({ kind: 'order', id: order.id, label: order.id })
+              }
+            />
           )}
         </div>
       ),
@@ -393,11 +487,20 @@ export function LeadsOrdersScreen({ revision, view, onViewChange }: Props) {
     {
       key: 'actions',
       header: '',
-      width: rem(200),
+      width: rem(240),
       render: (lead) => {
-        const missingPackaging = lead.items.some((item) => !item.packaging?.trim());
+        const missingPackaging =
+          packagingRequired && lead.items.some((item) => !item.packaging?.trim());
         return (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--s-8)',
+              justifyContent: 'flex-end',
+              width: '100%',
+            }}
+          >
             {lead.convertedOrderId ? (
               <span className="ob-small">
                 {t('leadsOrders.leads.convertedOrder', { id: lead.convertedOrderId })}
@@ -415,6 +518,16 @@ export function LeadsOrdersScreen({ revision, view, onViewChange }: Props) {
               >
                 {t('leadsOrders.leads.convert')}
               </Button>
+            )}
+            {canDeleteLeads && (
+              <IconButton
+                icon="trash"
+                label={t('leadsOrders.delete.lead')}
+                disabled={busyId === lead.id}
+                onClick={() =>
+                  setPendingDelete({ kind: 'lead', id: lead.id, label: lead.id })
+                }
+              />
             )}
           </div>
         );
@@ -473,6 +586,21 @@ export function LeadsOrdersScreen({ revision, view, onViewChange }: Props) {
           }
         />
       )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        tone="danger"
+        busy={busyId !== null}
+        title={
+          pendingDelete?.kind === 'order'
+            ? t('leadsOrders.delete.order.title', { id: pendingDelete.label })
+            : t('leadsOrders.delete.lead.title', { id: pendingDelete?.label ?? '' })
+        }
+        body={t('leadsOrders.delete.body')}
+        confirmLabel={t('common.delete')}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => void confirmDelete()}
+      />
     </div>
   );
 }

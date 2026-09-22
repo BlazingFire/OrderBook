@@ -16,20 +16,29 @@
 import { createContext, useContext, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 
-/** Return false to refuse the reset — typically after asking the operator. */
-type ResetGuard = () => boolean;
+/**
+ * Return false to refuse the reset — typically after asking the operator.
+ *
+ * Promise-returning, because asking is now a themed `ConfirmDialog` rather than
+ * `window.confirm`. `window.confirm` blocks the renderer to produce its
+ * boolean, which is exactly what made a synchronous contract possible and
+ * exactly what makes it the wrong dialog in Electron: unthemed, untranslated,
+ * and showing the page origin in its title bar on Windows. A guard that has
+ * nothing to ask may still return a plain boolean — `await` accepts both.
+ */
+type ResetGuard = () => boolean | Promise<boolean>;
 
 interface ResetApi {
   set: (guard: ResetGuard | null) => void;
   release: (guard: ResetGuard | null) => void;
   /** True if the reset may proceed. */
-  ask: () => boolean;
+  ask: () => Promise<boolean>;
 }
 
 const ResetContext = createContext<ResetApi>({
   set: () => undefined,
   release: () => undefined,
-  ask: () => true,
+  ask: () => Promise.resolve(true),
 });
 
 export function ResetProvider({ children }: { children: ReactNode }) {
@@ -45,8 +54,8 @@ export function ResetProvider({ children }: { children: ReactNode }) {
     release(guard) {
       if (current.current === guard) current.current = null;
     },
-    ask() {
-      return current.current ? current.current() : true;
+    async ask() {
+      return current.current ? await current.current() : true;
     },
   }).current;
 
@@ -66,7 +75,7 @@ export function useResetGuard(guard: ResetGuard | null): void {
 }
 
 /** The shell's side: ask the visible screen, then reset it if it agrees. */
-export function useResetGate(): () => boolean {
+export function useResetGate(): () => Promise<boolean> {
   const { ask } = useContext(ResetContext);
   return ask;
 }

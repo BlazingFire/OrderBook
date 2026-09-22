@@ -41,6 +41,8 @@ PDF Designer (Documents module) on 2026-09-19 — the Reports PDF export stays.
 | The product trim, pricing removed, multi-colour lines (2026-09-21) | `docs/ai-handoffs/product-master-trim.md` |
 | The 2026-08/09 overhaul designs (stages 0–12, all implemented) | `docs/overhaul/` |
 | Multi-agent workflow and per-session change log | `docs/AI_COLLABORATION.md` |
+| Where every file lives, and where a change goes | `docs/CODE_MAP.md` |
+| What to do next, and the decisions waiting on the owner | `docs/NEXT_PHASE.md` |
 
 `docs/overhaul/` and `docs/backend-modules/` are cited from source comments
 as design rationale. They were written before the code and several of their
@@ -113,6 +115,74 @@ against the code before acting on it.
   The v1.1.0 `reload:catalog --with-catalog` script calls that same loader
   (its CSV path is gone). The laptop's `order_book_new` was migrated on
   2026-09-21.
+## Current state (2026-09-17)
+
+- **Version 1.1.0.** The work of 2026-09-17 is on
+  **`claude/hopeful-lovelace-q6f57v`**, pushed and ahead of `main`
+  (`git rev-list --count origin/main..origin/claude/hopeful-lovelace-q6f57v`).
+  **It has not been merged.** Merge it to `main` — the standing convention that
+  work lands on `main` still holds; this branch exists because the session was
+  required to use one. `dev` and the older `claude/*` branches are historical
+  and behind — do not branch from them.
+- **Every stage of the overhaul programme is implemented**, and as of
+  2026-09-17 **fourteen of the nineteen open handoff briefs are closed** —
+  including all three that were blocking. See "Recent sessions" and
+  `docs/ai-handoffs/README.md`.
+- **Fifteen company settings**, in four groups on the Settings tab. Adding one is
+  a single entry in `shared/src/domain/settings.ts` plus two i18n tokens — no
+  migration, no column, because the table is one row per key and an absent row
+  means the declared `fallback`. The dividing line is written at the top of
+  that file: *if two people at the same PC should see it differently it is
+  localStorage; if it is a decision the company made once, it is a setting
+  here.*
+- **Verify gate:** `npm run verify` = `lint` + `typecheck` (all workspaces,
+  both Electron shells, the test tsconfigs) + `vitest run`. Run the three steps
+  separately and check each exit code.
+  **Last run 2026-09-18: lint 0, typecheck 0, build 0, and — for the first
+  time — every suite executed: 140 files / 1750 tests passing, 0 skipped.**
+  As root the integration suites still skip (43 files / 588 tests), because
+  PostgreSQL refuses to start as root. Running them needs a non-root account;
+  the recipe is in `docs/NEXT_PHASE.md` §2, and it is worth the two minutes.
+  **A skipped suite prints like a passing one — check the count.**
+- **The suite was not green before this session, and not for a code reason.**
+  Thirteen tests across `updates.test.ts` and `github-releases.test.ts` failed
+  on any non-Windows checkout: their fixtures describe Windows releases while
+  the code under test defaults to `process.platform`. Two more (UPD-4, UPD-5)
+  passed *vacuously* off Windows — the manifest was discarded for the wrong OS
+  before the check under test ran. Fixed by pinning the platform where the test
+  is not about platform. If you are on Windows you would never have seen this.
+- **Builds:** `npm run build` is green for shared, both servers and both web
+  bundles — **and now runs on Linux and macOS too**. The Windows esbuild
+  failure (`remove …\esbuild-…: Access is denied`, a Defender lock on the
+  helper binary) is still fixed by pointing `TEMP`/`TMP` at a project-local
+  `.tmp/` (gitignored), but that fix had been written in `cmd` inside an npm
+  script, so `npm run build` died with `sh: 1: Syntax error` anywhere but
+  Windows. It is `tools/build-web.mjs` now. Two things that script has to get
+  right, both learned the hard way: it resolves `tsc`/`vite` from
+  `node_modules/.bin` **by path** (a global TypeScript 6 on PATH rejects the
+  side-effect CSS imports TS 5.9 accepts), and it uses `process.cwd()`, not
+  `INIT_CWD` — under `--workspace` the latter is the repo root.
+- **Installers:** `C:\OrderBook-Releases` still holds the 1.0.3 setup files.
+  `npm run release` (electron-builder) hangs on the owner's PC. Build inputs
+  are refreshed; a release run on a healthy machine (or after a reboot /
+  Defender exclusion for the repo) should work. **This is still owed.**
+- **Hindi is 1,737 strings behind, and is now reachable.** `hi.ts` is a *total*
+  record — the type demands it — but `npm run i18n:sync` fills a missing key
+  with the English text and a `// TODO(i18n-hi)` marker, and that backlog has
+  grown to 1,737 of them. So a Hindi panel is mostly in English today, and no
+  test can see it: the parity check only asserts the key exists. `grep -c
+  'TODO(i18n-hi)' shared/src/i18n/hi.ts` is the real number. Every key added on
+  2026-09-17 was translated by hand rather than added to the pile.
+  **Until 2026-09-17 there was no way to select Hindi at all** — `ob.locale`
+  was read on every render and written nowhere in the tree. Settings →
+  Appearance has a picker now, and a browser profile that has never chosen
+  adopts `ORDERBOOK_DEFAULT_LOCALE` once at boot. That makes the backlog
+  visible to anyone who tries it, which it was not before.
+- **Live database on the owner's PC:** external PostgreSQL via `.env`
+  `DATABASE_URL` (database `order_book`). Catalogue currently holds 0
+  products and 3 sample parties (P-0001…P-0003) after the 2026-09-12 wipe;
+  `npm run reload:catalog --workspace @orderbook/master` re-imports the
+  547-row SWISWARE 2026 CSV from `dummy-data/` (untracked, operator-supplied).
 
 ## How to run
 
@@ -159,6 +229,9 @@ docs/          all prose; nothing source-of-truth lives in a code comment
 .agents/skills/ui-consistency/   the same UI rule in the shape Muse Code discovers
 ```
 
+- **Layout:** `docs/CODE_MAP.md` is the map — every workspace and directory,
+  what each is for, where a given kind of change goes, and which test guards
+  what. Read it before hunting for a file.
 - **UI:** import from `@orderbook/ui`; never copy a component into a panel
   (`master/tests/no-duplicate-ui.test.ts` fails if one grows its own kit).
   Per-panel differences (name, default theme, storage key) come from
@@ -188,6 +261,26 @@ docs/          all prose; nothing source-of-truth lives in a code comment
   A line also carries a **grade** from the `line.grade` list
   (`line_items.grade`, 2026-09-22) — a line attribute, never a catalogue one,
   so the same variant can be sold as two grades on two lines.
+- **A screen both panels need lives in `ui/` and takes a `transport`**, never a
+  panel's api client. `NewLeadScreen`, `DocumentsScreen` and `PartyFormModal`
+  all do this, and `ui/tests/no-transport-dep.test.ts` holds the line. The two
+  clients genuinely differ — the Office's `createParty` resolves to a
+  `QueuedResult` carrying an outbox id, the Master's to a whole `Party` — so a
+  shared component that knew either one would have to know which panel it was
+  on.
+- **Errors reach a screen through `apiErrorText`** (`ui/src/errorText.ts`):
+  the specific `messageKey`, failing that the coarse `error.<code>` token,
+  failing that English. Rendering `caught.message` shows the server's English
+  and throws the key away — which is what every screen did until 2026-09-17.
+- **A 401 is announced, not just thrown.** `send()` in both clients publishes
+  through `ui/src/sessionEnded.ts`; both shells subscribe and drop to sign-in
+  with a reason. Anything that invalidates a session should give that reason a
+  key.
+- **Company switches** (`pricing.enabled`, `inventory.freeToSell`) ride on
+  `SignedInUser.features` (Master) and `SyncSnapshot.features` (panels), built
+  by `master/src/services/company-features.ts`. Pricing off strips the four
+  `field.*Rate.*` keys from every resolved permission set
+  (`master/src/services/pricing-gate.ts`) so the existing masking does the rest.
 
 ## Working agreements
 
@@ -291,6 +384,34 @@ adapter did — the Office screen is the one that was walked through.
 Catalogue's *Missing weight* filter is the worklist. Uncoded catalogue items
 carry slug codes (`HEXA-URINAL`, `DAMRU-WHITE`, …) to replace on the product
 form.
+**Code:** five briefs remain in `docs/ai-handoffs/` — **that README is the
+queue and it is current**. Nothing blocking is left. In order:
+
+1. **There is no way to look at a product photo.** `ProductDetail.tsx` has no
+   reference to `product.images` at all, so the `large` (800px) and `master`
+   (2048px) variants encoded on every upload are never requested by anything.
+   For a ceramics catalogue that is the primary use of a photo. The image UI is
+   also entirely untranslated (`ProductImages.tsx` imports no `t`).
+2. **The New Product form is still 29 fields** — the owner's own complaint. The
+   permission defects around it are fixed; the reorganisation is deliberately
+   its own commit so a permission fix is not buried in a layout diff.
+3. **No route from a party to its access editor** — the owner's "no option for
+   assign party". Assigning is reachable only from a separate admin-tier nav
+   entry, so somebody looking at a party record cannot get to "who can see this".
+4. **Reset password has no self-exclusion**: an administrator resetting their own
+   password signs themselves out with no warning. Also
+   `invalidateSessionsForUser` records no *reason*, so the sign-in screen says
+   "your session ended" rather than naming the password change — the token
+   `signIn.notice.passwordChanged` exists and is waiting for it.
+5. **The Recycle Bin has no exit, and that needs an owner decision, not code.**
+   Nothing is ever deleted for good: tombstoned rows, the sealed password of a
+   deleted user, and the image files of a deleted product all accumulate
+   forever. Three coherent options are written up in the brief. **Do not
+   implement one until the owner picks.**
+
+**Also owed, and not in a brief:** the Hindi catalogue is 1,737 strings behind
+(see "Current state"), and nothing can detect it — the parity test only checks
+that a key exists, not that it was translated.
 
 **Manual:**
 
@@ -306,11 +427,29 @@ form.
   the live path is unexercised).
 - Rebuild the 1.1.0 installers on a machine where electron-builder runs.
 
-Open questions still unanswered by the owner: extra party fields (GST/tax
-id, credit terms, multiple contacts); concurrent edits of one lead from two
-panels (last-write-wins is the default); app name/branding.
+Open questions still unanswered by the owner: extra party fields (credit terms,
+multiple contacts — GST is already a field); concurrent edits of one lead from
+two panels (last-write-wins is the default); app name/branding; and the Recycle
+Bin retention policy above.
 
 ## Traps worth knowing
+
+- **A test fixture pinned to `win32` passes only on Windows, or worse, passes
+  vacuously everywhere.** `updates.test.ts` and `github-releases.test.ts`
+  published Windows manifests and called APIs that default to
+  `process.platform`; thirteen tests failed on Linux and two passed *without
+  reaching the check they were about*, because the manifest was discarded for
+  the wrong OS first. Pin the platform explicitly in a test that is not about
+  platform.
+- **A guard can pass against the very bug it was written for.** Two written on
+  2026-09-17 did: one searched the whole file for `tab === 'addLead'` and was
+  satisfied by an unrelated line fifty lines above the defect; the other listed
+  a renamed panel in a fixture the repository's own filter would never return.
+  Both were rewritten. Break the code, watch it go red, put the code back —
+  and check the assertion is reaching the thing it names.
+- **An integration suite that skips is not a suite that passed.** PostgreSQL
+  will not start as root, so on a root checkout every one of the 42 integration
+  files skips and the summary line still reads green. Check the skip count.
 
 - **An update used to be a full record replace and silently nulled every
   column the form did not show.** Fixed by the one column map; `columnPatch()`
@@ -682,6 +821,308 @@ which the laptop line had superseded. `line_items.category_name` from
 v1.1.0 is kept and filled. The merge commit landed on 2026-09-21 once
 `npm run verify` was green on the merged tree: lint and typecheck clean,
 117 test files / 1427 tests, none skipped.
+### 2026-09-18 — The Mac and Linux panel builds (Claude)
+
+Same branch. The clean-install tool built the session before ships for three
+platforms and cleans up after installations that, on two of them, could not
+exist. The owner asked for that to stop being true.
+
+**Four defects, none of which any test, lint or typecheck could see.**
+
+1. `vendorPostgres()` hardcoded `windows-x64` in the source path, the error
+   text and the "run this to fix it" hint. `TARGETS[*].postgres` named the
+   right package per OS, was documented as the thing that stops a Mac build
+   shipping a database it cannot start — and **had no consumer at all**. A
+   `--os mac` Master would have vendored Windows binaries.
+2. Neither panel's `electron-builder.yml` had a `linux:` block, while
+   `TARGETS.linux` asked electron-builder for `--linux` and then looked for an
+   `AppImage` filename nothing had told it to produce.
+3. `allowScripts` approved only the Windows `@embedded-postgres` package. That
+   postinstall is not the download — the tarball ships `native/**` — it is
+   `hydrate-symlinks.js`, recreating 14 SONAME symlinks in `native/lib/`.
+   Windows has none to lose, which is exactly why this was invisible.
+4. `arch: [universal]` on macOS could not work as configured: electron-builder
+   packs twice and merges, but `extraResources` is identical in both halves, so
+   the merged app carried one architecture's PostgreSQL for an audience of two.
+   `mergeASARs` and friends all operate inside the asar and `vendor/` is not.
+
+**The shape of the fix.** `vendorPostgres()` now takes its packages from the
+target: one package keeps today's flat `vendor/postgres/{bin,lib,share}`, two
+get an arch level, and macOS is the two-package case. `candidateBinDirs()` tries
+`vendor/postgres/<process.arch>/bin` before the flat path — no platform
+conditional, Windows and Linux simply miss the first candidate.
+`resolveBinDir()` checks `X_OK` rather than existence, because a copy that lost its executable
+bit used to report "found" and fail later inside `initdb` with a message naming
+none of this. And the build verifies its own output: `initdb`, `pg_ctl` and
+`postgres` present, executable, `share/` non-empty, or the release stops.
+
+**The `.deb` is new, and it changed the uninstaller.** electron-builder names a
+Debian package's desktop entry, its hicolor icons and its `/usr/bin` symlink
+after `executableName`, not after the product — so a sweep that only knew
+"OrderBook Master Panel" walked past all three. `exec_of()` in
+`uninstall-orderbook.sh` is what closes that, and it was checked against a real
+extracted `.deb`, not against a guess.
+
+**Verified for real on this Linux container**: both panels built to AppImage and
+`.deb`; the packaged `initdb`/`pg_ctl`/`postgres` run and report 17.10; the 14
+`lib/` symlinks are there; the packaged Master, launched under `xvfb-run` as a
+non-root account, **created its own cluster and database** and answered
+`/api/health` with `status: ok`. That one run proves the whole chain at once —
+vendoring, staging, packaging, discovery, execution. The full suite then ran
+non-root: **144 files, 1815 tests, nothing skipped.**
+
+**Not verified, and it cannot be from here:** the macOS build. `assertTarget()`
+refuses `--os mac` anywhere but macOS by design, so the universal packaging, the
+two-architecture layout and the `process.arch` branch are reasoned and guarded
+by `master/tests/packaging-invariants.test.ts` — five guards, each watched
+failing against the defect it names — rather than executed. The new CI matrix is
+what will run them first.
+
+### 2026-09-18 — A standalone clean-install tool (Claude)
+
+Same branch. The owner asked for a dedicated installer that detects what the
+software has left on a PC, removes it, and then installs fresh from a given
+setup path.
+
+**Most of it already existed and was in the wrong place.**
+`tools/uninstall/uninstall-orderbook.{ps1,sh}` have known the complete footprint
+for a long time — registry keys, per-profile caches, shortcuts, firewall rules,
+relocated data folders — and `-DryRun` prints the whole plan. But they ship
+*inside* both setup files, so on the machine that needs them (the one too broken
+to start) they are unreachable. The new tool is the same two scripts, in a
+program that runs from a USB stick.
+
+**One copy of each script, four callers**: the app's Settings → Developer, both
+NSIS uninstallers, and now `cleaner/`. A second inventory of what this product
+installs is how the thing claiming to remove everything comes to miss something.
+
+**The step that is new** is the verify pass: after erasing, it re-runs the dry
+run and reports what survived. Every other entry point reports success because
+a script exited zero.
+
+**Where things live:** `cleaner/` is packaging only — builder config, icon, one
+static HTML page. The logic is `electron/lib/cleaner/` and `electron/cleaner.main.ts`,
+because `electron/tsconfig.json` owns that tree and `rootDir` will not span
+workspaces. `sweepCommand` sits in `electron/lib/uninstall.ts` with the other
+pure command builders, so the flag spellings stay in one tested place.
+
+**Three defects fixed on the way**, each of which would have made the tool
+quietly wrong: the shell script ignored `ORDERBOOK_RELEASES_DIR`; it had no
+Linux branch at all; and `-KeepData`/`--keep-data` is spelled in five files that
+never import one another, with **erase** as every side's default, and nothing
+checked they agreed. They are checked now.
+
+**Verified for real on Linux**: a seeded footprint of seven items detected,
+three data folders copied, eight removed, zero leftovers, backup intact. The
+AppImage builds, starts and loads.
+
+**Not verified, and it cannot be from here:** the Windows `.exe` and the macOS
+`.dmg`. `release.mjs` refuses a cross-compile by design, so the `.ps1` path has
+unit tests over captured output and nothing else.
+
+*(Updated later the same day: the panel builds this tool cleans up after now
+exist on Linux and are configured for macOS — see the session above.)*
+
+### 2026-09-18 — The six deferred settings, and the switch nobody was receiving (Claude)
+
+Same branch. The owner asked for the six settings `docs/NEXT_PHASE.md` had held
+back pending their decision; asking was the gate, and they opened it.
+
+**Fifteen company settings now, four groups.** The six:
+`security.offlineSignInEnabled`, `inventory.adjustmentNoteRequired`,
+`catalog.defaultUom`, `catalog.importCreatesCategories`,
+`leads.followUpDefaultDays`, `leads.packagingRequiredOnConvert`. Every fallback
+is today's behaviour.
+
+**The finding that mattered more than any of them: a company switch never
+reached a panel after its first snapshot.** `writeSetting` published nothing,
+and could not — `'setting'` was not a `ChangedEntity` at all. A connected panel
+never heard a flip; a reconnecting one took a delta, and `SyncDelta` carries no
+`features`. There is no periodic resnapshot. **`inventory.freeToSell` has
+shipped with this**, so a shop that turned it off and saw its panels ignore it
+was not imagining things. Fixed by one list entry —
+`SNAPSHOT_FORCING_ENTITIES` — which buys the live refresh and the delta refusal
+together. **This is a behaviour change to a shipped switch**: panels obey a flip
+now that they used to ignore.
+
+**Two traps worth knowing before the sixteenth setting:**
+
+- **An optional `CompanyFeatures` field left unresolved typechecks cleanly.**
+  Every field but `freeToSell` is optional and has to be
+  (`shared/tests/wire-optionality.test.ts` says why). So a switch added to the
+  interface and forgotten in `company-features.ts` ships, reads as `undefined`
+  everywhere, is taken as "as before", and decides nothing — with no screen
+  broken and no test red. `master/tests/company-features-complete.test.ts` is
+  the only thing in the tree that catches it.
+- **`??`, never `||`.** Four switches are booleans whose fallback is `true`, so
+  `||` re-enables every one a company turned off; and `followUpDefaultDays`' `0`
+  is both its fallback and a real answer. `resolveCompanyFeatures()` is the one
+  place that coalesces, and it reads the fallbacks from `SETTINGS` rather than
+  restating them — there were eleven hand-written `?? true` reads across the two
+  panels before it.
+
+**`SettingControl` gained a third kind, `select`**, for `catalog.defaultUom`.
+The `never` arm in `SettingsScreen` failed the build until the renderer handled
+it, which is exactly what that field is for.
+
+**A correction to the previous entry:** `leads.packagingRequiredOnConvert` was
+reported here as a documented-but-unwired rule. It was wired all along, at
+`master/src/domain/conversion.ts`. That file carries a literal NUL byte at
+offset 3175, so `grep` answers "binary file matches" and shows nothing. **Read
+it with `readFileSync`, not `grep`.**
+
+**Also fixed:** a Knex `.update(raw)` I shipped broken last round in
+`reports.integration.test.ts` — it throws before any SQL is built, and printed
+as "skipped" because the suite skips. Found by reading, not running.
+
+**The integration suites ran.** For the first time in this project's recorded
+history: a non-root account exists on this machine now, and
+`npx vitest run --config <a copy in a writable dir> --root /home/user/OrderBook`
+executes them. See §2 of `docs/NEXT_PHASE.md`.
+
+### 2026-09-17 — Five company settings, a grouped Settings tab, a language picker (Claude)
+
+Same branch, `claude/hopeful-lovelace-q6f57v`, **not yet merged**. The owner's
+"add more necessary settings in settings tab / simplify it".
+
+**The five, and what each replaces:**
+
+| Setting | Was |
+|---|---|
+| `panels.autoPairingEnabled` | auto pairing always available behind the 5-minute window |
+| `security.developerModeEnabled` | developer mode reachable by any signed-in person, always |
+| `security.sessionHours` | a hardcoded 12 in `config/index.ts` |
+| `inventory.defaultReorderLevel` | `reorder_level` NULL on every row a movement creates, so "Low stock" read 0 until somebody typed a number on each line by hand |
+| `leads.quietAfterDays` | a 30 the code itself called "a designer's placeholder, not the owner's number" |
+
+Defaults preserve the previous behaviour exactly, so every test turns its
+switch *away* from the default — a suite run at the defaults would pass against
+a switch wired to nothing.
+
+**Two traps these hit, worth knowing before adding the tenth setting:**
+
+- **A second independent read wins silently.** `signIn` stamped the session from
+  the setting while `auth.routes.ts` set the cookie from `config.session.ttlMs`.
+  The service returns `sessionTtlMs` now and the route uses it; neither may read
+  the number twice.
+- **`Number(null)` is 0.** `countLowStock` filtered `whereNotNull('reorder_level')`
+  and then compared in JS. With a company default of 0 that reads "no default"
+  and "flag anything empty" as the same thing. The filter is gone and the
+  comparison is explicit.
+
+**Simplified:** the tab renders from a declared `control` per setting rather
+than from `typeof value` — which deleted a dead branch that printed
+`JSON.stringify` beside the words "edited elsewhere" — and groups the settings
+under four headings. Numbers save on a button, not per keystroke. Save feedback
+is per row. The vault hint was replacing the help text instead of sitting under
+it. `.ob-tabs` scrolls: at 157% on a 1366px screen the later tabs could not be
+reached at all. The Master opens on Company.
+
+**The language picker is the largest thing here and is not a setting.**
+`ob.locale` was read at `ui/src/i18n.ts` and written nowhere in the tree, and
+both boot endpoints had served `defaultLocale` since the config was written with
+no reader — a complete Hindi catalogue nobody could switch to. Appearance has a
+picker; a fresh profile adopts `ORDERBOOK_DEFAULT_LOCALE` once, behind the
+splash, and never again (it is a default, not something re-imposed at each
+boot). `.env.example` documents both locale variables for the first time.
+
+**A security fix alongside:** `createUser` and `resetPassword` hashed whatever
+password arrived, with no length check, while `changeOwnPassword` had enforced
+eight characters since it was written. The weaker pair was the one that mints
+accounts and the one that resets a locked-out person's password. One
+`assertPasswordLongEnough` in `master/src/lib/password.ts` now, applied to the
+supplied value and never to the generated fallback — checking after the fallback
+would enforce nothing, since a generated password always passes.
+
+Also: 15 dead `settings.appearance.*` keys deleted (zero call sites, two
+catalogues); the Office's storage card shows the free space its own endpoint had
+been serving to nobody; `PANEL_SCOPED` moved to `shared/src/i18n/panel-scoped.ts`
+because the call-site guard had grown a second copy of the list.
+
+Verified: lint 0, typecheck 0, build 0, 87 files / 1041 tests. **Thirteen
+deliberate breaks, one per new guard, each watched failing.** The integration
+suites still have not run, so the fifteen integration tests added here join the
+four from the earlier round as written-but-never-executed. Nothing seen in a
+browser or Electron.
+
+### 2026-09-17 — Fourteen briefs closed, four privilege holes, the test suite made portable (Claude)
+
+Branch `claude/hopeful-lovelace-q6f57v`, **not yet merged to `main`**. Read `docs/ai-handoffs/README.md` for what is left.
+
+**The three blocking briefs, all closed:**
+
+- **An Office lead raised against a party created on the same panel was
+  silently lost.** `route()` in `sync.service.ts` resolved only
+  `mutation.entityId` through `id_map`, so `payload.partyId` arrived as the
+  temporary id the panel minted; `createLead` threw `validation.lead.
+  partyMissing`; `applyOne` recorded that as a **permanent** rejection, so a
+  replay returned the same refusal forever while the panel settled it out of
+  the outbox with the optimistic overlay. `resolvePayloadIds()` now maps
+  `partyId`/`ownerId`/`productId` and `items[].productId` for every mutation
+  kind before the switch, so a kind added later cannot forget.
+- **The Master had no Parties screen.** `api.createParty` had zero callers
+  since the repo restructure, so an administrator at the PC that owns the
+  database had to walk to an Office panel. The form moved to
+  `ui/src/PartyFormModal.tsx` with an injected transport rather than being
+  copied — a copied `PartyAccessScreen` already drifted in four places within a
+  day.
+- **Nothing tested either web application.** Neither `web` workspace matches
+  the vitest glob and neither held a test file. `web-reachability.test.ts` adds
+  the two invariants the existing `screen-reachability.test.ts` does not cover,
+  and both were watched failing against the unfixed code.
+
+**Four privilege/masking holes:** the socket path downgraded a *refused* acting
+token to the panel's own machine authority instead of refusing it (the HTTP
+path already refused, and said so in its own comment); `mrp` was documented as
+gated in two files and enforced in none; all four image mutations returned the
+unmasked product, so a photo upload leaked `purchaseRate` in its 201; and
+`parties.export` was enforced on one transport out of two.
+
+**A refused Office write was invisible to whoever wrote it.** The toast was
+gated on an admin-tier permission the shop-floor staff whose writes get refused
+do not hold, and `lastRejections` was a module variable overwritten on every
+flush including empty ones. Refusals are durable now, in their own file beside
+the outbox, with a section on the Conflicts screen anyone can read and dismiss.
+
+**Also:** self-service password change (the endpoint shipped audited with no UI
+caller); session-loss handling at the one place every request passes through;
+sign-in now says how many attempts are left and how long a lockout has to run,
+in the reader's own language — `apiErrorText` is the client the three-tier
+error pipeline was built for and never had; delete actions for leads, orders
+and parties on the Master, so all nine Recycle Bin entity types are finally
+reachable; `ConfirmDialog` replacing the last four `window.confirm` calls,
+which made `useResetGuard` promise-based; `.ob-popover`/`.ob-menu` given the
+CSS they never had; the sticky table header made to stick; column sorting in
+`DataTable`; contrast tokens at 3:1 and the amber pill at AA; a guard against a
+malformed `panel:report` 500ing the panel admin screen; and a suffix scan so
+two panels cannot be minted with the same name.
+
+**Two things worth knowing about the tests.** Thirteen were failing before any
+of this, on any non-Windows checkout, for a fixture reason rather than a code
+one — and two more passed *vacuously* off Windows. And every guard written this
+round was watched failing against the defect it targets; two were rewritten
+after they passed against broken code, which is exactly the trap this file's
+"guards must be seen to fail" rule exists for.
+
+**New:** `docs/CODE_MAP.md` — the repo's layout, what each directory is for, and
+where a given kind of change goes. Linked from `README.md`, `AGENTS.md` and
+`opencode.md`.
+
+**Decided, so it stops being re-litigated:** *parties live on both panels, the
+product catalogue is Office-only.* `docs/TESTING_PLAN.md` is reconciled against
+the screens that actually render — its §5 asked the tester to create products
+and upload images on the Master, where no such screen exists or will, which is
+how four of the owner's ten QA findings arrived as bug reports for features
+nobody had built. Its AI Assistant section is gone; the feature was deleted on
+2026-09-11.
+
+**Not verified, and it matters:** every integration suite (42 files, 568 tests)
+skipped for this entire session. PostgreSQL will not run as root and the
+container had no other user account. The integration tests written this round —
+the temporary-id resolution, the image masking, PA-14 and PA-15 — **have never
+been executed.** Run them on a normal checkout before trusting them. Nothing
+was run in a browser or in Electron either, so every UI change here is
+typechecked and unseen.
 
 ### 2026-09-14 — Build fix, dead code, bloat removal, handoff rewrite (Claude)
 

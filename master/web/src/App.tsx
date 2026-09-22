@@ -16,16 +16,22 @@ import { useCallback, useEffect, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import type {
   DashboardSummary,
+  MessageKey,
   OfficePanelWithPresence,
   RecycleBinEntityType,
   ReportKind,
   ServerToClientEvents,
   SignedInUser,
 } from '@orderbook/shared';
-import { RECYCLE_BIN_ENTITIES, RESTORE_PERMISSION } from '@orderbook/shared';
+import {
+  RECYCLE_BIN_ENTITIES,
+  RESTORE_PERMISSION,
+  resolveCompanyFeatures,
+} from '@orderbook/shared';
 
 import { ApiError, api, desktopBridge } from './api';
 import {
+  adoptDefaultLocale,
   AppShell,
   Avatar,
   BP_NARROW,
@@ -38,6 +44,8 @@ import {
   KeyboardOverlays,
   KeyboardProvider,
   PaletteButton,
+  ConfirmProvider,
+  onSessionEnded,
   ResetProvider,
   ScreenHost,
   Splash,
@@ -76,6 +84,8 @@ import { InventoryScreen } from './screens/InventoryScreen';
 import { LeadsOrdersScreen } from './screens/LeadsOrdersScreen';
 import { LogsScreen } from './screens/LogsScreen';
 import { PanelsScreen } from './screens/PanelsScreen';
+import { ChangePasswordDialog } from './components/ChangePasswordDialog';
+import { PartiesScreen } from './screens/PartiesScreen';
 import { RecycleBinScreen } from './screens/RecycleBinScreen';
 import { ReportsScreen } from './screens/ReportsScreen';
 import { SETTINGS_TAB_IDS, SettingsScreen } from './screens/SettingsScreen';
@@ -87,6 +97,7 @@ type Tab =
   | 'dashboard'
   | 'panels'
   | 'orders'
+  | 'parties'
   | 'inventory'
   | 'reports'
   | 'access'
@@ -117,6 +128,7 @@ const SCREEN_ENTITIES: Record<string, readonly string[]> = {
   fields: ['option_list', 'custom_field', 'pipeline'],
   access: ['user', 'role'],
   partyAccess: ['party'],
+  parties: ['party'],
   recycleBin: ['lead', 'order', 'party', 'product', 'role', 'user'],
   conflicts: ['sync_conflict'],
 };
@@ -139,13 +151,15 @@ function readHash(): string {
 export function App() {
   return (
     <ToastProvider>
-      <SubNavProvider>
-        <TopbarActionsProvider>
-          <ResetProvider>
-            <MasterPanel />
-          </ResetProvider>
-        </TopbarActionsProvider>
-      </SubNavProvider>
+      <ConfirmProvider>
+        <SubNavProvider>
+          <TopbarActionsProvider>
+            <ResetProvider>
+              <MasterPanel />
+            </ResetProvider>
+          </TopbarActionsProvider>
+        </SubNavProvider>
+      </ConfirmProvider>
     </ToastProvider>
   );
 }
@@ -154,6 +168,9 @@ function MasterPanel() {
   const [phase, setPhase] = useState<Phase>('loading');
   const [user, setUser] = useState<SignedInUser | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const [changingPassword, setChangingPassword] = useState(false);
+  /** Why this window is at the sign-in screen, when it did not sign out itself. */
+  const [signInNotice, setSignInNotice] = useState<MessageKey | null>(null);
   const [tab, setTab] = useState<Tab>('dashboard');
   /*
    * Which sub-page each module is showing, keyed by module. A screen's tabs
@@ -166,7 +183,12 @@ function MasterPanel() {
   const [settingsTab, setSettingsTab] = useSettingsTab(
     'ob.settings.tab.master',
     SETTINGS_TAB_IDS,
-    'appearance',
+    // The company settings, not the theme picker. Settings is reached from a
+    // nav entry gated on `settings.manage`, so whoever opens it came to change
+    // something the company decides — and landed on a per-desk preference.
+    // `SettingsPage` falls back to the first tab for anyone without that
+    // permission, and a remembered tab still wins for anyone who has chosen.
+    'company',
   );
 
   const [panels, setPanels] = useState<OfficePanelWithPresence[]>([]);
@@ -247,6 +269,11 @@ function MasterPanel() {
           try {
             const me = await api.me();
             if (cancelled) return;
+            // Behind the splash, before the shell first renders: a fresh
+            // browser profile on a Hindi deployment paints in Hindi rather
+            // than starting English and staying there. Writes once — see
+            // `adoptDefaultLocale`.
+            adoptDefaultLocale(me.defaultLocale);
             setUser(me.user);
             setSessionToken(me.sessionToken);
             setPhase('ready');
@@ -284,6 +311,40 @@ function MasterPanel() {
     };
   }, [bootAttempt]);
 
+  /*
+   * The session can end without this window doing anything: an administrator
+   * deactivates the account, the server restarts, or — the common one — this
+   * person changes their own password, which invalidates every session they
+   * hold including this one. `api.ts` publishes it from the single place every
+   * request passes through; all this has to do is stop rendering a signed-in
+   * shell and say why.
+   */
+  useEffect(
+    () =>
+      onSessionEnded((reason) => {
+        setUser(null);
+        setSessionToken(null);
+        setSignInNotice(reason);
+        setPhase('signed-out');
+      }),
+    [],
+  );
+
+  /*
+   * Permissions and feature switches ride on the signed-in user; a company
+   * setting that changes either is re-read rather than waited out to a reload.
+   *
+   * Declared above the socket effect on purpose. That effect's dependency
+   * array is evaluated during render, so a `const` below it would be read in
+   * its temporal dead zone — a crash on every render, not a stale value.
+   */
+  const refreshUser = useCallback(() => {
+    void api
+      .me()
+      .then((me) => setUser(me.user))
+      .catch(() => undefined);
+  }, []);
+
   // One socket for the whole session, opened once signed in.
   useEffect(() => {
     if (phase !== 'ready' || !sessionToken) return;
@@ -300,7 +361,14 @@ function MasterPanel() {
 
     // Every entity, unconditionally. The old allow-list is what made a per-entity
     // counter pointless for exactly the screens that most needed one.
-    socket.on('data:changed', (event) => bump(event.entity));
+    socket.on('data:changed', (event) => {
+      bump(event.entity);
+      // A company switch is not a row any screen counts — it rides on the
+      // signed-in user as `features`, and until now only *this* browser's own
+      // save refreshed it. A second administrator's flip left this one drawing
+      // the old shape with no way to notice.
+      if (event.entity === 'setting') refreshUser();
+    });
 
     // A merge shadowed somebody's value; the conflicts screen and the dashboard
     // counter both need to move. It arrives on its own channel, so it gets a
@@ -310,23 +378,23 @@ function MasterPanel() {
     return () => {
       socket.close();
     };
-  }, [phase, sessionToken]);
+  }, [phase, sessionToken, refreshUser]);
 
   // Stable, or every boot-step render would hand Splash a new callback and
   // restart its hold timer.
   const markSplashDone = useCallback(() => setSplashDone(true), []);
 
+  /*
+   * The company's switches, every absence resolved to the setting's own
+   * declared fallback, once, here. A Master built before a switch existed sends
+   * a `features` without it, so the panels coalesce at their edge and pass
+   * plain values inward — a shared screen never has to know it might be
+   * missing, and no screen writes its own `?? true` to drift from `settings.ts`.
+   */
+  const companyFeatures = resolveCompanyFeatures(user?.features);
+
   const refreshPanels = useCallback(() => {
     void api.panels().then((result) => setPanels(result.panels));
-  }, []);
-
-  // Permissions and feature switches ride on the signed-in user; a company
-  // setting that changes either is re-read rather than waited out to a reload.
-  const refreshUser = useCallback(() => {
-    void api
-      .me()
-      .then((me) => setUser(me.user))
-      .catch(() => undefined);
   }, []);
 
   // Hash routing: #/gallery is the one extra place a user can land.
@@ -386,9 +454,11 @@ function MasterPanel() {
   if (phase === 'signed-out' || !user) {
     return (
       <SignInScreen
+        notice={signInNotice}
         onSignedIn={(signedInUser, token) => {
           setUser(signedInUser);
           setSessionToken(token);
+          setSignInNotice(null);
           setPhase('ready');
         }}
       />
@@ -410,6 +480,10 @@ function MasterPanel() {
   // be able to see how it is divided without also being able to change it.
   const canViewPartyAccess =
     user.permissions.includes('party.assign') || user.permissions.includes('party.accessAll');
+  // Parties are read by anyone who can reach a lead — the list is the same
+  // book the Office Panel browses. Creating and editing are gated inside the
+  // screen on their own permissions.
+  const canViewParties = user.permissions.includes('parties.view');
   const canViewLogs = user.permissions.includes('logs.view');
   const canViewRecycleBin = user.permissions.includes('recycleBin.view');
   const canViewReports = user.permissions.includes('reports.view');
@@ -455,6 +529,7 @@ function MasterPanel() {
   const workItems: Array<NavItem | null> = [
     { id: 'dashboard', label: t('nav.master.dashboard'), icon: 'dashboard' },
     { id: 'orders', label: t('nav.master.leadsOrders'), icon: 'orders' },
+    canViewParties ? { id: 'parties', label: t('nav.master.parties'), icon: 'parties' } : null,
     {
       id: 'inventory',
       label: t('nav.master.inventory'),
@@ -495,9 +570,11 @@ function MasterPanel() {
     { id: 'updates', label: t('nav.updates'), icon: 'sync' },
   ];
 
-  function resetActiveScreen(): void {
+  async function resetActiveScreen(): Promise<void> {
     if (route === 'gallery') return;
-    if (!askReset()) return;
+    // Awaited now: asking is a themed dialog rather than a renderer-blocking
+    // `window.confirm`, so the answer arrives a turn later.
+    if (!(await askReset())) return;
     // The screen is going away, so its sidebar entry must go with it — the
     // registry deliberately does not clear itself on teardown any more.
     clearSubNav(tab);
@@ -643,9 +720,14 @@ function MasterPanel() {
         icon="reset"
         label={t('screen.reset')}
         title={t('screen.resetHint')}
-        onClick={resetActiveScreen}
+        onClick={() => void resetActiveScreen()}
       />
       <PaletteButton />
+      {/* Beside Sign out, because the two are the same kind of thing — what you
+          do with your own account — and the topbar is on every screen. */}
+      <button className="ob-btn ob-btn--ghost" onClick={() => setChangingPassword(true)}>
+        {t('action.changePassword')}
+      </button>
       <button className="ob-btn ob-btn--ghost" onClick={() => void signOut()}>
         {t('action.signOut')}
       </button>
@@ -686,7 +768,10 @@ function MasterPanel() {
     <>
       {/* Click-away shim keeps the popover honest without a portal. */}
       <div
-        style={{ position: 'absolute', inset: 0, zIndex: 'var(--z-popover)' }}
+        // One below the popover it backs, not level with it: the popover now
+        // carries `--z-popover` itself, and a shim at the same level painted
+        // over it and ate every click inside.
+        style={{ position: 'absolute', inset: 0, zIndex: 'calc(var(--z-popover) - 1)' }}
         onClick={() => setSyncPopover(false)}
       />
       <div
@@ -767,10 +852,18 @@ function MasterPanel() {
     },
     { id: 'panels', render: () => <PanelsScreen panels={panels} onRefresh={refreshPanels} /> },
     {
+      id: 'parties',
+      render: () => (
+        <PartiesScreen revision={revisionOf(revisions, 'parties')} permissions={user.permissions} />
+      ),
+    },
+    {
       id: 'orders',
       render: () => (
         <LeadsOrdersScreen
           revision={revisionOf(revisions, 'records')}
+          permissions={user.permissions}
+          packagingRequired={companyFeatures.packagingRequiredOnConvert}
           view={subKeyOf('orders') as 'leads' | 'orders' | 'converted'}
           onViewChange={(view) => selectSubPage('orders', view)}
         />
@@ -783,7 +876,8 @@ function MasterPanel() {
           revision={revisionOf(revisions, 'inventory')}
           filter={subKeyOf('inventory') as 'all' | 'low'}
           onFilterChange={(filter) => selectSubPage('inventory', filter)}
-          freeToSell={user.features.freeToSell}
+          freeToSell={companyFeatures.freeToSell}
+          adjustmentNoteRequired={companyFeatures.adjustmentNoteRequired}
         />
       ),
     },
@@ -923,6 +1017,7 @@ function MasterPanel() {
         }}
       />
       {syncOverlay}
+      <ChangePasswordDialog open={changingPassword} onClose={() => setChangingPassword(false)} />
     </>
   );
 
@@ -932,7 +1027,7 @@ function MasterPanel() {
       userId={user?.id ?? null}
       onNavigate={navigate}
       shellCommands={{
-        'view.reset': resetActiveScreen,
+        'view.reset': () => void resetActiveScreen(),
         // F5 is swallowed by the desktop shell so it cannot bypass the panel;
         // binding it here gives the key back its ordinary meaning, and in a
         // browser tab this does exactly what the browser would have done.

@@ -15,6 +15,7 @@
  */
 
 import { useState } from 'react';
+import { resolveCompanyFeatures } from '@orderbook/shared';
 import type {
   Order,
   PartyScopeFilter,
@@ -124,7 +125,9 @@ export function OrderBoardScreen({
   const [scope, setScope] = useState<PartyScopeFilter>('all');
   const colourHex = useColourHex(view.optionLists);
   // Absent means an older Master, which sends every figure — read as "on".
-  const freeToSell = view.features?.freeToSell ?? true;
+  // Through the shared resolver rather than a literal written here, so this
+  // screen cannot drift from the fallback `settings.ts` declares.
+  const freeToSell = resolveCompanyFeatures(view.features).freeToSell;
 
   const pipeline = view.pipelines.find((candidate) => candidate.kind === 'order');
   const stages = sortedStages(pipeline);

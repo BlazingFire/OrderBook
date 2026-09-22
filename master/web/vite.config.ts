@@ -27,6 +27,10 @@ export default defineConfig({
     port: 5100,
     proxy: {
       '/api': 'http://localhost:4100',
+      // Avatars are mounted at `/uploads/avatars` and images at
+      // `/uploads/images` — outside `/api`, so unproxied they 404 through the
+      // dev server while working perfectly in the packaged app.
+      '/uploads': 'http://localhost:4100',
       '/socket.io': { target: 'http://localhost:4100', ws: true },
     },
   },

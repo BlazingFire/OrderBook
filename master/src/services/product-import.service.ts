@@ -65,6 +65,7 @@ import { allocatePermanentIds, nextHlc } from '../repositories/identity.reposito
 import * as productRepo from '../repositories/product.repository.js';
 import * as productVariantRepo from '../repositories/product-variant.repository.js';
 import { publishChange } from './change-bus.js';
+import { getSetting } from './settings.service.js';
 
 const log = createLogger('product-import');
 
@@ -101,6 +102,8 @@ export async function productImportTemplate(
     };
   }
 
+  const mayCreateCategories = await getSetting(actor.tenantId, 'catalog.importCreatesCategories');
+
   const bytes = await buildXlsxTemplate({
     columns: IMPORT_COLUMNS.map((column) => ({
       header: column.field,
@@ -108,7 +111,7 @@ export async function productImportTemplate(
       text: TEXT_COLUMNS.has(column.field),
       ...(column.kind === 'boolean' ? { values: ['yes', 'no'] } : {}),
     })),
-    guide: [['column', 'required', 'kind', 'note'], ...templateGuideRows()],
+    guide: [['column', 'required', 'kind', 'note'], ...templateGuideRows(mayCreateCategories)],
   });
 
   return { bytes, contentType: XLSX_CONTENT_TYPE, fileName: 'products-template.xlsx' };
@@ -197,8 +200,8 @@ export async function importProducts(
   const existingIds = new Set([...existingByCode.values()].map((hit) => hit.productId));
   const existingProducts = await productRepo.findProductsByIds(actor.tenantId, [...existingIds]);
 
-  const creates: ImportGroup[] = [];
-  const updates: UpdateGroup[] = [];
+  let creates: ImportGroup[] = [];
+  let updates: UpdateGroup[] = [];
   for (const group of grouped.groups) {
     const owners = new Set<string>();
     for (const variant of group.input.variants ?? []) {
@@ -245,6 +248,51 @@ export async function importProducts(
   const rowCount = (groups: readonly ImportGroup[]): number =>
     groups.reduce((sum, group) => sum + group.rows.length, 0);
 
+  // A category the file names but the company does not have.
+  //
+  // Settled **here**, above the dry-run boundary, for the reason this file's
+  // header gives: one function answers "what would this file do" and "do it",
+  // so a preview that says "ok" and a commit that refuses would be the defect.
+  const mayCreateCategories = await getSetting(actor.tenantId, 'catalog.importCreatesCategories');
+  let knownCategories = new Map<string, string>();
+  if (!mayCreateCategories) {
+    knownCategories = new Map(
+      (await productRepo.listCategories(actor.tenantId)).map((category) => [
+        category.name.trim().toLowerCase(),
+        category.id,
+      ]),
+    );
+
+    // Refused, not filed under no category: a success that discarded what the
+    // file asserted is the worst answer available. Every row of the group is
+    // named, because every row carried the category.
+    const unknownCategory = (group: ImportGroup): boolean => {
+      const name = group.input.categoryName?.trim();
+      return name !== undefined && name !== '' && !knownCategories.has(name.toLowerCase());
+    };
+    const refuseCategory = (group: ImportGroup): void => {
+      for (const entry of group.rows) {
+        issues.push({
+          row: entry.row,
+          kind: 'error',
+          column: headerFor('categoryName'),
+          messageKey: 'validation.import.unknownCategory',
+          params: { categoryName: group.input.categoryName ?? '' },
+        });
+      }
+    };
+    creates = creates.filter((group) => {
+      if (!unknownCategory(group)) return true;
+      refuseCategory(group);
+      return false;
+    });
+    updates = updates.filter((group) => {
+      if (!unknownCategory(group)) return true;
+      refuseCategory(group);
+      return false;
+    });
+  }
+
   const sample = [...creates, ...updates]
     .sort((a, b) => (a.rows[0]?.row ?? 0) - (b.rows[0]?.row ?? 0))
     .slice(0, 5)
@@ -272,11 +320,18 @@ export async function importProducts(
       await db().transaction(async (trx) => {
         const hlc = await nextHlc(trx);
         const ids = await allocatePermanentIds(actor.tenantId, 'product', chunk.length, trx);
-        const categories = await productRepo.ensureCategories(
-          actor.tenantId,
-          chunk.map((group) => group.input.categoryName ?? ''),
-          trx,
-        );
+        // While the switch is off the creating call is not made at all, rather
+        // than made and trusted to find everything: every surviving group's
+        // name is already in `knownCategories`, and nothing in this product
+        // deletes a category, so the ids stay good between the check and this
+        // insert.
+        const categories = mayCreateCategories
+          ? await productRepo.ensureCategories(
+              actor.tenantId,
+              chunk.map((group) => group.input.categoryName ?? ''),
+              trx,
+            )
+          : knownCategories;
         await productRepo.insertProductRows(
           chunk.map((group, index) => ({
             id: ids[index] as string,

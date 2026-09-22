@@ -258,10 +258,26 @@ describe('the file as a whole', () => {
   });
 
   it('writes one guide row per template column', () => {
-    const guide = templateGuideRows();
+    const guide = templateGuideRows(true);
     expect(guide).toHaveLength(IMPORT_HEADERS.length);
     expect(guide.find((row) => row[0] === 'multiColour')?.[2]).toBe('yes / no');
     expect(guide.find((row) => row[0] === 'name')?.[1]).toBe('yes');
     expect(guide.find((row) => row[0] === 'code')?.[1]).toBe('yes');
+    expect(guide.find((row) => row[0] === 'categoryName')?.[3]).toMatch(/Created if it does not exist yet/);
+  });
+
+  it('tells the truth about categories when the company does not let an import create one', () => {
+    // The template is the one thing a person reads before filling the sheet
+    // in. Left alone it would promise the opposite of what the import does.
+    const standing = templateGuideRows(true);
+    const changed = templateGuideRows(false);
+    expect(changed.find((row) => row[0] === 'categoryName')?.[3]).toBe(
+      'Must already exist — an import cannot create one.',
+    );
+    // Every other note is untouched.
+    const differing = changed
+      .filter((row, index) => row[3] !== standing[index]?.[3])
+      .map((row) => row[0]);
+    expect(differing).toEqual(['categoryName']);
   });
 });

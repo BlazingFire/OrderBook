@@ -14,6 +14,7 @@
  */
 
 import { useState } from 'react';
+import { resolveCompanyFeatures } from '@orderbook/shared';
 import type { Lead, PartyScopeFilter, SyncSnapshot } from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
@@ -99,6 +100,9 @@ export function LeadBoardScreen({ view, openId, onOpenId, canConvert, onError, o
   const [menuId, setMenuId] = useState<string | null>(null);
   const colourHex = useColourHex(view.optionLists);
   const toast = useToast();
+  // `leads.packagingRequiredOnConvert`, resolved at this panel's edge. At
+  // component scope, not inside `renderCard` — `renderCard` closes over it.
+  const packagingRequired = resolveCompanyFeatures(view.features).packagingRequiredOnConvert;
 
   const pipeline = view.pipelines.find((candidate) => candidate.kind === 'lead');
   const stages = [...(pipeline?.stages ?? [])].sort((a, b) => a.sequence - b.sequence);
@@ -332,7 +336,8 @@ export function LeadBoardScreen({ view, openId, onOpenId, canConvert, onError, o
             const stageIndex = stages.findIndex((stage) => stage.id === lead.stageId);
             const nextStage =
               stageIndex >= 0 && stageIndex < stages.length - 1 ? stages[stageIndex + 1] : null;
-            const missingPackaging = lead.items.some((item) => !item.packaging?.trim());
+            const missingPackaging =
+              packagingRequired && lead.items.some((item) => !item.packaging?.trim());
             return (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-6)' }}>

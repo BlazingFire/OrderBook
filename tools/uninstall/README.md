@@ -1,10 +1,17 @@
 # Uninstall scripts
 
 Two scripts that take OrderBook off a machine completely. They ship inside both
-setup files (`resources/uninstall`, via `extraResources` in each
-`electron-builder.yml`) and are what the desktop app's **Settings → Developer →
-Uninstall OrderBook** button and the Windows uninstaller's "also delete all data?"
-question run. They can also be run by hand from this folder.
+setup files **and inside the standalone clean-install tool**
+(`resources/uninstall`, via `extraResources` in all three
+`electron-builder.yml` files), and are what the desktop app's **Settings →
+Developer → Uninstall OrderBook** button, the Windows uninstaller's "also delete
+all data?" question, and `cleaner/` all run. They can also be run by hand from
+this folder.
+
+There is one copy of each script in this repository and every entry point runs
+it. That is the point: the inventory of what OrderBook leaves on a PC is the
+hard part, and a second copy is how the thing claiming to remove everything
+comes to miss something.
 
 The ordinary uninstaller deliberately leaves the data folder alone
 (`deleteAppDataOnUninstall: false`): the company's records are not the program's
@@ -43,11 +50,19 @@ the Uninstall / Run / AppCompat / `Software\OrderBook*` registry entries, and th
 Master's two firewall rules. Every profile under `C:\Users` is swept because the
 installer is per-machine; other users' registry hives are not.
 
-**macOS** (`uninstall-orderbook.sh`): quits the app, stops anything still
+**macOS and Linux** (`uninstall-orderbook.sh`, branching on `uname`): quits the app, stops anything still
 running from inside the bundle (again by path, never `pkill postgres`), removes
 `/Applications/<Product>.app` and `~/Applications/<Product>.app` (`sudo` only if
 the plain remove fails), the Electron profile and every `~/Library` cache, log,
 preference, saved-state and updater folder for the app id, and the login item.
+
+On Linux the same script removes `/opt/<Product>`, `~/Applications/<Product>`
+and `~/.local/share/<Product>`, the Electron profile under `$XDG_CONFIG_HOME`,
+caches under `$XDG_CACHE_HOME`, the `.desktop` entries in `~/.local/share/
+applications`, `/usr/share/applications` and on the desktop, and the autostart
+entry `setLoginItemSettings` writes. An AppImage is stopped by its filename
+rather than its path, because it runs from a FUSE mount under `/tmp` that no
+install folder contains.
 
 ## What `-KeepData` / `--keep-data` preserves
 
@@ -59,6 +74,34 @@ preference, saved-state and updater folder for the app id, and the login item.
 - the Master's releases drop box (`C:\OrderBook-Releases`, `%ORDERBOOK_RELEASES_DIR%`,
   `/OrderBook-Releases`). Without `--keep-data` this folder gets its own
   question unless `--yes`, because an operator may have filled it by hand.
+  The path comes from `ORDERBOOK_RELEASES_DIR` when it is set, on both scripts.
 
 Reinstalling the same panel afterwards finds that data and carries on where it
 left off.
+
+## The flag spelling is a contract
+
+`-KeepData` / `--keep-data` is written in five places that never import one
+another: `electron/lib/uninstall.ts`, both scripts, and both `installer.nsh`
+files. Renaming it on one side is **not** loud — the NSIS hook builds the flag
+as a string and ignores the exit code — and the default on every side is to
+erase. `electron/tests/uninstall.test.ts` reads all five and fails if they stop
+agreeing. Change one, change them together.
+
+## The standalone tool
+
+`cleaner/` wraps these scripts in a program somebody can run from a USB stick:
+it runs the dry run, shows what it found, offers to copy the data folders
+somewhere first, erases, **runs the dry run again to prove it is gone**, and
+then runs a setup file. That last verification is the one thing none of the
+other entry points do — the Windows uninstaller reports success because a script
+exited, not because the PC is clean.
+
+```bash
+npm run release -- --panel cleaner              # this OS
+npm run release -- --panel cleaner --os linux   # on Linux
+```
+
+It is deliberately **not** published into the releases folder: that folder is
+what a Master serves to its panels over the LAN, and a tool that erases a
+machine has no business in that stream.

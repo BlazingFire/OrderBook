@@ -105,3 +105,35 @@ Related, smaller, same area:
 
 ---
 *Implementer: append what changed and what you verified below this line.*
+
+---
+
+## Landed 2026-09-17 (Claude) — all three numbered gaps
+
+- **§1 session loss** — handled at the one place every request passes through.
+  `send()` in both clients publishes a reason on a 401 (`ui/src/sessionEnded.ts`,
+  written once in `ui/` as the critique asked); both `App.tsx` shells subscribe,
+  clear the session and drop to the sign-in screen; both `SignInScreen`s take a
+  `notice` and render it. New tokens `signIn.notice.sessionEnded` and
+  `signIn.notice.passwordChanged`, both translated.
+- **§2 the socket downgrade (the security one)** — enforcement moved *into*
+  `resolvePanelActor`, which now throws `RefusedActingTokenError` carrying the
+  rejection reason. `hub.ts` catches it to emit `session:rejected`, then
+  rethrows. The broadcast fan-out — the one caller that must not refuse — uses an
+  explicitly named `resolvePanelActorAllowingRefusal`. `panel-actor.integration.
+  test.ts` updated; its three fallback assertions now also assert the enforcing
+  call refuses.
+- **§3 self-service password change** — `ChangePasswordDialog` on the Master,
+  reachable from the topbar on every screen. Because `changeOwnPassword` ends
+  with `invalidateSessionsForUser` with no exception for the caller, the dialog
+  says so *before* the button and §1 handles the window afterwards.
+
+### Still open — the "related, smaller" list at the end of §2
+
+- `invalidateSessionsForUser` still records no reason, so the sign-in screen says
+  "your session ended" rather than "because your password changed". The
+  `signIn.notice.passwordChanged` token exists and is unused, waiting for it.
+- **Reset password** still has no self-exclusion: an administrator resetting
+  their own password signs themselves out with no warning that they are about to.
+- Whether a password change should push to that user's *other* live sessions
+  (the `panel:revoked` path exists but is per-panel) is still undecided.

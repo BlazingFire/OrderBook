@@ -39,7 +39,6 @@ const events = new EventEmitter();
 let transport: PushTransport | null = null;
 let flushing = false;
 let retryTimer: NodeJS.Timeout | null = null;
-let lastRejections: MutationResult[] = [];
 
 export function setTransport(next: PushTransport | null): void {
   transport = next;
@@ -50,8 +49,19 @@ export function onSyncEvent(listener: () => void): () => void {
   return () => events.off('changed', listener);
 }
 
-export function recentRejections(): MutationResult[] {
-  return [...lastRejections];
+/**
+ * Every refusal this panel has been told about and nobody has cleared.
+ *
+ * Read from disk rather than from memory, so it survives a restart and is not
+ * overwritten by the next flush — see `outbox.store.ts`'s `recordRefusals`.
+ */
+export async function recentRejections(): Promise<MutationResult[]> {
+  return (await outbox.refusals()).map((entry) => entry.result);
+}
+
+/** Called once the panel's UI has actually shown them to somebody. */
+export async function acknowledgeRejections(mutationIds?: string[]): Promise<void> {
+  await outbox.clearRefusals(mutationIds);
 }
 
 /**
@@ -96,7 +106,28 @@ export async function flush(): Promise<FlushOutcome> {
     await outbox.settle(response.results.map((result) => result.mutationId));
 
     const rejections = response.results.filter((result) => result.status === 'rejected');
-    lastRejections = rejections;
+
+    /*
+     * Durable, not a module variable.
+     *
+     * `lastRejections = rejections` ran on every successful flush including
+     * empty ones, so with a batch size of 100 a 500-row push kept the last
+     * batch's refusals and dropped the other four — and a restart dropped all
+     * of them. The queue entry was already gone by then (a refusal is recorded
+     * permanently on the Master, so re-pushing earns the same answer), and the
+     * optimistic record was derived from that queue entry, so the person's work
+     * disappeared with nothing anywhere to say it had.
+     */
+    if (rejections.length > 0) {
+      const byId = new Map(batch.map((mutation) => [mutation.mutationId, mutation]));
+      const refusedAt = new Date().toISOString();
+      await outbox.recordRefusals(
+        rejections.flatMap((result) => {
+          const mutation = byId.get(result.mutationId);
+          return mutation ? [{ mutation, result, refusedAt }] : [];
+        }),
+      );
+    }
 
     for (const rejection of rejections) {
       log.warn(`Master refused ${rejection.mutationId}: ${rejection.error ?? 'no reason given'}`);

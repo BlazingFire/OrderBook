@@ -91,11 +91,29 @@ export function planDispatchMovements(
  * a weight. An order is never blocked by insufficient stock — a dealer
  * routinely sells against an undelivered factory order — and a missing weight
  * is surfaced on the order as a partial total rather than refused here.
+ *
+ * Pure: the company's switches arrive as `rules`, read by the caller. This
+ * module does no I/O.
  */
-export function assertConvertible(lead: {
-  convertedOrderId: string | null;
-  items: LineSnapshot[];
-}): void {
+export interface ConversionRules {
+  /**
+   * `leads.packagingRequiredOnConvert`.
+   *
+   * **Required, never defaulted.** A default here is precisely how the one call
+   * site keeps the old behaviour while the Settings screen advertises a switch
+   * that decides nothing — and the compiler would never say so, because a
+   * defaulted parameter is exactly what a forgotten argument looks like.
+   */
+  packagingRequired: boolean;
+}
+
+export function assertConvertible(
+  lead: {
+    convertedOrderId: string | null;
+    items: LineSnapshot[];
+  },
+  rules: ConversionRules,
+): void {
   if (lead.convertedOrderId) {
     throw new ValidationError('validation.lead.alreadyConverted');
   }
@@ -110,10 +128,15 @@ export function assertConvertible(lead: {
     });
   }
 
-  const unpackaged = lead.items.filter((line) => !line.packaging?.trim());
+  const unpackaged = rules.packagingRequired
+    ? lead.items.filter((line) => !line.packaging?.trim())
+    : [];
   if (unpackaged.length > 0) {
     // Packaging is never inferred, so an unset one has to be caught before the
-    // order exists rather than quietly defaulted on the way through.
+    // order exists rather than quietly defaulted on the way through — unless
+    // the company has said otherwise, because a shop that packs to order
+    // cannot state the packaging at the moment the lead converts. Off, what was
+    // entered is still carried onto the order; only the refusal goes.
     throw new ValidationError('validation.lead.packagingMissing', {
       items: unpackaged.map((line) => line.productName).join(', '),
     });

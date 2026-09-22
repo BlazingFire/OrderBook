@@ -1,20 +1,33 @@
 /**
- * Conflicts left by the field-level merge (docs/LEAD_GENERATION_FLOW.md §4.5).
+ * Two different things the sync can leave behind, on one screen.
  *
- * The merge already chose what the record holds; nothing here is urgent. What
- * this screen exists for is the case the merge cannot judge — where the value
- * that lost happened to be the right one. Both values are shown side by side,
- * with who wrote each, and restoring is a deliberate click.
+ * **Merge conflicts** (docs/LEAD_GENERATION_FLOW.md §4.5): the merge already
+ * chose what the record holds, so nothing here is urgent. What this exists for
+ * is the case the merge cannot judge — where the value that lost happened to be
+ * the right one. Both values are shown side by side, with who wrote each, and
+ * restoring is a deliberate click. Resolving needs `sync.resolveConflicts`.
+ *
+ * **Refusals**: a write the Master would not take at all. These were conflated
+ * with merge conflicts and were therefore invisible — the toast announcing them
+ * was gated on `sync.resolveConflicts`, an admin-tier permission the shop-floor
+ * staff whose writes get refused do not hold, and following it landed on a
+ * screen that rendered merge conflicts only. A salesperson typed a lead, it
+ * saved, and later it was simply not there.
+ *
+ * A refusal is not an admin adjudication. It is "your write was refused and the
+ * reason is X", which the person who wrote it needs and can dismiss themselves.
  */
 
 import { useState } from 'react';
-import type { SyncConflict } from '@orderbook/shared';
+import type { MutationResult, SyncConflict } from '@orderbook/shared';
 
 import { api } from '../api';
-import { Button, Card, EmptyState, formatDateTime, t } from '@orderbook/ui';
+import { Button, Card, EmptyState, StatusPill, apiErrorText, formatDateTime, t } from '@orderbook/ui';
 
 interface Props {
   conflicts: SyncConflict[];
+  /** Writes the Master refused, still held by the panel until dismissed. */
+  rejections: MutationResult[];
   canResolve: boolean;
   onError: (message: string) => void;
   onResolved: () => void;
@@ -22,17 +35,101 @@ interface Props {
 
 type ConflictAction = 'keepWinner' | 'restoreLoser';
 
-export function ConflictsScreen({ conflicts, canResolve, onError, onResolved }: Props) {
+export function ConflictsScreen({
+  conflicts,
+  rejections,
+  canResolve,
+  onError,
+  onResolved,
+}: Props) {
   const [busy, setBusy] = useState<{ id: number; action: ConflictAction } | null>(null);
+  const [dismissing, setDismissing] = useState(false);
 
   const open = conflicts.filter((conflict) => !conflict.resolvedAt);
 
+  async function dismissRejections(): Promise<void> {
+    setDismissing(true);
+    try {
+      await api.acknowledgeRejections(rejections.map((rejection) => rejection.mutationId));
+      onResolved();
+    } catch (caught) {
+      onError(apiErrorText(caught, 'sync.rejections.dismissFailed'));
+    } finally {
+      setDismissing(false);
+    }
+  }
+
+  const refusals =
+    rejections.length === 0 ? null : (
+      <Card>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'baseline',
+            gap: 'var(--s-12)',
+          }}
+        >
+          <h3 className="ob-title" style={{ margin: 0 }}>
+            {t('sync.rejections.title')}
+          </h3>
+          <Button variant="secondary" busy={dismissing} onClick={() => void dismissRejections()}>
+            {t('sync.rejections.dismiss')}
+          </Button>
+        </div>
+
+        <p className="ob-small" style={{ marginTop: 'var(--s-6)' }}>
+          {t('sync.rejections.description')}
+        </p>
+
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--s-8)',
+            marginTop: 'var(--s-12)',
+          }}
+        >
+          {rejections.map((rejection) => (
+            <div
+              key={rejection.mutationId}
+              style={{
+                background: 'var(--bg-sunken)',
+                border: '1px solid var(--line)',
+                borderRadius: 'var(--r-md)',
+                padding: 'var(--s-12)',
+                display: 'flex',
+                alignItems: 'baseline',
+                gap: 'var(--s-12)',
+              }}
+            >
+              <span className="ob-mono">{rejection.entityId}</span>
+              <span style={{ flex: 1 }}>
+                {rejection.error ?? t('sync.rejections.noReason')}
+              </span>
+              {rejection.missingPermission && (
+                <StatusPill tone="conflict">{rejection.missingPermission}</StatusPill>
+              )}
+            </div>
+          ))}
+        </div>
+      </Card>
+    );
+
   if (open.length === 0) {
     return (
-      <EmptyState
-        title={t('conflicts.empty.title')}
-        description={t('conflicts.empty.description')}
-      />
+      <div
+        className="ob-measure-wide"
+        style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}
+      >
+        {refusals}
+        {!refusals && (
+          <EmptyState
+            title={t('conflicts.empty.title')}
+            description={t('conflicts.empty.description')}
+          />
+        )}
+      </div>
     );
   }
 
@@ -53,6 +150,7 @@ export function ConflictsScreen({ conflicts, canResolve, onError, onResolved }: 
       className="ob-measure-wide"
       style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}
     >
+      {refusals}
       {open.map((conflict) => {
         const rowBusy = busy?.id === conflict.id;
         return (

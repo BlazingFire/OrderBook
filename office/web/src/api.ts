@@ -10,7 +10,9 @@
  */
 
 import { DEVELOPER_RESET_CONFIRMATION, DEVELOPER_TOKEN_HEADER } from '@orderbook/shared';
+import { publishSessionEnded } from '@orderbook/ui';
 import type {
+  Locale,
   PickKind,
   ActivityLogEntry,
   DesktopBridge,
@@ -250,6 +252,18 @@ async function send<T>(
       params?: MessageParams;
     } | null;
 
+    /*
+     * A 401 is not an ordinary failure — the session this window is rendering
+     * as signed in no longer exists. Announced once, here, because every caller
+     * routes through this function: the alternative was eleven screens each
+     * showing a generic error toast while the shell went on believing it was
+     * signed in. Still thrown afterwards, so the caller's own error path runs
+     * exactly as before.
+     */
+    if (response.status === 401) {
+      publishSessionEnded(detail?.messageKey ?? 'signIn.notice.sessionEnded');
+    }
+
     throw new ApiError(
       detail?.message ?? 'Request failed',
       detail?.error ?? 'internal_error',
@@ -436,7 +450,8 @@ export const api = {
     return postFile<{ manifest: BackupManifest }>('/api/connection/restore', form);
   },
 
-  session: () => request<{ session: PanelSession | null }>('/api/session'),
+  session: () =>
+    request<{ session: PanelSession | null; defaultLocale: Locale }>('/api/session'),
   signIn: (username: string, password: string) =>
     post<{ session: PanelSession }>('/api/auth/sign-in', { username, password }),
   signOut: () => post<{ ok: true }>('/api/auth/sign-out'),
@@ -444,6 +459,14 @@ export const api = {
   snapshot: () => request<LocalView>('/api/snapshot'),
   syncState: () => request<SyncState>('/api/sync'),
   flush: () => post<FlushOutcome>('/api/sync/flush'),
+  /**
+   * Stop holding refusals somebody has now read. Not gated on
+   * `sync.resolveConflicts` — dismissing a message about your own refused write
+   * is not an admin action, and gating it there is what made the refusal
+   * invisible to the only person who needed it.
+   */
+  acknowledgeRejections: (mutationIds: string[]) =>
+    post<{ rejections: MutationResult[] }>('/api/sync/rejections/acknowledge', { mutationIds }),
 
   exportStorage: (officeScope: 'settings-only' | 'full-replica', passphrase: string) =>
     postForBlob('/api/storage/export', {
@@ -532,13 +555,9 @@ export const api = {
   dispatchOrder: (id: string, note?: string | null) =>
     post<QueuedResult>(`/api/orders/${id}/dispatch`, { note }),
 
-  // Stock and search need the Master, so these still fail when it is offline —
-  // which is correct: a stale stock figure presented as current is worse than
-  // an honest "cannot reach the Master right now".
-  stockInbound: (input: { variantId: string; quantityBoxes: number; note?: string }) =>
-    post('/api/stock/inbound', input),
-  stockAdjust: (input: { variantId: string; quantityBoxes: number; note?: string }) =>
-    post('/api/stock/adjust', input),
+  // Search needs the Master, so it still fails when it is offline — which is
+  // correct: a stale answer presented as current is worse than an honest
+  // "cannot reach the Master right now".
 
   search: (term: string) => request<SearchHit[]>(`/api/search?q=${encodeURIComponent(term)}`),
 

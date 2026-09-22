@@ -244,3 +244,88 @@ describe('the two-layer permission check', () => {
     expect(identityRoute).toContain("needs('settings.manage')");
   });
 });
+
+describe('the password minimum', () => {
+  /**
+   * Every function in `services/` that hashes a password, and what it hashes.
+   *
+   * Split on every top-level declaration, exported or not, because the rule is
+   * per-function: a check five functions up the file is not a check. `export`
+   * alone would not do — the bcrypt rewrite lives in `attemptSignIn`, which is
+   * private, and would be read as part of `signIn` above it.
+   */
+  function blocksThatHash(relative: string): Array<{ name: string; body: string }> {
+    return read(relative)
+      .split(/(?=^(?:export )?(?:async )?function )/m)
+      .filter((block) => countCalls(block, 'hashPassword') > 0)
+      .map((block) => ({
+        name: /^(?:export )?(?:async )?function (\w+)/.exec(block)?.[1] ?? '(module scope)',
+        body: block,
+      }));
+  }
+
+  /**
+   * The two that hash a password nobody typed. Both are exempt for a reason
+   * that would survive review, and both are named here rather than skipped by
+   * a pattern, so a third one has to be argued for.
+   */
+  const HASHES_NOTHING_A_CALLER_CHOSE: Record<string, string> = {
+    // The bcrypt→scrypt rewrite on sign-in. The password is already correct
+    // and already stored; refusing it here would lock out every account
+    // created before the minimum existed.
+    attemptSignIn: 'services/auth.service.ts',
+    // Fixed developer-mode fixtures from `DUMMY_USERS`, not caller input.
+    seedDummyUsers: 'services/developer.service.ts',
+  };
+
+  it('is applied wherever a caller-supplied password is hashed', () => {
+    // `createUser` and `resetPassword` hashed `input.password` with no length
+    // check at all, while `changeOwnPassword` enforced eight characters — so
+    // the weaker of the two paths was the one that mints accounts.
+    const unchecked: string[] = [];
+
+    for (const relative of [
+      'services/user.service.ts',
+      'services/auth.service.ts',
+      'services/developer.service.ts',
+      'services/setup.service.ts',
+    ]) {
+      for (const { name, body } of blocksThatHash(relative)) {
+        if (HASHES_NOTHING_A_CALLER_CHOSE[name] === relative) continue;
+        if (countCalls(body, 'assertPasswordLongEnough') === 0) unchecked.push(`${name} (${relative})`);
+      }
+    }
+
+    expect(unchecked).toEqual([]);
+  });
+
+  it('covers the three paths it is supposed to cover, so the list above cannot go empty', () => {
+    // Without this, deleting every call site would satisfy the test above.
+    const checked = [
+      ...blocksThatHash('services/user.service.ts'),
+      ...blocksThatHash('services/auth.service.ts'),
+    ]
+      .filter(({ body }) => countCalls(body, 'assertPasswordLongEnough') > 0)
+      .map(({ name }) => name)
+      .sort();
+
+    expect(checked).toEqual(['changeOwnPassword', 'createUser', 'resetPassword']);
+  });
+
+  it('is checked on the supplied password, never on the generated fallback', () => {
+    // `input.password?.trim() || generateTemporaryPassword()` collapses the
+    // two into one variable. Checking *that* would enforce nothing: a
+    // generated password is twelve characters and always passes, so a short
+    // supplied one would be replaced by... itself, unchecked.
+    const source = read('services/user.service.ts');
+
+    for (const block of source.split(/(?=^(?:export )?(?:async )?function )/m)) {
+      if (countCalls(block, 'generateTemporaryPassword') === 0) continue;
+
+      const check = block.indexOf('assertPasswordLongEnough(');
+      const fallback = block.indexOf('generateTemporaryPassword()');
+      expect(check).toBeGreaterThan(-1);
+      expect(check).toBeLessThan(fallback);
+    }
+  });
+});

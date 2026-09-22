@@ -143,9 +143,12 @@ keeps every agent working from durable state.
 
 ## 6. Verification before anything is "done"
 
-The project's own gate is `npm run verify` (lint + typecheck + tests). Current
-status at the time of writing: **1141 passing tests across 92 files**, both
-panels build. No agent should claim a change is done without running the
+The project's own gate is `npm run verify` (lint + typecheck + tests). As of
+2026-09-17: **968 passing tests across 84 files, plus 568 skipped across 42** —
+the skips are every integration suite, which needs a PostgreSQL that will not
+start as root. Both panels build, on Windows and now on Linux too. **Record the
+skip count, not just the pass count**: a skipped suite prints like a passing
+one, and this project has lost months to exactly that. No agent should claim a change is done without running the
 relevant gate and recording the result.
 
 ```bash
@@ -654,6 +657,198 @@ weaker guard. And the management role does not hold `party.accessAll`, so
 "the manager dispatches the office user's order" fails on a party assigned to
 the office user alone; the administrator does that work in the seed, as an
 administrator would.
+### 2026-09-18 — A standalone clean-install tool (Claude)
+
+Scope: the owner's "make dedicated exe and dmg or any other file to perform
+fresh install... detects all files and config made by software on device and
+uninstall it and start fresh install from given software setup path".
+
+Planned with three Explore agents before anything was written, and the finding
+that shaped the whole change came out of that: **most of what was asked for
+already existed.** `tools/uninstall/uninstall-orderbook.ps1` is 454 lines that
+already know every registry key, per-profile cache, shortcut and firewall rule
+this product leaves, and `-DryRun` already prints the plan. What was missing was
+a way to reach it on a broken machine, and a step that installs afterwards.
+
+So the work became orchestration and packaging rather than detection — which is
+a much smaller and much safer change than writing a second inventory would have
+been. The plan says this explicitly under "What already exists — do not
+rebuild", because the tempting version of this task is the one that reimplements
+the sweep and quietly misses something.
+
+Four questions to the owner before planning, two of them consequential: whether
+"fresh" meant destroying the shop's live database (it did), and how to handle a
+`.dmg` that cannot be built anywhere but a Mac. The second surfaced a bigger
+problem — the panels themselves have no working Mac or Linux build — which the
+owner chose to record rather than fix, and which is now in `docs/NEXT_PHASE.md`.
+
+Three defects fixed on the way, all found by mapping the footprint rather than
+by looking for bugs: a hardcoded releases path on macOS, no Linux branch at all,
+and a five-way flag contract with `erase` as every side's default and nothing
+checking the five agreed.
+
+Two guards had to be rewritten because they passed against the defect they
+named — one satisfied by a status message the script prints, one aimed at the
+wrong identifier. That is now three sessions running, which is worth saying
+plainly: a source-reading guard written in the same pass as the code it guards
+tends to match the code rather than the rule.
+
+Verified on Linux end to end against a seeded footprint, with the AppImage
+built, started and loading. The Windows and macOS artifacts are configuration
+and unit tests only, and the commit says so.
+
+### 2026-09-18 — The six deferred settings, and the switch nobody was receiving (Claude)
+
+Scope: the owner's "now implement the 6 deferred settings too". Those six were
+held in `docs/NEXT_PHASE.md` behind a note saying not to start one without
+asking the owner, because each is a question about how the shop works rather
+than about the code. They asked.
+
+Surveyed by a 19-agent workflow before anything was built: one wiring plan per
+candidate, each then attacked by two independent lenses — a **reachability**
+lens asking only "can the code that needs this value obtain it at the moment it
+needs it", and an **invariants** lens asking "does this break something already
+true". Ten of the twelve reviews refuted something.
+
+**The survey's most valuable output was not about the six settings.** Four
+reviews independently hit the same wall from different directions: a company
+switch never reached a panel after its first snapshot. `writeSetting` published
+nothing and could not — `'setting'` was not a `ChangedEntity`. A connected panel
+never heard a flip; a reconnecting one took a delta, which carries no
+`features`. `inventory.freeToSell` had shipped with that for months. One entry
+in `SNAPSHOT_FORCING_ENTITIES` fixes both halves.
+
+**It also corrected me.** I reported to the owner that
+`leads.packagingRequiredOnConvert` was a documented-but-unwired rule, having
+grepped for the enforcement site and found none. The rule is enforced, in
+`master/src/domain/conversion.ts` — a file carrying a literal NUL byte at offset
+3175, so `grep` answers "binary file matches" and prints nothing. A reviewer
+read it with `readFileSync` and said so.
+
+**One agent wrote code rather than a plan.** The `catalog.importCreatesCategories`
+planner implemented its candidate and left it uncommitted in the working tree. I
+read the whole diff, ran it, and broke its guard two ways before keeping it —
+unreviewed agent output is not the same as reviewed work, however good it looks.
+
+**Rewritten guards, five of them**, each because it passed against the defect it
+named: a payload assertion satisfied by the doc comment that explains the
+payload; a "never defaulted" regex watching the wrong identifier; a placement
+check that pinned one side of a position; a packaging reach guard that flagged
+the line which *records* the value rather than the lines that refuse on it; and
+a concurrency fix of mine whose own new test proved it had not worked.
+
+**The integration suites ran, for the first time in this project's history.** A
+non-root account exists on this machine now, so `npx vitest run --config <a copy
+somewhere writable> --root <repo>` executes all 43 of them: **1750 tests**,
+against the 1148 the gate sees as root. The recipe is in `docs/NEXT_PHASE.md`
+§2. Running them found a defect in the round they were written for — in a test,
+which is still the point.
+
+**Also fixed:** a Knex `.update(raw)` I shipped broken the day before. It throws
+before any SQL is built, and printed as "skipped" because the suite skips.
+
+Verified: lint 0, typecheck 0, build 0, **140 files / 1750 tests, nothing
+skipped** — the first fully-executed run this project has had.
+
+### 2026-09-17 — Five company settings, a Settings tab that groups, and a language picker (Claude)
+
+Scope: the owner's "add more necessary settings in settings tab / simplify it".
+Same branch, `claude/hopeful-lovelace-q6f57v`, **not merged to `main`**.
+
+Surveyed by a 34-agent workflow — six discovery lenses plus a screens critique,
+then one adversarial verifier per candidate, then a synthesis. 28 candidates, 26
+after dedup, **12 kept and 14 rejected**; the synthesis narrowed the 12 to five
+to ship. Every citation the plan rested on was re-checked against the tree
+before anything was built.
+
+**The five:** `panels.autoPairingEnabled`, `security.developerModeEnabled`,
+`security.sessionHours`, `inventory.defaultReorderLevel`, `leads.quietAfterDays`.
+Each turns something that was already a hardcoded number or an always-on
+behaviour into the owner's decision, and each default preserves exactly what the
+product did before — which is why every test turns its switch *away* from the
+default.
+
+**The rejections are the useful half of that survey.**
+`security.signInLockoutAttempts` cannot work: the Office's offline lockout store
+runs precisely because the Master cannot be asked, so it cannot read a Master
+setting by construction. `catalog.productCodePrefix` would overwrite products on
+an upsert import — the generator has no collision retry.  `locale.*` is declared
+per-machine in writing. `panels.pairingWindowMinutes` is a fail-safe backstop,
+not a UX number. And my own strongest hypothesis — company address and GST on
+documents — was rejected too: company identity lives in `master_config` /
+`MasterIdentity`, where `company_name` already is, and splitting one concept
+across two tables is the drift `settings.ts` records as the reason a previous
+key was deleted.
+
+**Simplified:** the Settings tab renders from a declared `control` per setting
+rather than from `typeof value`, which deleted a dead branch that printed JSON
+beside the words "edited elsewhere"; settings are grouped under four headings;
+a number setting saves on a button, not on every keystroke; save feedback is
+per row; the vault hint no longer replaces the help text it was meant to sit
+under; `.ob-tabs` scrolls (the tabs were unreachable at 157% on a 1366px
+screen); the Master lands on Company rather than Appearance.
+
+**The language picker** — the largest gap the survey found, and not a setting.
+`ob.locale` was read on every render and written nowhere in the tree, and both
+panels' boot endpoints had served `defaultLocale` since the config was written
+with no reader at all. A complete Hindi catalogue shipped that no installation
+could reach. There is a picker in Appearance now, and a fresh browser profile
+adopts `ORDERBOOK_DEFAULT_LOCALE` once, behind the splash.
+
+**One security fix alongside:** `createUser` and `resetPassword` hashed whatever
+password arrived with no length check, while `changeOwnPassword` had enforced
+eight characters since it was written — so the weaker of the two paths was the
+one that mints accounts. One `assertPasswordLongEnough` now, in
+`master/src/lib/password.ts`, with a source guard that fails if a fourth path
+appears without it.
+
+Verified: lint 0, typecheck 0, build 0, **87 files / 1041 tests passing, 43
+files / 583 skipped**. Every new guard was watched failing against the exact
+defect it names — thirteen deliberate breaks in all. **The integration suites
+still have never run** (PostgreSQL will not start as root), so the fifteen
+integration tests added here are unexecuted, on top of the four from the
+earlier round. Nothing was seen in a browser or Electron.
+
+### 2026-09-17 — Fourteen briefs closed, four privilege holes, portable tests (Claude)
+
+Scope: the owner's "tell me project status, make the structure understandable,
+complete pending tasks, update all files, take the data out because I'm deleting
+the sessions". On `claude/hopeful-lovelace-q6f57v`, pushed, **not merged to `main`**.
+
+Closed fourteen of the nineteen open briefs, including all three blocking ones:
+the Office lead silently lost when raised against a party created on the same
+panel (`resolvePayloadIds` in `sync.service.ts`, plus the outbox half), the
+Master's missing Parties screen (form moved to `ui/src/PartyFormModal.tsx` with
+an injected transport, not copied), and the absence of any test over either web
+application (`web-reachability.test.ts`).
+
+Four privilege/masking holes: the socket path downgrading a *refused* acting
+token to the panel's machine authority; `mrp` documented as gated in two files
+and enforced in none; all four image mutations returning the unmasked product;
+`parties.export` enforced on one transport out of two. Plus the refusal a
+shop-floor user could never see — gated on an admin permission, and held in a
+module variable overwritten on every flush.
+
+Also: self-service password change, session-loss handling in the one place every
+request passes through, sign-in attempt/lockout feedback in the reader's own
+language, delete actions for leads/orders/parties on the Master, `ConfirmDialog`
+replacing the last four `window.confirm`s (which made `useResetGuard`
+promise-based), the popover CSS that never existed, the sticky header, column
+sorting, AA contrast, the `panel:report` guard and the panel-naming suffix scan.
+
+Verified: lint 0, typecheck 0, 84 files / 968 tests. **Thirteen tests were
+already failing before this session** on any non-Windows checkout — Windows
+fixtures against APIs defaulting to `process.platform` — and two more passed
+vacuously; both fixed. **Every integration suite (42 files, 568 tests) skipped
+throughout**: PostgreSQL will not run as root and the container had no other
+user, so the integration tests written this round have never been executed.
+Nothing was run in a browser or Electron.
+
+New: `docs/CODE_MAP.md`, linked from `README.md`, `AGENTS.md` and `opencode.md`.
+`docs/TESTING_PLAN.md` reconciled against the screens that actually render, and
+the ownership question settled in `HANDOFF.md`: parties on both panels, the
+product catalogue Office-only.
+
 ### 2026-09-14 — Build fix, dead code, bloat removal, handoff rewrite (Claude)
 
 Scope: owner's "commit all to main, update handoff and project files, remove
@@ -1207,3 +1402,40 @@ New files: `master/src/lib/memory-monitor.ts`, `ui/src/AiSupportScreen.tsx`.
 
 **Verified.** All 140 shared tests pass. All 23 keyboard tests pass. All three
 package-level tsconfigs (shared, master, office) typecheck clean.
+
+---
+
+### 2026-09-18 — Fix the Mac and Linux panel builds (Claude)
+
+**Prompt:** "fix the mac and linux panel builds too".
+
+`tools/release.mjs` has accepted `--os mac` and `--os linux` since the targets
+were written and neither produced a working panel. Four defects, all in code
+that typechecks, lints and tests clean:
+
+1. `vendorPostgres()` hardcoded `windows-x64`; `TARGETS[*].postgres` was
+   declared, documented and read by nothing.
+2. Neither panel yml had a `linux:` block, while `TARGETS.linux` expected an
+   AppImage filename.
+3. `allowScripts` approved only the Windows `@embedded-postgres` package, whose
+   postinstall recreates 14 SONAME symlinks Windows does not use.
+4. `arch: [universal]` shipped one architecture's PostgreSQL to both halves of
+   a merged macOS app.
+
+**Changed:** `tools/release.mjs` (target-driven vendoring, both macOS arches, a
+build-time executability check), `master/src/db/postgres-server.ts` (arch-first
+candidate, `X_OK`), root `package.json` (all five packages approved),
+`master/` + `office/electron-builder.yml` (AppImage + `.deb`), both panels'
+`package.json` (a `homepage`, which fpm requires),
+`tools/uninstall/uninstall-orderbook.sh` (the names a `.deb` actually installs),
+`.github/workflows/release.yml` (a three-runner matrix).
+
+**New:** `master/tests/packaging-invariants.test.ts` — five source-reading
+guards, each watched failing against the defect it names.
+
+**Verified.** Both Linux panels built to AppImage and `.deb`; the packaged
+Master created its own database under `xvfb-run` as a non-root account and
+answered `/api/health`; the uninstall sweep found every path a real extracted
+`.deb` installs. Full suite non-root: 144 files, 1815 tests, **0 skipped**.
+The macOS build cannot be run from here — `assertTarget()` refuses it off macOS
+— so that half is guarded rather than executed, and the CI matrix runs it first.

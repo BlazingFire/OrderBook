@@ -221,10 +221,6 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
               <dd className="ob-mono">{panel.lanIp ?? '—'}</dd>
             </div>
             <div>
-              <dt>{t('panels.detail.mac')}</dt>
-              <dd className="ob-mono">{panel.macAddress ?? '—'}</dd>
-            </div>
-            <div>
               <dt>{t('panels.table.lastSeen')}</dt>
               <dd>{formatDateTime(panel.lastSeenAt)}</dd>
             </div>

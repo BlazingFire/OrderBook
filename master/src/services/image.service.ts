@@ -94,6 +94,18 @@ async function reloadProduct(tenantId: string, productId: string): Promise<Produ
 }
 
 /**
+ * Announce the change with the whole record, and answer the caller with it.
+ *
+ * One function so every image mutation publishes the same way. It used to
+ * mask the answer as well, while products still carried money fields; since
+ * pricing was removed there is nothing on a product a caller may not see.
+ */
+function publishAndMask(product: Product, _actor: ActorContext): Product {
+  publishChange({ entity: 'product', action: 'updated', id: product.id, payload: product });
+  return product;
+}
+
+/**
  * §2.2 — decode once, auto-orient from EXIF, apply the editor's rotation,
  * crop, then derive every size from that single rotated-and-cropped raster.
  * Nothing here re-reads a previously-encoded WebP, so repeated edits in one
@@ -268,8 +280,7 @@ export async function uploadImage(request: UploadImageRequest, actor: ActorConte
   });
 
   const updated = await reloadProduct(actor.tenantId, request.productId);
-  publishChange({ entity: 'product', action: 'updated', id: updated.id, payload: updated });
-  return updated;
+  return publishAndMask(updated, actor);
 }
 
 export async function updateImageCaption(
@@ -310,8 +321,7 @@ export async function updateImageCaption(
   });
 
   const updated = await reloadProduct(actor.tenantId, productId);
-  publishChange({ entity: 'product', action: 'updated', id: updated.id, payload: updated });
-  return updated;
+  return publishAndMask(updated, actor);
 }
 
 export async function reorderImages(input: ProductImageReorderInput, actor: ActorContext): Promise<Product> {
@@ -345,8 +355,7 @@ export async function reorderImages(input: ProductImageReorderInput, actor: Acto
   });
 
   const updated = await reloadProduct(actor.tenantId, input.productId);
-  publishChange({ entity: 'product', action: 'updated', id: updated.id, payload: updated });
-  return updated;
+  return publishAndMask(updated, actor);
 }
 
 /**
@@ -399,8 +408,7 @@ export async function deleteImage(imageId: string, actor: ActorContext): Promise
   });
 
   const updated = await reloadProduct(actor.tenantId, productId);
-  publishChange({ entity: 'product', action: 'updated', id: updated.id, payload: updated });
-  return updated;
+  return publishAndMask(updated, actor);
 }
 
 export interface ImageFile {

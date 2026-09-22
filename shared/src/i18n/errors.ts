@@ -48,6 +48,7 @@ const CODE_TOKENS: Record<string, MessageKey> = {
   invalid_credentials: 'error.generic.invalidCredentials',
   locked_out: 'error.generic.lockedOut',
   unknown_here: 'error.generic.unknownHere',
+  offline_disabled: 'error.generic.offlineSignInDisabled',
 };
 
 /** Total over every stable code the two servers emit, with `error.unknown` as the last resort. */
