@@ -41,6 +41,34 @@ import {
 
 const MAX_MB = Math.round(MAX_IMAGE_SOURCE_BYTES / (1024 * 1024));
 
+/**
+ * Every image extension the picker offers and the check below lets through.
+ *
+ * `accept="image/*"` alone was hiding files in the OS dialog and then the MIME
+ * check was rejecting the ones that got past it: a browser reports `file.type`
+ * as an empty string for anything it does not itself recognise, and `.heic`,
+ * `.jfif`, `.tif` and `.avif` routinely arrive that way. Both gates now read
+ * the extension as well, so what somebody has is what they can pick.
+ *
+ * Whether a given file can then be *cropped* is a separate question the editor
+ * answers — it says so plainly when the browser cannot decode one (see
+ * `photo.editor.failed`) instead of sitting on a spinner.
+ */
+const IMAGE_EXTENSIONS = [
+  'apng', 'avif', 'bmp', 'dib', 'gif', 'heic', 'heif', 'hif', 'ico', 'cur',
+  'jfif', 'jpe', 'jpeg', 'jpg', 'jxl', 'pjp', 'pjpeg', 'png', 'svg', 'svgz',
+  'tif', 'tiff', 'webp',
+];
+
+/** The `accept` attribute: the broad type, plus every extension by name. */
+const FILE_ACCEPT = ['image/*', ...IMAGE_EXTENSIONS.map((ext) => `.${ext}`)].join(',');
+
+function looksLikeImage(file: File): boolean {
+  if (file.type.startsWith('image/')) return true;
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  return IMAGE_EXTENSIONS.includes(ext);
+}
+
 export function ProductImages({
   product,
   onChanged,
@@ -85,7 +113,7 @@ export function ProductImages({
     let rejectedSize = false;
 
     for (const file of files) {
-      if (!file.type.startsWith('image/')) {
+      if (!looksLikeImage(file)) {
         rejectedType = true;
         continue;
       }
@@ -492,7 +520,14 @@ export function ProductImages({
         )}
       </div>
 
-      <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={onFilePicked} />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={FILE_ACCEPT}
+        multiple
+        hidden
+        onChange={onFilePicked}
+      />
 
       <ImageCropModal
         open={queue.length > 0}

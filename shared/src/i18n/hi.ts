@@ -2836,6 +2836,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'photo.editor.rotateLeft': 'बाएँ घुमाएँ',
   'photo.editor.rotateRight': 'दाएँ घुमाएँ',
   'photo.editor.straighten': 'सीधा करें',
+  'photo.editor.rotate': 'घुमाएँ',
+  'photo.editor.failed':
+    'यह फ़ोटो नहीं खोली जा सकी। कुछ कैमरा फ़ॉर्मैट, जैसे iPhone का HEIC, यहाँ नहीं दिखाए जा सकते — इसे JPEG या PNG में सहेजकर दोबारा जोड़ें।',
   'photo.editor.reset': 'रीसेट',
   'photo.editor.output': 'परिणाम {width} × {height} px',
   'photo.editor.outputSmall':

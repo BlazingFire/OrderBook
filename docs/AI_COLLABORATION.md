@@ -187,6 +187,51 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-22 (later still) — Crop editor made horizontal, with real load states and every image format (Claude)
+
+Three changes to `ui/src/ImageCropModal.tsx` and the photo picker that feeds it.
+
+1. **Horizontal layout.** Photo left, adjustments right, `size="lg"` (60rem —
+   a 520px stage plus a ~260px control column inside the body padding). The
+   controls are grouped under eyebrow labels (Shape / Rotate / Straighten) and
+   `flex-wrap` still stacks them at the 1024px floor.
+2. **Load and failure states.** Added a `status` of loading / ready / failed.
+   `el.onload` had no `el.onerror` beside it, so an undecodable file left `img`
+   null and the stage showing the static word "Loading…" indefinitely, with no
+   way to tell a slow decode from a dead one. Loading now shows `BusyMark` plus
+   the word; failure shows `photo.editor.failed`. Every right-hand control is
+   disabled until a photo is ready, and Save already required `img && crop`.
+3. **Every image extension accepted.** `IMAGE_EXTENSIONS` + `looksLikeImage` in
+   `ProductImages.tsx` drive both the `accept` attribute and the pre-upload
+   check. The check was `file.type.startsWith('image/')`, and browsers report
+   `file.type` as `''` for formats they do not recognise, so `.heic`, `.jfif`,
+   `.tif` and `.avif` were rejected client-side as "not an image". The server
+   has no MIME filter — `images.routes.ts` passes bytes to sharp with
+   `failOn: 'none'` — so nothing downstream needed changing.
+
+**Honest limit:** this widens what can be *picked*, not what can be *cropped*.
+The editor needs the browser to decode the file, and Chromium cannot read HEIC
+or most TIFFs; those now reach the editor and are told so plainly. A true
+"upload anything" path would have to let the Master decode first, since
+`assertCropRect` rejects an out-of-bounds rect and the client cannot express
+"the whole image" without knowing its dimensions. Not attempted — out of scope.
+
+**Left alone:** `ui/src/AvatarPicker.tsx` keeps the old narrow gate. The
+instruction was about product photos; sharing the helper would mean lifting it
+into `ui/`.
+
+**Files modified:** `ui/src/ImageCropModal.tsx`,
+`office/web/src/components/ProductImages.tsx`, `shared/src/i18n/en.ts` + `hi.ts`
+(2 keys added: `photo.editor.rotate`, `photo.editor.failed`).
+
+**Verified.** Lint and typecheck exit 0; `npm test` 818 passed with the same 13
+pre-existing `updates`/`github-releases` failures that fail on a clean `HEAD`.
+All three editor states were rendered in Chromium against real `File` objects —
+a decodable PNG, an undecodable `.heic`, and a 5000px image caught mid-decode.
+The first pass rendered `PHOTO.EDITOR.ROTATE` as a raw key because the dev
+server serves built `shared`; `npm run build:shared` fixed it and the screenshot
+was retaken.
+
 ### 2026-09-22 (later) — Stock removed from the product detail; custom scrollbar project-wide (Claude)
 
 Two corrections from the owner after seeing the redesign running.

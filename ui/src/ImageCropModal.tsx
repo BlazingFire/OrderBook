@@ -23,6 +23,7 @@ import { rem } from './rem.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { IMAGE_VARIANT_LONG_EDGES } from '@orderbook/shared';
 
+import { BusyMark } from './BusyMark';
 import { Button } from './Button';
 import { Modal } from './Modal';
 import { t } from './i18n';
@@ -47,6 +48,10 @@ interface Rect {
 
 const MAX_DISPLAY = 520;
 const HANDLE_HIT = 10;
+
+/** Stage height before a photo has decoded, so the dialog does not resize under
+ *  the pointer the moment it arrives. */
+const MIN_STAGE = 320;
 
 /** The long edge the biggest stored variant wants. A crop below it is not an
  *  error — the pipeline never upscales — but it is worth saying out loud. */
@@ -213,6 +218,16 @@ export function ImageCropModal({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [img, setImg] = useState<HTMLImageElement | null>(null);
+  /**
+   * Decoding is not instant and it is not guaranteed.
+   *
+   * A phone photo is several megabytes and takes a visible moment to decode,
+   * and the stage used to sit blank behind one static word for all of it. And
+   * `onload` had no `onerror` beside it, so a format the browser cannot read —
+   * HEIC off an iPhone, most TIFFs — left `img` null and the editor showing
+   * "Loading…" for ever, with no way to tell a slow decode from a dead one.
+   */
+  const [status, setStatus] = useState<'loading' | 'ready' | 'failed'>('loading');
   const [rotationStep, setRotationStep] = useState<0 | 90 | 180 | 270>(0);
   const [fineRotation, setFineRotation] = useState(0);
   const [aspect, setAspect] = useState<AspectPreset>('free');
@@ -226,11 +241,21 @@ export function ImageCropModal({
   useEffect(() => {
     if (!open || !file) {
       setImg(null);
+      setStatus('loading');
       return;
     }
+    setImg(null);
+    setStatus('loading');
     const url = URL.createObjectURL(file);
     const el = new Image();
-    el.onload = () => setImg(el);
+    el.onload = () => {
+      setImg(el);
+      setStatus('ready');
+    };
+    el.onerror = () => {
+      setImg(null);
+      setStatus('failed');
+    };
     el.src = url;
     return () => URL.revokeObjectURL(url);
   }, [open, file]);
@@ -464,6 +489,7 @@ export function ImageCropModal({
     <Modal
       open={open}
       onClose={onCancel}
+      size="lg"
       title={title}
       footer={
         <>
@@ -479,23 +505,23 @@ export function ImageCropModal({
         </>
       }
     >
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 'var(--s-12)',
-          alignItems: 'center',
-        }}
-      >
+      {/* Photo left, its adjustments right. Stacked, the controls sat below
+          the fold on a laptop and the straighten slider — the one control you
+          use while watching the picture — could not be seen at the same time
+          as the picture. `flex-wrap` still stacks them when the window (or the
+          scale) leaves no room for the column. */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 'var(--s-20)' }}>
         <div
           style={{
+            flex: 'none',
             width: boundsPx.w || MAX_DISPLAY,
-            height: boundsPx.h || 300,
+            height: boundsPx.h || MIN_STAGE,
+            maxWidth: '100%',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            background: 'var(--bg-canvas, #111)',
-            borderRadius: 'var(--r-sm, 4px)',
+            background: 'var(--bg-canvas)',
+            borderRadius: 'var(--r-sm)',
           }}
         >
           {img ? (
@@ -507,75 +533,127 @@ export function ImageCropModal({
               onPointerUp={onPointerUp}
               onPointerCancel={onPointerUp}
             />
+          ) : status === 'failed' ? (
+            <p
+              className="ob-small"
+              style={{
+                margin: 0,
+                padding: 'var(--s-16)',
+                maxWidth: rem(320),
+                textAlign: 'center',
+                color: 'var(--state-offline)',
+              }}
+            >
+              {t('photo.editor.failed')}
+            </p>
           ) : (
-            <span className="ob-small" style={{ color: 'var(--fg-tertiary, #999)' }}>
-              {t('photo.editor.loading')}
+            <span
+              style={{
+                display: 'inline-flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 'var(--s-8)',
+                color: 'var(--fg-tertiary)',
+              }}
+            >
+              <BusyMark size={28} label="" />
+              <span className="ob-small">{t('photo.editor.loading')}</span>
             </span>
           )}
         </div>
 
+        {/* The adjustments. Disabled rather than hidden while the photo is
+            still decoding: the panel keeps its width, so nothing jumps when
+            the picture arrives. */}
         <div
-          style={{ display: 'flex', gap: 'var(--s-8)', flexWrap: 'wrap', justifyContent: 'center' }}
+          style={{
+            flex: `1 1 ${rem(220)}`,
+            minWidth: rem(200),
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--s-16)',
+          }}
         >
-          {ASPECTS.map(({ preset, label }) => (
-            <Button
-              key={preset}
-              size="sm"
-              variant={aspect === preset ? 'primary' : 'secondary'}
-              onClick={() => setAspect(preset)}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}>
+            <span className="ob-eyebrow" style={{ color: 'var(--fg-tertiary)' }}>
+              {t('photo.editor.aspect')}
+            </span>
+            <div style={{ display: 'flex', gap: 'var(--s-8)', flexWrap: 'wrap' }}>
+              {ASPECTS.map(({ preset, label }) => (
+                <Button
+                  key={preset}
+                  size="sm"
+                  variant={aspect === preset ? 'primary' : 'secondary'}
+                  disabled={!img}
+                  onClick={() => setAspect(preset)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}>
+            <span className="ob-eyebrow" style={{ color: 'var(--fg-tertiary)' }}>
+              {t('photo.editor.rotate')}
+            </span>
+            <div style={{ display: 'flex', gap: 'var(--s-8)', flexWrap: 'wrap' }}>
+              <Button
+                size="sm"
+                disabled={!img}
+                onClick={() => setRotationStep(((rotationStep + 270) % 360) as 0 | 90 | 180 | 270)}
+              >
+                {t('photo.editor.rotateLeft')}
+              </Button>
+              <Button
+                size="sm"
+                disabled={!img}
+                onClick={() => setRotationStep(((rotationStep + 90) % 360) as 0 | 90 | 180 | 270)}
+              >
+                {t('photo.editor.rotateRight')}
+              </Button>
+            </div>
+          </div>
+
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}>
+            <span className="ob-eyebrow" style={{ color: 'var(--fg-tertiary)' }}>
+              {t('photo.editor.straighten')}
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
+              <input
+                type="range"
+                min={-15}
+                max={15}
+                step={0.5}
+                value={fineRotation}
+                disabled={!img}
+                onChange={(event) => setFineRotation(Number(event.target.value))}
+                style={{ flex: 1, minWidth: 0 }}
+              />
+              <span className="ob-small ob-mono" style={{ width: rem(40), textAlign: 'right' }}>
+                {fineRotation.toFixed(1)}°
+              </span>
+            </span>
+          </label>
+
+          {output && (
+            <p
+              className="ob-small"
+              style={{
+                margin: 0,
+                color: outputIsSmall ? 'var(--state-offline)' : 'var(--fg-secondary)',
+              }}
             >
-              {label}
-            </Button>
-          ))}
+              {outputIsSmall
+                ? t('photo.editor.outputSmall', {
+                    width: output.width,
+                    height: output.height,
+                    longEdge: MASTER_LONG_EDGE,
+                  })
+                : t('photo.editor.output', { width: output.width, height: output.height })}
+            </p>
+          )}
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
-          <Button
-            size="sm"
-            onClick={() => setRotationStep(((rotationStep + 270) % 360) as 0 | 90 | 180 | 270)}
-          >
-            {t('photo.editor.rotateLeft')}
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => setRotationStep(((rotationStep + 90) % 360) as 0 | 90 | 180 | 270)}
-          >
-            {t('photo.editor.rotateRight')}
-          </Button>
-        </div>
-
-        <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)', width: '100%' }}>
-          <span className="ob-small" style={{ whiteSpace: 'nowrap' }}>
-            {t('photo.editor.straighten')}
-          </span>
-          <input
-            type="range"
-            min={-15}
-            max={15}
-            step={0.5}
-            value={fineRotation}
-            onChange={(event) => setFineRotation(Number(event.target.value))}
-            style={{ flex: 1 }}
-          />
-          <span className="ob-small ob-mono" style={{ width: rem(40), textAlign: 'right' }}>
-            {fineRotation.toFixed(1)}°
-          </span>
-        </label>
-
-        {output && (
-          <p
-            className="ob-small"
-            style={{ color: outputIsSmall ? 'var(--state-offline)' : 'var(--fg-secondary)' }}
-          >
-            {outputIsSmall
-              ? t('photo.editor.outputSmall', {
-                  width: output.width,
-                  height: output.height,
-                  longEdge: MASTER_LONG_EDGE,
-                })
-              : t('photo.editor.output', { width: output.width, height: output.height })}
-          </p>
-        )}
       </div>
     </Modal>
   );

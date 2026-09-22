@@ -363,6 +363,44 @@ panels (last-write-wins is the default); app name/branding.
 
 ## Recent sessions
 
+### 2026-09-22 (later still) — Crop editor: horizontal, load states, every image format (Claude)
+
+`ImageCropModal` reworked on the owner's instruction:
+
+- **Horizontal.** Photo on the left, its adjustments in a column on the right,
+  the dialog widened to `lg`. Stacked, the straighten slider — the one control
+  you use *while watching the picture* — could not be on screen at the same
+  time as the picture on a laptop.
+- **Load states.** `onload` had no `onerror` beside it, so a file the browser
+  could not decode left the editor on the word "Loading…" for ever. There is now
+  a `status` of loading / ready / failed: a spinner while it decodes, and a
+  plain message naming HEIC when it cannot. The right-hand controls are disabled
+  rather than hidden in both, so nothing jumps when the photo arrives.
+- **Every image extension.** The picker and the pre-upload check both read the
+  file *extension* as well as its MIME type. A browser reports `file.type` as an
+  empty string for anything it does not recognise, so `.heic`, `.jfif`, `.tif`
+  and `.avif` were being rejected as "not an image" before they ever reached the
+  server — which has no MIME filter at all and hands everything to sharp.
+
+Traps this leaves:
+
+- **Widening the picker does not make every format croppable.** The editor needs
+  the *browser* to decode the file, and Chromium cannot read HEIC or most TIFFs.
+  Those now reach the editor and get the "could not be opened" message instead
+  of silently vanishing at the picker. Cropping them for real would mean letting
+  the Master decode first — `assertCropRect` in `master/src/domain/images.ts`
+  rejects an out-of-bounds rect, so the client cannot fake a "whole image" crop
+  without knowing the dimensions. Not attempted.
+- `ui/src/AvatarPicker.tsx` still has the **old** narrow gate
+  (`file.type.startsWith('image/')`, `accept="image/*"`). It was left alone
+  deliberately — the instruction was about product photos. If it should match,
+  `IMAGE_EXTENSIONS`/`looksLikeImage` need to move from
+  `office/web/src/components/ProductImages.tsx` into `ui/` so both can share it.
+- After editing `shared/src/i18n/*.ts`, **run `npm run build:shared`** before a
+  browser pass. The dev server resolves `@orderbook/shared` to its build output,
+  so a new key renders as its own raw name until you do — which is exactly what
+  the first screenshot of this change showed.
+
 ### 2026-09-22 (later) — Stock off the product detail; the custom scrollbar lands (Claude)
 
 Two corrections the owner made after seeing the redesign running:

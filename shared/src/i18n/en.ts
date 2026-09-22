@@ -1983,6 +1983,9 @@ export const EN_MESSAGES = {
   'photo.editor.rotateLeft': 'Rotate left',
   'photo.editor.rotateRight': 'Rotate right',
   'photo.editor.straighten': 'Straighten',
+  'photo.editor.rotate': 'Rotate',
+  'photo.editor.failed':
+    'This photo could not be opened. Some camera formats, such as HEIC from an iPhone, cannot be shown here — save it as JPEG or PNG and add it again.',
   'photo.editor.reset': 'Reset',
   'photo.editor.output': 'Result {width} × {height} px',
   'photo.editor.outputSmall':
