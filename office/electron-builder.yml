@@ -61,9 +61,32 @@ win:
   target:
     - target: nsis
       arch: [x64]
+    # The standalone build: the same panel, packaged as one `.exe` that runs
+    # without being installed. See `portable:` below.
+    - target: portable
+      arch: [x64]
   # Unsigned. Windows SmartScreen will warn until a certificate is bought and
   # the build is signed with it — a purchase, not a code change.
   signAndEditExecutable: false
+
+# The standalone `.exe`. Double-click it and the panel runs; nothing is written
+# to Program Files, the Start Menu or the registry, and there is no
+# uninstaller. It unpacks itself under `%TEMP%\<unpackDirName>` on every
+# launch and removes that folder when the panel quits.
+#
+# Data is **not** kept beside the `.exe`: the shell puts it under
+# `%APPDATA%\OrderBook`, exactly where the installed build keeps it, so the
+# two builds share one snapshot cache and outbox, and a person can move from
+# the standalone file to the installer — or replace one standalone file with a
+# newer one — without losing anything queued for the Master.
+#
+# The in-app update (the office build the Master serves over the LAN) cannot
+# install over this build; `electron/shell.ts` refuses it and the Updates
+# screen says to replace the file by hand.
+portable:
+  requestExecutionLevel: user
+  unpackDirName: OrderBook-Office
+  artifactName: OrderBook-Office-${version}-Standalone.${ext}
 
 nsis:
   oneClick: false

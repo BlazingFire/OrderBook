@@ -61,9 +61,38 @@ win:
   target:
     - target: nsis
       arch: [x64]
+    # The standalone build: the same panel, packaged as one `.exe` that runs
+    # without being installed. See `portable:` below.
+    - target: portable
+      arch: [x64]
   # Unsigned. Windows SmartScreen will warn until a certificate is bought and
   # the build is signed with it — a purchase, not a code change.
   signAndEditExecutable: false
+
+# The standalone `.exe`. Double-click it and the panel runs; nothing is written
+# to Program Files, the Start Menu or the registry, and there is no
+# uninstaller. It unpacks itself under `%TEMP%\<unpackDirName>` on every
+# launch (100–200 MB, so the first window takes a few seconds longer than the
+# installed build) and removes that folder when the panel quits.
+#
+# Data is **not** kept beside the `.exe`: the shell puts it under
+# `%APPDATA%\OrderBook`, exactly where the installed build keeps it, so the
+# two builds share one database and a person can move from the standalone
+# file to the installer — or replace one standalone file with a newer one —
+# without touching a single record.
+#
+# Two consequences of having no installer, both handled elsewhere:
+#  - No firewall rules are added (`installer/installer.nsh` never runs), so
+#    Windows asks on first run. `unpackDirName` is fixed rather than random so
+#    the answer is remembered for the same path next time.
+#  - The in-app update cannot install over this build; `electron/shell.ts`
+#    refuses it and the Updates screen says to replace the file by hand.
+portable:
+  # `user`, never `admin`: PostgreSQL refuses to start under an elevated
+  # account, and the installed build runs unelevated for the same reason.
+  requestExecutionLevel: user
+  unpackDirName: OrderBook-Master
+  artifactName: OrderBook-Master-${version}-Standalone.${ext}
 
 nsis:
   oneClick: false

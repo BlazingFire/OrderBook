@@ -71,8 +71,15 @@ export interface DesktopBridge {
    */
   setDataDir?(dataDir: string): Promise<boolean>;
 
-  /** Whether the panel starts with the PC, and where the shell's log lives. */
-  getShellSettings?(): Promise<{ openAtLogin: boolean; logFile: string }>;
+  /**
+   * Whether the panel starts with the PC, where the shell's log lives, and
+   * whether this is the **standalone** build — the single `.exe` that runs
+   * without being installed. A standalone build cannot install an update over
+   * itself (`applyUpdate` refuses), so the Updates screen tells the operator
+   * to replace the file instead of offering a button. Absent from shells older
+   * than 1.2.0, which are all installed builds.
+   */
+  getShellSettings?(): Promise<{ openAtLogin: boolean; logFile: string; standalone?: boolean }>;
   setShellSettings?(value: { openAtLogin: boolean }): Promise<boolean>;
   openLogFolder?(): Promise<boolean>;
 

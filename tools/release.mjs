@@ -13,6 +13,12 @@
  * every panel over the LAN. There is no update server, because this network has
  * no internet — see `master/src/services/update.service.ts`.
  *
+ * On Windows each panel comes out twice: the `-Setup.exe` that installs, and
+ * the `-Standalone.exe` that simply runs (electron-builder's `portable`
+ * target, configured in each panel's `electron-builder.yml`). The setup file
+ * is what the update path knows about; the standalone file is published beside
+ * it with a `.sha256` and is replaced by hand.
+ *
  * Three things here are not obvious and are the reason this is a script rather
  * than a line in `package.json`:
  *
@@ -87,6 +93,15 @@ const TARGETS = {
     ext: 'exe',
     postgres: ['windows-x64'],
     buildsOn: ['win32'],
+    /**
+     * The word in the standalone file's name, or `null` where no standalone
+     * build exists. Windows only: electron-builder's `portable` target is an
+     * NSIS stub, and the ymls declare it under `win.target`. The name matters
+     * because the Master's releases-folder sweep removes only `-Setup.*` files
+     * (`github-releases.ts`), so a standalone file copied in beside them is
+     * left alone.
+     */
+    standalone: 'Standalone',
   },
   mac: {
     builderFlag: '--mac',
@@ -97,6 +112,7 @@ const TARGETS = {
     ext: 'dmg',
     postgres: [`darwin-${process.arch === 'arm64' ? 'arm64' : 'x64'}`],
     buildsOn: ['darwin'],
+    standalone: null,
   },
   linux: {
     builderFlag: '--linux',
@@ -104,6 +120,7 @@ const TARGETS = {
     ext: 'AppImage',
     postgres: [`linux-${process.arch === 'arm64' ? 'arm64' : 'x64'}`],
     buildsOn: ['linux'],
+    standalone: null,
   },
 };
 
@@ -425,25 +442,58 @@ async function build(panel, version) {
    */
   const outDir = path.join(ROOT, 'build', panel);
   const expected = `OrderBook-${config.label}-${version}-Setup.${RELEASE_TARGET.ext}`;
+  // The standalone `.exe` built beside the setup file, on the targets that
+  // have one. Both come out of the one electron-builder run above.
+  const standalone = RELEASE_TARGET.standalone
+    ? `OrderBook-${config.label}-${version}-${RELEASE_TARGET.standalone}.${RELEASE_TARGET.ext}`
+    : null;
   const files = await readdir(outDir);
 
-  if (!files.includes(expected)) {
-    throw new Error(
-      `electron-builder did not produce ${expected} in ${outDir}.
+  for (const name of [expected, standalone].filter(Boolean)) {
+    if (!files.includes(name)) {
+      throw new Error(
+        `electron-builder did not produce ${name} in ${outDir}.
 It built: ${files.join(', ')}`,
-    );
+      );
+    }
   }
 
-  return path.join(outDir, expected);
+  return {
+    setup: path.join(outDir, expected),
+    standalone: standalone ? path.join(outDir, standalone) : null,
+  };
 }
 
-async function publish(panel, version, setupPath, notes) {
+/**
+ * Publish the standalone `.exe` beside the setup file.
+ *
+ * Not in the manifest, on purpose: `latest.json` describes the file the update
+ * path installs, and the standalone build is not installed by anything — a
+ * person copies it where they want it and double-clicks. What it gets instead
+ * is a `.sha256` beside it, so a 150 MB file that crossed a USB stick can be
+ * checked by hand (`certutil -hashfile <file> SHA256` on Windows) before it is
+ * handed to a customer.
+ */
+async function publishStandalone(target, standalonePath) {
+  const file = path.basename(standalonePath);
+  await cp(standalonePath, path.join(target, file));
+
+  const digest = await sha256(standalonePath);
+  await writeFile(path.join(target, `${file}.sha256`), `${digest}  ${file}\n`);
+
+  const { size } = await stat(standalonePath);
+  console.log(`  published ${file} (${(size / 1024 / 1024).toFixed(0)} MB) to ${target}`);
+}
+
+async function publish(panel, version, built, notes) {
   const config = PANELS[panel];
   const target = path.join(RELEASES_DIR, config.folder);
   await mkdir(target, { recursive: true });
 
+  const setupPath = built.setup;
   const file = path.basename(setupPath);
   await cp(setupPath, path.join(target, file));
+  if (built.standalone) await publishStandalone(target, built.standalone);
 
   const { size } = await stat(setupPath);
   const manifest = sign({
@@ -498,8 +548,8 @@ async function main() {
   run('npm', ['run', 'build:shared']);
 
   for (const panel of panels) {
-    const setupPath = await build(panel, version);
-    await publish(panel, version, setupPath, notes);
+    const built = await build(panel, version);
+    await publish(panel, version, built, notes);
   }
 
   console.log(`\nDone. Copy ${RELEASES_DIR} to the Master PC to publish these builds.`);

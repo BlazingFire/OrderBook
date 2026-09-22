@@ -46,6 +46,21 @@ export function UpdatesScreen({
   const [phase, setPhase] = useState<Phase>('idle');
   const [failure, setFailure] = useState<string | null>(null);
   const [readyPath, setReadyPath] = useState<string | null>(null);
+  /**
+   * The standalone `.exe` cannot install over itself, and the shell says so
+   * up front rather than after a click. A browser tab or a shell older than
+   * 1.2.0 answers nothing, which reads as an installed build.
+   */
+  const [standalone, setStandalone] = useState(false);
+
+  useEffect(() => {
+    const shell = desktopBridge();
+    if (!shell?.getShellSettings) return;
+    shell
+      .getShellSettings()
+      .then((settings) => setStandalone(settings.standalone === true))
+      .catch(() => undefined);
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -164,7 +179,11 @@ export function UpdatesScreen({
                 </p>
               ) : null}
 
-              {canInstall ? (
+              {standalone ? (
+                <p className="ob-small" style={{ margin: 0 }}>
+                  {t('updates.standaloneBody')}
+                </p>
+              ) : canInstall ? (
                 <div>
                   <Button
                     variant="primary"

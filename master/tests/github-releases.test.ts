@@ -17,11 +17,27 @@ import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type * as Shared from '@orderbook/shared';
 import type { PanelKind, ReleaseManifest } from '@orderbook/shared';
 import { canonicalManifestPayload } from '@orderbook/shared';
+
+/*
+ * The manifests below carry no `platform`, which the reader defaults to the
+ * Windows build every pre-platform release was — and then compares against
+ * `process.platform`. On the Linux CI runner that comparison refused every
+ * fixture and nine tests failed with no release ever landing. The fixtures
+ * describe Windows builds; run the suite as Windows. `updates.test.ts` does
+ * the same, for the same reason.
+ */
+const HOST_PLATFORM = process.platform;
+beforeAll(() => {
+  Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+});
+afterAll(() => {
+  Object.defineProperty(process, 'platform', { value: HOST_PLATFORM, configurable: true });
+});
 
 const { publicKey, privateKey } = generateKeyPairSync('ed25519');
 const KEYS = [

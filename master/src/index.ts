@@ -23,11 +23,13 @@ import fs from 'node:fs/promises';
 
 import { bootFailed, bootReady, bootStep } from './boot-status.js';
 import { config } from './config/index.js';
+import { recordBootedVersion, snapshotClusterBeforeUpgrade } from './db/cluster-snapshot.js';
 import { startPostgres, type PostgresServerHandle } from './db/postgres-server.js';
 import { closeDatabase, db, initDatabase, runMigrations } from './db/knex.js';
 import { startDiscoveryResponder, type DiscoveryResponder } from './discovery/responder.js';
 import { createApp } from './http/app.js';
 import { createBootApp } from './http/boot-app.js';
+import { appVersion } from './lib/app-version.js';
 import { createLogger } from './lib/logger.js';
 import { toErrorMessage } from './lib/errors.js';
 import { loadOrCreateKey } from './lib/secret-box.js';
@@ -208,6 +210,24 @@ async function main(): Promise<void> {
     bootStep('Checking PDF fonts');
     assertFontsPresent();
 
+    /*
+     * Before the cluster starts, and only when this build has not booted on
+     * it before: a whole-cluster copy that survives a migration going wrong.
+     * `cluster-snapshot.ts` says why it is a file copy of a *stopped* cluster
+     * and why it fails soft. An external database (`DATABASE_URL`) is not ours
+     * to copy; whoever runs it keeps its backups.
+     */
+    if (!config.database.url) {
+      await snapshotClusterBeforeUpgrade({
+        dataDir: config.dataDir,
+        clusterDir: config.database.clusterDir,
+        version: appVersion(),
+        onCopyStart: () =>
+          bootStep('Keeping a copy of the database before the update (once per version)'),
+        log,
+      });
+    }
+
     bootStep('Starting the database');
     postgres = await startPostgres();
     initDatabase(postgres.connectionUrl);
@@ -215,6 +235,9 @@ async function main(): Promise<void> {
     bootStep('Updating the database');
     await runMigrations();
     await assertTimeZoneValid();
+    // Only now: the marker means "this version's schema is in place", so a
+    // boot that dies in a migration leaves the next attempt taking a fresh copy.
+    await recordBootedVersion(config.dataDir, appVersion());
 
     if (await isSetupComplete()) {
       await refreshStoredLanIp();

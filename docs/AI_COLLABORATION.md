@@ -187,6 +187,40 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-22 (evening) — 1.2.0: standalone `.exe` build, pre-update database copy, additive-migrations guard, CI green (Claude)
+
+Scope: the owner asked for an updated `.exe` build of the Master and Office
+panels (last built at 1.0.3), made standalone, and added that this version
+goes to customers and that from now on an update must replace the software
+without losing data. The `HANDOFF.md` entry of the same date has the summary;
+`docs/PRODUCTION_READINESS.md` is the checklist that came out of it.
+
+**Files touched.** Version 1.2.0 in every `package.json` and the lockfile.
+New: `electron/lib/standalone.ts` (+ `electron/tests/standalone.test.ts`),
+`master/src/db/cluster-snapshot.ts` (+ `master/tests/cluster-snapshot.test.ts`),
+`master/tests/migration-data-safety.test.ts`, `docs/PRODUCTION_READINESS.md`.
+Changed: both `electron-builder.yml` (portable target), `electron/shell.ts`,
+`electron/preload.cts`, `shared/src/protocol/desktop.ts`, both
+`UpdatesScreen.tsx`, `shared/src/i18n/en.ts` + `hi.ts` (one key, via
+`i18n:sync`), `master/src/index.ts`, `tools/release.mjs`,
+`.github/workflows/release.yml`, `master/tests/updates.test.ts`,
+`master/tests/github-releases.test.ts`, `docs/UPDATES.md`, `README.md`,
+`AGENTS.md`, `HANDOFF.md`, `.env.example`.
+
+**Verified.** `npm run lint` 0 and `npm run typecheck` 0 on the branch.
+`vitest run` in the session's container: 75 files / 854 tests passed, 45
+integration files skipped (the container runs as root and PostgreSQL refuses
+root; creating an unprivileged user was not permitted there). The
+integration suites run on the CI workflow's Ubuntu runner — check that run
+for the branch, not this note, for their result. The thirteen
+`updates` / `github-releases` tests that failed on the Linux CI runner pass.
+The migration guard was broken on purpose with a probe migration carrying a
+`DROP COLUMN` (one test red, naming it) and put back. Not verified: a packaged
+build on Windows — this session ran on Linux, where neither electron-builder's
+Windows targets nor the panels' `cmd.exe` build scripts run — so the release
+workflow was dispatched on the branch to build every file on GitHub's
+Windows runner (result recorded in the session's final message and the PR).
+
 ### 2026-09-22 (later still) — Crop editor made horizontal, with real load states and every image format (Claude)
 
 Three changes to `ui/src/ImageCropModal.tsx` and the photo picker that feeds it.

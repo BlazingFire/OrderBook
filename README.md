@@ -86,14 +86,24 @@ Connection** tab accepts the address and pairing password from step 1.
 
 ```bash
 npm run release          # both panels, current version
-npm run release 1.1.0    # bump every package.json first
+npm run release 1.2.1    # bump every package.json first
 npm run release -- --panel office
 ```
 
-Setup files land in `C:\OrderBook-Releases\{master-panel,office-panel}\`
-alongside a `latest.json` carrying a SHA-256. Copy that folder to the Master PC
-and the distribution is done: the Master installs its own build from it, and
-every Office Panel pulls the office build from the Master over the LAN.
+Each panel comes out twice: `OrderBook-<Panel>-<version>-Setup.exe` installs
+it, and `OrderBook-<Panel>-<version>-Standalone.exe` simply runs it — no
+installation, no administrator rights, nothing written to Program Files. Both
+keep their data in the same place, so a standalone copy can later be replaced
+by the installer (or by a newer standalone file) without losing a record.
+
+They land in `C:\OrderBook-Releases\{master-panel,office-panel}\` alongside a
+`latest.json` carrying a SHA-256 for the setup file and a `.sha256` beside the
+standalone one. Copy that folder to the Master PC and the distribution is
+done: the Master installs its own build from it, and every Office Panel pulls
+the office build from the Master over the LAN. Pushing a version bump to
+`main` builds the same files on GitHub (`.github/workflows/release.yml`).
+
+Before a build goes to a customer, read [`docs/PRODUCTION_READINESS.md`](docs/PRODUCTION_READINESS.md).
 
 `ORDERBOOK_RELEASES_DIR` overrides the location on both the build PC and the
 Master. Building needs internet once, for electron-builder's toolchain; the
@@ -101,4 +111,6 @@ shipped apps never reach the internet.
 
 Data lives in `%APPDATA%\OrderBook\{master,office}`, outside the program
 folder, so installing a new build over an old one leaves every party, lead and
-order exactly where it was.
+order exactly where it was. The Master also copies its whole database into
+`backups\before-<version>-…` the first time a new version starts, and a
+migration that would destroy data fails the build from 1.2.0 on.

@@ -16,13 +16,31 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ReleaseManifest } from '@orderbook/shared';
 
 import type * as UpdateService from '../src/services/update.service.js';
 
 let root: string;
+
+/*
+ * Every fixture here describes a Windows build, because every build shipped so
+ * far is one — and the reader refuses a manifest whose platform is not the
+ * asking panel's, which it takes from `process.platform` when the caller does
+ * not say. So this suite passed on the owner's Windows PCs and failed thirteen
+ * tests on the Linux CI runner (and on a Mac) with every fixture reported as
+ * "a win32 release, and this panel is linux". The fixtures are right and the
+ * platform under test is Windows; pin it for the suite rather than the OS the
+ * tests happen to run on.
+ */
+const HOST_PLATFORM = process.platform;
+beforeAll(() => {
+  Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+});
+afterAll(() => {
+  Object.defineProperty(process, 'platform', { value: HOST_PLATFORM, configurable: true });
+});
 
 /**
  * Fresh module graph per test, so `config` re-reads the env var.

@@ -3907,4 +3907,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'dashboard.pipeline.emptyTitle': "No open leads",
   'dashboard.pipeline.openBoard': "Open board",
   'lead.add.draft.hintRate': 'Enter a rate',
+  // TODO(i18n-hi)
+  'updates.standaloneBody': "This is the standalone build, which cannot install an update over itself. Get the new standalone file, close this window, and replace the old file with it. The database and every setting stay exactly where they are.",
 };

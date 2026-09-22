@@ -9,11 +9,21 @@ name: Release
 # makes `npm version` (or editing that one field) the publish gesture.
 #
 #   1. Bump the version and push to main.
-#   2. This builds both Windows installers, signs the manifests, and publishes
-#      a GitHub Release with four assets.
+#   2. This builds both Windows setup files and both standalone `.exe`s, signs
+#      the manifests, and publishes a GitHub Release with eight assets.
 #   3. Each Master polls that release, verifies the signature, downloads into
 #      its releases folder, and serves the office build to its panels over the
 #      LAN exactly as it does for a USB stick today.
+#
+# ## Building without publishing
+#
+# Run the workflow by hand (Actions → Release → Run workflow) on any branch
+# and it builds every file and attaches them to a **draft pre-release** named
+# after the branch and commit — a way to get the `.exe`s for a branch, or to
+# prove a build still works, without tagging anything or touching what the
+# fleet sees: `latestRelease()` ignores drafts and pre-releases alike. Tick
+# "publish" to create the real release instead, which only makes sense from
+# main. Draft builds are the maintainers' to delete once downloaded.
 #
 # ## Where releases are published
 #
@@ -41,6 +51,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish the real GitHub Release (main only). Off: a draft pre-release build for this branch.'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -59,31 +74,55 @@ jobs:
           node-version: '22'
           cache: npm
 
-      - name: Decide whether this version is new
+      - name: Decide what this run does
         id: version
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          WANT_PUBLISH: ${{ inputs.publish }}
         run: |
           version="$(node -p "require('./package.json').version")"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+          released=false
           if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "v$version is already released — nothing to do."
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "publish=true" >> "$GITHUB_OUTPUT"
+            released=true
           fi
 
+          # `build`: make the files at all. `publish`: create the real release
+          # for v<version>. Neither, both, or build-only into a draft.
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            build=true
+            publish=false
+            if [ "$WANT_PUBLISH" = "true" ]; then
+              if [ "$released" = "true" ]; then
+                echo "::warning::v$version is already released — building a draft instead."
+              else
+                publish=true
+              fi
+            fi
+          elif [ "$released" = "true" ]; then
+            echo "v$version is already released — nothing to do."
+            build=false
+            publish=false
+          else
+            build=true
+            publish=true
+          fi
+
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+
       - name: Install dependencies
-        if: steps.version.outputs.publish == 'true'
+        if: steps.version.outputs.build == 'true'
         # No `install-scripts approve` step: the runner's npm 10 does not block
         # postinstall the way npm 12 does locally, so the embedded-postgres
         # binaries this release vendors are downloaded by `npm ci` itself.
         run: npm ci
 
       - name: Write the release key
-        if: steps.version.outputs.publish == 'true'
+        if: steps.version.outputs.build == 'true'
         id: key
         shell: bash
         env:
@@ -102,8 +141,8 @@ jobs:
           echo "key_file=$key_file" >> "$GITHUB_OUTPUT"
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
-      - name: Build and sign both installers
-        if: steps.version.outputs.publish == 'true'
+      - name: Build and sign both panels
+        if: steps.version.outputs.build == 'true'
         shell: bash
         env:
           ORDERBOOK_RELEASES_DIR: ${{ runner.temp }}\release-out
@@ -113,7 +152,7 @@ jobs:
         run: npm run release
 
       - name: Name the manifests for a flat asset list
-        if: steps.version.outputs.publish == 'true'
+        if: steps.version.outputs.build == 'true'
         shell: bash
         run: |
           # A GitHub Release has one namespace for every asset, so two files
@@ -122,32 +161,63 @@ jobs:
           out='${{ runner.temp }}/release-out'
           cp "$out/master-panel/latest.json" "$out/latest-master.json"
           cp "$out/office-panel/latest.json" "$out/latest-office.json"
+          ls -l "$out/master-panel" "$out/office-panel"
 
       - name: Publish the release
-        if: steps.version.outputs.publish == 'true'
+        if: steps.version.outputs.build == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
           REPO: ${{ vars.RELEASES_REPO || github.repository }}
+          PUBLISH: ${{ steps.version.outputs.publish }}
+          SIGNED: ${{ steps.key.outputs.signed }}
         run: |
           version='${{ steps.version.outputs.version }}'
           out='${{ runner.temp }}/release-out'
+          sha="$(git rev-parse --short "$GITHUB_SHA")"
+
+          assets=(
+            "$out/master-panel/OrderBook-Master-$version-Setup.exe"
+            "$out/master-panel/OrderBook-Master-$version-Standalone.exe"
+            "$out/master-panel/OrderBook-Master-$version-Standalone.exe.sha256"
+            "$out/office-panel/OrderBook-Office-$version-Setup.exe"
+            "$out/office-panel/OrderBook-Office-$version-Standalone.exe"
+            "$out/office-panel/OrderBook-Office-$version-Standalone.exe.sha256"
+            "$out/latest-master.json"
+            "$out/latest-office.json"
+          )
+
+          if [ "$PUBLISH" != "true" ]; then
+            # A build, not a release: a draft *and* a pre-release under a tag
+            # of its own, so that even if somebody publishes it by mistake,
+            # `/releases/latest` — which skips pre-releases — never names it.
+            tag="build-$version-$sha"
+            gh release create "$tag" \
+              --repo "$REPO" \
+              --target "$GITHUB_SHA" \
+              --title "Build $version from $GITHUB_REF_NAME @ $sha (not a release)" \
+              --notes "Built by hand from $GITHUB_REF_NAME at $GITHUB_SHA. Not published to any panel; delete once downloaded." \
+              --draft --prerelease \
+              "${assets[@]}"
+            echo "::notice::Built $version as draft pre-release $tag on $REPO."
+            exit 0
+          fi
 
           # Unsigned stays a draft. `latestRelease()` skips drafts and
           # pre-releases, so nothing here reaches a shop PC until a human
           # publishes it deliberately.
           draft=''
-          if [ '${{ steps.key.outputs.signed }}' != 'true' ]; then
+          if [ "$SIGNED" != 'true' ]; then
             draft='--draft'
             echo "::warning::Published as a draft: no RELEASE_KEY, so the manifests are unsigned."
           fi
 
+          # `--target`: the tag points at the commit that was built, not at
+          # whatever the default branch's tip is by the time this runs.
           gh release create "v$version" \
             --repo "$REPO" \
+            --target "$GITHUB_SHA" \
             --title "OrderBook $version" \
             --notes "${{ github.event.head_commit.message }}" \
             $draft \
-            "$out/master-panel/OrderBook-Master-$version-Setup.exe" \
-            "$out/office-panel/OrderBook-Office-$version-Setup.exe" \
-            "$out/latest-master.json" \
-            "$out/latest-office.json"
+            "${assets[@]}"
