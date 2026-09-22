@@ -7,7 +7,8 @@ This file only says where the truth lives and what is open. Do not duplicate
 ## Read order (every session)
 
 1. `HANDOFF.md` — current state, decisions, traps, owed work.
-2. `docs/CODE_MAP.md` — the repo's layout, and where a given change goes.
+2. `docs/STRUCTURE.md` — the whole software and its code in one file: layout, every
+   file, schema, main flows, tests, and where a given change goes.
 3. `docs/AI_COLLABORATION.md` — the multi-agent workflow + handoff protocol. **Update
    its Change log after each prompt that changes the repo.**
 4. `docs/PROJECT_PLAN.md` — architecture source of truth.
@@ -39,7 +40,7 @@ This file only says where the truth lives and what is open. Do not duplicate
 
 `docs/NEXT_PHASE.md` is the answer, in order. The short version: every branch
 was merged into `main` on 2026-09-22 and the full suite ran green with the
-integration suites (140 files / 1699 tests), but nothing merged that day was
+integration suites (140 files / 1707 tests), but nothing merged that day was
 seen in a browser or Electron. Four owner decisions block a customer release
 (1.0.3 data, signing key, code-signing certificate, Recycle Bin retention),
 and four briefs remain in `docs/ai-handoffs/`.

@@ -29,7 +29,7 @@ was removed on 2026-09-11 and the PDF Designer (Documents module) on
 | Question | Read |
 |---|---|
 | Requirements, pairing design, screen flows | `docs/PROJECT_PLAN.md` |
-| Where every file lives, and where a change goes | `docs/CODE_MAP.md` |
+| The whole software and its code: every file, schema, flows, tests, where a change goes | `docs/STRUCTURE.md` |
 | Every table, column, index and why | `docs/schema/` (start at `00-overview.md`) |
 | Lead → order flow as built | `docs/LEAD_GENERATION_FLOW.md` |
 | Roles, users, permissions, tiers | `docs/ROLES_AND_USERS.md` |
@@ -69,7 +69,7 @@ against the code before acting on it.
 - **Verify gate:** `npm run verify` = `lint` + `typecheck` (all workspaces,
   both Electron shells, the test tsconfigs) + `vitest run`. **Last full run
   2026-09-22 after the consolidation: lint 0, typecheck 0, 140 test files /
-  1699 tests passing, integration suites included** (PostgreSQL 16, run as a
+  1707 tests passing, integration suites included** (PostgreSQL 16, run as a
   non-root user — see "How to run"). Run the three steps separately and check
   each exit code. As root the integration suites skip (46 files) and the
   summary still reads green.
@@ -202,7 +202,8 @@ docs/          all prose; nothing source-of-truth lives in a code comment
 .agents/skills/        the UI-consistency skill in the shape Muse Code discovers
 ```
 
-- **Layout:** `docs/CODE_MAP.md` is the map. Read it before hunting for a file.
+- **Layout:** `docs/STRUCTURE.md` is the map — every workspace and file, the
+  schema, the main flows end to end. Read it before hunting for a file.
 - **UI:** import from `@orderbook/ui`; never copy a component into a panel
   (`master/tests/no-duplicate-ui.test.ts`). A screen or form both panels need
   lives in `ui/` and takes a `transport`, never a panel's api client
@@ -314,6 +315,38 @@ docs/          all prose; nothing source-of-truth lives in a code comment
 6. **Weights:** the catalogue's 549 variants have none; the Office
    Catalogue's *Missing weight* filter is the worklist.
 
+**Defects found by the 2026-09-22 structure audit, still open.** Each was
+confirmed by reading the code, not in a running app; `docs/STRUCTURE.md` names
+the files. Fixed the same day: avatars wiped by the boot sweep, the Master's
+Updates screen answered 401, the release workflow's commit-message injection
+and wrong-repository tag check, and `setVersion()` skipping `cleaner/`.
+
+1. **An Office Panel's storage move reverts on restart** under the desktop shell:
+   `relocateDataDir()` never updates `office-location.json` and never tells the
+   shell (§1.5).
+2. **In-app updates are always refused on Linux:** `installerExtension('linux')`
+   returns `.exe`, so every `.AppImage` is rejected (§10.8 step 6).
+3. **A GitHub setup-file download is cut off at 15 s:** `guardedFetch`'s timeout
+   covers the whole ~150 MB body, not just the manifest hop (§10.8 step 1).
+4. **GitHub sync writes `latest.json` but `readManifest` prefers
+   `latest-<platform>.json`**, so a folder once filled by `release.mjs` keeps
+   reading a stale manifest (§10.10 #3).
+5. **Audit trail gaps:** the main write paths log with `recordDetachedActivity`
+   (not atomic with the change), `upsertVariant`, `setReorderLevel` and offline
+   merged updates log nothing, and a dispatch bumps neither `version` nor `hlc`
+   (§5.11 #5, #6, #15).
+6. **`GET /api/storage` has no permission check** (§5.11 #9); Socket.IO CORS
+   reflects any origin (§5.11 #13).
+7. **`npm run reload:catalog` only wipes** (and truncates `activity_log`), and
+   `npm run migrate -- --status` prints blank pending names (§5.11 #2, #4).
+8. **Suspected, from reading only (not in `STRUCTURE.md`):** `useCommand`
+   (`ui/src/KeyboardProvider.tsx`) re-registers every command whenever the
+   palette opens, which could put a parent screen's `record.save` above an open
+   dialog's; and the Copy buttons call `navigator.clipboard`, which a browser
+   provides only in a secure context, so they may fail over plain LAN HTTP.
+9. **Nothing enforces "publish from main only"** in the Release workflow
+   (§10.10 #5); the `.zip` and `.deb` are built and never published (§10.10 #2).
+
 **Manual:**
 
 - A browser and Electron pass of both panels on 1.2.0 (nothing since the
@@ -400,6 +433,13 @@ terms, multiple contacts); concurrent edits of one lead from two panels
 Condensed. The full entries are in `git show 5b8ebe2:HANDOFF.md` and in
 `docs/AI_COLLABORATION.md`.
 
+- **2026-09-22 — `docs/STRUCTURE.md`: the whole software in one file (Claude).**
+  Twelve readers mapped every workspace against `git ls-files` (one from a
+  graphify code graph: 641 files, 6,152 nodes, 242 communities), one writer
+  assembled the file, five fact-checkers raised 81 corrections (80 applied, 1
+  rejected with evidence) and 51 gaps (all filled). It replaces
+  `docs/CODE_MAP.md`. The audit's defects are listed under "Owed work"; five
+  were fixed with tests the same day.
 - **2026-09-22 — macOS build fixed, library links fixed on every OS
   (Claude).** Vendored PostgreSQL links kept relative (`verbatimSymlinks`);
   the universal Mac build fetches and stages both architectures of every

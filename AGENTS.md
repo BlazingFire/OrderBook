@@ -18,8 +18,10 @@ There is no AI assistant.
 ## Source of truth — read these before assuming
 
 - **`HANDOFF.md`** (root) — current state, decisions, traps, owed work. Read first in any session.
-- **`docs/CODE_MAP.md`** — the layout: every workspace and directory, what each is for, where a
-  given kind of change goes, and which tests guard what. Read second; it is what stops
+- **`docs/STRUCTURE.md`** — the whole software and its code in one file: every workspace,
+  directory and file with its purpose, the database schema, the main flows end to end
+  (pairing, sign-in, offline sync, lead → order, catalogue, settings, updates, backup),
+  the test map, and where a given kind of change goes. Read second; it is what stops
   "find the file that does X" being a search.
 - **`docs/PROJECT_PLAN.md`** — architecture source of truth (requirements, pairing, screen flows).
 - **`docs/schema/`** — every table, column, index, and rationale.

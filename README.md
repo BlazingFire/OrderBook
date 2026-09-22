@@ -18,7 +18,7 @@ Both are web apps: each PC runs a small local server and staff open a browser.
 | Document | What it covers |
 |---|---|
 | [`HANDOFF.md`](HANDOFF.md) | Session context and the decisions already made — read first |
-| [`docs/CODE_MAP.md`](docs/CODE_MAP.md) | Where every file lives and what each place is for |
+| [`docs/STRUCTURE.md`](docs/STRUCTURE.md) | The whole software and its code in one file: every workspace and file, the database, the main flows end to end, tests, and where a change goes |
 | [`docs/NEXT_PHASE.md`](docs/NEXT_PHASE.md) | What to do next, and the decisions waiting on the owner |
 | [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) | Requirements, architecture, screen flows, phased plan |
 | [`docs/schema/`](docs/schema/00-overview.md) | Database schema, table by table, with rationale |

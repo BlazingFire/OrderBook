@@ -3,7 +3,7 @@
 Rewritten 2026-09-22 after the branch consolidation, when every open branch was
 merged into `main` and the sessions that produced them were retired. This file
 is about *what happens next*; `HANDOFF.md` is what is true now and
-`docs/CODE_MAP.md` is the layout. This file assumes both.
+`docs/STRUCTURE.md` is the layout. This file assumes both.
 
 ---
 
@@ -31,7 +31,7 @@ su postgres -s /bin/bash -c 'cd /tmp/obtest && TMPDIR=/tmp/obtest/.tmp HOME=/tmp
 ```
 
 The copy is what avoids the `EACCES` vitest hits when it bundles its config
-beside the repository. On 2026-09-22 this ran 140 files / 1699 tests, none
+beside the repository. On 2026-09-22 this ran 140 files / 1707 tests, none
 skipped.
 
 **Check the skip count, not just the pass count.** A test nobody has executed

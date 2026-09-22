@@ -190,6 +190,41 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-22 (structure) — `docs/STRUCTURE.md` replaces `CODE_MAP.md`; five audit defects fixed (Claude)
+
+Scope: the owner asked for the current structure of the whole software and
+code in one file, using graphify if useful.
+
+**How it was made.** graphify (`graphifyy` 0.9.65, installed in the session's
+scratchpad, code-only AST extraction, no LLM) built a graph of a clean export
+of the tree: 641 files, 6,152 nodes, 16,653 edges, 242 communities; its output
+stayed outside the repo. A workflow then ran twelve readers — one per workspace
+or concern, each held to `git ls-files` and to counts from commands — plus one
+reading the graphify graph; one writer assembled the file; five fact-checkers
+tried to refute every path, name and count (81 corrections: 80 applied, 1
+rejected with evidence; 51 gaps: all filled). Afterwards every backticked path
+was checked mechanically: all resolve except five named as deleted or cited by
+stale comments.
+
+**Changed.** New `docs/STRUCTURE.md` (§1 system, §2 toolchain, §3–§10 each
+workspace file by file, §6 schema, §11 flows end to end, §12 tests, §13 docs,
+§14 graphify hubs, §15 where a change goes). `docs/CODE_MAP.md` deleted; links
+in `AGENTS.md`, `HANDOFF.md`, `README.md`, `opencode.md`, `docs/NEXT_PHASE.md`
+now point at the new file.
+
+**Fixed from the audit, each with a test watched failing first:**
+`sweepOrphanImageVariants` deleted `imagesDir/<tenant>/avatars/` on every boot
+(now skips `AVATARS_DIR`, shared with `avatar.service.ts`;
+`images.integration.test.ts`); the Master's own `/api/updates/status` and
+`/master/install` were refused by the panels' router-level `requirePanel`
+(now per route; `http-api.integration.test.ts` `describe('updates')`);
+`setVersion()` and `shared/tests/version.test.ts` left out `cleaner/` (both now
+read the root `workspaces`). In `release.yml`: the commit message now reaches
+`gh release create --notes` through an environment variable instead of being
+pasted into the script, and `check` looks the tag up in the same repository and
+with the same token as `create-release`. The rest of the audit's defects are
+listed in `HANDOFF.md` under "Owed work".
+
 ### 2026-09-22 (release) — macOS universal build fixed; relative library links on every OS (Claude)
 
 Scope: the owner asked for the macOS release build to be fixed.
