@@ -4,14 +4,21 @@
  * entirely — clicking a row previously jumped straight into the edit form
  * with no way to just look).
  *
- * Every figure here comes from the already-flowing snapshot: the info card
- * reads straight off `Product`, and the variants table joins the product's
- * own `variants[]` to `view.stock` by variant id — the same source
- * `StockByVariant` reads for the list row, just spelled out as code, weight
- * and real on-hand/reserved/free columns instead of a compact chip row
- * (`StockCell.tsx`'s doc comment explains that split). A variant with no
- * stock row yet is still listed, with dashes: it exists, it has a code, nobody
- * has received any.
+ * Two columns above the variants: the **Photo** card and the **Details** card.
+ * Photos used to live at the bottom of the edit drawer, which put the one
+ * thing anyone opens a ceramic product to look at behind a form; they lead the
+ * screen now, and the drawer is a form again. The details card carries the
+ * edit button in its own header, next to the fields it edits, rather than in a
+ * row of buttons under the whole screen.
+ *
+ * Every figure here comes from the already-flowing snapshot: the details card
+ * reads straight off `Product` (through `productSummary.ts`, so its code and
+ * weight read the same as the list row's), and the variants table joins the
+ * product's own `variants[]` to `view.stock` by variant id. This is the only
+ * place stock is shown now — the list dropped its compact chip column in the
+ * redesign, which is defensible exactly because the whole record is one click
+ * away. A variant with no stock row yet is still listed, with dashes: it
+ * exists, it has a code, nobody has received any.
  *
  * "Stock in" and "Adjust count" post straight through the already-wired
  * `api.stockInbound`/`api.stockAdjust`, per variant. Both are queued writes
@@ -27,6 +34,7 @@
  */
 
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import type { Product, ProductVariant } from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
@@ -37,7 +45,6 @@ import {
   DataTable,
   FormField,
   Input,
-  KeyValueList,
   NumberInput,
   Select,
   StatusPill,
@@ -47,6 +54,8 @@ import {
   useColourHex,
   type DataTableColumn,
 } from '@orderbook/ui';
+import { ProductImages } from '../components/ProductImages';
+import { codesOf, weightLabel } from '../productSummary';
 
 type StockMode = 'none' | 'inbound' | 'adjust';
 
@@ -63,12 +72,19 @@ export function ProductDetail({
   product,
   view,
   onEdit,
+  onPhotosChanged,
   onMessage,
   onError,
 }: {
   product: Product;
   view: LocalView;
   onEdit: () => void;
+  /**
+   * A photo write came back with the whole product. The snapshot catches up on
+   * its own, but not before the next frame, and a cover photo that keeps the
+   * old thumbnail for a second reads as a failed upload.
+   */
+  onPhotosChanged: (product: Product) => void;
   onMessage: (message: string) => void;
   onError: (message: string) => void;
 }) {
@@ -170,21 +186,99 @@ export function ProductDetail({
       : []),
   ];
 
+  const weight = weightLabel(product);
+
   return (
     <>
-      <Card>
-        <KeyValueList
-          items={[
-            { label: t('product.detail.category'), value: product.categoryName },
-            { label: t('product.field.alias'), value: product.alias ?? '—' },
-            { label: t('product.detail.size'), value: product.size ?? '—' },
-            {
-              label: t('product.multiColour.label'),
-              value: product.multiColour ? t('product.multiColour.detailYes') : t('product.multiColour.detailNo'),
-            },
-          ]}
-        />
-      </Card>
+      {/* Photo left, facts right, and both wrap to one column when the window
+          (or the scale) leaves no room — `flex-wrap` rather than a breakpoint,
+          for the reason `FieldGrid` gives. */}
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'flex-start',
+          gap: 'var(--s-20)',
+        }}
+      >
+        <div
+          style={{
+            flex: `1 1 ${rem(320)}`,
+            minWidth: rem(220),
+            maxWidth: rem(400),
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--s-16)',
+          }}
+        >
+          <ProductImages product={product} onChanged={onPhotosChanged} onError={onError} />
+        </div>
+
+        <div
+          style={{
+            flex: `1 1 ${rem(280)}`,
+            minWidth: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--s-16)',
+          }}
+        >
+          <Card padded={false}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 'var(--s-8)',
+                padding: 'var(--s-12) var(--s-16)',
+                borderBottom: '1px solid var(--line)',
+              }}
+            >
+              <span className="ob-eyebrow" style={{ color: 'var(--fg-tertiary)' }}>
+                {t('product.detail.detailsTitle')}
+              </span>
+              <Button variant="primary" size="sm" icon="edit" onClick={onEdit}>
+                {t('product.detail.editAction')}
+              </Button>
+            </div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: `repeat(auto-fit, minmax(${rem(150)}, 1fr))`,
+                gap: 'var(--s-16) var(--s-20)',
+                padding: 'var(--s-16)',
+                alignItems: 'start',
+              }}
+            >
+              <DetailField label={t('product.detail.category')} value={product.categoryName} />
+              <DetailField
+                label={t('product.detail.code')}
+                value={<span className="ob-mono ob-body-strong">{codesOf(product)}</span>}
+              />
+              <DetailField label={t('product.field.alias')} value={product.alias} />
+              <DetailField label={t('product.detail.size')} value={product.size} />
+              <DetailField
+                label={t('product.detail.weight')}
+                value={
+                  weight === null ? (
+                    <StatusPill tone="offline">{t('product.weight.missing')}</StatusPill>
+                  ) : (
+                    weight
+                  )
+                }
+              />
+              <DetailField
+                label={t('product.multiColour.label')}
+                value={
+                  product.multiColour
+                    ? t('product.multiColour.detailYes')
+                    : t('product.multiColour.detailNo')
+                }
+              />
+            </div>
+          </Card>
+        </div>
+      </div>
 
       <div>
         <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
@@ -209,9 +303,6 @@ export function ProductDetail({
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s-8)' }}>
-        <Button variant="primary" size="sm" icon="edit" onClick={onEdit}>
-          {t('product.detail.editAction')}
-        </Button>
         <Button
           size="sm"
           onClick={() => setMode((current) => (current === 'inbound' ? 'none' : 'inbound'))}
@@ -241,6 +332,31 @@ export function ProductDetail({
         />
       )}
     </>
+  );
+}
+
+/**
+ * One labelled fact in the details grid.
+ *
+ * An empty value renders as a dash in the tertiary colour rather than an empty
+ * cell: "this product has no alias" and "this row failed to render" have to
+ * look different.
+ */
+function DetailField({ label, value }: { label: string; value: ReactNode }) {
+  const empty = value === null || value === undefined || value === '';
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: rem(4), minWidth: 0 }}>
+      <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
+        {label}
+      </span>
+      {empty ? (
+        <span style={{ color: 'var(--fg-tertiary)' }}>—</span>
+      ) : typeof value === 'string' ? (
+        <span className="ob-body-strong">{value}</span>
+      ) : (
+        <span>{value}</span>
+      )}
+    </div>
   );
 }
 

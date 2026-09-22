@@ -50,7 +50,6 @@ import {
   useCommand,
   useEnterToAdvance,
 } from '@orderbook/ui';
-import { ProductImages } from './ProductImages';
 
 export interface CreatedProduct {
   id: string;
@@ -119,14 +118,6 @@ export function ProductDrawer({
   const [rows, setRows] = useState<VariantRow[]>([EMPTY_ROW]);
   const [busy, setBusy] = useState(false);
 
-  /*
-   * Local mirror of the editing product's `images[]`, patched in place as
-   * uploads, reorders and deletes resolve. The merged view updates a moment
-   * later through the event stream, but waiting for that would make the
-   * thumbnail strip flicker blank between actions.
-   */
-  const [liveProduct, setLiveProduct] = useState<Product | null>(editing);
-
   const set = (field: keyof Draft, value: string): void =>
     setDraft((current) => ({ ...current, [field]: value }));
 
@@ -169,7 +160,6 @@ export function ProductDrawer({
       setRows([EMPTY_ROW]);
     }
 
-    setLiveProduct(editing);
     // Keyed on the record's identity, not the record: an unrelated field
     // arriving through the event stream must not wipe a half-typed draft.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -344,7 +334,7 @@ export function ProductDrawer({
     >
       <div ref={fields}>
         <FieldGroup title={t('product.group.identity')}>
-          <Field label={t('product.field.name')} required span={2}>
+          <Field label={t('product.field.name')} required>
             {(id) => (
               <Input
                 id={id}
@@ -417,7 +407,7 @@ export function ProductDrawer({
                 style={{
                   display: 'grid',
                   gridTemplateColumns: VARIANT_GRID,
-                  gap: `0 ${rem(10)}`,
+                  gap: '0 var(--s-12)',
                   color: 'var(--fg-tertiary)',
                 }}
               >
@@ -433,7 +423,7 @@ export function ProductDrawer({
                   style={{
                     display: 'grid',
                     gridTemplateColumns: VARIANT_GRID,
-                    gap: `0 ${rem(10)}`,
+                    gap: '0 var(--s-12)',
                     alignItems: 'center',
                   }}
                 >
@@ -457,14 +447,12 @@ export function ProductDrawer({
                     className="ob-mono"
                     invalid={!row.code.trim()}
                     aria-label={`${t('product.variants.col.code')} ${index + 1}`}
-                    style={{ marginTop: rem(4) }}
                     onChange={(event) => setRow(index, { code: event.target.value })}
                     onKeyDown={(event) => onRowKeyDown(event, index)}
                   />
                   <NumberInput
                     value={row.weightKg}
                     aria-label={`${t('product.variants.col.weight')} ${index + 1}`}
-                    style={{ marginTop: rem(4) }}
                     onChange={(event) =>
                       setRow(index, { weightKg: event.target.value.replace(/[^0-9.]/g, '') })
                     }
@@ -475,7 +463,7 @@ export function ProductDrawer({
                     className="ob-btn ob-btn--ghost"
                     aria-label={t('product.variants.remove', { label: row.label || String(index + 1) })}
                     title={t('product.variants.remove', { label: row.label || String(index + 1) })}
-                    style={{ padding: 0, minWidth: rem(28), marginTop: rem(4) }}
+                    style={{ padding: 0, minWidth: rem(32), justifyContent: 'center' }}
                     disabled={rows.length === 1}
                     onClick={() => setRows((current) => current.filter((_, at) => at !== index))}
                   >
@@ -518,19 +506,9 @@ export function ProductDrawer({
             )}
           </Field>
         </FieldGroup>
-
-        {liveProduct && (
-          <FieldGroup title={t('product.group.photos')}>
-            <Field label={t('product.field.images')} span={3}>
-              {() => (
-                <ProductImages product={liveProduct} onChanged={setLiveProduct} onError={onError} />
-              )}
-            </Field>
-          </FieldGroup>
-        )}
       </div>
     </Modal>
   );
 }
 
-const VARIANT_GRID = `minmax(0, 1.4fr) minmax(0, 1fr) ${rem(120)} ${rem(28)}`;
+const VARIANT_GRID = `minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) ${rem(32)}`;

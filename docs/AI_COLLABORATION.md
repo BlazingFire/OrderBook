@@ -187,6 +187,70 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-22 — Product screens redesigned: photo card, details card, six-column list (Claude)
+
+Scope: the owner redesigned the Products page, the product detail and the
+add/edit product form in a Claude Design artifact and asked for it in the
+codebase. The artifact ships this repo's own stylesheet **byte for byte** —
+`ui/src/styles.css` and its four imports, only the `@import`s inlined — so the
+redesign is structural throughout. **No CSS, no token and no new class was
+added or changed.** Every `ob-*` class it uses already existed.
+
+Three of its changes remove function rather than restyle it, so they were put
+to the owner before any code was written. They chose: keep multi-photo support
+(cover photo big, the existing strip under it) rather than the mock's literal
+single photo; drop **both** the photo-thumbnail and the Stock column from the
+list; and drop the category and missing-weight filter chips exactly as drawn.
+
+**What changed.**
+1. **Photos moved out of the edit drawer onto the detail screen.**
+   `ProductImages` is now the *Photo* card: a square cover at the size a
+   ceramic photo is worth showing, `Change photo` / `Remove photo` / caption,
+   a dashed drop target when there is none, and the old thumbnail strip kept
+   underneath as *More photos*. "Change photo" promotes its upload to primary
+   (`promoteNext`), which the server only does by itself for the first image
+   on an empty product. The strip's controls were re-stacked — four icon
+   buttons and a "Set primary" label do not fit across a 96px tile on one
+   line, and side by side they overlapped.
+2. **Detail screen is two columns**: Photo card left, *Details* card right,
+   the latter carrying `Edit product` in its own header and an auto-fit grid
+   of Category, Product code, Alias, Size, Weight, Made in every colour. The
+   variants-and-stock table and the stock forms are unchanged beneath it. The
+   in-page `<h1>` is gone — the topbar already shows the open record's name
+   through `useSubNav`, so `EditorScreen`'s `title` is now optional.
+3. **List is six proportional columns**: Code, Product, Category, Size,
+   Weight, Colours. The photo thumbnail and the per-variant Stock chips are
+   gone; stock is read on the detail screen, which is defensible for the same
+   reason `fitColumns` is. `StockCell.tsx` had no other caller and was deleted.
+4. **Filter strip is search → Import → New product.** `categoryFilter` and
+   `weightFilter` went with the chips, including their `listProducts` params
+   and the category facets on `ProductPage`.
+5. **Add/edit form** keeps its three groups and loses the Photos group. The
+   name field no longer spans two columns, and the variant grid gives weight a
+   fluid track with a 32px remove button, per the mock.
+6. **New `office/web/src/productSummary.ts`** — `codesOf`, `missingWeight` and
+   `weightLabel`, so the list row and the detail card cannot disagree about a
+   product's code or weight.
+
+**Files modified:** `office/web/src/screens/CatalogScreen.tsx`,
+`office/web/src/screens/ProductDetail.tsx`,
+`office/web/src/components/ProductDrawer.tsx`,
+`office/web/src/components/ProductImages.tsx`, `ui/src/EditorScreen.tsx`,
+`shared/src/i18n/en.ts` + `hi.ts` (7 keys added, none removed).
+New: `office/web/src/productSummary.ts`.
+Deleted: `office/web/src/components/StockCell.tsx`.
+
+**Verified.** `npm run lint` and `npm run typecheck` exit 0. `npm test` —
+818 passed, 13 failed in `master/tests/updates.test.ts` and
+`master/tests/github-releases.test.ts`; those 13 fail identically on a clean
+`HEAD` (release packaging, untouched here). 45 integration files skipped, no
+PostgreSQL in the container. `npm run build` cannot run on Linux — the
+`master-web`/`office-web` build scripts are cmd.exe syntax — so `vite build`
+was run directly for `office/web` and succeeded. Because `office/web` has no
+test files, the screens were rendered in Chromium against mock records and
+checked by eye: list, detail with and without photos, and the form in both
+variant modes.
+
 ### 2026-09-21 — Product master trimmed, pricing removed, multi-colour lines (Claude)
 
 Scope: the owner had the Swisware 2026 catalogue PDF extracted to a

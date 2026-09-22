@@ -21,7 +21,7 @@
  * catalogue (`SNAPSHOT_LIMIT`, 500 rows); it used to be the whole list, which
  * meant a shop that imported five thousand products could see the first five
  * hundred and reach the rest from nowhere. Online, the list now asks the
- * Master — search, category filter and "load more" all run there. Offline, the
+ * Master — search and "load more" both run there. Offline, the
  * panel's server pages the cached snapshot instead and says so, and the
  * screen shows a "cached page" pill rather than pretending.
  *
@@ -41,6 +41,18 @@
  * Parties or Products in the sidebar while it is open. Editing is one button
  * inside the detail, not the row click itself — `PartyDrawer`/`ProductDrawer`
  * both double as edit forms, and stay overlays because a form is a dialog.
+ *
+ * **The products side was redesigned on 2026-09-22** from the owner's artifact
+ * (see `HANDOFF.md`). Its list is six proportional columns — code, product,
+ * category, size, weight, colours — and its filter strip is the search box and
+ * the two actions, nothing else: the category and missing-weight chips were
+ * dropped at the owner's decision, and with them this screen's `categoryFilter`
+ * and `weightFilter`. `api.listProducts` still accepts both, and the Master
+ * still implements them, should they come back. Parties kept its city chips.
+ *
+ * The thumbnail and per-variant stock columns went the same way. Stock is read
+ * on the product's own detail screen now, which is the same argument
+ * `fitColumns` rests on: the whole record is one click from the row.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -50,7 +62,7 @@ import { ApiError, api, type LocalView } from '../api';
 import { PartyDrawer, type CreatedParty } from '../components/PartyDrawer';
 import { ProductDrawer, type CreatedProduct } from '../components/ProductDrawer';
 import { ProductImportModal } from '../components/ProductImportModal';
-import { StockByVariant } from '../components/StockCell';
+import { codesOf, weightLabel } from '../productSummary';
 import {
   Button,
   DataTable,
@@ -60,13 +72,10 @@ import {
   FilterChip,
   Input,
   LoadMorePager,
-  ProgressiveImage,
   SkeletonTable,
   StatusPill,
-  formatKg,
   rem,
   t,
-  useColourHex,
   useDebounced,
   useFilterBar,
   useSubNav,
@@ -88,7 +97,6 @@ const REFETCH_DEBOUNCE_MS = 500;
 interface ProductPage {
   items: Product[];
   total: number;
-  categories: Array<{ id: string; name: string; count: number }>;
   /** The panel's server answered from its cached snapshot — the Master was unreachable. */
   offline: boolean;
 }
@@ -97,37 +105,18 @@ function distinctSorted(values: (string | null)[]): string[] {
   return Array.from(new Set(values.filter((value): value is string => Boolean(value)))).sort();
 }
 
-/** A variant whose weight nobody has entered yet — flagged, never treated as zero. */
-function missingWeight(product: Product): boolean {
-  return product.variants.some((variant) => variant.isActive && variant.weightKg === null);
-}
-
-function matchesProduct(
-  product: Product,
-  term: string,
-  categoryFilter: string | null,
-  weightFilter: boolean,
-): boolean {
+function matchesProduct(product: Product, term: string): boolean {
   return (
-    (!term ||
-      product.name.toLowerCase().includes(term) ||
-      product.variants.some(
-        (variant) =>
-          variant.code.toLowerCase().includes(term) ||
-          (variant.label ?? '').toLowerCase().includes(term),
-      ) ||
-      (product.alias ?? '').toLowerCase().includes(term) ||
-      product.categoryName.toLowerCase().includes(term)) &&
-    (!categoryFilter || product.categoryId === categoryFilter) &&
-    (!weightFilter || missingWeight(product))
+    !term ||
+    product.name.toLowerCase().includes(term) ||
+    product.variants.some(
+      (variant) =>
+        variant.code.toLowerCase().includes(term) ||
+        (variant.label ?? '').toLowerCase().includes(term),
+    ) ||
+    (product.alias ?? '').toLowerCase().includes(term) ||
+    product.categoryName.toLowerCase().includes(term)
   );
-}
-
-/** The code column: the one code, or how many there are and the first of them. */
-function codesOf(product: Product): string {
-  const active = product.variants.filter((variant) => variant.isActive);
-  if (active.length <= 1) return active[0]?.code ?? product.variants[0]?.code ?? '—';
-  return t('catalog.products.variantCount', { count: active.length, first: active[0]!.code });
 }
 
 export function CatalogScreen({
@@ -141,9 +130,6 @@ export function CatalogScreen({
   canImport?: boolean;
 }) {
   const toast = useToast();
-  const colourHex = useColourHex(view.optionLists);
-  // Absent means an older Master, which sends every figure — read as "on".
-  const freeToSell = view.features?.freeToSell ?? true;
 
   const [partySearch, setPartySearch] = useState('');
   const [cityFilter, setCityFilter] = useState<string | null>(null);
@@ -152,10 +138,16 @@ export function CatalogScreen({
   const [editingParty, setEditingParty] = useState<Party | null>(null);
 
   const [productSearch, setProductSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
-  const [weightFilter, setWeightFilter] = useState(false);
   const [productDrawerOpen, setProductDrawerOpen] = useState(false);
   const [openProductId, setOpenProductId] = useState<string | null>(null);
+  /*
+   * The open product's photos as the last photo write left them. A write comes
+   * back with the whole product, but the snapshot only catches up a frame or
+   * two later through the event stream, and a cover photo that stays on the
+   * old thumbnail until then reads as a failed upload. Only `images` is taken
+   * from it, so an unrelated field arriving through the stream still wins.
+   */
+  const [photoPatch, setPhotoPatch] = useState<Product | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [importOpen, setImportOpen] = useState(false);
 
@@ -199,8 +191,6 @@ export function CatalogScreen({
       .listProducts(
         {
           search: productTerm || undefined,
-          categoryId: categoryFilter ?? undefined,
-          missingWeight: weightFilter || undefined,
           limit: PAGE,
           offset: 0,
         },
@@ -210,7 +200,6 @@ export function CatalogScreen({
         setPage({
           items: result.items,
           total: result.total,
-          categories: result.categories ?? [],
           offline: result.offline === true,
         });
         setLoadFailed(false);
@@ -225,7 +214,7 @@ export function CatalogScreen({
       });
 
     return () => controller.abort();
-  }, [tab, productTerm, categoryFilter, weightFilter, revision]);
+  }, [tab, productTerm, revision]);
 
   /*
    * What the snapshot says about products, as one string: ids and clocks.
@@ -251,8 +240,6 @@ export function CatalogScreen({
     try {
       const result = await api.listProducts({
         search: productTerm || undefined,
-        categoryId: categoryFilter ?? undefined,
-        missingWeight: weightFilter || undefined,
         limit: PAGE,
         offset: page.items.length,
       });
@@ -284,11 +271,9 @@ export function CatalogScreen({
   const pending = useMemo(
     () =>
       view.products.filter(
-        (product) =>
-          !product.sync.hlc &&
-          matchesProduct(product, productTermLower, categoryFilter, weightFilter),
+        (product) => !product.sync.hlc && matchesProduct(product, productTermLower),
       ),
-    [view.products, productTermLower, categoryFilter, weightFilter],
+    [view.products, productTermLower],
   );
 
   const products = useMemo(() => {
@@ -326,10 +311,14 @@ export function CatalogScreen({
   }
 
   const openParty = view.parties.find((party) => party.id === openPartyId) ?? null;
-  const openProduct =
+  const openProductRow =
     products.find((product) => product.id === openProductId) ??
     byId.get(openProductId ?? '') ??
     null;
+  const openProduct =
+    openProductRow && photoPatch?.id === openProductRow.id
+      ? { ...openProductRow, images: photoPatch.images }
+      : openProductRow;
   const openRecord = tab === 'parties' ? openParty : openProduct;
 
   useSubNav(
@@ -392,27 +381,6 @@ export function CatalogScreen({
           data-screen-search
           style={{ width: rem(400) }}
         />
-        <FilterChip
-          active={categoryFilter === null}
-          count={page ? page.total + pending.length : undefined}
-          onClick={() => setCategoryFilter(null)}
-        >
-          {t('catalog.filter.all')}
-        </FilterChip>
-        {(page?.categories ?? []).map((facet) => (
-          <FilterChip
-            key={facet.id}
-            active={categoryFilter === facet.id}
-            count={facet.count}
-            onClick={() => setCategoryFilter((current) => (current === facet.id ? null : facet.id))}
-          >
-            {facet.name}
-          </FilterChip>
-        ))}
-        {/* Off by itself: it is a to-do list, not a category. */}
-        <FilterChip active={weightFilter} onClick={() => setWeightFilter((current) => !current)}>
-          {t('catalog.products.filter.missingWeight')}
-        </FilterChip>
         <span style={{ flex: 1 }} />
         {canImport && (
           <Button variant="secondary" size="sm" icon="upload" onClick={() => setImportOpen(true)}>
@@ -571,40 +539,18 @@ export function CatalogScreen({
     );
   }
 
+  /*
+   * Code first, then the name — the two things anyone identifies a ceramic
+   * model by, and the two a search is typed against. Proportional tracks
+   * rather than fixed rem: the six columns share the width they are given
+   * instead of leaving a ragged gutter at 4K, and `minmax(0, …)` is what stops
+   * a long category name from pushing its track past its share.
+   */
   const columns: DataTableColumn<Product>[] = [
     {
-      key: 'photo',
-      header: '',
-      width: rem(40),
-      render: (product) => {
-        const primary = product.images.find((image) => image.isPrimary) ?? product.images[0];
-        if (!primary) return null;
-        return (
-          <span style={{ width: rem(28), height: rem(28) }}>
-            <ProgressiveImage
-              imageId={primary.id}
-              variant="micro"
-              slotPx={28}
-              blurhash={primary.blurhash}
-              width={primary.width}
-              height={primary.height}
-              alt=""
-            />
-          </span>
-        );
-      },
-    },
-    {
-      key: 'category',
-      header: t('catalog.products.column.category'),
-      priority: 2,
-      width: rem(130),
-      render: (product) => product.categoryName,
-    },
-    {
-      key: 'codes',
+      key: 'code',
       header: t('catalog.products.column.codes'),
-      width: rem(120),
+      width: 'minmax(0, 0.8fr)',
       render: (product) => (
         <span className="ob-mono" style={{ fontSize: rem(12), color: 'var(--fg-secondary)' }}>
           {codesOf(product)}
@@ -614,6 +560,7 @@ export function CatalogScreen({
     {
       key: 'name',
       header: t('catalog.products.column.name'),
+      width: 'minmax(0, 2fr)',
       render: (product) => (
         <span
           style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-8)', minWidth: 0 }}
@@ -633,62 +580,54 @@ export function CatalogScreen({
       ),
     },
     {
+      key: 'category',
+      header: t('catalog.products.column.category'),
+      priority: 2,
+      width: 'minmax(0, 1.2fr)',
+      render: (product) => product.categoryName,
+    },
+    {
       key: 'size',
       header: t('catalog.products.column.size'),
       priority: 3,
-      width: rem(110),
+      width: 'minmax(0, 1.2fr)',
       render: (product) => product.size ?? '—',
     },
     {
       key: 'weight',
       header: t('catalog.products.column.weight'),
       priority: 2,
-      width: rem(132),
+      width: 'minmax(0, 1fr)',
       align: 'right',
       render: (product) => {
-        if (missingWeight(product)) {
-          return <StatusPill tone="offline">{t('product.weight.missing')}</StatusPill>;
-        }
-        const active = product.variants.filter((variant) => variant.isActive);
-        // One figure for a one-form product; a range for a model, because one
-        // number for "each of its variants weighs something different" lies.
-        if (active.length === 1) return formatKg(active[0]!.weightKg);
-        const weights = active.map((variant) => variant.weightKg ?? 0);
-        const low = Math.min(...weights);
-        const high = Math.max(...weights);
-        return low === high ? formatKg(low) : t('product.weight.range', { low: formatKg(low), high: formatKg(high) });
+        const weight = weightLabel(product);
+        return weight === null ? (
+          <StatusPill tone="offline">{t('product.weight.missing')}</StatusPill>
+        ) : (
+          weight
+        );
       },
     },
     {
       key: 'colours',
       header: t('catalog.products.column.colours'),
       priority: 3,
-      width: rem(96),
+      width: 'minmax(0, 0.6fr)',
       render: (product) =>
-        product.multiColour ? <StatusPill tone="accent">{t('product.multiColour.pill')}</StatusPill> : '—',
-    },
-    {
-      key: 'stock',
-      header: t(freeToSell ? 'catalog.products.column.stock' : 'catalog.products.column.stockOnHand'),
-      width: '1.3fr',
-      render: (product) => (
-        <StockByVariant productId={product.id} stock={view.stock} colourHex={colourHex} />
-      ),
+        product.multiColour ? (
+          <StatusPill tone="accent">{t('product.multiColour.pill')}</StatusPill>
+        ) : (
+          '—'
+        ),
     },
   ];
 
   if (openProduct) {
     return (
       <EditorScreen
-        title={openProduct.name}
-        meta={
-          <span className="ob-mono ob-small">
-            {codesOf(openProduct)}
-            {openProduct.alias ? ` · ${openProduct.alias}` : ''}
-          </span>
-        }
         onBack={() => {
           setOpenProductId(null);
+          setPhotoPatch(null);
           return true;
         }}
         backLabel={t('action.backToList')}
@@ -699,7 +638,9 @@ export function CatalogScreen({
           onEdit={() => {
             setEditingProduct(openProduct);
             setOpenProductId(null);
+            setPhotoPatch(null);
           }}
+          onPhotosChanged={setPhotoPatch}
           onMessage={(message) => toast.push(message)}
           onError={onDrawerError}
         />
@@ -716,7 +657,7 @@ export function CatalogScreen({
     );
   }
 
-  const filtered = productTerm !== '' || categoryFilter !== null || weightFilter;
+  const searched = productTerm !== '';
   const shownTotal = (page?.total ?? 0) + pending.length;
 
   return (
@@ -737,7 +678,7 @@ export function CatalogScreen({
                 actionLabel={t('action.retryNow')}
                 onAction={() => setRevision((current) => current + 1)}
               />
-            ) : !filtered ? (
+            ) : !searched ? (
               <EmptyState
                 title={t('catalog.products.empty.title')}
                 description={t('catalog.products.empty.description')}

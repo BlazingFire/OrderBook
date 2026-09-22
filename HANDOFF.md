@@ -363,6 +363,45 @@ panels (last-write-wins is the default); app name/branding.
 
 ## Recent sessions
 
+### 2026-09-22 — Product screens redesigned from the owner's artifact (Claude)
+
+The owner redesigned Products (list), product detail and the add/edit product
+form in a Claude Design artifact and asked for it in the codebase. The artifact
+bundles this repo's own `ui/src/styles.css` byte for byte, so **the redesign
+added no CSS and no tokens** — it rearranges components that already existed.
+
+Decided with the owner before coding, because each removes function:
+
+- **Photos stay multi-image.** The mock draws one photo; the backend has
+  primary/sequence/captions. Built as cover-photo-large plus the existing strip.
+- **The list drops both the photo thumbnail and the Stock column.** Stock is
+  now read only on the detail screen's variants table.
+- **The filter chips go.** Category and missing-weight filtering left the UI.
+
+Where things are now: photo editing lives on the **product detail screen**
+(`ProductImages` is the Photo card), not in `ProductDrawer` — the drawer is a
+form again, with Identity / Codes & weight / Colours and nothing else. The
+detail screen is Photo card + Details card side by side, with `Edit product` in
+the Details card header; the variants-and-stock table and the stock-movement
+forms are unchanged below. The list is six proportional columns — Code,
+Product, Category, Size, Weight, Colours.
+
+Traps this leaves:
+
+- `EditorScreen`'s `title` is **optional** now. The product detail omits it
+  because the topbar already names the open record via `useSubNav`; party, lead
+  and order details still pass one. Do not "fix" the product screen by adding
+  it back — that is the duplicate the redesign removed.
+- `office/web/src/productSummary.ts` is the only place a product's code or
+  weight summary is computed. The list row and the detail card both read it;
+  keep it that way or they will drift.
+- `StockCell.tsx` was deleted with the Stock column — it had no other caller.
+  Restoring the column means restoring the component from git.
+- `api.listProducts` is still passed `categoryId`/`missingWeight` by nothing;
+  the server side of both is untouched and works, should the chips come back.
+- `npm run build` does not run on Linux (the two web build scripts are cmd.exe
+  syntax). Use `npx vite build` inside `office/web` / `master/web` there.
+
 ### 2026-09-21 — Product master trimmed, pricing removed, multi-colour lines; catalogue PDF extracted (Claude)
 
 The owner extracted the Swisware 2026 catalogue PDF to a spreadsheet (an

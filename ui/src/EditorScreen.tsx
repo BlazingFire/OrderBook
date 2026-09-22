@@ -7,6 +7,12 @@
  * Lifted out of the Master's `AccessScreen`, where it began as a private
  * helper, once the Office Panel needed the same frame for lead, order, party
  * and product detail.
+ *
+ * `title` is optional because the shell's topbar already shows the record's
+ * name — `useSubNav` publishes the open record as a nested nav item, and the
+ * topbar reads its label. A screen that prints the same name again an inch
+ * lower is saying it twice; one that has nothing else in the head is left with
+ * the back button alone, which is the whole point of the head.
  */
 
 import type { ReactNode } from 'react';
@@ -14,7 +20,8 @@ import type { ReactNode } from 'react';
 import { Button } from './Button.js';
 
 export interface EditorScreenProps {
-  title: string;
+  /** Omit where the topbar already names the record. */
+  title?: string;
   meta?: ReactNode;
   /** Trailing controls for a shell like the PDF designer — Preview, Save, Cancel. */
   actions?: ReactNode;
@@ -31,9 +38,11 @@ export function EditorScreen({ title, meta, actions, onBack, backLabel, children
         <Button variant="ghost" size="sm" icon="collapse" onClick={() => onBack()}>
           {backLabel}
         </Button>
-        <h1 className="ob-title" style={{ margin: 0 }}>
-          {title}
-        </h1>
+        {title && (
+          <h1 className="ob-title" style={{ margin: 0 }}>
+            {title}
+          </h1>
+        )}
         {meta && <div className="ob-editorscreen-meta">{meta}</div>}
         {actions && <div className="ob-editorscreen-actions">{actions}</div>}
       </header>

@@ -1,12 +1,20 @@
 /**
- * The reorderable thumbnail strip inside the product edit drawer
- * (`7-IMAGE-PIPELINE.md` §3.3) — "Set as primary" and reordering are plain
- * list operations that never reopen the editor; only adding a new photo does.
+ * The product's photos (`7-IMAGE-PIPELINE.md` §3.3) — the Photo card on the
+ * product detail screen.
  *
- * Reordering is up/down buttons rather than drag-and-drop. Dropping *files* on
- * the strip is native (`dragover`/`drop` on a div, no library); reordering by
- * drag is not, because it needs pointer-level keyboard parity to stay
- * reachable and the two buttons already give that for free.
+ * It used to be a flat thumbnail strip inside the edit drawer, which buried the
+ * one thing anyone opens a ceramic product to look at two clicks deep, behind a
+ * form. The card leads with the cover photo at the size a photo is worth
+ * showing, and keeps the rest of the gallery as the strip underneath: "Change
+ * photo" and "Remove photo" act on the cover, the strip's own controls act on
+ * the photo they sit under.
+ *
+ * "Set as primary" and reordering are plain list operations that never reopen
+ * the editor; only adding a new photo does. Reordering is up/down buttons
+ * rather than drag-and-drop. Dropping *files* on the card is native
+ * (`dragover`/`drop` on a div, no library); reordering by drag is not, because
+ * it needs pointer-level keyboard parity to stay reachable and the two buttons
+ * already give that for free.
  *
  * Adding is a queue, not a single file. People photograph a tile from four
  * angles and pick all four at once; walking them through the editor one at a
@@ -20,10 +28,12 @@ import { MAX_IMAGE_SOURCE_BYTES } from '@orderbook/shared';
 import { api } from '../api';
 import {
   Button,
+  Card,
   IconButton,
   ImageCropModal,
   Modal,
   ProgressiveImage,
+  StatusPill,
   rem,
   t,
   type CropResult,
@@ -41,6 +51,16 @@ export function ProductImages({
   onError: (message: string) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /**
+   * The picker was opened by "Change photo", so the photo that comes out of the
+   * editor is meant to *be* the cover — not to join the gallery behind the one
+   * already there. The server only auto-primaries the first image on an empty
+   * product (`image.service.ts`), so anything else has to say so itself.
+   *
+   * A ref, not state: it is read inside the crop save that the editor triggers
+   * long after the click, and re-rendering on it would reopen nothing.
+   */
+  const promoteNext = useRef(false);
   /** Files still to be walked through the editor. The head is the one open. */
   const [queue, setQueue] = useState<File[]>([]);
   const [queueTotal, setQueueTotal] = useState(0);
@@ -52,12 +72,6 @@ export function ProductImages({
   const images = [...product.images].sort((a, b) =>
     a.isPrimary === b.isPrimary ? a.sequence - b.sequence : a.isPrimary ? -1 : 1,
   );
-
-  // The arrows swap only among the non-primary photos, so the first movable one
-  // is not gallery index 0 whenever a primary is pinned ahead of it. The down
-  // arrow needs no equivalent: the primary sorts to the front, so the last
-  // gallery entry is always the last non-primary one.
-  const firstMovable = images.findIndex((entry) => !entry.isPrimary);
 
   /**
    * Validate a batch and open the editor on the first survivor.
@@ -102,6 +116,9 @@ export function ProductImages({
   function onDrop(event: React.DragEvent): void {
     event.preventDefault();
     setDropping(false);
+    // A drop is never a "change the cover" gesture, whatever the last click
+    // was — a picker the user opened and then dismissed must not colour it.
+    promoteNext.current = false;
     accept([...event.dataTransfer.files]);
   }
 
@@ -119,13 +136,30 @@ export function ProductImages({
     if (!file) return;
     setBusy(true);
     try {
-      onChanged(await api.uploadProductImage(product.id, file, result));
+      const before = new Set(product.images.map((image) => image.id));
+      let next = await api.uploadProductImage(product.id, file, result);
+      if (promoteNext.current) {
+        // Only the first photo out of a "Change photo" pick takes the cover;
+        // the rest of a dropped batch join the gallery as usual.
+        promoteNext.current = false;
+        const added = next.images.find((image) => !before.has(image.id));
+        if (added && !added.isPrimary) {
+          next = await api.updateProductImage(product.id, added.id, { isPrimary: true });
+        }
+      }
+      onChanged(next);
       advance();
     } catch (caught) {
       onError(caught instanceof Error ? caught.message : t('photo.error.uploadFailed'));
     } finally {
       setBusy(false);
     }
+  }
+
+  /** Open the picker; `promote` marks the result as the new cover photo. */
+  function pick(promote: boolean): void {
+    promoteNext.current = promote;
+    fileInputRef.current?.click();
   }
 
   async function setPrimary(image: ProductImage): Promise<void> {
@@ -193,9 +227,14 @@ export function ProductImages({
     }
   }
 
+  const primary = images.find((image) => image.isPrimary) ?? null;
+  /** Everything behind the cover, in gallery order — what the strip shows. */
+  const rest = images.filter((image) => !image.isPrimary);
+
   return (
-    <div
-      style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}
+    <Card
+      padded={false}
+      style={{ outline: dropping ? '2px dashed var(--accent)' : undefined }}
       onDragOver={(event) => {
         event.preventDefault();
         setDropping(true);
@@ -206,124 +245,254 @@ export function ProductImages({
       <div
         style={{
           display: 'flex',
-          flexWrap: 'wrap',
-          gap: 'var(--s-12)',
-          padding: 'var(--s-4)',
-          borderRadius: 'var(--r-sm)',
-          outline: dropping ? '2px dashed var(--accent)' : 'none',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 'var(--s-8)',
+          padding: 'var(--s-12) var(--s-16)',
+          borderBottom: '1px solid var(--line)',
         }}
       >
-        {images.map((image, index) => (
-          <div
-            key={image.id}
-            style={{ width: rem(96), display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}
-          >
-            <ProgressiveImage
-              imageId={image.id}
-              variant="thumb"
-              slotPx={96}
-              blurhash={image.blurhash}
-              width={image.width}
-              height={image.height}
-              alt={image.caption ?? product.name}
-            />
+        <span className="ob-eyebrow" style={{ color: 'var(--fg-tertiary)' }}>
+          {t('product.detail.photoTitle')}
+        </span>
+        {primary && <StatusPill tone="accent">{t('photo.primary')}</StatusPill>}
+      </div>
+
+      <div
+        style={{
+          padding: 'var(--s-16)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 'var(--s-12)',
+        }}
+      >
+        {primary ? (
+          <>
+            {/* The well is square and clips: a photo of a basin and a photo of
+                a tile stack line up down the column whatever shape they were
+                shot in. `slotPx` picks the variant; `large` is the fallback
+                for a browser that cannot measure. */}
+            <div
+              style={{
+                position: 'relative',
+                width: '100%',
+                aspectRatio: '1 / 1',
+                overflow: 'hidden',
+                borderRadius: 'var(--r-sm)',
+                background: 'var(--bg-sunken)',
+              }}
+            >
+              <ProgressiveImage
+                imageId={primary.id}
+                variant="large"
+                slotPx={288}
+                blurhash={primary.blurhash}
+                width={primary.width}
+                height={primary.height}
+                alt={primary.caption ?? product.name}
+              />
+            </div>
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 2,
+                gap: 'var(--s-8)',
+                flexWrap: 'wrap',
               }}
             >
-              {image.isPrimary ? (
-                <span className="ob-small" style={{ color: 'var(--fg-secondary)' }}>
-                  {t('photo.primary')}
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  className="ob-small"
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="sync"
+                disabled={busy}
+                onClick={() => pick(true)}
+              >
+                {t('photo.change')}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                icon="trash"
+                disabled={busy}
+                onClick={() => setConfirmRemove(primary)}
+              >
+                {t('photo.remove')}
+              </Button>
+              <IconButton
+                icon="edit"
+                label={t('photo.caption.edit')}
+                size={14}
+                disabled={busy}
+                onClick={() => setEditingCaption(primary)}
+              />
+            </div>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => pick(true)}
+            style={{
+              width: '100%',
+              aspectRatio: '1 / 1',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 'var(--s-8)',
+              border: '1px dashed var(--line-strong)',
+              borderRadius: 'var(--r-sm)',
+              background: 'none',
+              cursor: 'pointer',
+              color: 'var(--fg-secondary)',
+              font: 'inherit',
+            }}
+          >
+            {/* Inline rather than an `Icon`: the shared set is one `<path>` per
+                glyph, and a camera is a body, a lens and a hump. */}
+            <svg
+              width="28"
+              height="28"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="2.5" y="5.5" width="19" height="14" rx="2" />
+              <circle cx="12" cy="12.5" r="3.5" />
+              <path d="M8.5 5.5l1.3-2h4.4l1.3 2" />
+            </svg>
+            <span>{dropping ? t('photo.dropHint') : t('photo.add')}</span>
+            <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
+              {t('photo.addBrowseHint')}
+            </span>
+          </button>
+        )}
+
+        {primary && (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 'var(--s-8)',
+              paddingTop: 'var(--s-12)',
+              borderTop: '1px solid var(--line)',
+            }}
+          >
+            <span className="ob-eyebrow" style={{ color: 'var(--fg-tertiary)' }}>
+              {t('photo.gallery')}
+            </span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s-12)' }}>
+              {rest.map((image, index) => (
+                <div
+                  key={image.id}
                   style={{
-                    background: 'none',
-                    border: 'none',
-                    padding: 0,
-                    cursor: 'pointer',
-                    textDecoration: 'underline',
+                    width: rem(96),
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 'var(--s-4)',
                   }}
-                  disabled={busy}
-                  onClick={() => void setPrimary(image)}
                 >
-                  {t('photo.setPrimary')}
-                </button>
-              )}
-              <div style={{ display: 'flex' }}>
-                {!image.isPrimary && (
-                  <>
+                  <ProgressiveImage
+                    imageId={image.id}
+                    variant="thumb"
+                    slotPx={96}
+                    blurhash={image.blurhash}
+                    width={image.width}
+                    height={image.height}
+                    alt={image.caption ?? product.name}
+                  />
+                  {/* Four icon buttons and a text button do not fit across a
+                      96px tile on one line — side by side they wrapped into
+                      each other. One row each. */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 2,
+                    }}
+                  >
                     <IconButton
                       icon="chevron-up"
                       label={t('photo.moveEarlier')}
                       size={14}
-                      disabled={busy || index === firstMovable}
+                      disabled={busy || index === 0}
                       onClick={() => void move(image, -1)}
                     />
                     <IconButton
                       icon="chevron-down"
                       label={t('photo.moveLater')}
                       size={14}
-                      disabled={busy || index === images.length - 1}
+                      disabled={busy || index === rest.length - 1}
                       onClick={() => void move(image, 1)}
                     />
-                  </>
-                )}
-                {/* The caption is the alt text every one of these thumbnails
-                    falls back to the product name for. The endpoint has always
-                    existed; until now nothing could reach it. */}
-                <IconButton
-                  icon="edit"
-                  label={t('photo.caption.edit')}
-                  size={14}
-                  disabled={busy}
-                  onClick={() => setEditingCaption(image)}
-                />
-                <IconButton
-                  icon="trash"
-                  label={t('photo.remove')}
-                  size={14}
-                  disabled={busy}
-                  onClick={() => setConfirmRemove(image)}
-                />
-              </div>
+                    {/* The caption is the alt text every one of these
+                        thumbnails falls back to the product name for. */}
+                    <IconButton
+                      icon="edit"
+                      label={t('photo.caption.edit')}
+                      size={14}
+                      disabled={busy}
+                      onClick={() => setEditingCaption(image)}
+                    />
+                    <IconButton
+                      icon="trash"
+                      label={t('photo.remove')}
+                      size={14}
+                      disabled={busy}
+                      onClick={() => setConfirmRemove(image)}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="ob-small"
+                    style={{
+                      width: '100%',
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      cursor: 'pointer',
+                      textDecoration: 'underline',
+                      color: 'var(--fg-secondary)',
+                      font: 'inherit',
+                    }}
+                    disabled={busy}
+                    onClick={() => void setPrimary(image)}
+                  >
+                    {t('photo.setPrimary')}
+                  </button>
+                </div>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => pick(false)}
+                style={{
+                  width: rem(96),
+                  aspectRatio: '1 / 1',
+                  alignSelf: 'flex-start',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: '1px dashed var(--line-strong)',
+                  borderRadius: 'var(--r-sm)',
+                  background: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--fg-secondary)',
+                  font: 'inherit',
+                }}
+              >
+                {dropping ? t('photo.dropHint') : t('photo.add')}
+              </button>
             </div>
           </div>
-        ))}
-
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          style={{
-            width: rem(96),
-            aspectRatio: '1 / 1',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            border: '1px dashed var(--border-default, #ccc)',
-            borderRadius: 'var(--r-sm, 4px)',
-            background: 'none',
-            cursor: 'pointer',
-            color: 'var(--fg-secondary)',
-          }}
-        >
-          {dropping ? t('photo.dropHint') : t('photo.add')}
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          hidden
-          onChange={onFilePicked}
-        />
+        )}
       </div>
+
+      <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={onFilePicked} />
 
       <ImageCropModal
         open={queue.length > 0}
@@ -350,10 +519,7 @@ export function ProductImages({
             <Button variant="ghost" onClick={() => setConfirmRemove(null)}>
               {t('common.cancel')}
             </Button>
-            <Button
-              variant="danger"
-              onClick={() => confirmRemove && void remove(confirmRemove)}
-            >
+            <Button variant="danger" onClick={() => confirmRemove && void remove(confirmRemove)}>
               {t('photo.remove')}
             </Button>
           </>
@@ -361,7 +527,7 @@ export function ProductImages({
       >
         <p className="ob-small">{t('photo.removeConfirm.body')}</p>
       </Modal>
-    </div>
+    </Card>
   );
 }
 
