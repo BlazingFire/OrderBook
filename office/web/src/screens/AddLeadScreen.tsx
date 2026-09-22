@@ -44,7 +44,7 @@
  * temporary id and appears on the board immediately.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type {
   LineItemInput,
@@ -62,6 +62,7 @@ import {
   Button,
   Card,
   ColourChip,
+  ColourName,
   ConflictBanner,
   DateField,
   Input,
@@ -1611,9 +1612,20 @@ function WeightCell({ kg }: { kg: number | null }) {
  * One variant already on the lead, as the panel draws it.
  *
  * Collapsed it is one line — code, name, colour, quantity — so twenty lines
- * can be scanned for the one that is wrong. Opened it shows the weight, what
- * was ordered against what is free, the packaging, and the two things that
- * can be done about it.
+ * can be scanned for the one that is wrong. Opened it adds **one wrapping row**
+ * of everything else the line knows, and the two things that can be done about
+ * it.
+ *
+ * One row, not five. It was five: a variant line, a weight line, a packaging
+ * line, a stock line and a button line, each the full width of the panel and
+ * mostly empty — expanding one product pushed the next three off the screen.
+ * The facts are short words; they belong beside each other, separated by a
+ * middot, and they wrap when there is no room.
+ *
+ * A line with no variant name of its own no longer draws an em-dash for it.
+ * The placeholder is right in the draft card's *table*, where a column has to
+ * have a cell; here it sat immediately in front of the colour swatch and read
+ * as though something were missing.
  *
  * The tick box sits outside the toggle rather than inside it: expanding a row
  * to read it must not select it for removal.
@@ -1639,9 +1651,45 @@ function LeadLine({
 }) {
   const over = line.availableBoxes !== null && line.quantity > line.availableBoxes;
   const kg = lineWeight(line);
+  const packaging = line.packaging.trim();
+  const grade = line.grade.trim();
 
-  const meta = [line.packaging.trim(), line.grade.trim()].filter(Boolean).join(' · ') ||
-    t('lead.add.line.noPackaging');
+  /*
+   * The colour to show a swatch for: the one chosen on the line, or the
+   * variant's own when nothing was chosen. A product that comes in one
+   * unlabelled form has neither, and then there is simply no swatch — the
+   * em-dash that used to stand in for it said nothing the row did not already
+   * say by leaving the space empty.
+   */
+  const swatch = line.colour.trim() || line.variantLabel;
+
+  /*
+   * Everything the collapsed head has no room for, in the order somebody reads
+   * it: what it is, then how it goes out, then what it weighs. Each entry is a
+   * few words; `null` drops out rather than leaving a gap.
+   */
+  const facts: ReactNode[] = [
+    swatch ? <ColourName key="colour" name={swatch} hex={colourHex(swatch)} /> : null,
+    line.categoryName ? <span key="category">{line.categoryName}</span> : null,
+    grade ? (
+      <span key="grade">
+        {t('lead.add.line.grade')} {grade}
+      </span>
+    ) : null,
+    <span key="packaging" style={packaging ? undefined : { color: 'var(--state-offline)' }}>
+      {packaging || t('lead.add.line.noPackaging')}
+    </span>,
+    // The long wording, not the table's `missingShort`. In the draft card's
+    // variants table a bare "missing" sits under a Weight column header; in a
+    // row of middot-separated words it would be missing *what*.
+    line.weightKg === null ? (
+      <StatusPill key="weight" tone="offline">
+        {t('product.weight.missing')}
+      </StatusPill>
+    ) : (
+      <span key="weight">{t('lead.add.line.lineWeight', { kg: formatKg(kg) })}</span>
+    ),
+  ].filter(Boolean);
 
   return (
     <div className="ob-lead-line" data-open={open ? 'true' : undefined}>
@@ -1709,29 +1757,22 @@ function LeadLine({
 
       {open && (
         <div className="ob-lead-line__body">
-          <span
-            className="ob-small"
-            style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}
-          >
-            <VariantName facts={line} hex={colourHex(line.variantLabel ?? '')} />
-            {line.colour && (
-              <span className="ob-colourname ob-micro">
-                <ColourChip name={line.colour} hex={colourHex(line.colour)} />
-                <span>{line.colour}</span>
-              </span>
-            )}
-            {line.grade && (
-              <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                {t('lead.add.line.grade')}: {line.grade}
-              </span>
-            )}
-            <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-              {line.categoryName}
-            </span>
-            <span style={{ flex: 1, minWidth: 0 }} />
-            <span className="ob-body-strong" style={{ fontVariantNumeric: 'tabular-nums' }}>
-              {line.quantity}
-            </span>
+          <span className="ob-lead-line__facts ob-micro">
+            {facts.map((fact, index) => (
+              <Fragment key={index}>
+                {index > 0 && (
+                  <span aria-hidden="true" className="ob-lead-line__sep">
+                    ·
+                  </span>
+                )}
+                {fact}
+              </Fragment>
+            ))}
+          </span>
+
+          <span className="ob-lead-line__acts">
+            {/* What was asked against what is free — the one figure the head
+                cannot show, and the reason this row is worth opening. */}
             {line.availableBoxes !== null && (
               <span
                 className="ob-micro"
@@ -1740,33 +1781,13 @@ function LeadLine({
                   fontVariantNumeric: 'tabular-nums',
                 }}
               >
-                {t('lead.add.line.ofFree', { free: line.availableBoxes })}
+                {line.quantity} {t('lead.add.line.ofFree', { free: line.availableBoxes })}
               </span>
             )}
-          </span>
-
-          <span
-            className="ob-small"
-            style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}
-          >
-            <span style={{ color: 'var(--fg-tertiary)' }}>{t('lead.add.line.weight')}</span>
-            <WeightCell kg={line.weightKg} />
-            {kg !== null && (
-              <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                {t('lead.add.line.lineWeight', { kg: formatKg(kg) })}
-              </span>
-            )}
-          </span>
-
-          <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
-            {meta}
-          </span>
-
-          <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
-            <Button variant="secondary" size="sm" onClick={onModify}>
+            <Button variant="ghost" size="sm" onClick={onModify}>
               {t('lead.add.line.modify')}
             </Button>
-            <Button variant="secondary" size="sm" onClick={onRemove}>
+            <Button variant="ghost" size="sm" onClick={onRemove}>
               {t('lead.add.products.remove')}
             </Button>
           </span>

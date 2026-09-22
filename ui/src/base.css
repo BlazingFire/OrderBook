@@ -3112,12 +3112,49 @@ html[data-window-blur='true'] .ob-busy rect {
   background: var(--bg-hover);
 }
 
+/*
+ * One wrapping row, not a stack.
+ *
+ * This was `flex-direction: column` with a row each for the variant, the
+ * weight, the packaging and the buttons — four full-width rows of mostly empty
+ * space, so opening one product pushed the next three out of the panel. The
+ * facts are short words and they sit beside each other; the two buttons go to
+ * the right and only drop below when the words genuinely fill the line.
+ */
 .ob-lead-line__body {
   display: flex;
-  flex-direction: column;
-  gap: var(--s-6);
-  padding: var(--s-8) var(--s-8) var(--s-8) 2.2143rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-4) var(--s-8);
+  padding: var(--s-6) var(--s-8) var(--s-6) 2.2143rem;
   border-top: 1px solid var(--line);
+}
+
+.ob-lead-line__facts {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-4) var(--s-6);
+  color: var(--fg-secondary);
+}
+
+/*
+ * The middot between facts. A separate element rather than a `::before` on the
+ * sibling, because one of those siblings is a pill with a background of its
+ * own and a generated dot would land inside it.
+ */
+.ob-lead-line__sep {
+  color: var(--fg-tertiary);
+}
+
+.ob-lead-line__acts {
+  flex: 0 0 auto;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s-6);
 }
 
 /* The panel's own scroller: the page below it must stay reachable. */
