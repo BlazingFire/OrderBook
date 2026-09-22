@@ -1,99 +1,86 @@
 # Next phase
 
-Written 2026-09-17, at the end of a session whose context was about to be
-deleted. Everything worth keeping from it is in the repo; this file is the part
-that is about *what happens next* rather than what is true now.
-
-Read `HANDOFF.md` for current state and `docs/CODE_MAP.md` for the layout. This
-file assumes both.
+Rewritten 2026-09-22 after the branch consolidation, when every open branch was
+merged into `main` and the sessions that produced them were retired. This file
+is about *what happens next*; `HANDOFF.md` is what is true now and
+`docs/CODE_MAP.md` is the layout. This file assumes both.
 
 ---
 
 ## Do these first, in this order
 
-### 1. Merge the branch
+### 1. The owner's four decisions
 
-`claude/hopeful-lovelace-q6f57v` is pushed and ahead of `main`, and **nothing
-has merged it**. The standing convention is that work lands on `main`;
-the branch exists only because the session was required to use one. Until it
-merges, `main` still has the lost-lead bug, no Master Parties screen, and four
-open privilege holes.
+Nothing below blocks on code as much as on these. They are written up in
+`docs/PRODUCTION_READINESS.md` §5 and summarised under "Owed work" in
+`HANDOFF.md`: what happens to a 1.0.3 machine's data, the release signing key,
+a code-signing certificate, and the Recycle Bin's retention policy.
 
-### 2. The integration suites now run — here is how
+### 2. The integration suites — how to run them
 
-They had never run, on any machine, for the whole of 2026-09-17: PostgreSQL
-refuses to start as root and the container had no other account. On 2026-09-18 a
-non-root account (`obtest`) was created and they ran for the first time.
+PostgreSQL refuses to start as root, so on a root checkout every integration
+file skips and the summary still reads green. CI runs them on its Ubuntu runner
+(`.github/workflows/ci.yml` installs PostgreSQL 16). Locally in a Linux
+container, copy the checkout somewhere a non-root account owns and run vitest
+as that account:
 
 ```
-sudo -u obtest bash -lc '
-  mkdir -p ~/run
-  cp /home/user/OrderBook/vitest.config.ts ~/run/
-  ln -sfn /home/user/OrderBook/node_modules ~/run/node_modules
-  cd /home/user/OrderBook
-  npx vitest run --config ~/run/vitest.config.ts --root /home/user/OrderBook
-'
+cp -a /home/user/OrderBook /tmp/obtest   # or tar it across, without .git
+chown -R postgres:postgres /tmp/obtest
+su postgres -s /bin/bash -c 'cd /tmp/obtest && TMPDIR=/tmp/obtest/.tmp HOME=/tmp/obtest/.home npx vitest run'
 ```
 
-The config has to be copied somewhere the account can write: vitest bundles it
-to a sibling `.timestamp-*.mjs` and dies with `EACCES` otherwise. `--root` keeps
-every relative path in that config pointing at the repository.
+The copy is what avoids the `EACCES` vitest hits when it bundles its config
+beside the repository. On 2026-09-22 this ran 140 files / 1699 tests, none
+skipped.
 
-**Check the skip count, not just the pass count.** A skipped suite prints like a
-passing one, and this project has been bitten by exactly that — twice now. The
-second time shipped a `.update(db().raw(...))` that throws before any SQL is
-built: unexecuted turned out to mean unparsed by anything that would object.
-
-Running them found one real defect in the round they were written for, and it
-was in a test rather than in the code. That is still the point: a test nobody
-has executed is a claim, not a check.
+**Check the skip count, not just the pass count.** A test nobody has executed
+is a claim, not a check.
 
 ### 3. Do a browser and Electron pass
 
-Nothing from 2026-09-17 was seen running. `master/web` and `office/web` have no
-tests by design, so a real pass is the only verification these changes have
-had. The visual and interaction changes specifically:
+Nothing merged on 2026-09-22 was seen running. `master/web` and `office/web`
+have no tests by design, so a real pass is the only verification these changes
+have had. Specifically:
 
-- The **sync popover** on both panels, and the Lead board's kebab menu — they
-  had no CSS at all, so this is the first time either has rendered as a surface.
-  Check the Close button inside the popover is actually clickable: the shim
-  layering was the other half of that bug.
-- The **sticky table header** on a long list — it never stuck before.
-- **Column sorting** on the Master's Parties screen.
-- The Master's new **Parties** screen end to end, and the Office's Catalog
-  afterwards — the party form is now one shared component, so a regression there
-  shows up on the panel that already had it.
-- **Change password** in the Master topbar: the dialog warns it signs you out,
-  and the window should land on sign-in *with a message*, not on a generic error.
-- Both themes, and the scale slider at its minimum (the type and chip clamps).
-- **The language picker** (Settings → Appearance). Switch to हिन्दी and look at
-  the panel: this is the first time anybody has been able to, and it is how the
-  1,737-string backlog below becomes visible rather than theoretical. Switching
-  back must work from a panel you can no longer read — the two buttons are named
-  in their own scripts for exactly that reason.
-- **The Settings tab itself**, on both panels: the four groups, a number setting
-  saved with its button (not on keystroke), the per-row save feedback, and the
-  tab strip at 157% on a 1366px screen, which is where the later tabs used to be
-  unreachable.
+- **Settings** on both panels: the four groups, a number setting saved with its
+  button (not per keystroke), per-row save feedback, the tab strip at 157% on a
+  1366px screen, and each switch actually changing its screen — follow-up
+  default on the Office's New lead, packaging no longer required to add a line
+  or convert with `leads.packagingRequiredOnConvert` off, the adjustment note
+  on the Master's physical count.
+- The Master's **Parties** screen end to end, and the Office's Catalog and New
+  lead afterwards — the party form is now one shared `PartyFormModal`.
+- **Delete** on the Master's leads and orders lists, including the blocked
+  case (the reason is named, not "could not delete").
+- The **filter strip** on every list screen (it pads and grows now).
+- **Change password** in the Master topbar lands on sign-in *with a message*.
+- The **language picker** (Settings → Appearance) — switching back must work
+  from a panel you can no longer read.
 
-### 4. Rebuild the 1.1.0 installers
+### 4. A Windows install / update / uninstall rehearsal
 
-Still owed from 2026-09-13. `npm run release` hangs on the owner's PC; the build
-inputs are refreshed and a healthy machine should work.
+`docs/PRODUCTION_READINESS.md` §2 item 4: install 1.2.0, update over it, run
+the standalone `.exe`, uninstall, and run the clean-install tool — on a real
+Windows PC. None of it can be done from a Linux container.
 
 ---
 
-## Then: the five remaining briefs
+## Then: the queue
 
-`docs/ai-handoffs/README.md` is the queue and it is current. Summarised:
+`docs/ai-handoffs/README.md` is the queue. Summarised:
 
 | # | Brief | Why it matters |
 |---|---|---|
-| 1 | `office-product-image-flow` §2–§4 | **There is no way to look at a product photo.** For a ceramics catalogue that is the primary use of one. The `large` and `master` variants encoded on every upload are requested by nothing. |
-| 2 | `office-product-form-gates-and-slimming` §6–§7 + reorg | The owner's own complaint — 29 fields in the New Product modal. Gates are done; the layout is not. |
-| 3 | `party-access-truncation-and-routing` §3–§4 | The owner's "no option for assign party": no route from a party record to who can see it. |
-| 4 | `session-loss-and-password-change` tail | Reset password has no self-exclusion; an admin resetting their own password signs themselves out with no warning. |
-| 5 | `recycle-bin-delete-actions-and-purge` part 2 | **Needs the owner to choose, not an implementer.** Nothing ever leaves the Recycle Bin. |
+| 1 | `office-product-image-flow` §2–§4 | **There is no way to look at a product photo.** The `large` and `master` sizes encoded on every upload are requested by nothing. |
+| 2 | `party-access-truncation-and-routing` §3–§4 | The owner's "no option for assign party": no route from a party record to who can see it. |
+| 3 | `session-loss-and-password-change` tail | Reset password has no self-exclusion; `invalidateSessionsForUser` records no reason. |
+| 4 | `recycle-bin-delete-actions-and-purge` part 2 | **Needs the owner to choose, not an implementer.** Nothing ever leaves the Recycle Bin. |
+
+Also owed and not in a brief: a Master-side New lead (port the Office
+`AddLeadScreen` into `ui/` behind a transport), and leads that reference a
+product created offline in the same session (a line needs a variant id the
+panel cannot know yet).
 
 ---
 
@@ -154,8 +141,9 @@ not runnable here.
 ## Every surveyed setting has now shipped
 
 The 2026-09-17 survey verified twelve candidates and shipped five; the owner
-asked for the remaining six on 2026-09-18 and they are in. Fifteen company
-settings, four groups. Nothing from that survey is outstanding.
+asked for the remaining six on 2026-09-18 and they are in. Two settings have
+since gone with the product trim (`pricing.enabled`, `catalog.defaultUom`), so
+there are thirteen, in four groups. Nothing from that survey is outstanding.
 
 The one thing to know before adding a sixteenth: a company switch reaches a
 panel through `CompanyFeatures`, and every field on it is **optional** because a
@@ -178,7 +166,7 @@ concept across two tables as the reason a previous key was deleted.
 
 ---
 
-## The two decisions waiting on the owner
+## Two long-standing decisions waiting on the owner
 
 Neither is a code question, and both have been re-litigated more than once.
 
@@ -190,7 +178,7 @@ forever" behind an admin permission — are written up in the brief, along with
 the four questions any of them has to answer (foreign keys, the sync tombstone,
 files on disk, and an offline panel reconnecting after a purge it never saw).
 
-**Hindi.** `hi.ts` is 1,737 strings behind — `grep -c 'TODO(i18n-hi)'` is the
+**Hindi.** `hi.ts` is 1,445 strings behind (2026-09-22) — `grep -c 'TODO(i18n-hi)'` is the
 live number. A Hindi panel is mostly in English today and no test can see it,
 because the parity check only asserts a key exists. Either that backlog gets
 worked through, or the Hindi option should be honest about being partial. It is
@@ -210,21 +198,18 @@ branding.
 
 Ranked by what this session actually ran into, not by taste.
 
-1. **CI that runs the integration suites.** Every serious defect closed in the
-   last two rounds lived in a place the gate could not see — two web
-   applications with no tests, and integration suites that skip on the one
-   machine anybody runs them on. Both obstacles are gone as of 2026-09-17: the
-   Windows-only test fixtures are fixed, and `npm run build` runs on Linux for
-   the first time (it was `cmd` inside an npm script and died with a syntax
-   error anywhere else). A runner needs only a non-root user and a PostgreSQL.
+1. **Tests for the two web applications.** CI now runs the integration suites
+   (`ci.yml` installs PostgreSQL 16), so the remaining blind spot is
+   `master/web` and `office/web`, which have no tests at all. Every serious
+   defect of the last few rounds lived there or in a skipped suite.
 
 2. **A guard against untranslated Hindi.** The parity test proves a key exists;
    it cannot tell a translation from a copy of the English. A test asserting
    that `TODO(i18n-hi)` does not *grow* would at least stop the backlog getting
-   worse, which is cheap and would have prevented it reaching 1,737.
+   worse, which is cheap and would have prevented it reaching four figures.
 
 3. **Finish what `web-reachability.test.ts` started.** Its `ALLOWED_UNCALLED`
-   list is 40-odd entries long, each one a screen somebody has not built or code
+   list is still long, each one a screen somebody has not built or code
    somebody should delete. That list is an honest inventory of the gap between
    the API surface and the product, and it is worth reading as a roadmap rather
    than as a mute button.

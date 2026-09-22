@@ -30,19 +30,19 @@ This file only says where the truth lives and what is open. Do not duplicate
 - **Single-writer**: Master owns all persistent state; Office panels forward writes.
 - **Offline-only runtime**: nothing loads from a CDN or calls the internet.
 - **Docs and code live separately** — prose in `docs/`, source in the workspaces.
-- **No pricing outside `pricing.enabled`; no AI assistant.**
-- **Work lands on `main`.** `dev` is historical.
+- **No pricing anywhere (removed 2026-09-21); no AI assistant.**
+- **Work lands on `main`**, directly or through `dev` (re-cut from `main` 2026-09-22).
+  Old branches are `archive/*` tags only.
 - **A guard must be seen to fail** against the defect it targets before it is accepted.
 
-## What is open (as of 2026-09-17)
+## What is open (as of 2026-09-22)
 
-`docs/NEXT_PHASE.md` is the answer, in order. The short version: the 2026-09-17
-work is on `claude/hopeful-lovelace-q6f57v` and **is not merged**; every
-integration suite (42 files) skipped that whole session, so four newly written
-tests have never run; nothing was seen in a browser or Electron. Then five
-briefs remain in `docs/ai-handoffs/` — none blocking — plus the manual
-verification already owed (responsive gate, keep-alive walk, PDF Designer
-click-through, packaged install/uninstall) and rebuilding the 1.1.0 installers.
+`docs/NEXT_PHASE.md` is the answer, in order. The short version: every branch
+was merged into `main` on 2026-09-22 and the full suite ran green with the
+integration suites (140 files / 1699 tests), but nothing merged that day was
+seen in a browser or Electron. Four owner decisions block a customer release
+(1.0.3 data, signing key, code-signing certificate, Recycle Bin retention),
+and four briefs remain in `docs/ai-handoffs/`.
 
 ## Environment
 

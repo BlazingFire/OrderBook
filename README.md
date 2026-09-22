@@ -33,8 +33,9 @@ shared/     types, Socket.IO event contract, UDP discovery protocol, i18n catalo
 ui/         the one React kit and shared screens both panels render from
 master/     Master Panel — server (src/) + React frontend (web/)
 office/     Office Panel — server (src/) + React frontend (web/)
-electron/   the desktop shell wrapping each panel
-tools/      release, icon, i18n-sync and the uninstall scripts
+electron/   the desktop shell wrapping each panel (and the clean-install tool)
+cleaner/    packaging for OrderBook Clean Install
+tools/      release, web build, icon, i18n-sync and the uninstall scripts
 ```
 
 ## Running it
@@ -90,6 +91,7 @@ Connection** tab accepts the address and pairing password from step 1.
 npm run release          # both panels, current version
 npm run release 1.2.1    # bump every package.json first
 npm run release -- --panel office
+npm run release -- --os linux   # or mac; a build only runs on its own OS
 ```
 
 Each panel comes out twice: `OrderBook-<Panel>-<version>-Setup.exe` installs
@@ -103,7 +105,9 @@ They land in `C:\OrderBook-Releases\{master-panel,office-panel}\` alongside a
 standalone one. Copy that folder to the Master PC and the distribution is
 done: the Master installs its own build from it, and every Office Panel pulls
 the office build from the Master over the LAN. Pushing a version bump to
-`main` builds the same files on GitHub (`.github/workflows/release.yml`).
+`main` builds the same files on GitHub for Windows, macOS and Linux
+(`.github/workflows/release.yml`); a manual run on any branch builds them into
+a draft pre-release without publishing.
 
 Before a build goes to a customer, read [`docs/PRODUCTION_READINESS.md`](docs/PRODUCTION_READINESS.md).
 

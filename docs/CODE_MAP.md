@@ -43,13 +43,12 @@ Everything is offline: no CDN, no internet call, ever.
 
 | Path | What it decides |
 |---|---|
-| `domain/entities.ts` | Every record shape (`Party`, `Product`, `Lead`, `Order`, …) and which fields are money. |
+| `domain/entities.ts` | Every record shape (`Party`, `Product`, `ProductVariant`, `Lead`, `Order`, …). There are no money fields. |
 | `domain/inputs.ts` | Every write payload. If a form sends it, its type is here. |
 | `domain/permissions.ts` | The permission catalogue and the **tier ceiling** (`office` / `management` / `admin`). |
-| `domain/visibility.ts` | Masking on the way out, and `withPermittedRate` / `withPermittedPurchaseRate` on the way in. Three services share these. |
 | `domain/columns.ts` | **The one column map.** `undefined` = not asserted, `null` = clear. Never add a second copy — see the trap in `HANDOFF.md`. |
-| `domain/fields.ts` | The eight managed option-list sets. |
-| `domain/settings.ts` | The fifteen company switches, each declaring its group, its control and its fallback. Adding one is an entry here plus two i18n tokens — **no migration**: the table is one row per key and an absent row means the fallback. |
+| `domain/fields.ts` | The six managed option-list sets (colour, packaging, grade, …). |
+| `domain/settings.ts` | The thirteen company switches, each declaring its group, its control and its fallback. Adding one is an entry here plus two i18n tokens — **no migration**: the table is one row per key and an absent row means the fallback. |
 | `domain/version.ts` | `ReleaseManifest`, `ReleasePlatform`, and version comparison. |
 | `sync/mutations.ts` | The offline write envelope: `Mutation`, `MutationResult`, `MUTATION_PERMISSIONS`. |
 | `sync/hlc.ts`, `sync/ids.ts` | Hybrid logical clocks; temporary vs permanent record ids. |
@@ -76,9 +75,8 @@ a module escapes the barrel.
 **Whole screens that both panels render** (each takes a narrow `transport` prop
 rather than a panel's api client — that is the rule):
 
-- `NewLeadScreen.tsx` — the keyboard-first lead entry flow.
-- `DocumentsScreen.tsx`, `PageDesigner*.tsx` — the PDF designer.
-- `PartyFormModal.tsx` — create/edit a party.
+- `PartyFormModal.tsx` — create/edit a party (the Master's Parties screen and
+  the Office's Catalog and New lead all use it).
 - `SettingsLayout.tsx` — including the shared `AppearanceSettings`.
 - `GalleryScreen.tsx` — the design-system gallery, reached only by `#/gallery`.
 
@@ -107,14 +105,14 @@ there.
 
 | Directory | Notes |
 |---|---|
-| `domain/` (28) | `actor.ts` (who is acting), `visibility.ts` re-exports, `party-scope.ts`, `stock-key.ts` (composite stock keys go through this — two inline builders once produced keys that never matched), `panel-report.ts`, `paging.ts`, the document model. |
-| `services/` (44) | One per feature. The big ones: `sync.service.ts` (applying an outbox), `catalog.service.ts`, `lead.service.ts`, `order.service.ts`, `auth.service.ts`, `panel.service.ts`, `image.service.ts`, `snapshot.service.ts`. |
-| `repositories/` (38) | Knex types never leave this directory. Cross-repo transactions pass the opaque `TransactionContext`. |
-| `http/routes/` (20) | One file per surface. `public-api.routes.ts` is the off-by-default external API. |
+| `domain/` (23) | `actor.ts` (who is acting), `party-scope.ts`, `line-items.ts` (the line snapshot rule), `conversion.ts` (what converting a lead checks), `product-import.ts`, `panel-report.ts`, `paging.ts`, `swisware-catalogue.ts`. |
+| `services/` (43) | One per feature. The big ones: `sync.service.ts` (applying an outbox), `catalog.service.ts`, `lead.service.ts`, `order.service.ts`, `auth.service.ts`, `panel.service.ts`, `image.service.ts`, `snapshot.service.ts`. |
+| `repositories/` (36) | Knex types never leave this directory. Cross-repo transactions pass the opaque `TransactionContext`. |
+| `http/routes/` (19) | One file per surface. `public-api.routes.ts` is the off-by-default external API. |
 | `http/middleware/` | `require-panel.ts` is the panel-credential boundary. |
 | `realtime/hub.ts` | Every socket command. Long, and the one file where both panels' traffic meets. |
 | `db/migrations/` | **Never delete or rewrite one.** Pinned by `migration-registry.test.ts`. A migration never imports a live constant. |
-| `pdf/` | Rendering a document template to a PDF. |
+| `pdf/` | The Reports PDF export. |
 | `discovery/` | The UDP responder. |
 
 ## `office/src/` — thin client, durable queue
@@ -142,12 +140,13 @@ screens/       one file per screen
 components/    panel-specific pieces that are not shared
 ```
 
-**The Master's screens** (19): Dashboard, Panels, LeadsOrders, Parties,
-Inventory, Reports, Documents, Access, PartyAccess, Fields, Integrations, Logs,
-RecycleBin, Conflicts, Settings, Updates, NewLead, FirstRun, SignIn.
+**The Master's screens** (17): Dashboard, Panels, LeadsOrders, Parties,
+Inventory, Reports, Access, PartyAccess, Fields, Integrations, Logs,
+RecycleBin, Conflicts, Settings, Updates, FirstRun, SignIn. The Master has no
+New lead page; leads are entered on an Office panel.
 
-**The Office's screens** (15): Dashboard, LeadBoard, LeadDetail, OrderBoard,
-Catalog (parties + products), PartyDetail, ProductDetail, AddLead, Documents,
+**The Office's screens** (14): Dashboard, LeadBoard, LeadDetail, OrderBoard,
+Catalog (parties + products), PartyDetail, ProductDetail, AddLead,
 PartyAccess, Conflicts, Settings, Updates, Connection, SignIn.
 
 `PartyAccessScreen.tsx` exists in **both** and is held byte-identical by

@@ -20,12 +20,14 @@ agents don't pick up the same work.
 
 ---
 
-## Queue, as of 2026-09-17
+## Queue, as of 2026-09-22
 
-The 2026-09-14 queue held **19 open or partial briefs**. Fourteen are now
-complete and deleted; five remain, four of them partial. Every remaining file
-carries a dated "Landed" section naming what shipped and what did not — read
-that first, not the brief's original body, which describes the pre-fix world.
+Four briefs remain open, three of them partial. Every remaining file carries a
+dated "Landed" section naming what shipped and what did not — read that first,
+not the brief's original body, which describes the pre-fix world. Two further
+files are not open work but the reference record of a finished change:
+`product-model-variants.md` (2026-09-19) and `product-master-trim.md`
+(2026-09-21) — keep them, source comments cite them.
 
 ### Open, in the order they are worth doing
 
@@ -33,22 +35,15 @@ that first, not the brief's original body, which describes the pre-fix world.
    product: **there is no way to look at a product photo.** `ProductDetail.tsx`
    contains no reference to `product.images`, so the `large` and `master`
    variants encoded on every upload are never requested by anything. For a
-   ceramics catalogue that is the primary use of a photo. §3 (the image UI is
-   entirely hardcoded English) and §4 (offline upload errors) go with it.
+   ceramics catalogue that is the primary use of a photo. §4 (offline upload
+   errors) goes with it.
 
-2. **`office-product-form-gates-and-slimming.md`** — the permission defects are
-   done; what remains is the owner's actual complaint, *"too much field in New
-   Product modal"*: the field-count reorganisation, which the brief deliberately
-   holds as its own commit so a permission fix is not buried in a layout diff.
-   Plus the auto-generated product code and client-side numeric bounds.
-
-3. **`party-access-truncation-and-routing.md`** — §3 and §4. §3 is the owner's
+2. **`party-access-truncation-and-routing.md`** — §3 and §4. §3 is the owner's
    report ("no option for assign party"): there is no route from a party record
    to the screen that says who can see it. §4 is a list of smaller confirmed
-   defects in the same area, including a label that is computed from what the
-   *viewer* can see rather than from the party's actual grant state.
+   defects in the same area.
 
-4. **`session-loss-and-password-change.md`** — all three numbered gaps are done.
+3. **`session-loss-and-password-change.md`** — all three numbered gaps are done.
    What remains is the tail of §2: `invalidateSessionsForUser` records no reason
    (so `signIn.notice.passwordChanged` exists and is unused), **Reset password**
    has no self-exclusion warning, and whether a password change should push to
@@ -56,17 +51,19 @@ that first, not the brief's original body, which describes the pre-fix world.
 
 ### Blocked on the owner, not on an implementer
 
-5. **`recycle-bin-delete-actions-and-purge.md`** — **part 1 is done** (leads,
-   orders, parties and products can all be deleted from the Master now, so the
-   bin is reachable for all nine entity types). **Part 2 is a product decision
-   and must not be started until the owner picks an option**: nothing ever
-   leaves the Recycle Bin, so tombstoned rows, sealed passwords for deleted
-   users, and image files all accumulate forever. The three coherent options and
+4. **`recycle-bin-delete-actions-and-purge.md`** — **part 1 is done** (leads,
+   orders, parties and products can all be deleted from the Master). **Part 2
+   is a product decision and must not be started until the owner picks an
+   option**: nothing ever leaves the Recycle Bin. The three coherent options and
    the four questions any of them has to answer are in the file.
 
-### Deleted this round, because they are finished
+### Closed
 
-`fix-office-new-lead-unreachable`, `add-master-party-screen`,
+2026-09-22: `office-product-form-gates-and-slimming` — moot. Its money-field
+gates went with pricing on 2026-09-21, and the product master trim cut the form
+it complained about to six fields.
+
+2026-09-17: `fix-office-new-lead-unreachable`, `add-master-party-screen`,
 `web-reachability-and-dead-api-tests`, `close-money-field-gate-gaps`,
 `office-write-refusal-visibility`, `signin-attempts-and-lockout-feedback`,
 `self-service-password-change`, `fix-broken-popover-menu-css`,
@@ -74,8 +71,7 @@ that first, not the brief's original body, which describes the pre-fix world.
 `debounce-list-search`, `reset-appearance-action`,
 `testing-plan-reconciliation`, `design-audit-high-priority`.
 
-What they landed is in the git history and summarised in `HANDOFF.md` under
-"Recent sessions".
+What they landed is in the git history and summarised in `HANDOFF.md`.
 
 ---
 

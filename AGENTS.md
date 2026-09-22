@@ -25,15 +25,15 @@ There is no AI assistant.
 - **`docs/schema/`** — every table, column, index, and rationale.
 - **`docs/overhaul/`** and **`docs/backend-modules/`** — the designs behind the code, cited from
   source comments. Written before the code; check a claim against the tree before acting on it.
-- **`docs/NEXT_PHASE.md`** — what to do next, in order, and the two decisions waiting on the
+- **`docs/NEXT_PHASE.md`** — what to do next, in order, and the decisions waiting on the
   owner. Written to be picked up cold.
 - **`docs/AI_COLLABORATION.md`** — the multi-agent workflow, handoff protocol, and change log.
   **Update its Change log after each prompt** that changes the repo.
 
 ## Verification gate
 
-- `npm run verify` = lint + typecheck (all workspaces) + full test suite (~122 files,
-  ~1500 tests). **A change is not done until each of the three steps exits 0.**
+- `npm run verify` = lint + typecheck (all workspaces) + full test suite (~140 files,
+  ~1700 tests). **A change is not done until each of the three steps exits 0.**
 - `npm run build` — builds shared, both servers, both frontends.
 - Integration tests need PostgreSQL and skip automatically when unavailable
   (see `master/tests/helpers/db.ts`); `fileParallelism:false` is deliberate. A skipped
@@ -43,7 +43,10 @@ There is no AI assistant.
 
 ## Standing conventions
 
-- **Branching:** work lands on `main` directly. `dev` is historical and behind.
+- **Branching:** `main` is the only long-lived branch, and `dev` (re-cut from `main` on
+  2026-09-22) is where day-to-day work happens before it lands on `main`. Every other
+  branch was merged or retired on 2026-09-22; their tips are `archive/*` tags. Do not
+  branch from an archive tag.
 - **Never delete or rewrite a migration** that may have run anywhere
   (`master/src/db/migrations/`, pinned by `migration-registry.test.ts`).
 - **Migrations after 1.2.0 only add.** Customers run this software; an update
@@ -60,7 +63,8 @@ There is no AI assistant.
 - **Desktop only**: design floor 1024×768, laptop-to-4K at 79–157 % scale. No phone layout.
 - **Monorepo layout**: `shared/` (types + Socket.IO + discovery protocol + i18n),
   `ui/` (shared React kit), `master/` + `master/web/`, `office/` + `office/web/`,
-  `electron/` (shell), `tools/` (release/build scripts).
+  `electron/` (shell), `cleaner/` (clean-install tool packaging), `tools/` (release/build
+  scripts).
 
 ## Project skills
 
