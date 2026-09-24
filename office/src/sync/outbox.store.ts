@@ -149,14 +149,25 @@ export async function remapIds(mapping: Map<string, string>): Promise<void> {
 async function load(): Promise<Mutation[]> {
   if (cached) return cached;
 
+  const file = paths().outboxFile;
+
   try {
-    const raw = await fs.readFile(paths().outboxFile, 'utf8');
+    const raw = await fs.readFile(file, 'utf8');
     const parsed: unknown = JSON.parse(raw);
-    cached = Array.isArray(parsed) ? (parsed as Mutation[]) : [];
-  } catch {
-    // Absent means nothing queued. Unreadable is reported but not fatal — a
-    // panel that refused to start because of a corrupt queue would be worse
-    // than one that starts empty and can take new work.
+    if (!Array.isArray(parsed)) throw new Error('The file does not hold a list of changes');
+    cached = parsed as Mutation[];
+  } catch (error) {
+    // Absent means nothing queued, and is not worth a line. Unreadable is
+    // reported but not fatal — a panel that refused to start because of a
+    // corrupt queue would be worse than one that starts empty and can take new
+    // work. Reported loudly, though: the next save rewrites this file, so the
+    // log is the only trace that the queue ever held anything.
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      log.error(
+        `Could not read the queued changes in ${file}; starting with an empty queue, so what it held will not reach the Master`,
+        error,
+      );
+    }
     cached = [];
   }
 

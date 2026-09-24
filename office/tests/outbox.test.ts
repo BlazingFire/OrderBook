@@ -10,7 +10,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isTemporaryId, type SyncSnapshot } from '@orderbook/shared';
 
 let dataDir: string;
@@ -37,7 +37,6 @@ async function loadModules() {
 beforeEach(async () => {
   dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'orderbook-office-'));
   process.env.ORDERBOOK_OFFICE_DATA_DIR = dataDir;
-  const { vi } = await import('vitest');
   vi.resetModules();
 });
 
@@ -186,6 +185,55 @@ describe('outbox', () => {
 
     // A last-write-wins file rewrite would silently drop most of these.
     expect(await outbox.pendingCount()).toBe(8);
+  });
+
+  it('starts empty on a queue it cannot read, and says so in the log', async () => {
+    const { outbox } = await loadModules();
+    await fs.writeFile(path.join(dataDir, 'outbox.json'), '[{"mutationId":', { mode: 0o600 });
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      // Not fatal: a panel that refused to start over a corrupt queue could
+      // not take the next customer's order either.
+      expect(await outbox.pendingCount()).toBe(0);
+
+      // But not silent. Whatever that file held is not going to reach the
+      // Master, and the log is the only place anybody could find that out.
+      expect(logged).toHaveBeenCalledWith(
+        expect.stringMatching(/ERROR \[outbox\] .*outbox\.json/),
+        expect.anything(),
+      );
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
+  it('reports a queue file that is not a list, rather than reading it as empty', async () => {
+    const { outbox } = await loadModules();
+    await fs.writeFile(path.join(dataDir, 'outbox.json'), '{"mutations":[]}', { mode: 0o600 });
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      expect(await outbox.pendingCount()).toBe(0);
+      expect(logged).toHaveBeenCalledWith(
+        expect.stringMatching(/ERROR \[outbox\] .*outbox\.json/),
+        expect.anything(),
+      );
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
+  it('says nothing about a queue that has simply never been written', async () => {
+    const { outbox } = await loadModules();
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      expect(await outbox.pendingCount()).toBe(0);
+      expect(logged).not.toHaveBeenCalled();
+    } finally {
+      logged.mockRestore();
+    }
   });
 });
 
@@ -472,7 +520,6 @@ describe('the sync cursor', () => {
     const first = await loadModules();
     await first.localStore.setSnapshot(bare, { bootId: 'boot-1', lastSeq: 42 });
 
-    const { vi } = await import('vitest');
     vi.resetModules();
     const second = await loadModules();
 
