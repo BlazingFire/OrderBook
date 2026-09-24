@@ -132,15 +132,16 @@ describe('every Tab in a panel can actually be shown', () => {
  */
 const ALLOWED_UNCALLED: Record<'master' | 'office', Record<string, string>> = {
   master: {
-    // --- Panel administration: the detail card is built, these are its actions,
-    // --- and `PanelsScreen` reaches them through props rather than `api.` here.
-    updatePanel: 'PanelsScreen passes these down; the call site spells them without the api. prefix',
-    refreshPanel: 'same as updatePanel',
-    rotatePanelSecret: 'same as updatePanel',
-    setPanelStoragePath: 'same as updatePanel',
-    disconnectPanel: 'same as updatePanel',
-    panelActivity: 'same as updatePanel',
-    partyAccessFor: 'same as updatePanel',
+    // --- Panel administration: `PanelsScreen`'s detail dialog offers rename and
+    // --- revoke (plus the pairing window); these actions have no control yet.
+    updatePanel: 'no PanelsScreen control edits a panel beyond its name',
+    refreshPanel: 'no PanelsScreen control asks a panel to re-report itself',
+    rotatePanelSecret: 'no PanelsScreen control rotates a panel secret',
+    setPanelStoragePath: 'no PanelsScreen control moves a panel’s storage',
+    disconnectPanel: 'no PanelsScreen control disconnects a panel',
+    panelActivity: 'the panel detail dialog shows no activity list',
+    partyAccessFor:
+      'PartyAccessScreen edits a party out of the assignment list it loaded; nothing reads one party alone',
 
     // --- No Master catalogue surface. Decision recorded in HANDOFF.md:
     // --- products stay Office-owned; parties came to the Master (PartiesScreen).
@@ -151,17 +152,19 @@ const ALLOWED_UNCALLED: Record<'master' | 'office', Record<string, string>> = {
     // --- Single-record fetches superseded by the list the screen already holds.
     // --- Kept because a detail screen that deep-links to one record will want
     // --- exactly these, and the routes are part of the shipped API contract.
-    dashboard: 'App fetches the summary through its own bootstrap, not per screen',
+    dashboard:
+      'the summary arrives on the socket (`dashboard:changed`, sent on connect and after each change), never by GET',
     panel: 'PanelsScreen renders the panel out of the list it already loaded',
-    lead: 'LeadsOrdersScreen opens a lead from the loaded page',
+    lead: 'LeadsOrdersScreen acts on the rows of the page it loaded and opens no single lead',
     order: 'as lead',
     role: 'AccessScreen edits a role out of the loaded list',
 
     // --- Built ahead of the screens that will use them.
-    addLeadRemark: 'no remark composer on the Master lead detail yet',
+    addLeadRemark: 'the Master has no lead detail, so nowhere to add a remark yet',
     updateOrder: 'no order edit form on the Master yet',
-    reportRangeQuery: 'the Reports screen builds its own range query inline',
-    connectorProfiles: 'the Integrations screen reads profiles from the settings payload',
+    reportRangeQuery: 'a helper the report calls use inside api.ts; no screen needs it directly',
+    connectorProfiles:
+      'the Integrations screen builds a connector from scratch and offers no profiles',
     deleteConnector: 'no connector delete action on the Integrations screen yet',
   },
   office: {
@@ -204,8 +207,10 @@ const ALLOWED_UNCALLED: Record<'master' | 'office', Record<string, string>> = {
     leadOutcomeReport: 'as reportRangeQuery',
     topPartiesReport: 'as reportRangeQuery',
     reportExportUrl: 'as reportRangeQuery',
-    partyAccessFor: 'PartyAccessScreen reaches it without the api. prefix',
-    upsertVariant: 'party rates are edited on the Master',
+    partyAccessFor:
+      'PartyAccessScreen edits a party out of the assignment list it loaded; nothing reads one party alone',
+    upsertVariant:
+      'no screen edits a party’s own product records — PartyDetail and New lead only read view.partyVariants',
     updateLead: 'the lead board edits through stage/remark calls, not a whole-record update',
 
     // --- Built ahead of the screens that will use them.

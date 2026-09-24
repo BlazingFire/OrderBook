@@ -213,7 +213,7 @@ export function LeadBoardScreen({ view, openId, onOpenId, canConvert, onError, o
     try {
       await api.setLeadStage(lead.id, stageId);
     } catch (caught) {
-      onError(caught instanceof Error ? caught.message : 'Could not move the lead');
+      onError(caught instanceof Error ? caught.message : t('lead.error.move'));
     }
   }
 
@@ -227,7 +227,7 @@ export function LeadBoardScreen({ view, openId, onOpenId, canConvert, onError, o
       const result = await api.convertLead(lead.id);
       toast.push(t('lead.board.convertedToast', { qty: leadPieces(lead), orderId: result.id }));
     } catch (caught) {
-      onError(caught instanceof Error ? caught.message : 'Could not convert the lead');
+      onError(caught instanceof Error ? caught.message : t('lead.error.convert'));
     }
   }
 
@@ -477,7 +477,9 @@ export function LeadBoardScreen({ view, openId, onOpenId, canConvert, onError, o
                   className="ob-micro"
                 >
                   {lead.sourcePlatform && (
-                    <span style={{ color: 'var(--fg-tertiary)' }}>via {lead.sourcePlatform}</span>
+                    <span style={{ color: 'var(--fg-tertiary)' }}>
+                      {t('lead.board.via', { source: lead.sourcePlatform })}
+                    </span>
                   )}
                   <span style={{ flex: 1 }} />
                   {lead.followUpDate && (

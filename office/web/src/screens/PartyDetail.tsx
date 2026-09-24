@@ -1,15 +1,18 @@
 /**
- * PartyDetail — the view-only body of the 520px drawer Catalog/Parties opens
- * on a row click (`Parties.dc.html`'s detail drawer — the other half of the
- * QA review's "no way to open an existing record" gap; the Parties table had
- * no `onRowOpen` at all before this).
+ * PartyDetail — the view-only body of the detail sub-screen Catalog/Parties
+ * opens on a row click, inside `CatalogScreen`'s `EditorScreen` (it began as
+ * `Parties.dc.html`'s detail drawer — the other half of the QA review's "no
+ * way to open an existing record" gap; the Parties table had no `onRowOpen` at
+ * all before this).
  *
- * The rate-override table reads `view.partyVariants` filtered to this party,
- * matched against `view.products` for the catalogue figure it is compared
- * to — the same `PartyProductVariant[]` the list column already counts
- * (`CatalogScreen.tsx`'s `variants` column), just rendered as rows instead
- * of a count. Recent leads reads `view.leads` filtered by `partyId`, which
- * `Lead` carries directly, so this is real data — not a second fetch.
+ * The party's own records table reads `view.partyVariants` filtered to this
+ * party — what the party calls each catalogue model, its alias, size and
+ * packaging — with `view.products` supplying only the catalogue name it
+ * stands for. It is the same `PartyProductVariant[]` the list column already
+ * counts (`CatalogScreen.tsx`'s `variants` column), rendered as rows instead
+ * of a count, and it carries no money. Recent leads reads `view.leads`
+ * filtered by `partyId`, which `Lead` carries directly, so this is real data —
+ * not a second fetch.
  *
  * Leads are listed but not opened from here: `CatalogScreen` is never handed
  * a way to navigate to the Lead board (its only App.tsx wiring is

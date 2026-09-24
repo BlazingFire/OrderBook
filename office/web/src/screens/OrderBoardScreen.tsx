@@ -352,6 +352,17 @@ function OrderDetailBody({
   const [override, setOverride] = useState(
     order.totalWeightKgOverride === null ? '' : String(order.totalWeightKgOverride),
   );
+  /*
+   * Whether the override has been typed in since it was last saved. Leaving
+   * the field is what saves it, and every blur used to queue a write whether
+   * anything had changed or not — a Tab through the form was an order update,
+   * and one that could put back a figure another panel had changed since this
+   * one opened the order.
+   */
+  const [overrideEdited, setOverrideEdited] = useState(false);
+  /** The typed override as the order would hold it; NaN when the text is not a number. */
+  const overrideValue = override === '' ? null : Number(override);
+  const overrideInvalid = overrideValue !== null && Number.isNaN(overrideValue);
   const [busy, setBusy] = useState(false);
 
   const active = order.reservations.filter((reservation) => reservation.status === 'active');
@@ -365,6 +376,21 @@ function OrderDetailBody({
     } finally {
       setBusy(false);
     }
+  }
+
+  function saveOverride(): void {
+    // "1.2.3" survives the character filter and is no number. Sent, it would
+    // arrive as `null` (JSON has no NaN) and quietly clear the override; the
+    // field says it is wrong instead and nothing is written.
+    if (!overrideEdited || overrideInvalid) return;
+    if (overrideValue === order.totalWeightKgOverride) {
+      setOverrideEdited(false);
+      return;
+    }
+    void run(async () => {
+      await api.updateOrder(order.id, { totalWeightKgOverride: overrideValue });
+      setOverrideEdited(false);
+    }, t('orders.error.saveWeight'));
   }
 
   return (
@@ -499,17 +525,13 @@ function OrderDetailBody({
               <NumberInput
                 id={id}
                 value={override}
-                onChange={(event) => setOverride(event.target.value.replace(/[^0-9.]/g, ''))}
+                invalid={overrideInvalid}
+                onChange={(event) => {
+                  setOverride(event.target.value.replace(/[^0-9.]/g, ''));
+                  setOverrideEdited(true);
+                }}
                 placeholder={t('orders.detail.weightOverridePlaceholder')}
-                onBlur={() =>
-                  void run(
-                    () =>
-                      api.updateOrder(order.id, {
-                        totalWeightKgOverride: override === '' ? null : Number(override),
-                      }),
-                    'Could not save the weight',
-                  )
-                }
+                onBlur={saveOverride}
               />
             )}
           </FormField>
@@ -531,7 +553,7 @@ function OrderDetailBody({
                 onChange={(event) =>
                   void run(
                     () => api.setOrderStage(order.id, event.target.value),
-                    'Could not move the order',
+                    t('orders.error.move'),
                   )
                 }
               >
@@ -590,7 +612,7 @@ function OrderDetailBody({
                 void run(async () => {
                   await api.dispatchOrder(order.id, note.trim() || null);
                   onClose();
-                }, 'Could not dispatch the order')
+                }, t('orders.error.dispatch'))
               }
             >
               {t('orders.detail.dispatchButton')}

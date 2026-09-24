@@ -120,16 +120,26 @@ type RecycleBinType = RecycleBinEntityType | '';
  * simply never refetched — while a change to a lead made the Fields screen
  * refetch for no reason. A counter per entity fixes
  * both directions at once.
+ *
+ * Every key here is read by a screen below; a key nobody reads is a refresh
+ * that silently never happens, which is what `access` was. `catalog` is the
+ * one event a bulk import or the catalogue seed publishes in place of a
+ * `product` per row (`ChangedEntity`), so it goes wherever `product` does —
+ * except the Recycle Bin, since an import creates and updates but never
+ * deletes. The Bin follows `option_list` and `custom_field` because its field
+ * value and field definition branches are deleted and restored as those.
  */
 const SCREEN_ENTITIES: Record<string, readonly string[]> = {
-  records: ['lead', 'order', 'party', 'product', 'stock', 'reservation'],
-  inventory: ['stock', 'product', 'reservation'],
+  records: ['lead', 'order', 'party', 'product', 'catalog', 'stock', 'reservation'],
+  /** Leads & orders' stage picker, apart from `records` so a lead edit does not re-read it. */
+  stages: ['pipeline'],
+  inventory: ['stock', 'product', 'catalog', 'reservation'],
   reports: ['lead', 'order', 'party', 'stock'],
   fields: ['option_list', 'custom_field', 'pipeline'],
   access: ['user', 'role'],
   partyAccess: ['party'],
   parties: ['party'],
-  recycleBin: ['lead', 'order', 'party', 'product', 'role', 'user'],
+  recycleBin: ['lead', 'order', 'party', 'product', 'role', 'user', 'option_list', 'custom_field'],
   conflicts: ['sync_conflict'],
 };
 
@@ -144,8 +154,16 @@ function revisionOf(revisions: Record<string, number>, key: string): number {
 /** The cold-start steps the splash reports, in the order they run. */
 const BOOT_STEPS = ['server', 'session', 'assets'] as const;
 
+/**
+ * The route the location hash names, without the `#/` in front of it.
+ *
+ * The footer link writes `#/gallery`, so the slash is part of the hash. Taking
+ * off only the `#` read that as `/gallery`, which is not `'gallery'` — and the
+ * `hashchange` the link itself causes then closed the gallery its own click
+ * had just opened.
+ */
 function readHash(): string {
-  return window.location.hash.replace(/^#/, '');
+  return window.location.hash.replace(/^#\/?/, '');
 }
 
 export function App() {
@@ -296,8 +314,8 @@ function MasterPanel() {
         if (cancelled) return;
         // A *coded* `ApiError` carries a message meant for a reader — our own
         // 'timeout', or something the server explained. Everything else is a
-        // transport failure or an unstructured 500, whose message is
-        // "Request failed" and helps nobody.
+        // transport failure or an unstructured 500, whose message is the
+        // generic `error.requestFailed` and helps nobody.
         setBootError(
           caught instanceof ApiError && caught.code !== 'internal_error'
             ? caught.message
@@ -688,6 +706,22 @@ function MasterPanel() {
     // reason to ask about discarding its draft.
     if (subNav?.items.some((item) => item.id === id)) return;
     /*
+     * Only somewhere the sidebar offers this person. The sidebar is not the
+     * only way in: Alt+N and the palette's nav commands arrive here for every
+     * screen in `MASTER_NAV`, admin screens included, and without this a role
+     * with no `panels.manage` opened Office panels with Alt+6. The server still
+     * refuses the calls; this keeps the panel from drawing the screen at all.
+     */
+    if (!flatItems.some((item) => item.id === id)) return;
+    openScreen(id);
+  }
+
+  /**
+   * Shows a screen without asking whether the sidebar offers it — for the one
+   * caller entitled to that, the desktop menu's Developer entry (see below).
+   */
+  function openScreen(id: string): void {
+    /*
      * No "are you sure" on the way out any more. Leaving an open editor used
      * to unmount it and throw its draft away, so the shell had to ask; now the
      * screen stays exactly as it was and is still there when you come back.
@@ -862,6 +896,7 @@ function MasterPanel() {
       render: () => (
         <LeadsOrdersScreen
           revision={revisionOf(revisions, 'records')}
+          stagesRevision={revisionOf(revisions, 'stages')}
           permissions={user.permissions}
           packagingRequired={companyFeatures.packagingRequiredOnConvert}
           view={subKeyOf('orders') as 'leads' | 'orders' | 'converted'}
@@ -896,6 +931,7 @@ function MasterPanel() {
       id: 'access',
       render: () => (
         <AccessScreen
+          revision={revisionOf(revisions, 'access')}
           permissions={user.permissions}
           currentUserId={user.id}
           currentUserTier={user.roleTier}
@@ -997,11 +1033,13 @@ function MasterPanel() {
              * *screen* does not, and neither does developer mode, which is
              * guarded by a password precisely so it does not depend on a
              * permission somebody could hand out. So the screen opens for
-             * anyone the shell's menu asks — the tabs they may not see are
-             * absent from it, and the sidebar simply highlights nothing.
+             * anyone the shell's menu asks — through `openScreen`, because
+             * `navigate` refuses what the sidebar does not offer — the tabs
+             * they may not see are absent from it, and the sidebar simply
+             * highlights nothing.
              */
             if (id === 'settings.developer') {
-              navigate('settings');
+              openScreen('settings');
               requestSettingsTab('developer');
               return;
             }

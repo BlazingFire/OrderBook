@@ -1,15 +1,15 @@
 /**
  * The owner's view of every lead and order.
  *
- * Leads are raised on the Office Panels and, since the hierarchy flow, on the
- * Master itself under Leads & orders › New lead. What the owner can do here is
- * progress a record, convert a lead, and dispatch an order — the decisions
- * that belong to whoever is watching the whole board.
+ * Leads are raised on the Office Panels; the Master has no lead form of its
+ * own. What the owner can do here is progress a record, convert a lead, and
+ * dispatch an order — the decisions that belong to whoever is watching the
+ * whole board.
  *
  * **Delete lives here too**, under `leads.delete` / `orders.delete`. The routes
  * and the permissions shipped long ago; `api.deleteLead` and `api.deleteOrder`
- * simply had no caller in either panel, so four of the Recycle Bin's nine
- * entity types could never reach the bin in the first place. A delete is soft —
+ * simply had no caller in either panel, so the Recycle Bin's lead and order
+ * branches could never receive anything in the first place. A delete is soft —
  * the record goes to the Recycle Bin and can be restored — and the server
  * refuses it with a 409 when something live still points at the record, which
  * is rendered as the reason rather than as a generic failure.
@@ -45,6 +45,8 @@ type View = 'leads' | 'orders' | 'converted';
 interface Props {
   /** Bumped by the live socket whenever lead or order data changes. */
   revision: number;
+  /** Bumped when a pipeline or one of its stages changes, so the stage picker re-reads them. */
+  stagesRevision: number;
   /** The signed-in caller's own resolved permissions. */
   permissions: string[];
   /** Which list is showing — chosen here or from the sidebar's sub-pages. */
@@ -94,6 +96,7 @@ function summariseItems(items: LineItem[]): { text: string; title: string } {
 
 export function LeadsOrdersScreen({
   revision,
+  stagesRevision,
   permissions,
   view,
   onViewChange,
@@ -127,7 +130,7 @@ export function LeadsOrdersScreen({
       .pipelines()
       .then(setPipelines)
       .catch(() => setPipelines([]));
-  }, []);
+  }, [stagesRevision]);
 
   useEffect(() => {
     let cancelled = false;

@@ -83,6 +83,7 @@ import {
   useEscapeToPrevious,
   useResetGuard,
   useCommand,
+  useConfirm,
   useSubNav,
 } from '@orderbook/ui';
 
@@ -754,11 +755,21 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
 
   /*
    * Resetting throws away a lead somebody is part-way through typing, so it asks
-   * first — but only when there is something to lose.
+   * first — but only when there is something to lose. In the product's own
+   * dialog: `window.confirm` in Electron is unthemed, its buttons are never
+   * translated, it shows the page origin in its title bar, and it blocks the
+   * renderer while it is up (`ResetSlot.tsx` made the guard a promise for
+   * exactly this).
    */
+  const confirm = useConfirm();
   useResetGuard(
     partyId || lines.length > 0 || draft || notes.trim()
-      ? () => window.confirm(t('lead.add.discardConfirm'))
+      ? () =>
+          confirm({
+            title: t('lead.add.discardConfirm'),
+            confirmLabel: t('lead.add.discard'),
+            tone: 'danger',
+          })
       : null,
   );
 
@@ -854,6 +865,9 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
                      * past, and the party is already decided.
                      */}
                     <span className="ob-body-strong ob-ellipsis">{selectedParty.name}</span>
+                    {/* The key keeps its name from when party records carried
+                        rates; the text says what it is now — the party's own
+                        product names are in use. No money is shown. */}
                     {partyWiseMode && (
                       <StatusPill tone="ok">{t('lead.add.party.ownRates')}</StatusPill>
                     )}
@@ -1945,8 +1959,16 @@ function DraftCard({
           }}
         >
           <label className="ob-small" style={{ display: 'block', color: 'var(--fg-secondary)' }}>
-            {t('lead.add.draft.packaging')}{' '}
-            <span style={{ color: 'var(--state-offline)' }}>{t('lead.add.step.required')}</span>
+            {t('lead.add.draft.packaging')}
+            {/* Marked required only when the company requires it — the same
+                switch the hint and the invalid state below already follow, so
+                a shop that packs to order is not told otherwise. */}
+            {packagingRequired && (
+              <>
+                {' '}
+                <span style={{ color: 'var(--state-offline)' }}>{t('lead.add.step.required')}</span>
+              </>
+            )}
             {/* Typed or picked, one control — `line.packaging` ships unseeded,
                 so a shop that has never filled it in must still be able to
                 type, and one that has should not have to.

@@ -19,9 +19,10 @@
  * drifted in four places within a day of being duplicated and needed a
  * byte-parity test to hold it.
  *
- * **Paged, and honest about it.** The Master clamps an unasked-for limit to 50,
- * so a screen that renders `rows.length` as the party count is rendering a page
- * size. This one keeps the whole `Paginated<Party>` and reports `page.total`.
+ * **Paged, and honest about it.** The Master answers one page at a time (100
+ * parties unless asked, never more than 500), so a screen that renders
+ * `rows.length` as the party count is rendering a page size. This one keeps the
+ * whole `Paginated<Party>` and reports `page.total`.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -50,7 +51,11 @@ import {
   type DataTableColumn,
 } from '@orderbook/ui';
 
-/** One page at a time, the largest the Master will serve without complaint. */
+/**
+ * One page at a time, and Load more for the next — the Master's own default
+ * for parties. It is not the ceiling: `catalog.service.ts`'s `PAGING` serves
+ * up to 500 a page, and clamps a larger ask rather than refusing it.
+ */
 const PAGE_SIZE = 100;
 
 interface Props {

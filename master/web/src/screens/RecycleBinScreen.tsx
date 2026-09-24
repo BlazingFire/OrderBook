@@ -1,6 +1,7 @@
 /**
- * The Recycle Bin — every soft-deleted record across the nine entity types
- * `RECYCLE_BIN_ENTITIES` names (docs/backend-modules/04-API-CONTRACT.md §4).
+ * The Recycle Bin — every soft-deleted record across the entity types
+ * `RECYCLE_BIN_ENTITIES` names, eight of them today
+ * (docs/backend-modules/04-API-CONTRACT.md §4).
  *
  * Two rules here come straight from the server's shape and are easy to get
  * subtly wrong:

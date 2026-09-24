@@ -10,7 +10,7 @@
  */
 
 import { DEVELOPER_RESET_CONFIRMATION, DEVELOPER_TOKEN_HEADER } from '@orderbook/shared';
-import { publishSessionEnded } from '@orderbook/ui';
+import { publishSessionEnded, t } from '@orderbook/ui';
 import type {
   Locale,
   PickKind,
@@ -265,7 +265,7 @@ async function send<T>(
     }
 
     throw new ApiError(
-      detail?.message ?? 'Request failed',
+      detail?.message ?? t('error.requestFailed'),
       detail?.error ?? 'internal_error',
       detail?.details ?? {},
       detail?.messageKey,
@@ -358,7 +358,7 @@ async function postFile<T>(path: string, form: FormData): Promise<T> {
       params?: MessageParams;
     } | null;
     throw new ApiError(
-      detail?.message ?? 'Request failed',
+      detail?.message ?? t('error.requestFailed'),
       detail?.error ?? 'internal_error',
       detail?.details ?? {},
       detail?.messageKey,
@@ -389,7 +389,7 @@ async function fetchBlob(
       params?: MessageParams;
     } | null;
     throw new ApiError(
-      detail?.message ?? 'Request failed',
+      detail?.message ?? t('error.requestFailed'),
       detail?.error ?? 'internal_error',
       detail?.details ?? {},
       detail?.messageKey,
@@ -610,7 +610,6 @@ export const api = {
     const params = new URLSearchParams({ q: query.term });
     if (query.categoryId) params.set('categoryId', query.categoryId);
     if (query.include?.length) params.set('include', query.include.join(','));
-    if (query.categoryId) params.set('categoryId', query.categoryId);
     return request<{ items: T[]; truncated: boolean; offline?: boolean }>(
       `/api/pick/${kind}?${params.toString()}`,
       query.signal ? { signal: query.signal } : undefined,
