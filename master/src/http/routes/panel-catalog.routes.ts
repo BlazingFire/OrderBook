@@ -3,9 +3,10 @@
  *
  * Beside `panel-image.routes.ts` for the same reason it exists: a spreadsheet
  * is a file, the command socket's frame ceiling is sized for mutations, and
- * the offline outbox cannot carry multipart. `requirePanel` establishes both
- * the paired machine and the person acting on it, so `products.bulk` is checked
- * against the person and the audit trail names them.
+ * the offline outbox cannot carry multipart. `requirePanel` — run once by
+ * `app.ts` in front of both routers on the prefix — establishes both the paired
+ * machine and the person acting on it, so `products.bulk` is checked against
+ * the person and the audit trail names them.
  */
 
 import { Router } from 'express';
@@ -15,7 +16,7 @@ import { MAX_PRODUCT_IMPORT_BYTES } from '@orderbook/shared';
 import { ValidationError } from '../../lib/errors.js';
 import * as productImportService from '../../services/product-import.service.js';
 import { asyncHandler } from '../async-handler.js';
-import { panelActorFromRequest, requirePanel } from '../middleware/require-panel.js';
+import { panelActorFromRequest } from '../middleware/require-panel.js';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -23,8 +24,6 @@ const upload = multer({
 });
 
 export const panelCatalogRoutes: Router = Router();
-
-panelCatalogRoutes.use(requirePanel);
 
 panelCatalogRoutes.get(
   '/products/import/template.:format',

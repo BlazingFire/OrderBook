@@ -58,4 +58,12 @@ describe.skipIf(!canRunIntegrationTests)('the panel image routes (integration)',
       .attach('file', Buffer.from('not-really-an-image'), 'photo.jpg')
       .expect(401);
   });
+
+  it('refuses before the route reads anything — the guard sits in front of the router', async () => {
+    // With no file either, the handler's own first check would answer 400: a
+    // 401 naming the pairing means `requirePanel` ran before the upload was
+    // parsed, not merely that the handler found no actor afterwards.
+    const response = await request(app).post('/api/panel/products/PR0000000001/images').expect(401);
+    expect(response.body.messageKey).toBe('error.unauthorized.panelCredentialsInvalid');
+  });
 });
