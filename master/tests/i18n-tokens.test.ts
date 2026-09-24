@@ -17,7 +17,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import { activityMessageKey, EN_MESSAGES } from '@orderbook/shared';
+import { activityMessageKey, EN_MESSAGES, MERGEABLE_COLUMNS } from '@orderbook/shared';
 
 const SERVICES_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -139,6 +139,25 @@ describe('every recordActivity call site has a catalogue token', () => {
     expect(activityMessageKey('user', 'sign_in')).not.toBeNull();
     expect(activityMessageKey('user', 'sign_in_failed')).not.toBeNull();
   });
+
+  it.each(Object.keys(MERGEABLE_COLUMNS))(
+    "covers sync.service.ts's merged update of a %s explicitly, placeholders included",
+    (entity) => {
+      // `entityType: entity` is a variable — one call site records every kind
+      // of record the offline merge writes — so the extractor cannot see it.
+      // The merge fills `{name}` from the record's own `name` column where it
+      // has one, and nothing else, which is what the token may ask for.
+      const key = activityMessageKey(entity, 'updated');
+      expect(key).not.toBeNull();
+
+      const template = (EN_MESSAGES as Record<string, string>)[key as string] ?? '';
+      const supplied = 'name' in MERGEABLE_COLUMNS[entity as keyof typeof MERGEABLE_COLUMNS] ? ['name'] : [];
+      const missing = placeholdersIn(template).filter(
+        (name) => name !== 'actor' && !supplied.includes(name),
+      );
+      expect(missing).toEqual([]);
+    },
+  );
 
   /*
    * Having a token is not enough: it has to be fillable.

@@ -22,6 +22,13 @@
  * the others. At this product's scale — one company, a handful of panels,
  * human-paced actions — that is not a real constraint, and it buys a trail that
  * is actually atomic with what it records.
+ *
+ * **Lock order.** The entry is the *last* statement of its transaction, after
+ * `master_clock` (`nextHlc`) and whatever rows the change locks. So a
+ * transaction holding the chain lock is only ever waiting to commit — never on
+ * a lock that somebody queued behind it holds — and two audited writes cannot
+ * deadlock over it. Writing the entry first and then touching more rows would
+ * break that.
  */
 
 import type { ActivityActor, ActivityLogEntry, ActivityLogFacets, ChainBreak, ChainVerification } from '@orderbook/shared';
@@ -88,12 +95,26 @@ export async function recordActivity(
 /**
  * Append an entry that has no transaction to belong to.
  *
- * The narrow case this exists for is a *failed* operation worth recording — a
- * refused sign-in, say — where there is no successful change to be atomic with,
- * and where throwing would replace a useful audit entry with a confusing 500.
+ * The rule: a change the Master makes to its own data records its entry with
+ * `recordActivity`, inside that change's transaction. This is for the entries
+ * that have no such transaction, and there are three kinds today:
  *
- * Every write path uses `recordActivity` instead. If you are reaching for this
- * from a service that has a transaction open, you want that one.
+ *  - an **attempt**, recorded the same way whether it was refused or let in —
+ *    a sign-in (`auth.service.ts`). A refused one changed nothing, so there is
+ *    nothing to be atomic with, and throwing would replace a useful entry with
+ *    a confusing 500;
+ *  - a **run that spans many transactions** — a connector import
+ *    (`connector-run.service.ts`) — whose one entry summarises all of them and
+ *    is written after the last;
+ *  - a change that **already happened on another machine** before the Master
+ *    writes its half — reissuing a panel's secret, moving a panel's storage
+ *    (`panel.service.ts`). Rolling the Master's half back because the entry
+ *    failed would leave the two machines disagreeing — a panel holding a secret
+ *    the Master no longer accepts — which is worse than the gap.
+ *
+ * It swallows its own failure into a warning, which is exactly what makes it
+ * wrong for anything else. If you are reaching for this from a service that has
+ * a transaction open, you want that one.
  */
 export async function recordDetachedActivity(
   entry: ActivityEntry,

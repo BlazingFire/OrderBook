@@ -19,7 +19,7 @@ import { db } from '../db/knex.js';
 import * as customFields from './custom-field.repository.js';
 import { allocatePermanentId } from './identity.repository.js';
 import * as lineItems from './line-item.repository.js';
-import { firstCount, mapOrder } from './mappers.js';
+import { firstCount, mapOrder, toJsonObject } from './mappers.js';
 import { applyPartyScope } from './party-access.repository.js';
 import * as reservations from './reservation.repository.js';
 import * as timeline from './timeline.repository.js';
@@ -221,32 +221,45 @@ export async function updateOrderColumns(
  * `dispatched_at` as null under READ COMMITTED and both write stock
  * movements. `null` means the order does not exist (or is soft-deleted);
  * the returned `dispatchedAt` is the caller's authoritative, freshly-locked
- * answer to "has this already been dispatched?".
+ * answer to "has this already been dispatched?", and `fieldHlc` the per-field
+ * clocks as they stand under the lock, for the write that follows.
  */
 export async function lockOrder(
   tenantId: string,
   id: string,
   trx: TransactionContext,
-): Promise<{ dispatchedAt: string | null } | null> {
+): Promise<{ dispatchedAt: string | null; fieldHlc: Record<string, string> } | null> {
   const row = await trx(TABLE)
     .where({ tenant_id: tenantId, id })
     .whereNull('deleted_at')
     .forUpdate()
-    .first<{ dispatched_at: string | null } | undefined>('dispatched_at');
+    .first<{ dispatched_at: string | null; field_hlc: unknown } | undefined>('dispatched_at', 'field_hlc');
 
   if (!row) return null;
-  return { dispatchedAt: row.dispatched_at };
+  return {
+    dispatchedAt: row.dispatched_at,
+    fieldHlc: toJsonObject(row.field_hlc) as Record<string, string>,
+  };
 }
 
+/**
+ * Stamps the sync clock like `updateOrderColumns` does. It used to set only the
+ * stage and `dispatched_at`, leaving `version`, `hlc` and `field_hlc` as they
+ * were — so the offline merge bookkeeping never saw a dispatch happen.
+ */
 export async function markDispatched(
   tenantId: string,
   id: string,
   stageId: string,
+  meta: { hlc: string; fieldHlc: Record<string, string> },
   trx: TransactionContext,
 ): Promise<void> {
   await trx(TABLE).where({ tenant_id: tenantId, id }).update({
     stage_id: stageId,
     dispatched_at: trx.fn.now(),
+    hlc: meta.hlc,
+    field_hlc: JSON.stringify(meta.fieldHlc),
+    version: trx.raw('version + 1'),
     updated_at: trx.fn.now(),
   });
 }

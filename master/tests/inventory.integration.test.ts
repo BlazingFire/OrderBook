@@ -233,6 +233,20 @@ describe.skipIf(!canRunIntegrationTests)('inventory (integration)', () => {
       expect(after.stageName).toBe('Dispatched');
     });
 
+    it('stamps the dispatch into the sync clock like every other order write', async () => {
+      const { order } = await readyToDispatch({ white: 12 });
+
+      const dispatched = await orders.dispatchOrder({ orderId: order.id }, actor);
+
+      // It used to change the stage and `dispatched_at` and leave `version`,
+      // `hlc` and `field_hlc` exactly as they were — so to anything reading the
+      // sync bookkeeping, a dispatched order had not changed since conversion.
+      expect(dispatched.sync.version).toBe(order.sync.version + 1);
+      expect(dispatched.sync.hlc > order.sync.hlc).toBe(true);
+      expect(dispatched.sync.fieldHlc.stageId).toBe(dispatched.sync.hlc);
+      expect(dispatched.sync.fieldHlc.dispatchedAt).toBe(dispatched.sync.hlc);
+    });
+
     it('refuses to dispatch the same order twice', async () => {
       const { order } = await readyToDispatch({ white: 12, blue: 3 });
       await orders.dispatchOrder({ orderId: order.id }, actor);

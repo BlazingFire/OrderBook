@@ -3,11 +3,19 @@ import type {
   OfficePanelReportInput,
   OfficePanelStatus,
 } from '@orderbook/shared';
+import type { Knex } from 'knex';
 
 import { db } from '../db/knex.js';
 import { mapOfficePanel } from './mappers.js';
 
 const TABLE = 'office_panels';
+
+/**
+ * The writes an administrator makes take the caller's transaction, so each
+ * commits with its audit entry (`panel.service.ts`); left out, they run on the
+ * pool exactly as before.
+ */
+type Runner = Knex | Knex.Transaction;
 
 export async function listPanels(tenantId: string): Promise<OfficePanel[]> {
   const rows = await db()(TABLE).where({ tenant_id: tenantId }).orderBy('created_at', 'desc');
@@ -34,26 +42,31 @@ export async function insertPanel(values: {
   lan_ip: string | null;
   status: OfficePanelStatus;
   paired_at: Date;
-}): Promise<OfficePanel> {
-  const [row] = await db()(TABLE).insert(values).returning('*');
+}, runner: Runner = db()): Promise<OfficePanel> {
+  const [row] = await runner(TABLE).insert(values).returning('*');
   return mapOfficePanel(row);
 }
 
 export async function updatePanelStatus(
   id: string,
   status: OfficePanelStatus,
+  runner: Runner = db(),
 ): Promise<OfficePanel | null> {
-  const [row] = await db()(TABLE)
+  const [row] = await runner(TABLE)
     .where({ id })
-    .update({ status, updated_at: db().fn.now() })
+    .update({ status, updated_at: runner.fn.now() })
     .returning('*');
   return row ? mapOfficePanel(row) : null;
 }
 
-export async function renamePanel(id: string, name: string): Promise<OfficePanel | null> {
-  const [row] = await db()(TABLE)
+export async function renamePanel(
+  id: string,
+  name: string,
+  runner: Runner = db(),
+): Promise<OfficePanel | null> {
+  const [row] = await runner(TABLE)
     .where({ id })
-    .update({ name, updated_at: db().fn.now() })
+    .update({ name, updated_at: runner.fn.now() })
     .returning('*');
   return row ? mapOfficePanel(row) : null;
 }
@@ -110,19 +123,27 @@ export async function updatePanelSecretHash(
   return row ? mapOfficePanel(row) : null;
 }
 
-export async function updatePanelNotes(id: string, notes: string | null): Promise<OfficePanel | null> {
-  const [row] = await db()(TABLE)
+export async function updatePanelNotes(
+  id: string,
+  notes: string | null,
+  runner: Runner = db(),
+): Promise<OfficePanel | null> {
+  const [row] = await runner(TABLE)
     .where({ id })
-    .update({ notes, updated_at: db().fn.now() })
+    .update({ notes, updated_at: runner.fn.now() })
     .returning('*');
   return row ? mapOfficePanel(row) : null;
 }
 
 /** `null` returns the panel to the seeded Office role — see `permissionsForPanel`. */
-export async function assignPanelRole(id: string, roleId: string | null): Promise<OfficePanel | null> {
-  const [row] = await db()(TABLE)
+export async function assignPanelRole(
+  id: string,
+  roleId: string | null,
+  runner: Runner = db(),
+): Promise<OfficePanel | null> {
+  const [row] = await runner(TABLE)
     .where({ id })
-    .update({ role_id: roleId, updated_at: db().fn.now() })
+    .update({ role_id: roleId, updated_at: runner.fn.now() })
     .returning('*');
   return row ? mapOfficePanel(row) : null;
 }
