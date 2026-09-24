@@ -60,8 +60,17 @@ export interface PanelShellConfig {
    * Environment **overrides only** — the shell spreads `process.env`
    * underneath. Returning a bare object here would hand the child no
    * `SystemRoot`, `PATH` or `TEMP`, and `initdb` would not run.
+   *
+   * `locationFile` is the pointer `dataDir` was just read from, for a server
+   * that can move its own folder and has to leave the next start pointing at
+   * where it went.
    */
-  serverEnv(context: { dataDir: string; port: number; logFile: string }): NodeJS.ProcessEnv;
+  serverEnv(context: {
+    dataDir: string;
+    port: number;
+    logFile: string;
+    locationFile: string;
+  }): NodeJS.ProcessEnv;
 }
 
 const POLL_INTERVAL_MS = 400;
@@ -157,7 +166,12 @@ export function runPanelShell(config: PanelShellConfig): void {
       NODE_OPTIONS: `--max-old-space-size=${maxOldSpaceMb}`,
       ORDERBOOK_PANEL: config.panel,
       ORDERBOOK_RAM_CAP_MB: String(ramCapMb),
-      ...config.serverEnv({ dataDir: dataDir(), port: config.port, logFile: logPath() }),
+      ...config.serverEnv({
+        dataDir: dataDir(),
+        port: config.port,
+        logFile: logPath(),
+        locationFile: locationPath(),
+      }),
     };
 
     /*

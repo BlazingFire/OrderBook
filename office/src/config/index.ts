@@ -17,14 +17,16 @@ const repoRoot = path.resolve(packageRoot, '..');
 
 /**
  * A writable overrides file, for settings this panel changes about itself at
- * runtime — today only where its data lives, after a Master-triggered move.
+ * runtime — today only where its data lives, after a storage move made while
+ * running from source. Under the desktop shell that record is the shell's own
+ * pointer instead (`locationFile` below), for the reason `relocateDataDir`
+ * gives in `config/paths.ts`.
  *
- * It cannot live in `packageRoot`: once this panel is installed under Program
- * Files that directory is read-only, and the write would fail at exactly the
- * moment somebody is watching a storage move. It cannot live inside `dataDir`
- * either, for a subtler reason — it is the file that *says where dataDir is*,
- * so putting it there would move the pointer along with the data and leave the
- * next start looking in the old place.
+ * It cannot live in `packageRoot` once installed: under Program Files that
+ * directory is read-only. It cannot live inside `dataDir` either, for a subtler
+ * reason — it is a file that can *say where dataDir is*, so putting it there
+ * would move the pointer along with the data and leave the next start looking
+ * in the old place.
  *
  * So: a fixed per-machine location, beside the default data directory rather
  * than inside it. `ORDERBOOK_OFFICE_SETTINGS_FILE` is what the desktop shell
@@ -53,6 +55,16 @@ export const config = {
   packageRoot,
   dataDir,
   settingsFile,
+  /**
+   * The desktop shell's record of where `dataDir` is (`office-location.json`,
+   * `{"dataDir": …}`), or null when nothing but a terminal started this
+   * process. The shell reads it before every start of this server and passes
+   * the answer in as `ORDERBOOK_OFFICE_DATA_DIR`, so under the shell it — not
+   * `settingsFile` — is what a storage move has to rewrite.
+   */
+  locationFile: process.env.ORDERBOOK_OFFICE_LOCATION_FILE
+    ? path.resolve(process.env.ORDERBOOK_OFFICE_LOCATION_FILE)
+    : null,
   /** Pairing credentials issued by the Master. */
   credentialsFile: path.join(dataDir, 'pairing.json'),
 

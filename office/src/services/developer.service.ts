@@ -153,9 +153,10 @@ export function lock(token: string | undefined): void {
  * so the running process answers from the empty folder rather than from a
  * memory of the old one.
  *
- * `config.settingsFile` is deliberately untouched — it is the pointer that
- * says *where* the data folder is, and a reset should erase the folder's
- * contents, not forget which folder the operator chose.
+ * The pointer that says *where* the data folder is — `config.settingsFile`
+ * from source, the shell's `config.locationFile` under the desktop app — is
+ * deliberately untouched: a reset should erase the folder's contents, not
+ * forget which folder the operator chose.
  */
 export async function resetPanel(): Promise<ResetAllResult> {
   userSession.resetSession();

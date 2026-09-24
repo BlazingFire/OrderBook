@@ -108,10 +108,11 @@ export interface RelocationResult {
  * would be unrecoverable from where they are standing. Cleaning up the old
  * folder is a decision for whoever is sitting at this PC.
  *
- * The order — copy, then persist the environment, then switch — is what keeps
- * a failure harmless: a copy that fails leaves the panel running on the old
- * folder, and an `.env` that cannot be written leaves duplicate files at the
- * target and the panel still working.
+ * The order — copy, then record the new folder where the next start will read
+ * it, then switch — is what keeps a failure harmless: a copy that fails leaves
+ * the panel running on the old folder, and a record that cannot be written
+ * leaves duplicate files at the target and the panel still working, and still
+ * starting, on the old one.
  */
 export async function relocateDataDir(
   target: string,
@@ -155,12 +156,7 @@ export async function relocateDataDir(
   }
 
   // Written before the switch so a restart lands where this run just moved to.
-  //
-  // `config.settingsFile`, not `packageRoot/.env`: once this panel is installed
-  // under Program Files the package folder is read-only, and this write is the
-  // one that decides where the panel looks on its next start. Writing it
-  // somewhere unwritable would move the files and then forget it had.
-  await writeEnvValue(config.settingsFile, 'ORDERBOOK_OFFICE_DATA_DIR', resolved);
+  await rememberDataDir(resolved);
 
   relocatedTo = resolved;
   log.warn(`Storage moved to ${resolved} (${filesMoved} files, was ${previousDataDir})`);
@@ -172,6 +168,41 @@ export async function relocateDataDir(
     bytesMoved: options.moveExisting ? needed : 0,
     diskFreeBytes: await freeDiskBytes(resolved),
   };
+}
+
+/**
+ * Record the new folder in the one file the next start reads it from.
+ *
+ * Which file that is depends on what starts this process. Under the desktop
+ * shell it is the shell's own pointer, `office-location.json`: the shell reads
+ * it before every start of this server (`dataDir()` in `electron/shell.ts`) and
+ * passes the answer in as `ORDERBOOK_OFFICE_DATA_DIR` in the real environment,
+ * which `loadEnvFiles` never overrides. A move recorded only in the settings
+ * file was therefore read and discarded, and the panel came back up in the
+ * folder it had left — with everything saved since the move stranded at the new
+ * one. The settings file is not written as well: under the shell that value is
+ * never read, and a second write would only be a second way for the move to
+ * fail.
+ *
+ * Run from source nothing sets the variable, and `config.settingsFile`
+ * (`office/.env`) is where the next start finds it. A variable somebody
+ * exported by hand in their terminal still wins over that file, as
+ * `loadEnvFiles` promises — that is the folder pinned on purpose.
+ */
+async function rememberDataDir(dataDir: string): Promise<void> {
+  if (!config.locationFile) {
+    await writeEnvValue(config.settingsFile, 'ORDERBOOK_OFFICE_DATA_DIR', dataDir);
+    return;
+  }
+
+  // The shell's format (`writeDataDirOverride` in `electron/lib/settings.ts`),
+  // but temp-then-rename like the outbox: the shell reads a torn pointer as
+  // "no override", and would start the panel in its *default* folder — neither
+  // the one it left nor the one it moved to.
+  const temporary = `${config.locationFile}.tmp`;
+  await fs.mkdir(path.dirname(config.locationFile), { recursive: true });
+  await fs.writeFile(temporary, `${JSON.stringify({ dataDir }, null, 2)}\n`, 'utf8');
+  await fs.rename(temporary, config.locationFile);
 }
 
 /** Bytes the data folder occupies. 0 when it does not exist yet. */
