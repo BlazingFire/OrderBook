@@ -8,9 +8,9 @@
  *
  * The one thing a screen may want is a say in *whether* it happens, because
  * resetting a half-filled Add Lead form throws away real work. A screen
- * registers a guard; the shell asks it first. Same ref shape as
- * `SaveShortcutSlot`, for the same reason: the guard is rebuilt every render
- * and must not be a dependency of anything.
+ * registers a guard; the shell asks it first. The guard lives in a ref, as a
+ * `useCommand` handler does in `KeyboardProvider.tsx`, for the same reason: it
+ * is rebuilt every render and must not be a dependency of anything.
  */
 
 import { createContext, useContext, useEffect, useRef } from 'react';

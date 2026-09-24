@@ -9,6 +9,7 @@ import type { ReactNode } from 'react';
 import { Button } from './Button';
 import type { DataTableColumn } from './DataTable';
 import { fitColumns, gridTemplateFor } from './fitColumns';
+import { t } from './i18n.js';
 
 export function EmptyState({
   title,
@@ -37,7 +38,7 @@ export function EmptyState({
 export function ErrorState({
   title,
   description,
-  actionLabel = 'Retry now',
+  actionLabel = t('action.retryNow'),
   onAction,
 }: {
   title: string;

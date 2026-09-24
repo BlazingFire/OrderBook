@@ -10,8 +10,11 @@
  *    the incoming pane's effect. The old single slot worked around that by
  *    releasing only its own handler, which left the *previous* screen's handler
  *    installed when the order came out the other way. A stack with
- *    identity-based removal is correct under either order: whoever is on top is
- *    the most recent registration still mounted.
+ *    identity-based removal is correct under either order.
+ *  · **Ordered by mount, not by effect timing.** The stack is kept sorted by
+ *    when the registering component mounted (`useCommand` explains why), so
+ *    whoever is on top is the most recently mounted registration still live —
+ *    however often, and in whatever order, React re-runs the effects.
  *  · **Scope.** `Ctrl+S` inside a dialog must save the dialog, and `F5` behind
  *    a scrim must not fire at all. That is one line here and impossible there.
  *  · **Rebindable.** The chord is data now, so the handler cannot be the thing
@@ -46,6 +49,8 @@ import {
 interface Registration {
   id: string;
   run: () => void;
+  /** When the registering component mounted — see `useCommand`. */
+  order: number;
 }
 
 interface KeyboardApi {
@@ -162,9 +167,23 @@ export function KeyboardProvider({
     const command = COMMANDS_BY_ID.get(commandId);
     if (!command) return false;
 
-    // The most recent registration still mounted wins. A dialog that registers
-    // `record.save` inside itself is above the screen behind it, which is what
-    // makes Ctrl+S in an editor save the editor.
+    // The provider's own state, answered here rather than in the keydown
+    // listener so a palette row or a menu item reaches it exactly as the chord
+    // does. The palette runs every row through `run()`, and while this switch
+    // lived in the listener, "Keyboard shortcuts" picked from the palette
+    // closed the palette and opened nothing.
+    if (command.id === 'palette.open' || command.id === 'palette.search') {
+      setPaletteOpen(true);
+      return true;
+    }
+    if (command.id === 'keys.help') {
+      setHelpOpen(true);
+      return true;
+    }
+
+    // The most recently mounted registration still live wins. A dialog that
+    // registers `record.save` inside itself is above the screen behind it,
+    // which is what makes Ctrl+S in an editor save the editor.
     for (let index = stack.current.length - 1; index >= 0; index -= 1) {
       const registration = stack.current[index];
       if (registration?.id === commandId) {
@@ -222,27 +241,16 @@ export function KeyboardProvider({
         // cannot see, and `Alt+3` would move the pane under an open editor.
         if (modal && command.scope === 'screen') continue;
 
-        if (command.id === 'palette.open' || command.id === 'palette.search') {
-          event.preventDefault();
-          setPaletteOpen(true);
-          return;
-        }
-        if (command.id === 'keys.help') {
-          event.preventDefault();
-          setHelpOpen(true);
-          return;
-        }
-        if (command.id === 'view.toggleSidebar') {
-          event.preventDefault();
-          const root = document.documentElement;
-          root.dataset.sidebarCollapsed = root.dataset.sidebarCollapsed === 'true' ? 'false' : 'true';
-          return;
-        }
         if (command.id === 'view.find') {
           event.preventDefault();
           // The screen's own search box when it has one — the one on screen,
           // not one on a hidden pane — and the palette's record search when
           // it has none, so the chord means "search here" everywhere.
+          //
+          // Chord only, unlike the palette and help cases in `runCommand`: a
+          // palette row runs as the palette closes, and the palette's focus
+          // restore (`useOverlay`) can then hand focus straight back to
+          // whatever held it before — so the "Find" row is not wired yet.
           const box = Array.from(
             document.querySelectorAll<HTMLInputElement>('input[data-screen-search]'),
           ).find((input) => input.offsetParent !== null);
@@ -265,14 +273,19 @@ export function KeyboardProvider({
   }, []);
 
   /*
-   * The stack's two methods never change, so they are not part of the context
-   * value that consumers re-render on. `useCommand` depends on the api object,
-   * and a fresh one every render would push and pop a registration on every
-   * keystroke anywhere in the panel.
+   * The stack's two methods never change identity, and `useCommand` depends on
+   * them rather than on the api object around them — which is rebuilt whenever
+   * the palette or the help sheet opens or closes, and used to pop and re-push
+   * every registration in the panel each time it did.
    */
   const registry = useRef({
     push(registration: Registration) {
-      stack.current.push(registration);
+      // Inserted by mount order rather than appended, because the effects that
+      // push run children first: a screen and the dialog inside it pushed in
+      // arrival order would put the screen on top.
+      let index = stack.current.length;
+      while (index > 0 && (stack.current[index - 1]?.order ?? 0) > registration.order) index -= 1;
+      stack.current.splice(index, 0, registration);
     },
     pop(registration: Registration) {
       const index = stack.current.indexOf(registration);
@@ -336,29 +349,51 @@ export function useKeyboard(): KeyboardApi {
   return api;
 }
 
+/** How many `useCommand` callers have mounted, for their place on the stack. */
+let mounted = 0;
+
 /**
  * Answer a command while this component is mounted.
  *
  * Pass `null` while there is nothing to do — mid-submit, or on a screen with an
  * empty form — and the command falls through to whatever is below it on the
  * stack instead of running a handler that would do nothing.
+ *
+ * **Priority is mount order, fixed at the first render.** A component renders
+ * after its parent, so a dialog inside a screen always outranks the screen,
+ * and a component mounted later outranks one mounted earlier. That rank never
+ * moves afterwards, however the effect below is re-run: when the handler flips
+ * between `null` and a function, or when `<Activity>` shows a pane again and
+ * re-runs all of its effects, children first. Ranked by push order instead,
+ * either left the screen above the open `PartyFormModal` it contains — as did
+ * every palette open while this effect still depended on the api object — and
+ * Ctrl+S saved the lead instead of the party.
+ *
+ * The one arrangement this cannot rank is a dialog kept mounted *before* the
+ * screens it covers — an always-present dialog in a panel's `App.tsx`. Every
+ * dialog that registers a command today is rendered inside its screen; one at
+ * the app level should mount only while open (`{open && <Dialog />}`), which
+ * makes it the most recent mount.
  */
 export function useCommand(commandId: string, run: (() => void) | null): void {
   const api = useContext(KeyboardContext);
+  // The stable methods, not the api object: see `registry` above.
+  const push = api?.push;
+  const pop = api?.pop;
+  const [order] = useState(() => (mounted += 1));
   const runRef = useRef(run);
   runRef.current = run;
 
   useEffect(() => {
-    if (!api || !runRef.current) return;
+    if (!push || !pop || !runRef.current) return;
     // The registration holds a stable indirection rather than the caller's
     // closure, so a handler rebuilt on every render does not churn the stack.
-    const registration = { id: commandId, run: () => runRef.current?.() };
-    api.push(registration);
-    return () => api.pop(registration);
+    const registration = { id: commandId, order, run: () => runRef.current?.() };
+    push(registration);
+    return () => pop(registration);
     // `run` is deliberately absent: its identity changes every render, and the
-    // ref above is what carries the current one.
-    // Only the null/non-null flip may re-register: `run` itself lives in the
-    // ref, and re-pushing per render would reorder the stack.
+    // ref above is what carries the current one. Only the null/non-null flip
+    // re-registers, and `order` keeps even that from moving it on the stack.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, commandId, run === null]);
+  }, [push, pop, commandId, order, run === null]);
 }

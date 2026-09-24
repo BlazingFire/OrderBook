@@ -11,7 +11,7 @@
  * `<Activity mode="hidden">` is what makes this affordable. It keeps the
  * component's state and its DOM but **runs its effect cleanups**, so a hidden
  * screen has no live subscriptions, no timers and no polling — and the four
- * slot providers (filter bar, save shortcut, sub-nav, topbar actions) see it
+ * slot providers (filter bar, keyboard commands, sub-nav, topbar actions) see it
  * withdraw exactly as if it had unmounted. A hand-rolled `display:none`
  * wrapper would have kept every hidden screen fully live, which is worse than
  * the problem it solves. See `ui/tests/activity-spike.test.tsx` for the
@@ -19,7 +19,7 @@
  *
  * Two consequences are load-bearing and handled elsewhere:
  *  · a hidden pane's DOM is still in the document, so `useOverlay` filters its
- *    `[role="dialog"]` query by visibility, or a hidden screen's open drawer
+ *    `[role="dialog"]` query by visibility, or a hidden screen's open dialog
  *    steals Escape from the visible one;
  *  · effect teardown no longer means "gone for good", so `useSubNav` keeps a
  *    registry per screen rather than clearing itself on cleanup.

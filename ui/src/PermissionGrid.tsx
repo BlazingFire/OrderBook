@@ -112,7 +112,9 @@ export function PermissionGrid({
                         className="ob-permtoggle ob-permtoggle--row"
                         aria-pressed={allOn}
                         disabled={disabled || rowKeys.length === 0}
-                        title={t('access.permissions.toggleRow', { module: module.key })}
+                        title={t('access.permissions.toggleRow', {
+                          module: moduleLabel(module.key),
+                        })}
                         onClick={() => onToggleMany(rowKeys, !allOn)}
                       >
                         {moduleLabel(module.key)}

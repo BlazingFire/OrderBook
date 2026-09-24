@@ -7,6 +7,8 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
+import { t } from './i18n.js';
+
 export type ToastTone = 'ok' | 'error' | 'info';
 
 interface ToastAction {
@@ -105,8 +107,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <button
               type="button"
               className="ob-icon-btn"
-              aria-label="Dismiss"
-              title="Dismiss"
+              aria-label={t('toast.dismiss')}
+              title={t('toast.dismiss')}
               onClick={() => remove(toast.id)}
             >
               <svg

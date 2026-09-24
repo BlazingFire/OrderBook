@@ -5,6 +5,8 @@
  * moving; clicking it opens the sync detail popover.
  */
 
+import { t } from './i18n.js';
+
 export type RailState = 'synced' | 'syncing' | 'offline' | 'offlinePending' | 'conflict';
 
 interface RailLook {
@@ -37,7 +39,7 @@ export function PresenceRail({
       type="button"
       className="ob-rail"
       style={{ background: look.background, opacity: look.opacity ?? 1 }}
-      aria-label={`Sync status: ${label}`}
+      aria-label={t('sync.statusLabel', { status: label })}
       title={label}
       onClick={onClick}
     >

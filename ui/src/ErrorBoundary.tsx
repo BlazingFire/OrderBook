@@ -16,6 +16,7 @@
 import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 
+import { copyText } from './clipboard.js';
 import { t } from './i18n.js';
 
 interface State {
@@ -68,7 +69,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
               type="button"
               className="ob-btn ob-btn--secondary"
               onClick={() => {
-                void navigator.clipboard.writeText(`${error.message}\n${componentStack ?? ''}`);
+                void copyText(`${error.message}\n${componentStack ?? ''}`);
               }}
             >
               {t('crash.copy')}

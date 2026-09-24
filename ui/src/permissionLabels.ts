@@ -1,42 +1,56 @@
 /**
  * Reader-facing names for permission keys.
  *
- * The catalogue carries a `labelToken` per module and capability, but those are
- * `MessageKey`s into the *shared* message table, which the panels' own `t()`
- * does not read — passing one through it renders the token itself. Until the
- * planned shared `ui/` workspace hoists both tables together
- * (docs/UI_REDESIGN.md §7), the key is turned into a name here rather than
- * shown raw: `leads` reads as Leads, `stock.adjust` as Stock adjust.
+ * Each comes from the catalogue token the permission surface promises for it
+ * (`shared/src/domain/permissions.ts`, held to it by
+ * `shared/tests/i18n-coverage.test.ts`): `module.<key>`, `action.<action>`,
+ * `permission.<key>` and `capabilityGroup.<key>`. The naming is mechanical, so
+ * the key the grid already has is enough to find its token — no field of the
+ * wire catalogue has to be threaded through.
+ *
+ * A key the catalogue has no token for still gets a name, built from the key
+ * itself: `recycleBin.purgeAll` reads "Recycle bin purge all". That is the case
+ * of a Master newer than this panel serving a permission the panel's messages
+ * have never heard of, and the raw token `t()` would otherwise return is the
+ * worse of the two.
  *
  * Deliberately the only place that happens, so the grid and the read-only
  * summary of the same role cannot disagree about what a key is called.
  */
 
-/** `leads` -> `Leads`, `recycleBin` -> `Recycle bin`. */
+import { t } from './i18n.js';
+
+/** `leads` -> Leads. */
 export function moduleLabel(key: string): string {
-  return sentenceCase(splitCamel(key));
+  return labelFor(`module.${key}`, key);
 }
 
-/** `verifyChain` -> `Verify chain`. Action names sit in a header, so they stay short. */
+/** `view` -> View. Action names sit in a header, so they stay short. */
 export function actionLabel(action: string): string {
-  return sentenceCase(splitCamel(action));
+  return labelFor(`action.${action}`, action);
 }
 
 /**
- * `logs.verifyChain` -> `Logs verify chain`.
+ * `stock.adjust` -> "Adjust stock by physical count"; a module action
+ * (`leads.view`) too, which the Integrations screen's key scopes list.
  *
- * The whole key, not just its tail. Dropping the prefix looked tidier and made
- * the admin group unreadable: `panels.manage`, `fields.manage`,
- * `settings.manage`, `storage.manage` and `users.manage` all rendered as
- * "Manage", five identical checkboxes in a row with nothing to tell them apart.
+ * Its fallback is built from the whole key, never just its tail: the admin
+ * group's `panels.manage`, `fields.manage`, `settings.manage`,
+ * `storage.manage` and `users.manage` would otherwise be five identical
+ * "Manage" checkboxes in a row.
  */
 export function capabilityLabel(key: string): string {
-  return sentenceCase(splitCamel(key));
+  return labelFor(`permission.${key}`, key);
 }
 
-/** `workflow` -> `Workflow`. */
+/** `admin` -> Administration. */
 export function groupLabel(key: string): string {
-  return sentenceCase(splitCamel(key));
+  return labelFor(`capabilityGroup.${key}`, key);
+}
+
+function labelFor(token: string, key: string): string {
+  const label = t(token);
+  return label === token ? sentenceCase(splitCamel(key)) : label;
 }
 
 function splitCamel(value: string): string {

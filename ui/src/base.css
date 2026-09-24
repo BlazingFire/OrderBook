@@ -1266,7 +1266,7 @@ html[data-window-blur='true'] .ob-busy rect {
   background: var(--bg-surface);
   border-bottom: 1px solid var(--line);
 }
-/* Truncates rather than pushing search/actions off-screen at the 1366x768
+/* Truncates rather than pushing search/actions off-screen at the 1024x768
  * floor, or under a longer translated title (1.4x expansion rule, 10). */
 .ob-topbar h1 {
   min-width: 0;
@@ -1317,7 +1317,7 @@ html[data-window-blur='true'] .ob-busy rect {
   padding: var(--s-8) var(--s-20);
   background: var(--bg-surface);
   border-bottom: 1px solid var(--line);
-  /* At the 1366x768 floor a full row of stage chips can outgrow the strip;
+  /* At the 1024x768 floor a full row of stage chips can outgrow the strip;
    * scroll horizontally inside the band rather than breaking the shell
    * (whose own overflow is hidden) or clipping chips vertically. */
   overflow-x: auto;
@@ -1860,95 +1860,7 @@ html[data-window-blur='true'] .ob-busy rect {
 }
 
 /* ===========================================================================
- * Picker — the combobox's server-backed sibling
- *
- * Same visual language deliberately: the two are the same control to a reader,
- * and the difference — one filters a list it already has, the other asks the
- * Master as you type — is not something the eye should have to notice. What it
- * adds is the second line under an option, and a footer that says what the list
- * is *not* showing.
- * ======================================================================== */
-
-.ob-picker {
-  position: relative;
-}
-
-.ob-picker-list {
-  position: absolute;
-  z-index: var(--z-popover);
-  top: calc(100% + var(--s-4));
-  left: 0;
-  right: 0;
-  max-height: min(17.1429rem, 40vh);
-  overflow-y: auto;
-  background: var(--bg-surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  box-shadow: var(--sh-2);
-  animation: ob-pop-in var(--d-base) var(--e-standard);
-  padding: var(--s-4);
-}
-
-.ob-picker-option {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0;
-  width: 100%;
-  padding: var(--s-6) var(--s-8);
-  border: none;
-  border-radius: var(--r-sm);
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-  color: var(--fg-primary);
-}
-
-.ob-picker-option[data-active] {
-  background: var(--bg-hover);
-}
-
-/* A pin is a standing choice, so it reads as one at rest rather than only on
-   hover — that is the whole reason somebody pinned it. */
-.ob-picker-option[data-pinned]::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  width: 2px;
-  height: var(--ctl-h-sm);
-  background: var(--accent);
-}
-
-.ob-picker-label {
-  font-size: var(--t-small-size);
-}
-
-.ob-picker-hint {
-  font-size: var(--t-micro-size);
-  color: var(--fg-tertiary);
-  font-variant-numeric: tabular-nums;
-}
-
-.ob-picker-note,
-.ob-picker-foot {
-  display: flex;
-  gap: var(--s-8);
-  padding: var(--s-6) var(--s-8);
-  font-size: var(--t-micro-size);
-  color: var(--fg-tertiary);
-}
-
-.ob-picker-foot:empty {
-  display: none;
-}
-
-.ob-picker-offline {
-  color: var(--state-offline);
-}
-
-/* ===========================================================================
- * Modal (elevation 3, centred — the drawer's non-anchored sibling)
+ * Modal (elevation 3, centred)
  * ======================================================================== */
 
 @keyframes ob-modal-in {
@@ -2085,10 +1997,12 @@ html[data-window-blur='true'] .ob-busy rect {
 
 /*
  * Three widths, because one does not fit three jobs: a confirmation is a
- * sentence and a pair of buttons, a record's detail wants two columns of
+ * sentence and a pair of buttons, a create/edit form wants two columns of
  * fields, and a role's permission list or a stock ledger wants a table. At the
- * 1366x768 floor the largest still leaves the list visible either side, which
- * is the point of opening centred rather than full screen.
+ * 1024x768 floor — sidebar auto-collapsed, default scale — the largest still
+ * leaves a strip of the screen behind it visible either side, which is the
+ * point of opening centred rather than full screen. `xl`, below, is the
+ * exception that fills the working area.
  */
 .ob-modal {
   width: 31.4286rem;
@@ -2109,10 +2023,10 @@ html[data-window-blur='true'] .ob-busy rect {
   width: 60rem;
 }
 /*
- * The expanded state a lead or an order can be toggled into — the one thing the
- * retired right-hand drawer did that a modal did not. `min()` rather than a
- * plain width so it still fits the 1024px floor, where `max-width: 100%` would
- * otherwise be doing the clamping and the padding around it would vanish.
+ * The widest dialog — the Office's product editor — and the width a dialog's
+ * expand toggle widens it to. `min()` rather than a plain width so it still
+ * fits the 1024px floor, where `max-width: 100%` would otherwise be doing the
+ * clamping and the padding around it would vanish.
  */
 .ob-modal--xl {
   width: min(76rem, 100%);
@@ -2463,7 +2377,7 @@ html[data-window-blur='true'] .ob-busy rect {
 }
 
 /* ===========================================================================
- * Content measure — the design floor is 1366x768 (6-UI-DESIGN.md 2.8), but
+ * Content measure — the design floor is 1024x768 (`breakpoints.ts`), but
  * nothing caps the ceiling: on a 4K or ultrawide monitor an unconstrained
  * `repeat(N, 1fr)` grid or a full-width form stretches each cell to an
  * absurd size. DataTable/KanbanBoard screens *want* the extra width and stay

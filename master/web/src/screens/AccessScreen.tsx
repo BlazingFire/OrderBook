@@ -35,6 +35,7 @@ import {
   SkeletonRows,
   SkeletonTable,
   StatusPill,
+  copyText,
   formatDateTime,
   rem,
   t,
@@ -1197,10 +1198,7 @@ function OneTimeSecretDialog({ secret, onClose }: { secret: OneTimeSecret; onClo
         <>
           <Button
             variant="secondary"
-            onClick={() => {
-              void navigator.clipboard?.writeText(secret.password);
-              setCopied(true);
-            }}
+            onClick={() => void copyText(secret.password).then(setCopied)}
           >
             {copied ? t('access.secret.copied') : t('access.secret.copy')}
           </Button>

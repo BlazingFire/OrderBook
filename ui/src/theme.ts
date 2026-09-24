@@ -122,8 +122,10 @@ export function applyTheme(theme: Theme): void {
   // Scrollbars, native select popups and autofill are painted by the browser
   // from `color-scheme`, not from the token ramp, so they follow the OS unless
   // the root states which scheme the page is actually using — a light scrollbar
-  // down the side of a dark shell otherwise. `index.html` carries the same
-  // value inline so the first painted frame already agrees.
+  // down the side of a dark shell otherwise. The Master's `index.html` carries
+  // `color-scheme: dark` inline so its first painted frame already agrees; the
+  // Office's does not, so until this runs its scrollbars follow the OS, through
+  // the `<meta name="color-scheme" content="light dark">` both pages ship.
   document.documentElement.style.colorScheme = theme;
   store(uiConfig().themeStorageKey, theme);
 }

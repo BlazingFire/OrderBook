@@ -1,18 +1,19 @@
 /**
- * The Office Panel shell (§8):
+ * The shell both panels render (§8):
  *
  *   rail │ sidebar │ topbar
  *        │         │ content — scrolls; nothing else scrolls
  *        │         │ status footer 26px
  *
- * Overlays (popover, drawer, toasts) render inside `.ob-main` so they anchor
- * to the working area rather than the window.
+ * Overlays (the palette, popovers, dialogs) render inside `.ob-main` so they
+ * anchor to the working area rather than the window.
  */
 
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { t } from './i18n.js';
 import { Icon, type IconName } from './icons';
+import { useCommand } from './KeyboardProvider.js';
 import { Logo } from './Logo';
 import { PresenceRail, type RailState } from './PresenceRail';
 
@@ -77,6 +78,15 @@ export function AppShell({
   // Folds the operator has set by hand; anything unset follows the current page.
   const [folded, setFolded] = useState<Record<string, boolean>>({});
 
+  /*
+   * Ctrl+\ and the palette's "Toggle sidebar" run the same toggle as the
+   * button at the foot of the sidebar. Registered here, where that toggle is
+   * already in hand, so both panels answer the command without a shell entry
+   * in each `App.tsx` — and nothing but `collapsed` decides what the sidebar
+   * shows.
+   */
+  useCommand('view.toggleSidebar', onToggleCollapsed);
+
   function renderNavItem(item: NavItem, depth: number) {
     const hasChildren = Boolean(item.children?.length);
     const open = hasChildren && (folded[item.id] ?? !contains(item, activeId)) === false;
@@ -126,7 +136,7 @@ export function AppShell({
 
       <nav
         className={collapsed ? 'ob-sidebar ob-sidebar--collapsed' : 'ob-sidebar'}
-        aria-label="Modules"
+        aria-label={t('nav.modules')}
       >
         <button
           type="button"
@@ -151,14 +161,14 @@ export function AppShell({
         <button
           type="button"
           className="ob-sidebar-collapse"
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={collapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')}
           onClick={onToggleCollapsed}
         >
           {collapsed ? (
             <Icon name="expand" size={12} />
           ) : (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <Icon name="collapse" size={12} /> Collapse
+              <Icon name="collapse" size={12} /> {t('nav.collapse')}
             </span>
           )}
         </button>
