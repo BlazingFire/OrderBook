@@ -8,18 +8,23 @@ of your own fleet if you get it backwards.
 
 ```
 you push to main
-  → .github/workflows/release.yml builds both Windows installers,
-    signs their manifests, publishes a GitHub Release
+  → .github/workflows/release.yml builds both panels on Windows,
+    macOS and Linux, signs their manifests, publishes a GitHub Release
   → each Master polls that release, checks the signature,
     downloads into its releases folder
   → the Master offers its own build on the Updates screen
   → every Office Panel asks its Master over the LAN and installs from there
 ```
 
-Only the Master talks to the internet. A shop floor with no route to the
-outside world still updates every till from one PC, and a site with no internet
-at all keeps working exactly as before: copy the releases folder in on a USB
-stick and nothing else changes.
+Office panels never reach the internet for an update: they ask their Master
+over the LAN. The Master reaches GitHub only when `ORDERBOOK_RELEASES_GITHUB_REPO`
+is set, and it is unset by default — so out of the box nothing in the update
+path leaves the LAN. (It is one of two internet-capable paths in the product;
+the other is the Master's outbound connectors, which call whatever URL an
+administrator configures under Integrations.) A shop floor with no route to the
+outside world still updates every till from one PC, and a site with no
+internet at all keeps working exactly as before: copy the releases folder in on
+a USB stick and nothing else changes.
 
 ## Setting it up, once
 
@@ -106,6 +111,13 @@ The workflow triggers on a version whose tag does not exist yet, not on any push
 an update identical to what it is already running. Bumping the version *is* the
 publish gesture.
 
+**Only `main` publishes.** Running the workflow by hand (Actions → Release → Run
+workflow) on any other branch, or on a tag, builds every file into a draft
+pre-release named after the branch and commit, which no panel ever sees. Ticking
+*publish* there does not change that: the `check` job warns that only `main`
+publishes and builds the draft anyway. From `main`, *publish* creates the real
+release for the current version, unless that version is already released.
+
 To build locally instead, `npm run release` with `ORDERBOOK_RELEASE_KEY` and
 `ORDERBOOK_RELEASE_KEY_ID` set. It writes the same folder the USB-stick workflow
 has always used.
@@ -163,16 +175,32 @@ copy that crossed a USB stick can be checked (`certutil -hashfile <file>
 SHA256`). The Master's releases-folder sweep leaves standalone files alone;
 old ones are the operator's to delete.
 
+## The Linux `.deb`
+
+Beside each `-Setup.AppImage` the release makes an
+`OrderBook-<Panel>-<version>-Setup.deb`, x64 like the AppImage. The AppImage
+runs from wherever it is put with nothing installed; the `.deb` installs into
+`/opt/OrderBook <Panel> Panel` with a desktop entry (`sudo apt install
+./<file>`), which is what a shop PC that should come up running OrderBook
+wants.
+
+It is handled exactly like the standalone `.exe`: published with a `.sha256`
+beside it (`sha256sum -c <file>.sha256`), named in no manifest — the Linux
+manifest names the AppImage — and never removed by the Master's releases-folder
+sweep. Old ones are the operator's to delete.
+
 ## What stops a bad update
 
 Roughly in the order an attacker meets them:
 
-- **The manifest is signed**, over `panel`, `version`, `file`, `sizeBytes`,
-  `sha256` and `releasedAt`. A digest published next to the file it describes
-  proves only that the two agree; whoever replaces one replaces the other. The
-  signature is the part that says *you* published it.
-- **`panel` is signed too**, so a Master build cannot be relabelled and served
-  to every till in the shop.
+- **The manifest is signed**, over `panel`, `platform`, `version`, `file`,
+  `sizeBytes`, `sha256` and `releasedAt` (`SIGNED_MANIFEST_FIELDS` in
+  `shared/src/domain/release-signature.ts`). A digest published next to the
+  file it describes proves only that the two agree; whoever replaces one
+  replaces the other. The signature is the part that says *you* published it.
+- **`panel` and `platform` are signed too**, so a Master build cannot be
+  relabelled and served to every till in the shop, nor a Windows build offered
+  to a Mac.
 - **The signature is checked before the installer is downloaded**, so nobody who
   can answer for `api.github.com` can spend a shop's bandwidth and disk at will.
 - **Every redirect hop is checked against an allowlist.** `fetch` follows
@@ -213,12 +241,13 @@ purpose:
   it saves.
 
 The sweep only removes files it could have written itself: anything named
-`OrderBook-Master-<version>-Setup.exe` or `OrderBook-Office-<version>-Setup.exe`,
-plus the two debris suffixes. Notes, subfolders and anything else an operator
-puts in the releases folder are left alone. An installer that is part-way
-through being applied is protected too, so a new release landing between the
-Update button appearing and somebody pressing it cannot delete the file out from
-under the click.
+`OrderBook-Master-<version>-Setup.exe` or `OrderBook-Office-<version>-Setup.exe`
+(or the same with `.dmg`), plus the two debris suffixes. Notes, subfolders, the
+standalone `.exe` and the `.deb` published beside a setup file, and anything
+else an operator puts in the releases folder are left alone. An installer that
+is part-way through being applied is protected too, so a new release landing
+between the Update button appearing and somebody pressing it cannot delete the
+file out from under the click.
 
 Office panels keep the same guarantee for `<data>/updates`, and the desktop
 shell's staging folder holds one installer at a time rather than one for every

@@ -51,3 +51,6 @@ dummy-data/
 # Stray local test-run logs, not source.
 vitest-out.txt
 .tmp/
+
+# The report `npm run test:coverage` writes.
+coverage/

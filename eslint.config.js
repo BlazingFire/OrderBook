@@ -6,7 +6,9 @@ import tseslint from 'typescript-eslint';
 import orderbookI18n from './tools/eslint-rules/index.js';
 
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/node_modules/**', '**/data/**'] },
+  // `coverage/` is the HTML report `npm run test:coverage` writes: generated,
+  // gitignored, and not ours to lint.
+  { ignores: ['**/dist/**', '**/node_modules/**', '**/data/**', 'coverage/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -82,15 +84,13 @@ export default tseslint.config(
      * files it now passes on is the smaller change, and unlike a test it names
      * the offending line.
      *
-     * Add a file here as you finish translating it. Never remove one.
+     * Add a file here as you finish translating it. Never remove one that
+     * still exists. A file that is deleted takes its entry with it, and a
+     * renamed one takes it along: a path that matches nothing is not an error
+     * to ESLint, so the block would quietly cover less than it says.
+     * `master/tests/tooling-config.test.ts` fails on an entry naming no file.
      */
-    files: [
-      'ui/src/DocumentsScreen.tsx',
-      'ui/src/ImageCropModal.tsx',
-      'ui/src/PageDesigner.tsx',
-      'ui/src/PageDesignerInspector.tsx',
-      'office/web/src/components/ProductImages.tsx',
-    ],
+    files: ['ui/src/ImageCropModal.tsx', 'office/web/src/components/ProductImages.tsx'],
     plugins: { 'orderbook-i18n': orderbookI18n },
     rules: {
       'orderbook-i18n/no-untranslated-jsx-text': 'error',

@@ -7,17 +7,25 @@
  *   npm run release -- 1.1.0     -- bump every package.json first
  *   npm run release -- --panel office
  *   npm run release -- --os mac  -- macOS .dmg (only runs on a Mac)
+ *   npm run release -- --os linux -- AppImage and .deb (only on x64 Linux)
  *
  * The output folder is the whole distribution story: copy it to the Master PC
  * and the Master installs its own build from it and serves the office build to
- * every panel over the LAN. There is no update server, because this network has
- * no internet — see `master/src/services/update.service.ts`.
+ * every panel over the LAN — see `master/src/services/update.service.ts`. The
+ * Release workflow (`.github/workflows/release.yml`) runs this once per OS and
+ * uploads its output to a GitHub Release; a Master configured with
+ * `ORDERBOOK_RELEASES_GITHUB_REPO` fetches each manifest there, and the setup
+ * file it names, into that folder itself (`docs/UPDATES.md`). A site with no
+ * internet copies the folder by hand.
  *
- * On Windows each panel comes out twice: the `-Setup.exe` that installs, and
- * the `-Standalone.exe` that simply runs (electron-builder's `portable`
- * target, configured in each panel's `electron-builder.yml`). The setup file
- * is what the update path knows about; the standalone file is published beside
- * it with a `.sha256` and is replaced by hand.
+ * On Windows and Linux each panel comes out twice. Windows makes the
+ * `-Setup.exe` that installs and the `-Standalone.exe` that simply runs
+ * (electron-builder's `portable` target); Linux makes the `-Setup.AppImage`
+ * and a `-Setup.deb` that installs into `/opt` with a desktop entry. Both are
+ * configured in each panel's `electron-builder.yml`. The first file of each
+ * pair is what the update path knows about and what the manifest names; the
+ * second is published beside it with a `.sha256` and installed or replaced by
+ * hand (`TARGETS[*].besides`, `publishBeside()`).
  *
  * Three things here are not obvious and are the reason this is a script rather
  * than a line in `package.json`:
@@ -28,9 +36,10 @@
  *    binary. So the panel is staged as plain files and handed over as
  *    `extraResources`.
  *  - **PostgreSQL is vendored into `master/vendor/postgres`.** That path is not
- *    invented here: `postgres-server.ts:52` has always looked there first, with
- *    the comment *"Binaries bundled into the packaged app"*. The folder simply
- *    never existed.
+ *    invented here: `candidateBinDirs()` in `master/src/db/postgres-server.ts`
+ *    looks there before anywhere else, under *"Binaries bundled into the
+ *    packaged app"* — `vendor/postgres/<arch>/bin` for the universal macOS
+ *    build, then `vendor/postgres/bin` for every other target.
  *  - **`latest.json` carries a SHA-256.** Nothing runs a setup file that has not
  *    matched it, on either panel. A 100 MB file copied over a shop network or a
  *    USB stick is exactly the file that arrives truncated.
@@ -105,30 +114,43 @@ const requestedVersion = args.find((arg) => /^\d+\.\d+\.\d+$/.test(arg)) ?? null
  * `process.platform`, which is what goes in the manifest and what a running
  * panel compares against. `postgres` names the `@embedded-postgres` package
  * holding that OS's server binaries — the Master vendors them, and getting this
- * wrong ships a Mac build that cannot start its own database.
+ * wrong ships a Mac build that cannot start its own database. It is always
+ * spelled out, never derived from the machine running this script: the ymls
+ * decide which architecture is built, not the build host.
  *
  * **A build only runs on its own OS.** electron-builder refuses a macOS target
  * anywhere but macOS ("Build for macOS is supported only on macOS"), because a
  * .dmg is made with `hdiutil` and code signing needs the keychain. There is no
  * cross-compile to add here; the check below just says so before an hour of
  * staging rather than after.
+ *
+ * **And a single-architecture build only runs on that architecture.** `arch`
+ * is the one the ymls build (`arch: [x64]` under `win:` and `linux:`). Staging
+ * copies the build machine's own native packages — npm installs a platform
+ * package only when its `cpu` matches — so an arm64 machine building the x64
+ * AppImage would ship arm64 `sharp` and find no x64 PostgreSQL to vendor. The
+ * macOS target builds `universal` instead and fetches the other half itself.
+ *
+ * `besides` lists the other files electron-builder makes for a target, by the
+ * tail of their name after `OrderBook-<Panel>-<version>-`. They are published
+ * next to the setup file with a `.sha256` and named by no manifest — the update
+ * path installs `ext` and nothing else. They reach a Master's releases folder
+ * only by an operator copying this script's output in, and nothing on the
+ * Master writes one, so its superseded-build sweep (`github-releases.ts`) must
+ * never take one; `master/tests/release-folder-besides.test.ts` holds it to
+ * that.
  */
 const TARGETS = {
   win: {
     builderFlag: '--win',
     platform: 'win32',
     ext: 'exe',
+    arch: 'x64',
     postgres: ['windows-x64'],
     buildsOn: ['win32'],
-    /**
-     * The word in the standalone file's name, or `null` where no standalone
-     * build exists. Windows only: electron-builder's `portable` target is an
-     * NSIS stub, and the ymls declare it under `win.target`. The name matters
-     * because the Master's releases-folder sweep removes only `-Setup.*` files
-     * (`github-releases.ts`), so a standalone file copied in beside them is
-     * left alone.
-     */
-    standalone: 'Standalone',
+    // electron-builder's `portable` target: the panel as one `.exe` that runs
+    // without being installed, and cannot take an in-app update.
+    besides: ['Standalone.exe'],
   },
   mac: {
     builderFlag: '--mac',
@@ -141,7 +163,7 @@ const TARGETS = {
     ext: 'dmg',
     postgres: ['darwin-x64', 'darwin-arm64'],
     buildsOn: ['darwin'],
-    standalone: null,
+    besides: [],
     /**
      * Both architectures of every native package ship, not just the build
      * machine's — see `ensureUniversalPackages()`. electron-builder packs the
@@ -155,9 +177,13 @@ const TARGETS = {
     builderFlag: '--linux',
     platform: 'linux',
     ext: 'AppImage',
-    postgres: [`linux-${process.arch === 'arm64' ? 'arm64' : 'x64'}`],
+    arch: 'x64',
+    postgres: ['linux-x64'],
     buildsOn: ['linux'],
-    standalone: null,
+    // The `deb` target: installs into `/opt/<productName>` with a desktop
+    // entry, which is what a shop PC that should come up running OrderBook
+    // needs. The AppImage stays the file the manifest names.
+    besides: ['Setup.deb'],
   },
 };
 
@@ -190,6 +216,17 @@ function assertTarget() {
           `and this is ${process.platform}.`,
         'electron-builder has no cross-compile for it: a .dmg is made with hdiutil and',
         "signed against the machine's keychain, neither of which exists off macOS.",
+      ].join('\n'),
+    );
+  }
+
+  // A universal target has no `arch`: either kind of Mac builds both halves.
+  if (RELEASE_TARGET.arch && process.arch !== RELEASE_TARGET.arch) {
+    throw new Error(
+      [
+        `A ${osName} release is built for ${RELEASE_TARGET.arch} only, and this machine is ${process.arch}.`,
+        "Staging copies this machine's own native packages (sharp, PostgreSQL), so the",
+        `${RELEASE_TARGET.arch} app would carry ${process.arch} binaries. Build it on an ${RELEASE_TARGET.arch} machine.`,
       ].join('\n'),
     );
   }
@@ -268,7 +305,7 @@ function sign(manifest) {
 
   // The exact bytes `shared/src/domain/release-signature.ts` defines. Kept in
   // step by hand here because this script must run before anything is built —
-  // `signed-fields.test.ts` pins the two against each other.
+  // `master/tests/release-signed-fields.test.ts` pins the two against each other.
   const SIGNED_FIELDS = [
     'panel',
     'platform',
@@ -541,9 +578,10 @@ async function productionTree(panel) {
       /*
        * `@embedded-postgres/*` is declared as an optional dependency and is
        * therefore in the production tree, but a packaged Master reads its server
-       * binaries from `vendor/postgres` — which `postgres-server.ts:52` looks in
-       * first, and which `vendorPostgres()` above fills. Shipping both would put
-       * 100 MB in the installer twice.
+       * binaries from `vendor/postgres` — which `candidateBinDirs()` in
+       * `master/src/db/postgres-server.ts` looks in first, and which
+       * `vendorPostgres()` above fills. Shipping both would put 100 MB in the
+       * installer twice.
        */
       .filter((line) => !line.includes(`${path.sep}@embedded-postgres${path.sep}`))
   );
@@ -671,19 +709,20 @@ async function build(panel, version) {
   // space in an artifact name is a different kind of trouble on three OSes.
   const name = config.artifact ?? config.label;
   const expected = `OrderBook-${name}-${version}-Setup.${RELEASE_TARGET.ext}`;
-  // The standalone `.exe` built beside the setup file, on the targets that
-  // have one. Both come out of the one electron-builder run above. The
-  // clean-install tool declares no portable target, so it has none.
-  const standalone =
-    RELEASE_TARGET.standalone && config.publish !== false
-      ? `OrderBook-${name}-${version}-${RELEASE_TARGET.standalone}.${RELEASE_TARGET.ext}`
-      : null;
+  // The files built beside the setup file (`TARGETS[*].besides`) — the Windows
+  // standalone `.exe`, the Linux `.deb` — all out of the one electron-builder
+  // run above. Only on what gets published: the clean-install tool builds one
+  // setup file per OS and none of these.
+  const besides =
+    config.publish === false
+      ? []
+      : RELEASE_TARGET.besides.map((tail) => `OrderBook-${name}-${version}-${tail}`);
   const files = await readdir(outDir);
 
-  for (const name of [expected, standalone].filter(Boolean)) {
-    if (!files.includes(name)) {
+  for (const wanted of [expected, ...besides]) {
+    if (!files.includes(wanted)) {
       throw new Error(
-        `electron-builder did not produce ${name} in ${outDir}.
+        `electron-builder did not produce ${wanted} in ${outDir}.
 It built: ${files.join(', ')}`,
       );
     }
@@ -691,28 +730,30 @@ It built: ${files.join(', ')}`,
 
   return {
     setup: path.join(outDir, expected),
-    standalone: standalone ? path.join(outDir, standalone) : null,
+    besides: besides.map((file) => path.join(outDir, file)),
   };
 }
 
 /**
- * Publish the standalone `.exe` beside the setup file.
+ * Publish one file built beside the setup file: the standalone `.exe`, or the
+ * `.deb`.
  *
  * Not in the manifest, on purpose: `latest.json` describes the file the update
- * path installs, and the standalone build is not installed by anything — a
- * person copies it where they want it and double-clicks. What it gets instead
- * is a `.sha256` beside it, so a 150 MB file that crossed a USB stick can be
- * checked by hand (`certutil -hashfile <file> SHA256` on Windows) before it is
- * handed to a customer.
+ * path installs, and neither of these is installed by anything but a person —
+ * the standalone file is copied where somebody wants it and double-clicked,
+ * the `.deb` goes through `apt install ./<file>`. What each gets instead is a
+ * `.sha256` beside it, in the format `sha256sum -c` reads, so a 150 MB file
+ * that crossed a USB stick can be checked by hand (`certutil -hashfile <file>
+ * SHA256` on Windows) before it is handed to a customer.
  */
-async function publishStandalone(target, standalonePath) {
-  const file = path.basename(standalonePath);
-  await cp(standalonePath, path.join(target, file));
+async function publishBeside(target, besidePath) {
+  const file = path.basename(besidePath);
+  await cp(besidePath, path.join(target, file));
 
-  const digest = await sha256(standalonePath);
+  const digest = await sha256(besidePath);
   await writeFile(path.join(target, `${file}.sha256`), `${digest}  ${file}\n`);
 
-  const { size } = await stat(standalonePath);
+  const { size } = await stat(besidePath);
   console.log(`  published ${file} (${(size / 1024 / 1024).toFixed(0)} MB) to ${target}`);
 }
 
@@ -724,7 +765,7 @@ async function publish(panel, version, built, notes) {
   const setupPath = built.setup;
   const file = path.basename(setupPath);
   await cp(setupPath, path.join(target, file));
-  if (built.standalone) await publishStandalone(target, built.standalone);
+  for (const beside of built.besides) await publishBeside(target, beside);
 
   const { size } = await stat(setupPath);
   const manifest = sign({

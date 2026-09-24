@@ -1,10 +1,12 @@
 # The standalone clean-install tool, on all three platforms.
 #
-# The two panels build one target each (Windows NSIS, macOS dmg) because that
-# is where they are deployed. This one builds everywhere it can, because the
-# machine that needs it is by definition a machine where something is wrong —
-# and the tool has to be reachable from a USB stick rather than from the
-# installation it is there to remove.
+# The same three operating systems as the panels, with one setup file on each
+# (Windows NSIS, macOS dmg, Linux AppImage) where a panel also makes a
+# standalone `.exe` or a `.deb`. The machine that needs this tool is by
+# definition a machine where something is wrong, and the tool has to be
+# reachable from a USB stick rather than from the installation it is there to
+# remove — one file per OS is all that takes. `tools/release.mjs` builds it
+# only on request (`--panel cleaner`) and never publishes it.
 #
 # It ships no server. Where a panel stages `dist`, `web/dist`, its production
 # dependency tree and (on the Master) 100 MB of PostgreSQL, this carries one

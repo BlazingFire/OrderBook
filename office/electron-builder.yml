@@ -1,4 +1,8 @@
-# Windows setup file for the Office Panel.
+# Setup files for the Office Panel, on Windows, macOS and Linux — one
+# `tools/release.mjs` run per OS, on that OS (`assertTarget()`). What each OS
+# makes, and why, is said at its block below; every file configured here is
+# one `release.mjs` publishes, which `master/tests/packaging-invariants.test.ts`
+# holds it to.
 #
 # The shape that matters: the panel's server ships as **real files** under
 # `resources/panel`, not inside the asar. The server is spawned as its own Node
@@ -6,9 +10,11 @@
 # PostgreSQL binaries from disk — none of which works from inside an archive.
 # Only the small Electron shell goes in the asar.
 #
-# Nothing here writes to the data directory. That lives under %APPDATA%\OrderBook,
-# put there by the shell before the server starts, precisely so an upgrade or an
-# uninstall cannot touch a company's parties, leads and orders.
+# Nothing here writes to the data directory. That lives under the user's
+# application-data folder (`%APPDATA%\OrderBook` on Windows,
+# `~/Library/Application Support/OrderBook` on macOS, `~/.config/OrderBook` on
+# Linux), put there by the shell before the server starts, precisely so an
+# upgrade or an uninstall cannot touch a company's parties, leads and orders.
 appId: com.orderbook.office
 productName: OrderBook Office Panel
 copyright: OrderBook
@@ -100,12 +106,18 @@ nsis:
   include: installer/installer.nsh
   artifactName: OrderBook-Office-${version}-Setup.${ext}
 
-# Linux. Two artefacts from one build, because they answer different questions.
-# The AppImage is what `tools/release.mjs` matches on and what somebody runs
-# off a USB stick with nothing installed; the .deb is what installs into
-# `/opt/OrderBook Office Panel` with a desktop entry, which is what a shop PC that should
-# come up running OrderBook actually needs — and what the Linux branch of
+# Linux. Two artefacts from one build, because they answer different questions,
+# and `tools/release.mjs` publishes both. The AppImage is the setup file the
+# manifest names and what somebody runs off a USB stick with nothing installed;
+# the .deb is published beside it with a `.sha256` and named by no manifest
+# (`TARGETS.linux.besides`), and is what installs into
+# `/opt/OrderBook Office Panel` with a desktop entry — what a shop PC that
+# should come up running OrderBook actually needs, and what the Linux branch of
 # `tools/uninstall/uninstall-orderbook.sh` already knows how to sweep.
+#
+# x64 only, and `TARGETS.linux.arch` says the same: the release script refuses
+# to build this on any other architecture, because staging copies the build
+# machine's own native packages and would put them in an x64 app.
 linux:
   target:
     - target: AppImage
@@ -151,15 +163,16 @@ deb:
 
 # macOS. Built only on a Mac — electron-builder refuses the target anywhere
 # else, so the Windows workflow is unaffected. `npm run release` defaults to the
-# host platform and takes `--os mac` to be explicit. Two artefacts: the .dmg is
-# what a person installs from, the .zip is what the update path downloads and
-# unpacks.
+# host platform and takes `--os mac` to be explicit. One artefact, the .dmg: it
+# is what a person installs from and what the update path hands the shell,
+# which mounts it (`installerExtension()` in `electron/lib/installer.ts`).
+# No .zip: that target exists for electron-updater's Squirrel.Mac path, which
+# nothing here uses, and building it cost the mac leg a second universal
+# archive that was never published.
 mac:
   category: public.app-category.business
   target:
     - target: dmg
-      arch: [universal]
-    - target: zip
       arch: [universal]
   # Hardened runtime is required for notarisation; the entitlements let the
   # Electron renderer JIT and let the vendored PostgreSQL binaries, signed with
