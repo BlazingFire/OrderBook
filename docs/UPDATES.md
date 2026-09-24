@@ -163,6 +163,28 @@ copy that crossed a USB stick can be checked (`certutil -hashfile <file>
 SHA256`). The Master's releases-folder sweep leaves standalone files alone;
 old ones are the operator's to delete.
 
+## Linux: the AppImage and the `.deb`
+
+On Linux the release publishes `OrderBook-<Panel>-<version>-Setup.AppImage`,
+and that is the file the update path installs. There is no installer to hand
+it to — an AppImage is the whole program in one file — so the shell installs
+it itself (`electron/lib/appimage.ts`): it takes the file from the panel's
+folder and checks its hash exactly as it does a Windows setup file, writes it
+beside the AppImage it was started from, makes it executable, renames it over
+the old one, and starts it again once the old copy has quit. The path stays
+the same, so a desktop entry or a link pointing at the file keeps working; the
+file's name keeps the version it was first downloaded as, and the Updates
+screen shows what is actually running.
+
+Keep the AppImage in a folder the person running it can write — somewhere in
+their home folder, not one only root can write. Otherwise the update is
+refused before anything is stopped, and the log says why.
+
+A copy installed from the `.deb` cannot update itself: its files belong to the
+package manager. The Updates screen says to install the new `.deb` the same
+way instead of offering a button, and the shell refuses if asked anyway. (The
+`.deb` is built but not published today.)
+
 ## What stops a bad update
 
 Roughly in the order an attacker meets them:

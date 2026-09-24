@@ -6,8 +6,6 @@
  * how long a first run may take, and whether the panel starts with the PC.
  */
 
-import path from 'node:path';
-
 import { runPanelShell } from './shell.js';
 
 runPanelShell({
@@ -23,12 +21,17 @@ runPanelShell({
    * offline. Applied once, on first run; after that the operator owns it.
    */
   autoStartByDefault: true,
+  /*
+   * No settings file, unlike the Office's `ORDERBOOK_OFFICE_SETTINGS_FILE`:
+   * the Office server moves its own data folder at runtime and records where
+   * in that file, while the Master's folder is moved only by the shell
+   * (`orderbook:setDataDir`), which records it in `master-location.json` and
+   * passes the result as `ORDERBOOK_DATA_DIR`. Every variable here must be one
+   * the Master reads (`electron/tests/server-env.test.ts`).
+   */
   serverEnv: ({ dataDir, port, logFile }) => ({
     ORDERBOOK_DATA_DIR: dataDir,
     PORT: String(port),
     ORDERBOOK_LOG_FILE: logFile,
-    // Beside the data directory, never inside it — this is the file that says
-    // where the data directory is, so a storage move must not carry it along.
-    ORDERBOOK_MASTER_SETTINGS_FILE: path.join(path.dirname(dataDir), 'master-settings.env'),
   }),
 });

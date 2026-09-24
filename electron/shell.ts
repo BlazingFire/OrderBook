@@ -15,7 +15,8 @@
  *  2. **Show the boot progress.** First-run `initdb` takes the better part of a
  *     minute on a shop PC, and a blank window for a minute is
  *     indistinguishable from a broken one.
- *  3. **Run a setup file and quit.** Nothing else can: a web page has no such
+ *  3. **Run a setup file and quit** — or, for the Linux AppImage, replace
+ *     the file and start it again. Nothing else can: a web page has no such
  *     power, and the server cannot let an installer replace the files it is
  *     running from mid-request.
  *  4. **Keep the server alive, and say so when it dies.** See `lib/supervisor`.
@@ -35,8 +36,9 @@ import { fileURLToPath } from 'node:url';
 
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell as electronShell } from 'electron';
 
+import { detectAppImage, relaunchCommand, replaceAppImage } from './lib/appimage.js';
 import { interpretHealth, type HealthOutcome } from './lib/health.js';
-import { approveInstaller, installerExtension } from './lib/installer.js';
+import { approveInstaller, updateMethod } from './lib/installer.js';
 import { openLogFile, type LogFile } from './lib/log-file.js';
 import {
   readDataDirOverride,
@@ -85,6 +87,14 @@ export function runPanelShell(config: PanelShellConfig): void {
    * handlers below turn on the answer (see `lib/standalone.ts`).
    */
   const standalone = detectStandaloneBuild(process.env, app.isPackaged);
+
+  /**
+   * The AppImage this copy was launched from, or `null` for anything else, and
+   * with it how this copy takes an update — decided once for the same reason
+   * as `standalone` (see `updateMethod` in `lib/installer.ts`).
+   */
+  const appImage = detectAppImage(process.platform, process.env, process.execPath, app.isPackaged);
+  const updateBy = updateMethod(process.platform, { standalone: standalone !== null, appImage });
 
   let serverProcess: ChildProcess | null = null;
   let mainWindow: BrowserWindow | null = null;
@@ -544,6 +554,20 @@ export function runPanelShell(config: PanelShellConfig): void {
       return false;
     }
 
+    /*
+     * A `.deb` belongs to dpkg: its files sit in a folder only root can write,
+     * and the file the panel downloads is the AppImage in any case. The
+     * Updates screen already knows (`getShellSettings().systemPackage`) and
+     * says to install the new package instead; this is the guard for a page
+     * that asks anyway.
+     */
+    if (updateBy === 'system-package') {
+      say(
+        'Refused to update: this copy was installed from a .deb, which only the package manager can replace',
+      );
+      return false;
+    }
+
     const outcome = await pollHealth();
     if (outcome.kind !== 'ready') {
       say('Refused to update: the panel did not answer its own health check');
@@ -576,6 +600,10 @@ export function runPanelShell(config: PanelShellConfig): void {
       return false;
     }
 
+    if (updateBy === 'appimage' && appImage) {
+      return updateAppImage(verdict.path, appImage, prepared.version);
+    }
+
     /*
      * Stop the server *before* the installer starts, and wait for it.
      *
@@ -597,7 +625,7 @@ export function runPanelShell(config: PanelShellConfig): void {
 
     try {
       /*
-       * Through the OS shell on every platform, never `spawn`.
+       * Through the OS shell on Windows and macOS, never `spawn`.
        *
        * The Windows setup file is a per-machine NSIS installer and carries a
        * `requireAdministrator` manifest. `spawn` is `CreateProcess`, which
@@ -626,6 +654,52 @@ export function runPanelShell(config: PanelShellConfig): void {
       return false;
     }
   });
+
+  /**
+   * The AppImage's half of `orderbook:applyUpdate`: replace the file this copy
+   * was launched from with the verified one, and start it once this process
+   * has gone (`lib/appimage.ts`).
+   *
+   * The order is the reverse of the installer's, on purpose. An installer has
+   * to find the server stopped, because it overwrites files the server has
+   * open; replacing an AppImage touches nothing the running copy uses, since
+   * the old file stays readable to what already has it open. So the file is
+   * replaced *first*, while everything is still running: a folder this account
+   * cannot write, or a full disk, refuses the update with nothing stopped and
+   * nothing to put back.
+   */
+  async function updateAppImage(
+    verified: string,
+    target: string,
+    version: string,
+  ): Promise<boolean> {
+    try {
+      await replaceAppImage(verified, target);
+    } catch (error) {
+      say(`Refused to update: could not replace ${target}: ${String(error)}`);
+      return false;
+    }
+
+    updatingSince = Date.now();
+    say(`Replaced ${target} with ${version}; stopping the server and starting the new version`);
+    await stopServer();
+
+    try {
+      const command = relaunchCommand(target, process.pid, process.argv.slice(1));
+      spawn(command.file, command.args, { detached: true, stdio: 'ignore' }).unref();
+    } catch (error) {
+      // The new file is already in place, so the next start runs it. Until
+      // then, put the server back rather than leave a window attached to
+      // nothing.
+      updatingSince = null;
+      serverProcess = startServer();
+      say(`Could not start ${version}: ${String(error)}. It runs the next time OrderBook starts.`);
+      return false;
+    }
+
+    app.quit();
+    return true;
+  }
 
   ipcMain.handle('orderbook:getDataDir', () => ({
     dataDir: dataDir(),
@@ -688,6 +762,7 @@ export function runPanelShell(config: PanelShellConfig): void {
       : false,
     logFile: logPath(),
     standalone: standalone !== null,
+    systemPackage: updateBy === 'system-package',
   }));
 
   ipcMain.handle('orderbook:setShellSettings', (_event, value: unknown) => {
@@ -886,5 +961,3 @@ export function runPanelShell(config: PanelShellConfig): void {
     });
   });
 }
-
-export { installerExtension };

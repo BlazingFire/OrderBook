@@ -3024,6 +3024,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'updates.statusLabel': 'Against the Master',
   // TODO(i18n-hi)
+  'updates.systemPackageBody':
+    'This copy was installed from a .deb package, which only the system’s package manager can replace. Get the new .deb package, close this window, install it the way this one was installed, and open OrderBook again. The database and every setting stay exactly where they are.',
+  // TODO(i18n-hi)
   'updates.table.version': 'Version',
   // TODO(i18n-hi)
   'updates.thisMachine': 'This Master',

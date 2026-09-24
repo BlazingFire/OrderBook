@@ -2207,6 +2207,8 @@ export const EN_MESSAGES = {
   'updates.standaloneBody':
     'This is the standalone build, which cannot install an update over itself. Get the new standalone file, close this window, and replace the old file with it. The database and every setting stay exactly where they are.',
   'updates.statusLabel': 'Against the Master',
+  'updates.systemPackageBody':
+    'This copy was installed from a .deb package, which only the system’s package manager can replace. Get the new .deb package, close this window, install it the way this one was installed, and open OrderBook again. The database and every setting stay exactly where they are.',
   'updates.table.version': 'Version',
   'updates.thisMachine': 'This Master',
   'updates.thisPanel': 'This panel',
