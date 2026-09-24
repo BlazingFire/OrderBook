@@ -1,10 +1,14 @@
 /**
  * The Office Panel's live link to the Master.
  *
- * Holds one Socket.IO connection, keeps the most recent snapshot in memory,
- * and applies incremental changes to it. The cache exists purely so this
- * panel's browser has something to render instantly on load or after a blip —
- * the Master remains the only durable store, and every write still goes to it.
+ * Holds one Socket.IO connection, keeps the most recent snapshot in memory —
+ * and on disk, through `sync/local-store.ts` — and applies incremental changes
+ * to it. That copy exists so this panel's browser has something to render
+ * instantly on load or after a blip, and something to work from while the
+ * Master is off. The Master remains the only durable store of the company's
+ * records: a write made here is either forwarded live as a command or queued in
+ * the outbox (`sync/outbox.store.ts`) and pushed through this link once it is
+ * up.
  */
 
 import { EventEmitter } from 'node:events';
@@ -566,11 +570,12 @@ class MasterConnection extends EventEmitter {
   /**
    * Keep the cached snapshot current without a refetch.
    *
-   * The merge itself lives in `sync/apply-change.ts`, pure and free of this
-   * class, so a test can drive the exact code a reconnect replay runs rather
-   * than a lookalike written beside it. What stays here is the part that is
-   * about *this connection*: the cursor, the trailing write, and the pull that
-   * covers the entities a single event cannot merge.
+   * The merge itself lives in `shared/src/sync/apply-change.ts`
+   * (`applyChangeToSnapshot`), pure and free of this class, so a test can drive
+   * the exact code a reconnect replay runs rather than a lookalike written
+   * beside it. What stays here is the part that is about *this connection*:
+   * the cursor, the trailing write, and the pull that covers the entities a
+   * single event cannot merge.
    */
   private applyChange(event: DataChangedEvent): void {
     if (!this.snapshot) return;

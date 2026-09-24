@@ -48,7 +48,6 @@ function soundLead() {
         variantId: 'VR0000000001',
         quantity: 4,
         packaging: 'Packaging 2',
-        rate: 17_500,
       },
     ],
   };

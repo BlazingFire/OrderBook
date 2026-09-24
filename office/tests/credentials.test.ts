@@ -1,7 +1,9 @@
 /**
- * The credentials file is the only state an Office Panel keeps. If it is
- * unreadable the panel must fall back to the connection screen rather than
- * crash on startup, so the failure paths matter as much as the happy one.
+ * The credentials file is what makes an Office Panel paired — one of several
+ * files it keeps (`paths()` in `src/config/paths.ts`), and the one every later
+ * launch starts from. If it is unreadable the panel must fall back to the
+ * connection screen rather than crash on startup, so the failure paths matter
+ * as much as the happy one.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -12,8 +14,9 @@ import path from 'node:path';
 let dataDir: string;
 let credentialsFile: string;
 
-// The store reads its path from config at import time, so config is mocked to
-// point at a throwaway directory per test run.
+// The store finds its file through `paths()`, which reads `config.dataDir` on
+// every call — so a getter over a throwaway directory, replaced per test, is
+// all the mock needs to be.
 vi.mock('../src/config/index.js', () => ({
   get config() {
     return {

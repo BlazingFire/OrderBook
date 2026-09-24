@@ -2,7 +2,7 @@
  * Office Panel export (`docs/7-STORAGE-BACKUP-RESTORE.md` §2.2, §2.3, §4).
  *
  * This panel owns no database — its entire "replica" is the handful of local
- * JSON files under `config.dataDir` (`config/index.ts`'s file list). The
+ * JSON files in its data folder (`paths()` in `config/paths.ts`). The
  * export is simply those files' parsed contents, keyed by the same name a
  * restore writes them back under.
  *

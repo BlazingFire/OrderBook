@@ -1,9 +1,14 @@
 /**
  * The Office Panel's local API, consumed only by its own browser UI.
  *
- * Everything here either reports connection state or forwards a command to the
- * Master. This server intentionally stores nothing itself beyond the pairing
- * credentials.
+ * Every route here acts on this panel itself (its link, its sign-in, its
+ * files), answers from its local copy of the Master's data, queues a write for
+ * the Master, or forwards a command to it. What it keeps is a working copy, not
+ * a database: the files under `paths()` (`config/paths.ts`) — the pairing, the
+ * device code and clock, the outbox and its refusals, the last snapshot, the
+ * offline sign-in records and lockouts, cached images and avatars — plus a
+ * downloaded update (`updatesDir()` in `update.service.ts`). The Master stays
+ * the only durable store of the company's records.
  */
 
 import { existsSync } from 'node:fs';
@@ -86,7 +91,8 @@ export function createApp(): Express {
   app.use(express.json({ limit: '1mb' }));
 
   /*
-   * The desktop shell's readiness probe — see `office/electron/main.ts`.
+   * The desktop shell's readiness probe — see `electron/shell.ts`, which
+   * `electron/office.main.ts` runs for this panel.
    *
    * Mounted first, and deliberately above the `requireUser` gate further down:
    * the shell polls this before anyone has signed in, so a guarded route would
@@ -241,24 +247,6 @@ export function createApp(): Express {
   });
 
   /*
-   * The people who have signed in on this panel before.
-   *
-   * The sign-in screen shows them as a list of faces so somebody at the counter
-   * picks themselves and types only a password. It is deliberately **this
-   * panel's own** list, not the company roster: a machine shows the handful of
-   * people who actually use it, and a panel nobody has used yet shows nothing
-   * and asks for a username as it always did.
-   *
-   * Unauthenticated, and that is the point — it renders before anybody signs
-   * in. What it discloses is a display name and a picture to whoever is already
-   * sitting at this PC, which is the same thing the screen behind it shows. The
-   * panel binds loopback, so "whoever can call this" is "whoever is at the
-   * keyboard".
-   *
-   * No verifier, no token, no permissions, no fingerprint: everything the store
-   * holds that could help somebody sign in stays on the server.
-   */
-  /*
    * Where this panel keeps its files, and a way to move them.
    *
    * On the sign-in screen deliberately: choosing a drive is something an
@@ -267,8 +255,8 @@ export function createApp(): Express {
    * administrator, over the socket, which is no help at all while you are
    * standing at the new PC.
    *
-   * Unauthenticated for the same reason the profile list is, and with the same
-   * bound: this server binds loopback, so the caller is whoever is at this
+   * Unauthenticated for the same reason the profile list below is, and with the
+   * same bound: this server binds loopback, so the caller is whoever is at this
    * keyboard — and that person can already move the folder in Explorer. The
    * Master's equivalent is *not* offered this way, because its page is
    * reachable from every machine on the LAN.
@@ -309,6 +297,24 @@ export function createApp(): Express {
     })();
   });
 
+  /*
+   * The people who have signed in on this panel before.
+   *
+   * The sign-in screen shows them as a list of faces so somebody at the counter
+   * picks themselves and types only a password. It is deliberately **this
+   * panel's own** list, not the company roster: a machine shows the handful of
+   * people who actually use it, and a panel nobody has used yet shows nothing
+   * and asks for a username as it always did.
+   *
+   * Unauthenticated, and that is the point — it renders before anybody signs
+   * in. What it discloses is a display name and a picture to whoever is already
+   * sitting at this PC, which is the same thing the screen behind it shows. The
+   * panel binds loopback, so "whoever can call this" is "whoever is at the
+   * keyboard".
+   *
+   * No verifier, no token, no permissions, no fingerprint: everything the store
+   * holds that could help somebody sign in stays on the server.
+   */
   app.get('/api/session/profiles', (_req, res) => {
     void (async () => {
       const known = await userStore.listKnown();
@@ -890,7 +896,8 @@ export function createApp(): Express {
    *
    * The view it ranks is `forCurrentUser(...)`, **never** the raw one: the raw
    * snapshot was built for whoever was signed in when the link last worked, and
-   * carries their restricted parties and a `rate` this person may not see.
+   * carries the restricted parties granted to them, which this person may not
+   * be allowed to see.
    */
   app.get('/api/pick/:kind', (req, res) => {
     const kind: unknown = String(req.params.kind);
@@ -1006,9 +1013,13 @@ export function createApp(): Express {
     }),
   );
   // --- App update ----------------------------------------------------------
-  // Asks the Master directly over HTTP rather than through `forward`: the
-  // download is a 100 MB stream, and the metadata call has to work before
-  // anybody is signed in so the screen can say what is on offer.
+  // Asks the Master directly over HTTP (`masterFetch`, the Master's
+  // `/api/updates/office/*` routes) rather than through `forward`: the
+  // download is a 100 MB stream, and a command socket is no place for it.
+  // Both routes need a signed-in person, as everything past the `/api` gate
+  // does — the Updates screen only renders after sign-in. What that screen
+  // must work without is the first snapshot, not a session (`alwaysAvailable`
+  // in `office/web/src/App.tsx`).
 
   app.get('/api/updates/available', requireUser, (_req, res) => {
     void updateService
@@ -1447,10 +1458,10 @@ function errorHandler(error: unknown, _req: Request, res: Response, _next: NextF
  * person who made it.
  *
  * Deliberately structural only: a party that does not exist, a product that was
- * deleted, a rate this role may not set — those are the Master's to judge, and
- * judging them here would need a catalogue this process does not have. Nothing
- * here rejects a *half-built* lead either; packaging stays optional on save
- * exactly as §3.1 requires.
+ * deleted, a party this person holds no access to — those are the Master's to
+ * judge, and judging them here would need a catalogue this process does not
+ * have. Nothing here rejects a *half-built* lead either; packaging stays
+ * optional on save exactly as §3.1 requires.
  *
  * Run by `queue()` as its `validate` step, after the permission check, never
  * before it: somebody who may not make the write is told that, and nothing
@@ -1953,17 +1964,13 @@ function broadcast(type: string, data: unknown): void {
   for (const send of streams) send(type, data);
 }
 
-/*
- * Registered once, at module load, rather than per stream.
- *
- * `change` deliberately keeps sending the small per-record frame rather than
- * being folded into `schedulePushView`: routing it into a whole-view push
- * would replace a few hundred bytes with the entire snapshot, which is the
- * amplifier this file is removing.
- */
 /**
  * Reconcile this panel's local product-image cache against what the Master's
- * own snapshot still lists, whenever a full snapshot arrives.
+ * snapshot still lists, whenever the link hands over a snapshot: a full one on
+ * connect or after a ring miss, a pulled refresh, or the in-memory one a
+ * reconnect's replayed delta has just brought up to date (`master-connection.ts`
+ * emits `snapshot` for all three). A live `data:changed` event on its own does
+ * not trigger it.
  *
  * Every variant a product photo ever displayed here gets written to
  * `paths().imagesDir` and kept — there was no equivalent of
@@ -1973,17 +1980,18 @@ function broadcast(type: string, data: unknown): void {
  * PCs, each accumulates unbounded dead image bytes with no reclaim path short
  * of deleting the data folder by hand.
  *
- * A full snapshot, not every delta: image ids are minted once per upload and
- * never reused (a new picture is a new id, the same reasoning
+ * The snapshot, not the individual change events: image ids are minted once
+ * per upload and never reused (a new picture is a new id, the same reasoning
  * `avatar-cache.ts` already documents), so a *complete* snapshot's `products`
  * collection is the current answer to "what should still be on disk" — see
- * `productsComplete` below for the case it is not. Reacting only to
- * `product`/`updated` deltas would miss the case a long-offline panel most
- * needs this for: the Master's change ring wrapped, so this panel fell back
- * to a snapshot instead of replayed deltas, and a delta-only sweep would
- * never run at all. A snapshot is infrequent enough (a fresh connect, or a
- * ring miss) that a directory scan on every one of them costs nothing worth
- * measuring.
+ * `productsComplete` below for the case it is not, which a caught-up snapshot
+ * inherits from the full one it was built on. Reacting only to
+ * `product`/`updated` events would miss the case a long-offline panel most
+ * needs this for: the Master's change ring wrapped, so this panel fell back to
+ * a snapshot instead of replayed events, and an event-only sweep would never
+ * run at all. A snapshot arrives rarely enough (a connect, a reconnect's
+ * catch-up, a debounced refresh) that a directory scan on every one of them
+ * costs nothing worth measuring.
  */
 async function sweepImageCache(snapshot: SyncSnapshot): Promise<void> {
   // `products` is a clamped page, not the catalogue, whenever the snapshot
@@ -2015,6 +2023,14 @@ async function sweepImageCache(snapshot: SyncSnapshot): Promise<void> {
   }
 }
 
+/*
+ * Registered once, at module load, rather than per stream.
+ *
+ * `change` deliberately keeps sending the small per-record frame rather than
+ * being folded into `schedulePushView`: routing it into a whole-view push
+ * would replace a few hundred bytes with the entire snapshot, which is the
+ * amplifier this file is removing.
+ */
 // Optional-called: the office suites mock this module with a partial object,
 // and a belt-and-braces listener cap is not worth making them all fuller.
 masterConnection.setMaxListeners?.(0);
