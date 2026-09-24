@@ -40,10 +40,13 @@ export interface ActivityRenderInput {
 /** Renders, or falls back to the raw pair — honestly, never blank. */
 export function renderActivity(t: Translator, input: ActivityRenderInput): string {
   const key = activityMessageKey(input.entityType, input.action);
-  const actor = input.actorName ?? 'Somebody';
 
   if (!key) return `${input.entityType} · ${input.action}`;
 
+  // From the catalogue, not a literal: this is the subject of a sentence the
+  // reader's own catalogue builds, and an English word there rendered as
+  // "Somebody ने …".
+  const actor = input.actorName ?? t.t('logs.actor.unknown');
   const params: Record<string, string | number> = { actor };
   for (const [field, value] of Object.entries(input.details ?? {})) {
     if (typeof value === 'string' || typeof value === 'number') params[field] = value;

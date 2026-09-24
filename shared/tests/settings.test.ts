@@ -44,7 +44,6 @@ describe('every parser rejects a wrong shape', () => {
   // parsers would reject for the uninteresting reason that it is not an object.
   const WRONG: Record<string, unknown> = {
     'security.passwordRevealEnabled': 'yes',
-    'pricing.enabled': 'yes',
     'inventory.freeToSell': 'yes',
     'externalApi.enabled': 1,
     'panels.autoPairingEnabled': 'yes',
@@ -70,6 +69,12 @@ describe('every parser rejects a wrong shape', () => {
   it.each(SETTING_KEYS)('%s throws on a value it cannot mean', (key) => {
     expect(Object.keys(WRONG)).toContain(key);
     expect(() => SETTINGS[key].parse(WRONG[key])).toThrow();
+  });
+
+  it('names no key that is not a setting', () => {
+    // The loop above runs over the declared keys, so an entry left behind by a
+    // removed setting is never read and nothing notices it is there.
+    expect(Object.keys(WRONG).filter((key) => !isSettingKey(key))).toEqual([]);
   });
 });
 

@@ -125,12 +125,14 @@ export function validateStockLevels(levels: {
 /**
  * Whether a written reason is really absent.
  *
- * Shared because `inventory.adjustmentNoteRequired` is checked in three places
- * — the Master's service, and each panel's form before it sends — and three
- * hand-written `!note` tests is how the server comes to refuse something a form
- * let through. A note of spaces is the one that matters: it satisfies every
- * truthiness check and says nothing at all, which is precisely the answer
- * somebody gives to a field they resent.
+ * Shared so that everywhere `inventory.adjustmentNoteRequired` is checked
+ * agrees on what "no reason" means: separate hand-written `!note` tests are how
+ * the server comes to refuse something a form let through. The Master's
+ * service calls this; the Master's Inventory form makes the same `trim()` test
+ * inline, and the Office panel has no stock-correction form. A note of spaces
+ * is the one that matters: it satisfies every truthiness check and says
+ * nothing at all, which is precisely the answer somebody gives to a field they
+ * resent.
  */
 export function isBlankNote(note: string | null | undefined): boolean {
   return note === undefined || note === null || note.trim() === '';

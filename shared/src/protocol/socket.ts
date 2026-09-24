@@ -349,9 +349,10 @@ export const REPLAYABLE_ENTITIES: readonly ChangedEntity[] = [
  *
  * A replayed change to one of these would be dropped on the floor and never
  * covered by anything — `partyVariants` is the sharp one, because those are
- * per-party negotiated rates and staff would quote from stale prices with no
- * error anywhere. So the presence of any of these in a buffered range forces
- * the full snapshot instead.
+ * the name, size and packaging agreed with each party, and staff would build
+ * that party's lead lines from a superseded one with no error anywhere. So the
+ * presence of any of these in a buffered range forces the full snapshot
+ * instead.
  */
 export const SNAPSHOT_FORCING_ENTITIES: readonly ChangedEntity[] = [
   'party_variant',

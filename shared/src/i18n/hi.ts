@@ -1839,6 +1839,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'integrations.mapping.flag': 'Ask a person',
   'integrations.mapping.required': 'Required',
   'nav.master.integrations': 'Integrations',
+  // Oblique, not `कोई`: every translated `activity.*` template reads `{actor} ने …`.
+  'logs.actor.unknown': 'किसी',
   'logs.actorType.api_key': 'An API key',
   'logs.actorType.connector': 'A connection',
   'logs.actorType.office_panel': 'An office panel',
@@ -3554,7 +3556,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'settings.appearance.resetAll': 'दिखावट रीसेट करें',
   'partyAccess.showing': 'अब तक {shown} दिख रहे हैं।',
   'settingGroup.access': 'कौन अंदर आ सकता है',
-  'settingGroup.stock': 'स्टॉक और दाम',
+  'settingGroup.stock': 'स्टॉक',
   'settingGroup.leads': 'लीड और फ़ॉलो-अप',
   'settingGroup.integrations': 'अन्य सॉफ़्टवेयर',
   'setting.unit.hours': 'घंटे',

@@ -114,6 +114,31 @@ describe('no EN string carries a pre-formatted number, separator or currency sym
   });
 });
 
+describe('neither catalogue talks about prices', () => {
+  // The software carries no money at all — pricing was removed on 2026-09-21 —
+  // so a word for a price on screen points at a feature that does not exist.
+  // `settingGroup.stock` went on reading "Stock and prices" (`स्टॉक और दाम`)
+  // after the last price had gone.
+  //
+  // Both patterns run over both catalogues, because an untranslated Hindi
+  // entry is English text. The Hindi one is bounded by letters and marks
+  // rather than `\b`, which knows only ASCII: `दाम` is price, and it is also
+  // the tail of `गोदाम`, a warehouse.
+  const ENGLISH = /\b(prices?|priced|pricing|rates?|amounts?|discounts?|rupees?|paise)\b/i;
+  const HINDI = /(?<![\p{L}\p{M}])(दाम|कीमत|क़ीमत|मूल्य|रुपये|रुपए|रुपया|पैसे|राशि|रेट)(?![\p{L}\p{M}])/u;
+
+  it.each([
+    ['en', EN_MESSAGES],
+    ['hi', HI_MESSAGES],
+  ] as const)('%s', (_locale, catalogue) => {
+    const offenders = Object.entries(catalogue as Record<string, string>)
+      .filter(([, value]) => ENGLISH.test(value) || HINDI.test(value))
+      .map(([key]) => key);
+
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe('the activity.* surface is append-only', () => {
   // Read, never imported — a JSON import would go through `tsc`'s module
   // resolution and could be quietly re-shaped; `readFileSync` reads exactly

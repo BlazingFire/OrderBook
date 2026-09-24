@@ -362,15 +362,19 @@ export interface PermissionCatalogue {
 }
 
 /**
- * `permission.<module>.<action>` and `action.<action>` — the 32 + 6 tokens the
- * UI phase's renderer will read once it exists. Deliberately **not** embedded
- * in `PermissionCatalogue` itself: `master/web/src/components/PermissionGrid.tsx`
- * (a screen file, out of scope for this batch — `02-FILE-STRUCTURE.md` §2.6)
- * still reads `.actions` as a bare `PermissionAction[]` today, and widening the
- * wire shape would break its compile before the UI phase gets to fix it. Both
- * token families follow a fixed, mechanical naming convention, so the renderer
- * can derive them from the keys it already has with no server round trip —
- * these two helpers exist so the convention is written once, not re-derived.
+ * `permission.<module>.<action>` and `action.<action>` — one token per module
+ * action key and one per action. Deliberately **not** embedded in
+ * `PermissionCatalogue` itself: the grid (`ui/src/PermissionGrid.tsx`) reads
+ * `.actions` as a bare `PermissionAction[]`, and widening the wire shape would
+ * break its compile. Both token families follow a fixed, mechanical naming
+ * convention, so a renderer can derive them from the keys it already has with
+ * no server round trip — these two helpers exist so the convention is written
+ * once, not re-derived.
+ *
+ * No screen reads these tokens yet: the grid names a key through
+ * `ui/src/permissionLabels.ts`, which spells it out from the key itself.
+ * `shared/tests/i18n-coverage.test.ts` is what keeps every token present for
+ * the day it does.
  */
 export function moduleActionLabelToken(
   module: PermissionModule,

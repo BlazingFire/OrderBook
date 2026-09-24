@@ -1,10 +1,13 @@
 /**
  * The bridge between a panel's web UI and the desktop shell hosting it.
  *
- * Exactly one method, and it is the one thing a web page cannot do for itself:
- * run a setup file and get out of its way. Everything else about an update —
- * finding it, downloading it, checking it — happens in the panel's own server,
- * where it can be tested without a window.
+ * One method is required, `applyUpdate`, and it is the one thing a web page
+ * cannot do for itself: run a setup file and get out of its way. Everything
+ * else about an update — finding it, downloading it, checking it — happens in
+ * the panel's own server, where it can be tested without a window. Beside it
+ * sit the shell's version and optional methods for the other things only a
+ * shell can do, from a native folder chooser to uninstalling — optional
+ * because older shells lack them (see the note inside the interface).
  *
  * `window.orderbook` is **absent** when the UI is open in an ordinary browser
  * tab, which is how it runs in development and how an operator reaches a panel
@@ -21,20 +24,15 @@
 
 export interface DesktopBridge {
   /**
-   * Launch a verified setup file and quit, so the installer can replace the
-   * files this app is running from.
-   *
-   * The caller has already downloaded and checksummed it; this only runs it.
-   * Resolves to `false` when the shell refused — a path that is not where it
-   * should be, or a launch the operating system blocked — so the screen can say
-   * so rather than waiting for a quit that never comes.
-   */
-  /**
-   * Install the update the panel has already prepared and verified.
+   * Install the update the panel has already prepared and verified, and quit
+   * so the installer can replace the files this app is running from.
    *
    * Deliberately takes no path: the renderer does not choose what executes.
    * The shell asks the panel over loopback and hashes the file itself before
-   * spawning it.
+   * spawning it. Resolves to `false` when the shell refused — no verified
+   * installer ready, a file that fails the shell's own checks, a standalone
+   * build, or a launch the operating system blocked — so the screen can say so
+   * rather than waiting for a quit that never comes.
    */
   applyUpdate(): Promise<boolean>;
 
@@ -110,23 +108,6 @@ export interface DesktopBridge {
   onMenuCommand?(handler: (id: string) => void): void;
 }
 
-/**
- * What a panel says about itself at `GET /api/health` — the one contract the
- * desktop shell reads, from either panel.
- *
- * This exists because the shell polls this route to decide when to swap its
- * splash for the app, and the two panels answered differently: the Office
- * server had no such route at all, so its shell waited out the full timeout
- * and then declared a running server dead, and the Master's live app omitted
- * `boot` entirely, which made the shell's failure check dead code against it.
- * Annotating every implementation `satisfies PanelHealth` is what stops them
- * drifting apart again.
- *
- * The route is deliberately unauthenticated — the shell polls it before anyone
- * has signed in — and the Master binds `0.0.0.0`, so this shape is readable by
- * anything on the shop LAN. The three filesystem paths are therefore optional
- * and served only to loopback callers.
- */
 export type PanelBootState = 'starting' | 'ready' | 'failed';
 
 export interface PanelBootStatus {
@@ -145,6 +126,24 @@ export interface PanelHealthInterface {
   broadcastAddress: string;
 }
 
+/**
+ * What a panel says about itself at `GET /api/health` — the one contract the
+ * desktop shell reads, from either panel.
+ *
+ * This exists because the shell polls this route to decide when to swap its
+ * splash for the app, and the two panels answered differently: the Office
+ * server had no such route at all, so its shell waited out the full timeout
+ * and then declared a running server dead, and the Master's live app omitted
+ * `boot` entirely, which made the shell's failure check dead code against it.
+ * Annotating every implementation `satisfies PanelHealth` is what stops them
+ * drifting apart again.
+ *
+ * The route is deliberately unauthenticated — the shell polls it before anyone
+ * has signed in — and the Master binds `0.0.0.0`, so this shape is readable by
+ * anything on the shop LAN. The filesystem paths, the prepared installer and
+ * the runtime figures are therefore optional and served only to loopback
+ * callers.
+ */
 export interface PanelHealth {
   panel: 'master' | 'office';
   status: 'ok' | 'starting';

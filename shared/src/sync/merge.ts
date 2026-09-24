@@ -49,8 +49,8 @@ export interface MergeOutcome {
  *
  * `updatedAt` and friends are derived bookkeeping — two panels "disagreeing"
  * about them means nothing. Business fields are deliberately absent from this
- * list: a rate or a quantity that got overwritten is exactly what someone needs
- * to be told about.
+ * list: a follow-up date or a phone number that got overwritten is exactly
+ * what someone needs to be told about.
  */
 const NON_CONFLICTING_FIELDS = new Set(['updatedAt', 'version', 'hlc', 'searchVector']);
 
