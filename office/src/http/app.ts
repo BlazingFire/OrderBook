@@ -799,28 +799,24 @@ export function createApp(): Express {
     queue(res, { kind: 'partyVariant.upsert', entity: 'party_variant', payload: req.body }),
   );
 
-  app.post('/api/leads', (req, res) => {
-    const problem = leadPayloadProblem(req.body, { itemsRequired: true });
-    if (problem) {
-      res.status(400).json({ error: 'validation_error', message: problem });
-      return;
-    }
-    void queue(res, { kind: 'lead.create', entity: 'lead', payload: req.body });
-  });
-  app.put('/api/leads/:id', (req, res) => {
-    const problem = leadPayloadProblem(req.body, { itemsRequired: false });
-    if (problem) {
-      res.status(400).json({ error: 'validation_error', message: problem });
-      return;
-    }
-    void queue(res, {
+  app.post('/api/leads', (req, res) =>
+    queue(res, {
+      kind: 'lead.create',
+      entity: 'lead',
+      payload: req.body,
+      validate: () => leadPayloadProblem(req.body, { itemsRequired: true }),
+    }),
+  );
+  app.put('/api/leads/:id', (req, res) =>
+    queue(res, {
       kind: 'lead.update',
       entity: 'lead',
       entityId: req.params.id,
       payload: req.body,
       baseFieldHlc: req.body?.baseFieldHlc,
-    });
-  });
+      validate: () => leadPayloadProblem(req.body, { itemsRequired: false }),
+    }),
+  );
   app.post('/api/leads/:id/stage', (req, res) =>
     queue(res, {
       kind: 'lead.setStage',
@@ -1456,6 +1452,10 @@ function errorHandler(error: unknown, _req: Request, res: Response, _next: NextF
  * here rejects a *half-built* lead either; packaging stays optional on save
  * exactly as §3.1 requires.
  *
+ * Run by `queue()` as its `validate` step, after the permission check, never
+ * before it: somebody who may not make the write is told that, and nothing
+ * about what a well-formed payload would have looked like.
+ *
  * Returns the problem as a sentence, or null when the payload is sound.
  */
 function leadPayloadProblem(body: unknown, options: { itemsRequired: boolean }): string | null {
@@ -1508,6 +1508,8 @@ async function queue(
     entityId?: string;
     payload: unknown;
     baseFieldHlc?: Record<string, string>;
+    /** A shape check on the payload — a sentence when it fails, null when sound. */
+    validate?: () => string | null;
   },
 ): Promise<void> {
   const session = userSession.currentSession();
@@ -1523,6 +1525,14 @@ async function queue(
       message: 'You do not have permission to do that',
       permission,
     });
+    return;
+  }
+
+  // Only now the shape, so a caller the check above turns away learns nothing
+  // about what the route would have accepted.
+  const problem = request.validate?.() ?? null;
+  if (problem) {
+    res.status(400).json({ error: 'validation_error', message: problem });
     return;
   }
 
