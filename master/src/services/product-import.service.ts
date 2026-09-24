@@ -458,7 +458,7 @@ export async function importProducts(
  * field this import did not touch still merges instead of being overwritten.
  *
  * The file's rows are folded into the product's existing variant set rather
- * than replacing it: a price list naming three of DAMRU's forty codes must
+ * than replacing it: a sheet naming three of DAMRU's forty codes must
  * not delete the other thirty-seven. A row matches an existing variant by
  * code, else by label, else it is a new variant.
  */

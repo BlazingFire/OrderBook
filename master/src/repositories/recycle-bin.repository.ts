@@ -1,8 +1,9 @@
 /**
  * The only cross-table SQL in the Recycle Bin module: a `UNION ALL` over the
  * soft-deletable tables — **eight branches**. Six landed with the Bin itself
- * and two with Fields. `BIN_BRANCH_TYPES` is exported so a test can prove this
- * list still covers every member of `RECYCLE_BIN_ENTITIES`.
+ * and two with Fields. Nothing checks that `BRANCHES` still covers every
+ * member of `RECYCLE_BIN_ENTITIES`: a type added there without a branch here
+ * typechecks, the route accepts it, and it never shows in the Bin.
  *
  * Branches the caller may not see are omitted from the SQL entirely — that
  * is simultaneously the permission filter, the entity-type filter and the

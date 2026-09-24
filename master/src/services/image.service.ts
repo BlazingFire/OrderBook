@@ -444,9 +444,8 @@ export const AVATARS_DIR = 'avatars';
  * scheduling preference.** `normalizeAndStore` writes four `.webp` files
  * *before* the caller inserts the row, so a sweep that anti-joins the directory
  * against `product_images.id` while somebody is uploading deletes a completed
- * upload's files and leaves a row pointing at nothing. At startup nothing else
- * is writing — the same reason `sweepOrphanTemporaries` gives for running
- * where it does.
+ * upload's files and leaves a row pointing at nothing. At startup, before the
+ * panel takes its first request, nothing else is writing.
  *
  * Orphans come from a crash between the files and the commit, and from a
  * restore that reinstated an older `product_images` than the disk holds.

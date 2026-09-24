@@ -12,9 +12,11 @@ import { getSetting } from './settings.service.js';
 /**
  * Resolved in one place, for both channels.
  *
- * `getSetting` is cached per tenant, so six reads are one query — and one
- * function is what stops the Master's `/me` and the panel's snapshot answering
- * differently about the same company.
+ * `getSetting` is cached per tenant, so once the cache is warm the five reads
+ * cost no query at all (on a cold cache the five run in parallel and each
+ * loads the tenant's settings — nothing de-duplicates a load in flight). And
+ * one function is what stops the Master's `/me` and the panel's snapshot
+ * answering differently about the same company.
  *
  * Every field the interface declares must be assigned here. Nothing in the type
  * system says so, because they are all optional on purpose (see
@@ -27,7 +29,7 @@ export async function companyFeatures(tenantId: string): Promise<CompanyFeatures
    * Read as named properties, never as a positional array.
    *
    * `Promise.all` with an array destructure would be shorter and is how this
-   * was first written. Four of these six are booleans, so swapping two of them
+   * was first written. Four of these five are booleans, so swapping two of them
    * — inserting a key in the reads and not in the destructure — typechecks
    * perfectly and hands every panel the wrong switch under the right name.
    * Naming both ends makes that a compile error instead.

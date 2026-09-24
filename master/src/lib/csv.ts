@@ -5,9 +5,9 @@
  * CRLF row endings (the format Excel expects); any field containing a
  * comma, quote, CR or LF is quoted; a field starting with `=`, `+`, `-` or
  * `@` is formula-injection-prone in Excel and gets a leading apostrophe —
- * this is a shop PC where the exported file is opened directly. A redacted
- * money column is an **empty** cell, never `0` — the same absent-not-zero
- * rule the wire contract uses everywhere else.
+ * this is a shop PC where the exported file is opened directly. An absent
+ * value (`null` or `undefined`) is an **empty** cell, never `0` — the same
+ * absent-not-zero rule the wire contract uses everywhere else.
  */
 
 const FORMULA_PREFIX_CHARS = new Set(['=', '+', '-', '@']);

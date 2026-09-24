@@ -35,7 +35,7 @@ export type FaceName = 'body' | 'bodyBold' | 'devanagari' | 'mono';
  * all and adds ~260 KB to every rendered file, against ~4 KB here.
  *
  * Source Code Pro is SIL OFL 1.1 like the other three, covers everything this
- * renderer needs including `₹`, and subsets correctly. Swapping it back is one
+ * renderer needs, and subsets correctly. Swapping it back is one
  * line plus the asset — worth doing if a future fontkit fixes the read.
  */
 const FACE_FILES: Record<FaceName, string> = {

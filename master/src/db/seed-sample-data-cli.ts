@@ -44,7 +44,7 @@ async function main(): Promise<void> {
         `(${counts.images} photos), ${counts.stockMovements} stock movements, ${counts.leads} leads, ` +
         `${counts.orders} orders (${counts.dispatched} dispatched), ${counts.remarks} remarks, ` +
         `${counts.optionValues} option values, ${counts.customFields} custom fields, ` +
-        `${counts.partyVariants} party-wise rates, ${counts.partyAssignments} party assignments, ` +
+        `${counts.partyVariants} party-wise records, ${counts.partyAssignments} party assignments, ` +
         `${counts.deleted} in the Recycle Bin`,
     );
   } finally {

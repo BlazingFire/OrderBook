@@ -381,8 +381,10 @@ async function isClusterRunning(binDir: string, clusterDir: string): Promise<boo
 }
 
 /**
- * `initdb` creates a database named after the superuser; the application
- * database is created separately so it can be dropped or restored
+ * `initdb` creates only the `postgres` maintenance database (and the
+ * templates), not one named after the superuser. So this connects to
+ * `postgres` and creates the application database — `config.database.database`,
+ * `orderbook` — itself, which also lets it be dropped or restored
  * independently of the cluster.
  *
  * Uses the `pg` driver rather than shelling out to `psql`: the bundled

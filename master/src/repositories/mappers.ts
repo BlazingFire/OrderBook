@@ -41,8 +41,8 @@ export function toNumber(value: unknown): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
 
   // Number('') and Number('   ') are both 0, which would turn a blank column
-  // or an empty form field into a real zero price/quantity. Blank means "not
-  // set", so it must map to null.
+  // or an empty form field into a real zero quantity or weight. Blank means
+  // "not set", so it must map to null.
   if (typeof value === 'string' && value.trim() === '') return null;
 
   const parsed = Number(value);

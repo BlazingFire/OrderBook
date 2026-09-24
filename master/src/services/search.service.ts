@@ -126,9 +126,8 @@ export async function pick(
     term,
     limit,
     include,
-    // Same narrowing every party read gets. There is deliberately no
-    // `maskParty` — a party carries no money field, so the scope is the whole
-    // of what has to be applied here.
+    // Same narrowing every party read gets, and the whole of what has to be
+    // applied here: no field of a party is hidden from someone who may see it.
     scope: resolvePartyScope(actor),
   });
 

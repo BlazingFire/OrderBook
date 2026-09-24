@@ -5,8 +5,8 @@
  * runs that switch faces per script. What it draws is a header row, some
  * rows, and an optional totals line.
  *
- * The redaction rule it implements is the tabular one, not the JSON one: **a
- * redacted money column keeps its header and empties its cells.** Dropping the
+ * The rule it keeps for a missing value is the tabular one, not the JSON one:
+ * **the column keeps its header and the cell stays empty.** Dropping the
  * column would silently change what every other column means by position, and a
  * zero would be a factual claim that the figure is nothing.
  */
@@ -38,7 +38,7 @@ const ROW_HEIGHT = 16;
 
 interface ReportTableColumn {
   label: string;
-  /** Right-aligned and summed. Numbers and money; never a name or a date. */
+  /** Right-aligned and summed. Counts and quantities; never a name or a date. */
   numeric?: boolean;
 }
 
@@ -46,7 +46,7 @@ export interface ReportTablePdf {
   title: string;
   subtitle?: string;
   columns: ReportTableColumn[];
-  /** Already formatted, already redacted. An empty string prints as empty. */
+  /** Already formatted. An empty string prints as empty. */
   rows: string[][];
   totals?: string[];
   paperSize: ReportPaperSize;
