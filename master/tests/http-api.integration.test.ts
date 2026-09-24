@@ -14,6 +14,8 @@ import type { Express } from 'express';
 import { canRunIntegrationTests } from './helpers/db.js';
 import { config } from '../src/config/index.js';
 import * as leads from '../src/services/lead.service.js';
+import * as roles from '../src/services/role.service.js';
+import * as users from '../src/services/user.service.js';
 import { resetData, setupDatabase, teardownDatabase, stageIdByName, testActor } from './helpers/fixtures.js';
 import { createApp } from '../src/http/app.js';
 import { closePairingWindow } from '../src/services/panel.service.js';
@@ -503,6 +505,32 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       expect(response.body.totalBytes).toBe(
         response.body.databaseBytes + response.body.uploadsBytes,
       );
+    });
+
+    /*
+     * The figures sit on Settings › Storage, and the Settings nav entry is
+     * shown only to `settings.manage` (`master/web/src/App.tsx`). The route
+     * used to check nothing past the session, so anybody signed in — a
+     * counter clerk included — could read how big the database and the
+     * uploads are and how much disk the Master PC has left.
+     */
+    it('refuses the figures to somebody signed in without settings.manage', async () => {
+      await initialize();
+      const admin = await testActor();
+      const desk = await roles.createRole(
+        { name: 'Desk', tier: 'office', permissions: ['leads.view'] },
+        admin,
+      );
+      await users.createUser(
+        { username: 'meena', displayName: 'Meena Patel', roleId: desk.id, password: 'correct-horse' },
+        admin,
+      );
+
+      const agent = request.agent(app);
+      await agent.post('/api/auth/sign-in').send({ username: 'meena', password: 'correct-horse' }).expect(200);
+
+      const response = await agent.get('/api/storage').expect(403);
+      expect(response.body).toMatchObject({ error: 'forbidden', details: { permission: 'settings.manage' } });
     });
   });
 

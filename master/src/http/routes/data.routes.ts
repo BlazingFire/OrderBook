@@ -33,12 +33,13 @@ export const dataRoutes: Router = Router();
 dataRoutes.use(requireAuth);
 
 /**
- * The Recycle Bin's four DELETE routes are the first handlers on this router
- * to carry a permission guard — every other route here relies on the
- * service-layer check alone. `leads.delete` / `orders.delete` /
+ * A route-level permission guard, for the handlers on this router that carry
+ * one; the rest rely on the service-layer check alone. The Recycle Bin's four
+ * DELETE routes were the first: `leads.delete` / `orders.delete` /
  * `parties.delete` / `products.delete` have been in the frozen catalogue and
  * in stored role rows since `20260303`, and were enforced nowhere because no
- * delete path existed for any of the four until now.
+ * delete path existed for any of the four until then. The storage routes
+ * below are guarded here and nowhere else — their services take no actor.
  */
 const needs = requirePermissionMiddleware;
 
@@ -62,8 +63,20 @@ dataRoutes.get(
   }),
 );
 
+/**
+ * The figures on Settings › Storage: how big the database and the uploads are,
+ * and how much disk the Master PC has left.
+ *
+ * `settings.manage`, because that is what the Settings nav entry is shown
+ * under (`master/web/src/App.tsx`), and the screen reads them only for a
+ * session holding it. This used to check nothing past the session, so anybody
+ * signed in could read them; how full the one machine holding every record is
+ * getting is the administrator's business. Export and restore stay on
+ * `storage.manage`.
+ */
 dataRoutes.get(
   '/storage',
+  needs('settings.manage'),
   asyncHandler(async (_req, res) => {
     res.json(await storageService.getStorageUsage());
   }),

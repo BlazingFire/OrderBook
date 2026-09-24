@@ -93,6 +93,12 @@ export function SettingsScreen({
 }) {
   const [identity, setIdentity] = useState<MasterIdentity | null>(null);
   const [storage, setStorage] = useState<StorageUsage | null>(null);
+  /**
+   * Whether the usage figures are this session's to read. True until the
+   * session says otherwise, so the figures hold their skeleton while it loads
+   * rather than arriving a beat late for everybody who may see them.
+   */
+  const [canReadStorage, setCanReadStorage] = useState(true);
   const [canManageStorage, setCanManageStorage] = useState(false);
   const [settings, setSettings] = useState<SettingView[] | null>(null);
   const [vault, setVault] = useState<VaultStatus | null>(null);
@@ -119,25 +125,35 @@ export function SettingsScreen({
       .identity()
       .then(setIdentity)
       .catch(() => setIdentity(null));
-    void api
-      .storage()
-      .then(setStorage)
-      .catch(() => setStorage(null));
-    // The usage figures are readable by anyone, but export and restore are
-    // `storage.manage` at the route — so the session's own permissions decide
-    // whether the actions appear, rather than offering two buttons whose only
-    // possible answer is a refusal. Read here rather than taken as a prop
-    // because nothing else on this screen needs the session.
+    // The usage figures are `settings.manage` at the route and export and
+    // restore are `storage.manage` — so the session's own permissions decide
+    // what appears, rather than offering a read or two buttons whose only
+    // possible answer is a refusal. `settings.manage` is also what the Settings
+    // nav entry needs, but the screen opens for anybody who reaches it another
+    // way, the desktop menu's Developer command among them. Read here rather
+    // than taken as a prop because nothing else on this screen needs the
+    // session.
     void api
       .me()
       .then(({ user }) => {
+        const canManageSettings = user.permissions.includes('settings.manage');
+        setCanReadStorage(canManageSettings);
         setCanManageStorage(user.permissions.includes('storage.manage'));
+        if (canManageSettings) {
+          void api
+            .storage()
+            .then(setStorage)
+            .catch(() => setStorage(null));
+        }
         return loadCompanySettings(
-          user.permissions.includes('settings.manage'),
+          canManageSettings,
           user.permissions.includes('users.viewPassword'),
         );
       })
-      .catch(() => setCanManageStorage(false));
+      .catch(() => {
+        setCanReadStorage(false);
+        setCanManageStorage(false);
+      });
   }, [loadCompanySettings]);
 
   async function saveSetting(key: SettingKey, value: unknown): Promise<void> {
@@ -274,33 +290,50 @@ export function SettingsScreen({
         </SettingsSection>
       ),
     },
-    {
-      id: 'storage',
-      label: t('settings.tab.storage'),
-      render: () => (
-        <SettingsSection title={t('settings.storage.title')}>
-          {storage ? (
-            <KeyValueList
-              items={[
-                {
-                  label: t('settings.storage.database'),
-                  value: formatBytes(storage.databaseBytes),
-                },
-                { label: t('settings.storage.uploads'), value: formatBytes(storage.uploadsBytes) },
-                {
-                  label: t('settings.storage.total'),
-                  value: <span className="ob-body-strong">{formatBytes(storage.totalBytes)}</span>,
-                },
-                { label: t('settings.storage.free'), value: formatBytes(storage.diskFreeBytes) },
-              ]}
-            />
-          ) : (
-            <SkeletonKeyValueRows rows={4} />
-          )}
-          {canManageStorage && <StorageBackupActions />}
-        </SettingsSection>
-      ),
-    },
+    // Absent, not empty, for a session that may neither read the figures nor
+    // export — the same rule as the company tab.
+    ...(canReadStorage || canManageStorage
+      ? [
+          {
+            id: 'storage',
+            label: t('settings.tab.storage'),
+            render: () => (
+              <SettingsSection title={t('settings.storage.title')}>
+                {canReadStorage &&
+                  (storage ? (
+                    <KeyValueList
+                      items={[
+                        {
+                          label: t('settings.storage.database'),
+                          value: formatBytes(storage.databaseBytes),
+                        },
+                        {
+                          label: t('settings.storage.uploads'),
+                          value: formatBytes(storage.uploadsBytes),
+                        },
+                        {
+                          label: t('settings.storage.total'),
+                          value: (
+                            <span className="ob-body-strong">
+                              {formatBytes(storage.totalBytes)}
+                            </span>
+                          ),
+                        },
+                        {
+                          label: t('settings.storage.free'),
+                          value: formatBytes(storage.diskFreeBytes),
+                        },
+                      ]}
+                    />
+                  ) : (
+                    <SkeletonKeyValueRows rows={4} />
+                  ))}
+                {canManageStorage && <StorageBackupActions />}
+              </SettingsSection>
+            ),
+          },
+        ]
+      : []),
     { id: 'developer', label: t('settings.tab.developer'), render: () => <DeveloperTab /> },
   ];
 
