@@ -10,11 +10,14 @@
  *
  * `fetch` is stubbed rather than a server being stood up: the interesting
  * behaviour is redirect handling and stream limits, and a real server makes
- * both harder to provoke, not easier.
+ * both harder to provoke, not easier. The exception is how long a download may
+ * take — see `handAnswered` for why that one needs a real socket.
  */
 
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,6 +25,14 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type * as Shared from '@orderbook/shared';
 import type { PanelKind, ReleaseManifest } from '@orderbook/shared';
 import { canonicalManifestPayload } from '@orderbook/shared';
+
+/*
+ * Taken before any test fakes the clock or stubs `fetch`: the timing tests
+ * below wait on sockets and disk in real time, and forward a request to a real
+ * `fetch`, whatever the fakes are doing.
+ */
+const realSetTimeout = globalThis.setTimeout;
+const realFetch = globalThis.fetch;
 
 /*
  * The manifests below carry no `platform`, which the reader defaults to the
@@ -89,6 +100,17 @@ function signed(overrides: Partial<ReleaseManifest> = {}): ReleaseManifest {
   } as ReleaseManifest;
 }
 
+/**
+ * The asset name a release publishes `manifest` under — the rule the release
+ * workflow follows: the Windows build keeps the pre-platform name.
+ */
+function manifestAssetName(manifest: ReleaseManifest): string {
+  const platform = manifest.platform ?? 'win32';
+  return platform === 'win32'
+    ? `latest-${manifest.panel}.json`
+    : `latest-${manifest.panel}-${platform}.json`;
+}
+
 /** A release listing GitHub would answer with, describing `manifest`. */
 function listing(manifest: ReleaseManifest, overrides: Record<string, unknown> = {}) {
   return {
@@ -97,7 +119,7 @@ function listing(manifest: ReleaseManifest, overrides: Record<string, unknown> =
     prerelease: false,
     assets: [
       {
-        name: manifest.panel === 'master' ? 'latest-master.json' : 'latest-office.json',
+        name: manifestAssetName(manifest),
         size: 500,
         browser_download_url: MANIFEST_URL,
         url: MANIFEST_URL,
@@ -131,17 +153,52 @@ function stream(bytes: Buffer): Response {
   );
 }
 
+/**
+ * One URL's answer. Handed the request's own `init` — its `signal` included —
+ * so a route can pass the request on to a real server (`forwardTo`).
+ */
+type Route = (init?: RequestInit) => Response | Promise<Response>;
+
 /** Route by URL; anything unrouted is a 404, which reads as "not published". */
-function serve(routes: Record<string, () => Response>) {
+function serve(routes: Record<string, Route>) {
   vi.stubGlobal(
     'fetch',
-    vi.fn((input: string | URL) => {
+    vi.fn((input: string | URL, init?: RequestInit) => {
       const url = String(input);
       requested.push(url);
       const route = routes[url];
-      return Promise.resolve(route ? route() : new Response(null, { status: 404 }));
+      return Promise.resolve(route ? route(init) : new Response(null, { status: 404 }));
     }),
   );
+}
+
+/**
+ * A body that delivers what the test pushes, when it pushes it, and ends when
+ * the test says.
+ *
+ * For holding a download open while something else happens — a panel asking,
+ * an operator preparing an install — or trickling it for as long as a test
+ * likes, without anything but the test deciding when it ends.
+ */
+function openBody(): { response: Route; push: (bytes: Buffer) => void; end: () => void } {
+  let controller!: ReadableStreamDefaultController<Uint8Array>;
+  const body = new ReadableStream<Uint8Array>({
+    start(opened) {
+      controller = opened;
+    },
+  });
+  return {
+    response: () => new Response(body, { status: 200 }),
+    push: (bytes) => {
+      try {
+        controller.enqueue(new Uint8Array(bytes));
+      } catch {
+        // The reader has gone: the download was given up, which is what a
+        // test pushing into it may be waiting to see.
+      }
+    },
+    end: () => controller.close(),
+  };
 }
 
 /**
@@ -193,7 +250,7 @@ describe('syncing a release from GitHub', () => {
     expect(requested).toEqual([]);
   });
 
-  it('UPD-29: lands the setup file and writes latest.json last', async () => {
+  it('UPD-29: lands the setup file and writes its manifest last', async () => {
     const manifest = signed();
     serve({
       [API]: () => json(listing(manifest)),
@@ -207,12 +264,18 @@ describe('syncing a release from GitHub', () => {
     expect(landed?.version).toBe('2.0.0');
     expect(await readFile(path.join(dir, manifest.file))).toEqual(PAYLOAD);
 
-    const written = JSON.parse(await readFile(path.join(dir, 'latest.json'), 'utf8'));
-    expect(written.sha256).toBe(manifest.sha256);
-    expect(written.signature).toBe(manifest.signature);
+    // Both names a Windows build is published under, as `tools/release.mjs`
+    // writes them — see UPD-48 for why the platform one is not optional.
+    for (const name of ['latest-win32.json', 'latest.json']) {
+      const written = JSON.parse(await readFile(path.join(dir, name), 'utf8'));
+      expect(written.sha256, name).toBe(manifest.sha256);
+      expect(written.signature, name).toBe(manifest.signature);
+    }
 
     // No `.part` survives a good download either.
-    expect((await readdir(dir)).sort()).toEqual([manifest.file, 'latest.json'].sort());
+    expect((await readdir(dir)).sort()).toEqual(
+      [manifest.file, 'latest-win32.json', 'latest.json'].sort(),
+    );
   });
 
   it('UPD-30: refuses an unsigned manifest without fetching the installer at all', async () => {
@@ -525,7 +588,9 @@ describe('clearing out what an earlier run left behind', () => {
     const { syncFromGitHub } = await loadService();
     await syncFromGitHub('master', dir, null, 'win32');
 
-    expect((await readdir(dir)).sort()).toEqual([manifest.file, 'latest.json'].sort());
+    expect((await readdir(dir)).sort()).toEqual(
+      [manifest.file, 'latest-win32.json', 'latest.json'].sort(),
+    );
   });
 
   it('UPD-41: keeps the current release, and does not re-download it', async () => {
@@ -593,7 +658,9 @@ describe('clearing out what an earlier run left behind', () => {
     const { syncFromGitHub } = await loadService();
     expect(await syncFromGitHub('master', dir, null, 'win32')).not.toBeNull();
 
-    expect((await readdir(dir)).sort()).toEqual([manifest.file, 'latest.json'].sort());
+    expect((await readdir(dir)).sort()).toEqual(
+      [manifest.file, 'latest-win32.json', 'latest.json'].sort(),
+    );
   });
 
   it('UPD-43: sweeps a latest.json.tmp stranded by a crash mid-write', async () => {
@@ -628,7 +695,9 @@ describe('clearing out what an earlier run left behind', () => {
     const { syncFromGitHub } = await loadService();
     await syncFromGitHub('master', dir, null, 'win32');
 
-    expect((await readdir(dir)).sort()).toEqual([manifest.file, 'latest.json'].sort());
+    expect((await readdir(dir)).sort()).toEqual(
+      [manifest.file, 'latest-win32.json', 'latest.json'].sort(),
+    );
   });
 
   it('UPD-45: leaves alone anything it did not write', async () => {
@@ -694,5 +763,493 @@ describe('clearing out what an earlier run left behind', () => {
     expect(a).toEqual(b);
     expect(requested.filter((url) => url === API).length).toBe(1);
     expect(await readFile(path.join(dir, manifest.file))).toEqual(PAYLOAD);
+  });
+});
+
+/** Where a release's files are downloaded from, one URL per asset. */
+const DOWNLOADS = 'https://github.com/orderbook/releases/releases/download/v2.0.0';
+
+/**
+ * One release carrying several builds — one per OS, as the release workflow
+ * publishes them — and the routes that serve it, each asset at its own URL.
+ */
+function publishedTogether(...manifests: ReleaseManifest[]): Record<string, Route> {
+  const asset = (name: string, size: number) => ({
+    name,
+    size,
+    browser_download_url: `${DOWNLOADS}/${name}`,
+    url: `${DOWNLOADS}/${name}`,
+  });
+
+  const routes: Record<string, Route> = {
+    [API]: () =>
+      json({
+        tag_name: 'v2.0.0',
+        draft: false,
+        prerelease: false,
+        assets: manifests.flatMap((manifest) => [
+          asset(manifestAssetName(manifest), 500),
+          asset(manifest.file, manifest.sizeBytes),
+        ]),
+      }),
+  };
+
+  for (const manifest of manifests) {
+    routes[`${DOWNLOADS}/${manifestAssetName(manifest)}`] = () => json(manifest);
+    routes[`${DOWNLOADS}/${manifest.file}`] = () => stream(PAYLOAD);
+  }
+  return routes;
+}
+
+/** Each OS's setup file extension, as `tools/release.mjs` builds them. */
+const SETUP_EXTENSION = { win32: 'exe', darwin: 'dmg', linux: 'AppImage' } as const;
+
+/** A signed office build for one OS. */
+const officeBuild = (platform: keyof typeof SETUP_EXTENSION, version = '2.0.0') =>
+  signed({
+    panel: 'office',
+    platform,
+    version,
+    file: `OrderBook-Office-${version}-Setup.${SETUP_EXTENSION[platform]}`,
+  });
+
+describe('one releases folder, several operating systems', () => {
+  afterEach(() => {
+    delete process.env.ORDERBOOK_RELEASES_DIR;
+  });
+
+  it('UPD-48: writes the manifest the reader looks for first, so one the release script left cannot shadow it', async () => {
+    // `tools/release.mjs` writes `latest-win32.json` beside the legacy
+    // `latest.json`, and `readManifest` reads the platform name first and stops
+    // at the first file it can read. A sync that rewrote only `latest.json` left
+    // the reader on the script's old manifest — whose setup file that same sync
+    // had just swept as superseded — so the shop was told nothing had been
+    // published, with the new build sitting in the folder.
+    const masterDir = path.join(dir, 'master-panel');
+    await mkdir(masterDir, { recursive: true });
+
+    const byHand = signed({
+      version: '1.0.0',
+      file: 'OrderBook-Master-1.0.0-Setup.exe',
+      platform: 'win32',
+    });
+    await writeFile(path.join(masterDir, byHand.file), PAYLOAD);
+    for (const name of ['latest-win32.json', 'latest.json']) {
+      await writeFile(path.join(masterDir, name), JSON.stringify(byHand));
+    }
+
+    const published = signed({ platform: 'win32' });
+    serve({
+      [API]: () => json(listing(published)),
+      [MANIFEST_URL]: () => json(published),
+      [SETUP_URL]: () => stream(PAYLOAD),
+    });
+
+    await loadService({ ORDERBOOK_RELEASES_DIR: dir });
+    const { availability } = await import('../src/services/update.service.js');
+
+    expect((await availability('master', '1.5.0', 'win32')).available?.version).toBe('2.0.0');
+  });
+
+  it('UPD-49: a Mac build does not overwrite the Windows latest.json', async () => {
+    // What `tools/release.mjs` refuses to do, for its reason: `latest.json` is
+    // the only name a pre-platform reader knows, and every one of those is
+    // Windows. The Mac build gets its own name and leaves that one alone.
+    const windows = officeBuild('win32', '1.0.0');
+    await writeFile(path.join(dir, windows.file), PAYLOAD);
+    await writeFile(path.join(dir, 'latest.json'), JSON.stringify(windows));
+
+    const mac = officeBuild('darwin');
+    serve(publishedTogether(mac));
+
+    const { syncFromGitHub } = await loadService();
+    expect(await syncFromGitHub('office', dir, null, 'darwin')).not.toBeNull();
+
+    const read = async (name: string) =>
+      (JSON.parse(await readFile(path.join(dir, name), 'utf8')) as ReleaseManifest).file;
+    expect(await read('latest.json')).toBe(windows.file);
+    expect(await read('latest-darwin.json')).toBe(mac.file);
+  });
+
+  it("UPD-50: sweeps superseded builds for its own OS, and leaves every other OS's alone", async () => {
+    // A Master serving Windows and Mac panels holds both office builds in one
+    // folder. Each OS's sync used to sweep every setup file but its own, so the
+    // two deleted each other's build on every ask and fetched 150 MB apiece to
+    // put it back. And another OS's `.part` or manifest `.tmp` is not debris:
+    // the two OSes' syncs run at once, so it may be being written right now.
+    const otherOs = [
+      'OrderBook-Office-1.0.0-Setup.exe',
+      'OrderBook-Office-1.0.0-Setup.AppImage',
+      'OrderBook-Office-2.0.0-Setup.exe.part',
+      'latest-win32.json.tmp',
+    ];
+    const superseded = [
+      'OrderBook-Office-1.0.0-Setup.dmg',
+      'OrderBook-Office-1.9.0-Setup.dmg.part',
+    ];
+    for (const name of [...otherOs, ...superseded]) await writeFile(path.join(dir, name), PAYLOAD);
+
+    serve(publishedTogether(officeBuild('darwin')));
+
+    const { syncFromGitHub } = await loadService();
+    expect(await syncFromGitHub('office', dir, null, 'darwin')).not.toBeNull();
+
+    const left = await readdir(dir);
+    for (const name of superseded) expect(left, name).not.toContain(name);
+    for (const name of otherOs) expect(left, name).toContain(name);
+  });
+
+  it('UPD-51: sweeps a superseded Linux AppImage', async () => {
+    // The Linux setup file is an AppImage, and the sweep knew only `.exe` and
+    // `.dmg` — so a Linux Master kept every build it had ever fetched.
+    const old = 'OrderBook-Office-1.0.0-Setup.AppImage';
+    await writeFile(path.join(dir, old), PAYLOAD);
+
+    const linux = officeBuild('linux');
+    serve(publishedTogether(linux));
+
+    const { syncFromGitHub } = await loadService();
+    expect(await syncFromGitHub('office', dir, null, 'linux')).not.toBeNull();
+
+    expect((await readdir(dir)).sort()).toEqual([linux.file, 'latest-linux.json'].sort());
+  });
+
+  it('UPD-52: a Windows panel and a Mac panel asking in turn each get their own build, fetched once', async () => {
+    // The Master's poll fetches the office build for its own OS only; a panel
+    // on another OS has its build fetched when it asks. That works only if the
+    // two builds can share the folder — which they could not while each sync
+    // rewrote `latest.json` and swept the other's setup file.
+    const windows = officeBuild('win32');
+    const mac = officeBuild('darwin');
+    serve(publishedTogether(windows, mac));
+
+    await loadService({ ORDERBOOK_RELEASES_DIR: dir });
+    const { availability, readManifest } = await import('../src/services/update.service.js');
+
+    for (const platform of ['win32', 'darwin', 'win32', 'darwin'] as const) {
+      const offered = await availability('office', '1.0.0', platform);
+      expect(offered.available?.file, platform).toBe(
+        platform === 'win32' ? windows.file : mac.file,
+      );
+    }
+
+    // What `/office/download` reads before it streams the file, for each OS.
+    expect((await readManifest('office', 'win32'))?.file).toBe(windows.file);
+    expect((await readManifest('office', 'darwin'))?.file).toBe(mac.file);
+
+    for (const file of [windows.file, mac.file]) {
+      expect(
+        requested.filter((url) => url === `${DOWNLOADS}/${file}`),
+        file,
+      ).toHaveLength(1);
+    }
+  });
+});
+
+/** Every `handAnswered` server a test opened, for `afterEach` to close. */
+const hosts: Array<{ close: () => Promise<void> }> = [];
+
+/**
+ * A server on 127.0.0.1 that answers one request by hand, as slowly as the test
+ * likes.
+ *
+ * A stubbed `Response` cannot show what the timing tests are about. The limit
+ * lives on the `signal` handed to `fetch`, and whether that signal cuts a body
+ * off halfway is up to a real `fetch` reading a real socket — a stub ignores
+ * it, and every download would pass however it was timed. So the stub forwards
+ * this one URL, `init` and all, to a real `fetch` against this server.
+ */
+async function handAnswered() {
+  let answer!: (response: http.ServerResponse) => void;
+  const answered = new Promise<http.ServerResponse>((resolve) => (answer = resolve));
+  const server = http.createServer((_request, response) => answer(response));
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+
+  let arrived!: () => void;
+  const headersIn = new Promise<void>((resolve) => (arrived = resolve));
+
+  const host = {
+    /** The route to hand `serve`. */
+    route: ((init?: RequestInit) =>
+      realFetch(url, init).then((response) => {
+        arrived();
+        return response;
+      })) as Route,
+    /** The server's side of the one request, for the test to write to. */
+    answered,
+    /** Resolves once `fetch` has the headers — the body is all that is left. */
+    headersIn,
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.closeAllConnections();
+        server.close(() => resolve());
+      }),
+  };
+  hosts.push(host);
+  return host;
+}
+
+/**
+ * Put every time limit on a clock the test turns by hand.
+ *
+ * Vitest fakes `setTimeout`. `AbortSignal.timeout` runs on a timer of Node's
+ * own that no fake reaches, so it is rebuilt on the faked `setTimeout` here.
+ * With both covered, these tests hold whichever way a limit is written — which
+ * is what let them be watched failing against the version that put the whole
+ * download on one 15 s `AbortSignal.timeout`.
+ */
+function fakeClock(): void {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms: number) => {
+    const controller = new AbortController();
+    setTimeout(
+      () => controller.abort(new DOMException('The operation timed out', 'TimeoutError')),
+      ms,
+    );
+    return controller.signal;
+  });
+}
+
+/** Let sockets and the disk catch up: real time, whatever the fake clock says. */
+const settle = (ms = 50) => new Promise<void>((resolve) => realSetTimeout(resolve, ms));
+
+/** What `promise` settled to, or 'pending' if it has not within `ms` of real time. */
+const within = <T>(promise: Promise<T>, ms = 3_000): Promise<T | 'pending'> =>
+  Promise.race([
+    promise,
+    new Promise<'pending'>((resolve) => realSetTimeout(() => resolve('pending'), ms)),
+  ]);
+
+describe('how long a download may take', () => {
+  afterEach(async () => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    await Promise.all(hosts.splice(0).map((host) => host.close()));
+  });
+
+  it('UPD-53: a setup file that takes longer than 15 s to arrive still lands', async () => {
+    // 15 s is how long GitHub gets to *answer*. It used to be how long the
+    // whole download got, body and all, so a 150 MB setup file on a shop
+    // connection was cut off every time and never landed.
+    const manifest = signed();
+    const host = await handAnswered();
+    serve({
+      [API]: () => json(listing(manifest)),
+      [MANIFEST_URL]: () => json(manifest),
+      [SETUP_URL]: host.route,
+    });
+
+    const { syncFromGitHub } = await loadService();
+    fakeClock();
+    const landing = syncFromGitHub('master', dir, null, 'win32');
+
+    const response = await host.answered;
+    response.writeHead(200, { 'content-length': String(PAYLOAD.length) });
+    response.flushHeaders();
+    await host.headersIn;
+    await settle();
+
+    // A few bytes every ten seconds, for 40 s: slow, and never silent for long.
+    for (let at = 0; at < PAYLOAD.length; at += 6) {
+      response.write(PAYLOAD.subarray(at, at + 6));
+      await settle();
+      await vi.advanceTimersByTimeAsync(10_000);
+    }
+    response.end();
+
+    expect((await within(landing)) as ReleaseManifest | null).toMatchObject({ version: '2.0.0' });
+    expect(await readFile(path.join(dir, manifest.file))).toEqual(PAYLOAD);
+  });
+
+  it('UPD-54: a download that goes silent is given up after a minute, and leaves nothing', async () => {
+    // A slow link still delivers something every few seconds; a minute of
+    // nothing at all is a connection that has died. Waiting on it for ever
+    // would hold every later sync for this panel, which all share this one.
+    const manifest = signed();
+    const host = await handAnswered();
+    serve({
+      [API]: () => json(listing(manifest)),
+      [MANIFEST_URL]: () => json(manifest),
+      [SETUP_URL]: host.route,
+    });
+
+    const { syncFromGitHub } = await loadService();
+    fakeClock();
+    const landing = syncFromGitHub('master', dir, null, 'win32');
+
+    const response = await host.answered;
+    response.writeHead(200, { 'content-length': String(PAYLOAD.length) });
+    response.write(PAYLOAD.subarray(0, 4));
+    await host.headersIn;
+    await settle();
+
+    await vi.advanceTimersByTimeAsync(59_000);
+    expect(await within(landing, 200)).toBe('pending');
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(await within(landing)).toBeNull();
+    expect(await readdir(dir)).toEqual([]); // no `.part` left behind
+  });
+
+  it('UPD-55: the manifest is still given 15 s, and no more', async () => {
+    // The longer limits are for the setup file's body alone. A manifest is a
+    // few hundred bytes; one that has not arrived in 15 s is not coming, and an
+    // Updates screen may be waiting on it.
+    const manifest = signed();
+    const host = await handAnswered();
+    serve({
+      [API]: () => json(listing(manifest)),
+      [MANIFEST_URL]: host.route,
+      [SETUP_URL]: () => stream(PAYLOAD),
+    });
+
+    const { syncFromGitHub } = await loadService();
+    fakeClock();
+    const landing = syncFromGitHub('master', dir, null, 'win32');
+
+    const response = await host.answered;
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.write('{"panel":"master",');
+    await host.headersIn;
+    await settle();
+
+    await vi.advanceTimersByTimeAsync(14_000);
+    expect(await within(landing, 200)).toBe('pending');
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(await within(landing)).toBeNull();
+    expect(requested).not.toContain(SETUP_URL);
+  });
+
+  it('UPD-56: a download that never finishes is given up after three hours', async () => {
+    // A trickle defeats a silence limit: a byte every fifty seconds is never a
+    // minute of nothing, and 150 MB at that rate takes centuries. Without an
+    // overall limit the sync never settles — and every later sync for the
+    // panel shares it, and the poll waits on it, for as long as the Master runs.
+    const manifest = signed({ sizeBytes: 1_000_000 });
+    const body = openBody();
+    serve({
+      [API]: () => json(listing(manifest)),
+      [MANIFEST_URL]: () => json(manifest),
+      [SETUP_URL]: body.response,
+    });
+
+    const { syncFromGitHub } = await loadService();
+    fakeClock();
+    const landing = syncFromGitHub('master', dir, null, 'win32');
+    await settle();
+
+    const trickle = async (forMs: number) => {
+      for (let elapsed = 0; elapsed < forMs; elapsed += 50_000) {
+        body.push(Buffer.from('x'));
+        await settle(0);
+        await vi.advanceTimersByTimeAsync(50_000);
+      }
+    };
+
+    await trickle(179 * 60_000);
+    expect(await within(landing, 200)).toBe('pending');
+
+    await trickle(2 * 60_000);
+    expect(await within(landing)).toBeNull();
+    expect(await readdir(dir)).toEqual([]);
+  });
+});
+
+describe('answering while a download runs', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    delete process.env.ORDERBOOK_RELEASES_DIR;
+  });
+
+  it('UPD-57: a panel asking while its build downloads is answered from the folder, not kept waiting', async () => {
+    // An Office panel gives the Master 10 s to answer and the Master's own
+    // browser 15; a setup file takes minutes. Waiting for the download told the
+    // first panel of a new OS to ask — whose build the poll never fetches —
+    // "Could not reach the Master Panel", every time, until the download it
+    // had started finished behind its back.
+    const mac = officeBuild('darwin');
+    const body = openBody();
+    serve({ ...publishedTogether(mac), [`${DOWNLOADS}/${mac.file}`]: body.response });
+
+    const { syncFromGitHub } = await loadService({ ORDERBOOK_RELEASES_DIR: dir });
+    const { availability } = await import('../src/services/update.service.js');
+    fakeClock();
+
+    const asking = availability('office', '1.0.0', 'darwin');
+    await settle();
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    const answer = await within(asking);
+    expect(answer).not.toBe('pending');
+    expect(answer).toMatchObject({ available: null });
+
+    // The download carried on without the request — asking again joins it
+    // rather than starting another — and the next ask has the build.
+    body.push(PAYLOAD);
+    body.end();
+    const officeDir = path.join(dir, 'office-panel');
+    expect(await within(syncFromGitHub('office', officeDir, null, 'darwin'))).toMatchObject({
+      file: mac.file,
+    });
+    expect((await availability('office', '1.0.0', 'darwin')).available?.file).toBe(mac.file);
+    expect(requested.filter((url) => url === `${DOWNLOADS}/${mac.file}`)).toHaveLength(1);
+  });
+
+  it('UPD-58: a download that outlives its request still spares an installer pinned meanwhile', async () => {
+    // Answering before the download finishes means a sync can still be running
+    // when an operator prepares the build already here. The sync was handed the
+    // pinned file when it started — nothing, then — and so swept the operator's
+    // installer the moment the newer one landed, out from under the click.
+    const masterDir = path.join(dir, 'master-panel');
+    await mkdir(masterDir, { recursive: true });
+
+    // Versions far above the running build's, so this is an update whatever
+    // `package.json` says.
+    const here = signed({
+      version: '90.0.0',
+      file: 'OrderBook-Master-90.0.0-Setup.exe',
+      platform: 'win32',
+    });
+    await writeFile(path.join(masterDir, here.file), PAYLOAD);
+    for (const name of ['latest-win32.json', 'latest.json']) {
+      await writeFile(path.join(masterDir, name), JSON.stringify(here));
+    }
+
+    const newer = signed({
+      version: '91.0.0',
+      file: 'OrderBook-Master-91.0.0-Setup.exe',
+      platform: 'win32',
+    });
+    const body = openBody();
+    serve({
+      [API]: () => json(listing(newer)),
+      [MANIFEST_URL]: () => json(newer),
+      [SETUP_URL]: body.response,
+    });
+
+    const { syncFromGitHub } = await loadService({ ORDERBOOK_RELEASES_DIR: dir });
+    const { prepareMasterUpdate } = await import('../src/services/update.service.js');
+    fakeClock();
+
+    const preparing = prepareMasterUpdate();
+    await settle();
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    const prepared = await within(preparing);
+    expect(prepared).not.toBe('pending');
+    expect(prepared).toMatchObject({ manifest: { version: '90.0.0' } });
+
+    body.push(PAYLOAD);
+    body.end();
+    expect(await within(syncFromGitHub('master', masterDir, null, 'win32'))).toMatchObject({
+      version: '91.0.0',
+    });
+
+    const left = await readdir(masterDir);
+    expect(left).toContain(newer.file);
+    expect(left).toContain(here.file); // pinned: the operator is about to run it
   });
 });

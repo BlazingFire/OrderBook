@@ -82,7 +82,8 @@ function isManifest(value: unknown): value is ReleaseManifest {
 }
 
 /**
- * Read `latest.json` for one panel, or `null` when there is nothing readable.
+ * Read the manifest for one panel on one OS, or `null` when there is nothing
+ * readable.
  *
  * The manifest is only believed once the file it names is confirmed present at
  * the size it claims. A manifest whose setup file was deleted is worse than no
@@ -100,7 +101,12 @@ export async function readManifest(
    * updated its Master would otherwise find no manifest at all and be told
    * nothing had been published. The release script still writes the legacy
    * name for Windows builds for exactly as long as panels older than this
-   * change are in the field — see `tools/release.mjs`.
+   * change are in the field — see `tools/release.mjs` — and a GitHub sync
+   * writes the same names (`manifestNames` in `github-releases.ts`).
+   *
+   * The first file that can be read wins, so a writer that updates
+   * `latest.json` alone leaves this reading a stale `latest-<platform>.json`
+   * for as long as one is there — which is what a GitHub sync once did.
    */
   const candidates = [
     path.join(releaseDirFor(panel), `latest-${platform}.json`),
@@ -203,6 +209,19 @@ export async function readManifest(
   return manifest;
 }
 
+/**
+ * How long a request waits on GitHub before answering from the folder as it
+ * stands.
+ *
+ * Enough for the listing and a manifest on a slow connection, and well inside
+ * the 10 s an Office panel gives the Master to answer and the 15 s the Master's
+ * own browser gives it. Not enough for a setup file, and not meant to be: that
+ * takes minutes, and waiting for it made every ask while it downloaded time out
+ * at the asker — "Could not reach the Master Panel" — which is every first ask
+ * from a panel on an OS the poll does not fetch for.
+ */
+const GITHUB_WAIT_MS = 5_000;
+
 /** What one panel kind should do, against a version already running. */
 export async function availability(
   panel: PanelKind,
@@ -219,8 +238,23 @@ export async function availability(
    * the bytes again before running them. It fails soft: no connection, a rate
    * limit or a half-published release all leave the folder as it was, which is
    * the honest answer rather than an error on a screen.
+   *
+   * Waited on for `GITHUB_WAIT_MS` at most. A sync still running then carries
+   * on without this request — every later ask for the same panel and OS shares
+   * it rather than starting another — and this answer is the folder as it is:
+   * "nothing new yet", until the download lands and the next ask finds it.
+   * `pinnedInstaller` itself rather than its value, because that sync can
+   * outlive this request, and an operator can pin a build before it sweeps.
    */
-  await syncFromGitHub(panel, releaseDirFor(panel), pinnedInstaller(), platform).catch(() => null);
+  let waited: NodeJS.Timeout | undefined;
+  await Promise.race([
+    syncFromGitHub(panel, releaseDirFor(panel), pinnedInstaller, platform).catch(() => null),
+    new Promise<void>((resolve) => {
+      waited = setTimeout(resolve, GITHUB_WAIT_MS);
+      waited.unref?.();
+    }),
+  ]);
+  clearTimeout(waited);
 
   const manifest = await readManifest(panel, platform);
 
@@ -290,6 +324,10 @@ let prepared: PreparedInstaller | null = null;
  * polls health, the operator reads a dialog, and somebody finally clicks. Setup
  * filenames carry their version, so a newer release landing in that gap would
  * otherwise make the pinned file "superseded" and delete it mid-gesture.
+ *
+ * Handed to `syncFromGitHub` as the function, not its value: a sync started
+ * before the operator pinned anything can still be downloading afterwards, and
+ * it has to ask at the moment it sweeps.
  */
 function pinnedInstaller(): string | null {
   return prepared ? path.basename(prepared.path) : null;
@@ -330,14 +368,21 @@ const FIRST_POLL_MS = 2 * 60_000;
  * Keep the releases folder in step with GitHub in the background.
  *
  * Without this the Master only learns about a build when somebody opens the
- * Updates screen — and then waits for 150 MB with the screen open. Polling
- * means the setup file is usually already on disk by the time anybody presses
- * Update, which is the difference between "it updated" and "it downloaded for
- * ten minutes and then updated".
+ * Updates screen — which starts a 150 MB download and says "nothing new" until
+ * it has landed (see `availability`). Polling means the setup file is usually
+ * already on disk by the time anybody presses Update, which is the difference
+ * between "it updated" and "come back in ten minutes".
  *
  * Both panels' folders are filled, one after the other rather than at once:
  * the Master serves the office build to every panel over the LAN, so it has to
  * hold a copy it never installs itself.
+ *
+ * For the Master's own OS only. A shop whose Office panels run another OS has
+ * that build fetched when one of those panels asks — `/office/latest` passes
+ * the panel's OS to `availability` — and it then sits in the same folder beside
+ * this one: each OS's sync writes its own manifest and sweeps only its own
+ * files (`github-releases.ts`). Fetching every OS here would put 150 MB per
+ * unused OS on every Master's disk, every release.
  *
  * Returns the way to stop it, per this codebase's disposable convention.
  * Configuring no repository, or `ORDERBOOK_RELEASES_POLL_MINUTES=0`, makes it a
@@ -360,7 +405,7 @@ export function startReleasePolling(): () => void {
     running = true;
     try {
       for (const panel of ['master', 'office'] as const) {
-        await syncFromGitHub(panel, releaseDirFor(panel), pinnedInstaller()).catch(
+        await syncFromGitHub(panel, releaseDirFor(panel), pinnedInstaller).catch(
           (error: unknown) => {
             log.warn(`Could not sync the ${panel} release: ${String(error)}`);
             return null;

@@ -200,21 +200,26 @@ purpose:
 
 - **Half-written files** (`.part`, `.tmp`) are removed *before* each download.
   Nothing ever reads one, so removing one cannot take anything away from
-  anybody. They are matched by suffix rather than by name, because every
+  anybody. They are matched by pattern rather than by name, because every
   filename here carries a version — and a cleanup keyed to a filename stops
   working the moment the version moves, which is exactly when a failed download
   is most likely to have left something.
 - **Superseded installers** are removed only *after* a verified replacement has
-  landed and `latest.json` has been rewritten. Until that moment the old file
+  landed and its manifest has been rewritten (`latest-<platform>.json`, and
+  `latest.json` too for a Windows build). Until that moment the old file
   **is** the release: it is what the manifest names, what the shell would
   install, and what every Office panel on the LAN is asking the Master to
   stream. Deleting it first and then failing the download would leave a manifest
   pointing at a file that no longer exists — a worse state than the disk space
   it saves.
 
-The sweep only removes files it could have written itself: anything named
-`OrderBook-Master-<version>-Setup.exe` or `OrderBook-Office-<version>-Setup.exe`,
-plus the two debris suffixes. Notes, subfolders and anything else an operator
+The sweep only removes files it could have written itself, for the operating
+system it is fetching: setup files named `OrderBook-Master-<version>-Setup.<ext>`
+or `OrderBook-Office-<version>-Setup.<ext>` (`exe`, `dmg` or `AppImage`), their
+`.part` downloads, and that OS's manifest `.tmp` files. A Master whose panels run
+more than one OS keeps one build per OS in the same folder — its own OS's comes
+with the background poll, another's when a panel on that OS asks — and neither
+sweep touches the other's files. Notes, subfolders and anything else an operator
 puts in the releases folder are left alone. An installer that is part-way
 through being applied is protected too, so a new release landing between the
 Update button appearing and somebody pressing it cannot delete the file out from
