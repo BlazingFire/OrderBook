@@ -15,9 +15,12 @@
  *
  * What is deliberately absent is as load-bearing as what is here:
  *
- *  · **No `POST /leads`.** A lead is raised in the Office Panel; the Master
- *    cannot create one, and `data.routes.ts` says so by omission too. An API
- *    that could would make the rule documentation rather than structure.
+ *  · **No `POST /leads`.** Not because the Master cannot create a lead —
+ *    `data.routes.ts` has `POST /api/leads` (`leads.create`, the same
+ *    `leadService.createLead` the socket hub calls), though no Master screen
+ *    uses it today; this line once said that route did not exist. Leads are
+ *    raised by people at the panels, not by other programs, and offering it
+ *    to a key is the owner's decision rather than a missing handler.
  *  · **No `DELETE`, anywhere.** Deleting is a Recycle Bin operation with
  *    blockers, a restore path and a person accountable for it.
  *  · **No users, roles, panels or storage.** A key is for a shop's
