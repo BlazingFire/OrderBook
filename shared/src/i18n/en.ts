@@ -2147,6 +2147,17 @@ export const EN_MESSAGES = {
     'Everything this panel has saved is copied to the new folder. Queued work that has not reached the Master goes with it.',
   'storage.moved': 'Moved {count} files.',
   'storage.failed': 'Could not move this panel’s files',
+  /**
+   * Refusals of a move's target, sent back as the reason to whoever asked —
+   * at this panel, or at the Master. Each names the folder, because the person
+   * at the Master cannot see this PC's drives.
+   */
+  'storage.refused.driveRoot':
+    '{folder} is the top of a drive. Choose or create a folder on that drive instead.',
+  'storage.refused.homeFolder':
+    '{folder} is a user’s home folder. Choose or create a folder inside it instead.',
+  'storage.refused.notEmpty':
+    '{folder} already holds files that are not this panel’s, such as {example}. Choose an empty folder, or a new one.',
   'signin.username': 'Username',
   'splash.error.timeout': 'The server did not answer in time.',
   'splash.error.unreachable': 'Could not reach the server. It may still be starting up.',

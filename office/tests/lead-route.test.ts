@@ -48,7 +48,6 @@ function soundLead() {
         variantId: 'VR0000000001',
         quantity: 4,
         packaging: 'Packaging 2',
-        rate: 17_500,
       },
     ],
   };
@@ -150,13 +149,75 @@ describe('POST /api/leads', () => {
     expect(response.status).toBe(202);
   });
 
-  it('refuses the write to somebody without leads.create, ahead of the shape check', async () => {
+  it('refuses the write to somebody without leads.create', async () => {
     vi.spyOn(userSession, 'can').mockReturnValue(false);
 
     const response = await request(createApp()).post('/api/leads').send(soundLead());
 
     expect(response.status).toBe(403);
     expect(response.body).toMatchObject({ permission: 'leads.create' });
+    expect(submitted).toBeUndefined();
+  });
+
+  it('checks the permission ahead of the shape, so a malformed lead is still a 403', async () => {
+    vi.spyOn(userSession, 'can').mockReturnValue(false);
+
+    // Somebody who may not create a lead learns that, and nothing about what
+    // a well-formed one would have looked like.
+    const response = await request(createApp()).post('/api/leads').send({ items: [] });
+
+    expect(response.status).toBe(403);
+    expect(response.body).toMatchObject({ permission: 'leads.create' });
+    expect(submitted).toBeUndefined();
+  });
+});
+
+describe('PUT /api/leads/:id', () => {
+  let submitted: unknown;
+
+  beforeEach(() => {
+    submitted = undefined;
+    vi.spyOn(userSession, 'currentSession').mockReturnValue(FAKE_SESSION as never);
+    vi.spyOn(userSession, 'can').mockReturnValue(true);
+    vi.spyOn(outbox, 'pendingCount').mockResolvedValue(1);
+    vi.spyOn(sync, 'submit').mockImplementation(async (payload) => {
+      submitted = payload;
+      return { mutationId: 'MU2' } as never;
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('queues a partial edit — nothing but the fields that changed', async () => {
+    const response = await request(createApp())
+      .put('/api/leads/LD0000000001')
+      .send({ notes: 'Call back after Diwali' });
+
+    expect(response.status).toBe(202);
+    expect(submitted).toMatchObject({ kind: 'lead.update', entityId: 'LD0000000001' });
+  });
+
+  it('refuses an edit whose lines are malformed', async () => {
+    const response = await request(createApp())
+      .put('/api/leads/LD0000000001')
+      .send({ items: [{ productId: 'PR0000000001', variantId: 'VR0000000001', quantity: 0 }] });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toMatch(/quantity/i);
+    expect(submitted).toBeUndefined();
+  });
+
+  it('checks leads.edit ahead of the shape, so a malformed edit is still a 403', async () => {
+    vi.spyOn(userSession, 'can').mockReturnValue(false);
+
+    const response = await request(createApp())
+      .put('/api/leads/LD0000000001')
+      .send({ items: 'not a list' });
+
+    expect(response.status).toBe(403);
+    expect(response.body).toMatchObject({ permission: 'leads.edit' });
     expect(submitted).toBeUndefined();
   });
 });

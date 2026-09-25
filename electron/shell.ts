@@ -68,8 +68,17 @@ export interface PanelShellConfig {
    * Environment **overrides only** — the shell spreads `process.env`
    * underneath. Returning a bare object here would hand the child no
    * `SystemRoot`, `PATH` or `TEMP`, and `initdb` would not run.
+   *
+   * `locationFile` is the pointer `dataDir` was just read from, for a server
+   * that can move its own folder and has to leave the next start pointing at
+   * where it went.
    */
-  serverEnv(context: { dataDir: string; port: number; logFile: string }): NodeJS.ProcessEnv;
+  serverEnv(context: {
+    dataDir: string;
+    port: number;
+    logFile: string;
+    locationFile: string;
+  }): NodeJS.ProcessEnv;
 }
 
 const POLL_INTERVAL_MS = 400;
@@ -131,7 +140,18 @@ export function runPanelShell(config: PanelShellConfig): void {
   const locationPath = (): string =>
     path.join(app.getPath('appData'), 'OrderBook', `${config.panel}-location.json`);
   const dataDir = (): string => readDataDirOverride(locationPath()) ?? defaultDataDir();
+  /** Where a log opened *now* would go — which is only asked once, at launch. */
   const logPath = (): string => path.join(dataDir(), 'logs', `${config.panel}.log`);
+  /**
+   * The log this process is writing, for everything that tells somebody where
+   * to look. Not `logPath()`: the log is opened once, and a storage move
+   * rewrites the pointer underneath a running shell — an Office Panel's, from
+   * the Master or its storage card, or `orderbook:setDataDir` here. Asked
+   * afresh after one, the answer is a file in the new folder that nothing
+   * writes to (a stale copy, after an Office move), while every line since
+   * the move still goes to this one until the next launch opens the new one.
+   */
+  const openLogPath = (): string => log?.path ?? logPath();
   const settingsPath = (): string => path.join(dataDir(), 'shell.json');
 
   const say = (line: string): void => {
@@ -173,7 +193,12 @@ export function runPanelShell(config: PanelShellConfig): void {
       NODE_OPTIONS: `--max-old-space-size=${maxOldSpaceMb}`,
       ORDERBOOK_PANEL: config.panel,
       ORDERBOOK_RAM_CAP_MB: String(ramCapMb),
-      ...config.serverEnv({ dataDir: dataDir(), port: config.port, logFile: logPath() }),
+      ...config.serverEnv({
+        dataDir: dataDir(),
+        port: config.port,
+        logFile: openLogPath(),
+        locationFile: locationPath(),
+      }),
     };
 
     /*
@@ -226,7 +251,7 @@ export function runPanelShell(config: PanelShellConfig): void {
       cancelId: 2,
       title: 'OrderBook stopped',
       message: `The ${config.productName} server keeps stopping.`,
-      detail: `It has stopped ${RESTART_LIMIT} times in a few minutes, so it has not been restarted again.\n\nThe log is at ${logPath()}.`,
+      detail: `It has stopped ${RESTART_LIMIT} times in a few minutes, so it has not been restarted again.\n\nThe log is at ${openLogPath()}.`,
     });
 
     if (choice.response === 0) {
@@ -236,7 +261,7 @@ export function runPanelShell(config: PanelShellConfig): void {
       void waitForServerThenShow();
       return;
     }
-    if (choice.response === 1) electronShell.showItemInFolder(logPath());
+    if (choice.response === 1) electronShell.showItemInFolder(openLogPath());
     app.quit();
   }
 
@@ -499,7 +524,7 @@ export function runPanelShell(config: PanelShellConfig): void {
             click: () => mainWindow?.webContents.send('orderbook:menuCommand', 'help.shortcuts'),
           },
           { type: 'separator' },
-          { label: 'Open log folder', click: () => electronShell.showItemInFolder(logPath()) },
+          { label: 'Open log folder', click: () => electronShell.showItemInFolder(openLogPath()) },
           {
             label: 'Uninstall OrderBook',
             // Navigates, and nothing more. The page owns the choice that
@@ -771,7 +796,7 @@ export function runPanelShell(config: PanelShellConfig): void {
     openAtLogin: app.isPackaged
       ? app.getLoginItemSettings(loginItemOptions(standalone)).openAtLogin
       : false,
-    logFile: logPath(),
+    logFile: openLogPath(),
     standalone: standalone !== null,
     systemPackage: updateBy === 'system-package',
   }));
@@ -783,7 +808,7 @@ export function runPanelShell(config: PanelShellConfig): void {
   });
 
   ipcMain.handle('orderbook:openLogFolder', () => {
-    electronShell.showItemInFolder(logPath());
+    electronShell.showItemInFolder(openLogPath());
     return true;
   });
 

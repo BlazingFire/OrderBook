@@ -10,7 +10,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isTemporaryId, type SyncSnapshot } from '@orderbook/shared';
 
 let dataDir: string;
@@ -37,7 +37,6 @@ async function loadModules() {
 beforeEach(async () => {
   dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'orderbook-office-'));
   process.env.ORDERBOOK_OFFICE_DATA_DIR = dataDir;
-  const { vi } = await import('vitest');
   vi.resetModules();
 });
 
@@ -45,6 +44,15 @@ afterEach(async () => {
   delete process.env.ORDERBOOK_OFFICE_DATA_DIR;
   await fs.rm(dataDir, { recursive: true, force: true });
 });
+
+/** The one unreadable queue set aside in the data folder, by name. */
+async function setAside(): Promise<string> {
+  const names = (await fs.readdir(dataDir)).filter((name) =>
+    name.startsWith('outbox.json.unreadable-'),
+  );
+  expect(names).toHaveLength(1);
+  return names[0]!;
+}
 
 describe('temporary ids', () => {
   it('mints ids in the documented shape and never repeats one', async () => {
@@ -186,6 +194,118 @@ describe('outbox', () => {
 
     // A last-write-wins file rewrite would silently drop most of these.
     expect(await outbox.pendingCount()).toBe(8);
+  });
+
+  it('starts empty on a queue it cannot read, and keeps the file for somebody to recover', async () => {
+    const { outbox } = await loadModules();
+    await fs.writeFile(path.join(dataDir, 'outbox.json'), '[{"mutationId":', { mode: 0o600 });
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      // Not fatal: a panel that refused to start over a corrupt queue could
+      // not take the next customer's order either.
+      expect(await outbox.pendingCount()).toBe(0);
+      await outbox.enqueue({ kind: 'lead.create', entity: 'lead', entityId: 'L1', payload: {} });
+
+      // But not lost. The save above rewrote `outbox.json`; what it held
+      // before is set aside under a name the log gives, not written over.
+      const aside = await setAside();
+      await expect(fs.readFile(path.join(dataDir, aside), 'utf8')).resolves.toBe('[{"mutationId":');
+      expect(logged).toHaveBeenCalledWith(
+        expect.stringMatching(new RegExp(`ERROR \\[outbox\\] .*${aside.replace(/\./g, '\\.')}`)),
+        expect.anything(),
+      );
+      expect(await outbox.pendingCount()).toBe(1);
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
+  it('reports a queue file that is not a list, rather than reading it as empty', async () => {
+    const { outbox } = await loadModules();
+    await fs.writeFile(path.join(dataDir, 'outbox.json'), '{"mutations":[]}', { mode: 0o600 });
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      expect(await outbox.pendingCount()).toBe(0);
+      expect(logged).toHaveBeenCalledWith(
+        expect.stringMatching(/ERROR \[outbox\] .*outbox\.json/),
+        expect.anything(),
+      );
+      await expect(fs.readFile(path.join(dataDir, await setAside()), 'utf8')).resolves.toBe(
+        '{"mutations":[]}',
+      );
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
+  it('does not save over a queue it could not read this time', async () => {
+    const first = await loadModules();
+    await first.outbox.enqueue({
+      kind: 'lead.create',
+      entity: 'lead',
+      entityId: 'L1',
+      payload: {},
+    });
+
+    // A fresh start, whose first look at the file meets it held open — what an
+    // antivirus scan or a backup tool does to a file on Windows for a moment.
+    vi.resetModules();
+    const { outbox } = await loadModules();
+    const busy = Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' });
+    const read = vi.spyOn(fs, 'readFile').mockRejectedValueOnce(busy);
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      await outbox.pendingCount();
+      expect(logged).toHaveBeenCalledWith(
+        expect.stringMatching(/ERROR \[outbox\] .*outbox\.json/),
+        expect.anything(),
+      );
+
+      // The queued lead is still in the file, and the next save starts from it
+      // rather than from the empty queue that one failed read looked like.
+      await outbox.enqueue({ kind: 'lead.create', entity: 'lead', entityId: 'L2', payload: {} });
+      expect((await outbox.pending()).map((mutation) => mutation.entityId)).toEqual(['L1', 'L2']);
+    } finally {
+      read.mockRestore();
+      logged.mockRestore();
+    }
+  });
+
+  it('keeps saving after one save could not be written', async () => {
+    const { outbox } = await loadModules();
+    const locked = Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' });
+    const rename = vi.spyOn(fs, 'rename').mockRejectedValueOnce(locked);
+
+    try {
+      await expect(
+        outbox.enqueue({ kind: 'lead.create', entity: 'lead', entityId: 'L1', payload: {} }),
+      ).rejects.toThrow(/EPERM/);
+
+      // One failed write used to fail every write after it until a restart,
+      // because each save was chained onto the one before, rejection and all.
+      await outbox.enqueue({ kind: 'lead.create', entity: 'lead', entityId: 'L2', payload: {} });
+
+      // And the one that failed is not quietly queued after all: whoever saved
+      // it was told it did not save, and may well save it again.
+      expect((await outbox.pending()).map((mutation) => mutation.entityId)).toEqual(['L2']);
+    } finally {
+      rename.mockRestore();
+    }
+  });
+
+  it('says nothing about a queue that has simply never been written', async () => {
+    const { outbox } = await loadModules();
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      expect(await outbox.pendingCount()).toBe(0);
+      expect(logged).not.toHaveBeenCalled();
+    } finally {
+      logged.mockRestore();
+    }
   });
 });
 
@@ -472,7 +592,6 @@ describe('the sync cursor', () => {
     const first = await loadModules();
     await first.localStore.setSnapshot(bare, { bootId: 'boot-1', lastSeq: 42 });
 
-    const { vi } = await import('vitest');
     vi.resetModules();
     const second = await loadModules();
 

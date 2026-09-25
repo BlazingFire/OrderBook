@@ -92,13 +92,13 @@ export interface PanelShellConfig {
   readonly readyTimeoutMs: number;        // master 180_000, office 60_000
   readonly autoStartByDefault: boolean;   // master true, office false
   /** Overrides only. The shell spreads process.env underneath. */
-  serverEnv(ctx: { dataDir: string; port: number; logFile: string }): NodeJS.ProcessEnv;
+  serverEnv(ctx: { dataDir: string; port: number; logFile: string; locationFile: string }): NodeJS.ProcessEnv;
 }
 ```
 
 The shell builds the child env as `{...process.env, ELECTRON_RUN_AS_NODE: '1', ...config.serverEnv(ctx)}` and then, when `app.isPackaged`, `delete env.DATABASE_URL` unconditionally (office never sets it). Spreading `process.env` is not optional: without `SystemRoot`, `PATH`, `APPDATA` and `TEMP`, `initdb` and `pg_ctl` do not run.
 
-Master's `serverEnv` returns `ORDERBOOK_DATA_DIR`, `PORT`, `ORDERBOOK_LOG_FILE`; office's returns `ORDERBOOK_OFFICE_DATA_DIR`, `ORDERBOOK_OFFICE_SETTINGS_FILE` (beside the data dir — it is the file that says where the data dir is), `OFFICE_PORT`, `ORDERBOOK_LOG_FILE`.
+Master's `serverEnv` returns `ORDERBOOK_DATA_DIR`, `PORT`, `ORDERBOOK_LOG_FILE`, `ORDERBOOK_MASTER_SETTINGS_FILE` (beside the data dir); office's (`officeServerEnv` in `electron/lib/office-env.ts`) returns `ORDERBOOK_OFFICE_DATA_DIR`, `OFFICE_PORT`, `ORDERBOOK_LOG_FILE`, `ORDERBOOK_OFFICE_LOCATION_FILE` (`ctx.locationFile`, the shell's `office-location.json` — the record a storage move rewrites, because the shell passes the data dir in the real environment, which no settings file overrides) and `ORDERBOOK_OFFICE_SETTINGS_FILE` (beside that pointer, not beside the data dir, so it stays put when the data moves).
 
 `app.setName(config.productName)` runs before `requestSingleInstanceLock()`, exactly as both mains already do. **No `app.setPath('userData', …)`** — it would relocate the Chromium profile and wipe every viewer's `localStorage` (`ob.theme.v2`, `ob.density`, `ob.motion`, and everything the Settings workstream will add). Keep the existing lock-loss dialog; extend `second-instance` to `if (!mainWindow) void createWindow(); else { restore(); focus(); }`.
 
