@@ -12,9 +12,12 @@
  * They are `/api/panel/...` rather than additions to `images.routes.ts` because
  * the authentication is different in kind: a browser presents a session cookie,
  * a panel presents its pairing credentials **plus** the token of whoever is
- * signed in on it. `requirePanel` establishes both, and the services below then
- * see exactly the actor the socket path gave them, so the permission checks and
- * the audit trail are unchanged.
+ * signed in on it. `requirePanel` establishes both — `app.ts` runs it once in
+ * front of this router and `panel-catalog.routes.ts`, which share the prefix —
+ * and the services below then see exactly the actor the socket path gave them,
+ * so the permission checks and the audit trail are unchanged. Mounted anywhere
+ * without it, `panelActorFromRequest` refuses every route rather than running
+ * as nobody.
  */
 
 import { Router } from 'express';
@@ -24,15 +27,13 @@ import { MAX_SOURCE_BYTES } from '../../domain/images.js';
 import * as avatarService from '../../services/avatar.service.js';
 import * as imageService from '../../services/image.service.js';
 import { asyncHandler } from '../async-handler.js';
-import { panelActorFromRequest, requirePanel } from '../middleware/require-panel.js';
+import { panelActorFromRequest } from '../middleware/require-panel.js';
 
 // The same memory storage and ceiling `images.routes.ts` uses: the pipeline
 // wants one buffer, and a temp file would only add a path to clean up.
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_SOURCE_BYTES } });
 
 export const panelImageRoutes: Router = Router();
-
-panelImageRoutes.use(requirePanel);
 
 panelImageRoutes.post(
   '/products/:productId/images',

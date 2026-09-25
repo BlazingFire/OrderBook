@@ -9,7 +9,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
 import bcrypt from 'bcryptjs';
@@ -90,6 +90,9 @@ describe.skipIf(!canRunIntegrationTests)('the panel catalogue import routes (int
     admin = await testActor();
     panelId = await createPanel();
   });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it('refuses a request carrying no panel credentials at all', async () => {
     const response = await request(app).get('/api/panel/products/import/template.csv').expect(401);
@@ -101,12 +104,51 @@ describe.skipIf(!canRunIntegrationTests)('the panel catalogue import routes (int
       .expect(401);
   });
 
+  it('refuses before the route reads anything — the guard sits in front of the router', async () => {
+    // With no file either, the handler's own first check would answer 400: a
+    // 401 naming the pairing means `requirePanel` ran before the upload was
+    // parsed, not merely that the handler found no actor afterwards.
+    const response = await request(app).post('/api/panel/products/import').expect(401);
+    expect(response.body.messageKey).toBe('error.unauthorized.panelCredentialsInvalid');
+  });
+
   it('refuses a wrong panel secret', async () => {
     await request(app)
       .get('/api/panel/products/import/template.csv')
       .set('x-orderbook-panel-id', panelId)
       .set('x-orderbook-panel-secret', 'not-the-secret')
       .expect(401);
+  });
+
+  it('refuses a presented acting token the Master will not honour, rather than running as the panel', async () => {
+    // The panel's own role could not import either, so a downgrade would read
+    // as a 403. A 401 naming the sign-in is what tells the panel to forget the
+    // token and ask the person to sign in again.
+    const response = await asPanel(
+      request(app).get('/api/panel/products/import/template.csv'),
+      'not-a-token-the-master-issued',
+    ).expect(401);
+    expect(response.body).toMatchObject({
+      error: 'unauthorized',
+      messageKey: 'error.unauthorized.signInFailed',
+    });
+  });
+
+  /*
+   * `/api/panel` carries two routers, images first. Each used to open with
+   * its own `.use(requirePanel)`, and a router's `.use` runs for every request
+   * that enters it whether or not one of its routes matches — so an import
+   * paid for the panel check in the image router, fell through, and paid for
+   * it again in this one: two bcrypt compares of the pairing secret, and two
+   * resolutions of who is acting, per request.
+   */
+  it('authenticates the panel once per request, not once per router it passes through', async () => {
+    const token = await importerToken();
+    const authenticate = vi.spyOn(panelService, 'authenticatePanel');
+
+    await asPanel(request(app).get('/api/panel/products/import/template.csv'), token).expect(200);
+
+    expect(authenticate).toHaveBeenCalledTimes(1);
   });
 
   it('runs as the panel itself when nobody is signed in — and that role may not import', async () => {

@@ -62,10 +62,11 @@ import {
  * Every tab this panel can have, including the one that needs a permission.
  *
  * The list is fixed rather than derived from the tabs actually built, because
- * the permissions arrive a tick after the screen mounts: a remembered
- * `company` validated against the tabs of that first tick would be thrown away
- * every single load. `SettingsPage` shows the first tab while a remembered one
- * has nothing to render, so nothing is left blank in the meantime.
+ * the company tab waits for its rows, which arrive a tick after the screen
+ * mounts: a remembered `company` validated against the tabs of that first tick
+ * would be thrown away every single load. `SettingsPage` shows the first tab
+ * while a remembered one has nothing to render, so nothing is left blank in
+ * the meantime.
  */
 export const SETTINGS_TAB_IDS = [
   'appearance',
@@ -80,6 +81,7 @@ export function SettingsScreen({
   tab,
   onTabChange,
   onSaved,
+  permissions,
 }: {
   /** Which tab is showing — remembered by the shell, chosen here or from the sidebar. */
   tab: string;
@@ -90,10 +92,19 @@ export function SettingsScreen({
    * shows on this screen's own sidebar rather than after a reload.
    */
   onSaved: () => void;
+  /**
+   * The signed-in person's permissions, as the shell holds them — it re-reads
+   * them after every company-setting change, this screen's own saves included.
+   * Taken as a prop rather than asked for here, so they are known on the first
+   * render: the tabs they decide are right from the start instead of one
+   * appearing, or vanishing, a beat after the screen opens, and the reads they
+   * allow start at once instead of queueing behind a round trip for the
+   * session.
+   */
+  permissions: string[];
 }) {
   const [identity, setIdentity] = useState<MasterIdentity | null>(null);
   const [storage, setStorage] = useState<StorageUsage | null>(null);
-  const [canManageStorage, setCanManageStorage] = useState(false);
   const [settings, setSettings] = useState<SettingView[] | null>(null);
   const [vault, setVault] = useState<VaultStatus | null>(null);
   /**
@@ -109,6 +120,19 @@ export function SettingsScreen({
   );
   const [savingKey, setSavingKey] = useState<SettingKey | null>(null);
 
+  /*
+   * The usage figures are `settings.manage` at the route and export and
+   * restore are `storage.manage` — so the session's own permissions decide
+   * what appears, rather than offering a read or two buttons whose only
+   * possible answer is a refusal. `settings.manage` is also what the Settings
+   * nav entry needs, but the screen opens for anybody who reaches it another
+   * way, the desktop menu's Developer command among them.
+   */
+  const canManageSettings = permissions.includes('settings.manage');
+  const canReadStorage = canManageSettings;
+  const canManageStorage = permissions.includes('storage.manage');
+  const canRevealPasswords = permissions.includes('users.viewPassword');
+
   const loadCompanySettings = useCallback(async (canManage: boolean, canReveal: boolean) => {
     if (canManage) setSettings(await api.settings().catch(() => null));
     if (canReveal) setVault(await api.vaultStatus().catch(() => null));
@@ -119,26 +143,22 @@ export function SettingsScreen({
       .identity()
       .then(setIdentity)
       .catch(() => setIdentity(null));
+  }, []);
+
+  // Keyed on the answers, not on the array: the shell hands down a new one
+  // each time it re-reads the session, and the same permissions again are no
+  // reason to fetch anything twice.
+  useEffect(() => {
+    if (!canReadStorage) return;
     void api
       .storage()
       .then(setStorage)
       .catch(() => setStorage(null));
-    // The usage figures are readable by anyone, but export and restore are
-    // `storage.manage` at the route — so the session's own permissions decide
-    // whether the actions appear, rather than offering two buttons whose only
-    // possible answer is a refusal. Read here rather than taken as a prop
-    // because nothing else on this screen needs the session.
-    void api
-      .me()
-      .then(({ user }) => {
-        setCanManageStorage(user.permissions.includes('storage.manage'));
-        return loadCompanySettings(
-          user.permissions.includes('settings.manage'),
-          user.permissions.includes('users.viewPassword'),
-        );
-      })
-      .catch(() => setCanManageStorage(false));
-  }, [loadCompanySettings]);
+  }, [canReadStorage]);
+
+  useEffect(() => {
+    void loadCompanySettings(canManageSettings, canRevealPasswords);
+  }, [loadCompanySettings, canManageSettings, canRevealPasswords]);
 
   async function saveSetting(key: SettingKey, value: unknown): Promise<void> {
     setSettingsError(null);
@@ -274,33 +294,50 @@ export function SettingsScreen({
         </SettingsSection>
       ),
     },
-    {
-      id: 'storage',
-      label: t('settings.tab.storage'),
-      render: () => (
-        <SettingsSection title={t('settings.storage.title')}>
-          {storage ? (
-            <KeyValueList
-              items={[
-                {
-                  label: t('settings.storage.database'),
-                  value: formatBytes(storage.databaseBytes),
-                },
-                { label: t('settings.storage.uploads'), value: formatBytes(storage.uploadsBytes) },
-                {
-                  label: t('settings.storage.total'),
-                  value: <span className="ob-body-strong">{formatBytes(storage.totalBytes)}</span>,
-                },
-                { label: t('settings.storage.free'), value: formatBytes(storage.diskFreeBytes) },
-              ]}
-            />
-          ) : (
-            <SkeletonKeyValueRows rows={4} />
-          )}
-          {canManageStorage && <StorageBackupActions />}
-        </SettingsSection>
-      ),
-    },
+    // Absent, not empty, for a session that may neither read the figures nor
+    // export — the same rule as the company tab.
+    ...(canReadStorage || canManageStorage
+      ? [
+          {
+            id: 'storage',
+            label: t('settings.tab.storage'),
+            render: () => (
+              <SettingsSection title={t('settings.storage.title')}>
+                {canReadStorage &&
+                  (storage ? (
+                    <KeyValueList
+                      items={[
+                        {
+                          label: t('settings.storage.database'),
+                          value: formatBytes(storage.databaseBytes),
+                        },
+                        {
+                          label: t('settings.storage.uploads'),
+                          value: formatBytes(storage.uploadsBytes),
+                        },
+                        {
+                          label: t('settings.storage.total'),
+                          value: (
+                            <span className="ob-body-strong">
+                              {formatBytes(storage.totalBytes)}
+                            </span>
+                          ),
+                        },
+                        {
+                          label: t('settings.storage.free'),
+                          value: formatBytes(storage.diskFreeBytes),
+                        },
+                      ]}
+                    />
+                  ) : (
+                    <SkeletonKeyValueRows rows={4} />
+                  ))}
+                {canManageStorage && <StorageBackupActions />}
+              </SettingsSection>
+            ),
+          },
+        ]
+      : []),
     { id: 'developer', label: t('settings.tab.developer'), render: () => <DeveloperTab /> },
   ];
 

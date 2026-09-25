@@ -27,6 +27,7 @@ import { appVersion } from '../../lib/app-version.js';
 import { NotFoundError, ValidationError } from '../../lib/errors.js';
 import * as partyRepo from '../../repositories/party.repository.js';
 import * as productRepo from '../../repositories/product.repository.js';
+import * as tenantRepo from '../../repositories/tenant.repository.js';
 import * as catalogService from '../../services/catalog.service.js';
 import * as inventoryService from '../../services/inventory.service.js';
 import * as leadService from '../../services/lead.service.js';
@@ -251,16 +252,23 @@ async function isEnabled(req: Request): Promise<boolean> {
 
 let cachedTenantId: string | null = null;
 
+/**
+ * The repository's read, cached for the life of the process because every
+ * keyed request would otherwise pay for it. The repository never creates a
+ * tenant, which a request anybody can send has no business doing.
+ */
 async function onlyTenantId(): Promise<string | null> {
-  if (cachedTenantId) return cachedTenantId;
-
-  const { db } = await import('../../db/knex.js');
-  const row = await db()('tenants').first<{ id: string } | undefined>('id');
-  cachedTenantId = row?.id ?? null;
+  cachedTenantId ??= await tenantRepo.findDefaultTenantId();
   return cachedTenantId;
 }
 
-/** Test seam: a restore replaces the tenant row. */
+/**
+ * Forget the cached id, for whatever replaces the tenant row: the developer
+ * reset calls it, and so do the tests. A whole restore of another
+ * installation's backup replaces the row as well and does not call it —
+ * `backup-restore.service.ts` empties only the settings and role caches — so
+ * until a restart this keeps reading the switch of a tenant that is gone.
+ */
 export function resetPublicApiTenantCache(): void {
   cachedTenantId = null;
 }

@@ -964,7 +964,12 @@ function MasterPanel() {
     {
       id: 'settings',
       render: () => (
-        <SettingsScreen tab={settingsTab} onTabChange={setSettingsTab} onSaved={refreshUser} />
+        <SettingsScreen
+          tab={settingsTab}
+          onTabChange={setSettingsTab}
+          onSaved={refreshUser}
+          permissions={user.permissions}
+        />
       ),
     },
   ];

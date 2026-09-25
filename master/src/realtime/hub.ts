@@ -39,6 +39,7 @@ import * as partyAccessRepo from '../repositories/party-access.repository.js';
 import { AppError, ForbiddenError, toErrorMessage } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import { setPanelLink, type PanelRequest } from './panel-link.js';
+import { isAllowedSocketOrigin } from './socket-origin.js';
 import * as pipelineRepo from '../repositories/pipeline.repository.js';
 import * as authService from '../services/auth.service.js';
 import { resolveSession } from '../services/auth.service.js';
@@ -128,9 +129,27 @@ export interface RealtimeHub {
 
 export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
   const io = new Server<ClientToServerEvents, ServerToClientEvents, never, SocketData>(httpServer, {
-    // Same-origin for the Master's own UI; Office Panel servers connect from
-    // another host on the LAN, so their origin is allowed explicitly.
-    cors: { origin: true, credentials: true },
+    /*
+     * Who may open a socket at all, judged by the handshake's `Origin`
+     * (`socket-origin.ts` has the rule and every client it admits).
+     *
+     * This used to be `cors: { origin: true, credentials: true }`, which
+     * reflected any origin back with credentials allowed — and CORS was never
+     * the control that mattered anyway: both clients connect with
+     * `transports: ['websocket']`, and a browser applies no CORS to a
+     * WebSocket, so a page from any site could open one and present whatever
+     * it held. `allowRequest` runs on the handshake of either transport.
+     *
+     * No `cors` option at all now, so nothing is reflected: the Master's own
+     * UI is same-origin and needs no CORS header, and an Office Panel's server
+     * is not a browser.
+     */
+    allowRequest: (req, callback) => {
+      const { origin, host } = req.headers;
+      const allowed = isAllowedSocketOrigin(origin, host);
+      if (!allowed) log.warn(`Refused a socket handshake from ${origin} to ${host}`);
+      callback(null, allowed);
+    },
     /*
      * This is a ceiling on **every inbound frame**, so it used to be set by the
      * largest photo anybody might drag in: image bytes rode this same channel

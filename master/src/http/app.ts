@@ -8,6 +8,7 @@ import { queryCountMiddleware } from '../db/query-counter.js';
 import { liveHealth } from './health.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { attachSession } from './middleware/require-auth.js';
+import { requirePanel } from './middleware/require-panel.js';
 import { accessRoutes } from './routes/access.routes.js';
 import { avatarFilesRoutes, avatarRoutes } from './routes/avatar.routes.js';
 import { authRoutes } from './routes/auth.routes.js';
@@ -71,10 +72,14 @@ export function createApp(): Express {
   app.use('/api/reports', reportRoutes);
   app.use('/api/products/:productId/images', imagesRoutes);
   // An Office Panel's server, not a browser: pairing credentials plus the
-  // acting user's token, so image bytes stop riding the command socket.
-  app.use('/api/panel', panelImageRoutes);
-  // Same surface, same authentication: a spreadsheet is a file too.
-  app.use('/api/panel', panelCatalogRoutes);
+  // acting user's token, so image bytes stop riding the command socket — and a
+  // spreadsheet is a file too, so the import shares the surface. `requirePanel`
+  // runs here, once, in front of both routers. Each used to open with its own
+  // `.use(requirePanel)`, and a router's `.use` runs for every request that
+  // enters it whether or not one of its routes matches — so an import paid for
+  // the bcrypt compare and the acting-person lookup in the image router, fell
+  // through, and paid for both again in its own.
+  app.use('/api/panel', requirePanel, panelImageRoutes, panelCatalogRoutes);
   app.use('/api/images', imageFilesRoutes);
   app.use('/api/access/users/:userId/avatar', avatarRoutes);
   app.use('/api/avatars', avatarFilesRoutes);

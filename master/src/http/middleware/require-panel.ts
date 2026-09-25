@@ -13,7 +13,8 @@
  * instead of the person's.
  *
  * So a presented-but-refused acting token is a 401, never a silent downgrade to
- * the panel's own authority.
+ * the panel's own authority. `resolvePanelActor` enforces that itself, by
+ * throwing, so the socket path and this one cannot disagree about it.
  */
 
 import type { NextFunction, Request, Response } from 'express';
@@ -52,19 +53,17 @@ export function requirePanel(req: Request, _res: Response, next: NextFunction): 
     try {
       const panel = await panelService.authenticatePanel(panelId, panelSecret);
 
+      // A token the Master will not honour is a refusal, not a fallback:
+      // `resolvePanelActor` throws `RefusedActingTokenError`, an
+      // `UnauthorizedError` carrying `error.unauthorized.signInFailed`, which
+      // the catch below hands on as the 401. The panel forgets the token and
+      // asks the person to sign in again.
       const resolution = await resolvePanelActor({
         tenantId: panel.tenantId,
         panelId: panel.id,
         deviceCode: panel.deviceCode,
         actingUserToken: header(req, ACTING_TOKEN_HEADER),
       });
-
-      // A token the Master will not honour is a refusal, not a fallback. The
-      // panel forgets it and asks the person to sign in again.
-      if (!resolution.tokenAccepted) {
-        next(new UnauthorizedError('error.unauthorized.signInFailed'));
-        return;
-      }
 
       req.panelActor = resolution.actor;
       next();
