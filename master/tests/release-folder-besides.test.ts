@@ -137,9 +137,13 @@ describe('what release.mjs publishes beside a setup file', () => {
     const { syncFromGitHub } = await loadService();
     const landed = await syncFromGitHub('master', dir, null, 'linux');
 
-    // The manifest names the AppImage alone; the .deb is nobody's update.
+    // The manifest names the AppImage alone; the .deb is nobody's update. A
+    // sync writes the manifest under the platform's own name, the one
+    // `readManifest` reads first.
     expect(landed?.file).toBe(manifest.file);
-    expect((await readdir(dir)).sort()).toEqual([...besides, manifest.file, 'latest.json'].sort());
+    expect((await readdir(dir)).sort()).toEqual(
+      [...besides, manifest.file, 'latest-linux.json'].sort(),
+    );
   });
 
   it('keeps every standalone .exe when a GitHub sync lands a newer setup file', async () => {
@@ -157,7 +161,11 @@ describe('what release.mjs publishes beside a setup file', () => {
     const { syncFromGitHub } = await loadService();
     const landed = await syncFromGitHub('master', dir, null, 'win32');
 
+    // Windows keeps the bare `latest.json` beside its platform name, for
+    // readers older than the platform-named manifests.
     expect(landed?.file).toBe(manifest.file);
-    expect((await readdir(dir)).sort()).toEqual([...besides, manifest.file, 'latest.json'].sort());
+    expect((await readdir(dir)).sort()).toEqual(
+      [...besides, manifest.file, 'latest-win32.json', 'latest.json'].sort(),
+    );
   });
 });
