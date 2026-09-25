@@ -32,7 +32,7 @@ export function codesOf(product: Product): string {
 }
 
 /** A variant whose weight nobody has entered yet — flagged, never treated as zero. */
-export function missingWeight(product: Product): boolean {
+function missingWeight(product: Product): boolean {
   return product.variants.some((variant) => variant.isActive && variant.weightKg === null);
 }
 

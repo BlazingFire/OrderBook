@@ -331,12 +331,6 @@ export async function setStockLevels(
 }
 
 /**
- * The old name, kept so nothing above has to be renamed for a change that is
- * about what a caller may leave out, not about what the operation means.
- */
-export const setReorderLevel = setStockLevels;
-
-/**
  * Whether this order has already moved stock. The ledger is the only honest
  * record of what has been applied, so dispatching twice cannot double-count.
  */

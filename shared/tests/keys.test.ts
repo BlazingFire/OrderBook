@@ -13,7 +13,6 @@ import {
   COMMANDS_BY_ID,
   chordFor,
   chordFromEvent,
-  defaultBindings,
   findConflicts,
   formatChord,
   isReservedChord,
@@ -155,13 +154,6 @@ describe('reserved chords', () => {
 });
 
 describe('bindings', () => {
-  it('ships every command that has a default bound', () => {
-    const defaults = defaultBindings();
-    for (const command of COMMANDS) {
-      if (command.defaultChord) expect(defaults[command.id]).toBe(command.defaultChord);
-    }
-  });
-
   it('treats an explicit null as unbound, not as absent', () => {
     // Somebody who deliberately cleared Ctrl+S must not have it handed back by
     // the next upgrade that changes the default.

@@ -38,7 +38,7 @@ import path from 'node:path';
 
 /** Under the data directory, beside `postgres/`. */
 export const SNAPSHOT_DIR_NAME = 'backups';
-export const SNAPSHOT_PREFIX = 'before-';
+const SNAPSHOT_PREFIX = 'before-';
 /** `<dataDir>/booted-version` — the version that last completed a boot. */
 export const BOOTED_VERSION_FILE = 'booted-version';
 /** How many `before-*` copies to keep; older ones are removed after a new one lands. */

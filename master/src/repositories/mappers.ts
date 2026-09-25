@@ -443,7 +443,7 @@ export function mapLineItem(row: Row): LineItem {
  * `computeTotalWeightKg` — float drift would otherwise print as
  * 12.000000000000002 kg on a dispatch note.
  */
-export function summariseWeight(items: readonly LineItem[]): {
+function summariseWeight(items: readonly LineItem[]): {
   totalWeightKg: number;
   linesWithoutWeight: number;
 } {

@@ -13,7 +13,7 @@
  */
 
 import { formatChord, isReservedChord, parseChord, type Chord } from './chord.js';
-import { COMMANDS, COMMANDS_BY_ID, commandsFor } from './commands.js';
+import { COMMANDS_BY_ID, commandsFor } from './commands.js';
 
 /** Command id to chord text. Absent means "the default"; `null` means unbound. */
 export type BindingMap = Record<string, string | null>;
@@ -31,22 +31,6 @@ function isMacPlatform(): boolean {
   // navigator.userAgentData is available in Chromium-based browsers
   const data = (navigator as { userAgentData?: { platform?: string } }).userAgentData;
   return data?.platform === 'macOS';
-}
-
-/**
- * Every command's shipped chord, as text.
- * On macOS, uses the platform-specific default when available.
- */
-export function defaultBindings(): BindingMap {
-  const map: BindingMap = {};
-  const mac = isMacPlatform();
-  for (const command of COMMANDS) {
-    const chord = mac && command.platformDefaultChord?.darwin
-      ? command.platformDefaultChord.darwin
-      : command.defaultChord;
-    if (chord) map[command.id] = chord;
-  }
-  return map;
 }
 
 /**

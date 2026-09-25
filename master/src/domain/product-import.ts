@@ -312,7 +312,7 @@ export function findDuplicatesInFile(
 }
 
 /** Category and model, case-insensitively: what makes two rows one product. */
-export function groupKey(input: ImportRow): string {
+function groupKey(input: ImportRow): string {
   return `${(input.product.categoryName ?? '').trim().toLowerCase()}${input.product.name.trim().toLowerCase()}`;
 }
 

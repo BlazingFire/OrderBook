@@ -130,7 +130,7 @@ export async function findLiveVariantsByCodes(
  * administrator takes it off the form — the history that quotes it stays
  * readable.
  */
-export async function referencedVariantIds(
+async function referencedVariantIds(
   tenantId: string,
   productId: string,
   runner: Runner = db(),

@@ -13,8 +13,6 @@ import {
   compareForIdAssignment,
   compareHlc,
   deviceCodeFromSeed,
-  deviceCodeOf,
-  entityOfPermanentId,
   formatPermanentId,
   formatTemporaryId,
   initialHlcState,
@@ -107,7 +105,7 @@ describe('record ids', () => {
     expect(id).toBe('A3F9K2000000123');
     expect(isTemporaryId(id)).toBe(true);
     expect(isPermanentId(id)).toBe(false);
-    expect(deviceCodeOf(id)).toBe(PANEL_A);
+    expect(id.startsWith(PANEL_A)).toBe(true);
   });
 
   it('mints permanent ids at the documented 12-character shape', () => {
@@ -117,7 +115,6 @@ describe('record ids', () => {
     expect(id).toBe('LD0000000042');
     expect(isPermanentId(id)).toBe(true);
     expect(isTemporaryId(id)).toBe(false);
-    expect(entityOfPermanentId(id)).toBe('lead');
   });
 
   it('derives a stable device code from a seed, using only unambiguous letters', () => {

@@ -22,9 +22,3 @@
 
 /** Sidebar auto-collapses, detail grids go single column, low-priority columns drop. */
 export const BP_NARROW = '(max-width: 1180px)';
-
-/** The 1024x768 floor's neighbourhood: tighter padding, fewer columns still. */
-export const BP_TIGHT = '(max-width: 1080px)';
-
-/** Short screens — 768-tall laptops with a taskbar. Vertical budget, not horizontal. */
-export const BP_SHORT = '(max-height: 800px)';

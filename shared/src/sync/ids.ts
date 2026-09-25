@@ -161,15 +161,6 @@ export function isPermanentId(value: string): boolean {
   );
 }
 
-/** The device that minted a temporary id — the tie-break when HLCs are equal. */
-export function deviceCodeOf(temporaryId: string): string | null {
-  return isTemporaryId(temporaryId) ? temporaryId.slice(0, DEVICE_CODE_LENGTH) : null;
-}
-
-export function entityOfPermanentId(value: string): SyncableEntity | null {
-  return isPermanentId(value) ? (PREFIX_TO_ENTITY[value.slice(0, 2)] ?? null) : null;
-}
-
 /**
  * Ordering for permanent-id assignment: HLC first, device code to break exact
  * ties. Sorting the batch this way — rather than assigning in arrival order — is

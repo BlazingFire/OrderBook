@@ -21,8 +21,8 @@ bypasses the kit, is a defect even when it renders.
 
 `master/tests/ui-conventions.test.ts` enforces this; read it before arguing:
 
-- Breakpoints are physical px, never rem/em (`ui/src/breakpoints.ts`:
-  `BP_NARROW` 1180px, `BP_TIGHT` 1080px, `BP_SHORT` 800px height). Scale must
+- Breakpoints are physical px, never rem/em (`BP_NARROW` 1180px in
+  `ui/src/breakpoints.ts`; `base.css` also steps at 1080px wide and 800px tall). Scale must
   never change what is on screen, only how big it is.
 - Lengths measured against text use rem; hairlines and radii stay px
   (`ui/src/tokens.css`). Scale (font size) and density (row/control height)

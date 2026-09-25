@@ -87,7 +87,7 @@ export const SWISWARE_COLOURS: readonly CatalogueColour[] = [
 ];
 
 /** `HEXA URINAL` → `HEXA-URINAL`; `E.W.C - S TRAP` → `EWC-S-TRAP`; `20" O.P` → `20-OP`. */
-export function catalogueSlug(name: string): string {
+function catalogueSlug(name: string): string {
   return name
     .toUpperCase()
     .replace(/[."'()]/g, '')

@@ -25,7 +25,7 @@ export interface SwatchSpec {
   size?: number;
 }
 
-export const DEFAULT_SWATCH_SIZE = 800;
+const DEFAULT_SWATCH_SIZE = 800;
 
 /** The swatch as SVG markup. Pure, so a test can assert on it without sharp. */
 export function tileSwatchSvg(spec: SwatchSpec): string {
