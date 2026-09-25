@@ -216,7 +216,13 @@ afterEach(() => {
 
 /** The panel's own lead form, as far as a draft card with one quantity typed. */
 async function draftOneProduct(): Promise<void> {
-  const partyBox = await screen.findByLabelText(t('lead.add.party.search'));
+  // The first test to open the New lead screen also pays for compiling it,
+  // which under a full run takes longer than `findBy`'s one-second default.
+  const partyBox = await screen.findByLabelText(
+    t('lead.add.party.search'),
+    {},
+    { timeout: 10_000 },
+  );
   fireEvent.focus(partyBox);
   fireEvent.click(await screen.findByRole('button', { name: new RegExp(PARTY.name) }));
 

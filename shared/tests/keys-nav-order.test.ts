@@ -37,9 +37,16 @@ function between(source: string, start: string, end: string): string {
   return source.slice(from, to);
 }
 
-/** Every sidebar entry's `id`, in declaration order. */
+/**
+ * Every sidebar entry's `id`, in declaration order, each once. An entry can be
+ * declared more than once when its shape depends on who is signed in — the
+ * Office's Conflicts item is one thing for somebody who may resolve and another
+ * for somebody who may only look — and it is still one place in the sidebar.
+ */
 function sidebarIds(block: string): string[] {
-  return [...block.matchAll(/\bid: '([A-Za-z]+)'/g)].map((match) => match[1] as string);
+  return [
+    ...new Set([...block.matchAll(/\bid: '([A-Za-z]+)'/g)].map((match) => match[1] as string)),
+  ];
 }
 
 /** The screens a panel's Alt+N commands open, in `navOrder`. */

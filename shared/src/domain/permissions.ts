@@ -371,10 +371,11 @@ export interface PermissionCatalogue {
  * no server round trip — these two helpers exist so the convention is written
  * once, not re-derived.
  *
- * No screen reads these tokens yet: the grid names a key through
- * `ui/src/permissionLabels.ts`, which spells it out from the key itself.
- * `shared/tests/i18n-coverage.test.ts` is what keeps every token present for
- * the day it does.
+ * The grid reads these tokens through `ui/src/permissionLabels.ts`, which
+ * builds the same names from the keys it already has and falls back to a
+ * sentence made from the key only when a newer Master serves a permission this
+ * panel's catalogue has no token for. `shared/tests/i18n-coverage.test.ts`
+ * keeps every token present.
  */
 export function moduleActionLabelToken(
   module: PermissionModule,

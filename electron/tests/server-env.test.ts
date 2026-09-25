@@ -19,11 +19,19 @@ import { describe, expect, it } from 'vitest';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-/** The keys of the object `serverEnv` returns, in an entrypoint's source. */
-function serverEnvKeys(entrypoint: string): string[] {
-  const source = readFileSync(path.join(ROOT, 'electron', entrypoint), 'utf8');
-  const body = /serverEnv:\s*\([^)]*\)\s*=>\s*\(\{([\s\S]*?)\n\s*\}\),/.exec(source)?.[1];
-  if (!body) throw new Error(`No serverEnv object in electron/${entrypoint}`);
+/**
+ * The keys of the object `serverEnv` returns, in the file that builds it.
+ *
+ * The Master's is an arrow returning an object literal inside its entrypoint;
+ * the Office's is `officeServerEnv()` in `electron/lib/office-env.ts`, its own
+ * module so that a test can call it (`electron/tests/office-env.test.ts`).
+ */
+function serverEnvKeys(file: string): string[] {
+  const source = readFileSync(path.join(ROOT, 'electron', file), 'utf8');
+  const body =
+    /serverEnv:\s*\([^)]*\)\s*=>\s*\(\{([\s\S]*?)\n\s*\}\),/.exec(source)?.[1] ??
+    /export function officeServerEnv\([\s\S]*?\{\s*return \{([\s\S]*?)\n\s*\};/.exec(source)?.[1];
+  if (!body) throw new Error(`No serverEnv object in electron/${file}`);
   return [...body.matchAll(/^\s*([A-Z][A-Z0-9_]*):/gm)].map((match) => match[1] as string);
 }
 
@@ -40,7 +48,7 @@ function sourceOf(...dirs: string[]): string {
 
 describe.each([
   ['master.main.ts', ['master/src', 'shared/src']],
-  ['office.main.ts', ['office/src', 'shared/src']],
+  ['lib/office-env.ts', ['office/src', 'shared/src']],
 ] as const)('the variables electron/%s hands its server', (entrypoint, server) => {
   const keys = serverEnvKeys(entrypoint);
   const source = sourceOf(...server);

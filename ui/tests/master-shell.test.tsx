@@ -187,10 +187,12 @@ describe('the design-system gallery', () => {
 
 describe('Alt+N', () => {
   it('does not open a screen the sidebar does not offer', async () => {
-    // Alt+6 is Office panels, which needs `panels.manage`.
+    // Alt+7 is Office panels, which needs `panels.manage`: the Master's Alt+N
+    // follow its sidebar order (`shared/tests/keys-nav-order.test.ts`), Work
+    // then Admin, and Conflicts at 6 is offered to everybody.
     await boot(['leads.view']);
 
-    await act(async () => pressAltDigit(6));
+    await act(async () => pressAltDigit(7));
 
     expect(topbarTitle()).toBe(t('nav.master.dashboard'));
   });
@@ -198,7 +200,7 @@ describe('Alt+N', () => {
   it('opens a screen the sidebar does offer', async () => {
     await boot(ADMIN);
 
-    await act(async () => pressAltDigit(6));
+    await act(async () => pressAltDigit(7));
 
     expect(topbarTitle()).toBe(t('nav.master.panels'));
   });
