@@ -5,11 +5,14 @@
  * migrations, then shuts down — useful for preparing or inspecting an
  * installation without launching the full application.
  *
- * Pass `--status` to list applied/pending migrations instead of applying them.
+ * Pass `--status` (`npm run migrate -- --status`) to list applied and pending
+ * migrations, by name and in run order, instead of applying them —
+ * `migration-status.ts` formats the answer.
  */
 
 import { startPostgres } from './postgres-server.js';
 import { closeDatabase, db, initDatabase, runMigrations } from './knex.js';
+import { formatMigrationStatus, type MigrationList } from './migration-status.js';
 import { createLogger } from '../lib/logger.js';
 
 const log = createLogger('migrate');
@@ -20,13 +23,8 @@ async function main(): Promise<void> {
 
   try {
     if (process.argv.includes('--status')) {
-      const [applied, pending] = await Promise.all([
-        db().migrate.list(),
-        Promise.resolve(null),
-      ]).then(([list]) => list as [Array<{ name: string }>, Array<{ file: string }>]);
-
-      log.info(`Applied: ${applied.map((m) => m.name).join(', ') || 'none'}`);
-      log.info(`Pending: ${pending.map((m) => m.file).join(', ') || 'none'}`);
+      const list = (await db().migrate.list()) as MigrationList;
+      for (const line of formatMigrationStatus(list)) log.info(line);
     } else {
       await runMigrations();
     }

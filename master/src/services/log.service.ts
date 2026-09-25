@@ -1,8 +1,7 @@
 /**
  * Logs — `listLogs`, `listLogFacets`, `verifyLogChain`, `exportLogs`
  * (`docs/backend-modules/04-API-CONTRACT.md` §2). Body order per house
- * style: permission, then validate, then repository, then map. Nothing here
- * is masked — a log row carries no money.
+ * style: permission, then validate, then repository, then map.
  */
 
 import type {

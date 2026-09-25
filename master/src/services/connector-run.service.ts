@@ -5,10 +5,10 @@
  * for what is a GET with a header on it.
  *
  * **Writes go through the services, never SQL.** `catalogService.createParty`
- * and friends are what carry validation, masking, party access, `publishChange`
- * and the audit trail; a repository call from here would have to reimplement
- * all five and would drift from the browser's behaviour the first time one of
- * them changed. The actor is a real principal — `actorType: 'connector'` with
+ * and friends are what carry validation, party access, `publishChange` and the
+ * audit trail; a repository call from here would have to reimplement all four
+ * and would drift from the browser's behaviour the first time one of them
+ * changed. The actor is a real principal — `actorType: 'connector'` with
  * the connector's id for audit, and the authority of the user the connection
  * runs as. `systemActor` is unusable on purpose: its `permissions` is `null`,
  * so `requirePermission` refuses everything.
@@ -601,9 +601,9 @@ async function findLocal(
   entity: ConnectorEntity,
   id: string,
 ): Promise<Party | Product | null> {
-  // Unmasked repository reads, for the same reason the public API's PATCH uses
-  // them: a masked read would drop a field by key absence and the merge would
-  // then treat it as cleared.
+  // Repository reads: the record as stored, the same base the public API's
+  // PATCH merges over. Permission and party access are checked by the service
+  // write, when one follows (`updateLocal`), not here.
   return entity === 'party'
     ? partyRepo.findPartyById(tenantId, id)
     : productRepo.findProductById(tenantId, id);

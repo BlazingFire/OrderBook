@@ -13,10 +13,6 @@
  *    GIN index, never left to ranking.
  *  · This module only reads. The vectors are maintained by triggers on the base
  *    tables, so no code path can write data without updating the index.
- *
- * Field-level permission masking happens in the service above, not here — a
- * repository that had already stripped `rate` could not serve the caller who
- * is allowed to see it.
  */
 
 import type { SearchHit, SearchHitKind } from '@orderbook/shared';

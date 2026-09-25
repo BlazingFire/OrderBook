@@ -9,7 +9,7 @@
  * 0.18.5 with two CVEs) and this decision is recorded in `HANDOFF.md`.
  *
  * Every cell comes back as a **string**, deliberately. The reader does not know
- * a product code from a price, and a CSV parser that "helpfully" coerces
+ * a product code from a weight, and a CSV parser that "helpfully" coerces
  * `00123` to a number has already lost the leading zeros by the time anybody
  * can object. `master/src/domain/product-import.ts` decides what each column
  * means.

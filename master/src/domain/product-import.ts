@@ -65,7 +65,7 @@ const COLUMN_BY_FIELD = new Map(IMPORT_COLUMNS.map((column) => [column.field, co
 
 const VARIANT_FIELDS = new Set<ImportField>(['variant', 'code', 'weightKg']);
 
-/** Lower-case letters and digits only: "Rate / box" and "rate_box" are the same header. */
+/** Lower-case letters and digits only: "Weight (kg)" and "weight_kg" are the same header. */
 export function normalizeHeader(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
@@ -328,7 +328,7 @@ export interface ImportGroup {
 /**
  * Fold rows into products: rows sharing a category and model become one
  * product whose variants are those rows. The model's own fields come from
- * the first row — a sheet that gives DAMRU a different rate on row 3 than on
+ * the first row — a sheet that gives DAMRU a different size on row 3 than on
  * row 2 is asking two things at once, and the first wins as it would in a
  * form.
  *

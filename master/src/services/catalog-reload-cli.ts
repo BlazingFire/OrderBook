@@ -1,22 +1,53 @@
 /**
- * One-shot operator script: empty business data, optionally reloading the
- * catalogue and sample parties.
+ * One-shot operator tool: empty the business data, then optionally load the
+ * Swisware catalogue or a few sample parties. Three scripts in
+ * `master/package.json` run it (`npm run <script> --workspace @orderbook/master`):
  *
- * Default (no flags): wipes business data (products, variants, categories,
- * images, leads, orders, line items, inventory, reservations, movements,
- * timeline, party-wise rates, parties, access, sync/conflict bookkeeping,
- * activity) to zero while keeping configuration (tenants, users, roles,
- * permissions, pipelines, option lists, settings, panels, connectors, keys,
- * secrets).
+ *   wipe:business   (no flag)         wipe only.
+ *   reload:catalog  --with-catalog    wipe, then load the Swisware catalogue —
+ *                                     the same `seedCatalogue` the Developer
+ *                                     tool and `seed:catalogue` run (pure data
+ *                                     in `domain/swisware-catalogue.ts`; no
+ *                                     CSV, no file).
+ *   seed:parties    --with-parties    wipe, then create three sample parties
+ *                                     through `createParty`.
  *
- * Flags:
- *   --with-catalog  also load the Swisware catalogue afterwards — the same
- *                   `seedCatalogue` the Developer tool runs (pure data in
- *                   `domain/swisware-catalogue.ts`; no CSV, no file).
- *   --with-parties  also create a few sample parties through createParty.
+ * The wipe takes products, variants, categories, image rows, leads, orders,
+ * line items, stock, reservations, movements, timelines, party-wise records,
+ * parties, party access, the sync/conflict bookkeeping, the connectors' links
+ * and **the whole activity log** to zero and restarts their id counters, while
+ * keeping the configuration (tenants, users, roles, permissions, pipelines,
+ * option lists, settings, panels, connectors and their mappings and run
+ * history, keys, secrets). No configuration table has a foreign key into the
+ * wiped ones, so `TRUNCATE … CASCADE` reaches nothing else —
+ * `operator-cli.integration.test.ts` fails the day one does.
  *
- * Run: npm run ... --workspace @orderbook/master (see package.json script)
- * Never imported by app code or tests.
+ * The connectors' links (`api_connector_links`) go because the id counters
+ * restart: each link names a local record by its permanent id, deliberately
+ * without a foreign key, and after the wipe that id belongs to whatever record
+ * is created next — with `--with-catalog`, certainly a catalogue product. A
+ * kept link would make the connector's next run skip that unrelated record
+ * (the remote row's hash is unchanged) or overwrite it with the remote's
+ * fields. Without its links a connector re-creates every remote row on its
+ * next run, which is what emptying the catalogue under it should mean.
+ *
+ * The activity log goes on purpose: every entry in it describes a record the
+ * wipe removes. No ordinary write can remove an entry — its row triggers
+ * refuse every UPDATE and DELETE — but a TRUNCATE fires no row trigger, so
+ * this tool empties it, and the hash chain starts again from genesis with the
+ * next write. On a live database that is the audit trail disappearing, so the
+ * console says so, with the count, before it happens.
+ *
+ * Image files on disk are left alone: with their rows gone, the Master's
+ * startup sweep (`sweepOrphanImageVariants`) removes them on its next boot.
+ *
+ * Run it with the Master stopped. It starts the database the way the Master
+ * does and stops it again when done, which would pull the database out from
+ * under a running Master, and nothing here reaches that Master's in-memory
+ * caches. With `DATABASE_URL` set it uses that server instead and stops
+ * nothing — which is how the integration test runs it.
+ *
+ * Never imported by app code or tests; the test runs it as a process.
  */
 import { PERMISSIONS, type PartyInput, type PermissionSet } from '@orderbook/shared';
 
@@ -47,6 +78,7 @@ const BUSINESS_TABLES = [
   'sync_conflicts',
   'applied_mutations',
   'id_map',
+  'api_connector_links',
   'activity_log',
 ];
 
@@ -68,8 +100,13 @@ async function main(): Promise<void> {
     if (!tenantRow) throw new Error('No tenant — run first-time setup before reloading the catalogue');
     const tenantId = tenantRow.id;
 
-    const before = await db()('products').whereNull('deleted_at').count('id as count');
-    log.info(`Live products before wipe: ${String((before[0] as { count: string }).count)}`);
+    const products = await db()('products').whereNull('deleted_at').count('id as count');
+    const activity = await db()('activity_log').count('id as count');
+    log.warn(
+      `Erasing all business data (${String((products[0] as { count: string }).count)} live products) ` +
+        `and the whole activity log (${String((activity[0] as { count: string }).count)} activity entries, ` +
+        'the audit trail). There is no undo short of a backup.',
+    );
 
     await db().transaction(async (trx) => {
       await trx.raw(`TRUNCATE TABLE ${BUSINESS_TABLES.join(', ')} RESTART IDENTITY CASCADE`);
@@ -90,7 +127,7 @@ async function main(): Promise<void> {
       }
       await trx('master_clock').where({ id: 1 }).update({ physical: 0, counter: 0 });
     });
-    log.info('Business data wiped; users, roles, settings and panels kept.');
+    log.info('Business data and the activity log erased; users, roles, settings and panels kept.');
 
     const permissions: PermissionSet = {
       roleId: null,

@@ -10,7 +10,8 @@
  * variant id whichever kind it came from.
  *
  * Imported as `productVariantRepo` — `variantRepo` already means a party's
- * negotiated rates (`party-variant.repository.ts`) throughout the services.
+ * own versions of products (`party-variant.repository.ts`) throughout the
+ * services.
  */
 
 import type { ProductVariant, ProductVariantInput } from '@orderbook/shared';

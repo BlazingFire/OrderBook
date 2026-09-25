@@ -48,9 +48,8 @@ export interface MappedRow {
  * Read one remote row through a field map.
  *
  * A pointer that does not resolve leaves the field **absent**, not null. That
- * is the same rule masking follows, and it is what makes an import a patch
- * rather than a replace: a remote system that does not carry a `notes` column
- * must not blank the note somebody typed here.
+ * is what makes an import a patch rather than a replace: a remote system that
+ * does not carry a `notes` column must not blank the note somebody typed here.
  */
 export function mapRow(row: unknown, fieldMaps: readonly ConnectorFieldMap[]): MappedRow {
   const input: Record<string, unknown> = {};
@@ -93,9 +92,9 @@ export function hashInput(input: Record<string, unknown>): string {
 /**
  * Which fields a mapped row would actually change on the record we hold.
  *
- * Compared loosely on purpose — a remote `"12500"` and a stored `12500` are the
- * same price, and reporting that as a change would make every run rewrite every
- * row.
+ * Compared loosely on purpose — a remote `9876543210` and a stored
+ * `"9876543210"` are the same phone number, and reporting that as a change
+ * would make every run rewrite every row.
  */
 export function changedFields(
   existing: Record<string, unknown>,

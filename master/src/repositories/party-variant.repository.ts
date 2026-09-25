@@ -30,15 +30,14 @@ export async function listForParty(
 }
 
 /**
- * Every variant in the tenant.
+ * Every variant the caller may see — scoped, because a variant is what one
+ * named party agreed for a product (its own name, size and packaging) and is
+ * exactly as private as that party.
  *
  * Goes into the panel's offline snapshot: a panel with no link still has to
  * build a party-wise line, and it cannot ask for one party's variants at that
- * point. The set is small — variants exist only where a price was negotiated.
- */
-/**
- * Every variant the caller may see — scoped, because a variant is a negotiated
- * price for one named party and is exactly as private as that party.
+ * point. The set is small — variants exist only where a party has its own
+ * version of a product.
  *
  * This one is easy to miss: it feeds the Office Panel's offline snapshot
  * directly rather than through a service, so an unscoped version would leave

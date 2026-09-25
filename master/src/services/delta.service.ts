@@ -15,8 +15,9 @@
  *    no longer exists;
  *  - the ring has evicted something at or before the cursor;
  *  - any buffered event is one a panel cannot apply — `party_variant` is the
- *    sharp case, because those are per-party negotiated rates and a dropped one
- *    means staff quoting from stale prices with no error anywhere.
+ *    sharp case, because those are the names and specs agreed with each party
+ *    and a dropped one means staff entering a party-wise line from a stale
+ *    record with no error anywhere.
  *
  * Every surviving event then passes the **same** `mayReceive` the live fan-out
  * uses. Replaying without it would hand every Office Panel the whole staff list

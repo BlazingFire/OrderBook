@@ -62,7 +62,7 @@ export async function listParties(
 }
 
 /**
- * One party, masked and party-scoped.
+ * One party, party-scoped.
  *
  * Scoped at the query like `getLead`, so a party this caller may not see is a
  * 404 and not a 403 — on a read, confirming the record exists is itself the

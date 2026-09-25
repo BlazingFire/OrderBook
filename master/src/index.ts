@@ -246,11 +246,11 @@ async function main(): Promise<void> {
     }
 
     /*
-     * Startup only, beside `sweepOrphanTemporaries` above and for the same
-     * reason: `normalizeAndStore` writes four variant files before the row that
-     * names them is inserted, so a sweep running while somebody uploads would
-     * delete a completed upload and leave a row pointing at nothing. Here,
-     * nothing else is writing.
+     * Startup only, before the panel starts taking requests:
+     * `normalizeAndStore` writes four variant files before the row that names
+     * them is inserted, so a sweep running while somebody uploads would delete
+     * a completed upload and leave a row pointing at nothing. Here, nothing
+     * else is writing.
      */
     await sweepOrphanImageVariants().catch((error: unknown) => {
       log.warn(`Could not sweep orphaned image folders: ${toErrorMessage(error)}`);

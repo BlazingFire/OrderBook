@@ -6,8 +6,8 @@
  * inferring them from database state:
  *
  *   1. Lines are copied **unchanged** — no recalculation, no re-reading the
- *      catalogue. A rate or a weight edited on the variant after conversion
- *      must not move what the order was quoted at.
+ *      catalogue. A code or a weight edited on the variant after conversion
+ *      must not change what the order was taken for.
  *   2. `packaging` is **never** auto-filled during conversion.
  *   3. Stock is reserved per **variant** — never aggregated to a product
  *      total, because a white basin does not satisfy a reservation for a

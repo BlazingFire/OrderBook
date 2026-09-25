@@ -1,7 +1,7 @@
 /**
  * The keyed `/api/v1` surface, exercised over HTTP.
  *
- * These are the four things that would be silent, expensive mistakes:
+ * These are the three things that would be silent, expensive mistakes:
  *
  *  · a key outliving the permission its owner lost — the intersection is
  *    computed per request for exactly this reason;
@@ -267,6 +267,23 @@ describe.skipIf(!canRunIntegrationTests)('public API (integration)', () => {
       expect(Object.values(response.body.paths).some((path) => 'delete' in (path as object))).toBe(
         false,
       );
+    });
+
+    it('promises no field masking, which went with pricing', async () => {
+      // The description is the first thing an integrator reads. Masking hid
+      // the money fields from a role without the rate permission; with no
+      // money in the software nothing is masked, and a document still
+      // promising it would describe behaviour nothing implements.
+      const { userId } = await seedOwner('owner-doc-text', ['products.view']);
+      const token = await issue(userId, ['products.view']);
+
+      const response = await request(app)
+        .get('/api/v1/openapi.json')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(response.body.info.description).toMatch(/party-scoped/);
+      expect(response.body.info.description).not.toMatch(/mask/i);
     });
   });
 });
