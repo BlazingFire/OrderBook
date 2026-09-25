@@ -100,10 +100,12 @@ describe('renderActivity()', () => {
   };
 
   it('names a row with no recorded actor in the reader’s own language', () => {
-    expect(renderActivity(createTranslator('en'), row)).toBe('Somebody added the party Sharma Tiles');
+    expect(renderActivity(createTranslator('en'), row)).toBe(
+      'Somebody added the party Sharma Tiles',
+    );
     // The stand-in was a hard-coded English word, so a Hindi reader got
-    // "Somebody ने पार्टी … जोड़ी". Every translated template reads
-    // `{actor} ने …`, which wants the oblique `किसी`, not `कोई`.
+    // "Somebody ने पार्टी … जोड़ी". Every Hindi template puts a postposition
+    // after `{actor}` (`{actor} ने …`), which wants the oblique `किसी`, not `कोई`.
     expect(renderActivity(createTranslator('hi'), row)).toBe('किसी ने पार्टी Sharma Tiles जोड़ी');
   });
 

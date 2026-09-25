@@ -11,8 +11,9 @@
  * `navOrder` is the number Alt+N binds to, and it is **declared here rather
  * than taken from the rendered sidebar index**. The sidebar filters out the
  * screens a person's permissions exclude, so a rendered index would move Alt+3
- * from Orders to Conflicts for one user and not another — a shortcut that means
- * something different per person is worse than no shortcut.
+ * on the Master from Parties to Inventory for somebody who cannot see Parties —
+ * a shortcut that means something different per person is worse than no
+ * shortcut.
  */
 
 import type { MessageKey } from '../i18n/keys.js';

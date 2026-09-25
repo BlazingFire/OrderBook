@@ -369,9 +369,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'activity.user.created': '{actor} ने {name} के लिए खाता बनाया',
   'activity.user.updated': '{actor} ने {name} को अपडेट किया',
   'activity.user.deactivated': '{actor} ने {name} को निष्क्रिय किया',
-  'activity.ai_run.asked': '{actor} asked the assistant something',
-  'activity.ai_run.drafted': '{actor} had the assistant draft something',
-  'activity.ai_run.applied': '{actor} applied a change the assistant suggested',
+  'activity.ai_run.asked': '{actor} ने सहायक से कुछ पूछा',
+  'activity.ai_run.drafted': '{actor} ने सहायक से कुछ ड्राफ़्ट करवाया',
+  'activity.ai_run.applied': '{actor} ने सहायक का सुझाया बदलाव लागू किया',
   'activity.user.deleted': '{actor} ने {name} का खाता हटाया',
   'activity.user.restored': '{actor} ने {name} का खाता पुनर्स्थापित किया',
   'activity.user.password_reset': '{actor} ने {name} का पासवर्ड रीसेट किया',
@@ -390,12 +390,12 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'activity.role.restored': '{actor} ने भूमिका {name} पुनर्स्थापित की',
   'activity.order.created': '{actor} ने यह ऑर्डर बनाया',
   'activity.order.dispatched': '{actor} ने यह ऑर्डर भेजा',
-  'activity.api_key.created': '{actor} issued the API key {name}',
-  'activity.api_key.revoked': '{actor} revoked the API key {name}',
-  'activity.connector.created': '{actor} added the connection {name}',
-  'activity.connector.updated': '{actor} changed the connection {name}',
-  'activity.connector.deleted': '{actor} removed the connection {name}',
-  'activity.connector.ran': '{actor} ran the connection {name}',
+  'activity.api_key.created': '{actor} ने API कुंजी {name} जारी की',
+  'activity.api_key.revoked': '{actor} ने API कुंजी {name} रद्द की',
+  'activity.connector.created': '{actor} ने कनेक्शन {name} जोड़ा',
+  'activity.connector.updated': '{actor} ने कनेक्शन {name} बदला',
+  'activity.connector.deleted': '{actor} ने कनेक्शन {name} हटाया',
+  'activity.connector.ran': '{actor} ने कनेक्शन {name} चलाया',
   'activity.catalog.imported': '{actor} ने {fileName} से {count} उत्पाद आयात किए',
   'activity.office_panel.created': '{actor} ने ऑफ़िस पैनल {name} जोड़ा',
   'activity.office_panel.updated': '{actor} ने ऑफ़िस पैनल {name} को अपडेट किया',
@@ -466,10 +466,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.avatar.tooLarge': 'A profile picture must be 5 MB or smaller',
   // TODO(i18n-hi)
   'validation.avatar.unreadable': 'That file could not be read as a picture',
-  // TODO(i18n-hi)
-  'activity.user.avatar_set': '{actor} set a profile picture for {name}',
-  // TODO(i18n-hi)
-  'activity.user.avatar_cleared': '{actor} removed the profile picture for {name}',
+  'activity.user.avatar_set': '{actor} ने {name} के लिए प्रोफ़ाइल फ़ोटो लगाई',
+  'activity.user.avatar_cleared': '{actor} ने {name} की प्रोफ़ाइल फ़ोटो हटाई',
   // TODO(i18n-hi)
   'access.editor.backToList': 'Roles & users',
   // TODO(i18n-hi)
@@ -1839,7 +1837,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'integrations.mapping.flag': 'Ask a person',
   'integrations.mapping.required': 'Required',
   'nav.master.integrations': 'Integrations',
-  // Oblique, not `कोई`: every translated `activity.*` template reads `{actor} ने …`.
+  // Oblique, not `कोई`: every `activity.*` template puts a postposition after
+  // `{actor}` (`{actor} ने …`). An English stub there would read "किसी issued…",
+  // so `i18n-coverage.test.ts` fails on one until it is translated.
   'logs.actor.unknown': 'किसी',
   'logs.actorType.api_key': 'An API key',
   'logs.actorType.connector': 'A connection',

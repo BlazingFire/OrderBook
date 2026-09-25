@@ -29,10 +29,11 @@ export interface DesktopBridge {
    *
    * Deliberately takes no path: the renderer does not choose what executes.
    * The shell asks the panel over loopback and hashes the file itself before
-   * spawning it. Resolves to `false` when the shell refused — no verified
-   * installer ready, a file that fails the shell's own checks, a standalone
-   * build, or a launch the operating system blocked — so the screen can say so
-   * rather than waiting for a quit that never comes.
+   * spawning it. Resolves to `false` when the shell refused — a standalone
+   * build, a panel that did not answer its own health check, no verified
+   * installer ready, a file that fails the shell's own checks, or a launch the
+   * operating system blocked — so the screen can say so rather than waiting
+   * for a quit that never comes.
    */
   applyUpdate(): Promise<boolean>;
 
