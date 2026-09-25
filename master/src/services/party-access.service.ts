@@ -133,6 +133,13 @@ export async function replaceAssignments(
   await assertUsersAreLive(actor, entries);
 
   await db().transaction(async (trx) => {
+    // Stamped before the party's row lock, never after it: every other write
+    // takes `master_clock`'s lock first (`updateParty`, the offline merge), and
+    // holding the party while waiting for the clock deadlocked (`40P01`)
+    // against an edit of the same party holding the clock while it waited for
+    // the party. A refusal below rolls the stamp back with everything else.
+    const hlc = await nextHlc(trx);
+
     const locked = await partyRepo.lockParty(actor.tenantId, partyId, trx);
     if (!locked) throw new NotFoundError('Party');
 
@@ -146,7 +153,6 @@ export async function replaceAssignments(
       trx,
     );
 
-    const hlc = await nextHlc(trx);
     await partyRepo.touchParty(actor.tenantId, partyId, hlc, trx);
 
     // Inside the transaction, not after it: an assignment change that is not

@@ -195,22 +195,24 @@ export async function convertLead(
       trx,
     );
 
+    // Last in the transaction, after every row lock above — see the lock-order
+    // note in `activity-log.repository.ts`.
+    await activityLog.recordActivity({
+      tenantId: actor.tenantId,
+      entityType: 'order',
+      entityId: id,
+      action: 'created',
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      details: { leadId: lead.id, reservations: reservationPlan.length },
+    }, actor, trx);
+
     return id;
   });
 
   const order = await orderRepo.findOrderById(actor.tenantId, orderId, UNSCOPED_PARTY_ACCESS);
   const updatedLead = await leadRepo.findLeadById(actor.tenantId, lead.id, UNSCOPED_PARTY_ACCESS);
   if (!order) throw new Error('Order disappeared immediately after conversion');
-
-  await activityLog.recordDetachedActivity({
-    tenantId: actor.tenantId,
-    entityType: 'order',
-    entityId: order.id,
-    action: 'created',
-    actorType: actor.actorType,
-    actorId: actor.actorId,
-    details: { leadId: lead.id, reservations: reservationPlan.length },
-  }, actor, db());
 
   publishChange({ entity: 'order', action: 'created', id: order.id, payload: order });
   if (updatedLead) {
@@ -277,6 +279,17 @@ export async function updateOrder(
     for (const column of Object.keys(patch)) fieldHlc[fieldFor(ORDER_COLUMNS, column)] = hlc;
 
     await orderRepo.updateOrderColumns(actor.tenantId, id, patch, { hlc, fieldHlc }, trx);
+
+    // Audited like `updateLead`. This edit used to record nothing, although
+    // `activity.order.updated` was already in the catalogue waiting for it.
+    await activityLog.recordActivity({
+      tenantId: actor.tenantId,
+      entityType: 'order',
+      entityId: id,
+      action: 'updated',
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+    }, actor, trx);
   });
 
   const order = await orderRepo.findOrderById(actor.tenantId, id, UNSCOPED_PARTY_ACCESS);
@@ -342,6 +355,17 @@ export async function setStage(
         trx,
       );
     }
+
+    // Audited like the lead's stage move always was; the order's recorded nothing.
+    await activityLog.recordActivity({
+      tenantId: actor.tenantId,
+      entityType: 'order',
+      entityId: input.id,
+      action: 'stage_changed',
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      details: { from: from.name, to: to.name },
+    }, actor, trx);
   });
 
   const order = await orderRepo.findOrderById(actor.tenantId, input.id, UNSCOPED_PARTY_ACCESS);
@@ -374,14 +398,26 @@ export async function dispatchOrder(
   if (existing.dispatchedAt) throw new ValidationError('validation.order.alreadyDispatched');
 
   const stages = await pipelineRepo.stagesFor(actor.tenantId, 'order');
-  const from = findStage(stages, existing.stageId);
-  const dispatched = stages.find((stage) => stage.name === 'Dispatched') ?? from;
+  // Keyed on the seeded stage *name*, which the Fields screen can rename — the
+  // "never key on a stage name" rule in `lead-outcome.ts` is broken here, and a
+  // renamed stage leaves a dispatched order where it was. Not fixable in code
+  // alone: nothing on `pipeline_stages` says which stage means "dispatched"
+  // (`is_terminal` is also true of Cancelled), so it needs a stage flag added
+  // by migration and a way to set it — an owner decision.
+  const dispatchedStage = stages.find((stage) => stage.name === 'Dispatched');
 
   const active = await reservationRepo.activeForOrder(actor.tenantId, input.orderId);
   const movements = planDispatchMovements(active);
 
   await db().transaction(async (trx) => {
-    // Row-lock first, before anything else in this transaction: the
+    // Stamped before the row lock, as `convertLead` does and for its reason:
+    // every write takes `master_clock`'s lock before the entity row's, and a
+    // dispatch taking them the other way round would deadlock (`40P01`)
+    // against an edit or an offline merge of the same order. A throw below
+    // rolls the stamp back with everything else.
+    const hlc = await nextHlc(trx);
+
+    // Row-lock next, before anything is read or written: the
     // `existing.dispatchedAt` check above ran outside any transaction, so two
     // dispatch calls that overlap before either commits would otherwise both
     // read it as null and both write stock movements. The lock serialises
@@ -390,6 +426,13 @@ export async function dispatchOrder(
     const locked = await orderRepo.lockOrder(actor.tenantId, input.orderId, trx);
     if (!locked) throw new NotFoundError('Order');
     if (locked.dispatchedAt) throw new ValidationError('validation.order.alreadyDispatched');
+
+    // The stage it leaves is the locked row's too, not `existing`'s. A stage
+    // move that committed after that read would otherwise be written back over
+    // — with no "Dispatched" stage the order stays where it is, and that has to
+    // mean where it is now — and the timeline would name the wrong stage.
+    const from = findStage(stages, locked.stageId);
+    const dispatched = dispatchedStage ?? from;
 
     // The ledger is a second, independent idempotency check: an order that
     // somehow reaches this path twice cannot double-count, because the first
@@ -416,7 +459,13 @@ export async function dispatchOrder(
     }
 
     await reservationRepo.consumeForOrder(actor.tenantId, input.orderId, trx);
-    await orderRepo.markDispatched(actor.tenantId, input.orderId, dispatched.id, trx);
+
+    // Stamped like every other order write — the stage and `dispatchedAt` are
+    // what changed. From the locked row's own clocks, not `existing`'s, which
+    // were read before the lock and could miss an edit that committed since.
+    const fieldHlc: Record<string, string> = { ...locked.fieldHlc, dispatchedAt: hlc };
+    if (dispatched.id !== from.id) fieldHlc.stageId = hlc;
+    await orderRepo.markDispatched(actor.tenantId, input.orderId, dispatched.id, { hlc, fieldHlc }, trx);
 
     await timelineRepo.appendEntry(
       {
@@ -431,20 +480,20 @@ export async function dispatchOrder(
       },
       trx,
     );
+
+    await activityLog.recordActivity({
+      tenantId: actor.tenantId,
+      entityType: 'order',
+      entityId: input.orderId,
+      action: 'dispatched',
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      details: { movements: movements.length },
+    }, actor, trx);
   });
 
   const order = await orderRepo.findOrderById(actor.tenantId, input.orderId, UNSCOPED_PARTY_ACCESS);
   if (!order) throw new NotFoundError('Order');
-
-  await activityLog.recordDetachedActivity({
-    tenantId: actor.tenantId,
-    entityType: 'order',
-    entityId: order.id,
-    action: 'dispatched',
-    actorType: actor.actorType,
-    actorId: actor.actorId,
-    details: { movements: movements.length },
-  }, actor, db());
 
   publishChange({ entity: 'order', action: 'updated', id: order.id, payload: order });
   // Published after the transaction commits, so panels never see stock figures

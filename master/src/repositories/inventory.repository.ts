@@ -291,6 +291,9 @@ export async function applyMovement(
  *
  * `undefined` is never bound, either: a knex positional binding of `undefined`
  * throws "Undefined binding(s)" rather than meaning anything.
+ *
+ * `runner` is the caller's transaction when there is one, so the write, the
+ * read-back and the caller's audit entry commit together.
  */
 export async function setStockLevels(
   tenantId: string,
@@ -300,6 +303,7 @@ export async function setStockLevels(
     minStockLevel?: number | null;
     maxStockLevel?: number | null;
   },
+  runner: Runner = db(),
 ): Promise<InventoryStockLevel | null> {
   const asserted: Array<[column: string, value: number | null]> = [];
 
@@ -308,12 +312,12 @@ export async function setStockLevels(
   if (levels.maxStockLevel !== undefined) asserted.push(['max_stock_level', levels.maxStockLevel]);
 
   // Nothing asserted is not an error and not a write — it is a read.
-  if (asserted.length === 0) return findStockLevel(tenantId, target.variantId);
+  if (asserted.length === 0) return findStockLevel(tenantId, target.variantId, runner);
 
   const columns = asserted.map(([column]) => column);
   const values = asserted.map(([, value]) => value);
 
-  await db().raw(
+  await runner.raw(
     `INSERT INTO inventory_stock
        (id, tenant_id, product_id, variant_id, quantity_boxes, ${columns.join(', ')}, updated_at)
      VALUES (?, ?, ?, ?, 0, ${columns.map(() => '?').join(', ')}, now())
@@ -323,7 +327,7 @@ export async function setStockLevels(
     [uuid(), tenantId, target.productId, target.variantId, ...values],
   );
 
-  return findStockLevel(tenantId, target.variantId);
+  return findStockLevel(tenantId, target.variantId, runner);
 }
 
 /**

@@ -245,6 +245,8 @@ async function attemptSignIn(
     }
   });
 
+  // After the commit, not inside it, although it could join the transaction
+  // above — on purpose, and `recordDetachedActivity` says why.
   await recordSignInAttempt(credential.tenantId, key, true, credential.id, source);
 
   const token = randomBytes(32).toString('base64url');

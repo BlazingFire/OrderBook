@@ -86,7 +86,7 @@ export async function createParty(input: PartyInput, actor: ActorContext): Promi
 
   const party = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
-    return partyRepo.insertParty(
+    const row = await partyRepo.insertParty(
       {
         tenantId: actor.tenantId,
         input: { ...input, name },
@@ -97,25 +97,32 @@ export async function createParty(input: PartyInput, actor: ActorContext): Promi
       },
       trx,
     );
+
+    // In the transaction and last in it (`activity-log.repository.ts`): the
+    // entry used to be written after the commit, on another connection, by a
+    // function that swallows its own failure — so a party could be saved with
+    // no entry at all.
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'party',
+        entityId: row.id,
+        action: 'created',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        // The catalogue's tokens read "{actor} added the party {name}", so an entry
+        // without a name renders the placeholder to the reader. The delete and
+        // restore paths always carried one; create and update did not, and the
+        // Activity log showed a literal `{name}` on every one of them.
+        details: { name: row.name },
+      },
+      actor,
+      trx,
+    );
+
+    return row;
   });
 
-  await activityLog.recordDetachedActivity(
-    {
-      tenantId: actor.tenantId,
-      entityType: 'party',
-      entityId: party.id,
-      action: 'created',
-      actorType: actor.actorType,
-      actorId: actor.actorId,
-      // The catalogue's tokens read "{actor} added the party {name}", so an entry
-      // without a name renders the placeholder to the reader. The delete and
-      // restore paths always carried one; create and update did not, and the
-      // Activity log showed a literal `{name}` on every one of them.
-      details: { name: party.name },
-    },
-    actor,
-    db(),
-  );
   publishChange({ entity: 'party', action: 'created', id: party.id, payload: party });
 
   return party;
@@ -153,24 +160,26 @@ export async function updateParty(
     const fieldHlc = { ...existing.sync.fieldHlc };
     for (const column of touchedColumns) fieldHlc[fieldFor(PARTY_COLUMNS, column)] = hlc;
 
-    return partyRepo.updateParty(actor.tenantId, id, merged, { hlc, fieldHlc }, trx);
+    const row = await partyRepo.updateParty(actor.tenantId, id, merged, { hlc, fieldHlc }, trx);
+    if (!row) throw new NotFoundError('Party');
+
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'party',
+        entityId: row.id,
+        action: 'updated',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: { name: row.name },
+      },
+      actor,
+      trx,
+    );
+
+    return row;
   });
 
-  if (!party) throw new NotFoundError('Party');
-
-  await activityLog.recordDetachedActivity(
-    {
-      tenantId: actor.tenantId,
-      entityType: 'party',
-      entityId: party.id,
-      action: 'updated',
-      actorType: actor.actorType,
-      actorId: actor.actorId,
-      details: { name: party.name },
-    },
-    actor,
-    db(),
-  );
   publishChange({ entity: 'party', action: 'updated', id: party.id, payload: party });
 
   return party;
@@ -418,7 +427,7 @@ export async function createProduct(input: ProductInput, actor: ActorContext): P
 
   const product = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
-    return productRepo.insertProduct(
+    const row = await productRepo.insertProduct(
       {
         tenantId: actor.tenantId,
         input: { ...input, name, variants, hasVariants },
@@ -428,21 +437,24 @@ export async function createProduct(input: ProductInput, actor: ActorContext): P
       },
       trx,
     );
+
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'product',
+        entityId: row.id,
+        action: 'created',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: { name: row.name },
+      },
+      actor,
+      trx,
+    );
+
+    return row;
   });
 
-  await activityLog.recordDetachedActivity(
-    {
-      tenantId: actor.tenantId,
-      entityType: 'product',
-      entityId: product.id,
-      action: 'created',
-      actorType: actor.actorType,
-      actorId: actor.actorId,
-      details: { name: product.name },
-    },
-    actor,
-    db(),
-  );
   publishChange({ entity: 'product', action: 'created', id: product.id, payload: product });
 
   return product;
@@ -498,24 +510,26 @@ export async function updateProduct(
     // merged row by row — so it carries one stamp.
     if (variants) fieldHlc.variants = hlc;
 
-    return productRepo.updateProduct(actor.tenantId, id, permitted, { hlc, fieldHlc }, trx);
+    const row = await productRepo.updateProduct(actor.tenantId, id, permitted, { hlc, fieldHlc }, trx);
+    if (!row) throw new NotFoundError('Product');
+
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'product',
+        entityId: row.id,
+        action: 'updated',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: { name: row.name },
+      },
+      actor,
+      trx,
+    );
+
+    return row;
   });
 
-  if (!product) throw new NotFoundError('Product');
-
-  await activityLog.recordDetachedActivity(
-    {
-      tenantId: actor.tenantId,
-      entityType: 'product',
-      entityId: product.id,
-      action: 'updated',
-      actorType: actor.actorType,
-      actorId: actor.actorId,
-      details: { name: product.name },
-    },
-    actor,
-    db(),
-  );
   publishChange({ entity: 'product', action: 'updated', id: product.id, payload: product });
 
   return product;
@@ -660,17 +674,35 @@ export async function upsertVariant(
 ): Promise<PartyProductVariant> {
   requirePermission(actor, 'parties.edit');
 
-  if (!(await partyRepo.findPartyById(actor.tenantId, input.partyId))) {
-    throw new NotFoundError('Party');
-  }
+  const party = await partyRepo.findPartyById(actor.tenantId, input.partyId);
+  if (!party) throw new NotFoundError('Party');
   await requirePartyAccess(input.partyId, 'manage', actor);
-  if (!(await productRepo.findProductById(actor.tenantId, input.productId))) {
-    throw new NotFoundError('Product');
-  }
+  const product = await productRepo.findProductById(actor.tenantId, input.productId);
+  if (!product) throw new NotFoundError('Product');
 
   const variant = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
-    return variantRepo.upsertVariant({ tenantId: actor.tenantId, hlc }, input, trx);
+    const row = await variantRepo.upsertVariant({ tenantId: actor.tenantId, hlc }, input, trx);
+
+    // Filed under the party, not as a `party_variant` of its own: the Logs
+    // screen's party scope (`partyScopeLogSql`) narrows only lead, order and
+    // party entries, and this one names the party and what it calls the
+    // product — exactly as private as the party itself.
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'party',
+        entityId: party.id,
+        action: 'variant_saved',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: { name: party.name, product: product.name, productId: product.id },
+      },
+      actor,
+      trx,
+    );
+
+    return row;
   });
 
   publishChange({

@@ -100,7 +100,7 @@ export async function createLead(input: LeadInput, actor: ActorContext): Promise
     partyWiseMode: input.partyWiseMode ?? false,
   });
 
-  const id = await db().transaction(async (trx) => {
+  const lead = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
 
     const leadId = await leadRepo.insertLead(
@@ -141,21 +141,25 @@ export async function createLead(input: LeadInput, actor: ActorContext): Promise
       trx,
     );
 
-    return leadId;
+    // Read back inside the transaction, because the entry's details come from
+    // the stored lead — and the entry is written here, last, not after the
+    // commit on another connection where a failure was only ever a warning.
+    const created = await leadRepo.findLeadById(actor.tenantId, leadId, UNSCOPED_PARTY_ACCESS, trx);
+    if (!created) throw new Error('Lead disappeared immediately after insert');
+
+    await activityLog.recordActivity({
+      tenantId: actor.tenantId,
+      entityType: 'lead',
+      entityId: created.id,
+      action: 'created',
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      details: { itemCount: created.items.length, incomplete: created.incomplete },
+    }, actor, trx);
+
+    return created;
   });
 
-  const lead = await leadRepo.findLeadById(actor.tenantId, id, UNSCOPED_PARTY_ACCESS);
-  if (!lead) throw new Error('Lead disappeared immediately after insert');
-
-  await activityLog.recordDetachedActivity({
-    tenantId: actor.tenantId,
-    entityType: 'lead',
-    entityId: lead.id,
-    action: 'created',
-    actorType: actor.actorType,
-    actorId: actor.actorId,
-    details: { itemCount: lead.items.length, incomplete: lead.incomplete },
-  }, actor, db());
   publishChange({ entity: 'lead', action: 'created', id: lead.id, payload: lead });
 
   return lead;
@@ -228,19 +232,20 @@ export async function updateLead(
       await leadRepo.updateLeadColumns(actor.tenantId, id, patch, { hlc, fieldHlc }, trx);
     }
     if (lines) await leadRepo.replaceLeadLines(actor.tenantId, id, lines, trx);
+
+    await activityLog.recordActivity({
+      tenantId: actor.tenantId,
+      entityType: 'lead',
+      entityId: id,
+      action: 'updated',
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+    }, actor, trx);
   });
 
   const lead = await leadRepo.findLeadById(actor.tenantId, id, UNSCOPED_PARTY_ACCESS);
   if (!lead) throw new NotFoundError('Lead');
 
-  await activityLog.recordDetachedActivity({
-    tenantId: actor.tenantId,
-    entityType: 'lead',
-    entityId: id,
-    action: 'updated',
-    actorType: actor.actorType,
-    actorId: actor.actorId,
-  }, actor, db());
   publishChange({ entity: 'lead', action: 'updated', id, payload: lead });
 
   return lead;
@@ -306,20 +311,21 @@ export async function setStage(
         trx,
       );
     }
+
+    await activityLog.recordActivity({
+      tenantId: actor.tenantId,
+      entityType: 'lead',
+      entityId: input.id,
+      action: 'stage_changed',
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      details: { from: from.name, to: to.name },
+    }, actor, trx);
   });
 
   const lead = await leadRepo.findLeadById(actor.tenantId, input.id, UNSCOPED_PARTY_ACCESS);
   if (!lead) throw new NotFoundError('Lead');
 
-  await activityLog.recordDetachedActivity({
-    tenantId: actor.tenantId,
-    entityType: 'lead',
-    entityId: input.id,
-    action: 'stage_changed',
-    actorType: actor.actorType,
-    actorId: actor.actorId,
-    details: { from: from.name, to: to.name },
-  }, actor, db());
   publishChange({ entity: 'lead', action: 'updated', id: input.id, payload: lead });
 
   return lead;

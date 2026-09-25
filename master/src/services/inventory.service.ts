@@ -94,36 +94,47 @@ export async function recordInbound(
     throw new ValidationError('validation.stock.boxesArrivedRequired');
   }
 
-  const moved = await inventoryRepo.applyMovement({
-    tenantId: actor.tenantId,
-    productId: variant.productId,
-    variantId: variant.id,
-    movementType: 'inbound',
-    deltaBoxes: input.quantityBoxes,
-    referenceType: 'purchase',
-    note: input.note ?? null,
-    createdByUserId: actorUserId(actor),
+  // The movement and its entry in one transaction: the entry used to follow
+  // the commit, on another connection, and a failure there was only a warning
+  // — boxes on the ledger with no record of who entered them.
+  const moved = await db().transaction(async (trx) => {
+    const applied = await inventoryRepo.applyMovement(
+      {
+        tenantId: actor.tenantId,
+        productId: variant.productId,
+        variantId: variant.id,
+        movementType: 'inbound',
+        deltaBoxes: input.quantityBoxes,
+        referenceType: 'purchase',
+        note: input.note ?? null,
+        createdByUserId: actorUserId(actor),
+      },
+      trx,
+    );
+
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'stock',
+        entityId: variant.productId,
+        action: 'inbound',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: {
+          product: productName,
+          quantity: input.quantityBoxes,
+          variant: variant.label ?? variant.code,
+          code: variant.code,
+        },
+      },
+      actor,
+      trx,
+    );
+
+    return applied;
   });
   const level = await outgoing(actor.tenantId, moved);
 
-  await activityLog.recordDetachedActivity(
-    {
-      tenantId: actor.tenantId,
-      entityType: 'stock',
-      entityId: variant.productId,
-      action: 'inbound',
-      actorType: actor.actorType,
-      actorId: actor.actorId,
-      details: {
-        product: productName,
-        quantity: input.quantityBoxes,
-        variant: variant.label ?? variant.code,
-        code: variant.code,
-      },
-    },
-    actor,
-    db(),
-  );
   publishChange({ entity: 'stock', action: 'updated', id: variant.id, payload: level });
 
   return level;
@@ -175,37 +186,45 @@ export async function recordAdjustment(
     throw new ValidationError('validation.stock.adjustmentNoteRequired');
   }
 
-  const moved = await inventoryRepo.applyMovement({
-    tenantId: actor.tenantId,
-    productId: variant.productId,
-    variantId: variant.id,
-    movementType: 'adjustment',
-    deltaBoxes: delta,
-    referenceType: 'manual',
-    note: input.note ?? null,
-    createdByUserId: actorUserId(actor),
+  const moved = await db().transaction(async (trx) => {
+    const applied = await inventoryRepo.applyMovement(
+      {
+        tenantId: actor.tenantId,
+        productId: variant.productId,
+        variantId: variant.id,
+        movementType: 'adjustment',
+        deltaBoxes: delta,
+        referenceType: 'manual',
+        note: input.note ?? null,
+        createdByUserId: actorUserId(actor),
+      },
+      trx,
+    );
+
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'stock',
+        entityId: variant.productId,
+        action: 'adjusted',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: {
+          product: productName,
+          variant: variant.label ?? variant.code,
+          code: variant.code,
+          countedBoxes: input.quantityBoxes,
+          delta,
+        },
+      },
+      actor,
+      trx,
+    );
+
+    return applied;
   });
   const level = await outgoing(actor.tenantId, moved);
 
-  await activityLog.recordDetachedActivity(
-    {
-      tenantId: actor.tenantId,
-      entityType: 'stock',
-      entityId: variant.productId,
-      action: 'adjusted',
-      actorType: actor.actorType,
-      actorId: actor.actorId,
-      details: {
-        product: productName,
-        variant: variant.label ?? variant.code,
-        code: variant.code,
-        countedBoxes: input.quantityBoxes,
-        delta,
-      },
-    },
-    actor,
-    db(),
-  );
   publishChange({ entity: 'stock', action: 'updated', id: variant.id, payload: level });
 
   return level;
@@ -233,24 +252,56 @@ export async function setReorderLevel(
 ): Promise<InventoryStockLevel> {
   requirePermission(actor, 'inventory.edit');
 
-  const { variant } = await requireVariant(actor.tenantId, input.variantId);
+  const { variant, productName } = await requireVariant(actor.tenantId, input.variantId);
 
   // The band, checked here as well as by the database's own CHECK — a person
   // waiting on a form deserves a sentence, not a constraint name.
   assertStockLevels(input);
 
-  const stored = await inventoryRepo.setStockLevels(
-    actor.tenantId,
-    { productId: variant.productId, variantId: variant.id },
-    {
-      // Passed through as-is, `undefined` included: absent means untouched, and
-      // the repository writes only what was asserted.
-      reorderLevel: input.reorderLevel,
-      minStockLevel: input.minStockLevel,
-      maxStockLevel: input.maxStockLevel,
-    },
-  );
-  if (!stored) throw new NotFoundError('Stock level');
+  // Passed through as-is, `undefined` included: absent means untouched, and
+  // the repository writes only what was asserted.
+  const levels = {
+    reorderLevel: input.reorderLevel,
+    minStockLevel: input.minStockLevel,
+    maxStockLevel: input.maxStockLevel,
+  };
+  // Only what was asserted, which is also what the entry names. Nothing
+  // asserted is a read in the repository, so it is no event here either.
+  const asserted = Object.fromEntries(Object.entries(levels).filter(([, value]) => value !== undefined));
+
+  const stored = await db().transaction(async (trx) => {
+    const row = await inventoryRepo.setStockLevels(
+      actor.tenantId,
+      { productId: variant.productId, variantId: variant.id },
+      levels,
+      trx,
+    );
+    if (!row) throw new NotFoundError('Stock level');
+
+    // This write used to record nothing at all.
+    if (Object.keys(asserted).length > 0) {
+      await activityLog.recordActivity(
+        {
+          tenantId: actor.tenantId,
+          entityType: 'stock',
+          entityId: variant.productId,
+          action: 'levels_changed',
+          actorType: actor.actorType,
+          actorId: actor.actorId,
+          details: {
+            product: productName,
+            variant: variant.label ?? variant.code,
+            code: variant.code,
+            ...asserted,
+          },
+        },
+        actor,
+        trx,
+      );
+    }
+
+    return row;
+  });
   const level = await outgoing(actor.tenantId, stored);
 
   publishChange({ entity: 'stock', action: 'updated', id: variant.id, payload: level });

@@ -60,6 +60,7 @@ import { requirePartyAccess } from './party-access.service.js';
 import { db } from '../db/knex.js';
 import { ForbiddenError, NotFoundError, toErrorMessage, ValidationError } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
+import * as activityLog from '../repositories/activity-log.repository.js';
 import * as identityRepo from '../repositories/identity.repository.js';
 import * as leadRepo from '../repositories/lead.repository.js';
 import * as orderRepo from '../repositories/order.repository.js';
@@ -557,7 +558,8 @@ async function mergeUpdate(
       await requirePartyAccess(patch.party_id, 'manage', actor);
     }
 
-    if (Object.keys(patch).length > 0 || acceptedVariants) {
+    const wrote = Object.keys(patch).length > 0 || acceptedVariants !== null;
+    if (wrote) {
       await writeMergedColumns(entity, actor.tenantId, id, patch, outcome.fieldHlc, hlc, trx);
     }
     if (acceptedVariants) {
@@ -579,6 +581,33 @@ async function mergeUpdate(
           winningHlc: conflict.winningHlc,
           winningDeviceCode: conflict.winningDeviceCode,
         })),
+        trx,
+      );
+    }
+
+    /*
+     * Bypassing the services also bypassed their audit entry: an offline edit
+     * merged here changed the record and left nothing in the trail. Recorded
+     * as the online edit of the same record is — `updated`, with `{name}`
+     * where the record has one — last in this transaction, and only when
+     * something was written: a merge that lost every field changed nothing.
+     */
+    if (wrote) {
+      await activityLog.recordActivity(
+        {
+          tenantId: actor.tenantId,
+          entityType: entity,
+          entityId: id,
+          action: 'updated',
+          actorType: actor.actorType,
+          actorId: actor.actorId,
+          details: {
+            ...('name' in columns ? { name: String(outcome.accepted.name ?? current.values.name ?? '') } : {}),
+            fields: Object.keys(outcome.accepted),
+            ...(outcome.conflicts.length > 0 ? { conflicts: outcome.conflicts.length } : {}),
+          },
+        },
+        actor,
         trx,
       );
     }

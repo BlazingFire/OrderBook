@@ -38,6 +38,7 @@ import { panelLink } from '../realtime/panel-link.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as panelRepo from '../repositories/office-panel.repository.js';
 import { permissionSetForRole } from '../repositories/role.repository.js';
+import type { TransactionContext } from '../repositories/transaction.js';
 import { roleIdForTier } from '../repositories/user.repository.js';
 import { publishChange } from './change-bus.js';
 import { getSetting } from './settings.service.js';
@@ -119,33 +120,47 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
 
   const panelSecret = randomBytes(32).toString('base64url');
   const panelId = uuid();
-  const panel = await panelRepo.insertPanel({
-    id: panelId,
-    tenant_id: identity.tenantId,
-    name: request.panelName?.trim() || (await defaultPanelName(identity.tenantId)),
-    // Derived from the panel id rather than stored randomly, so a panel that
-    // loses its local files recovers the same code — and its existing
-    // temporary ids stay attributable to it.
-    device_code: deviceCodeFromSeed(panelId),
-    secret_hash: await bcrypt.hash(panelSecret, BCRYPT_ROUNDS),
-    lan_ip: remoteIp,
-    status: 'active',
-    paired_at: new Date(),
+  const name = request.panelName?.trim() || (await defaultPanelName(identity.tenantId));
+  const secretHash = await bcrypt.hash(panelSecret, BCRYPT_ROUNDS);
+
+  const panel = await db().transaction(async (trx) => {
+    const row = await panelRepo.insertPanel(
+      {
+        id: panelId,
+        tenant_id: identity.tenantId,
+        name,
+        // Derived from the panel id rather than stored randomly, so a panel that
+        // loses its local files recovers the same code — and its existing
+        // temporary ids stay attributable to it.
+        device_code: deviceCodeFromSeed(panelId),
+        secret_hash: secretHash,
+        lan_ip: remoteIp,
+        status: 'active',
+        paired_at: new Date(),
+      },
+      trx,
+    );
+
+    await activityLog.recordActivity({
+      tenantId: identity.tenantId,
+      entityType: 'office_panel',
+      entityId: row.id,
+      action: 'created',
+      actorType: 'system',
+      actorId: null,
+      // `{name}` is what the catalogue's "paired the office panel {name}"
+      // renders; this carried only the mode and the hostname, and the Logs
+      // screen showed the placeholder itself.
+      details: { name: row.name, mode: request.mode, hostname: request.hostname },
+    }, systemActor(identity.tenantId), trx);
+
+    return row;
   });
 
   // One panel per opening of the screen: the window closes as soon as a panel
   // pairs, so leaving the screen open does not silently admit others.
   if (request.mode === 'auto') closePairingWindow();
 
-  await activityLog.recordDetachedActivity({
-    tenantId: identity.tenantId,
-    entityType: 'office_panel',
-    entityId: panel.id,
-    action: 'created',
-    actorType: 'system',
-    actorId: null,
-    details: { mode: request.mode, hostname: request.hostname },
-  }, systemActor(identity.tenantId), db());
   publishChange({ entity: 'office_panel', action: 'created', id: panel.id, payload: panel });
 
   log.info(`Paired office panel "${panel.name}" (${panel.id}) via ${request.mode}`);
@@ -173,12 +188,16 @@ export async function authenticatePanel(panelId: string, panelSecret: string): P
 export async function revokePanel(panelId: string, actor?: ActorContext): Promise<OfficePanel> {
   await assertPanelBelongsTo(panelId, actor);
 
-  const panel = await panelRepo.updatePanelStatus(panelId, 'revoked');
-  if (!panel) throw new ValidationError('error.notFound', { what: 'Panel' });
+  const panel = await db().transaction(async (trx) => {
+    const row = await panelRepo.updatePanelStatus(panelId, 'revoked', trx);
+    if (!row) throw new ValidationError('error.notFound', { what: 'Panel' });
+
+    await recordPanelActivity(row, actor, { status: 'revoked' }, trx);
+    return row;
+  });
 
   forgetPanelConnection(panelId);
 
-  await recordPanelActivity(panel, actor, { status: 'revoked' });
   // Publish before closing the socket: hub.ts's onChange listener delivers
   // `panel:revoked` to sockets still in the office-panels room, so emitting
   // it after the socket is gone sends the cooperative notice to nobody and
@@ -209,6 +228,11 @@ export async function renamePanel(
  *
  * A field left out is left alone. That is what makes `notes: null` meaningful:
  * absent means "don't touch", null means "clear it".
+ *
+ * Every field is checked before any is written, and the writes and their
+ * entry share one transaction. Each write used to commit on its own as soon as
+ * its field was checked, so a role refused as unknown left the panel already
+ * renamed — the half-applied save described above.
  */
 export async function updatePanel(
   panelId: string,
@@ -220,14 +244,14 @@ export async function updatePanel(
   if (actor && existing.tenantId !== actor.tenantId) throw new NotFoundError('Panel');
 
   const changed: Record<string, unknown> = {};
-  let panel = existing;
+  const writes: Array<(trx: TransactionContext) => Promise<OfficePanel | null>> = [];
 
   if (input.name !== undefined) {
     const trimmed = input.name.trim();
     if (!trimmed) throw new ValidationError('validation.panel.nameEmpty');
 
-    if (trimmed !== panel.name) {
-      panel = (await panelRepo.renamePanel(panelId, trimmed)) ?? panel;
+    if (trimmed !== existing.name) {
+      writes.push((trx) => panelRepo.renamePanel(panelId, trimmed, trx));
       changed.name = trimmed;
     }
   }
@@ -238,29 +262,37 @@ export async function updatePanel(
       throw new ValidationError('validation.panel.notesTooLong', { max: MAX_NOTE_LENGTH });
     }
 
-    if (notes !== panel.notes) {
-      panel = (await panelRepo.updatePanelNotes(panelId, notes)) ?? panel;
+    if (notes !== existing.notes) {
+      writes.push((trx) => panelRepo.updatePanelNotes(panelId, notes, trx));
       changed.notes = notes === null ? 'cleared' : 'set';
     }
   }
 
-  if (input.roleId !== undefined && input.roleId !== panel.roleId) {
+  if (input.roleId !== undefined && input.roleId !== existing.roleId) {
+    const roleId = input.roleId;
     // A role from another company would silently widen what this panel may do,
     // so the id is resolved inside the tenant rather than trusted.
-    if (input.roleId !== null) {
-      const set = await permissionSetForRole(panel.tenantId, input.roleId);
+    if (roleId !== null) {
+      const set = await permissionSetForRole(existing.tenantId, roleId);
       if (!set) throw new NotFoundError('Role');
     }
 
-    panel = (await panelRepo.assignPanelRole(panelId, input.roleId)) ?? panel;
-    changed.roleId = input.roleId ?? 'default';
+    writes.push((trx) => panelRepo.assignPanelRole(panelId, roleId, trx));
+    changed.roleId = roleId ?? 'default';
   }
 
   // Nothing actually moved — no audit row, no broadcast. An edit that changes
   // nothing is not an event, and recording it would bury the ones that are.
-  if (Object.keys(changed).length === 0) return panel;
+  if (writes.length === 0) return existing;
 
-  await recordPanelActivity(panel, actor, changed);
+  const panel = await db().transaction(async (trx) => {
+    let row = existing;
+    for (const write of writes) row = (await write(trx)) ?? row;
+
+    await recordPanelActivity(row, actor, changed, trx);
+    return row;
+  });
+
   publishChange({ entity: 'office_panel', action: 'updated', id: panelId, payload: panel });
   return panel;
 }
@@ -438,7 +470,9 @@ export async function rotatePanelSecret(
   );
   if (!updated) throw new NotFoundError('Panel');
 
-  await recordPanelActivity(updated, actor, { secretRotated: true, delivered });
+  // Detached, deliberately: the panel may already be holding the new secret,
+  // and rolling the hash back because the entry failed would lock it out.
+  await recordRemotePanelActivity(updated, actor, { secretRotated: true, delivered });
   publishChange({ entity: 'office_panel', action: 'updated', id: panelId, payload: updated });
   log.info(`Reissued the secret for office panel ${panelId} (delivered: ${delivered})`);
 
@@ -482,7 +516,9 @@ export async function setPanelStoragePath(
     moveExisting: input.moveExisting !== false,
   });
 
-  await recordPanelActivity(panel, actor, { storagePath: result.dataDir });
+  // Detached, deliberately: the move already happened on the panel's own disk,
+  // and nothing on this side could take it back if the entry failed.
+  await recordRemotePanelActivity(panel, actor, { storagePath: result.dataDir });
   // The panel re-reports after moving, but the row on file is stale until it
   // does; write the new path now so the screen agrees with what just happened.
   await panelRepo.updateDeviceReport(panelId, {
@@ -641,8 +677,41 @@ function toReportInput(panel: OfficePanel): OfficePanelReportInput {
  * `office_panel`/`updated` is an existing catalogue token, so what varies is
  * `details` — which is where "what changed" belongs anyway: the trail is
  * append-only, and a new token per field would be a token per future field.
+ *
+ * Inside the change's own transaction, so the row and its entry commit
+ * together — see `recordRemotePanelActivity` for the two changes that cannot.
  */
 async function recordPanelActivity(
+  panel: OfficePanel,
+  actor: ActorContext | undefined,
+  details: Record<string, unknown>,
+  trx: TransactionContext,
+): Promise<void> {
+  const acting = actor ?? systemActor(panel.tenantId);
+
+  await activityLog.recordActivity(
+    {
+      tenantId: panel.tenantId,
+      entityType: 'office_panel',
+      entityId: panel.id,
+      action: 'updated',
+      actorType: acting.actorType,
+      actorId: acting.actorId,
+      details: { name: panel.name, ...details },
+    },
+    acting,
+    trx,
+  );
+}
+
+/**
+ * The same entry, for a change that had already happened on the panel's own
+ * machine before the Master wrote anything — a reissued secret the panel has
+ * stored, files it has moved. There is no transaction that could take the
+ * panel's half back, so the entry is written detached (`activity-log.repository.ts`
+ * says when that is right) rather than made able to undo the Master's half.
+ */
+async function recordRemotePanelActivity(
   panel: OfficePanel,
   actor: ActorContext | undefined,
   details: Record<string, unknown>,

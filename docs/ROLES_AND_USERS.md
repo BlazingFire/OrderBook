@@ -199,11 +199,28 @@ audited write for one company queues behind the others. At this product's scale 
 handful of panels, human-paced actions — that is not a constraint worth trading a trustworthy trail
 for.
 
-**Still best-effort:** leads, orders, parties, products, inventory and panels call
-`recordDetachedActivity`, which preserves the old behaviour but is named honestly. Those call sites
-record *after* their transaction closes, so making them atomic is a restructuring of each service
-rather than a parameter change. Roles, users and authentication — the module these documents govern
-— are atomic.
+The entry is the **last** statement of its transaction, after `master_clock` and every row the change
+locks, so a transaction holding the chain lock never waits on anything but its own commit and two
+audited writes cannot deadlock over it. `master/tests/audit-atomicity.integration.test.ts` holds a row
+each write has to lock and checks the chain lock is still free while the write waits for it.
+
+Creating and editing parties, products and leads, a lead's stage move, conversion, dispatch, stock in,
+count corrections, and panel pairing, revocation and editing used to record *after* their transaction
+closed, through `recordDetachedActivity`. A party-wise record, stock levels, an order edit, an order's
+stage move and an offline edit applied by the merge recorded nothing at all. Since 2026-09-24 every
+one of them records inside its transaction (`master/tests/audit-atomicity.integration.test.ts`).
+
+**Still detached, on purpose** — `recordDetachedActivity`, whose failure is only a warning:
+
+- **Sign-in attempts** (`auth.service.ts`), one path for refused and accepted. A refused attempt
+  changed nothing. An accepted one does: it stamps `users.last_sign_in`, and may rewrite a bcrypt hash
+  as scrypt, in a transaction of its own — and its entry is still written after that commits. It could
+  join that transaction and does not, because joining would make signing in fail whenever the trail
+  cannot be written, for the administrator who has to fix the trail as much as for anyone.
+- **Connector runs** — many transactions, one summary entry written after the last.
+- **A panel's reissued secret and moved storage folder** — changes that have already happened on the
+  panel's own machine before the Master writes, where rolling the Master's half back because the entry
+  failed would leave the two machines disagreeing.
 
 ---
 
@@ -463,7 +480,7 @@ secret costs: `docs/DEVELOPER_MODE.md`.
 | `active` column | `is_active` | Matches the convention already used by `parties` and `products` |
 | Sign-in works offline against the local replica | **Built** — see §15 | The panel verifies against a verifier it minted itself at the last online sign-in, rather than against a replica of the Master's hashes, which the Master never sends. Only people who have signed in on that machine before can sign in there offline |
 | Roles and users are *managed* from any panel | Managed on the Master only | The Office Panel signs people in; it has no role editor or user list. Nothing in the schema prevents one — it has not been built |
-| Every audited write is atomic with its entry | True for roles, users and auth; still best-effort for leads, orders, parties, products, inventory and panels | Those call sites record after their transaction closes, so the fix is a restructuring of each service rather than a parameter change. They call `recordDetachedActivity`, which is named for what it does — see §7.1 |
+| Every audited write is atomic with its entry | True since 2026-09-24 for every audited write that is the Master's alone and fits in one transaction — **except** an accepted sign-in, whose `last_sign_in` stamp (and any password-hash upgrade) commits before its entry is written | Detached, on purpose: sign-in attempts, refused or accepted; connector runs (many transactions, one entry); and a panel's reissued secret or moved storage, which have already happened on the panel's machine before the Master writes its half. See §7.1 |
 | The database refuses to open unencrypted | **Not implemented, and undecided** | SQLCipher is a SQLite-file mechanism and community PostgreSQL has no upstream equivalent, so the swap removed the mechanism with no in-schema replacement. Every `password_hash` is already an irreversible digest and the cluster is loopback-bound, but "data at rest is unreadable without a key" is a guarantee this build does not make. Open question for the owner |
 | Recycle Bin module (`2-…` §4.12) | Soft delete and restore work; there is no cross-entity Recycle Bin screen | Restore is reachable through the API and for roles/users through this module |
 | API keys (`api_keys` referencing `role_id`) | **Not built** | A separate entity the documents describe but do not specify here |
