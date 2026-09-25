@@ -340,9 +340,10 @@ describe('refusing a folder the panel would not own', () => {
   });
 
   it('takes a folder holding nothing but an Office Panel’s own files', async () => {
-    // A folder this panel moved away from earlier, which keeps its old copy,
-    // and the shell's log and setting — with the litter Finder and Explorer
-    // leave behind in any folder somebody has opened.
+    // A folder this panel moved away from earlier, which keeps its old copy —
+    // a queue it once set aside as unreadable included — and the shell's log
+    // and setting, with the litter Finder and Explorer leave behind in any
+    // folder somebody has opened.
     const target = path.join(root, 'earlier');
     await fs.mkdir(path.join(target, 'images', 'IM1'), { recursive: true });
     await fs.mkdir(path.join(target, 'logs'));
@@ -350,6 +351,7 @@ describe('refusing a folder the panel would not own', () => {
     for (const name of [
       'outbox.json',
       'outbox.json.tmp',
+      'outbox.json.unreadable-2026-09-25T09-30-00-000Z',
       'pairing.json',
       'shell.json',
       '.DS_Store',

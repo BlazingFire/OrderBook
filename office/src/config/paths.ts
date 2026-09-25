@@ -367,12 +367,14 @@ async function copyTree(from: string, to: string): Promise<number> {
  * onto a folder another Office Panel left, still works; and rather than a list
  * of places to avoid, because nobody can list every folder that holds a
  * company's other files. A temp file left by a write that was cut off
- * (`outbox.json.tmp`) counts as the file it was on its way to becoming.
+ * (`outbox.json.tmp`) counts as the file it was on its way to becoming, and a
+ * queue set aside as unreadable (`outbox.json.unreadable-…`, `setAside` in
+ * `sync/outbox.store.ts`) as the file it was.
  */
 async function foreignEntry(dir: string): Promise<string | null> {
   const names = (await fs.readdir(dir)).sort();
   const ours = (name: string): boolean =>
-    PANEL_ENTRIES.has(name) || PANEL_ENTRIES.has(name.replace(/\.tmp$/, ''));
+    PANEL_ENTRIES.has(name) || PANEL_ENTRIES.has(name.replace(/\.(tmp|unreadable-[^.]+)$/, ''));
 
   return names.find((name) => !ours(name)) ?? null;
 }

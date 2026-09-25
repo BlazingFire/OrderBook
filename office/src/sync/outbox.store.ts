@@ -28,6 +28,8 @@ import { deviceCode } from './device.js';
 const log = createLogger('outbox');
 
 let cached: Mutation[] | null = null;
+/** The read in flight, so callers arriving together share one look at the file. */
+let reading: Promise<Mutation[] | null> | null = null;
 /** Serialises writes: two concurrent saves must not both rewrite the file. */
 let writeChain: Promise<void> = Promise.resolve();
 
@@ -146,43 +148,118 @@ export async function remapIds(mapping: Map<string, string>): Promise<void> {
   );
 }
 
+/**
+ * The queue, for anything that only reads it — `[]` for a moment when the file
+ * could not be read this time (see `readQueue`), which a count on the screen
+ * can live with and a write must never start from (`loadForWrite`).
+ */
 async function load(): Promise<Mutation[]> {
-  if (cached) return cached;
+  return (await readQueue()) ?? [];
+}
 
+/**
+ * The queue a write starts from. Refuses rather than answering `[]` for a file
+ * it could not read: the write rewrites the whole file, and starting from an
+ * empty stand-in would replace a queue of unsent work with the one change being
+ * saved. The save fails instead, and says so to whoever made it.
+ */
+async function loadForWrite(): Promise<Mutation[]> {
+  const current = await readQueue();
+  if (current) return current;
+  throw new Error(
+    `Could not read the queued changes in ${paths().outboxFile}, so did not save over them`,
+  );
+}
+
+function readQueue(): Promise<Mutation[] | null> {
+  if (cached) return Promise.resolve(cached);
+
+  reading ??= readQueueFile().finally(() => {
+    reading = null;
+  });
+  return reading;
+}
+
+/**
+ * Read the queue from disk. Null when the file is there but could not be read
+ * *this time*, which is not cached, so the next read tries again.
+ */
+async function readQueueFile(): Promise<Mutation[] | null> {
   const file = paths().outboxFile;
 
+  let raw: string;
   try {
-    const raw = await fs.readFile(file, 'utf8');
+    raw = await fs.readFile(file, 'utf8');
+  } catch (error) {
+    // Absent means nothing queued, and is not worth a line.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      cached = [];
+      return cached;
+    }
+
+    // Says nothing about what the file holds: on Windows an antivirus scan or
+    // a backup tool holds a file open for a moment. Reading that as "empty"
+    // used to let the next save write over every queued change.
+    log.error(`Could not read the queued changes in ${file}; will try again`, error);
+    return null;
+  }
+
+  try {
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) throw new Error('The file does not hold a list of changes');
     cached = parsed as Mutation[];
   } catch (error) {
-    // Absent means nothing queued, and is not worth a line. Unreadable is
-    // reported but not fatal — a panel that refused to start because of a
-    // corrupt queue would be worse than one that starts empty and can take new
-    // work. Reported loudly, though: the next save rewrites this file, so the
-    // log is the only trace that the queue ever held anything.
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      log.error(
-        `Could not read the queued changes in ${file}; starting with an empty queue, so what it held will not reach the Master`,
-        error,
-      );
-    }
+    // Read, and not a queue. Reported but not fatal — a panel that refused to
+    // start because of a corrupt queue would be worse than one that starts
+    // empty and can take new work. Not written over either: the next save
+    // rewrites `outbox.json`, so the file is kept under another name first,
+    // and the log says which, for somebody to recover what it held.
+    const aside = await setAside(file);
+    log.error(
+      aside
+        ? `Could not read the queued changes in ${file}; kept them as ${aside} and started an empty queue, so what they held will not reach the Master unless somebody recovers it`
+        : `Could not read the queued changes in ${file}, or set them aside; started an empty queue, and the next save will write over them`,
+      error,
+    );
     cached = [];
   }
 
   return cached;
 }
 
+/**
+ * Move an unreadable queue out of the way, beside itself. Null when even that
+ * fails. The name stays an Office Panel's own for a storage move
+ * (`foreignEntry` in `config/paths.ts`), which carries it along.
+ */
+async function setAside(file: string): Promise<string | null> {
+  // No `:` — Windows does not allow one in a file name.
+  const aside = `${file}.unreadable-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+
+  try {
+    await fs.rename(file, aside);
+    return aside;
+  } catch {
+    return null;
+  }
+}
+
 function mutate(update: (current: Mutation[]) => Mutation[]): Promise<void> {
-  writeChain = writeChain.then(async () => {
-    const next = update(await load());
+  const write = writeChain.then(async () => {
+    const next = update(await loadForWrite());
+    await persist(next);
+    // Only once it is on disk: a save that failed was reported as failed, and
+    // must not then reach the Master anyway on the back of the next one.
     cached = next;
     revision += 1;
-    await persist(next);
   });
 
-  return writeChain;
+  // The next write waits for this one, but not on its success. Chained on the
+  // promise itself, one failed save — a full disk, a locked file — failed
+  // every save after it until the panel was restarted.
+  writeChain = write.catch(() => {});
+
+  return write;
 }
 
 /**
@@ -291,6 +368,7 @@ async function persistRefusals(entries: RefusedWrite[]): Promise<void> {
 export function resetOutboxCache(): void {
   revision += 1;
   cached = null;
+  reading = null;
   refusalsCache = null;
   writeChain = Promise.resolve();
   refusalChain = Promise.resolve();
