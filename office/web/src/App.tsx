@@ -96,8 +96,16 @@ type Tab =
      switching tab silently discarded a half-filled lead. */
   | 'addLead';
 
+/**
+ * The route the location hash names, without the `#/` in front of it.
+ *
+ * The footer link writes `#/gallery`, so the slash is part of the hash. Taking
+ * off only the `#` read that as `/gallery`, which names nothing — and the
+ * `hashchange` the link itself causes then closed the gallery its own click
+ * had just opened.
+ */
 function readHash(): string {
-  return window.location.hash.replace(/^#/, '');
+  return window.location.hash.replace(/^#\/?/, '');
 }
 
 /** The cold-start steps the splash reports, in the order they run. */
@@ -273,6 +281,13 @@ function OfficePanel() {
     () =>
       onSessionEnded((reason) => {
         setSession(null);
+        // What `signOut` clears too: whoever signs in next at this window
+        // starts afresh. The screen stayed, and the next person started on it
+        // — the Conflicts page, which stays offered while it is the open one,
+        // for somebody with no refusals and no right to adjudicate, or a view
+        // of the last person's parties until the first snapshot replaced it.
+        setView(null);
+        setTab('dashboard');
         setSignInNotice(reason);
       }),
     [],
@@ -333,8 +348,8 @@ function OfficePanel() {
         if (cancelled) return;
         // A *coded* `ApiError` carries a message meant for a reader — our own
         // 'timeout', or something the server explained. Everything else is a
-        // transport failure or an unstructured 500, whose message is
-        // "Request failed" and helps nobody.
+        // transport failure or an unstructured 500, whose message is the
+        // generic `error.requestFailed` and helps nobody.
         setBootError(
           caught instanceof ApiError && caught.code !== 'internal_error'
             ? caught.message
@@ -445,13 +460,16 @@ function OfficePanel() {
          * This was gated on `sync.resolveConflicts`, which sits at the admin
          * tier — so the one notification that a write had been thrown away was
          * withheld from exactly the shop-floor staff whose writes get thrown
-         * away. Only the *route to the screen* needs a permission now, and even
-         * that one is open: the refusals section there is a person's own work,
-         * and dismissing it is not an adjudication.
+         * away. The route to the screen is open too: the sidebar offers
+         * Conflicts to anybody holding refusals (see its entry below), because
+         * the refusals section there is a person's own work and dismissing it
+         * is not an adjudication. Before that entry was widened, this action
+         * set a tab nobody without the permission had in their sidebar, and
+         * `activeId` fell back to the Dashboard.
          */
         toast.push(translator().tCount('sync.changesRefused', outcome.rejections.length), {
           tone: 'error',
-          action: { label: t('action.reviewRefusals'), onClick: () => setTab('conflicts') },
+          action: { label: t('action.reviewRefusals'), onClick: showConflicts },
         });
       }
     } catch (caught) {
@@ -461,6 +479,24 @@ function OfficePanel() {
     } finally {
       setFlushing(false);
     }
+  }
+
+  /*
+   * To the Conflicts page, from the refusal toast or the sync popover.
+   *
+   * Not through `goToTab`: the toast's action is the closure of the render
+   * that ran `flush`, whose sidebar did not yet offer Conflicts to somebody
+   * holding their first refusals, so that check would refuse it. Both are
+   * reachable with the gallery open — the footer is on every screen — so the
+   * gallery is left the way `goToTab` leaves it; setting the tab alone left
+   * the person on the gallery with the page changed underneath it.
+   */
+  function showConflicts(): void {
+    setSyncPopover(false);
+    if (readHash())
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    setRoute('');
+    setTab('conflicts');
   }
 
   async function signOut(): Promise<void> {
@@ -645,6 +681,14 @@ function OfficePanel() {
           can('orders.view')
             ? { id: 'orders', label: t('nav.orders'), icon: 'orders' as const }
             : null,
+          /*
+           * Resolving merge conflicts needs `sync.resolveConflicts`, but the
+           * screen also lists this person's own refused writes, which are
+           * theirs to read and dismiss (`ConflictsScreen`'s header). So it is
+           * offered while any are waiting, counting them, and stays offered
+           * while it is the open screen: dismissing the last refusal must not
+           * pull the page out from under the person who dismissed it.
+           */
           can('sync.resolveConflicts')
             ? {
                 id: 'conflicts',
@@ -652,7 +696,14 @@ function OfficePanel() {
                 icon: 'conflicts' as const,
                 count: openConflicts > 0 ? openConflicts : undefined,
               }
-            : null,
+            : rejections.length > 0 || tab === 'conflicts'
+              ? {
+                  id: 'conflicts',
+                  label: t('nav.conflicts'),
+                  icon: 'conflicts' as const,
+                  count: rejections.length > 0 ? rejections.length : undefined,
+                }
+              : null,
         ] satisfies Array<NavItem | null>
       ).filter((item): item is NonNullable<typeof item> => item !== null),
     },
@@ -677,8 +728,8 @@ function OfficePanel() {
       ).filter((item): item is NonNullable<typeof item> => item !== null),
     },
     {
-      // Per-machine appearance and device info — nothing here is gated by a
-      // permission, so this group has exactly one item, always.
+      // Per-machine appearance, device info and this machine's version — nothing
+      // here is gated by a permission, so both items are always present.
       label: t('nav.system'),
       items: (
         [
@@ -731,6 +782,15 @@ function OfficePanel() {
   function goToTab(id: string): void {
     // Already here. Selecting the open record's own entry is not a navigation.
     if (subNav?.items.some((item) => item.id === id)) return;
+    /*
+     * Only somewhere the sidebar offers this person. The sidebar is not the
+     * only way in — Alt+N and the palette's nav commands come through here for
+     * every screen in `OFFICE_NAV`, and so do the Dashboard's links and a
+     * search hit — and without this a role with no `leads.view` reached the
+     * lead board by pressing Alt+2. The Master still refuses what the role may
+     * not do; this keeps the panel from drawing the screen at all.
+     */
+    if (!flatItems.some((item) => item.id === id)) return;
     // Clear a stale #/gallery so the hash and the state agree; replaceState
     // does not fire hashchange, the setRoute below is the source of truth.
     if (readHash())
@@ -941,11 +1001,7 @@ function OfficePanel() {
                 <button
                   className="ob-btn ob-btn--ghost ob-btn--sm"
                   style={{ color: 'var(--accent)' }}
-                  onClick={() => {
-                    setSyncPopover(false);
-                    setRoute('');
-                    setTab('conflicts');
-                  }}
+                  onClick={showConflicts}
                 >
                   {t('action.reviewConflicts')}
                 </button>
@@ -1102,6 +1158,16 @@ function OfficePanel() {
               focusNonce={newLeadNonce}
               onSaved={(id) => {
                 setTab('leads');
+                /*
+                 * A saved lead is done with, so the form starts over — the
+                 * same remount the Reset button does, minus the question.
+                 * `ScreenHost` keeps the screen mounted while hidden, which
+                 * is what keeps a half-typed lead across a tab switch; it also
+                 * kept the lead just saved, so the next "New lead" opened on
+                 * it and one more Save queued it a second time.
+                 */
+                clearSubNav('addLead');
+                setResetNonce((current) => ({ ...current, addLead: (current.addLead ?? 0) + 1 }));
                 toast.push(t('lead.add.saved', { id }));
               }}
               onCancel={() => setTab('leads')}

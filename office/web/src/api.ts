@@ -10,7 +10,7 @@
  */
 
 import { DEVELOPER_RESET_CONFIRMATION, DEVELOPER_TOKEN_HEADER } from '@orderbook/shared';
-import { publishSessionEnded } from '@orderbook/ui';
+import { publishSessionEnded, t } from '@orderbook/ui';
 import type {
   Locale,
   PickKind,
@@ -265,7 +265,7 @@ async function send<T>(
     }
 
     throw new ApiError(
-      detail?.message ?? 'Request failed',
+      detail?.message ?? t('error.requestFailed'),
       detail?.error ?? 'internal_error',
       detail?.details ?? {},
       detail?.messageKey,
@@ -281,8 +281,18 @@ function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const asFailure = (error: unknown): never => {
     if (error instanceof ApiError) throw error;
-    if (timeout.aborted) throw new ApiError('The panel did not answer in time', 'timeout');
-    throw new ApiError('Request cancelled', 'aborted');
+    if (timeout.aborted) throw new ApiError(t('error.requestTimedOut'), 'timeout');
+    if (init?.signal?.aborted) throw new ApiError(t('error.requestCancelled'), 'aborted');
+    /*
+     * Neither silence nor a cancel: the request never reached the server,
+     * which is not running — or not yet. This was reported as 'aborted',
+     * "Request cancelled", and a boot that failed so put that on the splash as
+     * a message meant for a reader, in place of "could not reach the server",
+     * and `CatalogScreen`, which drops its own cancelled loads, dropped this
+     * failure with them. It gets the code an unstructured 500 gets: neither
+     * says more.
+     */
+    throw new ApiError(t('error.requestFailed'), 'internal_error');
   };
 
   if (method !== 'GET' || init?.signal) {
@@ -358,7 +368,7 @@ async function postFile<T>(path: string, form: FormData): Promise<T> {
       params?: MessageParams;
     } | null;
     throw new ApiError(
-      detail?.message ?? 'Request failed',
+      detail?.message ?? t('error.requestFailed'),
       detail?.error ?? 'internal_error',
       detail?.details ?? {},
       detail?.messageKey,
@@ -389,7 +399,7 @@ async function fetchBlob(
       params?: MessageParams;
     } | null;
     throw new ApiError(
-      detail?.message ?? 'Request failed',
+      detail?.message ?? t('error.requestFailed'),
       detail?.error ?? 'internal_error',
       detail?.details ?? {},
       detail?.messageKey,
@@ -610,7 +620,6 @@ export const api = {
     const params = new URLSearchParams({ q: query.term });
     if (query.categoryId) params.set('categoryId', query.categoryId);
     if (query.include?.length) params.set('include', query.include.join(','));
-    if (query.categoryId) params.set('categoryId', query.categoryId);
     return request<{ items: T[]; truncated: boolean; offline?: boolean }>(
       `/api/pick/${kind}?${params.toString()}`,
       query.signal ? { signal: query.signal } : undefined,

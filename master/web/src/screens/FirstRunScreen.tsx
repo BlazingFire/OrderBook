@@ -266,7 +266,7 @@ function RestoreFlow({ onBack, onComplete }: { onBack: () => void; onComplete: (
       setPreview(await api.previewRestoreSetup(chosen));
       setStep('preview');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not read that file');
+      setError(err instanceof ApiError ? err.message : t('backup.restore.readFailed'));
     } finally {
       setBusy(false);
     }
@@ -281,7 +281,7 @@ function RestoreFlow({ onBack, onComplete }: { onBack: () => void; onComplete: (
       setNewPairingPassword(result.newPairingPassword);
       setStep('done');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Restore failed');
+      setError(err instanceof ApiError ? err.message : t('backup.restore.failed'));
     } finally {
       setBusy(false);
     }

@@ -209,7 +209,7 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
                 void run(async () => {
                   await api.addLeadRemark(lead.id, remark.trim());
                   setRemark('');
-                }, 'Could not add the note')
+                }, t('lead.error.addNote'))
               }
             >
               {t('lead.detail.addNote')}
@@ -229,7 +229,7 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
                 onChange={(event) =>
                   void run(
                     () => api.setLeadStage(lead.id, event.target.value),
-                    'Could not move the lead',
+                    t('lead.error.move'),
                   )
                 }
               >
@@ -269,6 +269,8 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
             items={[
               { label: t('lead.detail.followUp'), value: lead.followUpDate ?? '—' },
               {
+                // "Party-wise records": the key's name predates the removal of
+                // pricing, the text names no money.
                 label: t('lead.detail.partyRates'),
                 value: lead.partyWiseMode ? t('lead.detail.yes') : t('lead.detail.no'),
               },
@@ -347,7 +349,7 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
                         expectedDispatchDate: expectedDate || null,
                       });
                       onClose();
-                    }, 'Could not convert the lead')
+                    }, t('lead.error.convert'))
                   }
                 >
                   {t('lead.detail.convertAction')}

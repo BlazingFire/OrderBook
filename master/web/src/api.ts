@@ -1,7 +1,7 @@
 /** Thin wrapper over the Master's local HTTP API. */
 
 import { DEVELOPER_RESET_CONFIRMATION, DEVELOPER_TOKEN_HEADER } from '@orderbook/shared';
-import { publishSessionEnded } from '@orderbook/ui';
+import { publishSessionEnded, t } from '@orderbook/ui';
 import type {
   Locale,
   PickKind,
@@ -225,7 +225,7 @@ async function send<T>(
     }
 
     throw new ApiError(
-      detail?.message ?? 'Request failed',
+      detail?.message ?? t('error.requestFailed'),
       detail?.error ?? 'internal_error',
       detail?.details ?? {},
       detail?.messageKey,
@@ -242,8 +242,16 @@ function request<T>(path: string, init?: RequestInit): Promise<T> {
   /** Silence and a refusal are different facts; a caller may retry only one. */
   const asFailure = (error: unknown): never => {
     if (error instanceof ApiError) throw error;
-    if (timeout.aborted) throw new ApiError('The panel did not answer in time', 'timeout');
-    throw new ApiError('Request cancelled', 'aborted');
+    if (timeout.aborted) throw new ApiError(t('error.requestTimedOut'), 'timeout');
+    if (init?.signal?.aborted) throw new ApiError(t('error.requestCancelled'), 'aborted');
+    /*
+     * Neither silence nor a cancel: the request never reached the server,
+     * which is not running — or not yet. This was reported as 'aborted',
+     * "Request cancelled", and a boot that failed so put that on the splash as
+     * a message meant for a reader, in place of "could not reach the server".
+     * It gets the code an unstructured 500 gets: neither says more.
+     */
+    throw new ApiError(t('error.requestFailed'), 'internal_error');
   };
 
   if (method !== 'GET' || init?.signal) {
@@ -300,11 +308,14 @@ const post = <T>(path: string, body?: unknown) =>
 /**
  * `?search=&limit=&offset=` for a paged list route, omitting whatever is absent.
  *
- * The Master clamps an unasked-for limit to its own default of 50
- * (`master/src/services/*.service.ts`'s `PAGING`), so a screen that wants more
- * than one page has to say so — and a screen that reports `rows.length` as the
- * company total is reporting a page size. Both mistakes are easier to avoid
- * with one helper than with template literals per call site.
+ * Each service answers an unasked-for limit with its own default and clamps an
+ * asked-for one to its own ceiling (`master/src/services/*.service.ts`'s
+ * `PAGING`, via `clampPaging`): parties 100 up to 500 — the one list this
+ * helper serves today — leads and orders the same, stock 200 up to 1000. So a
+ * screen that wants more than one page has to say so, and a screen that reports
+ * `rows.length` as the company total is reporting a page size. Both mistakes
+ * are easier to avoid with one helper than with template literals per call
+ * site.
  */
 function pagedQuery(search?: string, limit?: number, offset?: number): string {
   const params = new URLSearchParams();
@@ -333,7 +344,7 @@ async function throwIfNotOk(response: Response): Promise<void> {
     details?: Record<string, unknown>;
   } | null;
   throw new ApiError(
-    detail?.message ?? 'Request failed',
+    detail?.message ?? t('error.requestFailed'),
     detail?.error ?? 'internal_error',
     detail?.details ?? {},
   );
@@ -702,7 +713,6 @@ export const api = {
     const params = new URLSearchParams({ q: query.term });
     if (query.categoryId) params.set('categoryId', query.categoryId);
     if (query.include?.length) params.set('include', query.include.join(','));
-    if (query.categoryId) params.set('categoryId', query.categoryId);
     return request<{ items: T[]; truncated: boolean }>(
       `/api/pick/${kind}?${params.toString()}`,
       query.signal ? { signal: query.signal } : undefined,

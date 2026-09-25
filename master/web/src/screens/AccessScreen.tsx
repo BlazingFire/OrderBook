@@ -46,6 +46,12 @@ import {
 } from '@orderbook/ui';
 
 interface Props {
+  /**
+   * Bumped by the live socket whenever a user or a role changes — this
+   * browser's own edit or another administrator's — so the lists are never
+   * the ones this screen happened to load first.
+   */
+  revision: number;
   /** The signed-in caller's own resolved permissions. */
   permissions: string[];
   currentUserId: string;
@@ -59,6 +65,7 @@ interface Props {
 type Tab = 'users' | 'roles';
 
 export function AccessScreen({
+  revision,
   permissions,
   currentUserId,
   currentUserTier,
@@ -108,7 +115,7 @@ export function AccessScreen({
       setRoles(nextRoles);
       setUsers(nextUsers);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not load');
+      setError(caught instanceof Error ? caught.message : t('access.error.load'));
     } finally {
       // Until this flips, the tables render skeletons. Without it the first
       // paint said "0 people" and "Nobody here yet." — a statement about the
@@ -134,7 +141,7 @@ export function AccessScreen({
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, revision]);
 
   async function run(action: () => Promise<unknown>, failure: string): Promise<void> {
     setError(null);
@@ -1830,7 +1837,7 @@ function RecycleBin({
     } catch (caught) {
       // A dropped rejection left the lists at [] and the one panel whose whole
       // purpose is recovery then stated that nothing had been deleted.
-      setFailure(caught instanceof Error ? caught.message : 'Could not load');
+      setFailure(caught instanceof Error ? caught.message : t('access.recycleBin.loadFailed'));
     } finally {
       setLoading(false);
     }

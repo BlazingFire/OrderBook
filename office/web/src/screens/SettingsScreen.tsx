@@ -7,8 +7,9 @@
  * controls for them are now the same component the Master uses rather than a
  * second copy that drifted from it.
  *
- * Everything on the machine and sync tabs is read-only — pairing and sign-in
- * changes happen on their own screens. The exceptions are the storage tab,
+ * Everything on the Machine tab — this machine and its sync, one section each
+ * — is read-only; pairing and sign-in changes happen on their own screens.
+ * The exceptions are the storage tab,
  * where the data folder can be moved, and the Developer tab, which is the only
  * way to reach this panel's reset. That tab is shown to everybody signed in:
  * the developer password is the door, not a permission

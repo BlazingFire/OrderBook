@@ -177,6 +177,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
     'इस इंस्टॉलेशन में पहले से डेटा है। पुनर्स्थापित करने से पहले इसे मिटाने की पुष्टि करें।',
   'error.unavailable': 'मास्टर पैनल तक नहीं पहुँचा जा सका। लिंक वापस आने पर फिर कोशिश करें।',
   'error.unknown': 'कुछ गड़बड़ हो गई',
+  'error.requestFailed': 'अनुरोध विफल रहा',
+  'error.requestTimedOut': 'सर्वर ने समय पर जवाब नहीं दिया',
+  'error.requestCancelled': 'अनुरोध रद्द कर दिया गया',
 
   'error.generic.notFound': 'नहीं मिला',
   'error.generic.conflict': 'किसी और ने टकराव वाला बदलाव किया',
@@ -480,6 +483,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'activity.user.avatar_cleared': '{actor} ने {name} की प्रोफ़ाइल फ़ोटो हटाई',
   // TODO(i18n-hi)
   'access.editor.backToList': 'Roles & users',
+  'access.error.load': 'लोग और भूमिकाएँ लोड नहीं हो सकीं',
   // TODO(i18n-hi)
   'access.permissions.blocked': 'Needs the {tier} tier. Change the tier above to enable it.',
   // TODO(i18n-hi)
@@ -504,6 +508,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'access.recycleBin.hide': 'Hide deleted roles and people',
   // TODO(i18n-hi)
   'access.recycleBin.loading': 'Loading…',
+  'access.recycleBin.loadFailed': 'हटाई गई भूमिकाएँ और लोग लोड नहीं हो सके',
   // TODO(i18n-hi)
   'access.recycleBin.restore': 'Restore',
   // TODO(i18n-hi)
@@ -821,6 +826,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'backup.export.confirm': 'Export',
   // TODO(i18n-hi)
   'backup.export.done': 'Export ready — check your downloads',
+  'backup.export.failed': 'निर्यात विफल रहा',
   // TODO(i18n-hi)
   'backup.export.passphraseHint':
     'At least 10 characters. This passphrase is never stored anywhere — if it is lost, this file cannot be opened again.',
@@ -849,11 +855,13 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'backup.restore.donePairAgain':
     'This device has been restored. It will now reload and ask you to pair again.',
+  'backup.restore.failed': 'पुनर्स्थापना विफल रही',
   // TODO(i18n-hi)
   'backup.restore.newPairingPassword':
     'New pairing password (shown once): {password}. Every Office Panel must re-pair using it.',
   // TODO(i18n-hi)
   'backup.restore.passphraseLabel': 'Backup passphrase',
+  'backup.restore.readFailed': 'वह फ़ाइल पढ़ी नहीं जा सकी',
   // TODO(i18n-hi)
   'backup.restore.title': 'Restore from backup',
   // TODO(i18n-hi)
@@ -1608,6 +1616,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.board.tab.board': 'Board',
   // TODO(i18n-hi)
   'lead.board.tab.list': 'List',
+  'lead.board.via': '{source} से',
   // TODO(i18n-hi)
   'lead.detail.addNote': 'Add',
   // TODO(i18n-hi)
@@ -1669,6 +1678,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.detail.total': 'Lead total',
   // TODO(i18n-hi)
   'lead.detail.yes': 'Yes',
+  'lead.error.addNote': 'नोट नहीं जोड़ा जा सका',
+  'lead.error.convert': 'लीड को ऑर्डर में नहीं बदला जा सका',
+  'lead.error.move': 'लीड का चरण नहीं बदला जा सका',
   // TODO(i18n-hi)
   'lead.list.col.followUp': 'Follow up',
   // TODO(i18n-hi)
@@ -2158,6 +2170,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'orders.detail.weight': 'Weight',
   // TODO(i18n-hi)
   'orders.detail.weightComputed': 'Computed from the lines: {value} kg',
+  'orders.detail.weightOverrideInvalid': 'वज़न संख्या में लिखें, या इसे खाली छोड़ दें',
   // TODO(i18n-hi)
   'orders.detail.weightOverrideLabel': 'Override (leave blank to use the computed figure)',
   // TODO(i18n-hi)
@@ -2170,6 +2183,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'orders.empty.filteredTitle': 'No orders at this stage.',
   // TODO(i18n-hi)
   'orders.empty.title': 'No orders yet',
+  'orders.error.dispatch': 'ऑर्डर नहीं भेजा जा सका',
+  'orders.error.move': 'ऑर्डर का चरण नहीं बदला जा सका',
+  'orders.error.saveWeight': 'वज़न सहेजा नहीं जा सका',
   // TODO(i18n-hi)
   'orders.filter.allStages': 'All stages',
   // TODO(i18n-hi)

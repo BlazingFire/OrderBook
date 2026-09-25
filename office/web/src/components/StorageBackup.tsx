@@ -51,7 +51,7 @@ function ExportModal({ onClose }: { onClose: () => void }) {
       toast.push(t('backup.export.done'), { tone: 'ok' });
       onClose();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Export failed');
+      setError(err instanceof ApiError ? err.message : t('backup.export.failed'));
     } finally {
       setBusy(false);
     }
@@ -131,7 +131,7 @@ function RestoreModal({ onClose }: { onClose: () => void }) {
       setPreview(await api.previewRestoreStorage(chosen));
       setStep('preview');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not read that file');
+      setError(err instanceof ApiError ? err.message : t('backup.restore.readFailed'));
     } finally {
       setBusy(false);
     }
@@ -149,7 +149,7 @@ function RestoreModal({ onClose }: { onClose: () => void }) {
         setNeedsWipeConfirm(true);
         return;
       }
-      setError(err instanceof ApiError ? err.message : 'Restore failed');
+      setError(err instanceof ApiError ? err.message : t('backup.restore.failed'));
     } finally {
       setBusy(false);
     }

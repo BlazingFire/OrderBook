@@ -73,11 +73,10 @@ const HEX_PATTERN = /^#[0-9A-Fa-f]{6}$/;
 const HEX_EXAMPLE = '#c8a165';
 
 /**
- * Declared locally rather than imported from the shared package: every other
- * file in this app takes only *types* across that boundary, and one value
- * import would pull the whole shared barrel — message catalogues included —
- * into the browser bundle for the sake of five strings. The annotation still
- * fails the build if the union gains a member this list does not.
+ * Declared here because the shared package exports `CustomFieldType` only as a
+ * type — there is no runtime list of the five to import. The annotation fails
+ * the build on a member the union does not have; it does not notice a member
+ * the union gains and this list lacks, so a new field type is added here too.
  */
 const FIELD_TYPES: CustomFieldType[] = ['text', 'number', 'date', 'select', 'boolean'];
 
