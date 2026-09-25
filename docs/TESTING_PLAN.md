@@ -288,7 +288,7 @@ Setup: build a **newer** version (e.g., bump to `1.2.1` via `npm run release -- 
    - [ ] Trigger download — confirm progress is shown, and the downloaded file's hash is verified against the manifest before install.
    - [ ] Confirm install/relaunch succeeds and Office reconnects/re-pairs with Master automatically.
 3. **Failure paths** (fails soft — never crashes):
-   - [ ] Temporarily rename/remove `latest.json` in the release folder — confirm Master reports "nothing to install" cleanly, no error dialog.
+   - [ ] Temporarily rename/remove both manifests, `latest-win32.json` and `latest.json`, in the release folder (the reader falls back from one to the other, and with `ORDERBOOK_RELEASES_GITHUB_REPO` set the next check writes them back) — confirm Master reports "nothing to install" cleanly, no error dialog.
    - [ ] Corrupt the installer file's bytes (flip a byte) without updating its hash in the manifest — confirm the hash check on Office rejects it and refuses to run the corrupted installer.
    - [ ] Confirm an **unsigned** release (as built in this session, no `ORDERBOOK_RELEASE_KEY`) is accepted only because `ORDERBOOK_ALLOW_UNSIGNED_RELEASES` is understood to be needed for unsigned installs — verify actual behavior matches this expectation (either it installs with a visible "unsigned" warning, or it refuses outright — confirm which, and that it isn't silently installing unsigned code with no indication).
 

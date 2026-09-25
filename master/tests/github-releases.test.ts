@@ -15,6 +15,7 @@
  */
 
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
+import type * as Fs from 'node:fs';
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -815,7 +816,10 @@ const officeBuild = (platform: keyof typeof SETUP_EXTENSION, version = '2.0.0') 
 
 describe('one releases folder, several operating systems', () => {
   afterEach(() => {
+    vi.useRealTimers();
     delete process.env.ORDERBOOK_RELEASES_DIR;
+    delete process.env.ORDERBOOK_RELEASES_POLL_MINUTES;
+    delete process.env.APPIMAGE;
   });
 
   it('UPD-48: writes the manifest the reader looks for first, so one the release script left cannot shadow it', async () => {
@@ -915,10 +919,10 @@ describe('one releases folder, several operating systems', () => {
   });
 
   it('UPD-52: a Windows panel and a Mac panel asking in turn each get their own build, fetched once', async () => {
-    // The Master's poll fetches the office build for its own OS only; a panel
-    // on another OS has its build fetched when it asks. That works only if the
-    // two builds can share the folder — which they could not while each sync
-    // rewrote `latest.json` and swept the other's setup file.
+    // The Master's poll fetches the office build for its own OS; a panel on
+    // another OS has its first build fetched when it asks. That works only if
+    // the two builds can share the folder — which they could not while each
+    // sync rewrote `latest.json` and swept the other's setup file.
     const windows = officeBuild('win32');
     const mac = officeBuild('darwin');
     serve(publishedTogether(windows, mac));
@@ -943,6 +947,81 @@ describe('one releases folder, several operating systems', () => {
         file,
       ).toHaveLength(1);
     }
+  });
+
+  it('UPD-62: never sweeps the AppImage this Master is running from', async () => {
+    // An AppImage is not an installer but the program itself, run from wherever
+    // it was put — this folder included. Its name keeps the version it was
+    // downloaded as, so by name it is always superseded — and sweeping it
+    // deletes the running Master's own program, which is fine until it next starts.
+    const running = 'OrderBook-Master-1.0.0-Setup.AppImage';
+    const superseded = 'OrderBook-Master-1.5.0-Setup.AppImage';
+    for (const name of [running, superseded]) await writeFile(path.join(dir, name), PAYLOAD);
+    process.env.APPIMAGE = path.join(dir, running);
+
+    const linux = signed({ platform: 'linux', file: 'OrderBook-Master-2.0.0-Setup.AppImage' });
+    serve(publishedTogether(linux));
+
+    const { syncFromGitHub } = await loadService();
+    expect(await syncFromGitHub('master', dir, null, 'linux')).not.toBeNull();
+
+    expect((await readdir(dir)).sort()).toEqual([linux.file, running, 'latest-linux.json'].sort());
+  });
+
+  it('UPD-62: still sweeps a build that only shares its name with the running AppImage', async () => {
+    // The same file name in another folder is another file: a Master run from
+    // `~/Applications` must not keep a copy here for ever because the copy it
+    // runs was first downloaded as the same version.
+    const elsewhere = path.join(dir, 'Applications');
+    await mkdir(elsewhere);
+    const name = 'OrderBook-Master-1.0.0-Setup.AppImage';
+    await writeFile(path.join(elsewhere, name), PAYLOAD);
+    await writeFile(path.join(dir, name), PAYLOAD);
+    process.env.APPIMAGE = path.join(elsewhere, name);
+
+    const linux = signed({ platform: 'linux', file: 'OrderBook-Master-2.0.0-Setup.AppImage' });
+    serve(publishedTogether(linux));
+
+    const { syncFromGitHub } = await loadService();
+    expect(await syncFromGitHub('master', dir, null, 'linux')).not.toBeNull();
+
+    expect(await readdir(dir)).not.toContain(name);
+    expect(await readdir(elsewhere)).toEqual([name]);
+  });
+
+  it('UPD-63: the poll also fetches the office build for every other OS a panel has had one for', async () => {
+    // A panel on another OS has its build fetched when it asks, and the ask is
+    // answered after 5 s from the folder as it stands — "nothing new", until
+    // the download lands. Left at that, the first ask after every release said
+    // so. A manifest for that OS in the folder means a panel there has asked
+    // before, so the poll fetches its next build ahead of the ask, as it does
+    // the Master's own; an OS nobody here has asked for is not fetched at all.
+    const officeDir = path.join(dir, 'office-panel');
+    await mkdir(officeDir, { recursive: true });
+    const macBefore = officeBuild('darwin', '1.0.0');
+    await writeFile(path.join(officeDir, macBefore.file), PAYLOAD);
+    await writeFile(path.join(officeDir, 'latest-darwin.json'), JSON.stringify(macBefore));
+
+    const master = signed({ platform: 'win32' });
+    const windows = officeBuild('win32');
+    const mac = officeBuild('darwin');
+    const linux = officeBuild('linux');
+    serve(publishedTogether(master, windows, mac, linux));
+
+    await loadService({ ORDERBOOK_RELEASES_POLL_MINUTES: '60', ORDERBOOK_RELEASES_DIR: dir });
+    const { readManifest, startReleasePolling } = await import('../src/services/update.service.js');
+
+    vi.useFakeTimers();
+    const stop = startReleasePolling();
+    await vi.advanceTimersByTimeAsync(3 * 60_000);
+    await vi.waitFor(async () =>
+      expect((await readManifest('office', 'darwin'))?.file).toBe(mac.file),
+    );
+    stop();
+
+    expect((await readManifest('office', 'win32'))?.file).toBe(windows.file);
+    expect((await readManifest('master', 'win32'))?.file).toBe(master.file);
+    expect(requested).not.toContain(`${DOWNLOADS}/${linux.file}`);
   });
 });
 
@@ -1155,21 +1234,85 @@ describe('how long a download may take', () => {
     expect(await within(landing)).toBeNull();
     expect(await readdir(dir)).toEqual([]);
   });
+
+  it('UPD-59: a setup file behind GitHub s redirect gets the same limits as one without', async () => {
+    // Every real download is two hops: github.com answers 302 at once, and the
+    // object store sends the body. Each hop has its own 15 s to answer, so the
+    // clock that has to stop at headers is the second hop's, not the first's.
+    const objects = 'https://objects.githubusercontent.com/orderbook/setup.exe';
+    const manifest = signed();
+    const host = await handAnswered();
+    serve({
+      [API]: () => json(listing(manifest)),
+      [MANIFEST_URL]: () => json(manifest),
+      [SETUP_URL]: () => redirect(objects),
+      [objects]: host.route,
+    });
+
+    const { syncFromGitHub } = await loadService();
+    fakeClock();
+    const landing = syncFromGitHub('master', dir, null, 'win32');
+
+    const response = await host.answered;
+    response.writeHead(200, { 'content-length': String(PAYLOAD.length) });
+    response.flushHeaders();
+    await host.headersIn;
+    await settle();
+
+    for (let at = 0; at < PAYLOAD.length; at += 6) {
+      response.write(PAYLOAD.subarray(at, at + 6));
+      await settle();
+      await vi.advanceTimersByTimeAsync(10_000);
+    }
+    response.end();
+
+    expect((await within(landing)) as ReleaseManifest | null).toMatchObject({ version: '2.0.0' });
+    expect(requested).toContain(objects);
+    expect(await readFile(path.join(dir, manifest.file))).toEqual(PAYLOAD);
+  });
+
+  it('UPD-60: a setup file whose host never answers is given up after 15 s', async () => {
+    // The body's minute of silence starts at headers. Before them, the setup
+    // file's request is held to the 15 s every hop gets, like any other: the
+    // longer limits must not have taken that one away with them.
+    const manifest = signed();
+    const host = await handAnswered();
+    serve({
+      [API]: () => json(listing(manifest)),
+      [MANIFEST_URL]: () => json(manifest),
+      [SETUP_URL]: host.route,
+    });
+
+    const { syncFromGitHub } = await loadService();
+    fakeClock();
+    const landing = syncFromGitHub('master', dir, null, 'win32');
+
+    await host.answered; // asked, and never answered
+    await settle();
+
+    await vi.advanceTimersByTimeAsync(14_000);
+    expect(await within(landing, 200)).toBe('pending');
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(await within(landing)).toBeNull();
+    expect(await readdir(dir)).toEqual([]);
+  });
 });
 
 describe('answering while a download runs', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.doUnmock('node:fs');
     delete process.env.ORDERBOOK_RELEASES_DIR;
   });
 
   it('UPD-57: a panel asking while its build downloads is answered from the folder, not kept waiting', async () => {
     // An Office panel gives the Master 10 s to answer and the Master's own
     // browser 15; a setup file takes minutes. Waiting for the download told the
-    // first panel of a new OS to ask — whose build the poll never fetches —
-    // "Could not reach the Master Panel", every time, until the download it
-    // had started finished behind its back.
+    // first panel of a new OS to ask — whose first build the poll does not
+    // fetch — "Could not reach the Master Panel", every time, until the
+    // download it had started finished behind its back.
     const mac = officeBuild('darwin');
     const body = openBody();
     serve({ ...publishedTogether(mac), [`${DOWNLOADS}/${mac.file}`]: body.response });
@@ -1203,32 +1346,7 @@ describe('answering while a download runs', () => {
     // when an operator prepares the build already here. The sync was handed the
     // pinned file when it started — nothing, then — and so swept the operator's
     // installer the moment the newer one landed, out from under the click.
-    const masterDir = path.join(dir, 'master-panel');
-    await mkdir(masterDir, { recursive: true });
-
-    // Versions far above the running build's, so this is an update whatever
-    // `package.json` says.
-    const here = signed({
-      version: '90.0.0',
-      file: 'OrderBook-Master-90.0.0-Setup.exe',
-      platform: 'win32',
-    });
-    await writeFile(path.join(masterDir, here.file), PAYLOAD);
-    for (const name of ['latest-win32.json', 'latest.json']) {
-      await writeFile(path.join(masterDir, name), JSON.stringify(here));
-    }
-
-    const newer = signed({
-      version: '91.0.0',
-      file: 'OrderBook-Master-91.0.0-Setup.exe',
-      platform: 'win32',
-    });
-    const body = openBody();
-    serve({
-      [API]: () => json(listing(newer)),
-      [MANIFEST_URL]: () => json(newer),
-      [SETUP_URL]: body.response,
-    });
+    const { masterDir, here, newer, body } = await aBuildHereAndANewerOneDownloading();
 
     const { syncFromGitHub } = await loadService({ ORDERBOOK_RELEASES_DIR: dir });
     const { prepareMasterUpdate } = await import('../src/services/update.service.js');
@@ -1252,4 +1370,93 @@ describe('answering while a download runs', () => {
     expect(left).toContain(newer.file);
     expect(left).toContain(here.file); // pinned: the operator is about to run it
   });
+
+  it('UPD-61: a download landing while the operator s build is being verified spares it too', async () => {
+    // `prepareMasterUpdate` hashes 150 MB before the build becomes `prepared`,
+    // and a sync still running from the ask that found it can land in that
+    // time. Pinned only once verified, the build was unpinned while it was
+    // hashed and swept as superseded — the hash still finished on the open
+    // file, and the shell's copy of the path it was handed then failed.
+    const { masterDir, here, newer, body } = await aBuildHereAndANewerOneDownloading();
+
+    // Hold the hash of the operator's build, with its file already open, until
+    // the newer build has landed and been swept around it.
+    let hashing!: () => void;
+    const hashStarted = new Promise<void>((resolve) => (hashing = resolve));
+    let letHashFinish!: () => void;
+    const hashMayFinish = new Promise<void>((resolve) => (letHashFinish = resolve));
+    vi.doMock('node:fs', async () => {
+      const actual = await vi.importActual<typeof Fs>('node:fs');
+      return {
+        ...actual,
+        createReadStream: ((...args: Parameters<typeof actual.createReadStream>) => {
+          const stream = actual.createReadStream(...args);
+          if (String(args[0]).endsWith(here.file)) {
+            stream.pause();
+            stream.once('open', () => hashing());
+            void hashMayFinish.then(() => stream.resume());
+          }
+          return stream;
+        }) as typeof actual.createReadStream,
+      };
+    });
+
+    const { syncFromGitHub } = await loadService({ ORDERBOOK_RELEASES_DIR: dir });
+    const { prepareMasterUpdate } = await import('../src/services/update.service.js');
+    fakeClock();
+
+    const preparing = prepareMasterUpdate();
+    await settle();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(await within(hashStarted)).not.toBe('pending');
+
+    body.push(PAYLOAD);
+    body.end();
+    expect(await within(syncFromGitHub('master', masterDir, null, 'win32'))).toMatchObject({
+      version: '91.0.0',
+    });
+
+    letHashFinish();
+    expect(await within(preparing)).toMatchObject({ manifest: { version: '90.0.0' } });
+
+    const left = await readdir(masterDir);
+    expect(left).toContain(newer.file);
+    expect(left).toContain(here.file); // being verified, then pinned: the operator's next step
+  });
 });
+
+/**
+ * A Master build in the folder, and a newer one GitHub is part-way through
+ * sending: the shape in which a sync outlives the request that started it.
+ *
+ * Versions far above the running build's, so the one here is an update
+ * whatever `package.json` says.
+ */
+async function aBuildHereAndANewerOneDownloading() {
+  const masterDir = path.join(dir, 'master-panel');
+  await mkdir(masterDir, { recursive: true });
+
+  const here = signed({
+    version: '90.0.0',
+    file: 'OrderBook-Master-90.0.0-Setup.exe',
+    platform: 'win32',
+  });
+  await writeFile(path.join(masterDir, here.file), PAYLOAD);
+  for (const name of ['latest-win32.json', 'latest.json']) {
+    await writeFile(path.join(masterDir, name), JSON.stringify(here));
+  }
+
+  const newer = signed({
+    version: '91.0.0',
+    file: 'OrderBook-Master-91.0.0-Setup.exe',
+    platform: 'win32',
+  });
+  const body = openBody();
+  serve({
+    [API]: () => json(listing(newer)),
+    [MANIFEST_URL]: () => json(newer),
+    [SETUP_URL]: body.response,
+  });
+
+  return { masterDir, here, newer, body };
+}

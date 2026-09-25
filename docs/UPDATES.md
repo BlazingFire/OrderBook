@@ -110,6 +110,26 @@ To build locally instead, `npm run release` with `ORDERBOOK_RELEASE_KEY` and
 `ORDERBOOK_RELEASE_KEY_ID` set. It writes the same folder the USB-stick workflow
 has always used.
 
+## When a new build shows up
+
+A Master with `ORDERBOOK_RELEASES_GITHUB_REPO` set looks for a new release two
+minutes after it starts and then every `ORDERBOOK_RELEASES_POLL_MINUTES` (180
+by default), and downloads it into its releases folder. Opening an Updates
+screen asks GitHub too, but waits no more than five seconds for the answer — a
+setup file takes minutes to arrive — and then says what the folder holds. So
+between a release being published and the next poll, an Updates screen can say
+there is nothing new while the build downloads behind it. Open the screen again
+a few minutes later.
+
+The poll fetches the office build for the Master's own operating system, and
+for every other one a panel has already had a build for: once a Mac panel has
+asked, the `office-panel` folder holds `latest-darwin.json`, and each later Mac
+build comes with the poll. The first time a panel on a new operating system
+asks, its build only starts downloading then, so that panel's Updates screen
+shows nothing to install yet: check again a few minutes later. To stop fetching
+for an operating system the shop no longer runs, delete its
+`latest-<platform>.json` and its setup file from `office-panel`.
+
 ## What data survives
 
 All of it. The installer replaces the program files; the database, uploads and
@@ -218,21 +238,29 @@ system it is fetching: setup files named `OrderBook-Master-<version>-Setup.<ext>
 or `OrderBook-Office-<version>-Setup.<ext>` (`exe`, `dmg` or `AppImage`), their
 `.part` downloads, and that OS's manifest `.tmp` files. A Master whose panels run
 more than one OS keeps one build per OS in the same folder — its own OS's comes
-with the background poll, another's when a panel on that OS asks — and neither
-sweep touches the other's files. Notes, subfolders and anything else an operator
-puts in the releases folder are left alone. An installer that is part-way
-through being applied is protected too, so a new release landing between the
-Update button appearing and somebody pressing it cannot delete the file out from
-under the click.
+with the background poll, and another OS's first build when a panel on that OS
+asks, its later ones with the poll too (see *When a new build shows up*) — and
+neither sweep touches the other's files. Notes, subfolders, the standalone
+`.exe` and the Linux `.deb`, and anything else an operator puts in the releases
+folder are left alone. An installer that is part-way through being applied is
+protected too, so a new release landing between the Update button appearing and
+somebody pressing it cannot delete the file out from under the click.
+
+On Linux, keep the AppImage you run outside the releases folder. An AppImage is
+the program itself rather than an installer, and a superseded one in the
+releases folder is removed like any setup file — except the one the Master is
+itself running from, which it never removes.
 
 Office panels keep the same guarantee for `<data>/updates`, and the desktop
 shell's staging folder holds one installer at a time rather than one for every
 version ever installed.
 
-A leftover that cannot be removed — on Windows, a file still being streamed to a
-panel is locked — is left for the next run rather than failing the update. An
-update that refused to proceed because last month's build was busy would be a
-worse outcome than the disk space.
+A leftover that cannot be removed — on Windows, a file another program holds
+open, such as an antivirus scan — is left for the next run rather than failing
+the update. An update that refused to proceed because last month's build was
+busy would be a worse outcome than the disk space. A file still being streamed
+to a panel is not one of those: removing it succeeds, and the panel's download
+carries on from the file it already has open.
 
 ## Turning it off
 

@@ -25,7 +25,7 @@
 
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 
 import type {
@@ -243,6 +243,9 @@ export async function availability(
    * on without this request — every later ask for the same panel and OS shares
    * it rather than starting another — and this answer is the folder as it is:
    * "nothing new yet", until the download lands and the next ask finds it.
+   * Nothing in that answer says a download is under way — there is no reason
+   * for it yet — so `docs/UPDATES.md` tells an operator to check again, and the
+   * poll fetches ahead of the ask for every OS it can (`officePlatforms`).
    * `pinnedInstaller` itself rather than its value, because that sync can
    * outlive this request, and an operator can pin a build before it sweeps.
    */
@@ -318,19 +321,31 @@ export async function verifyRelease(panel: PanelKind, manifest: ReleaseManifest)
 let prepared: PreparedInstaller | null = null;
 
 /**
- * The filename a sweep must not remove, or null.
+ * The setup files `prepareMasterUpdate` is hashing right now, one entry per
+ * call in progress — so that one of two at once finishing does not unpin the
+ * file the other is still reading.
+ *
+ * Kept apart from `prepared` because the shell reads that one as "verified",
+ * and these are not yet.
+ */
+const verifying: string[] = [];
+
+/**
+ * The filenames a sweep must not remove.
  *
  * `prepareMasterUpdate` verifies a build and holds its path while the shell
  * polls health, the operator reads a dialog, and somebody finally clicks. Setup
  * filenames carry their version, so a newer release landing in that gap would
- * otherwise make the pinned file "superseded" and delete it mid-gesture.
+ * otherwise make the pinned file "superseded" and delete it mid-gesture. The
+ * build being hashed is pinned too, and so is the last one prepared until a new
+ * one replaces it: the shell may be copying it as a second preparation starts.
  *
  * Handed to `syncFromGitHub` as the function, not its value: a sync started
  * before the operator pinned anything can still be downloading afterwards, and
  * it has to ask at the moment it sweeps.
  */
-function pinnedInstaller(): string | null {
-  return prepared ? path.basename(prepared.path) : null;
+function pinnedInstaller(): string[] {
+  return prepared ? [...verifying, path.basename(prepared.path)] : [...verifying];
 }
 
 export function preparedInstaller(): PreparedInstaller | null {
@@ -349,9 +364,20 @@ export async function prepareMasterUpdate(): Promise<{ path: string; manifest: R
   const { available } = await masterAvailability();
   if (!available) throw new ValidationError('validation.updates.noneAvailable');
 
-  await verifyRelease('master', available);
-
+  // Pinned the moment the manifest names it, not once it is verified. The
+  // ask above waits on GitHub for `GITHUB_WAIT_MS` and no longer, so a newer
+  // build can still be downloading — for that ask, or for the background poll —
+  // and hashing 150 MB gives it time to land, and to sweep this one as
+  // superseded while it is being read.
   const file = releaseFileFor('master', available);
+  const name = path.basename(file);
+  verifying.push(name);
+  try {
+    await verifyRelease('master', available);
+  } finally {
+    verifying.splice(verifying.indexOf(name), 1);
+  }
+
   prepared = {
     path: file,
     sha256: available.sha256.toLowerCase(),
@@ -363,6 +389,53 @@ export async function prepareMasterUpdate(): Promise<{ path: string; manifest: R
 
 /** First poll two minutes after boot, so a shop PC starts up before it downloads. */
 const FIRST_POLL_MS = 2 * 60_000;
+
+const ownPlatform = (): ReleasePlatform => process.platform as ReleasePlatform;
+
+/**
+ * Every OS a release is built for. Written as the keys of a record over the
+ * type so that a platform added to `ReleasePlatform` fails to compile here
+ * rather than going unpolled.
+ */
+const RELEASE_PLATFORMS = Object.keys({
+  win32: true,
+  darwin: true,
+  linux: true,
+} satisfies Record<ReleasePlatform, true>) as ReleasePlatform[];
+
+/**
+ * The OSes whose office build the poll fetches: the Master's own, and every
+ * other one whose manifest is already in the office folder.
+ *
+ * A manifest for another OS is there because a panel on that OS asked and had
+ * its build fetched (or an operator copied one in) — so the shop runs that OS,
+ * and its panels will ask again at the next release. Fetched on demand alone,
+ * that ask came first every time: it waits on GitHub for `GITHUB_WAIT_MS`,
+ * then answers from the folder as it stands, so the first check after each
+ * release said there was nothing new while the build downloaded behind it.
+ *
+ * `latest-<platform>.json` only. Plain `latest.json` is the Windows name, but
+ * a Mac or Linux Master that synced before per-OS names existed wrote its own
+ * build under it — so it proves nothing about Windows panels. A shop that
+ * retires its last panel on an OS stops the fetching by deleting that OS's
+ * manifest (`docs/UPDATES.md`).
+ */
+async function officePlatforms(): Promise<ReleasePlatform[]> {
+  let entries: string[] = [];
+  try {
+    entries = await readdir(releaseDirFor('office'));
+  } catch {
+    // No folder yet: the first sync makes it.
+  }
+
+  const own = ownPlatform();
+  return [
+    own,
+    ...RELEASE_PLATFORMS.filter(
+      (platform) => platform !== own && entries.includes(`latest-${platform}.json`),
+    ),
+  ];
+}
 
 /**
  * Keep the releases folder in step with GitHub in the background.
@@ -377,12 +450,13 @@ const FIRST_POLL_MS = 2 * 60_000;
  * the Master serves the office build to every panel over the LAN, so it has to
  * hold a copy it never installs itself.
  *
- * For the Master's own OS only. A shop whose Office panels run another OS has
- * that build fetched when one of those panels asks — `/office/latest` passes
- * the panel's OS to `availability` — and it then sits in the same folder beside
+ * For the Master's own OS, and for any other OS a panel has asked for
+ * (`officePlatforms`). A shop whose Office panels run another OS has that build
+ * fetched first when one of those panels asks — `/office/latest` passes the
+ * panel's OS to `availability` — and it then sits in the same folder beside
  * this one: each OS's sync writes its own manifest and sweeps only its own
- * files (`github-releases.ts`). Fetching every OS here would put 150 MB per
- * unused OS on every Master's disk, every release.
+ * files (`github-releases.ts`). Fetching every OS regardless would put 150 MB
+ * per unused OS on every Master's disk, every release.
  *
  * Returns the way to stop it, per this codebase's disposable convention.
  * Configuring no repository, or `ORDERBOOK_RELEASES_POLL_MINUTES=0`, makes it a
@@ -405,12 +479,15 @@ export function startReleasePolling(): () => void {
     running = true;
     try {
       for (const panel of ['master', 'office'] as const) {
-        await syncFromGitHub(panel, releaseDirFor(panel), pinnedInstaller).catch(
-          (error: unknown) => {
-            log.warn(`Could not sync the ${panel} release: ${String(error)}`);
-            return null;
-          },
-        );
+        const platforms = panel === 'office' ? await officePlatforms() : [ownPlatform()];
+        for (const platform of platforms) {
+          await syncFromGitHub(panel, releaseDirFor(panel), pinnedInstaller, platform).catch(
+            (error: unknown) => {
+              log.warn(`Could not sync the ${panel} release for ${platform}: ${String(error)}`);
+              return null;
+            },
+          );
+        }
       }
     } finally {
       running = false;

@@ -26,7 +26,7 @@
  */
 
 import { createWriteStream } from 'node:fs';
-import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
+import { mkdir, readdir, realpath, rename, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -214,15 +214,15 @@ async function latestRelease(): Promise<GitHubRelease | null> {
  * spend a shop's bandwidth and disk at will.
  *
  * `pinned` is the setup file the sweep must spare (see `supersededBy`), or a
- * way to ask for it. The Master passes the way to ask: a sync can outlive the
- * request that started it by many minutes, and an operator can pin a build in
- * that time — so the answer that counts is the one at the moment of sweeping,
- * not the one when the sync began.
+ * way to ask for the ones it must. The Master passes the way to ask: a sync can
+ * outlive the request that started it by many minutes, and an operator can pin
+ * a build in that time — so the answer that counts is the one at the moment of
+ * sweeping, not the one when the sync began.
  */
 export function syncFromGitHub(
   panel: PanelKind,
   releaseDir: string,
-  pinned: string | null | (() => string | null) = null,
+  pinned: Pinned = null,
   platform: ReleasePlatform = process.platform as ReleasePlatform,
 ): Promise<ReleaseManifest | null> {
   // One sync per panel at a time, shared rather than started twice.
@@ -248,10 +248,16 @@ export function syncFromGitHub(
 
 const inFlight = new Map<string, Promise<ReleaseManifest | null>>();
 
+/**
+ * One setup file to spare, fixed when the sync starts, or a way to ask for
+ * every one to spare at the moment of sweeping.
+ */
+type Pinned = string | null | (() => readonly string[]);
+
 async function runSync(
   panel: PanelKind,
   releaseDir: string,
-  pinned: string | null | (() => string | null),
+  pinned: Pinned,
   platform: ReleasePlatform,
 ): Promise<ReleaseManifest | null> {
   if (!isConfigured()) return null;
@@ -322,7 +328,14 @@ async function runSync(
 
   const file = path.basename(manifest.file);
   const target = path.join(releaseDir, file);
-  const pinnedNow = () => (typeof pinned === 'function' ? pinned() : pinned);
+
+  // What the superseded sweep must leave, beside the file it keeps: whatever
+  // is pinned at the moment it asks, and the program this Master is running.
+  const running = await runningAppImageIn(releaseDir);
+  const spared = (): readonly string[] => {
+    const pinnedNow = typeof pinned === 'function' ? pinned() : pinned === null ? [] : [pinned];
+    return running ? [running, ...pinnedNow] : pinnedNow;
+  };
 
   // Debris from an earlier attempt, cleared before this one starts. Only the
   // half-written files, and only this OS's: see `sweep` for why the finished
@@ -335,7 +348,7 @@ async function runSync(
   try {
     if ((await stat(target)).size === manifest.sizeBytes) {
       await writeManifest(releaseDir, manifest, platform);
-      await sweep(releaseDir, supersededBy(file, pinnedNow()));
+      await sweep(releaseDir, supersededBy(file, spared));
       return manifest;
     }
   } catch {
@@ -358,7 +371,7 @@ async function runSync(
 
   // Only now. Until the manifest names the new file, the old one is the
   // release, and something on the LAN is very likely still asking for it.
-  await sweep(releaseDir, supersededBy(file, pinnedNow()));
+  await sweep(releaseDir, supersededBy(file, spared));
 
   log.info(`Fetched ${manifest.file} (${manifest.version}) from GitHub`);
   return manifest;
@@ -520,9 +533,10 @@ const sameOs = (entry: string, file: string): boolean =>
  * download starts.
  *
  * Only this OS's, though. Another OS's `.part` may be a download that OS's sync
- * is writing at this moment — on Windows deleting it would fail harmlessly on
- * the lock, but elsewhere it succeeds, and that download then dies at its
- * rename having fetched 150 MB for nothing.
+ * is writing at this moment, and deleting it succeeds on every OS — Windows
+ * included, where Node opens every file sharing delete, so there is no lock to
+ * refuse it. That download then writes on into a file with no name and dies at
+ * its rename, having fetched 150 MB for nothing.
  */
 const isDebrisOf = (file: string, platform: ReleasePlatform) => {
   const manifests = new Set(manifestNames(platform).map((name) => `${name}.tmp`));
@@ -535,7 +549,8 @@ const isDebrisOf = (file: string, platform: ReleasePlatform) => {
 
 /**
  * Finished setup files for this OS that are not the one its manifest now names,
- * and are not the one an operator is part-way through installing.
+ * are not one an operator is part-way through installing, and are not the
+ * AppImage this Master is running from (`runningAppImageIn`).
  *
  * `pinned` closes a window that is otherwise wide open for as long as a person
  * takes to click a button. `prepareMasterUpdate` verifies a build and pins its
@@ -544,11 +559,46 @@ const isDebrisOf = (file: string, platform: ReleasePlatform) => {
  * landing in that gap makes the pinned file "superseded" and sweeps it out from
  * under the click. The install then fails safe — the shell re-hashes what it
  * copies — but it fails, and for no reason anybody could see.
+ *
+ * Asked entry by entry rather than once per sweep, so a build pinned while the
+ * sweep is already under way is still spared.
  */
 const supersededBy =
-  (keep: string, pinned: string | null) =>
+  (keep: string, spared: () => readonly string[]) =>
   (entry: string): boolean =>
-    isOurArtefact(entry) && sameOs(entry, keep) && entry !== keep && entry !== pinned;
+    isOurArtefact(entry) && sameOs(entry, keep) && entry !== keep && !spared().includes(entry);
+
+/**
+ * The name of the AppImage this Master is running from, when that file is in
+ * `releaseDir` — the one setup file no sweep may take, whatever its name says.
+ *
+ * An AppImage is not an installer. It is the program itself, one file, run
+ * from wherever somebody put it, and a Linux operator can put it here and run
+ * it from here. Its name keeps the version it was downloaded as, even once it
+ * has been updated in place, so by name alone the running program is always a
+ * superseded build — and a sweep that took it would leave a Master that runs
+ * until it is next started, and then is not there to start.
+ *
+ * `APPIMAGE` is set by the AppImage runtime and inherited by the server the
+ * desktop shell starts. Believing it costs nothing: the worst a stray one can
+ * do is spare a file. The folder is compared by real path, because the runtime
+ * reports the file with its links resolved and `releaseDir` may be a link; the
+ * same name in another folder is another file, and is swept as usual.
+ */
+async function runningAppImageIn(releaseDir: string): Promise<string | null> {
+  const running = process.env.APPIMAGE;
+  if (!running || !path.isAbsolute(running)) return null;
+
+  try {
+    const [here, there] = await Promise.all([
+      realpath(releaseDir),
+      realpath(path.dirname(running)),
+    ]);
+    return here === there ? path.basename(running) : null;
+  } catch {
+    return null; // Either folder gone or unreadable: nothing here to spare.
+  }
+}
 
 /**
  * Delete what earlier runs left in the releases folder.
@@ -576,10 +626,15 @@ const supersededBy =
  *    a file that no longer exists, which is a worse state than the disk space
  *    it saves.
  *
- * Per-entry failures are swallowed. On Windows a file being streamed to an
- * Office panel is locked, and an update that refused to proceed because last
- * month's build was busy would be a worse outcome than the disk space. A locked
- * file is simply swept on the next run.
+ * Per-entry failures are swallowed. A file this account may not remove, or one
+ * another program holds open without sharing delete — on Windows an antivirus
+ * scan is the usual one — stays where it is, and an update that refused to
+ * proceed because last month's build was busy would be a worse outcome than
+ * the disk space. It is simply swept on the next run.
+ *
+ * A file being streamed to an Office panel is not one of those. Node opens
+ * files sharing delete, on Windows too, so removing it succeeds, and the
+ * panel's download carries on from the file it already has open.
  *
  * @returns how many entries were removed, so the log can say so rather than
  * being a silent sweep somebody has to trust.
