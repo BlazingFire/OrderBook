@@ -10,9 +10,9 @@ export default defineConfig({
     // `electron/` is not a workspace, but its `lib/` is pure or node:fs-only
     // and never imports `electron` — so the decisions that used to be
     // untestable inside a 300-line main process now run here like anything else.
-    // `ui/tests` takes both extensions: component tests are `.tsx`, and the
-    // designer's geometry is pure arithmetic over millimetres with no JSX in
-    // it, which has no business carrying a `.tsx` to satisfy a glob.
+    // `ui/tests` takes both extensions: component tests are `.tsx`, and a
+    // suite with no JSX in it has no business carrying a `.tsx` to satisfy a
+    // glob.
     include: ['{shared,master,office,electron}/tests/**/*.test.ts', 'ui/tests/**/*.test.{ts,tsx}'],
     // The only tests here that need a DOM. Vitest 2.1 has no `test.projects`
     // (that is Vitest 3), and widening `environment` globally would hand DOM

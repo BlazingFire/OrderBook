@@ -10,8 +10,9 @@ name: Release
 #
 #   1. Bump the version and push to main.
 #   2. This builds both panels on all three operating systems (plus the two
-#      standalone `.exe`s on Windows), signs each manifest, and publishes one
-#      GitHub Release holding every artefact.
+#      standalone `.exe`s on Windows and the two `.deb`s on Linux, published
+#      for installing by hand and named by no manifest), signs each manifest,
+#      and publishes one GitHub Release holding every artefact.
 #   3. Each Master polls that release, verifies the signature, downloads into
 #      its releases folder, and serves the office build to its panels over the
 #      LAN exactly as it does for a USB stick today.
@@ -23,8 +24,9 @@ name: Release
 # after the branch and commit — a way to get the files for a branch, or to
 # prove a build still works, without tagging anything or touching what the
 # fleet sees: `latestRelease()` ignores drafts and pre-releases alike. Tick
-# "publish" to create the real release instead, which only makes sense from
-# main. Draft builds are the maintainers' to delete once downloaded.
+# "publish" to create the real release instead — from main only: the `check`
+# job refuses it on any other branch or tag, warns, and builds the draft
+# pre-release. Draft builds are the maintainers' to delete once downloaded.
 #
 # ## Why a matrix
 #
@@ -126,6 +128,16 @@ jobs:
           else
             build=true
             publish=true
+          fi
+
+          # Only main publishes. The push trigger already says so, but a hand-run
+          # can be started on any branch or tag, and ticking "publish" there
+          # used to create the real v<version> from that commit — the release
+          # every Master polling this repository would then offer its shop.
+          # `GITHUB_REF` is the runner's own, not an input anybody types.
+          if [ "$publish" = "true" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::warning::Only main publishes a release, and this run is on $GITHUB_REF — building a draft pre-release instead."
+            publish=false
           fi
 
           if [ "$publish" = "true" ]; then
@@ -289,10 +301,12 @@ jobs:
               cp "$dir/latest.json" "$upload/latest-$panel.json"
             fi
 
-            # Every setup file this platform produced, whatever its extension —
-            # .exe (setup and standalone, with the standalone's .sha256), .dmg,
-            # .AppImage and .deb all land here and the list is
-            # built from what exists rather than from four hardcoded paths.
+            # Every file `tools/release.mjs` published for this platform, whatever
+            # its extension — the setup file (.exe, .dmg or .AppImage) and what
+            # `publishBeside()` puts next to it: the Windows standalone .exe and
+            # the Linux .deb, each with its .sha256. The list is built from what
+            # exists rather than from hardcoded paths. Only the manifests above
+            # name a file, and they name the setup file alone.
             for setup in "$dir"/OrderBook-*; do
               case "$setup" in
                 *.json) continue ;;

@@ -14,15 +14,25 @@
  *   an `AppImage` filename, while neither panel's yml had a `linux:` block at
  *   all. The build fails, but only for whoever runs `--os linux`, which on a
  *   Windows-only CI is nobody.
+ * - The ymls built a macOS `.zip` and a Linux `.deb` that `release.mjs` never
+ *   picked up, while comments on both sides said the `.zip` was what the
+ *   update path downloaded and that the `.deb` was published.
+ * - `TARGETS.linux` vendored the *build host's* PostgreSQL architecture into
+ *   an app the ymls build for x64 only.
  *
- * Both of those are statements a test can check by reading, which is what this
- * file does. Running the builds would be better and is not available: a macOS
- * target only builds on macOS by electron-builder's own refusal.
+ * All of those are statements a test can check by reading, which is what most
+ * of this file does. Running the builds would be better and is not available:
+ * a macOS target only builds on macOS by electron-builder's own refusal. The
+ * one exception is the host-architecture refusal, which runs the script as a
+ * different machine would, stopped before its first command, and asks `npm ls`
+ * which panels have something native to refuse over.
  */
 
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -30,6 +40,13 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const RELEASE = readFileSync(path.join(ROOT, 'tools', 'release.mjs'), 'utf8');
 
 const PANELS = ['master', 'office'] as const;
+
+/** The name each packaged thing carries in its artifact filenames. */
+const ARTIFACT: Record<string, string> = {
+  master: 'Master',
+  office: 'Office',
+  cleaner: 'CleanInstall',
+};
 
 /** Source lines with comment lines dropped — a mention in prose is not a use. */
 function code(source: string): string[] {
@@ -39,53 +56,160 @@ function code(source: string): string[] {
   });
 }
 
+/** One top-level function of `release.mjs`, from its signature to its closing brace. */
+function bodyOf(signature: string): string {
+  const lines = code(RELEASE);
+  const from = lines.slice(lines.findIndex((l) => l.includes(signature)));
+  return from.slice(0, from.findIndex((l) => l === '}') + 1).join('\n');
+}
+
+interface DeclaredTarget {
+  ext: string;
+  /** Each `postgres:` entry exactly as written, quotes and all. */
+  postgresEntries: string[];
+  /** The package names those entries spell, where they are plain literals. */
+  postgres: string[];
+  /** The one architecture a single-arch target builds, or null. */
+  arch: string | null;
+  universal: boolean;
+  /** Filename tails published beside the setup file. */
+  besides: string[];
+}
+
+/** A `[ 'a', 'b' ]` array literal's entries, as written. */
+function arrayEntries(source: string | undefined): string[] {
+  return (source ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+/** A quoted string literal's contents, or null for anything computed. */
+function literal(entry: string): string | null {
+  return /^'([^'$`]+)'$/.exec(entry)?.[1] ?? null;
+}
+
 /**
- * The `postgres:` array declared for each `--os` name, read out of the source.
+ * Each `--os` name's declaration, read out of the source.
  *
  * Importing `release.mjs` is not an option: it runs the release at import time
  * from `process.argv`. Reading it is the same technique as
  * `credential-invariants.test.ts`, for the same reason.
  */
-function declaredTargets(): Record<string, { ext: string; postgres: string[] }> {
-  const block = RELEASE.slice(RELEASE.indexOf('const TARGETS = {'), RELEASE.indexOf('\n};', RELEASE.indexOf('const TARGETS = {')));
-  const targets: Record<string, { ext: string; postgres: string[] }> = {};
+function declaredTargets(): Record<string, DeclaredTarget> {
+  const start = RELEASE.indexOf('const TARGETS = {');
+  const block = RELEASE.slice(start, RELEASE.indexOf('\n};', start));
+  const headers = [...block.matchAll(/^ {2}(\w+): \{$/gm)];
+  const targets: Record<string, DeclaredTarget> = {};
 
-  for (const match of block.matchAll(/^ {2}(\w+): \{$/gm)) {
+  headers.forEach((match, index) => {
     const name = match[1] as string;
-    const rest = block.slice(match.index ?? 0);
-    const ext = /ext: '([^']+)'/.exec(rest)?.[1];
-    const postgres = /postgres: \[([^\]]*)\]/.exec(rest)?.[1];
+    // This target's own lines only, so a field one target leaves out cannot
+    // be answered by the next target's.
+    const body = code(block.slice(match.index, headers[index + 1]?.index)).join('\n');
+    const ext = /ext: '([^']+)'/.exec(body)?.[1];
+    const postgres = /postgres: \[([^\]]*)\]/.exec(body)?.[1];
     expect(ext, `${name} declares no ext`).toBeTruthy();
     expect(postgres, `${name} declares no postgres`).toBeDefined();
+
+    const postgresEntries = arrayEntries(postgres);
     targets[name] = {
       ext: ext as string,
-      postgres: (postgres as string)
-        .split(',')
-        .map((entry) => entry.trim())
-        .filter(Boolean)
-        .flatMap(expandPackage),
+      postgresEntries,
+      postgres: postgresEntries.map(literal).filter((pkg): pkg is string => pkg !== null),
+      arch: /\barch: '(\w+)'/.exec(body)?.[1] ?? null,
+      universal: /universal: true/.test(body),
+      besides: arrayEntries(/besides: \[([^\]]*)\]/.exec(body)?.[1])
+        .map(literal)
+        .filter((tail): tail is string => tail !== null),
     };
-  }
+  });
 
   return targets;
 }
 
 /**
- * One declared entry → every package it can resolve to.
+ * Run `tools/release.mjs` as a machine of another platform and architecture
+ * would, and return what it printed to stderr.
  *
- * Windows and Linux name their package with a host-arch template
- * (`linux-${process.arch === 'arm64' ? 'arm64' : 'x64'}`), because only the
- * host's own package is installed on that machine. Both arms are real
- * packages a real build will vendor, so both are checked.
+ * A preload fakes `process.platform` and `process.arch`, and replaces
+ * `execFileSync` — which every command the script runs goes through — with a
+ * throw. So nothing is ever built or copied, whatever the script decides: a
+ * run that clears every check stops at its first command with
+ * `Release failed: STOP before npm`, and a refusal stops earlier with its own
+ * message. `panel` is `--panel`; without it the run is the default one, both
+ * panels.
  */
-function expandPackage(entry: string): string[] {
-  const literal = /^['"`]([a-z0-9-]+)['"`]$/.exec(entry);
-  if (literal) return [literal[1] as string];
+function releaseAs(platform: string, arch: string, target: string, panel?: string): string {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'orderbook-release-host-'));
+  try {
+    const preload = path.join(dir, 'host.mjs');
+    writeFileSync(
+      preload,
+      [
+        "import childProcess from 'node:child_process';",
+        "import { syncBuiltinESMExports } from 'node:module';",
+        `Object.defineProperty(process, 'platform', { value: ${JSON.stringify(platform)} });`,
+        `Object.defineProperty(process, 'arch', { value: ${JSON.stringify(arch)} });`,
+        'childProcess.execFileSync = (command) => {',
+        '  throw new Error(`STOP before ${command}`);',
+        '};',
+        'syncBuiltinESMExports();',
+      ].join('\n'),
+    );
 
-  const templated = /^`([a-z0-9]+)-\$\{[^}]*\}`$/.exec(entry);
-  if (templated) return [`${templated[1] as string}-x64`, `${templated[1] as string}-arm64`];
+    const result = spawnSync(
+      process.execPath,
+      [
+        '--import',
+        pathToFileURL(preload).href,
+        path.join(ROOT, 'tools', 'release.mjs'),
+        '--os',
+        target,
+        ...(panel ? ['--panel', panel] : []),
+      ],
+      { cwd: ROOT, encoding: 'utf8', env: { ...process.env, ORDERBOOK_RELEASES_DIR: dir } },
+    );
 
-  throw new Error(`Cannot read the package name out of: ${entry}`);
+    // Every run here ends in a refusal or the stub; neither is a success.
+    expect(result.status, result.stdout).toBe(1);
+    return result.stderr;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * The packages in a panel's production tree that are built for one platform:
+ * a `cpu` or `os` restriction (`sharp`'s and PostgreSQL's platform packages),
+ * or a compiled addon (`binding.gyp`, `gypfile`, a `prebuilds/` folder). Read
+ * from the same `npm ls` that `productionTree()` in `release.mjs` stages from,
+ * so what this finds is what a setup file would carry.
+ */
+function nativePackages(panel: string): string[] {
+  const result = spawnSync(
+    'npm',
+    ['ls', '--omit=dev', '--all', '--parseable', '--workspace', `@orderbook/${panel}`],
+    { cwd: ROOT, encoding: 'utf8', shell: process.platform === 'win32' },
+  );
+  expect(result.status, result.stderr).toBe(0);
+
+  const modules = path.join(ROOT, 'node_modules');
+  return result.stdout
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith(modules))
+    .filter((dir) => !dir.includes(`${path.sep}@orderbook${path.sep}`))
+    .filter((dir) => {
+      const manifest = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
+      return (
+        manifest.cpu !== undefined ||
+        manifest.os !== undefined ||
+        manifest.gypfile === true ||
+        existsSync(path.join(dir, 'binding.gyp')) ||
+        existsSync(path.join(dir, 'prebuilds'))
+      );
+    })
+    .map((dir) => path.relative(modules, dir));
 }
 
 describe('release targets', () => {
@@ -93,6 +217,100 @@ describe('release targets', () => {
 
   it('declares all three operating systems', () => {
     expect(Object.keys(targets).sort()).toEqual(['linux', 'mac', 'win']);
+  });
+
+  it('names every PostgreSQL package outright, never from the build host', () => {
+    // `linux-${process.arch …}` vendored whatever the build machine was into
+    // an app the ymls build for x64 only: an arm64 build host would have
+    // shipped arm64 database binaries inside an x64 AppImage.
+    for (const [name, target] of Object.entries(targets)) {
+      for (const entry of target.postgresEntries) {
+        expect(literal(entry), `${name} computes a PostgreSQL package: ${entry}`).not.toBeNull();
+      }
+    }
+  });
+
+  it('vendors the architecture each target builds, and builds one or both', () => {
+    for (const [name, target] of Object.entries(targets)) {
+      if (target.universal) {
+        expect(target.arch, `${name} is universal and also names one arch`).toBeNull();
+        continue;
+      }
+
+      expect(target.arch, `${name} names neither an arch nor universal`).toBeTruthy();
+      for (const pkg of target.postgres) {
+        expect(pkg, `${name} builds ${target.arch} and vendors ${pkg}`).toMatch(
+          new RegExp(`-${target.arch}$`),
+        );
+      }
+    }
+  });
+
+  it('refuses the Master on a host of another architecture than its target', () => {
+    // Staging copies the host's own native packages (npm installs only the
+    // ones matching its `cpu`), so an arm64 machine building the x64 AppImage
+    // ships arm64 `sharp` and no x64 PostgreSQL at all. Refused up front, by
+    // name, rather than an hour later as "binaries are missing" — asked for
+    // alone, and as part of the default run, which builds it first.
+    for (const panel of ['master', undefined]) {
+      const linux = releaseAs('linux', 'arm64', 'linux', panel);
+      expect(linux).toMatch(/Release failed: .*x64/);
+      expect(linux).toContain('arm64');
+      expect(linux).not.toContain('STOP before');
+
+      const win = releaseAs('win32', 'arm64', 'win', panel);
+      expect(win).toMatch(/Release failed: .*x64/);
+      expect(win).not.toContain('STOP before');
+    }
+  });
+
+  it('refuses exactly the panels that stage a native package, and no others', () => {
+    // The refusal is about what staging copies, so it belongs to the panels
+    // whose production tree holds something built for one architecture. The
+    // Office panel's tree (Express, Multer, a socket client) and the
+    // clean-install tool, which stages nothing, carry nothing of the build
+    // machine's, and electron-builder fetches the x64 Electron for them on any
+    // host. A panel that gains a native dependency must be refused from then
+    // on (`native: true` in `PANELS`), or this fails.
+    expect(
+      nativePackages('master'),
+      'found nothing native in the Master, which ships sharp',
+    ).not.toHaveLength(0);
+
+    for (const panel of PANELS) {
+      const native = nativePackages(panel);
+      for (const [platform, target] of [
+        ['linux', 'linux'],
+        ['win32', 'win'],
+      ] as const) {
+        const stderr = releaseAs(platform, 'arm64', target, panel);
+        if (native.length > 0) {
+          expect(stderr, `${panel} stages ${native.join(', ')}`).toMatch(/Release failed: .*x64/);
+        } else {
+          expect(stderr, `${panel} stages nothing native`).toContain(
+            'Release failed: STOP before npm',
+          );
+        }
+      }
+    }
+
+    expect(releaseAs('linux', 'arm64', 'linux', 'cleaner')).toContain(
+      'Release failed: STOP before npm',
+    );
+    expect(releaseAs('win32', 'arm64', 'win', 'cleaner')).toContain(
+      'Release failed: STOP before npm',
+    );
+  });
+
+  it('lets each target through on the hosts that can build it', () => {
+    // The other half: the refusal above is on the architecture, not on the
+    // target. `STOP before npm` is the stub standing in for the first build
+    // command, so reaching it means every check passed.
+    expect(releaseAs('linux', 'x64', 'linux')).toContain('Release failed: STOP before npm');
+    expect(releaseAs('win32', 'x64', 'win')).toContain('Release failed: STOP before npm');
+    // Universal: either kind of Mac builds both halves.
+    expect(releaseAs('darwin', 'arm64', 'mac')).toContain('Release failed: STOP before npm');
+    expect(releaseAs('darwin', 'x64', 'mac')).toContain('Release failed: STOP before npm');
   });
 
   it('vendors PostgreSQL from the target, never from a hardcoded platform', () => {
@@ -141,12 +359,6 @@ describe('release targets', () => {
     // it was built and nowhere else; the macOS universal merge surfaced it by
     // refusing files that resolved outside the app. Two copies carry the tree:
     // into `master/vendor`, and from there into the staging folder.
-    const lines = code(RELEASE);
-    const bodyOf = (signature: string): string => {
-      const from = lines.slice(lines.findIndex((l) => l.includes(signature)));
-      return from.slice(0, from.findIndex((l) => l === '}') + 1).join('\n');
-    };
-
     const vendor = bodyOf('async function vendorPostgres');
     expect(vendor).toMatch(/cp\(source, dest, \{[^}]*verbatimSymlinks: true/);
 
@@ -171,6 +383,225 @@ describe('release targets', () => {
       lines.indexOf('await vendorPostgres();'),
     );
   });
+
+  it('publishes the files built beside the setup file, and keeps them out of the manifest', () => {
+    // `build()` insists each one exists, so a yml that stops building one
+    // fails the release by name rather than publishing without it.
+    expect(bodyOf('async function build(')).toMatch(/RELEASE_TARGET\.besides/);
+
+    const publish = bodyOf('async function publish(');
+    expect(publish).toMatch(
+      /for \(const \w+ of built\.besides\) await publishBeside\(target, \w+\);/,
+    );
+
+    // The manifest names the one file the update path installs. A standalone
+    // `.exe` or a `.deb` in it would be downloaded, verified and then refused
+    // by the shell, or installed by nothing.
+    const signAt = publish.indexOf('sign({');
+    expect(signAt).toBeGreaterThanOrEqual(0);
+    const manifest = publish.slice(signAt, publish.indexOf('});', signAt));
+    expect(manifest).toContain('sha256: await sha256(setupPath)');
+    expect(manifest).not.toContain('besides');
+  });
+});
+
+/** electron-builder's own block for a target, where its key is not the target's name. */
+const PACKAGER_BLOCK: Record<string, string> = { AppImage: 'appImage' };
+
+/** What `${ext}` becomes in each target's artifact name. */
+const TARGET_EXT: Record<string, string> = {
+  nsis: 'exe',
+  portable: 'exe',
+  dmg: 'dmg',
+  zip: 'zip',
+  AppImage: 'AppImage',
+  deb: 'deb',
+};
+
+/** One top-level block of a yml with its comment lines dropped, or null when absent. */
+function ymlBlock(yml: string, key: string): string | null {
+  const header = `\n${key}:\n`;
+  const at = yml.indexOf(header);
+  if (at < 0) return null;
+  const after = yml.slice(at + header.length);
+  // Up to the next line that starts in column 0 — a key or a comment heading
+  // the next block — so `mac:` cannot answer for `linux:`.
+  const next = /^\S/m.exec(after);
+  return (next ? after.slice(0, next.index) : after)
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('#'))
+    .join('\n');
+}
+
+/**
+ * Every target a platform block builds, with the architectures it lists.
+ *
+ * electron-builder takes `target:` in each shape YAML allows: one name
+ * (`target: dmg`), a flow list (`target: [dmg, zip]`), and a block list whose
+ * entries are names (`- zip`) or objects (`- target: zip`, with `arch:` inline,
+ * as a list of its own, or left out). A reader that knew only the object with
+ * an `arch: [...]` line under it passed with the macOS `.zip` put back as
+ * `- zip`, so every shape is read here, and a line inside the list that is
+ * none of them throws instead of being skipped. An entry with no `arch` comes
+ * back with an empty list: electron-builder then builds the host's own
+ * architecture, which the arch test below refuses.
+ */
+function ymlTargets(yml: string, os: string): { target: string; arch: string[] }[] {
+  const lines = (ymlBlock(yml, os) ?? '')
+    .split('\n')
+    // A trailing comment: YAML starts one at a `#` after whitespace.
+    .map((line) => line.replace(/\s+#.*$/, ''))
+    .filter((line) => line.trim() !== '');
+  const indent = (line: string): number => line.length - line.trimStart().length;
+  const unreadable = (line: string): Error =>
+    new Error(`${os}: cannot read the target line "${line.trim()}"`);
+
+  const at = lines.findIndex((line) => /^ {2}target:/.test(line));
+  if (at < 0) return [];
+
+  const header = lines[at] as string;
+  const inline = header.slice('  target:'.length).trim();
+  if (inline) {
+    const listed = /^\[(.*)\]$/.exec(inline)?.[1];
+    return (listed === undefined ? [inline] : arrayEntries(listed)).map((name) => {
+      if (!/^\w+$/.test(name)) throw unreadable(header);
+      return { target: name, arch: [] };
+    });
+  }
+
+  // A block list, whose entries may sit at `target:`'s own indent or deeper.
+  const targets: { target: string; arch: string[] }[] = [];
+  const entryIndent = indent(lines[at + 1] ?? '');
+  let archList = false;
+  for (const line of lines.slice(at + 1)) {
+    const depth = indent(line);
+    const text = line.trim();
+    // The list ends at the block's next key.
+    if (depth < entryIndent || (depth === entryIndent && !text.startsWith('- '))) break;
+
+    if (depth === entryIndent) {
+      const entry = /^- (?:target: )?(\w+)$/.exec(text);
+      if (!entry) throw unreadable(line);
+      targets.push({ target: entry[1] as string, arch: [] });
+      archList = false;
+      continue;
+    }
+
+    // Deeper: a field of the entry above, and `arch` is the only one read.
+    const current = targets[targets.length - 1];
+    const arch = /^arch:(?: (.+))?$/.exec(text);
+    const archEntry = archList ? /^- (\w+)$/.exec(text) : null;
+    if (current && arch) {
+      const value = arch[1];
+      archList = value === undefined;
+      if (value !== undefined) {
+        const listed = /^\[(.*)\]$/.exec(value)?.[1];
+        current.arch.push(...(listed === undefined ? [value] : arrayEntries(listed)));
+      }
+    } else if (current && archEntry) {
+      current.arch.push(archEntry[1] as string);
+    } else {
+      throw unreadable(line);
+    }
+  }
+  return targets;
+}
+
+/**
+ * The file electron-builder writes for one target, with `${version}` left as
+ * `<v>`. The packager's own block names it if it says anything, else the
+ * platform block does — electron-builder's own precedence.
+ */
+function builtFile(yml: string, os: string, target: string): string | null {
+  const named = (block: string | null): string | null =>
+    (block && /artifactName: (\S+)/.exec(block)?.[1]) || null;
+  const artifact =
+    named(ymlBlock(yml, PACKAGER_BLOCK[target] ?? target)) ?? named(ymlBlock(yml, os));
+  return artifact
+    ? artifact.replace('${version}', '<v>').replace('${ext}', TARGET_EXT[target] ?? `<${target}?>`)
+    : null;
+}
+
+describe('the yml target reader', () => {
+  /** A `mac:` block holding `lines`, the way it sits in a panel's yml. */
+  const read = (...lines: string[]) =>
+    ymlTargets(['', 'mac:', '  category: x', ...lines, '  publish: null', ''].join('\n'), 'mac');
+
+  it('reads every shape electron-builder accepts for a target list', () => {
+    // A reader that knew only `- target: X` with an `arch:` line under it
+    // passed with the macOS `.zip` put back as `- zip`.
+    expect(read('  target: zip')).toEqual([{ target: 'zip', arch: [] }]);
+    expect(read('  target: [dmg, zip]')).toEqual([
+      { target: 'dmg', arch: [] },
+      { target: 'zip', arch: [] },
+    ]);
+    expect(read('  target:', '    - dmg', '    - zip')).toEqual([
+      { target: 'dmg', arch: [] },
+      { target: 'zip', arch: [] },
+    ]);
+    expect(
+      read('  target:', '    - target: dmg', '      arch: [universal]', '    - target: zip'),
+    ).toEqual([
+      { target: 'dmg', arch: ['universal'] },
+      { target: 'zip', arch: [] },
+    ]);
+    expect(
+      read('  target:', '    - target: dmg', '      arch:', '        - x64', '        - arm64'),
+    ).toEqual([{ target: 'dmg', arch: ['x64', 'arm64'] }]);
+    expect(read('  target:', '    - target: dmg  # the one', '      arch: universal')).toEqual([
+      { target: 'dmg', arch: ['universal'] },
+    ]);
+    // A sequence may sit at its key's own indent, and ends at the next key.
+    expect(read('  target:', '  - dmg', '  - zip')).toEqual([
+      { target: 'dmg', arch: [] },
+      { target: 'zip', arch: [] },
+    ]);
+  });
+
+  it('refuses a target line it cannot read rather than skipping it', () => {
+    expect(() => read('  target:', '    - { target: zip }')).toThrow(/cannot read/);
+    expect(() => read('  target:', '    - target: dmg', '      artifactName: x')).toThrow(
+      /cannot read/,
+    );
+  });
+});
+
+describe('what electron-builder builds is what release.mjs picks up', () => {
+  /*
+   * Each file a yml asks for costs a CI leg minutes, and one that nothing
+   * picks up is also a claim nobody checks: the macOS `.zip` was described as
+   * "what the update path downloads" while nothing downloaded it, and the
+   * `.deb` as uploaded while it never left the build folder. So the two lists
+   * are held equal, in both directions.
+   */
+  const targets = declaredTargets();
+
+  for (const thing of [...PANELS, 'cleaner'] as const) {
+    const yml = readFileSync(path.join(ROOT, thing, 'electron-builder.yml'), 'utf8');
+
+    for (const [name, target] of Object.entries(targets)) {
+      it(`${thing} builds exactly the ${name} files release.mjs looks for`, () => {
+        const built = ymlTargets(yml, name).map(({ target: kind }) => builtFile(yml, name, kind));
+
+        // `build()` looks for the setup file, plus — on what it publishes —
+        // each `besides` file. The cleaner is never published and builds one
+        // setup file per OS.
+        const tails = [`Setup.${target.ext}`, ...(thing === 'cleaner' ? [] : target.besides)];
+        const expected = tails.map((tail) => `OrderBook-${ARTIFACT[thing]}-<v>-${tail}`);
+
+        expect(built.sort()).toEqual(expected.sort());
+      });
+
+      it(`${thing} builds its ${name} files for the architecture release.mjs stages`, () => {
+        const wanted = target.universal ? ['universal'] : [target.arch];
+        const built = ymlTargets(yml, name);
+        expect(built).not.toHaveLength(0);
+        for (const { target: kind, arch } of built) {
+          expect(arch, `${thing}'s ${name} ${kind} target`).toEqual(wanted);
+        }
+      });
+    }
+  }
 });
 
 describe('electron-builder configuration', () => {
