@@ -30,10 +30,11 @@ import type { MessageKey } from '../i18n/keys.js';
 /**
  * Which heading a setting sits under on the Settings screen.
  *
- * Deliberately declared rather than derived from the key's first segment: with
- * fifteen settings that would give six groups, three of them singletons, which is
- * worse than no grouping at all. These names are the ones a shopkeeper would
- * use over the phone, not the module names the keys are built from.
+ * Deliberately declared rather than derived from the key's first segment: that
+ * would give a heading per module, several of them over a single setting,
+ * which is worse than no grouping at all. These names are the ones a
+ * shopkeeper would use over the phone, not the module names the keys are built
+ * from.
  */
 export const SETTING_GROUPS = ['access', 'stock', 'leads', 'integrations'] as const;
 export type SettingGroup = (typeof SETTING_GROUPS)[number];
@@ -296,29 +297,6 @@ export const SETTINGS = {
   },
 
   /**
-   * Whether a bulk product import may invent a category, or must match one the
-   * company already has.
-   *
-   * `ensureCategories` (`master/src/repositories/product.repository.ts:324`)
-   * inserts every name it does not recognise, and `resolveCategoryId`
-   * (`:490`) does the same one row at a time on the replay and upsert paths.
-   * A supplier's sheet with "Vitrified", "vitrified tiles" and "VITRIFIED
-   * TILES " in it therefore leaves three categories behind, and nothing in the
-   * product deletes a category once it exists.
-   *
-   * Off, a row naming a category the company does not have is **refused**, not
-   * quietly filed under no category: the same rule a price column the actor may
-   * not set already follows (`master/src/domain/product-import.ts:16`) — a
-   * success that discarded what the file asserted is the worst answer
-   * available. A row with no category column, or a blank cell, is untouched.
-   *
-   * Refused above the dry-run boundary, so the preview a person approves and
-   * the import that follows cannot disagree about a row.
-   *
-   * `true` is the fallback because an upgraded installation must behave exactly
-   * as it did the minute before: today every import creates what it names.
-   */
-  /**
    * Whether an Office Panel may sign somebody in while the Master is off.
    *
    * The panel keeps a verifier for anybody who has signed in on it before, so
@@ -378,6 +356,28 @@ export const SETTINGS = {
     parse: (raw: unknown): boolean => asBoolean(raw),
   },
 
+  /**
+   * Whether a bulk product import may invent a category, or must match one the
+   * company already has.
+   *
+   * `ensureCategories` (`master/src/repositories/product.repository.ts`)
+   * inserts every name it does not recognise, and `resolveCategoryId` in the
+   * same file does the same one row at a time on the replay and upsert paths.
+   * A supplier's sheet with "Vitrified", "vitrified tiles" and "VITRIFIED
+   * TILES " in it therefore leaves three categories behind, and nothing in the
+   * product deletes a category once it exists.
+   *
+   * Off, a row naming a category the company does not have is **refused**, not
+   * quietly filed under no category: a success that discarded what the file
+   * asserted is the worst answer available. A row with no category column, or
+   * a blank cell, is untouched.
+   *
+   * Refused above the dry-run boundary, so the preview a person approves and
+   * the import that follows cannot disagree about a row.
+   *
+   * `true` is the fallback because an upgraded installation must behave exactly
+   * as it did the minute before: today every import creates what it names.
+   */
   'catalog.importCreatesCategories': {
     labelToken: 'setting.catalog.importCreatesCategories.label',
     descriptionToken: 'setting.catalog.importCreatesCategories.help',
@@ -387,21 +387,6 @@ export const SETTINGS = {
     parse: (raw: unknown): boolean => asBoolean(raw),
   },
 
-  /**
-   * How long a lead sits untouched before the Lead Outcomes report calls it
-   * "went quiet" rather than "open".
-   *
-   * The constant this replaces carries the comment "A designer's placeholder,
-   * not the owner's number", and three design documents record it as an
-   * unanswered owner question. Everything downstream was already built for it
-   * to vary — the report payload carries `quietAfterDays` back to the browser
-   * and the caption interpolates it. Only the source of the number was never
-   * finished.
-   *
-   * `1..365`: a lead silent for over a year is not a lead, and the value goes
-   * straight into a SQL `>=`, so `0` would classify every lead as quiet on the
-   * day it was raised.
-   */
   /**
    * The follow-up date a new lead is pre-filled with.
    *
@@ -449,6 +434,21 @@ export const SETTINGS = {
     parse: (raw: unknown): boolean => asBoolean(raw),
   },
 
+  /**
+   * How long a lead sits untouched before the Lead Outcomes report calls it
+   * "went quiet" rather than "open".
+   *
+   * The constant this replaces carries the comment "A designer's placeholder,
+   * not the owner's number", and three design documents record it as an
+   * unanswered owner question. Everything downstream was already built for it
+   * to vary — the report payload carries `quietAfterDays` back to the browser
+   * and the caption interpolates it. Only the source of the number was never
+   * finished.
+   *
+   * `1..365`: a lead silent for over a year is not a lead, and the value goes
+   * straight into a SQL `>=`, so `0` would classify every lead as quiet on the
+   * day it was raised.
+   */
   'leads.quietAfterDays': {
     labelToken: 'setting.leads.quietAfterDays.label',
     descriptionToken: 'setting.leads.quietAfterDays.help',

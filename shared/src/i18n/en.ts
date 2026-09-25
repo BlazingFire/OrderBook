@@ -117,7 +117,7 @@ export const EN_MESSAGES = {
   // --- Headings the company settings are grouped under. Words a shopkeeper
   // --- would use over the phone, not the module names the keys are built from.
   'settingGroup.access': 'Who can get in',
-  'settingGroup.stock': 'Stock and prices',
+  'settingGroup.stock': 'Stock',
   'settingGroup.leads': 'Leads and follow-up',
   'settingGroup.integrations': 'Other software',
 
@@ -1447,6 +1447,10 @@ export const EN_MESSAGES = {
   'integrations.mapping.flag': 'Ask a person',
   'integrations.mapping.required': 'Required',
   'nav.master.integrations': 'Integrations',
+  // `{actor}` in an `activity.*` sentence when the row recorded no name —
+  // `renderActivity` fills it in. Kept out of `activity.*` on purpose: every
+  // key there is read as an `entityType.action` pair (`ACTIVITY_TOKENS`).
+  'logs.actor.unknown': 'Somebody',
   'logs.actorType.api_key': 'An API key',
   'logs.actorType.connector': 'A connection',
   'logs.actorType.office_panel': 'An office panel',

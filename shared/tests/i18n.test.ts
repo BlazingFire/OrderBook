@@ -1,12 +1,13 @@
 /**
- * `t()` / `tCount()` themselves — not the catalogue's content
- * (`i18n-coverage.test.ts` owns that). Pure: no database, no DOM, no
- * `describe.skipIf` anywhere in this file, so it cannot silently skip.
+ * `t()` / `tCount()` themselves, and `renderActivity()` built on them — not the
+ * catalogue's content (`i18n-coverage.test.ts` owns that). Pure: no database,
+ * no DOM, no `describe.skipIf` anywhere in this file, so it cannot silently
+ * skip.
  */
 
 import { describe, expect, it } from 'vitest';
 
-import { createTranslator, t, tCount } from '../src/index.js';
+import { createTranslator, renderActivity, t, tCount } from '../src/index.js';
 
 describe('t()', () => {
   it('substitutes a named placeholder', () => {
@@ -87,5 +88,30 @@ describe('createTranslator()', () => {
   it('exposes tCount bound to the same locale', () => {
     const translator = createTranslator('en');
     expect(translator.tCount('count.leads', 2)).toBe('2 leads');
+  });
+});
+
+describe('renderActivity()', () => {
+  const row = {
+    entityType: 'party',
+    action: 'created',
+    actorName: null,
+    details: { name: 'Sharma Tiles' },
+  };
+
+  it('names a row with no recorded actor in the reader’s own language', () => {
+    expect(renderActivity(createTranslator('en'), row)).toBe(
+      'Somebody added the party Sharma Tiles',
+    );
+    // The stand-in was a hard-coded English word, so a Hindi reader got
+    // "Somebody ने पार्टी … जोड़ी". Every Hindi template puts a postposition
+    // after `{actor}` (`{actor} ने …`), which wants the oblique `किसी`, not `कोई`.
+    expect(renderActivity(createTranslator('hi'), row)).toBe('किसी ने पार्टी Sharma Tiles जोड़ी');
+  });
+
+  it('uses the recorded name when there is one', () => {
+    expect(renderActivity(createTranslator('hi'), { ...row, actorName: 'Karan' })).toBe(
+      'Karan ने पार्टी Sharma Tiles जोड़ी',
+    );
   });
 });

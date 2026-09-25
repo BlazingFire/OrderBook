@@ -11,8 +11,9 @@
  * `navOrder` is the number Alt+N binds to, and it is **declared here rather
  * than taken from the rendered sidebar index**. The sidebar filters out the
  * screens a person's permissions exclude, so a rendered index would move Alt+3
- * from Orders to Conflicts for one user and not another — a shortcut that means
- * something different per person is worse than no shortcut.
+ * on the Master from Parties to Inventory for somebody who cannot see Parties —
+ * a shortcut that means something different per person is worse than no
+ * shortcut.
  */
 
 import type { MessageKey } from '../i18n/keys.js';
@@ -37,7 +38,10 @@ export interface CommandDef {
   panel: 'master' | 'office' | 'both';
   /** The screen id a nav command opens. */
   tab?: string;
-  /** 1–9, for Alt+N. Absent for anything that is not a nav destination. */
+  /**
+   * The screen's place in its panel's sidebar, from 1 — the N of Alt+N for the
+   * first nine. Absent for anything that is not a nav destination.
+   */
   navOrder?: number;
   /** The chord this ships bound to, in `parseChord` form. */
   defaultChord?: string;
@@ -47,15 +51,17 @@ export interface CommandDef {
 
 /**
  * The Master's nav order, matching its own sidebar — Work then Admin, in the
- * order `workItems`/`adminItems` declare them.
+ * order `workItems`/`adminItems` declare them (`keys-nav-order.test.ts` reads
+ * both and holds this list to them).
  *
- * Thirteen screens and nine usable numbers, so the tail has no chord. That is
+ * More screens than usable numbers, so the tail has no chord. That is
  * deliberate rather than a limit worked around: Alt+0 reads as "the tenth" to
  * nobody, and the palette reaches every one of them by name.
  */
 const MASTER_NAV: Array<[id: string, token: MessageKey]> = [
   ['dashboard', 'nav.master.dashboard'],
   ['orders', 'nav.master.leadsOrders'],
+  ['parties', 'nav.master.parties'],
   ['inventory', 'nav.master.inventory'],
   ['reports', 'nav.master.reports'],
   ['conflicts', 'nav.master.conflicts'],

@@ -116,8 +116,8 @@ export interface PartyProductVariantInput {
  * server, because an offline panel builds the line from its cached catalogue and
  * that snapshot *is* the agreed spec. The server validates that the variant
  * exists on the product and fills any snapshot field the client left out — it
- * never overwrites one the client sent, which is what keeps an offline quote
- * intact.
+ * never overwrites one the client sent, which is what keeps a line taken
+ * offline intact.
  */
 export interface LineItemInput {
   productId: RecordId;
@@ -149,8 +149,8 @@ export interface LineItemInput {
    *
    * Not checked against the list on the way in, for the same reason packaging
    * is not: the panel that sent it may have been offline for a day, and a
-   * grade an administrator has since retired is still what the customer was
-   * quoted. The *picker* is what keeps new lines on the list.
+   * grade an administrator has since retired is still what the customer asked
+   * for. The *picker* is what keeps new lines on the list.
    */
   grade?: string | null;
   sequence?: number;

@@ -114,6 +114,79 @@ describe('no EN string carries a pre-formatted number, separator or currency sym
   });
 });
 
+describe('neither catalogue talks about prices', () => {
+  // The software carries no money at all — pricing was removed on 2026-09-21 —
+  // so a word for a price on screen points at a feature that does not exist.
+  // `settingGroup.stock` went on reading "Stock and prices" (`स्टॉक और दाम`)
+  // after the last price had gone.
+  //
+  // Both patterns run over both catalogues, because an untranslated Hindi
+  // entry is English text. The Hindi one is bounded by letters and marks
+  // rather than `\b`, which knows only ASCII: `दाम` is price, and it is also
+  // the tail of `गोदाम`, a warehouse. Each Hindi word is a stem that may carry
+  // vowel signs and nasalisation after it, which is how Hindi inflects —
+  // `दामों`, `कीमतें`, `रुपयों`, `पैसा` — but no further letter, so `रेटिंग`
+  // (rating) and `मूल्यांकन` (evaluation) pass. A plural that adds a letter,
+  // `राशियाँ`, is a stem of its own. `मूल्य` also means "value", but this
+  // catalogue's word for a value is `मान` (`validation.fields.valueRequired`),
+  // so here it can only be a price.
+  const ENGLISH = /\b(prices?|priced|pricing|rates?|amounts?|discounts?|rupees?|paise)\b/i;
+  const HINDI_STEMS = [
+    'दाम',
+    'कीमत',
+    'क\u093Cीमत', // क + nukta, and the precomposed letter below
+    '\u0958ीमत',
+    'मूल्य',
+    'रुपय',
+    'रुपए',
+    'पैस',
+    'राशि',
+    'राशिय',
+    'रेट',
+  ];
+  const HINDI = new RegExp(
+    `(?<![\\p{L}\\p{M}])(${HINDI_STEMS.join('|')})\\p{M}*(?![\\p{L}\\p{M}])`,
+    'u',
+  );
+  const talksAboutPrice = (value: string): boolean => ENGLISH.test(value) || HINDI.test(value);
+
+  it.each([
+    ['en', EN_MESSAGES],
+    ['hi', HI_MESSAGES],
+  ] as const)('%s', (_locale, catalogue) => {
+    const offenders = Object.entries(catalogue as Record<string, string>)
+      .filter(([, value]) => talksAboutPrice(value))
+      .map(([key]) => key);
+
+    expect(offenders).toEqual([]);
+  });
+
+  // The words above as a translator writes them, plural and oblique included,
+  // with `क़ीमत` spelt both ways.
+  it.each([
+    'दामों की सूची',
+    'कीमतें',
+    'कीमतों में',
+    'क\u093Cीमतों',
+    '\u0958ीमत',
+    'रुपयों',
+    'मूल्यों',
+    'पैसा',
+    'पैसों',
+    'राशियाँ',
+    'रेटों',
+  ])('catches %s', (phrase) => {
+    expect(talksAboutPrice(phrase)).toBe(true);
+  });
+
+  it.each(['{onFloor} गोदाम में', 'गोदामों', 'रेटिंग', 'मूल्यांकन', 'पैसेंजर', 'separate'])(
+    'leaves %s alone',
+    (phrase) => {
+      expect(talksAboutPrice(phrase)).toBe(false);
+    },
+  );
+});
+
 describe('the activity.* surface is append-only', () => {
   // Read, never imported — a JSON import would go through `tsc`'s module
   // resolution and could be quietly re-shaped; `readFileSync` reads exactly
@@ -130,6 +203,31 @@ describe('the activity.* surface is append-only', () => {
   it('the lockfile itself has no entry that is not also a real EN token', () => {
     const orphaned = lockedPairs.filter((token) => !EN_KEYS.has(token));
     expect(orphaned).toEqual([]);
+  });
+});
+
+describe('every Hindi activity.* sentence can take the unknown actor', () => {
+  // `renderActivity` fills `{actor}` with `logs.actor.unknown` when a row
+  // recorded no name, and in Hindi that is `किसी` — the oblique form, which is
+  // only a sentence with a postposition after it (`किसी ने …`). There is one
+  // stand-in for every template, so every template has to be built that way.
+  // An English stub is not: it rendered "किसी issued the API key …". That
+  // includes the stub `npm run i18n:sync` writes for a new activity key — it
+  // fails here until somebody translates it.
+  const POSTPOSITION = /^ (ने|को|से|का|की|के|में|पर|द्वारा)(?![\p{L}\p{M}])/u;
+
+  it('puts a postposition after every {actor}', () => {
+    const offenders = Object.entries(HI_MESSAGES as Record<string, string>)
+      .filter(([key]) => key.startsWith('activity.'))
+      .filter(([, value]) =>
+        value
+          .split('{actor}')
+          .slice(1)
+          .some((rest) => !POSTPOSITION.test(rest)),
+      )
+      .map(([key]) => key);
+
+    expect(offenders).toEqual([]);
   });
 });
 

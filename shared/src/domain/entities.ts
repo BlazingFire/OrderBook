@@ -580,8 +580,8 @@ export type LineItemParentType = 'lead' | 'order';
  *
  * Two colours of the same model are two lines, each with its own weight — the
  * snapshot fields are frozen at add time, so editing the product afterwards
- * must not rewrite what an order was quoted at
- * (docs/LEAD_GENERATION_FLOW.md §8.3).
+ * must not rewrite the spec the customer asked for — its code, colour and
+ * weight (docs/LEAD_GENERATION_FLOW.md §8.3).
  */
 export interface LineItem {
   id: RecordId;

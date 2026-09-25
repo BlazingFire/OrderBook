@@ -23,8 +23,9 @@ export const MAX_PRODUCT_IMPORT_ISSUES = 1000;
 
 /**
  * `create` adds new products and reports a row whose code already exists as
- * skipped. `upsert` also updates those rows in place, by product code — the
- * bulk price-list edit — and needs `products.edit` on top of `products.bulk`.
+ * skipped. `upsert` also updates those rows in place, by code — how a whole
+ * catalogue is corrected from one sheet — and needs `products.edit` on top of
+ * `products.bulk`.
  */
 export type ProductImportMode = 'create' | 'upsert';
 

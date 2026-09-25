@@ -1,7 +1,7 @@
 /**
  * The i18n subsystem's own barrel, nested rather than flattened into
- * `shared/src/index.ts` — ten files would otherwise bury the eleven lines
- * that describe the rest of the product's public surface.
+ * `shared/src/index.ts`, where its files would otherwise bury the lines that
+ * describe the rest of the product's public surface.
  */
 
 export * from './activity.js';
