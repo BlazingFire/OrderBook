@@ -31,7 +31,10 @@ const PERMANENT_SEQUENCE_DIGITS = PERMANENT_ID_LENGTH - 2; // 10
  */
 const DEVICE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTVWXYZ';
 
-/** Every record type that an Office Panel is allowed to create while offline. */
+/**
+ * Every record type the id scheme above covers: what an Office Panel may create
+ * while offline, plus roles and users (see the note below).
+ */
 export const SYNCABLE_ENTITIES = [
   'lead',
   'order',
@@ -43,9 +46,11 @@ export const SYNCABLE_ENTITIES = [
   'party_variant',
   'timeline_entry',
   'reservation',
-  // Roles and users are syncable because both can be created on a panel with no
-  // link to the Master (docs/ROLES_AND_USERS.md §14) — an admin taking someone
-  // on during an outage must not have to wait for the network.
+  // Roles and users are here so their ids take this shape and the schema can
+  // take one minted offline — an admin taking someone on during an outage
+  // should not have to wait for the network. That half is not built: there is
+  // no `role.*` or `user.*` member of `MutationKind` (mutations.ts), so both are
+  // created only through the Master's own API (docs/ROLES_AND_USERS.md §15.5).
   'role',
   'user',
 ] as const;
