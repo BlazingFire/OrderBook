@@ -248,6 +248,104 @@ describe('refusing a move', () => {
   });
 });
 
+/*
+ * The folders a move must never make this panel's.
+ *
+ * Whatever folder a move lands in is recorded in the shell's pointer, and
+ * "Uninstall, delete data" deletes the folder that pointer names, whole
+ * (`tools/uninstall/`). So a move into `D:\`, somebody's home folder or their
+ * Documents would one day take everything else in it along with the panel.
+ */
+describe('refusing a folder the panel would not own', () => {
+  it('refuses the top of a drive', async () => {
+    writeDataDirOverride(locationFile(), dataDir);
+    const { paths, relocateDataDir } = await loadPaths({ underShell: true });
+
+    // On one machine this is `/`; the case that matters is `D:\` with the data
+    // on `C:`, which the nesting rule does not catch. Refused for its own
+    // reason first, so both read the same.
+    await expect(relocateDataDir(path.parse(root).root, { moveExisting: true })).rejects.toThrow(
+      /top of a drive/i,
+    );
+
+    expect(paths().dataDir).toBe(dataDir);
+    expect(readDataDirOverride(locationFile())).toBe(dataDir);
+  });
+
+  it('refuses the home folder of whoever runs it', async () => {
+    // Not the real one: a move that was wrongly let through would copy the
+    // panel's files into it.
+    const home = path.join(root, 'home');
+    await fs.mkdir(home);
+    const homedir = vi.spyOn(os, 'homedir').mockReturnValue(home);
+    writeDataDirOverride(locationFile(), dataDir);
+    const { relocateDataDir } = await loadPaths({ underShell: true });
+    await seedDataDir();
+
+    try {
+      await expect(relocateDataDir(home, { moveExisting: true })).rejects.toThrow(/home folder/i);
+    } finally {
+      homedir.mockRestore();
+    }
+
+    await expect(fs.readdir(home)).resolves.toEqual([]);
+    expect(readDataDirOverride(locationFile())).toBe(dataDir);
+  });
+
+  it('refuses a folder that already holds somebody else’s files, and copies nothing into it', async () => {
+    const target = path.join(root, 'documents');
+    await fs.mkdir(path.join(target, 'Photos'), { recursive: true });
+    await fs.writeFile(path.join(target, 'Budget.xlsx'), 'the accounts');
+    writeDataDirOverride(locationFile(), dataDir);
+    const { paths, relocateDataDir } = await loadPaths({ underShell: true });
+    await seedDataDir();
+
+    // Named, because the person reading this is at the Master and cannot see
+    // the folder: "not empty" alone would leave them guessing what is in it.
+    await expect(relocateDataDir(target, { moveExisting: true })).rejects.toThrow(/Budget\.xlsx/);
+
+    expect((await fs.readdir(target)).sort()).toEqual(['Budget.xlsx', 'Photos']);
+    expect(paths().dataDir).toBe(dataDir);
+    expect(readDataDirOverride(locationFile())).toBe(dataDir);
+  });
+
+  it('takes an empty folder that already exists', async () => {
+    const target = path.join(root, 'empty');
+    await fs.mkdir(target);
+    const { relocateDataDir } = await loadPaths({ underShell: true });
+
+    await expect(relocateDataDir(target, { moveExisting: true })).resolves.toMatchObject({
+      dataDir: target,
+    });
+  });
+
+  it('takes a folder holding nothing but an Office Panel’s own files', async () => {
+    // A folder this panel moved away from earlier, which keeps its old copy,
+    // and the shell's log and setting — with the litter Finder and Explorer
+    // leave behind in any folder somebody has opened.
+    const target = path.join(root, 'earlier');
+    await fs.mkdir(path.join(target, 'images', 'IM1'), { recursive: true });
+    await fs.mkdir(path.join(target, 'logs'));
+    await fs.writeFile(path.join(target, 'logs', 'office.log'), 'old lines');
+    for (const name of [
+      'outbox.json',
+      'outbox.json.tmp',
+      'pairing.json',
+      'shell.json',
+      '.DS_Store',
+    ]) {
+      await fs.writeFile(path.join(target, name), '[]');
+    }
+    const { relocateDataDir } = await loadPaths({ underShell: true });
+    await seedDataDir();
+
+    await expect(relocateDataDir(target, { moveExisting: true })).resolves.toMatchObject({
+      dataDir: target,
+    });
+    expect(readDataDirOverride(locationFile())).toBe(target);
+  });
+});
+
 describe('remembering the move across a restart', () => {
   it('writes the folder into the panel’s own settings file when run from source', async () => {
     const { relocateDataDir } = await loadPaths();

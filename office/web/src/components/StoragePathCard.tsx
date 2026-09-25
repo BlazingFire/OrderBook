@@ -12,7 +12,8 @@
  *
  * Moving is the panel's own `relocateDataDir`, which copies what is there and
  * refuses the cases that would lose work — a target inside the current folder,
- * a disk without room. Its refusal is shown verbatim, because it names the
+ * a disk without room, a drive's top level, a home folder or one already
+ * holding other files. Its refusal is shown verbatim, because it names the
  * actual reason.
  */
 

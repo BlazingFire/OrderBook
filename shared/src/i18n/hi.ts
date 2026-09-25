@@ -2913,6 +2913,12 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'storage.moved': 'Moved {count} files.',
   // TODO(i18n-hi)
   'storage.failed': 'Could not move this panel’s files',
+  'storage.refused.driveRoot':
+    '{folder} ड्राइव का सबसे ऊपरी फ़ोल्डर है। इसके बजाय उस ड्राइव पर कोई फ़ोल्डर चुनें या बनाएँ।',
+  'storage.refused.homeFolder':
+    '{folder} किसी उपयोगकर्ता का होम फ़ोल्डर है। इसके बजाय उसके अंदर कोई फ़ोल्डर चुनें या बनाएँ।',
+  'storage.refused.notEmpty':
+    '{folder} में पहले से ऐसी फ़ाइलें हैं जो इस पैनल की नहीं हैं, जैसे {example}। कोई खाली या नया फ़ोल्डर चुनें।',
   'signin.username': 'Username',
   // TODO(i18n-hi)
   'splash.error.timeout': 'The server did not answer in time.',

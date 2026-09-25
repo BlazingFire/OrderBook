@@ -15,8 +15,11 @@
 import { constants } from 'node:fs';
 import fs from 'node:fs/promises';
 import { statfs } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+
+import { t } from '@orderbook/shared';
 
 import { config } from './index.js';
 import { createLogger } from '../lib/logger.js';
@@ -52,6 +55,26 @@ const FILE_NAMES = {
   usersFile: 'users.json',
   signInAttemptsFile: 'sign-in-attempts.json',
 } as const;
+
+/**
+ * Everything an Office Panel's data folder can hold. A folder holding nothing
+ * else is already an Office Panel's — see `foreignEntry` for why that matters.
+ */
+const PANEL_ENTRIES: ReadonlySet<string> = new Set([
+  ...Object.values(FILE_NAMES),
+  'images',
+  'avatars',
+  // A downloaded update (`updatesDir()` in `services/update.service.ts`).
+  'updates',
+  // The desktop shell's log and its one setting (`logPath` and `settingsPath`
+  // in `electron/shell.ts`).
+  'logs',
+  'shell.json',
+  // What Finder and Explorer leave in any folder somebody has opened.
+  '.DS_Store',
+  'Thumbs.db',
+  'desktop.ini',
+]);
 
 /**
  * Set only by a relocation. Null means "whatever the environment configured",
@@ -108,6 +131,17 @@ export interface RelocationResult {
  * would be unrecoverable from where they are standing. Cleaning up the old
  * folder is a decision for whoever is sitting at this PC.
  *
+ * The same person cannot see what else is in the folder they typed, which is
+ * why a move only goes somewhere this panel can own outright — never the top
+ * of a drive, a home folder, or a folder already holding somebody else's files
+ * (`foreignEntry`). The folder a move lands in is the one "Uninstall, delete
+ * data" deletes, whole (`tools/uninstall/`, which reads it from the shell's
+ * pointer), so a panel moved into `D:\` or somebody's Documents would one day
+ * take everything else in it along with the panel's own files. What this
+ * cannot stop is somebody saving their own files into the folder afterwards;
+ * an uninstaller that deleted only the panel's own entries would be the answer
+ * to that, and it is `tools/uninstall/`'s to give.
+ *
  * The order — copy, then record the new folder where the next start will read
  * it, then switch — is what keeps a failure harmless: a copy that fails leaves
  * the panel running on the old folder, and a record that cannot be written
@@ -125,6 +159,18 @@ export async function relocateDataDir(
     throw new StorageRelocationError('This panel already keeps its files there');
   }
 
+  // Ahead of the nesting rule, which also turns these down whenever the data
+  // is on the same drive or under the same home — but not `D:\` with the data
+  // on `C:`, and the reason should read the same either way.
+  if (path.dirname(resolved) === resolved) {
+    throw new StorageRelocationError(t('en', 'storage.refused.driveRoot', { folder: resolved }));
+  }
+  // `path.relative`, not `===`: on Windows it compares without regard to case,
+  // and `c:\users\asha` is the same folder as `C:\Users\Asha`.
+  if (path.relative(os.homedir(), resolved) === '') {
+    throw new StorageRelocationError(t('en', 'storage.refused.homeFolder', { folder: resolved }));
+  }
+
   // Nesting either way turns the copy into a walk over its own output.
   if (isInside(resolved, previousDataDir) || isInside(previousDataDir, resolved)) {
     throw new StorageRelocationError(
@@ -132,11 +178,19 @@ export async function relocateDataDir(
     );
   }
 
+  let foreign: string | null;
   try {
     await fs.mkdir(resolved, { recursive: true });
     await fs.access(resolved, constants.W_OK);
+    foreign = await foreignEntry(resolved);
   } catch {
     throw new StorageRelocationError(`Cannot write to ${resolved} on this PC`);
+  }
+
+  if (foreign !== null) {
+    throw new StorageRelocationError(
+      t('en', 'storage.refused.notEmpty', { folder: resolved, example: foreign }),
+    );
   }
 
   const [needed, free] = await Promise.all([
@@ -302,6 +356,25 @@ async function copyTree(from: string, to: string): Promise<number> {
   }
 
   return copied;
+}
+
+/**
+ * The first thing in `dir` that is not an Office Panel's, or null when there is
+ * nothing else there — an empty or new folder, or one a panel has used before
+ * (the folder this panel moved away from last time keeps its copy).
+ *
+ * The rule is "nothing but ours" rather than "empty" so that moving back, or
+ * onto a folder another Office Panel left, still works; and rather than a list
+ * of places to avoid, because nobody can list every folder that holds a
+ * company's other files. A temp file left by a write that was cut off
+ * (`outbox.json.tmp`) counts as the file it was on its way to becoming.
+ */
+async function foreignEntry(dir: string): Promise<string | null> {
+  const names = (await fs.readdir(dir)).sort();
+  const ours = (name: string): boolean =>
+    PANEL_ENTRIES.has(name) || PANEL_ENTRIES.has(name.replace(/\.tmp$/, ''));
+
+  return names.find((name) => !ours(name)) ?? null;
 }
 
 /** True when `candidate` sits at or under `parent`. */
