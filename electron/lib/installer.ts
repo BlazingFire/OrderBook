@@ -17,9 +17,70 @@ import { createReadStream } from 'node:fs';
 import { copyFile, mkdir, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 
-/** The setup-file extension for each platform we build for. */
+/**
+ * The setup-file extension for each platform we build for.
+ *
+ * Linux is the AppImage, the build `tools/release.mjs` publishes there. It
+ * used to fall through to `.exe` with everything else, so every AppImage a
+ * panel had downloaded and verified was refused below, and an in-app update
+ * could never run on Linux. The `.deb` is deliberately not accepted: see
+ * `updateMethod`.
+ */
 export function installerExtension(platform: NodeJS.Platform): string {
-  return platform === 'darwin' ? '.dmg' : '.exe';
+  if (platform === 'darwin') return '.dmg';
+  if (platform === 'linux') return '.AppImage';
+  return '.exe';
+}
+
+/**
+ * How this copy of the panel takes an update. Decided once, at launch, from
+ * facts that do not change while the process lives.
+ *
+ *  - `installer` — hand the verified setup file to the operating system and
+ *    quit: the NSIS setup on Windows, the `.dmg` on macOS.
+ *  - `appimage` — Linux, launched from an AppImage. There is no installer to
+ *    hand anything to: the AppImage *is* the program, so the verified file
+ *    replaces it and is started again (`lib/appimage.ts`).
+ *  - `standalone` — refuse. The portable `.exe` is replaced by hand
+ *    (`lib/standalone.ts`).
+ *  - `system-package` — refuse. Linux, but not a running AppImage: in a
+ *    shipped build that is the `.deb`, whose files dpkg owns in a folder only
+ *    root can write. The shell can neither replace them nor should it try,
+ *    and the file a panel downloads is the AppImage in any case. The name is
+ *    for that case, not a claim about every copy it covers: a run from
+ *    source, from electron-builder's unpacked folder or from an AppImage
+ *    unpacked by hand lands here too, with no one file to replace either —
+ *    which is why the Updates screen's text starts from "not started from an
+ *    AppImage" and only then turns to the `.deb`.
+ *
+ * Both refusals reach the page up front through `orderbook:getShellSettings`,
+ * so the Updates screen says what to do instead of offering a button that
+ * could only fail.
+ */
+export type UpdateMethod = 'installer' | 'appimage' | 'standalone' | 'system-package';
+
+export function updateMethod(
+  platform: NodeJS.Platform,
+  build: { standalone: boolean; appImage: string | null },
+): UpdateMethod {
+  if (build.standalone) return 'standalone';
+  if (platform !== 'linux') return 'installer';
+  return build.appImage ? 'appimage' : 'system-package';
+}
+
+/**
+ * Whether `candidate` is somewhere under `dir` — and not `dir` itself.
+ *
+ * `path.relative` rather than `startsWith`, so that `…/updates-evil` is not
+ * accepted as being inside `…/updates`. This is the test the private
+ * `isInside` in `office/src/config/paths.ts` makes, except that the folder
+ * itself does not count here: what is checked is always a file in it. The
+ * shell cannot import panel source, so the two are pinned by the same vectors
+ * instead of shared.
+ */
+export function isInside(dir: string, candidate: string): boolean {
+  const relative = path.relative(path.resolve(dir), path.resolve(candidate));
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
 }
 
 /**
@@ -39,18 +100,11 @@ export function resolveInstaller(
   if (!allowedDir) return null;
 
   const resolved = path.resolve(candidate);
-  if (path.extname(resolved).toLowerCase() !== installerExtension(platform)) return null;
+  if (path.extname(resolved).toLowerCase() !== installerExtension(platform).toLowerCase()) {
+    return null;
+  }
 
-  // Containment by resolved-prefix. `path.relative` rather than `startsWith`
-  // so that `…/updates-evil` is not accepted as being inside `…/updates`.
-  // This mirrors the private `isInside` in `office/src/config/paths.ts`; the
-  // shell cannot import panel source, so the two are pinned by the same
-  // vectors instead of shared.
-  const base = path.resolve(allowedDir);
-  const relative = path.relative(base, resolved);
-  if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) return null;
-
-  return resolved;
+  return isInside(allowedDir, resolved) ? resolved : null;
 }
 
 /**

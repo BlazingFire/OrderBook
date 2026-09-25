@@ -78,8 +78,19 @@ export interface DesktopBridge {
    * itself (`applyUpdate` refuses), so the Updates screen tells the operator
    * to replace the file instead of offering a button. Absent from shells older
    * than 1.2.0, which are all installed builds.
+   *
+   * `systemPackage` is the same answer for a Linux copy not started from an
+   * AppImage — in a shipped build, one installed from the `.deb`, which only
+   * the system's package manager can replace; `applyUpdate` refuses it too.
+   * Absent from shells that predate it, none of which could update on Linux
+   * at all.
    */
-  getShellSettings?(): Promise<{ openAtLogin: boolean; logFile: string; standalone?: boolean }>;
+  getShellSettings?(): Promise<{
+    openAtLogin: boolean;
+    logFile: string;
+    standalone?: boolean;
+    systemPackage?: boolean;
+  }>;
   setShellSettings?(value: { openAtLogin: boolean }): Promise<boolean>;
   openLogFolder?(): Promise<boolean>;
 

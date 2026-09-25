@@ -19,6 +19,7 @@ import {
   digestOf,
   installerExtension,
   resolveInstaller,
+  updateMethod,
 } from '../lib/installer.js';
 
 const UPDATES = path.resolve('/data/OrderBook/office/updates');
@@ -68,6 +69,65 @@ describe('resolving an installer path', () => {
     expect(resolveInstaller(path.join(UPDATES, 'OrderBook.dmg'), UPDATES, 'darwin')).not.toBeNull();
     expect(resolveInstaller(path.join(UPDATES, 'OrderBook.exe'), UPDATES, 'darwin')).toBeNull();
   });
+
+  it('takes an .AppImage on Linux and refuses everything else there', () => {
+    // Linux used to fall through to `.exe`, so every AppImage a panel had
+    // downloaded and verified was refused here and an in-app update could
+    // never run on Linux at all. The `.deb` is refused on purpose: it is
+    // dpkg's to replace, never the shell's (see `updateMethod`).
+    expect(installerExtension('linux')).toBe('.AppImage');
+    expect(
+      resolveInstaller(
+        path.join(UPDATES, 'OrderBook-Office-1.0.3-Setup.AppImage'),
+        UPDATES,
+        'linux',
+      ),
+    ).toBe(path.join(UPDATES, 'OrderBook-Office-1.0.3-Setup.AppImage'));
+    for (const name of ['setup.exe', 'setup.dmg', 'setup.deb', 'setup.sh', 'setup']) {
+      expect(resolveInstaller(path.join(UPDATES, name), UPDATES, 'linux'), name).toBeNull();
+    }
+  });
+
+  it('refuses an .AppImage on Windows and macOS', () => {
+    for (const platform of ['win32', 'darwin'] as const) {
+      expect(resolveInstaller(path.join(UPDATES, 'setup.AppImage'), UPDATES, platform)).toBeNull();
+    }
+  });
+});
+
+/**
+ * Which way this copy takes an update — decided once, from what the shell
+ * knows at launch, so a refusal is made before a byte is copied rather than
+ * discovered after the server has been stopped.
+ */
+describe('how this copy takes an update', () => {
+  const APPIMAGE = path.resolve('/home/shop/Applications/OrderBook-Master-1.2.0-Setup.AppImage');
+
+  it('hands the setup file to the operating system on Windows and macOS', () => {
+    expect(updateMethod('win32', { standalone: false, appImage: null })).toBe('installer');
+    expect(updateMethod('darwin', { standalone: false, appImage: null })).toBe('installer');
+  });
+
+  it('refuses the standalone build, which is replaced by hand', () => {
+    expect(updateMethod('win32', { standalone: true, appImage: null })).toBe('standalone');
+  });
+
+  it('replaces the AppImage it was launched from on Linux', () => {
+    expect(updateMethod('linux', { standalone: false, appImage: APPIMAGE })).toBe('appimage');
+  });
+
+  it('refuses a Linux copy that is not a running AppImage — a .deb install', () => {
+    // dpkg owns every file a `.deb` put on disk, in a folder only root can
+    // write; the shell can neither replace them nor should it try. The Updates
+    // screen reads this up front and says what to do instead of offering a
+    // button that could only fail.
+    expect(updateMethod('linux', { standalone: false, appImage: null })).toBe('system-package');
+  });
+
+  it('never takes the AppImage route off Linux, whatever it is told', () => {
+    expect(updateMethod('win32', { standalone: false, appImage: APPIMAGE })).toBe('installer');
+    expect(updateMethod('darwin', { standalone: false, appImage: APPIMAGE })).toBe('installer');
+  });
 });
 
 /**
@@ -110,6 +170,23 @@ describe('approving an installer before it is launched', () => {
     });
 
     expect(await digestOf(path.join(staging, stagedName))).toBe(digest);
+  });
+
+  it('approves an AppImage on Linux through the same checks, staged the same way', async () => {
+    // The AppImage is not run from here — the shell copies the staged file over
+    // the one it was launched from — but it has to be *this* file, from the
+    // folder the panel names, hashing to what the panel says, all the same.
+    const appImage = path.join(dir, 'OrderBook-Office-1.0.3-Setup.AppImage');
+    await writeFile(appImage, Buffer.from('pretend this is a hundred megabytes of installer'));
+
+    expect(await approveInstaller(appImage, digest, dir, 'linux', staging)).toEqual({
+      path: path.join(staging, 'OrderBook-Office-1.0.3-Setup.AppImage'),
+    });
+
+    const swapped = path.join(dir, 'OrderBook-Office-1.0.4-Setup.AppImage');
+    await writeFile(swapped, Buffer.from('pretend this is somebody else s installer........'));
+    const verdict = await approveInstaller(swapped, digest, dir, 'linux', staging);
+    expect('refused' in verdict && verdict.refused).toMatch(/hashes to/);
   });
 
   it('accepts the digest whatever case it is written in', async () => {

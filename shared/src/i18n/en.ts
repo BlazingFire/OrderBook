@@ -2181,7 +2181,7 @@ export const EN_MESSAGES = {
   'updates.installFailed': 'The update could not be prepared',
   'updates.installNow': 'Install now',
   'updates.launchRefused':
-    'Windows would not start the installer. Run the file yourself from the path above.',
+    'The update did not start, and this version is still running. Try again, or see why in the log: Help → Open log folder.',
   'updates.launching': 'Starting the installer…',
   'updates.masterVersion': 'Master version',
   'updates.needsPermission':
@@ -2210,6 +2210,8 @@ export const EN_MESSAGES = {
   'updates.standaloneBody':
     'This is the standalone build, which cannot install an update over itself. Get the new standalone file, close this window, and replace the old file with it. The database and every setting stay exactly where they are.',
   'updates.statusLabel': 'Against the Master',
+  'updates.systemPackageBody':
+    'This copy was not started from an AppImage, so it cannot replace itself. If it was installed from a .deb package, only the system’s package manager can update it: get the new .deb package, close this window, install it the way this one was installed, and open OrderBook again. The database and every setting stay exactly where they are.',
   'updates.table.version': 'Version',
   'updates.thisMachine': 'This Master',
   'updates.thisPanel': 'This panel',

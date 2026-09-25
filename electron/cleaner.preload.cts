@@ -3,10 +3,10 @@
  *
  * Same rule as `preload.cts` next door and for a sharper reason: this tool
  * deletes a company's database. `contextIsolation` is on, `nodeIntegration`
- * off and `sandbox` on, so the page gets these six functions and nothing else
- * — no `spawn`, no `fs`. Every one of them validates its own arguments again
- * in the main process, because a renderer is not a place to keep a decision
- * that cannot be undone.
+ * off and `sandbox` on, so the page gets these nine functions and nothing else
+ * — no `spawn`, no `fs`. Every argument they carry is validated again in the
+ * main process, because a renderer is not a place to keep a decision that
+ * cannot be undone.
  *
  * CommonJS (`.cts`) deliberately: Electron preload scripts are not ESM.
  */

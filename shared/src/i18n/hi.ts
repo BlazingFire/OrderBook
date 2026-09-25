@@ -2980,7 +2980,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'updates.installNow': 'Install now',
   // TODO(i18n-hi)
   'updates.launchRefused':
-    'Windows would not start the installer. Run the file yourself from the path above.',
+    'The update did not start, and this version is still running. Try again, or see why in the log: Help → Open log folder.',
   // TODO(i18n-hi)
   'updates.launching': 'Starting the installer…',
   // TODO(i18n-hi)
@@ -3026,6 +3026,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
     '{count} panel(s) have not reported a version yet. They will the next time they connect.',
   // TODO(i18n-hi)
   'updates.statusLabel': 'Against the Master',
+  // TODO(i18n-hi)
+  'updates.systemPackageBody':
+    'This copy was not started from an AppImage, so it cannot replace itself. If it was installed from a .deb package, only the system’s package manager can update it: get the new .deb package, close this window, install it the way this one was installed, and open OrderBook again. The database and every setting stay exactly where they are.',
   // TODO(i18n-hi)
   'updates.table.version': 'Version',
   // TODO(i18n-hi)

@@ -23,7 +23,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import type { UpdateAvailability } from '@orderbook/shared';
+import type { MessageKey, UpdateAvailability } from '@orderbook/shared';
 import { standing } from '@orderbook/shared';
 
 import { api, ApiError, desktopBridge, type ConnectionInfo } from '../api';
@@ -47,18 +47,28 @@ export function UpdatesScreen({
   const [failure, setFailure] = useState<string | null>(null);
   const [readyPath, setReadyPath] = useState<string | null>(null);
   /**
-   * The standalone `.exe` cannot install over itself, and the shell says so
-   * up front rather than after a click. A browser tab or a shell older than
-   * 1.2.0 answers nothing, which reads as an installed build.
+   * What to do instead, for a build that cannot install over itself — the
+   * standalone `.exe`, or a Linux copy not started from an AppImage (in a
+   * shipped build the `.deb`, which only the package manager can replace).
+   * The shell says so up front rather than after a click. A browser tab or a
+   * shell older than 1.2.0 answers nothing, which reads as an installed build.
    */
-  const [standalone, setStandalone] = useState(false);
+  const [byHand, setByHand] = useState<MessageKey | null>(null);
 
   useEffect(() => {
     const shell = desktopBridge();
     if (!shell?.getShellSettings) return;
     shell
       .getShellSettings()
-      .then((settings) => setStandalone(settings.standalone === true))
+      .then((settings) =>
+        setByHand(
+          settings.standalone === true
+            ? 'updates.standaloneBody'
+            : settings.systemPackage === true
+              ? 'updates.systemPackageBody'
+              : null,
+        ),
+      )
       .catch(() => undefined);
   }, []);
 
@@ -179,9 +189,9 @@ export function UpdatesScreen({
                 </p>
               ) : null}
 
-              {standalone ? (
+              {byHand ? (
                 <p className="ob-small" style={{ margin: 0 }}>
-                  {t('updates.standaloneBody')}
+                  {t(byHand)}
                 </p>
               ) : canInstall ? (
                 <div>

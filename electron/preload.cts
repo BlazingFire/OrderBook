@@ -2,10 +2,12 @@
  * The whole bridge between a panel's web UI and its desktop shell.
  *
  * `contextIsolation` is on, `nodeIntegration` off and `sandbox` on, so this is
- * the only surface the page ever sees — it gets a function that takes a path,
- * not a `spawn`. A page that could ask for anything to be run would make the
- * shell strictly more dangerous than the browser tab it replaces. The shell
- * additionally refuses any path outside the panel's own updates folder.
+ * the only surface the page ever sees — it gets a function that asks for the
+ * prepared update, not a `spawn`. A page that could ask for anything to be run
+ * would make the shell strictly more dangerous than the browser tab it
+ * replaces, so it does not even name the file: the shell asks its own panel
+ * which one, refuses anything outside that panel's updates folder, and hashes
+ * the bytes itself.
  *
  * Panel-agnostic: both panels load this same file. It used to carry a `panel`
  * field naming which one, which nothing ever read.
@@ -39,11 +41,17 @@ contextBridge.exposeInMainWorld('orderbook', {
   chooseDirectory: (): Promise<string | null> =>
     ipcRenderer.invoke('orderbook:chooseDirectory') as Promise<string | null>,
 
-  getShellSettings: (): Promise<{ openAtLogin: boolean; logFile: string; standalone: boolean }> =>
+  getShellSettings: (): Promise<{
+    openAtLogin: boolean;
+    logFile: string;
+    standalone: boolean;
+    systemPackage: boolean;
+  }> =>
     ipcRenderer.invoke('orderbook:getShellSettings') as Promise<{
       openAtLogin: boolean;
       logFile: string;
       standalone: boolean;
+      systemPackage: boolean;
     }>,
 
   setShellSettings: (value: { openAtLogin: boolean }): Promise<boolean> =>
