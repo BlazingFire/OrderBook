@@ -14,9 +14,13 @@ columns the tables here carry.
 
 ## Identifiers
 
-The records here that an Office Panel can create — leads, orders, line items, timeline entries,
-party-wise records and reservations — use **text ids**, not UUIDs, because an offline Office Panel
-must mint an id before the Master has ever seen the record (`LEAD_GENERATION_FLOW.md` §7):
+The records here that sync — leads, orders, line items, timeline entries, party-wise records and
+reservations — use **text ids**, not UUIDs, because the design lets an offline Office Panel mint an
+id before the Master has ever seen the record (`LEAD_GENERATION_FLOW.md` §7). Today a panel mints
+one only for the record a mutation itself creates — here, a lead or a party-wise record. Orders (an
+offline conversion included, since the Master applies it), line items, timeline entries and
+reservations are named by the Master, straight to a permanent id, when it applies the write that
+makes them. Both shapes:
 
 - temporary — 15 chars, `<6-char device><9-digit counter>`, e.g. `A3F9K2000000123`
 - permanent — 12 chars, `<2-char prefix><10-digit sequence>`, e.g. `LD0000000042`

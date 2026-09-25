@@ -93,22 +93,29 @@ bad fit for "must just work" offline software. The Master avoids that by running
 - `DATABASE_URL` bypasses all of this and connects to an existing server instead —
   used in development and for deployments that already run Postgres.
 
-`<dataDir>` is `ORDERBOOK_DATA_DIR`, else `master/data` when run from source; under
-the Electron shell it is `<appData>/OrderBook/master`. Backups are in
+`<dataDir>` is `ORDERBOOK_DATA_DIR`, else `master/data` when run from source. Under
+the Electron shell it is `<appData>/OrderBook/master` unless the operator moved it on
+the first-run screen: the shell then reads the folder from the pointer file
+`<appData>/OrderBook/master-location.json` and hands it to the server as
+`ORDERBOOK_DATA_DIR` (`electron/shell.ts`), so on a relocated install the cluster,
+uploads and backups are all under the chosen folder. Backups are in
 `05-scaling-and-operations.md` §3.
 
 ## 2. Conventions Used Across Every Table
 
 - **Primary keys** come in four shapes, chosen by who creates the row:
-  - **Text ids** for every record an Office Panel can create while offline — the 12
-    `SYNCABLE_ENTITIES` in `shared/src/sync/ids.ts`: `leads` (`LD`), `orders` (`OD`),
+  - **Text ids** for the 12 `SYNCABLE_ENTITIES` in `shared/src/sync/ids.ts`, the
+    record types the offline id scheme is built for: `leads` (`LD`), `orders` (`OD`),
     `line_items` (`LI`), `parties` (`PT`), `products` (`PR`), `product_categories`
     (`PC`), `product_variants` (`VR`), `party_product_variants` (`PV`),
     `timeline_entries` (`TL`), `stock_reservations` (`RS`), `roles` (`RL`), `users`
     (`US`). A panel mints a 15-character **temporary** id
     (`<6-char device code><9-digit counter>`); the Master assigns the 12-character
     **permanent** one (`<prefix><10 digits>`) and keeps the pair in `id_map` forever
-    (`06-tenancy-permissions-and-sync.md` §5).
+    (`06-tenancy-permissions-and-sync.md` §5). Roles and users are on that list so the
+    schema can take one minted offline, but they are **not yet creatable offline**:
+    there is no `role.*` or `user.*` mutation kind, so both are created only through
+    the Master's own API, always with a permanent id (`docs/ROLES_AND_USERS.md` §15.5).
   - **UUIDs** for rows only the Master creates: `tenants`, `office_panels`,
     `pipelines`, `pipeline_stages`, `option_lists`, `custom_field_definitions`,
     `product_images`, `inventory_stock` (generated in the application), and
@@ -126,7 +133,8 @@ the Electron shell it is `<appData>/OrderBook/master`. Backups are in
   application. `20260302000000_lead_order_rebuild` (parties, categories, products,
   leads and the tables built with them) and `20260303000000_roles_and_users` (roles,
   users) moved the offline-creatable records to text ids, because an offline panel
-  has to name a record before the Master has seen it.
+  has to name a record before the Master has seen it (for roles and users: will have
+  to, once their offline creation is built).
 - **Tenancy**: every table carries `tenant_id UUID NOT NULL REFERENCES tenants(id)`
   except `tenants` itself, `master_config` (nullable), `master_clock` and
   `pipeline_stages` (scoped through `pipelines`). See

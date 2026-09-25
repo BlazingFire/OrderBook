@@ -38,8 +38,9 @@ CREATE TABLE master_config (
 ## `users`
 
 Sign-in accounts for people, on both panels (`PROJECT_PLAN.md` §5.2). The behaviour
-behind these columns — sign-in, the tier ceiling, deactivate versus delete versus
-restore — is in `docs/ROLES_AND_USERS.md` §4, §12 and §14.
+behind these columns is in `docs/ROLES_AND_USERS.md`: the columns themselves in §4,
+the tier ceiling in §3.1 and §5, sign-in in §12, deactivate versus delete versus
+restore in §14, and why users cannot yet be created offline in §15.5.
 
 ```sql
 CREATE TABLE users (
@@ -83,11 +84,11 @@ created by an administrator.
 
 | Column | Notes |
 |---|---|
-| `id` | A text id because a user can be created on a panel with no link to the Master (`docs/ROLES_AND_USERS.md` §14), so it has to be nameable before the Master sees it. |
+| `id` | A text id, like every record type in `SYNCABLE_ENTITIES`, so the schema can take a user minted on a panel before the Master has seen it. The sync layer does not do that yet: there is no `user.*` mutation kind, so every user is created through the Master's own API and gets a permanent id at once, and `temporary_id` stays NULL (`docs/ROLES_AND_USERS.md` §15.5). |
 | `username` | Unique per tenant, case-insensitively, **among live rows only**: without the `WHERE deleted_at IS NULL` a deleted user would reserve their username forever, and someone who left and came back could not be re-created. |
 | `password_hash` | `scrypt$N$r$p$salt$hash` (`master/src/lib/password.ts`). Hashes written before scrypt are bcrypt; sign-in accepts either and rewrites a bcrypt hash to scrypt on the next successful sign-in. First-run setup still writes the `admin` hash as bcrypt, so it is upgraded on that account's first sign-in. |
-| `role_id` | Points at `roles.id` with **no** SQL foreign key. An offline mutation creating a user can arrive before the one creating its role, and a hard FK would reject the projection and break idempotent replay; and roles are soft-deleted, so a restored role must reattach to the users still pointing at it. The service layer checks the reference. |
-| `is_active` / `deleted_at` | Deactivating (`is_active = false`) and deleting (the Recycle Bin) are different acts; neither removes the row. Nothing hard-deletes a single user (the developer reset drops the whole schema), which is why the columns that *do* reference `users(id)` with a foreign key — `leads.owner_id`, `leads.created_by_user_id`, `orders.owner_id`, `orders.created_by_user_id`, `parties.created_by_user_id`, `stock_movements.created_by_user_id`, `timeline_entries.actor_user_id`, `sync_conflicts.resolved_by_user_id` — can never dangle. |
+| `role_id` | Points at `roles.id` with **no** SQL foreign key (`docs/ROLES_AND_USERS.md` §4.1). Roles are soft-deleted, so a restored role must reattach to the users still pointing at it. And once users and roles can be created offline — not built yet (§15.5) — a mutation creating a user could arrive before the one creating its role, and a hard FK would reject the projection and break idempotent replay. The service layer checks the reference. |
+| `is_active` / `deleted_at` | Deactivating (`is_active = false`) and deleting (the Recycle Bin) are different acts; neither removes the row. Nothing hard-deletes a single user — Developer mode's **Erase everything** (`resetAllData` in `developer.service.ts`) drops the whole schema, and the catalogue reload script (`catalog-reload-cli.ts`) keeps `users` — which is why the columns that *do* reference `users(id)` with a foreign key — `leads.owner_id`, `leads.created_by_user_id`, `orders.owner_id`, `orders.created_by_user_id`, `parties.created_by_user_id`, `stock_movements.created_by_user_id`, `timeline_entries.actor_user_id`, `sync_conflicts.resolved_by_user_id` — can never dangle. |
 | `avatar_*` | Metadata only: the image variants are files under `<dataDir>/uploads/images/<tenantId>/avatars/<avatar_id>/` (`00-overview.md` §4). `avatar_id` is a plain UUID, not a reference into `product_images`: an avatar shares none of a gallery's semantics, and reusing that table would make every product-image query exclude avatars. |
 
 *History:* the initial schema created `users` with a UUID `id`, a globally unique

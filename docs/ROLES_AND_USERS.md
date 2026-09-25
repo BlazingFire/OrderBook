@@ -75,8 +75,9 @@ company-configurable and therefore live in data.
 
 Two reasons, and both are load-bearing:
 
-1. **Sync arrival order.** A mutation creating a user can reach the Master before the one creating
-   its role. A hard FK would reject the write and break idempotent replay.
+1. **Sync arrival order.** Once roles and users can be created offline (not built yet, §15.5), a
+   mutation creating a user can reach the Master before the one creating its role. A hard FK would
+   reject the write and break idempotent replay.
 2. **Soft deletes.** A restored role must reattach to the users still pointing at it, which
    `ON DELETE` semantics fight.
 
@@ -276,10 +277,12 @@ a lookup.
 
 ## 10. Sync
 
-A role or user created on two offline panels gets two temporary ids and becomes **two records**, not
-one merged record. That is correct — they are two distinct objects that happen to share a name. The
-unique-name index rejects the second on promotion and the panel is told to rename or discard. They
-are never auto-merged, because a merged permission set is one nobody approved.
+**Designed, not built** — no role or user can be created offline yet (§15.5); this is how it is to
+behave once it can. A role or user created on two offline panels gets two temporary ids and becomes
+**two records**, not one merged record. That is correct — they are two distinct objects that happen
+to share a name. The unique-name index rejects the second on promotion and the panel is told to
+rename or discard. They are never auto-merged, because a merged permission set is one nobody
+approved.
 
 ---
 

@@ -106,8 +106,10 @@ a seeded role up by `tier` or `name`, never by id, and `id_sequences` for `role`
 
 **Why one array rather than a join table** (`docs/ROLES_AND_USERS.md` §5): a per-key merge of two
 concurrent offline edits produces a *union*, granting a combination neither administrator approved.
-Permission sets are approved as a whole, so they merge as a whole. The array is sorted on the way
-in, so two identical sets are identical bytes and a reorder never reads as an edit.
+Permission sets are approved as a whole, so they merge as a whole. (That merge is designed but not
+reachable yet: roles have no mutation kind, so a role is only ever edited through the Master's own
+API — §15.5 there.) The array is sorted on the way in, so two identical sets are identical bytes
+and a reorder never reads as an edit.
 
 The runtime check reads that array, never the tier name — but it *intersects* it with the tier
 ceiling on every resolution, and `effectivePermissions` drops any key the catalogue no longer
@@ -318,7 +320,7 @@ CREATE TABLE option_lists (
   tenant_id  UUID NOT NULL REFERENCES tenants(id),
   list_key   TEXT NOT NULL,     -- one of FIELD_LIST_KEYS, e.g. 'lead.sourcePlatform'
   value      TEXT NOT NULL,     -- what a record stores; never renamed
-  label      TEXT NOT NULL,     -- what a person sees; starts equal to value
+  label      TEXT NOT NULL,     -- what a person sees; a rename changes this, never value
   sequence   INTEGER NOT NULL DEFAULT 0,
   is_active  BOOLEAN NOT NULL DEFAULT true,
   hex        TEXT,              -- a swatch, for 'stock.colour' only
@@ -393,9 +395,16 @@ Seven tables carry the full sync bookkeeping — `leads`, `orders`, `parties`, `
 | `field_hlc` | **Per-field** map of who wrote what last |
 | `temporary_id` | The id the origin panel minted, if any |
 
+On `roles` and `users` the columns are ahead of the code. The Master's own writes stamp `version`,
+`hlc` and `field_hlc`, but there is no `role.*` or `user.*` mutation kind, so no panel edit reaches
+either table through sync and `temporary_id` is always NULL (`docs/ROLES_AND_USERS.md` §15.5).
+
 The other five syncable entities — line items, product categories, product variants, timeline
 entries and reservations — are created as part of a parent's write, so they carry no clock of their
-own; a temporary id minted for one is resolved through `id_map` alone.
+own, and the Master names each one with a permanent id when it applies that write (the
+`allocatePermanentIds` calls in their repositories). A panel mints a temporary id only for the
+record a mutation is about — a lead, party, product or party variant — so none of the five ever
+appears in `id_map`.
 
 `field_hlc` is the column that makes the guide's §4.5 promise achievable: edits to *different*
 fields both survive, because each field remembers its own writer. A single row-level timestamp

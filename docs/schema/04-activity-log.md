@@ -78,12 +78,16 @@ human-paced actions — that is not a real constraint, and it buys a trail that 
 it records.
 
 **What the triggers do not stop.** They are row-level, so a `TRUNCATE` empties the table without
-firing `activity_log_no_delete`: the developer reset (`catalog-reload-cli.ts`) and the test
-fixtures do exactly that. Three code paths step around them on purpose: the `20260310` backfill of
-`actor_name` (drops and recreates `activity_log_no_update` around it), the developer sample-data
-seeder (disables `activity_log_no_update` to backdate `created_at`, which the hash does not cover),
-and a backup restore (loads under `session_replication_role = 'replica'`, so no trigger fires and
-the exported hashes are kept as they were, then verifies the chain and rolls back if it fails).
+firing `activity_log_no_delete`: the catalogue reload script (`catalog-reload-cli.ts`, which keeps
+users, roles and settings) and the test fixtures do exactly that. Developer mode's **Erase
+everything** (`resetAllData` in `developer.service.ts`) goes further: it drops the whole `public`
+schema — the trail, its triggers and every other table — and re-runs the migrations, so the chain
+starts again from a first-run database. Three code paths step around them on purpose: the
+`20260310` backfill of `actor_name` (drops and recreates `activity_log_no_update` around it), the
+developer sample-data seeder (disables `activity_log_no_update` to backdate `created_at`, which the
+hash does not cover), and a backup restore (loads under `session_replication_role = 'replica'`, so
+no trigger fires and the exported hashes are kept as they were, then verifies the chain and rolls
+back if it fails).
 
 ## Why `BIGSERIAL` here (unlike most other tables)
 

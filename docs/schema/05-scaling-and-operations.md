@@ -84,10 +84,17 @@ thousands" above reaches it.
   was.
 - **Before an upgrade** the Master copies the stopped cluster folder to
   `<dataDir>/backups/before-<version>-<stamp>/` (with a `README.txt` of restore
-  steps) whenever the booting version differs from the last one that migrated, and
-  keeps the newest two (`master/src/db/cluster-snapshot.ts`). Migrations after 1.2.0
-  may only add (`docs/PRODUCTION_READINESS.md`), so an update replaces the program
-  and never the data.
+  steps) whenever the booting version differs from the one in
+  `<dataDir>/booted-version` — the version that last booted, recorded only after its
+  migrations succeeded — and keeps the newest two
+  (`master/src/db/cluster-snapshot.ts`). The copy fails soft: the boot carries on
+  without one, and logs why, when `ORDERBOOK_UPGRADE_SNAPSHOT=0`, when a PostgreSQL
+  process is still running on the cluster (a copy would not be consistent), when the
+  drive lacks room for the copy plus 256 MB of headroom, or when the copy itself
+  fails. There is no cluster to copy on first run, and none under `DATABASE_URL`,
+  whose owner keeps their own backups. Migrations after 1.2.0 may only add
+  (`docs/PRODUCTION_READINESS.md`), so an update replaces the program and never the
+  data.
 - **Autovacuum** (Postgres's built-in background maintenance) runs automatically —
   no manual `VACUUM`/`ANALYZE` scheduling needed for a workload this size, unlike
   the manual hygiene a file-based engine would need as it grows.

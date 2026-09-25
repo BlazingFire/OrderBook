@@ -302,8 +302,9 @@ their own once the product itself is gone. An image is not a Recycle Bin entity:
 deleting one hard-deletes the row and removes its files. Deleting a *product* is a
 soft delete, which keeps its image rows, so restoring the product restores its gallery;
 only a hard delete of the product row would cascade, and no code path hard-deletes a
-product (the developer reset in `catalog-reload-cli.ts` truncates the business tables
-wholesale instead).
+product (the catalogue reload script, `catalog-reload-cli.ts`, truncates the business
+tables wholesale instead, and Developer mode's **Erase everything** drops the whole
+schema).
 
 *History:* the initial schema stored a relative `file_path` and nothing else about the
 image. `20260307000000_product_images_pipeline` dropped `file_path` and added the
