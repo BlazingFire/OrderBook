@@ -65,6 +65,13 @@ interface KeyboardApi {
   setHelpOpen: (open: boolean) => void;
   /** Run a command by id, as if its chord had been pressed. */
   run: (commandId: string) => void;
+  /**
+   * Whether running this command now would do anything — what the palette
+   * lists. A screen that has nothing to save, a screen the sidebar does not
+   * offer this person, a shell command the role may not use: each is a row
+   * that closes the palette and does nothing, so the palette leaves it out.
+   */
+  offers: (commandId: string) => boolean;
   push: (registration: Registration) => void;
   pop: (registration: Registration) => void;
 }
@@ -118,6 +125,7 @@ export function KeyboardProvider({
   panel,
   userId = null,
   onNavigate,
+  canNavigate,
   shellCommands,
   children,
 }: {
@@ -130,6 +138,12 @@ export function KeyboardProvider({
    * lose a half-filled form than clicking the sidebar is.
    */
   onNavigate?: (tab: string) => void;
+  /**
+   * Whether `onNavigate` would go to this screen — the same test the panel's
+   * navigation applies, so the palette offers a screen exactly when the
+   * sidebar does. Absent means every screen.
+   */
+  canNavigate?: (tab: string) => boolean;
   /**
    * Commands the shell answers rather than a screen — resetting the visible
    * pane, reloading, starting a new record.
@@ -160,8 +174,8 @@ export function KeyboardProvider({
    * every keystroke, and the handlers it dispatches to are closures rebuilt on
    * each render anyway.
    */
-  const latest = useRef({ bindings, panel, onNavigate, shellCommands });
-  latest.current = { bindings, panel, onNavigate, shellCommands };
+  const latest = useRef({ bindings, panel, onNavigate, canNavigate, shellCommands });
+  latest.current = { bindings, panel, onNavigate, canNavigate, shellCommands };
 
   const runCommand = useCallback((commandId: string): boolean => {
     const command = COMMANDS_BY_ID.get(commandId);
@@ -208,6 +222,23 @@ export function KeyboardProvider({
     return false;
   }, []);
 
+  /*
+   * The same order `runCommand` answers in, asked without running anything.
+   * `view.find` has no entry here on purpose: it is answered by the chord alone
+   * (see the listener below), so as a palette row it did nothing.
+   */
+  const offersCommand = useCallback((commandId: string): boolean => {
+    const command = COMMANDS_BY_ID.get(commandId);
+    if (!command) return false;
+    if (command.id === 'palette.open' || command.id === 'palette.search') return true;
+    if (command.id === 'keys.help') return true;
+    if (stack.current.some((registration) => registration.id === commandId)) return true;
+    if (command.tab && latest.current.onNavigate) {
+      return latest.current.canNavigate?.(command.tab) ?? true;
+    }
+    return Boolean(latest.current.shellCommands?.[commandId]);
+  }, []);
+
   const runRef = useRef(runCommand);
   runRef.current = runCommand;
 
@@ -250,7 +281,8 @@ export function KeyboardProvider({
           // Chord only, unlike the palette and help cases in `runCommand`: a
           // palette row runs as the palette closes, and the palette's focus
           // restore (`useOverlay`) can then hand focus straight back to
-          // whatever held it before — so the "Find" row is not wired yet.
+          // whatever held it before — so the palette leaves the row out
+          // (`offersCommand`) rather than offer one that does nothing.
           const box = Array.from(
             document.querySelectorAll<HTMLInputElement>('input[data-screen-search]'),
           ).find((input) => input.offsetParent !== null);
@@ -310,6 +342,7 @@ export function KeyboardProvider({
       setPaletteOpen,
       setHelpOpen,
       run: (commandId) => void runCommand(commandId),
+      offers: offersCommand,
       push: registry.push,
       pop: registry.pop,
       setBinding: (commandId, chord) => {
@@ -332,7 +365,7 @@ export function KeyboardProvider({
         setBindings({});
       },
     }),
-    [panel, bindings, paletteOpen, helpOpen, userId, runCommand, registry],
+    [panel, bindings, paletteOpen, helpOpen, userId, runCommand, offersCommand, registry],
   );
 
   return <KeyboardContext.Provider value={api}>{children}</KeyboardContext.Provider>;

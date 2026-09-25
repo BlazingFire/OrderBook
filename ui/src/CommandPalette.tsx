@@ -104,8 +104,12 @@ function CommandPalette({
 
   const commandRows: Row[] = useMemo(() => {
     const needle = term.trim().toLowerCase();
+    // Read as the palette opens: what a screen answers is on the provider's
+    // stack, which changes without re-rendering this list, and the palette is
+    // a dialog, so nothing under it moves while it is open.
     return commandsFor(keyboard.panel)
       .filter((command) => command.id !== 'palette.open' && command.id !== 'palette.search')
+      .filter((command) => keyboard.offers(command.id))
       .map((command) => {
         const chord = chordFor(command.id, keyboard.bindings);
         return {
@@ -125,7 +129,7 @@ function CommandPalette({
     // list every render; it and `keyboard.run` only reach stable targets — a
     // useState setter and a useCallback([]).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [term, keyboard.panel, keyboard.bindings]);
+  }, [open, term, keyboard.panel, keyboard.bindings, keyboard.offers]);
 
   const recordRows: Row[] = records.hits.map((hit) => ({
     key: `${hit.kind}:${hit.id}`,

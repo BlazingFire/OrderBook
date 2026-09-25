@@ -702,6 +702,10 @@ function MasterPanel() {
         ? `${tab}.${subKeyOf(tab)}`
         : tab;
   const flatItems = groups.flatMap((group) => flattenNav(group.items));
+  /** Whether the sidebar offers this person the screen — navigation's gate and the palette's. */
+  function offered(id: string): boolean {
+    return flatItems.some((item) => item.id === id);
+  }
   const activeLabel =
     route === 'gallery' && !subNav
       ? t('footer.designSystem')
@@ -723,7 +727,7 @@ function MasterPanel() {
      * with no `panels.manage` opened Office panels with Alt+6. The server still
      * refuses the calls; this keeps the panel from drawing the screen at all.
      */
-    if (!flatItems.some((item) => item.id === id)) return;
+    if (!offered(id)) return;
     openScreen(id);
   }
 
@@ -1080,6 +1084,7 @@ function MasterPanel() {
       panel="master"
       userId={user?.id ?? null}
       onNavigate={navigate}
+      canNavigate={offered}
       shellCommands={{
         'view.reset': () => void resetActiveScreen(),
         // F5 is swallowed by the desktop shell so it cannot bypass the panel;

@@ -17,6 +17,12 @@
  * row runs its command through `run()`, which never reached the provider's own
  * keydown switch — so "Keyboard shortcuts" and "Toggle sidebar" picked from the
  * palette did nothing at all.
+ *
+ * The last half pins what the palette lists: only commands that would do
+ * something now. It used to list every screen in the panel's nav, including
+ * the ones the sidebar does not offer this person (picking one closed the
+ * palette and did nothing), "New record" for a role that cannot create one,
+ * and "Find", which only the chord answers.
  */
 
 import { useState } from 'react';
@@ -24,8 +30,10 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { AppShell } from '../src/AppShell.js';
+import { KeyboardOverlays } from '../src/CommandPalette.js';
 import { KeyboardProvider, useCommand, useKeyboard } from '../src/KeyboardProvider.js';
 import { ScreenHost } from '../src/ScreenHost.js';
+import { t } from '../src/i18n.js';
 
 beforeEach(() => window.localStorage.clear());
 afterEach(cleanup);
@@ -242,5 +250,67 @@ describe('commands the provider answers itself', () => {
 
     fireEvent.click(screen.getByText('run help'));
     expect(screen.getByTestId('help').textContent).toBe('true');
+  });
+});
+
+function OpenPalette() {
+  const keyboard = useKeyboard();
+  return (
+    <button type="button" onClick={() => keyboard.setPaletteOpen(true)}>
+      open palette
+    </button>
+  );
+}
+
+describe('what the palette lists', () => {
+  function rowLabels(): string[] {
+    return [...document.querySelectorAll('.ob-navitem-label')].map((row) => row.textContent ?? '');
+  }
+
+  it('lists only the commands that would do something now', () => {
+    const went: string[] = [];
+    render(
+      <KeyboardProvider
+        panel="master"
+        onNavigate={(tab) => went.push(tab)}
+        canNavigate={(tab) => tab === 'dashboard' || tab === 'orders'}
+        shellCommands={{ 'view.refresh': () => undefined, 'record.new': null }}
+      >
+        <Screen dialogOpen={false} log={[]} />
+        <OpenPalette />
+        <KeyboardOverlays />
+      </KeyboardProvider>,
+    );
+    fireEvent.click(screen.getByText('open palette'));
+    const labels = rowLabels();
+
+    // Offered by the sidebar, answered by the shell, the screen or the provider.
+    expect(labels).toContain(t('nav.master.dashboard'));
+    expect(labels).toContain(t('nav.master.leadsOrders'));
+    expect(labels).toContain(t('keys.command.refresh'));
+    expect(labels).toContain(t('keys.command.save'));
+    expect(labels).toContain(t('keys.command.help'));
+
+    // Not offered to this person, withheld from this role, or chord-only.
+    expect(labels).not.toContain(t('nav.master.panels'));
+    expect(labels).not.toContain(t('nav.master.access'));
+    expect(labels).not.toContain(t('keys.command.new'));
+    expect(labels).not.toContain(t('keys.command.find'));
+
+    fireEvent.click(screen.getByText(t('nav.master.leadsOrders')));
+    expect(went).toEqual(['orders']);
+  });
+
+  it('drops a screen’s command while the screen has nothing to do', () => {
+    render(
+      <KeyboardProvider panel="office">
+        <Screen dialogOpen={false} busy log={[]} />
+        <OpenPalette />
+        <KeyboardOverlays />
+      </KeyboardProvider>,
+    );
+    fireEvent.click(screen.getByText('open palette'));
+
+    expect(rowLabels()).not.toContain(t('keys.command.save'));
   });
 });

@@ -790,7 +790,7 @@ function OfficePanel() {
      * lead board by pressing Alt+2. The Master still refuses what the role may
      * not do; this keeps the panel from drawing the screen at all.
      */
-    if (!flatItems.some((item) => item.id === id)) return;
+    if (!offered(id)) return;
     // Clear a stale #/gallery so the hash and the state agree; replaceState
     // does not fire hashchange, the setRoute below is the source of truth.
     if (readHash())
@@ -823,6 +823,10 @@ function OfficePanel() {
             : (groups.flatMap((group) => group.items)[0]?.id ?? '');
 
   const flatItems = groups.flatMap((group) => flattenNav(group.items));
+  /** Whether the sidebar offers this person the screen — navigation's gate and the palette's. */
+  function offered(id: string): boolean {
+    return flatItems.some((item) => item.id === id);
+  }
   const activeLabel =
     route === 'gallery' && !subNav
       ? t('footer.designSystem')
@@ -1217,6 +1221,7 @@ function OfficePanel() {
       panel="office"
       userId={session?.userId ?? null}
       onNavigate={goToTab}
+      canNavigate={offered}
       shellCommands={{
         'view.reset': () => void resetActiveScreen(),
         // As on the Master: the shell swallows F5, so this is what hands the key
