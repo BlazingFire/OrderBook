@@ -7,8 +7,11 @@
  * a database: the files under `paths()` (`config/paths.ts`) — the pairing, the
  * device code and clock, the outbox and its refusals, the last snapshot, the
  * offline sign-in records and lockouts, cached images and avatars — plus a
- * downloaded update (`updatesDir()` in `update.service.ts`). The Master stays
- * the only durable store of the company's records.
+ * downloaded update (`updatesDir()` in `update.service.ts`), and, once that
+ * folder has been moved, the one file it writes outside it: the record of
+ * where the folder now is (`config.locationFile`, the desktop shell's pointer,
+ * or `config.settingsFile` run from source). The Master stays the only durable
+ * store of the company's records.
  */
 
 import { existsSync } from 'node:fs';
