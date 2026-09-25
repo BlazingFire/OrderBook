@@ -221,23 +221,29 @@ export async function updateOrderColumns(
  * `dispatched_at` as null under READ COMMITTED and both write stock
  * movements. `null` means the order does not exist (or is soft-deleted);
  * the returned `dispatchedAt` is the caller's authoritative, freshly-locked
- * answer to "has this already been dispatched?", and `fieldHlc` the per-field
- * clocks as they stand under the lock, for the write that follows.
+ * answer to "has this already been dispatched?", and `stageId` and `fieldHlc`
+ * the stage and per-field clocks as they stand under the lock, for the write
+ * that follows.
  */
 export async function lockOrder(
   tenantId: string,
   id: string,
   trx: TransactionContext,
-): Promise<{ dispatchedAt: string | null; fieldHlc: Record<string, string> } | null> {
+): Promise<{ dispatchedAt: string | null; stageId: string; fieldHlc: Record<string, string> } | null> {
   const row = await trx(TABLE)
     .where({ tenant_id: tenantId, id })
     .whereNull('deleted_at')
     .forUpdate()
-    .first<{ dispatched_at: string | null; field_hlc: unknown } | undefined>('dispatched_at', 'field_hlc');
+    .first<{ dispatched_at: string | null; stage_id: string; field_hlc: unknown } | undefined>(
+      'dispatched_at',
+      'stage_id',
+      'field_hlc',
+    );
 
   if (!row) return null;
   return {
     dispatchedAt: row.dispatched_at,
+    stageId: row.stage_id,
     fieldHlc: toJsonObject(row.field_hlc) as Record<string, string>,
   };
 }

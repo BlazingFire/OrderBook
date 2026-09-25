@@ -398,14 +398,13 @@ export async function dispatchOrder(
   if (existing.dispatchedAt) throw new ValidationError('validation.order.alreadyDispatched');
 
   const stages = await pipelineRepo.stagesFor(actor.tenantId, 'order');
-  const from = findStage(stages, existing.stageId);
   // Keyed on the seeded stage *name*, which the Fields screen can rename — the
   // "never key on a stage name" rule in `lead-outcome.ts` is broken here, and a
   // renamed stage leaves a dispatched order where it was. Not fixable in code
   // alone: nothing on `pipeline_stages` says which stage means "dispatched"
   // (`is_terminal` is also true of Cancelled), so it needs a stage flag added
   // by migration and a way to set it — an owner decision.
-  const dispatched = stages.find((stage) => stage.name === 'Dispatched') ?? from;
+  const dispatchedStage = stages.find((stage) => stage.name === 'Dispatched');
 
   const active = await reservationRepo.activeForOrder(actor.tenantId, input.orderId);
   const movements = planDispatchMovements(active);
@@ -427,6 +426,13 @@ export async function dispatchOrder(
     const locked = await orderRepo.lockOrder(actor.tenantId, input.orderId, trx);
     if (!locked) throw new NotFoundError('Order');
     if (locked.dispatchedAt) throw new ValidationError('validation.order.alreadyDispatched');
+
+    // The stage it leaves is the locked row's too, not `existing`'s. A stage
+    // move that committed after that read would otherwise be written back over
+    // — with no "Dispatched" stage the order stays where it is, and that has to
+    // mean where it is now — and the timeline would name the wrong stage.
+    const from = findStage(stages, locked.stageId);
+    const dispatched = dispatchedStage ?? from;
 
     // The ledger is a second, independent idempotency check: an order that
     // somehow reaches this path twice cannot double-count, because the first

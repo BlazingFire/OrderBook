@@ -28,7 +28,10 @@
  * transaction holding the chain lock is only ever waiting to commit — never on
  * a lock that somebody queued behind it holds — and two audited writes cannot
  * deadlock over it. Writing the entry first and then touching more rows would
- * break that.
+ * break that. `master/tests/audit-atomicity.integration.test.ts` pins it for
+ * the party, product, lead, order, stock, merge and panel writes: it holds a
+ * row each has to lock, and checks the chain lock is still free while the
+ * write waits for that row.
  */
 
 import type { ActivityActor, ActivityLogEntry, ActivityLogFacets, ChainBreak, ChainVerification } from '@orderbook/shared';
@@ -97,12 +100,18 @@ export async function recordActivity(
  *
  * The rule: a change the Master makes to its own data records its entry with
  * `recordActivity`, inside that change's transaction. This is for the entries
- * that have no such transaction, and there are three kinds today:
+ * that have no such transaction — three kinds today, the first with one known
+ * exception:
  *
  *  - an **attempt**, recorded the same way whether it was refused or let in —
  *    a sign-in (`auth.service.ts`). A refused one changed nothing, so there is
  *    nothing to be atomic with, and throwing would replace a useful entry with
- *    a confusing 500;
+ *    a confusing 500. An accepted one *does* change the Master's data — it
+ *    stamps `last_sign_in`, and may rewrite a bcrypt hash as scrypt — in a
+ *    transaction of its own, and its entry still follows that commit. That is
+ *    the exception, kept because joining it would make signing in fail
+ *    whenever the trail cannot be written — for the administrator who has to
+ *    fix the trail as much as for anyone;
  *  - a **run that spans many transactions** — a connector import
  *    (`connector-run.service.ts`) — whose one entry summarises all of them and
  *    is written after the last;

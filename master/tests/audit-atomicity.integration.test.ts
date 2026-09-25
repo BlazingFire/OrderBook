@@ -33,6 +33,7 @@ import { db } from '../src/db/knex.js';
 import type { ActorContext } from '../src/domain/actor.js';
 import { nextHlc } from '../src/repositories/identity.repository.js';
 import * as catalog from '../src/services/catalog.service.js';
+import * as fields from '../src/services/fields.service.js';
 import * as inventory from '../src/services/inventory.service.js';
 import * as leads from '../src/services/lead.service.js';
 import * as orders from '../src/services/order.service.js';
@@ -529,6 +530,36 @@ describe.skipIf(!canRunIntegrationTests)('audited writes commit with their entry
   });
 
   describe('lock order', () => {
+    type Holder = (trx: Parameters<typeof nextHlc>[0]) => Promise<unknown>;
+
+    /**
+     * Starts `write` and waits until it is queued behind a row lock. Throws if
+     * it finished or never queued: a test that goes on as if it had would pass
+     * without having tested anything. Wrapped in an object because an async
+     * function returning the promise itself would wait for it.
+     */
+    async function startQueued<T>(write: () => Promise<T>): Promise<{ pending: Promise<T> }> {
+      let settled = false;
+      const pending = write().finally(() => {
+        settled = true;
+      });
+      // Swallowed here, surfaced when the caller awaits `pending`.
+      pending.catch(() => undefined);
+
+      for (let attempt = 0; attempt < 200 && !settled; attempt += 1) {
+        const { rows } = await db().raw<{ rows: Array<{ waiting: number }> }>(
+          `SELECT count(*)::int AS waiting FROM pg_stat_activity
+            WHERE datname = current_database()
+              AND wait_event_type = 'Lock' AND wait_event IN ('transactionid', 'tuple')`,
+        );
+        if ((rows[0]?.waiting ?? 0) > 0) return { pending };
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+
+      await pending;
+      throw new Error('The write never queued behind the held lock, so the test proved nothing');
+    }
+
     /**
      * Runs `write` while another transaction holds `master_clock`'s lock, then
      * has that transaction take `rowLock` too. Every write stamps the clock
@@ -536,29 +567,11 @@ describe.skipIf(!canRunIntegrationTests)('audited writes commit with their entry
      * round would be holding the row here while it waited for the clock, and
      * the two transactions would deadlock (`40P01`).
      */
-    async function whileTheClockIsHeld<T>(
-      write: () => Promise<T>,
-      rowLock: (trx: Parameters<typeof nextHlc>[0]) => Promise<unknown>,
-    ): Promise<T> {
+    async function whileTheClockIsHeld<T>(write: () => Promise<T>, rowLock: Holder): Promise<T> {
       const trx = await db().transaction();
       try {
         await nextHlc(trx);
-
-        let settled = false;
-        const pending = write().finally(() => {
-          settled = true;
-        });
-        // Swallowed here, surfaced by the `await pending` below.
-        pending.catch(() => undefined);
-
-        for (let attempt = 0; attempt < 200 && !settled; attempt += 1) {
-          const { rows } = await db().raw<{ rows: Array<{ waiting: number }> }>(
-            `SELECT count(*)::int AS waiting FROM pg_stat_activity
-              WHERE datname = current_database() AND wait_event_type = 'Lock'`,
-          );
-          if ((rows[0]?.waiting ?? 0) > 0) break;
-          await new Promise((resolve) => setTimeout(resolve, 25));
-        }
+        const { pending } = await startQueued(write);
 
         await trx.raw(`SET LOCAL lock_timeout = '5s'`);
         await rowLock(trx);
@@ -570,12 +583,46 @@ describe.skipIf(!canRunIntegrationTests)('audited writes commit with their entry
       }
     }
 
+    /**
+     * Runs `write` while another transaction holds a row it has to lock (`hold`),
+     * and once `write` is queued behind that row, has the holder take the audit
+     * chain's lock — the per-tenant advisory lock `activity_log`'s trigger takes
+     * for every entry. It is free only while `write` has not written its entry.
+     *
+     * That is the rule `activity-log.repository.ts` states: the entry is the
+     * last statement of its transaction, after every row the change locks. A
+     * write whose entry came first would be holding the chain lock here while it
+     * waited for the row — every other audited write for the company queued
+     * behind a transaction that is itself waiting, and a deadlock with any of
+     * them that holds the row. The holder's short `lock_timeout` turns that into
+     * a failure here rather than a test that waits for the deadlock detector.
+     */
+    async function whileTheRowIsHeld<T>(write: () => Promise<T>, hold: Holder): Promise<T> {
+      const trx = await db().transaction();
+      try {
+        await hold(trx);
+        const { pending } = await startQueued(write);
+
+        await trx.raw(`SET LOCAL lock_timeout = '500ms'`);
+        await trx.raw('SELECT pg_advisory_xact_lock(hashtext(?))', [actor.tenantId]);
+        await trx.commit();
+        return await pending;
+      } catch (error) {
+        if (!trx.isCompleted()) await trx.rollback().catch(() => undefined);
+        throw error;
+      }
+    }
+
+    function holdRow(table: string, where: Record<string, unknown>): Holder {
+      return (trx) => trx(table).where(where).forUpdate().first();
+    }
+
     it('changing who may reach a party stamps the clock before it locks the party', async () => {
       const party = await catalog.createParty({ name: 'Locked Traders' }, actor);
 
       const row = await whileTheClockIsHeld(
         () => partyAccess.replaceAssignments(party.id, { entries: [], expectedVersion: party.sync.version }, actor),
-        (trx) => trx('parties').where({ id: party.id }).forUpdate().first(),
+        holdRow('parties', { id: party.id }),
       );
 
       expect(row.partyId).toBe(party.id);
@@ -586,10 +633,216 @@ describe.skipIf(!canRunIntegrationTests)('audited writes commit with their entry
 
       const dispatched = await whileTheClockIsHeld(
         () => orders.dispatchOrder({ orderId: order.id }, actor),
-        (trx) => trx('orders').where({ id: order.id }).forUpdate().first(),
+        holdRow('orders', { id: order.id }),
       );
 
       expect(dispatched.dispatchedAt).not.toBeNull();
+    });
+
+    // Each arranges a record, then names the write and a row that write has to
+    // lock before it can finish — the row it changes, or for a new record the
+    // parent its foreign key checks.
+    const lastInItsTransaction: Array<[string, () => Promise<{ write: () => Promise<unknown>; hold: Holder }>]> = [
+      ['creating a party', async () => ({
+        write: () => catalog.createParty({ name: 'Queued Traders' }, actor),
+        hold: holdRow('tenants', { id: actor.tenantId }),
+      })],
+      ['editing a party', async () => {
+        const party = await catalog.createParty({ name: 'Before' }, actor);
+        return {
+          write: () => catalog.updateParty(party.id, { name: 'After' }, actor),
+          hold: holdRow('parties', { id: party.id }),
+        };
+      }],
+      ['changing who may reach a party', async () => {
+        const party = await catalog.createParty({ name: 'Locked Traders' }, actor);
+        return {
+          write: () => partyAccess.replaceAssignments(party.id, { entries: [], expectedVersion: party.sync.version }, actor),
+          hold: holdRow('parties', { id: party.id }),
+        };
+      }],
+      ['recording a party-wise record of a product', async () => {
+        const party = await catalog.createParty({ name: 'Own Names' }, actor);
+        const { product } = await createTestProduct(actor, { name: 'Wash Basin' });
+        await catalog.upsertVariant({ partyId: party.id, productId: product.id, alias: 'WB-1' }, actor);
+        return {
+          write: () => catalog.upsertVariant({ partyId: party.id, productId: product.id, alias: 'WB-2' }, actor),
+          hold: holdRow('party_product_variants', { party_id: party.id, product_id: product.id }),
+        };
+      }],
+      ['creating a product', async () => ({
+        write: () => createTestProduct(actor, { name: 'Queued Basin' }),
+        hold: holdRow('tenants', { id: actor.tenantId }),
+      })],
+      ['editing a product', async () => {
+        const { product } = await createTestProduct(actor, { name: 'Before' });
+        return {
+          write: () => catalog.updateProduct(product.id, { name: 'After' }, actor),
+          hold: holdRow('products', { id: product.id }),
+        };
+      }],
+      ['creating a lead', async () => {
+        const party = await catalog.createParty({ name: 'Audit Traders' }, actor);
+        const { product, variant } = await createTestProduct(actor, { name: 'Audit Basin' });
+        return {
+          write: () => leads.createLead(
+            { partyId: party.id, items: [{ productId: product.id, variantId: variant.id, quantity: 1 }] },
+            actor,
+          ),
+          hold: holdRow('parties', { id: party.id }),
+        };
+      }],
+      ['editing a lead', async () => {
+        const { lead } = await seedLead();
+        return {
+          write: () => leads.updateLead(lead.id, { notes: 'queued' }, actor),
+          hold: holdRow('leads', { id: lead.id }),
+        };
+      }],
+      ['moving a lead to another stage', async () => {
+        const { lead } = await seedLead();
+        const quoted = await stageIdByName('lead', 'Quoted');
+        return {
+          write: () => leads.setStage({ id: lead.id, stageId: quoted }, actor),
+          hold: holdRow('leads', { id: lead.id }),
+        };
+      }],
+      ['converting a lead to an order', async () => {
+        const { lead } = await seedLead();
+        return {
+          write: () => orders.convertLead({ leadId: lead.id }, actor),
+          hold: holdRow('leads', { id: lead.id }),
+        };
+      }],
+      ['editing an order', async () => {
+        const { order } = await seedOrder();
+        return {
+          write: () => orders.updateOrder(order.id, { notes: 'queued' }, actor),
+          hold: holdRow('orders', { id: order.id }),
+        };
+      }],
+      ['moving an order to another stage', async () => {
+        const { order } = await seedOrder();
+        const postpone = await stageIdByName('order', 'Postpone');
+        return {
+          write: () => orders.setStage({ id: order.id, stageId: postpone }, actor),
+          hold: holdRow('orders', { id: order.id }),
+        };
+      }],
+      ['dispatching an order', async () => {
+        const { order } = await seedOrder();
+        return {
+          write: () => orders.dispatchOrder({ orderId: order.id }, actor),
+          hold: holdRow('orders', { id: order.id }),
+        };
+      }],
+      ['merging an offline edit', async () => {
+        const { order } = await seedOrder();
+        const panelActor = await testActor({ deviceCode: PANEL, actorType: 'office_panel' });
+        return {
+          write: () => sync.applyPush(
+            {
+              mutations: [
+                mergeMutation({ kind: 'order.update', entity: 'order', entityId: order.id, fields: ['notes'], payload: { notes: 'queued' } }),
+              ],
+            },
+            panelActor,
+          ),
+          hold: holdRow('orders', { id: order.id }),
+        };
+      }],
+      ['recording stock in', async () => {
+        const { variant } = await createTestProduct(actor, { name: 'Audit Basin' });
+        await inventory.recordInbound({ variantId: variant.id, quantityBoxes: 10 }, actor);
+        return {
+          write: () => inventory.recordInbound({ variantId: variant.id, quantityBoxes: 5 }, actor),
+          hold: holdRow('inventory_stock', { variant_id: variant.id }),
+        };
+      }],
+      ['correcting a count', async () => {
+        const { variant } = await createTestProduct(actor, { name: 'Audit Basin' });
+        await inventory.recordInbound({ variantId: variant.id, quantityBoxes: 10 }, actor);
+        return {
+          write: () => inventory.recordAdjustment({ variantId: variant.id, quantityBoxes: 7, note: 'recount' }, actor),
+          hold: holdRow('inventory_stock', { variant_id: variant.id }),
+        };
+      }],
+      ['setting stock levels', async () => {
+        const { variant } = await createTestProduct(actor, { name: 'Audit Basin' });
+        await inventory.recordInbound({ variantId: variant.id, quantityBoxes: 10 }, actor);
+        return {
+          write: () => inventory.setReorderLevel({ variantId: variant.id, reorderLevel: 5 }, actor),
+          hold: holdRow('inventory_stock', { variant_id: variant.id }),
+        };
+      }],
+      ['pairing a panel', async () => {
+        await setup.runFirstTimeSetup('Shree Ceramics');
+        panels.openPairingWindow();
+        return {
+          write: () => panels.pairPanel({ mode: 'auto', panelName: 'Front Desk', hostname: 'pc1' }, null),
+          hold: holdRow('tenants', { id: actor.tenantId }),
+        };
+      }],
+      ['revoking a panel', async () => {
+        await setup.runFirstTimeSetup('Shree Ceramics');
+        panels.openPairingWindow();
+        const paired = await panels.pairPanel({ mode: 'auto', panelName: 'Front Desk', hostname: 'pc1' }, null);
+        return {
+          write: () => panels.revokePanel(paired.panelId, actor),
+          hold: holdRow('office_panels', { id: paired.panelId }),
+        };
+      }],
+      ['editing a panel', async () => {
+        await setup.runFirstTimeSetup('Shree Ceramics');
+        panels.openPairingWindow();
+        const paired = await panels.pairPanel({ mode: 'auto', panelName: 'Front Desk', hostname: 'pc1' }, null);
+        return {
+          write: () => panels.updatePanel(paired.panelId, { name: 'Counter PC' }, actor),
+          hold: holdRow('office_panels', { id: paired.panelId }),
+        };
+      }],
+    ];
+
+    it.each(lastInItsTransaction)('%s writes its entry after every row it locks', async (_path, arrange) => {
+      const { write, hold } = await arrange();
+      const before = await countRows('activity_log');
+
+      await whileTheRowIsHeld(write, hold);
+
+      // And the entry was written once the row was free — the write did happen.
+      expect(await countRows('activity_log')).toBeGreaterThan(before);
+    });
+
+    it('a dispatch moves the order from the stage it is on under the lock, not before', async () => {
+      const { order } = await seedOrder();
+      const postpone = await stageIdByName('order', 'Postpone');
+      const dispatchedStage = await stageIdByName('order', 'Dispatched');
+      // With no stage of that name, a dispatch leaves the order on its own stage.
+      await fields.updateStage(dispatchedStage, { name: 'Sent' }, actor);
+
+      try {
+        // A stage move that commits after the dispatch read the order and before
+        // it locked the row. The dispatch used to take its stage from that read,
+        // so it wrote the old stage back over the move and named it in the
+        // timeline as the stage the order was dispatched from.
+        const dispatched = await whileTheRowIsHeld(
+          () => orders.dispatchOrder({ orderId: order.id }, actor),
+          (trx) => trx('orders').where({ id: order.id }).update({ stage_id: postpone }),
+        );
+
+        expect(dispatched.stageId).toBe(postpone);
+        const entry = await db()('timeline_entries')
+          .where({ parent_id: order.id })
+          .whereLike('message', 'Dispatched%')
+          .first<{ from_stage_id: string; to_stage_id: string }>('from_stage_id', 'to_stage_id');
+        expect(entry).toEqual({ from_stage_id: postpone, to_stage_id: postpone });
+      } finally {
+        // Named back here, not left to the next `resetData`: the stage snapshot
+        // that restores from is taken when a test file starts, on the cluster
+        // every file shares, so a rename still standing when this file ends
+        // would become the next file's "seeded" name.
+        await fields.updateStage(dispatchedStage, { name: 'Dispatched' }, actor);
+      }
     });
   });
 });
