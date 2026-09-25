@@ -17,7 +17,7 @@
  */
 
 import { StrictMode } from 'react';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { t } from '../src/i18n.js';
@@ -27,6 +27,7 @@ import {
   json,
   loadApp,
   pressAltDigit,
+  pressAltDigitUntil,
   routeFetch,
   topbarTitle,
   wait,
@@ -134,11 +135,19 @@ async function boot(
   return calls;
 }
 
-/** Another administrator's write, as the Master's hub broadcasts it. */
+/**
+ * Another administrator's write, as the Master's hub broadcasts it.
+ *
+ * Waits for the link first. The panel opens it in an effect, which React may
+ * not have run by the time the shell is on screen; an event sent before then
+ * reached nobody, and a test that expects no refetch passed without a change
+ * ever having arrived.
+ */
 async function changed(entity: string): Promise<void> {
-  const live = sockets.all.filter((socket) => !socket.closed).at(-1);
+  const live = () => sockets.all.filter((socket) => !socket.closed).at(-1);
+  await waitFor(() => expect(live()).toBeDefined());
   await act(async () => {
-    live?.emit('data:changed', { entity, action: 'updated', id: 'x', payload: null });
+    live()!.emit('data:changed', { entity, action: 'updated', id: 'x', payload: null });
     await wait(0);
   });
 }
@@ -191,18 +200,17 @@ describe('Alt+N', () => {
     // follow its sidebar order (`shared/tests/keys-nav-order.test.ts`), Work
     // then Admin, and Conflicts at 6 is offered to everybody.
     await boot(['leads.view']);
+    await pressAltDigitUntil(6, t('nav.master.conflicts'));
 
     await act(async () => pressAltDigit(7));
 
-    expect(topbarTitle()).toBe(t('nav.master.dashboard'));
+    expect(topbarTitle()).toBe(t('nav.master.conflicts'));
   });
 
   it('opens a screen the sidebar does offer', async () => {
     await boot(ADMIN);
 
-    await act(async () => pressAltDigit(7));
-
-    expect(topbarTitle()).toBe(t('nav.master.panels'));
+    await pressAltDigitUntil(7, t('nav.master.panels'));
   });
 
   it('leaves the desktop menu’s Developer entry opening Settings for anybody', async () => {
@@ -215,12 +223,14 @@ describe('Alt+N', () => {
     };
     await boot(['leads.view']);
 
+    // The panel subscribes from an effect that may not have run yet.
+    await waitFor(() => expect(menu).not.toBeNull());
     await act(async () => {
-      menu?.('settings.developer');
+      menu!('settings.developer');
       await wait(0);
     });
 
-    expect(screen.getByRole('tab', { name: t('settings.tab.developer') })).toBeTruthy();
+    expect(await screen.findByRole('tab', { name: t('settings.tab.developer') })).toBeTruthy();
   });
 });
 

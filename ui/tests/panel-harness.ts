@@ -24,8 +24,8 @@
  */
 
 import type { ComponentType } from 'react';
-import { configure } from '@testing-library/react';
-import { vi } from 'vitest';
+import { configure, waitFor } from '@testing-library/react';
+import { expect, vi } from 'vitest';
 
 import { configureUi } from '../src/config.js';
 
@@ -199,6 +199,22 @@ export function pressAltDigit(digit: number): void {
 /** The title the topbar is showing — the shell's own statement of where you are. */
 export function topbarTitle(): string {
   return document.querySelector('.ob-topbar h1')?.textContent ?? '';
+}
+
+/**
+ * Alt+N, pressed until the panel answers it with the screen titled `title`.
+ *
+ * The keyboard provider binds its listener in an effect, which React may not
+ * have run yet when the shell is first on screen. A chord pressed before then
+ * did nothing — and a test that expected a refusal read that as the refusal.
+ * Pressing again is harmless: a screen already open stays open. A refusal test
+ * opens a screen with this first, to know the panel is listening.
+ */
+export async function pressAltDigitUntil(digit: number, title: string): Promise<void> {
+  await waitFor(() => {
+    pressAltDigit(digit);
+    expect(topbarTitle()).toBe(title);
+  });
 }
 
 /** Lets debounced pickers, timers and queued microtasks run. */

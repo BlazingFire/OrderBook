@@ -22,7 +22,7 @@
  */
 
 import { StrictMode } from 'react';
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { t } from '../src/i18n.js';
@@ -34,6 +34,7 @@ import {
   loadApi,
   loadApp,
   pressAltDigit,
+  pressAltDigitUntil,
   routeFetch,
   topbarTitle,
   wait,
@@ -192,10 +193,25 @@ async function boot({ permissions, view = {}, refusals = [], route }: Boot): Pro
     </StrictMode>,
   );
   await screen.findByRole('link', { name: t('footer.designSystem') });
-  await act(async () => {
-    FakeEventSource.instances.at(-1)?.emit('snapshot', snapshot(view));
-  });
+  await sendSnapshot(snapshot(view));
   return calls;
+}
+
+/**
+ * The Master's view, down the panel's event stream — once there is one.
+ *
+ * The panel opens the stream in an effect, and React can put the shell on
+ * screen before it has run that effect: the footer is there, the stream is
+ * not. A snapshot sent then reached nobody, and every screen went on waiting
+ * for a first sync that never came — on a loaded machine that was a New lead
+ * form, an order row or a pending count that never appeared, in whichever
+ * test lost the race.
+ */
+async function sendSnapshot(view: ReturnType<typeof snapshot>): Promise<void> {
+  await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThan(0));
+  await act(async () => {
+    FakeEventSource.instances.at(-1)!.emit('snapshot', view);
+  });
 }
 
 beforeEach(() => {
@@ -314,20 +330,18 @@ describe('Alt+N', () => {
   it('does not open a screen the sidebar does not offer', async () => {
     // No `leads.view`, so no Leads item — Alt+2 is the Leads shortcut.
     await boot({ permissions: ['orders.view'] });
-    expect(topbarTitle()).toBe(t('nav.dashboard'));
+    await pressAltDigitUntil(3, t('orders.filter.allStages'));
 
     await act(async () => pressAltDigit(2));
 
-    expect(topbarTitle()).toBe(t('nav.dashboard'));
+    expect(topbarTitle()).toBe(t('orders.filter.allStages'));
     expect(document.querySelector('.ob-topbar')?.textContent).not.toContain(t('action.newLead'));
   });
 
   it('still opens a screen the sidebar does offer', async () => {
     await boot({ permissions: ['orders.view'] });
 
-    await act(async () => pressAltDigit(3));
-
-    expect(topbarTitle()).toBe(t('orders.filter.allStages'));
+    await pressAltDigitUntil(3, t('orders.filter.allStages'));
   });
 });
 
@@ -425,9 +439,7 @@ describe('the refusal toast', () => {
     // Nothing of the last person's view is drawn for this one: the screens
     // wait for this session's own first snapshot.
     expect(screen.getByText(t('shell.waitingFirstSync'))).toBeTruthy();
-    await act(async () => {
-      FakeEventSource.instances.at(-1)?.emit('snapshot', snapshot());
-    });
+    await sendSnapshot(snapshot());
 
     expect(topbarTitle()).toBe(t('nav.dashboard'));
     expect(screen.queryByTitle(t('nav.conflicts'))).toBeNull();
