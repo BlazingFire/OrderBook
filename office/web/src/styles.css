@@ -55,22 +55,16 @@
  *
  * The 165-site className migration is still a separate piece of work with no
  * owner; this was only the part that could be proved safe.
+ *
+ * Trimmed again on 2026-09-25 the same way: the `:root` alias tokens
+ * (`--muted` and the rest — nothing read them any more), `.chip`, `.card`,
+ * `.row`, `.muted`, `.error`, `.dot.on`/`.dot.off` and the bare
+ * `button.secondary`/`.danger`/`.link` rules, none of which any className
+ * still names.
  */
 
 /* Legacy variable aliases (some screens reference these directly).
  * Names match the pre-design-system stylesheet exactly. */
-:root {
-  --bg: var(--bg-canvas);
-  --surface: var(--bg-surface);
-  --border: var(--line);
-  --text: var(--fg-primary);
-  --muted: var(--fg-secondary);
-  --accent-dark: var(--accent-hover);
-  --danger: var(--state-conflict);
-  --success: var(--state-ok);
-  --radius: var(--r-md);
-}
-
 button:not(:where([class*='ob-'], .ob-seg > *, .ob-toast > *)) {
   display: inline-flex;
   align-items: center;
@@ -94,27 +88,6 @@ button:not(:where([class*='ob-'], .ob-seg > *, .ob-toast > *)):hover:not(:disabl
 
 button:not(:where([class*='ob-'], .ob-seg > *, .ob-toast > *)):disabled {
   opacity: 0.45;
-}
-
-button.secondary:not(:where([class*='ob-'])) {
-  background: var(--bg-surface);
-  color: var(--fg-primary);
-  border: 1px solid var(--line);
-}
-
-button.secondary:not(:where([class*='ob-'])):hover:not(:disabled) {
-  background: var(--bg-hover);
-}
-
-button.danger:not(:where([class*='ob-'])) {
-  background: var(--bg-surface);
-  color: var(--state-conflict);
-  border: 1px solid var(--line);
-}
-
-button.danger:not(:where([class*='ob-'])):hover:not(:disabled) {
-  background: var(--state-conflict-tint);
-  border-color: var(--state-conflict);
 }
 
 input:not(:where([class*='ob-'], [type='checkbox'], [type='radio'], [type='range'])),
@@ -170,21 +143,6 @@ table:not(:where([class*='ob-'])) td {
   font-variant-numeric: tabular-nums;
 }
 
-.muted {
-  color: var(--fg-secondary);
-  font-size: var(--t-small-size);
-}
-
-.error {
-  background: var(--state-conflict-tint);
-  border: 1px solid var(--state-conflict);
-  color: var(--fg-primary);
-  padding: var(--s-12);
-  border-radius: var(--r-md);
-  margin-bottom: var(--s-12);
-  font-size: var(--t-small-size);
-}
-
 .dot {
   display: inline-block;
   width: 0.6429rem;
@@ -193,59 +151,6 @@ table:not(:where([class*='ob-'])) td {
   margin-right: var(--s-6);
   background: var(--fg-disabled);
 }
-
-.dot.on {
-  background: var(--state-ok);
-}
-
-.dot.off {
-  background: var(--state-conflict);
-}
-
-/* Credentials shown exactly once must be easy to copy by hand. */
-
-/* ---------------------------------------------------------------------------
- * Lead & order boards (docs/LEAD_GENERATION_FLOW.md §4.2)
- * ------------------------------------------------------------------------- */
-
-/* --- Chips ---------------------------------------------------------------- */
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-4);
-  padding: 1px 7px;
-  border-radius: var(--r-sm);
-  font-size: var(--t-micro-size);
-  line-height: var(--t-micro-line);
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  background: var(--bg-sunken);
-  color: var(--fg-secondary);
-  border: 1px solid var(--line);
-  white-space: nowrap;
-}
-
-.chip.pending {
-  background: var(--state-offline-tint);
-  border-color: var(--state-offline);
-  color: var(--state-offline);
-}
-
-.chip.incomplete,
-.chip.short {
-  background: var(--state-conflict-tint);
-  border-color: var(--state-conflict);
-  color: var(--state-conflict);
-}
-
-.chip.converted {
-  background: var(--state-ok-tint);
-  border-color: var(--state-ok);
-  color: var(--state-ok);
-}
-
-/* --- Colour quantity rows -------------------------------------------------- */
 
 /* --- Misc --------------------------------------------------------------------- */
 

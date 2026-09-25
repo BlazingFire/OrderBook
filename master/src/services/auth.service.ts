@@ -196,9 +196,12 @@ async function attemptSignIn(
      */
     const remaining = remainingAttempts(key);
     throw remaining > 0
-      ? new UnauthorizedError('error.unauthorized.signInFailedRemaining.other', {
-          count: remaining,
-        })
+      ? new UnauthorizedError(
+          remaining === 1
+            ? 'error.unauthorized.signInFailedRemaining.one'
+            : 'error.unauthorized.signInFailedRemaining.other',
+          { count: remaining },
+        )
       : new UnauthorizedError('error.unauthorized.signInFailed');
   }
 

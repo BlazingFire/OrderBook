@@ -134,7 +134,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.request.bodyRequired': 'That request needs a JSON body',
   'validation.apiKey.labelRequired': 'Give the key a label so it can be recognised later',
   'validation.apiKey.scopesRequired': 'Choose at least one permission for this key',
-  'validation.apiKey.expired': 'That API key has expired',
   'error.rateLimited': 'Too many requests. Try again in {seconds} seconds.',
   'error.unauthorized.apiKeyInvalid': 'That API key is not valid',
   'error.unauthorized.apiKeyExpired': 'That API key has expired or been revoked',
@@ -219,10 +218,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.stock.boxesArrivedRequired': 'कितने बॉक्स आए यह दर्ज करें',
   'validation.stock.countedBoxesRequired': 'गिने गए बॉक्सों की संख्या दर्ज करें',
   'validation.stock.adjustmentNoteRequired': 'बताइए कि यह गिनती क्यों सुधारी जा रही है',
-  'validation.stock.reorderLevelNegative': 'पुनःऑर्डर स्तर ऋणात्मक नहीं हो सकता',
-  'validation.stock.colourRequired': 'यह स्टॉक किस रंग के लिए है यह चुनें',
-  'validation.stock.productRequired': 'एक उत्पाद चुनें',
-  'validation.stock.colourSelectRequired': 'एक रंग चुनें',
   'validation.lead.partyRequired': 'इस लीड के लिए एक पार्टी चुनें',
   'validation.lead.itemsRequired': 'इस लीड में कम से कम एक उत्पाद जोड़ें',
   'validation.lead.partyMissing': 'चुनी गई पार्टी अब मौजूद नहीं है',
@@ -254,12 +249,10 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.updates.noneAvailable': 'इंस्टॉल करने के लिए कोई नया संस्करण नहीं है',
   'validation.partyAccess.levelInvalid': 'पहुँच स्तर view या manage होना चाहिए',
   'validation.partyAccess.userUnknown': '{userId} आईडी वाला कोई सक्रिय खाता नहीं है',
-  'validation.product.colourPolicy': 'बिक्री पर रंग या तो तय होगा या चुना जाएगा',
   'validation.stock.levelRange': 'अधिकतम, न्यूनतम से कम नहीं हो सकता',
   'validation.stock.levelNegative': 'स्टॉक स्तर ऋणात्मक नहीं हो सकता',
   'validation.pick.unknownKind': 'यह ऐसी चीज़ नहीं है जिसे यह पैनल खोज सके',
   'validation.product.nameRequired': 'उत्पाद का नाम आवश्यक है',
-  'validation.product.codeRequired': 'उत्पाद कोड आवश्यक है',
   'validation.product.categoryRequired': 'इस उत्पाद के लिए एक श्रेणी चुनें',
   'validation.product.variantRequired': 'उत्पाद में कम से कम एक कोड होना चाहिए',
   'validation.product.variantCodeRequired': 'हर वेरिएंट के लिए कोड आवश्यक है',
@@ -314,7 +307,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.stage.required': 'एक चरण चुनें',
   'validation.signIn.credentialsRequired': 'अपना आईडी और पासवर्ड दर्ज करें',
   'validation.pairing.invalidRequest': 'जोड़ी अनुरोध मान्य नहीं है',
-  'validation.permissions.aboveTier.title': 'स्तर से ऊपर',
   'validation.cursor.malformed': 'परिणामों के इस पृष्ठ का लिंक अब मान्य नहीं है',
   'error.conflict.parentDeleted': 'एक या अधिक संबंधित रिकॉर्ड अभी भी रीसायकल बिन में हैं',
   'error.conflict.restoreCollision': 'एक मौजूदा रिकॉर्ड पहले से ही इस {field} का उपयोग कर रहा है',
@@ -348,7 +340,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.image.crop.outOfBounds': 'क्रॉप क्षेत्र इमेज के बाहर है',
   'validation.image.rotation.invalid': 'रोटेशन सही तरीके से लागू नहीं हुआ — फिर से प्रयास करें',
   'validation.image.reorder.notPermutation': 'यह इस उत्पाद की इमेज का पूरा पुनर्क्रम नहीं है',
-  'error.notFound.image': 'इमेज नहीं मिली',
 
   'validation.fields.listKeyRequired': 'चुनें कि यह कौन-सी सूची है',
   'validation.fields.entityInvalid': 'एक मान्य रिकॉर्ड प्रकार चुनें',
@@ -359,7 +350,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
     'यह पूरी, मौजूदा सूची नहीं है — पुनः लोड करके फिर कोशिश करें',
   'validation.fields.fieldTypeInvalid': 'एक मान्य फ़ील्ड प्रकार चुनें',
   'validation.fields.keyRequired': 'एक की (key) दर्ज करें',
-  'validation.fields.keyImmutable': 'बनने के बाद की (key) नहीं बदली जा सकती',
   'validation.fields.optionsRequired': 'सेलेक्ट फ़ील्ड में कम से कम एक विकल्प होना चाहिए',
   'error.conflict.optionValueTaken': '"{value}" इस सूची में पहले से मौजूद है',
   'error.conflict.definitionKeyTaken': '"{key}" की के साथ एक कस्टम फ़ील्ड पहले से मौजूद है',
@@ -446,11 +436,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'activity.document_template.restored': '{actor} ने दस्तावेज़ टेम्पलेट {name} पुनर्स्थापित किया',
   'activity.document_export.rendered': '{actor} ने {subject} के लिए {documentType} बनाया',
 
-  'picker.searching': 'खोजा जा रहा है…',
-  'picker.truncated': 'और मिलान हैं — इसे सीमित करने के लिए टाइप करते रहें',
-  'picker.offline': 'ऑफ़लाइन — यह पैनल जो सहेजे है वही दिखा रहा है',
-  'picker.empty': 'कुछ भी मेल नहीं खाता',
-  'picker.create': 'नया जोड़ने के लिए Ctrl+Enter',
   'common.save': 'सहेजें',
   'common.cancel': 'रद्द करें',
   'common.edit': 'Edit',
@@ -459,9 +444,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'modal.expand': 'पूरी चौड़ाई में खोलें',
   'modal.shrink': 'छोटा करें',
   'common.delete': 'हटाएँ',
-  'common.search': 'खोजें',
-  'common.restore': 'पुनर्स्थापित करें',
-  'common.export': 'निर्यात करें',
   'common.older': 'पुराने',
   'common.newer': 'नए',
   'common.copy': 'कॉपी करें',
@@ -583,8 +565,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'access.roles.deleteFailed': 'Could not delete',
   // TODO(i18n-hi)
-  'access.roles.detail.catalogueLoading': 'Still loading the permission list',
-  // TODO(i18n-hi)
   'access.roles.detail.created': 'Created',
   // TODO(i18n-hi)
   'access.roles.detail.grants': 'What this role grants',
@@ -636,8 +616,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'access.tab.roles': 'Roles',
   // TODO(i18n-hi)
   'access.tab.users': 'Users',
-  // TODO(i18n-hi)
-  'access.title': 'Roles & Users',
   // TODO(i18n-hi)
   'access.userEdit.cancel': 'Cancel',
   // TODO(i18n-hi)
@@ -839,8 +817,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'backup.export.scopeSettingsOnly': 'Local settings only',
   // TODO(i18n-hi)
-  'backup.export.working': 'Preparing export…',
-  // TODO(i18n-hi)
   'backup.restore.action': 'Restore from backup…',
   // TODO(i18n-hi)
   'backup.restore.cancel': 'Cancel',
@@ -850,8 +826,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'backup.restore.confirm': 'Restore',
   // TODO(i18n-hi)
   'backup.restore.confirmWipeInput': 'Type CONFIRM',
-  // TODO(i18n-hi)
-  'backup.restore.done': 'Restore complete',
   // TODO(i18n-hi)
   'backup.restore.donePairAgain':
     'This device has been restored. It will now reload and ask you to pair again.',
@@ -864,8 +838,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'backup.restore.readFailed': 'वह फ़ाइल पढ़ी नहीं जा सकी',
   // TODO(i18n-hi)
   'backup.restore.title': 'Restore from backup',
-  // TODO(i18n-hi)
-  'backup.restore.working': 'Restoring…',
   // TODO(i18n-hi)
   'catalog.filter.all': 'All',
   // TODO(i18n-hi)
@@ -905,8 +877,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'product.multiColour.detailYes': 'हाँ — लीड लाइन पर रंग सूची का कोई भी रंग चुना जा सकता है',
   'product.multiColour.detailNo': 'नहीं — केवल ऊपर के वेरिएंट',
   // TODO(i18n-hi)
-  'catalog.products.column.stock': 'बिक्री के लिए उपलब्ध, वेरिएंट अनुसार',
-  // TODO(i18n-hi)
   'catalog.products.created': '{name} saved — syncs when the Master is reachable',
   // TODO(i18n-hi)
   'catalog.products.empty.description': 'Products you create appear here, online or off.',
@@ -925,14 +895,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'catalog.products.shown': '{total} में से {shown} दिखाए जा रहे हैं',
   'catalog.products.cachedPage': 'कैश किया पृष्ठ — मास्टर पैनल पहुँच से बाहर है',
   'catalog.products.loadFailed': 'कैटलॉग लोड नहीं हो सका',
-  // TODO(i18n-hi)
-  'catalog.stock.low': 'low',
-  // TODO(i18n-hi)
-  'catalog.stock.none': '—',
-  // TODO(i18n-hi)
-  'catalog.stock.tooltip': '{variant} — {onFloor} गोदाम में',
-  // TODO(i18n-hi)
-  'catalog.stock.tooltipReserved': '{variant} — {onFloor} गोदाम में, {reserved} आरक्षित',
   // TODO(i18n-hi)
   'common.no': 'No',
   // TODO(i18n-hi)
@@ -1675,8 +1637,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.detail.stageLabel': 'Move this lead to',
   // TODO(i18n-hi)
-  'lead.detail.total': 'Lead total',
-  // TODO(i18n-hi)
   'lead.detail.yes': 'Yes',
   'lead.error.addNote': 'नोट नहीं जोड़ा जा सका',
   'lead.error.convert': 'लीड को ऑर्डर में नहीं बदला जा सका',
@@ -1770,7 +1730,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'logs.action.export': 'Export CSV',
   // TODO(i18n-hi)
   'logs.action.verify': 'Verify chain',
-  'integrations.title': 'Integrations',
   'integrations.loadFailed': 'Could not load the integrations',
   'integrations.tab.keys': 'API keys',
   'integrations.tab.connectors': 'Connections',
@@ -2265,8 +2224,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'panels.empty.title': 'No office panels yet',
   // TODO(i18n-hi)
-  'panels.list.hint': 'Double-click a panel to open and manage it.',
-  // TODO(i18n-hi)
   'panels.list.title': 'Connected Office Panels',
   // TODO(i18n-hi)
   'panels.rename.cancel': 'Cancel',
@@ -2287,12 +2244,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'panels.revoke.title': 'Remove "{name}"?',
   // TODO(i18n-hi)
-  'panels.section.activity': 'Panel activity',
-  // TODO(i18n-hi)
-  'panels.section.all': 'All panels',
-  // TODO(i18n-hi)
-  'panels.section.pairing': 'Add a panel',
-  // TODO(i18n-hi)
   'panels.status.connected': 'Connected',
   // TODO(i18n-hi)
   'panels.status.offline': 'Offline',
@@ -2305,15 +2256,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'panels.table.lastSeen': 'Last seen',
   // TODO(i18n-hi)
-  'panels.table.machine': 'PC',
-  // TODO(i18n-hi)
   'panels.table.name': 'Name',
   // TODO(i18n-hi)
   'panels.table.paired': 'Paired',
   // TODO(i18n-hi)
   'panels.table.status': 'Status',
-  // TODO(i18n-hi)
-  'panels.table.storage': 'Storage',
   // TODO(i18n-hi)
   'party.createFailed': 'Could not create the party',
   // TODO(i18n-hi)
@@ -2499,15 +2446,12 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'product.createFailed': 'Could not create the product',
   // TODO(i18n-hi)
-  'product.detail.adjustAction': 'Adjust count',
-  // TODO(i18n-hi)
   'product.detail.editAction': 'Edit product',
   // TODO(i18n-hi)
   'product.detail.size': 'Size',
   // TODO(i18n-hi)
   'product.edit.title': 'Edit product',
   'product.group.identity': 'पहचान',
-  'product.group.photos': 'तस्वीरें',
   'product.field.alias': 'Alias',
   // TODO(i18n-hi)
   'product.field.code': 'कोड',
@@ -2525,7 +2469,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'photo.change': 'फ़ोटो बदलें',
   'photo.addBrowseHint': 'फ़ोटो यहाँ छोड़ें, या चुनने के लिए क्लिक करें',
   'photo.gallery': 'और फ़ोटो',
-  'photo.saving': 'फ़ोटो सहेजी जा रही है…',
   'photo.caption.edit': 'विवरण',
   'photo.caption.title': 'फ़ोटो का विवरण',
   'photo.caption.placeholder': 'यह फ़ोटो क्या दिखाती है',
@@ -2557,7 +2500,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'photo.editor.output': 'परिणाम {width} × {height} px',
   'photo.editor.outputSmall':
     'परिणाम {width} × {height} px — इस उत्पाद के लिए संग्रहित {longEdge} px से छोटा, इसलिए सबसे बड़ा आकार पूरा नहीं भरेगा',
-  'product.field.images': 'Photos',
   // TODO(i18n-hi)
   'product.field.name': 'Product name',
   // TODO(i18n-hi)
@@ -2777,14 +2719,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'settings.appearance.subtitle': 'Per-machine — never synced',
   // TODO(i18n-hi)
   'settings.appearance.title': 'Appearance',
-  // TODO(i18n-hi)
-  'settings.company.title': 'कंपनी सेटिंग्स',
   'settings.company.subtitle': 'पूरी कंपनी के लिए एक बार तय — हर मशीन के लिए नहीं।',
   'settings.company.saveFailed': 'वह सेटिंग सहेजी नहीं जा सकी',
   'settings.company.secretSet': 'सेट है',
   'settings.company.secretNotSet': 'सेट नहीं है',
   'settings.company.secretSave': 'सहेजें',
-  'settings.company.editedElsewhere': 'अपनी अलग स्क्रीन से संपादित',
   'settings.vault.coverage': '{total} में से {stored} लोगों का पासवर्ड दिखाया जा सकता है',
   'settings.connection.company': 'Company',
   // TODO(i18n-hi)
@@ -3229,27 +3168,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'dashboard.asOf.stale': 'Figures from the last time the Master was reachable · {when}',
   // TODO(i18n-hi)
-  'dashboard.pane.leads.empty': 'No open leads',
-  // TODO(i18n-hi)
-  'dashboard.pane.orders.empty': 'No open orders',
-  // TODO(i18n-hi)
-  'dashboard.pane.viewAll': 'View all',
-  // TODO(i18n-hi)
   'dashboard.pipeline.title': 'Lead pipeline',
-  // TODO(i18n-hi)
-  'dashboard.stat.followUpsDue': 'Follow-ups due',
-  // TODO(i18n-hi)
-  'dashboard.stat.followUpsDue.noteNone': 'Nothing owed',
-  // TODO(i18n-hi)
-  'dashboard.stat.followUpsDue.noteSome': 'Leads whose date has arrived',
-  // TODO(i18n-hi)
-  'dashboard.stat.parties.note': 'On this panel',
-  // TODO(i18n-hi)
-  'dashboard.stat.products.note': 'On this panel',
-  // TODO(i18n-hi)
-  'dashboard.stat.products.partial': 'One page of a larger catalogue',
-  // TODO(i18n-hi)
-  'validation.stock.variantCodeTaken': 'Another colour already uses that code',
   // TODO(i18n-hi)
   'lead.add.draft.col.quantity': 'Quantity',
   // TODO(i18n-hi)
@@ -3335,8 +3254,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.followUp.label': 'Follow up',
   // TODO(i18n-hi)
   'lead.add.line.noPackaging': 'no packaging',
-  // TODO(i18n-hi)
-  'lead.add.line.remove': 'Remove {product}',
   // TODO(i18n-hi)
   'lead.add.products.clear': 'Clear selection',
   // TODO(i18n-hi)
@@ -3458,7 +3375,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'catalog.products.column.category': 'श्रेणी',
   'catalog.products.column.codes': 'कोड',
   'catalog.products.column.weight': 'वज़न',
-  'catalog.products.filter.missingWeight': 'वज़न बाकी',
   'catalog.products.variantCount': '{count} वेरिएंट · {first}…',
   'product.weight.missing': 'वज़न नहीं',
   'product.weight.missingShort': 'नहीं',
@@ -3491,8 +3407,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'product.detail.photoTitle': 'फ़ोटो',
   'product.detail.code': 'उत्पाद कोड',
   'product.detail.weight': 'वज़न',
-  'product.detail.variantsTitle': 'वेरिएंट और स्टॉक',
-  'unit.piece': 'पीस',
   'unit.pieces': 'पीस',
   'unit.line': 'लाइन',
   'unit.lines': 'लाइनें',
@@ -3526,7 +3440,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'inventory.field.productSearchPlaceholder': 'उत्पाद खोजने के लिए नाम या कोड लिखें',
 
   // --- Carried over from the v1.1.0 line (sub-pages, free-to-sell) ---
-  'catalog.products.column.stockOnHand': 'स्टॉक, रंग अनुसार',
   'nav.fold': 'उप-पृष्ठ छिपाएँ',
   'nav.home': 'डैशबोर्ड पर जाएँ',
 

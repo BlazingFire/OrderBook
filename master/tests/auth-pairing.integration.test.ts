@@ -82,6 +82,14 @@ describe.skipIf(!canRunIntegrationTests)('setup, auth and pairing (integration)'
       await expect(auth.signIn('nobody', 'whatever')).rejects.toThrow(/sign-in failed/i);
     });
 
+    it('counts down in the singular when one attempt is left', async () => {
+      await setup.runFirstTimeSetup(null);
+      // A name no other test signs in as: the failure counter is per username
+      // and lives for the life of the process.
+      await expect(auth.signIn('countdown', 'wrong')).rejects.toThrow('2 attempts left');
+      await expect(auth.signIn('countdown', 'wrong')).rejects.toThrow('1 attempt left');
+    });
+
     it('issues a session that resolves back to the user', async () => {
       const credentials = await setup.runFirstTimeSetup(null);
       const { token } = await auth.signIn('admin', credentials.password);
