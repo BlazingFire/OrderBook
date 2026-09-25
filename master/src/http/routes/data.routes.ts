@@ -34,8 +34,11 @@ dataRoutes.use(requireAuth);
 
 /**
  * A route-level permission guard, for the handlers on this router that carry
- * one; the rest rely on the service-layer check alone. The Recycle Bin's four
- * DELETE routes were the first: `leads.delete` / `orders.delete` /
+ * one. The rest rely on the service-layer check, or are deliberately ungated
+ * and say so where they are declared — the three reference reads below
+ * (`/pipelines`, `/option-lists`, `/custom-fields`), whose services check
+ * nothing. The Recycle Bin's four DELETE routes were the first guarded here:
+ * `leads.delete` / `orders.delete` /
  * `parties.delete` / `products.delete` have been in the frozen catalogue and
  * in stored role rows since `20260303`, and were enforced nowhere because no
  * delete path existed for any of the four until then. The storage routes

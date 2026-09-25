@@ -28,9 +28,16 @@
 /**
  * Whether a handshake carrying this `Origin` may proceed to this `Host`.
  *
- * No `Origin` is not a browser page, and is let through: a client able to
- * choose its headers could equally leave the header off, so refusing the
- * absence would protect nothing and would lock out every Office Panel.
+ * No `Origin` is let through. A browser always sends one on a WebSocket
+ * handshake and on a cross-origin request whose answer the page may read; it
+ * leaves it off a same-origin GET, and off a cross-site no-cors GET — an
+ * `<img>` or `<script>` pointed at the polling handshake — which does open a
+ * session, but one whose id that page can never read, so it can send nothing
+ * down it, a token least of all. An Office Panel's server sends none at all,
+ * and a client able to choose its headers could equally leave the header off,
+ * so refusing the absence would protect nothing and would lock out every
+ * Office Panel.
+ *
  * Otherwise the page must have been served from exactly the host and port the
  * request was sent to — another site, another port on the same machine and
  * the opaque `null` of a sandboxed frame or a `file://` page are all refused.
