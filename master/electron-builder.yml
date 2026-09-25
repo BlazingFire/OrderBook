@@ -122,8 +122,9 @@ nsis:
 # `tools/uninstall/uninstall-orderbook.sh` already knows how to sweep.
 #
 # x64 only, and `TARGETS.linux.arch` says the same: the release script refuses
-# to build this on any other architecture, because staging copies the build
-# machine's own native packages and would put them in an x64 app.
+# to build this on any other architecture (`assertHostArch()`), because staging
+# copies the build machine's own native packages and would put them in an x64
+# app.
 linux:
   target:
     - target: AppImage
@@ -171,7 +172,9 @@ deb:
 # else, so the Windows workflow is unaffected. `npm run release` defaults to the
 # host platform and takes `--os mac` to be explicit. One artefact, the .dmg: it
 # is what a person installs from and what the update path hands the shell,
-# which mounts it (`installerExtension()` in `electron/lib/installer.ts`).
+# which opens (mounts) it with `shell.openPath` in `electron/shell.ts` —
+# `installerExtension()` in `electron/lib/installer.ts` is what lets a .dmg
+# through on macOS.
 # No .zip: that target exists for electron-updater's Squirrel.Mac path, which
 # nothing here uses, and building it cost the mac leg a second universal
 # archive that was never published.

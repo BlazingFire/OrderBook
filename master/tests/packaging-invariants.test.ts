@@ -24,11 +24,12 @@
  * of this file does. Running the builds would be better and is not available:
  * a macOS target only builds on macOS by electron-builder's own refusal. The
  * one exception is the host-architecture refusal, which runs the script as a
- * different machine would, stopped before its first command.
+ * different machine would, stopped before its first command, and asks `npm ls`
+ * which panels have something native to refuse over.
  */
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -136,9 +137,10 @@ function declaredTargets(): Record<string, DeclaredTarget> {
  * throw. So nothing is ever built or copied, whatever the script decides: a
  * run that clears every check stops at its first command with
  * `Release failed: STOP before npm`, and a refusal stops earlier with its own
- * message.
+ * message. `panel` is `--panel`; without it the run is the default one, both
+ * panels.
  */
-function releaseAs(platform: string, arch: string, target: string): string {
+function releaseAs(platform: string, arch: string, target: string, panel?: string): string {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'orderbook-release-host-'));
   try {
     const preload = path.join(dir, 'host.mjs');
@@ -164,6 +166,7 @@ function releaseAs(platform: string, arch: string, target: string): string {
         path.join(ROOT, 'tools', 'release.mjs'),
         '--os',
         target,
+        ...(panel ? ['--panel', panel] : []),
       ],
       { cwd: ROOT, encoding: 'utf8', env: { ...process.env, ORDERBOOK_RELEASES_DIR: dir } },
     );
@@ -174,6 +177,39 @@ function releaseAs(platform: string, arch: string, target: string): string {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+/**
+ * The packages in a panel's production tree that are built for one platform:
+ * a `cpu` or `os` restriction (`sharp`'s and PostgreSQL's platform packages),
+ * or a compiled addon (`binding.gyp`, `gypfile`, a `prebuilds/` folder). Read
+ * from the same `npm ls` that `productionTree()` in `release.mjs` stages from,
+ * so what this finds is what a setup file would carry.
+ */
+function nativePackages(panel: string): string[] {
+  const result = spawnSync(
+    'npm',
+    ['ls', '--omit=dev', '--all', '--parseable', '--workspace', `@orderbook/${panel}`],
+    { cwd: ROOT, encoding: 'utf8', shell: process.platform === 'win32' },
+  );
+  expect(result.status, result.stderr).toBe(0);
+
+  const modules = path.join(ROOT, 'node_modules');
+  return result.stdout
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith(modules))
+    .filter((dir) => !dir.includes(`${path.sep}@orderbook${path.sep}`))
+    .filter((dir) => {
+      const manifest = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
+      return (
+        manifest.cpu !== undefined ||
+        manifest.os !== undefined ||
+        manifest.gypfile === true ||
+        existsSync(path.join(dir, 'binding.gyp')) ||
+        existsSync(path.join(dir, 'prebuilds'))
+      );
+    })
+    .map((dir) => path.relative(modules, dir));
 }
 
 describe('release targets', () => {
@@ -210,19 +246,60 @@ describe('release targets', () => {
     }
   });
 
-  it('refuses a single-architecture target on a host of another architecture', () => {
+  it('refuses the Master on a host of another architecture than its target', () => {
     // Staging copies the host's own native packages (npm installs only the
     // ones matching its `cpu`), so an arm64 machine building the x64 AppImage
     // ships arm64 `sharp` and no x64 PostgreSQL at all. Refused up front, by
-    // name, rather than an hour later as "binaries are missing".
-    const linux = releaseAs('linux', 'arm64', 'linux');
-    expect(linux).toMatch(/Release failed: .*x64/);
-    expect(linux).toContain('arm64');
-    expect(linux).not.toContain('STOP before');
+    // name, rather than an hour later as "binaries are missing" — asked for
+    // alone, and as part of the default run, which builds it first.
+    for (const panel of ['master', undefined]) {
+      const linux = releaseAs('linux', 'arm64', 'linux', panel);
+      expect(linux).toMatch(/Release failed: .*x64/);
+      expect(linux).toContain('arm64');
+      expect(linux).not.toContain('STOP before');
 
-    const win = releaseAs('win32', 'arm64', 'win');
-    expect(win).toMatch(/Release failed: .*x64/);
-    expect(win).not.toContain('STOP before');
+      const win = releaseAs('win32', 'arm64', 'win', panel);
+      expect(win).toMatch(/Release failed: .*x64/);
+      expect(win).not.toContain('STOP before');
+    }
+  });
+
+  it('refuses exactly the panels that stage a native package, and no others', () => {
+    // The refusal is about what staging copies, so it belongs to the panels
+    // whose production tree holds something built for one architecture. The
+    // Office panel's tree (Express, Multer, a socket client) and the
+    // clean-install tool, which stages nothing, carry nothing of the build
+    // machine's, and electron-builder fetches the x64 Electron for them on any
+    // host. A panel that gains a native dependency must be refused from then
+    // on (`native: true` in `PANELS`), or this fails.
+    expect(
+      nativePackages('master'),
+      'found nothing native in the Master, which ships sharp',
+    ).not.toHaveLength(0);
+
+    for (const panel of PANELS) {
+      const native = nativePackages(panel);
+      for (const [platform, target] of [
+        ['linux', 'linux'],
+        ['win32', 'win'],
+      ] as const) {
+        const stderr = releaseAs(platform, 'arm64', target, panel);
+        if (native.length > 0) {
+          expect(stderr, `${panel} stages ${native.join(', ')}`).toMatch(/Release failed: .*x64/);
+        } else {
+          expect(stderr, `${panel} stages nothing native`).toContain(
+            'Release failed: STOP before npm',
+          );
+        }
+      }
+    }
+
+    expect(releaseAs('linux', 'arm64', 'linux', 'cleaner')).toContain(
+      'Release failed: STOP before npm',
+    );
+    expect(releaseAs('win32', 'arm64', 'win', 'cleaner')).toContain(
+      'Release failed: STOP before npm',
+    );
   });
 
   it('lets each target through on the hosts that can build it', () => {
@@ -356,13 +433,78 @@ function ymlBlock(yml: string, key: string): string | null {
     .join('\n');
 }
 
-/** Every target a platform block builds, with the architectures it lists. */
+/**
+ * Every target a platform block builds, with the architectures it lists.
+ *
+ * electron-builder takes `target:` in each shape YAML allows: one name
+ * (`target: dmg`), a flow list (`target: [dmg, zip]`), and a block list whose
+ * entries are names (`- zip`) or objects (`- target: zip`, with `arch:` inline,
+ * as a list of its own, or left out). A reader that knew only the object with
+ * an `arch: [...]` line under it passed with the macOS `.zip` put back as
+ * `- zip`, so every shape is read here, and a line inside the list that is
+ * none of them throws instead of being skipped. An entry with no `arch` comes
+ * back with an empty list: electron-builder then builds the host's own
+ * architecture, which the arch test below refuses.
+ */
 function ymlTargets(yml: string, os: string): { target: string; arch: string[] }[] {
-  const body = ymlBlock(yml, os) ?? '';
-  return [...body.matchAll(/- target: (\w+)\n\s+arch: \[([^\]]*)\]/g)].map((match) => ({
-    target: match[1] as string,
-    arch: arrayEntries(match[2]),
-  }));
+  const lines = (ymlBlock(yml, os) ?? '')
+    .split('\n')
+    // A trailing comment: YAML starts one at a `#` after whitespace.
+    .map((line) => line.replace(/\s+#.*$/, ''))
+    .filter((line) => line.trim() !== '');
+  const indent = (line: string): number => line.length - line.trimStart().length;
+  const unreadable = (line: string): Error =>
+    new Error(`${os}: cannot read the target line "${line.trim()}"`);
+
+  const at = lines.findIndex((line) => /^ {2}target:/.test(line));
+  if (at < 0) return [];
+
+  const header = lines[at] as string;
+  const inline = header.slice('  target:'.length).trim();
+  if (inline) {
+    const listed = /^\[(.*)\]$/.exec(inline)?.[1];
+    return (listed === undefined ? [inline] : arrayEntries(listed)).map((name) => {
+      if (!/^\w+$/.test(name)) throw unreadable(header);
+      return { target: name, arch: [] };
+    });
+  }
+
+  // A block list, whose entries may sit at `target:`'s own indent or deeper.
+  const targets: { target: string; arch: string[] }[] = [];
+  const entryIndent = indent(lines[at + 1] ?? '');
+  let archList = false;
+  for (const line of lines.slice(at + 1)) {
+    const depth = indent(line);
+    const text = line.trim();
+    // The list ends at the block's next key.
+    if (depth < entryIndent || (depth === entryIndent && !text.startsWith('- '))) break;
+
+    if (depth === entryIndent) {
+      const entry = /^- (?:target: )?(\w+)$/.exec(text);
+      if (!entry) throw unreadable(line);
+      targets.push({ target: entry[1] as string, arch: [] });
+      archList = false;
+      continue;
+    }
+
+    // Deeper: a field of the entry above, and `arch` is the only one read.
+    const current = targets[targets.length - 1];
+    const arch = /^arch:(?: (.+))?$/.exec(text);
+    const archEntry = archList ? /^- (\w+)$/.exec(text) : null;
+    if (current && arch) {
+      const value = arch[1];
+      archList = value === undefined;
+      if (value !== undefined) {
+        const listed = /^\[(.*)\]$/.exec(value)?.[1];
+        current.arch.push(...(listed === undefined ? [value] : arrayEntries(listed)));
+      }
+    } else if (current && archEntry) {
+      current.arch.push(archEntry[1] as string);
+    } else {
+      throw unreadable(line);
+    }
+  }
+  return targets;
 }
 
 /**
@@ -379,6 +521,50 @@ function builtFile(yml: string, os: string, target: string): string | null {
     ? artifact.replace('${version}', '<v>').replace('${ext}', TARGET_EXT[target] ?? `<${target}?>`)
     : null;
 }
+
+describe('the yml target reader', () => {
+  /** A `mac:` block holding `lines`, the way it sits in a panel's yml. */
+  const read = (...lines: string[]) =>
+    ymlTargets(['', 'mac:', '  category: x', ...lines, '  publish: null', ''].join('\n'), 'mac');
+
+  it('reads every shape electron-builder accepts for a target list', () => {
+    // A reader that knew only `- target: X` with an `arch:` line under it
+    // passed with the macOS `.zip` put back as `- zip`.
+    expect(read('  target: zip')).toEqual([{ target: 'zip', arch: [] }]);
+    expect(read('  target: [dmg, zip]')).toEqual([
+      { target: 'dmg', arch: [] },
+      { target: 'zip', arch: [] },
+    ]);
+    expect(read('  target:', '    - dmg', '    - zip')).toEqual([
+      { target: 'dmg', arch: [] },
+      { target: 'zip', arch: [] },
+    ]);
+    expect(
+      read('  target:', '    - target: dmg', '      arch: [universal]', '    - target: zip'),
+    ).toEqual([
+      { target: 'dmg', arch: ['universal'] },
+      { target: 'zip', arch: [] },
+    ]);
+    expect(
+      read('  target:', '    - target: dmg', '      arch:', '        - x64', '        - arm64'),
+    ).toEqual([{ target: 'dmg', arch: ['x64', 'arm64'] }]);
+    expect(read('  target:', '    - target: dmg  # the one', '      arch: universal')).toEqual([
+      { target: 'dmg', arch: ['universal'] },
+    ]);
+    // A sequence may sit at its key's own indent, and ends at the next key.
+    expect(read('  target:', '  - dmg', '  - zip')).toEqual([
+      { target: 'dmg', arch: [] },
+      { target: 'zip', arch: [] },
+    ]);
+  });
+
+  it('refuses a target line it cannot read rather than skipping it', () => {
+    expect(() => read('  target:', '    - { target: zip }')).toThrow(/cannot read/);
+    expect(() => read('  target:', '    - target: dmg', '      artifactName: x')).toThrow(
+      /cannot read/,
+    );
+  });
+});
 
 describe('what electron-builder builds is what release.mjs picks up', () => {
   /*

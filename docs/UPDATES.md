@@ -189,6 +189,15 @@ beside it (`sha256sum -c <file>.sha256`), named in no manifest — the Linux
 manifest names the AppImage — and never removed by the Master's releases-folder
 sweep. Old ones are the operator's to delete.
 
+A panel installed from the `.deb` is updated the way it was installed: by
+installing the newer `.deb` by hand (`sudo apt install ./<newer file>`), which
+replaces the program under `/opt` and leaves the data under
+`~/.config/OrderBook` where it was. Not from the Updates screen: that installs
+the file the manifest names, the AppImage, which runs on its own rather than
+replacing the `/opt` install. Unlike the standalone build, the shell does not
+yet recognise a `.deb` install and refuse, so the screen still offers the
+AppImage there.
+
 ## What stops a bad update
 
 Roughly in the order an attacker meets them:

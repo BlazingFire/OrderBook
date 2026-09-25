@@ -7,7 +7,7 @@
  *   npm run release -- 1.1.0     -- bump every package.json first
  *   npm run release -- --panel office
  *   npm run release -- --os mac  -- macOS .dmg (only runs on a Mac)
- *   npm run release -- --os linux -- AppImage and .deb (only on x64 Linux)
+ *   npm run release -- --os linux -- x64 AppImage and .deb (the Master only on x64 Linux)
  *
  * The output folder is the whole distribution story: copy it to the Master PC
  * and the Master installs its own build from it and serves the office build to
@@ -67,6 +67,15 @@ const PANELS = {
     vendorPostgres: true,
     /** The four SIL OFL faces; `assertFontsPresent()` refuses to start without them. */
     extras: ['assets'],
+    /**
+     * Stages binaries built for one architecture: `sharp`'s platform packages
+     * from the production tree, and the vendored PostgreSQL. It is what makes
+     * `assertHostArch()` refuse a run on a machine of another architecture.
+     * The Office panel's tree is plain JavaScript and the clean-install tool
+     * stages nothing, so neither is marked; `packaging-invariants.test.ts`
+     * holds the mark to what `npm ls` finds in each panel's tree.
+     */
+    native: true,
   },
   office: {
     dir: 'office',
@@ -124,12 +133,14 @@ const requestedVersion = args.find((arg) => /^\d+\.\d+\.\d+$/.test(arg)) ?? null
  * cross-compile to add here; the check below just says so before an hour of
  * staging rather than after.
  *
- * **And a single-architecture build only runs on that architecture.** `arch`
- * is the one the ymls build (`arch: [x64]` under `win:` and `linux:`). Staging
- * copies the build machine's own native packages — npm installs a platform
- * package only when its `cpu` matches — so an arm64 machine building the x64
- * AppImage would ship arm64 `sharp` and find no x64 PostgreSQL to vendor. The
- * macOS target builds `universal` instead and fetches the other half itself.
+ * **And a single-architecture Master only builds on that architecture.**
+ * `arch` is the one the ymls build (`arch: [x64]` under `win:` and `linux:`).
+ * Staging copies the build machine's own native packages — npm installs a
+ * platform package only when its `cpu` matches — so an arm64 machine building
+ * the x64 AppImage would ship arm64 `sharp` and find no x64 PostgreSQL to
+ * vendor (`assertHostArch()`). The Office panel and the clean-install tool
+ * carry nothing native and build their x64 files on any machine. The macOS
+ * target builds `universal` instead and fetches the other half itself.
  *
  * `besides` lists the other files electron-builder makes for a target, by the
  * tail of their name after `OrderBook-<Panel>-<version>-`. They are published
@@ -219,17 +230,36 @@ function assertTarget() {
       ].join('\n'),
     );
   }
+}
 
+/**
+ * Refuse a single-architecture target on a machine of another architecture,
+ * when a panel in this run would carry that machine's binaries.
+ *
+ * Only a `native` panel (the Master) stages anything built for one
+ * architecture, so only a run that includes one is refused. The Office panel
+ * and the clean-install tool build their x64 files on an arm64 machine as well
+ * as on any other: electron-builder fetches the Electron for the target, and
+ * nothing else they carry is native. Checked before the first command, as
+ * `assertTarget()` is, so the refusal comes up front rather than an hour later
+ * as "binaries are missing".
+ */
+function assertHostArch(panels) {
   // A universal target has no `arch`: either kind of Mac builds both halves.
-  if (RELEASE_TARGET.arch && process.arch !== RELEASE_TARGET.arch) {
-    throw new Error(
-      [
-        `A ${osName} release is built for ${RELEASE_TARGET.arch} only, and this machine is ${process.arch}.`,
-        "Staging copies this machine's own native packages (sharp, PostgreSQL), so the",
-        `${RELEASE_TARGET.arch} app would carry ${process.arch} binaries. Build it on an ${RELEASE_TARGET.arch} machine.`,
-      ].join('\n'),
-    );
-  }
+  if (!RELEASE_TARGET.arch || process.arch === RELEASE_TARGET.arch) return;
+
+  const native = panels.filter((panel) => PANELS[panel].native);
+  if (native.length === 0) return;
+
+  const labels = native.map((panel) => PANELS[panel].label).join(' and ');
+  throw new Error(
+    [
+      `A ${osName} release is built for ${RELEASE_TARGET.arch} only, and this machine is ${process.arch}.`,
+      `Staging copies this machine's own native packages (sharp, PostgreSQL) into the ${labels},`,
+      `so the ${RELEASE_TARGET.arch} app would carry ${process.arch} binaries. Build it on an ${RELEASE_TARGET.arch} machine;`,
+      '`--panel office` builds the Office panel here, which carries nothing native.',
+    ].join('\n'),
+  );
 }
 
 function run(command, commandArgs, cwd = ROOT) {
@@ -824,6 +854,7 @@ async function main() {
       throw new Error(`Unknown target "${panel}" — expected ${Object.keys(PANELS).join(', ')}`);
     }
   }
+  assertHostArch(panels);
 
   console.log(`Releasing ${version} to ${RELEASES_DIR}`);
   run('npm', ['run', 'build:shared']);
