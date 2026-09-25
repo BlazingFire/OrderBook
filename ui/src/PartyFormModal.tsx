@@ -16,8 +16,8 @@
  * drift `master/tests/no-duplicate-ui.test.ts` and the PartyAccess parity test
  * exist to stop.
  *
- * It renders a centred modal, per the standing rule that a record's detail
- * opens centred over the list it came from.
+ * It renders a centred modal: a create/edit form is a dialog, unlike reading a
+ * record, which opens on a screen of its own.
  *
  * Props are deliberately generic rather than Add-Lead-specific:
  *
@@ -27,10 +27,6 @@
  *               else; the caller gets that plus the fields just typed, which is
  *               enough to select the new party immediately.
  *   onUpdated — the caller-typed name, for the confirmation toast.
- *
- * Party-specific product rate overrides are deliberately not here: they need
- * the product catalogue alongside the party fields, which belongs to the screen
- * that reads them.
  */
 
 import { useEffect, useRef, useState } from 'react';

@@ -40,6 +40,7 @@ import {
   Segmented,
   Select,
   capabilityLabel,
+  copyText,
   t,
   useSubNav,
   useToast,
@@ -398,13 +399,7 @@ function IssuedTokenDialog({
       title={t('integrations.keys.issuedTitle', { name: issued.key.label })}
       footer={
         <>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              void navigator.clipboard?.writeText(issued.token);
-              setCopied(true);
-            }}
-          >
+          <Button variant="secondary" onClick={() => void copyText(issued.token).then(setCopied)}>
             {copied ? t('access.secret.copied') : t('access.secret.copy')}
           </Button>
           <Button variant="primary" onClick={onClose}>

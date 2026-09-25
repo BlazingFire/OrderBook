@@ -1,31 +1,31 @@
 /**
  * Modal (§9 Structure, elevation 3) — centred, focus-trapped, Esc closes.
  *
- * This is where a record's detail opens: centred over the list it came from,
- * which is what modality is for — "a distinct, narrowly scoped task without
- * losing track of their previous context" (HIG, Modality). Two earlier answers
- * were tried and rejected: a right-hand drawer, and a row that expanded inline.
+ * For dialogs: a create/edit form, an import wizard, a confirmation — "a
+ * distinct, narrowly scoped task without losing track of their previous
+ * context" (HIG, Modality). Not for reading a record: an Open on a table row
+ * shows the record on a screen of its own (`EditorScreen` + `useSubNav`), the
+ * standing rule `master/tests/ui-conventions.test.ts` writes down.
  *
  * Two rules from that guidance shape the API:
  *
  *  - A dismiss control the reader can see. Esc and the scrim both close, but on
- *    desktop people look for a button, so the header always has one and a
- *    detail dialog also closes from its footer.
+ *    desktop people look for a button, so the header always has one.
  *  - Never two at once. A dialog opened from inside another dialog buries the
  *    context the first one was holding, so a screen that needs a confirmation
- *    closes the detail first rather than stacking on top of it.
+ *    closes its dialog first rather than stacking on top of it.
  */
 
 import { useRef } from 'react';
 import type { ReactNode } from 'react';
 import { IconButton } from './Button';
+import { t } from './i18n.js';
 import { useOverlay } from './useOverlay';
 
 /**
- * Confirmations stay narrow; a record's detail needs room for two columns; `xl`
- * is the near-full-width state a lead or an order can be expanded into, which
- * is the one thing the retired right-hand drawer could do that a modal could
- * not.
+ * Confirmations stay narrow; a create/edit form wants room for two columns;
+ * `lg` holds a table — a role's permissions, a stock ledger; `xl` is the
+ * near-full-width editor, and the width `expanded` widens any size to.
  */
 export type ModalSize = 'sm' | 'md' | 'lg' | 'xl';
 
@@ -56,8 +56,7 @@ export function Modal({
    *
    * Only meaningful together with `onToggleExpand` — the button is what makes
    * the state reachable, and a dialog stuck expanded with no way back is worse
-   * than one that never expands. Lead and Order detail are the two records big
-   * enough to want it.
+   * than one that never expands.
    */
   expanded?: boolean;
   onToggleExpand?: () => void;
@@ -91,11 +90,11 @@ export function Modal({
             {onToggleExpand && (
               <IconButton
                 icon={expanded ? 'collapse' : 'expand'}
-                label={expanded ? 'Shrink' : 'Open full width'}
+                label={expanded ? t('modal.shrink') : t('modal.expand')}
                 onClick={onToggleExpand}
               />
             )}
-            <IconButton icon="close" label="Close" onClick={onClose} />
+            <IconButton icon="close" label={t('modal.close')} onClick={onClose} />
           </div>
           <div className="ob-modal-body">{children}</div>
           {footer && <div className="ob-modal-foot">{footer}</div>}

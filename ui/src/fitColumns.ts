@@ -3,8 +3,9 @@
  * screen.
  *
  * **This is only safe because of a standing rule in this product: an Open on a
- * table row shows the whole record in a centred modal.** A dropped column is
- * therefore never the only way to see a value — it is one glance away. A table
+ * table row shows the whole record on a screen of its own** (pinned in
+ * `master/tests/ui-conventions.test.ts`). A dropped column is therefore never
+ * the only way to see a value — it is one click away. A table
  * with no `onRowOpen` must leave every column at priority 1, because for that
  * table the row *is* the record and dropping a column hides data with no path
  * back to it.

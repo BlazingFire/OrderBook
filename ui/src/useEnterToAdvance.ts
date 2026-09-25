@@ -5,7 +5,7 @@
  * The shop's people came from a spreadsheet and an accounting package, and both
  * work this way. In a browser it normally does not, because Enter only means
  * anything inside a `<form>` — and `grep -rn "<form"` returns three hits across
- * both web apps. Every drawer and editor is bare `FormField`s.
+ * both web apps. Every dialog form and editor is bare `FormField`s.
  *
  * So this takes a **container ref, not a form**. Nothing gains a `<form>`
  * element to make it work: adding one would bring native submission, native
@@ -173,10 +173,10 @@ export function useEnterToAdvance(
  * Escape steps back one field — the other half of Enter's walk.
  *
  * Opt-in, and deliberately not folded into `useEnterToAdvance`, because inside
- * a Drawer or Modal Escape already means *close* (`useOverlay`). Consuming it
- * there to move a caret would take away the only key that dismisses a dialog.
- * A full screen has no such meaning for it, so screens ask for this and drawers
- * do not.
+ * a Modal Escape already means *close* (`useOverlay`). Consuming it there to
+ * move a caret would take away the only key that dismisses a dialog. A full
+ * screen has no such meaning for it, so screens ask for this and dialogs do
+ * not.
  *
  * On the first field Escape is left alone, so whatever is above it — an open
  * suggestion list, an overlay, the palette — still gets the key.

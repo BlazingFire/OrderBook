@@ -6,6 +6,8 @@
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { IconButton } from './Button';
+import { copyText } from './clipboard.js';
+import { t } from './i18n.js';
 
 interface ColourOption {
   listKey: string;
@@ -117,12 +119,15 @@ export function IdField({ value }: { value: string }) {
       <span className="ob-mono">{value}</span>
       <IconButton
         icon={copied ? 'check' : 'copy'}
-        label="Copy"
+        label={t('common.copy')}
         size={12}
         onClick={() => {
-          void navigator.clipboard.writeText(value);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1200);
+          // The check only when the copy happened — see `clipboard.ts`.
+          void copyText(value).then((ok) => {
+            if (!ok) return;
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1200);
+          });
         }}
       />
     </span>

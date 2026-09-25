@@ -1,18 +1,18 @@
 /**
- * Shared behaviour for Modal and Drawer: trap focus inside, restore it to the
- * trigger on close, and close on Esc — innermost overlay first (§10), decided
- * by document order rather than by event propagation (see the Escape branch
- * below for why propagation cannot do it).
+ * Modal's behaviour, the one overlay that uses it: trap focus inside, restore
+ * it to the trigger on close, and close on Esc — innermost overlay first
+ * (§10), decided by document order rather than by event propagation (see the
+ * Escape branch below for why propagation cannot do it).
  *
  * **`onClose` is held in a ref rather than listed as a dependency.** Every call
  * site passes a closure rebuilt on each render, so depending on it re-ran this
  * effect on every keystroke: the cleanup pulled focus back to the trigger
  * outside the overlay and the fresh run pushed it to the overlay's first
  * focusable — the header Close button, not the field being typed in. The caret
- * left the input after a single character, which made every drawer and modal
- * form in both panels impossible to fill in. `containerRef` is a stable
- * `useRef` object from Drawer/Modal, so the effect now runs exactly once per
- * open/close transition.
+ * left the input after a single character, which made every dialog form in
+ * both panels impossible to fill in. `containerRef` is a stable `useRef`
+ * object from Modal, so the effect now runs exactly once per open/close
+ * transition.
  */
 
 import { useEffect, useRef } from 'react';
@@ -54,7 +54,7 @@ export function useOverlay(
      * They differ because they want opposite things. Tab has to beat the
      * browser's own focus move, so it must run before anything else sees the
      * key. Escape has to run *after* whatever is nearer the keystroke: an open
-     * `Combobox` list, a `Picker` with a selection to clear. At capture this
+     * `Combobox` list, a `SuggestInput` list somebody opened. At capture this
      * closed the whole Modal on the first Escape and left the listbox open
      * underneath — a live bug in both panels.
      *
@@ -68,13 +68,13 @@ export function useOverlay(
       // the *other* listeners already bound to `document` itself — and the
       // outer overlay bound its one first, so it would run first and close
       // too. Deciding from document order instead lets only the topmost open
-      // dialog act: a stacked Modal is either a descendant of the Drawer that
+      // dialog act: a stacked Modal is either a descendant of the dialog that
       // opened it or rendered after it in the same subtree, so in both cases
       // the innermost overlay is the last `[role="dialog"]` in the document.
       //
       // Visible ones only. Screens are now kept mounted and hidden by
       // `<Activity>`, which leaves their DOM in the document — so a hidden
-      // pane's open Drawer, sitting later in the screens array, became the
+      // pane's open dialog, sitting later in the screens array, became the
       // "last dialog" and the visible overlay silently refused Escape.
       // Verified in Chromium: `checkVisibility()` is false inside a
       // `display:none` subtree. (jsdom does not implement it at all, so this

@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, RefObject } from 'react';
 import { Input } from './Form';
+import { t } from './i18n.js';
 
 const RENDER_CAP = 200;
 
@@ -106,7 +107,7 @@ export function Combobox<T>({
       {open && (
         <div className="ob-combobox-listbox" role="listbox">
           {filtered.length === 0 ? (
-            <div className="ob-combobox-empty">No matches</div>
+            <div className="ob-combobox-empty">{t('common.noMatches')}</div>
           ) : (
             filtered.map((option, i) => (
               <div

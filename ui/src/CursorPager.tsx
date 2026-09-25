@@ -1,12 +1,13 @@
 /** CursorPager (§9.1) — keyset pagination only. No page numbers. */
 
 import { Button } from './Button';
+import { t } from './i18n.js';
 
 export function LoadMorePager({
   hasMore,
   loading,
   onLoadMore,
-  label = 'Load more',
+  label = t('common.loadMore'),
 }: {
   hasMore: boolean;
   loading?: boolean;
@@ -37,10 +38,10 @@ export function NewerOlderPager({
   return (
     <div className="ob-pager">
       <Button variant="secondary" size="sm" disabled={!hasNewer} onClick={onNewer}>
-        Newer
+        {t('common.newer')}
       </Button>
       <Button variant="secondary" size="sm" disabled={!hasOlder} onClick={onOlder}>
-        Older
+        {t('common.older')}
       </Button>
     </div>
   );

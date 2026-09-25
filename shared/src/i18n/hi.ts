@@ -452,12 +452,19 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'common.cancel': 'रद्द करें',
   'common.edit': 'Edit',
   'common.close': 'Close',
+  'modal.close': 'बंद करें',
+  'modal.expand': 'पूरी चौड़ाई में खोलें',
+  'modal.shrink': 'छोटा करें',
   'common.delete': 'हटाएँ',
   'common.search': 'खोजें',
   'common.restore': 'पुनर्स्थापित करें',
   'common.export': 'निर्यात करें',
   'common.older': 'पुराने',
   'common.newer': 'नए',
+  'common.copy': 'कॉपी करें',
+  'common.loadMore': 'और लोड करें',
+  'common.noMatches': 'कोई मेल नहीं',
+  'common.working': 'काम हो रहा है',
 
   'count.leads.one': '{count} लीड',
   'count.leads.other': '{count} लीड',
@@ -778,12 +785,12 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'action.close': 'Close',
   // TODO(i18n-hi)
   'action.dismiss': 'Dismiss',
+  'toast.dismiss': 'बंद करें',
   // TODO(i18n-hi)
   'action.done': 'Done',
   // TODO(i18n-hi)
   'action.newLead': 'New lead',
-  // TODO(i18n-hi)
-  'action.retryNow': 'Retry now',
+  'action.retryNow': 'अभी फिर कोशिश करें',
   // TODO(i18n-hi)
   'action.reviewConflicts': 'Review conflicts',
   // TODO(i18n-hi)
@@ -2011,10 +2018,13 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'keys.help.unbound': 'बाध्य नहीं',
   'keys.help.conflict': 'किसी अन्य कमांड के साथ साझा',
   'nav.catalogue': 'Catalogue',
+  'nav.collapse': 'समेटें',
+  'nav.collapseSidebar': 'साइडबार समेटें',
   // TODO(i18n-hi)
   'nav.conflicts': 'Conflicts',
   // TODO(i18n-hi)
   'nav.dashboard': 'Dashboard',
+  'nav.expandSidebar': 'साइडबार फैलाएँ',
   // TODO(i18n-hi)
   'nav.leads': 'Leads',
   // TODO(i18n-hi)
@@ -2049,6 +2059,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'nav.master.settings': 'Settings',
   // TODO(i18n-hi)
   'nav.master.work': 'Work',
+  'nav.modules': 'मॉड्यूल',
   // TODO(i18n-hi)
   'nav.orders': 'Orders',
   // TODO(i18n-hi)
@@ -2957,6 +2968,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'sync.refusedChanges': 'Refused changes',
   // TODO(i18n-hi)
   'sync.synced': 'Synced',
+  'sync.statusLabel': 'सिंक स्थिति: {status}',
   // TODO(i18n-hi)
   'sync.syncing': 'Syncing {count}',
   // TODO(i18n-hi)
@@ -3565,6 +3577,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'signin.forgetAction': 'इस पैनल से हटाएँ',
   'lead.add.discard': 'ड्राफ़्ट हटाएँ',
   'table.sortBy': '{column} से क्रमबद्ध करें',
+  'table.redacted': 'छिपा हुआ',
   'settings.appearance.resetAll': 'दिखावट रीसेट करें',
   'partyAccess.showing': 'अब तक {shown} दिख रहे हैं।',
   'settingGroup.access': 'कौन अंदर आ सकता है',

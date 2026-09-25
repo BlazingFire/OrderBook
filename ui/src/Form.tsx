@@ -1,8 +1,9 @@
 import { rem } from './rem.js';
 /**
- * Form foundation (§9): Input, NumberInput, Select, Textarea, DateField,
- * Checkbox, Switch, Label, HelperText, FieldError, and FormField — the
+ * Form foundation (§9): Input, NumberInput, Textarea, DateField, Checkbox,
+ * Switch, Slider, Label, HelperText, FieldError, and FormField — the
  * label/control/help/error composite every screen builds a field from.
+ * `Select` lives in `SuggestInput.tsx`, beside the list it shares.
  *
  * Numeric entry is right-aligned tabular figures with no steppers; a screen
  * that wants ↑/↓ ± Shift stepping adds it on its own quantity cells (§9.2).

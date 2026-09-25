@@ -5,11 +5,12 @@
  * (see base.css) and collapses to a static grid under the motion kill switches.
  */
 
+import { t } from './i18n.js';
 import { CELLS } from './logoCells';
 
 export function BusyMark({
   size = 24,
-  label = 'Working',
+  label = t('common.working'),
 }: {
   size?: number;
   /** Announced to screen readers; pass '' inside labelled buttons. */

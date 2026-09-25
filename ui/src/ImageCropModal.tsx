@@ -1,10 +1,10 @@
 /**
  * The crop/rotate editor (`7-IMAGE-PIPELINE.md` §3), ported from the source
- * spec's Electron `BrowserWindow` onto a web `Modal` — this app has no
- * Electron process anywhere, so a dedicated undecorated window isn't
- * available; a focus-trapped, Esc-closes modal gives the same "dedicated
- * editing surface, not an inline control" feel with the primitive this repo
- * actually has.
+ * spec's Electron `BrowserWindow` onto a web `Modal` — the panel is a web page
+ * that the Electron shell hosts in a single window and that also runs in a
+ * plain browser tab, so a dedicated undecorated window isn't available to it;
+ * a focus-trapped, Esc-closes modal gives the same "dedicated editing surface,
+ * not an inline control" feel with the primitive this repo actually has.
  *
  * Non-destructive per §3.2: nothing here re-encodes anything. The canvas only
  * ever redraws from the original decoded `<img>`, and Save sends the *original
