@@ -288,7 +288,7 @@ export function DataTable<T>({
                       {reason ? (
                         <span
                           className="ob-redacted"
-                          title={t('table.redactedReason', { permission: reason })}
+                          title={t('error.forbidden.missingPermission', { permission: reason })}
                           aria-label={t('table.redacted')}
                         />
                       ) : (

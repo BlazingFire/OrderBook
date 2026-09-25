@@ -784,13 +784,12 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'action.close': 'Close',
   // TODO(i18n-hi)
   'action.dismiss': 'Dismiss',
-  'toast.dismiss': 'हटाएँ',
+  'toast.dismiss': 'बंद करें',
   // TODO(i18n-hi)
   'action.done': 'Done',
   // TODO(i18n-hi)
   'action.newLead': 'New lead',
-  // TODO(i18n-hi)
-  'action.retryNow': 'Retry now',
+  'action.retryNow': 'अभी फिर कोशिश करें',
   // TODO(i18n-hi)
   'action.reviewConflicts': 'Review conflicts',
   // TODO(i18n-hi)
@@ -3565,7 +3564,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.discard': 'ड्राफ़्ट हटाएँ',
   'table.sortBy': '{column} से क्रमबद्ध करें',
   'table.redacted': 'छिपा हुआ',
-  'table.redactedReason': 'अनुमति नहीं है: {permission}',
   'settings.appearance.resetAll': 'दिखावट रीसेट करें',
   'partyAccess.showing': 'अब तक {shown} दिख रहे हैं।',
   'settingGroup.access': 'कौन अंदर आ सकता है',

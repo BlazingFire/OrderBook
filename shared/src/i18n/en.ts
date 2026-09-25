@@ -559,7 +559,6 @@ export const EN_MESSAGES = {
   'common.confirm': 'Confirm',
   'table.sortBy': 'Sort by {column}',
   'table.redacted': 'Hidden',
-  'table.redactedReason': 'Missing permission: {permission}',
   'common.search': 'Search',
   'common.restore': 'Restore',
   'common.export': 'Export',

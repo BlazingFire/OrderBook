@@ -7,10 +7,15 @@
  * rail — so a Hindi panel read English on exactly the controls both panels
  * share. Each case renders the component under `hi` and checks it against the
  * catalogue, and the last checks English still reads as it did.
+ *
+ * Only against Hindi the catalogue actually has: `hi()` below fails on a key
+ * whose Hindi entry still carries its English text (a `// TODO(i18n-hi)`
+ * line), because an assertion on that text would pass just as well on the
+ * English literal the component used to hard-code.
  */
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { HI_MESSAGES, type MessageKey } from '@orderbook/shared';
+import { EN_MESSAGES, HI_MESSAGES, type MessageKey } from '@orderbook/shared';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { AppShell } from '../src/AppShell.js';
@@ -23,7 +28,11 @@ import { Modal } from '../src/Modal.js';
 import { ErrorState } from '../src/States.js';
 import { ToastProvider, useToast } from '../src/Toast.js';
 
-const hi = (key: MessageKey): string => HI_MESSAGES[key];
+function hi(key: MessageKey): string {
+  const text = HI_MESSAGES[key];
+  expect(text, `${key} has no Hindi yet`).not.toBe(EN_MESSAGES[key]);
+  return text;
+}
 
 beforeAll(() => {
   // jsdom implements neither. `useOverlay` calls the first when a Modal
@@ -115,6 +124,10 @@ describe('the kit in Hindi', () => {
     );
     fireEvent.click(screen.getByText('push'));
     expect(screen.getByRole('button', { name: hi('toast.dismiss') })).toBeTruthy();
+    // Not the word the catalogue uses for Delete: a screen reader would
+    // announce the button that only closes the toast as deleting something.
+    expect(hi('toast.dismiss')).not.toBe(hi('common.delete'));
+    expect(hi('toast.dismiss')).not.toBe(hi('action.delete'));
   });
 
   it('labels both pagers', () => {
@@ -167,7 +180,7 @@ describe('the kit in Hindi', () => {
     const redacted = document.querySelector('.ob-redacted');
     expect(redacted?.getAttribute('aria-label')).toBe(hi('table.redacted'));
     expect(redacted?.getAttribute('title')).toBe(
-      hi('table.redactedReason').replace('{permission}', 'parties.view'),
+      hi('error.forbidden.missingPermission').replace('{permission}', 'parties.view'),
     );
 
     fireEvent.focus(screen.getByPlaceholderText('Party'));
