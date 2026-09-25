@@ -6,7 +6,7 @@
  * Add Lead screen with it. What this pins is the two ways serving it locally
  * could quietly become a hole:
  *
- *  · it must rank the **masked, scoped** view, never the raw snapshot, which
+ *  · it must rank the **gated, scoped** view, never the raw snapshot, which
  *    was built for whoever was signed in when the link last worked;
  *  · it must gate on the session's permissions, because offline there is no
  *    `requirePermission` to lean on.

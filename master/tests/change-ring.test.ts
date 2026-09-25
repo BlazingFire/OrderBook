@@ -7,8 +7,8 @@
  * goes wrong is not a bug in this file, it is somebody adding a fifteenth
  * entity and nobody noticing. `party_variant` is the case that made the point:
  * it is in the snapshot, `applyChange` has no case for it, and a replayed one
- * would be dropped on the floor with staff quoting from stale prices and no
- * error anywhere.
+ * would be dropped on the floor with staff reading a stale party name, size
+ * or packaging and no error anywhere.
  */
 
 import { describe, expect, it, beforeEach } from 'vitest';

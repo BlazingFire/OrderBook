@@ -190,6 +190,43 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-25 (leftover cleanup) — Dead exports, unused keys and CSS, and text that still named removed features (Claude)
+
+Scope: what the audit left behind. The code already carried no money,
+assistant, PDF Designer, old Picker or field masking; the text around it
+still did.
+
+- `e2b7d71`: dead exports removed — the repository alias `setReorderLevel`,
+  `BP_TIGHT`/`BP_SHORT`, `deviceCodeOf`, `entityOfPermanentId`,
+  `defaultBindings` (and its test); seven file-internal helpers unexported.
+- `cbf116b`: with one sign-in attempt left the Master says "1 attempt left"
+  (`auth.service.ts`, with a test); 57 unused keys out of `en.ts` and `hi.ts`
+  (all `picker.*`, `lead.detail.total`, …); the panels' dead CSS rules and
+  `:root` alias tokens, and `.ok` in the clean-install page.
+- Uncommitted on top: sample-data remarks and a party note that talked about
+  money now describe other facts ("Quoted…" remarks kept; the `creditDays`
+  field kept, owner's call); the dead `rate` fixture field in
+  `http-api.integration`, the `rate` column in `spreadsheet.test.ts`, the
+  rupee-sign test's title, and test and source comments that described prices
+  or "masked" snapshots as current (now gated and scoped per actor); the
+  `ui/tests/app-shell-nav` fixture uses a Leads module instead of Documents;
+  `.gitignore`'s note on `CATA.pdf`/`dummy-data/`; `opencode.md` and the
+  test-guardrails skill no longer say the panels are invisible to `verify`;
+  Workstream I bannered as history; `BACKEND_MODULES.md` and
+  `docs/backend-modules/*` status lines say what was built; the "cited from
+  source" claim corrected (only `docs/backend-modules/`, and of
+  `docs/overhaul/` only `README.md` and `workstream-F.md`); the finished
+  briefs `product-model-variants.md` and `product-master-trim.md` deleted,
+  their owner decisions folded into `HANDOFF.md` Key decisions 14 and 15 and
+  every link repointed; counts updated (2088 keys, 1245 `TODO(i18n-hi)`,
+  1349 identical to English, 160 files / 2015 tests); `HANDOFF.md` Owed work
+  17–21 added.
+
+Verified: `npx eslint .` 0; `npm run typecheck` 0; `npx vitest run ui shared
+office/tests` plus the touched unit suites in `master/tests` — 50 files / 582
+tests passed. The touched integration suites skipped (no PostgreSQL as root);
+a full run with the cluster is still owed.
+
 ### 2026-09-25 (audit) — Whole-tree audit fixed on eleven branches, merged into `main`; the palette offers only what runs (Claude)
 
 Scope: an audit of the whole tree, its findings fixed on eleven local `fix/*`
@@ -718,7 +755,7 @@ plus a **multi colour** switch, *remove other fields completely from
 backend, frontend and database* — and the three answers given (remove
 pricing whole; keep custom fields on products; the line's colour comes from
 the Settings colour list) are recorded in
-`docs/ai-handoffs/product-master-trim.md`.
+`docs/ai-handoffs/product-master-trim.md` (deleted as done on 2026-09-25; git history).
 
 **Files touched.** Migration `20260324000000_product_master_trim` (+ registry,
 pinned last); `shared/src/domain` (entities, inputs, columns, validator,
@@ -753,7 +790,7 @@ both lines to survive. `origin/main` (11–14 Sep, other PC) and the laptop's
 `main` had diverged at `da9e992` with contradictory decisions — two product
 hierarchies, two New lead screens, the Designer kept vs removed, the
 assistant removed vs kept. Resolution rules and the file-by-file record are
-in `docs/ai-handoffs/product-model-variants.md` §6b; the short form: the
+in `docs/ai-handoffs/product-model-variants.md` (deleted as done on 2026-09-25; git history) §6b; the short form: the
 variant model wins the hierarchy, every other v1.1.0 feature is kept, both
 removals stand.
 
@@ -780,7 +817,7 @@ Swisware 2026 catalogue PDF (rendered page by page and transcribed). Decisions
 taken with the owner up front: seed the whole catalogue with weights blank;
 wipe the product-linked data on this install; hide the tile-only fields.
 Design and the reviewer's walk-through in
-`docs/ai-handoffs/product-model-variants.md`; the `HANDOFF.md` entry of the
+`docs/ai-handoffs/product-model-variants.md` (deleted as done on 2026-09-25; git history); the `HANDOFF.md` entry of the
 same date has the summary.
 
 **Files touched.** Migration `20260323000000_product_variants` (+ registry);

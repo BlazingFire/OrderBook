@@ -1,6 +1,8 @@
 # 07 — UI specification for the six new modules
 
-Status: **specification only. No screen in this document is built in this batch, and none may be.**
+Status: **specification.** Every screen here has since been built in the panels, apart from the PDF
+Designer's, which was built and then removed (see the banner in `docs/BACKEND_MODULES.md`); check a
+claim here against the tree before acting on it.
 
 This is the contract between the backend work planned in `docs/BACKEND_MODULES.md` and the frontend
 work planned in `docs/UI_REDESIGN.md` §8 Phase 3. The screens themselves belong to the UI phase, on

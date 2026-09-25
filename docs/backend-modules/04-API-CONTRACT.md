@@ -1927,7 +1927,8 @@ flag. Nothing in this batch is queued into the outbox.
 ### 10.2a The product-variant surface (2026-09)
 
 Not part of the six modules above, but the same forwarding pattern, and the contract every screen
-now assumes (`docs/ai-handoffs/product-model-variants.md` has the design):
+now assumes (the design is `docs/schema/02-parties-and-products.md` §*Product variants* and
+`HANDOFF.md` Key decision 14):
 
 | Master endpoint | Office route | Notes |
 |---|---|---|

@@ -339,7 +339,7 @@ not counted here.
 | `.commandcode/` | 6 | Team-shared Command Code skills in `skills/*/SKILL.md` (§2.12). Only `skills/` is tracked. |
 | `.github/` | 2 | `.github/workflows/ci.yml` (the verify gate on every push and PR) and `.github/workflows/release.yml` (installers for three operating systems). §10.7. |
 | `cleaner/` | 5 | Packaging for the **OrderBook Clean Install** tool (`cleaner/electron-builder.yml`, `cleaner/package.json`, `cleaner/web/index.html`, `cleaner/installer/` 2). An npm workspace with no scripts. Its logic is in `electron/lib/cleaner/`. §10.3. |
-| `docs/` | 51 | All prose: 12 files at the root (this file among them), `docs/ai-handoffs/` 7, `docs/backend-modules/` 12, `docs/overhaul/` 12, `docs/schema/` 8. §13. |
+| `docs/` | 49 | All prose: 12 files at the root (this file among them), `docs/ai-handoffs/` 5, `docs/backend-modules/` 12, `docs/overhaul/` 12, `docs/schema/` 8. §13. |
 | `electron/` | 34 | The desktop shell: 7 root files (incl. the two preload bridges `electron/preload.cts` → `window.orderbook` and `electron/cleaner.preload.cts` → `window.cleaner`, which is why `electron/tsconfig.json` includes `**/*.cts`), `electron/lib/` 13 (incl. `electron/lib/cleaner/` 4), `electron/tests/` 14 (12 tests + 2 fixtures in `electron/tests/fixtures/`). **Not an npm workspace.** §10.1. |
 | `master/` | 347 | Master server and frontend: `master/src/` 199, `master/tests/` 106, `master/web/` 30, `master/assets/fonts/` 5, `master/installer/` 3, plus `master/package.json`, `master/tsconfig.json`, `master/electron-builder.yml` and `master/Launch Master Panel.bat`. |
 | `office/` | 82 | Office server and frontend: `office/src/` 32, `office/tests/` 12, `office/web/` 31, `office/installer/` 3, plus `office/package.json`, `office/tsconfig.json`, `office/electron-builder.yml` and `office/Launch Office Panel.bat`. |
@@ -471,7 +471,7 @@ is `>=20`**; both CI workflows use Node 22. **Workspaces:** `shared`, `ui`,
 | `seed:catalogue` | build shared, then `tsx src/db/seed-catalogue-cli.ts` |
 | `typecheck` | (1) `npm run typecheck --workspaces --if-present` — shared, ui, master, office run `tsc --noEmit`; master-web, office-web run `tsc -b`; cleaner has none; (2) `tsc -p tsconfig.test.json`; (3) `tsc -p ui/tests/tsconfig.json`; (4) `tsc -p electron/tsconfig.json --noEmit` |
 | `lint` | `eslint .` |
-| `i18n:sync` | `node tools/i18n-sync.mjs` — appends every `EN_MESSAGES` key missing from `HI_MESSAGES` with the English text and `// TODO(i18n-hi)`. `shared/src/i18n/hi.ts` has 1275 such lines. |
+| `i18n:sync` | `node tools/i18n-sync.mjs` — appends every `EN_MESSAGES` key missing from `HI_MESSAGES` with the English text and `// TODO(i18n-hi)`. `shared/src/i18n/hi.ts` has 1245 such lines. |
 | `format` | `prettier --write .` — not part of `verify`; no check-only variant |
 | `pretest` / `test` | build shared, then `vitest run` |
 | `test:watch` | `vitest` |
@@ -890,8 +890,8 @@ the Office four screens — `office/web/src/screens/AddLeadScreen.tsx`,
 
 | File | Purpose / exports |
 |---|---|
-| `shared/src/i18n/en.ts` | `EN_MESSAGES`, **the source of truth**: one flat `as const` object, **2145 keys**. Flat dotted keys; named `{placeholders}` only; no pre-formatted numbers or currency symbols; plurals as `.one`/`.other`. Largest families: `lead.` 175, `access.` 160, `validation.` 156, `fields.` 115, `integrations.` 84, `developer.` 84, `activity.` 79, `error.` 69. |
-| `shared/src/i18n/hi.ts` | `HI_MESSAGES: Record<MessageKey, string>`, a **total** record: a new English key turns the build red until Hindi has it. 2145 keys; 1275 `// TODO(i18n-hi)` markers; 1378 values byte-identical to English. |
+| `shared/src/i18n/en.ts` | `EN_MESSAGES`, **the source of truth**: one flat `as const` object, **2088 keys**. Flat dotted keys; named `{placeholders}` only; no pre-formatted numbers or currency symbols; plurals as `.one`/`.other`. Largest families: `lead.` 173, `access.` 158, `validation.` 146, `fields.` 115, `developer.` 84, `integrations.` 83, `activity.` 79, `error.` 68. |
+| `shared/src/i18n/hi.ts` | `HI_MESSAGES: Record<MessageKey, string>`, a **total** record: a new English key turns the build red until Hindi has it. 2088 keys; 1245 `// TODO(i18n-hi)` markers; 1349 values byte-identical to English. |
 | `shared/src/i18n/keys.ts` | Type machinery. `MessageKey = keyof typeof EN_MESSAGES`; `Placeholders<S>`; `ParamsFor<K>` (`[]` with no placeholders, else a required record — a missing, extra or invented param is a compile error); `CountKey` (stems with `.one` and `.other`: `error.unauthorized.signInFailedRemaining`, `validation.permissions.unknown`, `count.leads`, `count.rows`, `sync.changesRefused`); `MessageParams`; `LocaleCatalogue`. |
 | `shared/src/i18n/translate.ts` | `t(locale, key, params?)` fills placeholders with `String(value)` only (no number formatting). Fallback: requested locale → English → the raw key. `tCount(locale, stem, count)` uses `Intl.PluralRules` and injects `{count}`. Also `createTranslator(locale)` → `Translator`, `resolveCatalogue`. |
 | `shared/src/i18n/locales.ts` | `LOCALES = ['en','hi']`, `Locale`, `DEFAULT_LOCALE = 'en'`, `isLocale`, `LOCALE_LABELS`. The locale is per machine, never synced. |
@@ -1082,7 +1082,7 @@ and the one it added show their `it(` count instead, marked `it(`.
 - **Fixed 2026-09-25 — hard-coded English:** `renderActivity` filled `{actor}` with
   `'Somebody'`; it reads `logs.actor.unknown`, and the 11 Hindi `activity.*`
   templates that were still English are translated.
-- **Hindi** is complete by type only: 1275 `TODO(i18n-hi)` placeholders.
+- **Hindi** is complete by type only: 1245 `TODO(i18n-hi)` placeholders.
 - **23 of the 79 client→server events have no caller in `office/src`** (a grep for
   each literal event name finds none): `party:list`/`create`/`update`,
   `product:create`/`update`, `category:list`, `partyVariant:list`/`upsert`,
@@ -1131,8 +1131,8 @@ never talks to a server** (§4.10). (`ui/tests/panel-harness.ts` is the one plac
      the `@orderbook/ui` barrel evaluate before `configureUi` runs (why §4.8 forbids
      reading `uiConfig()` at module top level);
   2. `import '@orderbook/ui/styles.css'`;
-  3. the panel's own `./styles.css` (a legacy compatibility layer — 275 lines in
-     master, 254 in office);
+  3. the panel's own `./styles.css` (a legacy compatibility layer — 152 lines in
+     master, 159 in office);
   4. `configureUi({...})` — master `{ panel: 'master', defaultTheme: 'dark',
      themeStorageKey: 'ob.theme.v2' }`, office `{ panel: 'office', defaultTheme:
      'light', themeStorageKey: 'ob.theme' }`;
@@ -2509,9 +2509,11 @@ audit and left open; item 24 records what it found deliberate.
 22. **Observation: a `partyVariant.upsert`'s temporary id never reaches `id_map`.**
     `sync.service.ts#route` returns the Master's id but calls `mapTemporaryId` only
     for lead, party and product creates.
-23. **A sample-data remark still reads "Rate list shared, …"**
+23. **Fixed 2026-09-25 — a sample-data remark read "Rate list shared, …"**
     (`master/src/domain/sample-data.ts`, in `SAMPLE_LEADS`), in a product with no
-    rates.
+    rates. It and the other remarks and notes that talked about money (advances, a
+    percentage off, payment terms) now describe other facts; the `creditDays`
+    custom field stays, the owner's call (`HANDOFF.md` Owed work).
 24. **Deliberately detached, not defects:** accepted sign-in entries and connector
     runs (§5.1).
 
@@ -2845,7 +2847,7 @@ files of its own** — §7.6 lists the tests that read or boot this source.
 | `master/web/src/App.tsx` | 1116 | the shell (§7.2) |
 | `master/web/src/api.ts` | 875 | the only HTTP client (§7.3) |
 | `master/web/src/partyFormTransport.ts` | 20 | hands the shared `PartyFormModal` `api.createParty`/`api.updateParty` |
-| `master/web/src/styles.css` | 275 | legacy layer mapping old variables (`--bg`, `--surface`, `--muted`…) onto `ui` tokens (`:root`) and styling bare elements; every element-selector rule (`button`, `input`/`select`/`textarea`, `label`, `table`, `button.link`) is guarded by `:not(:where([class*='ob-']))`, but the class rules `.card`, `.row`, `.muted`, `.dot`/`.dot.on`/`.dot.off`, `.chip*` and `.num` are not |
+| `master/web/src/styles.css` | 152 | legacy layer styling bare elements; every element-selector rule (`button`, `input`/`select`/`textarea`, `label`, `table`) is guarded by `:not(:where([class*='ob-']))`; the only class rules left are `.dot` and `.num` (the `:root` alias tokens, `.card`, `.row`, `.muted`, `.chip*` and the rest went on 2026-09-25) |
 | `master/web/src/components/ChangePasswordDialog.tsx` | 137 | change your own password: 8-char minimum and match checked client-side, then `api.changeOwnPassword`; the server invalidates every session for the user, so the 401 path returns to sign-in |
 | `master/web/src/components/DataDirCard.tsx` | 74 | first-run-only data-folder chooser; renders only when `desktopBridge()` has `getDataDir`, `setDataDir`, `chooseDirectory` |
 | `master/web/src/components/StorageBackup.tsx` | 236 | `StorageBackupActions`: export (passphrase → `api.exportStorage` → blob download) and restore (`previewRestoreStorage`, passphrase, `restoreStorage`; on `backup_populated_data_directory` asks for a typed wipe confirmation and retries with `confirmWipe`) |
@@ -3538,7 +3540,7 @@ record; the real record arrives later over the SSE stream.
 | `office/web/src/localSearch.ts` | 89 | `searchLocalView(view, term)` — the palette's offline fallback: case-insensitive substring over products, parties, leads, orders; ≥ 2 chars, ≤ 20 hits (`LIMIT`), `rank: 0` |
 | `office/web/src/partyFormTransport.ts` | 20 | `PartyFormModal` → `api.createParty`/`api.updateParty` (return `QueuedResult`) |
 | `office/web/src/productSummary.ts` | 59 | `codesOf(product)`, `weightLabel(product)` (single weight, low–high range, or `null` = "weight missing"); active variants only. `missingWeight` is file-internal (used by `weightLabel`; unexported 2026-09-25), and `CatalogScreen` never sends the `missingWeight` list filter that `api.listProducts` supports |
-| `office/web/src/styles.css` | 254 | legacy layer (old token aliases, bare-element rules guarded by `:not(:where([class*='ob-'], …))`, `.muted`, `.error`, `.dot`, `.chip*`, `.num`); only `dot` and `num` are still used as plain classes |
+| `office/web/src/styles.css` | 159 | legacy layer: bare-element rules guarded by `:not(:where([class*='ob-'], …))`, plus `.dot` and `.num` (the old token aliases, `.muted`, `.error`, `.chip*` went on 2026-09-25) |
 | `office/web/src/vite-env.d.ts` | 2 | `__APP_VERSION__` |
 
 **Screens (`office/web/src/screens/`, 14 files, 7,369 lines):**
@@ -5040,7 +5042,7 @@ written before or during the build — check claims against the tree), **Mixed**
 | `docs/TESTING_PLAN.md` | Current | manual three-PC QA script for the Windows 1.2.0 installers |
 | `docs/PROJECT_PLAN.md` | Mixed | the original spec; §1 ("No Electron requirement", no Office local state), §7 (`leads` doubling as orders, price fields) and §10 (a layout without `ui/`, `electron/`, `cleaner/`, `tools/`) are superseded |
 | `docs/AI_COLLABORATION.md` | Current process + log | multi-agent playbook and change log (dated entries, not strictly newest-first) |
-| `docs/BACKEND_MODULES.md` | Historical | plan for Fields, Logs, Recycle Bin, Reports, PDF Designer, i18n; its "nothing built" status is stale and the Designer was removed |
+| `docs/BACKEND_MODULES.md` | Historical | plan for Fields, Logs, Recycle Bin, Reports, PDF Designer, i18n; status line says all built but the Designer, which was removed |
 | `docs/UI_REDESIGN.md` | Historical | plan for porting the design system into `ui/` |
 
 **`docs/schema/` (8, current — rewritten 2026-09-24 against a freshly migrated
@@ -5053,7 +5055,7 @@ that are gone), `docs/schema/01-identity-and-network.md`,
 `docs/schema/07-integrations.md` (added 2026-09-25: the seven `api_*` tables and the
 leftover `ai_runs`).
 
-**`docs/ai-handoffs/` (7):** `docs/ai-handoffs/README.md` (queue index as of
+**`docs/ai-handoffs/` (5):** `docs/ai-handoffs/README.md` (queue index as of
 2026-09-22); open briefs `docs/ai-handoffs/office-product-image-flow.md` (partly
 stale — `office/web/vite.config.ts` now proxies `/uploads` and
 `office/web/src/screens/ProductDetail.tsx` renders `ProductImages`),
@@ -5061,12 +5063,14 @@ stale — `office/web/vite.config.ts` now proxies `/uploads` and
 `docs/ai-handoffs/session-loss-and-password-change.md` (a tail remains:
 `signIn.notice.passwordChanged` exists only in the catalogues),
 `docs/ai-handoffs/recycle-bin-delete-actions-and-purge.md` (part 2 waits on an owner
-decision); records of finished changes kept because source cites them:
-`docs/ai-handoffs/product-model-variants.md` (2026-09-19),
-`docs/ai-handoffs/product-master-trim.md` (2026-09-21).
+decision). No source file cites a brief. The two records of finished changes,
+`product-model-variants.md` (2026-09-19) and `product-master-trim.md` (2026-09-21),
+were deleted on 2026-09-25 under the queue's own rule; their owner decisions are
+`HANDOFF.md` Key decisions 14 and 15.
 
-**`docs/backend-modules/` (12, historical)** — specifications that say "Status:
-specification. Nothing built" (stale), still cited by gate ids in test headers:
+**`docs/backend-modules/` (12, historical)** — specifications whose status lines
+now say what was built (everything but the PDF Designer, which was removed),
+cited from source and test comments by gate ids:
 `docs/backend-modules/README.md`, `docs/backend-modules/01-ARCHITECTURE.md`,
 `docs/backend-modules/02-FILE-STRUCTURE.md`, `docs/backend-modules/03-DATABASE.md`,
 `docs/backend-modules/04-API-CONTRACT.md`,
@@ -5081,7 +5085,8 @@ specification. Nothing built" (stale), still cited by gate ids in test headers:
 decisions, findings), `docs/overhaul/00-sequenced-plan.md` (stages 0–12, 51
 blockers), and `docs/overhaul/workstream-A.md` … `docs/overhaul/workstream-J.md`
 (A shell, B UI package and keep-alive, C scale, D pickers and grids, E attributes, F
-vault and settings, G keyboard, H performance, I AI — removed, J external API). They
+vault and settings, G keyboard, H performance, I AI — removed, bannered as history, J
+external API). Only `README.md` and `workstream-F.md` are cited from source. They
 cite paths that no longer exist (e.g. `office/electron/main.ts`).
 
 **Other tracked `.md` (9):** the six `.commandcode/skills/*/SKILL.md` and

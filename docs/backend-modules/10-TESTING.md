@@ -1,6 +1,6 @@
 # 10 — Testing and acceptance gates
 
-Status: **specification. Nothing in this document is built.** It is the test plan for the six
+Status: **specification.** Built since, apart from the PDF Designer, which was built and then removed (see the banner in `docs/BACKEND_MODULES.md`); the code is the truth now, so check a claim here against the tree before acting on it. It is the test plan for the six
 backend modules in `docs/BACKEND_MODULES.md` plus the Office Dashboard aggregate, and the gate list
 the owner ticks before authorising each module as done.
 

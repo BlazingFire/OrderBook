@@ -31,7 +31,7 @@ describe('toNumber', () => {
     expect(toNumber(42)).toBe(42);
   });
 
-  it('maps absent values to null rather than 0, so "no price" stays distinct from "free"', () => {
+  it('maps absent values to null rather than 0, so "no weight" stays distinct from "weighs nothing"', () => {
     expect(toNumber(null)).toBeNull();
     expect(toNumber(undefined)).toBeNull();
   });

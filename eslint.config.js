@@ -13,9 +13,9 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     rules: {
-      // `varsIgnorePattern` covers destructuring-to-omit — `const { rate: _rate,
-      // ...rest } = record` is how a key is dropped from an object, and the
-      // binding it creates is unused by design.
+      // `varsIgnorePattern` covers destructuring-to-omit — `const { categoryId:
+      // _categoryId, ...rest } = columns` is how a key is dropped from an
+      // object, and the binding it creates is unused by design.
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },

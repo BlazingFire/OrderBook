@@ -364,7 +364,8 @@ describe.skipIf(!canRunIntegrationTests)('party access (integration)', () => {
       expect(snapshot.leads).toHaveLength(0);
       // The one a service call would never have covered: `partyVariants` is
       // read straight from its repository by `buildSnapshot`, so it leaks
-      // another party's negotiated rate unless scoped explicitly.
+      // another party's own product names, sizes and packaging unless scoped
+      // explicitly.
       expect(snapshot.partyVariants).toHaveLength(0);
       expect(snapshot.partyGrants).toEqual([{ partyId: mine.id, level: 'manage' }]);
     });

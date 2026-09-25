@@ -153,7 +153,7 @@ const LIST_MAX_LIMIT = 500;
  * same facet, so the screen does not change shape when the link drops. The
  * caller stamps `offline: true` on the answer; the screen says so.
  *
- * The same two rules as `pickFromView`: it ranks the masked view it is handed,
+ * The same two rules as `pickFromView`: it ranks the gated view it is handed,
  * never the raw snapshot, and it gates on the session's permissions.
  */
 export function listProductsFromView(

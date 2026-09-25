@@ -91,7 +91,7 @@ describe('vendored PDF fonts', () => {
     }
   });
 
-  it('PDF-5: the mono face covers the rupee sign, which every priced report prints', () => {
+  it('PDF-5: the mono face covers the rupee sign, which the text splitter treats as script-neutral', () => {
     const font = open('SourceCodePro-Regular.ttf');
     expect(font.hasGlyphForCodePoint('₹'.codePointAt(0)!)).toBe(true);
   });

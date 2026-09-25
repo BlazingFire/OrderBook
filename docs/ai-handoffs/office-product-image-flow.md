@@ -1,4 +1,4 @@
-# Product images: rates leak to the browser, there is nowhere to actually look at a photo, and the whole UI is untranslated
+# Product images: no full-size photo view, and an offline upload answers a raw, untranslated error
 
 **Owner:** Command Code. **Reviewer:** Claude.
 **Size:** M. Item 1 is a **data-leak fix that should land on its own, first.**

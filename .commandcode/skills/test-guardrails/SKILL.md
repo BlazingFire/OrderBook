@@ -14,10 +14,18 @@ closes the gaps it leaves.
 
 - Suites live at `{shared,master,office,electron}/tests/**/*.test.ts` and
   `ui/tests/**/*.test.{ts,tsx}`. Only `ui/tests/**` runs under jsdom.
-- `master/web/src` and `office/web/src` hold **zero** test files. A change
-  confined to either panel's web app is invisible to the suite — add a
-  component-level test under `ui/tests/` when touching the kit, and say
-  plainly in the handoff brief when panel-only code went in unverified.
+- `master/web/src` and `office/web/src` hold no test files of their own, but
+  `ui/tests/master-shell.test.tsx` and `ui/tests/office-shell.test.tsx` boot
+  each panel's `App.tsx` whole in jsdom through `ui/tests/panel-harness.ts`,
+  so the suite does see which screen a key, toast or link lands on, what a
+  form sends, and the splash's errors. Extend those shells when a panel-only
+  change alters behaviour, and add a component-level test under `ui/tests/`
+  when touching the kit.
+- Still invisible to the suite: layout, styling, anything that depends on
+  visibility, and the running Electron shell (its window, menus, IPC, a real
+  update — `electron/tests` covers only `lib/` and reads `shell.ts` as text).
+  Those need a browser or Electron pass; say plainly in the handoff brief when
+  such a change went in without one.
 
 ## Integration tests
 

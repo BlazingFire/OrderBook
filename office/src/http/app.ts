@@ -1675,7 +1675,7 @@ export const SNAPSHOT_POLICY: Record<keyof SyncSnapshot, SnapshotPolicy> = {
   serverTime: 'passthrough',
   serverVersion: 'passthrough',
   // Already computed per-actor by the Master, exactly like `permissions` and
-  // `dashboard`. This panel re-masks a cached snapshot for whoever is signed in
+  // `dashboard`. This panel re-gates a cached snapshot for whoever is signed in
   // *now*, but it cannot recompute a Party Access grant it was never told
   // about, so a stale value here is why the snapshot is re-fetched on sign-in.
   // Both are computed per-actor by the Master. `forCurrentUser` uses them
@@ -1687,7 +1687,7 @@ export const SNAPSHOT_POLICY: Record<keyof SyncSnapshot, SnapshotPolicy> = {
   // catalogue or one clamped/permission-emptied page.
   productsComplete: 'passthrough',
   // The company's switches. Not per-person — the same company for whoever is
-  // signed in — so nothing here is re-masked for the reader.
+  // signed in — so nothing here is re-gated or re-scoped for the reader.
   //
   // This used to say a stale switch "can only be as stale as `stock`". That
   // was wrong, and only looked right for `inventory.freeToSell`: `stock` is
@@ -1920,8 +1920,9 @@ function respondToDeveloperError(res: Response, error: unknown): void {
  *
  * Module-level, with **one** set of listeners on the connection rather than one
  * per stream. The listeners are what makes this worth restructuring: `pushView`
- * used to build and stringify the whole masked snapshot once per open stream
- * per event, and a panel with the app open in two tabs paid for it twice.
+ * used to build and stringify the whole gated, scoped snapshot once per open
+ * stream per event, and a panel with the app open in two tabs paid for it
+ * twice.
  */
 
 const streams = new Set<(type: string, data: unknown) => void>();

@@ -24,10 +24,12 @@ agents don't pick up the same work.
 
 Four briefs remain open, three of them partial. Every remaining file carries a
 dated "Landed" section naming what shipped and what did not — read that first,
-not the brief's original body, which describes the pre-fix world. Two further
-files are not open work but the reference record of a finished change:
+not the brief's original body, which describes the pre-fix world. No source
+file cites a brief. The two records of finished changes that used to sit here,
 `product-model-variants.md` (2026-09-19) and `product-master-trim.md`
-(2026-09-21) — keep them, source comments cite them.
+(2026-09-21), were deleted on 2026-09-25 under rule 4 above; their owner
+decisions are `HANDOFF.md` Key decisions 14 and 15, and git history has the
+full text.
 
 ### Open, in the order they are worth doing
 

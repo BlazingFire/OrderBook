@@ -16,8 +16,8 @@ function definition(overrides: Partial<CustomFieldDefinition> = {}): CustomField
     id: '00000000-0000-4000-8000-000000000001',
     tenantId: '00000000-0000-4000-8000-0000000000ff',
     entity: 'lead',
-    key: 'advanceReceived',
-    label: 'Advance received',
+    key: 'boxesPerPallet',
+    label: 'Boxes per pallet',
     fieldType: 'number',
     isRequired: true,
     options: [],
@@ -31,25 +31,25 @@ function definition(overrides: Partial<CustomFieldDefinition> = {}): CustomField
 
 describe('normalizeCustomFields', () => {
   it('keeps a zero typed into a numeric field', () => {
-    expect(normalizeCustomFields({ advanceReceived: '0' }, [definition()])).toEqual({
-      advanceReceived: 0,
+    expect(normalizeCustomFields({ boxesPerPallet: '0' }, [definition()])).toEqual({
+      boxesPerPallet: 0,
     });
   });
 
   it('parses the number out of the string the panels send', () => {
-    expect(normalizeCustomFields({ advanceReceived: '0.5' }, [definition()])).toEqual({
-      advanceReceived: 0.5,
+    expect(normalizeCustomFields({ boxesPerPallet: '0.5' }, [definition()])).toEqual({
+      boxesPerPallet: 0.5,
     });
   });
 
   it('drops a field the user left empty', () => {
-    expect(normalizeCustomFields({ advanceReceived: '' }, [definition()])).toEqual({});
+    expect(normalizeCustomFields({ boxesPerPallet: '' }, [definition()])).toEqual({});
   });
 });
 
 describe('evaluateCompleteness', () => {
   it('does not call a required numeric field missing when it holds zero', () => {
-    expect(evaluateCompleteness({ advanceReceived: 0 }, [definition()])).toEqual({
+    expect(evaluateCompleteness({ boxesPerPallet: 0 }, [definition()])).toEqual({
       incomplete: false,
       missingFields: [],
     });
@@ -58,7 +58,7 @@ describe('evaluateCompleteness', () => {
   it('names a required field that was never filled in', () => {
     expect(evaluateCompleteness({}, [definition()])).toEqual({
       incomplete: true,
-      missingFields: ['Advance received'],
+      missingFields: ['Boxes per pallet'],
     });
   });
 });

@@ -354,7 +354,7 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
         {
           id: lead.id,
           stageId: await stageIdByName('lead', 'Negotiating'),
-          remark: 'Asked for 5% off',
+          remark: 'Asked for delivery by Friday',
         },
         actor,
       );

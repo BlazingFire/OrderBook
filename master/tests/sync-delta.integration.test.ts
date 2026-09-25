@@ -6,7 +6,7 @@
  * insensitive**, and that is not a weakening of the test — byte-identical is
  * unachievable and asserting it would only be asserting on incidentals.
  * `upsert` prepends while `buildSnapshot` orders by name or id, and snapshot
- * rows are rate-masked per actor while a `data:changed` payload is raw. What
+ * rows are gated and scoped per actor while a `data:changed` payload is raw. What
  * has to match is *which records, at which versions*.
  *
  * The replay runs the panel's own `applyChangeToSnapshot` — the same shared
@@ -119,10 +119,11 @@ describe.skipIf(!canRunIntegrationTests)('reconnect delta (integration)', () => 
       admin,
     );
 
-    // A party variant is a per-party negotiated rate. It is in the snapshot
-    // but not as a flat id-keyed list a replayed delta can upsert into, so
-    // its presence forces the full snapshot instead — this is `buildDelta`'s
-    // own REPLAYABLE_ENTITIES gate, not `applyChangeToSnapshot`'s.
+    // A party variant is a party's own name, size, weight or packaging for a
+    // product. It is in the snapshot but not as a flat id-keyed list a
+    // replayed delta can upsert into, so its presence forces the full snapshot
+    // instead — this is `buildDelta`'s own REPLAYABLE_ENTITIES gate, not
+    // `applyChangeToSnapshot`'s.
     await catalog.upsertVariant({ partyId: party.id, productId: product.id }, admin);
 
     expect(await buildDelta(cursor, admin)).toBeNull();

@@ -1,6 +1,6 @@
 /**
  * `docs/backend-modules/10-TESTING.md` §6.8, `DSH-3`. Pure — mirrors
- * `snapshot-masking.test.ts`'s harness.
+ * `office/tests/snapshot-for-user.test.ts`'s harness.
  *
  * Covers the half of `DSH-3` that is backend-testable without a browser: the
  * cached snapshot on disk was built for whoever was signed in when the link

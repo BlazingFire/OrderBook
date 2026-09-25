@@ -39,16 +39,17 @@ was removed on 2026-09-11 and the PDF Designer (Documents module) on
 | Manual QA script | `docs/TESTING_PLAN.md` |
 | What to do next | `docs/NEXT_PHASE.md` |
 | Open work items (the queue) | `docs/ai-handoffs/README.md` |
-| The product master: category → model → variant | `docs/ai-handoffs/product-model-variants.md` |
-| The product trim, pricing removed, multi-colour lines | `docs/ai-handoffs/product-master-trim.md` |
+| The product master: category → model → variant; pricing removed | Key decisions 12, 14, 15 below; `docs/schema/02-parties-and-products.md` |
 | Fields, Logs, Recycle Bin, Reports, i18n design | `docs/BACKEND_MODULES.md` + `docs/backend-modules/` |
-| The 2026-08/09 overhaul designs (all implemented) | `docs/overhaul/` |
+| The 2026-08/09 overhaul designs (implemented; Workstream I, the AI section, removed) | `docs/overhaul/` |
 | Multi-agent workflow and per-session change log | `docs/AI_COLLABORATION.md` |
 
-`docs/overhaul/` and `docs/backend-modules/` are cited from source comments as
-design rationale. They were written before the code and several of their
-stated facts did not survive contact with the tree — check a design's claim
-against the code before acting on it.
+`docs/backend-modules/` is cited from source and test comments as design
+rationale (gate ids such as `DSH-3`); of `docs/overhaul/`, only `README.md` and
+`workstream-F.md` are cited from source — the rest is history. They were
+written before the code and several of their stated facts did not survive
+contact with the tree — check a design's claim against the code before acting
+on it.
 
 ## Current state (2026-09-25, after the audit fix round)
 
@@ -144,7 +145,7 @@ against the code before acting on it.
   Alt+7, Roles & users Alt+8, Party access Alt+9. Fields and everything after
   it are reached from the command palette. Shortcuts a person remapped are
   kept.
-- **Hindi is 1,275 strings behind** (`grep -c 'TODO(i18n-hi)'
+- **Hindi is 1,245 strings behind** (`grep -c 'TODO(i18n-hi)'
   shared/src/i18n/hi.ts`). The parity test only checks keys exist, so nothing
   fails on it — except an `activity.*` template, where
   `shared/tests/i18n-coverage.test.ts` fails the English stub until it is
@@ -345,6 +346,20 @@ docs/          all prose; nothing source-of-truth lives in a code comment
 13. **Accepted risks:** the Master's plaintext password vault (owner asked for
     it; keep the guards in `docs/overhaul/workstream-F.md`); no TLS on the LAN
     (the public API is off by default).
+14. **The product restructure (owner, 2026-09-19):** seed the whole catalogue
+    with weights blank (optional in storage, flagged *weight missing*, `> 0`
+    when given — nobody invents a weight for a dispatch note); wipe the
+    product-linked data on that install; hide the tile-only fields (the
+    columns stay).
+15. **The product trim (owner, 2026-09-21):** pricing removed whole — line and
+    party-wise rates, totals, the switch, the rate permissions, money in
+    reports. Custom fields stay on products. A multi-colour line picks its
+    colour from the Settings colour list; the colour is a line attribute, not
+    a stock key, and the Master refuses a colour only on a product not made in
+    colours, never one missing from the list (an offline lead must still land).
+    The two briefs that recorded these (`docs/ai-handoffs/product-model-variants.md`,
+    `product-master-trim.md`) were deleted on 2026-09-25 as done; git history
+    has them.
 
 ## Owed work
 
@@ -489,8 +504,21 @@ audit listed here is fixed (see "Session history").
     says the shell refuses anything outside "that panel's updates folder":
     the Master's installer comes from its releases folder
     (`releaseDirFor('master')`), and an AppImage is replaced, not run.
-17. A sample-data remark (`master/src/domain/sample-data.ts`) still mentions
-    a "Rate list".
+
+*Found by the 2026-09-25 leftover cleanup (none is a defect today):*
+
+17. **`ROLE_TEMPLATES`** (`shared/src/domain/permissions.ts`) are defined and
+    their `roleTemplate.*` names translated, but no screen offers them when a
+    role is created. Wire them into the role editor or drop them.
+18. **`signIn.notice.passwordChanged` is never sent** — it exists only in the
+    two catalogues (the password-change tail in *Code* item 3 above is why).
+19. **`fontkit` is a Master runtime dependency used only by
+    `master/tests/pdf-fonts.test.ts`** (PDFKit brings its own); it could move to
+    `devDependencies`.
+20. **The `ai_runs` table and stored `ai.*` role keys remain** from the removed
+    assistant. Migrations only add, so taking them out is the owner's decision.
+21. **The sample data's `creditDays` party field is payment terms** — money by
+    another name. Kept on purpose; whether it stays is the owner's call.
 
 Deliberate, not defects: three kinds of audit entry are still written after
 the fact (`recordDetachedActivity` in `activity-log.repository.ts` says why).
@@ -675,6 +703,13 @@ terms, multiple contacts); concurrent edits of one lead from two panels
 Condensed. The full entries are in `git show 5b8ebe2:HANDOFF.md` and in
 `docs/AI_COLLABORATION.md`.
 
+- **2026-09-25 — Leftover cleanup (Claude).** Dead exports went (`e2b7d71`);
+  "1 attempt left" is singular now, and 57 unused message keys and the panels'
+  dead CSS went (`cbf116b`). Text that still named removed features — money,
+  the assistant, the PDF Designer, the old Picker, field "masking" — was
+  reworded in sample data, test fixtures and comments; the two finished
+  product briefs were deleted; status lines and counts brought up to date.
+  Owed items 17–21 are what it found and left.
 - **2026-09-24/25 — Audit of the whole tree, eleven fix branches (Claude).**
   The findings were fixed on `fix/schema-docs`, `audit-trail`,
   `http-hardening`, `master-tools-comments`, `release-sync`,

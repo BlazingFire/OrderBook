@@ -25,8 +25,10 @@ There is no AI assistant.
   "find the file that does X" being a search.
 - **`docs/PROJECT_PLAN.md`** — architecture source of truth (requirements, pairing, screen flows).
 - **`docs/schema/`** — every table, column, index, and rationale.
-- **`docs/overhaul/`** and **`docs/backend-modules/`** — the designs behind the code, cited from
-  source comments. Written before the code; check a claim against the tree before acting on it.
+- **`docs/overhaul/`** and **`docs/backend-modules/`** — the designs behind the code.
+  `docs/backend-modules/` is cited from source and test comments; of `docs/overhaul/`, only
+  `README.md` and `workstream-F.md` are. Written before the code; check a claim against the
+  tree before acting on it.
 - **`docs/NEXT_PHASE.md`** — what to do next, in order, and the decisions waiting on the
   owner. Written to be picked up cold.
 - **`docs/AI_COLLABORATION.md`** — the multi-agent workflow, handoff protocol, and change log.

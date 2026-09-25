@@ -6,7 +6,7 @@
  * This scans the snapshot the browser already holds instead.
  *
  * **It scans the view the panel server handed over, which is
- * `forCurrentUser(view)`** — masked and party-scoped by `SNAPSHOT_POLICY` before
+ * `forCurrentUser(view)`** — gated and party-scoped by `SNAPSHOT_POLICY` before
  * it ever reached this bundle. There is no second permission check here because
  * there is nothing left to check: a record this person may not see is not in the
  * object being scanned. That is also why this cannot be pointed at any other

@@ -25,12 +25,12 @@ describe('sheetKindOf', () => {
 
 describe('reading CSV', () => {
   it('keeps every cell as text, including leading zeros and quoted commas', async () => {
-    const csv = '﻿productCode,name,rate\r\n00123,"Ivory, Glossy",1200.5\r\n';
+    const csv = '﻿productCode,name,weightKg\r\n00123,"Ivory, Glossy",12.5\r\n';
     const rows = await readSheetRows(Buffer.from(csv, 'utf8'));
 
     expect(rows).toEqual([
-      ['productCode', 'name', 'rate'],
-      ['00123', 'Ivory, Glossy', '1200.5'],
+      ['productCode', 'name', 'weightKg'],
+      ['00123', 'Ivory, Glossy', '12.5'],
     ]);
   });
 
@@ -53,15 +53,15 @@ describe('reading xlsx', () => {
   it('reads numbers, dates, formulas and rich text back as strings', async () => {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Sheet1');
-    sheet.addRow(['productCode', 'name', 'rate', 'date', 'sum']);
-    sheet.addRow(['00123', { richText: [{ text: 'Ivory ' }, { text: 'Glossy' }] }, 1200.5, new Date(Date.UTC(2026, 0, 2)), { formula: '1+1', result: 2 }]);
+    sheet.addRow(['productCode', 'name', 'weightKg', 'date', 'sum']);
+    sheet.addRow(['00123', { richText: [{ text: 'Ivory ' }, { text: 'Glossy' }] }, 12.5, new Date(Date.UTC(2026, 0, 2)), { formula: '1+1', result: 2 }]);
     sheet.getCell('A2').numFmt = '@';
     const bytes = await workbook.xlsx.writeBuffer();
 
     const rows = await readSheetRows(Buffer.from(bytes as ArrayBuffer));
 
-    expect(rows[0]).toEqual(['productCode', 'name', 'rate', 'date', 'sum']);
-    expect(rows[1]).toEqual(['00123', 'Ivory Glossy', '1200.5', '2026-01-02', '2']);
+    expect(rows[0]).toEqual(['productCode', 'name', 'weightKg', 'date', 'sum']);
+    expect(rows[1]).toEqual(['00123', 'Ivory Glossy', '12.5', '2026-01-02', '2']);
   });
 
   it('round-trips the template: its header row comes back verbatim', async () => {

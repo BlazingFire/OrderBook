@@ -14,7 +14,9 @@
 > folder (`docs/ROLES_AND_USERS.md` §7.1). What §1 says about the 14 detached call sites is
 > historical.
 
-Status: **planning complete, nothing built.** This is the backend half of `docs/UI_REDESIGN.md`.
+Status: **built.** Fields management, Logs, Recycle Bin, Reports, the i18n layer and the Office
+Dashboard aggregate are all in the tree; the PDF Designer was built and then removed (banner above).
+What follows is the plan as written. This is the backend half of `docs/UI_REDESIGN.md`.
 It covers the six modules the supplied design implies but the product does not have: **Fields
 management**, **Logs**, **Recycle Bin**, **Reports**, **PDF Designer**, and the **i18n /
 translation layer**, plus the **Office-side Dashboard aggregate**.

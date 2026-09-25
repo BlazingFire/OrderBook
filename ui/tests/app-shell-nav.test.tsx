@@ -18,12 +18,12 @@ const groups: NavGroup[] = [
     items: [
       { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
       {
-        id: 'documents',
-        label: 'Documents',
+        id: 'leads',
+        label: 'Leads',
         icon: 'copy',
         children: [
-          { id: 'documents.templates', label: 'Templates', icon: 'edit' },
-          { id: 'documents.exports', label: 'Exports', icon: 'download' },
+          { id: 'leads.list', label: 'All leads', icon: 'edit' },
+          { id: 'leads.followups', label: 'Follow-ups', icon: 'download' },
         ],
       },
     ],
@@ -53,30 +53,30 @@ function shell(activeId: string, onNavigate = vi.fn()) {
 describe('AppShell nav', () => {
   it('folds a sub-tier away until the current page is inside it', () => {
     shell('dashboard');
-    expect(screen.queryByTitle('Templates')).toBeNull();
+    expect(screen.queryByTitle('All leads')).toBeNull();
     cleanup();
 
-    shell('documents.exports');
-    expect(screen.getByTitle('Templates')).toBeTruthy();
-    expect(screen.getByTitle('Exports').getAttribute('aria-current')).toBe('page');
+    shell('leads.followups');
+    expect(screen.getByTitle('All leads')).toBeTruthy();
+    expect(screen.getByTitle('Follow-ups').getAttribute('aria-current')).toBe('page');
   });
 
   it('unfolds and folds by the chevron, and unfolds on choosing the parent', () => {
     const onNavigate = shell('dashboard');
     const chevron = screen.getByRole('button', { expanded: false });
     fireEvent.click(chevron);
-    expect(screen.getByTitle('Templates')).toBeTruthy();
+    expect(screen.getByTitle('All leads')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { expanded: true }));
-    expect(screen.queryByTitle('Templates')).toBeNull();
+    expect(screen.queryByTitle('All leads')).toBeNull();
 
-    fireEvent.click(screen.getByTitle('Documents'));
-    expect(onNavigate).toHaveBeenCalledWith('documents');
-    expect(screen.getByTitle('Templates')).toBeTruthy();
+    fireEvent.click(screen.getByTitle('Leads'));
+    expect(onNavigate).toHaveBeenCalledWith('leads');
+    expect(screen.getByTitle('All leads')).toBeTruthy();
   });
 
   it('sends the brand mark to the dashboard', () => {
-    const onNavigate = shell('documents.templates');
+    const onNavigate = shell('leads.list');
     fireEvent.click(screen.getByRole('button', { name: 'Go to Dashboard' }));
     expect(onNavigate).toHaveBeenCalledWith('dashboard');
   });
@@ -85,18 +85,18 @@ describe('AppShell nav', () => {
 describe('graftSubNav', () => {
   it('hangs an open operation under a child, and flattens every depth', () => {
     const grafted = graftSubNav(groups[0]!.items, {
-      parentId: 'documents.templates',
-      items: [{ id: 'documents.editor', label: 'Quotation A4', icon: 'edit' }],
-      activeId: 'documents.editor',
+      parentId: 'leads.list',
+      items: [{ id: 'leads.open', label: 'L-0042', icon: 'edit' }],
+      activeId: 'leads.open',
     });
-    const templates = grafted[1]!.children![0]!;
-    expect(templates.children?.map((item) => item.id)).toEqual(['documents.editor']);
+    const list = grafted[1]!.children![0]!;
+    expect(list.children?.map((item) => item.id)).toEqual(['leads.open']);
     expect(flattenNav(grafted).map((item) => item.id)).toEqual([
       'dashboard',
-      'documents',
-      'documents.templates',
-      'documents.editor',
-      'documents.exports',
+      'leads',
+      'leads.list',
+      'leads.open',
+      'leads.followups',
     ]);
     expect(graftSubNav(groups[0]!.items, null)).toBe(groups[0]!.items);
   });

@@ -436,7 +436,7 @@ seed:catalogue`; the sample dataset is built on top of it (`docs/DEVELOPER_MODE.
 
 | Before | Now | Why |
 |---|---|---|
-| `line_items.rate`, `line_total`; `leads.total_amount`, `orders.total_amount`; `party_product_variants.rate` | Gone | The owner removed pricing whole: the software carries no amounts (`docs/ai-handoffs/product-master-trim.md`) |
+| `line_items.rate`, `line_total`; `leads.total_amount`, `orders.total_amount`; `party_product_variants.rate` | Gone | The owner removed pricing whole: the software carries no amounts (`HANDOFF.md` Key decision 15) |
 | `line_items.sin`, `grade`, `product_type`; the same on `party_product_variants` | Gone | Snapshots of product columns that no longer exist |
 | — | `line_items.colour` | The colour chosen on a line of a `multi_colour` model, frozen with the rest of the snapshot |
 

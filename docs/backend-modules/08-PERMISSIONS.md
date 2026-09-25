@@ -1,6 +1,6 @@
 # Permissions — the engine, the new keys, and where each one is enforced
 
-Status: **specification. Nothing here is built.** This document owns every permission decision in the
+Status: **specification.** Built since, apart from the PDF Designer, which was built and then removed (see the banner in `docs/BACKEND_MODULES.md`); the code is the truth now, so check a claim here against the tree before acting on it. This document owns every permission decision in the
 batch: the eleven new keys, the nine existing keys that get their first enforcement site, the one
 tier change, the single grant migration, and the endpoint-by-endpoint enforcement matrix.
 

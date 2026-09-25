@@ -1,6 +1,6 @@
 # The change plan for existing code
 
-Status: **specification. Nothing in here is built.** This is document 5 of the backend specification
+Status: **specification.** Built since, apart from the PDF Designer, which was built and then removed (see the banner in `docs/BACKEND_MODULES.md`); the code is the truth now, so check a claim here against the tree before acting on it. This is document 5 of the backend specification
 set for the six new modules planned in `docs/BACKEND_MODULES.md`.
 
 The other documents in this set describe code that does not exist yet, where the only cost of getting

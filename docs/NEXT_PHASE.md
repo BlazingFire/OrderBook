@@ -188,8 +188,7 @@ work" has the same list with file names.
     navigation checks. Sign-out and an ended session do reset to the Dashboard.
 
 **Stale text.** Comments near `master/src/services/inventory.service.ts:168` and
-in the Electron preload; a sample-data remark (`master/src/domain/sample-data.ts`)
-that still mentions a "Rate list"; the header of `shared/src/sync/ids.ts` and
+in the Electron preload; the header of `shared/src/sync/ids.ts` and
 `compareForIdAssignment`'s comment, which still say numbering is the same
 whichever panel syncs first and that `id_map` resolves a temporary ID forever.
 The sort is per pushed batch, and a business-data wipe clears `id_map`
@@ -297,7 +296,7 @@ forever" behind an admin permission — are written up in the brief, along with
 the four questions any of them has to answer (foreign keys, the sync tombstone,
 files on disk, and an offline panel reconnecting after a purge it never saw).
 
-**Hindi.** `hi.ts` is 1,275 strings behind (2026-09-25) — `grep -c 'TODO(i18n-hi)'` is the
+**Hindi.** `hi.ts` is 1,245 strings behind (2026-09-25) — `grep -c 'TODO(i18n-hi)'` is the
 live number. A Hindi panel is mostly in English today and almost no test can see
 it, because the parity check only asserts a key exists; the exceptions are an
 `activity.*` template, whose English stub `shared/tests/i18n-coverage.test.ts`

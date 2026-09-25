@@ -1,5 +1,9 @@
 # Workstream I — The AI section: local and cloud providers, four capabilities, hardware gating
 
+> **2026-09-25 — the AI assistant has been removed.** The software has no AI section, provider or
+> capability; nothing below describes the tree. This workstream is kept as history only. The
+> `ai_runs` table and the stored `ai.*` role keys remain in the database because migrations only add.
+
 sound=false
 
 ## Findings

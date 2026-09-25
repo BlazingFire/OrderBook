@@ -6,7 +6,7 @@
 > masking) has since been removed from the product, and the product master trimmed to name ·
 > category · alias · size · colour switch, with variants of code · colour · weight. Where a
 > workstream below describes money or the wider product attributes it is historical — see
-> `docs/ai-handoffs/product-master-trim.md`.
+> `HANDOFF.md` Key decision 15.
 
 The owner reported that the two panels "close automatically sometimes" and asked, in one message, for
 a stability fix plus fourteen further changes spanning the Electron shell, the UI system, the data

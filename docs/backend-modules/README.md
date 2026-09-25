@@ -10,7 +10,7 @@
 > **2026-09-21 — pricing has since been removed from the product, and the product master trimmed.**
 > Everything this set says about rates, amounts, totals, `field.*Rate.*` permissions, field-level
 > masking and `totalValue` on reports is historical: migration `20260324000000_product_master_trim`
-> dropped the columns and stripped the keys (`docs/ai-handoffs/product-master-trim.md`). The
+> dropped the columns and stripped the keys (`HANDOFF.md` Key decision 15). The
 > snapshot guard is now `office/tests/snapshot-for-user.test.ts` (key set and permissions only).
 >
 > **2026-09-24 — the audit trail's best-effort call sites are closed.** Apart from sign-in and a
@@ -18,7 +18,7 @@
 > their own transaction. `recordDetachedActivity` is left for sign-in attempts, connector runs, and
 > a panel's reissued secret or moved storage folder (`docs/ROLES_AND_USERS.md` §7.1). The "known-open" item below that says otherwise is historical.
 
-Status: **specification. Nothing in this set is built.** Reading it end to end should be enough to
+Status: **specification.** Built since, apart from the PDF Designer, which was built and then removed (see the banner in `docs/BACKEND_MODULES.md`); the code is the truth now, so check a claim here against the tree before acting on it. Reading it end to end should be enough to
 authorise the work, and enough for somebody who was not in the room to implement it without asking
 what was meant.
 

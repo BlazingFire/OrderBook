@@ -43,8 +43,9 @@ Thumbs.db
 .claude/launch.json
 
 # Operator-supplied catalogue source and working fixtures — untracked by
-# design. The reload script reads them from a dev machine, never from a
-# packaged panel.
+# design. Nothing reads them: the catalogue was transcribed from them into
+# `master/src/domain/swisware-catalogue.ts`, which the reload script loads as
+# pure data.
 CATA.pdf
 dummy-data/
 

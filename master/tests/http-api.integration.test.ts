@@ -247,7 +247,6 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
         .send({
           name: 'Carrara White',
           categoryName: 'Tiles',
-          rate: 45_000,
           variants: [{ code: 'GVT-01', weightKg: 20 }],
         })
         .expect(201);

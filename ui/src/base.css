@@ -3027,7 +3027,7 @@ html[data-window-blur='true'] .ob-busy rect {
 /*
  * One product already on the lead, in the Added-products panel.
  *
- * Collapsed it is one line — codes, name, boxes, money — because the panel's
+ * Collapsed it is one line — code, name, colour, quantity — because the panel's
  * job is to let somebody scan twenty products and find the one that is wrong.
  * Opened it shows the colours and what was decided, which is the same
  * information the draft card was filled in with.

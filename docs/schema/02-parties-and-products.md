@@ -118,7 +118,7 @@ name is typed for. It carries no code and no weight: those belong to its
 variants (next section), and a model with no colour or pattern choices has
 exactly one variant.
 
-**What a product is, since 2026-09-21** (`docs/ai-handoffs/product-master-trim.md`):
+**What a product is, since 2026-09-21** (`HANDOFF.md` Key decision 15):
 
 ```sql
 -- The live shape. Everything above the plumbing line is what a person fills in.
@@ -188,8 +188,8 @@ to a sanitaryware one — category → **model** → **variant** — where a mod
 (DAMRU) is sold in many coded variants (41, 42, … each a pattern; White;
 Rustic Coffee Brown) and every variant owns its own code and its own weight.
 The owner's brief (`Product_Flow_Restructure_Requirements.md`, supplied outside the
-repository) is the source of the rules; the design choices are recorded in
-`docs/ai-handoffs/product-model-variants.md`.
+repository) is the source of the rules; the owner's decisions are `HANDOFF.md` Key
+decision 14 (the full design brief was deleted as done on 2026-09-25; git history has it).
 
 ```sql
 CREATE TABLE product_variants (

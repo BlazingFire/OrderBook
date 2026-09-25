@@ -180,7 +180,7 @@ export const SAMPLE_PARTIES: readonly SampleParty[] = [
     key: 'ganesh', name: 'Shree Ganesh Tiles & Sanitary', phone: '98250 11223', altPhone: '0281 245 6677',
     email: 'shreeganeshtiles@example.com', addressLine1: '12, Gondal Road', addressLine2: 'Near Mavdi Chowk',
     city: 'Rajkot', state: 'Gujarat', pincode: '360004', gstNumber: '24AABCS1234F1Z5',
-    notes: 'Largest dealer in Rajkot. Moves one-piece toilets and Damru basins. Payment within 30 days.',
+    notes: 'Largest dealer in Rajkot. Moves one-piece toilets and Damru basins. Collects from the Gondal Road godown.',
     dealerType: 'Dealer', creditDays: 30,
   },
   {
@@ -437,7 +437,7 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
       { code: 'DAMRU-WHITE', quantity: 15, packaging: 'Thermocol box' },
       { code: '41', quantity: 6, packaging: 'Thermocol box' },
     ],
-    remarks: ['Catalogue shared on WhatsApp', 'Confirmed with the party, advance received'],
+    remarks: ['Catalogue shared on WhatsApp', 'Confirmed with the party, godown address noted'],
     outcome: {
       kind: 'won', order: { kind: 'dispatched', afterDays: 9, note: 'Dispatched by Shreeji Roadlines' },
       dispatchAddress: 'Godown — Gondal Road, Rajkot', transport: 'Transporter', vehicle: 'GJ-03-AX-4521',
@@ -519,7 +519,7 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
       { code: '1181', quantity: 2, packaging: 'Wooden crate' },
       { code: '7721', quantity: 3, packaging: 'Wooden crate' },
     ],
-    remarks: ['Architect wants the red triangle design — confirmed same lot', 'Confirmed on call, 50% advance'],
+    remarks: ['Architect wants the red triangle design — confirmed same lot', 'Confirmed on call, crating agreed'],
     outcome: {
       kind: 'won', order: { kind: 'dispatched', afterDays: 12, note: 'Crated, dispatched with insurance' },
       dispatchAddress: 'Site — Bandra West, Mumbai', transport: 'Transporter', vehicle: 'MH-02-DE-4410',
@@ -546,7 +546,7 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
       { code: 'WB-20X16', quantity: 60, packaging: 'Carton' },
       { code: 'DUAL-FLUSH-TANK-CISTERN', quantity: 60, packaging: 'Carton' },
     ],
-    remarks: ['Negotiated 4% on the whole lot', 'Work order signed'],
+    remarks: ['Agreed to split dispatch into two phases', 'Work order signed'],
     outcome: {
       kind: 'won', order: { kind: 'dispatched', afterDays: 21, note: 'Phase 1 of 2 dispatched' },
       dispatchAddress: 'Site — Bopal, Ahmedabad', transport: 'Transporter', vehicle: 'GJ-01-JT-6612',
@@ -705,7 +705,7 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
       { code: '1184', quantity: 3, packaging: 'Wooden crate' },
       { code: '7721', quantity: 4, packaging: 'Wooden crate' },
     ],
-    remarks: ['Quoted with crating charges', 'Architect asking for 5% — need approval'],
+    remarks: ['Quoted with wooden crating', 'Architect asking for a matt finish — need approval'],
     outcome: { kind: 'open', stage: 'Negotiating' },
   },
   {
@@ -724,7 +724,7 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
       { code: '7501', quantity: 3, packaging: 'Thermocol box' },
       { code: 'HEXA-URINAL', quantity: 4, packaging: null },
     ],
-    remarks: ['Rate list shared, waiting for the urinal selection'],
+    remarks: ['Catalogue shared, waiting for the urinal selection'],
     outcome: { kind: 'open', stage: 'Quoted' },
   },
   {
@@ -733,7 +733,7 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
       { code: '20-OP', quantity: 40, packaging: 'Loose', colour: 'Ivory' },
       { code: 'EWC-S-TRAP', quantity: 20, packaging: 'Carton' },
     ],
-    remarks: ['Wants freight included — checking with transporter'],
+    remarks: ['Wants delivery to site — checking with transporter'],
     outcome: { kind: 'open', stage: 'Negotiating' },
   },
   {

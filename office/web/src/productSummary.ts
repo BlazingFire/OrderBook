@@ -40,7 +40,7 @@ function missingWeight(product: Product): boolean {
  * What the product weighs, or `null` when nobody has measured it yet.
  *
  * `null` rather than `'0 kg'` on purpose: the caller renders it as the "weight
- * missing" pill, because a lead priced off a zero weight is a lorry loaded
+ * missing" pill, because a lead loaded off a zero weight is a lorry loaded
  * wrong. One figure for a one-form product; a range for a model, because one
  * number for "each of its variants weighs something different" lies.
  */

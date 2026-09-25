@@ -22,8 +22,12 @@ This file only says where the truth lives and what is open. Do not duplicate
 - `npm run build` — shared, both servers, both frontends.
 - Integration tests auto-skip when PostgreSQL is absent; a skipped suite prints like a
   green one, so check that it ran.
-- `master/web` and `office/web` have **zero** test files. UI defects are invisible to
-  `verify` — treat browser/Electron manual passes as real.
+- `master/web` and `office/web` have no test files of their own, but
+  `ui/tests/master-shell.test.tsx` and `ui/tests/office-shell.test.tsx` boot each
+  panel's `App.tsx` whole in jsdom (`ui/tests/panel-harness.ts`), so `verify` does see
+  which screen a key, toast or link lands on, what a form sends, and the splash's
+  errors. Layout, styling, anything visibility-dependent and the running Electron
+  shell are still invisible to it — treat browser/Electron passes as real.
 
 ## Hard rules (from AGENTS.md — do not re-decide)
 
@@ -36,14 +40,11 @@ This file only says where the truth lives and what is open. Do not duplicate
   Every other branch is retired.
 - **A guard must be seen to fail** against the defect it targets before it is accepted.
 
-## What is open (as of 2026-09-22)
+## What is open
 
-`docs/NEXT_PHASE.md` is the answer, in order. The short version: every branch
-was merged into `main` on 2026-09-22 and the full suite ran green with the
-integration suites (140 files / 1707 tests), but nothing merged that day was
-seen in a browser or Electron. Four owner decisions block a customer release
-(1.0.3 data, signing key, code-signing certificate, Recycle Bin retention),
-and four briefs remain in `docs/ai-handoffs/`.
+Do not keep a copy here — it goes stale. `HANDOFF.md` → **Owed work** is the list
+and `docs/NEXT_PHASE.md` is the order to take it in. The suite stands at 160 files /
+2015 tests (2026-09-25).
 
 ## Environment
 
