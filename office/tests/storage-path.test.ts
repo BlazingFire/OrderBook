@@ -17,9 +17,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// The desktop shell's own reader and writer for its pointer file, imported
-// rather than re-implemented: the point of the tests that use them is that the
-// panel writes a file *the shell* reads back, in the shell's format.
+// The desktop shell's own reader and writer for its pointer file, and the
+// environment it starts this server with — imported rather than re-implemented:
+// the point of the tests that use them is that the panel writes a file *the
+// shell* reads back, in the shell's format, having been told where by the shell.
+import { officeServerEnv } from '../../electron/lib/office-env.js';
 import { readDataDirOverride, writeDataDirOverride } from '../../electron/lib/settings.js';
 
 let dataDir: string;
@@ -65,33 +67,51 @@ function locationFile(): string {
 }
 
 /**
- * Stop this panel and start it again, the way whoever launches it would.
+ * Start this panel the way whoever launches it would, and hand back its
+ * storage module.
  *
- * Nothing is mocked on the way back up: the real `config/index.ts` resolves the
- * folder from the environment and the settings file, exactly as it does on a
- * real start, and `paths()` answers from that.
+ * Nothing is mocked: the real `config/index.ts` resolves the folder from the
+ * environment and the settings file, exactly as it does on a real start, and
+ * `paths()` answers from that.
  *
  * Under the shell, the environment is what `electron/shell.ts` builds before
  * every start of the server — `dataDir()` there is the pointer file if it names
- * a folder and the default otherwise, and `serverEnv` in
- * `electron/office.main.ts` hands that over as `ORDERBOOK_OFFICE_DATA_DIR`. The
- * folder the panel was first started in stands in for the shell's default.
- * From source nothing sets the folder at all, and the settings file (which is
- * `office/.env` there — a file no test may write) is what the start reads.
+ * a folder and the default otherwise, and `officeServerEnv` hands that over as
+ * `ORDERBOOK_OFFICE_DATA_DIR`, with the pointer's own path beside it. The folder
+ * the panel was first started in stands in for the shell's default. From
+ * source nothing sets the folder at all, and the settings file is what the
+ * start reads.
+ *
+ * The settings file is set to a temporary one first, whatever the launcher: the
+ * real default is `office/.env` in this repository, a file no test may write,
+ * and a shell environment that forgot to name one would otherwise send a move
+ * there.
  */
-async function restart(launcher: 'shell' | 'source'): Promise<string> {
+async function start(launcher: 'shell' | 'source') {
   delete process.env.ORDERBOOK_OFFICE_DATA_DIR;
   delete process.env.ORDERBOOK_OFFICE_LOCATION_FILE;
   process.env.ORDERBOOK_OFFICE_SETTINGS_FILE = path.join(root, 'office-settings.env');
 
   if (launcher === 'shell') {
-    process.env.ORDERBOOK_OFFICE_DATA_DIR = readDataDirOverride(locationFile()) ?? dataDir;
-    process.env.ORDERBOOK_OFFICE_LOCATION_FILE = locationFile();
+    Object.assign(
+      process.env,
+      officeServerEnv({
+        dataDir: readDataDirOverride(locationFile()) ?? dataDir,
+        port: 4200,
+        logFile: path.join(root, 'office.log'),
+        locationFile: locationFile(),
+      }),
+    );
   }
 
   vi.doUnmock('../src/config/index.js');
   vi.resetModules();
-  const { paths } = await import('../src/config/paths.js');
+  return import('../src/config/paths.js');
+}
+
+/** Stop this panel and start it again, and say which folder it came back up in. */
+async function restart(launcher: 'shell' | 'source'): Promise<string> {
+  const { paths } = await start(launcher);
   return paths().dataDir;
 }
 
@@ -394,6 +414,19 @@ describe('remembering the move across a restart', () => {
     // real variable — so a move recorded only in the settings file was read,
     // discarded, and the panel came back up in the folder it had just left,
     // with everything saved since the move stranded at the new one.
+    await expect(restart('shell')).resolves.toBe(target);
+  });
+
+  it('follows a move made by a panel the shell itself started', async () => {
+    // No mocked config at all this time: the pointer's path reaches the move
+    // only through the environment the shell starts the server with.
+    const { relocateDataDir } = await start('shell');
+    await seedDataDir();
+    const target = path.join(root, 'moved');
+
+    await relocateDataDir(target, { moveExisting: true });
+
+    expect(readDataDirOverride(locationFile())).toBe(target);
     await expect(restart('shell')).resolves.toBe(target);
   });
 
