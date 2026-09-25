@@ -46,7 +46,12 @@ export function installerExtension(platform: NodeJS.Platform): string {
  *  - `system-package` — refuse. Linux, but not a running AppImage: in a
  *    shipped build that is the `.deb`, whose files dpkg owns in a folder only
  *    root can write. The shell can neither replace them nor should it try,
- *    and the file a panel downloads is the AppImage in any case.
+ *    and the file a panel downloads is the AppImage in any case. The name is
+ *    for that case, not a claim about every copy it covers: a run from
+ *    source, from electron-builder's unpacked folder or from an AppImage
+ *    unpacked by hand lands here too, with no one file to replace either —
+ *    which is why the Updates screen's text starts from "not started from an
+ *    AppImage" and only then turns to the `.deb`.
  *
  * Both refusals reach the page up front through `orderbook:getShellSettings`,
  * so the Updates screen says what to do instead of offering a button that

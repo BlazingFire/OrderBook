@@ -48,7 +48,8 @@ export function UpdatesScreen({
   const [readyPath, setReadyPath] = useState<string | null>(null);
   /**
    * What to do instead, for a build that cannot install over itself — the
-   * standalone `.exe`, or a Linux `.deb` only the package manager can replace.
+   * standalone `.exe`, or a Linux copy not started from an AppImage (in a
+   * shipped build the `.deb`, which only the package manager can replace).
    * The shell says so up front rather than after a click. A browser tab or a
    * shell older than 1.2.0 answers nothing, which reads as an installed build.
    */

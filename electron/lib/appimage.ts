@@ -14,10 +14,12 @@
  * names, copied into the per-user staging folder and hashed there by
  * `approveInstaller`. Only that verified copy reaches this file.
  *
- * `node:fs` only, and nothing here imports `electron`, so it runs under
- * Vitest without a window.
+ * Node's own modules only, and nothing here imports `electron`, so it runs
+ * under Vitest without a window.
  */
 
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { constants, realpathSync } from 'node:fs';
 import { chmod, copyFile, open, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
@@ -141,8 +143,7 @@ export async function replaceAppImage(verified: string, target: string): Promise
  * keep the old image mounted, and its file's space in use, for as long as the
  * new copy runs.
  *
- * `args` are the ones this copy was started with, as `app.relaunch` would
- * pass them — `--no-sandbox` among them on a system that needs it.
+ * `args` are what the new copy is started with: `relaunchArguments`.
  */
 export function relaunchCommand(
   target: string,
@@ -160,4 +161,47 @@ export function relaunchCommand(
   ].join('\n');
 
   return { file: '/bin/sh', args: ['-c', script, String(pid), target, ...args] };
+}
+
+/**
+ * The arguments the new AppImage is started with: the ones this copy was
+ * started with, as `app.relaunch` would pass them — `--no-sandbox` among them
+ * on a system that needs it — and `--appimage-extract-and-run` first, when
+ * that is how this copy was started.
+ *
+ * That flag is how an AppImage runs on a system without FUSE, and the runtime
+ * consumes it: it unpacks the image into `$TMPDIR/appimage_extracted_<digest>`
+ * instead of mounting it, and starts the app with the flag taken out, so it is
+ * never in `process.argv`. What does survive is the folder, as `APPDIR`.
+ * Started without the flag, the new copy would try to mount itself, fail, and
+ * leave nothing running. It goes first because the runtime reads only the
+ * first argument that begins `--`, and `--no-sandbox` is one.
+ *
+ * `APPIMAGE_EXTRACT_AND_RUN` in the environment asks the runtime for the same
+ * thing, and the relaunch inherits it, so then nothing is added.
+ */
+export function relaunchArguments(env: NodeJS.ProcessEnv, args: readonly string[]): string[] {
+  const extracted =
+    typeof env.APPDIR === 'string' && path.basename(env.APPDIR).startsWith('appimage_extracted_');
+
+  return extracted && env.APPIMAGE_EXTRACT_AND_RUN === undefined
+    ? ['--appimage-extract-and-run', ...args]
+    : [...args];
+}
+
+/**
+ * Start `command` on its own — detached, and not waited for — and resolve once
+ * it is running, or reject if it could not be started.
+ *
+ * `spawn` reports a program it cannot start (`ENOENT`, `EACCES`) as an
+ * asynchronous `'error'` event, never as a throw, so a try/catch around the
+ * call alone never sees one: the shell would quit believing the new version
+ * was on its way. Waiting for `'spawn'` — which `once` turns into a rejection
+ * if `'error'` comes first — is what lets the caller put its server back
+ * instead.
+ */
+export async function startDetached(command: { file: string; args: string[] }): Promise<void> {
+  const child = spawn(command.file, command.args, { detached: true, stdio: 'ignore' });
+  await once(child, 'spawn');
+  child.unref();
 }

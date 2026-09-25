@@ -24,7 +24,13 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { detectAppImage, relaunchCommand, replaceAppImage } from '../lib/appimage.js';
+import {
+  detectAppImage,
+  relaunchArguments,
+  relaunchCommand,
+  replaceAppImage,
+  startDetached,
+} from '../lib/appimage.js';
 
 const APPIMAGE = path.resolve('/home/shop/Applications/OrderBook-Master-1.2.0-Setup.AppImage');
 const MOUNT = path.resolve('/tmp/.mount_OrderBAbc123');
@@ -104,7 +110,10 @@ describe('knowing which AppImage this copy was launched from', () => {
   });
 });
 
-describe('replacing the AppImage', () => {
+// POSIX file semantics throughout — a mode of 0755, a symlink an ordinary
+// account may make, a rename over a file that is open — none of which Windows
+// has; and only the Linux shell ever replaces an AppImage.
+describe.skipIf(process.platform === 'win32')('replacing the AppImage', () => {
   let dir: string;
   let target: string;
   let verified: string;
@@ -196,6 +205,54 @@ describe('starting the new AppImage once this one has gone', () => {
     expect(command.args[1]).not.toContain(odd);
     expect(command.args.slice(2)).toEqual(['4242', odd, '--no-sandbox']);
   });
+
+  it('starts the new copy extracted when this one was started with --appimage-extract-and-run', () => {
+    // How an AppImage runs where FUSE is missing — and the runtime consumes
+    // the flag: it unpacks the image under `$TMPDIR/appimage_extracted_<digest>`
+    // and starts the app without it, so it is never in `process.argv`.
+    // Relaunched without it, the new copy would try to mount, fail, and leave
+    // nothing running. First, because the runtime reads only the first
+    // argument that starts `--`, and `--no-sandbox` is one.
+    const extracted = { APPIMAGE, APPDIR: path.resolve('/tmp/appimage_extracted_0123abcd') };
+    expect(relaunchArguments(extracted, ['--no-sandbox'])).toEqual([
+      '--appimage-extract-and-run',
+      '--no-sandbox',
+    ]);
+  });
+
+  it('adds nothing for a copy that was mounted, or told to extract by its environment', () => {
+    expect(relaunchArguments({ APPIMAGE, APPDIR: MOUNT }, ['--no-sandbox'])).toEqual([
+      '--no-sandbox',
+    ]);
+    // The variable asks the runtime for the same thing, and the relaunch
+    // inherits it.
+    const asked = {
+      APPIMAGE,
+      APPDIR: path.resolve('/tmp/appimage_extracted_0123abcd'),
+      APPIMAGE_EXTRACT_AND_RUN: '1',
+    };
+    expect(relaunchArguments(asked, ['--no-sandbox'])).toEqual(['--no-sandbox']);
+    expect(relaunchArguments({}, [])).toEqual([]);
+  });
+
+  it('reports a relaunch that could not be started, rather than resolving as if it had', async () => {
+    // `spawn` reports a program it cannot start as an asynchronous 'error'
+    // event, never a throw, so a try/catch around it alone never sees one: the
+    // shell would quit with nothing started instead of putting its server back.
+    const missing = path.join(os.tmpdir(), `orderbook-no-such-program-${process.pid}`);
+    await expect(startDetached({ file: missing, args: [] })).rejects.toThrow(/ENOENT/);
+  });
+
+  // Detached, a Windows child gets a console window of its own; only Linux
+  // uses this.
+  it.skipIf(process.platform === 'win32')(
+    'resolves once a program that exists has started',
+    async () => {
+      await expect(
+        startDetached({ file: process.execPath, args: ['-e', ''] }),
+      ).resolves.toBeUndefined();
+    },
+  );
 
   // It runs `/bin/sh`, which Windows does not have; only Linux uses this.
   it.skipIf(process.platform === 'win32')(

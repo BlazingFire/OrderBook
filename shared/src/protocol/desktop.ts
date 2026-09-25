@@ -79,10 +79,11 @@ export interface DesktopBridge {
    * to replace the file instead of offering a button. Absent from shells older
    * than 1.2.0, which are all installed builds.
    *
-   * `systemPackage` is the same answer for a Linux copy installed from the
-   * `.deb`, which only the system's package manager can replace; `applyUpdate`
-   * refuses it too. Absent from shells that predate it, none of which could
-   * update on Linux at all.
+   * `systemPackage` is the same answer for a Linux copy not started from an
+   * AppImage — in a shipped build, one installed from the `.deb`, which only
+   * the system's package manager can replace; `applyUpdate` refuses it too.
+   * Absent from shells that predate it, none of which could update on Linux
+   * at all.
    */
   getShellSettings?(): Promise<{
     openAtLogin: boolean;

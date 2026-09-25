@@ -36,7 +36,13 @@ import { fileURLToPath } from 'node:url';
 
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell as electronShell } from 'electron';
 
-import { detectAppImage, relaunchCommand, replaceAppImage } from './lib/appimage.js';
+import {
+  detectAppImage,
+  relaunchArguments,
+  relaunchCommand,
+  replaceAppImage,
+  startDetached,
+} from './lib/appimage.js';
 import { interpretHealth, type HealthOutcome } from './lib/health.js';
 import { approveInstaller, updateMethod } from './lib/installer.js';
 import { openLogFile, type LogFile } from './lib/log-file.js';
@@ -555,15 +561,16 @@ export function runPanelShell(config: PanelShellConfig): void {
     }
 
     /*
-     * A `.deb` belongs to dpkg: its files sit in a folder only root can write,
-     * and the file the panel downloads is the AppImage in any case. The
-     * Updates screen already knows (`getShellSettings().systemPackage`) and
-     * says to install the new package instead; this is the guard for a page
-     * that asks anyway.
+     * Linux, but not started from an AppImage — in a shipped build, the `.deb`.
+     * That belongs to dpkg: its files sit in a folder only root can write, and
+     * the file the panel downloads is the AppImage in any case. The Updates
+     * screen already knows (`getShellSettings().systemPackage`) and says to
+     * install the new package instead; this is the guard for a page that asks
+     * anyway.
      */
     if (updateBy === 'system-package') {
       say(
-        'Refused to update: this copy was installed from a .deb, which only the package manager can replace',
+        'Refused to update: this copy was not started from an AppImage, and a .deb install is replaced by the package manager',
       );
       return false;
     }
@@ -685,8 +692,12 @@ export function runPanelShell(config: PanelShellConfig): void {
     await stopServer();
 
     try {
-      const command = relaunchCommand(target, process.pid, process.argv.slice(1));
-      spawn(command.file, command.args, { detached: true, stdio: 'ignore' }).unref();
+      // Awaited until the relaunch is running, because `spawn` reports one it
+      // cannot start asynchronously (`startDetached`); otherwise a failure
+      // would never reach the catch below, and this copy would quit anyway.
+      await startDetached(
+        relaunchCommand(target, process.pid, relaunchArguments(process.env, process.argv.slice(1))),
+      );
     } catch (error) {
       // The new file is already in place, so the next start runs it. Until
       // then, put the server back rather than leave a window attached to
