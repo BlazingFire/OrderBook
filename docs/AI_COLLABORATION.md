@@ -190,6 +190,134 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-25 (audit) — Whole-tree audit fixed on eleven branches, merged into `main`; the palette offers only what runs (Claude)
+
+Scope: an audit of the whole tree, its findings fixed on eleven local `fix/*`
+branches, each reviewed and repaired before it was merged into `main`
+(`e1ac5ce..HEAD`). The branches were never pushed and hold nothing `main`
+lacks. Every defect the 2026-09-22 structure audit had left open is closed.
+
+**Fixed, by branch** (each branch's commit messages say which tests were
+watched failing against the old code):
+
+- `fix/audit-trail`: the main write paths write their `activity_log` entry as
+  the last statement of their own transaction (`recordActivity`), not after
+  commit; a party-wise record, reorder levels, an offline merged edit, an order
+  edit and an order stage move now record at all (three new `activity.*`
+  tokens). A dispatch bumps `version`/`hlc` and takes its stage from the locked
+  row; `party-access#replaceAssignments` stamps the clock before its row lock
+  (it deadlocked, `40P01`); `updatePanel` is one transaction.
+  `audit-atomicity.integration.test.ts` fails an entry moved ahead of its row
+  write. `recordDetachedActivity` is left for sign-in attempts, connector runs,
+  and a panel's reissued secret or moved storage folder;
+  `docs/ROLES_AND_USERS.md` §7.1 and §16 say which entries stay detached and
+  why.
+- `fix/http-hardening`: `GET /api/storage` needs `settings.manage`, and
+  Settings takes its permissions from the shell; the Socket.IO hub has no CORS
+  option and refuses a cross-site handshake (`realtime/socket-origin.ts`);
+  `requirePanel` runs once per `/api/panel` request; the public API reads its
+  tenant through `tenant.repository.ts`.
+- `fix/master-tools-comments`: `npm run migrate -- --status` names what is
+  pending (and no longer applies it from the root); `reload:catalog` loads the
+  catalogue after the wipe, and the wipe clears `api_connector_links`; stale
+  money, masking and helper comments across `master/src`.
+- `fix/release-sync`: a GitHub setup file is no longer cut off at 15 s; a sync
+  writes `latest-<platform>.json` (and `latest.json` for a Windows build); each
+  OS's sync sweeps only its own files, spares the running AppImage and every
+  pinned build; `availability()` answers from the folder after 5 s; the poll
+  fetches the office build for every OS a panel has asked for (UPD-48..63).
+- `fix/release-pipeline`: only `main` publishes; the mac `.zip` is gone; the
+  Linux `.deb` is published beside the AppImage with a `.sha256`, named by no
+  manifest; the host-architecture refusal applies only to the Master;
+  `@vitest/coverage-v8` installed so `npm run test:coverage` runs (`coverage/`
+  ignored).
+- `fix/electron-updates`: Linux panels update their AppImage in place
+  (`electron/lib/appimage.ts`, `updateMethod()`); a `.deb` or other non-AppImage
+  copy is told to update by hand and the shell refuses; the relaunch keeps
+  `--appimage-extract-and-run`; `ORDERBOOK_MASTER_SETTINGS_FILE` dropped.
+- `fix/office-storage`: a storage move rewrites the shell's
+  `office-location.json` and survives a restart (`electron/lib/office-env.ts`);
+  it refuses a drive root, the home folder or a folder holding anything that
+  is not the panel's own; an unreadable `outbox.json` is set aside instead of
+  overwritten, and one failed save no longer fails every later one; the shell
+  names the log it is writing (`openLogPath()`); the Office lead routes check
+  the permission before the payload's shape (`queue()`'s `validate` step), and
+  the Office server's stale comments are corrected.
+- `fix/shared-contract`: Parties joins `MASTER_NAV`, so the Master's Alt+3 is
+  Parties and Inventory…Party access move to Alt+4…9 (`keys-nav-order.test.ts`
+  holds both lists to the sidebars); the "Stock" setting group; a row with no
+  actor reads `logs.actor.unknown`, and the 11 Hindi activity templates still
+  in English are translated; a price-word guard over both catalogues.
+- `fix/ui-kit`: command priority by mount order (a dialog keeps Ctrl+S over its
+  screen); palette rows reach the palette and help commands; the sidebar toggle
+  works; `copyText` copies over plain HTTP; the kit's English literals go
+  through `t()`; `permissionLabels` reads the catalogue; `Picker` removed.
+- `fix/web-apps`: the gallery stays open; Alt+N refuses a screen the sidebar
+  withholds; the Office New lead form is blank after a save, Conflicts is
+  reachable from "See what was refused", and the order weight override is sent
+  only when changed; both panels start on the Dashboard after a sign-out or an
+  ended session; the splash says the server could not be reached; screens
+  refetch on the change events they depend on. `ui/tests/master-shell.test.tsx`
+  and `office-shell.test.tsx` boot each `App.tsx` whole in jsdom
+  (`ui/tests/panel-harness.ts`).
+- `fix/schema-docs`: `docs/schema/` checked against a freshly migrated
+  database (39 tables, 76 foreign keys, every index); new
+  `docs/schema/07-integrations.md`; `docs/ROLES_AND_USERS.md` §4.1/§10 and
+  `shared/src/sync/ids.ts` now say roles and users cannot yet be created
+  offline.
+
+**After the merge:** `d8f129e` and `8decf06` reconciled the tests the merges
+put at odds (the platform-named manifest, `office-env.ts`, Alt+7 for Office
+panels). `ffb69fe`: `KeyboardProvider.offers()` answers in the order `run()`
+does, and both panels pass `canNavigate` (the sidebar's own test), so the
+palette no longer lists screens the sidebar withholds, *New record* for a role
+that cannot create, or *Find*, which only its chord answers. `7d6ae68`: the
+shell tests wait until the panel is listening (the event stream, the socket,
+the menu subscription, the key listener) before they talk to it;
+`pressAltDigitUntil()` in `panel-harness.ts` presses until a screen opens, so
+both Alt+N refusal tests prove the chord reached the panel. Before, a loaded
+machine lost the Office snapshot in about 1 run in 4, and those refusal tests
+could pass without the key ever arriving.
+
+**Docs:** `HANDOFF.md` and `docs/STRUCTURE.md` brought to the merged tree;
+`AGENTS.md` (verify counts, what the jsdom shell tests cover);
+`docs/NEXT_PHASE.md` (the owner's decisions and owner-only chores, the browser
+pass, what the audit left); `docs/LEAD_GENERATION_FLOW.md` §7 rewritten
+against the code, and §2, §3.3 and §10 brought in line with it;
+`docs/UPDATES.md` (a `.deb` install is recognised, not offered the AppImage);
+`docs/PRODUCTION_READINESS.md` (the manifests a Windows build writes, how the
+Linux AppImage and `.deb` update, the uninstall decision);
+`docs/TESTING_PLAN.md` (the Office Storage and Developer tabs, the storage
+move, the Master's Storage tab without `settings.manage`, the newly audited
+writes); `docs/ROLES_AND_USERS.md` §16 (API keys, the Recycle Bin and
+translation are built); dated notes in `BACKEND_MODULES.md`,
+`docs/backend-modules/README.md` and `docs/overhaul/` where they called the
+audit trail or the Socket.IO CORS hole open; the Master's `serverEnv` and the
+one releases folder for every OS in `workstream-A.md`; the party-access brief's
+stale-comment item closed.
+
+**Found and not fixed** (`HANDOFF.md` "Owed work", `docs/NEXT_PHASE.md`):
+dispatch keys on the stage named `Dispatched` (needs an add-only migration and
+the owner); `deleteOrder` can race a dispatch; `party_code` truncates from the
+10,000th party; no index on `leads`/`orders.owner_id`; the public API's tenant
+cache survives a whole restore; the wipe/reload CLIs stop a running Master's
+database; 23 client→server socket events have no caller; the Master keeps
+drawing a screen after its permission is revoked; RoleEditor's
+`window.confirm`; no "fetching" reason on the Updates screen; Clean Install and
+the `.deb`; a transient outbox read at flush time; work possibly stranded by a
+storage move made before the fix, and the shell's log left in the old folder
+until a relaunch; a party-wise record's temporary id never reaching `id_map`
+(an observation); stale comments and a sample "Rate list" remark. The owner
+decides whether to harden the uninstall scripts.
+
+**Verified:** `npm run lint` 0, `npm run typecheck` 0, `npm run build` 0,
+`vitest run` 160 files / 2015 tests with every integration suite executing
+(PostgreSQL 16, as a non-root user). The Settings permission change and the
+Socket.IO origin check were run in a real Electron window against a live
+Master. **Not verified:** anything else in a browser or Electron, a Release
+workflow run on this round's pipeline changes, an AppImage update on a real
+Linux PC, and the Mac build on real hardware.
+
 ### 2026-09-22 (structure) — `docs/STRUCTURE.md` replaces `CODE_MAP.md`; five audit defects fixed (Claude)
 
 Scope: the owner asked for the current structure of the whole software and

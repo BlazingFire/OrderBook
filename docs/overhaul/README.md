@@ -492,7 +492,8 @@ marginal machine; and the full display matrix at 1024×768 on the smallest scree
   confidential as the session cookie already is, which is to say not at all against a passive LAN
   sniffer. This is a decision the owner should make, not an oversight.
 - `hub.ts:86`'s `cors: { origin: true, credentials: true }` — a pre-existing hole no stage opens or
-  closes.
+  closes. (Closed on 2026-09-24, outside this plan: the hub has no CORS option now and refuses a
+  cross-site handshake, `master/src/realtime/socket-origin.ts`.)
 - Lot-level on-hand inventory (Stage 8 ships the ledger an upgrade would start from).
 - A macOS build. Stage 2 makes the release script platform-aware and adds entitlements, but no Mac
   panel ships and none is code-signed. Requirement 10's Retina support is a rendering requirement

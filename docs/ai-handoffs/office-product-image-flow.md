@@ -166,6 +166,14 @@ multipart caller, not just images.
 
 ### Still open — §2, §3, §4 and the "also confirmed" list
 
+> **2026-09-25:** §2 and §3 have since moved. The product screen shows the cover
+> photo (`ProductImages` on `ProductDetail.tsx`, the `large` variant) and
+> `ProductImages.tsx` renders its text through `t()`. What is left of §2 is a
+> full-size view: nothing requests the `master` variant. §4 still holds on the
+> Office server's upload route (a raw Node error when the Master is unreachable,
+> no `messageKey`); `postFile` itself now keeps the `messageKey`. The paragraphs
+> below are as written on 2026-09-21.
+
 §2 is the substantive one: **there is still no way to look at a product photo.**
 `ProductDetail.tsx` has no reference to `product.images` at all, so the `large`
 (800px) and `master` (2048px) variants encoded on every upload are never

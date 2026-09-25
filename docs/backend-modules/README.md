@@ -12,6 +12,11 @@
 > masking and `totalValue` on reports is historical: migration `20260324000000_product_master_trim`
 > dropped the columns and stripped the keys (`docs/ai-handoffs/product-master-trim.md`). The
 > snapshot guard is now `office/tests/snapshot-for-user.test.ts` (key set and permissions only).
+>
+> **2026-09-24 — the audit trail's best-effort call sites are closed.** Apart from sign-in and a
+> panel's reissued secret or moved storage folder, the write paths behind the 14 now record inside
+> their own transaction. `recordDetachedActivity` is left for sign-in attempts, connector runs, and
+> a panel's reissued secret or moved storage folder (`docs/ROLES_AND_USERS.md` §7.1). The "known-open" item below that says otherwise is historical.
 
 Status: **specification. Nothing in this set is built.** Reading it end to end should be enough to
 authorise the work, and enough for somebody who was not in the room to implement it without asking

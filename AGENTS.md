@@ -34,14 +34,20 @@ There is no AI assistant.
 
 ## Verification gate
 
-- `npm run verify` = lint + typecheck (all workspaces) + full test suite (~140 files,
-  ~1700 tests). **A change is not done until each of the three steps exits 0.**
+- `npm run verify` = lint + typecheck (all workspaces) + full test suite (~160 files,
+  ~2000 tests). **A change is not done until each of the three steps exits 0.**
 - `npm run build` — builds shared, both servers, both frontends.
 - Integration tests need PostgreSQL and skip automatically when unavailable
   (see `master/tests/helpers/db.ts`); `fileParallelism:false` is deliberate. A skipped
   suite prints like a green one — check it ran.
-- `master/web` and `office/web` have no test files. UI defects are invisible to
-  `verify`; a browser or Electron pass is real verification.
+- `master/web` and `office/web` have no test files of their own, but
+  `ui/tests/master-shell.test.tsx` and `ui/tests/office-shell.test.tsx` boot each
+  panel's `App.tsx` whole in jsdom (`ui/tests/panel-harness.ts`), so `verify` does see
+  which screen a key, toast or link lands on, what a form sends, and the splash's
+  errors. Layout, styling, anything visibility-dependent and the running Electron
+  shell (its window, menus, IPC, a real update) are still invisible to it;
+  `electron/tests` runs only the shell's `lib/` decisions and reads `shell.ts` as
+  text. For those a browser or Electron pass is real verification.
 
 ## Standing conventions
 

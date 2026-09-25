@@ -4,6 +4,15 @@
 > `20260322000000_drop_document_designer` dropped its three tables and stripped the `documents.*`
 > keys; the `documents` module, `documents.render` capability and `document_template` Bin entity no
 > longer exist. Everything below about it is historical. The Reports PDF export is unaffected.
+>
+> **2026-09-24 — the audit trail's best-effort call sites are closed.** Apart from sign-in and a
+> panel's reissued secret or moved storage folder, the write paths §1 lists as using
+> `recordDetachedActivity` now call `recordActivity` as the last statement of their own
+> transaction, and the writes that recorded nothing now record.
+> `recordDetachedActivity` is left at three call sites, for entries with no transaction of the
+> Master's to join: sign-in attempts, connector runs, and a panel's reissued secret or moved storage
+> folder (`docs/ROLES_AND_USERS.md` §7.1). What §1 says about the 14 detached call sites is
+> historical.
 
 Status: **planning complete, nothing built.** This is the backend half of `docs/UI_REDESIGN.md`.
 It covers the six modules the supplied design implies but the product does not have: **Fields

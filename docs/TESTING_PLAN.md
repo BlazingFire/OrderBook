@@ -245,11 +245,13 @@ Run once with each combination:
 Screen: **SettingsScreen**.
 
 - [ ] View storage usage numbers — confirm they look sane (non-zero, grows after adding data).
+- [ ] Signed in as a role without `settings.manage`, open Settings through **Help → Uninstall OrderBook** (it lands on the Developer tab): there is no Storage tab unless the role holds `storage.manage`, and then it offers export and restore with no usage figures (`GET /api/storage` needs `settings.manage`).
 - [ ] Export a full backup (passphrase-protected) — save the file.
 - [ ] Preview a restore from that backup file without committing — confirm preview shows what would change.
 - [ ] Perform the actual restore into a **separate clean Master install** (see Section 2, restore path) and confirm parties/leads/users all come back correctly, including custom fields and role/permission setup.
 - [ ] Check password vault status indicator reflects actual vault state.
-- [ ] Office `SettingsScreen` — confirm it only exposes local UI prefs (theme, density, scale, motion) and has no server-side settings.
+- [ ] Office `SettingsScreen` — confirm it has no company settings: Appearance and Shortcuts are this machine's preferences, Machine is read-only, and Storage holds this panel's own data folder (plus backup actions for `storage.manage`); Developer (shown to everybody signed in, unlocked by the developer password) holds this panel's reset and the uninstall.
+- [ ] Office Settings → Storage — moving the data folder to a drive root, the home folder, or a folder already holding other files is refused with the folder named; a move to an empty folder succeeds, and after quitting and relaunching the app the panel is still using the new folder with its queued work intact.
 
 ---
 
@@ -257,7 +259,7 @@ Screen: **SettingsScreen**.
 
 - [ ] **ReportsScreen:** run Dispatches report, Lead-Outcomes report, Top-Parties report — confirm numbers match manually-counted test data from Sections 5 & 8.
 - [ ] Export a report, confirm file downloads and matches on-screen figures.
-- [ ] **LogsScreen:** confirm actions taken throughout this test pass (sign-ins, lead creation, deletes, role changes) appear in the audit log with correct actor/timestamp.
+- [ ] **LogsScreen:** confirm actions taken throughout this test pass (sign-ins, lead creation, deletes, role changes, an order edit, an order stage move, a reorder level and a party-wise record) appear in the audit log with correct actor/timestamp.
 - [ ] Use log filters/facets to narrow by action type or user.
 - [ ] Run the hash-chain integrity **verify** action — confirm it reports "intact" on an untampered log.
 - [ ] Export logs to file.

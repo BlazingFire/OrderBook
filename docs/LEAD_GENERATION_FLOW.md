@@ -40,7 +40,8 @@ never accepted from the request body.
 ## 2. Where a lead is created
 
 The **Leads module in the Office Panel**. The Master Panel's Leads & Orders screen is read-only
-oversight — it has no create form, and the Master's own HTTP API rejects lead creation.
+oversight — it has no create form. The Master's API does accept one (`POST /api/leads`, behind
+`leads.create`), but no Master screen calls it.
 
 A lead can be created **fully offline**. It is written to the Office Panel's durable local store
 immediately, given a temporary ID, and pushed to the Master when the link returns. See §7.
@@ -108,8 +109,8 @@ footer, which also counts such lines beside the total weight it could compute.
 
 - No invoice, tax or GST fields — permanently out of scope. (The legacy `parties.gst_number`
   column predates this and is customer reference data, not a computation input.)
-- No user-typed `id`. The system generates it: temporary if offline, permanent once the Master
-  assigns one (§7).
+- No user-typed `id`. The system generates it: a temporary ID the moment the Office Panel saves
+  it, online or not, and a permanent one once the Master applies it (§7).
 
 ---
 
@@ -179,22 +180,50 @@ see §11.
 
 ## 7. ID handling through the whole flow
 
-Syncable business records use **text IDs**, not UUIDs, because an offline panel must mint an ID
-before the Master has ever seen the record:
+Records that sync use **text IDs**, not UUIDs, because the design lets an offline panel name a
+record before the Master has ever seen it (`shared/src/sync/ids.ts`):
 
-- **Temporary ID — 15 chars**: a 6-char device code plus a 9-char zero-padded local counter, e.g.
-  `A3F9K2000000123`. Every record created offline starts here.
+- **Temporary ID — 15 chars**: a 6-char device code plus a 9-digit zero-padded local counter, e.g.
+  `A3F9K2000000123`. The device code is derived from the panel id the Master issued (from the
+  hostname until the panel is paired), and the counter is saved to disk on every allocation so a
+  crash cannot reuse one (`office/src/sync/device.ts`).
 - **Permanent ID — 12 chars**: a 2-char entity prefix plus a 10-digit sequence, e.g.
-  `LD0000000042` for a lead, `OD…` order, `PT…` party, `PR…` product, `LI…` line item. Only the
-  Master mints these.
-- **Promotion order is `(hlc, device_code)`** — never the order devices happened to reach the
-  Master. Two panels syncing in either order produce the same numbering.
-- **`id_map` keeps the temporary ID working forever**, so a lead printed while offline is still
-  findable after renumbering.
-- The Order created by an offline conversion follows the same path.
+  `LD0000000042` for a lead, `OD…` order, `PT…` party, `PR…` product, `LI…` line item (the full
+  list is `ENTITY_PREFIX`). Only the Master mints these, from `id_sequences`, as it applies the
+  write that creates the record.
 
-Infrastructure tables that can only ever be written by the Master — tenants, users, roles, office
-panels, sessions — keep UUIDs. They are never created offline, so they need none of this.
+**Who gets a temporary ID.** Every lead, party, product and party-wise record an Office Panel
+creates goes through its outbox, online or not, and the Office server's `queue()`
+(`office/src/http/app.ts`) mints a temporary ID for the one record the queued create names. The
+creates the panel forwards live instead — a bulk product import, an image upload, a field value or
+definition — work only while the Master is reachable and never have one. Everything a
+create makes along the way — the lead's line items and timeline entries, a product's variants —
+and everything the Master makes itself is named by the Master, straight to a permanent ID. That
+includes the order from a conversion queued offline: the panel queues `lead.convert` against the
+lead, and the Master creates the order when it applies it. A lead raised on the Master's own
+`POST /api/leads` never has a temporary ID either.
+
+**Promotion.** When a create arrives, the Master inserts the record under a new permanent ID and
+writes the pair to `id_map` (`mapTemporaryId` in `master/src/services/sync.service.ts`); the
+record's own `temporary_id` column stays empty. The push answers with the pairs, and the panel
+rewrites any follow-up still in its outbox ("move lead X to Quoted") to the permanent ID. The
+Master sorts each pushed batch by `(hlc, device_code)` (`compareForIdAssignment`) before applying
+it; a batch comes from one panel, so between two panels the one whose push is applied first is
+numbered first.
+
+**`id_map` keeps a temporary ID resolvable for writes.** A mutation addressed by it, and a
+`partyId`, `ownerId` or `productId` inside a payload, or a line's `productId`, that names one — a
+lead raised on a party created offline in the same session — are resolved through it
+(`resolveId`). The outbox sends the party's create ahead of the lead's, so the pair exists by the
+time the lead is applied. Search and the list screens do not consult `id_map`. The pair is kept
+until the business data is wiped (the Master workspace's `wipe:business` and `reload:catalog`
+scripts clear the table). A party-wise record's temporary ID never reaches `id_map`: the Master
+does not map it, since `partyVariant.upsert` is keyed by party and product rather than by the ID.
+
+Tables only the Master writes keep other keys: `tenants` and `office_panels` a UUID, the logs a
+`BIGSERIAL` (`docs/schema/00-overview.md` §2). Roles and users have text IDs so the schema can take
+one minted offline, but no `role.*` or `user.*` mutation exists yet, so both are created only
+through the Master's API, always with a permanent ID.
 
 ---
 
@@ -262,7 +291,7 @@ excluded from the vector itself.
  Pick party (required) -> add line items (product, variant+qty, colour, grade, packaging) -> Save
         |                                   |
         |                    Saved to the local store instantly
-        |                    (temporary ID when offline)
+        |                    (temporary ID until the Master applies it)
         v
  Lead sits in its pipeline (Kanban)
         |

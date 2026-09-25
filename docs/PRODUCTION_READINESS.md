@@ -60,8 +60,10 @@ is true.
    `main` makes `.github/workflows/release.yml` build every file on GitHub's
    Windows runner; `npm run release` does the same on a PC where
    electron-builder runs (it hung on the owner's PC — a machine problem, see
-   `HANDOFF.md`). Eight files come out: a `-Setup.exe` and a
-   `-Standalone.exe` for each panel, two `.sha256` sidecars, two manifests.
+   `HANDOFF.md`). Ten files come out: a `-Setup.exe` and a
+   `-Standalone.exe` for each panel, a `.sha256` beside each standalone file,
+   and two manifests per panel — `latest-win32.json`, and `latest.json`, the
+   one name panels older than the platform-named manifests read.
 4. **Rehearse the update on a clean Windows PC or VM**, with the real
    installers, and write the date in `HANDOFF.md`:
    1. Install 1.2.0 Master, finish first-run setup, create a party and a
@@ -147,6 +149,15 @@ is true.
   first-boot copy and migrations run. Windows asks about the firewall on the
   first run because there is no installer to add the rules; the unpack
   folder is fixed so the answer is remembered.
+- **Linux AppImage (either panel).** Takes the build the Linux manifest
+  names, verifies it like a setup file, writes it beside the running
+  AppImage and renames it over it, then starts it again (with
+  `--appimage-extract-and-run` if the old copy was started that way). The
+  folder the AppImage sits in must be writable by whoever runs it, or the
+  update is refused before anything stops (`docs/UPDATES.md`).
+- **Linux `.deb`.** Not updated from the Updates screen, which says to
+  install the newer `.deb` by hand, and the shell refuses if asked anyway.
+  The data under `~/.config/OrderBook` is untouched.
 
 ## 5. Open — decisions only the owner can make
 
@@ -158,3 +169,11 @@ is true.
   TLS on the LAN, last-write-wins on concurrent edits of one lead.
 - Extra party fields (GST/tax id, credit terms), and the app's name and
   branding — unchanged since the questions were first asked.
+- Whether to harden the uninstall scripts (`tools/uninstall/`). *Uninstall,
+  delete data* removes the folder the `<panel>-location.json` pointer names,
+  whole (`Remove-Item -Recurse` / `rm -rf`). Since 2026-09-25 an Office storage
+  move refuses a drive root, the home folder and a folder holding anything that
+  is not the panel's own, so a move can no longer point the uninstall at
+  unrelated files.
+  Deleting only a panel's own entries from a relocated folder would also cover
+  the Master's first-run chooser, which is why it was left to the owner.

@@ -50,14 +50,25 @@ design rationale. They were written before the code and several of their
 stated facts did not survive contact with the tree — check a design's claim
 against the code before acting on it.
 
-## Current state (2026-09-22, after the branch consolidation)
+## Current state (2026-09-25, after the audit fix round)
 
 - **Branches:** `main` is the only long-lived branch; `dev` was reset to
   `main` on 2026-09-22 to develop on. Every other branch was merged or
-  retired that day (see "Branch consolidation" below) and is **to be deleted
-  on GitHub by the owner** — the session's git access could push `main` and
-  `dev` but was refused (403) for branch deletion and tags. Work lands on
-  `main` (directly or through `dev`); do not branch from an old branch.
+  retired that day (see "Branch consolidation" below), and the twelve still
+  on GitHub are **to be deleted by the owner**: the cloud sessions' git proxy
+  refuses branch deletion and tag pushes (HTTP 403). The 2026-09-24/25 round
+  was merged straight into `main` from eleven local `fix/*` branches, which
+  were never pushed and hold nothing `main` lacks. On 2026-09-25 `main` and
+  `dev` on GitHub were both at `7d6ae68`, the round's last commit; if `main`
+  has moved since, bring `dev` level with it before working on it. Work
+  lands on `main` (directly or through `dev`); do not branch from an old
+  branch.
+- **The 2026-09-24/25 round** audited the whole tree and fixed what it found
+  on those eleven branches, each reviewed and repaired before the merge.
+  Every defect this file listed as open after the 2026-09-22 structure audit
+  is fixed (see "Session history"). What is still open, including that
+  audit's dispatch-by-stage-name finding (`docs/STRUCTURE.md` §5.11 #7),
+  which this file had not listed, is under "Owed work".
 - **Version 1.2.0**, the first build meant for customers. It adds the
   **standalone `.exe`** beside each Windows setup file, the **pre-update
   database copy** (`master/src/db/cluster-snapshot.ts`), and the
@@ -68,25 +79,52 @@ against the code before acting on it.
   code-signing certificate).
 - **Verify gate:** `npm run verify` = `lint` + `typecheck` (all workspaces,
   both Electron shells, the test tsconfigs) + `vitest run`. **Last full run
-  2026-09-22 after the consolidation: lint 0, typecheck 0, 140 test files /
-  1707 tests passing, integration suites included** (PostgreSQL 16, run as a
-  non-root user — see "How to run"). Run the three steps separately and check
-  each exit code. As root the integration suites skip (46 files) and the
-  summary still reads green.
+  2026-09-25 after the audit round: lint 0, typecheck 0, build 0, 160 test
+  files / 2015 tests passing, integration suites included** (PostgreSQL
+  16, run as a non-root user — see "How to run"). Run the three steps
+  separately and check each exit code. As root the integration suites skip
+  (the 48 `*.integration.test.ts` files) and the summary still reads green.
+- **The web apps under test:** `master/web` and `office/web` still have no
+  test files of their own, but `ui/tests/master-shell.test.tsx` and
+  `ui/tests/office-shell.test.tsx` boot each panel's `App.tsx` whole in jsdom
+  (`ui/tests/panel-harness.ts`: the real `api.ts` against a route table
+  standing in for `fetch`). They pin the shell's behaviour: which screen
+  Alt+N, a toast action or the gallery link lands on, the Dashboard after a
+  sign-out or an ended session, the splash's "could not reach the server",
+  refetches on a change event, the New lead form and the order weight
+  override. Layout, styling, anything that depends on visibility, a live
+  server and the Electron shell still need a browser or Electron pass.
 - **Builds:** `npm run build` is green for shared, both servers and both web
   bundles on every OS: the web workspaces build through `tools/build-web.mjs`
   (resolves `tsc`/`vite` from `node_modules/.bin` by path, points
   `TEMP`/`TMP` at a gitignored `.tmp/` for the Windows esbuild/Defender lock).
 - **Releases:** `.github/workflows/release.yml` builds on a three-OS matrix
-  (Windows setup + standalone, macOS universal `.dmg` + `.zip`, Linux
-  AppImage + `.deb`) — **all three legs green since 2026-09-22** (build-only
-  run on `dev` at `27c8bd2`). A push
-  to `main` whose `package.json` version has no release yet publishes
-  `v<version>`; unsigned (no `RELEASE_KEY` secret) it is a **draft**, which no
-  panel installs. A manual run on any branch builds into a draft pre-release
-  `build-<version>-<sha>`. Existing releases (1.0.2, 1.0.3, 1.1.0, two 1.2.0
-  builds) are all drafts. The clean-install tool (`cleaner/`) is built but
-  never published into the releases folder.
+  (Windows setup + standalone `.exe`, macOS universal `.dmg`, Linux
+  AppImage + `.deb`). The standalone `.exe` and the `.deb` are published
+  beside the setup files with a `.sha256` each (`TARGETS[*].besides` in
+  `tools/release.mjs`) and are named by no manifest; the mac `.zip` is no
+  longer built (nothing read it). **All three legs were green on 2026-09-25**
+  (build-only run #37 on `dev` at `7d6ae68`, draft pre-release
+  `build-1.2.0-7d6ae68`), so this round's release changes have built on
+  every OS: both standalone `.exe`s and both `.deb`s arrived with their
+  `.sha256`, and the mac leg uploaded its `.dmg`s and no `.zip`. The
+  `release-workflow`, `packaging-invariants` and `release-folder-besides`
+  tests cover the same ground. A push to `main`
+  whose `package.json` version has no release yet publishes `v<version>`;
+  unsigned (no `RELEASE_KEY` secret) it is a **draft**, which no panel
+  installs. A draft counts as a release there, so the push of `7d6ae68` to
+  `main` built nothing: `v1.2.0` already exists (see "Owner-only" below). A
+  manual run builds into a draft pre-release `build-<version>-<sha>`;
+  ticking *publish* creates the real release only on `main`, and anywhere
+  else the `check` job warns and builds the draft pre-release. Existing
+  releases (1.0.2, 1.0.3, 1.1.0, 1.2.0, and six `build-1.2.0-*`
+  pre-releases) are all drafts. The clean-install tool (`cleaner/`) is built
+  but never published into the releases folder.
+- **Updates on Linux:** an AppImage copy updates in place from the Updates
+  screen (the shell replaces the file and relaunches it); a `.deb` install,
+  a run from source, or an unpacked copy is told to update by hand
+  (`updates.systemPackageBody`). No AppImage update has been run end to end
+  on a real Linux PC yet (see "Owed work").
 - **Company settings: thirteen**, in four groups on the Settings tab
   (`shared/src/domain/settings.ts`): password reveal, free-to-sell, public API,
   auto pairing, developer mode, session hours, default reorder level, offline
@@ -100,9 +138,17 @@ against the code before acting on it.
   on a multi-colour product may name a colour from `stock.colour`; a line
   carries a **grade** from `line.grade` (a line attribute, never a catalogue
   one).
-- **Hindi is 1,445 strings behind** (`grep -c 'TODO(i18n-hi)'
+- **Master shortcuts moved** (worth a line in the release notes): Parties
+  is now Alt+3, its place in the sidebar, and the screens below it move down
+  one — Inventory Alt+4, Reports Alt+5, Conflicts Alt+6, Office panels
+  Alt+7, Roles & users Alt+8, Party access Alt+9. Fields and everything after
+  it are reached from the command palette. Shortcuts a person remapped are
+  kept.
+- **Hindi is 1,275 strings behind** (`grep -c 'TODO(i18n-hi)'
   shared/src/i18n/hi.ts`). The parity test only checks keys exist, so nothing
-  fails on it. Settings → Appearance has a language picker.
+  fails on it — except an `activity.*` template, where
+  `shared/tests/i18n-coverage.test.ts` fails the English stub until it is
+  translated. Settings → Appearance has a language picker.
 - **Live databases:** external PostgreSQL via `.env` `DATABASE_URL` on both of
   the owner's machines (`order_book` on the PC, `order_book_new` on the
   laptop). The first Master started from a pre-1.2 database runs
@@ -173,7 +219,12 @@ npm run seed:dummy              # admin/Admin@1234, management/Manage@1234, offi
 Master-only operator scripts (`--workspace @orderbook/master`):
 `wipe:business`, `reload:catalog`, `seed:parties`, `seed:catalogue`. They
 talk to the live database — read `master/src/services/catalog-reload-cli.ts`
-before running one.
+before running one. Run them with the Master stopped: each starts the
+database the way the Master does and stops it when done (with
+`DATABASE_URL` set it stops nothing). The first three wipe the business
+data first, the whole activity log and every connector link with it; then
+`reload:catalog` loads the catalogue and `seed:parties` three sample
+parties.
 
 **Integration tests as a non-root user** (PostgreSQL refuses to start as
 root). In a Linux container with PostgreSQL 16 installed: copy the checkout
@@ -220,13 +271,26 @@ docs/          all prose; nothing source-of-truth lives in a code comment
 - **Dead api-client members fail the build**
   (`master/tests/web-reachability.test.ts`): delete them, or add them to its
   allow-list with a reason.
+- **Copy to the clipboard through `copyText`** (`ui/src/clipboard.ts`), never
+  `navigator.clipboard` directly: a browser gives that only to a secure
+  context, and the panels run over plain HTTP on the LAN.
+- **Tests for the web apps' shells** live in `ui/tests/`
+  (`master-shell.test.tsx`, `office-shell.test.tsx`, over `panel-harness.ts`),
+  since neither web app has a test directory.
+- **Desktop shell pieces:** the Office server's environment is
+  `electron/lib/office-env.ts` (the Master's is still inline in
+  `master.main.ts`); how a copy updates is `updateMethod()` in
+  `electron/lib/installer.ts`; the AppImage replace and relaunch is
+  `electron/lib/appimage.ts`.
 
 ## Working agreements
 
 - **Verify before done.** `npm run lint`, `npm run typecheck` and
   `npm run test` each exit 0. `master/web` and `office/web` have no test
-  files, so a real browser or Electron pass is verification, and a change not
-  run in the browser should say so.
+  files of their own; the jsdom shell tests in `ui/tests/` catch which screen
+  a key, toast or link lands on and what a form sends, not layout, styling
+  or anything visibility-dependent. For those a real browser or Electron
+  pass is the verification, and a change not run in one should say so.
 - **Never delete or rewrite a migration** that may have run anywhere;
   `master/tests/migration-registry.test.ts` pins the names.
 - **Migrations after 1.2.0 only add.** `migration-data-safety.test.ts` fails
@@ -272,7 +336,9 @@ docs/          all prose; nothing source-of-truth lives in a code comment
 10. **Developer mode is a password, not a permission** (`docs/DEVELOPER_MODE.md`).
 11. **Updates:** setup files published by `tools/release.mjs`; the Master
     serves the office build over the LAN. A standalone `.exe` is replaced by
-    hand, never updated in place.
+    hand, never updated in place; a Linux AppImage is replaced in place by
+    the shell; a `.deb` install is updated by installing the newer `.deb` by
+    hand. Only `main` publishes a release.
 12. **Product catalogue:** category → model (`products`) → variant
     (`product_variants`: code, colour/pattern label, weight). Lead entry is
     the Office panel's `AddLeadScreen`; the Master has no New lead page.
@@ -295,11 +361,41 @@ docs/          all prose; nothing source-of-truth lives in a code comment
 4. The Recycle Bin has no exit — three options in
    `docs/ai-handoffs/recycle-bin-delete-actions-and-purge.md`. Do not
    implement one until the owner picks.
+5. Whether to harden the uninstall scripts (`tools/uninstall/`): *Uninstall,
+   delete data* removes the folder the shell's pointer names, whole
+   (`Remove-Item -Recurse` / `rm -rf`). Deleting only a panel's own entries
+   from a relocated folder would also cover the Master's first-run chooser,
+   so it was left to the owner. The Office storage move now refuses a drive
+   root, a home folder and a folder holding anything that is not a panel's
+   own, which closes the path the audit found.
+
+**Owner-only** — a cloud session cannot do these: its git proxy refuses
+branch deletion and tag pushes (HTTP 403), and the last needs real Macs:
+
+1. Delete the twelve old branches on GitHub (listed under "Branch
+   consolidation").
+2. **Rebuild the v1.2.0 draft before publishing it.** Its Linux files were
+   built before the library-link fix (they carry absolute links into the
+   build machine and cannot start PostgreSQL elsewhere) and it has no macOS
+   files. Delete the draft `v1.2.0` release on GitHub, then run the Release
+   workflow on `main` with *publish* ticked.
+3. **Launch the macOS app on real hardware** — it has been built, never run.
+   CI produces the universal `.dmg`, unsigned (electron-builder 25 has no
+   ad-hoc fallback, so without an identity nothing is signed and a
+   downloaded copy needs a right-click Open). Launch it on an Intel and an
+   Apple silicon Mac: first boot must create the database, and a product
+   photo upload exercises `sharp`.
 
 **Code** — the queue is `docs/ai-handoffs/README.md`:
 
-1. **No way to look at a product photo.** `ProductDetail.tsx` never reads
-   `product.images`, so the `large` and `master` sizes are never requested.
+1. **Product photos: no full-size view, and an offline upload's raw error.**
+   The product screen does show the cover photo now (`ProductImages` on
+   `ProductDetail.tsx`, the `large` size) and the photo UI is translated, but
+   nothing opens a photo full size, so the 2048 px `master` size is still
+   requested by nothing. An upload while the Master is unreachable answers the
+   raw Node error text with no `messageKey` (`office/src/http/app.ts`, the
+   `/api/products/:productId/images` route), and its "Choose an image file" is
+   English only. Brief: `office-product-image-flow.md` §2 and §4.
 2. **No route from a party to its access editor** (the owner's "no option for
    assign party").
 3. **Password-change tail:** `invalidateSessionsForUser` records no reason, and
@@ -315,54 +411,107 @@ docs/          all prose; nothing source-of-truth lives in a code comment
 6. **Weights:** the catalogue's 549 variants have none; the Office
    Catalogue's *Missing weight* filter is the worklist.
 
-**Defects found by the 2026-09-22 structure audit, still open.** Each was
-confirmed by reading the code, not in a running app; `docs/STRUCTURE.md` names
-the files. Fixed the same day: avatars wiped by the boot sweep, the Master's
-Updates screen answered 401, the release workflow's commit-message injection
-and wrong-repository tag check, and `setVersion()` skipping `cleaner/`.
+**Found by the 2026-09-24/25 audit and not fixed.** Each was confirmed by
+reading the code, not in a running app. Every defect the 2026-09-22 structure
+audit listed here is fixed (see "Session history").
 
-1. **An Office Panel's storage move reverts on restart** under the desktop shell:
-   `relocateDataDir()` never updates `office-location.json` and never tells the
-   shell (§1.5).
-2. **In-app updates are always refused on Linux:** `installerExtension('linux')`
-   returns `.exe`, so every `.AppImage` is rejected (§10.8 step 6).
-3. **A GitHub setup-file download is cut off at 15 s:** `guardedFetch`'s timeout
-   covers the whole ~150 MB body, not just the manifest hop (§10.8 step 1).
-4. **GitHub sync writes `latest.json` but `readManifest` prefers
-   `latest-<platform>.json`**, so a folder once filled by `release.mjs` keeps
-   reading a stale manifest (§10.10 #3).
-5. **Audit trail gaps:** the main write paths log with `recordDetachedActivity`
-   (not atomic with the change), `upsertVariant`, `setReorderLevel` and offline
-   merged updates log nothing, and a dispatch bumps neither `version` nor `hlc`
-   (§5.11 #5, #6, #15).
-6. **`GET /api/storage` has no permission check** (§5.11 #9); Socket.IO CORS
-   reflects any origin (§5.11 #13).
-7. **`npm run reload:catalog` only wipes** (and truncates `activity_log`), and
-   `npm run migrate -- --status` prints blank pending names (§5.11 #2, #4).
-8. **Suspected, from reading only (not in `STRUCTURE.md`):** `useCommand`
-   (`ui/src/KeyboardProvider.tsx`) re-registers every command whenever the
-   palette opens, which could put a parent screen's `record.save` above an open
-   dialog's; and the Copy buttons call `navigator.clipboard`, which a browser
-   provides only in a secure context, so they may fail over plain LAN HTTP.
-9. **Nothing enforces "publish from main only"** in the Release workflow
-   (§10.10 #5); the `.zip` and `.deb` are built and never published (§10.10 #2).
+*Server and data:*
+
+1. **Dispatch keys on the stage named `Dispatched`**
+   (`order.service.ts#dispatchOrder`), so a stage renamed on the Fields
+   screen leaves a dispatched order where it was. Nothing on
+   `pipeline_stages` says which stage means dispatched (`is_terminal` is also
+   true of Cancelled); the fix needs a stage flag added by an add-only
+   migration, a way to set it, and the owner's input.
+2. **`deleteOrder` can race a dispatch:** it checks `dispatchedAt` on a read
+   before its transaction and does not lock the row, so an order dispatched
+   in between can still be deleted.
+3. **`party_code` truncates from the 10,000th party:** `lpad(…, 4, '0')` cuts
+   as well as pads, so the code repeats an earlier one (`P-1000` again) and
+   the insert fails while that party is live (`docs/schema/02-parties-and-products.md`).
+4. **No index on `leads.owner_id` or `orders.owner_id`:**
+   `20260303000000_roles_and_users` re-created the columns as TEXT, which took
+   both indexes with it (`docs/schema/03-leads-orders-inventory.md`). Needs an add-only migration.
+5. **The public API's tenant cache is stale after a whole restore:**
+   `resetPublicApiTenantCache()` is called by Developer mode's erase only, so
+   until a restart the public API reads the switch of a tenant that is gone.
+6. **The wipe/reload CLIs stop the database they start**
+   (`catalog-reload-cli.ts`; `seed-catalogue-cli.ts` does the same), which
+   pulls it out from under a running Master unless `DATABASE_URL` is set.
+   The first one's header says to run it with the Master stopped; nothing
+   checks.
+7. **23 of the 79 client→server socket events have no caller** in
+   `office/src`; the Master still registers handlers for them
+   (`docs/STRUCTURE.md` lists them).
+8. *Observation:* a `partyVariant.upsert`'s temporary id never reaches
+   `id_map`.
+
+*Office Panel and desktop shell:*
+
+9. **Work may be stranded after an early storage move.** An Office panel
+   that moved its storage before this round came back up in the old folder,
+   so anything saved after the move sits in the move target.
+10. **After a storage move the shell's log stays in the old folder** until
+    the app is relaunched. Every "where is the log" answer names that file
+    (`openLogPath()`), so nothing points at the wrong one.
+11. **A transient outbox read at flush time:** a flush that meets a moment's
+    read error (`load()` in `office/src/sync/outbox.store.ts`) sees an empty
+    queue and sends nothing that pass. A save refuses in the same case. A
+    queue that reads but is not a list (corrupt, not just busy for a
+    moment) is set aside beside `outbox.json` as
+    `outbox.json.unreadable-<time>`, and the log names it: look there for
+    queued work that never reached the Master.
+12. **The Updates screen has no "fetching" reason.** While the Master
+    fetches the build for a panel's OS, the panel is told "nothing new yet"
+    (`docs/UPDATES.md`, "When a new build shows up").
+13. **Clean Install runs a `.deb` as if it were an AppImage.** It accepts one
+    as a Linux setup file (`EXTENSIONS` in `electron/lib/cleaner/setup-file.ts`,
+    the file dialog in `electron/cleaner.main.ts`) but can never verify it,
+    since no manifest names a `.deb`; and on Linux `cleaner:install` spawns
+    the chosen file directly, which does not install a package (that takes
+    `apt install ./<file>`).
+
+*Master UI:*
+
+14. **AccessScreen's RoleEditor asks with `window.confirm`** before
+    discarding an edit, not the themed ConfirmDialog.
+15. **The Master keeps drawing a screen after the person's permission for it
+    is revoked.** `ScreenHost` draws the tab whatever the sidebar offers; only
+    navigation checks. Sign-out and an ended session do reset to the
+    Dashboard.
+
+*Stale text:*
+
+16. Two stale comments. `master/src/services/inventory.service.ts:179` says
+    `isBlankNote` is shared with both panels' forms: only this service calls
+    it (the Master's Inventory form makes its own `trim()` test, and the
+    Office has no stock-correction form). The `electron/preload.cts` header
+    says the shell refuses anything outside "that panel's updates folder":
+    the Master's installer comes from its releases folder
+    (`releaseDirFor('master')`), and an AppImage is replaced, not run.
+17. A sample-data remark (`master/src/domain/sample-data.ts`) still mentions
+    a "Rate list".
+
+Deliberate, not defects: three kinds of audit entry are still written after
+the fact (`recordDetachedActivity` in `activity-log.repository.ts` says why).
+A sign-in attempt, accepted ones included, although an accepted one stamps
+`last_sign_in` in a transaction it could join: joining would make signing
+in fail whenever the trail cannot be written. A connector run, whose one
+entry sums up many transactions. And a panel's reissued secret or moved
+storage folder, which has already happened on the panel's machine.
 
 **Manual:**
 
-- A browser and Electron pass of both panels on 1.2.0 (nothing since the
-  consolidation has been run in a browser).
+- A browser and Electron pass of both panels on 1.2.0. Since the
+  consolidation only the Settings permission change and the Socket.IO
+  Origin check (both in `d7481f7`'s run against a live Master) have been
+  exercised in a real Electron window; the jsdom shell tests cover
+  navigation and forms, not layout.
 - An install / update / uninstall rehearsal on a real Windows PC, and a run of
   the standalone `.exe` (`docs/PRODUCTION_READINESS.md` §2 item 4).
-- **The macOS app has been built, never run.** CI produces the universal
-  `.dmg`, unsigned (electron-builder 25 has no ad-hoc fallback, so without an
-  identity nothing is signed and a downloaded copy needs a right-click Open).
-  Launch it on an Intel and an Apple silicon Mac: first boot must create the
-  database, and a product photo upload exercises `sharp`.
-- **Rebuild the v1.2.0 draft before publishing it.** Its Linux files were
-  built before the library-link fix (they carry absolute links into the
-  build machine and cannot start PostgreSQL elsewhere) and it has no macOS
-  files. Delete the draft `v1.2.0` release on GitHub, then run the Release
-  workflow on `main` with *publish* ticked.
+- **An AppImage update end to end on a real Linux PC:** download, verify,
+  replace, relaunch, including a copy started with
+  `--appimage-extract-and-run`. Only unit tests have run it so far.
 - Responsive gate: 1024×768 / 1366×768 / 1920×1080 / 3840×2160 at 79 % /
   100 % / 157 %, sidebar in all three modes.
 
@@ -403,6 +552,20 @@ terms, multiple contacts); concurrent edits of one lead from two panels
 - **`master/tests/i18n-tokens.test.ts` is load-bearing:** every
   `(entityType, action)` given to `recordActivity` needs an
   `activity.<entity>.<action>` string.
+- **An audit entry is the last statement of its change's transaction.** A
+  write stamps the clock (`nextHlc`) first, then takes its row locks, then
+  calls `recordActivity(…, trx)`; the chain trigger's per-tenant advisory
+  lock is taken last, so its holder only ever waits to commit. The other
+  order deadlocks (`40P01`): `party-access#replaceAssignments` did.
+  `master/tests/audit-atomicity.integration.test.ts` fails an entry moved
+  ahead of its row write. `recordDetachedActivity` is only for the three
+  kinds its comment names; it swallows a failed insert.
+- **A Hindi `activity.*` template needs a postposition after `{actor}`.** A
+  row with no actor reads `किसी`, which only works as `किसी ने …`.
+  `shared/tests/i18n-coverage.test.ts` fails the English stub that
+  `npm run i18n:sync` writes for a new activity key until it is translated,
+  and keeps price words out of both catalogues (Hindi matched on letter
+  boundaries, so `गोदाम` passes).
 - **electron-builder runs `npm install --omit=dev`** and prunes the root
   `node_modules`; both `electron-builder.yml` set `npmRebuild: false`.
 - **`fs.cp` rewrites a relative symlink as an absolute one** unless given
@@ -414,17 +577,96 @@ terms, multiple contacts); concurrent edits of one lead from two panels
 - **A build output folder keeps the last build.** Match the exact filename and
   clear the folder first. macOS `universal` needs both architectures'
   PostgreSQL vendored (`extraResources` is identical in both halves).
+- **`npm run release` refuses a Windows or Linux Master build on a machine
+  that is not x64** (`assertHostArch()` in `tools/release.mjs`): staging
+  copies the build machine's own `sharp` and PostgreSQL into the Master. The
+  Office panel and Clean Install carry nothing native and build their x64
+  files anywhere; a Mac build is universal and is never refused.
+- **One manifest, three names.** A GitHub release carries
+  `latest-<panel>.json` (Windows) and `latest-<panel>-<platform>.json`
+  (`manifestAsset()`); in a releases folder the same file is
+  `latest-<platform>.json`, plus `latest.json` for a Windows build only (the
+  one name older panels read). `readManifest` prefers the platform name, so
+  a writer that leaves it out leaves the folder on a stale manifest. Each
+  OS's sync sweeps only that OS's files, so one folder holds every OS's
+  build.
+- **A Linux AppImage is the running program, not an installer.** The
+  Master's releases-folder sweep spares the file `APPIMAGE` names (compared
+  by real path) as well as every pinned build; the shell trusts `APPIMAGE`
+  only when its own executable runs inside `APPDIR`; the relaunch puts
+  `--appimage-extract-and-run` back first when the old copy was started
+  that way. `electron/tests/appimage.test.ts` skips its replace block on
+  Windows (it needs POSIX file semantics), so the owner's `npm run verify`
+  never runs it; CI (ubuntu-latest) does.
+- **Node on Windows opens files sharing delete**, so removing a file that is
+  being written or streamed succeeds on every OS. A sweep that relies on
+  Windows locking it is wrong; pin what must survive.
 - **The file that records where the data lives must not live in the data.**
+- **An Office storage move rewrites the shell's pointer.** Under the desktop
+  shell the next start reads `office-location.json`, not the settings file,
+  so `relocateDataDir()` writes the pointer named by
+  `ORDERBOOK_OFFICE_LOCATION_FILE`, which only `officeServerEnv`
+  (`electron/lib/office-env.ts`) passes. Drop that line and every other
+  server test stays green; `electron/tests/office-env.test.ts` and
+  `office/tests/storage-path.test.ts` (which starts the server with
+  `officeServerEnv`) catch it.
+  *Uninstall, delete data* removes the pointer's folder whole, so a move
+  refuses a drive root, the home folder and a folder holding anything that is
+  not a panel's own. The shell's log stays where it was opened until the next
+  launch: name it with `openLogPath()`, not `logPath()`
+  (`electron/tests/shell-log.test.ts`).
+- **A `serverEnv` variable its server never reads fails the build**
+  (`electron/tests/server-env.test.ts`).
 - **Party access has many read paths** — `grep applyPartyScope` /
   `grep partyScopeSql` before adding a scoped entity.
 - **The last-administrator guard runs inside the transaction.**
 - **An Office panel's acting user is resolved per command**, never per
   connection. Offline sign-in is reachable only when the Master could not be
   asked, and only while `security.offlineSignInEnabled` is on.
+- **An Office queued write checks its shape in `queue()`'s `validate`
+  step** (`office/src/http/app.ts`), which runs after the permission check.
+  A shape check placed ahead of `queue()` answers a caller without the
+  permission with a 400 that describes a well-formed payload.
 - **`UNION ALL` branches must cast to one type** (`id::text`).
 - **`request()`'s in-flight GET dedupe is keyed on path + headers.**
 - **Shift+letter chords never reach the command registry while typing.**
+- **The palette lists only what `offers()` says.** `KeyboardProvider`'s
+  `offersCommand` answers in the same order `runCommand` does: palette and
+  help commands, then a mounted registration, then a nav command only if the
+  panel's `canNavigate` (the sidebar's own test) says yes, then a shell
+  command only if the panel supplies one. A command `runCommand` learns to
+  answer needs the same branch in `offersCommand`, or the palette hides it.
+  `view.find` is left out on purpose: only the chord answers it.
+- **The sidebars and `MASTER_NAV`/`OFFICE_NAV` must agree**
+  (`shared/src/keys/commands.ts`; `shared/tests/keys-nav-order.test.ts` reads
+  both `App.tsx` sidebars). A Master screen added above the ninth moves every
+  Alt+N below it; say so in the release notes.
+- **Socket.IO has no CORS; the handshake checks the Origin.**
+  `isAllowedSocketOrigin` (`master/src/realtime/socket-origin.ts`) admits no
+  Origin (an Office server in Node) or a page served from exactly the Host it
+  connected to. A page on another port of the same machine is refused and
+  logged; in development go through the Vite proxy.
+- **`requirePanel` runs once, at the `/api/panel` mount** in
+  `master/src/http/app.ts`. A router mounted there must not `.use` it again:
+  a router's `.use` runs for every request that enters it, so the request
+  pays the bcrypt compare twice. Under `/api/updates`, which the Master's own
+  Updates screen shares, it sits on each panel route instead, never on the
+  router.
 - **jsdom cannot test visibility** (`checkVisibility` is undefined).
+- **A shell test must wait until the panel is listening.** A panel opens its
+  event stream, its Socket.IO link, the desktop-menu subscription and its
+  key listener in effects, which React may not have run when the shell is
+  first on screen; an event or chord sent then reaches nobody. Send through
+  the helpers that wait: `sendSnapshot()` (`office-shell.test.tsx`),
+  `changed()` (`master-shell.test.tsx`) and `pressAltDigitUntil()`
+  (`panel-harness.ts`). A test that expects a chord to be refused opens a
+  screen with a chord first, or it passes without the chord reaching the
+  panel. The first test to open a screen also pays for compiling it, which
+  under a full run outlasts `findBy`'s one-second default.
+- **`ui/tests/panel-harness.ts` imports each `App.tsx` through a variable
+  path** on purpose: a literal import pulls both web apps into
+  `ui/tests/tsconfig.json`'s stricter program and fails the typecheck for
+  reasons that belong to their own `tsc -b`.
 - **A token minted as `obk_<base64url>_<base64url>` split on `_`.** The
   prefix is hex; `parseToken` rejoins everything after the second separator.
 
@@ -433,13 +675,52 @@ terms, multiple contacts); concurrent edits of one lead from two panels
 Condensed. The full entries are in `git show 5b8ebe2:HANDOFF.md` and in
 `docs/AI_COLLABORATION.md`.
 
+- **2026-09-24/25 — Audit of the whole tree, eleven fix branches (Claude).**
+  The findings were fixed on `fix/schema-docs`, `audit-trail`,
+  `http-hardening`, `master-tools-comments`, `release-sync`,
+  `release-pipeline`, `electron-updates`, `office-storage`,
+  `shared-contract`, `ui-kit` and `web-apps`; each was reviewed and repaired
+  before it was merged into `main`. `d8f129e` and `8decf06` reconciled the
+  tests the merges put at odds. Closed every defect this file had listed from
+  the 2026-09-22 audit: audit entries written inside the change's transaction, and the
+  writes that recorded nothing now record (a dispatch also bumps `version`
+  and `hlc`); `GET /api/storage` needs `settings.manage`; a cross-site
+  Socket.IO handshake is refused; `migrate --status` names what is pending
+  and `reload:catalog` loads the catalogue (the wipe now clears connector
+  links too); a GitHub setup file is no longer cut off at 15 s and a sync
+  writes the platform-named manifests; Linux panels update their AppImage in
+  place; an Office storage move survives a restart; the release publishes
+  from `main` only, ships the `.deb` and drops the mac `.zip`; the kit's
+  command priority is by mount order and Copy works over plain HTTP. Also:
+  the schema docs checked against the migrated schema (new
+  `docs/schema/07-integrations.md`), Parties on the Master's Alt+3, Hindi
+  activity templates, an Office outbox that cannot be read no longer
+  written over (a corrupt one is set aside as
+  `outbox.json.unreadable-<time>`, a busy one is read again) and one failed
+  save no longer blocking every later one, and the web apps' shell defects,
+  pinned by booting both panels in jsdom. `ffb69fe` made the command palette
+  list only commands that would do something (`offers()`, `canNavigate`):
+  screens the sidebar withholds, "New record" for a role that cannot create
+  one, and the Find row that did nothing are gone (the chord still works).
+  Last, `7d6ae68` made the shell tests wait until the panel is listening
+  (event stream, socket, menu subscription, key listener) before sending it
+  anything; under load they had lost that race one run in four, and the
+  Alt+N refusal tests could pass without the chord reaching the panel. The
+  documentation pass rewrote `docs/LEAD_GENERATION_FLOW.md` §7 (ID handling)
+  against the code. What the audit found and left is under "Owed work".
+  Verified: lint 0, typecheck 0, build 0, 160 files / 2015 tests with
+  integration suites; Release run #37 (build-only, `dev` at `7d6ae68`) green
+  on all three OSes.
+
 - **2026-09-22 — `docs/STRUCTURE.md`: the whole software in one file (Claude).**
   Twelve readers mapped every workspace against `git ls-files` (one from a
   graphify code graph: 641 files, 6,152 nodes, 242 communities), one writer
   assembled the file, five fact-checkers raised 81 corrections (80 applied, 1
   rejected with evidence) and 51 gaps (all filled). It replaces
-  `docs/CODE_MAP.md`. The audit's defects are listed under "Owed work"; five
-  were fixed with tests the same day.
+  `docs/CODE_MAP.md`. Five of the audit's defects were fixed with tests the
+  same day, and the ones this file then listed in the 2026-09-24/25 round;
+  dispatch keying on the stage name (§5.11 #7) is still open, as item 1 of
+  the audit list under "Owed work".
 - **2026-09-22 — macOS build fixed, library links fixed on every OS
   (Claude).** Vendored PostgreSQL links kept relative (`verbatimSymlinks`);
   the universal Mac build fetches and stages both architectures of every

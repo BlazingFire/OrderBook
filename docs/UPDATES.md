@@ -236,11 +236,12 @@ sweep. Old ones are the operator's to delete.
 A panel installed from the `.deb` is updated the way it was installed: by
 installing the newer `.deb` by hand (`sudo apt install ./<newer file>`), which
 replaces the program under `/opt` and leaves the data under
-`~/.config/OrderBook` where it was. Not from the Updates screen: that installs
-the file the manifest names, the AppImage, which runs on its own rather than
-replacing the `/opt` install. Unlike the standalone build, the shell does not
-yet recognise a `.deb` install and refuse, so the screen still offers the
-AppImage there.
+`~/.config/OrderBook` where it was. Not from the Updates screen: the file the
+manifest names is the AppImage, which would run on its own rather than replace
+the `/opt` install. The shell sees that a `.deb` copy was not started from an
+AppImage (`updateMethod()` in `electron/lib/installer.ts`), so, as with the
+standalone build, the screen says to install the new package instead of
+offering a button, and the shell refuses if asked anyway.
 
 ## What stops a bad update
 

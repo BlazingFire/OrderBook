@@ -112,10 +112,11 @@ Access screen uses. That is the smallest change that answers the report.
   **Not run** — the integration suites need PostgreSQL, which will not start as
   root, and the container had no other user. Run them on a normal checkout.
 
-### Still open — everything in §3 and §4
+### Still open — everything in §3 and §4 but the comments
 
-§3 (a route from a party's detail to its access editor) and all of §4 are
-untouched: the "open to everyone" label computed from the viewer rather than the
-grant, the every-edit-claims-eleven-fields problem, party custom fields in the
-new-party modal, duplicate-party prevention, `record.reassignOwner` having no UI,
-the untranslated strings, and the stale "drawer" comments.
+§3 (a route from a party's detail to its access editor) and §4 are untouched:
+the "open to everyone" label computed from the viewer rather than the grant, the
+every-edit-claims-eleven-fields problem, party custom fields in the new-party
+modal, duplicate-party prevention, `record.reassignOwner` having no UI, and the
+untranslated strings. The stale "drawer" comments were corrected on 2026-09-24
+(`PartyDetail.tsx` now describes the detail sub-screen it is).

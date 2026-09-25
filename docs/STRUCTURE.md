@@ -16,9 +16,16 @@ rates, amounts or totals anywhere. Pricing was removed on 2026-09-21 (migration
 `20260324000000_product_master_trim`). There is no AI assistant; the one that
 existed was removed, and only its database leftovers remain (§6.14).
 
-**As of:** 2026-09-22, version **1.2.0** (every `package.json` in the repo carries
-it). Counts were taken at `43fd5b0`; the defects marked **fixed** below were fixed
-in the commit that added this file.
+**As of:** 2026-09-25, version **1.2.0** (every `package.json` in the repo carries
+it). Counts were first taken at `43fd5b0`; the defects marked **fixed 2026-09-22**
+were fixed in the commit that added this file. The 2026-09-25 audit round
+(`e1ac5ce..7d6ae68`: eleven merged fix branches, then a test reconciliation, the
+command-palette change, and a fix making the shell tests wait until the panel is
+listening) was walked file by file and every part of this document it touched was
+re-checked at `ffb69fe`, and the shell tests again at `7d6ae68`, which changes only
+them; what it fixed is marked **fixed 2026-09-25**, and what it found and left open
+is listed where the owed work lives (§5.11, §7.5, §8.9, §9.7, §10.10). §14's graph
+is still the `43fd5b0` snapshot.
 
 **How to use this file.**
 
@@ -38,8 +45,11 @@ in the commit that added this file.
   `dist/`, `master/staging/`, `office/staging/`, `master/vendor/`, `master/data/`,
   `office/data`, `master/.env`, `office/.env` — see §2.1); and files named
   explicitly as deleted or non-existent (e.g. `ui/src/Drawer.tsx`).
-- Counts come from `git ls-files`, `wc -l` and `grep` at `43fd5b0`. Test counts
-  marked "passed" come from running that suite; others are file or `it(` counts.
+- Counts come from `git ls-files`, `wc -l` and `grep` at `43fd5b0`, re-taken at
+  `ffb69fe` wherever the 2026-09-25 round changed them (`7d6ae68` adds no file and
+  changes only the two shell tests and their harness); §14's import counts were
+  re-taken at `7d6ae68`. Test counts marked "passed" come from running that suite;
+  others are file or `it(` counts.
 - Each section ends with **"Where the code and its comments or docs disagree"**.
   Those items describe what the code does now. Items listed as defects were
   confirmed by reading the code; none has been reproduced in a running app unless
@@ -165,6 +175,9 @@ system, skipped for a tenant whose `externalApi.enabled` is off.
 - **Master browser sockets are push-only.** The Master web UI writes over HTTP; its
   socket (`kind: 'master-admin'`) only receives `panels:changed`,
   `dashboard:changed`, `data:changed` and `sync:conflict`.
+- **Every socket handshake passes an `Origin` check first**, before either kind
+  authenticates: no `Origin` (an Office server, in Node) or a page served from
+  exactly the host it connected to (`master/src/realtime/socket-origin.ts`, §5.9).
 - **No secret travels over UDP.** Discovery says which Master is here (HELLO carries
   `masterUniqueId`, `companyName`, `lanIp`, `httpPort`) and whether it is accepting
   pairing; DISCOVER carries the Office's `hostname` and a nonce. None of that is a
@@ -206,7 +219,10 @@ under the shell, `<Electron appData>/OrderBook/master`, relocatable via
     images/<tenantId>/<imageId>/{master,large,thumb,micro}.webp   product photos
     images/<tenantId>/avatars/<avatarId>/...                       user avatars
   logs/master.log                written by the Electron shell (ORDERBOOK_LOG_FILE); rotates at
-                                 5 MB, live file + 3 rotated copies (.1-.3), checked only at shell start
+                                 5 MB, live file + 3 rotated copies (.1-.3), checked only
+                                 at shell start; opened once per launch, so after a
+                                 data-folder move it stays in the old folder until the
+                                 app is started again
   shell.json                     {autoStartDefaultApplied}: whether the first-run auto-start
                                  default has been applied (the login item itself is OS state)
   documents/                     legacy PDF Designer output; nothing reads it
@@ -226,6 +242,7 @@ else `office/data`; under the shell `<appData>/OrderBook/office`):
 | `device.json` | `office/src/sync/device.ts` | `{deviceCode, counter}` for temporary ids |
 | `clock.json` | `office/src/sync/clock.ts` | HLC state |
 | `outbox.json` | `office/src/sync/outbox.store.ts` | queued `Mutation[]` |
+| `outbox.json.unreadable-<time>` | `office/src/sync/outbox.store.ts` (`setAside`) | a queue file that was read but is not a list of changes, renamed aside (and named in the log) before the panel starts an empty queue; nothing reads it back — recovering it is a person's job |
 | `refusals.json` | `office/src/sync/outbox.store.ts` | up to 200 writes the Master rejected |
 | `snapshot.json` | `office/src/sync/local-store.ts` | `{version:2, snapshot, cursor}` |
 | `users.json` | `office/src/services/user-store.ts` | offline sign-in records |
@@ -238,29 +255,43 @@ else `office/data`; under the shell `<appData>/OrderBook/office`):
 
 `logPath()` and `settingsPath()` in `electron/shell.ts` both use `dataDir()`, so the
 shell writes `logs/<panel>.log` and `shell.json` inside the data folder of either
-panel, not only the Master's.
+panel, not only the Master's. The log is opened once, at launch; everything that
+later says where it is (the crash dialog, Help › Open log folder,
+`getShellSettings`, `openLogFolder`, the `ORDERBOOK_LOG_FILE` a restarted server is
+given) uses `openLogPath()`, the file actually being written, so after a storage
+move the log stays in the old folder until the next launch — known, not changed.
 
-**Where the Office data folder is recorded.** Under the packaged shell the real
-pointer is `<appData>/OrderBook/office-location.json`, written only by the shell's
-own `orderbook:setDataDir`. The shell always puts `ORDERBOOK_OFFICE_DATA_DIR` into the
-child's real environment (`serverEnv` in `electron/office.main.ts`, from that pointer
-or the default), and `loadEnvFiles()` skips any key already in `process.env`. The
-settings file beside the folder (`<appData>/OrderBook/office-settings.env`, passed as
-`ORDERBOOK_OFFICE_SETTINGS_FILE`) does receive `ORDERBOOK_OFFICE_DATA_DIR` from
-`relocateDataDir()`, but under the shell that value is ignored on the next start.
-**Defect:** a storage move triggered from the Master (`panel:setStoragePath` →
-`moveStorage()` → `relocateDataDir()`) or from the panel's own `POST
-/api/storage/path` never updates `office-location.json` and sends the shell no
-message (nothing in `office/src` calls `process.send`), so on a packaged Office Panel
-the move reverts to the old folder at the next restart. Run from source with no
-shell, the settings file is `office/.env` and the move does persist.
+**Where the Office data folder is recorded** (fixed 2026-09-25). Under the packaged
+shell the pointer is `<appData>/OrderBook/office-location.json` (`{"dataDir": …}`).
+The shell reads it before every start of the server and passes the answer in as
+`ORDERBOOK_OFFICE_DATA_DIR` in the real environment, where no settings file can
+override it (`loadEnvFiles()` skips any key already in `process.env`). It also passes
+the pointer's own path as `ORDERBOOK_OFFICE_LOCATION_FILE` (`officeServerEnv` in
+`electron/lib/office-env.ts`), so a storage move — from the Master
+(`panel:setStoragePath` → `moveStorage()` → `relocateDataDir()`) or from the panel's
+own `POST /api/storage/path` — rewrites that pointer (temp-then-rename, the shell's
+format) and the next start follows it. Run from source, with no pointer, the move is
+written into the settings file (`office/.env`) instead. The settings file the shell
+passes (`ORDERBOOK_OFFICE_SETTINGS_FILE`) now sits at one fixed path per machine,
+`<appData>/OrderBook/office-settings.env` beside the pointer, never inside a data
+folder — the same path the uninstall scripts look for. Before this fix a move under
+the shell reverted at the next restart, so a panel that moved its storage before the
+fix may have work saved between the move and that restart stranded in the folder it
+moved to; nothing finds or recovers it (known, §8.9).
 
-The Master's shell passes `ORDERBOOK_MASTER_SETTINGS_FILE` =
-`<appData>/OrderBook/master-settings.env`, but nothing in `master/src` reads it and
-nothing ever creates a file of that name (only the uninstall scripts know to remove
-it), so the Master has no counterpart to the Office's relocation settings file. The
-shell also keeps `<appData>/OrderBook/<panel>-location.json` (data-folder override)
-and copies an approved installer into `userData/pending-update` before running it.
+A move only goes somewhere the panel can own outright: `relocateDataDir()` refuses
+the top of a drive, the home folder of whoever runs the panel, and a folder that
+already holds anything that is not an Office Panel's own (§8.3), because "Uninstall,
+delete data" deletes the folder the pointer names, whole.
+
+The Master has no settings file of its own, deliberately: its folder is moved only
+by the shell (`orderbook:setDataDir`, the first-run chooser), which records it in
+`<appData>/OrderBook/master-location.json` and passes the result as
+`ORDERBOOK_DATA_DIR`. The unread `ORDERBOOK_MASTER_SETTINGS_FILE` the shell used to
+pass is gone (fixed 2026-09-25; `electron/tests/server-env.test.ts` fails on any
+variable an entrypoint hands a server that never reads it); the uninstall scripts
+still sweep a `master-settings.env` if one exists. The shell also copies an approved
+installer into `userData/pending-update` before running it.
 
 ### 1.6 The runtime rules that shape everything
 
@@ -308,13 +339,13 @@ not counted here.
 | `.commandcode/` | 6 | Team-shared Command Code skills in `skills/*/SKILL.md` (§2.12). Only `skills/` is tracked. |
 | `.github/` | 2 | `.github/workflows/ci.yml` (the verify gate on every push and PR) and `.github/workflows/release.yml` (installers for three operating systems). §10.7. |
 | `cleaner/` | 5 | Packaging for the **OrderBook Clean Install** tool (`cleaner/electron-builder.yml`, `cleaner/package.json`, `cleaner/web/index.html`, `cleaner/installer/` 2). An npm workspace with no scripts. Its logic is in `electron/lib/cleaner/`. §10.3. |
-| `docs/` | 50 | All prose: 12 files at the root (13 with this file), `docs/ai-handoffs/` 7, `docs/backend-modules/` 12, `docs/overhaul/` 12, `docs/schema/` 7. §13. |
-| `electron/` | 28 | The desktop shell: 7 root files (incl. the two preload bridges `electron/preload.cts` → `window.orderbook` and `electron/cleaner.preload.cts` → `window.cleaner`, which is why `electron/tsconfig.json` includes `**/*.cts`), `electron/lib/` 11 (incl. `electron/lib/cleaner/` 4), `electron/tests/` 10 (8 tests + 2 fixtures in `electron/tests/fixtures/`). **Not an npm workspace.** §10.1. |
-| `master/` | 336 | Master server and frontend: `master/src/` 197, `master/tests/` 97, `master/web/` 30, `master/assets/fonts/` 5, `master/installer/` 3, plus `master/package.json`, `master/tsconfig.json`, `master/electron-builder.yml` and `master/Launch Master Panel.bat`. |
+| `docs/` | 51 | All prose: 12 files at the root (this file among them), `docs/ai-handoffs/` 7, `docs/backend-modules/` 12, `docs/overhaul/` 12, `docs/schema/` 8. §13. |
+| `electron/` | 34 | The desktop shell: 7 root files (incl. the two preload bridges `electron/preload.cts` → `window.orderbook` and `electron/cleaner.preload.cts` → `window.cleaner`, which is why `electron/tsconfig.json` includes `**/*.cts`), `electron/lib/` 13 (incl. `electron/lib/cleaner/` 4), `electron/tests/` 14 (12 tests + 2 fixtures in `electron/tests/fixtures/`). **Not an npm workspace.** §10.1. |
+| `master/` | 347 | Master server and frontend: `master/src/` 199, `master/tests/` 106, `master/web/` 30, `master/assets/fonts/` 5, `master/installer/` 3, plus `master/package.json`, `master/tsconfig.json`, `master/electron-builder.yml` and `master/Launch Master Panel.bat`. |
 | `office/` | 82 | Office server and frontend: `office/src/` 32, `office/tests/` 12, `office/web/` 31, `office/installer/` 3, plus `office/package.json`, `office/tsconfig.json`, `office/electron-builder.yml` and `office/Launch Office Panel.bat`. |
-| `shared/` | 61 | Types, protocol, sync and i18n: `shared/src/` 44, `shared/tests/` 15, `shared/package.json`, `shared/tsconfig.json`. §3. |
+| `shared/` | 62 | Types, protocol, sync and i18n: `shared/src/` 44, `shared/tests/` 16, `shared/package.json`, `shared/tsconfig.json`. §3. |
 | `tools/` | 11 | Node scripts (`tools/build-web.mjs`, `tools/copy-shell.mjs`, `tools/i18n-sync.mjs`, `tools/make-icons.mjs`, `tools/make-release-key.mjs`, `tools/release.mjs`), `tools/eslint-rules/` (2), `tools/uninstall/` (3). **Not a workspace.** |
-| `ui/` | 86 | The shared React kit and screens: `ui/src/` 72 (66 modules/CSS + 6 fonts), `ui/tests/` 12, `ui/package.json`, `ui/tsconfig.json`. §4. |
+| `ui/` | 93 | The shared React kit and screens: `ui/src/` 72 (66 modules/CSS + 6 fonts), `ui/tests/` 19 (17 tests, the `ui/tests/panel-harness.ts` helper, `ui/tests/tsconfig.json`), `ui/package.json`, `ui/tsconfig.json`. §4. |
 | `.editorconfig` | 1 | UTF-8, LF, 2-space indent, final newline, trim trailing whitespace (except `*.md`). |
 | `.env.example` | 1 | Documents the optional runtime environment variables (§2.10). |
 | `.gitignore` | 1 | §2.9. |
@@ -342,7 +373,7 @@ internal dependency is declared `"@orderbook/…": "*"`.
 | `ui/` | `@orderbook/ui` | **none** (only a `typecheck` script) | **source**: `"."` → `./src/index.ts`, `"./styles.css"` → `./src/styles.css`; `sideEffects: ["*.css"]` (so a bundler may tree-shake unused modules but never drops a CSS import); peer deps `react`/`react-dom` ^19.2.8 | shared (14 `src` files) |
 | `master/` | `@orderbook/master` | `tsc` `src/` → `dist/`, then the master-web build | `main: electron/dist/master.main.js` | shared (108 `src` files) |
 | `master/web/` | `@orderbook/master-web` | `node ../../tools/build-web.mjs` (`tsc -b`, `vite build`) → `master/web/dist` | served by `master/src/http/app.ts` from `web/dist` | shared (21), ui (24) |
-| `office/` | `@orderbook/office` | `tsc` → `dist/`, then the office-web build | `main: electron/dist/office.main.js` | shared (22 `src` files) |
+| `office/` | `@orderbook/office` | `tsc` → `dist/`, then the office-web build | `main: electron/dist/office.main.js` | shared (23 `src` files) |
 | `office/web/` | `@orderbook/office-web` | as master-web → `office/web/dist` | served by `office/src/http/app.ts` | shared (23), ui (24) |
 | `cleaner/` | `@orderbook/cleaner` | none (`"scripts": {}`) | `main: electron/dist/cleaner.main.js` | none |
 | `electron/` | — (not a workspace) | `tsc -p electron/tsconfig.json` → `electron/dist` | copied into `<panel>/electron/dist` | shared, via the root `node_modules` symlink (type imports in `electron/lib/health.ts`, `electron/lib/cleaner/setup-file.ts`, 1 test) |
@@ -400,13 +431,20 @@ shared  (tsc -> shared/dist)             everything imports its dist/, so it is 
 ### 2.4 The verification gate
 
 - `npm run verify` = `npm run lint && npm run typecheck && npm run test`. **A change
-  is not done until all three exit 0.** `AGENTS.md` cites ~1700 tests in 140 files.
+  is not done until all three exit 0.** The suite is 160 test files / 2015
+  tests.
 - `npm run build` builds shared, both servers and both frontends (not the shell).
 - Integration tests need PostgreSQL and **skip silently** when it is unavailable or
   when running as root (§12.6). A skipped suite prints like a green one.
-- `master/web` and `office/web` have no test files. UI defects are invisible to
-  `verify` except through the source-reading guards (§12.3); a browser or Electron
-  pass is real verification.
+- `master/web` and `office/web` have no test files of their own, but since
+  2026-09-25 `ui/tests/master-shell.test.tsx` and `ui/tests/office-shell.test.tsx`
+  boot each panel's whole `App.tsx` in jsdom (`ui/tests/panel-harness.ts` answers
+  `fetch` from a route table, so each screen runs its real `api.ts`). That covers
+  shell behaviour — which screen a key, a toast action or a link lands on, what a
+  session end resets, what the splash says, which change events refresh which
+  screen — alongside the source-reading guards (§12.3). Real layout and CSS,
+  anything jsdom lacks, the desktop shell and packaged apps still need a browser or
+  Electron pass (§12.7).
 
 ### 2.5 Root `package.json`
 
@@ -427,17 +465,17 @@ is `>=20`**; both CI workflows use Node 22. **Workspaces:** `shared`, `ui`,
 | `predev:office` / `dev:office` | build shared and office-web, then `tsx watch src/index.ts` in office |
 | `prestart:master` / `start:master` | build shared and all of master, then `node dist/index.js` |
 | `prestart:office` / `start:office` | build shared and all of office, then `node dist/index.js` |
-| `premigrate` / `migrate` | build shared, then `tsx src/db/migrate-cli.ts` in master |
+| `premigrate` / `migrate` | build shared, then `tsx src/db/migrate-cli.ts` in master. The root script ends in `--` so its arguments reach the CLI: `npm run migrate -- --status` lists instead of applying (it used to apply, because `--status` stopped at the inner `npm run`; fixed 2026-09-25, pinned by `master/tests/operator-scripts.test.ts`) |
 | `seed:dummy` | build shared, then `tsx src/db/seed-dummy-users-cli.ts` |
 | `seed:sample` | build shared, then `tsx src/db/seed-sample-data-cli.ts` |
 | `seed:catalogue` | build shared, then `tsx src/db/seed-catalogue-cli.ts` |
 | `typecheck` | (1) `npm run typecheck --workspaces --if-present` — shared, ui, master, office run `tsc --noEmit`; master-web, office-web run `tsc -b`; cleaner has none; (2) `tsc -p tsconfig.test.json`; (3) `tsc -p ui/tests/tsconfig.json`; (4) `tsc -p electron/tsconfig.json --noEmit` |
 | `lint` | `eslint .` |
-| `i18n:sync` | `node tools/i18n-sync.mjs` — appends every `EN_MESSAGES` key missing from `HI_MESSAGES` with the English text and `// TODO(i18n-hi)`. `shared/src/i18n/hi.ts` has 1277 such lines. |
+| `i18n:sync` | `node tools/i18n-sync.mjs` — appends every `EN_MESSAGES` key missing from `HI_MESSAGES` with the English text and `// TODO(i18n-hi)`. `shared/src/i18n/hi.ts` has 1275 such lines. |
 | `format` | `prettier --write .` — not part of `verify`; no check-only variant |
 | `pretest` / `test` | build shared, then `vitest run` |
 | `test:watch` | `vitest` |
-| `test:coverage` | `vitest run --coverage` (v8 provider). `@vitest/coverage-v8` is **not** in `package-lock.json`. |
+| `test:coverage` | `vitest run --coverage` (v8 provider, `@vitest/coverage-v8` 2.1.9, a root devDependency since 2026-09-25 — before that the script failed on its first line). Writes `coverage/`, which is gitignored and ignored by ESLint. `master/tests/tooling-config.test.ts` holds the provider's version to Vitest's. |
 | `verify` | `npm run lint && npm run typecheck && npm run test` |
 | `release` | `node tools/release.mjs [x.y.z] [--panel master\|office\|cleaner] [--os win\|mac\|linux]` |
 | `release:keygen` | `node tools/make-release-key.mjs` — Ed25519 private PEM outside the repo; public half appended to `TRUSTED_RELEASE_KEYS` in `shared/src/domain/release-keys.ts` |
@@ -446,16 +484,18 @@ is `>=20`**; both CI workflows use Node 22. **Workspaces:** `shared`, `ui`,
 **Workspace-only scripts** (not surfaced at the root):
 
 - **master:** `build:server` (`tsc` only), `reload:catalog`, `wipe:business`,
-  `seed:parties`. **`reload:catalog` and `wipe:business` are the same command**
-  (`tsx src/services/catalog-reload-cli.ts`, no flags). With no flags that CLI
-  **wipes business data and loads nothing**; the catalogue is reloaded only with
-  `--with-catalog`, which no script passes. `seed:parties` passes `--with-parties`
-  (wipe, then three sample parties).
+  `seed:parties` — all three run `tsx src/services/catalog-reload-cli.ts`:
+  `wipe:business` with no flag (wipe only), `reload:catalog` with `--with-catalog`
+  (wipe, then the Swisware catalogue; until 2026-09-25 it passed no flag and was the
+  same command as `wipe:business`), `seed:parties` with `--with-parties` (wipe, then
+  three sample parties). Each wipe empties the whole activity log and says so, with
+  counts, before it starts (§5.3). Run them with the Master stopped.
 - **office:** `build:server`.
 - **both web apps:** `dev` (`vite`), `preview`.
 
-**devDependencies** (15, lockfile versions): `@eslint/js` 9.39.5,
+**devDependencies** (16, lockfile versions): `@eslint/js` 9.39.5,
 `@testing-library/react` 16.3.3, `@types/node` 22.20.1, `@types/supertest` 6.0.3,
+`@vitest/coverage-v8` 2.1.9,
 `electron` 33.4.11 (declared `^33.2.1`), `electron-builder` 25.1.8, `eslint` 9.39.5,
 `eslint-plugin-react-hooks` 7.1.1, `globals` 14.0.0, `jsdom` 25.0.1, `prettier`
 3.9.6, `supertest` 7.2.2, `typescript` 5.9.3 (declared `^5.6.3`), `typescript-eslint`
@@ -513,8 +553,8 @@ with install scripts that are not listed: `esbuild` 0.28.2, the nested
 
 `tseslint.config(...)` with these blocks, in order:
 
-1. `ignores: ['**/dist/**','**/node_modules/**','**/data/**']` — a flat config does
-   not read `.gitignore`, so these are the only exclusions.
+1. `ignores: ['**/dist/**','**/node_modules/**','**/data/**','coverage/**']` — a flat
+   config does not read `.gitignore`, so these are the only exclusions.
 2. `js.configs.recommended` and `tseslint.configs.recommended`.
 3. `@typescript-eslint/no-unused-vars` (error, `^_` ignored) and
    `@typescript-eslint/consistent-type-imports` (error).
@@ -523,7 +563,10 @@ with install scripts that are not listed: `esbuild` 0.28.2, the nested
    for `{master,office}/web/src/**/*.{ts,tsx}` and `ui/src/**/*.{ts,tsx}`.
 6. `orderbook-i18n/no-untranslated-jsx-text` **off** for `{master,office}/web/src/**/*.tsx`
    and `ui/src/**/*.tsx`.
-7. The same rule as **error** for a "swept files" list.
+7. The same rule as **error** for a "swept files" list: `ui/src/ImageCropModal.tsx`
+   and `office/web/src/components/ProductImages.tsx`. A path that matches nothing is
+   not an ESLint error, so `master/tests/tooling-config.test.ts` fails on an entry
+   naming no file.
 
 Lint is **not type-aware**: no `parserOptions.project`/`projectService`, only the
 non-type-checked `tseslint.configs.recommended`, and no import-resolution plugin.
@@ -540,7 +583,7 @@ rule, so the Master's layering (§5.1) is not enforced by lint.
 - **`include`:** `{shared,master,office,electron}/tests/**/*.test.ts` and
   `ui/tests/**/*.test.{ts,tsx}`.
 - **Environments:** `node`, with `environmentMatchGlobs: [['ui/tests/**','jsdom']]`.
-  No `projects` (Vitest 2.1 lacks them), no `setupFiles`, no `globals`: all 140 test
+  No `projects` (Vitest 2.1 lacks them), no `setupFiles`, no `globals`: all 160 test
   files import from `'vitest'` explicitly.
 - **`env.ORDERBOOK_DATA_DIR`** is `<os.tmpdir()>/orderbook-test-data`, so suites stay
   out of `master/data/` (`master/src/config/index.ts` resolves `dataDir` at module
@@ -558,7 +601,8 @@ rule, so the Master's layering (§5.1) is not enforced by lint.
   editor/OS files (`.DS_Store`, `Thumbs.db`, `.idea/`, `.vscode/*` except
   `.vscode/extensions.json`); agent state (`.commandcode/*` except
   `.commandcode/skills/**`, plus `.claude/launch.json`); operator inputs
-  (`CATA.pdf`, `dummy-data/`); strays (`vitest-out.txt`, `.tmp/`).
+  (`CATA.pdf`, `dummy-data/`); strays (`vitest-out.txt`, `.tmp/`); the
+  `npm run test:coverage` report (`coverage/`).
 - `.editorconfig`, `.prettierrc.json`, `.prettierignore`: see §2.1.
 
 ### 2.10 Environment variables
@@ -571,10 +615,11 @@ The Office reads its settings file (`ORDERBOOK_OFFICE_SETTINGS_FILE`, default
 `office/.env`), then `office/.env`, then `<repo>/.env`.
 
 **Under the desktop shell**, the shell puts `PORT`/`OFFICE_PORT`,
-`ORDERBOOK_DATA_DIR`/`ORDERBOOK_OFFICE_DATA_DIR`, `ORDERBOOK_LOG_FILE` and the
-settings-file path in the child's real environment, so the same keys in a `.env`
-have no effect there. A packaged shell also **deletes an inherited `DATABASE_URL`**
-(`electron/shell.ts`), so a terminal's value cannot redirect an installed app.
+`ORDERBOOK_DATA_DIR`/`ORDERBOOK_OFFICE_DATA_DIR`, `ORDERBOOK_LOG_FILE` and, for the
+Office, the pointer and settings-file paths in the child's real environment, so the
+same keys in a `.env` have no effect there. A packaged shell also **deletes an
+inherited `DATABASE_URL`** (`electron/shell.ts`), so a terminal's value cannot
+redirect an installed app.
 
 **In `.env.example` (17 variables, all read by the code):**
 
@@ -601,24 +646,33 @@ have no effect there. A packaged shell also **deletes an inherited `DATABASE_URL
 **Read by runtime code but missing from `.env.example`:** `HOST` (Master bind,
 default `0.0.0.0`); `OFFICE_HOST` (default `127.0.0.1` — a default, not an enforced rule: any value moves the Office bind off loopback); `OFFICE_DISCOVERY_TIMEOUT_MS`
 (8000), `OFFICE_SYNC_RETRY_MS` (5000), `OFFICE_SYNC_BATCH_SIZE` (100);
-`ORDERBOOK_OFFICE_DATA_DIR` (default `office/data`; `office/src/config/paths.ts`
-writes it into the settings file with `writeEnvValue()`, which the packaged shell
-overrides on the next start — §1.5);
-`ORDERBOOK_OFFICE_SETTINGS_FILE`; `ORDERBOOK_LOG_FILE` (echoed by
+`ORDERBOOK_OFFICE_DATA_DIR` (default `office/data`; after a storage move
+`office/src/config/paths.ts` records the new folder in the shell's pointer, or with
+`writeEnvValue()` in the settings file when run from source — §1.5);
+`ORDERBOOK_OFFICE_SETTINGS_FILE`; `ORDERBOOK_OFFICE_LOCATION_FILE` (the shell's
+`office-location.json`, `config.locationFile`; null from a terminal);
+`ORDERBOOK_LOG_FILE` (echoed by
 `master/src/http/health.ts` and `office/src/http/app.ts`); `NODE_ENV` (query counting
 is off only when `production`, `master/src/db/query-counter.ts`); `NODE_OPTIONS`
 (`--max-old-space-size` parsed in `master/src/lib/memory-monitor.ts`);
 `PORTABLE_EXECUTABLE_FILE` / `PORTABLE_EXECUTABLE_DIR` (`detectStandaloneBuild()` in
-`electron/lib/standalone.ts`, honoured only when packaged).
+`electron/lib/standalone.ts`, honoured only when packaged); `APPIMAGE`, `APPDIR` and
+`APPIMAGE_EXTRACT_AND_RUN`, set by the AppImage runtime (`detectAppImage()` and
+`relaunchArguments()` in `electron/lib/appimage.ts`; the Master's release sweep
+reads `APPIMAGE` to spare the file it is running from, §10.8).
 
 **Set by the shell for the server child** (`electron/shell.ts` plus the `serverEnv`
 in each `*.main.ts`): `ELECTRON_RUN_AS_NODE=1`; `NODE_OPTIONS=--max-old-space-size=N`
 (N = 70 % of the RAM cap, clamped 2048–4096 MB; the RAM cap is 60 % of total RAM on
 the Master, 40 % on the Office); `ORDERBOOK_PANEL` and `ORDERBOOK_RAM_CAP_MB`
 (**nothing reads either**); Master: `ORDERBOOK_DATA_DIR`, `PORT`,
-`ORDERBOOK_LOG_FILE`, `ORDERBOOK_MASTER_SETTINGS_FILE` (**nothing in `master/src`
-reads it, and nothing ever creates `master-settings.env`**, §1.5); Office: `ORDERBOOK_OFFICE_DATA_DIR`, `OFFICE_PORT`,
-`ORDERBOOK_LOG_FILE`, `ORDERBOOK_OFFICE_SETTINGS_FILE`.
+`ORDERBOOK_LOG_FILE` (`ORDERBOOK_MASTER_SETTINGS_FILE`, which nothing read, was
+dropped 2026-09-25, §1.5); Office (`officeServerEnv` in `electron/lib/office-env.ts`):
+`ORDERBOOK_OFFICE_DATA_DIR`, `OFFICE_PORT`, `ORDERBOOK_LOG_FILE`,
+`ORDERBOOK_OFFICE_LOCATION_FILE` (the pointer the folder was read from) and
+`ORDERBOOK_OFFICE_SETTINGS_FILE` (`office-settings.env` beside that pointer).
+`ORDERBOOK_LOG_FILE` is the log the shell has open (`openLogPath()`), which after a
+storage move is still the one in the old folder.
 
 **Tools, tests and CI only:** `ORDERBOOK_RELEASE_KEY` (signing PEM path; without it
 the manifest is published unsigned with a warning), `ORDERBOOK_RELEASE_KEY_ID`
@@ -632,8 +686,8 @@ refuses a path inside the repo); `ORDERBOOK_TEST_PG_PORT` (default 55433);
 
 `.github/workflows/ci.yml` runs on every push and PR (ubuntu, Node 22): install
 `postgresql-16`, `npm ci`, `build:shared`, `lint`, `typecheck`, `test`, `build`.
-`.github/workflows/release.yml` builds installers on Windows, macOS and Linux. Both
-are described in §10.7.
+`.github/workflows/release.yml` builds installers on Windows, macOS and Linux, and
+publishes a real release only from `main`. Both are described in §10.7.
 
 ### 2.12 Agent skills (tracked)
 
@@ -649,18 +703,20 @@ are described in §10.7.
 
 ### 2.13 Where the code and its comments or docs disagree
 
-- **ESLint swept-files list.** Of the 5 files in the "error" block, only
-  `ui/src/ImageCropModal.tsx` and `office/web/src/components/ProductImages.tsx`
-  exist. `ui/src/DocumentsScreen.tsx`, `ui/src/PageDesigner.tsx` and
-  `ui/src/PageDesignerInspector.tsx` were deleted with the PDF Designer (commit
-  `dda4ed5`).
+- **Fixed 2026-09-25 — ESLint swept-files list.** It named three files deleted with
+  the PDF Designer (`ui/src/DocumentsScreen.tsx`, `ui/src/PageDesigner.tsx`,
+  `ui/src/PageDesignerInspector.tsx`); they are dropped, and
+  `master/tests/tooling-config.test.ts` fails on an entry naming no file.
 - **No `Untranslated` component exists.** The rule inspects `JSXText` nodes only, so
   `t()` is the intended fix, but a `{'literal'}` expression or an attribute string
   bypasses it, and any element named `Untranslated` (a locally declared one
   included) satisfies it — easy to bypass by accident.
-- **`npm run test:coverage`** names a provider that is not in the lockfile.
-- **`vitest.config.ts`** has a comment about "the designer's geometry" in `ui/tests`;
-  the PDF Designer and any such test are gone.
+  `master/tests/web-catalogue-text.test.ts` catches the string-argument and ternary
+  forms the rule cannot see for the two web apps' error fallbacks.
+- **Fixed 2026-09-25 — `npm run test:coverage`** named a provider that was not
+  installed; `@vitest/coverage-v8` is now a devDependency.
+- **Fixed 2026-09-25 — `vitest.config.ts`**'s comment about "the designer's
+  geometry" in `ui/tests` is gone.
 
 ---
 
@@ -673,8 +729,8 @@ uses Node's `Buffer`). If a rule must mean the same thing on both sides of the L
 a permission key, a setting's fallback, a column name, how two offline edits
 merge, a socket event's payload — it is declared here once.
 
-Tracked: **61 files** — 44 in `shared/src/` (`domain/` 21, `i18n/` 9, `keys/` 3,
-`protocol/` 5, `sync/` 5, `shared/src/index.ts`), 15 in `shared/tests/` (14 suites +
+Tracked: **62 files** — 44 in `shared/src/` (`domain/` 21, `i18n/` 9, `keys/` 3,
+`protocol/` 5, `sync/` 5, `shared/src/index.ts`), 16 in `shared/tests/` (15 suites +
 `shared/tests/activity-tokens.lock.json`), `shared/package.json`,
 `shared/tsconfig.json`.
 
@@ -777,9 +833,9 @@ The 13 keys, in declaration order:
 | `leads.packagingRequiredOnConvert` | leads | boolean | `true` |
 | `leads.quietAfterDays` | leads | number 1–365, days | `30` |
 
-Group headings: `settingGroup.access` "Who can get in", `settingGroup.stock` "Stock
-and prices" (stale), `settingGroup.leads` "Leads and follow-up",
-`settingGroup.integrations` "Other software".
+Group headings: `settingGroup.access` "Who can get in", `settingGroup.stock` "Stock"
+(Hindi `'स्टॉक'`; "Stock and prices" until 2026-09-25), `settingGroup.leads` "Leads
+and follow-up", `settingGroup.integrations` "Other software".
 
 ### 3.5 Company features
 
@@ -834,14 +890,14 @@ the Office four screens — `office/web/src/screens/AddLeadScreen.tsx`,
 
 | File | Purpose / exports |
 |---|---|
-| `shared/src/i18n/en.ts` | `EN_MESSAGES`, **the source of truth**: one flat `as const` object, **2107 keys**. Flat dotted keys; named `{placeholders}` only; no pre-formatted numbers or currency symbols; plurals as `.one`/`.other`. Largest families: `lead.` 171, `access.` 158, `validation.` 156, `fields.` 115, `integrations.` 84, `developer.` 84, `activity.` 76, `error.` 66. |
-| `shared/src/i18n/hi.ts` | `HI_MESSAGES: Record<MessageKey, string>`, a **total** record: a new English key turns the build red until Hindi has it. 2107 keys; 1277 `// TODO(i18n-hi)` markers; 1389 values byte-identical to English. |
+| `shared/src/i18n/en.ts` | `EN_MESSAGES`, **the source of truth**: one flat `as const` object, **2145 keys**. Flat dotted keys; named `{placeholders}` only; no pre-formatted numbers or currency symbols; plurals as `.one`/`.other`. Largest families: `lead.` 175, `access.` 160, `validation.` 156, `fields.` 115, `integrations.` 84, `developer.` 84, `activity.` 79, `error.` 69. |
+| `shared/src/i18n/hi.ts` | `HI_MESSAGES: Record<MessageKey, string>`, a **total** record: a new English key turns the build red until Hindi has it. 2145 keys; 1275 `// TODO(i18n-hi)` markers; 1378 values byte-identical to English. |
 | `shared/src/i18n/keys.ts` | Type machinery. `MessageKey = keyof typeof EN_MESSAGES`; `Placeholders<S>`; `ParamsFor<K>` (`[]` with no placeholders, else a required record — a missing, extra or invented param is a compile error); `CountKey` (stems with `.one` and `.other`: `error.unauthorized.signInFailedRemaining`, `validation.permissions.unknown`, `count.leads`, `count.rows`, `sync.changesRefused`); `MessageParams`; `LocaleCatalogue`. |
 | `shared/src/i18n/translate.ts` | `t(locale, key, params?)` fills placeholders with `String(value)` only (no number formatting). Fallback: requested locale → English → the raw key. `tCount(locale, stem, count)` uses `Intl.PluralRules` and injects `{count}`. Also `createTranslator(locale)` → `Translator`, `resolveCatalogue`. |
 | `shared/src/i18n/locales.ts` | `LOCALES = ['en','hi']`, `Locale`, `DEFAULT_LOCALE = 'en'`, `isLocale`, `LOCALE_LABELS`. The locale is per machine, never synced. |
 | `shared/src/i18n/panel-scoped.ts` | `PANEL_SCOPED_KEYS`: 12 keys (`app.panel`, `backup.export.title`, `backup.restore.confirmWipe`, `settings.storage.title`, `settings.subtitle`, `sync.conflictReview`, `sync.offline`, `sync.offlinePending`, `sync.pendingChanges`, `sync.popoverTitle.offline`/`offlinePending`/`synced`). Each is stored twice in `en.ts` as `master.<key>` and `office.<key>`; the bare key does not exist. `ui/src/i18n.ts` rewrites a bare key to `${uiConfig().panel}.${key}`; `master/tests/i18n-call-sites.test.ts` reads the same list. |
 | `shared/src/i18n/errors.ts` | `ErrorPayload` (`error`, `message`, `messageKey?`, `params?`, `details?`) describes the HTTP error envelope (`error` = stable code, `message` = English). **Nothing imports it**, and the file header's "one shape for HTTP errors and socket acks" is not what the code does: socket acks use `CommandResult` from `socket.ts`, where `error` is the English message and `code` is the stable code (`hub.ts#respond`), so the two shapes put the code in different fields. `errorMessageKey(code)` looks the code up in the private `CODE_TOKENS` map — 22 stable codes (`validation_error`, `forbidden` → `error.generic.forbidden`, `not_found`, `locked_out`, `offline_disabled`, …) — and returns `error.unknown` for any other code; it does not build `error.<code>`. Consumed by `ui/src/errorText.ts`. |
-| `shared/src/i18n/activity.ts` | `ACTIVITY_TOKENS`, derived from every `activity.<entityType>.<action>` key (76 pairs). **Append-only**, because `activity_log` rows can never be updated; `activity.ai_run.*` and `activity.document_template.*` are kept for old rows. `activityMessageKey()` (null for an unknown pair) and `renderActivity(t, input)` (falls back to `"<entityType> · <action>"`, and to the English literal `'Somebody'` when there is no actor name). |
+| `shared/src/i18n/activity.ts` | `ACTIVITY_TOKENS`, derived from every `activity.<entityType>.<action>` key (79 pairs; the 2026-09-25 audit round added `activity.stock.levels_changed`, `activity.party.variant_saved` and `activity.order.stage_changed`). **Append-only**, because `activity_log` rows can never be updated; `activity.ai_run.*` and `activity.document_template.*` are kept for old rows. `activityMessageKey()` (null for an unknown pair) and `renderActivity(t, input)` (falls back to `"<entityType> · <action>"`, and to `logs.actor.unknown` — en "Somebody", hi `'किसी'`, the oblique form every Hindi `{actor} ने …` template needs — when there is no actor name). |
 | `shared/src/i18n/index.ts` | Sub-barrel re-exporting the other 8. |
 
 `tools/i18n-sync.mjs` has no dependencies: it finds each object literal by scanning
@@ -855,7 +911,7 @@ appends every missing key just before the final `};` with its English text and a
 
 | File | Purpose / exports |
 |---|---|
-| `shared/src/keys/commands.ts` | `COMMANDS`, **32** entries: 9 chrome commands (`palette.open` Ctrl+K, `palette.search` `/`, `record.save` Ctrl+S, `record.new` Ctrl+Shift+N (Office only), `view.reset` Ctrl+Shift+R, `view.refresh` F5, `keys.help` Ctrl+/, `view.toggleSidebar` Ctrl+\\, `view.find` Ctrl+F), 14 Master nav and 9 Office nav commands (`nav.<panel>.<tab>`; the first 9 per panel get `Alt+N`, with `platformDefaultChord.darwin` `Meta+N`). Most chrome commands also carry a `Meta+…` Mac default. `CommandScope` (`global`/`screen`), `CommandDef`, `COMMANDS_BY_ID`, `commandsFor(panel)`. |
+| `shared/src/keys/commands.ts` | `COMMANDS`, **33** entries: 9 chrome commands (`palette.open` Ctrl+K, `palette.search` `/`, `record.save` Ctrl+S, `record.new` Ctrl+Shift+N (Office only), `view.reset` Ctrl+Shift+R, `view.refresh` F5, `keys.help` Ctrl+/, `view.toggleSidebar` Ctrl+\\, `view.find` Ctrl+F), 15 Master nav and 9 Office nav commands (`nav.<panel>.<tab>`; the first 9 per panel get `Alt+N`, with `platformDefaultChord.darwin` `Meta+N`). `MASTER_NAV` and `OFFICE_NAV` are declared lists in each sidebar's order, held to the two `App.tsx` sidebars by `shared/tests/keys-nav-order.test.ts`: Parties joined `MASTER_NAV` third on 2026-09-25 (Alt+3), moving Inventory … Party access down one to Alt+4 … Alt+9, and Fields, now tenth, is reached from the palette. Most chrome commands also carry a `Meta+…` Mac default. `CommandScope` (`global`/`screen`), `CommandDef`, `COMMANDS_BY_ID`, `commandsFor(panel)`. |
 | `shared/src/keys/chord.ts` | DOM-free chord parsing and matching. Digits, function keys and named keys match on `code`; letters on `key` unless Alt is held; an Alt-only chord requires Ctrl up (so AltGr does not fire it). Escape and Tab are reserved. `KeyEventLike`, `Chord`, `isReservedChord`, `parseChord`, `formatChord`, `formatChordMac` (⌃⌥⇧⌘), `chordFromEvent`, `matchesChord`. |
 | `shared/src/keys/bindings.ts` | Exports `BINDINGS_STORAGE_KEY = 'ob.keys.v1'`; does no I/O itself. `ui/src/KeyboardProvider.tsx` stores remaps in `localStorage` under `ob.keys.v1:<userId>` (both panels pass `userId`), or bare `ob.keys.v1` with nobody signed in. `BindingMap`: absent = default, `null` = unbound. `defaultBindings()` and `chordFor()` pick the `darwin` default when `navigator` reports a Mac (false on the server). `findConflicts(panel, overrides)`, `parseBindings(raw)` (drops anything unrecognised). |
 
@@ -864,9 +920,9 @@ appends every missing key just before the final `};` with its English text and a
 | File | Purpose / exports |
 |---|---|
 | `shared/src/sync/hlc.ts` | Hybrid logical clock, fixed-width so string order is causal order: `PPPPPPPPPPPPPPPP-CCCCC-DDDDDD` (16-digit ms, 5-digit counter, 6-char device code). Never runs backwards; the counter throws above 99 999. `HlcParts`, `Hlc`, `formatHlc`, `parseHlc`, `compareHlc`, `HlcState`, `initialHlcState(deviceCode)`, `tickHlc(state, nowMs)`, `observeHlc(state, remote, nowMs)`. The caller passes the time in. |
-| `shared/src/sync/ids.ts` | Record identity across the offline boundary. **Temporary id:** 15 chars (`TEMP_ID_LENGTH`) = 6-char device code + 9-digit counter, minted by `office/src/sync/device.ts`. **Permanent id:** 12 chars (`PERMANENT_ID_LENGTH`) = 2-letter prefix + 10 digits, minted only by the Master (formatted by `master/src/repositories/identity.repository.ts`), in `compareForIdAssignment` order (HLC, then device code) — the sort is applied in `master/src/services/sync.service.ts#applyPush` (`[...request.mutations].sort(compareForIdAssignment)`, line 91), not in the repository. Device alphabet `23456789ABCDEFGHJKMNPQRSTVWXYZ` (no 0/O/1/I/L/U). `SYNCABLE_ENTITIES` (12) and `ENTITY_PREFIX`: lead LD, order OD, line_item LI, party PT, product PR, product_category PC, product_variant VR, party_variant PV, timeline_entry TL, reservation RS, role RL, user US. Also `isSyncableEntity`, `isValidDeviceCode`, `deviceCodeFromSeed` (FNV-1a), `formatTemporaryId`, `formatPermanentId`, `isTemporaryId`, `isPermanentId`, `deviceCodeOf`, `entityOfPermanentId`, `DEVICE_CODE_LENGTH`. |
+| `shared/src/sync/ids.ts` | Record identity across the offline boundary. **Temporary id:** 15 chars (`TEMP_ID_LENGTH`) = 6-char device code + 9-digit counter, minted by `office/src/sync/device.ts`. **Permanent id:** 12 chars (`PERMANENT_ID_LENGTH`) = 2-letter prefix + 10 digits, minted only by the Master (formatted by `master/src/repositories/identity.repository.ts`), in `compareForIdAssignment` order (HLC, then device code) — the sort is applied in `master/src/services/sync.service.ts#applyPush` (`[...request.mutations].sort(compareForIdAssignment)`, line 92), not in the repository. Device alphabet `23456789ABCDEFGHJKMNPQRSTVWXYZ` (no 0/O/1/I/L/U). `SYNCABLE_ENTITIES` (12) and `ENTITY_PREFIX`: lead LD, order OD, line_item LI, party PT, product PR, product_category PC, product_variant VR, party_variant PV, timeline_entry TL, reservation RS, role RL, user US. Also `isSyncableEntity`, `isValidDeviceCode`, `deviceCodeFromSeed` (FNV-1a), `formatTemporaryId`, `formatPermanentId`, `isTemporaryId`, `isPermanentId`, `deviceCodeOf`, `entityOfPermanentId`, `DEVICE_CODE_LENGTH`. |
 | `shared/src/sync/mutations.ts` | The outbox record. `Mutation`: `mutationId` (client-generated; replay is a no-op), `kind`, `entity`, `entityId`, `hlc`, `deviceCode`, `payload`, `fields` (exactly the fields this edit asserts), `baseFieldHlc` (per-field HLC the editor saw), `actorUserId`, `createdAt`. **`MUTATION_KINDS` (16):** `lead.create`, `lead.update`, `lead.setStage`, `lead.addRemark`, `lead.convert`, `order.update`, `order.setStage`, `order.dispatch`, `party.create`, `party.update`, `product.create`, `product.update`, `partyVariant.upsert`, `stock.inbound`, `stock.adjust`, `stock.setReorderLevel`. `MUTATION_PERMISSIONS` maps each kind to its key (e.g. `lead.convert→lead.convert`, `order.dispatch→orders.dispatch`, `partyVariant.upsert→parties.edit`, `stock.inbound`/`setReorderLevel→inventory.edit`); the panel checks it locally and the Master again. `MutationStatus` (`applied`/`merged`/`duplicate`/`rejected`), `MutationFieldConflict`, `MutationResult`, `SyncPushRequest`, `SyncPushResponse` (`results`, `idMappings`, `serverHlc`). **Deletes and restores are never mutations**; they need the Master online. |
-| `shared/src/sync/merge.ts` | `mergeFields(target, incoming)` per asserted field (below). Fields in the private `NON_CONFLICTING_FIELDS` set (`updatedAt`, `version`, `hlc`, `searchVector`; not exported — exposed only through `isConflictWorthy`) are never reported. Values are compared with `===`, or with `JSON.stringify` only when both are objects. Outcome: `accepted`, `fieldHlc`, `conflicts`, `status` (`merged`/`applied`). Also `isConflictWorthy`, `MergeCandidate`, `MergeTarget`, `MergeOutcome`. **Used only by `master/src/services/sync.service.ts`** (`mergeFields(` at line 502); `order.service.ts` and `catalog.service.ts` only stamp the per-field HLCs the merge later reads (they name `mergeFields` in comments). Nothing in `office/src` uses it. |
+| `shared/src/sync/merge.ts` | `mergeFields(target, incoming)` per asserted field (below). Fields in the private `NON_CONFLICTING_FIELDS` set (`updatedAt`, `version`, `hlc`, `searchVector`; not exported — exposed only through `isConflictWorthy`) are never reported. Values are compared with `===`, or with `JSON.stringify` only when both are objects. Outcome: `accepted`, `fieldHlc`, `conflicts`, `status` (`merged`/`applied`). Also `isConflictWorthy`, `MergeCandidate`, `MergeTarget`, `MergeOutcome`. **Used only by `master/src/services/sync.service.ts`** (`mergeFields(` at line 503); `order.service.ts` and `catalog.service.ts` only stamp the per-field HLCs the merge later reads (they name `mergeFields` in comments). Nothing in `office/src` uses it. |
 | `shared/src/sync/apply-change.ts` | `applyChangeToSnapshot(snapshot, event)` → `ApplyOutcome` `applied` / `refresh` / `ignored`. Any entity in `SNAPSHOT_FORCING_ENTITIES` gives `refresh`. `deleted` removes the row (lead, party, product, order). Otherwise upsert (new rows first) for lead, party, product, product_category, order, and stock keyed by `variantId`. Unknown entities → `ignored`. One implementation shared by `office/src/realtime/master-connection.ts` and `office/web/src/App.tsx`. |
 
 **How a merge decides**, for each field the incoming edit asserts:
@@ -961,23 +1017,29 @@ protocol and version).
 **`shared/src/protocol/desktop.ts` — shell/web and health contracts.**
 `DesktopBridge` (`window.orderbook`) requires `applyUpdate()` and `shellVersion`;
 eight methods are optional because older shells lack them: `chooseDirectory`,
-`getDataDir`, `setDataDir`, `getShellSettings` (incl. `standalone?`),
-`setShellSettings`, `openLogFolder`, `uninstall({keepData})`, `onMenuCommand`.
+`getDataDir`, `setDataDir`, `getShellSettings` (incl. `standalone?` and, since
+2026-09-25, `systemPackage?` — a Linux copy not started from an AppImage, in a
+shipped build the `.deb`, which `applyUpdate` refuses), `setShellSettings`,
+`openLogFolder`, `uninstall({keepData})`, `onMenuCommand`.
 `PanelHealth` is the `GET /api/health` shape the shell polls; its `dataDir`,
 `logFile`, `installerDir`, `installer` and `runtime` fields go to loopback callers
 only. Also `PanelBootState`, `PanelBootStatus`, `PanelHealthInterface`,
 `PreparedInstaller` (path, sha256, version), `PanelRuntimeHealth`.
 
-### 3.11 `shared/tests/` (14 suites, 218 tests passed, no database)
+### 3.11 `shared/tests/` (15 suites, no database)
+
+Counts are tests passed at `43fd5b0`. The three files the 2026-09-25 round changed
+and the one it added show their `it(` count instead, marked `it(`.
 
 | File | Tests | Pins |
 |---|---|---|
-| `shared/tests/settings.test.ts` | 85 | every setting has label and help in both languages; every parser accepts its fallback and rejects wrong shapes; controls fit fallbacks; groups declared |
+| `shared/tests/settings.test.ts` | 14 `it(` | every setting has label and help in both languages; every parser accepts its fallback and rejects wrong shapes; controls fit fallbacks; groups declared; its own table of wrong shapes names only real settings (a dead `pricing.enabled` entry sat there unread until 2026-09-25) |
 | `shared/tests/keys.test.ts` | 26 | chord parsing and the three matching rules |
 | `shared/tests/sync.test.ts` | 18 | HLC tick/observe, id formats and assignment order, field-level merge |
 | `shared/tests/discovery.test.ts` | 16 | DISCOVER/HELLO round trip; foreign traffic rejected |
-| `shared/tests/i18n-coverage.test.ts` | 15 | every permission/module/action/group/template has a token; `hi.ts` has no missing or extra keys and identical placeholders; no English string has a 3+ digit run or `₹`; the activity lock holds; plural stems complete |
-| `shared/tests/i18n.test.ts` | 14 | `t`, `tCount`, `createTranslator` |
+| `shared/tests/i18n-coverage.test.ts` | 17 `it(` | every permission/module/action/group/template has a token; `hi.ts` has no missing or extra keys and identical placeholders; no English string has a 3+ digit run or `₹`; no price word in either catalogue (Hindi stems with their vowel signs, matched on letter boundaries so `'गोदाम'` passes); every Hindi activity template has a postposition after `{actor}`; the activity lock holds; plural stems complete |
+| `shared/tests/i18n.test.ts` | 16 `it(` | `t`, `tCount`, `createTranslator`, `renderActivity`'s `logs.actor.unknown` stand-in |
+| `shared/tests/keys-nav-order.test.ts` | 2 `it(` | reads both `App.tsx` sidebars and holds `MASTER_NAV` and `OFFICE_NAV` to their order (added 2026-09-25) |
 | `shared/tests/pick-score.test.ts` | 8 | picker tiers and tie-breaks |
 | `shared/tests/inventory-view.test.ts` | 7 | `withDefaultReorderLevel`, `withoutReservations` |
 | `shared/tests/wire-optionality.test.ts` | 7 | reads the source: `SyncSnapshot` fields beyond the 1.0.2 core and `CompanyFeatures` fields other than `freeToSell` are optional |
@@ -986,29 +1048,27 @@ only. Also `PanelBootState`, `PanelBootStatus`, `PanelHealthInterface`,
 | `shared/tests/apply-setting-change.test.ts` | 4 | a `setting` change forces a refresh on a connected panel |
 | `shared/tests/keys-implemented.test.ts` | 4 | every `COMMANDS` id is handled by `useCommand(…)`, a `command.id ===` switch or a `shellCommands` key under `ui/src`, `master/web/src` or `office/web/src` (walks the disk) |
 | `shared/tests/stock-note.test.ts` | 3 | `isBlankNote` |
-| `shared/tests/activity-tokens.lock.json` | — | 56 committed `activity.*` tokens that must never disappear from `en.ts` (the catalogue has 76) |
+| `shared/tests/activity-tokens.lock.json` | — | 59 committed `activity.*` tokens that must never disappear from `en.ts` (the catalogue has 79) |
 
 ### 3.12 Where the code and its comments or docs disagree
 
 - `domain/fields.ts` has **four** option-list sets (the retired `docs/CODE_MAP.md`
   said six).
-- **Stale pricing wording** in comments: `socket.ts` (`SNAPSHOT_FORCING_ENTITIES`:
-  "per-party negotiated rates… stale prices"), `apply-change.ts` ("a party's
-  negotiated rate"), `merge.ts` ("a rate or a quantity"), `product-import.ts` ("the
-  bulk price-list edit"), `settings.ts` ("a price column the actor may not set").
-- **User-visible:** `settingGroup.stock` reads "Stock and prices" (Hindi
-  `'स्टॉक और दाम'`) in a product with no prices.
-- **Wrong counts in comments:** `permissions.ts` "the 32 + 6 tokens" (34
-  module-action keys); `commands.ts` Master nav "Thirteen screens" (`MASTER_NAV` has
-  14); the `SETTING_GROUPS` doc comment in `settings.ts` says "fifteen settings"
-  (13).
-- **Misplaced doc comments in `SETTINGS`:** the comment for
-  `catalog.importCreatesCategories` sits above `security.offlineSignInEnabled`, and
-  the one for `leads.quietAfterDays` above `leads.followUpDefaultDays`.
-- **`desktop.ts` header** says `DesktopBridge` has "exactly one method"; it has one
-  required method, one required property and eight optional methods.
-- **`company-features.ts`** says "resolve once at the edge"; the Office calls
-  `resolveCompanyFeatures` in four screens.
+- **Fixed 2026-09-25 — stale pricing wording** in the comments of `socket.ts`,
+  `apply-change.ts`, `merge.ts`, `product-import.ts` and `settings.ts`, and in the
+  "quoted at" idioms of `entities.ts` and `inputs.ts`.
+- **Fixed 2026-09-25 — user-visible:** `settingGroup.stock` read "Stock and prices"
+  (Hindi `'स्टॉक और दाम'`); it is "Stock" / `'स्टॉक'`, and
+  `shared/tests/i18n-coverage.test.ts` now keeps price words out of both catalogues.
+- **Fixed 2026-09-25 — wrong counts in comments** (`permissions.ts` tokens,
+  `commands.ts` "Thirteen screens", `settings.ts` "fifteen settings") and the
+  **misplaced doc comments** in `SETTINGS` (`catalog.importCreatesCategories`,
+  `leads.quietAfterDays`) and on `PanelHealth`.
+- **Fixed 2026-09-25 — `desktop.ts` header** ("exactly one method") and
+  **`company-features.ts`** ("resolve once at the edge") now say what the code does.
+- **Fixed 2026-09-25 — `MASTER_NAV` had no Parties entry**, so the palette could not
+  open Parties by name and Alt+3…9 each opened the screen one below the one the
+  sidebar showed there (§3.8).
 - **Internet releases:** `release-signature.ts`, `release-keys.ts` and `version.ts`
   describe fetching builds over the internet, and
   `master/src/services/github-releases.ts` does so when configured — one of two
@@ -1019,8 +1079,10 @@ only. Also `PanelBootState`, `PanelBootStatus`, `PanelHealthInterface`,
   the LAN (`assertReachableUrl` refuses only non-http(s) schemes and the Master's own
   port on localhost). `TRUSTED_RELEASE_KEYS` is empty, so no signed manifest verifies
   until `npm run release:keygen` has run.
-- **Hard-coded English:** `renderActivity` uses `'Somebody'`, not in the catalogue.
-- **Hindi** is complete by type only: 1277 `TODO(i18n-hi)` placeholders.
+- **Fixed 2026-09-25 — hard-coded English:** `renderActivity` filled `{actor}` with
+  `'Somebody'`; it reads `logs.actor.unknown`, and the 11 Hindi `activity.*`
+  templates that were still English are translated.
+- **Hindi** is complete by type only: 1275 `TODO(i18n-hi)` placeholders.
 - **23 of the 79 client→server events have no caller in `office/src`** (a grep for
   each literal event name finds none): `party:list`/`create`/`update`,
   `product:create`/`update`, `category:list`, `partyVariant:list`/`upsert`,
@@ -1039,16 +1101,17 @@ and CSS source, never built**. Neither panel keeps its own copy.
 
 | What | Count (`git ls-files ui`) |
 |---|---|
-| Tracked files | **86** |
-| `ui/src/*.tsx` | 44 |
-| `ui/src/*.ts` (incl. the `ui/src/index.ts` barrel) | 17 (61 modules, 9,083 lines) |
-| `ui/src/*.css` | 5 (3,863 lines; `ui/src/base.css` alone is 3,316) |
+| Tracked files | **93** |
+| `ui/src/*.tsx` | 43 |
+| `ui/src/*.ts` (incl. the `ui/src/index.ts` barrel) | 18 (61 modules, 8,864 lines) |
+| `ui/src/*.css` | 5 (3,777 lines; `ui/src/base.css` alone is 3,230) |
 | `ui/src/fonts/*.woff2` | 6 (223,072 bytes) |
-| `ui/tests/` | 11 test files + `ui/tests/tsconfig.json`; **56 tests passed** |
+| `ui/tests/` | 17 test files + the `ui/tests/panel-harness.ts` helper + `ui/tests/tsconfig.json` |
 
 **External imports in `ui/src`:** only `react`, `@orderbook/shared` and `blurhash`.
 No `fetch(`, no `socket.io`, no `react-dom`, no `../` out of the package. **The kit
-never talks to a server** (§4.10).
+never talks to a server** (§4.10). (`ui/tests/panel-harness.ts` is the one place under
+`ui/` that loads panel code, and only at run time — see §4.11.)
 
 ### 4.1 How the panels consume it
 
@@ -1089,10 +1152,10 @@ never talks to a server** (§4.10).
 
 | File | Exports | What it does |
 |---|---|---|
-| `ui/src/AppShell.tsx` | `NavItem`, `NavGroup`, `flattenNav`, `AppShell` | The window frame for both panels: `PresenceRail`, a collapsible sidebar (brand button → `onNavigate('dashboard')`, nav groups, collapse toggle), then `.ob-main` with topbar, optional `filterbar`, `<main class="ob-content">`, footer and `overlays`. An item with `children` gets a fold chevron and unfolds while the active page is inside it; a collapsed sidebar shows top-level modules only. |
+| `ui/src/AppShell.tsx` | `NavItem`, `NavGroup`, `flattenNav`, `AppShell` | The window frame for both panels: `PresenceRail`, a collapsible sidebar (brand button → `onNavigate('dashboard')`, nav groups, collapse toggle), then `.ob-main` with topbar, optional `filterbar`, `<main class="ob-content">`, footer and `overlays`. An item with `children` gets a fold chevron and unfolds while the active page is inside it; a collapsed sidebar shows top-level modules only. Registers `useCommand('view.toggleSidebar', onToggleCollapsed)`, so Ctrl+\\ and the palette row fold the sidebar the panel actually draws. Its labels (`nav.modules`, `nav.home`, `nav.collapse`, …) go through `t()`. |
 | `ui/src/ScreenHost.tsx` | `ScreenSpec`, `ScreenHost` | Keep-alive tabs. Each screen mounts on first visit inside React 19.2's `<Activity mode="visible\|hidden">`: hidden screens keep state and DOM, but their effect cleanups run. The visited set updates during render (no blank first frame). The `key` is `${id}:${resetNonce[id]}`, so bumping a nonce remounts that screen. A private `ScreenPane` (`.ob-pane`) saves/restores `scrollTop`. |
-| `ui/src/KeyboardProvider.tsx` | `KeyboardProvider`, `useKeyboard`, `useCommand` | One `document` keydown listener (bubble phase). Bindings keyed per user (`ob.keys.v1:<userId>`; corrupt → `{}`). Skips events already `defaultPrevented`; ignores unmodified chords while typing in `input`/`textarea`/`select`/contenteditable; ignores `scope:'screen'` commands while typing or while a *visible* `[role="dialog"]` exists (`checkVisibility()`). Handles `palette.open`, `palette.search`, `keys.help`, `view.toggleSidebar`, `view.find` (focuses the visible `input[data-screen-search]`, else opens the palette) itself; everything else goes to `runCommand`: the `useCommand` registration stack (top first), then `command.tab` → `onNavigate`, then `shellCommands[id]`. |
-| `ui/src/CommandPalette.tsx` | `PaletteRecords`, `KeyboardOverlays`, `PaletteButton` | `KeyboardOverlays` mounts the private `CommandPalette` (a `Modal` listing commands plus record hits from the panel's debounced `searchRecords(term)`, terms ≥ 2 chars; `offline: true` shows a note) and the private `KeyboardHelp` sheet (a `<dl class="ob-kv">` with conflicts flagged via `findConflicts`). Subscribes once to the desktop menu via `subscribeMenu`. The bridge maps the shell's short ids **before** checking the `COMMANDS_BY_ID` whitelist — `help.shortcuts` → `keys.help` (opens the help sheet), `nav.<tab>` → `nav.<panel>.<tab>` — and then drops anything not in `COMMANDS_BY_ID` (`settings.developer` is intercepted by each `App.tsx` before it gets here). `PaletteButton` is the topbar entry. Chords shown with `formatChordMac` on a Mac (`navigator.userAgent` contains `Mac` or `userAgentData.platform === 'macOS'`), else `formatChord`. |
+| `ui/src/KeyboardProvider.tsx` | `KeyboardProvider`, `useKeyboard`, `useCommand` | One `document` keydown listener (bubble phase). Props: `panel`, `userId`, `onNavigate`, `canNavigate` (whether `onNavigate` would go to a screen — each panel passes the same sidebar test its navigation applies; absent means every screen) and `shellCommands`. Bindings keyed per user (`ob.keys.v1:<userId>`; corrupt → `{}`). Skips events already `defaultPrevented`; ignores unmodified chords while typing in `input`/`textarea`/`select`/contenteditable; ignores `scope:'screen'` commands while typing or while a *visible* `[role="dialog"]` exists (`checkVisibility()`). The listener answers `view.find` itself (focuses the visible `input[data-screen-search]`, else opens the palette) — chord only. Everything else goes to `runCommand`, which a palette row and a menu item reach the same way: `palette.open`/`palette.search`/`keys.help` (the provider's own state), then the `useCommand` registration stack, then `command.tab` → `onNavigate`, then `shellCommands[id]`. **`offers(commandId)`** answers, in the same order and without running anything, whether a command would do something — what the palette lists: no `view.find`, no nav row for a screen `canNavigate` refuses, no shell command the panel left `null` (fixed 2026-09-25: the palette used to list all of them, and each did nothing). **`useCommand` ranks registrations by mount order, fixed at first render** (a dialog inside a screen always outranks it), and depends on the provider's stable `push`/`pop`, not its api object — before 2026-09-25 every palette or help-sheet open re-pushed registrations children first, so Ctrl+S in an open `PartyFormModal` saved the lead behind it. |
+| `ui/src/CommandPalette.tsx` | `PaletteRecords`, `KeyboardOverlays`, `PaletteButton` | `KeyboardOverlays` mounts the private `CommandPalette` (a `Modal` listing the commands `keyboard.offers()` accepts, plus record hits from the panel's debounced `searchRecords(term)`, terms ≥ 2 chars; `offline: true` shows a note) and the private `KeyboardHelp` sheet (a `<dl class="ob-kv">` with conflicts flagged via `findConflicts`). Subscribes once to the desktop menu via `subscribeMenu`. The bridge maps the shell's short ids **before** checking the `COMMANDS_BY_ID` whitelist — `help.shortcuts` → `keys.help` (opens the help sheet), `nav.<tab>` → `nav.<panel>.<tab>` — and then drops anything not in `COMMANDS_BY_ID` (`settings.developer` is intercepted by each `App.tsx` before it gets here). `PaletteButton` is the topbar entry. Chords shown with `formatChordMac` on a Mac (`navigator.userAgent` contains `Mac` or `userAgentData.platform === 'macOS'`), else `formatChord`. |
 | `ui/src/FilterBarSlot.tsx` | `FilterBarProvider`, `FilterBarOutlet`, `useFilterBar` | Lets a screen publish the strip under the topbar. Separate setter and value contexts prevent a publish/re-render loop; `release(node)` clears only if this screen still owns the strip. |
 | `ui/src/TopbarSlot.tsx` | `TopbarActionsProvider`, `TopbarActionsOutlet`, `useTopbarActions` | The same pattern for a control in the topbar's trailing cluster; clears on unmount without an ownership check. |
 | `ui/src/SubNavSlot.tsx` | `SubNavState`, `SubNavProvider`, `graftSubNav`, `useSubNavState`, `useClearSubNav`, `useSubNav` | Per-screen registry (ref-held `Map` + version counter) of "open operation" entries grafted under a module in the sidebar. `useSubNav` publishes only when a content signature changes. Entries are **not** cleared on teardown (hiding a screen must not remove its entry); only `useClearSubNav` or `useSubNav(id, null)` remove them. |
@@ -1102,7 +1165,7 @@ never talks to a server** (§4.10).
 | `ui/src/PresenceRail.tsx` | `RailState`, `PresenceRail` | The 3px connection strip; `RailState` = `synced \| syncing \| offline \| offlinePending \| conflict`. Rendered only by `AppShell`. |
 | `ui/src/Clock.tsx` | `Clock` | Footer clock, ticks every 500 ms. |
 | `ui/src/Splash.tsx` | `Splash` | Cold-start screen: lattice mark, wordmark, determinate bar (`progress` 0–1, `label`); `error` replaces the bar with Retry. Minimum hold `SPLASH_MS = 1100`, dropped when `motionDisabled()`. |
-| `ui/src/ErrorBoundary.tsx` | `ErrorBoundary` | App-wide render-error screen (`.ob-crash`): message, first 6 lines of the component stack, Reload / Copy (`navigator.clipboard.writeText`). |
+| `ui/src/ErrorBoundary.tsx` | `ErrorBoundary` | App-wide render-error screen (`.ob-crash`): message, first 6 lines of the component stack, Reload / Copy (`copyText`, §4.8). |
 
 ### 4.3 Foundation components
 
@@ -1125,8 +1188,10 @@ never talks to a server** (§4.10).
 | `ui/src/FieldGrid.tsx` | `FieldGrid`, `FieldGroup`, `Field` | dense multi-column form grid, `span` 1–3 |
 | `ui/src/SuggestInput.tsx` | `SuggestInput`, `Select` (forwardRef) | `SuggestInput`: type or pick, off-list values accepted. `Select`: pick-only with the `<select>` API (reads `<option>` children, emits `{ target: { value } }`). Neither calls `preventDefault` on Enter, so `useEnterToAdvance` moves on in the same keypress; Escape is claimed only when the list was "summoned". |
 | `ui/src/Combobox.tsx` | `ComboboxOption<T>`, `Combobox` | typeahead that adds a row; renders ≤ 200 matches (`RENDER_CAP`) |
-| `ui/src/Picker.tsx` | `PickerOption`, `PickerPage`, `Picker` | server-backed picker (`fetchPage({ term, include, signal })`, truncation footer, offline flag, recents/pins in `localStorage` `${storageKey}.recent`/`.pinned`, Ctrl+Enter `onCreate`). **Neither panel imports it.** |
 | `ui/src/FilterBar.tsx` | `FilterChip`, `FilterDivider` | pieces a list screen publishes via `useFilterBar` |
+
+`ui/src/Picker.tsx` (a server-backed picker neither panel imported) and its CSS were
+removed on 2026-09-25.
 
 ### 4.5 Data display
 
@@ -1134,24 +1199,24 @@ never talks to a server** (§4.10).
 |---|---|---|
 | `ui/src/DataTable.tsx` | `DataTableColumn<T>`, `DataTableSort`, `DataTable` | rows open on single click (`onRowOpen`); controlled sort (`sortValue`, missing last); **virtualized above 100 rows** (`OVERSCAN = 8`, measures the `.ob-pane` scroller); columns fitted via `fitColumns`/`gridTemplateFor`; cells can be redacted (`redactedReason`); no pager |
 | `ui/src/fitColumns.ts` | `FittableColumn`, `columnWidthPx`, `fitColumns`, `gridTemplateFor` | pure: drops `priority: 3`, then `2`, never `1`; flexible tracks count as 120px; filler `minmax(0, 1fr)` when none is flexible |
-| `ui/src/DataDisplay.tsx` | `useColourHex`, `ColourChip`, `ColourName`, `PillTone`, `StatusPill`, `TimelineEntry`, `Timeline`, `KeyValueList`, `IdField` | `useColourHex` resolves `stock.colour` hex values |
+| `ui/src/DataDisplay.tsx` | `useColourHex`, `ColourChip`, `ColourName`, `PillTone`, `StatusPill`, `TimelineEntry`, `Timeline`, `KeyValueList`, `IdField` | `useColourHex` resolves `stock.colour` hex values; `IdField`'s Copy goes through `copyText` and says Copied only when the copy happened |
 | `ui/src/States.tsx` | `EmptyState`, `ErrorState`, `ConflictBanner`, `OfflineBanner`, `Skeleton`, `SkeletonRows`, `SkeletonTable` | `SkeletonTable` builds the same grid template as `DataTable` (`gridTemplateFor`: same widths and filler track) but never drops a column, because it calls `fitColumns(columns, 0, 0)` and zero width means "not measured" |
 | `ui/src/KanbanBoard.tsx` | `BoardStage`, `BoardItem`, `KanbanBoard` | native HTML5 drag; every card is a `role="button"` `div` (so it can nest its own menu) that opens (`onOpen`) on **double-click** or Enter — not on a single click, unlike `DataTable` rows. Office only. |
 | `ui/src/CursorPager.tsx` | `LoadMorePager`, `NewerOlderPager` | keyset paging, no page numbers |
 | `ui/src/ProgressiveImage.tsx` | `ProgressiveImage` | blurhash placeholder (module-wide decode cache) under `<img src="/uploads/images/:imageId/:variant">`; variant chosen from `slotPx` via `variantForSlot`; no fade-in |
 | `ui/src/PermissionGrid.tsx` | `PermissionGrid` | module × action matrix from the server's `PermissionCatalogue`; cells checkbox / dash / blocked-for-tier |
 | `ui/src/PermissionSummary.tsx` | `PermissionSummary` | read-only view of what a role grants, including what it does not |
-| `ui/src/permissionLabels.ts` | `moduleLabel`, `actionLabel`, `capabilityLabel`, `groupLabel` | sentence-case English labels built from the key (`stock.adjust` → "Stock adjust"); does not call `t()` and ignores the catalogue's tokens (§4.12). Used by `PermissionGrid.tsx` and `PermissionSummary.tsx` |
+| `ui/src/permissionLabels.ts` | `moduleLabel`, `actionLabel`, `capabilityLabel`, `groupLabel` | reads each key's catalogue token through `t()` — `module.<key>`, `action.<action>`, `permission.<key>`, `capabilityGroup.<key>` — and falls back to a sentence-case name built from the key only for a key the catalogue does not know (a newer Master's permission). Used by `PermissionGrid.tsx`, `PermissionSummary.tsx` and the Master's Integrations key scopes |
 
 ### 4.6 Overlays
 
 | File | Exports | Notes |
 |---|---|---|
-| `ui/src/useOverlay.ts` | `FOCUSABLE`, `useOverlay` | called only by `Modal.tsx` (`useOverlay(` appears once); `ConfirmDialog`, the `CommandPalette` palette and help sheet, `ImageCropModal`, `PartyFormModal` and the settings dialogs get it by rendering `Modal`, while `Popover` and the `SuggestInput`/`Select`/`Picker` lists handle their keys themselves. Traps Tab (capture), closes on Escape (bubble, only if not prevented). Only the **last visible** `[role="dialog"]` reacts to Escape (`checkVisibility()`), so a dialog on a hidden pane cannot steal it. Focus returns to the trigger only if still connected and visible. |
+| `ui/src/useOverlay.ts` | `FOCUSABLE`, `useOverlay` | called only by `Modal.tsx` (`useOverlay(` appears once); `ConfirmDialog`, the `CommandPalette` palette and help sheet, `ImageCropModal`, `PartyFormModal` and the settings dialogs get it by rendering `Modal`, while `Popover` and the `SuggestInput`/`Select` lists handle their keys themselves. Traps Tab (capture), closes on Escape (bubble, only if not prevented). Only the **last visible** `[role="dialog"]` reacts to Escape (`checkVisibility()`), so a dialog on a hidden pane cannot steal it. Focus returns to the trigger only if still connected and visible. |
 | `ui/src/Modal.tsx` | `ModalSize`, `Modal` | centred `aria-modal` dialog, `sm`/`md`/`lg`/`xl`, `expanded` + `onToggleExpand` |
 | `ui/src/Popover.tsx` | `Popover` | anchored surface; closes on outside `mousedown` or Escape; does **not** use `useOverlay` |
 | `ui/src/ConfirmDialog.tsx` | `ConfirmRequest`, `ConfirmDialog`, `ConfirmProvider`, `useConfirm` | the single confirmation dialog; outside a provider `useConfirm()` resolves `false`; a second request resolves the first `false` |
-| `ui/src/Toast.tsx` | `ToastTone`, `useToast`, `ToastProvider` | bottom-left, ≤ 3, 4000 ms each; `push(message, { tone, action })`; API object memoised on purpose |
+| `ui/src/Toast.tsx` | `ToastTone`, `useToast`, `ToastProvider` | bottom-left, ≤ 3, 4000 ms each; `push(message, { tone, action })`; API object memoised on purpose; the dismiss label is `toast.dismiss` (Hindi `बंद करें`) |
 | `ui/src/ImageCropModal.tsx` | `CropResult`, `ImageCropModal` | non-destructive crop/rotate on a canvas; `onSave` gets numbers only — the server does the real crop. Office only. |
 
 ### 4.7 Screens shared by both panels (each takes a narrow transport prop)
@@ -1176,15 +1241,16 @@ never talks to a server** (§4.10).
 | `ui/src/format.ts` | `formatKg`, `formatBytes`, `formatDateTime` | `formatKg` uses `en-IN`, ≤ 3 decimals; `null` → `—` |
 | `ui/src/errorText.ts` | `apiErrorText` | if the error is an `Error` with a string `code`: `t(messageKey)`, else `t(errorMessageKey(code))` (a `CODE_TOKENS` entry or `error.unknown` — so a coded error never falls through to its English message); otherwise an `Error`'s `.message`, else `t(fallback)`. Checks shape rather than importing a panel's `ApiError` |
 | `ui/src/sessionEnded.ts` | `SessionEndedReason`, `publishSessionEnded`, `onSessionEnded` | module-level emitter the api clients call on a 401 |
+| `ui/src/clipboard.ts` | `copyText` | added 2026-09-25: `navigator.clipboard.writeText` where the browser offers and allows it, else a selected off-screen textarea and `document.execCommand('copy')`; resolves to whether the text was copied, never throws. `navigator.clipboard` is `undefined` outside a secure context, so the Master opened by LAN address over plain HTTP could not copy before. Used by `IdField`, the crash screen, and the Master's one-time password (`AccessScreen`) and API token (`IntegrationsScreen`) dialogs |
 | `ui/src/config.ts` | `PanelKind`, `Theme`, `UiConfig`, `configureUi`, `uiConfig` | default is the Master's config. **No module may read `uiConfig()` at top level** (the barrel evaluates before `configureUi`); only `i18n.ts` and `theme.ts` read it, inside functions. |
 | `ui/src/theme.ts` | `Theme`, `Density`, `SidebarMode`, `SCALE_MIN` (11), `SCALE_MAX` (22), `SCALE_STEP` (0.5), `SCALE_DEFAULT` (14), `read`, `store`, `loadTheme`, `loadDensity`, `loadScale`, `applyScale`, `loadSidebarMode`, `storeSidebarMode`, `motionDisabled`, `applyTheme`, `applyDensity`, `applyMotion`, `initAppearance` | appearance lives on `<html>`: `data-theme`, `data-density`, `data-motion`, `style="--root-size: Npx"`, and `color-scheme` |
-| `ui/src/i18n.ts` | `locale`, `setLocale`, `adoptDefaultLocale`, `translator`, `t` | `t(key, params?)` reads `ob.locale` on **every call** (no provider — changing language reloads the page); rewrites `PANEL_SCOPED_KEYS` to `${panel}.${key}`; `adoptDefaultLocale` writes the deployment default only if nothing was stored. 152 literal `t('…')` call sites in 15 `ui/src` files. |
+| `ui/src/i18n.ts` | `locale`, `setLocale`, `adoptDefaultLocale`, `translator`, `t` | `t(key, params?)` reads `ob.locale` on **every call** (no provider — changing language reloads the page); rewrites `PANEL_SCOPED_KEYS` to `${panel}.${key}`; `adoptDefaultLocale` writes the deployment default only if nothing was stored. 166 literal `t('…')` call sites in 22 `ui/src` files. |
 
 Per-machine `localStorage` keys owned by the kit (every access wrapped in
 try/catch): `ob.locale` (`i18n.ts`); `ob.theme.v2` / `ob.theme` (`theme.ts` via
 `configureUi`); `ob.density`, `ob.motion`, `ob.scale`, `ob.sidebar`;
-`ob.keys.v1[:userId]` (`KeyboardProvider.tsx`); `<storageKey>.recent`/`.pinned`
-(`Picker.tsx`); `ob.settings.tab.<panel>` (`useSettingsTab`).
+`ob.keys.v1[:userId]` (`KeyboardProvider.tsx`); `ob.settings.tab.<panel>`
+(`useSettingsTab`).
 
 ### 4.9 CSS, tokens and fonts
 
@@ -1208,7 +1274,8 @@ try/catch): `ob.locale` (`i18n.ts`); `ob.theme.v2` / `ob.theme` (`theme.ts` via
   font, a `:focus-visible` outline never removed, both motion kill switches
   (`prefers-reduced-motion`, `html[data-motion='off']`), `.sr-only`, the custom
   reserved-gutter scrollbar (WebKit + a Firefox fallback).
-- **`base.css`:** every component rule, 223 distinct `.ob-*` classes (BEM `__` element classes included), no runtime
+- **`base.css`:** every component rule, 215 distinct `.ob-*` classes (BEM `__`
+  element classes included; the Picker's went with it on 2026-09-25), no runtime
   style engine. Screen-specific sections too (gallery, record detail, Office sign-in
   profile list, entrance animations, the new-lead `.ob-suggest`, `.ob-chip`,
   `.ob-lead-*`). Media queries at 1180px, 1080px, `max-height` 800px and one 560px.
@@ -1233,8 +1300,8 @@ queued id, the Master's return the saved record. Anything in the kit that needs 
 takes a small interface: `PartyFormModal` (`transport: PartyFormTransport`),
 `useDeveloperSession` (`DeveloperTransport`: `status`, `unlock`, `lock`),
 `useUninstallTool` (`UninstallBridge`), `KeyboardOverlays` (`searchRecords`,
-`onOpenRecord`, `subscribeMenu`), `Picker` (`fetchPage`), `AvatarPicker`
-(`onUpload`, `onRemove`), `ImageCropModal` (`onSave`). The kit keeps the latest
+`onOpenRecord`, `subscribeMenu`), `AvatarPicker` (`onUpload`, `onRemove`),
+`ImageCropModal` (`onSave`). The kit keeps the latest
 transport in a ref (`transportRef`, `latest`) because callers may build it inline;
 `ui/tests/no-transport-dep.test.ts` fails if the bare word `transport` appears in any
 hook dependency array in `ui/src`, `master/web/src` or `office/web/src`.
@@ -1246,15 +1313,47 @@ is therefore kept as two byte-identical copies** (`master/web/src/screens/PartyA
 
 ### 4.11 Tests that guard the kit
 
-`ui/tests/` (jsdom, 56 tests passed): `ui/tests/activity-spike.test.tsx` (3,
-`<Activity>` semantics), `ui/tests/screen-host.test.tsx` (5),
-`ui/tests/app-shell-nav.test.tsx` (4), `ui/tests/settings-layout.test.tsx` (9),
-`ui/tests/developer-panel.test.tsx` (6), `ui/tests/enter-to-advance.test.tsx` (4),
-`ui/tests/suggest-input.test.tsx` (9, with the real Enter walk, LEAD-31),
-`ui/tests/select.test.tsx` (2), `ui/tests/locale.test.ts` (6),
-`ui/tests/no-transport-dep.test.ts` (4), `ui/tests/packaging-switch-reach.test.ts`
-(4 — reads `office/web/src/screens/AddLeadScreen.tsx` and checks every packaging
-check reads `leads.packagingRequiredOnConvert`).
+`ui/tests/` (jsdom, 17 files; the counts in brackets are tests passed at `43fd5b0`):
+`ui/tests/activity-spike.test.tsx` (3, `<Activity>` semantics),
+`ui/tests/screen-host.test.tsx` (5), `ui/tests/app-shell-nav.test.tsx` (4),
+`ui/tests/settings-layout.test.tsx` (9), `ui/tests/developer-panel.test.tsx` (6),
+`ui/tests/enter-to-advance.test.tsx` (4), `ui/tests/suggest-input.test.tsx` (9, with
+the real Enter walk, LEAD-31), `ui/tests/select.test.tsx` (2),
+`ui/tests/locale.test.ts` (6), `ui/tests/no-transport-dep.test.ts` (4),
+`ui/tests/packaging-switch-reach.test.ts` (4 — reads
+`office/web/src/screens/AddLeadScreen.tsx` and checks every packaging check reads
+`leads.packagingRequiredOnConvert`).
+
+Added 2026-09-25:
+
+- `ui/tests/keyboard-provider.test.tsx` — a dialog mounted inside a screen answers
+  Ctrl+S however often the tree re-renders; `view.toggleSidebar`, `keys.help` and
+  the palette rows reach a handler; the palette lists only what `offers()` accepts.
+- `ui/tests/clipboard.test.tsx` — `copyText` with and without `navigator.clipboard`
+  (jsdom has none, like a plain-HTTP tab).
+- `ui/tests/kit-i18n.test.tsx` — the kit's chrome renders its Hindi from the
+  catalogue; its `hi()` helper fails on a key whose Hindi is still English.
+- `ui/tests/permission-labels.test.tsx` — the grid's names come from the
+  catalogue's tokens.
+- `ui/tests/master-shell.test.tsx` and `ui/tests/office-shell.test.tsx` — each boots
+  a panel's whole `App.tsx` through `ui/tests/panel-harness.ts` (`fetch` answered from
+  a route table so the real `api.ts` runs; stand-ins for `matchMedia`,
+  `document.fonts`, `AbortSignal.any`, `EventSource`; motion off; `configureUi` with
+  the panel's name). The app is imported through a variable path so the web apps do
+  not enter `ui/tests/tsconfig.json`'s stricter program. Both failed against the old
+  shells. They pin the gallery link, Alt+N reaching only what the sidebar offers,
+  the screen reset at a session end, the splash text for an unreachable server, the
+  Master's refresh wiring (`catalog`, `pipeline`, `user`/`role`, Bin field events),
+  and on the Office the refusal toast landing on Conflicts, the New lead form
+  remounting after a save, the packaging marker following its switch, Reset asking
+  through `ConfirmDialog`, and the order weight override. The palette's filtering
+  is pinned by `ui/tests/keyboard-provider.test.tsx` with a stub `canNavigate`. No
+  test checks that each `App.tsx` passes its `offered` test. The panel opens its
+  event stream, socket, menu subscription and key listener in effects, so the tests
+  wait for each before sending anything (`sendSnapshot()` for the stream,
+  `changed()` for a live socket), and `pressAltDigitUntil()` presses Alt+N until the
+  screen opens; each refusal test opens a screen that way first, so a chord pressed
+  before the panel was listening cannot pass for a refusal (`7d6ae68`).
 
 Elsewhere: `master/tests/no-duplicate-ui.test.ts` (4), `master/tests/ui-conventions.test.ts`
 (8: rem tokens, px hairlines/radii/breakpoints, no raw px > 3 in JSX style objects,
@@ -1263,64 +1362,57 @@ Elsewhere: `master/tests/no-duplicate-ui.test.ts` (4), `master/tests/ui-conventi
 `master/tests/i18n-call-sites.test.ts` (5), `master/tests/party-access-screen-parity.test.ts`
 (2), `shared/tests/version.test.ts`. Lint: `rules-of-hooks` error, `exhaustive-deps`
 warn, and `orderbook-i18n/no-untranslated-jsx-text` at **error** for the "swept
-files" list in `eslint.config.js` — whose only live `ui/` entry is
-`ui/src/ImageCropModal.tsx` (with `office/web/src/components/ProductImages.tsx` the
-only other live file). The other three `ui/` entries, `ui/src/DocumentsScreen.tsx`,
-`ui/src/PageDesigner.tsx` and `ui/src/PageDesignerInspector.tsx`, are not tracked
-files, left over from the removed PDF Designer. For every other `ui/src/*.tsx` the
-rule is off.
+files" list in `eslint.config.js` — `ui/src/ImageCropModal.tsx` and
+`office/web/src/components/ProductImages.tsx` since the three deleted PDF Designer
+entries were dropped on 2026-09-25 (§2.13). For every other `ui/src/*.tsx` the rule
+is off.
 
 ### 4.12 Where the code and its comments or docs disagree
 
 - There is no `Tooltip` component (removed 2026-09-22 as unused).
-- `Modal.tsx` and `fitColumns.ts` still say record detail opens in a centred modal;
-  the rule (in `master/tests/ui-conventions.test.ts`) is that record detail opens on
-  its own screen (`EditorScreen` + `useSubNav`). Modals are for dialogs and
-  create/edit forms.
-- `useOverlay.ts` still mentions a "Drawer"; `Drawer.tsx` is gone and must stay gone.
-- `PartyFormModal.tsx` mentions "product rate overrides"; there are no rate fields.
-- `permissionLabels.ts` talks about a "planned shared `ui/` workspace".
-- `ResetSlot.tsx` points to `SaveShortcutSlot`, replaced by `KeyboardProvider`.
-- `AppShell.tsx`'s header says "Office Panel shell"; it serves both.
-- `Form.tsx`'s header lists `Select`, which is in `SuggestInput.tsx`.
-- `ImageCropModal.tsx` claims "this app has no Electron process anywhere".
-- `base.css` comments give both design floors: 1366×768 in four places (around
-  lines 1269, 1320, 2090, 2466) and 1024px in three (1283, 2114, 2775).
-  `AGENTS.md` and `breakpoints.ts` use 1024×768.
-- `theme.ts` says each `index.html` sets `color-scheme` inline; only
-  `master/web/index.html` does.
+- **Fixed 2026-09-25 — stale comments** in the kit: record detail "in a centred
+  modal" (`Modal.tsx`, `fitColumns.ts`), a "Drawer" (`useOverlay.ts`), the Picker,
+  "product rate overrides" (`PartyFormModal.tsx`), the "planned shared `ui/`
+  workspace" (`permissionLabels.ts`), `SaveShortcutSlot` (`ResetSlot.tsx`), "Office
+  Panel shell" (`AppShell.tsx`), `Form.tsx`'s `Select`, "no Electron process"
+  (`ImageCropModal.tsx`), the 1366×768 design floor in `base.css` (every floor
+  comment now says 1024×768, as `AGENTS.md` and `breakpoints.ts` do), and
+  `theme.ts`'s claim that each `index.html` sets `color-scheme` inline.
 - **`raw colours`:** `tokens.css` says it is the only place for raw colours, but
   `base.css` has one `rgba(16, 22, 26, 0.3)`, `ImageCropModal.tsx` draws with
   literal colours and `GalleryScreen.tsx` uses `hsl()` swatches.
-- **`view.toggleSidebar` has no visible effect.** `KeyboardProvider` flips
-  `document.documentElement.dataset.sidebarCollapsed`, which no CSS or code reads.
-  The sidebar collapses through `AppShell`'s `collapsed` prop, which each `App.tsx`
-  drives with its own `toggleSidebar`/`sidebarMode`.
+- **Fixed 2026-09-25 — `view.toggleSidebar` had no visible effect:**
+  `KeyboardProvider` flipped a `data-sidebar-collapsed` attribute nothing read.
+  `AppShell` now registers the command with the toggle each `App.tsx` passes it.
+- **Fixed 2026-09-25 — keyboard priority:** `useCommand` re-pushed its registration
+  whenever the provider's api object changed (every palette or help-sheet open), so
+  the screen behind an open `PartyFormModal` took Ctrl+S; and palette rows that did
+  nothing — `keys.help` and the sidebar toggle (now answered), screens the sidebar
+  does not offer, "New record" for a role that cannot create one, and "Find", which
+  only the chord answers (now left out, through `offers()`) (§4.2).
+- **Fixed 2026-09-25 — Copy over plain HTTP:** `IdField`, the crash screen and the
+  Master's secret dialogs called `navigator.clipboard` directly, which is
+  `undefined` on a Master opened by LAN address; they use `copyText` (§4.8).
 - **macOS chords:** the palette, help sheet and `PaletteButton` show Mac glyphs, but
   `ShortcutSettings` always uses `formatChord` (`Ctrl`/`Alt`/`Meta` text). The Mac
   defaults are chosen in `shared/src/keys/bindings.ts`, not in `ui/`.
-- **Hard-coded English** bypassing `t()`: `AppShell.tsx` (`Modules`,
-  `Expand/Collapse sidebar`, `Collapse`), `Modal.tsx` (`Close`, `Shrink`, `Open full
-  width`), `Toast.tsx` (`Dismiss`), `CursorPager.tsx` (`Load more`, `Newer`,
-  `Older`), `BusyMark.tsx` (`Working`), `IdField`'s `Copy`, `DataTable.tsx`
-  (`Hidden`), `Combobox.tsx` (`No matches`, line 109), `Logo.tsx`, most of
-  `GalleryScreen.tsx`.
-- **The permission grid stays English in Hindi.** `ui/src/permissionLabels.ts`
-  (used by `PermissionGrid.tsx` and `PermissionSummary.tsx`) turns permission keys
-  into English sentence-case labels and ignores the `permission.*`, `module.*`,
-  `action.*` and `capabilityGroup.*` tokens that `shared/tests/i18n-coverage.test.ts`
-  requires in the catalogue. Its comment's reason — that the kit's `t()` cannot read
-  the shared message table — is no longer true: `ui/src/i18n.ts#t` calls the shared
-  translator.
+- **Fixed 2026-09-25 — hard-coded English in the kit's chrome** (sidebar name and
+  collapse control, `Modal`'s Close/Shrink/expand, the toast's Dismiss, the pagers,
+  the busy mark, Copy, the redacted cell, the empty combobox, the sync rail,
+  `ErrorState`'s retry) goes through `t()`, with Hindi. What is left: the
+  `OrderBook` wordmark in `Logo.tsx` and most of `GalleryScreen.tsx`.
+- **Fixed 2026-09-25 — the permission grid stayed English in Hindi:**
+  `permissionLabels.ts` now reads the `module.*`, `action.*`, `permission.*` and
+  `capabilityGroup.*` tokens (§4.5).
 - **Exports no panel imports** (`git grep -lw <name> -- master/web/src office/web/src`
-  finds 0 files): `Picker`, `HelperText`, `Label`, `Slider`, `PresenceRail`,
+  finds 0 files): `HelperText`, `Label`, `Slider`, `PresenceRail`,
   `BP_TIGHT`, `BP_SHORT`, `useKeyboard`, `uiConfig`, `setLocale`, `motionDisabled`,
   `store`, `loadTheme`, `loadDensity`, `loadScale`, `applyScale`, `applyTheme`,
   `applyDensity`, `applyMotion`, `SCALE_MIN`/`SCALE_MAX`/`SCALE_STEP`/`SCALE_DEFAULT`,
   `columnWidthPx` (used only by `master/tests/datatable-fit.test.ts`),
   `gridTemplateFor`, `CELLS`, `moduleLabel`, `groupLabel`, `subPageItems`,
-  `FOCUSABLE`, `DEBOUNCE_MS`. Most are used inside the kit; `Picker` and the two
-  breakpoints are not.
+  `FOCUSABLE`, `DEBOUNCE_MS`. Most are used inside the kit; the two breakpoints are
+  not. (`Picker`, the one unused component, was removed on 2026-09-25.)
 
 ---
 
@@ -1330,20 +1422,20 @@ rule is off.
 
 | Scope | Tracked files |
 |---|---|
-| `master/` (everything) | 336 |
-| `master/src/` | 197 |
+| `master/` (everything) | 347 |
+| `master/src/` | 199 |
 | `master/src/db/migrations/` | 31 (30 migrations + `master/src/db/migrations/index.ts`) |
-| `master/src/db/` other than migrations | 8 |
-| `master/src/domain/` | 23 (3,654 lines) |
-| `master/src/services/` | 43 (13,973 lines) |
+| `master/src/db/` other than migrations | 9 |
+| `master/src/domain/` | 23 (3,653 lines) |
+| `master/src/services/` | 43 (14,595 lines) |
 | `master/src/repositories/` | 36 (34 `*.repository.ts` + `mappers.ts` + `transaction.ts`) |
 | `master/src/http/` | 30 (6 top-level, 5 `middleware/`, 19 `routes/`) |
-| `master/src/realtime/` | 4 |
+| `master/src/realtime/` | 5 |
 | `master/src/lib/` | 14 |
 | `master/src/pdf/` | 4 |
 | `master/src/config/`, `master/src/discovery/` | 1 each |
 | `master/src/index.ts`, `master/src/boot-status.ts` | 2 |
-| `master/tests/` | 97 (95 tests + `master/tests/helpers/db.ts`, `master/tests/helpers/fixtures.ts`) |
+| `master/tests/` | 106 (104 tests + `master/tests/helpers/db.ts`, `master/tests/helpers/fixtures.ts`) |
 | `master/web/` | 30 (§7) |
 | `master/assets/` | 5 |
 
@@ -1379,25 +1471,38 @@ invariant goes in `domain/`.**
    returned (404, not 403).
 3. **Validation through domain rules** — `assertConvertible`, `assertStageMove`,
    `normalizeCustomFields`, `buildLineSnapshot`, `assertTierWithinActor`, …
-4. **One transaction** — `db().transaction(async (trx) => …)` (84 call sites).
-   **Clock first:** the create/update/stage/convert/delete/restore paths that stamp
-   an HLC call `nextHlc(trx)` (`master/src/repositories/identity.repository.ts`)
-   before any entity row lock, so they lock `master_clock` then the row (no
-   deadlocks between them). **Not every write path takes the clock:**
-   `order.service.ts#dispatchOrder` never calls `nextHlc` (its transaction takes
-   `orderRepo.lockOrder` first, and `markDispatched` updates `stage_id` and
-   `dispatched_at` without stamping `hlc` or `version`), and
-   `inventory.service.ts`, `fields.service.ts` and `image.service.ts` never call it
-   either. **Re-check under the row lock** (`lockLead`,
-   `lockOrder`). **Guard G4 (last administrator):** `user.service.ts` and
-   `role.service.ts` take `accessGuard.lockTenantAccessGuards(tenantId, trx)` and read
+4. **One transaction** — `db().transaction(async (trx) => …)` (90 call sites).
+   **Clock first:** the create/update/stage/convert/dispatch/delete/restore paths
+   that stamp an HLC call `nextHlc(trx)`
+   (`master/src/repositories/identity.repository.ts`) before any entity row lock, so
+   they lock `master_clock` then the row (no deadlocks between them).
+   `order.service.ts#dispatchOrder` joined them on 2026-09-25 (it had stamped
+   nothing), and `party-access.service.ts#replaceAssignments` was put in the same
+   order (it locked the party first and deadlocked, `40P01`, against `updateParty`
+   and the merge). `inventory.service.ts`, `fields.service.ts` and
+   `image.service.ts` still never call `nextHlc`. **Re-check under the row lock**
+   (`lockLead`, `lockOrder` — which returns the order's `dispatched_at`, `stage_id`
+   and `field_hlc`, so a dispatch reads the stage it leaves from the locked row).
+   **Guard G4 (last administrator):** `user.service.ts` and `role.service.ts` take
+   `accessGuard.lockTenantAccessGuards(tenantId, trx)` and read
    `readAdministrativeCapability` inside the transaction; the pure rule
    `assertAdministrativeCapabilityRetained` decides.
 5. **Audit** — `recordActivity(entry, actor, trx)` in
-   `master/src/repositories/activity-log.repository.ts` writes the audit row inside
-   the transaction (52 call sites in `master/src/services/`; 53 across `master/src`
-   counting the call inside `recordDetachedActivity`); `recordDetachedActivity(entry, actor, db())` runs
-   after the commit in its own transaction and only warns on failure (15 call sites).
+   `master/src/repositories/activity-log.repository.ts` writes the audit row as the
+   **last statement of the change's own transaction**, after every row lock, so the
+   chain trigger's per-tenant advisory lock is taken last and a holder only ever
+   waits to commit (70 call sites in `master/src/services/`; 71 across `master/src`
+   counting the call inside `recordDetachedActivity`).
+   `master/tests/audit-atomicity.integration.test.ts` fails a write whose entry
+   fails, and fails a path that writes its entry before its row locks.
+   `recordDetachedActivity(entry, actor, db())` runs after the commit in its own
+   transaction and only warns on failure; since 2026-09-25 it has 3 call sites, the
+   entries with no Master transaction to join: sign-in attempts (`auth.service.ts` —
+   an accepted sign-in's own writes commit first, deliberately, so a trail that
+   cannot be written never blocks signing in), connector runs
+   (`connector-run.service.ts`, one entry summarising many transactions) and a
+   panel's reissued secret or moved storage folder (`panel.service.ts`, already done
+   on the panel's machine).
 6. **Publish** — `publishChange({ entity, action, id, payload })`
    (`master/src/services/change-bus.ts`), always after the commit (63 call sites). It
    records into `master/src/realtime/change-ring.ts` and emits on an in-process
@@ -1424,14 +1529,15 @@ acts as the connector's configured user.
 **Services without their own `requirePermission`:** gated at the route by
 `requirePermissionMiddleware` — `panel.service.ts` (`panels.manage` in
 `master/src/http/routes/panel.routes.ts`), `backup-*.service.ts` (`storage.manage` in
-`master/src/http/routes/data.routes.ts`), the update install route (`settings.manage`
-in `master/src/http/routes/update.routes.ts`); gated by the developer gate —
+`master/src/http/routes/data.routes.ts`), `storage.service.ts#getStorageUsage`
+(`GET /api/storage`, `settings.manage` in `data.routes.ts` — until 2026-09-25 it
+checked only the session), the update install route (`settings.manage` in
+`master/src/http/routes/update.routes.ts`); gated by the developer gate —
 `developer.service.ts`, `sample-data.service.ts`; filtered per collection with
 `actorCan` — `snapshot.service.ts`, `dashboard.service.ts`, `search.service.ts#search`;
 per mutation with `actorCan` — `sync.service.ts` (no `requirePermission` call; each
 mutation is checked against `REQUIRED_PERMISSION` = `MUTATION_PERMISSIONS[kind]`
-before `route()` delegates to the owning service, which checks again);
-authentication only — `storage.service.ts#getStorageUsage` (`GET /api/storage`).
+before `route()` delegates to the owning service, which checks again).
 
 **Where the layering bends** (not enforced by lint or tests):
 
@@ -1452,7 +1558,9 @@ authentication only — `storage.service.ts#getStorageUsage` (`GET /api/storage`
   `http/routes/integration.routes.ts` → `connector.repository.ts`;
   `http/routes/public-api.routes.ts` → `party.repository.ts` and
   `product.repository.ts` (PATCH reads the row through the repository before calling
-  the full-replace service), and it loads `db/knex.ts` with a dynamic `import()` for `onlyTenantId`;
+  the full-replace service) and `tenant.repository.ts#findDefaultTenantId` for
+  `onlyTenantId` (a read that never creates a tenant; until 2026-09-25 it queried
+  `tenants` itself through a dynamic `import()` of `db/knex.ts`);
   `http/middleware/require-api-key.ts` → `api-key.repository.ts` and
   `role.repository.ts`; `realtime/hub.ts` → `party-access.repository.ts`,
   `pipeline.repository.ts` and `panel-credential.repository.ts`.
@@ -1549,10 +1657,11 @@ data-directory mismatch). Read by `http/boot-app.ts` and by `bootHealth()`/
 | File | Lines | Purpose |
 |---|---|---|
 | `master/src/db/knex.ts` | 69 | `initDatabase(url)` creates the single Knex instance (`client:'pg'`, pool min 2 / max 10, acquire 10 s, idle 30 s, reap 5 s) and attaches the query counter; `db()` (throws before init); `runMigrations()` (`migrate.latest()` with `RegistryMigrationSource`, recorded in `knex_migrations`); `closeDatabase()`. No connection timezone. |
-| `master/src/db/postgres-server.ts` | 416 | the managed PostgreSQL lifecycle (below) |
+| `master/src/db/postgres-server.ts` | 418 | the managed PostgreSQL lifecycle (below) |
 | `master/src/db/cluster-snapshot.ts` | 287 | the pre-upgrade copy (below) |
 | `master/src/db/query-counter.ts` | 85 | `attachQueryCounter(knex)` counts queries per request via `AsyncLocalStorage`; `queryCountMiddleware` sets `X-Query-Count` / `X-Duration-Ms`; off when `NODE_ENV=production` |
-| `master/src/db/migrate-cli.ts` | 42 | `npm run migrate`: start Postgres, apply pending, stop; `--status` lists applied and pending (defect 2 in §5.11) |
+| `master/src/db/migrate-cli.ts` | 40 | `npm run migrate`: start Postgres, apply pending, stop; `--status` lists applied and pending instead, by name and in run order (fixed 2026-09-25, defect 2 in §5.11) |
+| `master/src/db/migration-status.ts` | 29 | `formatMigrationStatus(list)` and `MigrationList` — what `--status` prints, as a pure function of Knex's `migrate.list()` answer (pending entries are the registry's own `{name, up, down}` objects, not `{file}`); kept out of `migrate-cli.ts` because importing that starts the database; `master/tests/migration-status.test.ts` |
 | `master/src/db/seed-catalogue-cli.ts` | 40 | `seed:catalogue`: start, migrate, `seedCatalogue()` (Swisware catalogue), stop; idempotent |
 | `master/src/db/seed-dummy-users-cli.ts` | 42 | `seed:dummy`: `seedDummyUsers()` from `developer.service.ts`; prints credentials (and the pairing password if it ran first-time setup); re-running resets passwords |
 | `master/src/db/seed-sample-data-cli.ts` | 59 | `seed:sample`: `seedSampleData()`; refuses to run twice |
@@ -1601,10 +1710,16 @@ exports: `readBootedVersion`, `recordBootedVersion`, `SNAPSHOT_DIR_NAME`,
 lists, `master_clock`) and from first-run setup (`runFirstTimeSetup` in
 `master/src/services/setup.service.ts`: `master_config` and the `admin` user).
 Optional data: the three CLIs above, and `master/src/services/catalog-reload-cli.ts`,
-which by default `TRUNCATE … RESTART IDENTITY CASCADE`s 18 business tables
-**including `activity_log`**, resets `party_code_seq`, `id_sequences` and
-`master_clock`, then optionally runs `--with-catalog` (`seedCatalogue()`) or
-`--with-parties` (3 parties). Catalogue data: `master/src/domain/swisware-catalogue.ts`.
+which `TRUNCATE … RESTART IDENTITY CASCADE`s 19 business tables **including
+`activity_log`** and (since 2026-09-25) `api_connector_links` — whose `local_id`
+names a record by a permanent id the restarted counters hand out again — resets
+`party_code_seq`, `id_sequences` and `master_clock`, then runs `--with-catalog`
+(`seedCatalogue()`, what `reload:catalog` passes) or `--with-parties` (3 parties,
+`seed:parties`). It prints the live-product and activity-entry counts it is about to
+erase first. It starts and stops the database itself, so it must run with the Master
+stopped (§5.11). `master/tests/operator-cli.integration.test.ts` runs it as a
+process against the test database. Catalogue data:
+`master/src/domain/swisware-catalogue.ts`.
 
 Migrations and the schema they leave: §6.
 
@@ -1675,7 +1790,7 @@ exercised only through service integration tests.
 | `master/src/domain/report-range.ts` (134) | report ranges from `{year, month, day}` without `Date` (the day-early fix) | `resolveReportRange`, `monthLabels`, `MAX_RANGE_MONTHS` (12) | `master/tests/report-range.test.ts` |
 | `master/src/domain/recycle-bin.ts` (128) | upward-only restore graph, rename-on-collision, Bin cursor | `PARENT_LINKS`, `assertParentsLive`, `suggestRestoredName`, `visibleBinScopes`, `encodeBinCursor`, `decodeBinCursor` | `master/tests/recycle-bin-domain.test.ts` |
 | `master/src/domain/json-pointer.ts` (72) | RFC 6901 pointers, so a field map is never an expression | `readPointer`, `flattenPointers` | `master/tests/connector-mapping.test.ts` |
-| `master/src/domain/connector-mapping.ts` (111) | one remote row → one local input via closed transforms | `mapRow`, `applyTransform`, `hashInput`, `changedFields` | `master/tests/connector-mapping.test.ts` |
+| `master/src/domain/connector-mapping.ts` (110) | one remote row → one local input via closed transforms | `mapRow`, `applyTransform`, `hashInput`, `changedFields` | `master/tests/connector-mapping.test.ts` |
 | `master/src/domain/panel-report.ts` (106) | validates and clamps the five-minute `panel:report` | `normalisePanelReport` | `master/tests/panel-report-domain.test.ts` |
 | `master/src/domain/backup.ts` (49) | backup format rules | `assertImportableFormatVersion`, `assertPassphraseStrong`, `summarizeManifest` | `master/tests/backup-domain.test.ts` |
 
@@ -1683,7 +1798,7 @@ exercised only through service integration tests.
 
 **Auth, users, roles**
 
-- `master/src/services/auth.service.ts` (664) — sign-in and in-memory sessions:
+- `master/src/services/auth.service.ts` (666) — sign-in and in-memory sessions:
   `signIn`, `resolveSession`, `resolveSessionWithPermissions`,
   `resolveSessionDetailed(WithPermissions)`, `sessionPermissions`,
   `changeOwnPassword`, `signOut`, `invalidateSessionsForUser`,
@@ -1691,7 +1806,7 @@ exercised only through service integration tests.
   (`MAX_FAILURES`) lock the account for 60 s (`LOCKOUT_MS`); lifetime from
   `security.sessionHours`; every resolution re-reads the role `version`, so a revoked
   permission applies on the next call; attempts (including unknown usernames) are
-  audited detached.
+  audited detached — deliberately, an accepted one included (§5.1).
 - `master/src/services/reauth-cache.ts` (61) — "re-typed their password recently" for
   the password reveal: `noteRecentReauth`, `hasRecentReauth`, `sweepRecentReauth`,
   `clearRecentReauth`.
@@ -1714,19 +1829,21 @@ exercised only through service integration tests.
 
 **Parties, access and catalogue**
 
-- `master/src/services/catalog.service.ts` (692) — parties: `listParties`,
+- `master/src/services/catalog.service.ts` (724) — parties: `listParties`,
   `getParty`, `createParty`, `updateParty`, `deleteParty`, `restoreParty`,
   `countParties` (`parties.*` + `requirePartyAccess`); party variants:
-  `listVariantsForParty`, `upsertVariant`; products: `listProducts`, `getProduct`,
+  `listVariantsForParty`, `upsertVariant` (audited since 2026-09-25 as
+  `party.variant_saved`, filed under the party so the Logs party scope hides it);
+  products: `listProducts`, `getProduct`,
   `listCategories`, `findProductByCode`, `createProduct`, `updateProduct`,
   `deleteProduct`, `restoreProduct` (never renames; a code clash is refused),
-  `countProducts` (`products.*`). The most-imported service (42 importers, 11
+  `countProducts` (`products.*`). The most-imported service (44 importers, 11
   non-test).
-- `master/src/services/party-access.service.ts` (362) — `listAssignments`,
+- `master/src/services/party-access.service.ts` (368) — `listAssignments`,
   `assignmentsForParty`, `replaceAssignments` (`party.assign`), `exportRows`
   (`parties.export`, CSV), `assignablePeople`, and **`requirePartyAccess`, the
   write-side gate every other service calls**.
-- `master/src/services/image.service.ts` (478) — product gallery pipeline (decode,
+- `master/src/services/image.service.ts` (489) — product gallery pipeline (decode,
   auto-orient, rotate, crop, WebP variants, blurhash with `sharp`): `uploadImage`,
   `updateImageCaption`, `reorderImages`, `deleteImage` (all `products.edit`),
   `resolveImageFile`, `sweepOrphanImageVariants`, `throughRasterGate` (serialises
@@ -1738,40 +1855,47 @@ exercised only through service integration tests.
 - `master/src/services/catalogue-seed.service.ts` (168) — `seedCatalogue` replays
   `SWISWARE_CATALOGUE` through `fields.createValue` and `catalog.createProduct`;
   idempotent per model.
-- `master/src/services/catalog-reload-cli.ts` (133) — the operator CLI behind
-  `reload:catalog`, `wipe:business`, `seed:parties` (§5.3).
+- `master/src/services/catalog-reload-cli.ts` (170) — the operator CLI behind
+  `reload:catalog` (`--with-catalog`), `wipe:business` (no flag), `seed:parties`
+  (`--with-parties`) (§5.3).
 
 **Leads, orders, stock**
 
-- `master/src/services/lead.service.ts` (645) — `listLeads`, `getLead`, `createLead`,
+- `master/src/services/lead.service.ts` (651) — `listLeads`, `getLead`, `createLead`,
   `updateLead`, `setStage`, `addRemark`, `deleteLead`, `restoreLead`,
   `getDashboardCounts`. `leads.*`; reassigning the owner needs
   `record.reassignOwner`; temporary ids resolved with `resolveId`; a converted lead
   cannot be deleted (409 `blockedByLiveReferences`).
-- `master/src/services/order.service.ts` (605) — `listOrders`, `getOrder`,
+- `master/src/services/order.service.ts` (654) — `listOrders`, `getOrder`,
   `convertLead`, `updateOrder`, `setStage`, `dispatchOrder`, `countOrders`,
   `deleteOrder`, `restoreOrder`. **`convertLead` is the only way an order is
   created**; `dispatchOrder` writes outbound movements, consumes reservations and
-  marks the order dispatched in one transaction (§11.4). **A dispatch bumps neither
-  `version` nor `hlc`:** `order.repository.ts#markDispatched` updates only
-  `stage_id`, `dispatched_at` and `updated_at`, and `dispatchOrder` never calls
-  `nextHlc`, so the offline merge bookkeeping (`version`, `field_hlc`) never sees a
-  dispatch.
-- `master/src/services/inventory.service.ts` (335) — `listStock`, `listMovements`
+  marks the order dispatched in one transaction (§11.4). Since 2026-09-25 a
+  dispatch stamps the clock like every other order write — `nextHlc` before
+  `lockOrder`, and `order.repository.ts#markDispatched` writes `hlc`, `field_hlc`
+  (`dispatchedAt`, and `stageId` when the stage moves) and `version + 1` — and
+  takes the stage it leaves from the locked row; `updateOrder` (`order.updated`) and
+  order `setStage` (`order.stage_changed`) are now audited. It still picks the stage
+  literally named `'Dispatched'` (§5.11 item 7).
+- `master/src/services/inventory.service.ts` (386) — `listStock`, `listMovements`
   (`inventory.view`), `recordInbound` (`inventory.edit`), `recordAdjustment`
   (`stock.adjust`; note required when `inventory.adjustmentNoteRequired`),
-  `setReorderLevel` (`inventory.edit`), `publishStockFor`, `countLowStock`. An order
+  `setReorderLevel` (`inventory.edit`; audited since 2026-09-25 as
+  `stock.levels_changed`), `publishStockFor`, `countLowStock`. An order
   is never blocked by a shortage.
 
 **Sync, snapshot, delta, conflicts**
 
-- `master/src/services/sync.service.ts` (752) — `applyPush`: sorts by
+- `master/src/services/sync.service.ts` (781) — `applyPush`: sorts by
   `compareForIdAssignment`; idempotent via `applied_mutations` under a per-mutation
   `pg_advisory_xact_lock` (namespace 4712); permission from `MUTATION_PERMISSIONS`;
   creates and actions delegate to services, `*.update` goes through `mergeUpdate`
   (`mergeFields` against the repositories under `FOR UPDATE`, explicit party-access
-  check); transient errors (`40001`, `40P01`, pool timeout) are rethrown, not recorded.
-- `master/src/services/snapshot.service.ts` (132) — `buildSnapshot(actor)`: parties,
+  check, and since 2026-09-25 an audit entry for the merged update); transient
+  errors (`40001`, `40P01`, pool timeout) are rethrown, not recorded. Only
+  `lead.create`, `party.create` and `product.create` record a temporary-id mapping
+  (`mapTemporaryId`).
+- `master/src/services/snapshot.service.ts` (134) — `buildSnapshot(actor)`: parties,
   products, categories, leads, orders, stock (500 each), party variants, pipelines,
   option lists, custom fields, 100 conflicts, dashboard, features, permissions,
   grants. Only six collections are gated with `actorCan` (resolving to empty rather
@@ -1783,7 +1907,7 @@ exercised only through service integration tests.
   and custom fields (read from `pipeline.repository.ts` and
   `custom-field.repository.ts`), the dashboard and the features are returned
   whatever the actor's permissions.
-- `master/src/services/delta.service.ts` (101) — `buildDelta`: replays the change
+- `master/src/services/delta.service.ts` (102) — `buildDelta`: replays the change
   ring since a cursor; drops `PANEL_IRRELEVANT_ENTITIES` events, then returns `null`
   (→ full snapshot) when the boot id differs, the ring evicted entries, or any
   remaining event is not in `REPLAYABLE_ENTITIES`; each event filtered through
@@ -1801,17 +1925,21 @@ exercised only through service integration tests.
   (`settings.manage`; secrets sealed, never returned; turning
   `security.passwordRevealEnabled` off purges the vault in the same transaction),
   `invalidateSettingsCache`.
-- `master/src/services/company-features.ts` (65) — `companyFeatures(tenantId)`
+- `master/src/services/company-features.ts` (67) — `companyFeatures(tenantId)`
   resolves the five `CompanyFeatures` settings for `/me` and the snapshot; also
   `freeToSell`.
-- `master/src/services/panel.service.ts` (665) — pairing (`openPairingWindow` 5 min,
+- `master/src/services/panel.service.ts` (734) — pairing (`openPairingWindow` 5 min,
   `closePairingWindow`, `isAcceptingPairing`, `isAutoPairingOpen`, `pairPanel`),
   credentials (`authenticatePanel`, `permissionsForPanel` — falls back to the
   office-tier role), administration (`revokePanel`, `renamePanel`, `updatePanel`,
   `rotatePanelSecret`, `setPanelStoragePath`), presence and reports
   (`markPanelConnected`/`Disconnected`, `isPanelConnected`, `recordPanelReport`,
   `refreshPanelReport`, `listPanelsWithPresence`, `getPanelDetail`,
-  `listPanelActivity`, `disconnectPanel`, `nextPanelName`).
+  `listPanelActivity`, `disconnectPanel`, `nextPanelName`). Pairing, revocation and
+  editing write their audit entry in their own transaction (`recordPanelActivity`);
+  `updatePanel` now commits every field and the entry together, so a refused role
+  no longer leaves the panel renamed; only a reissued secret or a moved storage
+  folder is recorded detached (`recordRemotePanelActivity`).
 - `master/src/services/panel-actor.service.ts` (152) — `resolvePanelActor`,
   `resolvePanelActorAllowingRefusal`, `RefusedActingTokenError`: a panel presents a
   session token, re-validated on every command.
@@ -1825,12 +1953,12 @@ exercised only through service integration tests.
 - `master/src/services/report.service.ts` (377) — `dispatchReport`,
   `leadOutcomeReport`, `topPartiesReport` (`reports.view`), `exportReport`
   (`reports.export`, CSV or PDF). Counts only.
-- `master/src/services/log.service.ts` (255) — `listLogs`, `listLogFacets`
+- `master/src/services/log.service.ts` (254) — `listLogs`, `listLogFacets`
   (`logs.view`), `verifyLogChain` (`logs.verifyChain`), `exportLogs` (`logs.export`);
   party-scoped.
 - `master/src/services/recycle-bin.service.ts` (212) — `listBin`, `binCounts`,
   `binDeleters` (`recycleBin.view`), `restoreEntity` (delegates to the owning service).
-- `master/src/services/search.service.ts` (136) — `search` (product, category, party,
+- `master/src/services/search.service.ts` (135) — `search` (product, category, party,
   lead lines, order lines; drops kinds the caller may not view) and `pick`.
 - `master/src/services/dashboard.service.ts` (73) — `getDashboardSummary`; each
   counter present only with its module key (there is no `dashboard.view`).
@@ -1875,12 +2003,15 @@ exercised only through service integration tests.
   `restoreBackup` (§11.8).
 - `master/src/services/storage.service.ts` (65) — `getStorageUsage`: cluster dir,
   uploads dir, free disk.
-- `master/src/services/update.service.ts` (387) — `releaseDirFor`, `releaseFileFor`,
-  `readManifest`, `availability`, `masterAvailability`, `verifyRelease`,
-  `preparedInstaller`, `prepareMasterUpdate`, `startReleasePolling`. Never runs an
+- `master/src/services/update.service.ts` (509) — `releaseDirFor`, `releaseFileFor`,
+  `readManifest`, `availability` (waits on a GitHub sync for `GITHUB_WAIT_MS` = 5 s
+  at most, then answers from the folder), `masterAvailability`, `verifyRelease`,
+  `preparedInstaller`, `prepareMasterUpdate` (pins the build the moment the
+  manifest names it, before hashing), `startReleasePolling`. Never runs an
   installer; the shell does (§10.8).
-- `master/src/services/github-releases.ts` (459) — `syncFromGitHub`, `isConfigured`;
-  off unless `ORDERBOOK_RELEASES_GITHUB_REPO` is set.
+- `master/src/services/github-releases.ts` (664) — `syncFromGitHub`, `isConfigured`;
+  off unless `ORDERBOOK_RELEASES_GITHUB_REPO` is set. Writes the manifest names
+  `release.mjs` writes and sweeps per OS (§10.8).
 - `master/src/services/developer.service.ts` (288) — `createDeveloperGate` /
   `developerGate` (password, lockout, short-lived tokens); `resetAllData` (drops the
   schema, re-runs migrations, wipes uploads, `<dataDir>/documents` (the removed PDF
@@ -1915,18 +2046,18 @@ UPDATE`, not a SEQUENCE); row-level party visibility is always
 `export type TransactionContext = Knex.Transaction`, a named alias marking
 functions that **must** run inside the caller's transaction so several repositories
 commit together. 21 repository files import it; read functions take
-`runner: Runner = db()` (31 files declare a local `type Runner = Knex |
+`runner: Runner = db()` (32 files declare a local `type Runner = Knex |
 Knex.Transaction`). In practice services open transactions themselves with
 `db().transaction(...)` (30 of 43 service files import `db`) and pass `trx` down.
 
 | Group | Files |
 |---|---|
-| Core plumbing | `master/src/repositories/transaction.ts`; `master/src/repositories/mappers.ts` (`mapUser`, `mapParty`, `mapProduct`, `mapProductVariant`, `mapLead`, `mapOrder`, `mapLineItem`, `mapStockLevel`, `mapSyncConflict`, `toNumber`, `toIso`, …); `master/src/repositories/identity.repository.ts` (permanent id allocation `allocatePermanentId(s)`, `recordIdMapping`, `resolveId`, `listIdMappings`, the Master's HLC `nextHlc`, `observeAndNextHlc`, `peekHlc`; device code `'MASTER'`); `master/src/repositories/tenant.repository.ts` (`resolveDefaultTenantId`, one tenant per install); `master/src/repositories/master-config.repository.ts` (the single `master_config` row); `master/src/repositories/settings.repository.ts` (raw `settings` rows) |
+| Core plumbing | `master/src/repositories/transaction.ts`; `master/src/repositories/mappers.ts` (`mapUser`, `mapParty`, `mapProduct`, `mapProductVariant`, `mapLead`, `mapOrder`, `mapLineItem`, `mapStockLevel`, `mapSyncConflict`, `toNumber`, `toIso`, …); `master/src/repositories/identity.repository.ts` (permanent id allocation `allocatePermanentId(s)`, `recordIdMapping`, `resolveId`, `listIdMappings`, the Master's HLC `nextHlc`, `observeAndNextHlc`, `peekHlc`; device code `'MASTER'`); `master/src/repositories/tenant.repository.ts` (`findDefaultTenantId`, a read that never creates a tenant; `resolveDefaultTenantId`, which creates one if none exists; one tenant per install); `master/src/repositories/master-config.repository.ts` (the single `master_config` row); `master/src/repositories/settings.repository.ts` (raw `settings` rows) |
 | Identity & access | `master/src/repositories/user.repository.ts` (`readCredentialForVerification` is the only path returning `password_hash`; `role_id` is not a foreign key; `panel-credential.repository.ts` also selects the column, to compute fingerprints); `master/src/repositories/role.repository.ts` (permissions as one JSONB array; `permissionSetForRole`, `permissionSetFromRow`, `roleVersion`); `master/src/repositories/access-guard.repository.ts` (`lockTenantAccessGuards`, `readAdministrativeCapability`); `master/src/repositories/party-access.repository.ts` (grants, `applyPartyScope`, `partyScopeSql`, `partyScopeLogSql`); `master/src/repositories/password-vault.repository.ts`; `master/src/repositories/panel-credential.repository.ts` (`fingerprintForUser`, `findRevokedOfflineCredentials`); `master/src/repositories/office-panel.repository.ts` (paired panels; secret hash returned separately); `master/src/repositories/api-key.repository.ts` (`mintToken`, `parseToken`, `secretMatches`, `findByPrefix`, `listKeys`, `insertKey`, `revokeKey`, `touchKeys`) |
 | Catalogue | `master/src/repositories/party.repository.ts` (reference checks before delete; `P-0001` codes from `party_code_seq`); `master/src/repositories/party-variant.repository.ts` (per-party alias/size/weight/packaging: `listForParty`, `listAll`, `upsertVariant`); `master/src/repositories/product.repository.ts` (models with variants, `ensureCategories`, `listCategories`); `master/src/repositories/product-variant.repository.ts` (every code and weight: `replaceVariants`, `findVariantByCode`, `codesTakenElsewhere`); `master/src/repositories/product-image.repository.ts` (UUID ids, online-only); `master/src/repositories/custom-field.repository.ts` (option lists + definitions); `master/src/repositories/field-usage.repository.ts` (`usageForListKey`); `master/src/repositories/pipeline.repository.ts` (stages updated/reordered/archived/restored, never created or deleted) |
-| Leads, orders, stock | `master/src/repositories/lead.repository.ts` (`scope` is required; `markConverted`, `lockLead`, soft delete/restore); `master/src/repositories/order.repository.ts` (`markDispatched`, `lockOrder`); `master/src/repositories/line-item.repository.ts` (one `line_items` table for both parents; `replaceLines`); `master/src/repositories/timeline.repository.ts` (append-only system and remark entries); `master/src/repositories/inventory.repository.ts` (`stock_movements` ledger + `inventory_stock` snapshot, both written by `applyMovement`); `master/src/repositories/reservation.repository.ts` (`reservedTotals`, consume/release/reactivate) |
+| Leads, orders, stock | `master/src/repositories/lead.repository.ts` (`scope` is required; `markConverted`, `lockLead`, soft delete/restore); `master/src/repositories/order.repository.ts` (`markDispatched` — stage, `dispatched_at`, `hlc`, `field_hlc`, `version + 1`; `lockOrder` — `FOR UPDATE`, returns `dispatched_at`, `stage_id`, `field_hlc`); `master/src/repositories/line-item.repository.ts` (one `line_items` table for both parents; `replaceLines`); `master/src/repositories/timeline.repository.ts` (append-only system and remark entries); `master/src/repositories/inventory.repository.ts` (`stock_movements` ledger + `inventory_stock` snapshot, both written by `applyMovement`); `master/src/repositories/reservation.repository.ts` (`reservedTotals`, consume/release/reactivate) |
 | Read models | `master/src/repositories/search.repository.ts` (`tsvector` + GIN: `search`, `pickProducts`, `pickCategories`, `pickParties`); `master/src/repositories/dashboard.repository.ts`; `master/src/repositories/report.repository.ts` (month buckets in SQL in the business timezone); `master/src/repositories/recycle-bin.repository.ts` (`listBinEntries`: a `UNION ALL` over the 8 soft-deletable tables; `binCounts`: one count query per branch, summed) |
-| Sync, audit, backup, integrations | `master/src/repositories/sync.repository.ts` (`applied_mutations`, conflict log); `master/src/repositories/activity-log.repository.ts` (`recordActivity`, `recordDetachedActivity`, `listEntries`, `verifyChain`, `chainBounds`, `listFacets`, `listPanelActivity`); `master/src/repositories/backup.repository.ts` (generic dump/load via `information_schema`, `session_replication_role='replica'` during a load, `EXCLUDED_TABLES`, `TRANSITIVELY_SCOPED`); `master/src/repositories/connector.repository.ts` (credential sealed; `openCredential` is the only unsealer) |
+| Sync, audit, backup, integrations | `master/src/repositories/sync.repository.ts` (`applied_mutations`, conflict log); `master/src/repositories/activity-log.repository.ts` (`recordActivity`, `recordDetachedActivity` — its header states when detached is right, §5.1 — `listEntries`, `verifyChain`, `chainBounds`, `listFacets`, `listPanelActivity`); `master/src/repositories/backup.repository.ts` (generic dump/load via `information_schema`, `session_replication_role='replica'` during a load, `EXCLUDED_TABLES`, `TRANSITIVELY_SCOPED`); `master/src/repositories/connector.repository.ts` (credential sealed; `openCredential` is the only unsealer) |
 
 ### 5.8 HTTP (`master/src/http/`)
 
@@ -1950,7 +2081,9 @@ Knex.Transaction`). In practice services open transactions themselves with
 - **Panel:** `panelService.authenticatePanel(id, secret)` (status `active` + bcrypt
   compare), then `resolvePanelActor` turns the acting token into the person. A token
   presented but refused is a 401 — never silently downgraded to the panel's own
-  authority.
+  authority: `resolvePanelActor` throws `RefusedActingTokenError` itself (the dead
+  `tokenAccepted` branch in `require-panel.ts` was dropped on 2026-09-25). On
+  `/api/panel` it runs **once per request**, at the mount (§5.8.5).
 - **API key:** `parseToken` → `findByPrefix` (one indexed lookup joined to the
   owner) → `secretMatches` (sha256 + `timingSafeEqual`); refused if revoked, expired
   or the owner is deactivated; `consume(keyId, rate_limit_per_min)`
@@ -1959,7 +2092,10 @@ Knex.Transaction`). In practice services open transactions themselves with
   Failures go to an in-memory counter and `log.warn`, never `activity_log`.
   `noteUsed` queues a `last_used_at` touch; `drainTouches` hands it to the
   connector scheduler.
-- **Socket handshake** (`hub.ts#authenticate`): `kind === 'office-panel'` →
+- **Socket handshake:** first `allowRequest` (`isAllowedSocketOrigin` in
+  `master/src/realtime/socket-origin.ts`, on both transports) refuses and logs a
+  handshake whose `Origin` is another site, another port or `null`; then
+  `hub.ts#authenticate`: `kind === 'office-panel'` →
   `authenticatePanel(panelId, panelSecret)`; `kind === 'master-admin'` →
   `resolveSession(sessionToken)`; anything else is refused.
 
@@ -2017,9 +2153,9 @@ public-API off switch (no `messageKey`).
 the `/api` catch-all and runs `.use(requireAuth)` on every path it receives
 (`data.routes.ts:33`), so any `/api/*` path no earlier router matched returns 401
 `unauthorized` to a caller without a session cookie — including an Office server
-hitting an unknown `/api/panel/*` path with valid panel headers (both `/api/panel`
-routers pass it on after `requirePanel`). `notFoundHandler`'s 404 only reaches
-signed-in browser sessions.
+hitting an unknown `/api/panel/*` path with valid panel headers (the `/api/panel`
+mount runs `requirePanel`, then both routers pass the path on). `notFoundHandler`'s
+404 only reaches signed-in browser sessions.
 
 #### 5.8.4 Top-level files and middleware
 
@@ -2042,7 +2178,8 @@ signed-in browser sessions.
 - Middleware: `master/src/http/middleware/require-auth.ts` (`attachSession`,
   `requireAuth`, `requirePermissionMiddleware`, `actorFromRequest`; augments
   `Request`); `master/src/http/middleware/require-panel.ts` (`requirePanel`,
-  `panelActorFromRequest` — **the panel-credential boundary**);
+  `panelActorFromRequest` — **the panel-credential boundary**; a route mounted
+  without `requirePanel` in front is refused, never run as nobody);
   `master/src/http/middleware/require-api-key.ts` (`requireApiKey`,
   `apiActorFromRequest`, `resetApiKeyFailures`, private `intersect()`);
   `master/src/http/middleware/api-key-rate-limit.ts` (`consume`, `resetRateLimits`,
@@ -2067,7 +2204,7 @@ signed-in browser sessions.
 | `/api/logs` | `logRoutes` | `requireAuth` |
 | `/api/reports` | `reportRoutes` | `requireAuth` |
 | `/api/products/:productId/images` | `imagesRoutes` (`images.routes.ts`) | `requireAuth` |
-| `/api/panel` | `panelImageRoutes`, then `panelCatalogRoutes` | `requirePanel` (each) |
+| `/api/panel` | `panelImageRoutes`, then `panelCatalogRoutes` | `requirePanel`, once, at the mount in front of both (each router used to `.use` its own, so an import paid two bcrypt compares; fixed 2026-09-25) |
 | `/api/images` | `imageFilesRoutes` (`images.routes.ts`) | `requireAuth` |
 | `/api/access/users/:userId/avatar` | `avatarRoutes` (`avatar.routes.ts`) | `requireAuth` |
 | `/api/avatars` and `/uploads/avatars` | `avatarFilesRoutes` (mounted twice) | `requireAuth` |
@@ -2131,12 +2268,13 @@ the service checks.
   `POST /` (multipart + crop), `PATCH /:imageId`, `POST /reorder`, `DELETE
   /:imageId`; `imageFilesRoutes` — `GET /:imageId/:variant` (404 rather than 403, via
   `resolveImageFile`).
-- `master/src/http/routes/panel-image.routes.ts` (`/api/panel`, 3, `requirePanel`):
-  `POST /products/:productId/images`, `GET /avatars/:avatarId/:variant`, `GET
-  /images/:imageId/:variant`.
-- `master/src/http/routes/panel-catalog.routes.ts` (`/api/panel`, 2, `requirePanel`):
-  `GET /products/import/template.:format`, `POST /products/import` (multipart;
-  `dryRun`, `mode`; the service checks `products.bulk`).
+- `master/src/http/routes/panel-image.routes.ts` (`/api/panel`, 3, behind the
+  mount's `requirePanel`): `POST /products/:productId/images`, `GET
+  /avatars/:avatarId/:variant`, `GET /images/:imageId/:variant`.
+- `master/src/http/routes/panel-catalog.routes.ts` (`/api/panel`, 2, behind the
+  mount's `requirePanel`): `GET /products/import/template.:format`, `POST
+  /products/import` (multipart; `dryRun`, `mode`; the service checks
+  `products.bulk`).
 - `master/src/http/routes/avatar.routes.ts`: `avatarRoutes` — `POST /`, `DELETE /`
   (no route guard; `avatar.service.ts#assertMayEdit`); `avatarFilesRoutes` — `GET
   /:avatarId/:variant` (immutable-cached WebP).
@@ -2154,7 +2292,7 @@ the service checks.
   `POST /seed-sample-data`, `POST /load-catalogue` (each
   `developerGate.assertUnlocked(<x-developer-token>)`).
 - `master/src/http/routes/data.routes.ts` (`/api` catch-all, 42, the Master UI's main
-  surface): `GET /dashboard`; `GET /storage` (no permission check); `POST
+  surface): `GET /dashboard`; `GET /storage` (`settings.manage` since 2026-09-25); `POST
   /storage/export`, `/storage/restore/preview`, `/storage/restore`
   (`storage.manage`, multipart ≤ 1 GiB, buffered in memory); reference data `GET
   /pipelines`, `/option-lists`, `/custom-fields` (ungated by design); `GET /search`,
@@ -2171,13 +2309,18 @@ the service checks.
   (`orders.delete`); `GET /conflicts`, `POST /conflicts/:id/resolve`.
 - `master/src/http/routes/public-api.routes.ts` (`/api/v1`) — table-driven (§5.8.2).
 
-### 5.9 `realtime/` (4 files)
+### 5.9 `realtime/` (5 files)
 
 - **`master/src/realtime/hub.ts`** — `createRealtimeHub(httpServer)` → `{io, stop}`;
   also `socketCounts()` (for health) and `disconnectEverySocket()` (developer reset).
-  Options: `cors: { origin: true, credentials: true }`, `maxHttpBufferSize` 4 MB, `perMessageDeflate` above
-  1 KB. Internal functions: `authenticate`, `handleConnection`, `registerCommands`
-  (the 75 non-auth commands), `registerAuthCommands` (`auth:signIn` — records the
+  Options: no `cors` (the Master's own UI is same-origin and an Office server is not
+  a browser); `allowRequest` admits a handshake only through `isAllowedSocketOrigin`
+  and logs a refusal; `maxHttpBufferSize` 4 MB, `perMessageDeflate` above 1 KB.
+  Until 2026-09-25 it was `cors: { origin: true, credentials: true }`, which
+  reflected any origin — and CORS never applied anyway, since both clients use
+  `transports: ['websocket']` and browsers apply no CORS to a WebSocket. Internal
+  functions: `authenticate`, `handleConnection`, `registerCommands` (the 75 non-auth
+  commands), `registerAuthCommands` (`auth:signIn` — records the
   panel's device code, `auth:assume`, `auth:reconcile` →
   `findRevokedOfflineCredentials`, `auth:signOut`), `respond`, `panelActor`,
   `adminActor`, `emitPartyScopedChange`, `emitGatedChange`, `emitGatedConflict`,
@@ -2212,6 +2355,15 @@ the service checks.
 - **`master/src/realtime/panel-link.ts`** — `setPanelLink()`/`panelLink()`, a seam so
   `panel.service.ts` can reach one panel's socket (`isConnected`, `request`,
   `disconnect`, `notify`) without importing the hub.
+- **`master/src/realtime/socket-origin.ts`** (added 2026-09-25) —
+  `isAllowedSocketOrigin(origin, host)`: no `Origin` passes (an Office Panel's
+  server, in Node; a browser leaves it off only where the page cannot read the
+  answer); otherwise the page must have been served from exactly the host and port
+  the request went to — the Master UI in a browser or the Electron shell, the UI
+  opened from another LAN PC by IP, the Vite dev proxy (which keeps `Host`). Another
+  site, another port on the same machine and the opaque `null` are refused. Not a
+  DNS-rebinding defence; a same-host page still has no token to present. Pinned by
+  `master/tests/socket-origin.test.ts` on both transports.
 
 ### 5.10 Package, assets and launcher
 
@@ -2236,7 +2388,9 @@ the service checks.
 
 ### 5.11 Where the code and its comments or docs disagree, and defects
 
-Confirmed by reading the code (not reproduced in a running app):
+Confirmed by reading the code (not reproduced in a running app). Numbers are kept
+stable because other documents cite them; items 17–23 were found by the 2026-09-25
+audit and left open; item 24 records what it found deliberate.
 
 1. **Fixed 2026-09-22 — the startup image sweep deleted every avatar.**
    `sweepOrphanImageVariants()` (`master/src/services/image.service.ts`) removes every
@@ -2245,10 +2399,14 @@ Confirmed by reading the code (not reproduced in a running app):
    `master/src/services/avatar.service.ts`), so the whole `avatars/` folder went on
    every Master boot. The sweep now skips `AVATARS_DIR`, which both services share;
    `master/tests/images.integration.test.ts` pins it (seen failing first).
-2. **`npm run migrate -- --status` prints blank pending names.**
-   `master/src/db/migrate-cli.ts` maps pending entries with `m.file`; with the
-   registry source Knex's `list()` returns the `Migration` objects themselves
-   (`{name, up, down}`), so a single pending migration even prints `Pending: none`.
+2. **Fixed 2026-09-25 — `npm run migrate -- --status` printed blank pending names**
+   (and `Pending: none` for a single pending migration): the CLI read `m.file`, but
+   under `RegistryMigrationSource` Knex's `list()` returns the registry's own
+   `{name, up, down}` objects. At the root the command even applied instead of
+   listing, because the root script did not forward `--status`. Formatting is now
+   `master/src/db/migration-status.ts`, and the root script ends in `--`
+   (`master/tests/migration-status.test.ts`, `master/tests/operator-scripts.test.ts`,
+   `master/tests/operator-cli.integration.test.ts`).
 3. **Fixed 2026-09-22 — the Master's own Updates screen was answered 401.** `app.ts`
    mounts `publicUpdateRoutes` before `updateRoutes` on the same `/api/updates`
    prefix, and the former guarded itself with `.use(requirePanel)`, which ran for
@@ -2256,60 +2414,106 @@ Confirmed by reading the code (not reproduced in a running app):
    browser were refused with `panelCredentialsInvalid` before `updateRoutes` was
    reached. `requirePanel` now sits on each panel route; `master/tests/http-api.integration.test.ts`
    (`describe('updates')`) pins both audiences (seen failing first).
-4. **`npm run reload:catalog` does not reload the catalogue** — it only wipes
-   (§2.5). It also truncates `activity_log`.
-5. **Detached audit writes on the main paths.** `createParty`, `updateParty`,
-   `createProduct`, `updateProduct`, `createLead`, `updateLead`, lead `setStage`,
-   `convertLead`, `dispatchOrder`, `recordInbound`, `recordAdjustment`, `pairPanel`,
-   panel administration (revoke, rename/update, rotate-secret and storage-path
-   changes, all through `panel.service.ts#recordPanelActivity`), sign-in attempts and
-   connector runs use `recordDetachedActivity`, so their audit
-   row is not atomic with the change. The comment in `activity-log.repository.ts`
-   says every write path uses `recordActivity`.
-6. **Writes with no activity-log call:** `catalog.service.ts#upsertVariant`,
-   `inventory.service.ts#setReorderLevel`, and offline merged updates in
-   `sync.service.ts#mergeUpdate`.
+4. **Fixed 2026-09-25 — `npm run reload:catalog` did not reload the catalogue**; it
+   now passes `--with-catalog` (§2.5). Emptying `activity_log` is intended — every
+   entry describes a wiped record, and `TRUNCATE` is the only way past its row
+   triggers — and the CLI now says so, with counts, before it starts.
+5. **Fixed 2026-09-25 — detached audit writes on the main paths.** Parties,
+   products, leads, lead stage moves, conversion, dispatch, stock in, count
+   corrections, pairing, revocation and panel editing wrote their entry after the
+   commit through `recordDetachedActivity`, which swallows a failure, so a change
+   could commit with no entry. Each now calls `recordActivity` as the last statement
+   of its own transaction (§5.1; `master/tests/audit-atomicity.integration.test.ts`).
+   Still detached, deliberately: sign-in attempts (an accepted one included),
+   connector runs, and a panel's reissued secret or moved storage folder.
+6. **Fixed 2026-09-25 — writes with no activity-log call** now record:
+   `catalog.service.ts#upsertVariant` (`party.variant_saved`),
+   `inventory.service.ts#setReorderLevel` (`stock.levels_changed`), offline merged
+   updates in `sync.service.ts#mergeUpdate`, `updateOrder` and order `setStage`
+   (`order.stage_changed`).
 7. **Dispatch picks a stage by name:** `dispatchOrder` moves the order to the stage
    literally named `'Dispatched'` (falling back to the current stage), against the
-   "never key on a stage name" rule in `lead-outcome.ts`.
+   "never key on a stage name" rule in `lead-outcome.ts`. Not fixable in code alone:
+   no column on `pipeline_stages` says which stage means dispatched (`is_terminal` is
+   also true of Cancelled), so it needs an add-only migration for a stage flag and
+   the owner's decision on how it is set. The call site says so. (Since 2026-09-25
+   the stage being left, and the fallback, come from the locked row.)
 8. **Sample data edits the audit trail:** `sample-data.service.ts#createBackdater`
    disables the `activity_log_no_update` trigger inside a transaction.
-9. **`GET /api/storage` has no permission check** — any signed-in user can read the
-   database, uploads and free-disk byte counts.
-10. **Dead branch** in `require-panel.ts`: `if (!resolution.tokenAccepted)` can never
-    run, because `resolvePanelActor` already throws `RefusedActingTokenError`.
-11. **Double panel authentication:** `/api/panel/products/import*` passes
-    `requirePanel` twice (once per router), paying two bcrypt compares.
-12. **Stale comments:** `public-api-contract.ts` says the Master "cannot create" a
-    lead (but `data.routes.ts` has `POST /leads`); `recycle-bin.repository.ts` names
-    a non-existent `BIN_BRANCH_TYPES`; `index.ts` cites a non-existent
-    `sweepOrphanTemporaries`; `postgres-server.ts` says initdb creates a database
-    named after the superuser (the code creates `orderbook` from `postgres`);
-    `company-features.ts` says "six reads" (five); money wording in `lib/csv.ts`,
-    `pdf/table-renderer.ts`, `delta.service.ts`, `conversion.ts`,
-    `party-variant.repository.ts`, `product-variant.repository.ts`;
-    `seed-sample-data-cli.ts` prints "party-wise rates"; the header of migration
-    `20260314000000_settings_and_password_vault.ts` refers to a non-existent
-    `COLUMN_MAP`.
-13. **Other things to know:** `public-api.routes.ts#onlyTenantId` queries `tenants`
-    directly; Socket.IO CORS reflects any origin (`origin: true`); sessions do not
-    survive a restart; `ORDERBOOK_MASTER_SETTINGS_FILE` is set by the shell and read
-    by nothing; `github-releases.ts` is the only *built-in* internet path, but
-    connector runs (`connector-run.service.ts`) `fetch()` whatever `base_url` an
-    administrator configures, and `assertReachableUrl` rejects only this Master's own
-    origin, so nothing restricts a connector to the LAN (§1.6).
+9. **Fixed 2026-09-25 — `GET /api/storage` had no permission check**; it needs
+   `settings.manage` (export and restore stay on `storage.manage`), and Settings ›
+   Storage reads the figures only for a session holding it.
+10. **Fixed 2026-09-25 — dead branch** in `require-panel.ts`
+    (`if (!resolution.tokenAccepted)`) removed; a test pins the 401 over HTTP.
+11. **Fixed 2026-09-25 — double panel authentication:** `/api/panel/products/import*`
+    passed `requirePanel` twice (once per router); it now runs once, at the mount.
+12. **Stale comments.** Fixed 2026-09-25: `public-api-contract.ts` ("cannot create" a
+    lead), `recycle-bin.repository.ts` (`BIN_BRANCH_TYPES`), `index.ts` and
+    `image.service.ts` (`sweepOrphanTemporaries`), `postgres-server.ts` (the initdb
+    database), `company-features.ts` ("six reads"), the money and masking wording in
+    `lib/csv.ts`, `lib/spreadsheet.ts`, `pdf/`, `delta.service.ts`, `domain/`,
+    several repositories and services and the OpenAPI description, and
+    `seed-sample-data-cli.ts` (now "party-wise records"). Still stale: the header of
+    migration `20260314000000_settings_and_password_vault.ts` refers to a
+    non-existent `COLUMN_MAP` (a migration is never rewritten); and
+    `inventory.service.ts` (near line 179) says `isBlankNote` is shared with both
+    panels' forms, but no web code imports it.
+13. **Other things to know:** sessions do not survive a restart;
+    `github-releases.ts` is the only *built-in* internet path, but connector runs
+    (`connector-run.service.ts`) `fetch()` whatever `base_url` an administrator
+    configures, and `assertReachableUrl` rejects only this Master's own origin, so
+    nothing restricts a connector to the LAN (§1.6). Fixed 2026-09-25:
+    `public-api.routes.ts#onlyTenantId` reads through
+    `tenant.repository.ts#findDefaultTenantId` instead of querying `tenants` itself;
+    the Socket.IO CORS that reflected any origin is replaced by the `Origin` check
+    (§5.9); the unread `ORDERBOOK_MASTER_SETTINGS_FILE` is no longer set (§1.5).
 14. **Untested modules:** domain `access`, `log-cursor`, `paging`, `pipeline`,
     `search-terms`; services `avatar.service.ts`, `connector-profiles.ts`,
-    `connector-scheduler.ts`, `reauth-cache.ts`, `storage.service.ts`,
-    `catalog-reload-cli.ts`; also `master/src/index.ts`,
+    `connector-scheduler.ts`, `reauth-cache.ts`; also `master/src/index.ts`,
     `master/src/discovery/responder.ts` (except the discovery half of
     `master/tests/panel-naming.test.ts`), `master/src/lib/memory-monitor.ts`,
-    `master/src/lib/secret-box.ts` on its own.
-15. **A dispatch is invisible to offline merge bookkeeping:** `dispatchOrder` changes
-    the order's stage and `dispatched_at` without bumping `version` or `hlc`
-    (`order.repository.ts#markDispatched`), unlike every other order write (§5.6).
+    `master/src/lib/secret-box.ts` on its own. (`catalog-reload-cli.ts` is now run as
+    a process by `master/tests/operator-cli.integration.test.ts`, and
+    `storage.service.ts` is reached through `GET /api/storage` in
+    `master/tests/http-api.integration.test.ts`.)
+15. **Fixed 2026-09-25 — a dispatch was invisible to offline merge bookkeeping**: it
+    now bumps `version`, `hlc` and `field_hlc` like every other order write (§5.6;
+    a clock test in `master/tests/inventory.integration.test.ts`).
 16. **An unknown `/api/*` path is a 401 without a session**, not a 404, because the
     `dataRoutes` catch-all runs `requireAuth` first (§5.8.3).
+17. **`deleteOrder` can race a dispatch.** It checks `dispatchedAt` on a read taken
+    before its transaction and never locks the order, so a dispatch that commits in
+    between leaves a soft-deleted order whose stock has already gone out.
+18. **The public API's tenant cache is stale after a whole restore.**
+    `resetPublicApiTenantCache()` runs on a developer reset, but a whole restore of
+    another installation's backup replaces the tenant row without calling it
+    (`backup-restore.service.ts` empties only the settings and role caches), so
+    `/api/v1` keeps reading the off switch of a tenant that is gone until a restart.
+    The function's comment says so.
+19. **The reload/wipe CLI stops a running Master's database.**
+    `catalog-reload-cli.ts` starts the managed cluster through `startPostgres()`,
+    which adopts a cluster that is already running, and its `stop()` then runs
+    `pg_ctl stop` whatever it found — so pointed at a running Master's data folder it
+    pulls the database out from under it, and nothing it changes reaches that
+    Master's in-memory caches. (`migrate-cli.ts` and the seed CLIs start and stop the
+    cluster the same way.) Its header says to run it with the Master stopped;
+    nothing enforces that.
+20. **`party_code` truncates from the 10,000th party.** `insertParty` formats
+    `'P-' || lpad(nextval('party_code_seq')::text, 4, '0')`, and PostgreSQL's `lpad`
+    truncates as well as pads, so codes repeat past `P-9999`
+    (`docs/schema/02-parties-and-products.md`).
+21. **No index on `leads.owner_id` or `orders.owner_id`.** `20260302` created
+    `idx_leads_owner`/`idx_orders_owner`; `20260303` rebuilt every column referencing
+    `users(id)` as TEXT, which took both with it, and nothing re-created them. Fixing
+    it is an add-only migration (§6.1).
+22. **Observation: a `partyVariant.upsert`'s temporary id never reaches `id_map`.**
+    `sync.service.ts#route` returns the Master's id but calls `mapTemporaryId` only
+    for lead, party and product creates.
+23. **A sample-data remark still reads "Rate list shared, …"**
+    (`master/src/domain/sample-data.ts`, in `SAMPLE_LEADS`), in a product with no
+    rates.
+24. **Deliberately detached, not defects:** accepted sign-in entries and connector
+    runs (§5.1).
 
 ---
 
@@ -2329,8 +2533,8 @@ structure — no upgrade path was replayed. Its seed data certainly can differ
 - 76 foreign keys, 129 indexes (primary keys included: 127 on the 39 application
   tables plus `knex_migrations_pkey` and `knex_migrations_lock_pkey`), 7 triggers,
   7 functions, one extension (`btree_gin`).
-- The prose schema docs are the 7 files in `docs/schema/` (§6.15 lists where they
-  are stale).
+- The prose schema docs are the 8 files in `docs/schema/`, rewritten on 2026-09-24
+  against a freshly migrated database (§6.15).
 
 ### 6.1 How migrations run, and the rules
 
@@ -2378,7 +2582,7 @@ structure — no upgrade path was replayed. Its seed data certainly can differ
 | 2 | `master/src/db/migrations/20260201000000_stock_movement_notes.ts` | 24 | `stock_movements.note` + `idx_stock_movements_reference` |
 | 3 | `master/src/db/migrations/20260301000000_tenancy_access_and_sync.ts` | 441 | `tenants`, `tenant_id` everywhere, `roles`, `role_permissions`, `pipelines`, `pipeline_stages`, `option_lists`, `custom_field_definitions`, `id_map`, `applied_mutations`, `sync_conflicts`, `id_sequences`, `master_clock`; seeds the tenant, 3 roles, 2 pipelines with 9 stages, 6 source platforms, the `master_clock` row |
 | 4 | `master/src/db/migrations/20260302000000_lead_order_rebuild.ts` | 749 | text record ids (`PT`/`PC`/`PR`/`LD`/`OD`/`LI`…); `orders` as its own table; shared `line_items` + `line_item_quantities`; `timeline_entries`, `party_product_variants`, `stock_reservations`; per-colour `inventory_stock`; migrates data and converts old-model order leads into orders; drops `lead_items`, `lead_number_seq` |
-| 5 | `master/src/db/migrations/20260303000000_roles_and_users.ts` | 368 | `roles.permissions` JSONB array (drops `role_permissions`); `RL…`/`US…` ids; soft delete on roles and users; tier ceiling; append-only hash-chained `activity_log` (triggers `activity_log_no_update` / `activity_log_no_delete`) |
+| 5 | `master/src/db/migrations/20260303000000_roles_and_users.ts` | 368 | `roles.permissions` JSONB array (drops `role_permissions`); `RL…`/`US…` ids; soft delete on roles and users; tier ceiling; only Admin keeps `is_system`; append-only hash-chained `activity_log` (triggers `activity_log_no_update` / `activity_log_no_delete`). Rebuilding every `users(id)` reference as TEXT dropped `idx_leads_owner`/`idx_orders_owner`, which nothing re-created |
 | 6 | `master/src/db/migrations/20260304000000_role_tier_ceiling_repair.ts` | 94 | re-filters stored role permissions through an inlined tier map |
 | 7 | `master/src/db/migrations/20260305000000_soft_delete_columns.ts` | 79 | `deleted_at`/`deleted_by` on leads, orders, parties, products; Bin keyset indexes; open/follow-up indexes exclude deleted rows; party/product code uniqueness partial. `down()` empty |
 | 8 | `master/src/db/migrations/20260306000000_field_values_and_stage_ordering.ts` | 195 | soft delete + `version` on option lists and custom fields; `option_lists.hex`; `pipeline_stages.is_archived`; deferrable `pipeline_stages_seq_unique`; backfills list values. `down()` empty |
@@ -2412,7 +2616,7 @@ structure — no upgrade path was replayed. Its seed data certainly can differ
 | Shape | Tables |
 |---|---|
 | **Text permanent id**, 12 chars (`formatPermanentId`, `ENTITY_PREFIX`) | `leads` LD, `orders` OD, `line_items` LI, `parties` PT, `products` PR, `product_categories` PC, `product_variants` VR, `party_product_variants` PV, `timeline_entries` TL, `stock_reservations` RS, `roles` RL, `users` US — the 12 `SYNCABLE_ENTITIES` |
-| **Text temporary id**, 15 chars | minted offline by a panel; mapped forever through `id_map`. Stored in a `temporary_id` column only on the 7 sync-bookkept tables (`leads`, `orders`, `parties`, `products`, `party_product_variants`, `roles`, `users`); `line_items`, `product_categories`, `product_variants`, `timeline_entries` and `stock_reservations` have no such column and are mapped through `id_map` only |
+| **Text temporary id**, 15 chars | minted offline by a panel for the record a mutation is about; mapped forever through `id_map`. A `temporary_id` column exists only on the 7 sync-bookkept tables (`leads`, `orders`, `parties`, `products`, `party_product_variants`, `roles`, `users`), and only lead, party and product creates record a mapping (`mapTemporaryId` in `sync.service.ts`; not a `partyVariant.upsert`, §5.11 item 22). Roles and users have no mutation kind, so theirs is always NULL; an order is named by the Master at conversion; `line_items`, `product_categories`, `product_variants`, `timeline_entries` and `stock_reservations` are named by the Master when it applies their parent's write, so none of them reaches `id_map` |
 | UUID | `tenants`, `office_panels`, `pipelines`, `pipeline_stages`, `option_lists`, `custom_field_definitions`, `product_images`, `inventory_stock`; with a `gen_random_uuid()` default: `party_access`, the `api_*` tables except runs, `ai_runs` |
 | BIGSERIAL | `activity_log`, `stock_movements`, `sync_conflicts`, `api_connector_runs` |
 | Composite key | `id_map (tenant_id, temporary_id)`, `applied_mutations (tenant_id, mutation_id)`, `id_sequences (tenant_id, entity)`, `settings (tenant_id, key)`, `user_password_vault (tenant_id, user_id)` |
@@ -2436,7 +2640,8 @@ structure — no upgrade path was replayed. Its seed data certainly can differ
   `api_connector_links.local_id`, and the polymorphic `line_items.parent_id` and
   `timeline_entries.parent_id` (over `parent_type` lead/order).
 - **Sequences** besides serials: only `party_code_seq` (`'P-' || lpad(n, 4, '0')` in
-  `insertParty`).
+  `insertParty`; `lpad` truncates, so codes repeat from the 10,000th party — §5.11
+  item 20).
 - **Full-text search** (`search_vector tsvector`, maintained by triggers):
   `parties_search_trg` (name, party_code, phones, email, city); `products_search_trg`
   (name, live variant codes and labels, alias, size); `product_variants_search_trg`
@@ -2479,7 +2684,7 @@ erDiagram
 
 | Table | Key columns | Keys and constraints | Purpose / code |
 |---|---|---|---|
-| `roles` | `id` (RL…), `name`, `tier` (`admin`/`management`/`office`), `is_system`, `permissions` JSONB array, `created_by`/`updated_by`, soft delete, sync columns | `roles_name_unique (tenant_id, lower(name)) WHERE deleted_at IS NULL`; CHECK `tier` | seeds three `is_system` roles: Admin (56 stored keys), Management (21), Office (11). **Which of them gets `RL0000000001`/`02`/`03` is not deterministic:** `20260303` numbers roles `ORDER BY created_at, id`, all three were inserted in one transaction by `20260301` (same `now()`), and their pre-rebuild `id` was a random UUID — four fresh runs on PostgreSQL 16.13 gave Management/Office/Admin twice and Management/Admin/Office twice, and other runs have put Admin first. Look seeded roles up by `name` or `tier`, never by id; `id_sequences` for `role` starts at 4; `role.repository.ts` |
+| `roles` | `id` (RL…), `name`, `tier` (`admin`/`management`/`office`), `is_system`, `permissions` JSONB array, `created_by`/`updated_by`, soft delete, sync columns | `roles_name_unique (tenant_id, lower(name)) WHERE deleted_at IS NULL`; CHECK `tier` | seeds three roles: Admin (56 stored keys), Management (21), Office (11). **Only Admin is `is_system`** (it cannot be deleted); `20260301` marked all three and `20260303` cleared it on Management and Office, which are templates a company may edit or remove. **Which of them gets `RL0000000001`/`02`/`03` is not deterministic:** `20260303` numbers roles `ORDER BY created_at, id`, all three were inserted in one transaction by `20260301` (same `now()`), and their pre-rebuild `id` was a random UUID — four fresh runs on PostgreSQL 16.13 gave Management/Office/Admin twice and Management/Admin/Office twice, and other runs have put Admin first. Look seeded roles up by `name` or `tier`, never by id; `id_sequences` for `role` starts at 4; `role.repository.ts` |
 | `users` | `id` (US…), `username`, `password_hash`, `display_name`, `is_active`, `last_sign_in_at`, `role_id` TEXT (**no FK**), `avatar_*`, soft delete, sync columns | `users_username_unique (tenant_id, lower(username)) WHERE deleted_at IS NULL`; partial `users_by_role`, `users_active` | no seeded user; setup inserts `admin`; `user.repository.ts` |
 | `user_password_vault` | `user_id`, `key_version`, `sealed` JSONB, `credential_fingerprint`, `updated_at`/`updated_by` | PK `(tenant_id, user_id)` | recoverable encrypted passwords, written only while `security.passwordRevealEnabled` is on; in `EXCLUDED_TABLES`, never backed up; `password-vault.repository.ts` |
 
@@ -2517,8 +2722,8 @@ digest of each user's `password_hash`, never the hash.
 |---|---|---|---|
 | `pipelines` | `id` UUID, `kind` (`lead`/`order`), `name` | UNIQUE `(tenant_id, kind)` | one per kind per tenant |
 | `pipeline_stages` | `id`, `pipeline_id`, `name`, `sequence`, `is_default`, `is_terminal`, `is_archived`, `colour` | `pipeline_stages_seq_unique (pipeline_id, sequence) DEFERRABLE`; at most one default per pipeline; not both archived and default | Kanban columns (no `tenant_id`). Seeded lead stages: New (default), Quoted, Negotiating, Won (terminal), Lost (terminal). Order stages: In Progress (default), Postpone, Dispatched (terminal), Cancelled (terminal). |
-| `leads` | `id` (LD…), `party_id`, `stage_id`, `owner_id`, `created_by_user_id`, `source_panel_id`, `source_platform`, `follow_up_date`, `party_wise_mode`, `notes`, `custom_fields`, `converted_order_id`, `converted_at`, soft delete, sync columns | FKs to parties, stages, users, office_panels, orders; partial `idx_leads_open`, `idx_leads_followup` | an enquiry; no status, `lead_number` or amount column — the id is the docket number and the stage is the status; `lead.repository.ts` |
-| `orders` | `id` (OD…), `lead_id`, `party_id`, `stage_id`, `owner_id`, `created_by_user_id`, `source_panel_id`, `dispatch_address_label`, `expected_dispatch_date`, `total_weight_kg`, `total_weight_kg_override`, `notes`, `custom_fields`, `dispatched_at`, soft delete, sync columns | FK `lead_id`→leads (circular with `leads.converted_order_id`); partial `idx_orders_dispatched` | created only by conversion; `order.repository.ts` |
+| `leads` | `id` (LD…), `party_id`, `stage_id`, `owner_id`, `created_by_user_id`, `source_panel_id`, `source_platform`, `follow_up_date`, `party_wise_mode`, `notes`, `custom_fields`, `converted_order_id`, `converted_at`, soft delete, sync columns | FKs to parties, stages, users, office_panels, orders; partial `idx_leads_open`, `idx_leads_followup`; **no index on `owner_id`** (§5.11 item 21) | an enquiry; no status, `lead_number` or amount column — the id is the docket number and the stage is the status; `lead.repository.ts` |
+| `orders` | `id` (OD…), `lead_id`, `party_id`, `stage_id`, `owner_id`, `created_by_user_id`, `source_panel_id`, `dispatch_address_label`, `expected_dispatch_date`, `total_weight_kg`, `total_weight_kg_override`, `notes`, `custom_fields`, `dispatched_at`, soft delete, sync columns | FK `lead_id`→leads (circular with `leads.converted_order_id`); partial `idx_orders_dispatched`; no index on `owner_id` | created only by conversion; `order.repository.ts` |
 | `line_items` | `id` (LI…), `parent_type`, `parent_id` (no FK), `product_id`, `variant_id`; snapshots `product_name`, `category_name`, `alias`, `code`, `variant_label`, `colour`, `size`, `weight_kg`, `packaging`, `grade`; `sequence`, `from_party_variant`, `image_path`, `notes`, `quantity` NUMERIC(12,2), `search_vector` | CHECK `quantity > 0`; index `(tenant_id, parent_type, parent_id)` | one table for both parents, one line per variant, snapshot frozen when added; `replaceLines` deletes and re-inserts; `line-item.repository.ts` |
 | `timeline_entries` | `id` (TL…), `parent_type`/`parent_id`, `kind` (`system`/`remark`), `message`, `from_stage_id`, `to_stage_id`, `actor_user_id` | FKs to stages and users | history and remarks; `timeline.repository.ts` |
 
@@ -2595,18 +2800,26 @@ its parent.
 
 ### 6.15 Where `docs/schema/` disagrees with the code
 
-- `docs/schema/00-overview.md` says primary keys are UUIDs, money is INTEGER paise,
-  every entity has a display code, files live at
-  `data/uploads/products/<product_id>/<filename>`, and its ER diagram shows
-  `LEAD_ITEMS`; its index lists `line_item_quantities`. None is true now.
-- DDL blocks showing the initial schema: `docs/schema/01-identity-and-network.md`
-  (`users` with UUID `id`, `role`, `full_name`, `last_login_at`),
-  `docs/schema/02-parties-and-products.md` (UUID `parties.id`, global UNIQUE
-  `party_code`), `docs/schema/04-activity-log.md` (UUID `entity_id`, three actor
-  types, no hash chain).
-- Current: the `products`, `product_variants` and `line_items` DDL in `02`/`03`, and
-  most of `docs/schema/06-tenancy-permissions-and-sync.md`.
-- No schema doc mentions the seven `api_*` tables or `ai_runs`.
+**Fixed 2026-09-25.** `docs/schema/` was rewritten against the shape a fresh
+database has after all 30 migrations (checked 2026-09-24) — the registry run on an empty
+PostgreSQL 16 database and compared table by table with `pg_dump` and
+`information_schema` (all 39 application tables, every column, the 76 foreign keys
+with their `ON DELETE`, every index). What this section used to list is gone: UUID
+primary keys everywhere, money as INTEGER paise, a display code on every entity,
+image files under `data/uploads/products/`, `LEAD_ITEMS` in the ER diagram,
+`line_item_quantities` in the index, the initial-schema DDL for `users`, `parties`
+and `activity_log`, and the undocumented `api_*` tables and `ai_runs` (now
+`docs/schema/07-integrations.md`). Superseded shapes survive only as short dated
+history notes naming the migration that changed them. The review pass also
+corrected what the docs said about offline users and roles (no `role.*`/`user.*`
+mutation kind exists, so neither is created offline), the two kinds of reset, and
+the pre-upgrade copy.
+
+The code defects the rewrite recorded rather than fixed are in §5.11: the
+`party_code` `lpad` truncation (item 20) and the missing `owner_id` indexes
+(item 21). The migrations' own headers are not rewritten (§6.1), so
+`20260101000000_initial_schema.ts` still calls these files "character-comparable"
+with its DDL; `docs/schema/00-overview.md` says why that stopped being true.
 
 ---
 
@@ -2615,9 +2828,9 @@ its parent.
 `@orderbook/master-web` is the React 19 + Vite 5 single-page app for the Master
 Panel. It talks only to its own Master server: HTTP under `/api` and one Socket.IO
 connection. In production `master/src/http/app.ts` (and `http/boot-app.ts` while
-booting) serves `master/web/dist` with an SPA fallback. **30 tracked files**, 14,173
+booting) serves `master/web/dist` with an SPA fallback. **30 tracked files**, 14,298
 lines: 17 screens, 3 components, 6 other source files, 4 config files. **No test
-files** — §7.6 lists the tests that read this source.
+files of its own** — §7.6 lists the tests that read or boot this source.
 
 ### 7.1 File inventory
 
@@ -2629,8 +2842,8 @@ files** — §7.6 lists the tests that read this source.
 | `master/web/tsconfig.json` | 19 | strict, `noEmit`, bundler resolution, `react-jsx` |
 | `master/web/src/vite-env.d.ts` | 2 | `declare const __APP_VERSION__: string` |
 | `master/web/src/main.tsx` | 25 | `configureUi({ panel: 'master', defaultTheme: 'dark', themeStorageKey: 'ob.theme.v2' })`, `initAppearance()`, styles, render |
-| `master/web/src/App.tsx` | 1057 | the shell (§7.2) |
-| `master/web/src/api.ts` | 865 | the only HTTP client (§7.3) |
+| `master/web/src/App.tsx` | 1116 | the shell (§7.2) |
+| `master/web/src/api.ts` | 875 | the only HTTP client (§7.3) |
 | `master/web/src/partyFormTransport.ts` | 20 | hands the shared `PartyFormModal` `api.createParty`/`api.updateParty` |
 | `master/web/src/styles.css` | 275 | legacy layer mapping old variables (`--bg`, `--surface`, `--muted`…) onto `ui` tokens (`:root`) and styling bare elements; every element-selector rule (`button`, `input`/`select`/`textarea`, `label`, `table`, `button.link`) is guarded by `:not(:where([class*='ob-']))`, but the class rules `.card`, `.row`, `.muted`, `.dot`/`.dot.on`/`.dot.off`, `.chip*` and `.num` are not |
 | `master/web/src/components/ChangePasswordDialog.tsx` | 137 | change your own password: 8-char minimum and match checked client-side, then `api.changeOwnPassword`; the server invalidates every session for the user, so the 401 path returns to sign-in |
@@ -2650,8 +2863,13 @@ files** — §7.6 lists the tests that read this source.
   throws, so a 401 from storage export/restore, setup restore or avatar upload does
   not end the session in the shell) drops to `SignInScreen` with a `notice`.
 - **Providers:** `ToastProvider` › `ConfirmProvider` › `SubNavProvider` ›
-  `TopbarActionsProvider` › `ResetProvider` › `MasterPanel` → `KeyboardProvider(panel="master")`
-  › `FilterBarProvider` › `AppShell`.
+  `TopbarActionsProvider` › `ResetProvider` › `MasterPanel` →
+  `KeyboardProvider(panel="master", onNavigate={navigate}, canNavigate={offered})` ›
+  `FilterBarProvider` › `AppShell`.
+- **The screen does not outlive the session.** `signOut` and `onSessionEnded` both
+  reset `tab` to `dashboard` (since 2026-09-25): `ScreenHost` draws `tab` whatever
+  the sidebar offers, so the next person to sign in at that window used to start on
+  the previous person's screen.
 - **`type Tab`** (15): `dashboard, panels, orders, parties, inventory, reports,
   access, partyAccess, fields, integrations, logs, recycleBin, conflicts, settings,
   updates`. A separate `Route = '' | 'gallery'` shows `GalleryScreen`.
@@ -2684,7 +2902,15 @@ state, Settings via `useSettingsTab('ob.settings.tab.master', SETTINGS_TAB_IDS,
 `open`; `fields` — `values`, `definitions`, `stages`; `recycleBin` — `all` + each
 `RECYCLE_BIN_ENTITIES` branch whose `RESTORE_PERMISSION` the user holds;
 `integrations` — `keys`, `connectors`; `settings` — `appearance, shortcuts, company,
-connection, storage, developer`. `navigate(id)` resolves through `splitSubPage`.
+connection, storage, developer` (all six always listed; inside the screen the
+Company tab renders only when `api.settings()` answered, i.e. with `settings.manage`,
+and Storage only with `settings.manage` or `storage.manage`, §7.4).
+`navigate(id)` resolves through `splitSubPage`, and since 2026-09-25 refuses a
+screen the sidebar does not offer (`offered(id)`: the id is among the sidebar's
+flattened items). Alt+N and the palette's nav rows arrive through it, so a role
+without `panels.manage` can no longer open Office panels by chord; `canNavigate`
+hands the same test to the palette. `openScreen(id)` skips the check, for its one
+caller, the desktop menu's Developer entry.
 
 **Socket and revisions.** One `io({ auth: { kind: 'master-admin', sessionToken },
 transports: ['websocket'] })` once `ready`. On connect the server emits
@@ -2698,13 +2924,17 @@ transports: ['websocket'] })` once `ready`. On connect the server emits
 | `sync:conflict` | `bump('sync_conflict')` |
 
 `revisionOf(revisions, key)` sums counters for `SCREEN_ENTITIES[key]`: `records`
-(lead, order, party, product, stock, reservation → LeadsOrdersScreen), `inventory`
-(stock, product, reservation), `reports` (lead, order, party, stock), `fields`
-(option_list, custom_field, pipeline), `access` (user, role — **unused**),
-`partyAccess` (party), `parties` (party), `recycleBin` (lead, order, party, product,
-role, user), `conflicts` (sync_conflict). Dashboard (fed only `summary`, `panels`
-and `onOpenConflicts`), Panels, Logs, Updates, Integrations and Settings receive no
-revision.
+(lead, order, party, product, catalog, stock, reservation → LeadsOrdersScreen),
+`stages` (pipeline → LeadsOrdersScreen's stage picker, apart from `records` so a lead
+edit does not re-read it), `inventory` (stock, product, catalog, reservation),
+`reports` (lead, order, party, stock), `fields` (option_list, custom_field,
+pipeline), `access` (user, role → AccessScreen), `partyAccess` (party), `parties`
+(party), `recycleBin` (lead, order, party, product, role, user, option_list,
+custom_field), `conflicts` (sync_conflict). Every key is read by a screen; `catalog`
+(the one event a bulk import or the catalogue seed publishes) and the `stages`,
+`access` and Bin field wiring were added on 2026-09-25. Dashboard (fed only
+`summary`, `panels` and `onOpenConflicts`), Panels, Logs, Updates, Integrations and
+Settings receive no revision.
 
 **Rail, footer, topbar, overlays.** `railState` in order: `conflict` (open
 conflicts), `offlinePending`, `offline` (a panel `!isConnected`), `syncing`
@@ -2716,7 +2946,7 @@ panels online, low stock, "Review conflicts"). Footer: the sync-status button
 `resetNonce[tab]`), `PaletteButton`, Change password, Sign out.
 `KeyboardOverlays.searchRecords` = `api.search(term)`; `onOpenRecord` sends
 `lead_line`/`order_line` to `orders`, `product` to `inventory` (party hits do not
-navigate). Menu `settings.developer` → `navigate('settings')` +
+navigate). Menu `settings.developer` → `openScreen('settings')` +
 `requestSettingsTab('developer')`.
 `shellCommands`: `view.reset`, `view.refresh` (`location.reload()`).
 
@@ -2736,10 +2966,10 @@ resolveCompanyFeatures(user?.features)` supplies the feature props:
 | `dashboard` | `DashboardScreen summary panels onOpenConflicts` |
 | `panels` | `PanelsScreen panels onRefresh` |
 | `parties` | `PartiesScreen revision permissions` |
-| `orders` | `LeadsOrdersScreen revision permissions packagingRequired view onViewChange` |
+| `orders` | `LeadsOrdersScreen revision stagesRevision permissions packagingRequired view onViewChange` |
 | `inventory` | `InventoryScreen revision filter onFilterChange freeToSell adjustmentNoteRequired` |
 | `reports` | `ReportsScreen revision permissions kind onKindChange` |
-| `access` | `AccessScreen permissions currentUserId currentUserTier tab onTabChange` |
+| `access` | `AccessScreen revision permissions currentUserId currentUserTier tab onTabChange` |
 | `partyAccess` | `PartyAccessScreen permissions revision restriction onRestrictionChange` |
 | `fields` | `FieldsScreen permissions revision tab onTabChange` |
 | `logs` | `LogsScreen permissions` |
@@ -2747,7 +2977,7 @@ resolveCompanyFeatures(user?.features)` supplies the feature props:
 | `conflicts` | `ConflictsScreen revision canResolve` |
 | `updates` | `UpdatesScreen panels permissions` |
 | `integrations` | `IntegrationsScreen canManage tab onTabChange` |
-| `settings` | `SettingsScreen tab onTabChange onSaved={refreshUser}` |
+| `settings` | `SettingsScreen tab onTabChange onSaved={refreshUser} permissions` |
 
 `FirstRunScreen` and `SignInScreen` are rendered by the phase logic.
 
@@ -2759,15 +2989,19 @@ resolveCompanyFeatures(user?.features)` supplies the feature props:
   returns `undefined` on 204; on 401 calls `publishSessionEnded(...)` before throwing.
 - `ApiError` carries `code`, `details`, `messageKey`, `params` and getters
   `missingPermission`, `isConflict`, `storedVersion`, `diff`, `blockedBy`,
-  `suggestion`; in `request()`'s `asFailure`, timeout → `code: 'timeout'`, and any
-  other non-`ApiError` failure — a real abort **or a network error such as
-  connection refused** (fetch's `TypeError`) — → `ApiError('Request cancelled',
-  'aborted')`, so a transport failure is indistinguishable from a cancellation.
+  `suggestion`; in `request()`'s `asFailure`, a timeout → `code: 'timeout'`
+  (`error.requestTimedOut`), the caller's own cancel → `'aborted'`
+  (`error.requestCancelled`), and anything else — a network error such as
+  connection refused — → `internal_error` (`error.requestFailed`), the code an
+  unstructured 500 gets. Until 2026-09-25 every non-timeout failure was `'aborted'`
+  with the English "Request cancelled", which the boot put on the splash instead of
+  "could not reach the server".
 - Helpers: `pagedQuery`, `postAsDeveloper` (`DEVELOPER_TOKEN_HEADER`), `requestBlob`
   (filename from `Content-Disposition`), `requestForm`. `requestBlob` and
   `requestForm` call `fetch` directly, so they skip `request()`'s 15 s timeout, its
   `asFailure` mapping and the 401 → `publishSessionEnded` path; their
-  `throwIfNotOk` builds an `ApiError` without `messageKey`/`params`. They carry
+  `throwIfNotOk` builds an `ApiError` without `messageKey`/`params` (its fallback
+  text is `error.requestFailed`). They carry
   `exportStorage`, `previewRestoreStorage`, `restoreStorage`, `previewRestoreSetup`,
   `restoreSetup` and `uploadAvatar`. `desktopBridge()` → `window.orderbook` or
   `null`.
@@ -2809,19 +3043,19 @@ resolveCompanyFeatures(user?.features)` supplies the feature props:
 |---|---|---|---|
 | `master/web/src/screens/DashboardScreen.tsx` (214) | four stat cards (panels online, open conflicts → Conflicts, pending sync, low stock) and active panels; all from props | none | none |
 | `master/web/src/screens/PanelsScreen.tsx` (417) | "Add Office Panel" opens the pairing window and waits until a new row arrives over the socket (the window is also closed on effect cleanup); table of status, name, device code, LAN IP, paired, last seen; detail modal with **Rename** and **Remove** only | `openPairingWindow`, `closePairingWindow`, `renamePanel`, `revokePanel` | none (nav needs `panels.manage`) |
-| `master/web/src/screens/LeadsOrdersScreen.tsx` (606) | Leads / Orders / Converted with scope all/assigned; lead rows with an "incomplete" pill, line summary, weight, stage `Select`, **Convert** (disabled when `packagingRequired` and a line lacks packaging), delete; order rows with stage `Select`, **Dispatch**, delete; a 409 delete lists `blockedBy`. Pipelines fetched once. No pager (server default 100). **No "New lead" page** — leads are entered on an Office panel. | `pipelines`, `leads`, `orders`, `setLeadStage`, `setOrderStage`, `convertLead`, `dispatchOrder`, `deleteLead`, `deleteOrder` | `leads.delete`, `orders.delete` |
-| `master/web/src/screens/PartiesScreen.tsx` (355) | paged list (`PAGE_SIZE = 100`, Load more), debounced search, client sort, detail modal; create/edit via `PartyFormModal`; delete with confirm, 409 lists blockers | `parties`, `deleteParty` (+ transport) | `parties.create`, `parties.edit`, `parties.delete` |
+| `master/web/src/screens/LeadsOrdersScreen.tsx` (609) | Leads / Orders / Converted with scope all/assigned; lead rows with an "incomplete" pill, line summary, weight, stage `Select`, **Convert** (disabled when `packagingRequired` and a line lacks packaging), delete; order rows with stage `Select`, **Dispatch**, delete; a 409 delete lists `blockedBy`. Stages re-read on a `pipeline` change (`stagesRevision`). No pager (server default 100). **No "New lead" page** — leads are entered on an Office panel. | `pipelines`, `leads`, `orders`, `setLeadStage`, `setOrderStage`, `convertLead`, `dispatchOrder`, `deleteLead`, `deleteOrder` | `leads.delete`, `orders.delete` |
+| `master/web/src/screens/PartiesScreen.tsx` (360) | paged list (`PAGE_SIZE = 100`, Load more), debounced search, client sort, detail modal; create/edit via `PartyFormModal`; delete with confirm, 409 lists blockers | `parties`, `deleteParty` (+ transport) | `parties.create`, `parties.edit`, `parties.delete` |
 | `master/web/src/screens/InventoryScreen.tsx` (990) | one row per variant (on hand; reserved and free only when `freeToSell`; inline reorder/min/max saved on blur); recent-movements ledger; All/Low chips; row modal with its ledger; Stock in and Physical count (`MovementForm` with `api.pick('product')`); note required when `adjustmentNoteRequired` | `stock`, `stockMovements`, `optionLists`, `setReorderLevel`, `stockInbound`, `stockAdjust`, `pick` | none |
 | `master/web/src/screens/ReportsScreen.tsx` (508) | Dispatches / Lead outcomes / Top parties; period `Select` (`thisMonth`, `last3Months`, `last6Months` default, `last12Months`, `custom`); range errors under the named control; CSV export link | `dispatchReport`, `leadOutcomeReport`, `topPartiesReport`, `reportExportUrl` | `reports.view`, `reports.export` |
-| `master/web/src/screens/AccessScreen.tsx` (1994) | Users and Roles. Users: filters, add (`UserForm`, password shown once in `OneTimeSecretDialog`), detail modal (role change with `expectedVersion`, avatar, activate/deactivate, set/generate/reveal password, delete), `UserEditForm` as an `EditorScreen` with a sub-nav entry; last active admin protected client-side. Roles: `RoleEditor` (`PermissionGrid`, tier, stale-version banner with Reload/Overwrite), delete. Inline restore of deleted roles and users. | `permissionCatalogue`, `roles`, `users`, `vaultStatus`, user and role CRUD, `resetPassword`, `revealPassword`, `uploadAvatar`, `removeAvatar`, `deletedRoles`, `deletedUsers`, `restoreRole`, `restoreUser` | `users.manage`, `roles.*`, `roles.assign`, `users.viewPassword` |
+| `master/web/src/screens/AccessScreen.tsx` (1999) | Users and Roles; refetches on another administrator's `user`/`role` change (`revision`). Users: filters, add (`UserForm`, password shown once in `OneTimeSecretDialog`), detail modal (role change with `expectedVersion`, avatar, activate/deactivate, set/generate/reveal password, delete), `UserEditForm` as an `EditorScreen` with a sub-nav entry; last active admin protected client-side. Roles: `RoleEditor` (`PermissionGrid`, tier, stale-version banner with Reload/Overwrite), delete. Inline restore of deleted roles and users. | `permissionCatalogue`, `roles`, `users`, `vaultStatus`, user and role CRUD, `resetPassword`, `revealPassword`, `uploadAvatar`, `removeAvatar`, `deletedRoles`, `deletedUsers`, `restoreRole`, `restoreUser` | `users.manage`, `roles.*`, `roles.assign`, `users.viewPassword` |
 | `master/web/src/screens/PartyAccessScreen.tsx` (509) | who may see/manage each party; `PAGE_SIZE = 200` + a `limit: 1` restricted count; All/Restricted/Open; editor saves with `expectedVersion`; CSV export. **Byte-identical to the Office copy.** | `partyAccess`, `partyAccessPeople`, `savePartyAccess`, `partyAccessExportUrl` | `party.assign`, `parties.export` |
-| `master/web/src/screens/FieldsScreen.tsx` (1618) | **Values** (per set: add/edit with hex check, reorder, remove to Bin, usage), **Definitions** (per entity, 5 types, reorder, delete, stale-version notice), **Stages** (edit name/colour/terminal, default, reorder, archive/restore; default-stage and occupied-stage refusals reported separately). No create-stage call. | the 17 fields members | `fields.view`, `fields.manage` |
+| `master/web/src/screens/FieldsScreen.tsx` (1617) | **Values** (per set: add/edit with hex check, reorder, remove to Bin, usage), **Definitions** (per entity, 5 types, reorder, delete, stale-version notice), **Stages** (edit name/colour/terminal, default, reorder, archive/restore; default-stage and occupied-stage refusals reported separately). No create-stage call. | the 17 fields members | `fields.view`, `fields.manage` |
 | `master/web/src/screens/LogsScreen.tsx` (664) | hash-chained log with text/actor/entity/action/date filters, `NewerOlderPager`, rows rendered with `renderActivity(createTranslator('en'), …)`, "Verify chain" (`VerificationVerdict`), CSV export; no live refresh | `logs`, `logFacets`, `verifyLogChain`, `logsExportUrl` | `logs.view`, `logs.verifyChain`, `logs.export` |
-| `master/web/src/screens/RecycleBinScreen.tsx` (577) | soft-deleted records, `LoadMorePager`, type/search/deleted-by filters, counts, own/everyone scope; restore per row with `RESTORE_PERMISSION[type]`; a 409 opens `RefusalDialog` (suggested rename, or restore parents first and retry with `cascadeParents: true`) | `recycleBin`, `recycleBinCounts`, `recycleBinDeleters`, `restoreFromBin` | `recycleBin.view`, `recycleBin.viewAll`, `RESTORE_PERMISSION` |
+| `master/web/src/screens/RecycleBinScreen.tsx` (578) | soft-deleted records, `LoadMorePager`, type/search/deleted-by filters, counts, own/everyone scope; restore per row with `RESTORE_PERMISSION[type]`; a 409 opens `RefusalDialog` (suggested rename, or restore parents first and retry with `cascadeParents: true`) | `recycleBin`, `recycleBinCounts`, `recycleBinDeleters`, `restoreFromBin` | `recycleBin.view`, `recycleBin.viewAll`, `RESTORE_PERMISSION` |
 | `master/web/src/screens/ConflictsScreen.tsx` (179) | one card per conflict: kept vs overwritten with device codes; Keep (`keepWinner`) / Restore overwritten (`restoreLoser`) | `conflicts`, `resolveConflict` | `canResolve` (`sync.resolveConflicts`) |
-| `master/web/src/screens/IntegrationsScreen.tsx` (1113) | Keys (issue — token shown once in `IssuedTokenDialog` — and revoke) and Connectors (list, `ConnectorDialog`, dry run and import, run history, `MappingEditor` as a sub-nav editor) | `apiKeys`, `connectors`, `issueApiKey`, `revokeApiKey`, `users`, `createConnector`, `updateConnector`, `runConnector`, `connectorRuns`, `setConnectorMapping`, `testConnector` | `canManage` (`api.manage`) |
-| `master/web/src/screens/SettingsScreen.tsx` (744) | `SettingsPage`; exports `SETTINGS_TAB_IDS`. Appearance; Shortcuts; **Company** (only if `api.settings()` returned; one section per `SETTING_GROUPS` entry, row-level save; vault coverage beside `security.passwordRevealEnabled`); Connection (company, LAN address:port, master id, setup date); Storage (usage + `StorageBackupActions` with `storage.manage`); Developer (`DeveloperPanel`: seed dummy users, load Swisware catalogue, seed sample data, reset all; `useUninstallTool(desktopBridge())`) | `identity`, `storage`, `me`, `settings`, `saveSetting`, `vaultStatus`, `developer.*` | `settings.manage`, `storage.manage`, `users.viewPassword` |
-| `master/web/src/screens/UpdatesScreen.tsx` (361) | this Master's version, panels behind (`standing()`), the offer from the local releases folder; **Install** → `prepareMasterUpdate` → `desktopBridge().applyUpdate()` (in a browser shows the path); detects the standalone build; panel version table | `updateStatus`, `prepareMasterUpdate` | `settings.manage` |
+| `master/web/src/screens/IntegrationsScreen.tsx` (1108) | Keys (issue — token shown once in `IssuedTokenDialog`, copied with `copyText` — and revoke) and Connectors (list, `ConnectorDialog`, dry run and import, run history, `MappingEditor` as a sub-nav editor) | `apiKeys`, `connectors`, `issueApiKey`, `revokeApiKey`, `users`, `createConnector`, `updateConnector`, `runConnector`, `connectorRuns`, `setConnectorMapping`, `testConnector` | `canManage` (`api.manage`) |
+| `master/web/src/screens/SettingsScreen.tsx` (781) | `SettingsPage`; exports `SETTINGS_TAB_IDS`. Takes `permissions` from the shell (since 2026-09-25; it used to read `/me` on mount and start from "yes"), so tabs and reads are right on the first render and keyed on booleans. Appearance; Shortcuts; **Company** (only if `api.settings()` returned — `settings.manage`; one section per `SETTING_GROUPS` entry, row-level save; vault coverage beside `security.passwordRevealEnabled`); Connection (company, LAN address:port, master id, setup date); Storage (usage figures with `settings.manage`, `StorageBackupActions` with `storage.manage`; the tab is absent with neither); Developer (`DeveloperPanel`: seed dummy users, load Swisware catalogue, seed sample data, reset all; `useUninstallTool(desktopBridge())`) | `identity`, `storage`, `settings`, `saveSetting`, `vaultStatus`, `developer.*` | `settings.manage`, `storage.manage`, `users.viewPassword` |
+| `master/web/src/screens/UpdatesScreen.tsx` (372) | this Master's version, panels behind (`standing()`), the offer from the local releases folder; **Install** → `prepareMasterUpdate` → `desktopBridge().applyUpdate()` (in a browser shows the path); a build that cannot install over itself shows how to update by hand instead of the button — the standalone `.exe` (`updates.standaloneBody`) or a Linux copy not started from an AppImage (`getShellSettings().systemPackage`, `updates.systemPackageBody`); panel version table | `updateStatus`, `prepareMasterUpdate` | `settings.manage` |
 | `master/web/src/screens/FirstRunScreen.tsx` (411) | "Set up new site" (company name → `initialize` → one-time display of username, password, LAN addresses, master id, pairing password) or "Restore from backup" (preview, passphrase, restore, new pairing password); `DataDirCard` | `initialize`, `previewRestoreSetup`, `restoreSetup` | none |
 | `master/web/src/screens/SignInScreen.tsx` (127) | username (pre-filled `admin`) and password; errors via `apiErrorText`; shows the shell's `notice` | `signIn` | none |
 
@@ -2829,43 +3063,49 @@ resolveCompanyFeatures(user?.features)` supplies the feature props:
 
 - **`/api/updates/*` from this app used to be answered 401** (§5.11 defect 3, fixed
   2026-09-22); the Updates screen now reads status and prepares an install.
-- **The design-system gallery link does not stay open.** `readHash()` strips only
-  `#`, so `#/gallery` yields `/gallery`, which is not `'gallery'`; the `hashchange`
-  handler resets the route to `''` after the click set it. The same shape exists in
-  `office/web/src/App.tsx`.
-- `LeadsOrdersScreen.tsx` header mentions a "Leads & orders › New lead" page; none
-  exists.
-- "Nine entity types" in `LeadsOrdersScreen.tsx`/`RecycleBinScreen.tsx` headers —
-  `RECYCLE_BIN_ENTITIES` has 8.
-- **Paging comments:** `api.ts#pagedQuery` says the Master defaults to 50; actual
-  service defaults are parties/leads/orders 100 (max 500), stock 200 (max 1000),
-  movements 50, party access 50 (max 200). `PartiesScreen` calls 100 "the largest
-  the Master will serve"; the catalog service allows 500.
-- `FieldsScreen.tsx` says every other file imports only *types* from shared; several
-  import runtime values.
-- **`ALLOWED_UNCALLED` reasons are stale:** it says PanelsScreen "passes down"
-  `updatePanel`, `refreshPanel`, `rotatePanelSecret`, `setPanelStoragePath`,
-  `disconnectPanel`, `panelActivity`, `partyAccessFor` (none appears outside
-  `api.ts`), and that `dashboard` is fetched through its own bootstrap (the summary
-  arrives only on `dashboard:changed`).
-- **Refresh gaps:** `SCREEN_ENTITIES.access` is unused, so the Access screen does not
-  refetch when another admin edits users or roles; `recycleBin` omits
-  `option_list`/`custom_field`; no key includes `catalog` (bulk imports and catalogue
-  seeding do not refresh Inventory or Leads & orders); LeadsOrders fetches pipelines
-  once.
-- `api.pick` sets `categoryId` twice (harmless).
-- **Keyboard navigation bypasses the sidebar gate:** `MASTER_NAV` (Alt+1…9) includes
-  admin screens; `navigate()` calls `setTab` without re-checking permissions. The
-  server still refuses unauthorised calls.
+- **Fixed 2026-09-25 — the design-system gallery link did not stay open:**
+  `readHash()` stripped only `#`, so `#/gallery` read as `/gallery` and the
+  `hashchange` the click caused closed it. It now strips `#/` (both panels).
+- **Fixed 2026-09-25 — keyboard navigation bypassed the sidebar gate:** `navigate()`
+  refuses a screen the sidebar does not offer, and the palette lists only what
+  `canNavigate` accepts (§7.2).
+- **Fixed 2026-09-25 — the screen outlived the session** (§7.2), and **refresh gaps**:
+  the Access screen now refetches on `user`/`role` changes, the Recycle Bin on
+  `option_list`/`custom_field`, Inventory and Leads & orders on `catalog`, and Leads &
+  orders re-reads its stages on a `pipeline` change.
+- **Fixed 2026-09-25 — stale comments and reasons:** the "New lead" page in
+  `LeadsOrdersScreen.tsx`, "Nine entity types", the paging defaults in
+  `api.ts#pagedQuery` and `PartiesScreen`, `FieldsScreen.tsx`'s "only types" claim,
+  every stale `ALLOWED_UNCALLED.master` reason, and `api.pick`'s duplicate
+  `categoryId`.
+- **Fixed 2026-09-25 — English fallbacks** in backup, first run, Access and `api.ts`
+  are catalogue keys (`master/tests/web-catalogue-text.test.ts`).
+- **`SettingsScreen.tsx`'s Company-tab comment** still says "six groups for fifteen
+  settings" (there are 13; `settings.ts` dropped the same count on 2026-09-25).
+- **`AccessScreen.tsx`'s `RoleEditor` still asks with `window.confirm`** (the
+  discard-changes question, near line 1565) rather than the themed `ConfirmDialog`.
+- **The shell keeps drawing a screen after the user's permission for it is
+  revoked.** The gate is checked when somebody navigates, not afterwards: nothing
+  moves `tab` off a screen that is already open once the permission behind it goes
+  (and the browser re-reads `/me` only on a `setting` change, so a role edit does
+  not even reach the sidebar until the next sign-in or reload). The server refuses
+  the screen's calls.
 
 ### 7.6 Tests that read this workspace
 
-`master/tests/web-reachability.test.ts`, `master/tests/screen-reachability.test.ts`,
+`ui/tests/master-shell.test.tsx` boots `master/web/src/App.tsx` whole in jsdom
+(through `ui/tests/panel-harness.ts`, with the live socket replaced) and pins the
+gallery link, Alt+N against the sidebar, the Developer menu entry, the screen reset
+at a session end, the splash for an unreachable server and the refresh wiring. The
+source-reading tests: `master/tests/web-reachability.test.ts`,
+`master/tests/screen-reachability.test.ts`,
 `master/tests/party-access-screen-parity.test.ts`,
 `master/tests/i18n-call-sites.test.ts`, `master/tests/ui-conventions.test.ts`,
-`master/tests/no-duplicate-ui.test.ts`, `ui/tests/no-transport-dep.test.ts`,
-`shared/tests/keys-implemented.test.ts`, `shared/tests/version.test.ts`. UI behaviour
-is otherwise not covered by `npm run verify`.
+`master/tests/no-duplicate-ui.test.ts`, `master/tests/web-catalogue-text.test.ts`,
+`ui/tests/no-transport-dep.test.ts`, `shared/tests/keys-implemented.test.ts`,
+`shared/tests/keys-nav-order.test.ts`, `shared/tests/version.test.ts`. Individual
+screens' behaviour, layout and anything jsdom cannot render still need a browser or
+Electron pass.
 
 ---
 
@@ -2878,10 +3118,10 @@ working while the Master is off.
 
 | Area | Tracked files | Lines |
 |---|---|---|
-| `office/src` | 32 (`config` 2, `discovery` 1, `domain` 1, `http` 1, `lib` 8, `realtime` 1, `services` 12, `sync` 5, `office/src/index.ts`) | 7,267 |
-| `office/tests` | 12 (131 `it(` cases) | 3,067 |
+| `office/src` | 32 (`config` 2, `discovery` 1, `domain` 1, `http` 1, `lib` 8, `realtime` 1, `services` 12, `sync` 5, `office/src/index.ts`) | 7,509 |
+| `office/tests` | 12 (150 `it(` cases) | 3,483 |
 | `office/installer` | 3 | — |
-| `office/web` | 31 (§9) | 11,834 |
+| `office/web` | 31 (§9) | 11,993 |
 
 ### 8.1 Package and launcher
 
@@ -2917,23 +3157,34 @@ working while the Master is off.
   `/api/health` decides whether to include absolute paths by checking
   `req.socket.remoteAddress`) and `http.port` (`OFFICE_PORT`, 4200); `panelName`;
   `discovery.timeoutMs` (8000); `sync.retryMs` (5000), `sync.batchSize` (100);
-  `locale.defaultLocale`. Its per-file path constants (`credentialsFile`,
-  `outboxFile`, …) are read by nothing outside `config/` — every store uses `paths()`.
-- `office/src/config/paths.ts` — **`paths()` is the live answer** for where the data
-  folder is (it can move at runtime; never capture it). `relocateDataDir(target,
-  {moveExisting})` checks everything first (not the same folder, not nested, writable,
-  enough free disk via `statfs`), copies the tree when `moveExisting` is set (each
-  file `chmod 0o600`; `POST /api/storage/path` and `moveStorage` default it to true,
-  and with `false` nothing is copied), writes `ORDERBOOK_OFFICE_DATA_DIR` into
-  `config.settingsFile` with `writeEnvValue`, then switches the pointer; the old
-  folder is never deleted. Also `directorySize`,
-  `countFiles`, `freeDiskBytes`, `totalDiskBytes`, `StorageRelocationError`,
-  `resetPathsForTest`. The shell puts the settings file beside the data folder
-  (`office-settings.env`), never inside it — but under the packaged shell the value
-  written there is overridden by the shell's own `office-location.json`, so a move
-  made through `relocateDataDir` does not survive a restart (defect, §1.5).
+  `locale.defaultLocale`; `settingsFile` (`ORDERBOOK_OFFICE_SETTINGS_FILE`, else
+  `office/.env`) and `locationFile` (`ORDERBOOK_OFFICE_LOCATION_FILE`, the shell's
+  `office-location.json`, or null from a terminal). Its per-file path constants
+  (`credentialsFile`, `outboxFile`, …) are read by nothing outside `config/` —
+  every store uses `paths()`.
+- `office/src/config/paths.ts` (398 lines) — **`paths()` is the live answer** for
+  where the data folder is (it can move at runtime; never capture it).
+  `relocateDataDir(target, {moveExisting})` checks everything before anything is
+  copied or recorded (it creates the target folder to test that it can write
+  there, so a move refused for disk space can leave a new, empty folder behind):
+  not the same folder; not the top of a drive; not the home folder of whoever runs
+  the panel; not nested either way; writable; holding
+  nothing that is not an Office Panel's own (`foreignEntry` against `PANEL_ENTRIES` —
+  the files under `paths()`, `images/`, `avatars/`, `updates/`, the shell's `logs/`
+  and `shell.json`, their `.tmp` and `.unreadable-…` forms, Finder/Explorer litter;
+  the refusal names the folder and one foreign file, as `storage.refused.*` keys);
+  enough free disk via `statfs`. Then it copies the tree when `moveExisting` is set
+  (each file `chmod 0o600`; `POST /api/storage/path` and `moveStorage` default it to
+  true, and with `false` nothing is copied), records the folder where the next start
+  will read it (`rememberDataDir`: the shell's pointer `config.locationFile`,
+  temp-then-rename in the shell's `{"dataDir"}` format, or `writeEnvValue` into
+  `config.settingsFile` when run from source), and only then switches; the old
+  folder is never deleted. Also `directorySize`, `countFiles`, `freeDiskBytes`,
+  `totalDiskBytes`, `StorageRelocationError`, `resetPathsForTest`. The refusals exist
+  because the uninstaller's "delete data" removes the folder the pointer names,
+  whole; hardening the uninstall scripts themselves is left to the owner (§10.10).
 
-### 8.4 HTTP API — `office/src/http/app.ts` (2,066 lines)
+### 8.4 HTTP API — `office/src/http/app.ts` (2,095 lines)
 
 **97 route registrations** (37 GET, 43 POST, 8 PUT, 1 PATCH, 8 DELETE, including the
 SPA fallback `GET /^(?!\/api).*/`). Middleware order: `express.json({limit:'1mb'})`
@@ -2942,7 +3193,7 @@ signed in; `/uploads/*` is outside `/api`) → gated routes → `express.static(
 and the SPA fallback (503 page when `index.html` is missing) → JSON 404 for unknown
 `/api` → `errorHandler` (multer `LIMIT_FILE_SIZE` → 400).
 
-**Upload limits** (all `multer.memoryStorage()`, `office/src/http/app.ts`, lines 66-81):
+**Upload limits** (all `multer.memoryStorage()`, `office/src/http/app.ts`, lines 75-90):
 `imageUpload` = `MAX_IMAGE_SOURCE_BYTES` (60 MiB), `backupUpload` = 64 MiB,
 `importUpload` = `MAX_PRODUCT_IMPORT_BYTES` (50 MiB). **Error → status maps:**
 `respondToRestoreError` uses `RESTORE_ERROR_STATUS` (`backup_populated_data_directory`
@@ -2957,10 +3208,14 @@ and the SPA fallback (503 page when `index.html` is missing) → JSON 404 for un
 
 - **Local** — answered from this process or its files.
 - **Queue → 202** — `queue()` checks `MUTATION_PERMISSIONS[kind]` against the cached
-  session (403 `{permission}` if missing), takes `entityId` from the URL or mints one
-  with `nextTemporaryId()`, and calls `sync.submit()` with `fields =
-  Object.keys(payload)`, optional `baseFieldHlc` and `actorUserId`. Answers `202
-  {queued, id, mutationId, pendingCount}` without waiting for the Master.
+  session (403 `{permission}` if missing), then runs the route's optional
+  `validate` step (400 `validation_error`; after the permission check, so a caller
+  who may not make the write learns nothing about its shape), takes `entityId` from
+  the URL or mints one with `nextTemporaryId()`, and calls `sync.submit()` with
+  `fields = Object.keys(payload)`, optional `baseFieldHlc` and `actorUserId`. Answers `202
+  {queued, id, mutationId, pendingCount}` without waiting for the Master, or 500
+  `queue_failed` ("Could not save locally") when the outbox cannot be written — or
+  read, since a save never starts from a queue it could not read.
 - **Forward** — `forward()` sends a Socket.IO command and waits for the ack
   (`masterConnection.command()`); unreachable → 503 `unavailable` (`failForward`);
   a Master refusal passes `code`, `messageKey`, `params`, `details` through (403 for
@@ -3006,8 +3261,8 @@ Office restore leaves the panel unpaired**, because `restoreBackup` always calls
 | POST | `/api/products` | `product.create` |
 | PUT | `/api/products/:id` | `product.update` |
 | POST | `/api/party-variants` | `partyVariant.upsert` |
-| POST | `/api/leads` | `lead.create` — `leadPayloadProblem` runs first (party required, ≥ 1 item, each item `productId`, `variantId`, quantity > 0) → 400 |
-| PUT | `/api/leads/:id` | `lead.update` (same shape check, items optional) |
+| POST | `/api/leads` | `lead.create` — `leadPayloadProblem` as `queue()`'s `validate` step, after the permission check (party required, ≥ 1 item, each item `productId`, `variantId`, quantity > 0) → 400 |
+| PUT | `/api/leads/:id` | `lead.update` (same order and shape check, items optional) |
 | POST | `/api/leads/:id/stage` | `lead.setStage` `{stageId, remark}` |
 | POST | `/api/leads/:id/remarks` | `lead.addRemark` |
 | POST | `/api/leads/:id/convert` | `lead.convert` |
@@ -3073,8 +3328,17 @@ which deletes cached image directories the Master no longer lists, only when
   payload keys `partyId`, `ownerId`, `productId` (`PAYLOAD_ID_KEYS`) and
   `items[].productId`; `outboxRevision()`. Refusals: `recordRefusals` (newest first,
   deduped, `MAX_REFUSALS = 200`), `refusals()`, `clearRefusals()` in
-  `refusals.json`. An unparseable `outbox.json` loads as empty and is overwritten on
-  the next write, **without a log line**.
+  `refusals.json`. **An unreadable queue is kept, not written over** (since
+  2026-09-25): a file that reads but is not a list is renamed aside to
+  `outbox.json.unreadable-<time>` and logged before the panel starts an empty queue;
+  a file that exists but cannot be read *this time* (an antivirus scan's `EBUSY` or
+  `EPERM` on Windows) is not cached — readers see `[]` for that moment and the next
+  read tries again, while a write refuses to start from it (`loadForWrite`), so the
+  save fails rather than replacing the queue. A failed save no longer poisons the
+  write chain for every later save, and the cache takes a change only once it is on
+  disk. **Known, not changed:** a read that fails for a moment when `flush()` asks
+  for the count reads as an empty queue, so that flush sends nothing and schedules no
+  retry; the work waits for the next save, reconnect or "Sync now" (§8.9).
 - `office/src/sync/sync.service.ts` — drains the outbox. Transport injected with
   `setTransport()` (the `sync:push` command). `flush()` (serialised by a flag) sends
   the first `batchSize` mutations, then `observe(serverHlc)` → `remapIds(idMappings)`
@@ -3181,7 +3445,8 @@ Singleton `masterConnection` (an `EventEmitter`).
   seam — no `auth:signOut` or `assume(null)` is sent to the Master), disconnects,
   deletes every file in `paths()` plus `images/` and `avatars/`, clears credentials
   → `unpaired`. It leaves `<dataDir>/updates/` (downloaded installers) in place, and
-  keeps `config.settingsFile` on purpose (the pointer to the folder). Also
+  keeps the pointer to the folder on purpose (`config.settingsFile` from source, the
+  shell's `config.locationFile` under the desktop app). Also
   `isUnlocked`, `status`, `lock`, `setDeveloperClockForTest`.
 - `office/src/lib/` (8): `office/src/lib/master-fetch.ts` (`masterFetch`),
   `office/src/lib/network.ts` (`listLanInterfaces`, `hasNetworkLink`,
@@ -3197,22 +3462,25 @@ Singleton `masterConnection` (an `EventEmitter`).
 - `office/src/domain/backup.ts` — `BackupValidationError`,
   `assertImportableFormatVersion`, `assertPassphraseStrong`, `summarizeManifest`.
 
-### 8.8 `office/tests` (12 files, 131 `it(` cases, no PostgreSQL)
+### 8.8 `office/tests` (12 files, 150 `it(` cases, no PostgreSQL)
 
 They mock `../src/config/index.js` or use `mkdtemp`, load modules with dynamic
 `await import()`, and several use `supertest` against `createApp()` with a stubbed
-Master connection.
+Master connection. `office/tests/storage-path.test.ts` also imports the shell's own
+`electron/lib/office-env.ts` and `electron/lib/settings.ts`, to start the config
+under the environment the shell builds and read the pointer back as the shell
+does.
 
 | File | Cases | Pins |
 |---|---|---|
-| `office/tests/outbox.test.ts` | 18 | temp-id shape and no reuse after restart; outbox durability, stamping, `fields`, `settle`, `remapIds`, serialised writes; overlay; restore; view memo; cursor persistence; legacy bare snapshot |
+| `office/tests/outbox.test.ts` | 23 | temp-id shape and no reuse after restart; outbox durability, stamping, `fields`, `settle`, `remapIds`, serialised writes; an unreadable queue set aside (both corrupt shapes), a one-off `EBUSY` read and a one-off `EPERM` rename followed by a save; overlay; restore; view memo; cursor persistence; legacy bare snapshot |
 | `office/tests/user-session.test.ts` | 25 | online vs offline; a Master refusal never falls back; own verifier; revoked vs expired; 3-failure lockout surviving restart; reconcile; `offlineSignInEnabled` |
 | `office/tests/offline-pick.test.ts` | 17 | `pickFromView`, `listProductsFromView` |
-| `office/tests/storage-path.test.ts` | 16 | `paths()`, `relocateDataDir`, `writeEnvValue` |
+| `office/tests/storage-path.test.ts` | 26 | `paths()`, `relocateDataDir` (the refusals: drive root, home folder, a folder holding foreign files), `writeEnvValue`; a move surviving a real restart under both launchers (shell pointer and source settings file) |
 | `office/tests/developer.test.ts` | 14 | unlock, `.env` override, lockout, TTL, `resetPanel`, routes behind `requireUser` |
 | `office/tests/module-forwarding.test.ts` | 11 | 503 vs refusal pass-through, 403 with permission, 401 without session; `/api/products` online/offline; bulk import online-only |
 | `office/tests/credentials.test.ts` | 8 | round trip, 0600, corrupt = unpaired |
-| `office/tests/lead-route.test.ts` | 8 | `POST /api/leads` shape checks (the trust boundary); 403 without `leads.create` |
+| `office/tests/lead-route.test.ts` | 12 | `POST /api/leads` and `PUT /api/leads/:id` shape checks (the trust boundary); a malformed payload without `leads.create` / `leads.edit` gets 403, not 400 |
 | `office/tests/snapshot-for-user.test.ts` | 5 | `GET /api/snapshot` key set (DSH-1), permissions replaced, other people's restricted parties withheld |
 | `office/tests/local-store-restore.test.ts` | 4 | concurrent `restore()`, never-synced, torn file |
 | `office/tests/health-route.test.ts` | 3 | `/api/health` without a session; the gate holds; JSON 404 |
@@ -3220,27 +3488,27 @@ Master connection.
 
 ### 8.9 Where the code and its comments disagree
 
-- `http/app.ts` header: "stores nothing itself beyond the pairing credentials" — it
-  keeps at least eleven: the eight JSON files and `images/`, `avatars/` from
-  `paths()`, plus `updates/` from `update.service.ts#updatesDir()` (§1.5; the shell
-  adds `logs/` and `shell.json`). `office/tests/credentials.test.ts` header says
-  the same.
-- `GET /api/updates/available` comment: "has to work before anybody is signed in" —
-  it is behind `requireUser` (401 with nobody signed in).
-- `master-connection.ts` header: "every write still goes to" the Master — queued
-  writes go to the outbox first; its `applyChange` comment gives
-  `sync/apply-change.ts` without the package — the file is
-  `shared/src/sync/apply-change.ts`, not under `office/src/sync/`.
-- The `/api/health` comment cites `office/electron/main.ts`; the file is
-  `electron/office.main.ts`.
-- Pricing words: the `/api/pick/:kind` and `leadPayloadProblem` comments mention a
-  rate.
-- `outbox.store.ts#load()` says an unreadable queue "is reported"; nothing is logged.
-- `lead-route.test.ts` has a test named "…ahead of the shape check", but
-  `leadPayloadProblem` runs **before** `queue()`'s permission check, so a malformed
-  lead from someone without `leads.create` gets 400, not 403.
-- `sweepImageCache` runs on every `snapshot` event (including after a delta or
-  refresh), not only on a full snapshot; it still requires `productsComplete`.
+- **Fixed 2026-09-25 — stale comments in the Office server:** the `http/app.ts`
+  header (it now lists what the server keeps: the files under `paths()`, a
+  downloaded update, and after a move the pointer outside the folder;
+  `office/tests/credentials.test.ts` dropped the same "only state" claim), `GET
+  /api/updates/available` ("before anybody is signed in"), the `master-connection.ts`
+  header and its `apply-change.ts` path, the `/api/health` citation of
+  `office/electron/main.ts`, the pricing words in the `/api/pick/:kind` and
+  `leadPayloadProblem` comments, and the `sweepImageCache` note (it runs on every
+  `snapshot` event, still only with `productsComplete`).
+- **Fixed 2026-09-25 — `outbox.store.ts#load()` said an unreadable queue "is
+  reported"** while nothing was logged and the next save wrote over it (§8.5).
+- **Fixed 2026-09-25 — `leadPayloadProblem` ran before the permission check**, so a
+  malformed lead from somebody without `leads.create` got a 400 describing the
+  payload; `queue()` now checks the permission first (§8.4).
+- **Fixed 2026-09-25 — a storage move reverted at the next restart under the
+  desktop shell** (§1.5, §8.3). Panels that moved their storage before the fix may
+  have work stranded in the folder they moved to; nothing finds or recovers it.
+- **Known, not changed — a transient outbox read at flush time.** If the queue file
+  cannot be read for a moment (antivirus `EBUSY`/`EPERM`) when `flush()` asks for
+  the count, it reads as empty. That flush sends nothing and schedules no retry, so
+  the work waits for the next save, reconnect or "Sync now" (§8.5).
 - **The only import cycle in the repo** (§14.6): `master-connection.ts` →
   `services/panel-report.service.ts` → `services/user-session.service.ts` →
   `master-connection.ts` (and via `lib/master-fetch.ts`).
@@ -3251,7 +3519,8 @@ Master connection.
 
 `@orderbook/office-web` is the React 19 + Vite 5 frontend of an Office Panel. It
 talks **only to its own panel server** (`office/src/http/app.ts`, port 4200), never
-to the Master. **31 tracked files, 11,834 lines, no test files.** Every offline-able
+to the Master. **31 tracked files, 11,993 lines, no test files of its own** (§9.6).
+Every offline-able
 write returns a `QueuedResult` (a temporary id plus the outbox count), not the saved
 record; the real record arrives later over the SSE stream.
 
@@ -3264,34 +3533,34 @@ record; the real record arrives later over the SSE stream.
 | `office/web/tsconfig.json` | 19 | strict ES2022/DOM, `react-jsx`, bundler, `noEmit`, `noUnused*` |
 | `office/web/vite.config.ts` | 38 | `__APP_VERSION__`; ui excluded from pre-bundling; `assetsInlineLimit: 0`; dev port 5200 proxying `/api` and `/uploads` to 4200 |
 | `office/web/src/main.tsx` | 25 | `configureUi({ panel: 'office', defaultTheme: 'light', themeStorageKey: 'ob.theme' })`, `initAppearance()`, render |
-| `office/web/src/App.tsx` | 1184 | the shell (§9.2) |
-| `office/web/src/api.ts` | 838 | the only HTTP client (§9.3) |
+| `office/web/src/App.tsx` | 1255 | the shell (§9.2) |
+| `office/web/src/api.ts` | 847 | the only HTTP client (§9.3) |
 | `office/web/src/localSearch.ts` | 89 | `searchLocalView(view, term)` — the palette's offline fallback: case-insensitive substring over products, parties, leads, orders; ≥ 2 chars, ≤ 20 hits (`LIMIT`), `rank: 0` |
 | `office/web/src/partyFormTransport.ts` | 20 | `PartyFormModal` → `api.createParty`/`api.updateParty` (return `QueuedResult`) |
 | `office/web/src/productSummary.ts` | 59 | `codesOf(product)`, `missingWeight(product)`, `weightLabel(product)` (single weight, low–high range, or `null` = "weight missing"); active variants only. `missingWeight` is exported but used only inside this file (by `weightLabel`), and `CatalogScreen` never sends the `missingWeight` list filter that `api.listProducts` supports |
 | `office/web/src/styles.css` | 254 | legacy layer (old token aliases, bare-element rules guarded by `:not(:where([class*='ob-'], …))`, `.muted`, `.error`, `.dot`, `.chip*`, `.num`); only `dot` and `num` are still used as plain classes |
 | `office/web/src/vite-env.d.ts` | 2 | `__APP_VERSION__` |
 
-**Screens (`office/web/src/screens/`, 14 files, 7,291 lines):**
+**Screens (`office/web/src/screens/`, 14 files, 7,369 lines):**
 
 | Path | Lines | Mounted by | Purpose |
 |---|---|---|---|
-| `office/web/src/screens/AddLeadScreen.tsx` | 2176 | App (`addLead`) | the New lead form (§9.4) |
+| `office/web/src/screens/AddLeadScreen.tsx` | 2198 | App (`addLead`) | the New lead form (§9.4) |
 | `office/web/src/screens/CatalogScreen.tsx` | 771 | App (`parties`, `products`) | Parties (from the snapshot) and Products (paged from the Master), forms, import |
 | `office/web/src/screens/ProductDetail.tsx` | 168 | CatalogScreen | Photo card (`ProductImages`) + Details card with Edit |
-| `office/web/src/screens/PartyDetail.tsx` | 215 | CatalogScreen | contact, access state, the party's own product records, ≤ 5 recent leads |
-| `office/web/src/screens/LeadBoardScreen.tsx` | 511 | App (`leads`) | open leads as list (default) or kanban; scope and stage filters; card menu move/convert |
-| `office/web/src/screens/LeadDetail.tsx` | 364 | LeadBoardScreen | lines, history, remark input, stage select, party/details cards, convert form |
-| `office/web/src/screens/OrderBoardScreen.tsx` | 609 | App (`orders`) | orders table; in-file `OrderDetailBody` (lines, reservations, weight override, stage, history, dispatch) |
+| `office/web/src/screens/PartyDetail.tsx` | 218 | CatalogScreen | contact, access state, the party's own product records, ≤ 5 recent leads |
+| `office/web/src/screens/LeadBoardScreen.tsx` | 513 | App (`leads`) | open leads as list (default) or kanban; scope and stage filters; card menu move/convert |
+| `office/web/src/screens/LeadDetail.tsx` | 366 | LeadBoardScreen | lines, history, remark input, stage select, party/details cards, convert form |
+| `office/web/src/screens/OrderBoardScreen.tsx` | 647 | App (`orders`) | orders table; in-file `OrderDetailBody` (lines, reservations, weight override, stage, history, dispatch) |
 | `office/web/src/screens/PartyAccessScreen.tsx` | 509 | App (`partyAccess`) | live from the Master; byte-identical to the Master's copy |
 | `office/web/src/screens/ConflictsScreen.tsx` | 265 | App (`conflicts`) | refused writes (anyone can dismiss) + merge conflicts (resolving needs `sync.resolveConflicts`) |
-| `office/web/src/screens/SettingsScreen.tsx` | 231 | App (`settings`) | tabs appearance, shortcuts, machine, storage, developer; exports `SETTINGS_TAB_IDS` |
-| `office/web/src/screens/UpdatesScreen.tsx` | 228 | App (`updates`) | this panel vs the Master's version; download from the Master and hand to the shell |
+| `office/web/src/screens/SettingsScreen.tsx` | 232 | App (`settings`) | tabs appearance, shortcuts, machine, storage, developer; exports `SETTINGS_TAB_IDS` |
+| `office/web/src/screens/UpdatesScreen.tsx` | 238 | App (`updates`) | this panel vs the Master's version; download from the Master and hand to the shell; a standalone `.exe` or a Linux copy not started from an AppImage is told how to update by hand |
 | `office/web/src/screens/ConnectionScreen.tsx` | 400 | App (before pairing) | network status; auto-pair, manual pair, or restore from `.obbackup` |
 | `office/web/src/screens/SignInScreen.tsx` | 291 | App (paired, no session) | pick a remembered face or type a username; offline notice; forget a profile; `StoragePathCard` |
 | `office/web/src/screens/DashboardScreen.tsx` | 553 | App (`dashboard`) | four stat cards, pipeline bars, recent activity, follow-ups due — all from the `LocalView` |
 
-**Components (`office/web/src/components/`, 5 files, 1,977 lines):**
+**Components (`office/web/src/components/`, 5 files, 1,978 lines):**
 
 | Path | Lines | Used by | Purpose |
 |---|---|---|---|
@@ -3299,20 +3568,22 @@ record; the real record arrives later over the SSE stream.
 | `office/web/src/components/ProductImages.tsx` | 628 | ProductDetail | cover, gallery, multi-file upload queue through `ImageCropModal`, set primary, reorder, caption, remove; online-only |
 | `office/web/src/components/ProductImportModal.tsx` | 430 | CatalogScreen | CSV/XLSX import: template → dry-run preview → real run; online-only |
 | `office/web/src/components/StorageBackup.tsx` | 250 | SettingsScreen | `StorageBackupActions`: export (scope + ≥ 10-char passphrase) and restore (preview, passphrase, optional wipe) |
-| `office/web/src/components/StoragePathCard.tsx` | 148 | SignInScreen, SettingsScreen | data folder + free space; move via `api.setStoragePath`; "Browse…" only when `desktopBridge().chooseDirectory` exists |
+| `office/web/src/components/StoragePathCard.tsx` | 149 | SignInScreen, SettingsScreen | data folder + free space; move via `api.setStoragePath`; "Browse…" only when `desktopBridge().chooseDirectory` exists |
 
 ### 9.2 `App.tsx` — the shell
 
 - **Providers:** `ToastProvider` → `ConfirmProvider` → `SubNavProvider` →
-  `ResetProvider` → `OfficePanel` → `KeyboardProvider` → `FilterBarProvider` →
-  `AppShell`.
+  `ResetProvider` → `OfficePanel` → `KeyboardProvider` (`onNavigate={goToTab}`,
+  `canNavigate={offered}`) → `FilterBarProvider` → `AppShell`.
 - **Gating, in order:** (1) `Splash` until three boot steps pass — `api.connection()`
   and `api.session()` (also `adoptDefaultLocale`), each wrapped in a 10 s
   `withTimeout`, then a bare `await document.fonts.ready`; a failed session read
   counts as signed out; (2) `!connection.isPaired` → `ConnectionScreen`; (3)
   `!session` → `SignInScreen` with `signInNotice` (`onSessionEnded` on a 401 from
   `send()`; `postFile`/`fetchBlob`/`postForBlob` do not publish it); (4) the full
-  shell.
+  shell. A session end and `signOut` both drop `view` and reset `tab` to
+  `dashboard` (since 2026-09-25), so the next person to sign in at that window does
+  not start on the last person's screen or data.
 - **Event stream:** `new EventSource('/api/events')` when signed in. `status` →
   merge into `connection` (on `connected`, re-read connection, sync state, session);
   `snapshot` → replace `view` (the whole `LocalView`) and re-read sync state; `change`
@@ -3327,7 +3598,7 @@ record; the real record arrives later over the SSE stream.
 | `dashboard` | `DashboardScreen` | Work | always | — |
 | `leads` | `LeadBoardScreen` | Work | `leads.view` | `list`; `new` if `leads.create` |
 | `orders` | `OrderBoardScreen` | Work | `orders.view` | `all` + one `stage:<id>` per order stage |
-| `conflicts` | `ConflictsScreen` | Work (count badge) | `sync.resolveConflicts` | — |
+| `conflicts` | `ConflictsScreen` | Work (count badge) | `sync.resolveConflicts`; otherwise while this person has refused writes waiting (badge = their count) or while it is the open screen (since 2026-09-25) | — |
 | `products` | `CatalogScreen tab="products"` | Catalogue | `products.view` | — |
 | `parties` | `CatalogScreen tab="parties"` | Catalogue | `parties.view` | — |
 | `partyAccess` | `PartyAccessScreen` | Catalogue | `party.assign` or `party.accessAll` | `all`/`restricted`/`open` |
@@ -3338,14 +3609,13 @@ record; the real record arrives later over the SSE stream.
 `addLead` has no sidebar row on purpose (`NAV_LESS.office = ['addLead']` in
 `master/tests/web-reachability.test.ts`); `activeId` maps it to `leads.new`.
 
-**Keyboard navigation bypasses the sidebar gate for three screens.** In `activeId`
-the `subPages[tab]?.length` branch comes before the sidebar-membership check, and
-`subPages` always has entries for `leads`, `orders` and `partyAccess` (and
-`settings`). So Alt+N (`OFFICE_NAV` in `shared/src/keys/commands.ts`) or `goToTab` to
-`leads`, `orders` or `partyAccess` renders that screen for a role without its view
-permission (the `needsView` screens are built whatever the permissions);
-`conflicts`, `products` and `parties` have no sub-pages and fall back to the first
-sidebar item (Dashboard). The panel server and the Master still refuse the calls.
+**Navigation goes only where the sidebar offers** (fixed 2026-09-25). `goToTab` —
+which Alt+N (`OFFICE_NAV` in `shared/src/keys/commands.ts`), the palette's nav rows,
+the Dashboard's links and search hits all go through — refuses an id that is not
+among the sidebar's flattened items (`offered(id)`); `canNavigate` hands the same
+test to the palette. Before, Alt+2 opened the lead board for a role without
+`leads.view`. "New lead" and `record.new` open `addLead` directly, gated on
+`leads.create`.
 
 **Before the first snapshot and on errors.** Any tab other than `updates`/`settings`
 renders an empty state until `view` exists (`shell.waitingFirstSync`, with a
@@ -3361,8 +3631,11 @@ record publishes a nested sidebar entry through `useSubNav`.
   `offlinePending`/`offline` (link down, unpaired or connecting; depends on queued
   work) → `syncing` (flush running or `pendingCount > 0`) → `synced`. Footer: sync
   label (opens the sync popover), company, "signed in as" (+ offline tag),
-  `#/gallery`, version, `Clock`. The popover's "Flush now" calls `api.flush()`; if
-  anything was refused, a toast goes to **everyone** with "Review refusals".
+  `#/gallery`, version, `Clock`. The popover's "Sync now" (`sync.flushNow`) calls
+  `api.flush()`; if anything was refused, a toast goes to **everyone** with "Review
+  refusals", whose action (like the popover's button) goes through
+  `showConflicts()`: close the popover, leave the gallery if it is open, open
+  Conflicts — offered to them while the refusals wait.
 - **Topbar:** label, `PaletteButton`, "New lead" (`leads.create`, disabled until
   `view` exists), Reset, Sign out.
 - **Keyboard:** `shellCommands` — `view.reset`, `view.refresh`, `record.new` (null
@@ -3382,12 +3655,14 @@ record publishes a nested sidebar entry through `useSubNav`.
   mapping, and no `publishSessionEnded` on a 401 (they build the `ApiError`
   themselves). They carry the restore previews and restores (connection and
   storage), storage export, product image upload, product import and its template.
-  `ApiError` has `missingPermission` and `isConflict`. As on the Master,
-  `request()`'s `asFailure` turns every rejection that is neither an `ApiError` nor
-  the timeout — including a network error such as connection refused — into
-  `ApiError('Request cancelled','aborted')`; `CatalogScreen` returns silently on
-  `'aborted'` (line 222), so a failed product load from an unreachable panel server
-  shows no error. `desktopBridge()` → `window.orderbook` or `null`.
+  `ApiError` has `missingPermission` and `isConflict`. As on the Master (§7.3),
+  `request()`'s `asFailure` maps a timeout to `'timeout'`, only the caller's own
+  cancel to `'aborted'`, and anything else — a network error such as connection
+  refused — to `internal_error` (`error.requestFailed`); the texts are catalogue
+  keys. `CatalogScreen` still returns silently on `'aborted'` (line 222), which now
+  means a cancel it asked for, so a product load from an unreachable panel server
+  shows its error (before 2026-09-25 it was dropped as a cancel).
+  `desktopBridge()` → `window.orderbook` or `null`.
 - Types: `LocalView = SyncSnapshot & { pendingCount: number }`; `QueuedResult = {
   queued: true; id; mutationId; pendingCount }`; `PanelSession` (with `permissions`
   and `offline`); also `ConnectionInfo`, `DiscoveredMaster`, `PanelProfile`,
@@ -3431,9 +3706,12 @@ each with a reason in `ALLOWED_UNCALLED.office`).
   only when `multiColour`; one row per active variant with code, weight, quantity
   (arrows ±1, Shift ±10), free stock from `view.stock`, line weight). `saveDraft`
   adds one line per variant with quantity > 0, refused while packaging is empty and
-  `packagingRequiredOnConvert` is on. ≤ 60 lines drawn (`PANEL_LIMIT`). `save()` →
-  `api.createLead` → `onSaved(queued.id)` (App switches to Leads and toasts).
-  Ctrl+S, Enter/Escape walks, and a `useResetGuard` that uses `window.confirm`.
+  `packagingRequiredOnConvert` is on (the "required" marker follows the same switch
+  since 2026-09-25). ≤ 60 lines drawn (`PANEL_LIMIT`). `save()` → `api.createLead` →
+  `onSaved(queued.id)` (App clears the `addLead` sub-nav entry, bumps its reset nonce
+  so the next New lead is blank, switches to Leads and toasts). Ctrl+S,
+  Enter/Escape walks, and a `useResetGuard` that asks through the themed
+  `ConfirmDialog` (`useConfirm`) rather than `window.confirm`.
 - **`CatalogScreen`** — Parties entirely from `view.parties` (search on name, code,
   phone; city chips; not-synced pill; `PartyDetail` in `EditorScreen`;
   `PartyFormModal` gated on `parties.create` from `view.permissions`). Products paged
@@ -3454,9 +3732,12 @@ each with a reason in `ALLOWED_UNCALLED.office`).
 - **`OrderBoardScreen`** — table only; stage filter controlled by `App` (so the
   `orders.stage:<id>` sub-pages and chips agree). `OrderDetailBody`: lines table,
   reservations table only when `freeToSell`, weight card with an override
-  `NumberInput` that calls `api.updateOrder({ totalWeightKgOverride })` on every blur,
-  stage `Select` (disabled after dispatch), history, dispatch card
-  (`orders.dispatch`).
+  `NumberInput` that calls `api.updateOrder({ totalWeightKgOverride })` on blur only
+  when the value differs from what this screen last sent (`sentOverride`, set as a
+  send starts and put back if it fails — not the order's own figure, which a queued
+  write does not move until the Master echoes it); text that is not a number is
+  marked invalid rather than sent as `null`. Stage `Select` (disabled after
+  dispatch), history, dispatch card (`orders.dispatch`).
 - **`PartyAccessScreen`** — `PAGE_SIZE = 200`, restricted count via `limit: 1`,
   editor replaces the whole grant set via `api.savePartyAccess(partyId, { entries,
   expectedVersion })`, writable only with `party.assign`; CSV export with
@@ -3473,8 +3754,9 @@ each with a reason in `ALLOWED_UNCALLED.office`).
 - **`UpdatesScreen`** — `__APP_VERSION__` vs `connection.masterVersion` via
   `standing()`; an offer from `api.updateAvailable()` with "Install now"
   (`settings.manage`) → `api.downloadUpdate()` → `desktopBridge().applyUpdate()`;
-  without a shell it shows the downloaded path; in the standalone build a note
-  replaces the button.
+  without a shell it shows the downloaded path; in the standalone build, or a Linux
+  copy not started from an AppImage (`getShellSettings().systemPackage`, in a
+  shipped build the `.deb`), a note on updating by hand replaces the button.
 - **`ConnectionScreen`** — `auto` (panel name → `api.pairAuto`; "Scan only" lists
   Masters and pre-fills manual), `manual` (host, port 4100, pairing password, panel
   name → `api.pairManual`), `restore` (preview, passphrase,
@@ -3510,49 +3792,54 @@ state, Keep/Restore); `parties.create`/`products.create`; `products.bulk` (impor
 
 ### 9.6 Tests that read this source
 
+`ui/tests/office-shell.test.tsx` boots `office/web/src/App.tsx` whole in jsdom
+(through `ui/tests/panel-harness.ts`, with a fake `EventSource`) and pins the gallery
+link, Alt+N against the sidebar, the refusal toast landing on Conflicts (from the
+gallery too), the screen and view reset at a session end, the New lead form
+remounting after a save, the packaging marker following its switch, Reset asking
+through `ConfirmDialog`, the order weight override, and the splash for an
+unreachable panel server. The source-reading tests:
 `master/tests/party-access-screen-parity.test.ts`, `master/tests/web-reachability.test.ts`
 (39 office exceptions, `NAV_LESS`), `master/tests/screen-reachability.test.ts`,
 `master/tests/i18n-call-sites.test.ts`, `master/tests/ui-conventions.test.ts`,
 `master/tests/no-duplicate-ui.test.ts`, `master/tests/password-vault-invariants.test.ts`
-(no vault identifiers in `office/web/src`), `shared/tests/keys-implemented.test.ts`,
+(no vault identifiers in `office/web/src`), `master/tests/web-catalogue-text.test.ts`,
+`shared/tests/keys-implemented.test.ts`, `shared/tests/keys-nav-order.test.ts`,
 `ui/tests/no-transport-dep.test.ts`, `ui/tests/packaging-switch-reach.test.ts`,
 `shared/tests/version.test.ts`.
 
 ### 9.7 Where the code and its comments disagree, and behaviours worth knowing
 
-- **The New lead form keeps its contents after saving.** `onSaved` switches to Leads
-  without bumping `resetNonce`, `AddLeadScreen#save` does not clear its state, and
-  `ScreenHost` keeps the screen mounted, so the next "New lead" still shows the lead
-  just saved (a second save would queue a duplicate).
-- **"Review refusals" lands on the Dashboard** for users without
-  `sync.resolveConflicts`: the toast action runs `setTab('conflicts')`, but there is
-  no `conflicts` sidebar item for them, so `activeId` falls back to the first sidebar
-  item.
-- **The gallery link does not stay open** (same `readHash()` shape as §7.5).
+Fixed 2026-09-25 (each pinned by `ui/tests/office-shell.test.tsx` unless named):
+
+- **The New lead form kept its contents after saving**, one Save from a duplicate;
+  a save now remounts it (§9.4).
+- **"Review refusals" landed on the Dashboard** for users without
+  `sync.resolveConflicts` (and, pressed from the gallery, left them on the gallery);
+  Conflicts is now offered while refusals wait (§9.2).
+- **The gallery link did not stay open** (same `readHash()` fix as §7.5).
+- **Keyboard navigation bypassed the sidebar gate** for `leads`, `orders` and
+  `partyAccess` (§9.2).
+- **The "required" marker on packaging** showed with
+  `leads.packagingRequiredOnConvert` off; **the order weight override** was re-sent
+  on every blur and a typed "1.2.3" cleared it; **Reset** asked through
+  `window.confirm`.
+- **Hard-coded English fallbacks** ('Could not move the lead', 'Export failed',
+  'Request failed', the kanban `via` prefix, …) are catalogue keys, guarded by
+  `master/tests/web-catalogue-text.test.ts`; `ALLOWED_UNCALLED.office` gives
+  `upsertVariant` a true reason; `api.pick` no longer sets `categoryId` twice; and
+  the comments in `PartyDetail.tsx` (drawer, rate overrides), `App.tsx` (the System
+  group, the reset dialog) and `SettingsScreen.tsx` (its tabs) match the code.
+
+Still true:
+
 - The palette does not open records; it switches to the hit's module.
 - Parties, leads and orders come only from the snapshot, capped at 500 each by
   `master/src/services/snapshot.service.ts`; only products are paged from the Master.
 - The New lead model picker shows the **sum** of variant weights, not
   `weightLabel`'s range.
-- The "required" marker on packaging is always shown, even when
-  `packagingRequiredOnConvert` is off.
-- The order weight override is sent on every blur, changed or not.
-- Hard-coded English fallbacks: 'Could not move the lead', 'Could not convert the
-  lead', 'Could not add the note', 'Could not save the weight', 'Could not move the
-  order', 'Could not dispatch the order', 'Export failed', 'Could not read that
-  file', 'Restore failed', 'Request failed', and the `via` prefix on kanban cards.
 - i18n keys keep old "rate" names (`lead.add.party.ownRates`,
   `lead.detail.partyRates`) with non-price English text; no money is shown.
-  `ALLOWED_UNCALLED.office` in `master/tests/web-reachability.test.ts` still gives
-  `upsertVariant: 'party rates are edited on the Master'` as its reason.
-- **Keyboard navigation bypasses the sidebar gate** for `leads`, `orders` and
-  `partyAccess` (§9.2).
-- Comments: `PartyDetail.tsx` describes a "520px drawer" and a "rate-override
-  table"; `App.tsx` says the System group has "exactly one item" (it has two);
-  `SettingsScreen.tsx` mentions separate "machine and sync tabs"; the `App.tsx` reset
-  comment prefers a themed dialog over `window.confirm`, which `AddLeadScreen` still
-  uses.
-- `api.pick` sets `categoryId` twice (harmless).
 
 ---
 
@@ -3560,7 +3847,7 @@ state, Keep/Restore); `parties.create`/`products.create`; `products.bulk` (impor
 
 | Area | Tracked files | What it is |
 |---|---|---|
-| `electron/` | 28 | one shell for both panels, the Clean Install tool's main process, pure helpers, 8 tests + 2 fixtures |
+| `electron/` | 34 | one shell for both panels, the Clean Install tool's main process, pure helpers, 12 tests + 2 fixtures |
 | `cleaner/` | 5 | the standalone Clean Install app's config, page and icon |
 | `master/installer/`, `office/installer/` | 3 each | NSIS hook, macOS entitlements, 1024 px icon |
 | `master/electron-builder.yml`, `office/electron-builder.yml` | 1 each | packaging for Windows, macOS and Linux |
@@ -3573,10 +3860,14 @@ devDependencies). No packaging output is tracked.
 
 ```
 npm run release -- --os <win|mac|linux>          (tools/release.mjs, on the matching OS)
+  assertTarget, assertHostArch (the Master's x64 targets only on an x64 machine)
   build shared -> per panel: build server + web -> tsc electron/ -> copy to <panel>/electron/dist
   -> [mac] fetch the other CPU's native packages -> [master] vendor PostgreSQL
   -> stage <panel>/staging -> electron-builder -> build/<panel>/OrderBook-<Panel>-<v>-Setup.<ext>
-  -> publish to <RELEASES_DIR>/<panel>-panel/ + latest-<platform>.json (optionally signed)
+     (+ -Standalone.exe on Windows, -Setup.deb on Linux)
+  -> publish to <RELEASES_DIR>/<panel>-panel/: the setup file, each file built
+     beside it with a .sha256, then latest-<platform>.json (optionally signed;
+     + latest.json on Windows)
 
 Installed app:  resources/app.asar  = electron/dist (the shell only)
                 resources/panel/    = staging (server dist, web/dist, node_modules, [vendor/postgres], [assets])
@@ -3594,10 +3885,10 @@ or `release.mjs` copies it into `<panel>/electron/dist`, which each panel's
 
 | File | Lines | Purpose |
 |---|---|---|
-| `electron/shell.ts` | 890 | `runPanelShell(config)` — the whole panel shell (below) |
-| `electron/master.main.ts` | 34 | Master config: port `PORT` or 4100, `readyTimeoutMs: 180_000` (first-run `initdb`), `autoStartByDefault: true`; passes `ORDERBOOK_DATA_DIR`, `PORT`, `ORDERBOOK_LOG_FILE`, `ORDERBOOK_MASTER_SETTINGS_FILE` |
-| `electron/office.main.ts` | 29 | Office config: `OFFICE_PORT` or 4200, `readyTimeoutMs: 60_000`, `autoStartByDefault: false`; passes `ORDERBOOK_OFFICE_DATA_DIR`, `OFFICE_PORT`, `ORDERBOOK_LOG_FILE`, `ORDERBOOK_OFFICE_SETTINGS_FILE` |
-| `electron/preload.cts` | 71 | CommonJS preload for both panels: `window.orderbook` with `shellVersion`, `applyUpdate()` (takes no path), `getDataDir`, `setDataDir`, `chooseDirectory`, `getShellSettings`, `setShellSettings`, `openLogFolder`, `uninstall({keepData})`, `onMenuCommand` |
+| `electron/shell.ts` | 999 | `runPanelShell(config)` — the whole panel shell (below) |
+| `electron/master.main.ts` | 37 | Master config: port `PORT` or 4100, `readyTimeoutMs: 180_000` (first-run `initdb`), `autoStartByDefault: true`; passes `ORDERBOOK_DATA_DIR`, `PORT`, `ORDERBOOK_LOG_FILE` (no settings file, §1.5) |
+| `electron/office.main.ts` | 22 | Office config: `OFFICE_PORT` or 4200, `readyTimeoutMs: 60_000`, `autoStartByDefault: false`; `serverEnv: officeServerEnv` from `electron/lib/office-env.ts` |
+| `electron/preload.cts` | 79 | CommonJS preload for both panels: `window.orderbook` with `shellVersion`, `applyUpdate()` (takes no path), `getDataDir`, `setDataDir`, `chooseDirectory`, `getShellSettings` (`openAtLogin`, `logFile`, `standalone`, `systemPackage`), `setShellSettings`, `openLogFolder`, `uninstall({keepData})`, `onMenuCommand` |
 | `electron/cleaner.main.ts` | 285 | the Clean Install tool's main process; shares only `lib/uninstall.ts` and `lib/cleaner/*` |
 | `electron/cleaner.preload.cts` | 50 | `window.cleaner`: `detect`, `chooseBackupFolder`, `backup`, `wipe`, `verify`, `chooseSetupFile`, `checkSetupFile`, `install`, `onLine` |
 | `electron/tsconfig.json` | 14 | extends base, NodeNext, `outDir: dist`, excludes `tests` |
@@ -3610,13 +3901,19 @@ or `release.mjs` copies it into `<panel>/electron/dist`, which each panel's
    `%APPDATA%\OrderBook\master`, macOS `~/Library/Application Support/OrderBook/master`),
    overridable by `<appData>/OrderBook/<panel>-location.json`
    (`readDataDirOverride`). Log `<dataDir>/logs/<panel>.log` (5 MB, live file + 3
-   rotated copies, `electron/lib/log-file.ts`); shell settings `<dataDir>/shell.json`
-   — both inside the data folder, for either panel.
+   rotated copies, `electron/lib/log-file.ts`), opened once at launch — every later
+   mention of it uses `openLogPath()`, the file actually open, which
+   `electron/tests/shell-log.test.ts` enforces by reading `shell.ts`; shell settings
+   `<dataDir>/shell.json` — both inside the data folder, for either panel. Also
+   decided once at launch: `detectStandaloneBuild` and `detectAppImage`, and from
+   them `updateMethod` (`installer`, `appimage`, `standalone`, `system-package`).
 3. **Starts the server** (`startServer`): spawns `process.execPath` with
    `ELECTRON_RUN_AS_NODE=1` on `<serverRoot>/dist/index.js` with an `ipc` stdio
    slot. Packaged `serverRoot` = `process.resourcesPath/panel`; from source, two
    levels above `electron/dist`. RAM cap and `--max-old-space-size` as in §2.10; a
-   packaged build deletes `DATABASE_URL`.
+   packaged build deletes `DATABASE_URL`. `serverEnv` receives `{dataDir, port,
+   logFile, locationFile}` — `locationFile` is the pointer `dataDir` was read from,
+   for a server that moves its own folder (the Office).
 4. **Waits:** polls `http://localhost:<port>/api/health` every 400 ms until
    `readyTimeoutMs`; `electron/lib/health.ts` sorts each answer into `ready`,
    `starting`, `failed`, `wrong-app`, `not-listening`. `ready`/`failed` → load the
@@ -3633,19 +3930,31 @@ or `release.mjs` copies it into `<panel>/electron/dist`, which each panel's
 8. **Menu:** File, Edit (so Cmd+C/V work on macOS), View, Help, plus `appMenu` and
    `windowMenu` on a Mac; Help sends `orderbook:menuCommand` ids `nav.updates`,
    `help.shortcuts`, `settings.developer`.
-9. **IPC:** `orderbook:applyUpdate` (refused in the standalone build; re-polls health,
-   takes `health.installer`, `approveInstaller` against `installerDir` — copy into
-   `userData/pending-update`, hash there — stops the server, `shell.openPath` on the
-   staged copy: ShellExecute/UAC on Windows, mounts the `.dmg` on macOS — then
-   quits); `orderbook:getDataDir`/`setDataDir` (writes the pointer file, restarts the
-   server with `relocating = true`; "first-run only" is **not** enforced here — the
-   comment says the renderer enforces it — and `writeDataDirOverride` writes the
-   pointer with a plain `writeFileSync`, no temp+rename and no 0600, unlike
-   `writeShellSettings`); `orderbook:chooseDirectory`,
-   `getShellSettings`/`setShellSettings` (login item via `loginItemOptions`);
-   `orderbook:openLogFolder`; `orderbook:uninstall` (boolean `keepData`,
-   `uninstallCommand`, native confirmation, script existence check, stop server, spawn
-   detached, quit).
+9. **IPC:**
+   - `orderbook:applyUpdate` — refused in the standalone build and, since
+     2026-09-25, for a `system-package` copy (Linux not started from an AppImage; in
+     a shipped build the `.deb`, which dpkg owns); otherwise re-polls health, takes
+     `health.installer`, `approveInstaller` against `installerDir` (copy into
+     `userData/pending-update`, hash there). An installer: stop the server, then
+     `shell.openPath` on the staged copy — ShellExecute/UAC on Windows, mounts the
+     `.dmg` on macOS — then quit. An AppImage (`updateAppImage`, since 2026-09-25):
+     the order is reversed — `replaceAppImage` writes the verified copy beside the
+     running file and renames it over it *first*, so a folder it cannot write refuses
+     the update with nothing stopped; then stop the server, `startDetached` a
+     `relaunchCommand` (a `/bin/sh` that waits for this pid, closes fds 3–9 and execs
+     the new AppImage with the same arguments, keeping `--appimage-extract-and-run`),
+     and quit; if the relaunch cannot start, the server is restarted and the new
+     file runs next time.
+   - `orderbook:getDataDir`/`setDataDir` (writes the pointer file, restarts the
+     server with `relocating = true`; "first-run only" is **not** enforced here — the
+     comment says the renderer enforces it — and `writeDataDirOverride` writes the
+     pointer with a plain `writeFileSync`, no temp+rename and no 0600, unlike
+     `writeShellSettings`); `orderbook:chooseDirectory`.
+   - `orderbook:getShellSettings` (`openAtLogin`, `logFile` = `openLogPath()`,
+     `standalone`, `systemPackage`) / `setShellSettings` (login item via
+     `loginItemOptions`); `orderbook:openLogFolder` (the open log's folder).
+   - `orderbook:uninstall` (boolean `keepData`, `uninstallCommand`, native
+     confirmation, script existence check, stop server, spawn detached, quit).
 10. **Auto-start once:** on the Master's first packaged run it turns on
     open-at-login and records `autoStartDefaultApplied` in `shell.json`.
 
@@ -3655,9 +3964,11 @@ or `release.mjs` copies it into `<panel>/electron/dist`, which each panel's
 |---|---|
 | `electron/lib/health.ts` | `interpretHealth(body, expect)` — anything not positively healthy is `not-listening` |
 | `electron/lib/supervisor.ts` | `isExpectedExit`, `isUpdating`, `pruneRestarts`, `canRestart`; `UPDATE_WINDOW_MS` 60 000, `RESTART_LIMIT` 3, `RESTART_WINDOW_MS` 10 min |
-| `electron/lib/installer.ts` | `installerExtension` (`.dmg` on darwin, `.exe` everywhere else), `resolveInstaller` (containment via `path.relative`, extension check), `digestOf` (streamed SHA-256), `approveInstaller` (copy, then hash, then compare) |
+| `electron/lib/installer.ts` | `installerExtension` (`.dmg` on darwin, `.AppImage` on linux — compared case-blind — `.exe` on Windows; linux used to fall through to `.exe`, so every AppImage was refused), `updateMethod(platform, {standalone, appImage})` → `installer` / `appimage` / `standalone` / `system-package`, `isInside` (containment via `path.relative`), `resolveInstaller` (containment, extension check), `digestOf` (streamed SHA-256), `approveInstaller` (copy, then hash, then compare) |
+| `electron/lib/appimage.ts` | added 2026-09-25: `detectAppImage` (trusts `APPIMAGE` only when this executable runs from inside `APPDIR`, compared by real path, so variables inherited from another AppImage cannot point the shell at somebody else's program), `replaceAppImage` (verified copy written beside the target, created exclusively, `chmod 0755`, fsync, atomic rename), `relaunchCommand`, `relaunchArguments` (keeps `--appimage-extract-and-run`, detected from `APPDIR`'s `appimage_extracted_` folder, unless `APPIMAGE_EXTRACT_AND_RUN` is set), `startDetached` (resolves once the relaunch is running, since `spawn` reports `ENOENT`/`EACCES` asynchronously) |
+| `electron/lib/office-env.ts` | added 2026-09-25: `officeServerEnv({dataDir, port, logFile, locationFile})` — the Office server's environment (§2.10), in its own module because `office.main.ts` starts the shell the moment it is imported; held by `electron/tests/office-env.test.ts` and used by `office/tests/storage-path.test.ts` to start the config the way the shell does |
 | `electron/lib/log-file.ts` | `openLogFile(file, tee)` — rotates at 5 MB (`MAX_BYTES`), keeping the live file plus `.1`–`.3` (`KEEP = 3`, up to ~20 MB); drops the log rather than crashing. **Rotation runs only inside `openLogFile`** (called once, at shell start, before `createWriteStream`), so a long-running session can grow the live file past 5 MB |
-| `electron/lib/settings.ts` | `readShellSettings`/`writeShellSettings` (`shell.json` = `{autoStartDefaultApplied}` only — the login item is OS state; temp + rename, 0600); `readDataDirOverride`/`writeDataDirOverride` (plain write of `{dataDir}`, no temp file, default mode) |
+| `electron/lib/settings.ts` | `readShellSettings`/`writeShellSettings` (`shell.json` = `{autoStartDefaultApplied}` only — the login item is OS state; temp + rename, 0600); `readDataDirOverride`/`writeDataDirOverride` (plain write of `{dataDir}`, no temp file, default mode; the Office server writes the same pointer temp-then-rename after a storage move, §8.3) |
 | `electron/lib/standalone.ts` | `detectStandaloneBuild(env, packaged)` (`PORTABLE_EXECUTABLE_FILE`/`_DIR`); `loginItemOptions` points at the kept `.exe`, not the `%TEMP%` copy |
 | `electron/lib/uninstall.ts` | `uninstallScriptsDir` (`resources/uninstall` packaged, else `tools/uninstall`); `uninstallCommand` (`powershell.exe -File … -Panel p -Yes [-KeepData]`; macOS `osascript` → Terminal → `bash … --panel p --yes [--keep-data]`; Linux `bash …`); `sweepCommand` (`-Panel all`, `-DryRun` or `-Yes`) |
 | `electron/lib/cleaner/detect.ts` | `parseScriptOutput` (`[dry-run]`, `[remove]`, `[skip]`, `[keep]`, `[fail]`, `-- section`, `Done. removed …`), `present`, `dataFolders`, `isClean` |
@@ -3673,16 +3984,24 @@ verify → install. IPC: `cleaner:detect` (`sweep(true)`, dry run, `panel: 'all'
 macOS). Loads `resources/web/index.html` packaged, `cleaner/web/index.html` from
 source; all navigation blocked.
 
-**`electron/tests/`** (8 files, 97 tests passed): `electron/tests/uninstall.test.ts`
-(21 — exact command lines per OS; the `-KeepData`/`--keep-data` spelling agrees
-across `lib/uninstall.ts`, both scripts and both `installer.nsh`),
-`electron/tests/installer.test.ts` (17), `electron/tests/cleaner-setup-file.test.ts`
-(17), `electron/tests/cleaner-detect.test.ts` (12, reads
+**`electron/tests/`** (12 files; counts in brackets are tests passed at `43fd5b0`):
+`electron/tests/uninstall.test.ts` (21 — exact command lines per OS; the
+`-KeepData`/`--keep-data` spelling agrees across `lib/uninstall.ts`, both scripts and
+both `installer.nsh`), `electron/tests/cleaner-setup-file.test.ts` (17),
+`electron/tests/cleaner-detect.test.ts` (12, reads
 `electron/tests/fixtures/linux-dry-run.txt` and
 `electron/tests/fixtures/windows-dry-run.txt`), `electron/tests/supervisor.test.ts`
 (10), `electron/tests/cleaner-backup.test.ts` (7), `electron/tests/health.test.ts`
-(7), `electron/tests/standalone.test.ts` (6). `lib/cleaner/run.ts`,
-`lib/log-file.ts` and `lib/settings.ts` have no dedicated test.
+(7), `electron/tests/standalone.test.ts` (6). Grown or added on 2026-09-25:
+`electron/tests/installer.test.ts` (the `.AppImage` extension and `updateMethod`),
+`electron/tests/appimage.test.ts` (detection, replacement, relaunch; the replacement
+block is skipped on win32, which has no 0755 mode, symlinks or rename over an open
+file), `electron/tests/office-env.test.ts` (the pointer and settings-file paths),
+`electron/tests/server-env.test.ts` (every variable an entrypoint hands its server is
+one that server reads) and `electron/tests/shell-log.test.ts` (reads `shell.ts`:
+`logPath()` only where the log is opened). `lib/cleaner/run.ts` and
+`lib/log-file.ts` have no dedicated test; `lib/settings.ts`'s pointer functions are
+exercised by `office/tests/storage-path.test.ts`.
 
 ### 10.2 Running without a package
 
@@ -3709,12 +4028,21 @@ dev:master` / `npm run dev:office` with a browser, or the `.bat` launchers (§5.
 `npm run … --workspaces --if-present` skips it. `release.mjs` builds the cleaner
 only with `--panel cleaner` and never publishes it. **CI never builds it.**
 
+**Known, not changed — the tool and a `.deb`.** Now that the panels ship a `.deb`
+(§10.4), the tool's install step does not fit it: `verifySetupFile` accepts `.deb` as
+a Linux setup file (`EXTENSIONS.linux` in `electron/lib/cleaner/setup-file.ts`), but
+no manifest ever names a `.deb`, and `cleaner:install` then `spawn`s it as it would an
+AppImage, which does not install a package (that takes `apt install ./<file>`).
+
 ### 10.4 Panel packaging (`master/electron-builder.yml`, `office/electron-builder.yml`, `*/installer/`)
 
 The two ymls differ only in names (`appId`, `productName`, Linux `executableName`
 and `synopsis`), the output folder (`../build/master` vs `../build/office`), the
 portable `unpackDirName`, every `artifactName`, and comments. Neither contains a
-port.
+port. Every file they configure is one `release.mjs` publishes:
+`master/tests/packaging-invariants.test.ts` reads every shape a yml target can take
+(inline, listed or absent `arch`; `- zip`, `target: [dmg, zip]`) and holds the
+targets equal to what `release.mjs` picks up.
 
 | Key | Value |
 |---|---|
@@ -3728,8 +4056,8 @@ port.
 | OS | Targets | Artifacts | Notes |
 |---|---|---|---|
 | Windows | `nsis` x64 + `portable` x64 | `OrderBook-<Panel>-${version}-Setup.exe`, `…-Standalone.exe` | unsigned (`signAndEditExecutable: false`); NSIS `oneClick: false`, `perMachine: true`, `deleteAppDataOnUninstall: false`, `include: installer/installer.nsh`; portable `requestExecutionLevel: user`, `unpackDirName: OrderBook-Master`/`OrderBook-Office` |
-| macOS | `dmg` universal + `zip` universal | `…-Setup.dmg`, `…-Setup.zip` | **`x64ArchFiles: Contents/Resources/panel/**`** (the staged panel is identical in both halves and left out of the lipo merge; Electron binaries are still merged); `hardenedRuntime: true`, `notarize: false`, entitlements from `installer/entitlements.mac.plist`, `NSLocalNetworkUsageDescription` (LAN discovery on macOS 14+); signs only if an identity is in the keychain (electron-builder 25 has no ad-hoc fallback); drag-to-Applications dmg layout |
-| Linux | `AppImage` x64 + `deb` x64 | `…-Setup.AppImage`, `…-Setup.deb` | `executableName: orderbook-master`/`orderbook-office`; maintainer `OrderBook <releases@orderbook.local>`; modern Electron `deb.depends` |
+| macOS | `dmg` universal (the `.zip` target was dropped on 2026-09-25: nothing read it) | `…-Setup.dmg` | **`x64ArchFiles: Contents/Resources/panel/**`** (the staged panel is identical in both halves and left out of the lipo merge; Electron binaries are still merged); `hardenedRuntime: true`, `notarize: false`, entitlements from `installer/entitlements.mac.plist`, `NSLocalNetworkUsageDescription` (LAN discovery on macOS 14+); signs only if an identity is in the keychain (electron-builder 25 has no ad-hoc fallback); drag-to-Applications dmg layout |
+| Linux | `AppImage` x64 + `deb` x64 | `…-Setup.AppImage`, `…-Setup.deb` | both published since 2026-09-25: the AppImage is the setup file the manifest names and the in-app update replaces; the `.deb` (installs into `/opt/<productName>` with a desktop entry) is published beside it with a `.sha256` and named by no manifest; `executableName: orderbook-master`/`orderbook-office`; `publish: null`; maintainer `OrderBook <releases@orderbook.local>`; modern Electron `deb.depends`. x64 only: `assertHostArch()` refuses the Master's build off x64 (it stages the build machine's `sharp` and PostgreSQL); the Office's builds anywhere |
 
 - `master/installer/installer.nsh` — `customInstall` adds firewall rules (TCP 4100,
   UDP 45789); `customUnInit` copies `uninstall-orderbook.ps1` to
@@ -3748,7 +4076,7 @@ port.
 
 | File | Lines | Purpose |
 |---|---|---|
-| `tools/release.mjs` | 808 | the release pipeline (§10.6) |
+| `tools/release.mjs` | 877 | the release pipeline (§10.6) |
 | `tools/build-web.mjs` | 90 | the web apps' `build` (§2.3) |
 | `tools/copy-shell.mjs` | 26 | copies `electron/dist` into `master/electron/dist` and `office/electron/dist` |
 | `tools/i18n-sync.mjs` | 129 | §3.7 |
@@ -3767,23 +4095,29 @@ IPC), both NSIS uninstallers, and the Clean Install tool.
 Usage `npm run release [-- X.Y.Z] [--panel master|office|cleaner] [--os
 win|mac|linux]`. `RELEASES_DIR` = `ORDERBOOK_RELEASES_DIR` or
 `<filesystem root>/OrderBook-Releases`. `PANELS`: `master` (`vendorPostgres: true`,
-`extras: ['assets']`), `office`, `cleaner` (`serverless`, `publish: false`,
+`extras: ['assets']`, `native: true` — it stages binaries built for one
+architecture), `office`, `cleaner` (`serverless`, `publish: false`,
 `artifact: 'CleanInstall'`).
 
-| `--os` | `builderFlag` | `platform` | `ext` | `postgres` packages | Builds on | Extras |
-|---|---|---|---|---|---|---|
-| `win` | `--win` | `win32` | `exe` | `windows-x64` | win32 | `standalone: 'Standalone'` |
-| `mac` | `--mac` | `darwin` | `dmg` | `darwin-x64`, `darwin-arm64` | darwin | `universal: true` |
-| `linux` | `--linux` | `linux` | `AppImage` | `linux-<build host arch>` | linux | — |
+| `--os` | `builderFlag` | `platform` | `ext` | `arch` | `postgres` packages | Builds on | `besides` (published next to the setup file) |
+|---|---|---|---|---|---|---|---|
+| `win` | `--win` | `win32` | `exe` | `x64` | `windows-x64` | win32 | `Standalone.exe` |
+| `mac` | `--mac` | `darwin` | `dmg` | — (`universal: true`) | `darwin-x64`, `darwin-arm64` | darwin | — |
+| `linux` | `--linux` | `linux` | `AppImage` | `x64` | `linux-x64` (until 2026-09-25, the build host's arch) | linux | `Setup.deb` |
 
 1. **`assertTarget()`** refuses an unknown `--os` or a target not buildable on this
    OS (no cross-compile). Failures print `Release failed: …` and exit 1.
-2. **`setVersion(v)`** (only with a bare `X.Y.Z`) rewrites `version` in 7 files:
-   `package.json`, `shared`, `ui`, `master`, `master/web`, `office`, `office/web` —
-   **not `cleaner/package.json`** (§10.9).
+2. **`setVersion(v)`** (only with a bare `X.Y.Z`) rewrites `version` in the root
+   `package.json` and every workspace the root `workspaces` list names, `cleaner`
+   included (§10.10 item 1).
 3. `currentVersion()` reads the root `package.json`; notes from
    `ORDERBOOK_RELEASE_NOTES`.
-4. Panels: `--panel`, or every `publish !== false` entry (master, office).
+4. Panels: `--panel`, or every `publish !== false` entry (master, office). Then
+   **`assertHostArch(panels)`**, before the first command: a single-arch target
+   (`win`, `linux`: x64) on a machine of another architecture is refused only when
+   the run includes a `native` panel — the Master — because staging copies the build
+   machine's own `sharp` and PostgreSQL; the Office and the cleaner build their x64
+   files anywhere.
 5. `npm run build:shared`.
 6. **Per panel, `build(panel, version)`:**
    1. `npm run build --workspace @orderbook/<panel>` (skipped when serverless).
@@ -3813,12 +4147,14 @@ win|mac|linux]`. `RELEASES_DIR` = `ORDERBOOK_RELEASES_DIR` or
    6. `npx electron-builder <builderFlag> --config electron-builder.yml
       --config.electronVersion=<installed>` from the panel's directory.
    7. Requires the exact `OrderBook-<label>-<version>-Setup.<ext>` in
-      `build/<panel>/` (+ `-Standalone.exe` on Windows); otherwise throws listing
-      what was built. The `.zip` and `.deb` are built but **never picked up**.
+      `build/<panel>/`, plus, for a published panel, each `besides` file
+      (`-Standalone.exe` on Windows, `-Setup.deb` on Linux); otherwise throws listing
+      what was built.
 7. **`publish()`** (skips the cleaner): copies the setup file to
-   `RELEASES_DIR/<panel>-panel/`; `publishStandalone()` copies the standalone `.exe`
-   and writes `<file>.sha256`; builds `{panel, platform, version, file, sizeBytes,
-   sha256, releasedAt, notes?}` and **`sign()`**s it (Ed25519 over the
+   `RELEASES_DIR/<panel>-panel/`; `publishBeside()` copies each `besides` file and
+   writes `<file>.sha256` in `sha256sum -c` format — neither is named by a manifest,
+   both are installed or replaced by hand; builds `{panel, platform, version, file,
+   sizeBytes, sha256, releasedAt, notes?}` and **`sign()`**s it (Ed25519 over the
    `SIGNED_FIELDS` lines with the PEM at `ORDERBOOK_RELEASE_KEY` and id
    `ORDERBOOK_RELEASE_KEY_ID`; no key → warn and publish unsigned; key without id →
    error); writes the manifest **last** as `latest-<platform>.json`, and on win32 also
@@ -3833,20 +4169,26 @@ job `verify` on ubuntu-latest, Node 22, npm cache: apt `postgresql-16`,
 `typecheck`, `test`, `build`. The runner is not root, so integration suites run. CI
 packages nothing; the Release workflow runs no tests.
 
-**`.github/workflows/release.yml`** (309 lines) — on push to `main` and
+**`.github/workflows/release.yml`** (331 lines) — on push to `main` and
 `workflow_dispatch` (boolean `publish`, default false); `contents: write`.
 
-- **`check`** (ubuntu) — `released` = `gh release view v<version> --repo
-  $GITHUB_REPOSITORY` succeeded. **`gh release view` also finds drafts**, so the
-  existing *draft* `v1.2.0` counts as released and a push to main builds nothing:
-  run #32 (push to `main` at `43fd5b0`) finished in about 11 s.
+- **`check`** (ubuntu) — `released` = `gh release view v<version> --repo "$REPO"`
+  succeeded, with the same repository and token `create-release` and the upload use
+  (`REPO = vars.RELEASES_REPO || github.repository`). **`gh release view` also finds
+  drafts**, so the existing *draft* `v1.2.0` counts as released and a push to main
+  builds nothing: run #32 (push to `main` at `43fd5b0`) finished in about 11 s.
+  **Only main publishes** (since 2026-09-25): when `publish` would be true and
+  `GITHUB_REF` is not `refs/heads/main`, the step warns and builds the draft
+  pre-release instead. `master/tests/release-workflow.test.ts` lifts the step's
+  script out of the yml and runs it under bash with `gh` and `git` stubbed.
 
 | Event | `v<version>` exists? | `publish` | build | publish | tag |
 |---|---|---|---|---|---|
 | push to main | no | — | true | true | `v<version>` |
 | push to main | yes | — | **false** | false | — |
 | workflow_dispatch | any | false | true | false | `build-<version>-<short sha>` |
-| workflow_dispatch | no | true | true | true | `v<version>` |
+| workflow_dispatch on `main` | no | true | true | true | `v<version>` |
+| workflow_dispatch on another branch or tag | no | true | true | false (warning) | `build-<version>-<short sha>` |
 | workflow_dispatch | yes | true | true | false (warning) | `build-<version>-<short sha>` |
 
   `signed` is true exactly when the `RELEASE_KEY` secret is non-empty.
@@ -3864,8 +4206,9 @@ packages nothing; the Release workflow runs no tests.
   `ORDERBOOK_RELEASE_KEY_ID=${{ vars.RELEASE_KEY_ID }}`, `ORDERBOOK_RELEASE_NOTES`;
   collect each `<panel>-panel/latest-<platform>.json` as
   `latest-<panel>-<platform>.json`, the Windows `latest.json` as
-  `latest-<panel>.json`, and every non-JSON `OrderBook-*` file; `gh release upload
-  <tag> … --clobber`.
+  `latest-<panel>.json`, and every non-JSON `OrderBook-*` file — the setup file and
+  what `publishBeside()` put next to it (the standalone `.exe`, the `.deb`, each with
+  its `.sha256`); `gh release upload <tag> … --clobber`.
 
 ### 10.8 How updates reach panels
 
@@ -3875,22 +4218,37 @@ packages nothing; the Release workflow runs no tests.
    `release.mjs`; no network) or **from GitHub**, only if
    `ORDERBOOK_RELEASES_GITHUB_REPO` is set. `startReleasePolling()` polls 2 min after
    boot and then every `ORDERBOOK_RELEASES_POLL_MINUTES`; every `availability()` call
-   also syncs. `syncFromGitHub()` (`master/src/services/github-releases.ts`): `GET
-   /repos/<repo>/releases/latest` (drafts and pre-releases = nothing to do) → asset
-   `latest-<panel>.json` for win32 else `latest-<panel>-<platform>.json` →
-   `guardedFetch` (manual redirects, ≤ 5 hops, 4 allowed hosts, 15 s per hop) →
-   `verifyManifest` **before** downloading → panel/platform/size checks → download to
-   `<file>.part` with a byte cap, rename → write **`latest.json`** with `writeDurable`
-   → sweep superseded `OrderBook-(Master|Office)-*-Setup.(exe|dmg)` files.
-   **Likely defect (read, not run):** the setup-file download in `download()` also
-   goes through `guardedFetch`, which sets `signal:
-   AbortSignal.timeout(METADATA_TIMEOUT_MS)` (15 000 ms), so the abort covers the
-   whole ~150 MB body, not only the manifest hop. **Platforms:** `startReleasePolling()`
-   calls `syncFromGitHub(panel, dir, pinned)` without a platform, which defaults to
-   the Master's own `process.platform`; so the background poll fills both folders
-   only for the Master's OS, and an Office build for another OS is fetched only when
-   such a panel calls `/api/updates/office/latest?platform=` (the in-flight key is
-   `${panel}:${platform}`).
+   also syncs, but waits on it for `GITHUB_WAIT_MS` (5 s) at most and then answers
+   from the folder as it stands. `syncFromGitHub()`
+   (`master/src/services/github-releases.ts`): `GET /repos/<repo>/releases/latest`
+   (drafts and pre-releases = nothing to do) → asset `latest-<panel>.json` for win32
+   else `latest-<panel>-<platform>.json` → `guardedFetch` (manual redirects, ≤ 5 hops,
+   4 allowed hosts; every hop has 15 s to answer, and a listing or manifest 15 s in
+   all) → `verifyManifest` **before** downloading → panel/platform/size checks →
+   download to `<file>.part` with a byte cap, rename → write the manifest with
+   `writeDurable` under **the names `release.mjs` writes**: `latest-<platform>.json`,
+   plus `latest.json` for a Windows build → sweep superseded
+   `OrderBook-(Master|Office)-*-Setup.(exe|dmg|AppImage)` files. Fixed 2026-09-25:
+   - the setup file's body is no longer under the 15 s clock (a 150 MB download was
+     cut off every time); it gives up after a minute of silence
+     (`DOWNLOAD_STALL_MS`) or three hours in all (`DOWNLOAD_LIMIT_MS`);
+   - the sync wrote only `latest.json`, which a stale `latest-<platform>.json` left
+     by `release.mjs` shadowed (§10.10 item 3);
+   - every sweep, and the clean-up of `.part` and `.tmp` debris, is limited to the
+     OS being synced (one folder holds a build per OS, and each OS's sync used to
+     delete the other's); it now also takes superseded AppImages, but spares every
+     pinned build — `prepareMasterUpdate` pins its build the moment the manifest
+     names it, and pins are a list — and the AppImage this Master is running from
+     (`APPIMAGE`, compared by real path);
+   - **platforms:** the background poll syncs the Master's own OS for the Master
+     build and, for the office build, its own OS plus every OS whose
+     `latest-<platform>.json` is already in `office-panel/`; a panel on a new OS has
+     its build fetched when it first asks (`/api/updates/office/latest?platform=`,
+     in-flight key `${panel}:${platform}`) and is told "nothing new yet" until it
+     lands. **Known, not changed:** the Updates screens have no "fetching" reason to
+     show meanwhile. Tests UPD-48…63 in `master/tests/github-releases.test.ts`;
+     `master/tests/release-folder-besides.test.ts` holds the sweep off the `.deb` and
+     the standalone `.exe`.
 2. **Reading the folder:** `readManifest(panel, platform)` tries
    `latest-<platform>.json`, then `latest.json`, and uses the **first readable one**
    (no fall-through if it later fails a check). Only `ENOENT` moves on to the next
@@ -3899,11 +4257,11 @@ packages nothing; the Release workflow runs no tests.
    Then, in order: unparseable or not a manifest → null; panel mismatch; platform
    mismatch; `verifyManifest`; the file missing or the wrong size.
 3. **Master self-update:** Updates screen → `POST /api/updates/master/install`
-   (`settings.manage`) → `prepareMasterUpdate()` (streams a SHA-256 via
-   `verifyRelease`, remembers `prepared`) → `window.orderbook.applyUpdate()` → the
+   (`settings.manage`) → `prepareMasterUpdate()` (pins the build, streams a SHA-256
+   via `verifyRelease`, remembers `prepared`) → `window.orderbook.applyUpdate()` → the
    shell reads `installer`/`installerDir` from its own `/api/health`,
-   `approveInstaller`, stops the server, `shell.openPath`, quits. (See §5.11 defect 3:
-   the browser's `/api/updates/*` calls are refused today.)
+   `approveInstaller`, then runs the installer (stop the server, `shell.openPath`,
+   quit) or replaces the AppImage (§10.1 step 9).
 4. **Office update over the LAN** (the Office never talks to GitHub):
    `availableUpdate()` → `GET /api/updates/office/latest?platform=<os>` on the Master
    (`requirePanel`) → **signature verified on the panel** → `isNewer`;
@@ -3920,10 +4278,17 @@ packages nothing; the Release workflow runs no tests.
    reaches a panel from GitHub, and in-app installs work only from a hand-filled
    folder on machines that set `ORDERBOOK_ALLOW_UNSIGNED_RELEASES=1`.
 6. **Per OS:** Windows — the NSIS setup via ShellExecute (UAC); the standalone `.exe`
-   refuses in-app updates. macOS — `openPath` mounts the `.dmg`; nothing uses the
-   `.zip`. Linux — `installerExtension('linux')` returns `.exe`, so
-   `resolveInstaller` refuses every `.AppImage`: **in-app update is always refused on
-   Linux**, and old AppImages are never swept (the sweep matches only `exe`/`dmg`).
+   refuses in-app updates and the Updates screen says to replace the file by hand.
+   macOS — `openPath` mounts the `.dmg` (the only mac artefact since the `.zip` was
+   dropped). **Linux** (since 2026-09-25) — `installerExtension('linux')` is
+   `.AppImage`, so a copy started from an AppImage updates in place: the verified
+   file replaces the running one, which then relaunches (§10.1 step 9). A copy not
+   started from an AppImage — in a shipped build the `.deb` — is
+   `system-package`: `applyUpdate` refuses it with a log line and both Updates
+   screens show `updates.systemPackageBody` instead of a button; the newer `.deb`
+   is installed by hand. **No real AppImage has been updated end to end yet**; the
+   path is covered by `electron/tests/appimage.test.ts` and
+   `electron/tests/installer.test.ts` only.
 
 ### 10.9 The macOS build: state and traps
 
@@ -3940,13 +4305,19 @@ packages nothing; the Release workflow runs no tests.
   guards the pieces (targets, `allowScripts`, both darwin PostgreSQL packages,
   `verbatimSymlinks`, `ensureUniversalPackages()` before `vendorPostgres()`,
   `x64ArchFiles`, per-OS yml blocks).
-- **Not yet done** (`HANDOFF.md`): the macOS app has been built but never run. Launch
-  it on an Intel and an Apple silicon Mac: first boot must create the database, and a
-  product photo upload exercises `sharp`. The dmg is unsigned (right-click Open on a
-  downloaded copy). `v1.2.0` exists only as a **draft** (confirmed); that it has no
-  macOS files and pre-fix Linux files is `HANDOFF.md`'s account, not re-checked
-  (draft assets are unreadable here). It should be deleted and rebuilt with
-  *publish* ticked — and while it exists, a push to main builds nothing (§10.7).
+- **Not yet done — the owner's** (`HANDOFF.md`): the macOS app has been built but
+  never run. Launch it on real hardware, an Intel and an Apple silicon Mac: first boot
+  must create the database, and a product photo upload exercises `sharp`. The dmg is
+  unsigned (right-click Open on a downloaded copy). `v1.2.0` exists only as a
+  **draft** (confirmed); that it has no macOS files and pre-fix Linux files is
+  `HANDOFF.md`'s account, not re-checked (draft assets are unreadable here). It should
+  be deleted and the Release workflow rerun with *publish* ticked on `main` (the only
+  branch that may publish now, §10.7) — and while the draft exists, a push to main
+  builds nothing. The git proxy the cloud sessions work through refuses branch
+  deletion and tag pushes (HTTP 403), so this, and deleting the 12 retired GitHub
+  branches, is left to the owner.
+- Since 2026-09-25 the mac leg builds only the `.dmg`; the universal `.zip`, which
+  nothing read, is no longer built (§10.4).
 - Signing: the same log shows `skipped macOS application code signing … 0
   identities found` — electron-builder 25 has no ad-hoc fallback (§10.4).
 - The Clean Install tool's macOS dmg has no `x64ArchFiles` and has never been built
@@ -3958,33 +4329,57 @@ packages nothing; the Release workflow runs no tests.
    `setVersion()` and `shared/tests/version.test.ts` now take the list from the root
    `package.json` `workspaces`, so no workspace can be left out (the test was seen
    failing on a mismatched `cleaner/package.json`).
-2. **The `.zip` and `.deb` are built and never published**, although the `mac:`
-   comment in both panel ymls ("the .zip is what the update path downloads"), the
-   `release.yml` collect-step comment (".deb all land here") and `HANDOFF.md` say
-   otherwise.
-3. **GitHub sync writes only `latest.json`, but `readManifest` prefers
-   `latest-<platform>.json`** and stops at the first readable file. A folder once
-   filled by `release.mjs` (which writes `latest-win32.json`) and later synced from
-   GitHub keeps reading the stale platform-named manifest.
+2. **Fixed 2026-09-25 — the `.zip` and `.deb` were built and never published.** The
+   mac `.zip` target is gone (nothing read it); the `.deb` is published beside the
+   AppImage with a `.sha256` (`TARGETS.linux.besides`, `publishBeside()`), and the
+   yml and `release.yml` comments say so.
+3. **Fixed 2026-09-25 — a GitHub sync wrote only `latest.json`**, so a stale
+   `latest-<platform>.json` left by `release.mjs` shadowed it and the panel saw "no
+   update" with the new build on disk. The sync now writes the names `release.mjs`
+   writes (§10.8).
 4. **Fixed 2026-09-22 — `check` looked up the tag with `--repo "$GITHUB_REPOSITORY"`**
    while `create-release` and the upload use `vars.RELEASES_REPO`; `check` now uses the
    same repository and token.
-5. **Nothing enforces "publish from main only"**: `workflow_dispatch` with
-   `publish: true` publishes from any branch.
+5. **Fixed 2026-09-25 — nothing enforced "publish from main only"**: a hand-run with
+   *publish* ticked on any branch created the real `v<version>`. `check` now refuses
+   off `refs/heads/main` (§10.7).
 6. **Fixed 2026-09-22 — the commit message was pasted into a shell `--notes "…"`**
    argument in `create-release`, so a message containing `"` or `$(…)` could break or
    inject into that step. It now arrives through the `NOTES` environment variable.
-7. The Linux PostgreSQL package follows the build host's arch
-   (`linux-${process.arch}`), but the ymls build only x64.
-8. Stale comments: `release.mjs` cites `postgres-server.ts:52` (the lookup is
-   `candidateBinDirs()`); `release.mjs#sign()` says "`signed-fields.test.ts` pins
-   the two", but the file is `master/tests/release-signed-fields.test.ts`; `cleaner/electron-builder.yml` says the panels "build one
-   target each"; `cleaner.preload.cts` says "six functions" (nine members);
-   `shell.ts` re-exports `installerExtension`, unused from there; both panel ymls open
-   with "Windows setup file for…" although they configure three OSes;
-   `docs/UPDATES.md` says releases build "both Windows installers".
+7. **Fixed 2026-09-25 — the Linux PostgreSQL package followed the build host's arch**
+   (`linux-${process.arch}`) while the ymls build only x64. It is `linux-x64`
+   outright, and `assertHostArch()` refuses the Master's x64 build on another
+   architecture (§10.6).
+8. **Fixed 2026-09-25 — stale comments** in `release.mjs` (`postgres-server.ts:52`,
+   the signed-fields test path, the header), `cleaner/electron-builder.yml` ("build one
+   target each"), `cleaner.preload.cts` ("six functions"; it has nine), `preload.cts`
+   (`applyUpdate` "takes a path"), both panel ymls ("Windows setup file for…"), and
+   `docs/UPDATES.md` ("both Windows installers"); `shell.ts`'s unused
+   `installerExtension` re-export is gone. Still stale: `electron/preload.cts`'s
+   header says the shell refuses anything outside "that panel's updates folder" —
+   the Master's installer comes from its releases folder (`installerDir` =
+   `releaseDirFor('master')`), and an AppImage is replaced rather than run; and
+   `electron/master.main.ts`'s comment on `serverEnv` says the Office records a move
+   in its settings file (`ORDERBOOK_OFFICE_SETTINGS_FILE`); under the shell it
+   rewrites `office-location.json` (`rememberDataDir`, §8.3).
 9. Build output folders keep old builds; artifacts are matched by exact version, and
    `staging/` and `vendor/postgres` are cleared before each build.
+10. **Known, not changed:** the Updates screens have no "fetching" reason while a
+    panel's build downloads (§10.8); no real AppImage has been updated end to end
+    (§10.8); the Clean Install tool spawns a `.deb` as if it were an AppImage
+    (§10.3); after a storage move (the Office's own move, or the Master's first-run
+    folder change) the shell keeps writing `logs/<panel>.log` in the old folder
+    until the next launch. Every "where is the log" answer (crash dialog, Help ›
+    Open log folder, `getShellSettings`, `openLogFolder`, the `ORDERBOOK_LOG_FILE` a
+    restarted server gets) uses `openLogPath()`, so it names the file actually being
+    written (§1.5).
+11. **Owner's call — the uninstall scripts delete a data folder whole.** "Uninstall,
+    delete data" runs `Remove-Item -Recurse` / `rm -rf` on the folder the shell's
+    pointer names. `relocateDataDir()` now refuses to move an Office Panel into a
+    folder it would not own (§8.3), but the Master's first-run chooser has no such
+    check, and nothing stops somebody saving their own files into the folder later.
+    Deleting only the panel's own entries from a relocated folder is a change to
+    `tools/uninstall/` left for the owner to decide.
 
 ---
 
@@ -4007,7 +4402,7 @@ Each flow names the files and functions in the order they run. "Master" means
    /api/panels/pairing-window/open` (`panels.manage`) →
    `panelService.openPairingWindow()` (5 minutes, in memory). **One panel per
    opening:** after a successful *auto* pairing `pairPanel` calls
-   `closePairingWindow()` (`panel.service.ts:136-137`), so leaving the screen open
+   `closePairingWindow()` (`panel.service.ts:162`), so leaving the screen open
    does not admit a second panel; manual pairing does not close it.
 3. **The Office discovers.** `office/web/src/screens/ConnectionScreen.tsx` (auto) →
    `api.pairAuto` → `POST /api/connection/pair/auto`
@@ -4032,8 +4427,8 @@ Each flow names the files and functions in the order they run. "Master" means
    `panelService.pairPanel(request, remoteIp)`: auto mode is authorised by the open
    window, manual by `verifyPairingPassword`; inserts an `office_panels` row (status
    `active`, a `device_code`, bcrypt `secret_hash`; a blank name gets the next
-   "Office Panel N" from `nextPanelName`),
-   records a detached activity row, and returns `PairingSuccess {panelId, panelSecret
+   "Office Panel N" from `nextPanelName`) and its activity row (with the panel's
+   name) in one transaction, and returns `PairingSuccess {panelId, panelSecret
    (once), masterUniqueId, companyName}`.
 7. **The Office stores it.** `saveCredentials()`
    (`office/src/services/credentials.store.ts`) writes `pairing.json` (0600);
@@ -4066,8 +4461,9 @@ Each flow names the files and functions in the order they run. "Master" means
    → `verifyPassword` (`master/src/lib/password.ts`; legacy bcrypt is upgraded), a
    random session token in the in-memory `sessions` Map with a lifetime from
    `security.sessionHours`, `rememberPassword` if the vault is on, a detached
-   activity row. The route sets the httpOnly `orderbook_session` cookie and returns
-   the token for Socket.IO.
+   activity row (deliberately detached: the sign-in's own writes commit first, and
+   a trail that cannot be written must not stop anyone signing in, §5.1). The route
+   sets the httpOnly `orderbook_session` cookie and returns the token for Socket.IO.
 2. Every request: `attachSession` → `resolveSessionWithPermissions` re-reads the user,
    role and role `version`; permissions = `effectivePermissions(role.permissions,
    tier)` (`shared/src/domain/permissions.ts`). A deactivated user or deleted role ends
@@ -4149,11 +4545,13 @@ Each flow names the files and functions in the order they run. "Master" means
    applies the same function.
 3. **A queued write.** The browser calls, e.g., `api.createLead` → `POST /api/leads` →
    `queue('lead.create', …)` (`office/src/http/app.ts`): local
-   `MUTATION_PERMISSIONS` check; `entityId` = `nextTemporaryId()` (6-char device code +
+   `MUTATION_PERMISSIONS` check, then the route's `validate` step
+   (`leadPayloadProblem`); `entityId` = `nextTemporaryId()` (6-char device code +
    9-digit counter, persisted on every allocation); `sync.submit()` → `enqueue()`
    (`office/src/sync/outbox.store.ts`) stamps `mutationId`, `hlc` (`clock.stamp()` →
    `tickHlc`), `deviceCode`, `fields`, `baseFieldHlc`, `actorUserId`; `outbox.json` is
-   rewritten via temp + rename; the route answers **202** with the temporary id.
+   rewritten via temp + rename (never from a queue that could not be read, §8.5); the
+   route answers **202** with the temporary id.
 4. **The view shows it at once.** `localStore.getView()` overlays the queue on the
    snapshot (`provisionalLead` etc., `sync.hlc === ''`); the SSE `snapshot` push
    (`schedulePushView`) updates the screen. Only lead create/update/stage, party create
@@ -4196,7 +4594,8 @@ Each flow names the files and functions in the order they run. "Master" means
 ### 11.4 Lead → order → dispatch, and stock reservations
 
 1. **Create the lead (Office).** `office/web/src/screens/AddLeadScreen.tsx` → `api.createLead`
-   → `POST /api/leads` → `leadPayloadProblem` → `queue('lead.create')` → outbox →
+   → `POST /api/leads` → `queue('lead.create')` (permission, then
+   `leadPayloadProblem`) → outbox →
    `sync:push` → `route()` → `leadService.createLead`
    (`master/src/services/lead.service.ts`): `requirePermission('leads.create')`,
    `requirePartyAccess(partyId, 'manage')`, `buildLineSnapshot`
@@ -4207,15 +4606,16 @@ Each flow names the files and functions in the order they run. "Master" means
    `allocatePermanentId('lead')`, inserts the lead at the pipeline's default stage —
    `defaultStage`, `master/src/domain/pipeline.ts` — and writes the lines with
    `lineItems.insertLines`, `parent_type 'lead'`; `replaceLines` is the update path),
-   a timeline entry; after commit `recordDetachedActivity` and
+   a timeline entry and, last, `recordActivity`; after commit
    `publishChange({entity:'lead', action:'created'})`. Completeness is not computed
    here: `evaluateCompleteness` runs whenever a lead or order is loaded
    (`lead.repository.ts` / `order.repository.ts` mappers).
    (The Master also has `POST /api/leads` guarded by `leads.create`, but its web app
    has no page for it.)
 2. **Move it.** `lead.setStage` (queued) or `POST /api/leads/:id/stage` →
-   `leadService.setStage` → `assertStageMove` → a `system` timeline entry
-   (`stageChangeMessage`).
+   `leadService.setStage` → `assertStageMove` → one transaction: `nextHlc`, the new
+   `stage_id`, a `system` timeline entry (`stageChangeMessage`, plus a `remark` entry
+   when one was typed) and, last, `recordActivity`.
 3. **Convert it.** `lead.convert` (queued from the Office's `LeadDetail`/board) or the
    Master's `POST /api/leads/:id/convert` → `orderService.convertLead`
    (`master/src/services/order.service.ts`): `requirePermission('lead.convert')`;
@@ -4226,8 +4626,8 @@ Each flow names the files and functions in the order they run. "Master" means
    `orders` row (`OD…`, default order stage) and its lines with `parent_type 'order'`,
    insert the planned reservations (`reservation.repository.ts`, one `active`
    reservation per variant), `leadRepo.markConverted`, timeline entries on both
-   records; after commit, publish lead, order and reservation changes. **This is the
-   only way an order is created.**
+   records and, last, `recordActivity`; after commit, publish lead, order and
+   reservation changes. **This is the only way an order is created.**
 4. **Stock view.** `inventory_stock.quantity_boxes` per variant is on-hand;
    `reservedTotals` (active reservations) gives reserved; available = on-hand −
    reserved and may go negative (**an order is never blocked by a shortage**). When
@@ -4236,17 +4636,22 @@ Each flow names the files and functions in the order they run. "Master" means
    level (`shared/src/domain/inventory-view.ts`).
 5. **Dispatch.** `order.dispatch` (queued) or `POST /api/orders/:id/dispatch` →
    `orderService.dispatchOrder`: `requirePermission('orders.dispatch')`, party access,
-   and, before the transaction, the target stage (the one named `'Dispatched'`) and
-   `planDispatchMovements` over the active reservations; then one transaction with
-   **no `nextHlc`**: `lockOrder` first, `inventory.repository.ts#applyMovement` writes
-   an `outbound` movement per variant (`reference_type 'order'`) and updates
-   `inventory_stock`, reservations are consumed, `markDispatched` (stage and
-   `dispatched_at`; no `version` or `hlc` bump); after commit publish order and stock
-   changes.
+   and, before the transaction, the order's stages (the target is the one named
+   `'Dispatched'`, §5.11 item 7) and `planDispatchMovements` over the active
+   reservations; then one transaction: `nextHlc`, then `lockOrder` (re-checks
+   `dispatchedAt`; the stage being left comes from the locked row), a ledger check
+   that no movement exists for the order, `inventory.repository.ts#applyMovement`
+   writes an `outbound` movement per variant (`reference_type 'order'`) and updates
+   `inventory_stock`, reservations are consumed, `markDispatched` (stage,
+   `dispatched_at`, `hlc`, `field_hlc`, `version + 1` — since 2026-09-25), a timeline
+   entry and, last, `recordActivity`; after commit publish order and stock changes.
+   (`deleteOrder` checks `dispatchedAt` without that lock, so it can race a
+   dispatch — §5.11 item 17.)
 6. **Stock in and adjustments.** `inventoryService.recordInbound` (`inventory.edit`)
    and `recordAdjustment` (`stock.adjust`; note required when
-   `inventory.adjustmentNoteRequired` is on) → `applyMovement`; `publishStockFor`. On
-   the Office these are forwarded live, not queued.
+   `inventory.adjustmentNoteRequired` is on) → one transaction: `applyMovement` and,
+   last, `recordActivity`; `publishStockFor` after commit. On the Office these are
+   forwarded live, not queued.
 7. **Reports** read the dispatch movements and lead outcomes
    (`master/src/repositories/report.repository.ts`, month buckets in
    `ORDERBOOK_TIMEZONE`); lead outcomes are classified by the SQL `CASE` in
@@ -4332,9 +4737,10 @@ Each flow names the files and functions in the order they run. "Master" means
 ### 11.7 Updates and releases
 
 1. **Build:** `npm run release -- --os <os>` on the matching OS, locally or in
-   `.github/workflows/release.yml` (§10.6–§10.7), producing setup files and
-   `latest-<platform>.json` (optionally signed with the key from `npm run
-   release:keygen`).
+   `.github/workflows/release.yml` (§10.6–§10.7; only `main` publishes a real
+   release), producing setup files, the Windows standalone `.exe` and the Linux
+   `.deb` beside them with a `.sha256` each, and `latest-<platform>.json` (optionally
+   signed with the key from `npm run release:keygen`).
 2. **Deliver to the Master:** copy the output into `config.releasesDir` by hand, or
    let `syncFromGitHub()` fetch it when `ORDERBOOK_RELEASES_GITHUB_REPO` is set.
 3. **Offer:** `readManifest` → `verifyManifest` (`master/src/lib/release-signature.ts`,
@@ -4344,14 +4750,18 @@ Each flow names the files and functions in the order they run. "Master" means
 4. **Master install:** `UpdatesScreen` → `POST /api/updates/master/install` →
    `prepareMasterUpdate` (SHA-256) → `window.orderbook.applyUpdate()` →
    `electron/shell.ts` → `approveInstaller` (`electron/lib/installer.ts`) → stop the
-   server → `shell.openPath`. On restart the pre-upgrade cluster snapshot runs
-   (`snapshotClusterBeforeUpgrade`), then migrations.
+   server → `shell.openPath` (Windows, macOS), or on Linux `replaceAppImage` →
+   stop the server → relaunch (`electron/lib/appimage.ts`). On restart the
+   pre-upgrade cluster snapshot runs (`snapshotClusterBeforeUpgrade`), then
+   migrations.
 5. **Office install:** `office/web/src/screens/UpdatesScreen.tsx` →
    `api.updateAvailable` / `api.downloadUpdate` → `office/src/services/update.service.ts`
    (local signature check, streamed SHA-256 into `<dataDir>/updates`) → the same shell
    path.
-6. Known blockers today: §10.8 step 5 (no trusted release key), §10.8 step 6 (Linux
-   in-app updates are refused), §10.10. (§5.11 defect 3 was fixed 2026-09-22.)
+6. Known blockers today: §10.8 step 5 (no trusted release key) and the stale draft
+   `v1.2.0` (§10.9). Linux AppImage copies update in place since 2026-09-25 but no
+   real one has been updated end to end yet; a `.deb` is updated by hand (§10.8
+   step 6). (§5.11 defect 3 was fixed 2026-09-22.)
 
 ### 11.8 Backup and restore
 
@@ -4372,7 +4782,9 @@ Each flow names the files and functions in the order they run. "Master" means
   restore is offered by `FirstRunScreen` through the unauthenticated
   `/api/setup/restore*` routes: `POST /api/setup/restore` refuses once setup has run
   (409 `populated_data_directory`), while `/api/setup/restore/preview` still answers
-  afterwards.
+  afterwards. A restore empties the settings and role caches but not the public
+  API's cached tenant id, so after a whole restore of another installation `/api/v1`
+  reads a tenant that is gone until the Master restarts (§5.11 item 18).
 - **Office export/restore:** `office/src/services/backup-export.service.ts` gzips the
   JSON of `device`, `clock`, `outbox`, `refusals`, `snapshot`, `users`,
   `sign-in-attempts` (`settings-only`: users and attempts only) — **never
@@ -4415,17 +4827,23 @@ Each flow names the files and functions in the order they run. "Master" means
    `CODE_TOKENS` entry or `error.unknown`); only an `Error` with no string `code`
    falls back to its message.
 4. **Audit log:** `recordActivity(entityType, action)` → `ACTIVITY_TOKENS`
-   (`shared/src/i18n/activity.ts`) → `renderActivity` in the Logs screen. Tokens are
-   append-only (`shared/tests/activity-tokens.lock.json`).
+   (`shared/src/i18n/activity.ts`) → `renderActivity` in the Logs screen, with
+   `logs.actor.unknown` for a row with no actor. Tokens are append-only
+   (`shared/tests/activity-tokens.lock.json`), and every Hindi template needs a
+   postposition after `{actor}` so that stand-in (`'किसी'`) reads. The Logs screen
+   still renders English (`createTranslator('en')`, §7.4).
 5. **PDFs:** `master/src/pdf/text.ts#splitByScript` switches Devanagari runs to Noto
    Sans Devanagari (`master/assets/fonts/`); `master/tests/pdf-fonts.test.ts` gates the
    shaping.
 6. **CSS:** `:lang(hi)` switches the UI to the Devanagari font stack
    (`ui/src/tokens.css`).
-7. Guards: `shared/tests/i18n-coverage.test.ts`, `shared/tests/i18n.test.ts`,
-   `master/tests/i18n-call-sites.test.ts`, `master/tests/i18n-tokens.test.ts`,
-   `master/tests/errors-i18n.test.ts`, `ui/tests/locale.test.ts`, and the ESLint rule
-   for the swept files.
+7. Guards: `shared/tests/i18n-coverage.test.ts` (including no price words in either
+   catalogue), `shared/tests/i18n.test.ts`, `master/tests/i18n-call-sites.test.ts`,
+   `master/tests/i18n-tokens.test.ts`, `master/tests/errors-i18n.test.ts`,
+   `master/tests/web-catalogue-text.test.ts` (the web apps' error fallbacks),
+   `ui/tests/locale.test.ts`, `ui/tests/kit-i18n.test.tsx` (the kit's chrome in
+   Hindi), `ui/tests/permission-labels.test.tsx`, and the ESLint rule for the swept
+   files.
 
 ---
 
@@ -4433,16 +4851,18 @@ Each flow names the files and functions in the order they run. "Master" means
 
 ### 12.1 Where the tests are
 
-146 tracked files in test directories, 140 of them test files. **No test file exists
-outside these five directories; `master/web` and `office/web` have none.**
+167 tracked files in test directories, 160 of them test files (2015 tests in
+the last full run). **No test file exists outside these five directories;
+`master/web` and `office/web` have none of their own** — `ui/tests` boots both
+(§4.11).
 
 | Directory | Tracked | Test files | Other |
 |---|---|---|---|
-| `master/tests` | 97 | 95 (46 `*.integration.test.ts`) | `master/tests/helpers/db.ts`, `master/tests/helpers/fixtures.ts` |
+| `master/tests` | 106 | 104 (48 `*.integration.test.ts`) | `master/tests/helpers/db.ts`, `master/tests/helpers/fixtures.ts` |
 | `office/tests` | 12 | 12 | — |
-| `shared/tests` | 15 | 14 | `shared/tests/activity-tokens.lock.json` |
-| `ui/tests` | 12 | 11 (8 `.tsx`, 3 `.ts`) | `ui/tests/tsconfig.json` |
-| `electron/tests` | 10 | 8 | two dry-run fixtures |
+| `shared/tests` | 16 | 15 | `shared/tests/activity-tokens.lock.json` |
+| `ui/tests` | 19 | 17 (14 `.tsx`, 3 `.ts`) | `ui/tests/panel-harness.ts`, `ui/tests/tsconfig.json` |
+| `electron/tests` | 14 | 12 | two dry-run fixtures |
 
 How the suite runs (config, environments, timeouts, coverage): §2.8. Typecheck of
 tests: `tsc -p tsconfig.test.json` (shared, master, office, electron) and `tsc -p
@@ -4450,7 +4870,7 @@ ui/tests/tsconfig.json`; the root `typecheck` also runs `tsc -p
 electron/tsconfig.json --noEmit` over the shell source itself (not its tests). Lint
 covers test files too.
 
-### 12.2 Integration suites (`master/tests/*.integration.test.ts`, 46)
+### 12.2 Integration suites (`master/tests/*.integration.test.ts`, 48)
 
 All call `setupDatabase`, `teardownDatabase`, `resetData` and wrap their body in
 `describe.skipIf(!canRunIntegrationTests)`. Seven drive HTTP with `supertest`:
@@ -4459,10 +4879,10 @@ All call `setupDatabase`, `teardownDatabase`, `resetData` and wrap their body in
 
 | Theme | Files (`master/tests/<name>.integration.test.ts`) | What they pin |
 |---|---|---|
-| Access and auth (8) | `access`, `access-lockout`, `audit-trail`, `auth-pairing`, `permissions`, `panel-actor`, `party-access`, `password-vault` | the Roles & Users gate list (cited as "docs/ROLES_AND_USERS.md §15" in the test header, but that section is now "Signing in on an Office Panel" and the list is not in that file); last-admin lockout (G4); the audit row commits/rolls back with its transaction; setup, sign-in, sessions and pairing; a refusal names its permission; an Office command runs as the signed-in person; per-party grants; the vault stores nothing while off |
-| HTTP surfaces (5) | `http-api`, `public-api`, `panel-administration`, `panel-catalog-route`, `panel-image-route` | `requireAuth` coverage and no static uploads mount; `/api/v1` (off switch 404, key auth, 429, PATCH merge, key ∩ owner permissions); panel secret rotation order; panel import/image routes authenticate as the user |
+| Access, auth and audit (9) | `access`, `access-lockout`, `audit-trail`, `audit-atomicity`, `auth-pairing`, `permissions`, `panel-actor`, `party-access`, `password-vault` | the Roles & Users gate list (cited as "docs/ROLES_AND_USERS.md §15" in the test header, but that section is now "Signing in on an Office Panel" and the list is not in that file); last-admin lockout (G4); the audit row commits/rolls back with its transaction — for roles and users (`audit-trail`) and, since 2026-09-25, every write path that used to record detached or not at all, with the entry written after every row lock (`audit-atomicity`, which forces the entry to fail with a trigger and probes lock order under a 500 ms `lock_timeout`); setup, sign-in, sessions and pairing; a refusal names its permission; an Office command runs as the signed-in person; per-party grants; the vault stores nothing while off |
+| HTTP surfaces (5) | `http-api`, `public-api`, `panel-administration`, `panel-catalog-route`, `panel-image-route` | `requireAuth` coverage and no static uploads mount; `GET /api/storage` needs `settings.manage`; `/api/v1` (off switch 404, key auth, 429, PATCH merge, key ∩ owner permissions, an OpenAPI description with no masking claim); panel secret rotation order; panel import/image routes authenticate as the user, once per request and before the upload is parsed, and a refused acting token is a 401 |
 | Catalogue (9) | `catalog`, `catalogue-seed`, `product-attributes`, `product-hierarchy`, `product-variants`, `product-import`, `partial-patch`, `images`, `image-sequence` | parties and products; idempotent Swisware load; a partial write never nulls fields it was not given; `replaceVariants`; bulk import names bad rows and a re-upload changes nothing; the image pipeline with real `sharp`; gallery `sequence` after a delete |
-| Leads, orders, stock (5) | `lead`, `inventory`, `free-to-sell`, `pick`, `search` | conversion copies lines and snapshots weights; reserved at conversion, deducted at dispatch; the free-to-sell switch; picker prefix matching; `tsvector` search |
+| Leads, orders, stock (5) | `lead`, `inventory`, `free-to-sell`, `pick`, `search` | conversion copies lines and snapshots weights; reserved at conversion, deducted at dispatch, which stamps the order's clock (`audit-atomicity` also pins that a dispatch reads its stage under the lock); the free-to-sell switch; picker prefix matching; `tsvector` search |
 | Sync (2) | `sync`, `sync-delta` | outbox apply (duplicates, conflicts, reconnect order); a delta replay equals a fresh snapshot |
 | Modules (5) | `fields`, `logs`, `recycle-bin`, `reports`, `dashboard` | gate ids from `docs/backend-modules/10-TESTING.md`: FLD-5…21, LOG-1…15, §6.2–6.3, RPT-6…18 (incl. IST month boundaries; RPT-18 is beyond the range the file's own header claims), DSH-4…9 |
 | Settings (2) | `settings`, `company-settings` | the table; each company switch changes behaviour |
@@ -4470,21 +4890,22 @@ All call `setupDatabase`, `teardownDatabase`, `resetData` and wrap their body in
 | Migrations (4) | `migration-drop-documents`, `migration-grant`, `migration-product-master-trim`, `migration-product-variants` | re-run a migration's `up()` against data and check the shape |
 | Integrations (1) | `connector-import` | an import against a throwaway loopback HTTP server |
 | Developer and sample data (2) | `developer`, `sample-data` | dummy users and reset (last in its file — it drops the schema); the sample seed refuses a second run |
+| Operator CLIs (1) | `operator-cli` | runs `migrate --status` and the reload/wipe CLI as processes (`node --import tsx`, `DATABASE_URL` pointing at the test cluster): names printed, catalogue loaded, config and connectors kept, connector links wiped, the activity chain restarting intact, and no foreign key letting `TRUNCATE … CASCADE` reach a table outside the wipe list |
 | Performance (1) | `query-budget` | queries per ordinary request |
 
-### 12.3 Source-reading guard tests (`master/tests`, 20 files)
+### 12.3 Source-reading guard tests (`master/tests`, 23 files)
 
 They read files and assert on the text; they need no database and cannot skip.
 
 | File | Reads | Protects |
 |---|---|---|
-| `master/tests/packaging-invariants.test.ts` | `tools/release.mjs`, both panel ymls, root `allowScripts`, `tools/uninstall/uninstall-orderbook.sh` | three `TARGETS`; `vendorPostgres` uses `RELEASE_TARGET.postgres`; every `@embedded-postgres` package in `allowScripts`; mac vendors both darwin packages; `verbatimSymlinks: true` in `vendorPostgres` and `stage`; `ensureUniversalPackages()` before `vendorPostgres()`; `win:`/`mac:`/`linux:` blocks with `artifactName` ending `.${ext}`; `x64ArchFiles`; `executableName: orderbook-<panel>`; the `.deb` sweep. **The mac-build guard.** (23 tests) |
+| `master/tests/packaging-invariants.test.ts` | `tools/release.mjs`, both panel ymls, root `allowScripts`, `tools/uninstall/uninstall-orderbook.sh` | three `TARGETS` with literal per-arch PostgreSQL packages; `vendorPostgres` uses `RELEASE_TARGET.postgres`; every `@embedded-postgres` package in `allowScripts`; mac vendors both darwin packages; `verbatimSymlinks: true` in `vendorPostgres` and `stage`; `ensureUniversalPackages()` before `vendorPostgres()`; `win:`/`mac:`/`linux:` blocks with `artifactName` ending `.${ext}`; the yml targets, read in every shape a target can be written, equal to what `release.mjs` picks up (so the mac `.zip` cannot come back unnoticed); `x64ArchFiles`; `executableName: orderbook-<panel>`; the host-arch refusal, run as an arm64 machine against what `npm ls` finds native in each panel; the `.deb` sweep. **The mac-build guard.** |
 | `master/tests/web-reachability.test.ts` | both `App.tsx` and `api.ts` | every Tab reachable (`NAV_LESS`); every `api.*` member has a caller or an `ALLOWED_UNCALLED` reason, none stale |
 | `master/tests/screen-reachability.test.ts` | both `App.tsx`, `COMMANDS` | nav entries, `ScreenSpec`s and the Tab union agree; one-panel screens need a `PANEL_ONLY` reason; every `command.tab` resolves |
 | `master/tests/migration-registry.test.ts` | `master/src/db/migrations/` | §6.1 |
 | `master/tests/migration-data-safety.test.ts` | migration `up()` bodies | §6.1 |
 | `master/tests/i18n-call-sites.test.ts` | panel and ui sources | every literal `t('key')` exists; panel-scoped keys exist under both prefixes |
-| `master/tests/i18n-tokens.test.ts` | `master/src/services` | every literal `recordActivity`/`recordDetachedActivity` pair has an `activity.*` token |
+| `master/tests/i18n-tokens.test.ts` | `master/src/services` | every literal `recordActivity`/`recordDetachedActivity` pair has an `activity.*` token, the offline merge path's included |
 | `master/tests/no-duplicate-ui.test.ts` | panel `ui/` folders, the barrel | no panel copy of the kit; every kit module in the barrel |
 | `master/tests/ui-conventions.test.ts` | `ui/src/tokens.css`, `ui/src/base.css`, JSX | rem vs px; no raw px in style objects; no `<Drawer`; `priority` only on row-opening tables |
 | `master/tests/company-features-complete.test.ts` | `entities.ts`, `company-features.ts` | every `CompanyFeatures` field read and returned |
@@ -4498,19 +4919,31 @@ They read files and assert on the text; they need no database and cannot skip.
 | `master/tests/release-signed-fields.test.ts` | `release.mjs` + `SIGNED_MANIFEST_FIELDS` | the script signs exactly what panels verify (UPD-27) |
 | `master/tests/socket-contract.test.ts` | `socket.ts`, `master/src`, `office/src` | every server→client event is emitted by the Master and handled by the Office |
 | `master/tests/panel-naming.test.ts` (mixed) | `responder.ts` | `nextPanelName` arithmetic; discovery asks the same question as pairing |
+| `master/tests/operator-scripts.test.ts` | root and `master/package.json`, the operator CLIs | the root `migrate` forwards its arguments; `reload:catalog`, `wipe:business` and `seed:parties` pass the flags their names promise; no money wording in the operator CLIs (added 2026-09-25) |
+| `master/tests/tooling-config.test.ts` | `eslint.config.js` (imported), `package.json`, `vitest.config.ts`, the installed packages' manifests | every swept file exists; the coverage provider `test:coverage` asks for is installed at Vitest's version (added 2026-09-25) |
+| `master/tests/web-catalogue-text.test.ts` | both web apps' sources | error fallbacks and the api clients' timeout/cancel texts come from the catalogue, in the forms they are written in (added 2026-09-25) |
 
-### 12.4 Other `master/tests` unit tests (29 files, no PostgreSQL)
+### 12.4 Other `master/tests` unit tests (33 files, no PostgreSQL)
 
 - **Domain rules (14):** `backup-domain`, `connector-mapping`, `cursor`,
   `custom-fields-domain`, `field-values-domain`, `image-domain`, `line-items-domain`,
   `panel-report-domain`, `product-import-domain`, `recycle-bin-domain`,
   `report-range`, `mappers`, `password-rules`, `errors-i18n`.
-- **Libraries and infrastructure (11):** `backup-crypto`, `change-ring`, `network`
+- **Libraries and infrastructure (13):** `backup-crypto`, `change-ring`, `network`
   (mocks), `spreadsheet` (exceljs), `tile-swatch` (sharp), `cluster-snapshot` and
   `env-file` (temp dirs), `pdf-fonts` (Devanagari shaping with fontkit over the
   vendored fonts), `pdf-primitives`, `boot-status` (supertest on `createBootApp`),
-  `developer-service`.
-- **Releases and updates (3):** `github-releases`, `release-signature`, `updates`.
+  `developer-service`, `migration-status` (the `--status` formatter against Knex's
+  real `list()` shape) and `socket-origin` (the handshake check on both transports,
+  against the real hub on a throwaway HTTP server).
+- **Releases and updates (5):** `github-releases` (UPD-48…63 added on 2026-09-25: the
+  platform-named manifest, per-OS sweeps, the AppImage sweep and the running one
+  spared, download timing with a real local server and a fake clock, pinning while
+  verifying, polling every OS asked for), `release-signature`, `updates`,
+  `release-folder-besides` (the sweep leaves the `.deb`, the standalone `.exe` and
+  their `.sha256` alone) and `release-workflow` (the Release workflow's `check` step
+  lifted out of the yml and run under bash with `gh` and `git` stubbed; skipped on
+  Windows).
 - **Kit code (1):** `datatable-fit` (imports `ui/src/fitColumns.ts`).
 
 `office/tests` (§8.8), `shared/tests` (§3.11), `ui/tests` (§4.11), `electron/tests`
@@ -4541,7 +4974,7 @@ They read files and assert on the text; they need no database and cannot skip.
 ### 12.6 Running the integration suites, and the root trap
 
 `canRunIntegrationTests = findPostgresBinDir() !== null && !isRoot()`. PostgreSQL
-refuses to start as root, so **as root all 46 integration files report as skipped
+refuses to start as root, so **as root all 48 integration files report as skipped
 and the summary still looks green.** Nothing fails a run when they skip
 (`ORDERBOOK_REQUIRE_INTEGRATION` exists only as a proposal in
 `docs/backend-modules/10-TESTING.md`); always read the skipped count. CI's runner is
@@ -4566,11 +4999,16 @@ neither exists. `isRoot()` is always false on win32.
 
 ### 12.7 What the gate cannot see
 
-`master/web` and `office/web` behaviour (only the source-reading guards cover them);
-anything that needs a browser or Electron (`checkVisibility`-based Escape handling,
-scrollbars, the splash, clipboard); packaged-app behaviour (first boot on macOS,
-installers, the uninstall sweep on a real machine); integration suites when run as
-root.
+Most of what each `master/web` and `office/web` screen does: the two shell tests
+(§4.11) boot each `App.tsx` and pin the shell's own behaviour, and the source-reading
+guards (§12.3) pin wiring, but a screen's forms, tables and dialogs are exercised only
+where a shell test happens to pass through them. Anything jsdom cannot do (real
+layout and CSS, `checkVisibility`-based Escape handling, scrollbars, the splash's
+look, focus restore, the clipboard in a real plain-HTTP tab); the desktop shell itself
+(`electron/shell.ts` imports `electron` and cannot run under Vitest — IPC, the
+installer and AppImage update paths, the log after a storage move); packaged-app
+behaviour (first boot on macOS, installers, an AppImage replacing itself, the
+uninstall sweep on a real machine); integration suites when run as root.
 
 ---
 
@@ -4584,7 +5022,7 @@ written before or during the build — check claims against the tree), **Mixed**
 | File | Status | Purpose |
 |---|---|---|
 | `AGENTS.md` | Current | project memory and standing rules for agents |
-| `HANDOFF.md` | Current (owed-work item 1, "No way to look at a product photo", is stale: `office/web/src/screens/ProductDetail.tsx` renders `ProductImages`, which reads `product.images`) | **read first**: state now, branch consolidation, how to run, decisions, owed work, traps, session history |
+| `HANDOFF.md` | Current | **read first**: state now, branch consolidation, how to run, decisions, owed work, traps, session history |
 | `README.md` | Current | orientation, layout, how to run, first run |
 | `opencode.md` | Current | pointer file for OpenCode |
 
@@ -4595,22 +5033,25 @@ written before or during the build — check claims against the tree), **Mixed**
 | `docs/STRUCTURE.md` | Current | this file — the whole software and code in one file |
 | `docs/NEXT_PHASE.md` | Queue | ordered next steps, owner decisions, the integration-run recipe, the manual pass. Its "Mac and Linux builds now work (2026-09-18)" section predates the 2026-09-22 fix. |
 | `docs/PRODUCTION_READINESS.md` | Current + queue | how an update leaves data untouched, per-release routine, open owner decisions (§5) |
-| `docs/UPDATES.md` | Current | update pipeline, signing-key ordering rule, standalone build, turning updates off; says "both Windows installers" although the matrix is three OSes, and "only the Master talks to the internet" (the GitHub path) |
+| `docs/UPDATES.md` | Current | update pipeline over three OSes, where the internet is reached, main-only publishing, the Linux AppImage (updated in place) and `.deb` (by hand), the sweep and what it spares, "When a new build shows up", signing-key ordering rule, standalone build, turning updates off |
 | `docs/DEVELOPER_MODE.md` | Current | developer password, test users, Swisware catalogue, sample data, reset, uninstall |
-| `docs/LEAD_GENERATION_FLOW.md` | Current | lead → order → dispatch as built |
-| `docs/ROLES_AND_USERS.md` | Current | roles, users, tiers, guards (§8), Office Panel sign-in (§15); the `access.integration` test header still cites "§15" for its gate list, which is not in this file |
+| `docs/LEAD_GENERATION_FLOW.md` | Current | lead → order → dispatch as built; §7 ID handling (text ids, who gets a temporary id, what `id_map` keeps) corrected 2026-09-25 |
+| `docs/ROLES_AND_USERS.md` | Current | roles, users, tiers, guards (§8), the audit write path (§7.1, corrected 2026-09-25: entries inside the transaction, with the sign-in exception), Office Panel sign-in (§15; creating roles and users offline is not built, §15.5); the `access.integration` test header still cites "§15" for its gate list, which is not in this file |
 | `docs/TESTING_PLAN.md` | Current | manual three-PC QA script for the Windows 1.2.0 installers |
 | `docs/PROJECT_PLAN.md` | Mixed | the original spec; §1 ("No Electron requirement", no Office local state), §7 (`leads` doubling as orders, price fields) and §10 (a layout without `ui/`, `electron/`, `cleaner/`, `tools/`) are superseded |
-| `docs/AI_COLLABORATION.md` | Current process + log | multi-agent playbook and change log (35 dated entries, not strictly newest-first) |
+| `docs/AI_COLLABORATION.md` | Current process + log | multi-agent playbook and change log (dated entries, not strictly newest-first) |
 | `docs/BACKEND_MODULES.md` | Historical | plan for Fields, Logs, Recycle Bin, Reports, PDF Designer, i18n; its "nothing built" status is stale and the Designer was removed |
 | `docs/UI_REDESIGN.md` | Historical | plan for porting the design system into `ui/` |
 
-**`docs/schema/` (7, current, older DDL annotated in place):**
-`docs/schema/00-overview.md` (index and conventions; stale points in §6.15),
-`docs/schema/01-identity-and-network.md`, `docs/schema/02-parties-and-products.md`,
-`docs/schema/03-leads-orders-inventory.md`, `docs/schema/04-activity-log.md`,
-`docs/schema/05-scaling-and-operations.md`,
-`docs/schema/06-tenancy-permissions-and-sync.md`.
+**`docs/schema/` (8, current — rewritten 2026-09-24 against a freshly migrated
+database, superseded shapes kept as dated history notes; §6.15):**
+`docs/schema/00-overview.md` (index, conventions, ER diagram, file locations, tables
+that are gone), `docs/schema/01-identity-and-network.md`,
+`docs/schema/02-parties-and-products.md`, `docs/schema/03-leads-orders-inventory.md`,
+`docs/schema/04-activity-log.md`, `docs/schema/05-scaling-and-operations.md`,
+`docs/schema/06-tenancy-permissions-and-sync.md`,
+`docs/schema/07-integrations.md` (added 2026-09-25: the seven `api_*` tables and the
+leftover `ai_runs`).
 
 **`docs/ai-handoffs/` (7):** `docs/ai-handoffs/README.md` (queue index as of
 2026-09-22); open briefs `docs/ai-handoffs/office-product-image-flow.md` (partly
@@ -4665,10 +5106,41 @@ out and dropped.
 is not tracked and `networkx` is not installed here, so the §14.1 node, edge,
 confidence and community counts, the graph-side figures in §14.2 items 1, 2, 5, 6
 and 7, and every §14.4 Louvain cluster membership count could not be re-run. What
-does reproduce from the tree: the grep side of item 7 (2,075 `t(` matches in the
-two web apps and `ui/src`, "about 2,073" below), item 5's 24 files importing `Card`
-from `@orderbook/ui`, and the §14.3 "most-imported" and "largest fan-out" lists
-(re-counted with an import parser over the tracked sources).
+does reproduce from the tree: the grep side of item 7 (2,122 `t(` matches in the
+two web apps and `ui/src` at `7d6ae68`; "about 2,073" below is the snapshot's), item
+5's 24 files importing `Card` from `@orderbook/ui`, and the §14.3 "most-imported"
+and "largest fan-out" lists (re-counted with an import parser over the tracked
+sources). §14.3 and §14.5 give those counts at `7d6ae68`.
+
+**Since the snapshot (2026-09-25 round).** The graph describes `43fd5b0`. The audit
+round moved no hub and added no import cycle (the §14.6 cycle is still the only one,
+re-checked at `7d6ae68`); what it changed in the import structure:
+`master/src/realtime/socket-origin.ts` (imported by `hub.ts`);
+`master/src/db/migration-status.ts` (by `migrate-cli.ts`); `public-api.routes.ts`
+now imports `tenant.repository.ts` instead of loading `db/knex.ts` dynamically;
+`electron/lib/appimage.ts` and `electron/lib/office-env.ts` (by `shell.ts` and
+`office.main.ts`); `office/src/config/paths.ts` now imports `t` from
+`@orderbook/shared`; `office/tests/storage-path.test.ts` imports two `electron/lib`
+modules (§14.5); `ui/src/clipboard.ts` added and `ui/src/Picker.tsx` removed (the
+barrel still has 60 `export` lines); nine more `ui/src` modules take `t` from
+`./i18n` for their own text (§4.11, `kit-i18n`); and `ui/tests/panel-harness.ts`
+loads each panel's `App.tsx` and `api.ts` through a variable-path dynamic
+`import()`, a run-time edge no import graph shows. Counts that moved (snapshot →
+`7d6ae68`) and are given at `7d6ae68` in the text below: `db().transaction` in
+services 84 → 90, `recordActivity` in services 52 → 70, test files 140 → 160, `t(`
+matches 2,074 → 2,122; `t` from `@orderbook/ui` 42 → 44 files and from `./i18n` in
+`ui/src` 15 → 23; `db` importers 97 → 99, `knex.ts` 101 (69) → 102 (68),
+`TransactionContext` 22 → 23, `ActorContext` 70 → 71, `MessageKey` 14 → 17;
+`@orderbook/shared` 227 → 233 files and 346 → 351 names (`ReleaseManifest` 13 → 14),
+`@orderbook/ui` 131 → 132 names; most-imported `actor.ts` 71 → 72, `helpers/db.ts`
+47 → 49, `fixtures.ts` 46 → 48, `catalog.service.ts` 42 → 44,
+`identity.repository.ts` 27 → 28, `activity-log.repository.ts` 26 (21) → 28 (22),
+`ui/src/i18n.ts` 17 → 28 (enters the list), `lead.service.ts` 25 → 26,
+`transaction.ts` 22 → 23; fan-out `hub.ts` 29 → 30 (`socket-origin.ts`),
+`master/src/http/app.ts` 24 → 25 (`require-panel.ts`), `sync.service.ts` 19 → 20
+(`activity-log.repository.ts`); layering (§14.5) `http/routes` → `repositories` 3 →
+4 and → `db` 1 → 0, `services` → `repositories` 149 → 151, `db` → `migrations` 1 → 2
+(`migration-status.ts`).
 
 ### 14.1 Graph size
 
@@ -4689,9 +5161,10 @@ from `@orderbook/ui`, and the §14.3 "most-imported" and "largest fan-out" lists
    `ActorContext`", from `docs/BACKEND_MODULES.md`).
 2. **Doc links inflate hubs** — `forward()` in `office/src/http/app.ts` has 45 edges,
    42 from docs; `recordActivity()` has 38, 36 from docs.
-3. **Namespace calls are missed** — `activityLog.recordActivity(…)` appears 49 times in
-   16 `master/src` files (52 in 18 counting `activityLogRepo.recordActivity(`); the
-   graph records one call.
+3. **Namespace calls are missed** — `activityLog.recordActivity(…)` appeared 49 times
+   in 16 `master/src` files at the snapshot (52 in 18 counting
+   `activityLogRepo.recordActivity(`; 67 in 19 and 70 in 21 at `ffb69fe`); the graph
+   records one call.
 4. **`@orderbook/shared` is unresolved** (it exports `./dist/index.js`), so it is one
    external node with 227 importers and `shared/src/index.ts` looks as if only tests
    import it. `@orderbook/ui` (exports `./src/index.ts`) *is* resolved.
@@ -4708,47 +5181,48 @@ from `@orderbook/ui`, and the §14.3 "most-imported" and "largest fan-out" lists
 
 | # | Hub | Defined in | Confirmed usage | Why it is central |
 |---|---|---|---|---|
-| 1 | `t()` | `ui/src/i18n.ts` | 42 files import it from `@orderbook/ui`, 15 `ui/src` files from `./i18n.js` | every visible string; panel-scoped prefix, then `createTranslator` |
-| 2 | `db()` | `master/src/db/knex.ts` | 97 files import `db` (65 non-test); 101 import `knex.ts`; 84 `db().transaction` in services | the single Knex instance; services open transactions and pass a `TransactionContext` (22 importers) down |
+| 1 | `t()` | `ui/src/i18n.ts` | 44 files import it from `@orderbook/ui`, 23 `ui/src` files from `./i18n.js` or `./i18n` | every visible string; panel-scoped prefix, then `createTranslator` |
+| 2 | `db()` | `master/src/db/knex.ts` | 99 files import `db` (65 non-test); 102 import `knex.ts`; 90 `db().transaction` in services | the single Knex instance; services open transactions and pass a `TransactionContext` (23 importers) down |
 | 3 | `ValidationError` and the `AppError` family | `master/src/lib/errors.ts` | 86 files import `errors.ts` (66 non-test): ValidationError 64, NotFoundError 22, ConflictError 17, ForbiddenError 16, UnauthorizedError 12, AppError 5 | every broken rule; mapped by `error-handler.ts` |
-| 4 | `requirePermission()` and `ActorContext` | `master/src/domain/actor.ts` | `requirePermission` in 21 files (~116 calls); `ActorContext` in 70 (39 non-test) | the authorization gate; `actorUserId()` (12) and `resolvePartyScope()` (14) build on it |
+| 4 | `requirePermission()` and `ActorContext` | `master/src/domain/actor.ts` | `requirePermission` in 21 files (~116 calls); `ActorContext` in 71 (39 non-test) | the authorization gate; `actorUserId()` (12) and `resolvePartyScope()` (14) build on it |
 | 5 | `publishChange()` | `master/src/services/change-bus.ts` | 16 files, ~63 calls | the in-process event bus → change ring → hub fan-out |
 | 6 | `ClientToServerEvents`, `SyncSnapshot` | `shared/src/protocol/socket.ts` | `ClientToServerEvents` imported only by `master/src/realtime/hub.ts` and `office/src/realtime/master-connection.ts`; `SyncSnapshot` by 13 files | the typed Master↔Office contract (79 + 11 events; the Office emits 56 of the 79 and receives 9 of the 11); `office/src/http/app.ts` has 44 `forward()` calls |
 | 7 | `rem()` | `ui/src/rem.ts` | 30 files via `@orderbook/ui`, 6 in `ui/src`; ~253 `rem(` matches | px → rem so the UI scales; enforced by `ui-conventions` |
-| 8 | `nextHlc()` | `master/src/repositories/identity.repository.ts` | 13 `master/src` files; `identity.repository.ts` has 27 importers | stamps the HLC on every Master-started write |
-| 9 | Integration harness | `master/tests/helpers/fixtures.ts`, `master/tests/helpers/db.ts` | all 46 integration files (`testActor` 39) | shared PostgreSQL fixtures; `canRunIntegrationTests` is the skip switch |
-| 10 | `vitest` | root `package.json` | 140 test files + `vitest.config.ts` | the runner |
+| 8 | `nextHlc()` | `master/src/repositories/identity.repository.ts` | 13 `master/src` files; `identity.repository.ts` has 28 importers | stamps the HLC on every Master-started write |
+| 9 | Integration harness | `master/tests/helpers/fixtures.ts`, `master/tests/helpers/db.ts` | all 48 integration files (`testActor` 41) | shared PostgreSQL fixtures; `canRunIntegrationTests` is the skip switch |
+| 10 | `vitest` | root `package.json` | 160 test files + `vitest.config.ts` | the runner |
 
 Smaller confirmed hubs: `formatDateTime()` (`ui/src/format.ts`, 17 importers),
-`MessageKey` (`shared/src/i18n/keys.ts`, 14 via the package), `requireAuth()`
+`MessageKey` (`shared/src/i18n/keys.ts`, 17 via the package), `requireAuth()`
 (`master/src/http/middleware/require-auth.ts`, 16), `paths()`
 (`office/src/config/paths.ts`, 14), `getSetting()`
 (`master/src/services/settings.service.ts`, 11).
 
-**Package-level:** `@orderbook/shared` is imported by **227 files** using 346
-distinct names (most common: `Product` 24, `Party` 15, `MessageKey` 14,
-`SyncSnapshot` 13, `ReleaseManifest` 13, `BackupManifest` 12). `@orderbook/ui` is
-imported by **48 files** using 131 names (`t` 42, `Button` 34, `rem` 30, `Input` 25,
+**Package-level:** `@orderbook/shared` is imported by **233 files** using 351
+distinct names (most common: `Product` 24, `MessageKey` 17, `Party` 15,
+`ReleaseManifest` 14, `SyncSnapshot` 13, `BackupManifest` 12). `@orderbook/ui` is
+imported by **48 files** using 132 names (`t` 44, `Button` 34, `rem` 30, `Input` 25,
 `Card` 24, `StatusPill` 22, `EmptyState` 21, `DataTable` 20).
 
 **Most-imported files** (relative imports; non-test in brackets):
-`master/src/db/knex.ts` 101 (69); `master/src/lib/errors.ts` 86 (66);
-`master/src/domain/actor.ts` 71 (40); `master/tests/helpers/db.ts` 47 and
-`master/tests/helpers/fixtures.ts` 46 (tests); `master/src/services/catalog.service.ts`
-42 (11); `master/src/lib/logger.ts` 29 (29); `master/src/config/index.ts` 29 (23);
-`master/src/domain/party-scope.ts` 27; `master/src/repositories/identity.repository.ts`
-27; `master/src/repositories/activity-log.repository.ts` 26 (21);
-`master/src/services/lead.service.ts` 25 (8); `master/src/repositories/mappers.ts` 24;
-`master/src/repositories/transaction.ts` 22; `master/src/services/settings.service.ts`
-21 (14); `master/web/src/api.ts` 21; `office/web/src/api.ts` 21.
+`master/src/db/knex.ts` 102 (68); `master/src/lib/errors.ts` 86 (66);
+`master/src/domain/actor.ts` 72 (40); `master/tests/helpers/db.ts` 49 and
+`master/tests/helpers/fixtures.ts` 48 (tests); `master/src/services/catalog.service.ts`
+44 (11); `master/src/lib/logger.ts` 29 (29); `master/src/config/index.ts` 29 (23);
+`master/src/repositories/identity.repository.ts` 28 (27);
+`master/src/repositories/activity-log.repository.ts` 28 (22); `ui/src/i18n.ts` 28
+(24); `master/src/domain/party-scope.ts` 27; `master/src/services/lead.service.ts` 26
+(8); `master/src/repositories/mappers.ts` 24; `master/src/repositories/transaction.ts`
+23; `master/src/services/settings.service.ts` 21 (14); `master/web/src/api.ts` 21;
+`office/web/src/api.ts` 21.
 
 **Largest fan-out:** barrels `ui/src/index.ts` 60, `shared/src/index.ts` 35,
-`master/src/db/migrations/index.ts` 30; `master/src/realtime/hub.ts` 29;
-`master/src/http/app.ts` 24; `master/src/services/order.service.ts` 24;
+`master/src/db/migrations/index.ts` 30; `master/src/realtime/hub.ts` 30;
+`master/src/http/app.ts` 25; `master/src/services/order.service.ts` 24;
 `master/src/services/sample-data.service.ts` 23; `office/src/http/app.ts` 23;
 `master/src/services/lead.service.ts` 22; `master/src/index.ts` 21;
 `master/src/services/developer.service.ts` 21; `master/src/services/sync.service.ts`
-19; `master/web/src/App.tsx` 19.
+20; `master/web/src/App.tsx` 19.
 
 ### 14.4 Module clusters
 
@@ -4782,33 +5256,36 @@ two preloads, and `shared/src/protocol/discovery.ts` with its test.
 |---|---|---|---|
 | `shared/src` | — | none | **none** (no bare or out-of-package imports at all) |
 | `ui/src` | 17 / 14 | — | none (npm: `react`, `blurhash`) |
+| `ui/tests` | 3 / 3 | none via the package (relative `../src/*`) | since 2026-09-25, at run time only: `ui/tests/panel-harness.ts` loads `master/web/src/App.tsx`, `master/web/src/api.ts`, `office/web/src/App.tsx` and `office/web/src/api.ts` through a variable-path dynamic `import()` |
 | `master/src` | 137 / 108 | none | none |
-| `master/tests` | 38 / 30 | none via the package | one relative import: `master/tests/datatable-fit.test.ts` → `ui/src/fitColumns.ts` |
+| `master/tests` | 44 / 33 | none via the package | one relative import: `master/tests/datatable-fit.test.ts` → `ui/src/fitColumns.ts` |
 | `master/web` | 28 / 21 | 24 / 24 + `styles.css` | none |
-| `office/src` | 27 / 22 | none | none |
-| `office/tests` | 5 / 5 | none | none |
+| `office/src` | 28 / 23 | none | none |
+| `office/tests` | 5 / 5 | none | since 2026-09-25, two relative imports: `office/tests/storage-path.test.ts` → `electron/lib/office-env.ts` and `electron/lib/settings.ts` |
 | `office/web` | 33 / 23 | 25 / 24 + `styles.css` | none |
 | `electron` | 3 / 3 | none | none |
 | `tools` | none | none | none (the root `eslint.config.js` imports `tools/eslint-rules/index.js`) |
 
 **Direction: shared ← ui ← {master/web, office/web}, and shared ← {master, office,
 electron}.** Nothing imports `master/src` or `office/src` across a package boundary;
-the web apps never import each other or their own server; `ui` never imports a
-panel. Runtime links (not imports): `socket.io-client` in `master/web/src/App.tsx`;
-`EventSource('/api/events')` in `office/web/src/App.tsx` (served by `office/src/http/app.ts`);
-`socket.io-client` in `office/src/realtime/master-connection.ts`; Electron spawns
-`dist/index.js` under `serverRoot()` in `electron/shell.ts`.
+the web apps never import each other or their own server; `ui/src` never imports a
+panel, and the one reach into the web apps is the `ui/tests` shell harness's
+run-time `import()` above. Runtime links (not imports): `socket.io-client` in
+`master/web/src/App.tsx`; `EventSource('/api/events')` in `office/web/src/App.tsx`
+(served by `office/src/http/app.ts`); `socket.io-client` in
+`office/src/realtime/master-connection.ts`; Electron spawns `dist/index.js` under
+`serverRoot()` in `electron/shell.ts`.
 
 **Layering inside `master/src`** (directory → directory import statements):
 
 | From | Imports |
 |---|---|
-| `http/routes` | services 46 · middleware 22 · http 22 · lib 15 · repositories 3 · domain 3 · db 1 · config 1 |
-| `services` | repositories 149 · domain 83 · lib 69 · db 31 · config 9 · realtime 7 · http/middleware 3 · http/routes 1 · pdf 1 |
+| `http/routes` | services 46 · middleware 22 · http 22 · lib 15 · repositories 4 · domain 3 · config 1 |
+| `services` | repositories 151 · domain 83 · lib 69 · db 31 · config 9 · realtime 7 · http/middleware 3 · http/routes 1 · pdf 1 |
 | `repositories` | db 33 · domain 20 · lib 5 · config 3 — never services or http |
 | `domain` | lib 12 only |
 | `realtime` | services 21 · domain 4 · repositories 3 · lib 2 |
-| `db` | lib 7 · services 3 · config 1 · migrations 1 |
+| `db` | lib 7 · services 3 · migrations 2 · config 1 |
 
 Back-edges: `developer.service.ts` → `http/middleware` (`resetRateLimits`,
 `resetApiKeyFailures`) and `http/routes/public-api.routes.ts`
@@ -4834,25 +5311,25 @@ also imports `masterConnection`.
 | Add a field to a record (party, product, lead, order) | `shared/src/domain/entities.ts`, `shared/src/domain/inputs.ts`, `shared/src/domain/columns.ts` (`*_COLUMNS`; `MERGEABLE_COLUMNS` if offline edits may merge it); a new additive migration + `master/src/db/migrations/index.ts`; `master/src/repositories/mappers.ts` and the entity repository; the service; the form (`ui/src/PartyFormModal.tsx` or the panel screen); `docs/schema/`. A field that crosses the wire must be optional. | `shared/tests/wire-optionality.test.ts`, `master/tests/migration-registry.test.ts`, `master/tests/migration-data-safety.test.ts`, `master/tests/partial-patch.integration.test.ts`, `master/tests/mappers.test.ts` |
 | Add a migration | a new `master/src/db/migrations/<14-digit>_<name>.ts` (additive only; no live constants) and its import + array entry in `master/src/db/migrations/index.ts`, **before the four pinned entries**; add it to `SHIPPED` once it reaches a real installation. **Never delete or rewrite one.** | `master/tests/migration-registry.test.ts`, `master/tests/migration-data-safety.test.ts` |
 | Add a permission | `shared/src/domain/permissions.ts` (`MODULE_ACTIONS` or `CAPABILITIES`, and `MINIMUM_TIER`); tokens in `shared/src/i18n/en.ts` + `hi.ts`; a grant migration with a frozen key list if existing roles need it; **wire it** — `requirePermission` in the service and `needs()` on the route (an unenforced permission is worse than a missing one); the UI gate | `shared/tests/i18n-coverage.test.ts`, `master/tests/credential-invariants.test.ts`, `master/tests/permissions.integration.test.ts`, `master/tests/migration-grant.integration.test.ts` |
-| Add a screen | the panel's `App.tsx` (`Tab` union, nav items, `ScreenSpec` array); `nav.*` keys in both catalogues; optionally a `COMMANDS` nav entry in `shared/src/keys/commands.ts` | `master/tests/screen-reachability.test.ts`, `master/tests/web-reachability.test.ts`, `master/tests/i18n-call-sites.test.ts`, `shared/tests/keys-implemented.test.ts` |
+| Add a screen | the panel's `App.tsx` (`Tab` union, nav items, `ScreenSpec` array); `nav.*` keys in both catalogues; a `MASTER_NAV`/`OFFICE_NAV` entry in `shared/src/keys/commands.ts` **at the sidebar's position** (it sets Alt+N); navigation and the palette follow the sidebar through `offered()`, so a screen reachable any other way needs a deliberate path like the Master's `openScreen` | `master/tests/screen-reachability.test.ts`, `master/tests/web-reachability.test.ts`, `master/tests/i18n-call-sites.test.ts`, `shared/tests/keys-implemented.test.ts`, `shared/tests/keys-nav-order.test.ts`, `ui/tests/master-shell.test.tsx` / `ui/tests/office-shell.test.tsx` (Alt+N), `ui/tests/keyboard-provider.test.tsx` (the palette's filter, with a stub test) |
 | Add a socket command (Office → Master) | `shared/src/protocol/socket.ts` (`ClientToServerEvents`), `master/src/realtime/hub.ts#registerCommands` (resolve the actor, call the service inside `respond`), the Office caller (`forward()` in `office/src/http/app.ts`) and an `office/web/src/api.ts` member | `office/tests/module-forwarding.test.ts`, `master/tests/web-reachability.test.ts` |
 | Add a push event (Master → Office) | `ServerToClientEvents` in `shared/src/protocol/socket.ts`, emit in `master/src/realtime/hub.ts`, handle in `office/src/realtime/master-connection.ts` | `master/tests/socket-contract.test.ts` |
-| Add an offline-able write | `shared/src/sync/mutations.ts` (`MUTATION_KINDS` + `MUTATION_PERMISSIONS`), `office/src/http/app.ts` (`queue()` it), `office/src/sync/local-store.ts` (overlay, if it should show before the Master answers), `master/src/services/sync.service.ts` (`route()`), the service | `master/tests/sync.integration.test.ts`, `office/tests/outbox.test.ts`, `office/tests/lead-route.test.ts` |
+| Add an offline-able write | `shared/src/sync/mutations.ts` (`MUTATION_KINDS` + `MUTATION_PERMISSIONS`), `office/src/http/app.ts` (`queue()` it; a shape check goes in its `validate` step, which runs after the permission check), `office/src/sync/local-store.ts` (overlay, if it should show before the Master answers), `master/src/services/sync.service.ts` (`route()`), the service | `master/tests/sync.integration.test.ts`, `office/tests/outbox.test.ts`, `office/tests/lead-route.test.ts` |
 | Add an entity to change events | `ChangedEntity` in `shared/src/protocol/socket.ts` and exactly one of `REPLAYABLE_ENTITIES` / `SNAPSHOT_FORCING_ENTITIES` / `PANEL_IRRELEVANT_ENTITIES`; `shared/src/sync/apply-change.ts`; `master/src/realtime/fan-out.ts` (`REQUIRED_PERMISSION`, `PARTY_SCOPED_ENTITIES`); the Master web `SCREEN_ENTITIES` | `master/tests/sync-delta.integration.test.ts`, `shared/tests/apply-setting-change.test.ts` |
 | Add a snapshot field | `SyncSnapshot` (optional), `master/src/services/snapshot.service.ts`, `SNAPSHOT_POLICY` in `office/src/http/app.ts` (compile error until decided) | `shared/tests/wire-optionality.test.ts`, `office/tests/snapshot-for-user.test.ts` |
-| Change a string | `shared/src/i18n/en.ts`, then `npm run i18n:sync`, then translate `shared/src/i18n/hi.ts` | `shared/tests/i18n-coverage.test.ts`, `master/tests/i18n-call-sites.test.ts`, `shared/tests/i18n.test.ts` |
+| Change a string | `shared/src/i18n/en.ts`, then `npm run i18n:sync`, then translate `shared/src/i18n/hi.ts`; no price words in either catalogue; a web app's error fallback is a catalogue key too | `shared/tests/i18n-coverage.test.ts`, `master/tests/i18n-call-sites.test.ts`, `shared/tests/i18n.test.ts`, `master/tests/web-catalogue-text.test.ts`, `ui/tests/kit-i18n.test.tsx` |
 | Add a panel-scoped string | `shared/src/i18n/panel-scoped.ts` + both `master.<key>` and `office.<key>` in the catalogues (never a second list) | `master/tests/i18n-call-sites.test.ts` |
-| Add an audited action | a `recordActivity`/`recordDetachedActivity` call and `activity.<entity>.<action>` in both catalogues; never remove a token | `master/tests/i18n-tokens.test.ts`, `shared/tests/i18n-coverage.test.ts` (`activity-tokens.lock.json`), `master/tests/audit-trail.integration.test.ts` |
+| Add an audited action | `recordActivity(entry, actor, trx)` as the **last statement of the write's own transaction**, after every row lock (`recordDetachedActivity` only for what has no Master transaction to join — an attempt, a multi-transaction run, a change already made on a panel; §5.1); `activity.<entity>.<action>` in both catalogues, the Hindi with a postposition after `{actor}`; never remove a token | `master/tests/i18n-tokens.test.ts`, `shared/tests/i18n-coverage.test.ts` (`activity-tokens.lock.json`), `master/tests/audit-trail.integration.test.ts`, `master/tests/audit-atomicity.integration.test.ts` |
 | Add a company setting | one entry in `shared/src/domain/settings.ts` (group, control, fallback, parser) and its two i18n tokens — no migration, no column. **If a screen or offline panel must read it:** `CompanyFeatures` (optional) in `entities.ts`, `master/src/services/company-features.ts`, `resolveCompanyFeatures` in `shared/src/domain/company-features.ts` | `shared/tests/settings.test.ts`, `master/tests/company-features-complete.test.ts`, `shared/tests/company-features-resolve.test.ts`, `shared/tests/wire-optionality.test.ts`, `master/tests/company-settings.integration.test.ts` |
 | Add a party-scoped read | `applyPartyScope`/`partyScopeSql` in the repository (`grep applyPartyScope` first); `PARTY_SCOPED_ENTITIES` in `fan-out.ts` for its pushes | `master/tests/party-access.integration.test.ts` |
 | Add a Master HTTP route | the route file with `needs(...)`, the service's `requirePermission`; mount in `master/src/http/app.ts` (order matters — see §5.8.5); a `master/web/src/api.ts` member | `master/tests/credential-invariants.test.ts`, `master/tests/http-api.integration.test.ts`, `master/tests/web-reachability.test.ts` |
 | Add a public API operation | `PUBLIC_API_ROUTES` in `master/src/http/public-api-contract.ts` + the handler in `master/src/http/routes/public-api.routes.ts` (a missing handler is a compile error) | `master/tests/public-api.integration.test.ts` |
 | Add an Office route | `office/src/http/app.ts` (before or after the `requireUser` gate; local, `queue()`, `forward()` or `masterFetch()`), a file under `paths()` if it keeps state, an `office/web/src/api.ts` member | `office/tests/module-forwarding.test.ts`, `office/tests/health-route.test.ts`, `master/tests/web-reachability.test.ts` |
-| Add an Office data file | `office/src/config/paths.ts` and a store; add it to `office/src/services/backup-export.service.ts` if it is replica state | `office/tests/storage-path.test.ts`, `office/tests/developer.test.ts` (reset removes every file in `paths()`) |
+| Add an Office data file | `office/src/config/paths.ts` (`FILE_NAMES`, and so `PANEL_ENTRIES` — a storage move refuses a folder holding anything not listed there) and a store; add it to `office/src/services/backup-export.service.ts` if it is replica state | `office/tests/storage-path.test.ts`, `office/tests/developer.test.ts` (reset removes every file in `paths()`) |
 | Add a ui kit component | `ui/src/<Name>.tsx` + one `export *` line in `ui/src/index.ts`; tokens only, no raw colours or px | `master/tests/no-duplicate-ui.test.ts`, `master/tests/ui-conventions.test.ts`, `ui/tests/no-transport-dep.test.ts` |
 | Share a screen between panels | move it to `ui/src/` behind a narrow transport prop; if it must import `{ api }`, keep two byte-identical copies like `PartyAccessScreen.tsx` | `ui/tests/no-transport-dep.test.ts`, `master/tests/party-access-screen-parity.test.ts` |
 | Change a colour or size | `ui/src/tokens.css` — never a literal in a component | `master/tests/ui-conventions.test.ts` |
-| Add a keyboard command | `shared/src/keys/commands.ts`, a handler (`useCommand`, a `command.id ===` switch, or `shellCommands`), a label token | `shared/tests/keys-implemented.test.ts`, `shared/tests/keys.test.ts` |
+| Add a keyboard command | `shared/src/keys/commands.ts`, a handler (`useCommand`, a `command.id ===` switch, or `shellCommands`), a label token; the palette lists it only while `KeyboardProvider#offers()` says it would do something, so a chord-only command needs no palette row | `shared/tests/keys-implemented.test.ts`, `shared/tests/keys.test.ts`, `ui/tests/keyboard-provider.test.tsx` |
 | Change a report | `shared/src/domain/reports.ts`, `master/src/repositories/report.repository.ts`, `master/src/services/report.service.ts`, `master/web/src/screens/ReportsScreen.tsx` | `master/tests/reports.integration.test.ts`, `master/tests/report-range.test.ts` |
 | Change the product import format | `master/src/domain/product-import.ts` (`IMPORT_COLUMNS`), `master/src/services/product-import.service.ts`, `master/src/lib/spreadsheet.ts`, `shared/src/domain/product-import.ts` | `master/tests/product-import-domain.test.ts`, `master/tests/product-import.integration.test.ts`, `master/tests/spreadsheet.test.ts`, `master/tests/import-category-gate.test.ts` |
 | Change image variants or processing | `IMAGE_VARIANTS`/`IMAGE_VARIANT_LONG_EDGES` in `shared/src/domain/entities.ts`, `master/src/domain/images.ts`, `master/src/services/image.service.ts` | `master/tests/image-domain.test.ts`, `master/tests/images.integration.test.ts` |
@@ -4861,12 +5338,14 @@ also imports `masterConnection`.
 | Change sync merge rules | `shared/src/sync/merge.ts`, `MERGEABLE_COLUMNS` in `shared/src/domain/columns.ts`, `sync.service.ts#mergeUpdate` | `shared/tests/sync.test.ts`, `master/tests/sync.integration.test.ts` |
 | Change the backup format | `shared/src/protocol/backup.ts`, **both** `master/src/lib/backup-crypto.ts` and `office/src/lib/backup-crypto.ts`, `master/src/repositories/backup.repository.ts` | `master/tests/backup-crypto.test.ts`, `master/tests/backup-domain.test.ts`, `master/tests/backup-chain.integration.test.ts`, `master/tests/backup-sequences.integration.test.ts`, `master/tests/password-vault-invariants.test.ts` |
 | Change how PostgreSQL is found or started | `master/src/db/postgres-server.ts` (`candidateBinDirs`), and `vendorPostgres()` in `tools/release.mjs` for the vendor layout | `master/tests/postgres-launcher.test.ts`, `master/tests/packaging-invariants.test.ts` |
-| Change the release pipeline, packaging or the mac build | `tools/release.mjs`, `master/electron-builder.yml`, `office/electron-builder.yml`, `cleaner/electron-builder.yml`, `.github/workflows/release.yml`, root `allowScripts` | `master/tests/packaging-invariants.test.ts`, `master/tests/release-signed-fields.test.ts` |
+| Change the release pipeline, packaging or the mac build | `tools/release.mjs` (`TARGETS`, `besides`, `native`), `master/electron-builder.yml`, `office/electron-builder.yml`, `cleaner/electron-builder.yml`, `.github/workflows/release.yml`, root `allowScripts`; every yml target must be one `release.mjs` publishes | `master/tests/packaging-invariants.test.ts`, `master/tests/release-signed-fields.test.ts`, `master/tests/release-workflow.test.ts`, `master/tests/release-folder-besides.test.ts` |
 | Change which fields a release signature covers | `SIGNED_MANIFEST_FIELDS` in `shared/src/domain/release-signature.ts` **and** `SIGNED_FIELDS` in `tools/release.mjs` together; the verifier is duplicated byte for byte in `master/src/lib/release-signature.ts` and `office/src/lib/release-signature.ts` — change both | `master/tests/release-signed-fields.test.ts`, `master/tests/release-signature.test.ts` (Master copy only; nothing pins the two copies equal) |
 | Change what an uninstall removes | `tools/uninstall/uninstall-orderbook.ps1` and `tools/uninstall/uninstall-orderbook.sh` — one copy, four callers; if you touch a flag, also `electron/lib/uninstall.ts` and both `installer/installer.nsh` | `electron/tests/uninstall.test.ts` (pins the spelling in five places), `master/tests/packaging-invariants.test.ts`, `electron/tests/cleaner-detect.test.ts` |
-| Change the desktop shell | `electron/shell.ts` and the pure helpers in `electron/lib/` (keep logic there so it stays testable) | `electron/tests/*` (`health`, `supervisor`, `installer`, `standalone`, `uninstall`) |
-| Change the update path | `master/src/services/update.service.ts`, `master/src/services/github-releases.ts`, `office/src/services/update.service.ts`, `office/src/lib/release-signature.ts`, `master/src/http/routes/update.routes.ts`, `electron/lib/installer.ts` | `master/tests/updates.test.ts`, `master/tests/github-releases.test.ts`, `electron/tests/installer.test.ts` (no test covers `office/src/services/update.service.ts` or the Office verifier) |
-| Add a workspace or directory | root `package.json` `workspaces`, `vitest.config.ts` include, `tsconfig.test.json`, `eslint.config.js` blocks; a row in §2.1 of this file | `shared/tests/version.test.ts` (version parity) |
+| Change the desktop shell | `electron/shell.ts` and the pure helpers in `electron/lib/` (keep logic there so it stays testable); a server's environment in its entrypoint or `electron/lib/office-env.ts`, and only variables that server reads; anything that names the log uses `openLogPath()` | `electron/tests/*` (`health`, `supervisor`, `installer`, `appimage`, `standalone`, `uninstall`, `office-env`, `server-env`, `shell-log`) |
+| Change the update path | `master/src/services/update.service.ts`, `master/src/services/github-releases.ts`, `office/src/services/update.service.ts`, `office/src/lib/release-signature.ts`, `master/src/http/routes/update.routes.ts`, `electron/lib/installer.ts`, `electron/lib/appimage.ts` | `master/tests/updates.test.ts`, `master/tests/github-releases.test.ts`, `master/tests/release-folder-besides.test.ts`, `electron/tests/installer.test.ts`, `electron/tests/appimage.test.ts` (no test covers `office/src/services/update.service.ts` or the Office verifier) |
+| Add a workspace or directory | root `package.json` `workspaces`, `vitest.config.ts` include, `tsconfig.test.json`, `eslint.config.js` blocks; a row in §2.1 of this file | `shared/tests/version.test.ts` (version parity), `master/tests/tooling-config.test.ts` (the swept-files list names real files) |
+| Change who may open a socket to the Master | `master/src/realtime/socket-origin.ts` (`isAllowedSocketOrigin`), wired as `allowRequest` in `master/src/realtime/hub.ts` | `master/tests/socket-origin.test.ts` |
+| Change an operator CLI (`migrate`, `reload:catalog`, `wipe:business`, `seed:parties`) | `master/src/db/migrate-cli.ts` + `master/src/db/migration-status.ts`, `master/src/services/catalog-reload-cli.ts` (`BUSINESS_TABLES`), the scripts in root and `master/package.json` | `master/tests/operator-scripts.test.ts`, `master/tests/operator-cli.integration.test.ts`, `master/tests/migration-status.test.ts` |
 
 ---
 

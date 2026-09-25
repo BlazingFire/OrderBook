@@ -31,12 +31,14 @@ files are not open work but the reference record of a finished change:
 
 ### Open, in the order they are worth doing
 
-1. **`office-product-image-flow.md`** — §2 is the substantive gap left in the
-   product: **there is no way to look at a product photo.** `ProductDetail.tsx`
-   contains no reference to `product.images`, so the `large` and `master`
-   variants encoded on every upload are never requested by anything. For a
-   ceramics catalogue that is the primary use of a photo. §4 (offline upload
-   errors) goes with it.
+1. **`office-product-image-flow.md`** — §2 and §4. Checked 2026-09-25: the
+   product screen now shows the cover photo (`ProductImages` on
+   `ProductDetail.tsx`, the `large` variant) and the photo UI goes through
+   `t()`, so what is left of §2 is a full-size view — nothing requests the
+   `master` (2048 px) variant. §4 still holds on the Office server: an upload
+   while the Master is unreachable answers the raw Node error text with no
+   `messageKey`, and "Choose an image file" is English only. `postFile` in
+   `office/web/src/api.ts` does keep a `messageKey` now.
 
 2. **`party-access-truncation-and-routing.md`** — §3 and §4. §3 is the owner's
    report ("no option for assign party"): there is no route from a party record

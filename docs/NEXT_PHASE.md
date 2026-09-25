@@ -1,20 +1,39 @@
 # Next phase
 
 Rewritten 2026-09-22 after the branch consolidation, when every open branch was
-merged into `main` and the sessions that produced them were retired. This file
-is about *what happens next*; `HANDOFF.md` is what is true now and
-`docs/STRUCTURE.md` is the layout. This file assumes both.
+merged into `main` and the sessions that produced them were retired. Updated
+2026-09-25 after the audit round (eleven `fix/*` branches merged into `main`):
+what that round fixed is gone from here, and what it found and left is under
+"Then: what the 2026-09-24/25 audit left". This file is about *what happens
+next*; `HANDOFF.md` is what is true now and `docs/STRUCTURE.md` is the layout.
+This file assumes both.
 
 ---
 
 ## Do these first, in this order
 
-### 1. The owner's four decisions
+### 1. The owner's five decisions, and three chores only the owner can do
 
-Nothing below blocks on code as much as on these. They are written up in
-`docs/PRODUCTION_READINESS.md` §5 and summarised under "Owed work" in
-`HANDOFF.md`: what happens to a 1.0.3 machine's data, the release signing key,
-a code-signing certificate, and the Recycle Bin's retention policy.
+Nothing below blocks on code as much as on these. They are summarised under
+"Owed work" in `HANDOFF.md` and written up in `docs/PRODUCTION_READINESS.md` §5
+(the Recycle Bin's in its brief, `recycle-bin-delete-actions-and-purge.md`):
+what happens to a 1.0.3 machine's data, the release signing key, a
+code-signing certificate, the Recycle Bin's retention policy, and whether to
+harden the uninstall scripts (*Uninstall, delete data* removes the folder the
+shell's pointer names, whole; an Office storage move now refuses a folder the
+panel would not own, which closes the path the audit found).
+
+The cloud sessions' git proxy refuses branch deletion and tag pushes (HTTP
+403), so these are the owner's:
+
+- Delete the twelve old branches on GitHub (listed in `HANDOFF.md` under
+  "Branch consolidation").
+- Delete the stale `v1.2.0` draft release (its Linux files predate the
+  library-link fix and it has no macOS files), then run the Release workflow on
+  `main` with *publish* ticked.
+- Launch the macOS build on a real Intel and a real Apple silicon Mac. It has
+  been built, never run: first boot must create the database, and a product
+  photo upload exercises `sharp`.
 
 ### 2. The integration suites — how to run them
 
@@ -31,7 +50,7 @@ su postgres -s /bin/bash -c 'cd /tmp/obtest && TMPDIR=/tmp/obtest/.tmp HOME=/tmp
 ```
 
 The copy is what avoids the `EACCES` vitest hits when it bundles its config
-beside the repository. On 2026-09-22 this ran 140 files / 1707 tests, none
+beside the repository. On 2026-09-25 this ran 160 files / 2015 tests, none
 skipped.
 
 **Check the skip count, not just the pass count.** A test nobody has executed
@@ -39,9 +58,15 @@ is a claim, not a check.
 
 ### 3. Do a browser and Electron pass
 
-Nothing merged on 2026-09-22 was seen running. `master/web` and `office/web`
-have no tests by design, so a real pass is the only verification these changes
-have had. Specifically:
+Almost nothing merged since 2026-09-22 has been seen running; only the Settings
+permission change and the Socket.IO origin check (both in `d7481f7`'s run) were
+exercised in a real Electron window. `master/web`
+and `office/web` have no test files of their own. Since 2026-09-25
+`ui/tests/master-shell.test.tsx` and `ui/tests/office-shell.test.tsx` boot both
+panels in jsdom and pin which screen a key, toast or link lands on and what the
+New lead form and the order weight override send; layout, styling, anything
+that depends on visibility, and the desktop shell still need a real pass.
+Specifically:
 
 - **Settings** on both panels: the four groups, a number setting saved with its
   button (not per keystroke), per-row save feedback, the tab strip at 157% on a
@@ -57,6 +82,22 @@ have had. Specifically:
 - **Change password** in the Master topbar lands on sign-in *with a message*.
 - The **language picker** (Settings → Appearance) — switching back must work
   from a panel you can no longer read.
+- **Shortcuts and the palette.** On the Master, Alt+3 opens Parties and
+  Alt+4–9 the screens below it. On both panels, a screen the sidebar does not
+  show this person is offered by neither Alt+N nor the palette; the Office
+  palette has no *New record* row for a role without `leads.create`; and
+  neither palette has a *Find* row (Ctrl+F still works).
+- **Copy** buttons (an id field, the crash screen, the one-time password and
+  API token dialogs) from a browser on *another* LAN PC, over plain HTTP: they
+  must copy, and say Copied only when they did.
+- An **Office storage move**, from the Master and from the Office's own storage
+  card (sign-in screen and Settings): a drive root, the home folder and a
+  folder holding other files are refused with the folder named; an empty
+  folder is taken and is still the one in use after the app is restarted.
+- **An AppImage update end to end on a real Linux PC**: download, verify,
+  replace, relaunch, including a copy started with `--appimage-extract-and-run`;
+  and a `.deb` install shows the "install the new package" text instead of a
+  button. Only unit tests have run it so far.
 
 ### 4. A Windows install / update / uninstall rehearsal
 
@@ -72,7 +113,7 @@ Windows PC. None of it can be done from a Linux container.
 
 | # | Brief | Why it matters |
 |---|---|---|
-| 1 | `office-product-image-flow` §2–§4 | **There is no way to look at a product photo.** The `large` and `master` sizes encoded on every upload are requested by nothing. |
+| 1 | `office-product-image-flow` §2 and §4 | The product screen shows the cover photo, but **nothing opens one full size** (the 2048 px `master` size is requested by nothing), and an offline upload answers a raw Node error. |
 | 2 | `party-access-truncation-and-routing` §3–§4 | The owner's "no option for assign party": no route from a party record to who can see it. |
 | 3 | `session-loss-and-password-change` tail | Reset password has no self-exclusion; `invalidateSessionsForUser` records no reason. |
 | 4 | `recycle-bin-delete-actions-and-purge` part 2 | **Needs the owner to choose, not an implementer.** Nothing ever leaves the Recycle Bin. |
@@ -81,6 +122,84 @@ Also owed and not in a brief: a Master-side New lead (port the Office
 `AddLeadScreen` into `ui/` behind a transport), and leads that reference a
 product created offline in the same session (a line needs a variant id the
 panel cannot know yet).
+
+---
+
+## Then: what the 2026-09-24/25 audit left
+
+The audit fixed everything the 2026-09-22 structure audit had left open (see
+`HANDOFF.md`, "Session history"). These it found and did not fix. Each was
+confirmed by reading the code, not in a running app; `HANDOFF.md` under "Owed
+work" has the same list with file names.
+
+**Server and data.**
+
+1. **Dispatch keys on the stage named `Dispatched`**
+   (`order.service.ts#dispatchOrder`), so renaming that stage on the Fields
+   screen leaves a dispatched order where it was. No column on
+   `pipeline_stages` says which stage means dispatched (`is_terminal` is also
+   true of Cancelled). Needs a stage flag added by an add-only migration, a way
+   to set it, and the owner's input before anyone starts.
+2. **`deleteOrder` can race a dispatch.** It checks `dispatchedAt` on a read
+   before its transaction and does not lock the row, so an order dispatched in
+   between can still be deleted.
+3. **`party_code` truncates from the 10,000th party.** `lpad(…, 4, '0')` in
+   `party.repository.ts` cuts as well as pads, so the code repeats an earlier
+   one and the insert fails while that party is live (`docs/schema/02-parties-and-products.md`).
+4. **No index on `leads.owner_id` or `orders.owner_id`**, since
+   `20260303000000_roles_and_users` re-created both columns as TEXT
+   (`docs/schema/03-leads-orders-inventory.md`). Needs an add-only migration.
+5. **The public API's tenant cache is stale after a whole restore**:
+   `resetPublicApiTenantCache()` is called by Developer mode's erase only.
+6. **The wipe/reload CLIs stop the database they started**
+   (`catalog-reload-cli.ts`), which pulls it out from under a running Master.
+   The header says to run them with the Master stopped; nothing checks.
+7. **23 client→server socket events have no caller** in `office/src`; the
+   Master still registers handlers for them (`docs/STRUCTURE.md` lists them).
+   Delete them or give them a caller.
+8. *Observation, not a defect yet:* a `partyVariant.upsert`'s temporary id
+   never reaches `id_map` (`docs/LEAD_GENERATION_FLOW.md` §7).
+
+**Office Panel and desktop shell.**
+
+9. **Work may be stranded after an early storage move.** An Office panel that
+   moved its storage before this round came back up in the old folder, so
+   anything saved after the move sits in the move target. Worth checking on any
+   shop PC that was moved.
+10. **After a storage move the shell's log stays in the old folder** until the
+    app is relaunched. Every "where is the log" answer names the file actually
+    being written (`openLogPath()`), so nothing points at the wrong one.
+11. **A transient outbox read at flush time.** A flush that meets a moment's
+    read error (`load()` in `office/src/sync/outbox.store.ts`) sees an empty
+    queue and sends nothing that pass; a save refuses in the same case.
+12. **The Updates screen has no "fetching" reason.** While the Master fetches
+    the build for a panel's OS, the panel is told there is nothing new yet
+    (`docs/UPDATES.md`, "When a new build shows up").
+13. **Clean Install's handling of a `.deb` is unsettled.** It lists `.deb` among
+    Linux setup files (`electron/lib/cleaner/setup-file.ts`), while the release
+    names a `.deb` in no manifest.
+
+**Master UI.**
+
+14. **AccessScreen's RoleEditor asks with `window.confirm`** before discarding
+    an edit, not the themed ConfirmDialog.
+15. **The Master keeps drawing a screen after the person's permission for it is
+    revoked.** `ScreenHost` draws the tab whatever the sidebar offers; only
+    navigation checks. Sign-out and an ended session do reset to the Dashboard.
+
+**Stale text.** Comments near `master/src/services/inventory.service.ts:168` and
+in the Electron preload; a sample-data remark (`master/src/domain/sample-data.ts`)
+that still mentions a "Rate list"; the header of `shared/src/sync/ids.ts` and
+`compareForIdAssignment`'s comment, which still say numbering is the same
+whichever panel syncs first and that `id_map` resolves a temporary ID forever.
+The sort is per pushed batch, and a business-data wipe clears `id_map`
+(`docs/LEAD_GENERATION_FLOW.md` §7).
+
+Deliberate, not a defect, so nobody "fixes" it: three kinds of audit entry are
+still written after the fact by `recordDetachedActivity` — sign-in attempts
+(accepted ones included, so a trail that cannot be written never stops somebody
+signing in), connector runs, and a panel's reissued secret or moved storage
+folder (`docs/ROLES_AND_USERS.md` §7.1).
 
 ---
 
@@ -145,7 +264,7 @@ asked for the remaining six on 2026-09-18 and they are in. Two settings have
 since gone with the product trim (`pricing.enabled`, `catalog.defaultUom`), so
 there are thirteen, in four groups. Nothing from that survey is outstanding.
 
-The one thing to know before adding a sixteenth: a company switch reaches a
+The one thing to know before adding a fourteenth: a company switch reaches a
 panel through `CompanyFeatures`, and every field on it is **optional** because a
 shop mid-update runs a Master and a panel on different versions. That means a
 switch added to the interface and forgotten in
@@ -178,9 +297,12 @@ forever" behind an admin permission — are written up in the brief, along with
 the four questions any of them has to answer (foreign keys, the sync tombstone,
 files on disk, and an offline panel reconnecting after a purge it never saw).
 
-**Hindi.** `hi.ts` is 1,445 strings behind (2026-09-22) — `grep -c 'TODO(i18n-hi)'` is the
-live number. A Hindi panel is mostly in English today and no test can see it,
-because the parity check only asserts a key exists. Either that backlog gets
+**Hindi.** `hi.ts` is 1,275 strings behind (2026-09-25) — `grep -c 'TODO(i18n-hi)'` is the
+live number. A Hindi panel is mostly in English today and almost no test can see
+it, because the parity check only asserts a key exists; the exceptions are an
+`activity.*` template, whose English stub `shared/tests/i18n-coverage.test.ts`
+now fails until it is translated, and the kit chrome keys
+`ui/tests/kit-i18n.test.tsx` checks. Either that backlog gets
 worked through, or the Hindi option should be honest about being partial. It is
 currently neither — and as of 2026-09-17 it is also *reachable*, which raises
 the stakes: before the picker existed no user could see the backlog, and now
@@ -198,15 +320,22 @@ branding.
 
 Ranked by what this session actually ran into, not by taste.
 
-1. **Tests for the two web applications.** CI now runs the integration suites
-   (`ci.yml` installs PostgreSQL 16), so the remaining blind spot is
-   `master/web` and `office/web`, which have no tests at all. Every serious
-   defect of the last few rounds lived there or in a skipped suite.
+1. **Tests for the two web applications, past the shell.** CI now runs the
+   integration suites (`ci.yml` installs PostgreSQL 16), so the remaining blind
+   spot is `master/web` and `office/web`. The jsdom harness
+   (`ui/tests/panel-harness.ts`) now boots each panel whole, and the shell tests
+   beside it cover navigation, the splash, change-event refetches and two
+   Office forms; most screens are still untested. Every serious defect of the
+   last few rounds lived there or in a skipped suite, and the harness makes the
+   next screen test cheap.
 
 2. **A guard against untranslated Hindi.** The parity test proves a key exists;
-   it cannot tell a translation from a copy of the English. A test asserting
-   that `TODO(i18n-hi)` does not *grow* would at least stop the backlog getting
-   worse, which is cheap and would have prevented it reaching four figures.
+   it cannot tell a translation from a copy of the English, except for
+   `activity.*` templates and the kit's own chrome, which
+   `i18n-coverage.test.ts` and `kit-i18n.test.tsx` now check. A test
+   asserting that `TODO(i18n-hi)` does not *grow* would at least stop the rest
+   of the backlog getting worse, which is cheap and would have prevented it
+   reaching four figures.
 
 3. **Finish what `web-reachability.test.ts` started.** Its `ALLOWED_UNCALLED`
    list is still long, each one a screen somebody has not built or code
