@@ -7,13 +7,18 @@
  *    `hashchange` it caused was read as "no route" and closed it again;
  *  · Alt+N reached screens the sidebar does not offer the signed-in person;
  *  · "See what was refused" on the refusal toast landed a salesperson on the
- *    Dashboard, because the screen that lists refusals was not theirs to open;
+ *    Dashboard, because the screen that lists refusals was not theirs to open
+ *    — and, pressed from the gallery, left them on the gallery;
+ *  · the screen somebody was on outlived their session, so whoever signed in
+ *    next at that window started on it, whether it was theirs to open or not;
  *  · a saved lead was still on the New lead form the next time it opened, one
  *    Save away from being queued twice;
  *  · the packaging "required" marker stayed up with the company switch off;
  *  · Reset asked through the browser's own `window.confirm`;
  *  · the order weight override was re-sent on every blur, edited or not, and
- *    a typed "1.2.3" crossed the wire as `null` and cleared it.
+ *    a typed "1.2.3" crossed the wire as `null` and cleared it;
+ *  · a panel whose own server could not be reached said "Request cancelled"
+ *    on the splash, in English, rather than that it could not reach it.
  */
 
 import { StrictMode } from 'react';
@@ -21,10 +26,12 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { t } from '../src/i18n.js';
+import { publishSessionEnded } from '../src/sessionEnded.js';
 import {
   FakeEventSource,
   installBrowserStubs,
   json,
+  loadApi,
   loadApp,
   pressAltDigit,
   routeFetch,
@@ -120,28 +127,35 @@ interface Boot {
   view?: Record<string, unknown>;
   /** What `POST /api/sync/flush` refuses. */
   refusals?: Array<{ mutationId: string; entityId: string; error: string }>;
+  /** Asked first; `undefined` falls through to the answers below. */
+  route?: (call: Call) => Response | Promise<Response> | undefined;
 }
 
-async function boot({ permissions, view = {}, refusals = [] }: Boot): Promise<Call[]> {
+/** The signed-in person `/api/session` and a sign-in both answer with. */
+function panelSession(permissions: string[]) {
+  return {
+    userId: 'user-1',
+    username: 'asha',
+    displayName: 'Asha',
+    roleId: null,
+    roleName: 'Sales',
+    roleTier: 'office',
+    permissions,
+    offline: false,
+    signedInAt: '2026-09-24T00:00:00.000Z',
+  };
+}
+
+async function boot({ permissions, view = {}, refusals = [], route }: Boot): Promise<Call[]> {
   let held: typeof refusals = [];
-  const calls = routeFetch(({ method, url }) => {
+  const calls = routeFetch((call) => {
+    const answer = route?.(call);
+    if (answer) return answer;
+    const { method, url } = call;
     const path = url.split('?')[0] ?? url;
     if (path === '/api/connection') return json(CONNECTION);
     if (path === '/api/session') {
-      return json({
-        session: {
-          userId: 'user-1',
-          username: 'asha',
-          displayName: 'Asha',
-          roleId: null,
-          roleName: 'Sales',
-          roleTier: 'office',
-          permissions,
-          offline: false,
-          signedInAt: '2026-09-24T00:00:00.000Z',
-        },
-        defaultLocale: 'en',
-      });
+      return json({ session: panelSession(permissions), defaultLocale: 'en' });
     }
     if (path === '/api/sync') return json({ ...CONNECTION, pendingCount: 0, rejections: held });
     if (path === '/api/sync/flush' && method === 'POST') {
@@ -216,6 +230,57 @@ async function draftOneProduct(): Promise<void> {
   });
 }
 
+describe('the splash', () => {
+  it("says this panel's server could not be reached when the request never got there", async () => {
+    routeFetch(() => Promise.reject(new TypeError('Failed to fetch')));
+    const App = await loadApp('office');
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+
+    expect(await screen.findByText(t('splash.error.unreachable'))).toBeTruthy();
+  });
+});
+
+describe('a request that ends without an answer', () => {
+  it('is "aborted" when its own caller cancelled it', async () => {
+    // What `CatalogScreen` drops quietly when a newer search replaces a load.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_input: RequestInfo | URL, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () =>
+              reject(new DOMException('The operation was aborted.', 'AbortError')),
+            );
+          }),
+      ),
+    );
+    const api = await loadApi('office');
+    const controller = new AbortController();
+
+    const pending = api.pick('party', { term: 'sha', signal: controller.signal });
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({
+      code: 'aborted',
+      message: t('error.requestCancelled'),
+    });
+  });
+
+  it('is a failure, not a cancel, when it never reached the server', async () => {
+    routeFetch(() => Promise.reject(new TypeError('Failed to fetch')));
+    const api = await loadApi('office');
+
+    await expect(api.pick('party', { term: 'sha' })).rejects.toMatchObject({
+      code: 'internal_error',
+      message: t('error.requestFailed'),
+    });
+  });
+});
+
 describe('the design-system gallery', () => {
   it('stays open after the link it was opened from changes the hash', async () => {
     await boot({ permissions: ['leads.view'] });
@@ -262,12 +327,24 @@ describe('Alt+N', () => {
 
 describe('the refusal toast', () => {
   /** Sync now, from the footer's popover, as somebody holding one queued write. */
-  async function syncAndReview(): Promise<void> {
+  async function syncAndReview({
+    fromGallery = false,
+    route,
+  }: { fromGallery?: boolean; route?: Boot['route'] } = {}): Promise<void> {
     await boot({
       permissions: ['leads.view', 'leads.create'],
       view: { pendingCount: 1 },
       refusals: [{ mutationId: 'mut-9', entityId: 'L-TMP-9', error: 'Party is view-only for you' }],
+      route,
     });
+    if (fromGallery) {
+      await act(async () => {
+        fireEvent.click(screen.getByRole('link', { name: t('footer.designSystem') }));
+        window.location.hash = '#/gallery';
+        await wait(0);
+      });
+      expect(topbarTitle()).toBe(t('footer.designSystem'));
+    }
 
     fireEvent.click(
       screen.getAllByRole('button', { name: new RegExp(t('sync.syncing', { count: 1 })) })[0]!,
@@ -300,6 +377,53 @@ describe('the refusal toast', () => {
     await act(async () => {
       fireEvent.click(screen.getByTitle(t('nav.dashboard')));
     });
+    expect(screen.queryByTitle(t('nav.conflicts'))).toBeNull();
+  });
+
+  it('leaves the design-system gallery for the refusals, as it was pressed from there', async () => {
+    // The footer is on every screen, so Sync now — and the toast it raises —
+    // can be pressed with the gallery open.
+    await syncAndReview({ fromGallery: true });
+
+    expect(topbarTitle()).toBe(t('nav.conflicts'));
+    expect(screen.getByText('Party is view-only for you')).toBeTruthy();
+    // And a reload does not put the gallery back.
+    expect(window.location.hash).toBe('');
+  });
+
+  it('does not open for whoever signs in after the session ended on it', async () => {
+    await syncAndReview({
+      route: ({ method, url }) =>
+        url === '/api/auth/sign-in' && method === 'POST'
+          ? json({ session: panelSession(['leads.view']) })
+          : undefined,
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('sync.rejections.dismiss') }));
+      await wait(0);
+    });
+    expect(topbarTitle()).toBe(t('nav.conflicts'));
+
+    // The Master stopped honouring the session — a password changed, say.
+    await act(async () => {
+      publishSessionEnded('signIn.notice.sessionEnded');
+    });
+    fireEvent.change(await screen.findByLabelText(t('signin.username')), {
+      target: { value: 'ravi' },
+    });
+    fireEvent.change(screen.getByLabelText(t('signin.password')), { target: { value: 'secret' } });
+    await act(async () => {
+      fireEvent.submit(screen.getByLabelText(t('signin.password')).closest('form')!);
+      await wait(0);
+    });
+    // Nothing of the last person's view is drawn for this one: the screens
+    // wait for this session's own first snapshot.
+    expect(screen.getByText(t('shell.waitingFirstSync'))).toBeTruthy();
+    await act(async () => {
+      FakeEventSource.instances.at(-1)?.emit('snapshot', snapshot());
+    });
+
+    expect(topbarTitle()).toBe(t('nav.dashboard'));
     expect(screen.queryByTitle(t('nav.conflicts'))).toBeNull();
   });
 });
@@ -395,10 +519,17 @@ describe('the New lead form', () => {
 });
 
 describe('the order weight override', () => {
-  async function openOrder(): Promise<Call[]> {
+  /*
+   * A write here is queued and answered at once, and no snapshot follows it —
+   * an offline panel, or the round trip before the Master echoes the change.
+   * The order on screen goes on saying 150 however many writes are queued,
+   * which is the state the override has to be right in.
+   */
+  async function openOrder(route?: Boot['route']): Promise<Call[]> {
     const calls = await boot({
       permissions: ['orders.view'],
       view: { orders: [ORDER], pipelines: [ORDER_PIPELINE] },
+      route,
     });
     await act(async () => {
       fireEvent.click(screen.getByTitle(t('nav.orders')));
@@ -457,6 +588,115 @@ describe('the order weight override', () => {
     // Sent, NaN would have crossed the wire as `null` and cleared the override.
     expect(overrideWrites(calls)).toEqual([]);
     expect(field.getAttribute('aria-invalid')).toBe('true');
+    // Said in words too: closing the order drops what was typed.
+    expect(screen.getByText(t('orders.detail.weightOverrideInvalid'))).toBeTruthy();
+  });
+
+  it('is sent again when it is put back before the first write is answered', async () => {
+    const calls = await openOrder();
+    const field = await screen.findByLabelText(t('orders.detail.weightOverrideLabel'));
+
+    await act(async () => {
+      fireEvent.change(field, { target: { value: '175' } });
+      fireEvent.blur(field);
+      await wait(0);
+    });
+    await act(async () => {
+      fireEvent.change(field, { target: { value: '150' } });
+      fireEvent.blur(field);
+      await wait(0);
+    });
+
+    // Dropping the second left 175 queued under a field that says 150.
+    expect(overrideWrites(calls).map((call) => call.body)).toEqual([
+      { totalWeightKgOverride: 175 },
+      { totalWeightKgOverride: 150 },
+    ]);
+  });
+
+  it('sends an edit typed while the save before it was still on its way', async () => {
+    let answer: (response: Response) => void = () => undefined;
+    const calls = await openOrder(({ method, url }) =>
+      method === 'PUT' && url === `/api/orders/${ORDER.id}`
+        ? new Promise<Response>((resolve) => {
+            answer = resolve;
+          })
+        : undefined,
+    );
+    const field = await screen.findByLabelText(t('orders.detail.weightOverrideLabel'));
+
+    await act(async () => {
+      fireEvent.change(field, { target: { value: '175' } });
+      fireEvent.blur(field);
+      fireEvent.focus(field);
+      fireEvent.change(field, { target: { value: '180' } });
+      await wait(0);
+    });
+    await act(async () => {
+      answer(json({ queued: true, id: ORDER.id, mutationId: 'mut-2', pendingCount: 1 }));
+      await wait(0);
+    });
+    await act(async () => {
+      fireEvent.blur(field);
+      await wait(0);
+    });
+
+    expect(overrideWrites(calls).map((call) => call.body)).toEqual([
+      { totalWeightKgOverride: 175 },
+      { totalWeightKgOverride: 180 },
+    ]);
+  });
+
+  it('is put back even while the save it undoes is still on its way', async () => {
+    const calls = await openOrder(({ method, url }) =>
+      method === 'PUT' && url === `/api/orders/${ORDER.id}`
+        ? new Promise<Response>(() => undefined)
+        : undefined,
+    );
+    const field = await screen.findByLabelText(t('orders.detail.weightOverrideLabel'));
+
+    await act(async () => {
+      fireEvent.change(field, { target: { value: '175' } });
+      fireEvent.blur(field);
+      await wait(0);
+    });
+    await act(async () => {
+      fireEvent.focus(field);
+      fireEvent.change(field, { target: { value: '150' } });
+      fireEvent.blur(field);
+      await wait(0);
+    });
+
+    expect(overrideWrites(calls).map((call) => call.body)).toEqual([
+      { totalWeightKgOverride: 175 },
+      { totalWeightKgOverride: 150 },
+    ]);
+  });
+
+  it('is tried again on the next blur after a save that failed', async () => {
+    let failed = false;
+    const calls = await openOrder(({ method, url }) => {
+      if (method !== 'PUT' || url !== `/api/orders/${ORDER.id}` || failed) return undefined;
+      failed = true;
+      return json({ error: 'queue_failed', message: 'Could not queue that' }, 500);
+    });
+    const field = await screen.findByLabelText(t('orders.detail.weightOverrideLabel'));
+
+    await act(async () => {
+      fireEvent.change(field, { target: { value: '175' } });
+      fireEvent.blur(field);
+      await wait(0);
+    });
+    await act(async () => {
+      fireEvent.focus(field);
+      fireEvent.blur(field);
+      await wait(0);
+    });
+
+    expect(overrideWrites(calls).map((call) => call.body)).toEqual([
+      { totalWeightKgOverride: 175 },
+      { totalWeightKgOverride: 175 },
+    ]);
   });
 
   it('is cleared when the field is emptied', async () => {

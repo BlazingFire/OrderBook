@@ -178,6 +178,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'error.unavailable': 'मास्टर पैनल तक नहीं पहुँचा जा सका। लिंक वापस आने पर फिर कोशिश करें।',
   'error.unknown': 'कुछ गड़बड़ हो गई',
   'error.requestFailed': 'अनुरोध विफल रहा',
+  'error.requestTimedOut': 'सर्वर ने समय पर जवाब नहीं दिया',
+  'error.requestCancelled': 'अनुरोध रद्द कर दिया गया',
 
   'error.generic.notFound': 'नहीं मिला',
   'error.generic.conflict': 'किसी और ने टकराव वाला बदलाव किया',
@@ -2152,6 +2154,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'orders.detail.weight': 'Weight',
   // TODO(i18n-hi)
   'orders.detail.weightComputed': 'Computed from the lines: {value} kg',
+  'orders.detail.weightOverrideInvalid': 'वज़न संख्या में लिखें, या इसे खाली छोड़ दें',
   // TODO(i18n-hi)
   'orders.detail.weightOverrideLabel': 'Override (leave blank to use the computed figure)',
   // TODO(i18n-hi)

@@ -14,7 +14,7 @@
  * while that shows, so its filters and scroll position survive the round trip.
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { resolveCompanyFeatures } from '@orderbook/shared';
 import type {
   Order,
@@ -353,13 +353,22 @@ function OrderDetailBody({
     order.totalWeightKgOverride === null ? '' : String(order.totalWeightKgOverride),
   );
   /*
-   * Whether the override has been typed in since it was last saved. Leaving
-   * the field is what saves it, and every blur used to queue a write whether
-   * anything had changed or not — a Tab through the form was an order update,
-   * and one that could put back a figure another panel had changed since this
-   * one opened the order.
+   * The override as this screen last sent it — or as the order held it when
+   * the screen opened, before anything was sent. Leaving the field is what
+   * saves it, and a blur writes only when the field no longer says this.
+   *
+   * Every blur used to queue a write whether anything had changed or not: a
+   * Tab through the form was an order update, and one that could put back a
+   * figure another panel had changed since this one opened the order.
+   *
+   * Not `order.totalWeightKgOverride`. On this panel a write is queued, and
+   * the order on screen does not move until the Master sends the change back
+   * — never, while the panel is offline. Compared with the order, 150 → 175 →
+   * 150 dropped the second write as "unchanged" and left 175 queued under a
+   * field saying 150. A ref, not state, and set as a send starts, so an edit
+   * typed while that send is on its way is compared with what it sent.
    */
-  const [overrideEdited, setOverrideEdited] = useState(false);
+  const sentOverride = useRef(order.totalWeightKgOverride);
   /** The typed override as the order would hold it; NaN when the text is not a number. */
   const overrideValue = override === '' ? null : Number(override);
   const overrideInvalid = overrideValue !== null && Number.isNaN(overrideValue);
@@ -382,14 +391,19 @@ function OrderDetailBody({
     // "1.2.3" survives the character filter and is no number. Sent, it would
     // arrive as `null` (JSON has no NaN) and quietly clear the override; the
     // field says it is wrong instead and nothing is written.
-    if (!overrideEdited || overrideInvalid) return;
-    if (overrideValue === order.totalWeightKgOverride) {
-      setOverrideEdited(false);
-      return;
-    }
+    if (overrideInvalid || overrideValue === sentOverride.current) return;
+    const before = sentOverride.current;
+    const value = overrideValue;
+    sentOverride.current = value;
     void run(async () => {
-      await api.updateOrder(order.id, { totalWeightKgOverride: overrideValue });
-      setOverrideEdited(false);
+      try {
+        await api.updateOrder(order.id, { totalWeightKgOverride: value });
+      } catch (caught) {
+        // Not queued, so the next blur tries again — unless a later send has
+        // already taken its place.
+        if (sentOverride.current === value) sentOverride.current = before;
+        throw caught;
+      }
     }, t('orders.error.saveWeight'));
   }
 
@@ -520,16 +534,18 @@ function OrderDetailBody({
             </p>
           )}
 
-          <FormField label={t('orders.detail.weightOverrideLabel')}>
+          <FormField
+            label={t('orders.detail.weightOverrideLabel')}
+            // In words as well as the red edge: nothing is saved while it
+            // shows, and closing the order drops what was typed.
+            error={overrideInvalid ? t('orders.detail.weightOverrideInvalid') : undefined}
+          >
             {(id) => (
               <NumberInput
                 id={id}
                 value={override}
                 invalid={overrideInvalid}
-                onChange={(event) => {
-                  setOverride(event.target.value.replace(/[^0-9.]/g, ''));
-                  setOverrideEdited(true);
-                }}
+                onChange={(event) => setOverride(event.target.value.replace(/[^0-9.]/g, ''))}
                 placeholder={t('orders.detail.weightOverridePlaceholder')}
                 onBlur={saveOverride}
               />

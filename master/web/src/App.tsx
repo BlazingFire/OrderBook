@@ -342,6 +342,9 @@ function MasterPanel() {
       onSessionEnded((reason) => {
         setUser(null);
         setSessionToken(null);
+        // Whoever signs in next at this window starts on the Dashboard, as
+        // after `signOut` — see there.
+        setTab('dashboard');
         setSignInNotice(reason);
         setPhase('signed-out');
       }),
@@ -446,6 +449,14 @@ function MasterPanel() {
     setSessionToken(null);
     setPhase('signed-out');
     setRoute('');
+    /*
+     * The screen is not the next person's. `ScreenHost` draws `tab` whether or
+     * not the sidebar offers it — `navigate` is what keeps an unoffered screen
+     * out of `tab` — and signing in again renders this same component, so the
+     * tab an administrator signed out from was the first screen a salesperson
+     * signing in after them saw: Office panels, under a title naming nothing.
+     */
+    setTab('dashboard');
   }
 
   // The splash owns the whole cold start now — the minimum hold, the boot

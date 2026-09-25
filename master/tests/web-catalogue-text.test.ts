@@ -6,7 +6,9 @@
  * something that is not an `Error`. The fallbacks were English literals in
  * both panels ("Could not move the lead", "Export failed", "Request failed",
  * and the Office's kanban cards printed `via` in front of the source), so a
- * Hindi deployment got English exactly when something had gone wrong. The
+ * Hindi deployment got English exactly when something had gone wrong. So did
+ * the api clients' own timeout and cancel failures, which a Master boot that
+ * timed out put on the splash as they were. The
  * lint rule for untranslated JSX cannot see any of them: they are string
  * arguments and ternary branches, not JSX text, and the one JSX case sits in a
  * file the rule is still switched off for.
@@ -51,6 +53,9 @@ const FALLBACK_FORMS: Array<[form: string, pattern: RegExp]> = [
   ['a failure argument', /(?:\}\s*,|^)\s*'([A-Z][^']*\s[^']*)'\s*,?\s*\)?\s*$/gm],
   // `<span>via {lead.sourcePlatform}</span>`
   ['JSX text before a value', />\s*(via)\s*\{/g],
+  // `new ApiError('The panel did not answer in time', 'timeout')` — the api
+  // clients' own failures, which the boot shows on the splash as they are.
+  ['an ApiError built from a literal', /new\s+ApiError\(\s*'([^']+)'/g],
 ];
 
 describe.each(['master/web/src', 'office/web/src'])('%s', (app) => {

@@ -5,6 +5,11 @@
  *  · the footer's "Design system" link keeps the gallery open;
  *  · Alt+N reaches only what the sidebar offers — with the desktop menu's
  *    Developer entry still opening Settings for anybody, as it always has;
+ *  · the screen somebody was on does not outlive their session: whoever signs
+ *    in next at that window starts on the Dashboard, not on a screen the
+ *    sidebar does not offer them;
+ *  · a Master whose server cannot be reached says so on the splash, rather
+ *    than "Request cancelled" in English;
  *  · a change another administrator makes reaches the screens built from it:
  *    people and roles on Roles & users, a catalogue import on Inventory and on
  *    Leads & orders, a field value or definition in the Recycle Bin, and a
@@ -16,6 +21,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { t } from '../src/i18n.js';
+import { publishSessionEnded } from '../src/sessionEnded.js';
 import {
   installBrowserStubs,
   json,
@@ -89,8 +95,15 @@ function user(permissions: string[]) {
   };
 }
 
-async function boot(permissions: string[]): Promise<Call[]> {
-  const calls = routeFetch(({ url }) => {
+async function boot(
+  permissions: string[],
+  /** Asked first; `undefined` falls through to the answers below. */
+  route?: (call: Call) => Response | undefined,
+): Promise<Call[]> {
+  const calls = routeFetch((call) => {
+    const answer = route?.(call);
+    if (answer) return answer;
+    const { url } = call;
     const path = url.split('?')[0] ?? url;
     if (path === '/api/setup/status') return json({ setupComplete: true });
     if (path === '/api/auth/me') {
@@ -206,6 +219,74 @@ describe('Alt+N', () => {
     });
 
     expect(screen.getByRole('tab', { name: t('settings.tab.developer') })).toBeTruthy();
+  });
+});
+
+describe('the next person to sign in at this window', () => {
+  /** Signs in through the real form as somebody holding only `leads.view`. */
+  async function signInAsSales(): Promise<void> {
+    fireEvent.change(await screen.findByLabelText(t('signIn.field.username')), {
+      target: { value: 'ravi' },
+    });
+    fireEvent.change(screen.getByLabelText(t('signIn.field.password')), {
+      target: { value: 'secret' },
+    });
+    await act(async () => {
+      fireEvent.submit(screen.getByLabelText(t('signIn.field.password')).closest('form')!);
+      await wait(0);
+    });
+  }
+
+  const answers = ({ method, url }: Call) => {
+    if (url === '/api/auth/sign-out' && method === 'POST')
+      return new Response(null, { status: 204 });
+    if (url === '/api/auth/sign-in' && method === 'POST') {
+      return json({ user: user(['leads.view']), sessionToken: 'session-2' });
+    }
+    return undefined;
+  };
+
+  it('starts on the Dashboard, not on the screen the last one signed out from', async () => {
+    await boot(ADMIN, answers);
+    await open(t('nav.master.panels'));
+    expect(topbarTitle()).toBe(t('nav.master.panels'));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('action.signOut') }));
+      await wait(0);
+    });
+    await signInAsSales();
+
+    // Office panels needs `panels.manage`: its sidebar entry is gone, and the
+    // screen went on being drawn under a title that named nothing.
+    expect(topbarTitle()).toBe(t('nav.master.dashboard'));
+  });
+
+  it('starts on the Dashboard after a session the server ended', async () => {
+    await boot(ADMIN, answers);
+    await open(t('nav.master.panels'));
+
+    // Somebody changed this person's password, say, from another window.
+    await act(async () => {
+      publishSessionEnded('signIn.notice.sessionEnded');
+    });
+    await signInAsSales();
+
+    expect(topbarTitle()).toBe(t('nav.master.dashboard'));
+  });
+});
+
+describe('the splash', () => {
+  it('says the server could not be reached when the request never got there', async () => {
+    routeFetch(() => Promise.reject(new TypeError('Failed to fetch')));
+    const App = await loadApp('master');
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+
+    expect(await screen.findByText(t('splash.error.unreachable'))).toBeTruthy();
   });
 });
 

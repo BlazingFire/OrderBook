@@ -171,6 +171,18 @@ export async function loadApp(panel: 'master' | 'office'): Promise<ComponentType
   return module.App;
 }
 
+/** The one call the shell tests make on a panel's `api.ts` directly. */
+export interface PanelApi {
+  pick: (kind: 'party', query: { term: string; signal?: AbortSignal }) => Promise<unknown>;
+}
+
+/** The panel's `api` object, loaded through a variable path for the reason in the header. */
+export async function loadApi(panel: 'master' | 'office'): Promise<PanelApi> {
+  const path = `../../${panel}/web/src/api.ts`;
+  const module = (await import(/* @vite-ignore */ path)) as { api: PanelApi };
+  return module.api;
+}
+
 /** Alt+N, the way `KeyboardProvider` reads it: by `code`, with Alt held. */
 export function pressAltDigit(digit: number): void {
   document.dispatchEvent(

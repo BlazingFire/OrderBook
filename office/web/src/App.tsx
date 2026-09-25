@@ -281,6 +281,13 @@ function OfficePanel() {
     () =>
       onSessionEnded((reason) => {
         setSession(null);
+        // What `signOut` clears too: whoever signs in next at this window
+        // starts afresh. The screen stayed, and the next person started on it
+        // — the Conflicts page, which stays offered while it is the open one,
+        // for somebody with no refusals and no right to adjudicate, or a view
+        // of the last person's parties until the first snapshot replaced it.
+        setView(null);
+        setTab('dashboard');
         setSignInNotice(reason);
       }),
     [],
@@ -462,7 +469,7 @@ function OfficePanel() {
          */
         toast.push(translator().tCount('sync.changesRefused', outcome.rejections.length), {
           tone: 'error',
-          action: { label: t('action.reviewRefusals'), onClick: () => setTab('conflicts') },
+          action: { label: t('action.reviewRefusals'), onClick: showConflicts },
         });
       }
     } catch (caught) {
@@ -472,6 +479,24 @@ function OfficePanel() {
     } finally {
       setFlushing(false);
     }
+  }
+
+  /*
+   * To the Conflicts page, from the refusal toast or the sync popover.
+   *
+   * Not through `goToTab`: the toast's action is the closure of the render
+   * that ran `flush`, whose sidebar did not yet offer Conflicts to somebody
+   * holding their first refusals, so that check would refuse it. Both are
+   * reachable with the gallery open — the footer is on every screen — so the
+   * gallery is left the way `goToTab` leaves it; setting the tab alone left
+   * the person on the gallery with the page changed underneath it.
+   */
+  function showConflicts(): void {
+    setSyncPopover(false);
+    if (readHash())
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    setRoute('');
+    setTab('conflicts');
   }
 
   async function signOut(): Promise<void> {
@@ -976,11 +1001,7 @@ function OfficePanel() {
                 <button
                   className="ob-btn ob-btn--ghost ob-btn--sm"
                   style={{ color: 'var(--accent)' }}
-                  onClick={() => {
-                    setSyncPopover(false);
-                    setRoute('');
-                    setTab('conflicts');
-                  }}
+                  onClick={showConflicts}
                 >
                   {t('action.reviewConflicts')}
                 </button>

@@ -242,8 +242,16 @@ function request<T>(path: string, init?: RequestInit): Promise<T> {
   /** Silence and a refusal are different facts; a caller may retry only one. */
   const asFailure = (error: unknown): never => {
     if (error instanceof ApiError) throw error;
-    if (timeout.aborted) throw new ApiError('The panel did not answer in time', 'timeout');
-    throw new ApiError('Request cancelled', 'aborted');
+    if (timeout.aborted) throw new ApiError(t('error.requestTimedOut'), 'timeout');
+    if (init?.signal?.aborted) throw new ApiError(t('error.requestCancelled'), 'aborted');
+    /*
+     * Neither silence nor a cancel: the request never reached the server,
+     * which is not running — or not yet. This was reported as 'aborted',
+     * "Request cancelled", and a boot that failed so put that on the splash as
+     * a message meant for a reader, in place of "could not reach the server".
+     * It gets the code an unstructured 500 gets: neither says more.
+     */
+    throw new ApiError(t('error.requestFailed'), 'internal_error');
   };
 
   if (method !== 'GET' || init?.signal) {

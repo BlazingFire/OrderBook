@@ -254,6 +254,8 @@ export const EN_MESSAGES = {
   'error.unavailable': 'The Master Panel is unreachable. Try again when the link is back.',
   'error.unknown': 'Something went wrong',
   'error.requestFailed': 'Request failed',
+  'error.requestTimedOut': 'The server did not answer in time',
+  'error.requestCancelled': 'Request cancelled',
 
   // Coarse, param-free fallbacks for `errorMessageKey(code)` — tier 2 of the
   // client's three-tier render ladder, reached only when a throw site named no
@@ -1627,6 +1629,7 @@ export const EN_MESSAGES = {
   'orders.detail.subtitleWithLead': '{id} · from {leadId}',
   'orders.detail.weight': 'Weight',
   'orders.detail.weightComputed': 'Computed from the lines: {value} kg',
+  'orders.detail.weightOverrideInvalid': 'Enter the weight as a number, or leave it blank',
   'orders.detail.weightOverrideLabel': 'Override (leave blank to use the computed figure)',
   'orders.detail.weightOverridePlaceholder': 'Override',
   'orders.detail.weightShowing': 'Showing the {source} figure.',
