@@ -26,8 +26,11 @@ import { describe, expect, it } from 'vitest';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 function scriptsOf(packageJson: string): Record<string, string> {
-  return (JSON.parse(readFileSync(path.join(ROOT, packageJson), 'utf8')) as { scripts: Record<string, string> })
-    .scripts;
+  return (
+    JSON.parse(readFileSync(path.join(ROOT, packageJson), 'utf8')) as {
+      scripts: Record<string, string>;
+    }
+  ).scripts;
 }
 
 const ROOT_SCRIPTS = scriptsOf('package.json');
@@ -64,7 +67,11 @@ describe('the business-data scripts (catalog-reload-cli.ts)', () => {
   });
 
   it('wipe:business only wipes', () => {
-    expect(tsxCommand(MASTER_SCRIPTS['wipe:business'])).toEqual({ runner: 'tsx', file: CLI, flags: [] });
+    expect(tsxCommand(MASTER_SCRIPTS['wipe:business'])).toEqual({
+      runner: 'tsx',
+      file: CLI,
+      flags: [],
+    });
   });
 
   it('seed:parties wipes and then creates the sample parties', () => {

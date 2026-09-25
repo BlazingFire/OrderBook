@@ -40,7 +40,9 @@ const SNAPSHOT_LIMIT = 500;
  * siblings throw `ForbiddenError` via `requirePermission`, and a snapshot
  * fetched for an actor missing even one module permission must not fail the
  * whole request (`docs/backend-modules/10-TESTING.md` `DSH-7`). This is a
- * "was it visible at all" gate, not the finer per-field masking below.
+ * "was it visible at all" gate; which rows of a visible collection the actor
+ * sees (party access) is decided by the services and, for the two repository
+ * reads below, by hand.
  */
 export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> {
   const canParties = actorCan(actor, 'parties.view');

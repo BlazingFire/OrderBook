@@ -12,7 +12,9 @@
  * single pending migration), and `reload:catalog` wiped the business data and
  * loaded nothing. The wipe also empties the activity log, which the audit
  * trail's own row triggers cannot stop; that is intended, so the output has to
- * say so.
+ * say so. And it once kept the connectors' links while restarting the id
+ * counters those links name records by, so a link came to point at whatever
+ * record took its old id.
  */
 
 import { spawn } from 'node:child_process';
@@ -36,17 +38,24 @@ import { formatMigrationStatus, type MigrationList } from '../src/db/migration-s
 import { migrations, RegistryMigrationSource, type Migration } from '../src/db/migrations/index.js';
 import { catalogueTotals } from '../src/domain/swisware-catalogue.js';
 import { verifyChain } from '../src/repositories/activity-log.repository.js';
+import * as connectorRepo from '../src/repositories/connector.repository.js';
 import * as catalog from '../src/services/catalog.service.js';
+import * as connectorService from '../src/services/connector.service.js';
 import * as roleService from '../src/services/role.service.js';
 import * as userService from '../src/services/user.service.js';
 
 const MASTER_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPTS = (
-  JSON.parse(readFileSync(path.join(MASTER_DIR, 'package.json'), 'utf8')) as { scripts: Record<string, string> }
+  JSON.parse(readFileSync(path.join(MASTER_DIR, 'package.json'), 'utf8')) as {
+    scripts: Record<string, string>;
+  }
 ).scripts;
 
 /** Runs `npm run <name> -- <extra…>` in the master workspace, minus npm. */
-async function runScript(name: string, extra: string[] = []): Promise<{ code: number | null; output: string }> {
+async function runScript(
+  name: string,
+  extra: string[] = [],
+): Promise<{ code: number | null; output: string }> {
   const [runner, ...args] = (SCRIPTS[name] ?? '').trim().split(/\s+/);
   expect(runner).toBe('tsx');
 
@@ -117,6 +126,7 @@ describe.skipIf(!canRunIntegrationTests)('the operator CLIs (integration)', () =
   describe('reload:catalog', () => {
     let before: Record<string, number>;
     let run: { code: number | null; output: string };
+    let linkedProductId = '';
 
     beforeAll(async () => {
       await resetData();
@@ -127,11 +137,39 @@ describe.skipIf(!canRunIntegrationTests)('the operator CLIs (integration)', () =
         { name: 'Keeper', tier: 'admin', permissions: ['products.view'] },
         actor,
       );
-      await userService.createUser({ username: 'keeper', displayName: 'Keeper', roleId: role.id }, actor);
+      const keeper = await userService.createUser(
+        { username: 'keeper', displayName: 'Keeper', roleId: role.id },
+        actor,
+      );
+      const connector = await connectorService.createConnector(actor, {
+        slug: 'kept',
+        label: 'Kept connection',
+        baseUrl: 'http://127.0.0.1:9',
+        authKind: 'none',
+        scheduleKind: 'manual',
+        runAsUserId: keeper.user.id,
+        isEnabled: false,
+      });
 
-      // …and business data it must not, each write leaving an activity entry.
-      await catalog.createParty({ name: 'Wiped Traders', city: 'Morbi' }, actor);
-      await createTestProduct(actor, { name: 'Wiped basin', categoryName: 'Wiped category' });
+      // …and business data it must not, each write leaving an activity entry,
+      // with the connection's links to it (sync bookkeeping, not configuration).
+      const party = await catalog.createParty({ name: 'Wiped Traders', city: 'Morbi' }, actor);
+      const { product } = await createTestProduct(actor, {
+        name: 'Wiped basin',
+        categoryName: 'Wiped category',
+      });
+      linkedProductId = product.id;
+      const tenantId = await testTenantId();
+      await connectorRepo.upsertLink(tenantId, connector.id, 'party', {
+        remoteId: 'R-PARTY',
+        localId: party.id,
+        remoteHash: 'unchanged',
+      });
+      await connectorRepo.upsertLink(tenantId, connector.id, 'product', {
+        remoteId: 'R-PRODUCT',
+        localId: product.id,
+        remoteHash: 'unchanged',
+      });
 
       before = {
         tenants: await count('tenants'),
@@ -140,6 +178,7 @@ describe.skipIf(!canRunIntegrationTests)('the operator CLIs (integration)', () =
         settings: await count('settings'),
         pipelines: await count('pipelines'),
         pipelineStages: await count('pipeline_stages'),
+        connectors: await count('api_connectors'),
         activity: await count('activity_log'),
       };
       expect(before.activity).toBeGreaterThan(0);
@@ -154,12 +193,16 @@ describe.skipIf(!canRunIntegrationTests)('the operator CLIs (integration)', () =
     it('wipes the business data', async () => {
       expect(await count('parties')).toBe(0);
       expect(await count('products', (query) => query.where({ name: 'Wiped basin' }))).toBe(0);
-      expect(await count('product_categories', (query) => query.where({ name: 'Wiped category' }))).toBe(0);
+      expect(
+        await count('product_categories', (query) => query.where({ name: 'Wiped category' })),
+      ).toBe(0);
     });
 
     it('then loads the Swisware catalogue, which is what the name promises', async () => {
       const totals = catalogueTotals();
-      expect(await count('products', (query) => query.whereNull('deleted_at'))).toBe(totals.products);
+      expect(await count('products', (query) => query.whereNull('deleted_at'))).toBe(
+        totals.products,
+      );
       expect(await count('product_variants')).toBe(totals.variants);
       expect(await count('product_categories')).toBe(totals.categories);
     });
@@ -168,7 +211,10 @@ describe.skipIf(!canRunIntegrationTests)('the operator CLIs (integration)', () =
       // `TRUNCATE … CASCADE` also empties every table holding a foreign key
       // into a truncated one, silently. The list is read from the CLI's
       // source (importing it would run it).
-      const source = readFileSync(path.join(MASTER_DIR, 'src', 'services', 'catalog-reload-cli.ts'), 'utf8');
+      const source = readFileSync(
+        path.join(MASTER_DIR, 'src', 'services', 'catalog-reload-cli.ts'),
+        'utf8',
+      );
       const block = /const BUSINESS_TABLES = \[([^\]]*)\]/.exec(source)?.[1] ?? '';
       const wiped = [...block.matchAll(/'([a-z_]+)'/g)].map((match) => match[1] as string);
       expect(wiped).toContain('activity_log');
@@ -192,6 +238,7 @@ describe.skipIf(!canRunIntegrationTests)('the operator CLIs (integration)', () =
         settings: await count('settings'),
         pipelines: await count('pipelines'),
         pipelineStages: await count('pipeline_stages'),
+        connectors: await count('api_connectors'),
       }).toEqual({
         tenants: before.tenants,
         users: before.users,
@@ -199,13 +246,32 @@ describe.skipIf(!canRunIntegrationTests)('the operator CLIs (integration)', () =
         settings: before.settings,
         pipelines: before.pipelines,
         pipelineStages: before.pipelineStages,
+        connectors: before.connectors,
       });
+    });
+
+    it('forgets what a connection linked, because the reload hands those ids to other records', async () => {
+      // The id counters restart at 1, so the wiped product's permanent id now
+      // names a catalogue product. A link kept past the wipe would make the
+      // connection's next run skip that product (the remote row's hash is
+      // unchanged) or overwrite it with the remote's fields.
+      const reused = await db()('products')
+        .where({ id: linkedProductId })
+        .first<{ name: string } | undefined>('name');
+      expect(reused).toBeDefined();
+      expect(reused?.name).not.toBe('Wiped basin');
+
+      expect(await count('api_connector_links')).toBe(0);
     });
 
     it('empties the activity log, restarts its chain intact, and says so', async () => {
       // Nothing from before the wipe: the party, the role and the user all
       // logged themselves, and only the reload's own entries remain.
-      expect(await count('activity_log', (query) => query.whereIn('entity_type', ['party', 'role', 'user']))).toBe(0);
+      expect(
+        await count('activity_log', (query) =>
+          query.whereIn('entity_type', ['party', 'role', 'user']),
+        ),
+      ).toBe(0);
 
       const tenantId = await testTenantId();
       const sequences = await db()('activity_log')
@@ -215,7 +281,10 @@ describe.skipIf(!canRunIntegrationTests)('the operator CLIs (integration)', () =
         .first<{ min: string; max: string }>();
       expect(Number(sequences?.min)).toBe(1);
 
-      const chain = await verifyChain(tenantId, { fromSequence: '1', toSequence: String(sequences?.max) });
+      const chain = await verifyChain(tenantId, {
+        fromSequence: '1',
+        toSequence: String(sequences?.max),
+      });
       expect(chain.ok).toBe(true);
       expect(chain.checkedCount).toBe(Number(sequences?.max));
 

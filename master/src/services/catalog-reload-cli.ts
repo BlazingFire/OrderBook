@@ -14,20 +14,29 @@
  *
  * The wipe takes products, variants, categories, image rows, leads, orders,
  * line items, stock, reservations, movements, timelines, party-wise records,
- * parties, party access, the sync/conflict bookkeeping and **the whole
- * activity log** to zero and restarts their id counters, while keeping the
- * configuration (tenants, users, roles, permissions, pipelines, option lists,
- * settings, panels, connectors, keys, secrets). No configuration table has a
- * foreign key into the wiped ones, so `TRUNCATE … CASCADE` reaches nothing
- * else — `operator-cli.integration.test.ts` fails the day one does.
+ * parties, party access, the sync/conflict bookkeeping, the connectors' links
+ * and **the whole activity log** to zero and restarts their id counters, while
+ * keeping the configuration (tenants, users, roles, permissions, pipelines,
+ * option lists, settings, panels, connectors and their mappings and run
+ * history, keys, secrets). No configuration table has a foreign key into the
+ * wiped ones, so `TRUNCATE … CASCADE` reaches nothing else —
+ * `operator-cli.integration.test.ts` fails the day one does.
+ *
+ * The connectors' links (`api_connector_links`) go because the id counters
+ * restart: each link names a local record by its permanent id, deliberately
+ * without a foreign key, and after the wipe that id belongs to whatever record
+ * is created next — with `--with-catalog`, certainly a catalogue product. A
+ * kept link would make the connector's next run skip that unrelated record
+ * (the remote row's hash is unchanged) or overwrite it with the remote's
+ * fields. Without its links a connector re-creates every remote row on its
+ * next run, which is what emptying the catalogue under it should mean.
  *
  * The activity log goes on purpose: every entry in it describes a record the
  * wipe removes. No ordinary write can remove an entry — its row triggers
- * refuse every UPDATE and DELETE — but a TRUNCATE fires no row trigger (a
- * backup restore relies on the same), so this tool empties it, and the hash
- * chain starts again from genesis with the next write. On a live database that
- * is the audit trail disappearing, so the console says so, with the count,
- * before it happens.
+ * refuse every UPDATE and DELETE — but a TRUNCATE fires no row trigger, so
+ * this tool empties it, and the hash chain starts again from genesis with the
+ * next write. On a live database that is the audit trail disappearing, so the
+ * console says so, with the count, before it happens.
  *
  * Image files on disk are left alone: with their rows gone, the Master's
  * startup sweep (`sweepOrphanImageVariants`) removes them on its next boot.
@@ -69,6 +78,7 @@ const BUSINESS_TABLES = [
   'sync_conflicts',
   'applied_mutations',
   'id_map',
+  'api_connector_links',
   'activity_log',
 ];
 

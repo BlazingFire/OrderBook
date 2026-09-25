@@ -190,7 +190,8 @@ export const PUBLIC_API_ROUTES = [
    * `activity_log` is already append-only, monotonic, keyset-paged,
    * party-scoped, permission-gated and hash-chained — everything a delivery
    * system would have had to reinvent. Entries name what changed, so a consumer
-   * follows with a GET that re-applies masking; a pushed payload could not.
+   * follows with a GET that re-applies the key's permissions and its owner's
+   * party scope; a pushed payload could not.
    */
   {
     operationId: 'listEvents',
@@ -234,7 +235,7 @@ export function buildOpenApiDocument(version: string): Record<string, unknown> {
       title: 'OrderBook',
       version,
       description:
-        'The Master Panel’s keyed API. Every response is masked and party-scoped for the key’s owner, exactly as the same read would be for that person in the browser.',
+        'The Master Panel’s keyed API. Every response is party-scoped for the key’s owner, exactly as the same read would be for that person in the browser.',
     },
     servers: [{ url: '/api/v1' }],
     components: {
