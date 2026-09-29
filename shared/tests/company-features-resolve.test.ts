@@ -35,14 +35,16 @@ describe('resolveCompanyFeatures', () => {
     const resolved = resolveCompanyFeatures({ freeToSell: false });
 
     expect(resolved.freeToSell).toBe(false);
-    expect(resolved.packagingRequiredOnConvert).toBe(true);
+    // Catalogue v2's defaults (2026-09-28): packaging is not asked for, and a
+    // new lead follows up three days out.
+    expect(resolved.packagingRequiredOnConvert).toBe(false);
     expect(resolved.offlineSignInEnabled).toBe(true);
     expect(resolved.adjustmentNoteRequired).toBe(false);
-    expect(resolved.followUpDefaultDays).toBe(0);
+    expect(resolved.followUpDefaultDays).toBe(3);
   });
 
   it('keeps a false that was actually sent, rather than coalescing it away', () => {
-    // The trap: `??` is correct and `||` is not. Four of these are booleans
+    // The trap: `??` is correct and `||` is not. Several of these are booleans
     // whose fallback is `true`, so `||` would silently re-enable every switch
     // a company had turned off.
     const resolved = resolveCompanyFeatures({
@@ -55,10 +57,16 @@ describe('resolveCompanyFeatures', () => {
     expect(resolved.packagingRequiredOnConvert).toBe(false);
   });
 
+  it('keeps a packagingRequiredOnConvert of true that a company switched on', () => {
+    expect(
+      resolveCompanyFeatures({ freeToSell: true, packagingRequiredOnConvert: true })
+        .packagingRequiredOnConvert,
+    ).toBe(true);
+  });
+
   it('keeps a followUpDefaultDays of 0, which is a real answer meaning today', () => {
-    // The same trap on a number, and the one that would be hardest to notice:
-    // 0 is both the fallback and a legal setting, so `||` reads correct here
-    // until somebody changes the fallback.
+    // The same trap on a number: 0 is a legal setting and the fallback is 3,
+    // so `||` would quietly move a company that chose "today" three days out.
     expect(resolveCompanyFeatures({ freeToSell: true, followUpDefaultDays: 0 }).followUpDefaultDays)
       .toBe(0);
     expect(resolveCompanyFeatures({ freeToSell: true, followUpDefaultDays: 7 }).followUpDefaultDays)

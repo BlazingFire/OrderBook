@@ -10,7 +10,8 @@
  *   and never reached `migrate-cli.ts`.
  * - `reload:catalog` was the same command as `wipe:business`: it wiped and
  *   loaded nothing, because the flag that loads the catalogue was passed by
- *   no script.
+ *   no script. Since catalogue v2 it replaces the catalogue and wipes nothing
+ *   else (`--catalogue`); the wipe-then-load is `--with-catalog`, by hand.
  * - `seed:sample` printed its party-wise records as "party-wise rates" after
  *   the software stopped carrying money at all.
  *
@@ -58,11 +59,19 @@ describe('npm run migrate', () => {
 describe('the business-data scripts (catalog-reload-cli.ts)', () => {
   const CLI = 'src/services/catalog-reload-cli.ts';
 
-  it('reload:catalog wipes and then loads the Swisware catalogue', () => {
+  it('reload:catalog replaces the catalogue from the shipped file, and wipes nothing else', () => {
     expect(tsxCommand(MASTER_SCRIPTS['reload:catalog'])).toEqual({
       runner: 'tsx',
       file: CLI,
-      flags: ['--with-catalog'],
+      flags: ['--catalogue'],
+    });
+  });
+
+  it('seed:demo-parties adds the demo dealers without wiping', () => {
+    expect(tsxCommand(MASTER_SCRIPTS['seed:demo-parties'])).toEqual({
+      runner: 'tsx',
+      file: CLI,
+      flags: ['--demo-parties'],
     });
   });
 

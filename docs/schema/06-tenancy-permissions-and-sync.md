@@ -41,7 +41,8 @@ Names and codes are unique **per tenant**, never globally, and where the table h
 ```sql
 CREATE UNIQUE INDEX idx_parties_code_tenant         ON parties (tenant_id, party_code) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX idx_product_variants_code_tenant ON product_variants (tenant_id, lower(code)) WHERE deleted_at IS NULL;
-CREATE UNIQUE INDEX idx_categories_name_tenant      ON product_categories (tenant_id, lower(name));
+CREATE UNIQUE INDEX idx_categories_brand_name       ON product_categories (tenant_id, lower(coalesce(brand, '')), lower(name)) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX idx_categories_code             ON product_categories (tenant_id, lower(code)) WHERE code IS NOT NULL AND deleted_at IS NULL;
 CREATE UNIQUE INDEX users_username_unique           ON users (tenant_id, lower(username)) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX roles_name_unique               ON roles (tenant_id, lower(name)) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX idx_office_panels_device        ON office_panels (tenant_id, device_code);
@@ -58,7 +59,9 @@ the paired panel, so there is no signature a client could use to name someone el
 `party_code`, `product_code`, category `name` and `username` into per-tenant indexes;
 `20260303000000_roles_and_users` and `20260305000000_soft_delete_columns` made the username, role
 name and party code indexes partial; `product_code` itself went with `20260323`, and variant codes
-took its place.
+took its place. `20260326000000_catalogue_brands_and_codes_port` replaced the category name index
+(`idx_categories_name_tenant (tenant_id, lower(name))`) with the per-brand, live-rows-only one above,
+and added the category code index.
 
 ---
 
@@ -222,7 +225,10 @@ declared in `shared/src/domain/settings.ts`**, which is why the migration insert
 No `version`/`hlc`/`field_hlc`: settings never sync. `setting` is not one of the
 `SYNCABLE_ENTITIES` (`shared/src/sync/ids.ts`) and has no entry in `MERGEABLE_COLUMNS`
 (`shared/src/domain/columns.ts`); what a panel needs of them reaches it as the company's feature
-switches. A `secret: true` key stores a sealed envelope as its `value`, with
+switches. Since catalogue v2 (2026-09-29) an Office panel may also *write* one key,
+`leads.followUpDefaultDays`, from its Settings → Leads tab: the panel forwards the save online
+(`settings:save`), as the signed-in user and never as the panel's own role, and the Master writes
+the row after its usual `settings.manage` check. Nothing is queued offline. A `secret: true` key stores a sealed envelope as its `value`, with
 `aad = setting:<tenant>:<key>`; the read endpoint answers `configured: true|false` and never the
 value.
 
@@ -357,13 +363,16 @@ CREATE UNIQUE INDEX idx_custom_fields_key ON custom_field_definitions (tenant_id
 CREATE INDEX idx_custom_fields_deleted ON custom_field_definitions (tenant_id, deleted_at DESC, id DESC) WHERE deleted_at IS NOT NULL;
 ```
 
-`option_lists` holds the four managed sets in `FIELD_LIST_KEYS` (`shared/src/domain/fields.ts`):
-`lead.sourcePlatform`, `stock.colour`, `line.packaging` and `line.grade`. A fresh database has six
-`lead.sourcePlatform` values (whatsapp, call, website, walk_in, referral, other) and nothing else;
-the other three start empty for a company to fill under Settings → Fields. On an installation that
-already had data, `20260306` backfilled `stock.colour`, `line.packaging` and a `product.productType`
-set from the distinct values in use, keeping their case exactly; the trim later deleted every
-`product.*` set and the `line.grade` values. A record stores `value`, and `label` is what a rename
+`option_lists` holds the five managed sets in `FIELD_LIST_KEYS` (`shared/src/domain/fields.ts`):
+`lead.sourcePlatform`, `stock.colour`, `product.brand`, `line.packaging` and `line.grade`. A fresh
+database has six `lead.sourcePlatform` values (whatsapp, call, website, walk_in, referral, other) and
+nothing else; the other four start empty for a company to fill under Settings → Fields, and the
+catalogue loader fills `product.brand` (value = label = the brand name) and `stock.colour` (the
+catalogue's colour range, with hex). On an installation that already had data, `20260306` backfilled
+`stock.colour`, `line.packaging` and a `product.productType` set from the distinct values in use,
+keeping their case exactly; the trim later deleted every `product.*` set and the `line.grade`
+values. `product.brand` came back on 2026-09-29 as the list a category's `brand` names
+(`02-parties-and-products.md`), with no migration: an option list is rows, not schema. A record stores `value`, and `label` is what a rename
 changes, so renaming never touches the identity a record holds. A deleted value is a Recycle Bin
 entry (`option_list_item`).
 
@@ -400,9 +409,11 @@ On `roles` and `users` the columns are ahead of the code. The Master's own write
 either table through sync and `temporary_id` is always NULL (`docs/ROLES_AND_USERS.md` §15.5).
 
 The other five syncable entities — line items, product categories, product variants, timeline
-entries and reservations — are created as part of a parent's write, so they carry no clock of their
-own, and the Master names each one with a permanent id when it applies that write (the
-`allocatePermanentIds` calls in their repositories). A panel mints a temporary id only for the
+entries and reservations — carry no clock of their own, and the Master names each one with a
+permanent id when it applies the write that makes it (the `allocatePermanentIds` calls in their
+repositories). Four are only ever made as part of a parent's write; a product category is made that
+way too (a product form naming a new category), and since catalogue v2 also has its own online-only
+create, edit and soft delete — never queued, so never offline. A panel mints a temporary id only for the
 record a mutation is about — a lead, party, product or party variant — so none of the five ever
 appears in `id_map`.
 

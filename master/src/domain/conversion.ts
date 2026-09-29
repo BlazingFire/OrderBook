@@ -132,11 +132,11 @@ export function assertConvertible(
     ? lead.items.filter((line) => !line.packaging?.trim())
     : [];
   if (unpackaged.length > 0) {
-    // Packaging is never inferred, so an unset one has to be caught before the
-    // order exists rather than quietly defaulted on the way through — unless
-    // the company has said otherwise, because a shop that packs to order
-    // cannot state the packaging at the moment the lead converts. Off, what was
-    // entered is still carried onto the order; only the refusal goes.
+    // Packaging is never inferred, so for a company that requires it an unset
+    // one has to be caught before the order exists rather than quietly
+    // defaulted on the way through. Off — the default since catalogue v2,
+    // whose lead entry does not ask for packaging — what was entered is still
+    // carried onto the order; only the refusal goes.
     throw new ValidationError('validation.lead.packagingMissing', {
       items: unpackaged.map((line) => line.productName).join(', '),
     });

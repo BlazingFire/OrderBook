@@ -176,6 +176,9 @@ export async function restoreEntity(input: RestoreInput, actor: ActorContext): P
       // trade quotes. A clash is refused and named instead.
       return catalogService.restoreProduct(input.id, actor);
     }
+    case 'product_category': {
+      return catalogService.restoreCategory(input.id, actor, input.renameTo);
+    }
     case 'lead': {
       return leadService.restoreLead(input.id, actor);
     }

@@ -278,6 +278,8 @@ dataRoutes.get(
         {
           ...paging(req.query),
           categoryId: typeof req.query.categoryId === 'string' ? req.query.categoryId : undefined,
+          brand:
+            typeof req.query.brand === 'string' && req.query.brand ? req.query.brand : undefined,
           missingWeight: req.query.missingWeight === 'true',
         },
         actorFromRequest(req),
@@ -325,14 +327,43 @@ dataRoutes.delete(
   }),
 );
 
+// Categories — the owner's Products (`docs/catalogue/CATALOGUE_MODEL.md` §5).
+// Permissions are the service's, as for `/products`; delete is guarded here
+// too, like every other Recycle Bin delete on this router.
+
 dataRoutes.get(
   '/categories',
   asyncHandler(async (req, res) => {
     res.json(
       await catalogService.listCategories(actorFromRequest(req), {
         search: typeof req.query.search === 'string' ? req.query.search : undefined,
+        brand: typeof req.query.brand === 'string' && req.query.brand ? req.query.brand : undefined,
       }),
     );
+  }),
+);
+
+dataRoutes.post(
+  '/categories',
+  asyncHandler(async (req, res) => {
+    res.status(201).json(await catalogService.createCategory(req.body, actorFromRequest(req)));
+  }),
+);
+
+dataRoutes.put(
+  '/categories/:id',
+  asyncHandler(async (req, res) => {
+    res.json(
+      await catalogService.updateCategory(String(req.params.id), req.body, actorFromRequest(req)),
+    );
+  }),
+);
+
+dataRoutes.delete(
+  '/categories/:id',
+  needs('products.delete'),
+  asyncHandler(async (req, res) => {
+    res.json(await catalogService.deleteCategory(String(req.params.id), actorFromRequest(req)));
   }),
 );
 
@@ -343,7 +374,12 @@ dataRoutes.get(
   asyncHandler(async (req, res) => {
     res.json(
       await inventoryService.listStock(
-        { ...paging(req.query), lowOnly: req.query.lowOnly === 'true' },
+        {
+          ...paging(req.query),
+          lowOnly: req.query.lowOnly === 'true',
+          brand: typeof req.query.brand === 'string' ? req.query.brand : undefined,
+          categoryId: typeof req.query.categoryId === 'string' ? req.query.categoryId : undefined,
+        },
         actorFromRequest(req),
       ),
     );
@@ -446,6 +482,24 @@ dataRoutes.get(
   '/leads/:id',
   asyncHandler(async (req, res) => {
     res.json(await leadService.getLead(String(req.params.id), actorFromRequest(req)));
+  }),
+);
+
+/**
+ * The fixed-layout lead PDF (`docs/catalogue/CATALOGUE_MODEL.md` §8), sent
+ * `inline` so Preview PDF opens it in a window rather than downloading it.
+ */
+dataRoutes.get(
+  '/leads/:id/pdf',
+  needs('leads.export'),
+  asyncHandler(async (req, res) => {
+    const { fileName, bytes } = await leadService.leadPdf(
+      String(req.params.id),
+      actorFromRequest(req),
+    );
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+    res.send(Buffer.from(bytes));
   }),
 );
 

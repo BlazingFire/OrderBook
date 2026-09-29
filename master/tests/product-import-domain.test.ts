@@ -75,6 +75,50 @@ describe('header matching', () => {
   });
 });
 
+describe('catalogue v2 columns', () => {
+  it("knows the owner's words for brand, product, product code and sub product", () => {
+    const match = matchHeaders(['Brand', 'Main product', 'Main product code', 'Sub product', 'Code']);
+    expect(match.byIndex.map((column) => column?.field)).toEqual([
+      'categoryBrand',
+      'categoryName',
+      'categoryCode',
+      'name',
+      'code',
+    ]);
+    expect(match.ignored).toEqual([]);
+    expect(match.missing).toEqual([]);
+  });
+
+  it('lets a product code stand in for the product name, and nothing else', () => {
+    expect(matchHeaders(['categoryCode', 'name', 'code']).missing).toEqual([]);
+    expect(matchHeaders(['categoryBrand', 'name', 'code']).missing).toEqual(['categoryName']);
+
+    const { input, issues } = parse(['categoryCode', 'name', 'code'], ['OPT', '102 (9")', 'OPT-0001']);
+    expect(issues).toEqual([]);
+    expect(input?.product).toEqual({ categoryCode: 'OPT', name: '102 (9")' });
+
+    expect(
+      parse(['categoryCode', 'categoryName', 'name', 'code'], ['', '', 'Hexa', 'HEXA']).issues.map(
+        (issue) => issue.messageKey,
+      ),
+    ).toEqual(['validation.product.categoryRequired']);
+  });
+
+  it('keeps two brands’ products of the same name apart, and folds rows naming one code', () => {
+    const { groups } = groupImportRows(
+      [
+        row(2, 'One Piece Toilet', 'Damru', 'A-1', null, { categoryBrand: 'Swisware+' }),
+        row(3, 'One Piece Toilet', 'Damru', 'B-1', null, { categoryBrand: 'Other' }),
+        { row: 4, input: { product: { categoryCode: 'opt', name: 'Hexa' }, variant: { code: 'H-1', label: 'White', weightKg: null } } },
+        { row: 5, input: { product: { categoryCode: 'OPT', name: 'hexa' }, variant: { code: 'H-2', label: 'Ivory', weightKg: null } } },
+      ],
+      (field) => field,
+    );
+
+    expect(groups.map((group) => group.rows.map((entry) => entry.row))).toEqual([[2], [3], [4, 5]]);
+  });
+});
+
 describe('parsing one row', () => {
   it('splits the row into the model and its variant, keeping codes as text', () => {
     const { input, issues } = parse(
@@ -272,7 +316,7 @@ describe('the file as a whole', () => {
     const standing = templateGuideRows(true);
     const changed = templateGuideRows(false);
     expect(changed.find((row) => row[0] === 'categoryName')?.[3]).toBe(
-      'Must already exist — an import cannot create one.',
+      'Required unless categoryCode is filled. Must already exist — an import cannot create one.',
     );
     // Every other note is untouched.
     const differing = changed

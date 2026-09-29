@@ -657,6 +657,34 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
     expect(after.multiColour).toBe(true);
   });
 
+  it('refuses an offline rename onto a live sibling of the same product, and writes nothing', async () => {
+    const product = await existingProduct();
+    await catalog.createProduct(
+      { categoryName: 'Tiles', variants: [{ code: 'MRG-02' }], name: 'Other Tile' },
+      actor,
+    );
+
+    const response = await sync.applyPush(
+      {
+        mutations: [
+          mutation({
+            kind: 'product.update',
+            entity: 'product',
+            entityId: product.id,
+            fields: ['name'],
+            payload: { name: 'OTHER TILE' },
+            baseFieldHlc: product.sync.fieldHlc,
+          }),
+        ],
+      },
+      actor,
+    );
+
+    expect(response.results[0]?.status).toBe('rejected');
+    expect(response.results[0]?.error ?? '').toMatch(/Other Tile/i);
+    expect((await reload(product.id)).name).toBe('Merge Tile');
+  });
+
   it('refuses a variant set the rules could never accept, with a reason', async () => {
     const product = await existingProduct();
 

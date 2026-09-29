@@ -30,6 +30,7 @@ import type {
   PickQuery,
   Product,
   ProductCategory,
+  ProductCategoryListRow,
   ProductListPage,
   ProductListQuery,
   SyncSnapshot,
@@ -90,6 +91,89 @@ function pickFrom<T extends { id: string }>(
   };
 }
 
+/** Catalogue order, the Master's `sort_order ASC NULLS LAST, lower(name), id`. */
+function byCatalogueOrder(
+  a: { id: string; sortOrder: number | null; name: string },
+  b: { id: string; sortOrder: number | null; name: string },
+): number {
+  if (a.sortOrder !== b.sortOrder) {
+    if (a.sortOrder === null) return 1;
+    if (b.sortOrder === null) return -1;
+    return a.sortOrder - b.sortOrder;
+  }
+  return a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.id.localeCompare(b.id);
+}
+
+/** The Master's category match: the code from its start, the name or the brand anywhere. */
+function categoryMatches(category: ProductCategory, term: string): boolean {
+  return (
+    term === '' ||
+    (category.code ?? '').toLowerCase().startsWith(term) ||
+    category.name.toLowerCase().includes(term) ||
+    (category.brand ?? '').toLowerCase().includes(term)
+  );
+}
+
+/**
+ * `pickFrom` for the two lists kept in a fixed order rather than ranked — the
+ * product bar and the sub-product bar. Same `include` and `truncated` rules;
+ * `defaultLimit` is what the Master answers when the caller names none.
+ */
+function pickInOrder<T extends { id: string }>(
+  rows: readonly T[],
+  matches: (row: T) => boolean,
+  compare: (a: T, b: T) => number,
+  query: PickQuery,
+  defaultLimit: number,
+): PickPage<T> {
+  const limit = query.limit ? clamp(query.limit) : defaultLimit;
+  const include = new Set(query.include ?? []);
+
+  const included = rows.filter((row) => include.has(row.id));
+  const candidates = rows.filter((row) => !include.has(row.id) && matches(row)).sort(compare);
+  const room = Math.max(0, limit - included.length);
+
+  return {
+    items: [...included, ...candidates.slice(0, room)],
+    truncated: candidates.length > room,
+  };
+}
+
+/**
+ * The Products list (`GET /api/categories`) when the Master is switched off:
+ * the cached categories, each with how many cached sub products sit under it,
+ * filtered like the Master's list (`listCategories`) and in its order.
+ */
+export function listCategoriesFromView(
+  query: { search?: string; brand?: string },
+  view: SyncSnapshot,
+  permissions: readonly string[],
+): ProductCategoryListRow[] {
+  const required = REQUIRED_PERMISSION.category;
+  if (!permissions.includes(required)) throw new OfflinePickForbidden(required);
+
+  const counts = new Map<string, number>();
+  for (const product of view.products) {
+    counts.set(product.categoryId, (counts.get(product.categoryId) ?? 0) + 1);
+  }
+
+  const term = query.search?.trim().toLowerCase() ?? '';
+  const brand = query.brand?.trim().toLowerCase() ?? '';
+
+  return view.categories
+    .filter((category) => category.deletedAt === null || category.deletedAt === undefined)
+    .filter(
+      (category) =>
+        term === '' ||
+        [category.code, category.name, category.brand].some((field) =>
+          (field ?? '').toLowerCase().includes(term),
+        ),
+    )
+    .filter((category) => brand === '' || (category.brand ?? '').toLowerCase() === brand)
+    .sort(byCatalogueOrder)
+    .map((category) => ({ ...category, subProductCount: counts.get(category.id) ?? 0 }));
+}
+
 export function pickFromView(
   kind: PickKind,
   query: PickQuery,
@@ -102,25 +186,45 @@ export function pickFromView(
   if (kind === 'category') {
     // Only categories that hold live products are offered — the same live
     // check the Master's own `EXISTS` clause makes, here as a set built from
-    // the cached page.
+    // the cached page. The order is the Master's too: a code typed in full
+    // first, then catalogue order.
     const stocked = new Set(view.products.map((product) => product.categoryId));
-    return pickFrom<ProductCategory>(
+    const term = query.term?.trim().toLowerCase() ?? '';
+    const exact = (category: ProductCategory): number =>
+      term !== '' && (category.code ?? '').toLowerCase() === term ? 0 : 1;
+    return pickInOrder(
       view.categories.filter((category) => stocked.has(category.id)),
-      (category) => [category.name],
-      (category) => category.name,
+      (category) => categoryMatches(category, term),
+      (a, b) => exact(a) - exact(b) || byCatalogueOrder(a, b),
       query,
+      PICK_DEFAULT_LIMIT,
     );
   }
 
   if (kind === 'product') {
-    // The lead screen's second stage: only the chosen category's models. The
-    // codes live on the variants, so a code typed here still finds its model.
     const categoryId = query.categoryId?.trim();
-    const products = categoryId
-      ? view.products.filter((product) => product.categoryId === categoryId)
-      : view.products;
+    // The sub-product bar: every sub product of one product in the Master's
+    // own catalogue order (`pickSubProducts`), not ranked, so the list does not
+    // reorder itself when the link comes back.
+    if (categoryId) {
+      const term = query.term?.trim().toLowerCase() ?? '';
+      return pickInOrder(
+        view.products.filter((product) => product.categoryId === categoryId),
+        (product) =>
+          term === '' ||
+          product.name.toLowerCase().includes(term) ||
+          product.variants.some(
+            (variant) => variant.isActive && variant.code.toLowerCase().startsWith(term),
+          ),
+        byCatalogueOrder,
+        query,
+        PICK_MAX_LIMIT,
+      );
+    }
+    // The whole catalogue, ranked. The codes live on the variants, so a code
+    // typed here still finds its model.
     return pickFrom<Product>(
-      products,
+      view.products,
       (product) => [
         ...product.variants.map((variant) => variant.code),
         product.name,
@@ -170,6 +274,7 @@ export function listProductsFromView(
   );
   const offset = Math.max(0, Math.floor(query.offset ?? 0) || 0);
   const term = query.search?.trim().toLowerCase() ?? '';
+  const brand = query.brand?.trim().toLowerCase() ?? '';
 
   const matches = (product: Product): boolean =>
     term === '' ||
@@ -177,6 +282,8 @@ export function listProductsFromView(
       product.name,
       product.alias,
       product.categoryName,
+      product.categoryCode,
+      product.brand,
       ...product.variants.map((variant) => variant.code),
       ...product.variants.map((variant) => variant.label),
     ].some((field) => (field ?? '').toLowerCase().includes(term));
@@ -184,8 +291,13 @@ export function listProductsFromView(
   const missingWeight = (product: Product): boolean =>
     product.variants.some((variant) => variant.isActive && variant.weightKg === null);
 
+  // The brand narrows before the facet, as on the Master: it decides which
+  // category chips are worth offering at all.
   const searched = view.products.filter(
-    (product) => matches(product) && (!query.missingWeight || missingWeight(product)),
+    (product) =>
+      matches(product) &&
+      (brand === '' || (product.brand ?? '').toLowerCase() === brand) &&
+      (!query.missingWeight || missingWeight(product)),
   );
 
   // The category facet, counted before the category filter — every chip

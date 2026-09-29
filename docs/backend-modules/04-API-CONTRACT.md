@@ -1952,6 +1952,48 @@ Restoring a product from the Recycle Bin is refused with `validation.product.res
 (409, `details: { field: 'code', codes }`) while another live product holds one of its codes —
 codes are never renamed on the way out of the bin the way party names are.
 
+### 10.2b The catalogue v2 surface (2026-09-29)
+
+Added for `docs/catalogue/CATALOGUE_MODEL.md` §5 and §8 — the owner's Brand → Product → Sub
+product. In the wire's words a **Product** is a category and a **Sub product** a product (model).
+Written from the code as it landed on the `catalogue-v2-port` worktree, not designed ahead of it:
+
+| Master endpoint | Office route | Event | Notes |
+|---|---|---|---|
+| `GET /api/categories?search=&brand=` | same; **answered from the cached snapshot offline** (`listCategoriesFromView`) | `category:list` (`{ search?, brand? }` — the event gained a query argument) | `ProductCategoryListRow[]` — live categories only, `sort_order NULLS LAST, lower(name), id`, each with `subProductCount`; `search` matches name, code and brand. `products.view` |
+| `POST /api/categories` | same, **online only** (503 offline) | `category:create` | `CategoryInput { name, code, brand?, sortOrder? }` → 201 `ProductCategory`. `products.create`. Name and code required; the code matches `CATEGORY_CODE_PATTERN` (`validation.category.codeInvalid`); a brand must be a live `product.brand` value (`validation.category.brandUnknown`); `sortOrder` a non-negative integer. 409 `error.conflict.categoryCodeTaken` / `categoryNameTaken` (per brand, live rows) |
+| `PUT /api/categories/:id` | same, online only | `category:update` (`{ id, input }`) | `CategoryUpdateInput` (a partial patch) → `ProductCategory`. `products.edit`. Logs `changes: { field: { from, to } }`; a change of name, code or brand also publishes one `catalog` change, because every sub product in a panel's snapshot carries its category's name, code and brand |
+| `DELETE /api/categories/:id` | same, online only | `category:delete` | → `{ id, deletedAt }`. `products.delete`. 409 `error.conflict.blockedByLiveReferences` with `details.blockedBy` naming each live sub product while any remains |
+| `POST /api/recycle-bin/restore` | same | `recycleBin:restore` | `product_category` is a new `RECYCLE_BIN_ENTITIES` member (restore needs `products.delete`). A code taken meanwhile → 409 `categoryCodeTaken`; a name taken meanwhile → the usual `restoreCollision` with a suggested rename. A sub product cannot be restored into a category still in the Bin |
+| `GET /api/leads/:id/pdf` | same, online only | `lead:pdf` → `{ fileName, bytes }` | `leads.export`. `application/pdf`, `Content-Disposition: inline; filename="lead-<id>.pdf"`. The lead is read through `getLead` (party scoping applies) after `resolveId`, so a panel may still name it by its temporary id. Fixed layout, no money (`LEAD_GENERATION_FLOW.md` §6) |
+| `PUT /api/settings/:key` (existing, `settings.manage`) | `PUT /api/settings/:key` (new), online only | `settings:save` (`{ key, value }`) → `SettingView[]` | The Office may write **`leads.followUpDefaultDays` only**, and only as a signed-in person: `assertPanelSettingWrite` in `hub.ts` refuses the panel's own role actor (403) and any other key (400 `validation.setting.invalid`); `writeSetting` then checks `settings.manage` as usual |
+
+Changed in place:
+
+- **Picks.** `GET /api/pick/category` matches a code from its start, or the name or the brand
+  anywhere; a code typed in full comes first, then catalogue order; only live categories holding a
+  live sub product are offered. Rows are `ProductCategory` and so carry `code` and `brand`.
+  `GET /api/pick/product?categoryId=` returns **every** live sub product of that category in
+  `sort_order`, narrowed by a name substring or a code prefix and not re-ranked;
+  `PICK_MAX_LIMIT` is 1000 (was 50). Without `categoryId` the whole-catalogue pick matches the
+  search vector, a variant code prefix or a name prefix. Picked products carry `categoryCode` and
+  `brand`.
+- **Products.** `GET /api/products` takes `brand=` and its search also matches the category's code
+  and brand; its page ceiling is 2000 (`PRODUCT_PAGING`), and the snapshot asks for products and
+  stock rows at that ceiling (every other collection stays at 500). `ProductInput` gains
+  `categoryCode` (resolves a live category, never creates one —
+  `validation.product.categoryCodeUnknown`), `categoryBrand` and `sortOrder`; a blank variant code
+  on a product named by category id or code becomes the next `CODE-####`; a second live sub
+  product of the same name in one category is 409 `validation.product.nameTaken`.
+- **Stock.** `GET /api/stock?brand=&categoryId=`; every live variant is a row, at zero when never
+  stocked; rows carry `categoryId`, `categoryCode`, `brand`, `multiColour`.
+- **Lines.** `LineItem` and `LineItemInput` carry `categoryCode` and `brandName`. A `colour` on a
+  line whose product is not multi-colour is **dropped**, no longer refused with
+  `validation.lead.colourUnexpected`.
+- **Developer.** `POST /api/developer/load-catalogue` loads the shipped Markdown catalogue
+  additively and returns `LoadCatalogueResult { brands, colours, products, subProducts, skipped,
+  removedLeads, removedOrders }` (the two `removed*` are zero here; they are the reload's).
+
 ### 10.3 What is Master-only, and why
 
 **None of the six modules is Master-only.** All six are permission-gated and reachable from both

@@ -32,11 +32,14 @@ import { configureUi } from '../src/config.js';
 /** One `new EventSource(url)` the app opened, and a way to push frames down it. */
 export class FakeEventSource {
   static instances: FakeEventSource[] = [];
+  /** Every stream ever opened, closed ones included — `instances` forgets them. */
+  static opened = 0;
 
   private readonly listeners = new Map<string, Array<(event: MessageEvent) => void>>();
 
   constructor(readonly url: string) {
     FakeEventSource.instances.push(this);
+    FakeEventSource.opened += 1;
   }
 
   addEventListener(type: string, listener: (event: MessageEvent) => void): void {
@@ -159,6 +162,7 @@ export function installBrowserStubs(): void {
   );
 
   FakeEventSource.instances = [];
+  FakeEventSource.opened = 0;
   vi.stubGlobal('EventSource', FakeEventSource);
   vi.stubGlobal('__APP_VERSION__', 'test');
 }

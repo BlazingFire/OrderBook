@@ -46,9 +46,10 @@ export function measureRuns(doc: Doc, text: string, style: TextStyle): number {
  * Draws a mixed-script string on one baseline, switching faces per run.
  *
  * Returns the x coordinate it finished at, so a caller can append. Nothing
- * wraps here — the table truncates instead, because a cell that grows to two
- * lines silently shifts every row below it and the page break lands somewhere
- * nobody chose.
+ * wraps here: a caller that wants several lines breaks them with `wrapLines`
+ * first and draws each one. The table does exactly that, and measures the grown
+ * row before it decides on a page break, so a wrapped cell moves the rows below
+ * it by an amount it chose rather than one it discovered.
  */
 export function runText(
   doc: Doc,
@@ -86,6 +87,51 @@ export function truncateToWidth(doc: Doc, text: string, maxWidth: number, style:
   }
 
   return `${candidate}…`;
+}
+
+/**
+ * Word-wraps a mixed-script string into lines no wider than `maxWidth`,
+ * without drawing anything.
+ *
+ * Measuring and drawing share it, so they cannot disagree: whatever decides how
+ * tall a cell is has to break the text into exactly the lines that will be
+ * drawn, and a second, nearly identical implementation is how "the last line
+ * got cut off" happens.
+ *
+ * A newline the operator typed is kept as a break — re-flowing across it would
+ * silently join two paragraphs. A single word wider than `maxWidth` is left on
+ * a line of its own, still too wide; cutting it is the caller's decision
+ * (`truncateToWidth`), because only the caller knows whether a clipped word is
+ * acceptable where it is going.
+ */
+export function wrapLines(doc: Doc, text: string, maxWidth: number, style: TextStyle): string[] {
+  const lines: string[] = [];
+
+  for (const paragraph of text.split(/\r?\n/)) {
+    const words = paragraph.split(/\s+/).filter((word) => word.length > 0);
+
+    if (words.length === 0) {
+      lines.push('');
+      continue;
+    }
+
+    let line = '';
+
+    for (const word of words) {
+      const candidate = line.length === 0 ? word : `${line} ${word}`;
+
+      if (line.length > 0 && measureRuns(doc, candidate, style) > maxWidth) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = candidate;
+      }
+    }
+
+    lines.push(line);
+  }
+
+  return lines;
 }
 
 export function runTextRight(

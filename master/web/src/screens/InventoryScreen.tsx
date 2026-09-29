@@ -1,12 +1,20 @@
 /**
- * Inventory, per variant (docs/LEAD_GENERATION_FLOW.md §5.1, §6).
+ * Inventory, per variant (docs/LEAD_GENERATION_FLOW.md §5.1, §6;
+ * docs/catalogue/CATALOGUE_MODEL.md §7).
  *
  * A row is one variant of one product — the thing a code names, the thing a
- * lead line is raised on, the thing a reservation holds. Three quantities are
- * shown side by side because they answer different questions: what is on the
- * floor, what is already reserved for orders that have not been dispatched,
- * and what is therefore free to sell. Only the last one is what a new order
- * can actually draw on, so it is what "low stock" is judged against.
+ * lead line is raised on, the thing a reservation holds. In the catalogue's
+ * words that is a sub product (every catalogue sub product is a model with
+ * exactly one variant), so the row reads the way the catalogue does: brand,
+ * product (`OPT · One Piece Toilet`), sub product, size, colour. Every live
+ * variant is listed, stocked or not — a sub product nobody has counted yet is
+ * a zero, not an absence.
+ *
+ * Three quantities are shown side by side because they answer different
+ * questions: what is on the floor, what is already reserved for orders that
+ * have not been dispatched, and what is therefore free to sell. Only the last
+ * one is what a new order can actually draw on, so it is what "low stock" is
+ * judged against.
  *
  * The code is read-only here: it belongs to the product master, where the
  * catalogue form edits it alongside the variant's label and weight. What this
@@ -19,16 +27,19 @@
  * Clicking a stock row opens a dialog scoped to that one variant: the same
  * three quantities, a ledger of just its movements, and "Stock in" / "Adjust
  * to physical count" pre-locked to the line so the fast path never requires
- * re-picking the product and variant (6-UI-DESIGN.md §8).
+ * re-picking the product and sub product (6-UI-DESIGN.md §8).
  */
 
-import { useCallback, useEffect, useState } from 'react';
-import type {
-  InventoryStockLevel,
-  OptionListItem,
-  Product,
-  ProductVariant,
-  StockMovement,
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  PICK_MAX_LIMIT,
+  shownColour,
+  type InventoryStockLevel,
+  type OptionListItem,
+  type Product,
+  type ProductCategory,
+  type ProductVariant,
+  type StockMovement,
 } from '@orderbook/shared';
 
 import { api } from '../api';
@@ -40,6 +51,7 @@ import {
   DataTable,
   EmptyState,
   FilterChip,
+  FilterDivider,
   FormField,
   Input,
   Modal,
@@ -54,6 +66,7 @@ import {
   t,
   useColourHex,
   useDebounced,
+  useEnterToAdvance,
   useFilterBar,
   type DataTableColumn,
 } from '@orderbook/ui';
@@ -79,17 +92,64 @@ const MOVEMENT_TYPE_KEY = {
   adjustment: 'inventory.movementType.adjustment',
 } as const;
 
-/** A line-scoped Stock-in/Adjust locks the form to the drawer's variant. */
-interface LineLock {
-  variantId: string;
+/**
+ * The stock list asks for the Master's whole cap. Every live variant has a row
+ * even before any stock arrives, so the default page of 200 would cut the
+ * catalogue's 549 sub products short.
+ */
+// ponytail: one page at the Master's 1,000-row clamp; page with `offset` once a catalogue outgrows it.
+const STOCK_LIMIT = 1000;
+
+/**
+ * The variant's name as the screen speaks of it: its label, or the code alone
+ * — the code alone too when the label only repeats the sub product's name
+ * (`MAGENTA` in Magenta, CATALOGUE_MODEL.md §2), as the Colour column does.
+ */
+function variantName(level: {
   variantCode: string;
   variantLabel: string | null;
   productName: string;
+}): string {
+  const label = shownColour(level.variantLabel, level.productName);
+  return label ? `${label} · ${level.variantCode}` : level.variantCode;
 }
 
-/** The variant's name as the screen speaks of it: the colour, or the code alone. */
-function variantName(level: { variantCode: string; variantLabel: string | null }): string {
-  return level.variantLabel ? `${level.variantLabel} · ${level.variantCode}` : level.variantCode;
+/** `OPT · One Piece Toilet`; just the name for a product from before codes. */
+function categoryLabel(code: string | null, name: string | null): string {
+  return [code, name].filter(Boolean).join(' · ');
+}
+
+/**
+ * A line named for a dialog title or a field label: `OPT · 1111`. The sub
+ * product alone is not enough — `1111` or `MAGENTA` can sit under two products.
+ */
+function lineName(level: InventoryStockLevel): string {
+  return [level.categoryCode ?? level.categoryName, level.productName].filter(Boolean).join(' · ');
+}
+
+/**
+ * The Colour a row shows (CATALOGUE_MODEL.md §2, §7): a `fixed` sub product's
+ * colour — its variant label — unless it only repeats the name (`MAGENTA` in
+ * Magenta). Nothing for `dedicated` (no label) and nothing for `selectable`:
+ * colour is not a stock key, so a multicolour sub product's one row stands for
+ * every colour and naming one would be false.
+ */
+function lineColour(line: {
+  multiColour: boolean;
+  variantLabel: string | null;
+  productName: string;
+}): string | null {
+  return line.multiColour ? null : shownColour(line.variantLabel, line.productName);
+}
+
+/**
+ * A colour's name, with its swatch when the colour range has one. A label
+ * outside the range (Wooden, a pattern such as `Vitrosa 41`) stays plain text:
+ * the two-letter ring `ColourChip` falls back to would read as a swatch that
+ * is not there.
+ */
+function ColourText({ name, hex }: { name: string; hex: string | undefined }) {
+  return hex ? <ColourName name={name} hex={hex} /> : <span>{name}</span>;
 }
 
 export function InventoryScreen({
@@ -102,6 +162,7 @@ export function InventoryScreen({
   const [levels, setLevels] = useState<InventoryStockLevel[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [optionLists, setOptionLists] = useState<OptionListItem[]>([]);
+  const [categories, setCategories] = useState<ProductCategory[]>([]);
   const colourHex = useColourHex(optionLists);
   const [search, setSearch] = useState('');
   // The input stays wired to the raw value so typing feels instant; only the
@@ -109,12 +170,15 @@ export function InventoryScreen({
   // request per keystroke, so fast typing produced a burst of overlapping
   // requests for characters the person had already typed past.
   const debouncedSearch = useDebounced(search);
+  const [brand, setBrand] = useState<string | null>(null);
+  /** The Product filter — a category id, `''` for every product. */
+  const [categoryId, setCategoryId] = useState('');
   const lowOnly = filter === 'low';
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [stockInOpen, setStockInOpen] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
-  const [lineLock, setLineLock] = useState<LineLock | null>(null);
+  const [lineLock, setLineLock] = useState<InventoryStockLevel | null>(null);
 
   // Which variant is opened into its detail dialog, and the movements scoped
   // to just that line. The dialog's summary numbers are *not* stored here —
@@ -124,29 +188,75 @@ export function InventoryScreen({
   const [lineMovements, setLineMovements] = useState<StockMovement[]>([]);
   const [lineMovementsLoading, setLineMovementsLoading] = useState(false);
 
+  /*
+   * Numbers each load; only the latest one's answer is kept. Every chip press,
+   * product pick and search asks again, and a slower, older answer landing
+   * last would show another filter's rows under the chip that is lit.
+   */
+  const latestLoad = useRef(0);
+
   const load = useCallback(async () => {
+    const request = ++latestLoad.current;
     try {
       const [stock, recent] = await Promise.all([
-        api.stock({ search: debouncedSearch || undefined, lowOnly }),
+        api.stock({
+          search: debouncedSearch || undefined,
+          lowOnly,
+          brand: brand ?? undefined,
+          categoryId: categoryId || undefined,
+          limit: STOCK_LIMIT,
+        }),
         api.stockMovements(),
       ]);
+      if (request !== latestLoad.current) return;
       setLevels(stock);
       setMovements(recent);
     } catch (caught) {
+      if (request !== latestLoad.current) return;
       setError(caught instanceof Error ? caught.message : t('inventory.error.load'));
     }
-  }, [debouncedSearch, lowOnly]);
+  }, [debouncedSearch, lowOnly, brand, categoryId]);
 
   useEffect(() => {
     void load();
   }, [load, revision]);
 
+  // Per revision, not once: the brand chips, the colour swatches and the
+  // Product filter are the catalogue's, and an edit made elsewhere should
+  // reach them here.
   useEffect(() => {
     void api
       .optionLists()
       .then(setOptionLists)
       .catch(() => setOptionLists([]));
-  }, []);
+    void api
+      .categories()
+      .then(setCategories)
+      .catch(() => setCategories([]));
+  }, [revision]);
+
+  const sameBrand = (value: string | null, other: string): boolean =>
+    value?.toLowerCase() === other.toLowerCase();
+
+  // The one still chosen stays listed after it is switched off, so a filter
+  // never holds a value its chip no longer offers a way out of.
+  const brands = optionLists.filter(
+    (option) => option.listKey === 'product.brand' && (option.isActive || option.value === brand),
+  );
+  const productOptions = categories.filter(
+    (category) => category.id === categoryId || brand === null || sameBrand(category.brand, brand),
+  );
+
+  function chooseBrand(value: string): void {
+    // A second press clears it: the chips narrow, they never have to be
+    // un-chosen through some other control.
+    const next = brand === value ? null : value;
+    setBrand(next);
+    // A product of another brand would leave the two filters agreeing on
+    // nothing, and an empty table that looks like missing stock.
+    const chosen = categories.find((category) => category.id === categoryId);
+    if (next !== null && chosen && !sameBrand(chosen.brand, next)) setCategoryId('');
+  }
 
   // Reports whether the write landed. The movement modals close themselves on
   // success and stay open on failure, so a rejected write that resolves like an
@@ -183,28 +293,19 @@ export function InventoryScreen({
     void loadLineMovements(level.variantId);
   }
 
-  function lockFor(level: InventoryStockLevel): LineLock {
-    return {
-      variantId: level.variantId,
-      variantCode: level.variantCode,
-      variantLabel: level.variantLabel,
-      productName: level.productName,
-    };
-  }
-
   function openLineStockIn(level: InventoryStockLevel): void {
-    setLineLock(lockFor(level));
+    setLineLock(level);
     setStockInOpen(true);
   }
 
   function openLineAdjust(level: InventoryStockLevel): void {
-    setLineLock(lockFor(level));
+    setLineLock(level);
     setAdjustOpen(true);
   }
 
   useFilterBar(
     <>
-      <div className="ob-search" style={{ width: rem(400) }}>
+      <div className="ob-search" style={{ width: rem(320) }}>
         <Input
           value={search}
           placeholder={t('inventory.search.placeholder')}
@@ -219,6 +320,16 @@ export function InventoryScreen({
       <FilterChip active={lowOnly} onClick={() => onFilterChange('low')}>
         {t('inventory.filter.lowOnly')}
       </FilterChip>
+      {brands.length > 0 && <FilterDivider />}
+      {brands.map((option) => (
+        <FilterChip
+          key={option.id}
+          active={brand === option.value}
+          onClick={() => chooseBrand(option.value)}
+        >
+          {option.label}
+        </FilterChip>
+      ))}
       <span style={{ flex: 1 }} />
       {freeToSell && (
         <span
@@ -251,7 +362,7 @@ export function InventoryScreen({
     <NumberInput
       key={`${level.variantId}-${field}-${level[field] ?? ''}`}
       defaultValue={level[field] ?? ''}
-      aria-label={t(labelKey, { product: level.productName, variant: variantName(level) })}
+      aria-label={t(labelKey, { product: lineName(level), variant: variantName(level) })}
       onClick={(event) => event.stopPropagation()}
       onBlur={(event) => {
         const next = event.target.value === '' ? null : Number(event.target.value);
@@ -266,29 +377,40 @@ export function InventoryScreen({
 
   const levelColumns: DataTableColumn<InventoryStockLevel>[] = [
     {
+      key: 'brand',
+      header: t('inventory.table.brand'),
+      priority: 3,
+      width: rem(110),
+      render: (level) => <span className="ob-ellipsis">{level.brand ?? ''}</span>,
+    },
+    {
       key: 'product',
       header: t('inventory.table.product'),
       render: (level) => (
-        <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          <span className="ob-ellipsis">{level.productName}</span>
-          {level.categoryName && (
-            <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-              {level.categoryName}
-            </span>
-          )}
-        </span>
+        <span className="ob-ellipsis">{categoryLabel(level.categoryCode, level.categoryName)}</span>
       ),
     },
     {
-      key: 'variant',
-      header: t('inventory.table.variant'),
+      key: 'subProduct',
+      header: t('inventory.table.subProduct'),
       width: rem(150),
-      render: (level) =>
-        level.variantLabel ? (
-          <ColourName name={level.variantLabel} hex={colourHex(level.variantLabel)} />
-        ) : (
-          <span style={{ color: 'var(--fg-tertiary)' }}>—</span>
-        ),
+      render: (level) => <span className="ob-ellipsis">{level.productName}</span>,
+    },
+    {
+      key: 'size',
+      header: t('inventory.table.size'),
+      priority: 2,
+      width: rem(130),
+      render: (level) => <span className="ob-ellipsis">{level.size ?? ''}</span>,
+    },
+    {
+      key: 'colour',
+      header: t('inventory.table.colour'),
+      width: rem(130),
+      render: (level) => {
+        const colour = lineColour(level);
+        return colour && <ColourText name={colour} hex={colourHex(colour)} />;
+      },
     },
     {
       // Read-only: the code is the product master's, edited on the catalogue
@@ -399,8 +521,9 @@ export function InventoryScreen({
       width: rem(170),
       render: (movement) => (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-6)' }}>
-          {movement.variantLabel && (
-            <ColourName name={movement.variantLabel} hex={colourHex(movement.variantLabel)} />
+          {/* The fixed colour, as the stock rows show it — not `MAGENTA`'s Magenta. */}
+          {movement.variantLabel && shownColour(movement.variantLabel, movement.productName) && (
+            <ColourText name={movement.variantLabel} hex={colourHex(movement.variantLabel)} />
           )}
           <span className="ob-mono ob-small">{movement.variantCode}</span>
         </span>
@@ -498,6 +621,8 @@ export function InventoryScreen({
   const openLevel = openVariantId
     ? (levels.find((level) => level.variantId === openVariantId) ?? null)
     : null;
+  const openColour = openLevel && lineColour(openLevel);
+  const openHex = openColour ? colourHex(openColour) : undefined;
 
   /**
    * One stock line, in full: the three figures that matter and that line's own
@@ -584,8 +709,26 @@ export function InventoryScreen({
         title={t('inventory.section.stockLevels')}
         action={
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
+            {/* Here rather than in the filter strip: the strip scrolls sideways
+                and clips anything taller than itself, so this list would open
+                out of sight there. Typing a code or a name narrows it. */}
+            <Select
+              value={categoryId}
+              aria-label={t('inventory.filter.product')}
+              style={{ width: rem(260) }}
+              onChange={(event) => setCategoryId(event.target.value)}
+            >
+              <option value="">{t('inventory.filter.allProducts')}</option>
+              {productOptions.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {categoryLabel(category.code, category.name)}
+                </option>
+              ))}
+            </Select>
             <span className="ob-pill">
-              {t(freeToSell ? 'inventory.piecesFree' : 'inventory.piecesOnHand', { count: totalFree })}
+              {t(freeToSell ? 'inventory.piecesFree' : 'inventory.piecesOnHand', {
+                count: totalFree,
+              })}
             </span>
             <Button
               variant="primary"
@@ -649,11 +792,9 @@ export function InventoryScreen({
         title={
           openLevel && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-8)' }}>
-              {openLevel.variantLabel && (
-                <ColourChip hex={colourHex(openLevel.variantLabel)} name={openLevel.variantLabel} />
-              )}
+              {openColour && openHex && <ColourChip hex={openHex} name={openColour} />}
               {t('inventory.drawer.title', {
-                product: openLevel.productName,
+                product: lineName(openLevel),
                 variant: variantName(openLevel),
               })}
             </span>
@@ -662,7 +803,7 @@ export function InventoryScreen({
         label={
           openLevel
             ? t('inventory.drawer.title', {
-                product: openLevel.productName,
+                product: lineName(openLevel),
                 variant: variantName(openLevel),
               })
             : ''
@@ -717,7 +858,7 @@ export function InventoryScreen({
         title={
           lineLock
             ? t('inventory.stockIn.titleForLine', {
-                product: lineLock.productName,
+                product: lineName(lineLock),
                 variant: variantName(lineLock),
               })
             : t('inventory.stockIn.title')
@@ -735,6 +876,8 @@ export function InventoryScreen({
           submitLabel={t('inventory.stockIn.submit')}
           busy={busy}
           lock={lineLock}
+          categories={categories}
+          colourHex={colourHex}
           onSubmit={async (input) => {
             const saved = await run(() => api.stockInbound(input), t('inventory.error.inbound'));
             if (!saved) return;
@@ -754,7 +897,7 @@ export function InventoryScreen({
         title={
           lineLock
             ? t('inventory.physicalCount.titleForLine', {
-                product: lineLock.productName,
+                product: lineName(lineLock),
                 variant: variantName(lineLock),
               })
             : t('inventory.physicalCount.title')
@@ -772,6 +915,8 @@ export function InventoryScreen({
           submitLabel={t('inventory.physicalCount.submit')}
           busy={busy}
           lock={lineLock}
+          categories={categories}
+          colourHex={colourHex}
           onSubmit={async (input) => {
             const saved = await run(() => api.stockAdjust(input), t('inventory.error.adjust'));
             if (!saved) return;
@@ -785,24 +930,47 @@ export function InventoryScreen({
   );
 }
 
+/** A sub product as its bar lists it: `102 (9") · White · L-27, B-15 · OPT-0001`. */
+function subProductLabel(product: Product): string {
+  const active = product.variants.filter((variant) => variant.isActive);
+  const colour =
+    active.length === 1
+      ? lineColour({
+          multiColour: product.multiColour,
+          variantLabel: active[0]?.label ?? null,
+          productName: product.name,
+        })
+      : null;
+  return [product.name, colour, product.size, active.map((variant) => variant.code).join(', ')]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 /**
  * Shared by stock-in and physical count: they differ only in what the number
  * means and which endpoint receives it, so one form with two labels beats two
  * near-identical ones.
  *
- * The product is found by typing — a name or any of its codes, through the
- * same picker the lead screen uses, so a catalogue of any size is reachable
- * (a select over "the first page of products" stopped at a hundred). Then one
- * of its variants — a one-form product has exactly one, chosen for you. When
- * opened from a line's dialog, `lock` pins both to that line: the pickers are
+ * The walk is the lead screen's (CATALOGUE_MODEL.md §7): the product bar (a
+ * name or a code narrows it), then every sub product of that product in
+ * catalogue order, then the variant — a catalogue sub product has exactly one,
+ * so it is chosen for you and its colour shown locked when it has one worth
+ * showing. Enter steps through it and saves from the last field. A product
+ * from before the catalogue with several variants still asks which.
+ *
+ * When opened from a line's dialog, `lock` pins it to that line: the bars are
  * replaced by static text so the only thing left to enter is the number (and
  * an optional note).
+ *
+ * Exported for `ui/tests/inventory-movement-form.test.tsx`, the only jsdom suite.
  */
-function MovementForm({
+export function MovementForm({
   description,
   submitLabel,
   busy,
   lock,
+  categories,
+  colourHex,
   levels = [],
   noteRequired,
   onSubmit,
@@ -810,7 +978,10 @@ function MovementForm({
   description: string;
   submitLabel: string;
   busy: boolean;
-  lock?: LineLock | null;
+  lock?: InventoryStockLevel | null;
+  /** The live products (categories), in catalogue order — the product bar's rows. */
+  categories: readonly ProductCategory[];
+  colourHex: (colour: string) => string | undefined;
   /**
    * The lines this screen loaded, for the adjustment's "does this change the
    * count" check. Only the adjust form passes it.
@@ -820,63 +991,105 @@ function MovementForm({
   noteRequired?: boolean;
   onSubmit: (input: { variantId: string; quantityBoxes: number; note?: string }) => Promise<void>;
 }) {
-  const [query, setQuery] = useState('');
-  const [matches, setMatches] = useState<Product[]>([]);
+  const [categoryId, setCategoryId] = useState('');
+  const [subProducts, setSubProducts] = useState<Product[]>([]);
   const [productId, setProductId] = useState('');
   const [variantId, setVariantId] = useState(lock?.variantId ?? '');
   const [quantity, setQuantity] = useState('');
   const [note, setNote] = useState('');
+  const formRef = useRef<HTMLDivElement>(null);
+  const subProductRef = useRef<HTMLInputElement>(null);
 
-  const term = useDebounced(query, 200);
+  // Every sub product of the chosen product, not a first page: one product
+  // (One Piece Toilet) alone holds 56, and a bar that stops short hides the
+  // tail as if it did not exist.
   useEffect(() => {
-    if (lock) return;
+    if (!categoryId) return;
     let cancelled = false;
     void api
-      .pick<Product>('product', { term, include: productId ? [productId] : [] })
+      .pick<Product>('product', { term: '', categoryId, limit: PICK_MAX_LIMIT })
       .then((page) => {
-        if (!cancelled) setMatches(page.items);
+        if (!cancelled) setSubProducts(page.items);
       })
       .catch(() => {
-        if (!cancelled) setMatches([]);
+        if (!cancelled) setSubProducts([]);
       });
     return () => {
       cancelled = true;
     };
-  }, [term, lock, productId]);
+  }, [categoryId]);
 
-  const product = matches.find((candidate) => candidate.id === productId) ?? null;
+  // The sub-product bar is disabled until a product is chosen, so the Enter
+  // that took the product could not step into it; the caret follows here.
+  useEffect(() => {
+    if (categoryId) subProductRef.current?.focus();
+  }, [categoryId]);
+
+  const product = subProducts.find((candidate) => candidate.id === productId) ?? null;
   const variants: ProductVariant[] = product
     ? product.variants.filter((variant) => variant.isActive)
     : [];
+  const colour = lock
+    ? lineColour(lock)
+    : product && variants.length === 1
+      ? lineColour({
+          multiColour: product.multiColour,
+          variantLabel: variants[0]?.label ?? null,
+          productName: product.name,
+        })
+      : null;
 
   const nameOf = (variant: ProductVariant): string =>
     variant.label ? `${variant.label} · ${variant.code}` : variant.code;
 
+  function chooseCategory(id: string): void {
+    setCategoryId(id);
+    // Never the last product's rows under the new one while its list loads.
+    setSubProducts([]);
+    setProductId('');
+    setVariantId('');
+  }
+
   function chooseProduct(id: string): void {
     setProductId(id);
-    const chosen = matches.find((candidate) => candidate.id === id);
+    const chosen = subProducts.find((candidate) => candidate.id === id);
     const active = chosen?.variants.filter((variant) => variant.isActive) ?? [];
-    // One form, one variant: nothing to choose, so it is chosen.
+    // One sub product, one variant: nothing to choose, so it is chosen.
     setVariantId(active.length === 1 ? active[0]!.id : '');
   }
 
   /*
    * Whether this particular submission needs a reason.
    *
-   * `levels` is the search/lowOnly-filtered, clamped page this screen loaded,
-   * NOT the stock table — so a line missing from it means "this screen does not
-   * know today's count", never zero. Treating absence as zero would compute no
-   * delta for a count of 0 and let a write-off through unasked, which is the
-   * exact correction the setting exists to police. Over-ask instead: the server
+   * `levels` is the filtered, clamped page this screen loaded, NOT the stock
+   * table — so a line missing from it means "this screen does not know today's
+   * count", never zero. Treating absence as zero would compute no delta for a
+   * count of 0 and let a write-off through unasked, which is the exact
+   * correction the setting exists to police. Over-ask instead: the server
    * discards the note on a no-op anyway, so over-asking is recoverable and
    * under-asking is not.
    */
   const known = levels.find((level) => level.variantId === variantId);
   const noteNeeded =
     noteRequired === true && (known === undefined || Number(quantity) !== known.quantityBoxes);
+  const ready = !busy && variantId !== '' && quantity !== '' && !(noteNeeded && note.trim() === '');
+
+  function submit(): void {
+    if (!ready) return;
+    // Nothing is reset here: a successful write closes the modal, which
+    // unmounts this form, and after a rejected one the pieces and note the
+    // operator typed are the only copy of what they meant to record.
+    void onSubmit({
+      variantId,
+      quantityBoxes: Number(quantity),
+      note: note.trim() || undefined,
+    });
+  }
+
+  useEnterToAdvance(formRef, submit);
 
   return (
-    <>
+    <div ref={formRef} style={{ display: 'contents' }}>
       <p className="ob-small" style={{ margin: 0 }}>
         {description}
       </p>
@@ -885,47 +1098,60 @@ function MovementForm({
         {(id) =>
           lock ? (
             <p id={id} className="ob-body-strong" style={{ margin: 0 }}>
-              {lock.productName}
-            </p>
-          ) : (
-            <>
-              <Input
-                id={id}
-                value={query}
-                placeholder={t('inventory.field.productSearchPlaceholder')}
-                autoComplete="off"
-                onChange={(event) => setQuery(event.target.value)}
-              />
-              <Select
-                value={productId}
-                aria-label={t('inventory.field.product')}
-                style={{ marginTop: rem(6) }}
-                onChange={(event) => chooseProduct(event.target.value)}
-              >
-                <option value="">{t('inventory.field.productPlaceholder')}</option>
-                {matches.map((candidate) => (
-                  <option key={candidate.id} value={candidate.id}>
-                    {candidate.name}
-                    {candidate.categoryName ? ` — ${candidate.categoryName}` : ''}
-                  </option>
-                ))}
-              </Select>
-            </>
-          )
-        }
-      </FormField>
-
-      <FormField label={t('inventory.field.variant')}>
-        {(id) =>
-          lock ? (
-            <p id={id} className="ob-body-strong" style={{ margin: 0 }}>
-              {variantName(lock)}
+              {categoryLabel(lock.categoryCode, lock.categoryName) || '—'}
             </p>
           ) : (
             <Select
               id={id}
+              value={categoryId}
+              autoFocus
+              onChange={(event) => chooseCategory(event.target.value)}
+            >
+              <option value="">{t('inventory.field.productPlaceholder')}</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {[categoryLabel(category.code, category.name), category.brand]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </option>
+              ))}
+            </Select>
+          )
+        }
+      </FormField>
+
+      <FormField label={t('inventory.field.subProduct')}>
+        {(id) =>
+          lock ? (
+            <p id={id} className="ob-body-strong" style={{ margin: 0 }}>
+              {lock.productName}
+              <span className="ob-mono ob-small">{` · ${lock.variantCode}`}</span>
+            </p>
+          ) : (
+            <Select
+              ref={subProductRef}
+              id={id}
+              value={productId}
+              disabled={!categoryId}
+              onChange={(event) => chooseProduct(event.target.value)}
+            >
+              <option value="">{t('inventory.field.subProductPlaceholder')}</option>
+              {subProducts.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {subProductLabel(candidate)}
+                </option>
+              ))}
+            </Select>
+          )
+        }
+      </FormField>
+
+      {!lock && variants.length > 1 && (
+        <FormField label={t('inventory.field.variant')}>
+          {(id) => (
+            <Select
+              id={id}
               value={variantId}
-              disabled={!product}
               onChange={(event) => setVariantId(event.target.value)}
             >
               <option value="">{t('inventory.field.variantPlaceholder')}</option>
@@ -935,15 +1161,26 @@ function MovementForm({
                 </option>
               ))}
             </Select>
-          )
-        }
-      </FormField>
+          )}
+        </FormField>
+      )}
+
+      {colour && (
+        <FormField label={t('inventory.field.colour')}>
+          {(id) => (
+            <p id={id} className="ob-body-strong" style={{ margin: 0 }}>
+              <ColourText name={colour} hex={colourHex(colour)} />
+            </p>
+          )}
+        </FormField>
+      )}
 
       <FormField label={t('inventory.field.pieces')}>
         {(id) => (
           <NumberInput
             id={id}
             value={quantity}
+            autoFocus={Boolean(lock)}
             onChange={(event) => setQuantity(event.target.value)}
           />
         )}
@@ -965,26 +1202,10 @@ function MovementForm({
       </FormField>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <Button
-          variant="primary"
-          busy={busy}
-          disabled={
-            busy || !variantId || quantity === '' || (noteNeeded && note.trim() === '')
-          }
-          onClick={() =>
-            // Nothing is reset here: a successful write closes the modal, which
-            // unmounts this form, and after a rejected one the pieces and note
-            // the operator typed are the only copy of what they meant to record.
-            void onSubmit({
-              variantId,
-              quantityBoxes: Number(quantity),
-              note: note.trim() || undefined,
-            })
-          }
-        >
+        <Button variant="primary" busy={busy} disabled={!ready} onClick={submit}>
           {submitLabel}
         </Button>
       </div>
-    </>
+    </div>
   );
 }

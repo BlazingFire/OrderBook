@@ -19,10 +19,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import type {
   MasterIdentity,
-  SettingControl,
   SeedDummyUsersResult,
   LoadCatalogueResult,
   SeedSampleDataResult,
+  SettingGroup,
   SettingKey,
   SettingView,
   StorageUsage,
@@ -32,6 +32,7 @@ import { DEVELOPER_RESET_CONFIRMATION, SETTINGS, SETTING_GROUPS } from '@orderbo
 
 import { api, desktopBridge } from '../api';
 import { StorageBackupActions } from '../components/StorageBackup';
+import { optionListTransport } from './FieldsScreen';
 import {
   AppearanceSettings,
   Button,
@@ -41,6 +42,8 @@ import {
   IdField,
   Input,
   KeyValueList,
+  NumberSetting,
+  OptionListEditor,
   SettingRow,
   SettingsPage,
   SettingsSection,
@@ -49,7 +52,6 @@ import {
   Switch,
   apiErrorText,
   formatBytes,
-  rem,
   formatDateTime,
   t,
   useDeveloperSession,
@@ -72,6 +74,7 @@ export const SETTINGS_TAB_IDS = [
   'appearance',
   'shortcuts',
   'company',
+  'leads',
   'connection',
   'storage',
   'developer',
@@ -82,6 +85,8 @@ export function SettingsScreen({
   onTabChange,
   onSaved,
   permissions,
+  settingsRevision = 0,
+  sourcesRevision = 0,
 }: {
   /** Which tab is showing — remembered by the shell, chosen here or from the sidebar. */
   tab: string;
@@ -102,6 +107,14 @@ export function SettingsScreen({
    * session.
    */
   permissions: string[];
+  /**
+   * Moves on every `setting` change, from any desk. The rows were read once,
+   * so a second administrator's save left them showing the old value beside a
+   * sidebar that had already moved on.
+   */
+  settingsRevision?: number;
+  /** Moves on every option-list change; the lead sources list reloads on it. */
+  sourcesRevision?: number;
 }) {
   const [identity, setIdentity] = useState<MasterIdentity | null>(null);
   const [storage, setStorage] = useState<StorageUsage | null>(null);
@@ -132,6 +145,10 @@ export function SettingsScreen({
   const canReadStorage = canManageSettings;
   const canManageStorage = permissions.includes('storage.manage');
   const canRevealPasswords = permissions.includes('users.viewPassword');
+  // The sources are an option list, so the Fields permissions decide them —
+  // the same list, and the same rule, as Fields → Values.
+  const canViewSources = permissions.includes('fields.view');
+  const canManageSources = permissions.includes('fields.manage');
 
   const loadCompanySettings = useCallback(async (canManage: boolean, canReveal: boolean) => {
     if (canManage) setSettings(await api.settings().catch(() => null));
@@ -158,7 +175,7 @@ export function SettingsScreen({
 
   useEffect(() => {
     void loadCompanySettings(canManageSettings, canRevealPasswords);
-  }, [loadCompanySettings, canManageSettings, canRevealPasswords]);
+  }, [loadCompanySettings, canManageSettings, canRevealPasswords, settingsRevision]);
 
   async function saveSetting(key: SettingKey, value: unknown): Promise<void> {
     setSettingsError(null);
@@ -175,6 +192,33 @@ export function SettingsScreen({
     } finally {
       setSavingKey(null);
     }
+  }
+
+  /** One declared group's rows as a section; null when none of them was read. */
+  function groupSection(rows: SettingView[], group: SettingGroup) {
+    const inGroup = rows.filter((setting) => SETTINGS[setting.key].group === group);
+    if (inGroup.length === 0) return null;
+
+    return (
+      <SettingsSection
+        key={group}
+        title={t(`settingGroup.${group}`)}
+        description={group === SETTING_GROUPS[0] ? t('settings.company.subtitle') : undefined}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
+          {inGroup.map((setting) => (
+            <CompanySetting
+              key={setting.key}
+              setting={setting}
+              vault={setting.key === 'security.passwordRevealEnabled' ? vault : null}
+              saving={savingKey === setting.key}
+              error={settingsError?.key === setting.key ? settingsError.message : null}
+              onSave={saveSetting}
+            />
+          ))}
+        </div>
+      </SettingsSection>
+    );
   }
 
   const tabs: SettingsTab[] = [
@@ -211,38 +255,48 @@ export function SettingsScreen({
              * A group with nothing in it is not rendered, so a heading never
              * appears empty; `shared/tests/settings.test.ts` also fails if a
              * declared group has no members at all.
+             *
+             * The `leads` group is the exception: it has a tab of its own.
              */
             render: () => (
               <>
-                {SETTING_GROUPS.map((group) => {
-                  const inGroup = settings.filter((setting) => SETTINGS[setting.key].group === group);
-                  if (inGroup.length === 0) return null;
-
-                  return (
-                    <SettingsSection
-                      key={group}
-                      title={t(`settingGroup.${group}`)}
-                      description={
-                        group === SETTING_GROUPS[0] ? t('settings.company.subtitle') : undefined
-                      }
-                    >
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
-                        {inGroup.map((setting) => (
-                          <CompanySetting
-                            key={setting.key}
-                            setting={setting}
-                            vault={setting.key === 'security.passwordRevealEnabled' ? vault : null}
-                            saving={savingKey === setting.key}
-                            error={
-                              settingsError?.key === setting.key ? settingsError.message : null
-                            }
-                            onSave={saveSetting}
-                          />
-                        ))}
-                      </div>
-                    </SettingsSection>
-                  );
-                })}
+                {SETTING_GROUPS.filter((group) => group !== 'leads').map((group) =>
+                  groupSection(settings, group),
+                )}
+              </>
+            ),
+          },
+        ]
+      : []),
+    /*
+     * Everything a lead asks for, in one place (docs/catalogue/CATALOGUE_MODEL.md
+     * §5): the sources it may come from — the same option list as Fields →
+     * Values, edited under the same permissions — and the lead rules, moved
+     * here from Company rather than shown on both. Absent when the reader may
+     * see neither half.
+     */
+    ...(canViewSources || settings
+      ? [
+          {
+            id: 'leads',
+            label: t('settings.tab.leads'),
+            render: () => (
+              <>
+                {canViewSources && (
+                  <SettingsSection
+                    title={t('settings.leads.sources.title')}
+                    description={t('settings.leads.sources.description')}
+                  >
+                    <OptionListEditor
+                      listKey="lead.sourcePlatform"
+                      canManage={canManageSources}
+                      transport={optionListTransport}
+                      revision={sourcesRevision}
+                      compact
+                    />
+                  </SettingsSection>
+                )}
+                {settings && groupSection(settings, 'leads')}
               </>
             ),
           },
@@ -510,21 +564,21 @@ function SeedResult({ result }: { result: SeedDummyUsersResult }) {
 
 /**
  * What loading the catalogue produced — or, on a second press, what it left
- * alone. The four counts are the whole story: a model whose codes were already
- * in the master is skipped rather than half-created.
+ * alone. The four counts are the whole story: a sub product already in its
+ * product is skipped, and nothing existing is changed or deleted.
  */
 function CatalogueResult({ result }: { result: LoadCatalogueResult }) {
   const lines: Array<[string, number]> = [
-    [t('developer.tool.swisware.count.categories'), result.categories],
     [t('developer.tool.swisware.count.products'), result.products],
-    [t('developer.tool.swisware.count.variants'), result.variants],
+    [t('developer.tool.swisware.count.subProducts'), result.subProducts],
+    [t('developer.tool.swisware.count.colours'), result.colours],
     [t('developer.tool.swisware.count.skipped'), result.skipped],
   ];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}>
       <p className="ob-small" style={{ margin: 0 }}>
-        {result.products > 0
+        {result.subProducts > 0
           ? t('developer.tool.swisware.loaded')
           : t('developer.tool.swisware.alreadyPresent')}
       </p>
@@ -696,71 +750,6 @@ function CompanySetting({
       )}
       {error && <FieldError>{error}</FieldError>}
     </SettingRow>
-  );
-}
-
-/**
- * A bounded number, saved on a button rather than on change.
- *
- * A `Switch` may save on change — there is one other value and it is visible.
- * A number must not: saving each keystroke writes `1` while somebody is on
- * their way to typing `12`, and for `security.sessionHours` that is a value
- * that signs people out four times as often, written and audited.
- */
-function NumberSetting({
-  control,
-  value,
-  label,
-  saving,
-  onSave,
-}: {
-  control: Extract<SettingControl, { kind: 'number' }>;
-  value: number | null;
-  label: string;
-  saving: boolean;
-  onSave: (value: number | null) => Promise<void>;
-}) {
-  const [draft, setDraft] = useState(value === null ? '' : String(value));
-
-  // Re-seeded when the stored value changes under us — a save elsewhere, or
-  // this row's own write coming back.
-  useEffect(() => {
-    setDraft(value === null ? '' : String(value));
-  }, [value]);
-
-  const trimmed = draft.trim();
-  const parsed = trimmed === '' ? null : Number(trimmed);
-  const valid =
-    parsed === null
-      ? control.nullable === true
-      : Number.isFinite(parsed) && parsed >= control.min && parsed <= control.max;
-  const changed = parsed !== value;
-
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
-      <Input
-        type="number"
-        min={control.min}
-        max={control.max}
-        step={control.step}
-        value={draft}
-        aria-label={label}
-        aria-invalid={!valid || undefined}
-        placeholder={control.nullable ? t('setting.number.none') : undefined}
-        style={{ width: rem(110) }}
-        onChange={(event) => setDraft(event.target.value)}
-      />
-      <span className="ob-small">{t(control.unitToken)}</span>
-      <Button
-        variant="secondary"
-        size="sm"
-        busy={saving}
-        disabled={!valid || !changed || saving}
-        onClick={() => void onSave(parsed)}
-      >
-        {t('common.save')}
-      </Button>
-    </div>
   );
 }
 

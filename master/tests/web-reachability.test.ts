@@ -146,7 +146,6 @@ const ALLOWED_UNCALLED: Record<'master' | 'office', Record<string, string>> = {
     // --- No Master catalogue surface. Decision recorded in HANDOFF.md:
     // --- products stay Office-owned; parties came to the Master (PartiesScreen).
     createProduct: 'products are catalogued on the Office Panel — no Master products screen',
-    categories: 'as createProduct',
     deleteProduct: 'as createProduct',
 
     // --- Single-record fetches superseded by the list the screen already holds.
@@ -181,13 +180,9 @@ const ALLOWED_UNCALLED: Record<'master' | 'office', Record<string, string>> = {
     snapshot: 'the panel reads its view from the change stream, not by polling',
     conflicts: 'ConflictsScreen reads view.conflicts from the same stream',
 
+    // The option-list value calls are reached through `optionListTransport.ts`
+    // (Products → Brands, Settings → Leads' sources); the rest stay Master-only.
     fieldsCatalogue: 'Fields is a Master screen',
-    fieldValues: 'as fieldsCatalogue',
-    fieldUsage: 'as fieldsCatalogue',
-    createFieldValue: 'as fieldsCatalogue',
-    updateFieldValue: 'as fieldsCatalogue',
-    deleteFieldValue: 'as fieldsCatalogue',
-    reorderFieldValues: 'as fieldsCatalogue',
     fieldDefinitions: 'as fieldsCatalogue',
     createFieldDefinition: 'as fieldsCatalogue',
     updateFieldDefinition: 'as fieldsCatalogue',

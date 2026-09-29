@@ -16,6 +16,10 @@ export interface ProductSnapshotSource {
   id: string;
   name: string;
   categoryName: string | null;
+  /** The category's code (`OPT`), frozen beside its name. */
+  categoryCode: string | null;
+  /** The category's brand — brand lives on the category, not the model. */
+  brand: string | null;
   alias: string | null;
   size: string | null;
   /** Whether the model is made in any colour of the company's list — see `colour` below. */
@@ -43,6 +47,8 @@ export interface LineSnapshot {
   variantId: string;
   productName: string;
   categoryName: string | null;
+  categoryCode: string | null;
+  brandName: string | null;
   alias: string | null;
   code: string | null;
   variantLabel: string | null;
@@ -67,6 +73,8 @@ export interface LineDraft {
   quantity: number;
   productName?: string | null;
   categoryName?: string | null;
+  categoryCode?: string | null;
+  brandName?: string | null;
   alias?: string | null;
   code?: string | null;
   variantLabel?: string | null;
@@ -81,14 +89,6 @@ export interface LineDraft {
   notes?: string | null;
 }
 
-/** Thrown for a colour on a product that is not made in colours; the caller translates. */
-export class LineColourError extends Error {
-  constructor() {
-    super('validation.lead.colourUnexpected');
-    this.name = 'LineColourError';
-  }
-}
-
 /**
  * Build the stored line from what the panel sent plus the catalogue.
  *
@@ -101,8 +101,14 @@ export class LineColourError extends Error {
  * from the product or the party's record — a party has its own name for a
  * basin, not its own weight for it. `packaging`, `grade` and `colour` are never
  * filled from any source: they come from the person entering the line or they
- * stay empty (§3.2, §5.2). A colour is accepted only on a `multiColour`
- * product — anywhere else it would name a colour the factory does not make.
+ * stay empty (§3.2, §5.2).
+ *
+ * A colour is kept only on a `multiColour` product and **dropped** anywhere
+ * else — anywhere else it would name a colour the factory does not make. It
+ * used to be refused instead, but a lead queued offline cannot be corrected
+ * by the person who typed it, so a refusal parked the whole lead in the
+ * outbox over a field the line never needed
+ * (`docs/catalogue/CATALOGUE_MODEL.md` §2).
  */
 export function buildLineSnapshot(
   draft: LineDraft,
@@ -112,8 +118,10 @@ export function buildLineSnapshot(
   sequence: number,
 ): LineSnapshot {
   const fromPartyVariant = partyVariant !== null;
-  const colour = typeof draft.colour === 'string' && draft.colour.trim() !== '' ? draft.colour.trim() : null;
-  if (colour !== null && !product.multiColour) throw new LineColourError();
+  const colour =
+    product.multiColour && typeof draft.colour === 'string' && draft.colour.trim() !== ''
+      ? draft.colour.trim()
+      : null;
 
   return {
     productId: product.id,
@@ -121,6 +129,10 @@ export function buildLineSnapshot(
     productName: draft.productName ?? partyVariant?.productName ?? product.name,
     // The main product the line was sold under, frozen like the name (v1.1.0).
     categoryName: draft.categoryName ?? product.categoryName,
+    // Its code and brand beside it, by the same rule: the lead PDF prints the
+    // brand and the product code as they were on the day the line was taken.
+    categoryCode: draft.categoryCode ?? product.categoryCode,
+    brandName: draft.brandName ?? product.brand,
     alias: firstDefined(draft.alias, partyVariant?.alias, product.alias),
     code: draft.code ?? variant.code,
     variantLabel: draft.variantLabel ?? variant.label,

@@ -85,8 +85,13 @@ export async function pick(
 ): Promise<PickPage<ProductCategory> | PickPage<Product> | PickPage<Party>> {
   requirePermission(actor, REQUIRED_PERMISSION[kind]);
 
+  const categoryId =
+    kind === 'product' && typeof query.categoryId === 'string' ? query.categoryId.trim() : '';
   const limit = clampLimit(query.limit, {
-    defaultLimit: PICK_DEFAULT_LIMIT,
+    // The sub-product bar lists every sub product of the chosen product
+    // (`docs/catalogue/CATALOGUE_MODEL.md` §5), so scoped to one it answers
+    // them all unless the caller asks for fewer.
+    defaultLimit: categoryId ? PICK_MAX_LIMIT : PICK_DEFAULT_LIMIT,
     maxLimit: PICK_MAX_LIMIT,
   });
 
@@ -99,7 +104,6 @@ export async function pick(
   }
 
   if (kind === 'product') {
-    const categoryId = typeof query.categoryId === 'string' ? query.categoryId.trim() : '';
     const page = await searchRepo.pickProducts(actor.tenantId, {
       term,
       limit,

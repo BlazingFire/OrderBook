@@ -51,10 +51,10 @@ export const PARTY_COLUMNS = {
 } as const satisfies Record<string, string>;
 
 /**
- * `categoryName` is deliberately absent: it is a convenience the repository
- * resolves to an id (creating the category if it is new), never a column.
- * `variants` is absent too — a child table, replaced as a set by the
- * repository, never merged field by field.
+ * `categoryName` and `categoryCode` are deliberately absent: they are
+ * conveniences the repository resolves to an id (a name creating the category
+ * if it is new), never columns. `variants` is absent too — a child table,
+ * replaced as a set by the repository, never merged field by field.
  */
 export const PRODUCT_COLUMNS = {
   name: 'name',
@@ -63,6 +63,7 @@ export const PRODUCT_COLUMNS = {
   hasVariants: 'has_variants',
   size: 'size',
   multiColour: 'multi_colour',
+  sortOrder: 'sort_order',
   customFields: 'custom_fields',
 } as const satisfies Record<string, string>;
 

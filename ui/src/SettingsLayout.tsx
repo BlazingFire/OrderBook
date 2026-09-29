@@ -16,7 +16,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { LOCALES, LOCALE_LABELS } from '@orderbook/shared';
-import type { DeveloperStatus, DeveloperUnlock, Locale } from '@orderbook/shared';
+import type { DeveloperStatus, DeveloperUnlock, Locale, SettingControl } from '@orderbook/shared';
 
 import { Button, IconButton } from './Button.js';
 import { Card } from './Card.js';
@@ -220,6 +220,74 @@ export function SettingRow({
           </span>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * A bounded number, saved on a button rather than on change.
+ *
+ * A `Switch` may save on change — there is one other value and it is visible.
+ * A number must not: saving each keystroke writes `1` while somebody is on
+ * their way to typing `12`, and for `security.sessionHours` that is a value
+ * that signs people out four times as often, written and audited.
+ *
+ * Here rather than in the Master's Settings screen because the Office's
+ * Settings → Leads edits the follow-up default through the same row.
+ */
+export function NumberSetting({
+  control,
+  value,
+  label,
+  saving,
+  onSave,
+}: {
+  control: Extract<SettingControl, { kind: 'number' }>;
+  value: number | null;
+  label: string;
+  saving: boolean;
+  onSave: (value: number | null) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState(value === null ? '' : String(value));
+
+  // Re-seeded when the stored value changes under us — a save elsewhere, or
+  // this row's own write coming back.
+  useEffect(() => {
+    setDraft(value === null ? '' : String(value));
+  }, [value]);
+
+  const trimmed = draft.trim();
+  const parsed = trimmed === '' ? null : Number(trimmed);
+  const valid =
+    parsed === null
+      ? control.nullable === true
+      : Number.isFinite(parsed) && parsed >= control.min && parsed <= control.max;
+  const changed = parsed !== value;
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
+      <Input
+        type="number"
+        min={control.min}
+        max={control.max}
+        step={control.step}
+        value={draft}
+        aria-label={label}
+        aria-invalid={!valid || undefined}
+        placeholder={control.nullable ? t('setting.number.none') : undefined}
+        style={{ width: rem(110) }}
+        onChange={(event) => setDraft(event.target.value)}
+      />
+      <span className="ob-small">{t(control.unitToken)}</span>
+      <Button
+        variant="secondary"
+        size="sm"
+        busy={saving}
+        disabled={!valid || !changed || saving}
+        onClick={() => void onSave(parsed)}
+      >
+        {t('common.save')}
+      </Button>
     </div>
   );
 }

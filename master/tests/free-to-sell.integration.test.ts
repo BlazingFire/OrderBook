@@ -30,8 +30,8 @@ const DEFAULT_FEATURES = {
   freeToSell: true,
   offlineSignInEnabled: true,
   adjustmentNoteRequired: false,
-  followUpDefaultDays: 0,
-  packagingRequiredOnConvert: true,
+  followUpDefaultDays: 3,
+  packagingRequiredOnConvert: false,
 };
 
 async function levelFor(variantId: string) {
@@ -77,6 +77,9 @@ describe.skipIf(!canRunIntegrationTests)('the free-to-sell switch (integration)'
 
     const on = await levelFor(variant.id);
     expect(on).toMatchObject({ quantityBoxes: 40, reservedBoxes: 15, availableBoxes: 25, isLow: true });
+    // The Dashboard tile counts on the same free figure as the row: low only
+    // because of the hold, so a count that read the floor would say 0 here.
+    expect(await inventory.countLowStock(actor.tenantId)).toBe(1);
 
     await settings.writeSetting(actor, 'inventory.freeToSell', false);
 

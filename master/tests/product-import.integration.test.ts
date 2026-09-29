@@ -25,6 +25,7 @@ import { db } from '../src/db/knex.js';
 import type { ActorContext } from '../src/domain/actor.js';
 import { ForbiddenError, ValidationError } from '../src/lib/errors.js';
 import { resetChangeRing, since } from '../src/realtime/change-ring.js';
+import * as productRepo from '../src/repositories/product.repository.js';
 import * as productVariantRepo from '../src/repositories/product-variant.repository.js';
 import * as catalog from '../src/services/catalog.service.js';
 import { importProducts, productImportTemplate } from '../src/services/product-import.service.js';
@@ -260,6 +261,46 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
 
     const real = await run(file);
     expect(real).toMatchObject({ dryRun: false, created: 1, failed: 1, issues: preview.issues });
+  });
+
+  it('files a row under the product its code or its (brand, name) pair names, and never invents one for a code', async () => {
+    const ids = await db().transaction((trx) =>
+      productRepo.ensureCategories(
+        admin.tenantId,
+        [
+          { name: 'One Piece Toilet', code: 'OPT', brand: 'Swisware+' },
+          { name: 'Wash Basin', code: 'WB', brand: 'Swisware+' },
+          { name: 'Wash Basin', code: 'WBO', brand: 'Other' },
+        ],
+        trx,
+      ),
+    );
+    const file = csv([
+      ['categoryCode', 'categoryName', 'categoryBrand', 'name', 'variant', 'code'],
+      ['opt', '', '', '1111', '', 'OPT-0001'],
+      ['NOPE', 'One Piece Toilet', '', '41', '', 'OPT-0002'],
+      ['', 'Wash Basin', 'other', '14x14', '', 'WBO-0001'],
+      ['', 'Wash Basin', 'Third', '16x12', '', 'X-1'],
+      ['', 'Wash Basin', 'Fourth', '16x13', '', 'X-2'],
+    ]);
+
+    // The preview already names the unknown code, rather than the commit.
+    const preview = await run(file, admin, true);
+    expect(preview).toMatchObject({ created: 4, failed: 1 });
+    expect(preview.issues).toEqual([
+      expect.objectContaining({ row: 3, kind: 'error', messageKey: 'validation.product.categoryCodeUnknown' }),
+    ]);
+
+    const real = await run(file);
+    expect(real).toMatchObject({ created: 4, failed: 1, issues: preview.issues });
+
+    const made = await byName();
+    expect(made.get('1111')?.categoryId).toBe(ids.get('opt'));
+    expect(made.has('41')).toBe(false);
+    expect(made.get('14x14')?.categoryId).toBe(ids.get('wbo'));
+    // Two brands' new "Wash Basin" in one chunk are two products, not one.
+    expect([made.get('16x12')?.brand, made.get('16x13')?.brand]).toEqual(['Third', 'Fourth']);
+    expect(made.get('16x12')?.categoryId).not.toBe(made.get('16x13')?.categoryId);
   });
 
   it('refuses a file with a required column missing, an empty file and an unknown extension', async () => {

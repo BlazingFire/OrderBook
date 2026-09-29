@@ -68,11 +68,13 @@ describe('PARENT_LINKS', () => {
     expect(PARENT_LINKS.lead).toEqual(['party']);
     expect(PARENT_LINKS.order).toEqual(['party', 'lead']);
     expect(PARENT_LINKS.user).toEqual(['role']);
+    // A sub product lives in its product (category) since catalogue v2.
+    expect(PARENT_LINKS.product).toEqual(['product_category']);
   });
 
   it('names no parent for entities with none', () => {
     expect(PARENT_LINKS.party).toBeUndefined();
-    expect(PARENT_LINKS.product).toBeUndefined();
+    expect(PARENT_LINKS.product_category).toBeUndefined();
     expect(PARENT_LINKS.role).toBeUndefined();
   });
 });

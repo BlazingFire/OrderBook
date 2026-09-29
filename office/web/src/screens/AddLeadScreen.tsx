@@ -8,33 +8,48 @@
  * follow-up share one compact card at the top because they are all *about* the
  * enquiry; the products below are the work.
  *
- * Products are found the way the catalogue is organised — **category, then
- * model, then variant**. The search box first offers categories and only
- * categories: typing "toilet" shows *ONE PIECE TOILET*, never a product. The
- * chosen category becomes a chip in front of the box and the same box then
- * searches the models inside it, by name or by any of their codes. Choosing a
- * model replaces the search field with the model itself and opens a draft card
- * underneath: packaging, grade (and, on a model made in every colour, the
- * colour) at the top, one row per variant below — code and weight read off the
- * variant, a quantity to type. Nothing joins the
- * lead until that card is added, so a half-filled product cannot ride along
- * unnoticed, and the search field comes straight back for the next one, with
- * the category still chosen.
+ * Products are found the way the catalogue is organised — **Brand → Product →
+ * Sub product** (`docs/catalogue/CATALOGUE_MODEL.md` §6; in code a product is
+ * a *category* and a sub product a *model*). The search box is first the
+ * **product bar**: a product by name or code, rows `CODE · Name · Brand`. The
+ * chosen product becomes a chip in front of the box and the same box turns into
+ * the **sub-product bar**: every sub product of that product in catalogue
+ * order, narrowed locally as somebody types. Choosing one replaces the box with
+ * it and opens a draft card underneath, which asks what the sub product's
+ * colour rule (`colourRuleOf`) leaves to ask:
+ *  · `fixed` — the colour is the variant's label, shown and not chosen; a
+ *    quantity;
+ *  · `dedicated` — nothing about colour at all; a quantity;
+ *  · `selectable` (multicolour) — colours from the company's colour list,
+ *    several if the customer wants several, each with its own quantity.
+ * Packaging is asked only while the company requires it; grade is optional and
+ * sits below the quantities, out of the Enter path.
  *
- * The unit of a lead is **one variant** (`LineItem.variantId`). A card with
- * quantities against White and Blue adds two lines, each with its own code and
- * weight; the Added-products panel shows them as two.
+ * Keys, the way the counter works:
+ *  · **Enter** on the last quantity adds the sub product and returns to the
+ *    sub-product bar, the product still chosen, for the next sub product;
+ *  · **Shift+Q** (or Complete sub product) adds a pending valid one and goes
+ *    to the product bar; with nothing pending and an empty sub-product box it
+ *    just finishes the product. Anywhere it would do nothing it is a capital Q;
+ *  · **Ctrl+Enter** opens a review of the finished lead, and Ctrl+Enter there
+ *    saves it — once, however the key repeats. Ctrl+S still saves directly.
  *
- * Three rules are enforced visibly rather than only on the server:
- *  · **Packaging is never auto-filled.** Picking a model fills every other field
- *    and pointedly leaves packaging empty — the draft cannot be added until
- *    somebody chooses one.
- *  · **A colour is offered only on a model made in every colour** (the
- *    product's `multiColour` switch), and only from the company's colour list.
- *    It is one colour per card: the same model in a second colour is the card
- *    added again. Blank means the variant's own colour.
- *  · **A party's own record renames the product for that party**, but a
- *    party's saved packaging is only ever a suggestion.
+ * The unit of a lead is **one variant in one colour** (`LineItem.variantId`,
+ * `LineItem.colour`). A multicolour sub product ordered in White and Ivory adds
+ * two lines on the same variant; the review groups them back into one row
+ * (`White ×10, Ivory ×5`).
+ *
+ * Rules enforced visibly rather than only on the server:
+ *  · **Packaging is never auto-filled.** While the company requires it the
+ *    draft cannot be added until somebody chooses one; a party's saved
+ *    packaging is only ever a suggestion.
+ *  · **A colour is chosen only on a multicolour sub product**, and only from
+ *    the company's colour list. The Master drops one sent for anything else
+ *    rather than refuse the lead (§2), so this screen never sends one.
+ *  · **The source is one of the company's listed sources.** There is no
+ *    free-text "Other": the Master refuses an unlisted source, and a queued
+ *    lead would bounce on it.
+ *  · **A party's own record renames the product for that party.**
  *
  * Weights are the variant's and may not have been entered yet. A line without
  * one shows "weight missing" rather than a zero, and the footer counts such
@@ -45,8 +60,9 @@
  */
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import type {
+  ColourRule,
   LineItemInput,
   OptionListItem,
   Party,
@@ -55,7 +71,13 @@ import type {
   ProductCategory,
   ProductVariant,
 } from '@orderbook/shared';
-import { resolveCompanyFeatures } from '@orderbook/shared';
+import {
+  PICK_MAX_LIMIT,
+  colourRuleOf,
+  lineColourText,
+  resolveCompanyFeatures,
+  shownColour,
+} from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
 import { partyFormTransport } from '../partyFormTransport';
@@ -68,6 +90,7 @@ import {
   DateField,
   Icon,
   Input,
+  Modal,
   PartyFormModal,
   Select,
   SuggestInput,
@@ -108,8 +131,13 @@ interface VariantFacts {
   availableBoxes: number | null;
 }
 
-/** One variant of the model on the draft card, with the quantity as typed. */
+/** One variant of the model on the draft card, in one colour, with the quantity as typed. */
 interface DraftRow extends VariantFacts {
+  /**
+   * The colour chosen from the colour list — only ever on a `selectable` sub
+   * product, where each colour added is its own row. Blank everywhere else.
+   */
+  colour: string;
   /** Kept as text so a half-typed number stays half-typed. */
   qty: string;
 }
@@ -119,13 +147,14 @@ interface ProductFacts {
   productId: string;
   productName: string;
   categoryName: string;
+  /** Snapshots of the product's code and brand, sent with each line (§3). */
+  categoryCode: string | null;
+  brand: string | null;
   alias: string | null;
   size: string | null;
   packaging: string;
-  /** Whether the model is made in every colour — decides whether the colour field is offered. */
-  multiColour: boolean;
-  /** The colour chosen for the card, from the colour list; blank is the variant's own. */
-  colour: string;
+  /** Decides what the card asks about colour (§2). */
+  rule: ColourRule;
   /**
    * The grade every line off this card is sold as, from the company's grade
    * list. Blank means no grade — a legal answer, and the starting one.
@@ -135,18 +164,21 @@ interface ProductFacts {
   notes: string;
 }
 
-/** The card one model is built in: the product's facts and a row per variant. */
+/** The card one model is built in: the product's facts and a row per variant (and colour). */
 interface DraftProduct extends ProductFacts {
   rows: DraftRow[];
+  /** What a colour added to a `selectable` card is ordered in — one row per variant here. */
+  variants: VariantFacts[];
   /** Where the line goes back to when the draft is a `Modify` of a saved one. */
   at: number | null;
   /** The saved line's key, kept so a modified line stays the same line. */
   editKey: string | null;
 }
 
-/** One line on the lead: one variant, one quantity. */
+/** One line on the lead: one variant, one colour, one quantity. */
 interface DraftLine extends ProductFacts, VariantFacts {
   key: string;
+  colour: string;
   quantity: number;
 }
 
@@ -184,6 +216,82 @@ function variantName(facts: { variantLabel: string | null; code: string }): stri
   return facts.variantLabel ?? facts.code;
 }
 
+/** A draft row's identity: the same variant appears once per colour on a multicolour card. */
+function rowKey(row: { variantId: string; colour: string }): string {
+  return `${row.variantId}|${row.colour}`;
+}
+
+/**
+ * Catalogue order (`sortOrder`), stable, a sub product without one after those
+ * with. Sorted here as well as by the Master so the bar reads in catalogue order
+ * whichever of the two — the Master or this panel's snapshot — answered.
+ */
+function inCatalogueOrder(rows: readonly Product[]): Product[] {
+  const last = Number.MAX_SAFE_INTEGER;
+  return rows.slice().sort((a, b) => (a.sortOrder ?? last) - (b.sortOrder ?? last));
+}
+
+/**
+ * The sub products matching what is typed in the bar: an exact name or code
+ * first, then a prefix, then anywhere in the name, alias, code or colour —
+ * catalogue order inside each, the sort being stable.
+ *
+ * Local, over every sub product fetched once per product, so a fast Enter never
+ * lands on the rows of a search that has not come back yet.
+ */
+function subProductMatches(rows: readonly Product[], term: string): Product[] {
+  if (!term) return rows.slice();
+  const ranked: Array<{ row: Product; rank: number }> = [];
+  for (const row of rows) {
+    const words = [
+      row.name,
+      row.alias ?? '',
+      ...row.variants.flatMap((variant) => [variant.code, variant.label ?? '']),
+    ].map((word) => word.toLowerCase());
+    const rank = words.includes(term)
+      ? 0
+      : words.some((word) => word.startsWith(term))
+        ? 1
+        : words.some((word) => word.includes(term))
+          ? 2
+          : -1;
+    if (rank >= 0) ranked.push({ row, rank });
+  }
+  return ranked.sort((a, b) => a.rank - b.rank).map((entry) => entry.row);
+}
+
+/**
+ * The products matching what is typed in the product bar, the Master's rule
+ * (`pickCategories`): the code from its start, the name or brand anywhere, a
+ * code typed in full first, catalogue order otherwise (the sort is stable).
+ *
+ * Local for the sub-product bar's reason: `OPT⏎` typed blind took the first
+ * row of the list from before the code, which the debounced search had not
+ * replaced yet.
+ */
+function productMatches(rows: readonly ProductCategory[], term: string): ProductCategory[] {
+  if (!term) return rows.slice();
+  const code = (row: ProductCategory): string => (row.code ?? '').toLowerCase();
+  return rows
+    .filter(
+      (row) =>
+        code(row).startsWith(term) ||
+        row.name.toLowerCase().includes(term) ||
+        (row.brand ?? '').toLowerCase().includes(term),
+    )
+    .sort((a, b) => Number(code(b) === term) - Number(code(a) === term));
+}
+
+/** A bare key, or one with a chord held — a chord is somebody's shortcut. */
+function chorded(event: {
+  ctrlKey: boolean;
+  altKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+}): boolean {
+  return event.ctrlKey || event.altKey || event.metaKey || event.shiftKey;
+}
+
 export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props) {
   const colourHex = useColourHex(view.optionLists);
   // The company's switches, each absence resolved to the setting's own
@@ -199,26 +307,39 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
   const [partyDrawerOpen, setPartyDrawerOpen] = useState(false);
 
   const [sourcePlatform, setSourcePlatform] = useState('');
-  const [otherSource, setOtherSource] = useState('');
   /*
-   * The company's default (`leads.followUpDefaultDays`, 0 = today), not blank.
+   * Today plus the company's default (`leads.followUpDefaultDays`, 3 unless
+   * the company says otherwise; 0 = today), not blank.
    *
-   * Every lead gets followed up, and the date the enquiry came in is the one
-   * somebody would have typed. A blank required-looking field on a form nobody
+   * Every lead gets followed up. A blank required-looking field on a form nobody
    * has touched reads as a fault — the same reasoning that fills the source
    * below. The quick chips and the picker both overwrite it, and clearing it is
    * one press of the chip that matches.
+   *
+   * A save starts a fresh form (the shell remounts this screen), which seeds it
+   * again; the effect below re-seeds it when the company changes the default
+   * while the form is open — over the old default only, so a date somebody
+   * picked stays theirs.
    */
-  const [followUpDate, setFollowUpDate] = useState(() => isoDate(features.followUpDefaultDays));
+  const followUpDays = features.followUpDefaultDays;
+  const [followUpDate, setFollowUpDate] = useState(() => isoDate(followUpDays));
+  const seededDays = useRef(followUpDays);
+  useEffect(() => {
+    const seeded = isoDate(seededDays.current);
+    seededDays.current = followUpDays;
+    setFollowUpDate((current) => (current === seeded ? isoDate(followUpDays) : current));
+  }, [followUpDays]);
   const [notes, setNotes] = useState('');
 
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [sel, setSel] = useState(0);
-  /** The first stage's answer. Cleared with the chip's ✕ or Backspace on an empty box. */
+  /** The product bar's answer. Cleared with the chip's ✕, Backspace on an empty box, or Shift+Q. */
   const [category, setCategory] = useState<ProductCategory | null>(null);
-  const [categoryRows, setCategoryRows] = useState<ProductCategory[]>([]);
-  const [productRows, setProductRows] = useState<Product[]>([]);
+  /** Every product the bar can offer, in catalogue order; narrowed locally as somebody types. */
+  const [allCategories, setAllCategories] = useState<ProductCategory[]>([]);
+  /** Every live sub product of the chosen product, in catalogue order. */
+  const [subRows, setSubRows] = useState<Product[]>([]);
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [draft, setDraft] = useState<DraftProduct | null>(null);
   /** Which panel rows are expanded, ticked, and what is filtering them. */
@@ -228,10 +349,21 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  /*
+   * Set before the first await, which `busy` is not: a second Ctrl+Enter (or
+   * Ctrl+S) reached `save` before the render that disables anything, and each
+   * call queued the lead. Left set after a save, because the shell then
+   * replaces this form with a fresh one.
+   */
+  const saving = useRef(false);
 
+  /** The whole screen: the scope of Ctrl+Enter, since a hidden screen stays mounted. */
+  const rootRef = useRef<HTMLDivElement>(null);
+  /** The products section: the scope of Shift+Q. */
+  const productsRef = useRef<HTMLElement>(null);
   const partyRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const otherRef = useRef<HTMLInputElement>(null);
   const sourceRef = useRef<HTMLInputElement>(null);
   /**
    * The form column, for the Enter/Escape walk.
@@ -305,9 +437,17 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
    * The enquiry came from somewhere, and on this screen it always came from the
    * first thing in the list until somebody says otherwise. A blank required
    * answer on a form nobody has touched reads as a fault rather than a question.
+   *
+   * A source the company stops listing while the form is open is let go too:
+   * the select would show the first option over a value it no longer holds,
+   * and the Master refuses an unlisted source on a new lead (§6.2).
    */
   useEffect(() => {
-    setSourcePlatform((current) => current || (sourceOptions[0]?.value ?? ''));
+    setSourcePlatform((current) =>
+      sourceOptions.some((option) => option.value === current)
+        ? current
+        : (sourceOptions[0]?.value ?? ''),
+    );
   }, [sourceOptions]);
 
   /**
@@ -352,22 +492,47 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
   // --- Party search -------------------------------------------------------
 
   const partyTerm = useDebounced(partyQuery, 200);
+  /*
+   * The text `partyRows` answers, and the text an Enter was pressed on before
+   * its answer came. Parties are searched on the Master, so the list lags the
+   * box by the debounce and the round trip: `Shah⏎` typed after a pause at
+   * `Sha` took the first of `Sha`'s parties. That Enter now waits for its own.
+   */
+  const partyAnswered = useRef('');
+  const partyEnterFor = useRef<string | null>(null);
 
   useEffect(() => {
     if (partyId) return;
+    /*
+     * Nothing is listed for an empty box (§6.1). A list that opened on focus
+     * covered the source and follow-up with somebody else's parties before
+     * anything had been typed, and Tab out of it took the first of them.
+     */
+    if (!partyTerm.trim()) {
+      // Answered too — by nothing — so a `Sha⏎` typed next waits for its own.
+      partyAnswered.current = partyTerm;
+      setPartyRows([]);
+      return;
+    }
     let cancelled = false;
 
     void (async () => {
+      let rows: Party[] = [];
       try {
         const page = await api.pick<Party>('party', { term: partyTerm });
-        if (cancelled) return;
         for (const row of page.items) seenParties.current.set(row.id, row);
-        setPartyRows(page.items.filter((party) => !readOnlyParties.has(party.id)).slice(0, 6));
+        rows = page.items.filter((party) => !readOnlyParties.has(party.id)).slice(0, 6);
       } catch {
         // The picker answers from the cached snapshot when the link is down, so
         // a failure here is a real one — and an empty list says so without a
         // banner over a field somebody is still typing in.
-        if (!cancelled) setPartyRows([]);
+      }
+      if (cancelled) return;
+      partyAnswered.current = partyTerm;
+      setPartyRows(rows);
+      if (partyEnterFor.current === partyTerm) {
+        partyEnterFor.current = null;
+        if (rows[0]) chooseParty(rows[0]);
       }
     })();
 
@@ -377,6 +542,7 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
   }, [partyTerm, partyId, readOnlyParties]);
 
   const partyPick = partyRows.length ? Math.min(partySel, partyRows.length - 1) : 0;
+  const partyListOpen = partyOpen && partyQuery.trim() !== '';
 
   function chooseParty(party: Party): void {
     seenParties.current.set(party.id, party);
@@ -391,43 +557,74 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
     window.setTimeout(() => sourceRef.current?.focus(), 0);
   }
 
-  // --- Product search: category first, then the models inside it ----------
+  // --- The product bar, then the sub-product bar -------------------------
 
-  const term = useDebounced(query, 200);
-
+  /*
+   * Every product, fetched each time the bar is back on products (41 in the
+   * catalogue), and matched as somebody types by `productMatches`.
+   */
   useEffect(() => {
-    if (draft) {
-      setCategoryRows([]);
-      setProductRows([]);
-      return;
-    }
+    if (category || draft) return;
     let cancelled = false;
 
     void (async () => {
       try {
-        if (category) {
-          const page = await api.pick<Product>('product', { term, categoryId: category.id });
-          if (cancelled) return;
-          setProductRows(page.items.slice(0, 7));
-        } else {
-          const page = await api.pick<ProductCategory>('category', { term });
-          if (cancelled) return;
-          setCategoryRows(page.items.slice(0, 7));
-        }
+        const page = await api.pick<ProductCategory>('category', {
+          term: '',
+          limit: PICK_MAX_LIMIT,
+        });
+        if (!cancelled) setAllCategories(page.items);
       } catch {
-        if (!cancelled) {
-          setCategoryRows([]);
-          setProductRows([]);
-        }
+        if (!cancelled) setAllCategories([]);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [term, category, draft]);
+  }, [category, draft]);
 
-  const rows: Array<ProductCategory | Product> = category ? productRows : categoryRows;
+  const categoryRows = useMemo(
+    () => productMatches(allCategories, query.trim().toLowerCase()).slice(0, 7),
+    [allCategories, query],
+  );
+
+  const categoryId = category?.id ?? '';
+
+  /*
+   * Every sub product of the chosen product, fetched once (§6.5). The bar used
+   * to show the first seven of a search, and One Piece Toilet alone has 56 —
+   * the tail could only be reached by guessing its name.
+   */
+  useEffect(() => {
+    setSubRows([]);
+    if (!categoryId) return;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const page = await api.pick<Product>('product', {
+          term: '',
+          categoryId,
+          limit: PICK_MAX_LIMIT,
+        });
+        if (!cancelled) setSubRows(inCatalogueOrder(page.items));
+      } catch {
+        if (!cancelled) setSubRows([]);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [categoryId]);
+
+  const subMatches = useMemo(
+    () => subProductMatches(subRows, query.trim().toLowerCase()),
+    [subRows, query],
+  );
+
+  const rows: Array<ProductCategory | Product> = category ? subMatches : categoryRows;
   const pick = rows.length ? Math.min(sel, rows.length - 1) : 0;
   const listOpen = !draft && searchOpen;
 
@@ -435,7 +632,6 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
     setCategory(next);
     setQuery('');
     setSel(0);
-    setProductRows([]);
     setSearchOpen(true);
     window.setTimeout(() => searchRef.current?.focus(), 0);
   }
@@ -444,67 +640,108 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
     setCategory(null);
     setQuery('');
     setSel(0);
-    setCategoryRows([]);
-    setProductRows([]);
     window.setTimeout(() => searchRef.current?.focus(), 0);
   }
 
   // --- Draft --------------------------------------------------------------
 
-  function rowFor(variant: ProductVariant, qty = ''): DraftRow {
+  function factsFor(variant: ProductVariant): VariantFacts {
     return {
       variantId: variant.id,
       variantLabel: variant.label,
       code: variant.code,
       weightKg: variant.weightKg,
       availableBoxes: freeFor.get(variant.id) ?? null,
-      qty,
     };
   }
 
-  function openDraft(product: Product): void {
+  function openDraft(product: Product, typed = ''): void {
     const partyRecord = partyRecordFor.get(product.id) ?? null;
+    const rule = colourRuleOf(product);
+    // A variant taken off the form stays sellable on old lines, not new ones.
+    const active = product.variants.filter((variant) => variant.isActive);
+    // A code typed exactly names one variant, so the card opens on that one
+    // alone — the way Modify opens a saved line.
+    const exact = active.find(
+      (variant) => variant.code.toLowerCase() === typed.trim().toLowerCase(),
+    );
+    const variants = (exact ? [exact] : active).map(factsFor);
 
     setDraft({
       productId: product.id,
       productName: partyRecord?.productName ?? product.name,
       categoryName: product.categoryName,
+      categoryCode: product.categoryCode,
+      brand: product.brand,
       alias: partyRecord?.alias ?? product.alias,
       size: partyRecord?.size ?? product.size,
       // Left empty on purpose (§3.2). The party's saved packaging is offered
       // below as a suggestion, never applied.
       packaging: '',
-      multiColour: product.multiColour,
-      colour: '',
+      rule,
       // Not carried over from the party's record either — there is no grade on
       // one. Blank until somebody picks.
       grade: '',
       fromPartyVariant: partyRecord !== null,
       notes: '',
-      // Every variant the model comes in, blank until somebody types. A
-      // variant taken off the form stays sellable on old lines, not new ones.
-      rows: product.variants.filter((variant) => variant.isActive).map((variant) => rowFor(variant)),
+      /*
+       * A multicolour card starts with no rows: the colours are the first
+       * thing it asks, each one adding its own row. Every other card has a row
+       * per variant, blank until somebody types. With no colour list at all
+       * there is nothing to choose from, so a multicolour card falls back to
+       * the plain rows rather than become impossible to add.
+       */
+      rows:
+        rule === 'selectable' && colourOptions.length > 0
+          ? []
+          : variants.map((variant) => ({ ...variant, colour: '', qty: '' })),
+      variants,
       at: null,
       editKey: null,
     });
     setQuery('');
     setSel(0);
     setSearchOpen(false);
-    setProductRows([]);
   }
 
   function patchDraft(patch: Partial<DraftProduct>): void {
     setDraft((current) => (current ? { ...current, ...patch } : current));
   }
 
-  function setRowQty(variantId: string, qty: string): void {
+  function setRowQty(key: string, qty: string): void {
     setDraft((current) =>
       current
         ? {
             ...current,
-            rows: current.rows.map((row) => (row.variantId === variantId ? { ...row, qty } : row)),
+            rows: current.rows.map((row) => (rowKey(row) === key ? { ...row, qty } : row)),
           }
         : current,
+    );
+  }
+
+  /** A colour added to a multicolour card: a row for it on every variant the card orders. */
+  function addColour(colour: string): void {
+    setDraft((current) =>
+      current
+        ? {
+            ...current,
+            rows: [
+              ...current.rows,
+              ...current.variants
+                .filter(
+                  (variant) =>
+                    !current.rows.some((row) => rowKey(row) === rowKey({ ...variant, colour })),
+                )
+                .map((variant) => ({ ...variant, colour, qty: '' })),
+            ],
+          }
+        : current,
+    );
+  }
+
+  function removeColour(colour: string): void {
+    setDraft((current) =>
+      current ? { ...current, rows: current.rows.filter((row) => row.colour !== colour) } : current,
     );
   }
 
@@ -515,11 +752,14 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
     return (!packagingRequired || Boolean(candidate.packaging.trim())) && filled.length > 0;
   }
 
-  /** One line per variant with a quantity — a card with two colours filled adds two. */
+  /**
+   * One line per row with a quantity — per variant, and on a multicolour card
+   * per colour: White ×10 and Ivory ×5 are two lines on the same variant.
+   */
   function saveDraft(): void {
     if (!draft || !draftIsReady(draft)) return;
 
-    const { rows: draftRows, at, editKey, ...facts } = draft;
+    const { rows: draftRows, variants: _variants, at, editKey, ...facts } = draft;
     const added: DraftLine[] = draftRows
       .filter((row) => Number(row.qty) > 0)
       .map((row, index) => {
@@ -543,24 +783,36 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
     window.setTimeout(() => searchRef.current?.focus(), 0);
   }
 
-  /** Lift one saved line back into the card, on its own — the variant is fixed. */
+  /**
+   * Lift one saved line back into the card, on its own — the variant is fixed,
+   * and so is its colour; a colour added now becomes a line of its own.
+   */
   function modifyLine(line: DraftLine, index: number): void {
     setLines((current) => current.filter((candidate) => candidate.key !== line.key));
     setOpenKey(null);
     forget(line.key);
-    const { key, quantity, variantId, variantLabel, code, weightKg, availableBoxes, ...facts } = line;
+    const {
+      key,
+      quantity,
+      colour,
+      variantId,
+      variantLabel,
+      code,
+      weightKg,
+      availableBoxes,
+      ...facts
+    } = line;
+    const variant: VariantFacts = {
+      variantId,
+      variantLabel,
+      code,
+      weightKg,
+      availableBoxes: freeFor.get(variantId) ?? availableBoxes,
+    };
     setDraft({
       ...facts,
-      rows: [
-        {
-          variantId,
-          variantLabel,
-          code,
-          weightKg,
-          availableBoxes: freeFor.get(variantId) ?? availableBoxes,
-          qty: String(quantity),
-        },
-      ],
+      rows: [{ ...variant, colour, qty: String(quantity) }],
+      variants: [variant],
       at: index,
       editKey: key,
     });
@@ -644,25 +896,75 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
     setSelected({});
   }
 
+  // --- Complete sub product (Shift+Q) --------------------------------------
+
+  /**
+   * Adds a pending valid sub product and goes to the product bar; with nothing
+   * pending and an empty sub-product box, just finishes the product (§6.7).
+   * False when it did nothing — a half-filled card, text in the box, no
+   * product chosen — so the key it came from is left to type its Q.
+   */
+  function completeSubProduct(): boolean {
+    if (draft) {
+      if (!draftIsReady(draft)) return false;
+      saveDraft();
+    } else if (!category || query.trim() !== '') {
+      return false;
+    }
+    clearCategory();
+    return true;
+  }
+
+  /*
+   * A plain document listener, not a registered command: the keyboard provider
+   * leaves a bare Shift+letter to the field the caret is in, and on this screen
+   * the caret is always in one. Scoped to the products section, so a capital Q
+   * in the notes, the party box or anywhere else is only ever a Q.
+   *
+   * Inside the section too, a box that takes words — packaging, a colour —
+   * keeps its Q, even on a card ready to add. The bar's Q counts only while it
+   * is empty (`completeSubProduct` checks), and a quantity takes no letters.
+   */
+  const completeRef = useRef(completeSubProduct);
+  completeRef.current = completeSubProduct;
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented || event.key.toLowerCase() !== 'q') return;
+      if (!event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return;
+      const target = event.target;
+      if (!(target instanceof Node) || !productsRef.current?.contains(target)) return;
+      if (
+        target instanceof HTMLInputElement &&
+        target !== searchRef.current &&
+        target.getAttribute('inputmode') !== 'numeric'
+      ) {
+        return;
+      }
+      if (completeRef.current()) event.preventDefault();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   // --- Save ---------------------------------------------------------------
 
-  const isOther = sourcePlatform === 'other';
-  const resolvedSource = isOther ? otherSource.trim() || sourcePlatform : sourcePlatform;
+  /** Why the lead cannot be saved yet, or null when it can. */
+  function refusal(): string | null {
+    if (!partyId) return t('lead.add.errors.partyRequired');
+    if (lines.length === 0) return t('lead.add.errors.noProducts');
+    if (draft) return t('lead.add.errors.draftOpen');
+    return null;
+  }
 
   async function save(): Promise<void> {
-    if (!partyId) {
-      setError(t('lead.add.errors.partyRequired'));
-      return;
-    }
-    if (lines.length === 0) {
-      setError(t('lead.add.errors.noProducts'));
-      return;
-    }
-    if (draft) {
-      setError(t('lead.add.errors.draftOpen'));
+    if (saving.current) return;
+    const problem = refusal();
+    if (problem) {
+      setError(problem);
       return;
     }
 
+    saving.current = true;
     setBusy(true);
     setError(null);
 
@@ -672,10 +974,13 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
         variantId: line.variantId,
         quantity: line.quantity,
         productName: line.productName,
+        categoryName: line.categoryName,
+        categoryCode: line.categoryCode,
+        brandName: line.brand,
         alias: line.alias,
         code: line.code,
         variantLabel: line.variantLabel,
-        // Only a multi-colour model carries one; the Master refuses it elsewhere.
+        // Only a multicolour sub product carries one; the Master drops any other.
         colour: line.colour.trim() || null,
         grade: line.grade.trim() || null,
         size: line.size,
@@ -688,7 +993,7 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
 
       const queued = await api.createLead({
         partyId,
-        sourcePlatform: resolvedSource || null,
+        sourcePlatform: sourcePlatform || null,
         followUpDate: followUpDate || null,
         partyWiseMode,
         notes: notes.trim() || null,
@@ -697,11 +1002,46 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
 
       onSaved(queued.id);
     } catch (caught) {
+      saving.current = false;
       setError(caught instanceof Error ? caught.message : t('lead.add.errors.generic'));
     } finally {
       setBusy(false);
     }
   }
+
+  /*
+   * Ctrl+Enter: the review when the lead is ready (§6.8), the save when the
+   * review is up. Auto-repeat is swallowed — a held chord would otherwise open
+   * the review and save it before anybody had read it — and `saving` stops two
+   * real presses that land before the next render.
+   *
+   * Scoped to this screen, which stays mounted while hidden. Another dialog on
+   * it (the new-party form) keeps its own Ctrl+Enter: false leaves the key alone.
+   */
+  const ctrlEnterRef = useRef<(target: Element, repeat: boolean) => boolean>(() => false);
+  ctrlEnterRef.current = (target, repeat) => {
+    if (!reviewOpen && target.closest('[role="dialog"]')) return false;
+    if (repeat) return true;
+    if (reviewOpen) {
+      void save();
+      return true;
+    }
+    const problem = refusal();
+    setError(problem);
+    if (!problem) setReviewOpen(true);
+    return true;
+  };
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented || event.key !== 'Enter' || !event.ctrlKey) return;
+      if (event.altKey || event.metaKey || event.shiftKey) return;
+      const target = event.target;
+      if (!(target instanceof Element) || !rootRef.current?.contains(target)) return;
+      if (ctrlEnterRef.current(target, event.repeat)) event.preventDefault();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   const totalQty = lines.reduce((sum, line) => sum + line.quantity, 0);
   /*
@@ -713,7 +1053,7 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
   const unweighed = lines.filter((line) => line.weightKg === null).length;
 
   const ready = Boolean(partyId) && lines.length > 0 && !draft;
-  const doneSteps = (partyId ? 1 : 0) + (resolvedSource ? 1 : 0) + (lines.length > 0 ? 1 : 0);
+  const doneSteps = (partyId ? 1 : 0) + (sourcePlatform ? 1 : 0) + (lines.length > 0 ? 1 : 0);
 
   const statusLine = !partyId
     ? t('lead.add.status.party')
@@ -728,7 +1068,8 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
   /*
    * Enter forward, Escape back — one field at a time, down the whole column:
    * party, source, follow-up, the product search, the draft card's packaging,
-   * colour and quantities, then the notes and any custom fields.
+   * colours and quantities (the last of which adds the card and claims its own
+   * Enter), then the notes and any custom fields.
    *
    * A select opens its list on Enter instead of skipping past it, and the
    * native popup then owns the arrows and its own Enter; the Enter after it
@@ -786,7 +1127,7 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
     : t('lead.add.products.categoryPlaceholder');
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-20)' }}>
+    <div ref={rootRef} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-20)' }}>
       {/* --- Header ------------------------------------------------------ */}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
@@ -902,11 +1243,12 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
                       placeholder={t('lead.add.party.placeholder')}
                       aria-label={t('lead.add.party.search')}
                       autoComplete="off"
-                      onFocus={() => setPartyOpen(true)}
                       onChange={(event) => {
                         setPartyQuery(event.target.value);
                         setPartyOpen(true);
                         setPartySel(0);
+                        // An Enter waiting on the old text is not one for the new.
+                        partyEnterFor.current = null;
                       }}
                       onKeyDown={(event) => {
                         if (event.key === 'Escape') {
@@ -922,16 +1264,26 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
                           event.preventDefault();
                           setPartySel(Math.max(0, partyPick - 1));
                         }
+                        // Only over a list that is showing: the rows of the last
+                        // term linger for the debounce after the box is cleared.
                         if (
                           (event.key === 'Enter' || event.key === 'Tab') &&
-                          partyRows[partyPick]
+                          !chorded(event) &&
+                          partyListOpen
                         ) {
-                          event.preventDefault();
-                          chooseParty(partyRows[partyPick]);
+                          // The rows on screen answer an older text: this key
+                          // takes the first of its own answer when it comes.
+                          if (partyAnswered.current !== partyQuery) {
+                            event.preventDefault();
+                            partyEnterFor.current = partyQuery;
+                          } else if (partyRows[partyPick]) {
+                            event.preventDefault();
+                            chooseParty(partyRows[partyPick]);
+                          }
                         }
                       }}
                     />
-                    {partyOpen && (
+                    {partyListOpen && (
                       <div role="listbox" className="ob-suggest">
                         {partyRows.map((party, index) => (
                           <button
@@ -994,18 +1346,19 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
                    * company-defined and a shop with eight sources wrapped the
                    * chips onto three lines above a field nobody had filled in
                    * yet.
+                   *
+                   * The listed sources and nothing else (§6.2). The free-text
+                   * box behind "Other" sent whatever was typed as the source,
+                   * which the Master refuses as unlisted — a queued lead
+                   * bounced on it. A source the shop needs is added to the
+                   * list, in Settings → Fields.
                    */}
                   <Select
                     ref={sourceRef}
                     value={sourcePlatform}
                     aria-label={t('lead.add.step.source')}
                     style={{ width: '100%', maxWidth: rem(280) }}
-                    onChange={(event) => {
-                      setSourcePlatform(event.target.value);
-                      if (event.target.value === 'other') {
-                        window.setTimeout(() => otherRef.current?.focus(), 0);
-                      }
-                    }}
+                    onChange={(event) => setSourcePlatform(event.target.value)}
                   >
                     {sourceOptions.map((option) => (
                       <option key={option.id} value={option.value}>
@@ -1013,16 +1366,6 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
                       </option>
                     ))}
                   </Select>
-                  {isOther && (
-                    <Input
-                      ref={otherRef}
-                      value={otherSource}
-                      placeholder={t('lead.add.source.otherPlaceholder')}
-                      aria-label={t('lead.add.source.otherLabel')}
-                      style={{ width: '100%', maxWidth: rem(280) }}
-                      onChange={(event) => setOtherSource(event.target.value)}
-                    />
-                  )}
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: rem(5), minWidth: 0 }}>
@@ -1060,7 +1403,7 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
 
           {/* --- Products ----------------------------------------------------- */}
 
-          <section style={{ display: 'flex', flexDirection: 'column' }}>
+          <section ref={productsRef} style={{ display: 'flex', flexDirection: 'column' }}>
             <div
               style={{
                 display: 'flex',
@@ -1110,15 +1453,17 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
                     className="ob-mono ob-body-strong"
                     style={{ fontSize: rem(14), color: 'var(--accent)' }}
                   >
-                    {draft.rows.length === 1
-                      ? draft.rows[0]!.code
-                      : t('lead.add.products.variantCount', { count: draft.rows.length })}
+                    {draft.variants.length === 1
+                      ? draft.variants[0]!.code
+                      : t('lead.add.products.variantCount', { count: draft.variants.length })}
                   </span>
                   <span className="ob-body-strong">{draft.productName}</span>
                   <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                    {draft.categoryName}
+                    {[draft.categoryCode, draft.categoryName, draft.size]
+                      .filter(Boolean)
+                      .join(' · ')}
                   </span>
-                  {draft.multiColour && (
+                  {draft.rule === 'selectable' && (
                     <StatusPill tone="accent">{t('product.multiColour.pill')}</StatusPill>
                   )}
                   <span style={{ flex: 1, minWidth: 0 }} />
@@ -1143,7 +1488,9 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
                 <div className="ob-lead-search">
                   {category && (
                     <span className="ob-chip" aria-pressed="true" style={{ cursor: 'default' }}>
-                      <span className="ob-ellipsis">{category.name}</span>
+                      <span className="ob-ellipsis">
+                        {[category.code, category.name].filter(Boolean).join(' · ')}
+                      </span>
                       <button
                         type="button"
                         className="ob-chip__clear"
@@ -1191,12 +1538,29 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
                         event.preventDefault();
                         setSel(Math.max(0, pick - 1));
                       }
-                      if ((event.key === 'Enter' || event.key === 'Tab') && listOpen && rows[pick]) {
+                      /*
+                       * A bare Enter takes the highlighted row; Tab only once
+                       * something was typed. The sub-product bar reopens on
+                       * its whole list after every line, and a Tab out of it
+                       * took the first sub product as one nobody chose. A
+                       * chord is never a pick: Ctrl+Enter here is the review.
+                       */
+                      const takes =
+                        !chorded(event) &&
+                        (event.key === 'Enter' || (event.key === 'Tab' && query.trim() !== ''));
+                      if (takes && listOpen && rows[pick]) {
                         // Claimed, so the Enter walk does not step past a
                         // choice that has only just been made.
                         event.preventDefault();
-                        if (category) openDraft(rows[pick] as Product);
+                        if (category) openDraft(rows[pick] as Product, query);
                         else chooseCategory(rows[pick] as ProductCategory);
+                      } else if (takes && listOpen && event.key === 'Enter') {
+                        // Nothing to take — a typo, or `opt⏎41⏎` typed before
+                        // the product's sub products arrived. The walk would
+                        // put the caret in the notes and the next code typed
+                        // there; it stays in the bar. Escape closes the list
+                        // for somebody who does mean to walk on.
+                        event.preventDefault();
                       }
                     }}
                   />
@@ -1215,6 +1579,8 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
                     <button
                       key={row.id}
                       type="button"
+                      // Out of the Tab order, as in the sub-product list below.
+                      tabIndex={-1}
                       className="ob-suggest-row"
                       style={{
                         gridTemplateColumns: 'minmax(0, 1fr)',
@@ -1228,11 +1594,28 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
                         chooseCategory(row);
                       }}
                     >
-                      <span
-                        className="ob-body-strong ob-ellipsis"
-                        style={{ color: index === pick ? 'var(--accent)' : undefined }}
-                      >
-                        {row.name}
+                      {/* `CODE · Name · Brand` (§6.4): the code is what the
+                          counter types, the brand what tells two ranges'
+                          same-named products apart. */}
+                      <span className="ob-ellipsis">
+                        {row.code && (
+                          <span className="ob-mono ob-body-strong">
+                            {row.code}
+                            {' · '}
+                          </span>
+                        )}
+                        <span
+                          className="ob-body-strong"
+                          style={{ color: index === pick ? 'var(--accent)' : undefined }}
+                        >
+                          {row.name}
+                        </span>
+                        {row.brand && (
+                          <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
+                            {' · '}
+                            {row.brand}
+                          </span>
+                        )}
                       </span>
                     </button>
                   ))}
@@ -1255,14 +1638,27 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
                     <span>{t('lead.add.products.col.variant')}</span>
                     <span style={{ textAlign: 'right' }}>{t('lead.add.products.col.weight')}</span>
                   </div>
-                  {productRows.map((row, index) => {
+                  {subMatches.map((row, index) => {
                     const active = row.variants.filter((variant) => variant.isActive);
                     const first = active[0] ?? row.variants[0];
                     const weights = active.map((variant) => variant.weightKg);
+                    const rule = colourRuleOf(row);
+                    // A colour-named sub product (a fixed colour, or MAGENTA
+                    // sold in Magenta) carries its swatch beside the name.
+                    const swatch =
+                      rule === 'fixed' && first?.label ? colourHex(first.label) : undefined;
                     return (
                       <button
                         key={row.id}
                         type="button"
+                        /*
+                         * Out of the Tab order: the rows are for the pointer,
+                         * the box's arrows and Enter are the keyboard's. A Tab
+                         * from an empty bar landed on the first row, the box's
+                         * blur then closed the list under it, and the caret
+                         * was left on nothing at all.
+                         */
+                        tabIndex={-1}
                         className="ob-suggest-row"
                         style={{
                           gridTemplateColumns: SUGGEST_GRID,
@@ -1271,7 +1667,7 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
                         onMouseEnter={() => setSel(index)}
                         onMouseDown={(event) => {
                           event.preventDefault();
-                          openDraft(row);
+                          openDraft(row, query);
                         }}
                       >
                         <span
@@ -1286,17 +1682,28 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
                             : (first?.code ?? '—')}
                         </span>
                         <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                          <span className="ob-ellipsis">{row.name}</span>
-                          <span className="ob-mono ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                            {[row.size, row.multiColour ? t('product.multiColour.pill') : null]
-                              .filter(Boolean)
-                              .join(' · ')}
+                          <span
+                            className="ob-ellipsis"
+                            style={{ display: 'flex', alignItems: 'center', gap: rem(6) }}
+                          >
+                            {swatch && first?.label && (
+                              <ColourChip name={first.label} hex={swatch} />
+                            )}
+                            {row.name}
+                          </span>
+                          <span
+                            className="ob-mono ob-micro"
+                            style={{ color: 'var(--fg-tertiary)' }}
+                          >
+                            {row.size ?? ''}
                           </span>
                         </span>
                         <span className="ob-small ob-ellipsis" style={{ minWidth: 0 }}>
                           {active.length > 1
                             ? active.map((variant) => variant.label ?? variant.code).join(', ')
-                            : (first?.label ?? '—')}
+                            : rule === 'selectable'
+                              ? t('product.multiColour.pill')
+                              : (shownColour(first?.label, row.name) ?? '')}
                         </span>
                         <span
                           className="ob-small"
@@ -1311,7 +1718,7 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
                       </button>
                     );
                   })}
-                  {productRows.length === 0 && (
+                  {subMatches.length === 0 && (
                     <p className="ob-small" style={{ margin: 0, padding: 'var(--s-8)' }}>
                       {t('lead.add.products.noProduct')}
                     </p>
@@ -1344,7 +1751,10 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
                 colourHex={colourHex}
                 onPatch={patchDraft}
                 onQty={setRowQty}
+                onAddColour={addColour}
+                onRemoveColour={removeColour}
                 onSave={saveDraft}
+                onComplete={completeSubProduct}
               />
             )}
           </section>
@@ -1391,7 +1801,7 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
               size="lg"
               busy={busy}
               disabled={!ready}
-              title="Ctrl+S"
+              title="Ctrl+S · Ctrl+Enter"
               onClick={() => void save()}
             >
               {busy ? t('lead.add.saving') : t('lead.add.save')}
@@ -1412,7 +1822,9 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
               >
                 {unweighed > 0
                   ? t(
-                      unweighed === 1 ? 'lead.add.summary.noWeightOne' : 'lead.add.summary.noWeight',
+                      unweighed === 1
+                        ? 'lead.add.summary.noWeightOne'
+                        : 'lead.add.summary.noWeight',
                       { count: unweighed },
                     )
                   : statusLine}
@@ -1520,6 +1932,7 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
                 line={line}
                 open={openKey === line.key}
                 checked={Boolean(selected[line.key])}
+                packagingRequired={packagingRequired}
                 colourHex={colourHex}
                 onToggle={() => setOpenKey((current) => (current === line.key ? null : line.key))}
                 onCheck={() => toggleSelect(line.key)}
@@ -1537,6 +1950,22 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
         </aside>
       </div>
 
+      <ReviewModal
+        open={reviewOpen}
+        partyName={selectedParty?.name ?? ''}
+        source={
+          sourceOptions.find((option) => option.value === sourcePlatform)?.label ?? sourcePlatform
+        }
+        followUpDate={followUpDate}
+        notes={notes}
+        lines={lines}
+        summary={summary}
+        busy={busy}
+        error={error}
+        onClose={() => setReviewOpen(false)}
+        onConfirm={() => void save()}
+      />
+
       <PartyFormModal
         transport={partyFormTransport}
         open={partyDrawerOpen}
@@ -1545,7 +1974,8 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
           seenParties.current.set(party.id, party as unknown as Party);
           setPartyId(party.id);
           setPartyDrawerOpen(false);
-          window.setTimeout(() => searchRef.current?.focus(), 0);
+          // On to the source, as `chooseParty` does — not past it to the products.
+          window.setTimeout(() => sourceRef.current?.focus(), 0);
         }}
         onError={setError}
       />
@@ -1589,16 +2019,20 @@ function Chip({
 }
 
 /**
- * A variant's name with its colour dot, when the palette knows the colour.
+ * A row's colour with its dot, when the palette knows the colour: the fixed
+ * colour (the variant's label), or the one chosen on a multicolour row.
  *
- * A pattern variant ("Vitrosa 41") has no swatch, and a no-variant product
- * has no label at all — both simply show what they have.
+ * The words are left off when they only repeat the sub product's name —
+ * MAGENTA in Magenta (§2); the dot stays. A dedicated sub product has no
+ * colour at all and shows the table's em-dash.
  */
 function VariantName({
-  facts,
+  colour,
+  productName,
   hex,
 }: {
-  facts: { variantLabel: string | null; code: string };
+  colour: string | null;
+  productName: string;
   hex: string | undefined;
 }) {
   return (
@@ -1606,7 +2040,7 @@ function VariantName({
       className="ob-small"
       style={{ display: 'inline-flex', alignItems: 'center', gap: rem(7), minWidth: 0 }}
     >
-      {facts.variantLabel && (
+      {colour && (
         <span
           aria-hidden="true"
           style={{
@@ -1619,14 +2053,15 @@ function VariantName({
           }}
         />
       )}
-      <span className="ob-ellipsis">{facts.variantLabel ?? '—'}</span>
+      <span className="ob-ellipsis">{colour ? (shownColour(colour, productName) ?? '') : '—'}</span>
     </span>
   );
 }
 
 /** The weight cell: a figure, or the pill that says there is none to show. */
 function WeightCell({ kg }: { kg: number | null }) {
-  if (kg === null) return <StatusPill tone="offline">{t('product.weight.missingShort')}</StatusPill>;
+  if (kg === null)
+    return <StatusPill tone="offline">{t('product.weight.missingShort')}</StatusPill>;
   return (
     <span className="ob-small" style={{ fontVariantNumeric: 'tabular-nums' }}>
       {formatKg(kg)}
@@ -1660,6 +2095,7 @@ function LeadLine({
   line,
   open,
   checked,
+  packagingRequired,
   colourHex,
   onToggle,
   onCheck,
@@ -1669,6 +2105,7 @@ function LeadLine({
   line: DraftLine;
   open: boolean;
   checked: boolean;
+  packagingRequired: boolean;
   colourHex: (name: string) => string | undefined;
   onToggle: () => void;
   onCheck: () => void;
@@ -1685,9 +2122,10 @@ function LeadLine({
    * variant's own when nothing was chosen. A product that comes in one
    * unlabelled form has neither, and then there is simply no swatch — the
    * em-dash that used to stand in for it said nothing the row did not already
-   * say by leaving the space empty.
+   * say by leaving the space empty. Nor when the variant's colour only
+   * repeats the name (`MAGENTA` in Magenta), as the head above leaves it out.
    */
-  const swatch = line.colour.trim() || line.variantLabel;
+  const swatch = line.colour.trim() || shownColour(line.variantLabel, line.productName);
 
   /*
    * Everything the collapsed head has no room for, in the order somebody reads
@@ -1702,9 +2140,13 @@ function LeadLine({
         {t('lead.add.line.grade')} {grade}
       </span>
     ) : null,
-    <span key="packaging" style={packaging ? undefined : { color: 'var(--state-offline)' }}>
-      {packaging || t('lead.add.line.noPackaging')}
-    </span>,
+    // "no packaging" is a warning only while the company requires packaging;
+    // otherwise a line without it is simply how the shop sells.
+    packaging || packagingRequired ? (
+      <span key="packaging" style={packaging ? undefined : { color: 'var(--state-offline)' }}>
+        {packaging || t('lead.add.line.noPackaging')}
+      </span>
+    ) : null,
     // The long wording, not the table's `missingShort`. In the draft card's
     // variants table a bare "missing" sits under a Weight column header; in a
     // row of middot-separated words it would be missing *what*.
@@ -1742,7 +2184,7 @@ function LeadLine({
           </span>
           <span className="ob-body-strong ob-ellipsis" style={{ flex: 1, minWidth: 0 }}>
             {line.productName}
-            {line.variantLabel && (
+            {shownColour(line.variantLabel, line.productName) && (
               <span className="ob-small" style={{ fontWeight: 450, color: 'var(--fg-secondary)' }}>
                 {' · '}
                 {line.variantLabel}
@@ -1847,15 +2289,20 @@ function LeadLine({
 }
 
 /**
- * The card one model is built in before it joins the lead.
+ * The card one sub product is built in before it joins the lead.
  *
- * Nothing here is on the voucher yet, which is the point: packaging, the
- * colour where the model offers one, and at least one quantity are all decided
- * in one place, and Add is refused until they are. The hint along the bottom
- * says what is missing rather than making somebody guess at a disabled button.
+ * Nothing here is on the voucher yet, which is the point: what the sub
+ * product's colour rule leaves to ask, packaging while the company requires
+ * it, and at least one quantity are all decided in one place, and Add is
+ * refused until they are. The hint along the bottom says what is missing
+ * rather than making somebody guess at a disabled button.
  *
- * One row per variant, the code and weight already filled from the master —
- * the only thing to type is how many. A row left blank simply adds nothing.
+ * One row per variant — per variant *and colour* on a multicolour card — the
+ * code and weight already filled from the master; the only thing to type is
+ * how many. A row left blank simply adds nothing.
+ *
+ * Grade sits below the quantities on purpose: it is optional, and the Enter
+ * path ends at the last quantity, which adds the card (§6.6–6.7).
  */
 function DraftCard({
   draft,
@@ -1868,7 +2315,10 @@ function DraftCard({
   colourHex,
   onPatch,
   onQty,
+  onAddColour,
+  onRemoveColour,
   onSave,
+  onComplete,
 }: {
   draft: DraftProduct;
   ready: boolean;
@@ -1880,43 +2330,77 @@ function DraftCard({
   suggestedPackaging: string | null;
   colourHex: (name: string) => string | undefined;
   onPatch: (patch: Partial<DraftProduct>) => void;
-  onQty: (variantId: string, qty: string) => void;
+  onQty: (key: string, qty: string) => void;
+  onAddColour: (colour: string) => void;
+  onRemoveColour: (colour: string) => void;
   onSave: () => void;
+  /** Shift+Q's button: add the card and go to the product bar. */
+  onComplete: () => boolean;
 }) {
+  const quantitiesRef = useRef<HTMLDivElement>(null);
   const filled = draft.rows.filter((row) => Number(row.qty) > 0);
   const pieces = filled.reduce((sum, row) => sum + Number(row.qty), 0);
-  const previewKg = filled.reduce((sum, row) => sum + (lineWeight({ weightKg: row.weightKg, quantity: Number(row.qty) }) ?? 0), 0);
+  const previewKg = filled.reduce(
+    (sum, row) => sum + (lineWeight({ weightKg: row.weightKg, quantity: Number(row.qty) }) ?? 0),
+    0,
+  );
+  /** A multicolour card with a colour list to choose from (else it fell back to plain rows). */
+  const choosing = draft.rule === 'selectable' && colourOptions.length > 0;
 
-  const hint = packagingRequired && !draft.packaging.trim()
-    ? t('lead.add.draft.hintPackaging')
-    : filled.length === 0
-      ? t('lead.add.draft.hintQuantity')
-      : t('lead.add.draft.hintPieces', { count: pieces });
+  const hint =
+    packagingRequired && !draft.packaging.trim()
+      ? t('lead.add.draft.hintPackaging')
+      : choosing && draft.rows.length === 0
+        ? t('lead.add.draft.hintColour')
+        : filled.length === 0
+          ? t('lead.add.draft.hintQuantity')
+          : t('lead.add.draft.hintPieces', { count: pieces });
 
   function stepQty(row: DraftRow, delta: number): void {
     const current = Number(row.qty) || 0;
-    onQty(row.variantId, String(Math.max(0, current + delta)));
+    onQty(rowKey(row), String(Math.max(0, current + delta)));
   }
 
-  /*
-   * The colour a modified line already carries has to stay pickable even when
-   * an administrator has since taken it off the list — a select that cannot
-   * show its own value silently rewrites the line the moment it renders.
-   */
-  const colourValues = [
-    ...colourOptions.map((option) => ({ value: option.value, label: option.label })),
-    ...(draft.colour && !colourOptions.some((option) => option.value === draft.colour)
-      ? [{ value: draft.colour, label: draft.colour }]
-      : []),
-  ];
+  function quantityKey(event: ReactKeyboardEvent<HTMLInputElement>, row: DraftRow): void {
+    const by = event.shiftKey ? 10 : 1;
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      stepQty(row, by);
+      return;
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      stepQty(row, -by);
+      return;
+    }
+    if (event.key !== 'Enter' || chorded(event)) return;
+    /*
+     * Claimed, not left to the walk: Enter goes down the quantities, and on the
+     * last one the card goes on the lead and the caret back to the sub-product
+     * bar (§6.7). It used to walk on to the Add button — a second Enter for
+     * every sub product, and over a disabled button it ran on into the notes.
+     */
+    event.preventDefault();
+    const inputs = Array.from(quantitiesRef.current?.querySelectorAll('input') ?? []);
+    const next = inputs[inputs.indexOf(event.currentTarget) + 1];
+    if (next) next.focus();
+    else if (ready) onSave();
+  }
 
-  /** Same guard as the colour above: a modified line's grade stays pickable. */
+  /** Same guard as a modified line's colour: a grade retired since stays pickable. */
   const gradeValues = [
     ...gradeOptions.map((option) => ({ value: option.value, label: option.label })),
     ...(draft.grade && !gradeOptions.some((option) => option.value === draft.grade)
       ? [{ value: draft.grade, label: draft.grade }]
       : []),
   ];
+
+  /*
+   * Where the caret lands when the card replaces the search box: the first
+   * thing the card asks. Without it the caret lands on the body and the Enter
+   * walk has nowhere to start from.
+   */
+  const focusQuantity = !packagingRequired && !choosing;
 
   return (
     <Card padded={false} style={{ marginTop: 'var(--s-8)' }}>
@@ -1939,225 +2423,227 @@ function DraftCard({
 
       <div style={{ padding: `${rem(12)} ${rem(14)} ${rem(14)}` }}>
         {/*
-          * Packaging, grade, and — on a model made in every colour — the
-          * colour. Answers about the card as a whole, decided once and copied
-          * onto every line it adds.
-          *
-          * `auto-fit` rather than a fixed two- or three-column track, because
-          * this card sits in a column that shares the screen with the
-          * Added-products panel: three tracks with real minimums overflowed it
-          * once the form column got down to its own flex basis. The `min(100%,
-          * …)` floor is what makes the wrap safe — a bare minimum wider than
-          * the container is an overflow, not a wrap.
-          */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${rem(170)}), 1fr))`,
-            gap: 'var(--s-12)',
-            marginBottom: 'var(--s-12)',
-          }}
-        >
-          <label className="ob-small" style={{ display: 'block', color: 'var(--fg-secondary)' }}>
-            {t('lead.add.draft.packaging')}
-            {/* Marked required only when the company requires it — the same
-                switch the hint and the invalid state below already follow, so
-                a shop that packs to order is not told otherwise. */}
+         * Packaging (only while the company requires it) and the colours of a
+         * multicolour sub product: answers asked before the quantities.
+         *
+         * `auto-fit` rather than a fixed track, because this card sits in a
+         * column that shares the screen with the Added-products panel. The
+         * `min(100%, …)` floor is what makes the wrap safe — a bare minimum
+         * wider than the container is an overflow, not a wrap.
+         */}
+        {(packagingRequired || choosing) && (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${rem(170)}), 1fr))`,
+              gap: 'var(--s-12)',
+              marginBottom: 'var(--s-12)',
+            }}
+          >
             {packagingRequired && (
-              <>
-                {' '}
+              <label
+                className="ob-small"
+                style={{ display: 'block', color: 'var(--fg-secondary)' }}
+              >
+                {t('lead.add.draft.packaging')}{' '}
                 <span style={{ color: 'var(--state-offline)' }}>{t('lead.add.step.required')}</span>
-              </>
-            )}
-            {/* Typed or picked, one control — `line.packaging` ships unseeded,
-                so a shop that has never filled it in must still be able to
-                type, and one that has should not have to.
-
-                `autoFocus` because the card has just replaced the search box
-                somebody was typing in: without it the caret lands on the body
-                and the Enter walk has nowhere to start from. Packaging is the
-                right place to start anyway — it is the one field a picked model
-                deliberately leaves empty. */}
-            <SuggestInput
-              autoFocus
-              value={draft.packaging}
-              invalid={packagingRequired && !draft.packaging.trim()}
-              placeholder={t('lead.add.products.packagingPlaceholder')}
-              optionsLabel={t('lead.add.draft.showOptions', {
-                field: t('lead.add.draft.packaging'),
-              })}
-              options={packagingOptions.map((option) => ({
-                value: option.value,
-                label: option.label,
-              }))}
-              onChange={(next) => onPatch({ packaging: next })}
-            />
-            {suggestedPackaging && !draft.packaging && (
-              <Button
-                variant="ghost"
-                size="sm"
-                style={{ marginTop: rem(4) }}
-                onClick={() => onPatch({ packaging: suggestedPackaging })}
-              >
-                {t('lead.add.products.useSuggested', { value: suggestedPackaging })}
-              </Button>
-            )}
-          </label>
-
-          <label className="ob-small" style={{ display: 'block', color: 'var(--fg-secondary)' }}>
-            {t('lead.add.draft.grade')}
-            {/* A pick, not a free field (owner's instruction, 2026-09-22): a
-                grade is one of a short ladder the company sells by, and the
-                ladder is decided in Settings → Fields, not retyped per lead.
-                Blank is the first option and the default — plenty of lines
-                carry no grade at all. */}
-            <Select
-              value={draft.grade}
-              aria-label={t('lead.add.draft.grade')}
-              onChange={(event) => onPatch({ grade: event.target.value })}
-            >
-              <option value="">{t('lead.add.draft.gradeNone')}</option>
-              {gradeValues.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
-            <span
-              className="ob-micro"
-              style={{ display: 'block', marginTop: rem(4), color: 'var(--fg-tertiary)' }}
-            >
-              {gradeValues.length === 0
-                ? t('lead.add.draft.gradeEmpty')
-                : draft.grade
-                  ? t('lead.add.draft.gradeHint')
-                  : t('lead.add.draft.gradeNoneHint')}
-            </span>
-          </label>
-
-          {draft.multiColour && (
-            <label className="ob-small" style={{ display: 'block', color: 'var(--fg-secondary)' }}>
-              {t('lead.add.draft.colour')}
-              {/* A native select over the company's colour list, not a free
-                  field: the owner's rule is that a colour on a line is one
-                  the factory makes, and the list (Settings → Fields) is where
-                  that is decided. Blank is the variant's own colour. */}
-              <Select
-                value={draft.colour}
-                aria-label={t('lead.add.draft.colour')}
-                onChange={(event) => onPatch({ colour: event.target.value })}
-              >
-                <option value="">{t('lead.add.draft.colourAsVariant')}</option>
-                {colourValues.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-              <span
-                className="ob-micro"
-                style={{ display: 'flex', alignItems: 'center', gap: rem(6), marginTop: rem(4), color: 'var(--fg-tertiary)' }}
-              >
-                {draft.colour ? (
-                  <>
-                    <ColourChip name={draft.colour} hex={colourHex(draft.colour)} />
-                    {t('lead.add.draft.colourHint')}
-                  </>
-                ) : (
-                  t('lead.add.draft.colourAsVariantHint')
+                {/* Typed or picked, one control — `line.packaging` ships
+                    unseeded, so a shop that has never filled it in must still
+                    be able to type, and one that has should not have to. */}
+                <SuggestInput
+                  autoFocus
+                  value={draft.packaging}
+                  invalid={packagingRequired && !draft.packaging.trim()}
+                  placeholder={t('lead.add.products.packagingPlaceholder')}
+                  optionsLabel={t('lead.add.draft.showOptions', {
+                    field: t('lead.add.draft.packaging'),
+                  })}
+                  options={packagingOptions.map((option) => ({
+                    value: option.value,
+                    label: option.label,
+                  }))}
+                  onChange={(next) => onPatch({ packaging: next })}
+                />
+                {suggestedPackaging && !draft.packaging && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    style={{ marginTop: rem(4) }}
+                    onClick={() => onPatch({ packaging: suggestedPackaging })}
+                  >
+                    {t('lead.add.products.useSuggested', { value: suggestedPackaging })}
+                  </Button>
                 )}
-              </span>
-            </label>
-          )}
-        </div>
+              </label>
+            )}
 
-        <div className="ob-eyebrow" style={{ color: 'var(--fg-tertiary)', marginBottom: rem(6) }}>
-          {draft.rows.length > 1
-            ? t('lead.add.draft.quantityTitleVariants')
-            : t('lead.add.draft.quantityTitle')}
-        </div>
+            {choosing && (
+              <label
+                className="ob-small"
+                style={{ display: 'block', color: 'var(--fg-secondary)' }}
+              >
+                {t('lead.add.draft.colour')}
+                <ColourAdder
+                  autoFocus={!packagingRequired}
+                  options={colourOptions}
+                  taken={draft.rows.map((row) => row.colour)}
+                  hasRows={draft.rows.length > 0}
+                  colourHex={colourHex}
+                  onAdd={onAddColour}
+                />
+              </label>
+            )}
+          </div>
+        )}
 
-        <div
-          className="ob-eyebrow"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: VARIANT_GRID,
-            gap: `0 ${rem(8)}`,
-            paddingBottom: rem(4),
-            color: 'var(--fg-tertiary)',
-          }}
-        >
-          <span>{t('lead.add.products.col.code')}</span>
-          <span>{t('lead.add.products.col.variant')}</span>
-          <span style={{ textAlign: 'right' }}>{t('lead.add.products.col.weight')}</span>
-          <span style={{ textAlign: 'right' }}>{t('lead.add.draft.col.qty')}</span>
-          <span style={{ textAlign: 'right' }}>{t('lead.add.draft.col.free')}</span>
-          <span style={{ textAlign: 'right' }}>{t('lead.add.draft.col.lineWeight')}</span>
-        </div>
-        {draft.rows.map((row) => {
-          const qty = Number(row.qty) || 0;
-          const over = row.availableBoxes !== null && qty > row.availableBoxes;
-          return (
+        {draft.rows.length > 0 && (
+          <>
             <div
-              key={row.variantId}
+              className="ob-eyebrow"
+              style={{ color: 'var(--fg-tertiary)', marginBottom: rem(6) }}
+            >
+              {draft.rows.length > 1
+                ? t('lead.add.draft.quantityTitleVariants')
+                : t('lead.add.draft.quantityTitle')}
+            </div>
+
+            <div
+              className="ob-eyebrow"
               style={{
                 display: 'grid',
                 gridTemplateColumns: VARIANT_GRID,
                 gap: `0 ${rem(8)}`,
-                alignItems: 'center',
-                padding: `${rem(3)} 0`,
+                paddingBottom: rem(4),
+                color: 'var(--fg-tertiary)',
               }}
             >
-              <span className="ob-mono ob-body-strong ob-ellipsis">{row.code}</span>
-              <VariantName facts={row} hex={colourHex(row.variantLabel ?? '')} />
-              <span style={{ textAlign: 'right' }}>
-                <WeightCell kg={row.weightKg} />
-              </span>
-              <Input
-                value={row.qty}
-                inputMode="numeric"
-                placeholder="0"
-                invalid={over}
-                aria-label={`${t('lead.add.draft.col.quantity')} — ${variantName(row)}`}
-                style={{ textAlign: 'right', minWidth: 0, width: '100%' }}
-                onChange={(event) => onQty(row.variantId, event.target.value.replace(/[^0-9]/g, ''))}
-                onKeyDown={(event) => {
-                  const by = event.shiftKey ? 10 : 1;
-                  if (event.key === 'ArrowUp') {
-                    event.preventDefault();
-                    stepQty(row, by);
-                  }
-                  if (event.key === 'ArrowDown') {
-                    event.preventDefault();
-                    stepQty(row, -by);
-                  }
-                }}
-              />
-              <span
-                className="ob-small"
-                style={{
-                  textAlign: 'right',
-                  fontVariantNumeric: 'tabular-nums',
-                  color: over ? 'var(--state-offline)' : 'var(--fg-secondary)',
-                }}
-              >
-                {row.availableBoxes ?? '—'}
-              </span>
-              <span
-                className="ob-small"
-                style={{
-                  textAlign: 'right',
-                  fontVariantNumeric: 'tabular-nums',
-                  color: 'var(--fg-secondary)',
-                }}
-              >
-                {qty > 0 && row.weightKg !== null
-                  ? formatKg(lineWeight({ weightKg: row.weightKg, quantity: qty }))
-                  : '—'}
-              </span>
+              <span>{t('lead.add.products.col.code')}</span>
+              <span>{t('lead.add.products.col.variant')}</span>
+              <span style={{ textAlign: 'right' }}>{t('lead.add.products.col.weight')}</span>
+              <span style={{ textAlign: 'right' }}>{t('lead.add.draft.col.qty')}</span>
+              <span style={{ textAlign: 'right' }}>{t('lead.add.draft.col.free')}</span>
+              <span style={{ textAlign: 'right' }}>{t('lead.add.draft.col.lineWeight')}</span>
             </div>
-          );
-        })}
+          </>
+        )}
+        <div ref={quantitiesRef}>
+          {draft.rows.map((row, index) => {
+            const qty = Number(row.qty) || 0;
+            const over = row.availableBoxes !== null && qty > row.availableBoxes;
+            // The chosen colour on a multicolour row, else the fixed one.
+            const colour = row.colour || row.variantLabel;
+            return (
+              <div
+                key={rowKey(row)}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: VARIANT_GRID,
+                  gap: `0 ${rem(8)}`,
+                  alignItems: 'center',
+                  padding: `${rem(3)} 0`,
+                }}
+              >
+                <span className="ob-mono ob-body-strong ob-ellipsis">{row.code}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: rem(4), minWidth: 0 }}>
+                  <VariantName
+                    colour={colour}
+                    productName={draft.productName}
+                    hex={colour ? colourHex(colour) : undefined}
+                  />
+                  {row.colour && (
+                    <button
+                      type="button"
+                      className="ob-btn ob-btn--ghost"
+                      aria-label={t('lead.add.draft.removeColour', { colour: row.colour })}
+                      title={t('lead.add.draft.removeColour', { colour: row.colour })}
+                      style={{ padding: 0, minWidth: rem(20) }}
+                      onClick={() => onRemoveColour(row.colour)}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </span>
+                <span style={{ textAlign: 'right' }}>
+                  <WeightCell kg={row.weightKg} />
+                </span>
+                <Input
+                  value={row.qty}
+                  autoFocus={focusQuantity && index === 0}
+                  inputMode="numeric"
+                  placeholder="0"
+                  invalid={over}
+                  aria-label={`${t('lead.add.draft.col.quantity')} — ${row.colour || variantName(row)}`}
+                  style={{ textAlign: 'right', minWidth: 0, width: '100%' }}
+                  onChange={(event) =>
+                    onQty(rowKey(row), event.target.value.replace(/[^0-9]/g, ''))
+                  }
+                  onKeyDown={(event) => quantityKey(event, row)}
+                />
+                <span
+                  className="ob-small"
+                  style={{
+                    textAlign: 'right',
+                    fontVariantNumeric: 'tabular-nums',
+                    color: over ? 'var(--state-offline)' : 'var(--fg-secondary)',
+                  }}
+                >
+                  {row.availableBoxes ?? '—'}
+                </span>
+                <span
+                  className="ob-small"
+                  style={{
+                    textAlign: 'right',
+                    fontVariantNumeric: 'tabular-nums',
+                    color: 'var(--fg-secondary)',
+                  }}
+                >
+                  {qty > 0 && row.weightKg !== null
+                    ? formatKg(lineWeight({ weightKg: row.weightKg, quantity: qty }))
+                    : '—'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        <label
+          className="ob-small"
+          style={{
+            display: 'block',
+            maxWidth: rem(280),
+            marginTop: 'var(--s-12)',
+            color: 'var(--fg-secondary)',
+          }}
+        >
+          {t('lead.add.draft.grade')}
+          {/* A pick, not a free field (owner's instruction, 2026-09-22): a
+              grade is one of a short ladder the company sells by, and the
+              ladder is decided in Settings → Fields, not retyped per lead.
+              Blank is the first option and the default — plenty of lines
+              carry no grade at all. */}
+          <Select
+            value={draft.grade}
+            aria-label={t('lead.add.draft.grade')}
+            onChange={(event) => onPatch({ grade: event.target.value })}
+          >
+            <option value="">{t('lead.add.draft.gradeNone')}</option>
+            {gradeValues.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
+          <span
+            className="ob-micro"
+            style={{ display: 'block', marginTop: rem(4), color: 'var(--fg-tertiary)' }}
+          >
+            {gradeValues.length === 0
+              ? t('lead.add.draft.gradeEmpty')
+              : draft.grade
+                ? t('lead.add.draft.gradeHint')
+                : t('lead.add.draft.gradeNoneHint')}
+          </span>
+        </label>
 
         <div
           style={{
@@ -2180,13 +2666,19 @@ function DraftCard({
             )}
           </span>
           <span style={{ flex: 1, minWidth: 0 }} />
+          <Button
+            variant="secondary"
+            disabled={!ready}
+            title="Shift+Q"
+            onClick={() => onComplete()}
+          >
+            {t('lead.add.flow.completeSubProduct')}
+          </Button>
           {/*
-           * `data-field` makes this the last stop of the Enter walk through the
-           * card, and Enter over a button is a click — so the last quantity,
-           * Enter, Enter adds the product and puts the caret back in the search
-           * box for the next one. While the draft is short of something the
-           * button is disabled, which takes it out of the walk, and Enter runs
-           * on past it to the notes instead.
+           * `data-field` keeps this a stop of the Enter walk for somebody who
+           * stepped on past the quantities into the grade: Enter over a button
+           * is a click. While the draft is short of something the button is
+           * disabled, which takes it out of the walk.
            */}
           <Button variant="primary" data-field disabled={!ready} onClick={onSave}>
             {draft.editKey ? t('lead.add.draft.saveChanges') : t('lead.add.draft.saveProduct')}
@@ -2194,5 +2686,259 @@ function DraftCard({
         </div>
       </div>
     </Card>
+  );
+}
+
+/**
+ * The colour range for a multicolour sub product (§6.6), from the company's
+ * colour list: type to narrow, Enter adds the highlighted colour and stays for
+ * the next; Enter on the empty box goes on to the quantities — left to the
+ * Enter walk, which is the field after this one.
+ *
+ * Not the kit's `Combobox`: that takes its first row on any Enter, so the
+ * empty box could never step on to the quantities. And not a native select,
+ * which on Windows commits a value on every arrow press.
+ */
+function ColourAdder({
+  options,
+  taken,
+  hasRows,
+  colourHex,
+  autoFocus,
+  onAdd,
+}: {
+  options: OptionListItem[];
+  /** Colours already on the card, which are not offered twice. */
+  taken: readonly string[];
+  /** Whether there is a quantity to walk on to yet. */
+  hasRows: boolean;
+  colourHex: (name: string) => string | undefined;
+  autoFocus: boolean;
+  onAdd: (colour: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const [sel, setSel] = useState(0);
+
+  const term = query.trim().toLowerCase();
+  const matches = options.filter(
+    (option) =>
+      !taken.includes(option.value) &&
+      (option.label.toLowerCase().includes(term) || option.value.toLowerCase().includes(term)),
+  );
+  const pick = matches.length ? Math.min(sel, matches.length - 1) : 0;
+
+  function add(colour: string): void {
+    onAdd(colour);
+    setQuery('');
+    setOpen(false);
+    setSel(0);
+  }
+
+  return (
+    <span style={{ position: 'relative', display: 'block', marginTop: rem(4) }}>
+      <Input
+        autoFocus={autoFocus}
+        value={query}
+        placeholder={t('lead.add.flow.addColourPlaceholder')}
+        aria-label={t('lead.add.flow.addColour')}
+        autoComplete="off"
+        role="combobox"
+        aria-expanded={open}
+        aria-autocomplete="list"
+        style={{ width: '100%' }}
+        onClick={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onChange={(event) => {
+          setQuery(event.target.value);
+          setOpen(true);
+          setSel(0);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            if (open) setSel(Math.min(pick + 1, Math.max(0, matches.length - 1)));
+            setOpen(true);
+            return;
+          }
+          if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            setSel(Math.max(0, pick - 1));
+            return;
+          }
+          if (event.key === 'Escape' && open) {
+            event.preventDefault();
+            setOpen(false);
+            return;
+          }
+          if (event.key !== 'Enter' || chorded(event)) return;
+          const chosen = open ? matches[pick] : undefined;
+          if (chosen) {
+            event.preventDefault();
+            add(chosen.value);
+          } else if (!hasRows) {
+            // No colour yet, so no quantity to walk on to.
+            event.preventDefault();
+          }
+        }}
+      />
+      {open && (
+        <div role="listbox" className="ob-suggest">
+          {matches.map((option, index) => (
+            <button
+              key={option.id}
+              type="button"
+              role="option"
+              // Out of the Tab order, for the bars' reason: the box's blur closes this list.
+              tabIndex={-1}
+              aria-selected={index === pick}
+              className="ob-suggest-row"
+              style={{
+                gridTemplateColumns: 'minmax(0, 1fr)',
+                background: index === pick ? 'var(--bg-selected)' : undefined,
+              }}
+              onMouseEnter={() => setSel(index)}
+              // `mousedown`, not `click`: the box's blur would close the list first.
+              onMouseDown={(event) => {
+                event.preventDefault();
+                add(option.value);
+              }}
+            >
+              <ColourName name={option.label} hex={colourHex(option.value)} />
+            </button>
+          ))}
+          {matches.length === 0 && (
+            <p className="ob-small" style={{ margin: 0, padding: 'var(--s-8)' }}>
+              {t('common.noMatches')}
+            </p>
+          )}
+        </div>
+      )}
+    </span>
+  );
+}
+
+/**
+ * The review Ctrl+Enter opens (§6.8): the enquiry and every line, the lines of
+ * one sub product grouped back into one row — `White ×10, Ivory ×5` — the way
+ * the lead PDF prints them. Ctrl+Enter again saves (the screen's own handler,
+ * so the key is guarded in one place); Esc goes back to the form. A save that
+ * fails says so here, where the person pressing it is looking.
+ */
+function ReviewModal({
+  open,
+  partyName,
+  source,
+  followUpDate,
+  notes,
+  lines,
+  summary,
+  busy,
+  error,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  partyName: string;
+  source: string;
+  followUpDate: string;
+  notes: string;
+  lines: DraftLine[];
+  summary: string;
+  busy: boolean;
+  error: string | null;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  // One row per variant, grade and packaging, in the order they were added.
+  const groups = new Map<string, DraftLine[]>();
+  for (const line of lines) {
+    const key = [line.variantId, line.grade, line.packaging].join('|');
+    groups.set(key, [...(groups.get(key) ?? []), line]);
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="lg"
+      title={t('lead.add.review.title')}
+      subtitle={t('lead.add.review.hint')}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            {t('action.cancel')}
+          </Button>
+          <Button variant="primary" busy={busy} title="Ctrl+Enter" onClick={onConfirm}>
+            {busy ? t('lead.add.saving') : t('lead.add.save')}
+          </Button>
+        </>
+      }
+    >
+      {error && <ConflictBanner>{error}</ConflictBanner>}
+      <dl className="ob-kv">
+        <dt>{t('lead.add.party.title')}</dt>
+        <dd>{partyName}</dd>
+        <dt>{t('lead.add.source.label')}</dt>
+        <dd>{source}</dd>
+        <dt>{t('lead.add.followUp.label')}</dt>
+        <dd>{followUpDate}</dd>
+        {notes.trim() && (
+          <>
+            <dt>{t('lead.add.details.notes')}</dt>
+            <dd>{notes.trim()}</dd>
+          </>
+        )}
+      </dl>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 'var(--s-6)',
+          marginTop: 'var(--s-12)',
+        }}
+      >
+        {[...groups.entries()].map(([key, group]) => {
+          const first = group[0]!;
+          const quantity = group.reduce((sum, line) => sum + line.quantity, 0);
+          return (
+            <div key={key} style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--s-8)' }}>
+              <span
+                className="ob-mono ob-small"
+                style={{ flex: 'none', color: 'var(--fg-tertiary)' }}
+              >
+                {first.code}
+              </span>
+              <span style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+                <span className="ob-body-strong">{first.productName}</span>
+                <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
+                  {[
+                    first.categoryCode ?? first.categoryName,
+                    first.size,
+                    lineColourText(group, first.productName),
+                    first.grade,
+                    first.packaging,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
+              </span>
+              <span
+                className="ob-small"
+                style={{ flex: 'none', fontVariantNumeric: 'tabular-nums' }}
+              >
+                {t('lead.add.line.qtyShort', { count: quantity })}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <p
+        className="ob-small"
+        style={{ margin: 'var(--s-12) 0 0', fontVariantNumeric: 'tabular-nums' }}
+      >
+        {summary}
+      </p>
+    </Modal>
   );
 }

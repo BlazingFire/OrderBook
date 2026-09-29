@@ -11,7 +11,8 @@
  * A line is one variant with one quantity; the code and the weight resolve
  * from the variant, and two colours of one model are two lines. A colour
  * chosen on a multi-colour model rides on the line and is frozen like the
- * rest of it.
+ * rest of it; one sent for any other model is dropped, never refused
+ * (`docs/catalogue/CATALOGUE_MODEL.md` §2).
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -26,9 +27,11 @@ import {
 } from './helpers/fixtures.js';
 import { db } from '../src/db/knex.js';
 import type { ActorContext } from '../src/domain/actor.js';
+import * as productRepo from '../src/repositories/product.repository.js';
 import * as catalog from '../src/services/catalog.service.js';
 import * as leads from '../src/services/lead.service.js';
 import * as orders from '../src/services/order.service.js';
+import * as settings from '../src/services/settings.service.js';
 
 let actor: ActorContext;
 
@@ -182,15 +185,111 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
       expect(order.items.map((item) => item.grade)).toEqual(['A', null]);
     });
 
-    it('refuses a colour on a product that is not made in colours', async () => {
+    it('drops a colour sent for a product that is not made in colours, and takes the lead', async () => {
+      // It used to be refused — and a lead queued offline with a stray colour
+      // then sat in the outbox for good, over a field the line never needed.
       const { party, plain, plainVariant } = await seed();
 
-      await expect(
-        leads.createLead(
-          { partyId: party.id, items: [line(plain.id, plainVariant.id, 1, { colour: 'Ivory' })] },
-          actor,
+      const lead = await leads.createLead(
+        { partyId: party.id, items: [line(plain.id, plainVariant.id, 1, { colour: 'Ivory' })] },
+        actor,
+      );
+
+      expect(lead.items).toHaveLength(1);
+      expect(lead.items[0]?.colour).toBeNull();
+      expect(lead.items[0]?.quantity).toBe(1);
+    });
+
+    it('keeps several colours of one multi-colour sub product as lines on its one variant', async () => {
+      const { party, anyColour, anyColourVariant } = await seed();
+
+      const lead = await leads.createLead(
+        {
+          partyId: party.id,
+          items: [
+            line(anyColour.id, anyColourVariant.id, 10, { colour: 'White' }),
+            line(anyColour.id, anyColourVariant.id, 5, { colour: 'Ivory' }),
+          ],
+        },
+        actor,
+      );
+
+      expect(lead.items.map((item) => [item.variantId, item.colour, item.quantity])).toEqual([
+        [anyColourVariant.id, 'White', 10],
+        [anyColourVariant.id, 'Ivory', 5],
+      ]);
+
+      // Stock stays per variant: the order holds both quantities against the
+      // one stock row, one reservation per line.
+      const order = await orders.convertLead({ leadId: lead.id }, actor);
+      expect(order.items.map((item) => item.colour)).toEqual(['White', 'Ivory']);
+      expect(order.reservations.map((reservation) => [reservation.variantId, reservation.quantity])).toEqual([
+        [anyColourVariant.id, 10],
+        [anyColourVariant.id, 5],
+      ]);
+    });
+
+    it('freezes the brand and the product code beside the category, and carries them to the order', async () => {
+      const party = await catalog.createParty({ name: 'Patel Sanitary' }, actor);
+      await db().transaction((trx) =>
+        productRepo.ensureCategories(
+          actor.tenantId,
+          [{ name: 'One Piece Toilet', code: 'OPT', brand: 'Swisware+', sortOrder: 1 }],
+          trx,
         ),
-      ).rejects.toThrow(/not made in colours/i);
+      );
+      const subProduct = await catalog.createProduct(
+        { name: '102 (9")', categoryCode: 'OPT', variants: [{ code: 'OPT-0001' }] },
+        actor,
+      );
+      const variant = subProduct.variants[0]!;
+
+      const lead = await leads.createLead(
+        {
+          partyId: party.id,
+          items: [
+            line(subProduct.id, variant.id, 2),
+            // An offline panel's snapshot wins over today's catalogue.
+            line(subProduct.id, variant.id, 1, { categoryCode: 'OPX', brandName: 'Swisware' }),
+          ],
+        },
+        actor,
+      );
+      expect(lead.items.map((item) => [item.categoryName, item.categoryCode, item.brandName])).toEqual([
+        ['One Piece Toilet', 'OPT', 'Swisware+'],
+        ['One Piece Toilet', 'OPX', 'Swisware'],
+      ]);
+
+      // Renaming the category afterwards moves nothing already taken.
+      await db()('product_categories').where({ code: 'OPT' }).update({ code: 'OPT2', brand: 'Other' });
+
+      const order = await orders.convertLead({ leadId: lead.id }, actor);
+      expect(order.items.map((item) => [item.categoryCode, item.brandName])).toEqual([
+        ['OPT', 'Swisware+'],
+        ['OPX', 'Swisware'],
+      ]);
+    });
+
+    it('prints a lead only for someone holding leads.export', async () => {
+      // The socket's `lead:pdf` reaches the service with no route guard in
+      // front of it, so the service's own check is the one that counts there.
+      const { party, plain, plainVariant } = await seed();
+      const lead = await leads.createLead(
+        { partyId: party.id, items: [line(plain.id, plainVariant.id, 1)] },
+        actor,
+      );
+      const viewer = await testActor({
+        permissions: {
+          roleId: null,
+          roleName: 'Viewer',
+          tier: 'office',
+          permissions: ['leads.view'],
+        },
+      });
+
+      await expect(leads.leadPdf(lead.id, viewer)).rejects.toMatchObject({ statusCode: 403 });
+      const { bytes } = await leads.leadPdf(lead.id, actor);
+      expect(bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-');
     });
 
     it('takes the code and the weight from the chosen colour of a model', async () => {
@@ -488,7 +587,10 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
       expect(order.items.map((item) => item.packaging)).toEqual(['wooden crate', 'wooden crate']);
     });
 
-    it('refuses to convert a lead whose line has no packaging', async () => {
+    it('refuses to convert a lead whose line has no packaging, when the company requires it', async () => {
+      // Off by default since catalogue v2 (`leads.packagingRequiredOnConvert`);
+      // the rule itself is unchanged for a company that switches it on.
+      await settings.writeSetting(actor, 'leads.packagingRequiredOnConvert', true);
       const { party, plain, plainVariant } = await seed();
       const lead = await leads.createLead(
         { partyId: party.id, items: [line(plain.id, plainVariant.id, 1, { packaging: null })] },

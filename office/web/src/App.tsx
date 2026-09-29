@@ -13,8 +13,8 @@
  * gating on it.
  */
 
-import { useCallback, useEffect, useState } from 'react';
-import { applyChangeToSnapshot } from '@orderbook/shared';
+import { Activity, useCallback, useEffect, useState } from 'react';
+import { applyChangeToSnapshot, resolveCompanyFeatures } from '@orderbook/shared';
 import type { DataChangedEvent, MessageKey, MutationResult } from '@orderbook/shared';
 
 import {
@@ -72,6 +72,7 @@ import {
 import { searchLocalView } from './localSearch';
 import { AddLeadScreen } from './screens/AddLeadScreen';
 import { CatalogScreen } from './screens/CatalogScreen';
+import { BrandsScreen, MainProductsScreen } from './screens/MainProductsScreen';
 import { PartyAccessScreen } from './screens/PartyAccessScreen';
 import { ConflictsScreen } from './screens/ConflictsScreen';
 import { ConnectionScreen } from './screens/ConnectionScreen';
@@ -153,6 +154,12 @@ function OfficePanel() {
   const [sessionChecked, setSessionChecked] = useState(false);
   const [view, setView] = useState<LocalView | null>(null);
   const [rejections, setRejections] = useState<MutationResult[]>([]);
+  // An option-list change forces a snapshot, so a new `optionLists` array is
+  // this panel's word that sources or brands may have moved; Settings → Leads
+  // and Products → Brands reload on it, as the Master's do on its
+  // `option_list` revision.
+  const [optionListsRevision, setOptionListsRevision] = useState(0);
+  useEffect(() => setOptionListsRevision((count) => count + 1), [view?.optionLists]);
 
   const [tab, setTab] = useState<Tab>('dashboard');
   /*
@@ -365,14 +372,23 @@ function OfficePanel() {
 
   // Sync state sits behind the sign-in gate, so asking for it before anybody
   // has signed in earns a 401 whose only effect is a red line in the console.
+  //
+  // Keyed on *whether* somebody is signed in, not on the session object:
+  // `refreshSession()` stores a fresh object on every reconnect, and the
+  // stream below calls it the moment it connects. Keyed on the object, each
+  // connect closed the stream and opened a new one, which connected, which
+  // refreshed the session — a loop of about sixteen reopen-and-resync rounds a
+  // second against the panel's own server and the Master behind it.
+  const signedIn = session !== null;
+
   useEffect(() => {
-    if (!session) return;
+    if (!signedIn) return;
     void refreshSyncState();
-  }, [session, refreshSyncState]);
+  }, [signedIn, refreshSyncState]);
 
   // One event stream per signed-in session.
   useEffect(() => {
-    if (!session) return;
+    if (!signedIn) return;
 
     const source = new EventSource('/api/events');
 
@@ -421,7 +437,7 @@ function OfficePanel() {
     });
 
     return () => source.close();
-  }, [session, refreshConnection, refreshSession, refreshSyncState]);
+  }, [signedIn, refreshConnection, refreshSession, refreshSyncState]);
 
   // Hash routing: #/gallery is the one extra place a user can land.
   useEffect(() => {
@@ -633,6 +649,13 @@ function OfficePanel() {
       { key: 'all', label: t('partyAccess.filter.all'), icon: 'parties' },
       { key: 'restricted', label: t('partyAccess.filter.restricted'), icon: 'shield' },
       { key: 'open', label: t('partyAccess.filter.open'), icon: 'eye' },
+    ],
+    // The catalogue's three levels (docs/catalogue/CATALOGUE_MODEL.md §1),
+    // the everyday list first.
+    products: [
+      { key: 'sub', label: t('catalog.nav.subProducts'), icon: 'products' },
+      { key: 'main', label: t('catalog.nav.mainProducts'), icon: 'inventory' },
+      { key: 'brands', label: t('catalog.nav.brands'), icon: 'edit' },
     ],
     settings: SETTINGS_TAB_IDS.map((id) => ({
       key: id,
@@ -927,7 +950,8 @@ function OfficePanel() {
           }
         }}
         onOpenRecord={(hit) => {
-          if (hit.kind === 'product') goToTab('products');
+          // The sub-product list, not whichever Products page was last open.
+          if (hit.kind === 'product') goToTab('products.sub');
           else if (hit.kind === 'party') goToTab('parties');
           else if (hit.kind === 'lead_line') goToTab('leads');
           else goToTab('orders');
@@ -1068,6 +1092,8 @@ function OfficePanel() {
           openConflicts={openConflicts}
           tab={settingsTab}
           onTabChange={setSettingsTab}
+          followUpDays={view ? resolveCompanyFeatures(view.features).followUpDefaultDays : null}
+          sourcesRevision={optionListsRevision}
         />
       ),
     },
@@ -1097,6 +1123,7 @@ function OfficePanel() {
               openId={openLeadId}
               onOpenId={setOpenLeadId}
               canConvert={can('lead.convert')}
+              canPreviewPdf={can('leads.export')}
               onError={setError}
               onAddLead={can('leads.create') ? openNewLead : undefined}
             />
@@ -1150,8 +1177,21 @@ function OfficePanel() {
         { id: 'parties', render: () => <CatalogScreen view={view} tab="parties" /> },
         {
           id: 'products',
+          // One screen id, three sidebar pages. Each page sits in its own
+          // `<Activity>` so switching between them keeps each one's search,
+          // filters and open record, as `ScreenHost` does between modules.
           render: () => (
-            <CatalogScreen view={view} tab="products" canImport={can('products.bulk')} />
+            <>
+              <Activity mode={subKeyOf('products') === 'sub' ? 'visible' : 'hidden'}>
+                <CatalogScreen view={view} tab="products" canImport={can('products.bulk')} />
+              </Activity>
+              <Activity mode={subKeyOf('products') === 'main' ? 'visible' : 'hidden'}>
+                <MainProductsScreen view={view} />
+              </Activity>
+              <Activity mode={subKeyOf('products') === 'brands' ? 'visible' : 'hidden'}>
+                <BrandsScreen view={view} revision={optionListsRevision} />
+              </Activity>
+            </>
           ),
         },
         {

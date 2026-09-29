@@ -16,8 +16,14 @@
  * says it belongs. Nothing here posts a write except the photo card.
  *
  * Every figure comes from the already-flowing snapshot: the details card reads
- * straight off `Product`, through `productSummary.ts` so that its code and
- * weight read the same as the list row's.
+ * straight off `Product`, through `productSummary.ts` so that its code,
+ * weight, product and colour read the same as the list row's.
+ *
+ * In the owner's words this is a **sub product** (`docs/catalogue/
+ * CATALOGUE_MODEL.md` §1): its brand and product (`OPT · One Piece Toilet`)
+ * are read through its category, and its colour is shown by the rule the
+ * catalogue gives it (§2) — the fixed colour, "Multicolour", or, for a
+ * numbered design, no Colour field at all.
  *
  * Editing is not done inline — it reuses `ProductDrawer`'s existing edit mode
  * via `onEdit`, which is a real, already-queued write path; duplicating that
@@ -27,17 +33,52 @@
 import type { ReactNode } from 'react';
 import type { Product } from '@orderbook/shared';
 
-import { Button, Card, StatusPill, rem, t } from '@orderbook/ui';
+import { Button, Card, ColourName, StatusPill, rem, t } from '@orderbook/ui';
 import { ProductImages } from '../components/ProductImages';
-import { codesOf, weightLabel } from '../productSummary';
+import { codesOf, productLabel, shownColours, weightLabel } from '../productSummary';
+
+/**
+ * A sub product's colour under its rule, for a list cell or a detail field:
+ * "Multicolour" when the counter picks it, the fixed colour (with its swatch
+ * when the colour range has a hex for it, plain text otherwise — a two-letter
+ * ring for Black reads as nothing), and nothing at all for a numbered design.
+ */
+export function SubProductColour({
+  product,
+  colourHex,
+}: {
+  product: Product;
+  colourHex: (colour: string) => string | undefined;
+}) {
+  if (product.multiColour) {
+    return <StatusPill tone="accent">{t('catalog.colourRule.multicolour')}</StatusPill>;
+  }
+  const colours = shownColours(product);
+  if (colours.length === 0) return null;
+  return (
+    <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 'var(--s-8)', minWidth: 0 }}>
+      {colours.map((colour) => {
+        const hex = colourHex(colour);
+        return hex ? (
+          <ColourName key={colour} name={colour} hex={hex} />
+        ) : (
+          <span key={colour}>{colour}</span>
+        );
+      })}
+    </span>
+  );
+}
 
 export function ProductDetail({
   product,
+  colourHex,
   onEdit,
   onPhotosChanged,
   onError,
 }: {
   product: Product;
+  /** The `stock.colour` swatches (`useColourHex`), for the Colour field. */
+  colourHex: (colour: string) => string | undefined;
   onEdit: () => void;
   /**
    * A photo write came back with the whole product. The snapshot catches up on
@@ -110,7 +151,11 @@ export function ProductDetail({
               alignItems: 'start',
             }}
           >
-            <DetailField label={t('product.detail.category')} value={product.categoryName} />
+            <DetailField label={t('product.field.brand')} value={product.brand} />
+            <DetailField
+              label={t('product.detail.category')}
+              value={productLabel(product.categoryCode, product.categoryName)}
+            />
             <DetailField
               label={t('product.detail.code')}
               value={<span className="ob-mono ob-body-strong">{codesOf(product)}</span>}
@@ -127,14 +172,14 @@ export function ProductDetail({
                 )
               }
             />
-            <DetailField
-              label={t('product.multiColour.label')}
-              value={
-                product.multiColour
-                  ? t('product.multiColour.detailYes')
-                  : t('product.multiColour.detailNo')
-              }
-            />
+            {/* Absent rather than a dash for a numbered design: the owner's
+                rule is that no colour is shown for one anywhere. */}
+            {(product.multiColour || shownColours(product).length > 0) && (
+              <DetailField
+                label={t('product.detail.colour')}
+                value={<SubProductColour product={product} colourHex={colourHex} />}
+              />
+            )}
           </div>
         </Card>
       </div>

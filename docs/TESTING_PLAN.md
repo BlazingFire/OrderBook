@@ -116,7 +116,8 @@ pickers used elsewhere.
    - [ ] Record inbound stock for a product.
    - [ ] Manually adjust stock (correction) and confirm a stock movement entry is logged.
    - [ ] Set a reorder level and confirm a low-stock indicator appears once stock drops below it.
-   - [ ] Check colour-variant stock breakdown for a product that has colours.
+   - [ ] Stock is per variant: a sub product has one row whatever colours its leads carry (the
+         catalogue v2 inventory checks are in §8a.6).
 3. Custom fields & pipeline stages — screen **FieldsScreen**:
    - [ ] Add a custom field, use it on a party/lead, confirm the value round-trips.
    - [ ] Reorder pipeline stages; archive a stage; confirm archived stage no longer selectable for new leads but historical leads keep it; restore the stage.
@@ -172,8 +173,9 @@ Do this for **both** PC-B and PC-C independently.
 Screen: **Catalog**, Products tab. This is where the catalogue lives — see the
 ownership note in §5.
 
-1. Products & categories:
-   - [ ] Create a category, then a product under it.
+1. Products & categories (the screens say **Product** for a category and **Sub product** for a
+   model since catalogue v2 — §8a.2 has the checks for codes, brands and order):
+   - [ ] Create a Product (category), then a sub product under it.
    - [ ] Look up a product by one of its variant codes.
    - [ ] Upload, reorder and delete product images; confirm the variants render
          (micro in a table row, thumb in the form).
@@ -217,6 +219,121 @@ This is the most important end-to-end path — run it fully, both directions.
    - [ ] Delete a lead/order/party (as a user with delete permission) — confirm it disappears from active lists on all panels.
    - [ ] On Master's **RecycleBinScreen**, confirm the deleted item appears with the deleter's name/time, restore it, confirm it reappears everywhere.
    - [ ] Attempt the same delete as a user **without** the recycle-bin/delete permission — confirm it's blocked.
+
+---
+
+## 8a. Catalogue v2 — Brand → Product → Sub product (2026-09-29)
+
+The spec is `docs/catalogue/CATALOGUE_MODEL.md`; section numbers below (§1–§9) are its. Run on a
+database with parties and a few leads from §8, so the reload and the lead PDF have data to act on.
+
+1. **Upgrade and catalogue load** (PC-A):
+   - [ ] On a copy of a 1.2.0 database, start the new Master: it boots, and
+         `npm run migrate --workspace @orderbook/master -- --status` lists
+         `20260323000000_catalogue_brands_and_codes` and
+         `20260326000000_catalogue_brands_and_codes_port` as applied, nothing pending.
+   - [ ] **A database a stale `catalogue-v2-stale` checkout booted** (the owner's PC): take a
+         `pg_dump` first (`HANDOFF.md`, "Live databases") — main's first boot wipes its
+         product-linked tables. Confirm the Master boots rather than stopping on "migration
+         directory is corrupt".
+   - [ ] Settings → Developer → *Load catalogue*: 41 products, 549 sub products, the 21-colour
+         range with swatches, one brand (Swisware+). Run it again — everything is skipped, nothing
+         doubles.
+   - [ ] Every sub product's code is its product's code and four digits in catalogue order
+         (`OPT-0001`, `OPT-0002`, …), and weights are blank ("weight missing").
+2. **Brands and Products** (Office catalogue sub-pages, and Settings → Fields → Brand on the
+   Master):
+   - [ ] Add a brand, rename its label, remove it to the Recycle Bin, restore it. Logs shows each
+         as an option-list entry.
+   - [ ] Create a Product with a code, a brand and an order. A second Product with the same code
+         in another case (`opt` vs `OPT`) is refused; a code with a space or a hyphen is refused;
+         a brand that is not on the Brand list is refused.
+   - [ ] The same Product name under a **different** brand is accepted; under the **same** brand it
+         is refused.
+   - [ ] Edit a Product's name, code, brand and order; Logs shows `product_category.updated` with
+         each field's from → to. Lists follow the new order.
+   - [ ] Deleting a Product that still has live sub products is refused and names them; deleting
+         an empty one puts it in the Recycle Bin, and restoring it brings it back; its code is free
+         for another Product while it is in the Bin — and if another Product took that code
+         meanwhile, the restore is refused, while a name taken meanwhile offers a rename.
+   - [ ] A sub product in the Bin cannot be restored while its Product is still in the Bin.
+   - [ ] With the Office offline, the Products list still shows (from the snapshot) and a create
+         or edit is refused as unavailable rather than queued.
+3. **Sub products**:
+   - [ ] Create a sub product under a Product chosen by code; leave the variant code blank — it
+         gets the next `CODE-####` for that Product.
+   - [ ] A second live sub product of the same name inside one Product is refused; the same name
+         under another Product is accepted.
+   - [ ] Edit a sub product; Logs names its Product and shows each changed field from → to.
+4. **Lead entry** (Office, PC-B, `AddLeadScreen`):
+   - [ ] Party: no list shows on focus; typing shows matches.
+   - [ ] Source: only the active list values; no free-text "Other" box.
+   - [ ] Follow-up starts at today + 3; change the default on Settings → Leads (item 7) and the
+         form moves to the new value without a reload, and again after a save.
+   - [ ] Product bar: typing `OPT` puts One Piece Toilet first; typing a name or a brand also
+         finds it. Rows read `CODE · Name · Brand`.
+   - [ ] Sub-product bar: **all 56** One Piece Toilet and **all 69** Table Top Vitrosa Basin
+         sub products are reachable in catalogue order, and typing filters them; colour-named
+         rows show a swatch.
+   - [ ] Fixed sub product (e.g. a White one): colour shown locked, quantity only. A sub product
+         named after its colour (`MAGENTA`) shows no separate colour.
+   - [ ] Dedicated sub product (a numbered designer piece such as `1111`): quantity only, no
+         colour anywhere.
+   - [ ] Multicolour sub product (Orissa Pan, Water Closet): add White ×10 and Ivory ×5 — two
+         lines on one sub product; the Ctrl+Enter review groups them into one row.
+   - [ ] Grade is optional and Enter skips it; packaging is not shown while the company does not
+         require it (switch it on in the Master's Settings → Leads and it appears).
+   - [ ] Enter on the last quantity adds the sub product and returns to the sub-product bar.
+         Shift+Q (or **Complete sub product**) adds a pending sub product and returns to the
+         product bar; with nothing pending it just finishes the product. A capital Q still types
+         in the notes and in the party box.
+   - [ ] Ctrl+Enter opens the review; Ctrl+Enter again saves exactly one lead (hold the keys
+         down — still one). The form resets.
+5. **Lead PDF**:
+   - [ ] **Preview PDF** on the Master's Leads list and on the Office lead detail opens the PDF
+         (in the Electron app, in a PDF window).
+   - [ ] The header names the company, the lead id and today's date; the party block shows
+         its name, address, phone and GST number.
+   - [ ] Columns `# | Main product | Model | Size | Colour | Code | Qty`; an alphanumeric sub
+         product fills Model, a numeric one fills Code (right-aligned) — never both — and the
+         software code (`OPT-0001`) appears nowhere. A sub product entered in two colours is
+         one row with the quantities summed.
+   - [ ] Colour: blank for dedicated; the fixed colour, unless it only repeats the name; the
+         multicolour lines of one sub product as `White ×10, Ivory ×5`.
+   - [ ] A long product or sub-product name wraps and the row grows; quantities stay on one line.
+   - [ ] A Brand column appears only when the lead's lines span two brands (add a second brand
+         and Product to test). No rate, amount or total anywhere.
+   - [ ] A role without `leads.export` gets no button, and the route answers 403; an Office
+         panel offline says the Master is unreachable; a lead still queued in the Office outbox
+         (marked not synced) shows no button, since the Master renders the PDF.
+6. **Inventory** (Master, **Inventory**):
+   - [ ] Every live sub product is listed — 549 after a fresh load — stocked or not, at zero
+         when never stocked; a deleted or deactivated one is not.
+   - [ ] Columns Brand, Product (`CODE · Name`), Sub product, Size, Colour (fixed colour only),
+         Code, weight, on hand / reserved / free (the last two only with free-to-sell on),
+         reorder, min, max, status.
+   - [ ] Search by sub product, product code and brand; brand chips; product filter; low only.
+   - [ ] The Dashboard's low-stock count equals the Inventory's low-only count, including after a
+         sub product with a reorder level is deleted.
+   - [ ] Stock-in and count: product bar → sub-product bar → the sub product.
+7. **Settings → Leads** (both panels):
+   - [ ] On the Office, a user with `settings.manage` saves the follow-up default; the Master's
+         Settings shows the new value and Logs records it with from → to.
+   - [ ] A user without `settings.manage` cannot save it on either panel; neither can the panel
+         itself with nobody signed in.
+   - [ ] The lead-source list edits here and on Settings → Fields are the same list.
+8. **Conversion**:
+   - [ ] With packaging not required (the default), a lead with no packaging converts.
+   - [ ] Switch it on: the same conversion is refused naming the lines without packaging.
+9. **`reload:catalog`** (PC-A, do last in this section):
+   - [ ] With the Master running, `npm run reload:catalog --workspace @orderbook/master` refuses
+         and says to stop the Master first.
+   - [ ] With the Master stopped (and every Office outbox drained), it runs: afterwards parties,
+         users, roles, settings, option lists and the whole activity log are still there; leads,
+         orders, stock and the old products are gone; the catalogue is back; Logs has one
+         `catalog.reloaded` entry and **Verify** reports the chain intact.
+   - [ ] `npm run seed:demo-parties --workspace @orderbook/master` adds 13 dealers; running it
+         again adds none.
 
 ---
 

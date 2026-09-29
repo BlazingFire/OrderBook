@@ -21,17 +21,20 @@ import type {
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { normalizeCustomFields } from '../domain/custom-fields.js';
 import { assertOptionValueChange } from '../domain/field-values.js';
-import { buildLineSnapshot, LineColourError, type LineDraft, type LineSnapshot } from '../domain/line-items.js';
+import { buildLineSnapshot, type LineDraft, type LineSnapshot } from '../domain/line-items.js';
+import { leadPdfTable } from '../domain/lead-pdf.js';
 import { clampPaging } from '../domain/paging.js';
 import { resolvePartyScope, UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
 import { assertStageMove, defaultStage, findStage, stageChangeMessage } from '../domain/pipeline.js';
 import { assertParentsLive } from '../domain/recycle-bin.js';
 import { db } from '../db/knex.js';
 import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
+import { renderReportPdf } from '../pdf/table-renderer.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as customFieldRepo from '../repositories/custom-field.repository.js';
 import { nextHlc, resolveId } from '../repositories/identity.repository.js';
 import * as leadRepo from '../repositories/lead.repository.js';
+import { findMasterConfig } from '../repositories/master-config.repository.js';
 import * as partyRepo from '../repositories/party.repository.js';
 import * as variantRepo from '../repositories/party-variant.repository.js';
 import * as pipelineRepo from '../repositories/pipeline.repository.js';
@@ -67,6 +70,38 @@ export async function getLead(id: string, actor: ActorContext): Promise<Lead> {
   if (!lead) throw new NotFoundError('Lead');
 
   return lead;
+}
+
+/**
+ * The lead as a fixed-layout PDF (`docs/catalogue/CATALOGUE_MODEL.md` §8).
+ *
+ * Gated on `leads.export` — printing a lead hands its lines to someone outside
+ * the app — and read through `getLead`, so the party scoping that hides a lead
+ * from a list hides it from print too. What prints is decided in
+ * `domain/lead-pdf.ts`; this only gathers the inputs.
+ */
+export async function leadPdf(
+  id: string,
+  actor: ActorContext,
+): Promise<{ fileName: string; bytes: Buffer }> {
+  requirePermission(actor, 'leads.export');
+
+  // A lead raised on a panel is still named by its temporary id there until
+  // the panel's next snapshot; `id_map` resolves it once the lead has arrived.
+  const lead = await getLead(await resolveId(actor.tenantId, id), actor);
+  // Read directly rather than through `getParty`: its own `parties.view` check
+  // would refuse somebody who may see — and print — the lead.
+  const party = await partyRepo.findPartyById(actor.tenantId, lead.partyId);
+  const company = (await findMasterConfig())?.company_name?.trim() || 'OrderBook';
+
+  const bytes = await renderReportPdf(leadPdfTable(lead, party, company, localIsoDate(new Date())));
+  return { fileName: `lead-${lead.id}.pdf`, bytes };
+}
+
+/** The Master PC's own calendar date — the day it was printed, where it was printed. */
+function localIsoDate(now: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
 export async function createLead(input: LeadInput, actor: ActorContext): Promise<Lead> {
@@ -376,7 +411,7 @@ export async function addRemark(
  * is not in that mode must take catalogue values even where a party record
  * exists. The code and the weight come from the product's own variant, which
  * has to exist on the product the line names and still be on offer. A colour
- * is accepted only on a multi-colour product.
+ * is kept only on a multi-colour product and dropped anywhere else.
  */
 async function buildLines(
   tenantId: string,
@@ -407,34 +442,28 @@ async function buildLines(
 
     const partyVariant = partyVariantByProduct.get(product.id) ?? null;
 
-    let line: LineSnapshot;
-    try {
-      line = buildLineSnapshot(
-        draft,
-        {
-          id: product.id,
-          name: product.name,
-          categoryName: product.categoryName,
-          alias: product.alias,
-          size: product.size,
-          multiColour: product.multiColour,
-        },
-        { id: variant.id, code: variant.code, label: variant.label, weightKg: variant.weightKg },
-        partyVariant
-          ? {
-              alias: partyVariant.alias,
-              size: partyVariant.size,
-              productName: partyVariant.productName,
-            }
-          : null,
-        index + 1,
-      );
-    } catch (error) {
-      if (error instanceof LineColourError) {
-        throw new ValidationError('validation.lead.colourUnexpected', { productName: product.name });
-      }
-      throw error;
-    }
+    const line = buildLineSnapshot(
+      draft,
+      {
+        id: product.id,
+        name: product.name,
+        categoryName: product.categoryName,
+        categoryCode: product.categoryCode,
+        brand: product.brand,
+        alias: product.alias,
+        size: product.size,
+        multiColour: product.multiColour,
+      },
+      { id: variant.id, code: variant.code, label: variant.label, weightKg: variant.weightKg },
+      partyVariant
+        ? {
+            alias: partyVariant.alias,
+            size: partyVariant.size,
+            productName: partyVariant.productName,
+          }
+        : null,
+      index + 1,
+    );
 
     if (line.quantity <= 0) {
       throw new ValidationError('validation.lead.quantityRequired', { productName: line.productName });

@@ -42,6 +42,7 @@ import type {
   FieldCatalogue,
   FieldUsageBreakdown,
   InventoryStockLevel,
+  StockListQuery,
   LeadOutcomesReport,
   Lead,
   MasterIdentity,
@@ -75,7 +76,7 @@ import type {
   OneTimeSecret,
   PermissionCatalogue,
   Product,
-  ProductCategory,
+  ProductCategoryListRow,
   ProductInput,
   RecycleBinQuery,
   ReportKind,
@@ -572,12 +573,25 @@ export const api = {
   updateParty: (id: string, input: PartyInput & { baseFieldHlc?: Record<string, string> }) =>
     request<Party>(`/api/parties/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   createProduct: (input: ProductInput) => post<Product>('/api/products', input),
-  categories: () => request<ProductCategory[]>('/api/categories'),
 
-  stock: (options: { search?: string; lowOnly?: boolean } = {}) => {
+  // Categories — the owner's Products (`docs/catalogue/CATALOGUE_MODEL.md` §5).
+  // Read-only here: products are catalogued on the Office Panel, so the
+  // Master's `/api/categories` writes have no screen of their own.
+  categories: (query: { search?: string; brand?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (query.search) params.set('search', query.search);
+    if (query.brand) params.set('brand', query.brand);
+    const qs = params.toString();
+    return request<ProductCategoryListRow[]>(`/api/categories${qs ? `?${qs}` : ''}`);
+  },
+
+  stock: (options: Omit<StockListQuery, 'offset' | 'scope'> = {}) => {
     const params = new URLSearchParams();
     if (options.search) params.set('search', options.search);
     if (options.lowOnly) params.set('lowOnly', 'true');
+    if (options.brand) params.set('brand', options.brand);
+    if (options.categoryId) params.set('categoryId', options.categoryId);
+    if (options.limit) params.set('limit', String(options.limit));
     const query = params.toString();
     return request<InventoryStockLevel[]>(`/api/stock${query ? `?${query}` : ''}`);
   },
@@ -708,10 +722,17 @@ export const api = {
   /** One page of a searchable dropdown — see `/api/pick/:kind`. */
   pick: <T>(
     kind: PickKind,
-    query: { term: string; categoryId?: string; include?: string[]; signal?: AbortSignal },
+    query: {
+      term: string;
+      categoryId?: string;
+      include?: string[];
+      limit?: number;
+      signal?: AbortSignal;
+    },
   ) => {
     const params = new URLSearchParams({ q: query.term });
     if (query.categoryId) params.set('categoryId', query.categoryId);
+    if (query.limit) params.set('limit', String(query.limit));
     if (query.include?.length) params.set('include', query.include.join(','));
     return request<{ items: T[]; truncated: boolean }>(
       `/api/pick/${kind}?${params.toString()}`,

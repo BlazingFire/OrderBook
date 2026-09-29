@@ -239,7 +239,8 @@ async function draftOneProduct(): Promise<void> {
     {},
     { timeout: 10_000 },
   );
-  fireEvent.focus(partyBox);
+  // The party list appears only once something is typed.
+  fireEvent.change(partyBox, { target: { value: 'Sha' } });
   fireEvent.click(await screen.findByRole('button', { name: new RegExp(PARTY.name) }));
 
   const search = screen.getByLabelText(t('lead.add.products.searchLabel'));
@@ -251,6 +252,24 @@ async function draftOneProduct(): Promise<void> {
     target: { value: '5' },
   });
 }
+
+describe('the event stream', () => {
+  it('stays one stream when the link reports it is connected', async () => {
+    await boot({ permissions: ['leads.view'] });
+    const opened = FakeEventSource.opened;
+
+    // A connect makes the panel re-read the session, which hands back a new
+    // object. Keyed on that object, the stream closed and reopened on every
+    // connect — and each reopen connected again: a loop against the server.
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('status', { state: 'connected' });
+      await wait(50);
+    });
+
+    expect(FakeEventSource.opened).toBe(opened);
+    expect(FakeEventSource.instances).toHaveLength(1);
+  });
+});
 
 describe('the splash', () => {
   it("says this panel's server could not be reached when the request never got there", async () => {
@@ -452,9 +471,6 @@ describe('the New lead form', () => {
 
     fireEvent.click(newLeadButton());
     await draftOneProduct();
-    fireEvent.change(screen.getByPlaceholderText(t('lead.add.products.packagingPlaceholder')), {
-      target: { value: 'Carton' },
-    });
     fireEvent.click(screen.getAllByRole('button', { name: t('lead.add.draft.saveProduct') })[0]!);
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
@@ -479,7 +495,7 @@ describe('the New lead form', () => {
     );
   });
 
-  it('marks packaging required only while the company requires it', async () => {
+  it('does not ask for packaging while the company does not require it', async () => {
     await boot({
       permissions: ['leads.view', 'leads.create'],
       view: { features: { packagingRequiredOnConvert: false } },
@@ -488,9 +504,7 @@ describe('the New lead form', () => {
     fireEvent.click(newLeadButton());
     await draftOneProduct();
 
-    const packaging = screen.getByPlaceholderText(t('lead.add.products.packagingPlaceholder'));
-    const label = packaging.closest('label')!;
-    expect(within(label).queryByText(t('lead.add.step.required'))).toBeNull();
+    expect(screen.queryByPlaceholderText(t('lead.add.products.packagingPlaceholder'))).toBeNull();
   });
 
   it('still marks packaging required when the company requires it', async () => {

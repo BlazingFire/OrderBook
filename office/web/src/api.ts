@@ -23,6 +23,8 @@ import type {
   BinCounts,
   BinEntry,
   BinRestoreResult,
+  CategoryInput,
+  CategoryUpdateInput,
   ChainVerification,
   ChainVerifyInput,
   CursorPage,
@@ -60,6 +62,8 @@ import type {
   PipelineStage,
   PipelineStageInput,
   Product,
+  ProductCategory,
+  ProductCategoryListRow,
   ProductImageUpdateInput,
   ProductImportFormat,
   ProductImportMode,
@@ -71,6 +75,8 @@ import type {
   ReportKind,
   ReportRangeInput,
   RestoreInput,
+  SettingKey,
+  SettingView,
   SearchHit,
   StageReorderInput,
   SyncConflict,
@@ -522,6 +528,7 @@ export const api = {
     const params = new URLSearchParams();
     if (query.search) params.set('search', query.search);
     if (query.categoryId) params.set('categoryId', query.categoryId);
+    if (query.brand) params.set('brand', query.brand);
     if (query.missingWeight) params.set('missingWeight', 'true');
     if (query.limit) params.set('limit', String(query.limit));
     if (query.offset) params.set('offset', String(query.offset));
@@ -531,6 +538,23 @@ export const api = {
       signal ? { signal } : undefined,
     );
   },
+
+  // --- Categories: the owner's Products (CATALOGUE_MODEL.md §5) -------------
+  // The list answers offline from the snapshot; the writes are online-only
+  // and fail 503 without the Master, like the Recycle Bin.
+
+  categories: (query: { search?: string; brand?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (query.search) params.set('search', query.search);
+    if (query.brand) params.set('brand', query.brand);
+    const qs = params.toString();
+    return request<ProductCategoryListRow[]>(`/api/categories${qs ? `?${qs}` : ''}`);
+  },
+  createCategory: (input: CategoryInput) => post<ProductCategory>('/api/categories', input),
+  updateCategory: (id: string, input: CategoryUpdateInput) =>
+    put<ProductCategory>(`/api/categories/${id}`, input),
+  deleteCategory: (id: string) =>
+    request<{ id: string; deletedAt: string }>(`/api/categories/${id}`, { method: 'DELETE' }),
 
   // --- Bulk product import: online-only, like images ------------------------
 
@@ -615,10 +639,17 @@ export const api = {
    */
   pick: <T>(
     kind: PickKind,
-    query: { term: string; categoryId?: string; include?: string[]; signal?: AbortSignal },
+    query: {
+      term: string;
+      categoryId?: string;
+      include?: string[];
+      limit?: number;
+      signal?: AbortSignal;
+    },
   ) => {
     const params = new URLSearchParams({ q: query.term });
     if (query.categoryId) params.set('categoryId', query.categoryId);
+    if (query.limit) params.set('limit', String(query.limit));
     if (query.include?.length) params.set('include', query.include.join(','));
     return request<{ items: T[]; truncated: boolean; offline?: boolean }>(
       `/api/pick/${kind}?${params.toString()}`,
@@ -695,6 +726,10 @@ export const api = {
     request<{ id: string; deletedAt: string }>(`/api/fields/values/${id}`, { method: 'DELETE' }),
   reorderFieldValues: (input: OptionListReorderInput) =>
     post<OptionListItem[]>('/api/fields/values/reorder', input),
+
+  /** Forwarded to the Master, which takes only `leads.followUpDefaultDays` from a panel. */
+  saveSetting: (key: SettingKey, value: unknown) =>
+    put<SettingView[]>(`/api/settings/${encodeURIComponent(key)}`, { value }),
 
   fieldDefinitions: (options: { entity?: string; includeDeleted?: boolean } = {}) => {
     const params = new URLSearchParams();

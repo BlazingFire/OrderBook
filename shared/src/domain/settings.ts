@@ -396,16 +396,20 @@ export const SETTINGS = {
    * Next week buttons beside the field do not move with this — they are
    * shortcuts, not the default.
    *
-   * `0` is the fallback and means today, which is exactly what the form does
-   * now. `0` must stay expressible for that reason: a floor of 1 here would
-   * change the shipped behaviour of every installation on upgrade.
+   * `3` is the fallback: the owner asked for a new lead to start three days
+   * out (2026-09-28, `docs/catalogue/CATALOGUE_MODEL.md` §5), and until then
+   * the fallback was `0`, today. That moves the form on every installation
+   * that never saved a value — which was the request, not a side effect.
+   *
+   * `0` stays expressible and still means today: a company that wants the old
+   * behaviour back sets it, and a floor of 1 would take that answer away.
    */
   'leads.followUpDefaultDays': {
     labelToken: 'setting.leads.followUpDefaultDays.label',
     descriptionToken: 'setting.leads.followUpDefaultDays.help',
     group: 'leads',
     control: { kind: 'number', min: 0, max: 90, step: 1, unitToken: 'setting.unit.days' },
-    fallback: 0,
+    fallback: 3,
     parse: (raw: unknown): number => asBoundedInt(0, 90)(raw),
   },
 
@@ -423,14 +427,20 @@ export const SETTINGS = {
    * Off, packaging already entered is still kept — this decides whether the
    * conversion is refused, never whether the field is recorded.
    *
-   * `true` is the fallback, which is today's behaviour exactly.
+   * `false` is the fallback since catalogue v2 (owner's decision, 2026-09-28,
+   * `docs/catalogue/CATALOGUE_MODEL.md` §5): lead entry no longer asks for
+   * packaging, so a default that refused the conversion would refuse every
+   * lead taken on it. A company that packs by rule switches it on, and the
+   * lead screens then ask for packaging on every line again. It was `true`
+   * before, so an installation that never saved a value changes on upgrade —
+   * deliberately, for the same reason.
    */
   'leads.packagingRequiredOnConvert': {
     labelToken: 'setting.leads.packagingRequiredOnConvert.label',
     descriptionToken: 'setting.leads.packagingRequiredOnConvert.help',
     group: 'leads',
     control: { kind: 'boolean' },
-    fallback: true,
+    fallback: false,
     parse: (raw: unknown): boolean => asBoolean(raw),
   },
 

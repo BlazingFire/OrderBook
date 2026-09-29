@@ -26,6 +26,9 @@ export const PARENT_LINKS: Partial<Record<RecycleBinEntityType, RecycleBinEntity
   lead: ['party'],
   order: ['party', 'lead'],
   user: ['role'],
+  // A sub product lives in its product (category); `catalog.service.ts`
+  // `restoreProduct` checks it.
+  product: ['product_category'],
 };
 
 /** One parent's live/deleted status, already resolved by the caller (a domain function does no I/O). */

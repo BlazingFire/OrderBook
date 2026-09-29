@@ -26,6 +26,10 @@ export const RECYCLE_BIN_ENTITIES = [
   // Bin branch that restores nothing.
   'option_list_item',
   'custom_field_definition',
+  // Catalogue v2 (`20260326`) gives categories — the owner's Products — a
+  // `deleted_at`: deleting one is refused while it holds a live sub product,
+  // and it comes back from here.
+  'product_category',
 ] as const;
 
 export type RecycleBinEntityType = (typeof RECYCLE_BIN_ENTITIES)[number];
@@ -48,6 +52,7 @@ export const RESTORE_PERMISSION: Record<RecycleBinEntityType, string> = {
   user: 'users.manage',
   option_list_item: 'fields.manage',
   custom_field_definition: 'fields.manage',
+  product_category: 'products.delete',
 };
 
 export interface BinEntry {

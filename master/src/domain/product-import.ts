@@ -20,6 +20,15 @@
  * Validates only what a row asserts: a blank cell leaves the key absent, so a
  * four-column file of categories, models, codes and names imports without
  * inventing nulls for the other fields.
+ *
+ * **Catalogue v2** (`docs/catalogue/CATALOGUE_MODEL.md` §1, §5) names the
+ * category a *product* and the model a *sub product*, and gives the category a
+ * code and a brand. A row may name its product by `categoryCode` (`OPT`)
+ * instead of by name — the code never creates a product, so a typo is refused
+ * rather than turned into a new one — and `categoryBrand` makes the name the
+ * (brand, name) pair, because two brands may both sell a One Piece Toilet.
+ * The owner's words are header aliases (`Sub product`, `Main product`,
+ * `Main product code`, `Brand`).
  */
 
 import type { MessageParams, ProductImportIssue, ProductInput, ProductVariantInput } from '@orderbook/shared';
@@ -46,13 +55,22 @@ export interface ImportColumn {
   note: string;
 }
 
-/** Template order. The first five are the shape of the catalogue itself. */
+/**
+ * Template order. The first five are the shape of the catalogue itself; the
+ * product's code and brand follow, because an older sheet without them still
+ * reads the same.
+ *
+ * `categoryName` is required unless the row names its product by
+ * `categoryCode` instead — the one pair where either will do (`matchHeaders`).
+ */
 export const IMPORT_COLUMNS: readonly ImportColumn[] = [
-  { field: 'categoryName', kind: 'text', required: true, note: 'Required. Created if it does not exist yet — e.g. ONE PIECE TOILET.' },
-  { field: 'name', kind: 'text', required: true, note: 'Required. The model — e.g. DAMRU. Rows sharing a category and model are one product.' },
+  { field: 'categoryName', kind: 'text', required: true, note: 'Required unless categoryCode is filled. The product — e.g. ONE PIECE TOILET. Created if it does not exist yet.' },
+  { field: 'name', kind: 'text', required: true, note: 'Required. The sub product — e.g. DAMRU. Rows sharing a product and sub product are one sub product.' },
   { field: 'variant', kind: 'text', note: 'Colour or pattern of this row — e.g. Blue, Vitrosa 41. Leave blank for a product that comes in one form.' },
   { field: 'code', kind: 'text', required: true, note: 'Required. Unique across the whole catalogue.' },
   { field: 'weightKg', kind: 'number', min: 0, exclusiveMin: true, note: 'Weight of one piece in kilograms. Blank until known.' },
+  { field: 'categoryCode', kind: 'text', note: 'The product by its code — e.g. OPT. It must exist already; filled, it is used instead of categoryName.' },
+  { field: 'categoryBrand', kind: 'text', note: 'The brand the product is sold under — e.g. Swisware+. Read with categoryName, since two brands may share a product name.' },
   { field: 'alias', kind: 'text', note: 'A short name staff use at the counter.' },
   { field: 'size', kind: 'text', note: 'e.g. 18x12, L-27 B-15 H-26' },
   { field: 'multiColour', kind: 'boolean', note: 'yes when the model is made in every colour of the colour list, so a lead line can name one. Defaults to no.' },
@@ -77,8 +95,15 @@ export function normalizeHeader(text: string): string {
 const HEADER_ALIASES: Record<string, ImportField> = Object.fromEntries(
   (
     [
-      ['categoryName', ['category']],
-      ['name', ['productname', 'product', 'model', 'modelname', 'item', 'itemname']],
+      // `Main product` and `Sub product` are the owner's catalogue words;
+      // `product` stays the model, as every sheet before catalogue v2 meant it.
+      ['categoryName', ['category', 'mainproduct', 'mainproductname']],
+      ['categoryCode', ['maincode', 'mainproductcode']],
+      ['categoryBrand', ['brand', 'brandname', 'make']],
+      [
+        'name',
+        ['productname', 'product', 'model', 'modelname', 'item', 'itemname', 'subproduct', 'subproductname'],
+      ],
       ['variant', ['colour', 'color', 'variantname', 'colourvariant', 'shade', 'pattern', 'label']],
       ['code', ['productcode', 'variantcode', 'sku', 'itemcode', 'articlecode', 'article']],
       ['weightKg', ['weight', 'weightkgs', 'kg', 'kgs']],
@@ -132,7 +157,10 @@ export function matchHeaders(headerRow: readonly string[]): HeaderMatch {
     byIndex.push(column);
   }
 
-  const missing = IMPORT_COLUMNS.filter((column) => column.required && !claimed.has(column.field)).map(
+  // A product named by its code needs no name column.
+  const supplied = (field: ImportField): boolean =>
+    claimed.has(field) || (field === 'categoryName' && claimed.has('categoryCode'));
+  const missing = IMPORT_COLUMNS.filter((column) => column.required && !supplied(column.field)).map(
     (column) => column.field,
   );
 
@@ -232,7 +260,8 @@ export function parseImportRow(
 
   const indexOf = (field: ImportField): number => match.byIndex.findIndex((column) => column?.field === field);
 
-  if (typeof product.categoryName !== 'string' || product.categoryName === '') {
+  const named = (value: unknown): boolean => typeof value === 'string' && value !== '';
+  if (!named(product.categoryName) && !named(product.categoryCode)) {
     issue(COLUMN_BY_FIELD.get('categoryName'), indexOf('categoryName'), 'validation.product.categoryRequired');
   }
   if (typeof product.name !== 'string' || product.name === '') {
@@ -311,9 +340,19 @@ export function findDuplicatesInFile(
   return issues;
 }
 
-/** Category and model, case-insensitively: what makes two rows one product. */
+/**
+ * Category and model, case-insensitively: what makes two rows one product.
+ * The category is its code when the row gives one, else its (brand, name)
+ * pair — two brands may share a product name. Fields are joined with a unit
+ * separator, which no trimmed cell contains.
+ */
 function groupKey(input: ImportRow): string {
-  return `${(input.product.categoryName ?? '').trim().toLowerCase()}${input.product.name.trim().toLowerCase()}`;
+  const text = (value: string | null | undefined): string => (value ?? '').trim().toLowerCase();
+  const { categoryCode, categoryBrand, categoryName, name } = input.product;
+  const category = text(categoryCode)
+    ? ['code', text(categoryCode)]
+    : ['name', text(categoryBrand), text(categoryName)];
+  return [...category, text(name)].join('\u001f');
 }
 
 /** Several sheet rows folded into one product. */
@@ -408,7 +447,7 @@ export function templateGuideRows(createsCategories: boolean): string[][] {
 /** The note that is the company's answer rather than a fixed sentence. */
 function noteFor(column: (typeof IMPORT_COLUMNS)[number], createsCategories: boolean): string {
   if (column.field === 'categoryName' && !createsCategories) {
-    return 'Must already exist — an import cannot create one.';
+    return 'Required unless categoryCode is filled. Must already exist — an import cannot create one.';
   }
   return column.note;
 }

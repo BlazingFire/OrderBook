@@ -16,11 +16,13 @@
  */
 
 import { useEffect, useState } from 'react';
+import { shownColour } from '@orderbook/shared';
 import type { Lead, LineItem, Order, PartyScopeFilter, Pipeline } from '@orderbook/shared';
 
 import { ApiError, api } from '../api';
 import {
   Button,
+  ButtonLink,
   ConfirmDialog,
   ConflictBanner,
   DataTable,
@@ -76,8 +78,12 @@ function summariseItems(items: LineItem[]): { text: string; title: string } {
   // BASIN › DAMRU [Vitrosa 41] ×5" is what the counter would say.
   const lines = items.map((item) => {
     const main = item.categoryName ? `${item.categoryName} › ` : '';
-    // The colour chosen on a multi-colour line rides beside the variant's own.
-    const variant = [item.variantLabel, item.colour].filter(Boolean).join(' · ');
+    // The colour chosen on a multi-colour line rides beside the variant's own;
+    // the variant's is dropped when it only repeats the name (`MAGENTA` in
+    // Magenta, CATALOGUE_MODEL §2).
+    const variant = [shownColour(item.variantLabel, item.productName), item.colour]
+      .filter(Boolean)
+      .join(' · ');
     const variantText = variant ? ` [${variant}]` : '';
     // Packaging and grade are the two things said about the line itself.
     const meta = [item.packaging, item.grade].filter(Boolean).join(' · ');
@@ -124,6 +130,7 @@ export function LeadsOrdersScreen({
 
   const canDeleteLeads = permissions.includes('leads.delete');
   const canDeleteOrders = permissions.includes('orders.delete');
+  const canPreviewPdf = permissions.includes('leads.export');
 
   useEffect(() => {
     void api
@@ -490,7 +497,7 @@ export function LeadsOrdersScreen({
     {
       key: 'actions',
       header: '',
-      width: rem(240),
+      width: rem(canPreviewPdf ? 360 : 240),
       render: (lead) => {
         const missingPackaging =
           packagingRequired && lead.items.some((item) => !item.packaging?.trim());
@@ -504,6 +511,18 @@ export function LeadsOrdersScreen({
               width: '100%',
             }}
           >
+            {/* Opens beside the app: the Electron shell allows this one URL a
+                window of its own (CATALOGUE_MODEL §8). */}
+            {canPreviewPdf && (
+              <ButtonLink
+                href={`/api/leads/${encodeURIComponent(lead.id)}/pdf`}
+                target="_blank"
+                variant="secondary"
+                size="sm"
+              >
+                {t('lead.previewPdf')}
+              </ButtonLink>
+            )}
             {lead.convertedOrderId ? (
               <span className="ob-small">
                 {t('leadsOrders.leads.convertedOrder', { id: lead.convertedOrderId })}

@@ -19,9 +19,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import type { Party, Product, ProductCategory } from '@orderbook/shared';
 
+import { db } from '../src/db/knex.js';
 import type { ActorContext } from '../src/domain/actor.js';
 import { ForbiddenError } from '../src/lib/errors.js';
 import * as catalog from '../src/services/catalog.service.js';
+import * as fields from '../src/services/fields.service.js';
 import * as search from '../src/services/search.service.js';
 import { canRunIntegrationTests } from './helpers/db.js';
 import {
@@ -245,6 +247,131 @@ describe.skipIf(!canRunIntegrationTests)('the picker (integration)', () => {
       await expect(search.pick('category', { term: '' }, nobody)).rejects.toBeInstanceOf(
         ForbiddenError,
       );
+    });
+  });
+
+  /*
+   * Catalogue v2 (`docs/catalogue/CATALOGUE_MODEL.md` §5): the product bar
+   * matches a code from its start, a name or a brand, a code typed in full
+   * first and the rest in catalogue order; the sub-product bar lists every
+   * sub product of the chosen product in catalogue order.
+   */
+  describe('the product and sub-product bars', () => {
+    async function catalogue() {
+      await fields.createValue(
+        { listKey: 'product.brand', value: 'Swisware+', label: 'Swisware+', hex: null },
+        admin,
+      );
+      await fields.createValue(
+        { listKey: 'product.brand', value: 'Other', label: 'Other', hex: null },
+        admin,
+      );
+      const make = async (code: string, name: string, sortOrder: number, brand = 'Swisware+') => {
+        const category = await catalog.createCategory({ code, name, brand, sortOrder }, admin);
+        await catalog.createProduct(
+          { name: `${code} one`, categoryId: category.id, variants: [{ code: '' }] },
+          admin,
+        );
+        return category;
+      };
+      // Created out of catalogue order, so the order below is sort_order's.
+      const wc = await make('WC', 'Water Closet', 3, 'Other');
+      const opb = await make('OPB', 'One Piece Basin', 2);
+      const opt = await make('OPT', 'One Piece Toilet', 1);
+      // `OP` is a prefix of both codes above, and last in the catalogue.
+      await make('OP', 'Orissa Pan', 4);
+      return { wc, opb, opt };
+    }
+
+    const categoriesFor = async (term: string) =>
+      ((await search.pick('category', { term }, admin)) as { items: ProductCategory[] }).items.map(
+        (item) => item.code,
+      );
+
+    it('offers products in catalogue order, a code typed in full first', async () => {
+      await catalogue();
+
+      expect(await categoriesFor('')).toEqual(['OPT', 'OPB', 'WC', 'OP']);
+      // A code typed in full outranks catalogue order; the rest keep it.
+      expect(await categoriesFor('op')).toEqual(['OP', 'OPT', 'OPB']);
+      expect(await categoriesFor('opb')).toEqual(['OPB']);
+      expect(await categoriesFor('wc')).toEqual(['WC']);
+      expect(await categoriesFor('piece')).toEqual(['OPT', 'OPB']);
+      expect(await categoriesFor('other')).toEqual(['WC']);
+
+      const [row] = (
+        (await search.pick('category', { term: 'wc' }, admin)) as { items: ProductCategory[] }
+      ).items;
+      expect(row).toMatchObject({ code: 'WC', brand: 'Other', sortOrder: 3 });
+    });
+
+    it('never offers a product from the Recycle Bin', async () => {
+      const { wc } = await catalogue();
+      const [closet] = (await catalog.listProducts({ categoryId: wc.id }, admin)).items;
+      await catalog.deleteProduct(closet!.id, admin);
+      await catalog.deleteCategory(wc.id, admin);
+
+      expect(await categoriesFor('')).toEqual(['OPT', 'OPB', 'OP']);
+    });
+
+    it('lists every sub product of the chosen product, in catalogue order, carrying code and brand', async () => {
+      const { opt } = await catalogue();
+      // Sixty, past the old 50 cap, added last-first.
+      for (let at = 60; at >= 2; at -= 1) {
+        await catalog.createProduct(
+          { name: `${1100 + at}`, categoryId: opt.id, sortOrder: at, variants: [{ code: '' }] },
+          admin,
+        );
+      }
+      await db()('products').where({ name: 'OPT one' }).update({ sort_order: 1 });
+
+      const page = (await search.pick('product', { term: '', categoryId: opt.id }, admin)) as {
+        items: Product[];
+        truncated: boolean;
+      };
+      expect(page.truncated).toBe(false);
+      expect(page.items).toHaveLength(60);
+      expect(page.items.map((item) => item.sortOrder)).toEqual(
+        Array.from({ length: 60 }, (_, at) => at + 1),
+      );
+      expect(page.items[0]).toMatchObject({
+        name: 'OPT one',
+        categoryCode: 'OPT',
+        brand: 'Swisware+',
+      });
+      expect(page.items[0]?.variants.map((variant) => variant.code)).toEqual(['OPT-0001']);
+
+      // Narrowed by the name anywhere, or a code from its start — still in order.
+      const narrowed = (await search.pick(
+        'product',
+        { term: '115', categoryId: opt.id },
+        admin,
+      )) as {
+        items: Product[];
+      };
+      expect(narrowed.items.map((item) => item.name)).toEqual([
+        '1115',
+        ...Array.from({ length: 10 }, (_, at) => `${1150 + at}`),
+      ]);
+      const byCode = (await search.pick(
+        'product',
+        { term: 'OPT-0060', categoryId: opt.id },
+        admin,
+      )) as {
+        items: Product[];
+      };
+      expect(byCode.items.map((item) => item.name)).toEqual(['1102']);
+
+      // A caller that asks for fewer still gets fewer, and is told.
+      const few = (await search.pick(
+        'product',
+        { term: '', categoryId: opt.id, limit: 5 },
+        admin,
+      )) as {
+        items: Product[];
+        truncated: boolean;
+      };
+      expect([few.items.length, few.truncated]).toEqual([5, true]);
     });
   });
 

@@ -3,16 +3,17 @@
  * trade, written down rather than generated, so that what a person sees on a
  * demo Master reads like a business and not like `Product 17`.
  *
- * The product master itself is the Swisware catalogue
- * (`swisware-catalogue.ts`), loaded first by `catalogue-seed.service.ts`.
- * This file only says which of those models the demo trades in, with which
- * illustrative weights, and what happened to them.
+ * The product master itself is the SWISWARE catalogue file
+ * (`master/assets/catalogue/swisware-plus-2026.md`), loaded first by
+ * `catalogue-seed.service.ts`. This file only says which of its sub products
+ * the demo trades in, with which illustrative weights, and what happened to
+ * them.
  *
  * Pure data and pure rules only: no database, no clock. Every date is a day
  * offset from the start of the seeded window (`SAMPLE_WINDOW_DAYS` days before
- * "today"), and every reference between records is by the human key the seed
- * resolves — a variant *code*, a party *key* — never an id, because ids are
- * minted at seed time.
+ * "today"), and every reference between records is by a human key the seed
+ * resolves — a sub-product *key* (`SAMPLE_SUB_PRODUCTS`), a party *key* —
+ * never an id or a generated code, because both are minted at seed time.
  *
  * Weights are **illustrative demo figures**, not catalogue data — the
  * catalogue prints none, and the seed only sets them on the variants the demo
@@ -42,13 +43,14 @@ export interface SampleOptionValue {
 
 /**
  * Every managed list gets values, so each picker on the Fields screen has
- * rows. `stock.colour` — the colour list — is seeded by the catalogue loader
- * from the catalogue's own colour range, so it is empty here.
+ * rows. `stock.colour` — the colour list — and `product.brand` are seeded by
+ * the catalogue loader from the catalogue file itself, so both are empty here.
  */
 export const SAMPLE_OPTION_VALUES: Record<FieldListKey, readonly SampleOptionValue[]> = {
   // `lead.sourcePlatform` is seeded by the tenancy migration; nothing to add.
   'lead.sourcePlatform': [],
   'stock.colour': [],
+  'product.brand': [],
   'line.packaging': [
     { value: 'Carton' },
     { value: 'Thermocol box' },
@@ -105,17 +107,56 @@ export const SAMPLE_CUSTOM_FIELDS: readonly SampleCustomField[] = [
 // --- The models the demo trades in ------------------------------------------
 
 /**
- * One catalogue model the demo weighs and quotes. The model itself (its
- * category, name and variant codes) comes from the Swisware catalogue; this
- * only adds what a business enters into the product master.
+ * Where each sample key lives in the catalogue: the product's code and the
+ * sub product's printed name, the pair that is stable across loads — the
+ * `CODE-0001…` variant codes are generated, and a printed name alone repeats
+ * across products (`MAGENTA`, `BLACK`). The keys are the demo's own names,
+ * kept from before catalogue v2 so the history below reads unchanged.
+ */
+/* prettier-ignore */
+export const SAMPLE_SUB_PRODUCTS: Readonly<Record<string, { product: string; subProduct: string }>> = {
+  '102': { product: 'OPT', subProduct: '102 (9")' },
+  '107': { product: 'OPT', subProduct: '107 (9")' },
+  '1181': { product: 'OPT', subProduct: '1181' },
+  '1184': { product: 'OPT', subProduct: '1184' },
+  'DAMRU-WHITE': { product: 'OPB', subProduct: 'DAMRU' },
+  'NOVA-WHITE': { product: 'OPB', subProduct: 'NOVA' },
+  '41': { product: 'DMV', subProduct: '41' },
+  '42': { product: 'DMV', subProduct: '42' },
+  '46': { product: 'DMV', subProduct: '46' },
+  '150': { product: 'NVV', subProduct: '150' },
+  'WB-18X12': { product: 'WB', subProduct: '18x12' },
+  'WB-20X16': { product: 'WB', subProduct: '20x16' },
+  'WB-18X12-VITROSA-BLACK': { product: 'V1812', subProduct: 'BLACK' },
+  'WB-18X12-RUSTIC-COFFEE-BROWN': { product: 'R1812', subProduct: 'COFFEE BROWN' },
+  'SOFIYA-SET-WHITE': { product: 'PS', subProduct: 'SOFIYA SET (22X17)' },
+  'BIG-STERLING-SET-WHITE': { product: 'PS', subProduct: 'BIG STERLING SET (25X21)' },
+  'SOFIYA-SET-VITROSA-MAGENTA': { product: 'SFD', subProduct: 'MAGENTA' },
+  'SOFIYA-SET-VITROSA-MINT-GREEN': { product: 'SFD', subProduct: 'MINT GREEN' },
+  '3001': { product: 'BSD', subProduct: '3001' },
+  'BIG-STERLING-SET-RUSTIC-MAGENTA': { product: 'RS', subProduct: 'BIG STERLING SET MAGENTA' },
+  'EWC-S-TRAP': { product: 'WC', subProduct: 'E.W.C - S TRAP' },
+  '20-OP': { product: 'OP', subProduct: '20" O.P' },
+  'HEXA-URINAL': { product: 'UR', subProduct: 'HEXA URINAL' },
+  '7501': { product: 'TTW', subProduct: '7501' },
+  '7721': { product: 'TTV', subProduct: '7721' },
+  'DUAL-FLUSH-TANK-CISTERN': { product: 'ACC', subProduct: 'DUAL FLUSH TANK CISTERN' },
+  'MERCH-CATALOGUE': { product: 'MER', subProduct: 'CATALOGUE' },
+};
+
+/**
+ * One line of the range the demo weighs and quotes — one or more sub
+ * products sold together under a name. The sub products themselves come from
+ * the catalogue; this only adds what a business enters into the product
+ * master.
  */
 export interface SampleProduct {
-  /** The catalogue model's name, unique within its category. */
+  /** The range's name, for the photo caption. */
   model: string;
-  category: string;
   alias?: string;
   /**
-   * Illustrative weight in kilograms per variant code. Variants left out keep
+   * Illustrative weight in kilograms per sample key (`SAMPLE_SUB_PRODUCTS`),
+   * each its own sub product. The rest of the catalogue keeps
    * `weightKg: null` — the demo shows the "weight missing" flag as well as
    * the totals.
    */
@@ -125,34 +166,24 @@ export interface SampleProduct {
   launchYear: number;
 }
 
-const TOILET = 'ONE PIECE TOILET';
-const BASIN = 'ONE PIECE BASIN';
-const WASH_BASIN = 'WASH BASIN';
-const TABLE_TOP = 'TABLE TOP WASH BASIN';
-const SET = 'PLAIN SET';
-const WC = 'WATER CLOSET';
-const PAN = 'ORISSA PAN';
-const URINAL = 'URINAL';
-const ACCESSORIES = 'ACCESSORIES';
-
 /* prettier-ignore */
 export const SAMPLE_PRODUCTS: readonly SampleProduct[] = [
-  { model: '102', category: TOILET, alias: 'OPT 102', weights: { '102': 32.5 }, pattern: 'plain', launchYear: 2023 },
-  { model: '107', category: TOILET, alias: 'OPT 107', weights: { '107': 33 }, pattern: 'plain', launchYear: 2024 },
-  { model: '1181', category: TOILET, alias: 'Triangle red', weights: { '1181': 33.5 }, pattern: 'stone', launchYear: 2025 },
-  { model: '1184', category: TOILET, alias: 'Triangle blue', weights: { '1184': 33.5 }, pattern: 'stone', launchYear: 2025 },
-  { model: 'DAMRU', category: BASIN, weights: { 'DAMRU-WHITE': 18, '41': 18.5, '42': 18.5, '46': 18.5 }, pattern: 'marble', launchYear: 2022 },
-  { model: 'NOVA', category: BASIN, weights: { 'NOVA-WHITE': 17, '150': 17.5 }, pattern: 'wood', launchYear: 2023 },
-  { model: '18x12', category: WASH_BASIN, alias: 'WB 18x12', weights: { 'WB-18X12': 7.5, 'WB-18X12-VITROSA-BLACK': 7.5, 'WB-18X12-RUSTIC-COFFEE-BROWN': 7.5 }, pattern: 'plain', launchYear: 2021 },
-  { model: '20x16', category: WASH_BASIN, alias: 'WB 20x16', weights: { 'WB-20X16': 9.5 }, pattern: 'plain', launchYear: 2021 },
-  { model: 'SOFIYA SET', category: SET, alias: 'Sofiya', weights: { 'SOFIYA-SET-WHITE': 21, 'SOFIYA-SET-VITROSA-MAGENTA': 21, 'SOFIYA-SET-VITROSA-MINT-GREEN': 21 }, pattern: 'plain', launchYear: 2022 },
-  { model: 'BIG STERLING SET', category: SET, alias: 'Big Sterling', weights: { 'BIG-STERLING-SET-WHITE': 26, '3001': 27, 'BIG-STERLING-SET-RUSTIC-MAGENTA': 27 }, pattern: 'marble', launchYear: 2022 },
-  { model: 'E.W.C - S TRAP', category: WC, alias: 'EWC S', weights: { 'EWC-S-TRAP': 22 }, pattern: 'plain', launchYear: 2020 },
-  { model: '20" O.P', category: PAN, alias: 'Orissa 20', weights: { '20-OP': 11 }, pattern: 'plain', launchYear: 2019 },
-  { model: 'HEXA URINAL', category: URINAL, weights: { 'HEXA-URINAL': 8 }, pattern: 'plain', launchYear: 2020 },
-  { model: '7501', category: TABLE_TOP, alias: 'Table top 7501', weights: { '7501': 10 }, pattern: 'plain', launchYear: 2024 },
-  { model: '7721', category: TABLE_TOP, alias: 'Vitrosa 7721', weights: { '7721': 10.5 }, pattern: 'marble', launchYear: 2025 },
-  { model: 'DUAL FLUSH TANK CISTERN', category: ACCESSORIES, alias: 'Dual flush cistern', weights: { 'DUAL-FLUSH-TANK-CISTERN': 3.2 }, pattern: 'plain', launchYear: 2021 },
+  { model: '102', alias: 'OPT 102', weights: { '102': 32.5 }, pattern: 'plain', launchYear: 2023 },
+  { model: '107', alias: 'OPT 107', weights: { '107': 33 }, pattern: 'plain', launchYear: 2024 },
+  { model: '1181', alias: 'Triangle red', weights: { '1181': 33.5 }, pattern: 'stone', launchYear: 2025 },
+  { model: '1184', alias: 'Triangle blue', weights: { '1184': 33.5 }, pattern: 'stone', launchYear: 2025 },
+  { model: 'DAMRU', weights: { 'DAMRU-WHITE': 18, '41': 18.5, '42': 18.5, '46': 18.5 }, pattern: 'marble', launchYear: 2022 },
+  { model: 'NOVA', weights: { 'NOVA-WHITE': 17, '150': 17.5 }, pattern: 'wood', launchYear: 2023 },
+  { model: '18x12', alias: 'WB 18x12', weights: { 'WB-18X12': 7.5, 'WB-18X12-VITROSA-BLACK': 7.5, 'WB-18X12-RUSTIC-COFFEE-BROWN': 7.5 }, pattern: 'plain', launchYear: 2021 },
+  { model: '20x16', alias: 'WB 20x16', weights: { 'WB-20X16': 9.5 }, pattern: 'plain', launchYear: 2021 },
+  { model: 'SOFIYA SET', alias: 'Sofiya', weights: { 'SOFIYA-SET-WHITE': 21, 'SOFIYA-SET-VITROSA-MAGENTA': 21, 'SOFIYA-SET-VITROSA-MINT-GREEN': 21 }, pattern: 'plain', launchYear: 2022 },
+  { model: 'BIG STERLING SET', alias: 'Big Sterling', weights: { 'BIG-STERLING-SET-WHITE': 26, '3001': 27, 'BIG-STERLING-SET-RUSTIC-MAGENTA': 27 }, pattern: 'marble', launchYear: 2022 },
+  { model: 'E.W.C - S TRAP', alias: 'EWC S', weights: { 'EWC-S-TRAP': 22 }, pattern: 'plain', launchYear: 2020 },
+  { model: '20" O.P', alias: 'Orissa 20', weights: { '20-OP': 11 }, pattern: 'plain', launchYear: 2019 },
+  { model: 'HEXA URINAL', weights: { 'HEXA-URINAL': 8 }, pattern: 'plain', launchYear: 2020 },
+  { model: '7501', alias: 'Table top 7501', weights: { '7501': 10 }, pattern: 'plain', launchYear: 2024 },
+  { model: '7721', alias: 'Vitrosa 7721', weights: { '7721': 10.5 }, pattern: 'marble', launchYear: 2025 },
+  { model: 'DUAL FLUSH TANK CISTERN', alias: 'Dual flush cistern', weights: { 'DUAL-FLUSH-TANK-CISTERN': 3.2 }, pattern: 'plain', launchYear: 2021 },
 ];
 
 // --- Parties ---------------------------------------------------------------
@@ -268,7 +299,7 @@ export const SAMPLE_PARTIES: readonly SampleParty[] = [
 /** Party-wise records: a dealer's own name and packaging for a model. */
 export interface SamplePartyVariant {
   party: string;
-  /** Any variant code of the model — the record is per model, not per colour. */
+  /** A sample key (`SAMPLE_SUB_PRODUCTS`) — the record is per sub product. */
   code: string;
   alias?: string;
   packaging?: string;
@@ -305,7 +336,7 @@ export const SAMPLE_PARTY_ASSIGNMENTS: readonly SamplePartyAssignment[] = [
 // --- Stock -----------------------------------------------------------------
 
 /**
- * Opening stock per variant code, as pieces received from the factory in the
+ * Opening stock per sample key, as pieces received from the factory in the
  * first days of the window. Every weighed variant above gets stock; codes not
  * listed here get `DEFAULT_OPENING_PIECES`, and a few are deliberately thin
  * so the low-stock count on the dashboard is not zero.
@@ -368,13 +399,13 @@ export const SAMPLE_STOCK_ARRIVALS: readonly SampleStockArrival[] = [
 
 // --- Leads, orders and their histories -------------------------------------
 
-/** One variant on a lead — the line's whole identity is the code. */
+/** One sub product on a lead, by its sample key (`SAMPLE_SUB_PRODUCTS`). */
 export interface SampleLine {
   code: string;
   quantity: number;
   /** `null` leaves packaging unset — a half-built lead that cannot convert yet. */
   packaging: string | null;
-  /** A colour from the colour list — only on a model the catalogue makes in every colour. */
+  /** A colour from the colour list — only on a multicolour sub product (Water Closet, Orissa Pan). */
   colour?: string;
   notes?: string;
 }
@@ -577,7 +608,7 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
     day: 92, party: 'patel', owner: 'office', source: 'whatsapp', partyWise: true,
     lines: [
       { code: 'WB-18X12', quantity: 30, packaging: 'Carton' },
-      { code: 'SOFIYA-SET-WHITE', quantity: 10, packaging: 'Carton', colour: 'Ivory' },
+      { code: 'SOFIYA-SET-WHITE', quantity: 10, packaging: 'Carton' },
       { code: 'SOFIYA-SET-VITROSA-MINT-GREEN', quantity: 4, packaging: 'Carton' },
     ],
     remarks: ['Weekly order — same as last month'],
@@ -603,7 +634,7 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
     day: 106, party: 'mehta', owner: 'management', source: 'call', priority: 'High',
     siteLocation: 'Andheri commercial tower',
     lines: [
-      { code: 'HEXA-URINAL', quantity: 24, packaging: 'Carton', colour: 'Light Blue' },
+      { code: 'HEXA-URINAL', quantity: 24, packaging: 'Carton' },
       { code: 'WB-20X16', quantity: 30, packaging: 'Carton' },
       { code: 'EWC-S-TRAP', quantity: 36, packaging: 'Carton' },
     ],
@@ -784,7 +815,7 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
  */
 export const SAMPLE_DELETIONS = {
   party: 'hariom',
-  /** A variant code of the product to bin. */
+  /** The sample key of the sub product to bin. */
   productCode: 'MERCH-CATALOGUE',
   /** Index into `SAMPLE_LEADS` — the first lost lead. */
   leadIndex: 2,

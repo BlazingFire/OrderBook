@@ -2,12 +2,14 @@
  * Standalone catalogue loader: `npm run seed:catalogue` (root) or
  * `npm run seed:catalogue --workspace @orderbook/master`.
  *
- * The same `seedCatalogue` the developer tab calls, reachable without a
- * browser: the Swisware master catalogue — categories, models and every
- * variant code, weights left blank — created through the ordinary catalogue
- * service as the installation's first administrator. Starts the database the
- * way the Master does, migrates, loads, prints what it made, and shuts down.
- * Idempotent: a second run reports every model as already present.
+ * The same additive `seedCatalogue` the developer tab calls, reachable
+ * without a browser: the shipped SWISWARE catalogue file
+ * (`master/assets/catalogue/swisware-plus-2026.md`, `docs/catalogue/CATALOGUE_MODEL.md`
+ * §4) — brands, colours, products and sub products, weights left blank —
+ * loaded as the installation's first administrator. Deletes nothing. Starts
+ * the database the way the Master does, migrates, loads, prints what it made,
+ * and shuts down. Idempotent: a second run reports every sub product as
+ * already present. To replace the catalogue instead, `reload:catalog`.
  */
 
 import { createLogger } from '../lib/logger.js';
@@ -25,8 +27,8 @@ async function main(): Promise<void> {
     await runMigrations();
     const result = await seedCatalogue();
     log.info(
-      `Swisware catalogue: ${result.categories} new categories, ${result.products} products ` +
-        `(${result.variants} variants) loaded, ${result.skipped} models already present`,
+      `SWISWARE catalogue: ${result.products} products and ${result.subProducts} sub products ` +
+        `created, ${result.colours} colours added, ${result.skipped} sub products already present`,
     );
   } finally {
     await closeDatabase();

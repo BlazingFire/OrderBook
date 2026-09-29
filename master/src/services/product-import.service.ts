@@ -248,50 +248,64 @@ export async function importProducts(
   const rowCount = (groups: readonly ImportGroup[]): number =>
     groups.reduce((sum, group) => sum + group.rows.length, 0);
 
-  // A category the file names but the company does not have.
+  // The product (category) each group names, among the live ones, by the rule
+  // the single-product path follows (`resolveCategoryId`): a code is exact,
+  // never falls back to the name and never creates a product
+  // (docs/catalogue/CATALOGUE_MODEL.md §5); a name is read with its brand, and
+  // one given no brand takes the brandless product of that name first.
   //
   // Settled **here**, above the dry-run boundary, for the reason this file's
   // header gives: one function answers "what would this file do" and "do it",
   // so a preview that says "ok" and a commit that refuses would be the defect.
   const mayCreateCategories = await getSetting(actor.tenantId, 'catalog.importCreatesCategories');
-  let knownCategories = new Map<string, string>();
-  if (!mayCreateCategories) {
-    knownCategories = new Map(
-      (await productRepo.listCategories(actor.tenantId)).map((category) => [
-        category.name.trim().toLowerCase(),
-        category.id,
-      ]),
+  const liveCategories = await productRepo.listCategories(actor.tenantId);
+  const categoryCodeOf = (group: ImportGroup): string | null =>
+    group.input.categoryCode?.trim() || null;
+  const existingCategoryOf = (group: ImportGroup): string | undefined => {
+    const code = categoryCodeOf(group)?.toLowerCase();
+    if (code) return liveCategories.find((category) => category.code?.toLowerCase() === code)?.id;
+    const name = group.input.categoryName?.trim().toLowerCase();
+    if (!name) return undefined;
+    const brand = group.input.categoryBrand?.trim().toLowerCase() || null;
+    const named = liveCategories.filter(
+      (category) =>
+        category.name.trim().toLowerCase() === name &&
+        (brand === null || category.brand?.trim().toLowerCase() === brand),
     );
+    return (named.find((category) => !category.brand) ?? named[0])?.id;
+  };
 
-    // Refused, not filed under no category: a success that discarded what the
-    // file asserted is the worst answer available. Every row of the group is
-    // named, because every row carried the category.
-    const unknownCategory = (group: ImportGroup): boolean => {
-      const name = group.input.categoryName?.trim();
-      return name !== undefined && name !== '' && !knownCategories.has(name.toLowerCase());
-    };
-    const refuseCategory = (group: ImportGroup): void => {
-      for (const entry of group.rows) {
-        issues.push({
-          row: entry.row,
-          kind: 'error',
-          column: headerFor('categoryName'),
-          messageKey: 'validation.import.unknownCategory',
-          params: { categoryName: group.input.categoryName ?? '' },
-        });
-      }
-    };
-    creates = creates.filter((group) => {
-      if (!unknownCategory(group)) return true;
-      refuseCategory(group);
-      return false;
-    });
-    updates = updates.filter((group) => {
-      if (!unknownCategory(group)) return true;
-      refuseCategory(group);
-      return false;
-    });
-  }
+  // Refused, not filed under no category: a success that discarded what the
+  // file asserted is the worst answer available. Every row of the group is
+  // named, because every row carried the category. An unknown name is only
+  // refused while the switch forbids creating one; an unknown code always is.
+  const keepKnownCategory = (group: ImportGroup): boolean => {
+    if (existingCategoryOf(group) !== undefined) return true;
+    const code = categoryCodeOf(group);
+    if (!code && (mayCreateCategories || !group.input.categoryName?.trim())) return true;
+    for (const entry of group.rows) {
+      issues.push(
+        code
+          ? {
+              row: entry.row,
+              kind: 'error',
+              column: headerFor('categoryCode'),
+              messageKey: 'validation.product.categoryCodeUnknown',
+              params: { code },
+            }
+          : {
+              row: entry.row,
+              kind: 'error',
+              column: headerFor('categoryName'),
+              messageKey: 'validation.import.unknownCategory',
+              params: { categoryName: group.input.categoryName ?? '' },
+            },
+      );
+    }
+    return false;
+  };
+  creates = creates.filter(keepKnownCategory);
+  updates = updates.filter(keepKnownCategory);
 
   const sample = [...creates, ...updates]
     .sort((a, b) => (a.rows[0]?.row ?? 0) - (b.rows[0]?.row ?? 0))
@@ -320,23 +334,30 @@ export async function importProducts(
       await db().transaction(async (trx) => {
         const hlc = await nextHlc(trx);
         const ids = await allocatePermanentIds(actor.tenantId, 'product', chunk.length, trx);
-        // While the switch is off the creating call is not made at all, rather
-        // than made and trusted to find everything: every surviving group's
-        // name is already in `knownCategories`, and nothing in this product
-        // deletes a category, so the ids stay good between the check and this
-        // insert.
-        const categories = mayCreateCategories
+        // Only a name nothing matched above is left to create, and while the
+        // switch is off the creating call is not made at all, rather than made
+        // and trusted to find everything: every surviving group was matched.
+        // A product binned between that check and this insert is the one gap
+        // left; the chunk then files the sub product under it, as before.
+        const seedOf = (group: ImportGroup) => ({
+          name: group.input.categoryName ?? '',
+          brand: group.input.categoryBrand ?? null,
+        });
+        const fresh = mayCreateCategories
           ? await productRepo.ensureCategories(
               actor.tenantId,
-              chunk.map((group) => group.input.categoryName ?? ''),
+              chunk.filter((group) => existingCategoryOf(group) === undefined).map(seedOf),
               trx,
             )
-          : knownCategories;
+          : new Map<string, string>();
         await productRepo.insertProductRows(
           chunk.map((group, index) => ({
             id: ids[index] as string,
             input: group.input,
-            categoryId: categories.get((group.input.categoryName ?? '').trim().toLowerCase()) ?? null,
+            categoryId:
+              existingCategoryOf(group) ??
+              fresh.get(productRepo.categorySeedKey(seedOf(group))) ??
+              null,
           })),
           { tenantId: actor.tenantId, hlc },
           trx,

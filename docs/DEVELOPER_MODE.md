@@ -93,23 +93,27 @@ machine it seeds whichever database that names, not a fresh one.
 Everything else in the database is untouched — other users, parties, products,
 leads and orders stay exactly as they were.
 
-## The Swisware catalogue
+## The SWISWARE catalogue
 
-The product master is the Swisware sanitaryware catalogue (Smruti Ceramics,
-2026 edition): twelve categories — ONE PIECE TOILET, ONE PIECE BASIN, WATER
-CLOSET, UNDER COUNTER BASIN, LAB SINK, WASH BASIN, TABLE TOP WASH BASIN, PLAIN
-SET, URINAL, ORISSA PAN, ACCESSORIES, MERCHANDISE — holding 251 models and 549
-variants. It is transcribed as pure data in
-`master/src/domain/swisware-catalogue.ts` and loaded by
-`master/src/services/catalogue-seed.service.ts`, which replays it through the
-ordinary catalogue service as the installation's first administrator, so what
-lands is exactly what a person typing it in would have produced: categories,
-models, variants, activity entries, and the colour palette (`stock.colour`)
-the variant labels draw their swatches from.
+The product master is the SWISWARE sanitaryware catalogue (Smruti Ceramics,
+2026 edition) in the owner's catalogue v2 shape (2026-09-29,
+`docs/catalogue/CATALOGUE_MODEL.md`): **Brand → Product → Sub product** — one
+brand (Swisware+), 41 products each with a software code (`OPT` One Piece
+Toilet, `WC` Water Closet, …) and 549 sub products, plus the 21-colour range
+with the hex values sampled from page 2. It is Markdown data shipped with the
+Master, `master/assets/catalogue/swisware-plus-2026.md` (its own header lists
+the transcription decisions), parsed by `master/src/domain/catalogue-markdown.ts`
+and loaded by `loadCatalogue` in `master/src/services/catalogue-seed.service.ts`
+in **one transaction**, as bulk inserts rather than 549 service calls. What lands:
+the brand as a `product.brand` value and the colours as `stock.colour` values
+(added, brought back from the Recycle Bin, printed hex written); each product as
+a category with its code, brand and catalogue order; each sub product as a model
+with **exactly one variant**, coded `CODE-0001…` in catalogue order, its colour
+rule stored the way `colourRuleOf` reads it back.
 
-**From the app** — Settings → Developer → unlock → *Load the Swisware
-catalogue*. The result reports the categories, models and variants created and
-the models it left alone.
+**From the app** — Settings → Developer → unlock → *Load the SWISWARE
+catalogue* (*Load catalogue*). The result reports the brands, colours,
+products and sub products added and the sub products it left alone.
 
 **From a checkout:**
 
@@ -120,20 +124,23 @@ npm run seed:catalogue
 The CLI (`master/src/db/seed-catalogue-cli.ts`) uses the same `.env` and the
 same database, prints the counts, and shuts down.
 
-Three rules govern the transcription, and they are the owner's brief's rather
-than choices made here:
+The rules come from the owner (2026-09-28), not from choices made here:
 
-- **A model is grouped only where the catalogue names it.** "DAMRU VITROSA"
-  41…100 are variants of the DAMRU basin because the page says so; the designer
-  one-piece toilets 1111…1199 are separate single-code products because no
-  model name appears, and grouping them by how the pictures look is what the
-  brief forbids. Variant labels are `Vitrosa <code>` for a coded pattern, the
-  catalogue's own colour caption for a colour variant, `White` for the plain
-  member of a model.
-- **Codes are the catalogue's codes.** Where the catalogue prints none (the
-  plain basins, the sets, the urinals, the pans, the accessories) the product
-  gets a transparent slug of its name — `HEXA-URINAL`, `DAMRU-WHITE` — for the
-  administrator to replace with the real one on the product form.
+- **A sub product is what the catalogue prints under a photo**, a number
+  (`1111`, `41`) or a name (`102 (9")`, `DAMRU`, `MAGENTA`), unique inside its
+  product. Each is its own model with one variant; nothing is grouped by how
+  the pictures look.
+- **The colour rule is the catalogue's**: `fixed` (made in one colour, named in
+  the Colour column — the variant's label), `dedicated` (the design is its own
+  colour — numbered and designer pieces, accessories — so no colour anywhere)
+  and `multicolour` (any colour of the range; only Water Closet and Orissa Pan,
+  17 sub products, which land with *Made in every colour* on). 129 sub products
+  are fixed, 403 dedicated.
+- **Codes are generated**: the catalogue prints product names, not codes, so
+  every sub product gets `<product code>-<four digits>` by its place in the
+  catalogue. When another variant already holds that code (the Recycle Bin
+  included), the sub product takes the next free number past the end of its
+  product's own range.
 - **No weights.** The catalogue carries none, and inventing one from a picture
   would put a number on a dispatch note nobody measured. Every variant lands
   with a blank weight, shows as *weight missing* on every screen and is left
@@ -145,11 +152,19 @@ than choices made here:
   lead line on them may name a colour from the colour list; the one-piece and
   table-top ranges, which only say "also available in Ivory", land with it off.
 
-It is **idempotent by model**: a model whose codes are all already live is
-skipped, so a second press changes nothing and reports everything under
-*skipped*. A model some of whose codes exist is skipped too, rather than
-half-created — the administrator has been editing it, and the catalogue must
-not undo that. It adds to whatever else is there and never deletes.
+The press is **additive and idempotent**: a product is found by its code, or by
+(brand, name), before one is created, and a sub product already live in its
+product under the same name is skipped, so a second press writes nothing and
+reports everything under *skipped*. Nothing existing is changed and nothing is
+deleted. It writes one `catalog.imported` activity entry when it adds anything.
+
+**Replacing the catalogue** is an operator script, not a button:
+`npm run reload:catalog --workspace @orderbook/master`, with the Master stopped
+(it refuses while anything else is connected to the database). It deletes the
+catalogue and everything that quotes it — leads, orders, stock, party-wise
+records, photos — keeps parties, people, settings, option lists and the
+activity log, loads the file and writes one `catalog.reloaded` entry
+(`HANDOFF.md`, "How to run").
 
 ## Sample data
 

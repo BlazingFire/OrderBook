@@ -95,6 +95,11 @@ function removeFromSnapshot(snapshot: SyncSnapshot, event: DataChangedEvent): Ap
     case 'product':
       snapshot.products = snapshot.products.filter((row) => row.id !== id);
       return 'applied';
+    // A category can be binned since catalogue v2; left as a blind upsert it
+    // would stay in the panel's Products list until the next reconnect.
+    case 'product_category':
+      snapshot.categories = snapshot.categories.filter((row) => row.id !== id);
+      return 'applied';
     case 'order':
       snapshot.orders = snapshot.orders.filter((row) => row.id !== id);
       return 'applied';

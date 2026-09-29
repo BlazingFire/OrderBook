@@ -104,15 +104,24 @@ export interface SeedSampleDataResult {
 }
 
 /**
- * What loading the Swisware catalogue produced. Idempotent: a second press
- * reports everything under `skipped` and writes nothing.
+ * What loading the SWISWARE catalogue file produced
+ * (`docs/catalogue/CATALOGUE_MODEL.md` §4). An additive load is idempotent: a
+ * second press reports every sub product under `skipped` and writes nothing.
  */
 export interface LoadCatalogueResult {
-  categories: number;
+  /** `product.brand` values added, or brought back from the Recycle Bin. */
+  brands: number;
+  /** `stock.colour` values added, or brought back from the Recycle Bin. */
+  colours: number;
+  /** Products (categories) created. */
   products: number;
-  variants: number;
-  /** Models already present (every one of their codes found), left alone. */
+  /** Sub products created, each with its one variant. */
+  subProducts: number;
+  /** Sub products already live in their product under the same name, left alone. */
   skipped: number;
+  /** A replacing reload only (zero otherwise): the leads and orders cleared with the old catalogue. */
+  removedLeads: number;
+  removedOrders: number;
 }
 
 export interface SampleDataCounts {

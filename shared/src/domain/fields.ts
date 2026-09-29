@@ -9,13 +9,14 @@ import { CUSTOM_FIELD_ENTITIES, type CustomFieldEntity } from './entities.js';
 import type { MessageKey } from '../i18n/keys.js';
 
 /**
- * The four managed option-list sets. Inlined literals, never referenced from a
+ * The five managed option-list sets. Inlined literals, never referenced from a
  * migration (`03-DATABASE.md` §2: a migration is a fixed historical fact, not
  * a view of today's code).
  */
 export const FIELD_LIST_KEYS = [
   'lead.sourcePlatform',
   'stock.colour',
+  'product.brand',
   'line.packaging',
   'line.grade',
 ] as const;
@@ -29,7 +30,7 @@ export function isFieldListKey(value: unknown): value is FieldListKey {
 export interface FieldSetDefinition {
   listKey: FieldListKey;
   labelToken: MessageKey;
-  /** True for `'stock.colour'` only — the other two have no colour to render. */
+  /** True for `'stock.colour'` only — the others have no colour to render. */
   hasHex: boolean;
   /** Tables that reference this set, as tokens the client labels. */
   usedBy: string[];
@@ -50,6 +51,23 @@ const FIELD_SETS: readonly FieldSetDefinition[] = [
     labelToken: 'fieldSet.stock.colour',
     hasHex: true,
     usedBy: ['products', 'leads', 'orders'],
+  },
+  /*
+   * The brands a category (the owner's Product) is sold under
+   * (`docs/catalogue/CATALOGUE_MODEL.md` §1). An option list rather than a
+   * table because a brand needs nothing a list does not already carry — add,
+   * relabel, remove to the Recycle Bin, the activity log and sync. The value
+   * is the brand name and is what `product_categories.brand` holds.
+   *
+   * The key is reused: the 2026-09-21 trim deleted a `product.brand` list of
+   * the same name along with the old `products.brand` column. Brand now lives
+   * on the category, and the catalogue loader fills the list.
+   */
+  {
+    listKey: 'product.brand',
+    labelToken: 'fieldSet.product.brand',
+    hasHex: false,
+    usedBy: ['products'],
   },
   {
     listKey: 'line.packaging',

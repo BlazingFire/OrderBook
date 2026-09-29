@@ -151,15 +151,14 @@ describe('the key helpers', () => {
   });
 });
 
-describe('leads.followUpDefaultDays keeps today expressible', () => {
-  // The one property an upgraded installation depends on. Copying
-  // `leads.quietAfterDays`' floor of 1 here — the obvious thing to do, since
-  // the two sit beside each other and both count days — would silently change
-  // what the New Lead form opens on in every shop that has never touched this.
+describe('leads.followUpDefaultDays starts three days out and keeps today expressible', () => {
+  // Copying `leads.quietAfterDays`' floor of 1 here — the obvious thing to do,
+  // since the two sit beside each other and both count days — would take away
+  // the one way a company gets the old "today" behaviour back.
   const definition = SETTINGS['leads.followUpDefaultDays'];
 
-  it('defaults to 0, which is what the form does today', () => {
-    expect(definition.fallback).toBe(0);
+  it('defaults to 3, the owner\'s follow-up (catalogue v2, 2026-09-28)', () => {
+    expect(definition.fallback).toBe(3);
   });
 
   it('accepts 0 rather than treating it as unset', () => {
@@ -171,5 +170,14 @@ describe('leads.followUpDefaultDays keeps today expressible', () => {
     expect(control.kind).toBe('number');
     if (control.kind !== 'number') return;
     expect(control.min).toBe(0);
+  });
+});
+
+describe('leads.packagingRequiredOnConvert is off unless a company switches it on', () => {
+  // Lead entry stopped asking for packaging with catalogue v2. With the old
+  // `true` default, every lead taken on a screen that never asks would be
+  // refused at conversion for a field nobody was shown.
+  it('defaults to false', () => {
+    expect(SETTINGS['leads.packagingRequiredOnConvert'].fallback).toBe(false);
   });
 });

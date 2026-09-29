@@ -155,6 +155,8 @@ CREATE TABLE line_items (
   -- Snapshotted at add time, frozen from then on.
   product_name       TEXT NOT NULL,
   category_name      TEXT,                       -- the category the line was entered under
+  category_code      TEXT,                       -- since 2026-09-29: that category's code, e.g. 'OPT'
+  brand_name         TEXT,                       -- since 2026-09-29: that category's brand
   alias              TEXT,
   code               TEXT,                       -- the variant's code as it was
   variant_label      TEXT,                       -- the variant's colour or pattern as it was
@@ -192,8 +194,10 @@ at conversion.
 The snapshot columns are the heart of the design: editing a product afterwards must not rewrite
 what an order was quoted as. Every snapshot column is copied at add time and never re-read.
 
-`packaging` is nullable in the schema but required by policy before conversion. It is deliberately
-never derived — not from the product, not from a party variant, not during conversion.
+`packaging` is nullable in the schema, and required before conversion only while the company
+setting `leads.packagingRequiredOnConvert` is on — **off** unless switched on since catalogue v2
+(2026-09-29), when lead entry stopped asking for packaging. It is deliberately never derived — not
+from the product, not from a party variant, not during conversion.
 
 `image_path` is carried through the input contract and stored as given; no screen in either panel
 sets it today.
@@ -215,7 +219,18 @@ ALL ITEMS" over its water closets, pedestal sets, urinals and pans — and nobod
 variants per model to say so. Such a model carries `products.multi_colour = true`, and a line on
 it may name a colour from the `stock.colour` option list; the line still points at the variant it
 quotes, stock stays per variant, and the colour is frozen and copied onto the order like the rest
-of the snapshot. A colour on any other product is refused (`validation.lead.colourUnexpected`).
+of the snapshot. **Several colours of one sub product are several lines** on the same variant, one
+per colour, each with its own quantity — no schema change; the screens and the lead PDF group them
+(`White ×10, Ivory ×5`).
+
+**A colour on any other product is dropped, not refused** (catalogue v2, 2026-09-29, amending
+`HANDOFF.md` Key decision 15): the Master stores `colour = NULL` rather than failing the write, so a
+lead queued offline cannot bounce on it. Until then it was refused with
+`validation.lead.colourUnexpected`. A colour missing from the list was never refused.
+
+**`category_code` and `brand_name`** (2026-09-29) are snapshotted beside `category_name` for the
+same reason it is: recoding a product (category) or renaming a brand later must not rewrite what an
+old lead was quoted as. A line added before them reads NULL in both.
 
 **`grade` is a line attribute, not a catalogue one** (2026-09-22). The trim of 2026-09-21 dropped
 grade from `products`, `party_product_variants` *and* `line_items`; a day later the owner asked for
@@ -379,8 +394,11 @@ Three rules the implementation depends on:
 
 **Stock is allowed to go negative, and an order is never blocked by insufficient stock.** A ceramic
 dealer routinely sells against a factory order that has not arrived; the shortfall is surfaced
-instead. A variant that is reserved but has no stock row at all is synthesised into the
-inventory view at zero, precisely because that is the case worth seeing.
+instead. Since catalogue v2 (2026-09-29) the inventory list is driven from `product_variants` with
+`inventory_stock` left-joined, so **every live variant of a live, active model is a row**, at zero
+when it has never been stocked — which also shows a variant that is reserved but was never stocked,
+the case worth seeing. A variant taken off the form stays listed while pieces of it are on the floor
+or held for an order. Nothing is written to `inventory_stock` for a zero row: nothing has moved.
 
 **The stock levels and the lot fields** came with `20260315000000_product_trade_and_ceramic_attributes`
 and outlived the rest of it:
@@ -454,3 +472,16 @@ Migration `20260325000000_line_item_grade` adds the column back and seeds nothin
 registered **after** the trim rather than in timestamp order, because on a fresh database the
 trim — itself pinned near the end — would otherwise drop the column a moment after this added it.
 `products.grade` and `party_product_variants.grade` stay gone.
+
+### And on 2026-09-29: catalogue v2 (Brand → Product → Sub product)
+
+| Before | Now | Why |
+|---|---|---|
+| A line snapshots `category_name` only | Also `category_code` and `brand_name` | The lead PDF and the screens print the product's code and brand as they were when the line was added |
+| A colour on a product that is not multi-colour refused (`validation.lead.colourUnexpected`) | Dropped: the line is stored with `colour = NULL` | A queued offline lead must not bounce on a stray colour (`docs/catalogue/CATALOGUE_MODEL.md` §2) |
+| One colour per multi-colour card | Several colours with a quantity each, stored as several lines on one variant | The owner's multicolour rule; stock stays per variant |
+| The inventory list driven by `inventory_stock` rows | Every live variant listed, at zero when it has no stock row | A sub product nobody has stocked yet is still a row to count into (`CATALOGUE_MODEL.md` §7) |
+
+Migration `20260326000000_catalogue_brands_and_codes_port` adds the two line columns (and the
+category columns in `02-parties-and-products.md`); it is additive, idempotent and pinned after
+`20260325000000_line_item_grade`, for the same reason that one is pinned after the trim.

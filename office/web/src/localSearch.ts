@@ -36,10 +36,23 @@ export function searchLocalView(view: LocalView, term: string): SearchHit[] {
 
   for (const product of view.products) {
     // The codes and colours live on the variants: "41" and "Magenta" both
-    // have to find the model they belong to.
+    // have to find the model they belong to. A sub product's printed name
+    // (`102 (9")`) is rarely what is typed; its brand and its product's code
+    // and name often are (`docs/catalogue/CATALOGUE_MODEL.md` §1).
     const codes = product.variants.map((variant) => variant.code);
     const labels = product.variants.map((variant) => variant.label);
-    if (!matches(needle, product.name, product.alias, product.size, ...codes, ...labels)) continue;
+    const found = matches(
+      needle,
+      product.name,
+      product.alias,
+      product.size,
+      product.brand,
+      product.categoryName,
+      product.categoryCode,
+      ...codes,
+      ...labels,
+    );
+    if (!found) continue;
     hits.push({
       kind: 'product',
       id: product.id,

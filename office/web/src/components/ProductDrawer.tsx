@@ -7,16 +7,30 @@
  * variants?" — and either one code-and-weight pair (No) or a table of colour ·
  * code · weight rows (Yes). Nothing else on the form knows about codes.
  *
- * The category is a suggest field over the categories the panel already holds;
- * a name that matches none creates one on the Master. Required, because the
- * lead screen finds products by category first.
+ * In the owner's words the record is a **sub product** and its category is its
+ * **product** (`docs/catalogue/CATALOGUE_MODEL.md` §1). The product is
+ * **pick-only**, from the products this panel holds, each read the way the
+ * catalogue writes it (`OPT · One Piece Toilet · Swisware+`). It used to be a
+ * suggest field whose unmatched name created a category on the Master, so a
+ * typo became a new product with no code and no brand; products are made on
+ * the Products page now, where a code and a brand are asked for. Required,
+ * because the lead screen finds a sub product through its product first.
+ *
+ * The brand shows beneath it, read-only: brand lives on the product and is
+ * read through it, so there is nothing to set here, and a sub product moves
+ * brand only by moving product.
  *
  * *Made in every colour* is the second switch. Some models are made in any
  * colour of the company's colour list ("all colours available in all items"
  * in the catalogue), and nobody wants sixteen variants per model to say so:
  * with it on, a lead line on this product may name a colour from the list.
  *
- * That is the whole form: name, category, alias, size, the variants and the
+ * The two switches are also what the catalogue's colour rule is read from
+ * (§2) — multi-colour is "Multicolour", one labelled variant is a fixed
+ * colour, one unlabelled variant is a numbered design — so the form needs no
+ * rule picker of its own.
+ *
+ * That is the whole form: name, product, alias, size, the variants and the
  * colour switch. The product master carries nothing else (2026-09-21).
  *
  * The name is kept for its call sites; it is a modal.
@@ -34,6 +48,7 @@ import type {
 import { ProductValidationError, validateProductVariants } from '@orderbook/shared';
 
 import { api } from '../api';
+import { byCatalogueOrder, productLabel } from '../productSummary';
 import {
   Button,
   ColourChip,
@@ -43,6 +58,7 @@ import {
   Modal,
   NumberInput,
   Segmented,
+  Select,
   SuggestInput,
   rem,
   t,
@@ -61,7 +77,7 @@ export interface CreatedProduct {
 interface ProductDrawerProps {
   open: boolean;
   product?: Product | null;
-  /** The categories this panel holds, for the suggest field. */
+  /** The categories (the owner's products) this panel holds, for the product picker. */
   categories: ProductCategory[];
   /** For the colour swatch beside a variant colour (`stock.colour`). */
   optionLists: OptionListItem[];
@@ -74,7 +90,7 @@ interface ProductDrawerProps {
 /** Every editable model-level column, so the form and the record cannot drift apart. */
 const EMPTY = {
   name: '',
-  categoryName: '',
+  categoryId: '',
   alias: '',
   size: '',
   /** The one code and weight of a product with no variants. */
@@ -124,6 +140,11 @@ export function ProductDrawer({
   const setRow = (index: number, patch: Partial<VariantRow>): void =>
     setRows((current) => current.map((row, at) => (at === index ? { ...row, ...patch } : row)));
 
+  // Live products only, in catalogue order — the order the printed catalogue
+  // and the lead screen's product bar use.
+  const products = categories.filter((category) => !category.deletedAt).sort(byCatalogueOrder);
+  const chosen = categories.find((category) => category.id === draft.categoryId) ?? null;
+
   useEffect(() => {
     if (!open) return;
 
@@ -131,7 +152,7 @@ export function ProductDrawer({
       const single = editing.variants[0];
       setDraft({
         name: editing.name,
-        categoryName: editing.categoryName,
+        categoryId: editing.categoryId,
         alias: editing.alias ?? '',
         size: editing.size ?? '',
         code: !editing.hasVariants && single ? single.code : '',
@@ -204,13 +225,12 @@ export function ProductDrawer({
 
   async function save(): Promise<void> {
     const name = draft.name.trim();
-    const categoryName = draft.categoryName.trim();
 
     if (!name) {
       onError(t('product.nameRequired'));
       return;
     }
-    if (!categoryName) {
+    if (!draft.categoryId) {
       onError(t('validation.product.categoryRequired'));
       return;
     }
@@ -229,7 +249,13 @@ export function ProductDrawer({
 
     const input: ProductInput = {
       name,
-      categoryName,
+      // The id decides on the Master. The name, code and brand ride along
+      // only so a sub product created offline shows under its product in the
+      // list before the Master has answered (`provisionalProduct`).
+      categoryId: draft.categoryId,
+      categoryName: chosen?.name ?? null,
+      categoryCode: chosen?.code ?? null,
+      categoryBrand: chosen?.brand ?? null,
       alias: text('alias'),
       size: text('size'),
       multiColour,
@@ -354,20 +380,22 @@ export function ProductDrawer({
           </Field>
           <Field label={t('product.field.category')} required hint={t('product.field.categoryHint')}>
             {(id) => (
-              <SuggestInput
+              <Select
                 id={id}
-                value={draft.categoryName}
-                invalid={!draft.categoryName.trim()}
-                optionsLabel={t('lead.add.draft.showOptions', {
-                  field: t('product.field.category'),
-                })}
-                options={categories.map((category) => ({
-                  value: category.name,
-                  label: category.name,
-                }))}
-                onChange={(next) => set('categoryName', next)}
-              />
+                value={draft.categoryId}
+                aria-invalid={!draft.categoryId || undefined}
+                onChange={(event) => set('categoryId', event.target.value)}
+              >
+                {products.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {productLabel(category.code, category.name, category.brand)}
+                  </option>
+                ))}
+              </Select>
             )}
+          </Field>
+          <Field label={t('product.field.brand')} hint={t('product.field.brandHint')}>
+            {(id) => <Input id={id} value={chosen?.brand ?? ''} disabled />}
           </Field>
           {text('alias', t('product.field.alias'))}
           {text('size', t('product.field.size'), { placeholder: t('product.field.sizePlaceholder') })}

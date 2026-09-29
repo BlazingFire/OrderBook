@@ -37,7 +37,19 @@ import { describe, expect, it } from 'vitest';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-const RELEASE = readFileSync(path.join(ROOT, 'tools', 'release.mjs'), 'utf8');
+/**
+ * A file under the repo root as text, with line endings normalised.
+ *
+ * Git checks these files out with CRLF on Windows (`core.autocrlf`), and every
+ * reader below finds lines by `\n` — a `}` line, a `\nmac:\n` header — so on a
+ * CRLF checkout each one came back empty and 29 assertions failed on text that
+ * was never read. Linux CI checks out LF, where this is a no-op.
+ */
+function readText(...segments: string[]): string {
+  return readFileSync(path.join(ROOT, ...segments), 'utf8').replace(/\r\n/g, '\n');
+}
+
+const RELEASE = readText('tools', 'release.mjs');
 
 const PANELS = ['master', 'office'] as const;
 
@@ -577,7 +589,7 @@ describe('what electron-builder builds is what release.mjs picks up', () => {
   const targets = declaredTargets();
 
   for (const thing of [...PANELS, 'cleaner'] as const) {
-    const yml = readFileSync(path.join(ROOT, thing, 'electron-builder.yml'), 'utf8');
+    const yml = readText(thing, 'electron-builder.yml');
 
     for (const [name, target] of Object.entries(targets)) {
       it(`${thing} builds exactly the ${name} files release.mjs looks for`, () => {
@@ -626,7 +638,7 @@ describe('electron-builder configuration', () => {
   };
 
   for (const panel of PANELS) {
-    const yml = readFileSync(path.join(ROOT, panel, 'electron-builder.yml'), 'utf8');
+    const yml = readText(panel, 'electron-builder.yml');
 
     for (const [name, target] of Object.entries(targets)) {
       it(`${panel} configures the ${name} target`, () => {
@@ -682,10 +694,7 @@ describe('electron-builder configuration', () => {
 });
 
 describe('the uninstall script knows what the .deb installs', () => {
-  const script = readFileSync(
-    path.join(ROOT, 'tools', 'uninstall', 'uninstall-orderbook.sh'),
-    'utf8',
-  );
+  const script = readText('tools', 'uninstall', 'uninstall-orderbook.sh');
 
   it('sweeps the executableName-derived paths, not only the product name', () => {
     // The .deb names its /usr/share/applications entry, its hicolor icons and

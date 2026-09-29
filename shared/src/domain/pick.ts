@@ -56,7 +56,13 @@ export type CategoryPickPage = PickPage<ProductCategory>;
 
 /** How many rows a picker asks for when the caller does not say. */
 export const PICK_DEFAULT_LIMIT = 20;
-export const PICK_MAX_LIMIT = 50;
+/**
+ * The ceiling a caller may ask for. The sub-product bar lists **every** sub
+ * product of the chosen category in catalogue order, and one SWISWARE product
+ * (Table Top Vitrosa Basin) alone holds 69 — at 50 its tail was simply unreachable.
+ * Scoped by category, a thousand is still one small page.
+ */
+export const PICK_MAX_LIMIT = 1000;
 
 export function isPickKind(value: unknown): value is PickKind {
   return value === 'category' || value === 'product' || value === 'party';

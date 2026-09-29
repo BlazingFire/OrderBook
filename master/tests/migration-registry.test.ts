@@ -80,6 +80,9 @@ describe('the migration registry matches the directory', () => {
     // is already the highest, so this is not a reordering so much as a pin:
     // it has to stay behind a migration that is itself pinned out of order.
     '20260325000000_line_item_grade',
+    // Catalogue v2's columns and indexes, pinned behind the trim for the same
+    // reason. Idempotent, because the stale-branch database already has them.
+    '20260326000000_catalogue_brands_and_codes_port',
   ];
 
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {
@@ -135,6 +138,25 @@ describe('the migration registry matches the directory', () => {
     '20260312000000_user_avatars',
     '20260313000000_panel_app_version',
     '20260313000000_party_access',
+    // Run on the owner's live database by 2026-09-28, and shipped to
+    // customers with the 1.1 and 1.2 lines.
+    '20260314000000_settings_and_password_vault',
+    '20260315000000_product_trade_and_ceramic_attributes',
+    '20260316000000_public_api_and_connectors',
+    '20260317000000_ai_assistant',
+    '20260318000000_document_layout_v2',
+    '20260319000000_products_bulk_permission_grant',
+    '20260320000000_product_variant_codes',
+    '20260321000000_line_item_variant_codes',
+    '20260322000000_product_colour_policy_and_line_category',
+    '20260322000000_drop_document_designer',
+    '20260323000000_product_variants',
+    '20260324000000_product_master_trim',
+    '20260325000000_line_item_grade',
+    // The stale branch's real body ran under this name on the owner's PC; it
+    // lives on as a no-op so that database still boots.
+    '20260323000000_catalogue_brands_and_codes',
+    '20260326000000_catalogue_brands_and_codes_port',
   ];
 
   it('still lists every migration that has ever run on a real installation', () => {

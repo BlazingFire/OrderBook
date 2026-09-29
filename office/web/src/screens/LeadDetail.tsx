@@ -17,7 +17,7 @@
  */
 
 import { useState } from 'react';
-import { resolveCompanyFeatures } from '@orderbook/shared';
+import { resolveCompanyFeatures, shownColour } from '@orderbook/shared';
 import type { Lead } from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
@@ -105,7 +105,9 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
                      */}
                     {item.code && <span className="ob-mono ob-body-strong">{item.code}</span>}
                     <span className="ob-body-strong">{item.productName}</span>
-                    {item.variantLabel && (
+                    {/* Not when it only repeats the name — `MAGENTA` sold in
+                        Magenta (CATALOGUE_MODEL §2). */}
+                    {item.variantLabel && shownColour(item.variantLabel, item.productName) && (
                       <span className="ob-colourname ob-small">
                         <ColourChip name={item.variantLabel} hex={colourHex(item.variantLabel)} />
                         <span>{item.variantLabel}</span>

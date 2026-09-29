@@ -37,7 +37,10 @@ import { publishChange } from './change-bus.js';
 import { freeToSell } from './company-features.js';
 import { getSetting } from './settings.service.js';
 
-const PAGING = { defaultLimit: 200, maxLimit: 1000 };
+// Every live variant is a row now, stocked or not (549 in the SWISWARE
+// catalogue), so a default of 200 would quietly cut the list for any caller
+// that did not ask for more. The cap leaves room for a second brand.
+const PAGING = { defaultLimit: 1000, maxLimit: 5000 };
 const MOVEMENT_PAGING = { defaultLimit: 50, maxLimit: 200 };
 
 export async function listStock(
@@ -49,6 +52,8 @@ export async function listStock(
   return inventoryRepo.listStockLevels(actor.tenantId, {
     search: query.search,
     lowOnly: query.lowOnly,
+    brand: query.brand?.trim() || undefined,
+    categoryId: query.categoryId || undefined,
     reservations: await freeToSell(actor.tenantId),
     defaultReorderLevel: await getSetting(actor.tenantId, 'inventory.defaultReorderLevel'),
     ...clampPaging(query, PAGING),
@@ -60,8 +65,7 @@ export async function listStock(
  * count while free-to-sell is off, then judged against the company's default
  * low-stock level if the line has none of its own. Every level this service
  * returns or publishes passes through here, so a panel never sees a reserved
- * figure the switch says does not exist — and `emptyLevel`'s hardcoded
- * `isLow: false` is corrected here rather than at its own site.
+ * figure the switch says does not exist.
  */
 async function outgoing(tenantId: string, level: InventoryStockLevel): Promise<InventoryStockLevel> {
   const base = (await freeToSell(tenantId)) ? level : withoutReservations(level);
@@ -161,12 +165,13 @@ export async function recordAdjustment(
     throw new ValidationError('validation.stock.countedBoxesRequired');
   }
 
+  // A level at zero for a variant never stocked; null only if it vanished
+  // between `requireVariant` and here.
   const current = await inventoryRepo.findStockLevel(actor.tenantId, variant.id);
-  const delta = input.quantityBoxes - (current?.quantityBoxes ?? 0);
+  if (!current) throw new NotFoundError('Product variant');
+  const delta = input.quantityBoxes - current.quantityBoxes;
 
-  if (delta === 0) {
-    return outgoing(actor.tenantId, current ?? emptyLevel(variant, productName));
-  }
+  if (delta === 0) return outgoing(actor.tenantId, current);
 
   /*
    * Below the `delta === 0` return, never above it.
@@ -313,7 +318,8 @@ export async function setReorderLevel(
  *
  * Called after a transaction commits, never inside one — a panel that received
  * figures from a transaction which then rolled back would show numbers that
- * never existed, and nothing would arrive later to correct them.
+ * never existed, and nothing would arrive later to correct them. A variant
+ * never stocked publishes at zero, so a released hold clears on every panel.
  */
 export async function publishStockFor(tenantId: string, variantIds: readonly string[]): Promise<void> {
   for (const variantId of new Set(variantIds)) {
@@ -362,25 +368,4 @@ async function requireVariant(
   if (!product) throw new NotFoundError('Product');
 
   return { variant, productName: product.name };
-}
-
-function emptyLevel(variant: ProductVariant, productName: string): InventoryStockLevel {
-  return {
-    productId: variant.productId,
-    productName,
-    categoryName: null,
-    size: null,
-    variantId: variant.id,
-    variantCode: variant.code,
-    variantLabel: variant.label,
-    weightKg: variant.weightKg,
-    quantityBoxes: 0,
-    reservedBoxes: 0,
-    availableBoxes: 0,
-    reorderLevel: null,
-    minStockLevel: null,
-    maxStockLevel: null,
-    isLow: false,
-    updatedAt: null,
-  };
 }

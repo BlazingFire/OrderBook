@@ -36,7 +36,7 @@ import {
   partyIdOfChange,
 } from './fan-out.js';
 import * as partyAccessRepo from '../repositories/party-access.repository.js';
-import { AppError, ForbiddenError, toErrorMessage } from '../lib/errors.js';
+import { AppError, ForbiddenError, toErrorMessage, ValidationError } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import { setPanelLink, type PanelRequest } from './panel-link.js';
 import { isAllowedSocketOrigin } from './socket-origin.js';
@@ -64,6 +64,7 @@ import * as panelService from '../services/panel.service.js';
 import * as partyAccessService from '../services/party-access.service.js';
 import * as recycleBinService from '../services/recycle-bin.service.js';
 import * as searchService from '../services/search.service.js';
+import * as settingsService from '../services/settings.service.js';
 import { buildDelta } from '../services/delta.service.js';
 import { buildSnapshot } from '../services/snapshot.service.js';
 import * as syncService from '../services/sync.service.js';
@@ -452,7 +453,28 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
     run(ack, (actor) => searchService.pick(kind, query, actor)),
   );
 
-  socket.on('category:list', (ack) => run(ack, (actor) => catalogService.listCategories(actor)));
+  socket.on('category:list', (query, ack) =>
+    run(ack, (actor) => catalogService.listCategories(actor, query ?? {})),
+  );
+  socket.on('category:create', (input, ack) =>
+    run(ack, (actor) => catalogService.createCategory(input, actor)),
+  );
+  socket.on('category:update', ({ id, input }, ack) =>
+    run(ack, (actor) => catalogService.updateCategory(id, input, actor)),
+  );
+  socket.on('category:delete', (id, ack) =>
+    run(ack, (actor) => catalogService.deleteCategory(id, actor)),
+  );
+
+  // The acting person's own `settings.manage` is checked by the service, as on
+  // the Master's own screen; the answer is the list, as `PUT /api/settings` gives.
+  socket.on('settings:save', ({ key, value }, ack) =>
+    run(ack, async (actor) => {
+      assertPanelSettingWrite(actor, key);
+      await settingsService.writeSetting(actor, key, value);
+      return settingsService.readSettings(actor);
+    }),
+  );
 
   socket.on('partyVariant:list', (partyId, ack) =>
     run(ack, (actor) => catalogService.listVariantsForParty(partyId, actor)),
@@ -479,6 +501,7 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
     run(ack, (actor) => orderService.convertLead(input, actor)),
   );
   socket.on('lead:delete', (id, ack) => run(ack, (actor) => leadService.deleteLead(id, actor)));
+  socket.on('lead:pdf', (id, ack) => run(ack, (actor) => leadService.leadPdf(id, actor)));
 
   socket.on('order:list', (query, ack) =>
     run(ack, (actor) => orderService.listOrders(query, actor)),
@@ -746,6 +769,29 @@ function respond<T>(ack: CommandAck<T>, operation: () => Promise<T>): void {
 
       ack({ ok: false, error: toErrorMessage(error) });
     });
+}
+
+/** The settings an Office panel may write — its Settings → Leads tab, one number. */
+const PANEL_WRITABLE_SETTINGS: ReadonlySet<string> = new Set(['leads.followUpDefaultDays']);
+
+/**
+ * `settings:save` from an Office panel (`docs/catalogue/CATALOGUE_MODEL.md` §5):
+ * a signed-in person, and a listed key only.
+ *
+ * The panel actor falls back to the panel's own role when no person's token is
+ * accepted, so a panel holding an admin-tier role would otherwise lend
+ * `settings.manage` to whoever sits at it. And every other setting is the
+ * Master screen's alone — `security.passwordRevealEnabled` off purges the
+ * vault, `externalApi.enabled` opens the public API. Listed by key, not by the
+ * `leads.` prefix: that would also hand over packaging-on-convert and the
+ * quiet-after window, which the Office has no screen for. The value is still
+ * validated in full by `writeSetting`, which checks `settings.manage` itself.
+ */
+export function assertPanelSettingWrite(actor: ActorContext, key: unknown): void {
+  if (actor.actorType !== 'user' || !actor.userId) throw new ForbiddenError('settings.manage');
+  if (typeof key !== 'string' || !PANEL_WRITABLE_SETTINGS.has(key)) {
+    throw new ValidationError('validation.setting.invalid', { key: String(key) });
+  }
 }
 
 /**

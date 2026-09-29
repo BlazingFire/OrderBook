@@ -79,44 +79,111 @@ tenant; `20260302000000_lead_order_rebuild` moved the id to text and added
 became text; `20260305000000_soft_delete_columns` added soft delete and made the code
 index partial.
 
-## `product_categories` (the "main product")
+## `product_categories` (the owner's "Product")
 
 Normalized into its own table rather than a free-text column on `products`, so the
 set of categories stays consistent (no "Water Closet" vs "water closet" vs "Water
-Closets" drift) and is managed from the product form rather than by a migration.
+Closets" drift). Since catalogue v2 (2026-09-29, `docs/catalogue/CATALOGUE_MODEL.md`)
+the screens call a category a **Product** and a model a **Sub product**; the tables and
+the code identifiers (`category*`, `product*`, `variant*`) keep their names.
 
 ```sql
 CREATE TABLE product_categories (
   id          TEXT PRIMARY KEY,                       -- 'PC' + 10 digits
   tenant_id   UUID NOT NULL REFERENCES tenants(id),
-  name        TEXT NOT NULL,                          -- e.g. "ONE PIECE TOILET", "WATER CLOSET"
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  name        TEXT NOT NULL,                          -- e.g. "One Piece Toilet", "Water Closet"
+  code        TEXT,                                   -- since 2026-09-29: the software code, e.g. "OPT"
+  brand       TEXT,                                   -- since 2026-09-29: a `product.brand` option value
+  sort_order  INTEGER,                                -- since 2026-09-29: catalogue order
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),     -- since 2026-09-29
+  deleted_at  TIMESTAMPTZ                             -- since 2026-09-29: soft delete
 );
 
-CREATE UNIQUE INDEX idx_categories_name_tenant    ON product_categories (tenant_id, lower(name));
+CREATE UNIQUE INDEX idx_categories_brand_name     ON product_categories (tenant_id, lower(coalesce(brand, '')), lower(name))
+                                                  WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX idx_categories_code           ON product_categories (tenant_id, lower(code))
+                                                  WHERE code IS NOT NULL AND deleted_at IS NULL;
 CREATE INDEX        idx_product_categories_tenant ON product_categories (tenant_id);
 ```
 
-A category carries no sync bookkeeping and no soft delete, so it is not in the
-Recycle Bin; its name is unique per tenant, case-insensitively.
+**`code`** is what staff type in the lead screen's product bar instead of the name
+(`OPT` for One Piece Toilet). It is optional in storage, because a category made before
+catalogue v2 or by the product form's name box has none. When present it is
+alphanumeric (`CATEGORY_CODE_PATTERN`, `/^[A-Za-z0-9]+$/`, in
+`shared/src/domain/product-validation.ts`) and unique per tenant among live rows,
+case-insensitively. It is also the prefix of the generated sub-product codes
+(`OPT-0001`, on `product_variants.code`).
+
+**`brand`** is the value of a `product.brand` option-list row (value = label = the brand
+name, `06-tenancy-permissions-and-sync.md` §4); the category service refuses a brand that is not a
+live value of that list (`validation.category.brandUnknown`), so no filter misses a typed one. The
+column itself carries no foreign key: an option value is not a row id. Brand lives here and is read
+through the join (`Product.brand`, `InventoryStockLevel.brand`); there is no copy on `products` to
+keep in step. The trim of 2026-09-21 dropped the old `products.brand` column and deleted
+the old `product.brand` list; the key was reused on purpose.
+
+**Names are unique per (tenant, brand, name)**, live rows only: two brands may both sell
+a "One Piece Toilet", one brand may not have two. `lower(coalesce(brand, ''))` is there
+because a NULL brand would otherwise never collide, and every category made before
+catalogue v2 has one. `WHERE deleted_at IS NULL` means a category in the Recycle Bin does
+not hold its name or its code hostage — the rule `20260305` set for party and product
+codes.
+
+**`sort_order`** is the catalogue's own page order; alphabetical would put Accessories
+first. Lists and picks order by `sort_order NULLS LAST, lower(name), id`
+(`listCategories` in `product.repository.ts`).
+
+**`deleted_at`** makes a category a Recycle Bin record of its own. It has no
+`deleted_by` and no sync bookkeeping: a category is written only online, through the
+Master. The delete is refused while a live sub product still names the category, naming each one;
+a sub product cannot be restored while its category is in the Bin; and a category whose code was
+taken while it sat in the Bin cannot be restored until that code is free (codes are never renamed on
+the way out, names are). The writes need `products.create`, `products.edit` and `products.delete`.
 
 Since `20260323000000_product_variants` a category is **mandatory** on every
 product (`products.category_id` is `NOT NULL`): the lead screen finds products
-category-first — typing "toilet" offers *ONE PIECE TOILET*, never a product —
-so a product outside every category would be unreachable from the one screen
-that sells it. The catalogue's twelve categories are seeded by the Swisware
-loader (`docs/DEVELOPER_MODE.md`); a product form that names a category the
-Master does not hold creates it.
+category-first — the product bar offers *OPT · One Piece Toilet · Swisware+*, never a
+sub product — so a product outside every category would be unreachable from the one
+screen that sells it. The catalogue loader creates the SWISWARE categories with their
+code, brand and order (`docs/catalogue/CATALOGUE_MODEL.md` §4). A product write names
+its category in one of three ways (`resolveCategoryId` in `product.repository.ts`): by
+**id**, which must be live; by **code** (`categoryCode`), which must match a live
+category and never creates one (`validation.product.categoryCodeUnknown`); or by
+**name** (`categoryName`, with `categoryBrand` for the pair), which matches a live
+category — a brandless one first when no brand is given — or creates it.
 
 *History:* created by the initial schema with a UUID `id` and a globally unique
-`name`; unique per tenant since `20260301`, text ids since `20260302`.
+`name`; unique per tenant since `20260301` (`idx_categories_name_tenant (tenant_id,
+lower(name))`), text ids since `20260302`.
+`20260326000000_catalogue_brands_and_codes_port` added `code`, `brand`, `sort_order`,
+`updated_at` and `deleted_at`, created `idx_categories_brand_name` and
+`idx_categories_code`, and dropped `idx_categories_name_tenant` after its replacement
+existed. On a database made before it every brand is NULL, so the new name index is
+exactly as strict as the old one and could not fail on existing rows.
 
-## `products` (the model)
+## `products` (the model — the owner's "Sub product")
 
 A row is a **model** — DAMRU, 102, HEXA URINAL — the thing a category lists and a
 name is typed for. It carries no code and no weight: those belong to its
 variants (next section), and a model with no colour or pattern choices has
 exactly one variant.
+
+**Since catalogue v2 (2026-09-29) every catalogue model is a sub product with exactly
+one variant.** Its printed identifier is `products.name` (`102 (9")`, `1111`,
+`MAGENTA`); its software code is that variant's `code` (`OPT-0001`, the category code and
+a four-digit number in catalogue order); `sort_order` is its place in the catalogue.
+The owner's colour rule is **derived, never stored** (`colourRuleOf` in
+`shared/src/domain/colour-rule.ts`):
+
+| Rule | Stored as | A lead line's colour |
+|---|---|---|
+| `fixed` | `has_variants = true`, one variant whose `label` is the colour (White, Rustic Coffee Brown) | none — the label is the colour; shown unless it only repeats the name (`MAGENTA` / Magenta) |
+| `dedicated` | `has_variants = false`, `multi_colour = false`, one variant with `label` NULL | none, and never shown |
+| `selectable` ("multicolour") | `multi_colour = true`, `has_variants = false`, one variant with `label` NULL | chosen from `stock.colour`; several colours = several lines |
+
+`multi_colour` wins, then a non-blank first label means `fixed`, else `dedicated`. There
+is no colour-rule column and no sentinel colour value.
 
 **What a product is, since 2026-09-21** (`HANDOFF.md` Key decision 15):
 
@@ -131,6 +198,7 @@ CREATE TABLE products (
   size           TEXT,                                   -- free text: '9" · L-27 B-15 H-26', '18x12'
   has_variants   BOOLEAN NOT NULL DEFAULT false,         -- the form's "comes in variants" switch
   multi_colour   BOOLEAN NOT NULL DEFAULT false,         -- made in every colour of the colour list
+  sort_order     INTEGER,                                -- since 2026-09-29: catalogue order inside the category
   custom_fields  JSONB NOT NULL DEFAULT '{}',            -- values of admin-defined fields
   -- plumbing
   is_active      BOOLEAN NOT NULL DEFAULT true,
@@ -160,8 +228,12 @@ colour (`line_items.colour`, `03-leads-orders-inventory.md`); the colour is a li
 not a stock key. Everything else that once sat on this table — `sin`, `grade`, `product_type`,
 `brand`, `barcode`, `hsn_code`, `uom`, every price column, the tile and ceramic attributes and
 the `parameters` bag — was dropped by `20260324000000_product_master_trim` at the owner's
-decision that a product is a name, a category, an alias, a size and its variants. Nothing makes
-a model's name unique — the codes that must be unique are on its variants.
+decision that a product is a name, a category, an alias, a size and its variants. No index
+makes a model's name unique — the codes that must be unique are on its variants. Since
+catalogue v2 the service refuses a second live sub product of the same name inside one
+category (`ConflictError`), because the name is what the lead PDF prints; the same name
+under two categories is fine (the SWISWARE catalogue has a `BLACK` sub product in eight
+products).
 
 ### History: how the product master got here
 
@@ -175,6 +247,8 @@ a model's name unique — the codes that must be unique are on its variants.
 | `20260322000000_product_colour_policy_and_line_category` | `colour_policy` (`fixed`/`selectable`); gone again one migration later. |
 | `20260323000000_product_variants` | Dropped `product_code`, `weight_kg`, `color` and `colour_policy`, added `has_variants`, made `category_id` NOT NULL — see *Product variants* below. |
 | `20260324000000_product_master_trim` | Dropped 26 columns, every price among them, and the permission keys and option lists that went with them; added `multi_colour`. |
+| `20260323000000_catalogue_brands_and_codes` | Nothing: an empty body kept under a stale branch's name so the one database that ran its real body still boots (`HANDOFF.md`, "Traps"). Registered beside `product_variants`. |
+| `20260326000000_catalogue_brands_and_codes_port` | `sort_order`; on the category, `code`, `brand`, `sort_order`, `updated_at`, `deleted_at` and the two new unique indexes (above). Additive and idempotent; pinned last. |
 
 One rule from the trade-attribute pass still governs any attribute added later:
 **columns** for anything indexed, constrained, arithmetic or standard-defined;
@@ -301,10 +375,13 @@ by `sequence`. Anyone who can see a product sees its gallery — there is no sep
 their own once the product itself is gone. An image is not a Recycle Bin entity:
 deleting one hard-deletes the row and removes its files. Deleting a *product* is a
 soft delete, which keeps its image rows, so restoring the product restores its gallery;
-only a hard delete of the product row would cascade, and no code path hard-deletes a
-product (the catalogue reload script, `catalog-reload-cli.ts`, truncates the business
-tables wholesale instead, and Developer mode's **Erase everything** drops the whole
-schema).
+only a hard delete of the product row would cascade. No screen hard-deletes a product. The
+operator scripts do, with the Master stopped: the business wipe (`catalog-reload-cli.ts` behind
+`wipe:business`) truncates the business tables wholesale, and since catalogue v2
+`reload:catalog` deletes the catalogue's rows — image rows first, explicitly
+(`clearCatalogueData` in `catalogue-seed.service.ts`) — before loading the file again; the orphaned
+files go at the Master's next boot (`sweepOrphanImageVariants`). Developer mode's **Erase
+everything** drops the whole schema.
 
 *History:* the initial schema stored a relative `file_path` and nothing else about the
 image. `20260307000000_product_images_pipeline` dropped `file_path` and added the

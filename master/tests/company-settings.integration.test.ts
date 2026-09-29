@@ -442,8 +442,17 @@ describe.skipIf(!canRunIntegrationTests)('company settings, end to end (integrat
       );
     }
 
-    it('refuses the conversion at the default, as it always has', async () => {
+    it('converts at the default — off since catalogue v2, whose lead entry never asks', async () => {
       const lead = await leadWithoutPackaging();
+
+      const order = await orders.convertLead({ leadId: lead.id }, actor);
+
+      expect(order.items[0]?.packaging ?? null).toBeNull();
+    });
+
+    it('refuses the conversion with the switch on', async () => {
+      const lead = await leadWithoutPackaging();
+      await settings.writeSetting(actor, 'leads.packagingRequiredOnConvert', true);
 
       await expect(orders.convertLead({ leadId: lead.id }, actor)).rejects.toThrow(
         /packaging/i,
@@ -501,7 +510,8 @@ describe.skipIf(!canRunIntegrationTests)('company settings, end to end (integrat
       const credentials = await setup.runFirstTimeSetup(null);
 
       const signedIn = await auth.signIn(credentials.username, credentials.password, 'browser');
-      expect(signedIn.user.features.followUpDefaultDays).toBe(0);
+      // 3 since catalogue v2 (owner's decision, 2026-09-28); it was 0.
+      expect(signedIn.user.features.followUpDefaultDays).toBe(3);
     });
   });
 });

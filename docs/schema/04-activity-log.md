@@ -50,6 +50,17 @@ CREATE TRIGGER activity_log_no_delete BEFORE DELETE ON activity_log
 | `actor_name` | Denormalised when the row is written, so a deleted user or an unpaired panel still names who did it. For the two integration actors it reads like "Asha via API key Tally sync" or "Asha via Hermes" — the person whose authority was used, and through what. |
 | `details` | `JSONB` rather than separate `before`/`after` columns since the shape of a "change" differs wildly by entity type (a lead's stage change vs. a user's role change) — this is one of the places a JSON column is the right call for everything, not just an escape hatch, because activity-log entries are read as whole records, not filtered by their payload contents. |
 
+**What catalogue v2 records** (2026-09-29, `docs/catalogue/CATALOGUE_MODEL.md` §9). No new
+column: these are new `(entity_type, action)` pairs, each with an `activity.<entity>.<action>`
+template in both catalogues and in `shared/tests/activity-tokens.lock.json`.
+
+| `entity_type` | Actions | `details` |
+|---|---|---|
+| `product_category` (the owner's Product) | `created`, `updated`, `deleted`, `restored` | `name`, `code`, `brand`; on `updated`, `changes` holds each field that moved as `{ field: { from, to } }` (`name`, `code`, `brand`, `sortOrder`); on a restore under a new name, `renamedTo` |
+| `product` (a sub product) | the existing `created`, `updated`, `deleted`, `restored` | `name` and now `product`, its Product as `OPT · One Piece Toilet`; on `updated`, `changes` holds each moved field as `{ from, to }` (name, product, alias, size, multi-colour, sort order, variants) |
+| `catalog` | `reloaded` (new), `imported` | one `reloaded` row per `npm run reload:catalog`, which keeps the trail it is written into, with the counts (brands, colours, products, sub products, skipped, leads and orders removed); an additive load (Settings → Developer, `seed:catalogue`) writes one `imported` row with `count` and `fileName` when it adds anything — one row for the whole load, not one per sub product |
+| `option_list_item` | the existing actions | a brand is a `product.brand` value, so adding, relabelling or removing one is logged like any list value |
+
 ## The hash chain
 
 `20260303000000_roles_and_users` made the table append-only and chained, and
@@ -78,8 +89,10 @@ human-paced actions — that is not a real constraint, and it buys a trail that 
 it records.
 
 **What the triggers do not stop.** They are row-level, so a `TRUNCATE` empties the table without
-firing `activity_log_no_delete`: the catalogue reload script (`catalog-reload-cli.ts`, which keeps
-users, roles and settings) and the test fixtures do exactly that. Developer mode's **Erase
+firing `activity_log_no_delete`: the business wipe (`catalog-reload-cli.ts` behind `wipe:business`
+and `seed:parties`, which keeps users, roles and settings) and the test fixtures do exactly that.
+`reload:catalog` no longer does: since catalogue v2 it keeps the whole trail and appends one
+`catalog.reloaded` row. Developer mode's **Erase
 everything** (`resetAllData` in `developer.service.ts`) goes further: it drops the whole `public`
 schema — the trail, its triggers and every other table — and re-runs the migrations, so the chain
 starts again from a first-run database. Three code paths step around them on purpose: the

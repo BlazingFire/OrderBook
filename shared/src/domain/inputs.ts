@@ -56,9 +56,27 @@ export interface ProductVariantInput {
 export interface ProductInput {
   name: string;
   alias?: string | null;
-  /** One of the two is required on create — a name creates the category when it is new. */
+  /**
+   * One of the three is required on create, resolved in this order: the id,
+   * then the code, then the name. A name creates the category when it is new.
+   */
   categoryId?: RecordId | null;
+  /**
+   * The category by its code (`OPT`), for callers that know the code but not
+   * the id — the catalogue loader, an import file. Never creates a category:
+   * a code that names nothing is refused rather than turned into a new
+   * product from a typo.
+   */
+  categoryCode?: string | null;
   categoryName?: string | null;
+  /**
+   * Read only beside `categoryName`: the brand that name is sold under, so the
+   * name resolves as the (brand, name) pair (`docs/catalogue/CATALOGUE_MODEL.md`
+   * §5) — two brands may both sell a One Piece Toilet — and a category it
+   * creates carries the brand. Absent, the name takes a brandless category
+   * first. Never stored on the product: brand lives on the category.
+   */
+  categoryBrand?: string | null;
   /**
    * The variant set. Required on create (at least one). On an update, absent
    * means "leave the variants alone" and present replaces the whole set.
@@ -69,8 +87,28 @@ export interface ProductInput {
   size?: string | null;
   /** Made in any colour of the company's colour list — a lead line may then name one. */
   multiColour?: boolean;
+  /** Catalogue order inside the category; null sorts last. */
+  sortOrder?: number | null;
   customFields?: Record<string, unknown>;
 }
+
+/**
+ * Creating a category — a Product in the owner's words
+ * (`docs/catalogue/CATALOGUE_MODEL.md` §5).
+ *
+ * `code` is required: it is what the product bar matches first, and a
+ * category without one could only ever be found by name. `brand` is optional
+ * only because a company with one brand should not have to say so.
+ */
+export interface CategoryInput {
+  name: string;
+  code: string;
+  brand?: string | null;
+  sortOrder?: number | null;
+}
+
+/** A partial patch: absent leaves the field alone, the same rule as every other update. */
+export type CategoryUpdateInput = Partial<CategoryInput>;
 
 /**
  * What the crop/rotate editor sends alongside the original file bytes.
@@ -126,12 +164,18 @@ export interface LineItemInput {
   quantity: number;
   productName?: string | null;
   categoryName?: string | null;
+  /** Snapshot of the category's code, as the panel's catalogue had it. */
+  categoryCode?: string | null;
+  /** Snapshot of the brand, as the panel's catalogue had it. */
+  brandName?: string | null;
   alias?: string | null;
   code?: string | null;
   variantLabel?: string | null;
   /**
-   * A colour from the company's colour list, allowed only on a `multiColour`
-   * product (`validation.lead.colourUnexpected`); null means the variant's own.
+   * A colour from the company's colour list, meaningful only on a
+   * `multiColour` product; null means the variant's own. Sent for any other
+   * product it is dropped, not refused — a lead queued offline must not
+   * bounce on it (`docs/catalogue/CATALOGUE_MODEL.md` §2).
    */
   colour?: string | null;
   size?: string | null;
@@ -287,8 +331,12 @@ export interface OrderListQuery extends ListQuery {
 }
 
 export interface StockListQuery extends ListQuery {
-  /** Restrict to (product, colour) rows at or below their reorder level. */
+  /** Restrict to variant rows at or below their reorder level. */
   lowOnly?: boolean;
+  /** Only rows of this brand (a `product.brand` value), case-insensitively. */
+  brand?: string;
+  /** Only rows of this category (the owner's Product). */
+  categoryId?: RecordId;
 }
 
 export interface SearchQuery {
@@ -382,6 +430,8 @@ export interface Paginated<T> {
 /** The catalogue's list query: the common shape plus the category chip and the weight gap. */
 export interface ProductListQuery extends ListQuery {
   categoryId?: string;
+  /** Only sub products whose category carries this brand (a `product.brand` value). */
+  brand?: string;
   /** Only products with at least one variant whose weight has not been entered. */
   missingWeight?: boolean;
 }

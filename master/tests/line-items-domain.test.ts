@@ -7,8 +7,10 @@
  *      basin, not its own weight for it.
  *   2. **A colour belongs only on a multi-colour product.** The line takes
  *      the colour the panel chose and nothing else — never the variant's own
- *      label copied over — and refuses one on a model not made in colours,
- *      because that would name a colour the factory does not make.
+ *      label copied over — and drops one sent for a model not made in
+ *      colours, which would name a colour the factory does not make. Dropped,
+ *      not refused: a lead queued offline must not bounce on it
+ *      (`docs/catalogue/CATALOGUE_MODEL.md` §2).
  *   3. **A missing weight stays missing.** The totals leave it out and count
  *      it, rather than treating an unentered weight as zero.
  */
@@ -17,7 +19,6 @@ import { describe, expect, it } from 'vitest';
 
 import { planDispatchMovements, planReservations } from '../src/domain/conversion.js';
 import {
-  LineColourError,
   buildLineSnapshot,
   computeTotalWeightKg,
   lineWeightKg,
@@ -29,7 +30,9 @@ import {
 const PRODUCT = {
   id: 'PR0000000001',
   name: 'Pedestal standard',
-  categoryName: null,
+  categoryName: 'One Piece Toilet',
+  categoryCode: 'OPT',
+  brand: 'Swisware+',
   alias: null,
   size: null,
   multiColour: false,
@@ -94,10 +97,39 @@ describe('the colour on a line', () => {
     expect(line.variantLabel).toBe('White');
   });
 
-  it('is refused on a product that is not made in colours', () => {
-    expect(() => buildLineSnapshot(draft({ colour: 'Ivory' }), PRODUCT, WHITE, null, 1)).toThrow(
-      LineColourError,
+  it('is dropped, not refused, on a product that is not made in colours', () => {
+    const line = buildLineSnapshot(draft({ colour: 'Ivory' }), PRODUCT, WHITE, null, 1);
+    expect(line.colour).toBeNull();
+    // The rest of the line survives: the lead is taken, only the colour goes.
+    expect(line.variantLabel).toBe('White');
+    expect(line.quantity).toBe(4);
+  });
+});
+
+describe('the brand and the product code on a line', () => {
+  it('are frozen from the category when the panel sent none', () => {
+    const line = buildLineSnapshot(draft(), PRODUCT, WHITE, null, 1);
+    expect(line.categoryName).toBe('One Piece Toilet');
+    expect(line.categoryCode).toBe('OPT');
+    expect(line.brandName).toBe('Swisware+');
+  });
+
+  it("keep what an offline panel froze, like every other snapshot field", () => {
+    const line = buildLineSnapshot(
+      draft({ categoryCode: 'OPT-OLD', brandName: 'Swisware' }),
+      PRODUCT,
+      WHITE,
+      null,
+      1,
     );
+    expect(line.categoryCode).toBe('OPT-OLD');
+    expect(line.brandName).toBe('Swisware');
+  });
+
+  it('stay null for a category from before catalogue v2', () => {
+    const line = buildLineSnapshot(draft(), { ...PRODUCT, categoryCode: null, brand: null }, WHITE, null, 1);
+    expect(line.categoryCode).toBeNull();
+    expect(line.brandName).toBeNull();
   });
 });
 

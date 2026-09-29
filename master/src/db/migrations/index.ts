@@ -42,8 +42,10 @@ import * as lineItemVariantCodes from './20260321000000_line_item_variant_codes.
 import * as productColourPolicyAndLineCategory from './20260322000000_product_colour_policy_and_line_category.js';
 import * as dropDocumentDesigner from './20260322000000_drop_document_designer.js';
 import * as productVariants from './20260323000000_product_variants.js';
+import * as catalogueBrandsAndCodes from './20260323000000_catalogue_brands_and_codes.js';
 import * as productMasterTrim from './20260324000000_product_master_trim.js';
 import * as lineItemGrade from './20260325000000_line_item_grade.js';
+import * as catalogueBrandsAndCodesPort from './20260326000000_catalogue_brands_and_codes_port.js';
 
 export interface Migration {
   name: string;
@@ -132,6 +134,13 @@ export const migrations: Migration[] = [
     name: '20260323000000_product_variants',
     ...productVariants,
   },
+  // A no-op kept under a stale branch's name, so the one database that ran its
+  // real body still boots (the `panel_app_version` precedent — see the file).
+  // `20260326000000_catalogue_brands_and_codes_port` does the work.
+  {
+    name: '20260323000000_catalogue_brands_and_codes',
+    ...catalogueBrandsAndCodes,
+  },
   // Stage 7 of `docs/backend-modules/` — pinned after every timestamp above,
   // not last by timestamp. Its `20260309` slot was reserved before
   // `20260310`/`20260311` were claimed by concurrent work; what matters is
@@ -168,6 +177,14 @@ export const migrations: Migration[] = [
   {
     name: '20260325000000_line_item_grade',
     ...lineItemGrade,
+  },
+  // Catalogue v2: category code, brand, order and soft delete; sub-product
+  // order; the lines' brand and code snapshots (owner's decision, 2026-09-28).
+  // Pinned after the trim like the grade above, and idempotent so a fresh, a
+  // 1.2.0 and the stale-branch database all end on the same schema.
+  {
+    name: '20260326000000_catalogue_brands_and_codes_port',
+    ...catalogueBrandsAndCodesPort,
   },
 ];
 

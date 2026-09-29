@@ -253,3 +253,122 @@ describe('bulk product import', () => {
     expect(response.body).toMatchObject({ error: 'unavailable' });
   });
 });
+
+/*
+ * Catalogue v2 (`docs/catalogue/CATALOGUE_MODEL.md` §5, §8): the Products list
+ * answers offline from the snapshot, its writes are online-only, a panel's one
+ * company setting goes through `settings:save`, and the lead PDF comes back as
+ * the bytes themselves, inline.
+ */
+describe('categories, the Leads setting and the lead PDF', () => {
+  const UNREACHABLE = new MasterCommandError('Not connected', undefined, undefined, true);
+
+  beforeEach(() => {
+    vi.spyOn(userSession, 'currentSession').mockReturnValue({
+      ...FAKE_SESSION,
+      permissions: ['products.view'],
+    } as never);
+    vi.spyOn(userSession, 'sessionPermissions').mockReturnValue(['products.view']);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('forwards category:list with the search and brand when the Master is up', async () => {
+    const commandSpy = vi.spyOn(masterConnection, 'command').mockResolvedValue([] as never);
+
+    const response = await request(createApp()).get('/api/categories?search=opt&brand=Swisware%2B');
+
+    expect(response.status).toBe(200);
+    expect(commandSpy).toHaveBeenCalledWith('category:list', { search: 'opt', brand: 'Swisware+' });
+  });
+
+  it('answers the Products list from the snapshot, in catalogue order with counts, offline', async () => {
+    vi.spyOn(masterConnection, 'command').mockRejectedValue(UNREACHABLE);
+    const category = (id: string, code: string, sortOrder: number) => ({
+      id,
+      tenantId: 't1',
+      name: `Product ${code}`,
+      code,
+      brand: 'Swisware+',
+      sortOrder,
+      createdAt: '2026-09-28T00:00:00.000Z',
+      updatedAt: '2026-09-28T00:00:00.000Z',
+      deletedAt: null,
+    });
+    vi.spyOn(localStore, 'getView').mockResolvedValue({
+      categories: [category('C2', 'OPB', 2), category('C1', 'OPT', 1)],
+      products: [
+        { id: 'PR1', name: '102', categoryId: 'C1', variants: [], sync: { hlc: 'x' }, images: [] },
+        { id: 'PR2', name: '111', categoryId: 'C1', variants: [], sync: { hlc: 'x' }, images: [] },
+      ],
+      parties: [],
+      leads: [],
+      orders: [],
+      partyVariants: [],
+      stock: [],
+      conflicts: [],
+      dashboard: { asOf: '2026-08-24T00:00:00.000Z' },
+      permissions: [],
+      pendingCount: 0,
+    } as never);
+
+    const response = await request(createApp()).get('/api/categories');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject([
+      { code: 'OPT', subProductCount: 2 },
+      { code: 'OPB', subProductCount: 0 },
+    ]);
+  });
+
+  it('forwards category writes, and refuses them with 503 when the Master is away', async () => {
+    const commandSpy = vi
+      .spyOn(masterConnection, 'command')
+      .mockResolvedValue({ id: 'C1' } as never);
+    const app = createApp();
+
+    await request(app).post('/api/categories').send({ name: 'Urinal', code: 'UR' }).expect(200);
+    await request(app).put('/api/categories/C1').send({ sortOrder: 4 }).expect(200);
+    await request(app).delete('/api/categories/C1').expect(200);
+    expect(commandSpy.mock.calls).toEqual([
+      ['category:create', { name: 'Urinal', code: 'UR' }],
+      ['category:update', { id: 'C1', input: { sortOrder: 4 } }],
+      ['category:delete', 'C1'],
+    ]);
+
+    commandSpy.mockRejectedValue(UNREACHABLE);
+    const refused = await request(app).post('/api/categories').send({ name: 'Urinal', code: 'UR' });
+    expect(refused.status).toBe(503);
+  });
+
+  it('forwards a setting to settings:save as { key, value }', async () => {
+    const commandSpy = vi.spyOn(masterConnection, 'command').mockResolvedValue([] as never);
+
+    const response = await request(createApp())
+      .put('/api/settings/leads.followUpDefaultDays')
+      .send({ value: 5 });
+
+    expect(response.status).toBe(200);
+    expect(commandSpy).toHaveBeenCalledWith('settings:save', {
+      key: 'leads.followUpDefaultDays',
+      value: 5,
+    });
+  });
+
+  it('streams the lead PDF inline from lead:pdf', async () => {
+    const bytes = new Uint8Array(Buffer.from('%PDF-1.7 test'));
+    const commandSpy = vi
+      .spyOn(masterConnection, 'command')
+      .mockResolvedValue({ fileName: 'lead-LD1.pdf', bytes } as never);
+
+    const response = await request(createApp()).get('/api/leads/LD1/pdf').buffer(true);
+
+    expect(commandSpy).toHaveBeenCalledWith('lead:pdf', 'LD1');
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toBe('application/pdf');
+    expect(response.headers['content-disposition']).toBe('inline; filename="lead-LD1.pdf"');
+    expect(Buffer.from(response.body as Buffer).toString()).toBe('%PDF-1.7 test');
+  });
+});

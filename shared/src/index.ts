@@ -1,5 +1,6 @@
 export * from './domain/activity.js';
 export * from './domain/api-keys.js';
+export * from './domain/colour-rule.js';
 export * from './domain/columns.js';
 export * from './domain/connectors.js';
 export * from './domain/release-keys.js';

@@ -15,7 +15,7 @@
  */
 
 import { useRef, useState } from 'react';
-import { resolveCompanyFeatures } from '@orderbook/shared';
+import { resolveCompanyFeatures, shownColour } from '@orderbook/shared';
 import type {
   Order,
   PartyScopeFilter,
@@ -436,7 +436,8 @@ function OrderDetailBody({
                       </div>
                     </td>
                     <td>
-                      {item.variantLabel ? (
+                      {/* Not when it only repeats the name (CATALOGUE_MODEL §2). */}
+                      {item.variantLabel && shownColour(item.variantLabel, item.productName) ? (
                         <ColourName name={item.variantLabel} hex={colourHex(item.variantLabel)} />
                       ) : (
                         '—'
@@ -489,7 +490,9 @@ function OrderDetailBody({
                       <td className="ob-mono">{reservation.variantCode}</td>
                       <td>{reservation.productName}</td>
                       <td>
-                        {reservation.variantLabel ? (
+                        {/* Not when it only repeats the name, as on the lines above. */}
+                        {reservation.variantLabel &&
+                        shownColour(reservation.variantLabel, reservation.productName) ? (
                           <ColourName
                             name={reservation.variantLabel}
                             hex={colourHex(reservation.variantLabel)}

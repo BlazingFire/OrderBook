@@ -51,6 +51,7 @@ import { moveStorage } from '../services/panel-report.service.js';
 import * as userStore from '../services/user-store.js';
 import {
   OfflinePickForbidden,
+  listCategoriesFromView,
   listProductsFromView,
   pickFromView,
 } from '../services/offline-pick.js';
@@ -520,6 +521,7 @@ export function createApp(): Express {
         typeof req.query.categoryId === 'string' && req.query.categoryId
           ? req.query.categoryId
           : undefined,
+      brand: typeof req.query.brand === 'string' && req.query.brand ? req.query.brand : undefined,
       missingWeight: req.query.missingWeight === 'true' ? true : undefined,
       limit: req.query.limit ? Number(req.query.limit) : undefined,
       offset: req.query.offset ? Number(req.query.offset) : undefined,
@@ -561,6 +563,61 @@ export function createApp(): Express {
       }
     })();
   });
+
+  /**
+   * Categories — the owner's Products (`docs/catalogue/CATALOGUE_MODEL.md` §5).
+   *
+   * The list answers from the Master, or offline from the cached snapshot and
+   * says so, like the catalogue above. The writes are online-only, like the
+   * Recycle Bin: a category carries no clock to merge an offline edit with,
+   * so there is nothing the outbox could replay safely — they fail 503 instead.
+   */
+  app.get('/api/categories', (req, res) => {
+    const query = {
+      search:
+        typeof req.query.search === 'string' && req.query.search ? req.query.search : undefined,
+      brand: typeof req.query.brand === 'string' && req.query.brand ? req.query.brand : undefined,
+    };
+
+    void (async () => {
+      try {
+        res.json(await masterConnection.command('category:list' as never, query));
+      } catch (error) {
+        if (!(error instanceof MasterCommandError && error.unreachable)) {
+          failForward(res, error);
+          return;
+        }
+
+        try {
+          const view = await localStore.getView();
+          res.json(
+            view
+              ? listCategoriesFromView(
+                  query,
+                  forCurrentUser(view),
+                  userSession.sessionPermissions(),
+                )
+              : [],
+          );
+        } catch (offlineError) {
+          if (offlineError instanceof OfflinePickForbidden) {
+            res.status(403).json({
+              error: 'forbidden',
+              message: offlineError.message,
+              details: { permission: offlineError.permission },
+            });
+            return;
+          }
+          failForward(res, offlineError);
+        }
+      }
+    })();
+  });
+  app.post('/api/categories', (req, res) => forward(res, 'category:create', req.body));
+  app.put('/api/categories/:id', (req, res) =>
+    forward(res, 'category:update', { id: req.params.id, input: req.body }),
+  );
+  app.delete('/api/categories/:id', (req, res) => forward(res, 'category:delete', req.params.id));
 
   // Bulk import stays online-only, like images: the outbox carries JSON
   // mutations and rewrites its whole file per mutation, so five thousand
@@ -851,6 +908,27 @@ export function createApp(): Express {
     }),
   );
 
+  /**
+   * The lead PDF (`docs/catalogue/CATALOGUE_MODEL.md` §8), rendered by the
+   * Master and handed to the browser `inline`, so Preview PDF opens it rather
+   * than saving it. Online-only: the Master holds the renderer and the fonts.
+   */
+  app.get('/api/leads/:id/pdf', (req, res) => {
+    void (async () => {
+      try {
+        const pdf = await masterConnection.command<
+          'lead:pdf',
+          { fileName: string; bytes: Uint8Array }
+        >('lead:pdf', req.params.id);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${pdf.fileName}"`);
+        res.send(Buffer.from(pdf.bytes));
+      } catch (error) {
+        failForward(res, error);
+      }
+    })();
+  });
+
   app.put('/api/orders/:id', (req, res) =>
     queue(res, {
       kind: 'order.update',
@@ -1089,6 +1167,13 @@ export function createApp(): Express {
   );
   app.post('/api/fields/values/reorder', (req, res) =>
     forward(res, 'fields:reorderValues', req.body),
+  );
+
+  // Settings → Leads (`docs/catalogue/CATALOGUE_MODEL.md` §5): one company
+  // setting, written live. The Master decides which key, and that the writer
+  // is a signed-in person holding `settings.manage` (`assertPanelSettingWrite`).
+  app.put('/api/settings/:key', (req, res) =>
+    forward(res, 'settings:save', { key: req.params.key, value: req.body?.value }),
   );
 
   app.get('/api/fields/definitions', (req, res) =>

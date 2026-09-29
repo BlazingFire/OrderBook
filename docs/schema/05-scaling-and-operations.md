@@ -42,9 +42,10 @@ thousands" above reaches it.
   the open-leads, follow-up, dispatched-orders and active-reservation indexes hold
   only the rows those screens ask about. Each stays small however large its table
   grows.
-- **Expression indexes** — `lower(code)` on `product_variants`, `lower(name)` on
-  `product_categories` and `roles`, `lower(username)` on `users`: case-insensitive
-  uniqueness enforced by the database.
+- **Expression indexes** — `lower(code)` on `product_variants` and
+  `product_categories`, `lower(name)` on `product_categories` (with the brand) and
+  `roles`, `lower(username)` on `users`: case-insensitive uniqueness enforced by the
+  database.
 - **Table partitioning** — if `stock_movements` ever grows large enough to matter
   (well beyond the estimate in §1), it can be converted to Postgres **declarative
   partitioning by month/year on `created_at`**: old partitions become trivial to

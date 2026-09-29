@@ -190,6 +190,110 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-29 - Catalogue v2 on the 1.2 product master (Claude)
+
+Scope: the owner's 2026-09-28 catalogue restructure — Brand → Product → Sub
+product, the SWISWARE 2026 catalogue, colour rules, a product bar and a
+sub-product bar for lead entry, lead sources and the follow-up default on a
+Leads settings tab, inventory and a lead PDF on the same model — **ported onto
+`main`'s 1.2 product master** (category → model → variant, per-variant stock,
+no money). The spec is `docs/catalogue/CATALOGUE_MODEL.md`. It was first
+built on a stale checkout that had never taken 1.2.0 (`catalogue-v2-stale`,
+`6549018`); that build was used for ideas and tests only, not merged — its
+pricing, `colour_policy`, PDF Designer and settings code is what `main`
+removed on purpose. Worked in a worktree on branch `catalogue-v2-port` (from
+`10910a4`) by a foundation pass and parallel workstreams; uncommitted when
+this entry was written.
+
+- **Schema:** `20260323000000_catalogue_brands_and_codes` kept as a no-op (the
+  stale checkout ran a real migration under that name on the owner's PC
+  database) and `20260326000000_catalogue_brands_and_codes_port`, additive and
+  idempotent, pinned last: category `code`, `brand`, `sort_order`,
+  `updated_at`, `deleted_at` with per-brand name and per-tenant code unique
+  indexes (live rows), `products.sort_order`, `line_items.brand_name` and
+  `category_code`. `SHIPPED` lists all 32 migrations.
+- **Model:** a Product is a category; a Sub product is a model with one
+  variant coded `CODE-####`; brand is a `product.brand` option value on the
+  category; the colour rule is derived (`shared/src/domain/colour-rule.ts`);
+  several colours are several lines; the Master drops a stray colour instead
+  of refusing the lead (amends HANDOFF Key decision 15).
+- **Catalogue data:** `master/assets/catalogue/swisware-plus-2026.md` (1
+  brand, 21 colours, 41 products, 549 sub products), parsed by
+  `master/src/domain/catalogue-markdown.ts`, loaded in one transaction by
+  `loadCatalogue`; `swisware-catalogue.ts` deleted. `reload:catalog` keeps
+  parties and the activity log; `seed:demo-parties` added.
+- **Services and transport:** category CRUD (`/api/categories`,
+  `category:*`, the Recycle Bin), sub-product name uniqueness and generated
+  codes, picks by code and in catalogue order (`PICK_MAX_LIMIT` 1000), product
+  and stock snapshot ceilings 2000, `settings:save` for the Office's
+  follow-up default, `GET /api/leads/:id/pdf`.
+- **Screens:** the Office's lead entry rebuilt (product bar, sub-product bar,
+  colour rules, Shift+Q, Ctrl+Enter review), Products → Products and Brands
+  pages, Settings → Leads on both panels (`ui/src/OptionListEditor.tsx`,
+  `NumberSetting` moved to `ui`), the Master's inventory listing every live
+  variant with brand and product filters, Preview PDF on both panels and an
+  Electron window for it.
+- **Settings:** `leads.followUpDefaultDays` falls back to 3 (was 0),
+  `leads.packagingRequiredOnConvert` to false (was true).
+- **Docs:** `HANDOFF.md` (current state, Key decisions 12 and 15, operator
+  scripts, the migration-name trap, the live-database `pg_dump` warning,
+  session history), `docs/schema/00`, `02`, `03`, `04`, `05`, `06`,
+  `docs/LEAD_GENERATION_FLOW.md`, `docs/TESTING_PLAN.md` (new §8a),
+  `docs/STRUCTURE.md`, `docs/DEVELOPER_MODE.md`,
+  `docs/backend-modules/04-API-CONTRACT.md` (§10.2b), each checked against the
+  code as it landed in the worktree.
+
+- **Integration pass:** a product-import row is filed by the single-product
+  rule — a `categoryCode` must name a live product and is refused in the
+  preview otherwise, a name is read with its `categoryBrand`, and
+  `categorySeedKey` keys a brandless-code seed by (brand, name) so two brands'
+  new "Wash Basin" stay two products; an offline rename merged by
+  `sync.service.ts` now runs the sub-product name rule; the Office Settings
+  screen uses the one `optionListTransport.ts`; `packaging-invariants`
+  normalises CRLF, so it passes on a Windows checkout; the unused
+  `validation.lead.colourUnexpected` key removed.
+- **Test-quality pass:** each key behaviour's code was broken and its test
+  watched fail. Three survived and now have a test: the Dashboard low count
+  ignoring holds (`free-to-sell.integration`), the lead PDF drawing only the
+  first line of a wrapped cell or no party block (`lead-pdf.test.ts` records
+  every drawn string), and a dedicated sub product asking for a colour
+  (`add-lead-flow`). The stronger PDF test found a defect: at the real Colour
+  width `Rustic Coffee Brown ×5,` printed its `×5,` alone on the next line;
+  `cellLines` now takes the word before a count down with it.
+
+- **Review round:** four reviewer-fixers (backend, lead flow, displays,
+  tests) fixed a restore racing a Product delete, duplicate-key 500s on a
+  concurrent Product save, a Load catalogue press that restored only a brand
+  or colour announcing nothing, two fast-Enter party races in lead entry,
+  variant labels that only repeat the sub-product name on the lead board and
+  order reservations, and the PDF's orphaned `×5` count.
+- **Browser walk** (both panels on a sandbox database, isolated from the
+  owner's): the operator scripts on a fresh database (32 migrations; 41
+  products, 549 sub products, 21 colours; 13 demo parties); a lead with a
+  fixed, a numbered, a two-colour multicolour and a colour-named sub product
+  through Enter, Shift+Q, Ctrl+Enter review and save, synced to the Master;
+  the lead PDF's text (Model / Code split, no colour on numbered pieces,
+  `White ×10, Rustic Coffee Brown ×5`, wrapped cells, no money); Products,
+  Sub products and Brands; Settings → Leads on both panels; the Master's
+  inventory and leads list. It found three defects, each fixed with a test
+  watched failing first:
+  - the Office's event stream was keyed on the session object, which every
+    reconnect replaces, so it closed and reopened itself about sixteen times
+    a second, each time re-reading session, connection and sync state — on
+    1.2.0 already; it is keyed on whether somebody is signed in now
+    (`office/web/src/App.tsx`, `ui/tests/office-shell.test.tsx`);
+  - the Sub products list sorted A–Z across products; it follows the
+    catalogue now (`product.repository.ts`, `catalogue-seed.integration`);
+  - `inventory.piecesOnHand` was missing (dropped in the 09-25 key cleanup)
+    and the Stock screen showed the raw key; `i18n-call-sites.test.ts` now
+    also reads both keys of a `t(cond ? 'a' : 'b')`, which is how it hid.
+
+Verified: `npm run lint`, `npm run typecheck`, `npm run build` exit 0; full
+vitest 176 files — 175 passed, 1 skipped (`release-workflow`, not on Windows);
+2207 tests passed, 17 skipped (platform skips only), all 50 integration suites
+ran. Browser walk as above. Not run in Electron: the Preview PDF window is
+owed.
+
 ### 2026-09-25 (leftover cleanup) — Dead exports, unused keys and CSS, and text that still named removed features (Claude)
 
 Scope: what the audit left behind. The code already carried no money,

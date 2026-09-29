@@ -30,6 +30,7 @@ import type {
   PipelineStage,
   Product,
   ProductCategory,
+  ProductCategoryListRow,
   RecordId,
   SearchHit,
   SignedInUser,
@@ -55,6 +56,8 @@ import type {
 } from '../domain/reports.js';
 import type {
   AssignablePerson,
+  CategoryInput,
+  CategoryUpdateInput,
   ConflictResolutionInput,
   CursorPage,
   CustomFieldDefinitionInput,
@@ -106,6 +109,7 @@ import type {
   ProductPickPage,
 } from '../domain/pick.js';
 import type { BinCounts, BinEntry, BinRestoreResult } from '../domain/recycle-bin.js';
+import type { SettingKey, SettingView } from '../domain/settings.js';
 import type { SyncPushRequest, SyncPushResponse } from '../sync/mutations.js';
 
 /** Socket.IO rooms the Master uses to target broadcasts. */
@@ -543,7 +547,34 @@ export interface ClientToServerEvents {
     ack: CommandAck<CategoryPickPage | ProductPickPage | PartyPickPage>,
   ) => void;
 
-  'category:list': (ack: CommandAck<ProductCategory[]>) => void;
+  /*
+   * Categories — the owner's Products (`docs/catalogue/CATALOGUE_MODEL.md`
+   * §5). Online-only like the Recycle Bin: a category carries no hlc to merge,
+   * so nothing here is queued. The Office answers `category:list` from its
+   * snapshot when the link is down; the writes fail 503 instead.
+   */
+  'category:list': (
+    query: { search?: string; brand?: string },
+    ack: CommandAck<ProductCategoryListRow[]>,
+  ) => void;
+  'category:create': (input: CategoryInput, ack: CommandAck<ProductCategory>) => void;
+  'category:update': (
+    payload: { id: RecordId; input: CategoryUpdateInput },
+    ack: CommandAck<ProductCategory>,
+  ) => void;
+  'category:delete': (id: RecordId, ack: CommandAck<{ id: RecordId; deletedAt: string }>) => void;
+
+  /**
+   * A company setting written from an Office panel's Settings → Leads tab.
+   * Only `leads.followUpDefaultDays`, and only as a signed-in person — the
+   * Master refuses the panel's own role (`assertPanelSettingWrite` in the hub)
+   * and still checks `settings.manage`. Answers with the list, as
+   * `PUT /api/settings/:key` does.
+   */
+  'settings:save': (
+    payload: { key: SettingKey; value: unknown },
+    ack: CommandAck<SettingView[]>,
+  ) => void;
 
   'partyVariant:list': (partyId: RecordId, ack: CommandAck<PartyProductVariant[]>) => void;
   'partyVariant:upsert': (
@@ -558,6 +589,11 @@ export interface ClientToServerEvents {
   'lead:setStage': (input: StageChangeInput, ack: CommandAck<Lead>) => void;
   'lead:addRemark': (input: RemarkInput, ack: CommandAck<Lead>) => void;
   'lead:convert': (input: LeadConvertInput, ack: CommandAck<Order>) => void;
+  /**
+   * The fixed-layout lead PDF (`docs/catalogue/CATALOGUE_MODEL.md` §8), bytes
+   * in the ack like `report:export`'s PDF. `leads.export`; online-only.
+   */
+  'lead:pdf': (id: RecordId, ack: CommandAck<{ fileName: string; bytes: Uint8Array }>) => void;
 
   'order:list': (query: OrderListQuery, ack: CommandAck<Paginated<Order>>) => void;
   'order:get': (id: RecordId, ack: CommandAck<Order>) => void;

@@ -333,7 +333,14 @@ export function mapProductCategory(row: Row): ProductCategory {
     id: String(row.id),
     tenantId: String(row.tenant_id),
     name: String(row.name),
+    code: (row.code as string | null) ?? null,
+    brand: (row.brand as string | null) ?? null,
+    sortOrder: toNumber(row.sort_order),
     createdAt: toRequiredIso(row.created_at),
+    // `updated_at` is NOT NULL since the catalogue port migration; the fallback
+    // only covers a query that selected the old column set.
+    updatedAt: toIso(row.updated_at) ?? toRequiredIso(row.created_at),
+    deletedAt: toIso(row.deleted_at),
   };
 }
 
@@ -373,6 +380,12 @@ export function mapProduct(row: Row, images: ProductImage[] = [], variants: Prod
     alias: (row.alias as string | null) ?? null,
     categoryId: String(row.category_id ?? ''),
     categoryName: String(row.category_name ?? ''),
+    // Joined from the category (`c.code AS category_code`, `c.brand AS
+    // category_brand`): brand is not a product column, so a query that
+    // forgot the join answers null rather than a stale copy.
+    categoryCode: (row.category_code as string | null) ?? null,
+    brand: (row.category_brand as string | null) ?? null,
+    sortOrder: toNumber(row.sort_order),
     size: (row.size as string | null) ?? null,
     hasVariants: Boolean(row.has_variants),
     variants,
@@ -418,6 +431,8 @@ export function mapLineItem(row: Row): LineItem {
     variantId: String(row.variant_id),
     productName: String(row.product_name ?? ''),
     categoryName: (row.category_name as string | null) ?? null,
+    categoryCode: (row.category_code as string | null) ?? null,
+    brandName: (row.brand_name as string | null) ?? null,
     alias: (row.alias as string | null) ?? null,
     code: (row.code as string | null) ?? null,
     variantLabel: (row.variant_label as string | null) ?? null,
@@ -581,7 +596,11 @@ export function mapStockLevel(row: Row): InventoryStockLevel {
   return {
     productId: String(row.product_id),
     productName: String(row.product_name ?? ''),
+    categoryId: String(row.category_id ?? ''),
     categoryName: (row.category_name as string | null) ?? null,
+    categoryCode: (row.category_code as string | null) ?? null,
+    brand: (row.brand as string | null) ?? null,
+    multiColour: Boolean(row.multi_colour),
     size: (row.size as string | null) ?? null,
     variantId: String(row.variant_id),
     variantCode: String(row.variant_code ?? ''),

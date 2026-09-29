@@ -27,6 +27,11 @@ them; what it fixed is marked **fixed 2026-09-25**, and what it found and left o
 is listed where the owed work lives (§5.11, §7.5, §8.9, §9.7, §10.10). §14's graph
 is still the `43fd5b0` snapshot.
 
+**Catalogue v2 (2026-09-29, `docs/catalogue/CATALOGUE_MODEL.md`)** added the files
+and changed the entries marked *catalogue v2* in §3–§13. Only the counts those
+entries state were re-taken; the workspace-wide file, line and test counts in §2,
+§4's header table and §12's headings still describe `7d6ae68`.
+
 **How to use this file.**
 
 - It is the single structure reference. It replaced `docs/CODE_MAP.md` on
@@ -484,12 +489,18 @@ is `>=20`**; both CI workflows use Node 22. **Workspaces:** `shared`, `ui`,
 **Workspace-only scripts** (not surfaced at the root):
 
 - **master:** `build:server` (`tsc` only), `reload:catalog`, `wipe:business`,
-  `seed:parties` — all three run `tsx src/services/catalog-reload-cli.ts`:
-  `wipe:business` with no flag (wipe only), `reload:catalog` with `--with-catalog`
-  (wipe, then the Swisware catalogue; until 2026-09-25 it passed no flag and was the
-  same command as `wipe:business`), `seed:parties` with `--with-parties` (wipe, then
-  three sample parties). Each wipe empties the whole activity log and says so, with
-  counts, before it starts (§5.3). Run them with the Master stopped.
+  `seed:parties`, `seed:demo-parties` — all four run
+  `tsx src/services/catalog-reload-cli.ts`: `wipe:business` with no flag (wipe only;
+  `-- --with-catalog` also loads the catalogue into the emptied master),
+  `seed:parties` with `--with-parties` (wipe, then three sample parties),
+  `reload:catalog` with `--catalogue` (catalogue v2, 2026-09-29: **not a wipe** —
+  it replaces the catalogue and what quotes it and keeps parties and the activity
+  log; until catalogue v2 it was wipe-then-load, and until 2026-09-25 the same
+  command as `wipe:business`), and `seed:demo-parties` with `--demo-parties` (13
+  demo dealers, no wipe, a name already on the books skipped). Each wipe empties
+  the whole activity log and says so, with counts, before it starts (§5.3). Run
+  them with the Master stopped; `reload:catalog` refuses while anything else is
+  connected.
 - **office:** `build:server`.
 - **both web apps:** `dev` (`vite`), `preview`.
 
@@ -747,22 +758,23 @@ Tracked: **62 files** — 44 in `shared/src/` (`domain/` 21, `i18n/` 9, `keys/` 
 - `shared/src/index.ts` is the barrel: 35 `export *` lines (every `domain/*`,
   `i18n/index.js`, every `keys/*`, `protocol/*` and `sync/*`).
 
-### 3.2 `domain/` — records, inputs and business rules (21 files)
+### 3.2 `domain/` — records, inputs and business rules (22 files)
 
 | File | Purpose | Main exports |
 |---|---|---|
-| `shared/src/domain/entities.ts` | Every record shape on the wire (61 exports). No money fields. `PartyProductVariant` holds only `productName`, `alias`, `size`, `weightKg`, `packaging`. `LineItem` snapshots `productName`, `categoryName`, `alias`, `code`, `variantLabel`, `colour`, `size` and `weightKg` at add time; `packaging` and `grade` (restored 2026-09-22 as a line-only attribute) sit outside the snapshot block and are chosen by hand on each line. | `Uuid`, `RecordId`, `IsoTimestamp`, `IsoDate`, `SyncMeta` (`version`, `hlc`, `fieldHlc`, `temporaryId`), `Tenant`, `Role`, `RoleTierName`, `User`, `UserAvatar`, `AVATAR_VARIANTS`, `CompanyFeatures`, `SignedInUser`, `OfficePanel*`, `Pipeline`, `PipelineStage`, `OptionListItem`, `CustomFieldDefinition`, `CUSTOM_FIELD_ENTITIES`, `isCustomFieldEntity`, `Party`, `ProductCategory`, `ProductVariant`, `Product`, `ProductImage`, `IMAGE_VARIANTS`, `IMAGE_VARIANT_LONG_EDGES`, `variantForSlot`, `MAX_IMAGE_SOURCE_BYTES`, `PartyProductVariant`, `LineItem`, `TimelineEntry`, `Lead`, `Order`, `WeightSource`, `StockReservation`, `InventoryStockLevel`, `StockMovement`, `SyncConflict`, `IdMapping`, `SearchHit`, `MasterIdentity`, `StorageUsage`, `DashboardSummary` |
-| `shared/src/domain/inputs.ts` | Every write payload and list query (60 exports). If a form sends it, its type is here. | `PartyInput`, `ProductInput`, `ProductVariantInput`, `ImageCropInput`, `ProductImageUpdateInput`, `ProductImageReorderInput`, `PartyProductVariantInput`, `LineItemInput`, `LeadInput`, `LeadUpdateInput`, `StageChangeInput`, `RemarkInput`, `LeadConvertInput`, `OrderUpdateInput`, `OrderDispatchInput`, `StockInboundInput`, `StockAdjustmentInput`, `StockLevelsInput`, `ReorderLevelInput`, `ListQuery` (+ Lead/Order/Stock/Product/PartyAccess/RecycleBin variants), `SearchQuery`, `RoleInput`, `UserInput`, `UserUpdateInput`, `PasswordResetInput`, `ChangeOwnPasswordInput`, `OneTimeSecret`, `VaultStatus`, `ConflictResolutionInput`, `Paginated<T>`, `ProductListPage`, `CursorQuery`, `CursorPage<T>`, `RestoreInput`, `OptionListItem*Input`, `CustomFieldDefinition*Input`, `PipelineStageInput`, `StageReorderInput`, `OfficePanelReportInput`, `OfficePanelUpdateInput`, `PanelStoragePathInput`/`Result`, `PanelSecretRotation`, `PartyAccessLevel` (`'view' \| 'manage'`), `PartyAccessEntry`/`Assignee`/`Row`/`Input`, `AssignablePerson`, `PartyScopeFilter` |
+| `shared/src/domain/entities.ts` | Every record shape on the wire (61 exports). No money fields. `PartyProductVariant` holds only `productName`, `alias`, `size`, `weightKg`, `packaging`. `LineItem` snapshots `productName`, `categoryName`, `categoryCode`, `brandName` (the last two since catalogue v2, 2026-09-29), `alias`, `code`, `variantLabel`, `colour`, `size` and `weightKg` at add time; `ProductCategory` carries `code`, `brand`, `sortOrder`, `updatedAt`, `deletedAt` and `ProductCategoryListRow` adds `subProductCount`; `Product` carries `categoryCode`, `brand` (read through the category) and `sortOrder`; `InventoryStockLevel` carries `categoryId`, `categoryCode`, `brand`, `multiColour`; `packaging` and `grade` (restored 2026-09-22 as a line-only attribute) sit outside the snapshot block and are chosen by hand on each line. | `Uuid`, `RecordId`, `IsoTimestamp`, `IsoDate`, `SyncMeta` (`version`, `hlc`, `fieldHlc`, `temporaryId`), `Tenant`, `Role`, `RoleTierName`, `User`, `UserAvatar`, `AVATAR_VARIANTS`, `CompanyFeatures`, `SignedInUser`, `OfficePanel*`, `Pipeline`, `PipelineStage`, `OptionListItem`, `CustomFieldDefinition`, `CUSTOM_FIELD_ENTITIES`, `isCustomFieldEntity`, `Party`, `ProductCategory`, `ProductVariant`, `Product`, `ProductImage`, `IMAGE_VARIANTS`, `IMAGE_VARIANT_LONG_EDGES`, `variantForSlot`, `MAX_IMAGE_SOURCE_BYTES`, `PartyProductVariant`, `LineItem`, `TimelineEntry`, `Lead`, `Order`, `WeightSource`, `StockReservation`, `InventoryStockLevel`, `StockMovement`, `SyncConflict`, `IdMapping`, `SearchHit`, `MasterIdentity`, `StorageUsage`, `DashboardSummary` |
+| `shared/src/domain/inputs.ts` | Every write payload and list query (60 exports). If a form sends it, its type is here. | `PartyInput`, `ProductInput` (catalogue v2 adds `categoryCode` — resolves a live category, never creates one — `categoryBrand` and `sortOrder`), `CategoryInput`/`CategoryUpdateInput` (catalogue v2: `name`, `code`, `brand?`, `sortOrder?`), `ProductVariantInput`, `ImageCropInput`, `ProductImageUpdateInput`, `ProductImageReorderInput`, `PartyProductVariantInput`, `LineItemInput`, `LeadInput`, `LeadUpdateInput`, `StageChangeInput`, `RemarkInput`, `LeadConvertInput`, `OrderUpdateInput`, `OrderDispatchInput`, `StockInboundInput`, `StockAdjustmentInput`, `StockLevelsInput`, `ReorderLevelInput`, `ListQuery` (+ Lead/Order/Stock/Product/PartyAccess/RecycleBin variants), `SearchQuery`, `RoleInput`, `UserInput`, `UserUpdateInput`, `PasswordResetInput`, `ChangeOwnPasswordInput`, `OneTimeSecret`, `VaultStatus`, `ConflictResolutionInput`, `Paginated<T>`, `ProductListPage`, `CursorQuery`, `CursorPage<T>`, `RestoreInput`, `OptionListItem*Input`, `CustomFieldDefinition*Input`, `PipelineStageInput`, `StageReorderInput`, `OfficePanelReportInput`, `OfficePanelUpdateInput`, `PanelStoragePathInput`/`Result`, `PanelSecretRotation`, `PartyAccessLevel` (`'view' \| 'manage'`), `PartyAccessEntry`/`Assignee`/`Row`/`Input`, `AssignablePerson`, `PartyScopeFilter` |
 | `shared/src/domain/columns.ts` | **The one wire-field → database-column map** (§3.3). | `JSON_COLUMNS`, `PARTY_COLUMNS`, `PRODUCT_COLUMNS`, `LEAD_COLUMNS`, `ORDER_COLUMNS`, `USER_COLUMNS`, `MERGEABLE_PRODUCT_COLUMNS`, `MERGEABLE_COLUMNS`, `MergeableEntity`, `columnPatch()`, `fieldFor()` |
 | `shared/src/domain/settings.ts` | The company settings catalogue (§3.4). | `SETTING_GROUPS`, `SettingGroup`, `SettingControl`, `SettingDefinition`, `SETTINGS`, `SettingKey`, `SettingValue<K>`, `SETTING_KEYS`, `isSettingKey()`, `isSecretSetting()`, `SettingView` |
 | `shared/src/domain/company-features.ts` | Fills every missing `CompanyFeatures` field from the setting's declared fallback, so no screen writes its own `?? true`. | `ResolvedCompanyFeatures`, `resolveCompanyFeatures()` |
 | `shared/src/domain/permissions.ts` | Permission catalogue, tier ceiling, role templates, the grid catalogue (§3.6). | `ROLE_TIERS`, `RoleTier`, `isRoleTier`, `tierRank`, `MODULES`, `ACTIONS`, `MODULE_ACTIONS`, `CAPABILITY_GROUPS`, `CAPABILITIES`, `PERMISSIONS`, `isPermission`, `minimumTierFor`, `isPermittedForTier`, `keysAboveTier`, `effectivePermissions`, `allPermissions`, `ROLE_TEMPLATES`, `PermissionSet`, `hasPermission`, `PermissionCatalogue`, `moduleActionLabelToken`, `actionLabelToken`, `buildPermissionCatalogue` |
-| `shared/src/domain/fields.ts` | Wire vocabulary for the Fields screen. **4** managed option-list sets: `lead.sourcePlatform`, `stock.colour` (the only one with `hasHex`), `line.packaging`, `line.grade`. | `FIELD_LIST_KEYS`, `FieldListKey`, `isFieldListKey`, `FieldSetDefinition`, `FieldCatalogue`, `buildFieldCatalogue()`, `FieldUsage`, `FieldUsageBreakdown` |
+| `shared/src/domain/fields.ts` | Wire vocabulary for the Fields screen. **5** managed option-list sets: `lead.sourcePlatform`, `stock.colour` (the only one with `hasHex`), `product.brand` (catalogue v2: the brands a category is sold under), `line.packaging`, `line.grade`. | `FIELD_LIST_KEYS`, `FieldListKey`, `isFieldListKey`, `FieldSetDefinition`, `FieldCatalogue`, `buildFieldCatalogue()`, `FieldUsage`, `FieldUsageBreakdown` |
 | `shared/src/domain/inventory-view.ts` | Two pure transforms the Master applies to every stock figure it sends. `withoutReservations` (free-to-sell off): reserved → 0, available → on-hand. `withDefaultReorderLevel`: judges low stock against the company default only for lines with no level of their own, never writing it onto the row. | `withoutReservations()`, `withDefaultReorderLevel()` |
-| `shared/src/domain/product-validation.ts` | Variant and stock-level rules that run on the service path and the offline merge path, before Postgres. Refuses blank or duplicate codes/labels (case-insensitive), a missing label on a variant product, weight ≤ 0. Validates only keys the input contains. | `ProductValidationError` (carries `messageKey`), `validateProductInput`, `validateProductVariants`, `validateStockLevels`, `isBlankNote` |
+| `shared/src/domain/product-validation.ts` | Variant and stock-level rules that run on the service path and the offline merge path, before Postgres. Refuses blank or duplicate codes/labels (case-insensitive), a missing label on a variant product, weight ≤ 0. Validates only keys the input contains. | `CATEGORY_CODE_PATTERN` (`/^[A-Za-z0-9]+$/`, catalogue v2), `ProductValidationError` (carries `messageKey`), `validateProductInput`, `validateProductVariants`, `validateStockLevels`, `isBlankNote` |
 | `shared/src/domain/product-import.ts` | Wire shape and limits for bulk product import (the parser is on the Master). | `MAX_PRODUCT_IMPORT_BYTES` (50 MiB), `MAX_PRODUCT_IMPORT_ISSUES` (1000), `ProductImportMode` (`create`/`upsert`), `ProductImportFormat` (`csv`/`xlsx`), `ProductImportIssue`, `ProductImportResult` |
-| `shared/src/domain/pick.ts` | Contract for the searchable picker; kinds `category`, `product`, `party`. | `PickKind`, `PickQuery`, `PickPage<T>`, `ProductPickPage`, `PartyPickPage`, `CategoryPickPage`, `PICK_DEFAULT_LIMIT` (20), `PICK_MAX_LIMIT` (50), `isPickKind` |
+| `shared/src/domain/pick.ts` | Contract for the searchable picker; kinds `category`, `product`, `party`. | `PickKind`, `PickQuery`, `PickPage<T>`, `ProductPickPage`, `PartyPickPage`, `CategoryPickPage`, `PICK_DEFAULT_LIMIT` (20), `PICK_MAX_LIMIT` (1000 since catalogue v2, was 50: the sub-product bar lists a whole category), `isPickKind` |
 | `shared/src/domain/pick-score.ts` | One ranking rule for picker rows: exact > prefix > word-start > substring, then shorter label, then `localeCompare`. Imported by `office/src/services/offline-pick.ts`. | `PICK_SCORE` (`none 0 … exact 4`), `PickScore`, `pickScore()`, `comparePicked()` |
+| `shared/src/domain/colour-rule.ts` | Catalogue v2 (2026-09-29): the owner's colour rule, derived from a model and its variant rather than stored, and the lead PDF's Model/Code split and colour text. Pure; used by the lead screen, inventory and the lead PDF. | `ColourRule` (`fixed`/`dedicated`/`selectable`), `colourRuleOf` (`multiColour` wins, then a non-blank first label is `fixed`, else `dedicated`), `colourRepeatsName`, `shownColour`, `isNumericSubProduct`, `subProductCells` (numeric → `code`, else `model`), `lineColourText` (sums same colours case-insensitively; several print as `White ×10, Ivory ×5`) |
 | `shared/src/domain/recycle-bin.ts` | Recycle Bin vocabulary: 8 entity types; a restore needs the same key as deleting that entity. | `RECYCLE_BIN_ENTITIES` (`lead`, `order`, `party`, `product`, `role`, `user`, `option_list_item`, `custom_field_definition`), `isRecycleBinEntityType`, `RESTORE_PERMISSION` (e.g. `lead→leads.delete`, `user→users.manage`, both field types → `fields.manage`), `BinEntry`, `BinBlocker`, `BinRestoreResult`, `BinCounts` |
 | `shared/src/domain/reports.ts` | Report types — counts of orders, boxes and parties; no amounts. | `ReportPeriod`, `ReportRangeInput`, `ReportRange`, `DispatchesReport`, `LeadOutcome` (`converted`/`lost`/`quiet`/`open`), `LeadOutcomesReport`, `TopPartiesReport`, `REPORT_KINDS` (`dispatches`, `lead-outcomes`, `top-parties`), `isReportKind`, `ReportFormat` (`csv`/`pdf`), `REPORT_COLUMNS` (3/5/5), `ReportExportOptions`, `isReportFormat` |
 | `shared/src/domain/activity.ts` | Read-side types for the Logs screen. Ids and sequences are strings (BIGINT arrives as a string). | `ActivityActorType` (`user`, `office_panel`, `system`, `api_key`, `connector`), `ActivityActor`, `ActivityLogEntry`, `ActivityLogQuery`, `ActivityLogFacets`, `ChainBreakKind`, `ChainBreak`, `ChainVerification`, `ChainVerifyInput` |
@@ -810,8 +822,10 @@ declares `labelToken`, `descriptionToken`, a `group` (one of
 `SETTING_GROUPS = ['access','stock','leads','integrations']`), a `control`
 (`boolean`, or `number` with min/max/step, optional `nullable` and a `unitToken`),
 a `fallback`, and one `parse(raw)` validator used on both write and read (a stored
-value that no longer parses reads back as the fallback). Every setting is
-Master-only and every write is gated on `settings.manage`. A `secret?: boolean`
+value that no longer parses reads back as the fallback). Every setting is stored on
+the Master and every write is gated on `settings.manage`; since catalogue v2 an
+Office panel may forward a save of `leads.followUpDefaultDays` only, as the
+signed-in user (`settings:save`). A `secret?: boolean`
 flag exists (sealed with AES-256-GCM, read back only as `{configured}`), but **no
 current key sets it**.
 
@@ -829,8 +843,8 @@ The 13 keys, in declaration order:
 | `security.offlineSignInEnabled` | access | boolean | `true` |
 | `inventory.adjustmentNoteRequired` | stock | boolean | `false` |
 | `catalog.importCreatesCategories` | stock | boolean | `true` |
-| `leads.followUpDefaultDays` | leads | number 0–90, days | `0` (today) |
-| `leads.packagingRequiredOnConvert` | leads | boolean | `true` |
+| `leads.followUpDefaultDays` | leads | number 0–90, days | `3` (catalogue v2; was `0`, today) |
+| `leads.packagingRequiredOnConvert` | leads | boolean | `false` (catalogue v2; was `true`) |
 | `leads.quietAfterDays` | leads | number 1–365, days | `30` |
 
 Group headings: `settingGroup.access` "Who can get in", `settingGroup.stock` "Stock"
@@ -966,14 +980,18 @@ appends every missing key just before the final `};` with its English text and a
   `builtForUserId`, `bootId`, `seq`, `serverVersion`, `productsComplete`,
   `features`. `SyncDelta` replaces it when the Master's change ring covers the
   panel's cursor. `SocketData` holds per-connection state.
-- **`ClientToServerEvents`: 79 events** declared Office → Master (the interface
-  declares a direction, not that each is sent). The Office server emits 56 of them;
-  the other 23 (listed in §3.12) have Master handlers but no Office caller. Every
+- **`ClientToServerEvents`: 84 events** declared Office → Master (79 before
+  catalogue v2 added five; the interface declares a direction, not that each is
+  sent). The Office server emits 62 of them; the other 22 (listed in §3.12) have
+  Master handlers but no Office caller. Every
   one has a `socket.on` handler in `master/src/realtime/hub.ts` (checked by diff):
   - auth: `auth:signIn`, `auth:assume`, `auth:signOut`, `auth:reconcile`
   - parties: `party:list`/`create`/`update`/`delete`
   - products: `product:list`/`create`/`update`/`delete`, `product:image:update`/`reorder`/`delete` (image bytes go over HTTP)
-  - lookups: `pick`, `category:list`, `partyVariant:list`/`upsert`
+  - lookups: `pick`, `category:list` (takes `{ search?, brand? }` since catalogue v2), `partyVariant:list`/`upsert`
+  - categories — the owner's Products (catalogue v2, online only): `category:create`/`update`/`delete`
+  - `settings:save` (catalogue v2: `leads.followUpDefaultDays` only, as the signed-in person — `assertPanelSettingWrite` in `hub.ts`)
+  - `lead:pdf` (catalogue v2: the fixed-layout lead PDF's bytes, `leads.export`)
   - leads: `lead:list`/`get`/`create`/`update`/`setStage`/`addRemark`/`convert`/`delete`
   - orders: `order:list`/`get`/`update`/`setStage`/`dispatch`/`delete`
   - stock: `stock:list`/`movements`/`inbound`/`adjust`/`setReorderLevel`
@@ -1026,7 +1044,7 @@ shipped build the `.deb`, which `applyUpdate` refuses), `setShellSettings`,
 only. Also `PanelBootState`, `PanelBootStatus`, `PanelHealthInterface`,
 `PreparedInstaller` (path, sha256, version), `PanelRuntimeHealth`.
 
-### 3.11 `shared/tests/` (15 suites, no database)
+### 3.11 `shared/tests/` (17 suites, no database)
 
 Counts are tests passed at `43fd5b0`. The three files the 2026-09-25 round changed
 and the one it added show their `it(` count instead, marked `it(`.
@@ -1048,12 +1066,14 @@ and the one it added show their `it(` count instead, marked `it(`.
 | `shared/tests/apply-setting-change.test.ts` | 4 | a `setting` change forces a refresh on a connected panel |
 | `shared/tests/keys-implemented.test.ts` | 4 | every `COMMANDS` id is handled by `useCommand(…)`, a `command.id ===` switch or a `shellCommands` key under `ui/src`, `master/web/src` or `office/web/src` (walks the disk) |
 | `shared/tests/stock-note.test.ts` | 3 | `isBlankNote` |
+| `shared/tests/colour-rule.test.ts` | 12 `it(` | catalogue v2: `colourRuleOf` precedence (`multiColour` wins even with a label), blank labels, `shownColour`/`colourRepeatsName`, the numeric Model/Code split, `lineColourText` summing and grouping |
+| `shared/tests/fields.test.ts` | 3 `it(` | catalogue v2: `product.brand` is a managed set with no hex, in `FIELD_LIST_KEYS` and the catalogue |
 | `shared/tests/activity-tokens.lock.json` | — | 59 committed `activity.*` tokens that must never disappear from `en.ts` (the catalogue has 79) |
 
 ### 3.12 Where the code and its comments or docs disagree
 
-- `domain/fields.ts` has **four** option-list sets (the retired `docs/CODE_MAP.md`
-  said six).
+- `domain/fields.ts` has **five** option-list sets since catalogue v2 added
+  `product.brand` back (four before; the retired `docs/CODE_MAP.md` said six).
 - **Fixed 2026-09-25 — stale pricing wording** in the comments of `socket.ts`,
   `apply-change.ts`, `merge.ts`, `product-import.ts` and `settings.ts`, and in the
   "quoted at" idioms of `entities.ts` and `inputs.ts`.
@@ -1083,9 +1103,9 @@ and the one it added show their `it(` count instead, marked `it(`.
   `'Somebody'`; it reads `logs.actor.unknown`, and the 11 Hindi `activity.*`
   templates that were still English are translated.
 - **Hindi** is complete by type only: 1245 `TODO(i18n-hi)` placeholders.
-- **23 of the 79 client→server events have no caller in `office/src`** (a grep for
-  each literal event name finds none): `party:list`/`create`/`update`,
-  `product:create`/`update`, `category:list`, `partyVariant:list`/`upsert`,
+- **22 of the 84 client→server events have no caller in `office/src`** (a grep for
+  each literal event name finds none; `category:list` gained one with catalogue v2):
+  `party:list`/`create`/`update`, `product:create`/`update`, `partyVariant:list`/`upsert`,
   `lead:list`/`get`/`create`/`update`/`setStage`/`addRemark`/`convert`,
   `order:list`/`get`/`update`/`setStage`/`dispatch`, `stock:list`/`movements`,
   `pipeline:list`. The Office writes those through the `sync:push` outbox and reads
@@ -1224,7 +1244,8 @@ removed on 2026-09-25.
 | File | Exports | Used by |
 |---|---|---|
 | `ui/src/PartyFormModal.tsx` | `CreatedParty`, `PartyFormTransport`, `PartyFormModal` | Full party create/edit form (11 text fields); registers `useEnterToAdvance` and `useCommand('record.save')`. Transport `{ createParty(input) → {id}, updateParty(id, input & { baseFieldHlc? }) }` implemented by `master/web/src/partyFormTransport.ts` and `office/web/src/partyFormTransport.ts`. Mounted by `master/web/src/screens/PartiesScreen.tsx`, `office/web/src/screens/AddLeadScreen.tsx`, `office/web/src/screens/CatalogScreen.tsx`. |
-| `ui/src/SettingsLayout.tsx` | `SettingsTab`, `SettingsPage`, `requestSettingsTab`, `useSettingsTab`, `SettingsSection`, `SettingRow`, `AppearanceSettings`, `DeveloperTransport`, `useDeveloperSession`, `DeveloperTool`, `DeveloperPanel`, `useUninstallTool`, `UninstallBridge` | Both panels' `screens/SettingsScreen.tsx`. `useSettingsTab` stores the tab under `ob.settings.tab.master`/`.office`. `AppearanceSettings`: language (`setLocale` then `window.location.reload()`), theme, scale slider, density, motion. Developer tab: password unlock, token only in React state; `confirmWord` gates destructive tools; `useUninstallTool(bridge)` shows "unavailable" in a plain browser. |
+| `ui/src/SettingsLayout.tsx` | `SettingsTab`, `SettingsPage`, `requestSettingsTab`, `useSettingsTab`, `SettingsSection`, `SettingRow`, `NumberSetting` (moved here from the Master's Settings screen for catalogue v2, so the Office Leads tab can use it: `{ control, value, label, saving, onSave(value) }`), `AppearanceSettings`, `DeveloperTransport`, `useDeveloperSession`, `DeveloperTool`, `DeveloperPanel`, `useUninstallTool`, `UninstallBridge` | Both panels' `screens/SettingsScreen.tsx`. `useSettingsTab` stores the tab under `ob.settings.tab.master`/`.office`. `AppearanceSettings`: language (`setLocale` then `window.location.reload()`), theme, scale slider, density, motion. Developer tab: password unlock, token only in React state; `confirmWord` gates destructive tools; `useUninstallTool(bridge)` shows "unavailable" in a plain browser. |
+| `ui/src/OptionListEditor.tsx` | `OptionListEditor`, `OptionListEditorProps`, `OptionListTransport`, `FieldDifference`, `ConflictNotice`, `HexField`, `HEX_PATTERN`, `HEX_EXAMPLE` | Catalogue v2 (2026-09-29): one option list's values — add, relabel, hex, reorder, remove to the Recycle Bin, "used by" counts, the stale-save conflict with Overwrite — lifted out of the Master's Fields screen so a Settings tab can edit the lead sources and the brands. Props `{ listKey, canManage, transport, revision?, compact? }`; it reads its list descriptors from `buildFieldCatalogue()`, as the server does. Transport `{ fieldValues, fieldUsage, createFieldValue, updateFieldValue, deleteFieldValue, reorderFieldValues, conflictOf(error) }`; the Master's is `optionListTransport` in `master/web/src/screens/FieldsScreen.tsx`. Test: `ui/tests/option-list-editor.test.tsx`. |
 | `ui/src/ShortcutSettings.tsx` | `ShortcutSettings` | rebinding by capture (`chordFromEvent`, `isReservedChord`), stored via `keyboard.setBinding(id, formatChord(chord))` |
 | `ui/src/GalleryScreen.tsx` | `GalleryScreen` | token and component gallery, reached only at `#/gallery` (footer link), rendered outside `ScreenHost` |
 | `ui/src/AvatarPicker.tsx` | `AvatarPicker` | upload/replace/clear a profile picture, checks type and `MAX_AVATAR_SOURCE_BYTES`. Master only. |
@@ -1355,6 +1376,29 @@ Added 2026-09-25:
   screen opens; each refusal test opens a screen that way first, so a chord pressed
   before the panel was listening cannot pass for a refusal (`7d6ae68`).
 
+Added 2026-09-29 for catalogue v2 (`it(` counts):
+
+- `ui/tests/option-list-editor.test.tsx` (4) — the shared `OptionListEditor` over a
+  fake transport: add, a stale save read through `conflictOf` and overwritten with
+  the stored version, read-only mode.
+- `ui/tests/office-settings-leads.test.tsx` (3) — the Office's Settings → Leads tab,
+  booted whole: the sources editor and the follow-up default, which saves through
+  `PUT /api/settings/:key`.
+- `ui/tests/add-lead-flow.test.tsx` (10) — the Office New lead form, booted whole and
+  driven the way the counter drives it: the party list only after typing; follow-up
+  at today + 3 and following the company default; every sub product of a product in
+  catalogue order; Enter kept out of the optional grade and adding on the last
+  quantity; two colours as two lines on one variant; Shift+Q finishing the product
+  and a capital Q elsewhere; the Ctrl+Enter review and its single save.
+- `ui/tests/main-products-screen.test.tsx` (6) — Products → Products and Brands
+  (`MainProductsScreen`, `BrandsScreen`) against a mocked api.
+- `ui/tests/catalog-product-filter.test.tsx` (3) — the Office sub-product list's
+  filters.
+- `ui/tests/inventory-movement-form.test.tsx` (1) — the Master's stock-in and count
+  form walks product bar → sub-product bar → the variant.
+- `ui/tests/inventory-stock-race.test.tsx` (1) — an older, slower Inventory answer
+  never overwrites a newer one.
+
 Elsewhere: `master/tests/no-duplicate-ui.test.ts` (4), `master/tests/ui-conventions.test.ts`
 (8: rem tokens, px hairlines/radii/breakpoints, no raw px > 3 in JSX style objects,
 `ui/src/Drawer.tsx` stays deleted, only row-opening tables may set `priority: 2|3`),
@@ -1424,7 +1468,7 @@ is off.
 |---|---|
 | `master/` (everything) | 347 |
 | `master/src/` | 199 |
-| `master/src/db/migrations/` | 31 (30 migrations + `master/src/db/migrations/index.ts`) |
+| `master/src/db/migrations/` | 33 (32 migrations + `master/src/db/migrations/index.ts`; catalogue v2 added two on 2026-09-29) |
 | `master/src/db/` other than migrations | 9 |
 | `master/src/domain/` | 23 (3,653 lines) |
 | `master/src/services/` | 43 (14,595 lines) |
@@ -1648,6 +1692,7 @@ data-directory mismatch). Read by `http/boot-app.ts` and by `bootHealth()`/
 | `releasesDir` | `<root of cwd>/OrderBook-Releases` | `ORDERBOOK_RELEASES_DIR` |
 | `releases.githubRepo` / `.githubToken` / `.pollMinutes` | `null` / `null` / `180` | `ORDERBOOK_RELEASES_GITHUB_REPO` / `ORDERBOOK_RELEASES_GITHUB_TOKEN` / `ORDERBOOK_RELEASES_POLL_MINUTES` |
 | `pdf.fontsDir` | `<packageRoot>/assets/fonts` | — |
+| `catalogueFile` | `<packageRoot>/assets/catalogue/swisware-plus-2026.md` (catalogue v2: what the loader parses) | — |
 | `session.cookieName` / `.ttlMs` | `orderbook_session` / 12 h | — |
 | `locale.timeZone` | `Asia/Kolkata` | `ORDERBOOK_TIMEZONE` |
 | `locale.defaultLocale` | `DEFAULT_LOCALE` | `ORDERBOOK_DEFAULT_LOCALE` |
@@ -1662,7 +1707,7 @@ data-directory mismatch). Read by `http/boot-app.ts` and by `bootHealth()`/
 | `master/src/db/query-counter.ts` | 85 | `attachQueryCounter(knex)` counts queries per request via `AsyncLocalStorage`; `queryCountMiddleware` sets `X-Query-Count` / `X-Duration-Ms`; off when `NODE_ENV=production` |
 | `master/src/db/migrate-cli.ts` | 40 | `npm run migrate`: start Postgres, apply pending, stop; `--status` lists applied and pending instead, by name and in run order (fixed 2026-09-25, defect 2 in §5.11) |
 | `master/src/db/migration-status.ts` | 29 | `formatMigrationStatus(list)` and `MigrationList` — what `--status` prints, as a pure function of Knex's `migrate.list()` answer (pending entries are the registry's own `{name, up, down}` objects, not `{file}`); kept out of `migrate-cli.ts` because importing that starts the database; `master/tests/migration-status.test.ts` |
-| `master/src/db/seed-catalogue-cli.ts` | 40 | `seed:catalogue`: start, migrate, `seedCatalogue()` (Swisware catalogue), stop; idempotent |
+| `master/src/db/seed-catalogue-cli.ts` | 42 | `seed:catalogue`: start, migrate, `seedCatalogue()` (the SWISWARE catalogue file, loaded additively), stop; idempotent |
 | `master/src/db/seed-dummy-users-cli.ts` | 42 | `seed:dummy`: `seedDummyUsers()` from `developer.service.ts`; prints credentials (and the pairing password if it ran first-time setup); re-running resets passwords |
 | `master/src/db/seed-sample-data-cli.ts` | 59 | `seed:sample`: `seedSampleData()`; refuses to run twice |
 
@@ -1709,17 +1754,28 @@ exports: `readBootedVersion`, `recordBootedVersion`, `SNAPSHOT_DIR_NAME`,
 `20260301000000_tenancy_access_and_sync` (tenant, roles, pipelines, stages, option
 lists, `master_clock`) and from first-run setup (`runFirstTimeSetup` in
 `master/src/services/setup.service.ts`: `master_config` and the `admin` user).
-Optional data: the three CLIs above, and `master/src/services/catalog-reload-cli.ts`,
-which `TRUNCATE … RESTART IDENTITY CASCADE`s 19 business tables **including
+Optional data: the three CLIs above, and `master/src/services/catalog-reload-cli.ts`.
+With no flag, `--with-catalog` or `--with-parties` it is the business wipe: it
+`TRUNCATE … RESTART IDENTITY CASCADE`s 19 business tables **including
 `activity_log`** and (since 2026-09-25) `api_connector_links` — whose `local_id`
 names a record by a permanent id the restarted counters hand out again — resets
 `party_code_seq`, `id_sequences` and `master_clock`, then runs `--with-catalog`
-(`seedCatalogue()`, what `reload:catalog` passes) or `--with-parties` (3 parties,
-`seed:parties`). It prints the live-product and activity-entry counts it is about to
-erase first. It starts and stops the database itself, so it must run with the Master
-stopped (§5.11). `master/tests/operator-cli.integration.test.ts` runs it as a
-process against the test database. Catalogue data:
-`master/src/domain/swisware-catalogue.ts`.
+(`seedCatalogue()`) or `--with-parties` (3 parties, `seed:parties`). It prints the
+live-product and activity-entry counts it is about to erase first. Since catalogue
+v2 (2026-09-29) two flags are not a wipe: `--catalogue` (`reload:catalog`) parses
+the catalogue file before starting the database, refuses while any other client is
+connected (`otherDatabaseClients`, over `pg_stat_activity`), warns that Office
+outboxes must be drained, and runs `loadCatalogue({ replace: true })` — which
+deletes the catalogue and what quotes it and keeps parties, party access, people,
+settings, option lists, `id_map`, the id counters and the activity log, adding one
+`catalog.reloaded` row; `--demo-parties` (`seed:demo-parties`) adds 13 demo dealers
+through `createParty`, skipping a name already on the books. It starts and stops
+the database itself, so it must run with the Master stopped (§5.11).
+`master/tests/operator-cli.integration.test.ts` runs it as a process against the
+test database. Catalogue data: `master/assets/catalogue/swisware-plus-2026.md`
+(`config.catalogueFile`), parsed by `master/src/domain/catalogue-markdown.ts`;
+`master/src/domain/swisware-catalogue.ts`, the TypeScript transcription it
+replaces, was deleted.
 
 Migrations and the schema they leave: §6.
 
@@ -1763,7 +1819,7 @@ primaryLanAddress() ?? '127.0.0.1', httpPort: config.http.port, acceptingPairing
 | `master/src/lib/spreadsheet.ts` | 149 | exceljs: `sheetKindOf()` (zip magic ⇒ xlsx), `readSheetRows()` (every cell a string), `buildXlsxTemplate()`, `buildCsvTemplate()`, `XLSX_CONTENT_TYPE` | 1 |
 | `master/src/lib/tile-swatch.ts` | 203 | `tileSwatchSvg()` / `renderTileSwatch()` (sharp) — placeholder photos for sample data | 1 |
 
-### 5.5 `domain/` — all 23 files
+### 5.5 `domain/` — all 24 files (catalogue v2 added two and deleted one)
 
 "Direct test" names the unit test that imports the module; "none" means it is
 exercised only through service integration tests.
@@ -1773,7 +1829,7 @@ exercised only through service integration tests.
 | `master/src/domain/actor.ts` (70) | who is acting; the permission check | `ActorContext`, `actorCan`, `requirePermission`, `actorUserId`, `systemActor` | via 31 files |
 | `master/src/domain/access.ts` (218) | role/user guards G1–G8 (the G4 *rule*; its locked read is `access-guard.repository.ts`) | `assertAdminTier`, `assertTierWithinActor`, `assertPermissionsWithinTier`, `assertSystemRoleEditable`, `assertAdministrativeCapabilityRetained`, `assertRoleUnused`, `assertNameAvailable`, `assertVersionMatches`, `fieldDiff` | none |
 | `master/src/domain/party-scope.ts` (101) | Party Access semantics: no grants = open; grants = only named users; `party.accessAll` bypasses | `PartyScope`, `UNSCOPED_PARTY_ACCESS`, `resolvePartyScope`, `levelFor`, `assertPartyAccess` | `master/tests/party-access.integration.test.ts` |
-| `master/src/domain/line-items.ts` (178) | the line snapshot rule: one line = one variant, frozen name/code/colour/weight | `buildLineSnapshot`, `LineSnapshot`, `LineDraft`, `LineColourError`, `normaliseQuantity`, `lineWeightKg`, `computeTotalWeightKg`, `linesWithoutWeight` | `master/tests/line-items-domain.test.ts` |
+| `master/src/domain/line-items.ts` (178) | the line snapshot rule: one line = one variant, frozen name, category (name, code and brand), variant code, colour and weight; since catalogue v2 a colour on a product that is not multi-colour is dropped, not refused (`LineColourError` removed) | `buildLineSnapshot`, `LineSnapshot`, `LineDraft`, `normaliseQuantity`, `lineWeightKg`, `computeTotalWeightKg`, `linesWithoutWeight` | `master/tests/line-items-domain.test.ts` |
 | `master/src/domain/conversion.ts` (144) | lead → order: lines copied unchanged, packaging never auto-filled, reservations per variant | `copyLinesForOrder`, `planReservations`, `planDispatchMovements`, `assertConvertible`, `ConversionRules` | `master/tests/line-items-domain.test.ts` |
 | `master/src/domain/pipeline.ts` (97) | stage rules | `defaultStage`, `findStage`, `assertStageMove`, `stageChangeMessage` | none |
 | `master/src/domain/lead-outcome.ts` (78) | "went quiet" classifier; only `converted_order_id` counts as converted. **No runtime code calls it**: the report classifies in SQL (`report.repository.ts#leadOutcomesByMonth`); this is the tested pure mirror of that CASE | `classifyLeadOutcome`, `daysBetween`, `QUIET_AFTER_DAYS` (30) | `master/tests/report-range.test.ts` (and compared with the SQL in `master/tests/reports.integration.test.ts`) |
@@ -1781,7 +1837,9 @@ exercised only through service integration tests.
 | `master/src/domain/field-values.ts` (99) | option values (trim, never case-fold), hex colour, reorder | `normaliseOptionValue`, `assertHexColour`, `assertOptionValueChange`, `assertCompleteReorder`, `resequence` | `master/tests/field-values-domain.test.ts` |
 | `master/src/domain/product-import.ts` (414) | spreadsheet → products and variants; one row = one variant, grouped by category and model | `IMPORT_COLUMNS`, `IMPORT_HEADERS`, `normalizeHeader`, `matchHeaders`, `parseImportRow`, `isBlankRow`, `findDuplicatesInFile`, `groupKey`, `groupImportRows`, `templateGuideRows` | `master/tests/product-import-domain.test.ts` |
 | `master/src/domain/images.ts` (114) | image variant sizes, crop and rotation maths (no `sharp`) | `IMAGE_VARIANT_SPECS`, `MAX_SOURCE_BYTES`, `variantDimensions`, `assertCropRect`, `assertRotation` | `master/tests/image-domain.test.ts` |
-| `master/src/domain/swisware-catalogue.ts` (462) | the Swisware 2026 catalogue as data (category → model → variant, no weights) | `SWISWARE_CATALOGUE`, `SWISWARE_COLOURS`, `catalogueSlug`, `catalogueTotals` | `master/tests/catalogue-seed.integration.test.ts` |
+| ~~`master/src/domain/swisware-catalogue.ts`~~ (deleted by catalogue v2, 2026-09-29) | was the Swisware 2026 catalogue as TypeScript data (12 categories → 251 models → 549 variants); replaced by `master/assets/catalogue/swisware-plus-2026.md` and `catalogue-markdown.ts` | — | — |
+| `master/src/domain/catalogue-markdown.ts` (392) | catalogue v2 (2026-09-29): the strict parser of `master/assets/catalogue/swisware-plus-2026.md` — the brands table, the colour range with hex, `### CODE — Name` product blocks with `- Brand:` and `\| # \| Sub product \| Size \| Colour rule \| Colour \|` tables. Refuses malformed input with a line number; maps the file's `multicolour` to the shared `selectable` in one place; `colour` is set only on a `fixed` sub product | `parseCatalogueMarkdown`, `ParsedCatalogue`, `CatalogueColour`, `CatalogueProduct`, `CatalogueSubProduct`, `CatalogueParseError` (`line`) | `master/tests/catalogue-markdown.test.ts` (29 tests passed, including the real file: 1 brand, 21 colours, 41 products, 549 sub products) |
+| `master/src/domain/lead-pdf.ts` (107) | catalogue v2 (2026-09-29): the lead PDF's table — `# \| [Brand] \| Main product \| Model \| Size \| Colour \| Code \| Qty`; the lines of one variant grouped into one row with the quantity summed; Model or Code by `subProductCells`, colour text by `lineColourText`; Brand only when the lines span two brands; English headings; the party block (name, address, phone, GST). Pure — no PDFKit, no database, no clock; `lead.service.ts#leadPdf` renders it through `renderReportPdf` | `leadPdfTable` | `master/tests/lead-pdf.test.ts` |
 | `master/src/domain/sample-data.ts` (809) | the demo dataset + a seeded RNG | `SAMPLE_WINDOW_DAYS` (170), `SAMPLE_PRODUCTS`, `SAMPLE_PARTIES`, `SAMPLE_LEADS`, `SAMPLE_OPENING_STOCK`, `SAMPLE_DELETIONS`, `createRandom` | `master/tests/sample-data.integration.test.ts` |
 | `master/src/domain/cursor.ts` (60) | the one base64url cursor codec | `encodeCursor`, `decodeCursor`, `clampCursorLimit` | `master/tests/cursor.test.ts` |
 | `master/src/domain/log-cursor.ts` (36) | Logs keyset cursor | `clampLogPage`, `encodeLogCursor`, `decodeLogCursor` | none |
@@ -1836,8 +1894,19 @@ exercised only through service integration tests.
   `party.variant_saved`, filed under the party so the Logs party scope hides it);
   products: `listProducts`, `getProduct`,
   `listCategories`, `findProductByCode`, `createProduct`, `updateProduct`,
-  `deleteProduct`, `restoreProduct` (never renames; a code clash is refused),
-  `countProducts` (`products.*`). The most-imported service (44 importers, 11
+  `deleteProduct`, `restoreProduct` (never renames; a code clash is refused;
+  since catalogue v2 refused while its category is in the Bin),
+  `countProducts` (`products.*`). Catalogue v2 (2026-09-29) adds the categories'
+  own CRUD — `createCategory` (`products.create`), `updateCategory`
+  (`products.edit`, logs `{field:{from,to}}` and publishes a `catalog` change
+  when name, code or brand moves), `deleteCategory` (`products.delete`, refused
+  while a live sub product remains, naming each) and `restoreCategory` (the Bin;
+  a code taken meanwhile is refused, a name offered a rename) — plus, on sub
+  products, a blank variant code filled with the next `CODE-####`
+  (`fillBlankCodes`), a live name unique inside its category
+  (`validation.product.nameTaken`; exported `assertSubProductNameFree`, which the
+  offline merge in `sync.service.ts` also runs on a rename), activity naming the category and logging
+  `changes`, and `PRODUCT_PAGING` (ceiling 2000) for product lists. The most-imported service (44 importers, 11
   non-test).
 - `master/src/services/party-access.service.ts` (368) — `listAssignments`,
   `assignmentsForParty`, `replaceAssignments` (`party.assign`), `exportRows`
@@ -1852,16 +1921,37 @@ exercised only through service integration tests.
   `importProducts({dryRun, mode})`; `products.bulk` + `products.create` (+
   `products.edit` for upsert); writes through repositories in chunks of
   `BATCH = 500`, bypassing `createProduct`, and publishes one `catalog` change event.
-- `master/src/services/catalogue-seed.service.ts` (168) — `seedCatalogue` replays
-  `SWISWARE_CATALOGUE` through `fields.createValue` and `catalog.createProduct`;
-  idempotent per model.
-- `master/src/services/catalog-reload-cli.ts` (170) — the operator CLI behind
-  `reload:catalog` (`--with-catalog`), `wipe:business` (no flag), `seed:parties`
+  Catalogue v2: each group's product is settled above the dry-run boundary by the
+  single-product rule — a `categoryCode` must name a live product (refused per row
+  with `validation.product.categoryCodeUnknown`, never created), a name is read with
+  its `categoryBrand` — and `ensureCategories` only creates the unmatched names, keyed
+  by (brand, name) through `categorySeedKey`.
+- `master/src/services/catalogue-seed.service.ts` (398) — catalogue v2 (2026-09-29):
+  `readCatalogueFile` (parse `config.catalogueFile` before anything is touched),
+  `loadCatalogue(parsed, actor, { replace })` — **one transaction**, bulk inserts:
+  brand and colour option values (added, restored from the Bin, hex written),
+  categories through `ensureCategories` (code, brand, catalogue order), one-variant
+  sub products coded `CODE-0001…` with `hasVariants = rule === 'fixed'`,
+  `multiColour = rule === 'selectable'` and the fixed colour as the label, weights
+  blank; `replace` first runs `clearCatalogueData` (stock, movements, reservations,
+  lines, timelines, leads, orders, their sync conflicts, party-wise records, photo
+  rows, product connector links, variants, sub products, categories). One
+  `catalog.reloaded` or `catalog.imported` activity row and one `catalog` change
+  event per load. `seedCatalogue` (additive, as the first administrator unless an
+  actor is given — the Developer tab, `seed:catalogue`, the sample data);
+  `otherDatabaseClients` (the reload's refusal). Returns `LoadCatalogueResult`
+  (`brands`, `colours`, `products`, `subProducts`, `skipped`, `removedLeads`,
+  `removedOrders`).
+- `master/src/services/catalog-reload-cli.ts` (272) — the operator CLI behind
+  `reload:catalog` (`--catalogue`), `seed:demo-parties` (`--demo-parties`),
+  `wipe:business` (no flag; `--with-catalog` also loads) and `seed:parties`
   (`--with-parties`) (§5.3).
 
 **Leads, orders, stock**
 
-- `master/src/services/lead.service.ts` (651) — `listLeads`, `getLead`, `createLead`,
+- `master/src/services/lead.service.ts` (680) — `listLeads`, `getLead`, `leadPdf`
+  (catalogue v2: `leads.export`; `getLead` after `resolveId`, then `leadPdfTable` →
+  `renderReportPdf`), `createLead`,
   `updateLead`, `setStage`, `addRemark`, `deleteLead`, `restoreLead`,
   `getDashboardCounts`. `leads.*`; reassigning the owner needs
   `record.reassignOwner`; temporary ids resolved with `resolveId`; a converted lead
@@ -1895,8 +1985,10 @@ exercised only through service integration tests.
   errors (`40001`, `40P01`, pool timeout) are rethrown, not recorded. Only
   `lead.create`, `party.create` and `product.create` record a temporary-id mapping
   (`mapTemporaryId`).
-- `master/src/services/snapshot.service.ts` (134) — `buildSnapshot(actor)`: parties,
-  products, categories, leads, orders, stock (500 each), party variants, pipelines,
+- `master/src/services/snapshot.service.ts` (147) — `buildSnapshot(actor)`: parties,
+  products, categories, leads, orders, stock (500 each, except products and stock
+  rows at `PRODUCT_PAGING.maxLimit`, 2000, since catalogue v2 — 549 sub products
+  no longer lose their tail), party variants, pipelines,
   option lists, custom fields, 100 conflicts, dashboard, features, permissions,
   grants. Only six collections are gated with `actorCan` (resolving to empty rather
   than failing the whole snapshot): parties (`parties.view`), products and categories
@@ -2291,7 +2383,7 @@ the service checks.
   `POST /lock`; `POST /reset-all` (confirmation phrase), `POST /seed-dummy-users`,
   `POST /seed-sample-data`, `POST /load-catalogue` (each
   `developerGate.assertUnlocked(<x-developer-token>)`).
-- `master/src/http/routes/data.routes.ts` (`/api` catch-all, 42, the Master UI's main
+- `master/src/http/routes/data.routes.ts` (`/api` catch-all, 46 — catalogue v2 added four, the Master UI's main
   surface): `GET /dashboard`; `GET /storage` (`settings.manage` since 2026-09-25); `POST
   /storage/export`, `/storage/restore/preview`, `/storage/restore`
   (`storage.manage`, multipart ≤ 1 GiB, buffered in memory); reference data `GET
@@ -2300,11 +2392,14 @@ the service checks.
   /parties/:id` (`parties.delete`), `GET /parties/:id/variants`, `POST
   /party-variants`; products `GET /products`, `GET /products/by-code/:code`, `POST
   /products`, `PUT /products/:id`, `DELETE /products/:id` (`products.delete`), `GET
-  /categories`; stock `GET /stock`, `GET /stock/movements`, `POST /stock/inbound`,
+  /categories` (`?search=&brand=`), and since catalogue v2 `POST /categories`, `PUT
+  /categories/:id`, `DELETE /categories/:id` (`products.delete`; the others checked in
+  the service); stock `GET /stock` (`?brand=&categoryId=` since catalogue v2), `GET /stock/movements`, `POST /stock/inbound`,
   `POST /stock/adjust`, `POST /stock/reorder-level`; leads `POST /leads`
   (`leads.create`), `GET /leads`, `GET /leads/:id`, `POST /leads/:id/stage`, `POST
   /leads/:id/remarks`, `DELETE /leads/:id` (`leads.delete`), `POST
-  /leads/:id/convert`; orders `GET /orders`, `GET /orders/:id`, `PUT /orders/:id`,
+  /leads/:id/convert`, `GET /leads/:id/pdf` (catalogue v2, `leads.export`: the
+  fixed-layout lead PDF, `inline`); orders `GET /orders`, `GET /orders/:id`, `PUT /orders/:id`,
   `POST /orders/:id/stage`, `POST /orders/:id/dispatch`, `DELETE /orders/:id`
   (`orders.delete`); `GET /conflicts`, `POST /conflicts/:id/resolve`.
 - `master/src/http/routes/public-api.routes.ts` (`/api/v1`) — table-driven (§5.8.2).
@@ -2371,12 +2466,18 @@ the service checks.
   electron/dist/master.main.js` (untracked build output copied in by
   `build:shell`). Scripts: `build`, `build:server`, `dev`, `start`, `migrate`,
   `reload:catalog`, `wipe:business`, `seed:parties`, `seed:dummy`, `seed:sample`,
-  `seed:catalogue`, `typecheck`.
+  `seed:catalogue`, `seed:demo-parties` (catalogue v2), `typecheck`.
 - `master/tsconfig.json` — extends base, `src` → `dist`.
 - `master/assets/fonts/Inter-Regular.ttf`, `master/assets/fonts/Inter-SemiBold.ttf`,
   `master/assets/fonts/NotoSansDevanagari-Regular.ttf`,
   `master/assets/fonts/SourceCodePro-Regular.ttf` — the four SIL OFL faces for PDF
   export (checked at boot); `master/assets/fonts/LICENSES.md`.
+- `master/assets/catalogue/swisware-plus-2026.md` — catalogue v2 (2026-09-29): the
+  SWISWARE 2026 catalogue as Markdown data (1 brand, the 21-colour range with hex,
+  41 products with their codes, 549 sub products with size and colour rule), with
+  its transcription decisions. Shipped with the Master so Settings → Developer →
+  *Load catalogue* works on an installed copy; read through `config.catalogueFile`
+  and parsed by `master/src/domain/catalogue-markdown.ts`.
 - `master/Launch Master Panel.bat` — Windows dev launcher: `npm run dev` on 4100,
   Vite on 5100, then an Edge `--app` window.
 - `master/electron-builder.yml` and `master/installer/` (3 files) — §10.4:
@@ -2540,7 +2641,7 @@ structure — no upgrade path was replayed. Its seed data certainly can differ
 
 ### 6.1 How migrations run, and the rules
 
-- `master/src/db/migrations/index.ts` (187 lines) is an explicit registry: it imports
+- `master/src/db/migrations/index.ts` (204 lines) is an explicit registry: it imports
   each file, exports `migrations: Migration[]` (`{name, up, down}`), and wraps them in
   `class RegistryMigrationSource` whose `getMigrations()` returns the array as is.
   **Knex applies them in array order, not filename order.**
@@ -2550,22 +2651,28 @@ structure — no upgrade path was replayed. Its seed data certainly can differ
 - With the installed Knex (3.3.0), `migrate.latest()` runs all pending migrations in
   one transaction (no migration opts out), so a failure rolls back the whole batch.
 - **Ordering rule** (`master/tests/migration-registry.test.ts`): the array must be in
-  ascending timestamp order except for `DELIBERATELY_LAST`, four names that must be
-  the **last four entries** in exactly this order:
+  ascending timestamp order except for `DELIBERATELY_LAST`, five names that must be
+  the **last five entries** in exactly this order:
   `20260309000000_new_module_permission_grant` (grants keys that later modules
   mint), `20260322000000_drop_document_designer` and
-  `20260324000000_product_master_trim` (strip keys earlier grants hand out), and
-  `20260325000000_line_item_grade` (re-adds a column the trim drops). The same test
+  `20260324000000_product_master_trim` (strip keys earlier grants hand out),
+  `20260325000000_line_item_grade` (re-adds a column the trim drops), and
+  `20260326000000_catalogue_brands_and_codes_port` (catalogue v2, 2026-09-29;
+  pinned behind the trim for the same reason). The same test
   requires files on disk and names in the array to match one to one, a `./<name>.js`
   import for each, a 14-digit timestamp prefix, and that no name in the `SHIPPED`
-  list (17) ever disappears. Duplicate timestamps are allowed if full names are
-  unique (the tree has two `20260312…`, two `20260313…`, two `20260322…`).
-  **Consequence:** a new migration must be inserted *before* the four pinned
-  entries, so on a fresh database it runs before the trim.
+  list (32 since catalogue v2: every migration in the registry) ever disappears. Duplicate timestamps are allowed if full names are
+  unique (the tree has two `20260312…`, two `20260313…`, two `20260322…`, two
+  `20260323…`).
+  **Consequence:** a new migration either goes *before* the pinned entries, so
+  on a fresh database it runs before the trim, or — when it must run after the
+  trim — is appended and added to the end of `DELIBERATELY_LAST`, as
+  `20260325` and `20260326` were.
 - **Data-safety rule** (`master/tests/migration-data-safety.test.ts`):
   `LAST_DESTRUCTIVE = '20260324000000_product_master_trim'`, `EXEMPT = []`. Every
   migration whose name sorts after it must not truncate, drop a table or column, or
-  delete rows in `up()`. Today that is only `20260325000000_line_item_grade`. An
+  delete rows in `up()`. Today that is `20260325000000_line_item_grade` and
+  `20260326000000_catalogue_brands_and_codes_port`. An
   exemption is the owner's decision (`docs/PRODUCTION_READINESS.md`).
 - **A migration must not import a live constant** that can change later (freeze the
   list, as `NEW_KEYS` in `20260309` does). `20260301000000_tenancy_access_and_sync`
@@ -2576,7 +2683,7 @@ structure — no upgrade path was replayed. Its seed data certainly can differ
   Admin role's stored permissions, so Admin's seeded key set tracks whatever the
   catalogue is when that migration first runs on a database.
 
-### 6.2 All 30 migrations, in the order they are applied
+### 6.2 All 32 migrations, in the order they are applied
 
 | # | Migration | Lines | What it does / leaves behind |
 |---|---|---|---|
@@ -2589,7 +2696,7 @@ structure — no upgrade path was replayed. Its seed data certainly can differ
 | 7 | `master/src/db/migrations/20260305000000_soft_delete_columns.ts` | 79 | `deleted_at`/`deleted_by` on leads, orders, parties, products; Bin keyset indexes; open/follow-up indexes exclude deleted rows; party/product code uniqueness partial. `down()` empty |
 | 8 | `master/src/db/migrations/20260306000000_field_values_and_stage_ordering.ts` | 195 | soft delete + `version` on option lists and custom fields; `option_lists.hex`; `pipeline_stages.is_archived`; deferrable `pipeline_stages_seq_unique`; backfills list values. `down()` empty |
 | 9 | `master/src/db/migrations/20260307000000_product_images_pipeline.ts` | 53 | `product_images`: drops `file_path`; adds `caption`, `sequence`, `width`, `height`, `checksum`, `blurhash`, `byte_size` |
-| 10 | `master/src/db/migrations/20260308000000_document_templates_and_exports.ts` | 187 | PDF Designer tables (dropped by #28) |
+| 10 | `master/src/db/migrations/20260308000000_document_templates_and_exports.ts` | 187 | PDF Designer tables (dropped by #29) |
 | 11 | `master/src/db/migrations/20260310000000_activity_log_actor_name.ts` | 218 | `activity_log.actor_name` backfill (drops/recreates the no-update trigger around it); `activity_log_row_hash()`; `activity_log_chain()` redefined; tenant-scoped log and Reports indexes |
 | 12 | `master/src/db/migrations/20260311000000_storage_permission_grant.ts` | 54 | grants `storage.manage` to roles holding `settings.manage` |
 | 13 | `master/src/db/migrations/20260312000000_office_panel_administration.ts` | 80 | machine-report columns on `office_panels` |
@@ -2597,19 +2704,21 @@ structure — no upgrade path was replayed. Its seed data certainly can differ
 | 15 | `master/src/db/migrations/20260313000000_panel_app_version.ts` | 54 | idempotent `ADD COLUMN IF NOT EXISTS office_panels.app_version` — kept so databases that ran it still boot |
 | 16 | `master/src/db/migrations/20260313000000_party_access.ts` | 100 | `party_access`; grants `party.accessAll`, `party.assign` to admin roles |
 | 17 | `master/src/db/migrations/20260314000000_settings_and_password_vault.ts` | 67 | `settings`, `user_password_vault`; nothing seeded |
-| 18 | `master/src/db/migrations/20260315000000_product_trade_and_ceramic_attributes.ts` | 271 | trade/ceramic product columns (mostly dropped by #29); `inventory_stock.min/max_stock_level` and `stock_movements.batch_no/shade/calibre` (survive) |
+| 18 | `master/src/db/migrations/20260315000000_product_trade_and_ceramic_attributes.ts` | 271 | trade/ceramic product columns (mostly dropped by #30); `inventory_stock.min/max_stock_level` and `stock_movements.batch_no/shade/calibre` (survive) |
 | 19 | `master/src/db/migrations/20260316000000_public_api_and_connectors.ts` | 254 | the 7 `api_*` tables; widens the `activity_log.actor_type` CHECK; grants `api.manage` |
 | 20 | `master/src/db/migrations/20260317000000_ai_assistant.ts` | 116 | `ai_runs`; grants `ai.manage`/`ai.write`/`ai.use` — **both still present** (§6.14) |
-| 21 | `master/src/db/migrations/20260318000000_document_layout_v2.ts` | 491 | rewrote Designer layouts (tables gone since #28) |
+| 21 | `master/src/db/migrations/20260318000000_document_layout_v2.ts` | 491 | rewrote Designer layouts (tables gone since #29) |
 | 22 | `master/src/db/migrations/20260319000000_products_bulk_permission_grant.ts` | 66 | grants `products.bulk` to admin-tier roles |
 | 23 | `master/src/db/migrations/20260320000000_product_variant_codes.ts` | 42 | `inventory_stock.variant_code` (dropped by #26) |
 | 24 | `master/src/db/migrations/20260321000000_line_item_variant_codes.ts` | 37 | `line_item_quantities.variant_code` (table dropped by #26) |
 | 25 | `master/src/db/migrations/20260322000000_product_colour_policy_and_line_category.ts` | 43 | `line_items.category_name` (survives); `products.colour_policy` (dropped by #26) |
 | 26 | `master/src/db/migrations/20260323000000_product_variants.ts` | 235 | **Destructive.** Creates `product_variants`; truncates products, categories, images, party variants, stock, movements, reservations, leads, orders, lines, timelines; drops `products.product_code/weight_kg/color`, `line_item_quantities`, `product_code_seq`; re-keys lines and stock by `variant_id`. Idempotent; `down()` throws |
-| 27 | `master/src/db/migrations/20260309000000_new_module_permission_grant.ts` | 87 | **Pinned.** Union-grants `NEW_KEYS` (frozen 2026-08-25) to admin-tier roles, including soft-deleted ones |
-| 28 | `master/src/db/migrations/20260322000000_drop_document_designer.ts` | 76 | **Pinned.** Drops `document_exports`, `document_templates`, `document_assets`; strips the 5 `documents.*` keys. Files under `<dataDir>/documents/` are left alone |
-| 29 | `master/src/db/migrations/20260324000000_product_master_trim.ts` | 232 | **Pinned, destructive, `LAST_DESTRUCTIVE`.** Drops 26 product columns incl. all pricing; `rate`/`line_total`/`sin`/`grade`/`product_type` from lines; `total_amount` from leads and orders; `rate`/`sin`/`grade`/`product_type` from party variants. Adds `products.multi_colour`, `line_items.colour`. Deletes the `pricing.enabled` setting, the `product.*` and `line.grade` option lists, the 4 `field.*Rate.*` keys, orphaned field maps and conflicts. Idempotent; `down()` throws |
-| 30 | `master/src/db/migrations/20260325000000_line_item_grade.ts` | 37 | **Pinned.** `ADD COLUMN IF NOT EXISTS line_items.grade` — so far the only migration held to the additive rule |
+| 27 | `master/src/db/migrations/20260323000000_catalogue_brands_and_codes.ts` | 47 | **Empty on purpose** (catalogue v2, 2026-09-29). A stale checkout ran a real migration under this name on the owner's PC database; Knex refuses to boot a database whose `knex_migrations` names a file the registry lacks, and the real body touched `products.colour_policy`, which #26 drops. Kept like `panel_app_version` (#15); #32 does the work |
+| 28 | `master/src/db/migrations/20260309000000_new_module_permission_grant.ts` | 87 | **Pinned.** Union-grants `NEW_KEYS` (frozen 2026-08-25) to admin-tier roles, including soft-deleted ones |
+| 29 | `master/src/db/migrations/20260322000000_drop_document_designer.ts` | 76 | **Pinned.** Drops `document_exports`, `document_templates`, `document_assets`; strips the 5 `documents.*` keys. Files under `<dataDir>/documents/` are left alone |
+| 30 | `master/src/db/migrations/20260324000000_product_master_trim.ts` | 232 | **Pinned, destructive, `LAST_DESTRUCTIVE`.** Drops 26 product columns incl. all pricing; `rate`/`line_total`/`sin`/`grade`/`product_type` from lines; `total_amount` from leads and orders; `rate`/`sin`/`grade`/`product_type` from party variants. Adds `products.multi_colour`, `line_items.colour`. Deletes the `pricing.enabled` setting, the `product.*` and `line.grade` option lists, the 4 `field.*Rate.*` keys, orphaned field maps and conflicts. Idempotent; `down()` throws |
+| 31 | `master/src/db/migrations/20260325000000_line_item_grade.ts` | 37 | **Pinned.** `ADD COLUMN IF NOT EXISTS line_items.grade` — the first migration held to the additive rule |
+| 32 | `master/src/db/migrations/20260326000000_catalogue_brands_and_codes_port.ts` | 108 | **Pinned, additive, idempotent** (catalogue v2, 2026-09-29). `product_categories.code`, `brand`, `sort_order`, `updated_at`, `deleted_at`; `idx_categories_brand_name (tenant_id, lower(coalesce(brand,'')), lower(name)) WHERE deleted_at IS NULL`, then drops `idx_categories_name_tenant`; `idx_categories_code (tenant_id, lower(code)) WHERE code IS NOT NULL AND deleted_at IS NULL`; `products.sort_order`; `line_items.brand_name`, `category_code`. Every statement `IF NOT EXISTS`, so a fresh, a 1.2.0 and the stale-branch database end on one schema; `master/tests/migration-catalogue-port.integration.test.ts` |
 
 ### 6.3 Conventions across the schema
 
@@ -2633,7 +2742,9 @@ structure — no upgrade path was replayed. Its seed data certainly can differ
   `party_product_variants`, `roles`, `users`.
 - **Soft delete** (`deleted_at` + `deleted_by`) on 8 tables: leads, orders, parties,
   products, roles, users, option_lists, custom_field_definitions.
-  `product_variants` has `deleted_at` only (copies its product's tombstone).
+  `product_variants` has `deleted_at` only (copies its product's tombstone), and so
+  has `product_categories` since catalogue v2 (a soft delete of its own, no
+  `deleted_by`).
 - **No money anywhere.** Weights (`weight_kg`, `total_weight_kg*`) and quantities are
   the only numeric business values.
 - **Foreign keys left out on purpose** (checked in services): `users.role_id`,
@@ -2713,8 +2824,8 @@ digest of each user's `password_hash`, never the hash.
 
 | Table | Key columns | Keys and constraints | Purpose / code |
 |---|---|---|---|
-| `product_categories` | `id` (PC…), `name`, `created_at` | UNIQUE `(tenant_id, lower(name))` | the "main product" level (e.g. Water Closet); no sync or soft-delete columns |
-| `products` | `id` (PR…), `category_id` **NOT NULL**, `name`, `alias`, `size`, `has_variants`, `multi_colour`, `is_active`, `custom_fields`, soft delete, sync columns, `search_vector` | FK `category_id`; index `(tenant_id, category_id)` | a model (e.g. DAMRU), 19 columns; **no code, weight, colour, pricing or trade attributes**; `multi_colour` lets a line pick a colour from `stock.colour`; `product.repository.ts` |
+| `product_categories` | `id` (PC…), `name`, `code`, `brand`, `sort_order`, `created_at`, `updated_at`, `deleted_at` (the last five since catalogue v2) | `idx_categories_brand_name UNIQUE (tenant_id, lower(coalesce(brand,'')), lower(name)) WHERE deleted_at IS NULL`; `idx_categories_code UNIQUE (tenant_id, lower(code)) WHERE code IS NOT NULL AND deleted_at IS NULL` | the owner's **Product** (e.g. `OPT` One Piece Toilet): an alphanumeric code, a `product.brand` value, catalogue order; no sync columns; `product.repository.ts` (`ensureCategories`, `listCategories`, `findLiveCategoryByCode`) |
+| `products` | `id` (PR…), `category_id` **NOT NULL**, `name`, `alias`, `size`, `has_variants`, `multi_colour`, `sort_order` (catalogue v2), `is_active`, `custom_fields`, soft delete, sync columns, `search_vector` | FK `category_id`; index `(tenant_id, category_id)` | a model (e.g. DAMRU) — the owner's **Sub product**, one variant each in the SWISWARE catalogue — 20 columns; **no code, weight, colour, pricing or trade attributes**; `multi_colour` lets a line pick a colour from `stock.colour`; `product.repository.ts` |
 | `product_variants` | `id` (VR…), `product_id`, `code`, `label` (null = the single plain variant), `weight_kg` (CHECK > 0), `sequence`, `is_active`, `deleted_at` | FK CASCADE; `idx_product_variants_code_tenant (tenant_id, lower(code)) WHERE deleted_at IS NULL`; UNIQUE `(product_id, lower(coalesce(label,'')))` | **every code and weight**; every product has ≥ 1 variant; a variant removed from the form is deactivated if referenced, else hard-deleted; `product-variant.repository.ts` |
 | `product_images` | `id` UUID, `product_id`, `is_primary`, `caption`, `sequence`, `width`, `height`, `checksum`, `blurhash`, `byte_size`, `uploaded_at` | FK CASCADE | metadata only; files at `<imagesDir>/<tenantId>/<imageId>/<variant>.webp`; `product-image.repository.ts` |
 
@@ -2726,7 +2837,7 @@ digest of each user's `password_hash`, never the hash.
 | `pipeline_stages` | `id`, `pipeline_id`, `name`, `sequence`, `is_default`, `is_terminal`, `is_archived`, `colour` | `pipeline_stages_seq_unique (pipeline_id, sequence) DEFERRABLE`; at most one default per pipeline; not both archived and default | Kanban columns (no `tenant_id`). Seeded lead stages: New (default), Quoted, Negotiating, Won (terminal), Lost (terminal). Order stages: In Progress (default), Postpone, Dispatched (terminal), Cancelled (terminal). |
 | `leads` | `id` (LD…), `party_id`, `stage_id`, `owner_id`, `created_by_user_id`, `source_panel_id`, `source_platform`, `follow_up_date`, `party_wise_mode`, `notes`, `custom_fields`, `converted_order_id`, `converted_at`, soft delete, sync columns | FKs to parties, stages, users, office_panels, orders; partial `idx_leads_open`, `idx_leads_followup`; **no index on `owner_id`** (§5.11 item 21) | an enquiry; no status, `lead_number` or amount column — the id is the docket number and the stage is the status; `lead.repository.ts` |
 | `orders` | `id` (OD…), `lead_id`, `party_id`, `stage_id`, `owner_id`, `created_by_user_id`, `source_panel_id`, `dispatch_address_label`, `expected_dispatch_date`, `total_weight_kg`, `total_weight_kg_override`, `notes`, `custom_fields`, `dispatched_at`, soft delete, sync columns | FK `lead_id`→leads (circular with `leads.converted_order_id`); partial `idx_orders_dispatched`; no index on `owner_id` | created only by conversion; `order.repository.ts` |
-| `line_items` | `id` (LI…), `parent_type`, `parent_id` (no FK), `product_id`, `variant_id`; snapshots `product_name`, `category_name`, `alias`, `code`, `variant_label`, `colour`, `size`, `weight_kg`, `packaging`, `grade`; `sequence`, `from_party_variant`, `image_path`, `notes`, `quantity` NUMERIC(12,2), `search_vector` | CHECK `quantity > 0`; index `(tenant_id, parent_type, parent_id)` | one table for both parents, one line per variant, snapshot frozen when added; `replaceLines` deletes and re-inserts; `line-item.repository.ts` |
+| `line_items` | `id` (LI…), `parent_type`, `parent_id` (no FK), `product_id`, `variant_id`; snapshots `product_name`, `category_name`, `category_code`, `brand_name` (the two since catalogue v2), `alias`, `code`, `variant_label`, `colour`, `size`, `weight_kg`, `packaging`, `grade`; `sequence`, `from_party_variant`, `image_path`, `notes`, `quantity` NUMERIC(12,2), `search_vector` | CHECK `quantity > 0`; index `(tenant_id, parent_type, parent_id)` | one table for both parents, one line per variant, snapshot frozen when added; `replaceLines` deletes and re-inserts; `line-item.repository.ts` |
 | `timeline_entries` | `id` (TL…), `parent_type`/`parent_id`, `kind` (`system`/`remark`), `message`, `from_stage_id`, `to_stage_id`, `actor_user_id` | FKs to stages and users | history and remarks; `timeline.repository.ts` |
 
 ### 6.10 Inventory, movements, reservations
@@ -2752,7 +2863,7 @@ digest of each user's `password_hash`, never the hash.
 | Table | Key columns | Keys | Purpose |
 |---|---|---|---|
 | `settings` | `key`, `value` JSONB, `is_secret`, `key_version`, `updated_at`/`updated_by` | PK `(tenant_id, key)` | one row per setting; absent = fallback; none seeded; not synced to panels (features are) |
-| `option_lists` | `id`, `list_key`, `value`, `label`, `sequence`, `is_active`, `hex` (CHECK `#RRGGBB`), soft delete, `version` | `idx_option_lists_key_value UNIQUE (tenant_id, list_key, value) WHERE deleted_at IS NULL` | the 4 `FIELD_LIST_KEYS`; a fresh database seeds 6 `lead.sourcePlatform` values (whatsapp, call, website, walk_in, referral, other); the other three start empty |
+| `option_lists` | `id`, `list_key`, `value`, `label`, `sequence`, `is_active`, `hex` (CHECK `#RRGGBB`), soft delete, `version` | `idx_option_lists_key_value UNIQUE (tenant_id, list_key, value) WHERE deleted_at IS NULL` | the 5 `FIELD_LIST_KEYS`; a fresh database seeds 6 `lead.sourcePlatform` values (whatsapp, call, website, walk_in, referral, other); the other four start empty (the catalogue loader fills `product.brand` and `stock.colour`) |
 | `custom_field_definitions` | `id`, `entity` (`lead`/`order`/`party`/`product`), `key`, `label`, `field_type` (`text`/`number`/`date`/`select`/`boolean`), `is_required`, `options`, `sequence`, `is_active`, soft delete, `version` | `idx_custom_fields_key UNIQUE (tenant_id, entity, key) WHERE deleted_at IS NULL` | values live in the `custom_fields` JSONB column of leads, orders, parties, products |
 | `activity_log` | `id`, `sequence` (per tenant), `entity_type`, `entity_id` TEXT, `action`, `actor_type`, `actor_id`, `actor_name`, `details` JSONB, `prev_hash`, `hash`, `created_at` | UNIQUE `(tenant_id, sequence)`; 5 keyset indexes; `activity_log_chain_trg` (BEFORE INSERT: per-tenant advisory lock, assigns `sequence`/`prev_hash`, computes `hash` with `activity_log_row_hash()` SHA-256); `activity_log_no_update`, `activity_log_no_delete` (both `BEFORE … FOR EACH ROW` → `activity_log_immutable()`) | append-only hash chain; pre-chain rows carry `hash = 'pre-chain'`; `activity-log.repository.ts`. **The guard cannot stop a `TRUNCATE`:** there is no statement-level `BEFORE TRUNCATE` trigger, so `catalog-reload-cli.ts`'s `TRUNCATE … CASCADE` (and `resetData()` in the test fixtures) empties the audit log without firing `activity_log_no_delete` |
 | `api_keys` | `label`, `token_prefix`, `token_hash`, `owner_user_id`, `rate_limit_per_min` (120), `expires_at`, `revoked_at`, `last_used_at`, `created_by_user_id` | `token_prefix` UNIQUE globally | public API tokens |
@@ -2794,7 +2905,7 @@ its parent.
   `effectivePermissions` drops the unknown keys at resolution. Removing the table
   would need an `EXEMPT` entry — an owner decision.
 - **Gone:** `lead_items` (#4), `role_permissions` (#5), `line_item_quantities`
-  (#26), `document_assets`/`document_templates`/`document_exports` (#28), the
+  (#26), `document_assets`/`document_templates`/`document_exports` (#29), the
   intermediates `leads_new`/`inventory_stock_new` (#4), sequences `lead_number_seq`
   (#4) and `product_code_seq` (#26). The intermediates' names survive in the primary
   keys: on a fresh database `leads` has `leads_new_pkey` and `inventory_stock` has
@@ -2803,7 +2914,8 @@ its parent.
 ### 6.15 Where `docs/schema/` disagrees with the code
 
 **Fixed 2026-09-25.** `docs/schema/` was rewritten against the shape a fresh
-database has after all 30 migrations (checked 2026-09-24) — the registry run on an empty
+database has after all 30 migrations of the time (checked 2026-09-24; catalogue v2's two
+were written in from the migration, not re-dumped) — the registry run on an empty
 PostgreSQL 16 database and compared table by table with `pg_dump` and
 `information_schema` (all 39 application tables, every column, the 76 foreign keys
 with their `ON DELETE`, every index). What this section used to list is gone: UUID
@@ -3045,18 +3157,18 @@ resolveCompanyFeatures(user?.features)` supplies the feature props:
 |---|---|---|---|
 | `master/web/src/screens/DashboardScreen.tsx` (214) | four stat cards (panels online, open conflicts → Conflicts, pending sync, low stock) and active panels; all from props | none | none |
 | `master/web/src/screens/PanelsScreen.tsx` (417) | "Add Office Panel" opens the pairing window and waits until a new row arrives over the socket (the window is also closed on effect cleanup); table of status, name, device code, LAN IP, paired, last seen; detail modal with **Rename** and **Remove** only | `openPairingWindow`, `closePairingWindow`, `renamePanel`, `revokePanel` | none (nav needs `panels.manage`) |
-| `master/web/src/screens/LeadsOrdersScreen.tsx` (609) | Leads / Orders / Converted with scope all/assigned; lead rows with an "incomplete" pill, line summary, weight, stage `Select`, **Convert** (disabled when `packagingRequired` and a line lacks packaging), delete; order rows with stage `Select`, **Dispatch**, delete; a 409 delete lists `blockedBy`. Stages re-read on a `pipeline` change (`stagesRevision`). No pager (server default 100). **No "New lead" page** — leads are entered on an Office panel. | `pipelines`, `leads`, `orders`, `setLeadStage`, `setOrderStage`, `convertLead`, `dispatchOrder`, `deleteLead`, `deleteOrder` | `leads.delete`, `orders.delete` |
+| `master/web/src/screens/LeadsOrdersScreen.tsx` (623) | Leads / Orders / Converted with scope all/assigned; lead rows with an "incomplete" pill, line summary, weight, stage `Select`, **Convert** (disabled when `packagingRequired` and a line lacks packaging), **Preview PDF** (catalogue v2, `leads.export`: a link to `/api/leads/:id/pdf` opened beside the app), delete; order rows with stage `Select`, **Dispatch**, delete; a 409 delete lists `blockedBy`. Stages re-read on a `pipeline` change (`stagesRevision`). No pager (server default 100). **No "New lead" page** — leads are entered on an Office panel. | `pipelines`, `leads`, `orders`, `setLeadStage`, `setOrderStage`, `convertLead`, `dispatchOrder`, `deleteLead`, `deleteOrder` | `leads.delete`, `orders.delete` |
 | `master/web/src/screens/PartiesScreen.tsx` (360) | paged list (`PAGE_SIZE = 100`, Load more), debounced search, client sort, detail modal; create/edit via `PartyFormModal`; delete with confirm, 409 lists blockers | `parties`, `deleteParty` (+ transport) | `parties.create`, `parties.edit`, `parties.delete` |
-| `master/web/src/screens/InventoryScreen.tsx` (990) | one row per variant (on hand; reserved and free only when `freeToSell`; inline reorder/min/max saved on blur); recent-movements ledger; All/Low chips; row modal with its ledger; Stock in and Physical count (`MovementForm` with `api.pick('product')`); note required when `adjustmentNoteRequired` | `stock`, `stockMovements`, `optionLists`, `setReorderLevel`, `stockInbound`, `stockAdjust`, `pick` | none |
+| `master/web/src/screens/InventoryScreen.tsx` (1201) | one row per variant — since catalogue v2 **every live variant**, at zero when never stocked, read as Brand, Product (`CODE · Name`), Sub product, Size, Colour (the fixed colour only), Code (on hand; reserved and free only when `freeToSell`; inline reorder/min/max saved on blur); recent-movements ledger; search (also product code and brand), brand chips, product filter, All/Low chips, an older answer never overwriting a newer one; row modal with its ledger; Stock in and Physical count (`MovementForm`: product bar → sub-product bar → the variant); note required when `adjustmentNoteRequired` | `stock`, `stockMovements`, `optionLists`, `setReorderLevel`, `stockInbound`, `stockAdjust`, `pick` | none |
 | `master/web/src/screens/ReportsScreen.tsx` (508) | Dispatches / Lead outcomes / Top parties; period `Select` (`thisMonth`, `last3Months`, `last6Months` default, `last12Months`, `custom`); range errors under the named control; CSV export link | `dispatchReport`, `leadOutcomeReport`, `topPartiesReport`, `reportExportUrl` | `reports.view`, `reports.export` |
 | `master/web/src/screens/AccessScreen.tsx` (1999) | Users and Roles; refetches on another administrator's `user`/`role` change (`revision`). Users: filters, add (`UserForm`, password shown once in `OneTimeSecretDialog`), detail modal (role change with `expectedVersion`, avatar, activate/deactivate, set/generate/reveal password, delete), `UserEditForm` as an `EditorScreen` with a sub-nav entry; last active admin protected client-side. Roles: `RoleEditor` (`PermissionGrid`, tier, stale-version banner with Reload/Overwrite), delete. Inline restore of deleted roles and users. | `permissionCatalogue`, `roles`, `users`, `vaultStatus`, user and role CRUD, `resetPassword`, `revealPassword`, `uploadAvatar`, `removeAvatar`, `deletedRoles`, `deletedUsers`, `restoreRole`, `restoreUser` | `users.manage`, `roles.*`, `roles.assign`, `users.viewPassword` |
 | `master/web/src/screens/PartyAccessScreen.tsx` (509) | who may see/manage each party; `PAGE_SIZE = 200` + a `limit: 1` restricted count; All/Restricted/Open; editor saves with `expectedVersion`; CSV export. **Byte-identical to the Office copy.** | `partyAccess`, `partyAccessPeople`, `savePartyAccess`, `partyAccessExportUrl` | `party.assign`, `parties.export` |
-| `master/web/src/screens/FieldsScreen.tsx` (1617) | **Values** (per set: add/edit with hex check, reorder, remove to Bin, usage), **Definitions** (per entity, 5 types, reorder, delete, stale-version notice), **Stages** (edit name/colour/terminal, default, reorder, archive/restore; default-stage and occupied-stage refusals reported separately). No create-stage call. | the 17 fields members | `fields.view`, `fields.manage` |
+| `master/web/src/screens/FieldsScreen.tsx` (1096) | **Values** (per set, now `product.brand` among them: the shared `ui/src/OptionListEditor.tsx` since catalogue v2 — add/edit with hex check, reorder, remove to Bin, usage; this file exports its transport as `optionListTransport`), **Definitions** (per entity, 5 types, reorder, delete, stale-version notice), **Stages** (edit name/colour/terminal, default, reorder, archive/restore; default-stage and occupied-stage refusals reported separately). No create-stage call. | the 17 fields members | `fields.view`, `fields.manage` |
 | `master/web/src/screens/LogsScreen.tsx` (664) | hash-chained log with text/actor/entity/action/date filters, `NewerOlderPager`, rows rendered with `renderActivity(createTranslator('en'), …)`, "Verify chain" (`VerificationVerdict`), CSV export; no live refresh | `logs`, `logFacets`, `verifyLogChain`, `logsExportUrl` | `logs.view`, `logs.verifyChain`, `logs.export` |
 | `master/web/src/screens/RecycleBinScreen.tsx` (578) | soft-deleted records, `LoadMorePager`, type/search/deleted-by filters, counts, own/everyone scope; restore per row with `RESTORE_PERMISSION[type]`; a 409 opens `RefusalDialog` (suggested rename, or restore parents first and retry with `cascadeParents: true`) | `recycleBin`, `recycleBinCounts`, `recycleBinDeleters`, `restoreFromBin` | `recycleBin.view`, `recycleBin.viewAll`, `RESTORE_PERMISSION` |
 | `master/web/src/screens/ConflictsScreen.tsx` (179) | one card per conflict: kept vs overwritten with device codes; Keep (`keepWinner`) / Restore overwritten (`restoreLoser`) | `conflicts`, `resolveConflict` | `canResolve` (`sync.resolveConflicts`) |
 | `master/web/src/screens/IntegrationsScreen.tsx` (1108) | Keys (issue — token shown once in `IssuedTokenDialog`, copied with `copyText` — and revoke) and Connectors (list, `ConnectorDialog`, dry run and import, run history, `MappingEditor` as a sub-nav editor) | `apiKeys`, `connectors`, `issueApiKey`, `revokeApiKey`, `users`, `createConnector`, `updateConnector`, `runConnector`, `connectorRuns`, `setConnectorMapping`, `testConnector` | `canManage` (`api.manage`) |
-| `master/web/src/screens/SettingsScreen.tsx` (781) | `SettingsPage`; exports `SETTINGS_TAB_IDS`. Takes `permissions` from the shell (since 2026-09-25; it used to read `/me` on mount and start from "yes"), so tabs and reads are right on the first render and keyed on booleans. Appearance; Shortcuts; **Company** (only if `api.settings()` returned — `settings.manage`; one section per `SETTING_GROUPS` entry, row-level save; vault coverage beside `security.passwordRevealEnabled`); Connection (company, LAN address:port, master id, setup date); Storage (usage figures with `settings.manage`, `StorageBackupActions` with `storage.manage`; the tab is absent with neither); Developer (`DeveloperPanel`: seed dummy users, load Swisware catalogue, seed sample data, reset all; `useUninstallTool(desktopBridge())`) | `identity`, `storage`, `settings`, `saveSetting`, `vaultStatus`, `developer.*` | `settings.manage`, `storage.manage`, `users.viewPassword` |
+| `master/web/src/screens/SettingsScreen.tsx` (770) | `SettingsPage`; exports `SETTINGS_TAB_IDS`. Since catalogue v2 a **Leads** tab holds the lead-source list (`OptionListEditor`, the Fields permissions) and the `leads` settings group, which left the Company tab; `NumberSetting` moved to `ui/src/SettingsLayout.tsx`. Takes `permissions` from the shell (since 2026-09-25; it used to read `/me` on mount and start from "yes"), so tabs and reads are right on the first render and keyed on booleans. Appearance; Shortcuts; **Company** (only if `api.settings()` returned — `settings.manage`; one section per `SETTING_GROUPS` entry, row-level save; vault coverage beside `security.passwordRevealEnabled`); Connection (company, LAN address:port, master id, setup date); Storage (usage figures with `settings.manage`, `StorageBackupActions` with `storage.manage`; the tab is absent with neither); Developer (`DeveloperPanel`: seed dummy users, load Swisware catalogue, seed sample data, reset all; `useUninstallTool(desktopBridge())`) | `identity`, `storage`, `settings`, `saveSetting`, `vaultStatus`, `developer.*` | `settings.manage`, `storage.manage`, `users.viewPassword` |
 | `master/web/src/screens/UpdatesScreen.tsx` (372) | this Master's version, panels behind (`standing()`), the offer from the local releases folder; **Install** → `prepareMasterUpdate` → `desktopBridge().applyUpdate()` (in a browser shows the path); a build that cannot install over itself shows how to update by hand instead of the button — the standalone `.exe` (`updates.standaloneBody`) or a Linux copy not started from an AppImage (`getShellSettings().systemPackage`, `updates.systemPackageBody`); panel version table | `updateStatus`, `prepareMasterUpdate` | `settings.manage` |
 | `master/web/src/screens/FirstRunScreen.tsx` (411) | "Set up new site" (company name → `initialize` → one-time display of username, password, LAN addresses, master id, pairing password) or "Restore from backup" (preview, passphrase, restore, new pairing password); `DataDirCard` | `initialize`, `previewRestoreSetup`, `restoreSetup` | none |
 | `master/web/src/screens/SignInScreen.tsx` (127) | username (pre-filled `admin`) and password; errors via `apiErrorText`; shows the shell's `notice` | `signIn` | none |
@@ -3275,8 +3387,9 @@ Office restore leaves the panel unpaired**, because `restoreBackup` always calls
 **Online first, cached when offline:** `GET /api/products` (the `product:list`
 command; only when it fails as *unreachable* does it fall back to
 `listProductsFromView(forCurrentUser(view))` with `offline:true`; needs
-`products.view` offline) and `GET /api/pick/:kind` (`pick` command, else
-`pickFromView`).
+`products.view` offline), `GET /api/pick/:kind` (`pick` command, else
+`pickFromView`) and, since catalogue v2, `GET /api/categories?search=&brand=`
+(`category:list`, else `listCategoriesFromView`).
 
 **Master HTTP, online only:** `GET /api/products/import/template.:format`, `POST
 /api/products/import`, `POST /api/products/:productId/images` (→
@@ -3287,7 +3400,7 @@ command; only when it fails as *unreachable* does it fall back to
 /uploads/avatars/:avatarId/:variant` — validate the id and variant, serve the local
 cache, else fetch `/api/panel/...` and cache (401/404 on refusal, 503 unreachable).
 
-**Forward (44 `forward()` calls, 2 `forwardCsv()`, 1 direct command), 503 offline:**
+**Forward (48 `forward()` calls, 2 `forwardCsv()`, 2 direct commands), 503 offline:**
 
 | Area | Routes → command |
 |---|---|
@@ -3302,6 +3415,9 @@ cache, else fetch `/api/panel/...` and cache (401/404 on refusal, 503 unreachabl
 | Logs | `GET /api/logs`, `/api/logs/facets`, `POST /api/logs/verify`, `GET /api/logs/export` (forwardCsv) |
 | Reports | `GET /api/reports/dispatches`, `/lead-outcomes`, `/top-parties`; `GET /api/reports/:report/export` (direct command, CSV/PDF union) |
 | Dashboard | `POST /api/dashboard/refresh` → `dashboard:get` |
+| Products (categories), catalogue v2 | `POST /api/categories` → `category:create`; `PUT /api/categories/:id` → `category:update`; `DELETE /api/categories/:id` → `category:delete` — online only: a category carries no clock to merge, so nothing is queued |
+| Lead PDF, catalogue v2 | `GET /api/leads/:id/pdf` → `lead:pdf` (direct command; the bytes are sent on as `application/pdf`, `inline`) |
+| Settings, catalogue v2 | `PUT /api/settings/:key` → `settings:save` — the Master accepts `leads.followUpDefaultDays` only, from a signed-in person, and checks `settings.manage` |
 
 **Re-scoping the view for whoever is signed in now.** The cached snapshot was built
 for whoever was signed in when the link last worked. `forCurrentUser(view)` replaces
@@ -3539,24 +3655,26 @@ record; the real record arrives later over the SSE stream.
 | `office/web/src/api.ts` | 847 | the only HTTP client (§9.3) |
 | `office/web/src/localSearch.ts` | 89 | `searchLocalView(view, term)` — the palette's offline fallback: case-insensitive substring over products, parties, leads, orders; ≥ 2 chars, ≤ 20 hits (`LIMIT`), `rank: 0` |
 | `office/web/src/partyFormTransport.ts` | 20 | `PartyFormModal` → `api.createParty`/`api.updateParty` (return `QueuedResult`) |
+| `office/web/src/optionListTransport.ts` | 32 | catalogue v2: the `OptionListEditor` transport over the forwarded Fields endpoints; `conflictOf` reads `details.storedVersion`/`details.diff` off this panel's `ApiError`. Used by Products → Brands (`SettingsScreen.tsx` keeps an identical private copy for the Leads tab — see §9.7) |
 | `office/web/src/productSummary.ts` | 59 | `codesOf(product)`, `weightLabel(product)` (single weight, low–high range, or `null` = "weight missing"); active variants only. `missingWeight` is file-internal (used by `weightLabel`; unexported 2026-09-25), and `CatalogScreen` never sends the `missingWeight` list filter that `api.listProducts` supports |
 | `office/web/src/styles.css` | 159 | legacy layer: bare-element rules guarded by `:not(:where([class*='ob-'], …))`, plus `.dot` and `.num` (the old token aliases, `.muted`, `.error`, `.chip*` went on 2026-09-25) |
 | `office/web/src/vite-env.d.ts` | 2 | `__APP_VERSION__` |
 
-**Screens (`office/web/src/screens/`, 14 files, 7,369 lines):**
+**Screens (`office/web/src/screens/`, 15 files; 7,369 lines before catalogue v2):**
 
 | Path | Lines | Mounted by | Purpose |
 |---|---|---|---|
-| `office/web/src/screens/AddLeadScreen.tsx` | 2198 | App (`addLead`) | the New lead form (§9.4) |
-| `office/web/src/screens/CatalogScreen.tsx` | 771 | App (`parties`, `products`) | Parties (from the snapshot) and Products (paged from the Master), forms, import |
+| `office/web/src/screens/AddLeadScreen.tsx` | 2848 | App (`addLead`) | the New lead form (§9.4); catalogue v2: product bar → sub-product bar → colour/quantity by rule, Shift+Q, Ctrl+Enter review (`docs/LEAD_GENERATION_FLOW.md` §3.2) |
+| `office/web/src/screens/CatalogScreen.tsx` | 936 | App (`parties`, `products.sub`) | Parties (from the snapshot) and Products — the sub-product list since catalogue v2 (paged from the Master), forms, import |
+| `office/web/src/screens/MainProductsScreen.tsx` | 598 | App (`products.main`, `products.brands`) | catalogue v2: `MainProductsScreen` — the owner's Products (categories) with code, brand and order, a detail sub-screen listing its sub products in catalogue order, create/edit dialog and delete, all online only (the list falls back to the snapshot); `BrandsScreen` — the `product.brand` list through `OptionListEditor` (`fields.manage`) |
 | `office/web/src/screens/ProductDetail.tsx` | 168 | CatalogScreen | Photo card (`ProductImages`) + Details card with Edit |
 | `office/web/src/screens/PartyDetail.tsx` | 218 | CatalogScreen | contact, access state, the party's own product records, ≤ 5 recent leads |
-| `office/web/src/screens/LeadBoardScreen.tsx` | 513 | App (`leads`) | open leads as list (default) or kanban; scope and stage filters; card menu move/convert |
+| `office/web/src/screens/LeadBoardScreen.tsx` | 538 | App (`leads`) | open leads as list (default) or kanban; scope and stage filters; card menu move/convert; since catalogue v2 **Preview PDF** on an open lead the Master has received (`leads.export`) |
 | `office/web/src/screens/LeadDetail.tsx` | 366 | LeadBoardScreen | lines, history, remark input, stage select, party/details cards, convert form |
 | `office/web/src/screens/OrderBoardScreen.tsx` | 647 | App (`orders`) | orders table; in-file `OrderDetailBody` (lines, reservations, weight override, stage, history, dispatch) |
 | `office/web/src/screens/PartyAccessScreen.tsx` | 509 | App (`partyAccess`) | live from the Master; byte-identical to the Master's copy |
 | `office/web/src/screens/ConflictsScreen.tsx` | 265 | App (`conflicts`) | refused writes (anyone can dismiss) + merge conflicts (resolving needs `sync.resolveConflicts`) |
-| `office/web/src/screens/SettingsScreen.tsx` | 232 | App (`settings`) | tabs appearance, shortcuts, machine, storage, developer; exports `SETTINGS_TAB_IDS` |
+| `office/web/src/screens/SettingsScreen.tsx` | 357 | App (`settings`) | tabs appearance, shortcuts, machine, storage, developer and, since catalogue v2, **leads** — the lead sources (`OptionListEditor`, `fields.view`/`fields.manage`) and the follow-up default (`NumberSetting`, saved through `PUT /api/settings/:key` with `settings.manage`); exports `SETTINGS_TAB_IDS` |
 | `office/web/src/screens/UpdatesScreen.tsx` | 238 | App (`updates`) | this panel vs the Master's version; download from the Master and hand to the shell; a standalone `.exe` or a Linux copy not started from an AppImage is told how to update by hand |
 | `office/web/src/screens/ConnectionScreen.tsx` | 400 | App (before pairing) | network status; auto-pair, manual pair, or restore from `.obbackup` |
 | `office/web/src/screens/SignInScreen.tsx` | 291 | App (paired, no session) | pick a remembered face or type a username; offline notice; forget a profile; `StoragePathCard` |
@@ -3696,20 +3814,25 @@ each with a reason in `ALLOWED_UNCALLED.office`).
 ### 9.4 Screens in detail
 
 - **`AddLeadScreen`** — header chip counts done steps (party, source, products);
-  two columns (`.ob-lead-cols`). Party: debounced `api.pick('party')`, view-only
-  grants hidden, ≤ 6 shown + "+ New party" (`PartyFormModal`); a "party-wise names
-  applied" pill when the party has its own product records. Source: `Select` over
-  `lead.sourcePlatform` ("other" opens free text). Follow-up starts at
-  `features.followUpDefaultDays` (+1/+3/+7 chips). The search box first offers
-  **categories only** (`api.pick('category')`, 7 rows), then models in the chosen
-  category (`api.pick('product', { categoryId })`); a model opens a `DraftCard`
-  (packaging `SuggestInput`, never auto-filled — the party's saved packaging is only
-  a suggestion; grade `Select` over `line.grade`; colour `Select` over `stock.colour`
-  only when `multiColour`; one row per active variant with code, weight, quantity
-  (arrows ±1, Shift ±10), free stock from `view.stock`, line weight). `saveDraft`
-  adds one line per variant with quantity > 0, refused while packaging is empty and
-  `packagingRequiredOnConvert` is on (the "required" marker follows the same switch
-  since 2026-09-25). ≤ 60 lines drawn (`PANEL_LIMIT`). `save()` → `api.createLead` →
+  two columns (`.ob-lead-cols`). **Rebuilt for catalogue v2 (2026-09-29; the key path
+  is `docs/LEAD_GENERATION_FLOW.md` §3.2).** Party: debounced `api.pick('party')`, the
+  list open only once something is typed, view-only grants hidden, ≤ 6 shown + "+ New
+  party" (`PartyFormModal`); a "party-wise names applied" pill when the party has its
+  own product records. Source: `Select` over the active `lead.sourcePlatform` values
+  (the free-text "other" is gone). Follow-up starts at today +
+  `features.followUpDefaultDays` (3 by default; re-seeded when the setting changes and
+  after a save; +1/+3/+7 chips). The search box is first the **product bar**
+  (`api.pick('category')`, 7 rows, `CODE · Name · Brand`, an exact code first), then
+  the **sub-product bar**: every sub product of the chosen product, fetched once
+  (`api.pick('product', { categoryId, limit: PICK_MAX_LIMIT })`) in catalogue order
+  and filtered locally. A sub product opens a draft card by its `colourRuleOf` rule —
+  `fixed` the colour shown locked, `dedicated` no colour, `selectable` several
+  colour + quantity rows (one line each) — with grade optional and out of the Enter
+  path and packaging only while `packagingRequiredOnConvert` is on (never
+  auto-filled). Enter on the last quantity adds it and returns to the sub-product
+  bar; Shift+Q (a document listener scoped to the products section) or **Complete sub
+  product** adds a pending one and returns to the product bar; Ctrl+Enter opens the
+  review and Ctrl+Enter there saves once (repeat swallowed); Ctrl+S still saves. ≤ 60 lines drawn (`PANEL_LIMIT`). `save()` → `api.createLead` →
   `onSaved(queued.id)` (App clears the `addLead` sub-nav entry, bumps its reset nonce
   so the next New lead is blank, switches to Leads and toasts). Ctrl+S,
   Enter/Escape walks, and a `useResetGuard` that asks through the themed
@@ -3842,6 +3965,10 @@ Still true:
   `weightLabel`'s range.
 - i18n keys keep old "rate" names (`lead.add.party.ownRates`,
   `lead.detail.partyRates`) with non-price English text; no money is shown.
+- **Two copies of one transport (catalogue v2).** `office/web/src/optionListTransport.ts`
+  serves Products → Brands, while `office/web/src/screens/SettingsScreen.tsx` declares
+  an identical private `optionListTransport` for the Leads tab. Both were written in
+  parallel on 2026-09-29; the screen's copy should import the module.
 
 ---
 
@@ -3928,7 +4055,10 @@ or `release.mjs` copies it into `<panel>/electron/dist`, which each panel's
 7. **Locks down the window:** 1440×900, min 1024×640; `contextIsolation` and
    `sandbox` on, `nodeIntegration` off, devtools only unpackaged; navigation outside
    the panel's address goes to the real browser; every permission request denied; a
-   crashed renderer is reloaded once.
+   crashed renderer is reloaded once. One exception since catalogue v2: a same-origin
+   `/api/leads/<id>/pdf` link opens in a 960×900 child window of its own (sandboxed,
+   `plugins` on for the PDF viewer), which may neither open another window nor
+   navigate (`isLeadPdfUrl` in `electron/lib/lead-pdf.ts`, `did-create-window`).
 8. **Menu:** File, Edit (so Cmd+C/V work on macOS), View, Help, plus `appMenu` and
    `windowMenu` on a Mac; Help sends `orderbook:menuCommand` ids `nav.updates`,
    `help.shortcuts`, `settings.developer`.
@@ -3969,6 +4099,7 @@ or `release.mjs` copies it into `<panel>/electron/dist`, which each panel's
 | `electron/lib/installer.ts` | `installerExtension` (`.dmg` on darwin, `.AppImage` on linux — compared case-blind — `.exe` on Windows; linux used to fall through to `.exe`, so every AppImage was refused), `updateMethod(platform, {standalone, appImage})` → `installer` / `appimage` / `standalone` / `system-package`, `isInside` (containment via `path.relative`), `resolveInstaller` (containment, extension check), `digestOf` (streamed SHA-256), `approveInstaller` (copy, then hash, then compare) |
 | `electron/lib/appimage.ts` | added 2026-09-25: `detectAppImage` (trusts `APPIMAGE` only when this executable runs from inside `APPDIR`, compared by real path, so variables inherited from another AppImage cannot point the shell at somebody else's program), `replaceAppImage` (verified copy written beside the target, created exclusively, `chmod 0755`, fsync, atomic rename), `relaunchCommand`, `relaunchArguments` (keeps `--appimage-extract-and-run`, detected from `APPDIR`'s `appimage_extracted_` folder, unless `APPIMAGE_EXTRACT_AND_RUN` is set), `startDetached` (resolves once the relaunch is running, since `spawn` reports `ENOENT`/`EACCES` asynchronously) |
 | `electron/lib/office-env.ts` | added 2026-09-25: `officeServerEnv({dataDir, port, logFile, locationFile})` — the Office server's environment (§2.10), in its own module because `office.main.ts` starts the shell the moment it is imported; held by `electron/tests/office-env.test.ts` and used by `office/tests/storage-path.test.ts` to start the config the way the shell does |
+| `electron/lib/lead-pdf.ts` | catalogue v2: `isLeadPdfUrl(origin, url)` — the one URL a panel window may open a window for, `<origin>/api/leads/<id>/pdf` with no query or fragment; held by `electron/tests/lead-pdf.test.ts` |
 | `electron/lib/log-file.ts` | `openLogFile(file, tee)` — rotates at 5 MB (`MAX_BYTES`), keeping the live file plus `.1`–`.3` (`KEEP = 3`, up to ~20 MB); drops the log rather than crashing. **Rotation runs only inside `openLogFile`** (called once, at shell start, before `createWriteStream`), so a long-running session can grow the live file past 5 MB |
 | `electron/lib/settings.ts` | `readShellSettings`/`writeShellSettings` (`shell.json` = `{autoStartDefaultApplied}` only — the login item is OS state; temp + rename, 0600); `readDataDirOverride`/`writeDataDirOverride` (plain write of `{dataDir}`, no temp file, default mode; the Office server writes the same pointer temp-then-rename after a storage move, §8.3) |
 | `electron/lib/standalone.ts` | `detectStandaloneBuild(env, packaged)` (`PORTABLE_EXECUTABLE_FILE`/`_DIR`); `loginItemOptions` points at the kept `.exe`, not the `%TEMP%` copy |
@@ -4000,7 +4131,8 @@ both `installer.nsh`), `electron/tests/cleaner-setup-file.test.ts` (17),
 block is skipped on win32, which has no 0755 mode, symlinks or rename over an open
 file), `electron/tests/office-env.test.ts` (the pointer and settings-file paths),
 `electron/tests/server-env.test.ts` (every variable an entrypoint hands its server is
-one that server reads) and `electron/tests/shell-log.test.ts` (reads `shell.ts`:
+one that server reads), `electron/tests/lead-pdf.test.ts` (the PDF window's URL
+rule) and `electron/tests/shell-log.test.ts` (reads `shell.ts`:
 `logPath()` only where the log is opened). `lib/cleaner/run.ts` and
 `lib/log-file.ts` have no dedicated test; `lib/settings.ts`'s pointer functions are
 exercised by `office/tests/storage-path.test.ts`.
@@ -4666,15 +4798,28 @@ Each flow names the files and functions in the order they run. "Master" means
 
 - **Model.** `product_categories` → `products` (a model) → `product_variants` (every
   code and weight) → `inventory_stock` per variant; `party_product_variants` per
-  (party, product) holds a party's own name, alias, size, weight and packaging.
+  (party, product) holds a party's own name, alias, size, weight and packaging. Since
+  catalogue v2 (2026-09-29) the screens call a category a **Product** (code, brand,
+  catalogue order, a soft delete of its own) and a model a **Sub product** (one
+  variant each in the SWISWARE catalogue); the colour rule is `colourRuleOf`
+  (`shared/src/domain/colour-rule.ts`), never a column.
+- **Products (categories), catalogue v2.** Office Products → Products
+  (`office/web/src/screens/MainProductsScreen.tsx`) → `api` → `POST`/`PUT`/`DELETE
+  /api/categories` (Office, online only) → `category:create`/`update`/`delete` →
+  `catalogService.createCategory`/`updateCategory`/`deleteCategory` →
+  `product.repository.ts` (`insertCategory`, `updateCategoryColumns`,
+  `setCategoryDeletedAt`); restore through the Recycle Bin (`restoreCategory`).
+  Brands: Products → Brands (`BrandsScreen`) and the Master's Settings → Fields, both
+  the shared `OptionListEditor` over `product.brand`.
 - **Create/edit (Office).** `office/web/src/components/ProductDrawer.tsx` →
   `validateProductVariants` (`shared/src/domain/product-validation.ts`) →
   `api.createProduct`/`updateProduct` → queued `product.create`/`product.update` →
   `catalogService.createProduct` or `mergeUpdate` → `product.repository.ts` +
   `product-variant.repository.ts#replaceVariants`. A new category name is created on
   the Master (the private `resolveCategoryId` in `product.repository.ts`, which
-  inserts a `product_categories` row; `ensureCategories` serves only the catalogue
-  seed and the bulk import); **a category change is online-only**
+  inserts a `product_categories` row — by id, then `categoryCode` (never creates),
+  then name with `categoryBrand`; `ensureCategories` serves only the catalogue
+  loader and the bulk import); **a category change is online-only**
   (`MERGEABLE_PRODUCT_COLUMNS` omits `categoryId`). The Master web app has no product
   editor (`createProduct` is in `ALLOWED_UNCALLED`).
 - **Upload a photo.** `office/web/src/components/ProductImages.tsx` →
@@ -4701,21 +4846,31 @@ Each flow names the files and functions in the order they run. "Master" means
   `master/src/http/routes/panel-catalog.routes.ts` → `importProducts`
   (`master/src/services/product-import.service.ts`): `products.bulk` (+ create/edit),
   `sheetKindOf`, `readSheetRows`, `matchHeaders`/`parseImportRow`/`groupImportRows`/`findDuplicatesInFile`
-  (`master/src/domain/product-import.ts`), the `catalog.importCreatesCategories` gate
+  (`master/src/domain/product-import.ts`; since catalogue v2 a row may name its
+  product by `categoryCode`, which must exist), the `catalog.importCreatesCategories` gate
   settled before the dry-run return, writes in batches of 500, one `catalog` change
   event (a snapshot-forcing entity).
 - **Seed catalogue.** Developer "Load catalogue" or `npm run seed:catalogue` →
-  `seedCatalogue` (`master/src/services/catalogue-seed.service.ts`) from
-  `SWISWARE_CATALOGUE`.
+  `seedCatalogue` → `readCatalogueFile` (`config.catalogueFile`,
+  `parseCatalogueMarkdown`) → `loadCatalogue({ replace: false })`
+  (`master/src/services/catalogue-seed.service.ts`), one transaction, one
+  `catalog.imported` row and one `catalog` change event. `npm run reload:catalog`
+  (Master stopped) is the same loader with `replace: true`, which first clears the
+  catalogue and what quotes it (§5.3).
 
 ### 11.6 Company settings reaching the panels
 
-1. Master `SettingsScreen` Company tab → `api.saveSetting` → `PUT /api/settings/:key`
-   (`settings.manage`) → `writeSetting` (`master/src/services/settings.service.ts`):
+1. Master `SettingsScreen` Company tab (the `leads` group sits on its own Leads tab
+   since catalogue v2, beside the lead-source list) → `api.saveSetting` → `PUT
+   /api/settings/:key` (`settings.manage`) → `writeSetting` (`master/src/services/settings.service.ts`):
    `SETTINGS[key].parse`, upsert via `settings.repository.ts` (a secret would be
    sealed), purge the vault when `security.passwordRevealEnabled` turns off, drop the
    cache, and **after** the transaction `publishChange({ entity: 'setting', action:
-   'updated', id: key, payload: null })`.
+   'updated', id: key, payload: null })`. Since catalogue v2 an Office panel's
+   Settings → Leads tab saves `leads.followUpDefaultDays` the same way: `PUT
+   /api/settings/:key` (Office) → `settings:save` → `assertPanelSettingWrite`
+   (`master/src/realtime/hub.ts`: that key only, a signed-in person only) →
+   `writeSetting`, which still checks `settings.manage`.
 2. Readers use `getSetting` (per-tenant cache; an absent row is the fallback).
    `companyFeatures(tenantId)` (`master/src/services/company-features.ts`) packs the
    five panel-facing switches into `SignedInUser.features` (`/api/auth/me`) and
@@ -4872,7 +5027,7 @@ ui/tests/tsconfig.json`; the root `typecheck` also runs `tsc -p
 electron/tsconfig.json --noEmit` over the shell source itself (not its tests). Lint
 covers test files too.
 
-### 12.2 Integration suites (`master/tests/*.integration.test.ts`, 48)
+### 12.2 Integration suites (`master/tests/*.integration.test.ts`, 50 — catalogue v2 added two)
 
 All call `setupDatabase`, `teardownDatabase`, `resetData` and wrap their body in
 `describe.skipIf(!canRunIntegrationTests)`. Seven drive HTTP with `supertest`:
@@ -4883,16 +5038,16 @@ All call `setupDatabase`, `teardownDatabase`, `resetData` and wrap their body in
 |---|---|---|
 | Access, auth and audit (9) | `access`, `access-lockout`, `audit-trail`, `audit-atomicity`, `auth-pairing`, `permissions`, `panel-actor`, `party-access`, `password-vault` | the Roles & Users gate list (cited as "docs/ROLES_AND_USERS.md §15" in the test header, but that section is now "Signing in on an Office Panel" and the list is not in that file); last-admin lockout (G4); the audit row commits/rolls back with its transaction — for roles and users (`audit-trail`) and, since 2026-09-25, every write path that used to record detached or not at all, with the entry written after every row lock (`audit-atomicity`, which forces the entry to fail with a trigger and probes lock order under a 500 ms `lock_timeout`); setup, sign-in, sessions and pairing; a refusal names its permission; an Office command runs as the signed-in person; per-party grants; the vault stores nothing while off |
 | HTTP surfaces (5) | `http-api`, `public-api`, `panel-administration`, `panel-catalog-route`, `panel-image-route` | `requireAuth` coverage and no static uploads mount; `GET /api/storage` needs `settings.manage`; `/api/v1` (off switch 404, key auth, 429, PATCH merge, key ∩ owner permissions, an OpenAPI description with no masking claim); panel secret rotation order; panel import/image routes authenticate as the user, once per request and before the upload is parsed, and a refused acting token is a 401 |
-| Catalogue (9) | `catalog`, `catalogue-seed`, `product-attributes`, `product-hierarchy`, `product-variants`, `product-import`, `partial-patch`, `images`, `image-sequence` | parties and products; idempotent Swisware load; a partial write never nulls fields it was not given; `replaceVariants`; bulk import names bad rows and a re-upload changes nothing; the image pipeline with real `sharp`; gallery `sequence` after a delete |
+| Catalogue (10) | `catalog`, `catalogue-seed`, `catalogue-categories` (catalogue v2), `product-attributes`, `product-hierarchy`, `product-variants`, `product-import`, `partial-patch`, `images`, `image-sequence` | parties and products; the catalogue load (since catalogue v2 the shipped Markdown file: every product and sub product, codes, brand and order, `CODE-####`, the colour rule read back by `colourRuleOf`, hex, idempotent, and a replacing load that keeps parties and the log); categories found by id, code, then name, live rows only, and `ensureCategories` never updating an existing row (`catalogue-categories`, 9); a partial write never nulls fields it was not given; `replaceVariants`; bulk import names bad rows and a re-upload changes nothing; the image pipeline with real `sharp`; gallery `sequence` after a delete |
 | Leads, orders, stock (5) | `lead`, `inventory`, `free-to-sell`, `pick`, `search` | conversion copies lines and snapshots weights; reserved at conversion, deducted at dispatch, which stamps the order's clock (`audit-atomicity` also pins that a dispatch reads its stage under the lock); the free-to-sell switch; picker prefix matching; `tsvector` search |
 | Sync (2) | `sync`, `sync-delta` | outbox apply (duplicates, conflicts, reconnect order); a delta replay equals a fresh snapshot |
 | Modules (5) | `fields`, `logs`, `recycle-bin`, `reports`, `dashboard` | gate ids from `docs/backend-modules/10-TESTING.md`: FLD-5…21, LOG-1…15, §6.2–6.3, RPT-6…18 (incl. IST month boundaries; RPT-18 is beyond the range the file's own header claims), DSH-4…9 |
 | Settings (2) | `settings`, `company-settings` | the table; each company switch changes behaviour |
 | Backup (2) | `backup-chain`, `backup-sequences` | `verifyActivityLogChain` agrees with the trigger's digest; sequences after a restore |
-| Migrations (4) | `migration-drop-documents`, `migration-grant`, `migration-product-master-trim`, `migration-product-variants` | re-run a migration's `up()` against data and check the shape |
+| Migrations (5) | `migration-drop-documents`, `migration-grant`, `migration-product-master-trim`, `migration-product-variants`, `migration-catalogue-port` (catalogue v2) | re-run a migration's `up()` against data and check the shape; the port migration (5) on a head database, run twice (the stale case), after `down()` (a 1.2.0 database, a legacy row kept with null code and brand), and its per-brand and per-code uniqueness among live rows |
 | Integrations (1) | `connector-import` | an import against a throwaway loopback HTTP server |
 | Developer and sample data (2) | `developer`, `sample-data` | dummy users and reset (last in its file — it drops the schema); the sample seed refuses a second run |
-| Operator CLIs (1) | `operator-cli` | runs `migrate --status` and the reload/wipe CLI as processes (`node --import tsx`, `DATABASE_URL` pointing at the test cluster): names printed, catalogue loaded, config and connectors kept, connector links wiped, the activity chain restarting intact, and no foreign key letting `TRUNCATE … CASCADE` reach a table outside the wipe list |
+| Operator CLIs (1) | `operator-cli` | runs `migrate --status` and the reload/wipe CLI as processes (`node --import tsx`, `DATABASE_URL` pointing at the test cluster): names printed; the wipe keeping config and connectors, loading nothing, wiping connector links, restarting the activity chain intact, and no foreign key letting `TRUNCATE … CASCADE` reach a table outside the wipe list; since catalogue v2 `reload:catalog` refusing while another client is connected and touching nothing, then replacing the catalogue while keeping parties and the whole log, and `seed:demo-parties` adding the 13 dealers once |
 | Performance (1) | `query-budget` | queries per ordinary request |
 
 ### 12.3 Source-reading guard tests (`master/tests`, 23 files)
@@ -4921,16 +5076,22 @@ They read files and assert on the text; they need no database and cannot skip.
 | `master/tests/release-signed-fields.test.ts` | `release.mjs` + `SIGNED_MANIFEST_FIELDS` | the script signs exactly what panels verify (UPD-27) |
 | `master/tests/socket-contract.test.ts` | `socket.ts`, `master/src`, `office/src` | every server→client event is emitted by the Master and handled by the Office |
 | `master/tests/panel-naming.test.ts` (mixed) | `responder.ts` | `nextPanelName` arithmetic; discovery asks the same question as pairing |
-| `master/tests/operator-scripts.test.ts` | root and `master/package.json`, the operator CLIs | the root `migrate` forwards its arguments; `reload:catalog`, `wipe:business` and `seed:parties` pass the flags their names promise; no money wording in the operator CLIs (added 2026-09-25) |
+| `master/tests/operator-scripts.test.ts` | root and `master/package.json`, the operator CLIs | the root `migrate` forwards its arguments; `reload:catalog` (`--catalogue` since catalogue v2), `wipe:business`, `seed:parties` and `seed:demo-parties` (`--demo-parties`) pass the flags their names promise; no money wording in the operator CLIs (added 2026-09-25) |
 | `master/tests/tooling-config.test.ts` | `eslint.config.js` (imported), `package.json`, `vitest.config.ts`, the installed packages' manifests | every swept file exists; the coverage provider `test:coverage` asks for is installed at Vitest's version (added 2026-09-25) |
 | `master/tests/web-catalogue-text.test.ts` | both web apps' sources | error fallbacks and the api clients' timeout/cancel texts come from the catalogue, in the forms they are written in (added 2026-09-25) |
 
-### 12.4 Other `master/tests` unit tests (33 files, no PostgreSQL)
+### 12.4 Other `master/tests` unit tests (36 files, no PostgreSQL — catalogue v2 added three)
 
-- **Domain rules (14):** `backup-domain`, `connector-mapping`, `cursor`,
+- **Domain rules (16):** `backup-domain`, `connector-mapping`, `cursor`,
   `custom-fields-domain`, `field-values-domain`, `image-domain`, `line-items-domain`,
   `panel-report-domain`, `product-import-domain`, `recycle-bin-domain`,
-  `report-range`, `mappers`, `password-rules`, `errors-i18n`.
+  `report-range`, `mappers`, `password-rules`, `errors-i18n`, and for catalogue v2
+  `catalogue-markdown` (29: the parser, its line-numbered refusals and the shipped
+  file's counts) and `lead-pdf` (10: which column a sub product prints in, the colour
+  text, the Brand column's rule, the renderer's wrapping).
+- **Transport rules (1, catalogue v2):** `panel-setting-write` (4:
+  `assertPanelSettingWrite` takes `leads.followUpDefaultDays` from a signed-in person
+  and nothing else).
 - **Libraries and infrastructure (13):** `backup-crypto`, `change-ring`, `network`
   (mocks), `spreadsheet` (exceljs), `tile-swatch` (sharp), `cluster-snapshot` and
   `env-file` (temp dirs), `pdf-fonts` (Devanagari shaping with fontkit over the
@@ -5044,6 +5205,7 @@ written before or during the build — check claims against the tree), **Mixed**
 | `docs/AI_COLLABORATION.md` | Current process + log | multi-agent playbook and change log (dated entries, not strictly newest-first) |
 | `docs/BACKEND_MODULES.md` | Historical | plan for Fields, Logs, Recycle Bin, Reports, PDF Designer, i18n; status line says all built but the Designer, which was removed |
 | `docs/UI_REDESIGN.md` | Historical | plan for porting the design system into `ui/` |
+| `docs/catalogue/CATALOGUE_MODEL.md` | Current (spec) | catalogue v2 (2026-09-29): the owner's Brand → Product → Sub product mapped onto the 1.2 tables — terms and storage (§1), derived colour rules (§2), the two migrations (§3), the Markdown catalogue and its loader (§4), services and transport (§5), lead entry (§6), inventory (§7), the fixed-layout lead PDF (§8), activity (§9). Written before the port; check a claim against the tree |
 
 **`docs/schema/` (8, current — rewritten 2026-09-24 against a freshly migrated
 database, superseded shapes kept as dated history notes; §6.15):**
@@ -5314,7 +5476,7 @@ also imports `masterConnection`.
 | You want to… | Files to touch | Test that guards it |
 |---|---|---|
 | Add a field to a record (party, product, lead, order) | `shared/src/domain/entities.ts`, `shared/src/domain/inputs.ts`, `shared/src/domain/columns.ts` (`*_COLUMNS`; `MERGEABLE_COLUMNS` if offline edits may merge it); a new additive migration + `master/src/db/migrations/index.ts`; `master/src/repositories/mappers.ts` and the entity repository; the service; the form (`ui/src/PartyFormModal.tsx` or the panel screen); `docs/schema/`. A field that crosses the wire must be optional. | `shared/tests/wire-optionality.test.ts`, `master/tests/migration-registry.test.ts`, `master/tests/migration-data-safety.test.ts`, `master/tests/partial-patch.integration.test.ts`, `master/tests/mappers.test.ts` |
-| Add a migration | a new `master/src/db/migrations/<14-digit>_<name>.ts` (additive only; no live constants) and its import + array entry in `master/src/db/migrations/index.ts`, **before the four pinned entries**; add it to `SHIPPED` once it reaches a real installation. **Never delete or rewrite one.** | `master/tests/migration-registry.test.ts`, `master/tests/migration-data-safety.test.ts` |
+| Add a migration | a new `master/src/db/migrations/<14-digit>_<name>.ts` (additive only; no live constants) and its import + array entry in `master/src/db/migrations/index.ts`, **before the pinned entries** — or, when it must run after the trim, appended and added to the end of `DELIBERATELY_LAST` (as `20260326` was); add it to `SHIPPED` once it reaches a real installation. **Never delete or rewrite one.** | `master/tests/migration-registry.test.ts`, `master/tests/migration-data-safety.test.ts` |
 | Add a permission | `shared/src/domain/permissions.ts` (`MODULE_ACTIONS` or `CAPABILITIES`, and `MINIMUM_TIER`); tokens in `shared/src/i18n/en.ts` + `hi.ts`; a grant migration with a frozen key list if existing roles need it; **wire it** — `requirePermission` in the service and `needs()` on the route (an unenforced permission is worse than a missing one); the UI gate | `shared/tests/i18n-coverage.test.ts`, `master/tests/credential-invariants.test.ts`, `master/tests/permissions.integration.test.ts`, `master/tests/migration-grant.integration.test.ts` |
 | Add a screen | the panel's `App.tsx` (`Tab` union, nav items, `ScreenSpec` array); `nav.*` keys in both catalogues; a `MASTER_NAV`/`OFFICE_NAV` entry in `shared/src/keys/commands.ts` **at the sidebar's position** (it sets Alt+N); navigation and the palette follow the sidebar through `offered()`, so a screen reachable any other way needs a deliberate path like the Master's `openScreen` | `master/tests/screen-reachability.test.ts`, `master/tests/web-reachability.test.ts`, `master/tests/i18n-call-sites.test.ts`, `shared/tests/keys-implemented.test.ts`, `shared/tests/keys-nav-order.test.ts`, `ui/tests/master-shell.test.tsx` / `ui/tests/office-shell.test.tsx` (Alt+N), `ui/tests/keyboard-provider.test.tsx` (the palette's filter, with a stub test) |
 | Add a socket command (Office → Master) | `shared/src/protocol/socket.ts` (`ClientToServerEvents`), `master/src/realtime/hub.ts#registerCommands` (resolve the actor, call the service inside `respond`), the Office caller (`forward()` in `office/src/http/app.ts`) and an `office/web/src/api.ts` member | `office/tests/module-forwarding.test.ts`, `master/tests/web-reachability.test.ts` |
@@ -5350,7 +5512,7 @@ also imports `masterConnection`.
 | Change the update path | `master/src/services/update.service.ts`, `master/src/services/github-releases.ts`, `office/src/services/update.service.ts`, `office/src/lib/release-signature.ts`, `master/src/http/routes/update.routes.ts`, `electron/lib/installer.ts`, `electron/lib/appimage.ts` | `master/tests/updates.test.ts`, `master/tests/github-releases.test.ts`, `master/tests/release-folder-besides.test.ts`, `electron/tests/installer.test.ts`, `electron/tests/appimage.test.ts` (no test covers `office/src/services/update.service.ts` or the Office verifier) |
 | Add a workspace or directory | root `package.json` `workspaces`, `vitest.config.ts` include, `tsconfig.test.json`, `eslint.config.js` blocks; a row in §2.1 of this file | `shared/tests/version.test.ts` (version parity), `master/tests/tooling-config.test.ts` (the swept-files list names real files) |
 | Change who may open a socket to the Master | `master/src/realtime/socket-origin.ts` (`isAllowedSocketOrigin`), wired as `allowRequest` in `master/src/realtime/hub.ts` | `master/tests/socket-origin.test.ts` |
-| Change an operator CLI (`migrate`, `reload:catalog`, `wipe:business`, `seed:parties`) | `master/src/db/migrate-cli.ts` + `master/src/db/migration-status.ts`, `master/src/services/catalog-reload-cli.ts` (`BUSINESS_TABLES`), the scripts in root and `master/package.json` | `master/tests/operator-scripts.test.ts`, `master/tests/operator-cli.integration.test.ts`, `master/tests/migration-status.test.ts` |
+| Change an operator CLI (`migrate`, `reload:catalog`, `wipe:business`, `seed:parties`, `seed:demo-parties`) | `master/src/db/migrate-cli.ts` + `master/src/db/migration-status.ts`, `master/src/services/catalog-reload-cli.ts` (`BUSINESS_TABLES`, `DEMO_PARTIES`), `master/src/services/catalogue-seed.service.ts` (`loadCatalogue`, `clearCatalogueData`, `otherDatabaseClients`), the scripts in root and `master/package.json` | `master/tests/operator-scripts.test.ts`, `master/tests/operator-cli.integration.test.ts`, `master/tests/migration-status.test.ts` |
 
 ---
 

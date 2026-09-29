@@ -40,6 +40,7 @@ was removed on 2026-09-11 and the PDF Designer (Documents module) on
 | What to do next | `docs/NEXT_PHASE.md` |
 | Open work items (the queue) | `docs/ai-handoffs/README.md` |
 | The product master: category → model → variant; pricing removed | Key decisions 12, 14, 15 below; `docs/schema/02-parties-and-products.md` |
+| Catalogue v2: Brand → Product → Sub product, colour rules, lead entry, lead PDF | `docs/catalogue/CATALOGUE_MODEL.md` (the spec); the data is `master/assets/catalogue/swisware-plus-2026.md` |
 | Fields, Logs, Recycle Bin, Reports, i18n design | `docs/BACKEND_MODULES.md` + `docs/backend-modules/` |
 | The 2026-08/09 overhaul designs (implemented; Workstream I, the AI section, removed) | `docs/overhaul/` |
 | Multi-agent workflow and per-session change log | `docs/AI_COLLABORATION.md` |
@@ -51,8 +52,19 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
-## Current state (2026-09-25, after the audit fix round)
+## Current state (2026-09-29, catalogue v2 on the 1.2 product master)
 
+- **Catalogue v2 (2026-09-29):** the owner's Brand → Product → Sub product
+  restructure (`docs/catalogue/CATALOGUE_MODEL.md`) is ported onto `main`'s
+  1.2 model and merged to `main`. A first build of it on a stale checkout
+  that never took 1.2.0 (`catalogue-v2-stale`, `6549018`) was not merged: its
+  pricing, `colour_policy`, PDF Designer and settings code is what `main`
+  removed on purpose. **Walked in a browser** on both panels against a
+  sandbox database (operator scripts, lead entry for every colour rule,
+  review and save, the lead PDF's text, Products / Brands / Sub products,
+  Settings → Leads on both panels, the Master's inventory and leads list);
+  **not yet in Electron** — the PDF window is owed (`docs/AI_COLLABORATION.md`,
+  2026-09-29 entry).
 - **Branches:** `main` is the only long-lived branch; `dev` was reset to
   `main` on 2026-09-22 to develop on. Every other branch was merged or
   retired that day (see "Branch consolidation" below), and the twelve still
@@ -132,13 +144,29 @@ on it.
   sign-in, adjustment note required, import creates categories, follow-up
   default days, packaging required on convert, quiet-after days. Adding one is
   a single entry there plus two i18n tokens; the screens read switches through
-  `resolveCompanyFeatures()`.
-- **Product master:** a product is name · category · alias · size · *made in
-  every colour* switch · custom fields, with variants of code · colour ·
-  weight. Stock, movements and reservations are per **variant**. A lead line
-  on a multi-colour product may name a colour from `stock.colour`; a line
-  carries a **grade** from `line.grade` (a line attribute, never a catalogue
-  one).
+  `resolveCompanyFeatures()`. Since catalogue v2 two fallbacks changed, so an
+  installation that never saved them changes on upgrade, as the owner asked:
+  **follow-up default days 3** (was 0, today) and **packaging required on
+  convert off** (was on). An Office panel may save the follow-up default from
+  its own Settings → Leads tab, as the signed-in user; the Master still checks
+  `settings.manage`.
+- **Product master (catalogue v2, 2026-09-29):** the owner's **Brand →
+  Product → Sub product** on the 1.2 tables. A Product is a
+  `product_categories` row with a software `code` (`OPT`), a `brand` (a
+  `product.brand` option value) and a catalogue `sort_order`; a Sub product
+  is a model (`products`) with **exactly one variant**, whose code is
+  `CODE-0001…` in catalogue order. A product is name · category · alias ·
+  size · *made in every colour* switch · custom fields, with variants of
+  code · colour · weight. The colour rule (`fixed` / `dedicated` /
+  `selectable`) is derived from the model and its variant, never stored
+  (`colourRuleOf`, `shared/src/domain/colour-rule.ts`). Stock, movements and
+  reservations are per **variant**. A lead line on a multi-colour product
+  may name a colour from `stock.colour`, several colours being several
+  lines; a line snapshots the category's name, code and brand, and carries a
+  **grade** from `line.grade` (a line attribute, never a catalogue one). The
+  spec is `docs/catalogue/CATALOGUE_MODEL.md`; the SWISWARE data (1 brand,
+  21 colours, 41 products, 549 sub products) is
+  `master/assets/catalogue/swisware-plus-2026.md`.
 - **Master shortcuts moved** (worth a line in the release notes): Parties
   is now Alt+3, its place in the sidebar, and the screens below it move down
   one — Inventory Alt+4, Reports Alt+5, Conflicts Alt+6, Office panels
@@ -155,9 +183,29 @@ on it.
   laptop). The first Master started from a pre-1.2 database runs
   `20260323000000_product_variants` (wipes every product-linked table) and
   `20260324000000_product_master_trim` (drops the pricing/tile columns in
-  place; `down()` throws). Settings → Developer → *Load the Swisware
-  catalogue* (or `npm run seed:catalogue`) loads 12 categories / 251 models /
-  549 variants with blank weights.
+  place; `down()` throws). Settings → Developer → *Load catalogue* (or
+  `npm run seed:catalogue`) loads the SWISWARE catalogue additively: 41
+  products, 549 sub products (one variant each) and the 21-colour range, with
+  blank weights.
+- **Take a `pg_dump` before main first boots on the owner's PC database.**
+  On 2026-09-28 `order_book` was booted by a stale checkout (branch
+  `catalogue-v2-stale`, `6549018`) that never took 1.2.0, and it ran that
+  checkout's `20260323000000_catalogue_brands_and_codes`. It has therefore
+  never run main's `product_variants`, `drop_document_designer`, trim or
+  `line_item_grade`. The first time main boots on it, `product_variants`
+  **TRUNCATEs products, categories, images, party-wise records, stock,
+  movements, reservations, leads, orders, their lines and timelines** —
+  everything entered on the stale model — and the trim deletes the stale
+  `product.brand` values; then the port migration finds its columns already
+  there. With `DATABASE_URL` set the Master takes **no** automatic pre-update
+  copy (`master/src/index.ts` skips `snapshotClusterBeforeUpgrade` for an
+  external database), so the dump is the only way back. The owner took one on
+  2026-09-29 (`pg_dump -Fc` to `C:\OrderBook-Backups\order_book-2026-09-29.dump`,
+  165,135 bytes, restorable with `pg_restore --clean --if-exists`); it is only
+  a way back if it was taken before main's first boot there. The laptop's
+  `order_book_new` history is not recorded here: read its `knex_migrations`
+  before booting main on it. After the wipe, `npm run reload:catalog` (Master
+  stopped) or *Load catalogue* brings the catalogue back.
 
 ## Branch consolidation (2026-09-22)
 
@@ -218,14 +266,36 @@ npm run seed:dummy              # admin/Admin@1234, management/Manage@1234, offi
 ```
 
 Master-only operator scripts (`--workspace @orderbook/master`):
-`wipe:business`, `reload:catalog`, `seed:parties`, `seed:catalogue`. They
-talk to the live database — read `master/src/services/catalog-reload-cli.ts`
-before running one. Run them with the Master stopped: each starts the
-database the way the Master does and stops it when done (with
-`DATABASE_URL` set it stops nothing). The first three wipe the business
-data first, the whole activity log and every connector link with it; then
-`reload:catalog` loads the catalogue and `seed:parties` three sample
-parties.
+`wipe:business`, `seed:parties`, `reload:catalog`, `seed:catalogue`,
+`seed:demo-parties`. They talk to the live database — read
+`master/src/services/catalog-reload-cli.ts` before running one. Run them with
+the Master stopped: each starts the database the way the Master does and
+stops it when done (with `DATABASE_URL` set it stops nothing).
+
+- `wipe:business` and `seed:parties` wipe the business data first, the whole
+  activity log and every connector link with it; `seed:parties` then adds
+  three sample parties.
+- `reload:catalog` (catalogue v2, `--catalogue`) **keeps parties, party
+  access, users, roles, settings, option lists, `id_map` and the activity
+  log**, and resets no id counter. It parses
+  `master/assets/catalogue/swisware-plus-2026.md` before it starts the
+  database (a malformed file is refused with its line number), refuses while
+  any other client is connected to the database (`pg_stat_activity` — a
+  running Master always is), and warns that every Office outbox must be
+  drained first: queued work that quotes the old catalogue is refused
+  afterwards. Then `loadCatalogue({ replace: true })`, in one transaction,
+  deletes only the catalogue and what quotes it — stock, movements,
+  reservations, lines, timelines, leads, orders, their sync conflicts,
+  party-wise records, photo rows, product connector links, variants, sub
+  products and products — loads the file and writes one `catalog.reloaded`
+  activity row. Photo files go at the Master's next boot. The pre-v2
+  behaviour (wipe, then load) is `npm run wipe:business -- --with-catalog`.
+- `seed:catalogue` loads the same file additively — a product found by code
+  or (brand, name), a sub product already live under the same name skipped
+  — as Settings → Developer → *Load catalogue* does, and writes one
+  `catalog.imported` row when it adds anything.
+- `seed:demo-parties` adds 13 demo dealers through `createParty`, wipes
+  nothing and skips a name already on the books.
 
 **Integration tests as a non-root user** (PostgreSQL refuses to start as
 root). In a Linux container with PostgreSQL 16 installed: copy the checkout
@@ -343,6 +413,18 @@ docs/          all prose; nothing source-of-truth lives in a code comment
 12. **Product catalogue:** category → model (`products`) → variant
     (`product_variants`: code, colour/pattern label, weight). Lead entry is
     the Office panel's `AddLeadScreen`; the Master has no New lead page.
+    **Catalogue v2 (owner, 2026-09-28; `docs/catalogue/CATALOGUE_MODEL.md`)**
+    maps the owner's Brand → Product → Sub product onto those tables without
+    renaming them: a **Product** is a category, which gains a software
+    `code` (alphanumeric, unique per tenant among live rows), a `brand` (an
+    option value of `product.brand`; brand is read through the category and
+    never copied onto `products`), a catalogue `sort_order` and a soft
+    delete; a **Sub product** is a model with **exactly one variant**, its
+    printed name on `products.name` and its software code `CODE-####` on the
+    variant. The colour rule is **derived, not stored**: `multi_colour` →
+    `selectable`; a labelled variant → `fixed` (the label is the colour);
+    otherwise `dedicated` (no colour anywhere). The screens say Product and
+    Sub product; the code keeps `category*` / `product*` / `variant*`.
 13. **Accepted risks:** the Master's plaintext password vault (owner asked for
     it; keep the guards in `docs/overhaul/workstream-F.md`); no TLS on the LAN
     (the public API is off by default).
@@ -355,8 +437,14 @@ docs/          all prose; nothing source-of-truth lives in a code comment
     party-wise rates, totals, the switch, the rate permissions, money in
     reports. Custom fields stay on products. A multi-colour line picks its
     colour from the Settings colour list; the colour is a line attribute, not
-    a stock key, and the Master refuses a colour only on a product not made in
-    colours, never one missing from the list (an offline lead must still land).
+    a stock key, and a colour missing from the list is never refused (an
+    offline lead must still land). **Amended by catalogue v2 (2026-09-28):** the
+    Master **coerces, never refuses** — a colour sent for a product that is
+    not multi-colour is dropped (`colour = NULL`) instead of refused with
+    `LineColourError`, so a queued lead cannot bounce on it; and **several
+    colours of one sub product are several lines** on the same variant, one
+    per colour with its own quantity (no schema change; the screens and the
+    lead PDF group them as `White ×10, Ivory ×5`). Stock stays per variant.
     The two briefs that recorded these (`docs/ai-handoffs/product-model-variants.md`,
     `product-master-trim.md`) were deleted on 2026-09-25 as done; git history
     has them.
@@ -453,9 +541,11 @@ audit listed here is fixed (see "Session history").
 6. **The wipe/reload CLIs stop the database they start**
    (`catalog-reload-cli.ts`; `seed-catalogue-cli.ts` does the same), which
    pulls it out from under a running Master unless `DATABASE_URL` is set.
-   The first one's header says to run it with the Master stopped; nothing
-   checks.
-7. **23 of the 79 client→server socket events have no caller** in
+   The first one's header says to run it with the Master stopped. Since
+   catalogue v2 `reload:catalog` checks — it refuses while any other client
+   is connected — but `wipe:business`, `seed:parties`, `seed:demo-parties`
+   and `seed:catalogue` still do not.
+7. **22 of the 84 client→server socket events have no caller** in
    `office/src`; the Master still registers handlers for them
    (`docs/STRUCTURE.md` lists them).
 8. *Observation:* a `partyVariant.upsert`'s temporary id never reaches
@@ -530,6 +620,12 @@ storage folder, which has already happened on the panel's machine.
 
 **Manual:**
 
+- **Catalogue v2 in Electron:** the Preview PDF window (`electron/lib/lead-pdf.ts`)
+  has only been exercised by its unit test; the browser pass on 2026-09-29
+  read the PDF's bytes, not the window. Also look at the Master's Leads
+  table at 1366 px: the Preview PDF button widens the actions column and
+  the Party and Products columns are cut short — which columns give way is
+  the owner's call.
 - A browser and Electron pass of both panels on 1.2.0. Since the
   consolidation only the Settings permission change and the Socket.IO
   Origin check (both in `d7481f7`'s run against a live Master) have been
@@ -572,6 +668,18 @@ terms, multiple contacts); concurrent edits of one lead from two panels
   `pre*` scripts exist so a clean checkout works.
 - **Two branches once minted the same migration timestamp;** deleting one
   locked every database that had run it. Keep both, make both idempotent.
+- **It happened again with a name, not a timestamp (2026-09-29).** The stale
+  `catalogue-v2-stale` checkout ran `20260323000000_catalogue_brands_and_codes`
+  on the owner's PC database; Knex refuses to boot a database whose
+  `knex_migrations` names a migration the registry lacks ("The migration
+  directory is corrupt"). Its real body cannot come across either: it
+  touches `products.colour_policy`, which 1.2's `product_variants` drops, so
+  every 1.2.0 installation would fail on it. So main keeps the **name as a
+  no-op** (registered beside `product_variants`, the `panel_app_version`
+  precedent) and **`20260326000000_catalogue_brands_and_codes_port` does the
+  work**, every statement `IF NOT EXISTS`, pinned last in
+  `DELIBERATELY_LAST`: a fresh, a 1.2.0 and the stale database all end on the
+  same schema. Do not "tidy" the stub away.
 - **A migration must never import a live shared constant.** Inline what it
   writes.
 - **`20260325000000_line_item_grade` is registered after the trim** (and in
@@ -702,6 +810,28 @@ terms, multiple contacts); concurrent edits of one lead from two panels
 
 Condensed. The full entries are in `git show 5b8ebe2:HANDOFF.md` and in
 `docs/AI_COLLABORATION.md`.
+
+- **2026-09-29 — Catalogue v2 ported onto the 1.2 product master (Claude).**
+  The owner's 2026-09-28 restructure — Brand → Product → Sub product from the
+  SWISWARE 2026 catalogue (`docs/catalogue/CATALOGUE_MODEL.md`) — had first
+  been built on a checkout that never took 1.2.0 (`catalogue-v2-stale`,
+  `6549018`), which also ran its migration on the owner's PC database. It was
+  re-done on `main`'s model in a worktree on `catalogue-v2-port`: the no-op
+  stub plus the idempotent `20260326` port migration (see "Traps"), the
+  Markdown catalogue and its parser and one-transaction loader
+  (`swisware-catalogue.ts` deleted), category CRUD with a Recycle Bin, derived
+  colour rules, dropped stray colours, line brand/code snapshots, picks by
+  code in catalogue order, the rebuilt Office lead entry, Products and Brands
+  pages, Settings → Leads on both panels, the inventory listing every live
+  variant, the fixed-layout lead PDF with its Electron window,
+  `reload:catalog` keeping parties and the log, `seed:demo-parties`, and two
+  changed setting fallbacks. Docs: this file, `docs/schema/`,
+  `LEAD_GENERATION_FLOW.md`, `TESTING_PLAN.md` §8a, `STRUCTURE.md`,
+  `DEVELOPER_MODE.md`, `backend-modules/04-API-CONTRACT.md` §10.2b.
+  Walked in a browser on both panels; that walk found and fixed three
+  defects — the Office's event stream reopening itself about sixteen times a
+  second (already on 1.2.0), the sub-product list sorted A–Z instead of by
+  catalogue, and a missing `inventory.piecesOnHand` string. Electron pending.
 
 - **2026-09-25 — Leftover cleanup (Claude).** Dead exports went (`e2b7d71`);
   "1 attempt left" is singular now, and 57 unused message keys and the panels'

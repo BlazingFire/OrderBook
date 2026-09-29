@@ -56,6 +56,9 @@ const FIXTURE: SyncSnapshot = {
       alias: null,
       categoryId: 'PC0000000001',
       categoryName: 'Basins',
+      categoryCode: null,
+      brand: null,
+      sortOrder: null,
       size: null,
       hasVariants: false,
       variants: [
@@ -78,7 +81,19 @@ const FIXTURE: SyncSnapshot = {
       images: [],
     },
   ],
-  categories: [{ id: 'CT0000000001', tenantId: 't1', name: 'Basins', createdAt: NOW }],
+  categories: [
+    {
+      id: 'CT0000000001',
+      tenantId: 't1',
+      name: 'Basins',
+      code: null,
+      brand: null,
+      sortOrder: null,
+      createdAt: NOW,
+      updatedAt: NOW,
+      deletedAt: null,
+    },
+  ],
   partyVariants: [
     {
       id: 'PV0000000001',
@@ -163,7 +178,11 @@ const FIXTURE: SyncSnapshot = {
     {
       productId: 'PR0000000001',
       productName: 'Ivory Basin',
+      categoryId: 'PC0000000001',
       categoryName: 'Basins',
+      categoryCode: null,
+      brand: null,
+      multiColour: false,
       size: null,
       variantId: 'VR0000000001',
       variantCode: 'C-100',

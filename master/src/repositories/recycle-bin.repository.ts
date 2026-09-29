@@ -1,7 +1,7 @@
 /**
  * The only cross-table SQL in the Recycle Bin module: a `UNION ALL` over the
- * soft-deletable tables — **eight branches**. Six landed with the Bin itself
- * and two with Fields. Nothing checks that `BRANCHES` still covers every
+ * soft-deletable tables — **nine branches**. Six landed with the Bin itself,
+ * two with Fields and one with catalogue v2. Nothing checks that `BRANCHES` still covers every
  * member of `RECYCLE_BIN_ENTITIES`: a type added there without a branch here
  * typechecks, the route accepts it, and it never shows in the Bin.
  *
@@ -134,6 +134,16 @@ const BRANCHES: BranchDefinition[] = [
     sql: `SELECT 'custom_field_definition' AS entity_type, id::text AS id, label AS label, entity AS sublabel,
                  deleted_at, ${CURSOR_TEXT} AS deleted_at_text, deleted_by, version
             FROM custom_field_definitions
+           WHERE tenant_id = ? AND deleted_at IS NOT NULL`,
+  },
+  // Catalogue v2 (`20260326`). `product_categories` records no `deleted_by`
+  // and no version, so a category row is attributed to nobody: it shows to
+  // `recycleBin.viewAll` holders only, like an unattended panel's deletion.
+  {
+    entityType: 'product_category',
+    sql: `SELECT 'product_category' AS entity_type, id, name AS label, code AS sublabel,
+                 deleted_at, ${CURSOR_TEXT} AS deleted_at_text, NULL::text AS deleted_by, NULL::integer AS version
+            FROM product_categories
            WHERE tenant_id = ? AND deleted_at IS NOT NULL`,
   },
 ];

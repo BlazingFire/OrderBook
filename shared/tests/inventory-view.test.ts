@@ -18,7 +18,11 @@ function levelWith(overrides: Partial<InventoryStockLevel> = {}): InventoryStock
   return {
     productId: 'p1',
     productName: 'DAMRU',
+    categoryId: 'c1',
     categoryName: 'ONE PIECE BASIN',
+    categoryCode: null,
+    brand: null,
+    multiColour: false,
     size: '18x12',
     variantId: 'v1',
     variantCode: 'SW-101',

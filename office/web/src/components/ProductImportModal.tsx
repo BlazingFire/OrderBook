@@ -16,6 +16,11 @@
  * Templates are fetched and saved as blobs rather than linked: the panel
  * answers a JSON 503 when the Master is off, and a plain `<a href>` would
  * navigate the whole window onto it.
+ *
+ * The preview reads a row the way the catalogue does (`docs/catalogue/
+ * CATALOGUE_MODEL.md` §1) — brand, product (`OPT · One Piece Toilet`), sub
+ * product — so a file whose rows landed under the wrong product is caught
+ * here, before anything is written.
  */
 
 import { useRef, useState } from 'react';
@@ -28,6 +33,7 @@ import type {
 import { MAX_PRODUCT_IMPORT_BYTES, MAX_PRODUCT_IMPORT_ISSUES } from '@orderbook/shared';
 
 import { ApiError, api } from '../api';
+import { productLabel } from '../productSummary';
 import {
   BusyMark,
   Button,
@@ -361,10 +367,16 @@ export function ProductImportModal({
                 <DataTable
                   columns={[
                     {
+                      key: 'brand',
+                      header: t('catalog.products.column.brand'),
+                      width: rem(100),
+                      render: (row) => row.categoryBrand ?? '—',
+                    },
+                    {
                       key: 'category',
                       header: t('catalog.products.column.category'),
-                      width: rem(130),
-                      render: (row) => row.categoryName ?? '—',
+                      width: rem(170),
+                      render: (row) => productLabel(row.categoryCode, row.categoryName) || '—',
                     },
                     {
                       key: 'name',
@@ -389,7 +401,11 @@ export function ProductImportModal({
                     },
                   ]}
                   rows={result.sample}
-                  rowKey={(row) => `${row.categoryName ?? ''}:${row.name}`}
+                  // Two brands may share a product name, and a row may name
+                  // its product by code alone, so all three are the key.
+                  rowKey={(row) =>
+                    `${row.categoryBrand ?? ''}:${row.categoryCode ?? ''}:${row.categoryName ?? ''}:${row.name}`
+                  }
                 />
               </section>
             )}

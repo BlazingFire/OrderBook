@@ -29,7 +29,8 @@ async function createDispatchedOrder(
   const party = await catalogService.createParty({ name: `RPT Party ${city} ${Date.now()}`, city }, actor);
   const product = await catalogService.createProduct(
     {
-      name: 'RPT Tile',
+      // Sub-product names are unique inside their product (catalogue v2).
+      name: `RPT Tile ${Math.random().toString(36).slice(2, 8)}`,
       categoryName: 'Tiles',
       hasVariants: true,
       variants: [{ code: `RPT-${Math.random().toString(36).slice(2, 8)}`, label: 'White' }],

@@ -168,6 +168,10 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       ['get', '/api/products'],
       ['post', '/api/products'],
       ['get', '/api/categories'],
+      ['post', '/api/categories'],
+      ['put', '/api/categories/PC0000000001'],
+      ['delete', '/api/categories/PC0000000001'],
+      ['get', '/api/leads/LD0000000001/pdf'],
       ['get', '/api/leads'],
       ['get', '/api/orders'],
       ['get', '/api/conflicts'],
@@ -219,6 +223,35 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       });
       await agent.post('/api/products').send(product('A1', 'One')).expect(201);
       await agent.post('/api/products').send(product('A1', 'Two')).expect(409);
+    });
+
+    it('runs categories — the owner’s Products — through create, list, edit and a refused delete', async () => {
+      const { password } = await initialize();
+      const agent = await signedInAgent(password);
+
+      const created = await agent
+        .post('/api/categories')
+        .send({ name: 'One Piece Toilet', code: 'OPT', sortOrder: 1 })
+        .expect(201);
+      await agent.post('/api/categories').send({ name: 'Again', code: 'opt' }).expect(409);
+      await agent.post('/api/categories').send({ name: 'Bad', code: 'O-P' }).expect(400);
+
+      await agent
+        .post('/api/products')
+        .send({ name: '102', categoryCode: 'OPT', variants: [{ code: '' }] })
+        .expect(201);
+
+      const list = await agent.get('/api/categories?search=opt').expect(200);
+      expect(list.body).toMatchObject([{ code: 'OPT', subProductCount: 1 }]);
+
+      const edited = await agent
+        .put(`/api/categories/${created.body.id}`)
+        .send({ sortOrder: 7 })
+        .expect(200);
+      expect(edited.body).toMatchObject({ code: 'OPT', sortOrder: 7 });
+
+      // A live sub product sits under it.
+      await agent.delete(`/api/categories/${created.body.id}`).expect(409);
     });
 
     it('filters parties by search term', async () => {
@@ -300,6 +333,28 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
 
       expect(created.body.id).toBe('LD0000000002');
       expect(created.body.items[0]).toMatchObject({ code: 'GVT-01', quantity: 2 });
+    });
+
+    it('serves the lead PDF inline, behind leads.export', async () => {
+      const { password } = await initialize();
+      const agent = await signedInAgent(password);
+      const { lead } = await seedLead(agent);
+
+      const response = await agent
+        .get(`/api/leads/${lead.id}/pdf`)
+        .buffer(true)
+        .parse((res, done) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk: Buffer) => chunks.push(chunk));
+          res.on('end', () => done(null, Buffer.concat(chunks)));
+        })
+        .expect(200);
+
+      expect(response.headers['content-type']).toBe('application/pdf');
+      expect(response.headers['content-disposition']).toMatch(/^inline; filename=".+\.pdf"$/);
+      expect((response.body as Buffer).subarray(0, 5).toString()).toBe('%PDF-');
+
+      await agent.get('/api/leads/LD9999999999/pdf').expect(404);
     });
 
     it('lists open leads with their totals', async () => {

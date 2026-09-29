@@ -15,8 +15,10 @@ import { canRunIntegrationTests } from './helpers/db.js';
 import { resetData, setupDatabase, teardownDatabase, testActor } from './helpers/fixtures.js';
 import { db } from '../src/db/knex.js';
 import type { ActorContext } from '../src/domain/actor.js';
+import * as productRepo from '../src/repositories/product.repository.js';
 import { onChange } from '../src/services/change-bus.js';
 import * as catalog from '../src/services/catalog.service.js';
+import * as dashboard from '../src/services/dashboard.service.js';
 import * as inventory from '../src/services/inventory.service.js';
 import * as leads from '../src/services/lead.service.js';
 import * as orders from '../src/services/order.service.js';
@@ -44,6 +46,41 @@ async function seed() {
     return found;
   };
   return { party, product, white: variant('White'), blue: variant('Blue') };
+}
+
+/**
+ * A small catalogue v2 (`docs/catalogue/CATALOGUE_MODEL.md` §7): two brands,
+ * three products in catalogue order, sub products whose `sort_order`
+ * disagrees with their names, one fixed colour and one multicolour — and
+ * nothing stocked yet.
+ */
+async function seedCatalogue() {
+  const categories = await db().transaction((trx) =>
+    productRepo.ensureCategories(
+      actor.tenantId,
+      [
+        { name: 'Wash Basin', code: 'WB', brand: 'Swisware+', sortOrder: 2 },
+        { name: 'One Piece Toilet', code: 'OPT', brand: 'Swisware+', sortOrder: 1 },
+        { name: 'Pan', code: 'PAN', brand: 'Other Brand', sortOrder: 3 },
+      ],
+      trx,
+    ),
+  );
+  const sub = async (name: string, categoryCode: string, code: string, sortOrder: number, extra = {}) =>
+    (await catalog.createProduct({ name, categoryCode, sortOrder, variants: [{ code }], ...extra }, actor))
+      .variants[0]!;
+
+  return {
+    categories,
+    // Named against their order, so a name sort would put ALPHA first.
+    zeta: await sub('ZETA', 'OPT', 'OPT-0001', 1),
+    alpha: await sub('ALPHA', 'OPT', 'OPT-0002', 2),
+    magenta: await sub('MAGENTA', 'WB', 'WB-0001', 1, {
+      hasVariants: true,
+      variants: [{ code: 'WB-0001', label: 'Magenta' }],
+    }),
+    orissa: await sub('Orissa Pan', 'PAN', 'PAN-0001', 1, { multiColour: true }),
+  };
 }
 
 async function levelFor(variantId: string) {
@@ -267,6 +304,159 @@ describe.skipIf(!canRunIntegrationTests)('inventory (integration)', () => {
       await expect(orders.updateOrder(order.id, { notes: 'too late' }, actor)).rejects.toThrow(
         /can no longer be edited/i,
       );
+    });
+  });
+
+  describe('the stock list (catalogue v2)', () => {
+    it('lists every live variant in catalogue order, never-stocked ones at zero', async () => {
+      const { zeta, alpha, magenta, orissa } = await seedCatalogue();
+      await inventory.recordInbound({ variantId: magenta.id, quantityBoxes: 7 }, actor);
+
+      const levels = await inventory.listStock({}, actor);
+
+      // Category order, then the sub product's own order — not the names.
+      expect(levels.map((level) => level.variantId)).toEqual([zeta.id, alpha.id, magenta.id, orissa.id]);
+      expect(levels[0]).toMatchObject({
+        productName: 'ZETA',
+        categoryName: 'One Piece Toilet',
+        categoryCode: 'OPT',
+        brand: 'Swisware+',
+        multiColour: false,
+        quantityBoxes: 0,
+        reservedBoxes: 0,
+        availableBoxes: 0,
+        updatedAt: null,
+      });
+      expect(levels[2]).toMatchObject({ variantLabel: 'Magenta', quantityBoxes: 7 });
+      expect(levels[3]).toMatchObject({ brand: 'Other Brand', multiColour: true });
+    });
+
+    it('never lists a deleted or deactivated sub product, stocked or not', async () => {
+      const { zeta, alpha, magenta } = await seedCatalogue();
+      await inventory.recordInbound({ variantId: zeta.id, quantityBoxes: 3 }, actor);
+      await inventory.recordInbound({ variantId: alpha.id, quantityBoxes: 3 }, actor);
+
+      await db()('products').where({ id: zeta.productId }).update({ deleted_at: db().fn.now() });
+      await db()('product_variants').where({ id: zeta.id }).update({ deleted_at: db().fn.now() });
+      await db()('products').where({ id: alpha.productId }).update({ is_active: false });
+
+      const ids = (await inventory.listStock({}, actor)).map((level) => level.variantId);
+      expect(ids).not.toContain(zeta.id);
+      expect(ids).not.toContain(alpha.id);
+      expect(ids).toContain(magenta.id);
+
+      // The single-row read behind a movement still finds a deactivated
+      // model: stock can arrive for it, and used to throw "Stock level missing".
+      const moved = await inventory.recordInbound({ variantId: alpha.id, quantityBoxes: 2 }, actor);
+      expect(moved.quantityBoxes).toBe(5);
+    });
+
+    it('lists a variant taken off the form only while boxes of it are on the floor or held', async () => {
+      const party = await catalog.createParty({ name: 'Shah Ceramics' }, actor);
+      const basin = await catalog.createProduct(
+        {
+          name: 'Pedestal Basin',
+          categoryName: 'PLAIN SET',
+          hasVariants: true,
+          variants: ['White', 'Blue', 'Green', 'Red'].map((label) => ({
+            code: `BSN-${label}`,
+            label,
+          })),
+        },
+        actor,
+      );
+      const [white, blue, green, red] = basin.variants;
+      // Blue is on the floor, Green is held for an order, Red is only quoted:
+      // each is referenced, so taking it off the form deactivates it.
+      await inventory.recordInbound({ variantId: blue!.id, quantityBoxes: 3 }, actor);
+      const held = await leads.createLead(
+        { partyId: party.id, items: [{ productId: basin.id, variantId: green!.id, quantity: 2 }] },
+        actor,
+      );
+      await orders.convertLead({ leadId: held.id }, actor);
+      await leads.createLead(
+        { partyId: party.id, items: [{ productId: basin.id, variantId: red!.id, quantity: 1 }] },
+        actor,
+      );
+      await catalog.updateProduct(
+        basin.id,
+        {
+          name: 'Pedestal Basin',
+          hasVariants: true,
+          variants: [{ id: white!.id, code: 'BSN-White', label: 'White' }],
+        },
+        actor,
+      );
+
+      const ids = (await inventory.listStock({}, actor)).map((level) => level.variantId);
+      expect(ids).toEqual([white!.id, blue!.id, green!.id]);
+    });
+
+    it('filters by brand, by product, and searches the product code and the brand', async () => {
+      const { categories } = await seedCatalogue();
+      const codes = async (query: Parameters<typeof inventory.listStock>[0]) =>
+        (await inventory.listStock(query, actor)).map((level) => level.variantCode);
+
+      expect(await codes({ brand: 'swisware+' })).toEqual(['OPT-0001', 'OPT-0002', 'WB-0001']);
+      expect(await codes({ brand: 'Other Brand' })).toEqual(['PAN-0001']);
+      expect(await codes({ categoryId: categories.get('wb') })).toEqual(['WB-0001']);
+      expect(await codes({ search: 'opt' })).toEqual(['OPT-0001', 'OPT-0002']);
+      expect(await codes({ search: 'other' })).toEqual(['PAN-0001']);
+    });
+
+    it('fills a low-only page before slicing it, and counts on the Dashboard exactly what it lists', async () => {
+      const { zeta, alpha, magenta, orissa } = await seedCatalogue();
+      // Three low rows spread over the list, one comfortable row among them.
+      for (const variant of [zeta, magenta, orissa]) {
+        await inventory.setReorderLevel({ variantId: variant.id, reorderLevel: 5 }, actor);
+      }
+      await inventory.recordInbound({ variantId: alpha.id, quantityBoxes: 50 }, actor);
+      await inventory.setReorderLevel({ variantId: alpha.id, reorderLevel: 5 }, actor);
+
+      // Paged in SQL before the filter, the first page of two was one row.
+      const first = await inventory.listStock({ lowOnly: true, limit: 2, offset: 0 }, actor);
+      const second = await inventory.listStock({ lowOnly: true, limit: 2, offset: 2 }, actor);
+      expect(first.map((level) => level.variantId)).toEqual([zeta.id, magenta.id]);
+      expect(second.map((level) => level.variantId)).toEqual([orissa.id]);
+
+      // A deleted model with low stock: the count used to read
+      // `inventory_stock` alone and count it; the list never showed it.
+      await db()('products').where({ id: zeta.productId }).update({ deleted_at: db().fn.now() });
+      await db()('product_variants').where({ id: zeta.id }).update({ deleted_at: db().fn.now() });
+
+      const listed = await inventory.listStock({ lowOnly: true }, actor);
+      expect(listed).toHaveLength(2);
+      expect(await inventory.countLowStock(actor.tenantId)).toBe(listed.length);
+      expect((await dashboard.getDashboardSummary(actor)).lowStockCount).toBe(listed.length);
+    });
+
+    it('publishes a zero level when the last hold on a never-stocked variant is released', async () => {
+      const { orissa } = await seedCatalogue();
+      const party = await catalog.createParty({ name: 'Shah Ceramics' }, actor);
+      const lead = await leads.createLead(
+        {
+          partyId: party.id,
+          items: [{ productId: orissa.productId, variantId: orissa.id, quantity: 5, colour: 'Ivory' }],
+        },
+        actor,
+      );
+      const order = await orders.convertLead({ leadId: lead.id }, actor);
+      expect((await levelFor(orissa.id))?.availableBoxes).toBe(-5);
+
+      const published: unknown[] = [];
+      const stop = onChange((event) => {
+        if (event.entity === 'stock' && event.id === orissa.id) published.push(event.payload);
+      });
+      try {
+        await orders.deleteOrder(order.id, actor);
+      } finally {
+        stop();
+      }
+
+      // Nothing was published here before, so panels kept showing -5 free.
+      expect(published).toEqual([
+        expect.objectContaining({ quantityBoxes: 0, reservedBoxes: 0, availableBoxes: 0 }),
+      ]);
     });
   });
 });

@@ -566,6 +566,19 @@ async function mergeUpdate(
       await productVariantRepo.replaceVariants(actor.tenantId, id, acceptedVariants, trx);
     }
 
+    // The sub-product name rule (docs/catalogue/CATALOGUE_MODEL.md §5) holds
+    // offline too. A rename merged here is checked on the row as written, as
+    // the online edit is, so a clash rolls the merge back and comes back to
+    // the panel as a refusal it can read rather than a second "1111" in OPT.
+    if (
+      entity === 'product' &&
+      typeof patch.name === 'string' &&
+      patch.name.toLowerCase() !== String(current.values.name ?? '').toLowerCase()
+    ) {
+      const written = await productRepo.findProductById(actor.tenantId, id, trx);
+      if (written) await catalogService.assertSubProductNameFree(actor.tenantId, written, trx);
+    }
+
     let storedConflicts: Awaited<ReturnType<typeof syncRepo.recordConflicts>> = [];
     if (outcome.conflicts.length > 0) {
       storedConflicts = await syncRepo.recordConflicts(

@@ -61,6 +61,25 @@ const SOURCES: Record<FieldListKey, readonly SourceDefinition[]> = {
              GROUP BY colour`,
     },
   ],
+  // A brand is held by a live category — a sub product reads its brand
+  // through the join, so there is no product source — and frozen onto the
+  // lines sold under it, the way `stock.colour` counts `variant_label`.
+  'product.brand': [
+    {
+      source: 'product_categories',
+      sql: `SELECT brand AS value, count(*) AS count
+              FROM product_categories
+             WHERE tenant_id = ? AND brand IS NOT NULL AND deleted_at IS NULL
+             GROUP BY brand`,
+    },
+    {
+      source: 'line_items',
+      sql: `SELECT brand_name AS value, count(*) AS count
+              FROM line_items
+             WHERE tenant_id = ? AND brand_name IS NOT NULL
+             GROUP BY brand_name`,
+    },
+  ],
   'line.packaging': [
     {
       source: 'line_items',

@@ -2,8 +2,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { canRunIntegrationTests } from './helpers/db.js';
 import { resetData, setupDatabase, teardownDatabase, testActor } from './helpers/fixtures.js';
+import type { DataChangedEvent } from '@orderbook/shared';
+
 import type { ActorContext } from '../src/domain/actor.js';
 import * as catalog from '../src/services/catalog.service.js';
+import { onChange } from '../src/services/change-bus.js';
+import * as fields from '../src/services/fields.service.js';
+import * as recycleBin from '../src/services/recycle-bin.service.js';
 import { db } from '../src/db/knex.js';
 
 let actor: ActorContext;
@@ -113,7 +118,7 @@ describe.skipIf(!canRunIntegrationTests)('catalog service (integration)', () => 
     it('requires a category', async () => {
       await expect(
         catalog.createProduct({ name: 'One', variants: [{ code: 'A1' }] }, actor),
-      ).rejects.toThrow(/category/i);
+      ).rejects.toMatchObject({ messageKey: 'validation.product.categoryRequired' });
     });
 
     it('creates a category on the fly and reuses it for the next product', async () => {
@@ -204,6 +209,388 @@ describe.skipIf(!canRunIntegrationTests)('catalog service (integration)', () => 
 
       const missing = await catalog.listProducts({ missingWeight: true }, actor);
       expect(missing.items.map((product) => product.name)).toEqual(['Unweighed']);
+    });
+  });
+
+  /*
+   * Catalogue v2 (`docs/catalogue/CATALOGUE_MODEL.md` §5): categories are the
+   * owner's Products — code, brand, catalogue order, a Recycle Bin — and a sub
+   * product's name is unique inside its product, its blank code numbered from
+   * the product's code.
+   */
+  describe('products (categories) and their sub products', () => {
+    const brand = (value: string) =>
+      fields.createValue({ listKey: 'product.brand', value, label: value, hex: null }, actor);
+    const subProduct = (name: string, categoryId: string, code = '') =>
+      catalog.createProduct({ name, categoryId, variants: [{ code }] }, actor);
+    const captured = async <T>(work: () => Promise<T>): Promise<[T, DataChangedEvent[]]> => {
+      const events: DataChangedEvent[] = [];
+      const stop = onChange((event) => {
+        events.push(event);
+      });
+      try {
+        return [await work(), events];
+      } finally {
+        stop();
+      }
+    };
+
+    it('creates one with its code, brand and order, logs it and announces it', async () => {
+      await brand('Swisware+');
+      const [opt, events] = await captured(() =>
+        catalog.createCategory(
+          { name: 'One Piece Toilet', code: 'OPT', brand: 'Swisware+', sortOrder: 1 },
+          actor,
+        ),
+      );
+
+      expect(opt).toMatchObject({
+        name: 'One Piece Toilet',
+        code: 'OPT',
+        brand: 'Swisware+',
+        sortOrder: 1,
+      });
+      expect(events.map((event) => [event.entity, event.action])).toEqual([
+        ['product_category', 'created'],
+      ]);
+      const entry = await db()('activity_log').where({ entity_type: 'product_category' }).first();
+      expect(entry).toMatchObject({ action: 'created', entity_id: opt.id });
+      expect(entry.details).toMatchObject({
+        name: 'One Piece Toilet',
+        code: 'OPT',
+        brand: 'Swisware+',
+      });
+    });
+
+    it('refuses a blank name or code, a code that is not letters and digits, an unknown brand, a bad order', async () => {
+      const refused = (input: Record<string, unknown>) =>
+        catalog
+          .createCategory(input as never, actor)
+          .catch((error: { messageKey: string }) => error.messageKey);
+
+      expect(await refused({ name: ' ', code: 'OPT' })).toBe('validation.category.nameRequired');
+      expect(await refused({ name: 'One Piece Toilet' })).toBe('validation.category.codeRequired');
+      expect(await refused({ name: 'One Piece Toilet', code: 'OP-T' })).toBe(
+        'validation.category.codeInvalid',
+      );
+      expect(await refused({ name: 'One Piece Toilet', code: 'OPT', brand: 'Nobody' })).toBe(
+        'validation.category.brandUnknown',
+      );
+      expect(await refused({ name: 'One Piece Toilet', code: 'OPT', sortOrder: -1 })).toBe(
+        'validation.category.sortOrder',
+      );
+    });
+
+    it('keeps codes unique case-insensitively, and names unique per brand', async () => {
+      await brand('Swisware+');
+      await brand('Other');
+      await catalog.createCategory(
+        { name: 'One Piece Toilet', code: 'OPT', brand: 'Swisware+' },
+        actor,
+      );
+
+      await expect(
+        catalog.createCategory({ name: 'Anything', code: 'opt' }, actor),
+      ).rejects.toMatchObject({
+        messageKey: 'error.conflict.categoryCodeTaken',
+      });
+      await expect(
+        catalog.createCategory(
+          { name: 'one piece toilet', code: 'OPT2', brand: 'Swisware+' },
+          actor,
+        ),
+      ).rejects.toMatchObject({ messageKey: 'error.conflict.categoryNameTaken' });
+      // Another brand may sell a One Piece Toilet of its own.
+      await expect(
+        catalog.createCategory({ name: 'One Piece Toilet', code: 'OPTX', brand: 'Other' }, actor),
+      ).resolves.toMatchObject({ brand: 'Other' });
+    });
+
+    it('lists live ones in catalogue order with their sub-product counts, filtered by brand or search', async () => {
+      await brand('Swisware+');
+      const opb = await catalog.createCategory(
+        { name: 'One Piece Basin', code: 'OPB', sortOrder: 2 },
+        actor,
+      );
+      const opt = await catalog.createCategory(
+        { name: 'One Piece Toilet', code: 'OPT', brand: 'Swisware+', sortOrder: 1 },
+        actor,
+      );
+      await subProduct('102', opt.id);
+      await subProduct('111', opt.id);
+
+      expect(
+        (await catalog.listCategories(actor)).map((row) => [row.code, row.subProductCount]),
+      ).toEqual([
+        ['OPT', 2],
+        ['OPB', 0],
+      ]);
+      expect(
+        (await catalog.listCategories(actor, { brand: 'swisware+' })).map((row) => row.id),
+      ).toEqual([opt.id]);
+      expect(
+        (await catalog.listCategories(actor, { search: 'basin' })).map((row) => row.id),
+      ).toEqual([opb.id]);
+    });
+
+    it('edits only what was sent, logs what moved, and re-announces the catalogue on a rename', async () => {
+      const opt = await catalog.createCategory(
+        { name: 'One Piece Toilet', code: 'OPT', sortOrder: 1 },
+        actor,
+      );
+
+      const [same, quiet] = await captured(() =>
+        catalog.updateCategory(opt.id, { sortOrder: 1 }, actor),
+      );
+      expect(same).toMatchObject({ sortOrder: 1 });
+      expect(quiet).toEqual([]);
+
+      const [renamed, events] = await captured(() =>
+        catalog.updateCategory(opt.id, { name: 'Toilets', sortOrder: 5 }, actor),
+      );
+      expect(renamed).toMatchObject({ name: 'Toilets', code: 'OPT', sortOrder: 5 });
+      // The sub products in a panel's snapshot carry the old name joined in.
+      expect(events.map((event) => event.entity)).toEqual(['product_category', 'catalog']);
+
+      const entry = await db()('activity_log')
+        .where({ entity_type: 'product_category', action: 'updated' })
+        .first();
+      expect(entry.details.changes).toEqual({
+        name: { from: 'One Piece Toilet', to: 'Toilets' },
+        sortOrder: { from: 1, to: 5 },
+      });
+    });
+
+    it('refuses a delete while a live sub product sits under it, and names it', async () => {
+      const opt = await catalog.createCategory({ name: 'One Piece Toilet', code: 'OPT' }, actor);
+      const toilet = await subProduct('102', opt.id);
+
+      await expect(catalog.deleteCategory(opt.id, actor)).rejects.toMatchObject({
+        messageKey: 'error.conflict.blockedByLiveReferences',
+        details: { blockedBy: [{ entityType: 'product', id: toilet.id, label: '102 (OPT-0001)' }] },
+      });
+
+      await catalog.deleteProduct(toilet.id, actor);
+      await catalog.deleteCategory(opt.id, actor);
+      expect(await catalog.listCategories(actor)).toEqual([]);
+    });
+
+    it('refuses a sub-product catalogue order that is not a whole number, zero or more', async () => {
+      const opt = await catalog.createCategory({ name: 'One Piece Toilet', code: 'OPT' }, actor);
+
+      for (const sortOrder of ['first', 1.5, -1]) {
+        await expect(
+          catalog.createProduct(
+            { name: '102', categoryId: opt.id, sortOrder: sortOrder as number, variants: [{ code: '' }] },
+            actor,
+          ),
+        ).rejects.toMatchObject({ messageKey: 'validation.category.sortOrder' });
+      }
+    });
+
+    // The two halves of one race: a delete and a sub-product save on the same
+    // product. Held open by hand so each side is mid-flight when the other runs.
+    const pause = () => new Promise((resolve) => setTimeout(resolve, 300));
+
+    it('a delete waits out a sub product being saved under it, then refuses', async () => {
+      const opt = await catalog.createCategory({ name: 'One Piece Toilet', code: 'OPT' }, actor);
+
+      let deleting: Promise<unknown> = Promise.resolve();
+      await db().transaction(async (trx) => {
+        await trx('products').insert({
+          id: 'PR-RACE-1',
+          tenant_id: actor.tenantId,
+          category_id: opt.id,
+          name: '102',
+          hlc: '0',
+          field_hlc: '{}',
+        });
+        deleting = catalog.deleteCategory(opt.id, actor).then(
+          () => 'deleted',
+          (error: unknown) => error,
+        );
+        await pause();
+      });
+
+      await expect(deleting).resolves.toMatchObject({
+        messageKey: 'error.conflict.blockedByLiveReferences',
+      });
+    });
+
+    it('a sub product saved while its product is being deleted is refused, not filed in the Bin', async () => {
+      const opt = await catalog.createCategory({ name: 'One Piece Toilet', code: 'OPT' }, actor);
+
+      let adding: Promise<unknown> = Promise.resolve();
+      await db().transaction(async (trx) => {
+        await trx('product_categories').where({ id: opt.id }).forUpdate().first('id');
+        await trx('product_categories').where({ id: opt.id }).update({ deleted_at: trx.fn.now() });
+        adding = subProduct('102', opt.id, 'OPT-0001').then(
+          () => 'added',
+          (error: unknown) => error,
+        );
+        await pause();
+      });
+
+      await expect(adding).resolves.toMatchObject({
+        messageKey: 'validation.product.categoryRequired',
+      });
+      expect(await db()('products').where({ category_id: opt.id })).toEqual([]);
+    });
+
+    it('a sub product restored while its product is being deleted stays in the Bin', async () => {
+      const opt = await catalog.createCategory({ name: 'One Piece Toilet', code: 'OPT' }, actor);
+      const toilet = await subProduct('102', opt.id);
+      await catalog.deleteProduct(toilet.id, actor);
+
+      let restoring: Promise<unknown> = Promise.resolve();
+      await db().transaction(async (trx) => {
+        await trx('product_categories').where({ id: opt.id }).forUpdate().first('id');
+        await trx('product_categories').where({ id: opt.id }).update({ deleted_at: trx.fn.now() });
+        restoring = catalog.restoreProduct(toilet.id, actor).then(
+          () => 'restored',
+          (error: unknown) => error,
+        );
+        await pause();
+      });
+
+      await expect(restoring).resolves.toMatchObject({ messageKey: 'error.conflict.parentDeleted' });
+      expect(await db()('products').where({ id: toilet.id }).first('deleted_at')).toMatchObject({
+        deleted_at: expect.any(Date),
+      });
+    });
+
+    it('two people saving one code at once: the second is a conflict, not a server error', async () => {
+      let creating: Promise<unknown> = Promise.resolve();
+      await db().transaction(async (trx) => {
+        // Not committed yet, so the second save's own check cannot see it and
+        // meets the unique index instead.
+        await trx('product_categories').insert({
+          id: 'PC-RACE-1',
+          tenant_id: actor.tenantId,
+          name: 'One Piece Toilet',
+          code: 'OPT',
+        });
+        creating = catalog.createCategory({ name: 'Toilets', code: 'opt' }, actor).then(
+          () => 'created',
+          (error: unknown) => error,
+        );
+        await pause();
+      });
+
+      await expect(creating).resolves.toMatchObject({
+        messageKey: 'error.conflict.categoryCodeTaken',
+      });
+    });
+
+    it('comes back from the Recycle Bin, and lets its sub products come back only then', async () => {
+      const opt = await catalog.createCategory({ name: 'One Piece Toilet', code: 'OPT' }, actor);
+      const toilet = await subProduct('102', opt.id);
+      await catalog.deleteProduct(toilet.id, actor);
+      await catalog.deleteCategory(opt.id, actor);
+
+      const binned = await recycleBin.listBin({ types: ['product_category'] }, actor);
+      expect(binned.items.map((entry) => [entry.id, entry.label, entry.sublabel])).toEqual([
+        [opt.id, 'One Piece Toilet', 'OPT'],
+      ]);
+
+      // Upward only: the sub product cannot return into a product still in the Bin.
+      await expect(
+        recycleBin.restoreEntity({ entityType: 'product', id: toilet.id }, actor),
+      ).rejects.toMatchObject({
+        messageKey: 'error.conflict.parentDeleted',
+      });
+
+      await recycleBin.restoreEntity({ entityType: 'product_category', id: opt.id }, actor);
+      await recycleBin.restoreEntity({ entityType: 'product', id: toilet.id }, actor);
+      expect((await catalog.listCategories(actor)).map((row) => row.subProductCount)).toEqual([1]);
+
+      const actions = await db()('activity_log')
+        .where({ entity_type: 'product_category' })
+        .orderBy('id');
+      expect(actions.map((row) => row.action)).toEqual(['created', 'deleted', 'restored']);
+    });
+
+    it('refuses a restore whose code was taken since, and offers a rename for a name taken since', async () => {
+      const first = await catalog.createCategory({ name: 'Urinal', code: 'UR' }, actor);
+      await catalog.deleteCategory(first.id, actor);
+      const taker = await catalog.createCategory({ name: 'Urinals', code: 'UR' }, actor);
+
+      await expect(
+        recycleBin.restoreEntity({ entityType: 'product_category', id: first.id }, actor),
+      ).rejects.toMatchObject({ messageKey: 'error.conflict.categoryCodeTaken' });
+
+      await catalog.updateCategory(taker.id, { code: 'URN', name: 'Urinal' }, actor);
+      await expect(
+        recycleBin.restoreEntity({ entityType: 'product_category', id: first.id }, actor),
+      ).rejects.toMatchObject({
+        messageKey: 'error.conflict.restoreCollision',
+        details: { field: 'name', suggestion: 'Urinal (restored)' },
+      });
+      await expect(
+        recycleBin.restoreEntity(
+          { entityType: 'product_category', id: first.id, renameTo: 'Old Urinal' },
+          actor,
+        ),
+      ).resolves.toMatchObject({ renamedTo: 'Old Urinal' });
+    });
+
+    it('numbers a blank sub-product code from its product, and never hands a binned code out again', async () => {
+      const opt = await catalog.createCategory({ name: 'One Piece Toilet', code: 'OPT' }, actor);
+
+      const first = await subProduct('102 (9")', opt.id);
+      const second = await catalog.createProduct(
+        { name: '111 (9")', categoryCode: 'opt', variants: [{ code: '  ' }] },
+        actor,
+      );
+      expect([first.variants[0]?.code, second.variants[0]?.code]).toEqual(['OPT-0001', 'OPT-0002']);
+
+      await catalog.deleteProduct(second.id, actor);
+      const third = await subProduct('103 (9")', opt.id);
+      expect(third.variants[0]?.code).toBe('OPT-0003');
+
+      // A typed code is kept as typed.
+      expect((await subProduct('1111', opt.id, '1111')).variants[0]?.code).toBe('1111');
+    });
+
+    it('keeps sub-product names unique inside a product, not across products', async () => {
+      const v1812 = await catalog.createCategory({ name: '18x12 Vitrosa', code: 'V1812' }, actor);
+      const sfd = await catalog.createCategory(
+        { name: 'Sofiya Vitrosa Double Colour', code: 'SFD' },
+        actor,
+      );
+      const magenta = await subProduct('MAGENTA', v1812.id);
+
+      await expect(subProduct('magenta', v1812.id)).rejects.toMatchObject({
+        messageKey: 'validation.product.nameTaken',
+        params: { name: 'magenta', category: 'V1812 · 18x12 Vitrosa' },
+      });
+      const other = await subProduct('MAGENTA', sfd.id);
+
+      // Moving one onto the other's product is the same clash.
+      await expect(
+        catalog.updateProduct(other.id, { name: 'MAGENTA', categoryId: v1812.id }, actor),
+      ).rejects.toMatchObject({ messageKey: 'validation.product.nameTaken' });
+      // A binned twin frees the name.
+      await catalog.deleteProduct(magenta.id, actor);
+      await expect(subProduct('MAGENTA', v1812.id)).resolves.toMatchObject({
+        categoryId: v1812.id,
+      });
+    });
+
+    it("names the product in the sub product's log entries, and logs what an edit moved", async () => {
+      const opt = await catalog.createCategory({ name: 'One Piece Toilet', code: 'OPT' }, actor);
+      const toilet = await subProduct('102', opt.id);
+      await catalog.updateProduct(toilet.id, { name: '102 (9")', size: 'L-27' }, actor);
+
+      const entries = await db()('activity_log').where({ entity_type: 'product' }).orderBy('id');
+      expect(entries.map((entry) => entry.details)).toEqual([
+        { name: '102', product: 'OPT · One Piece Toilet' },
+        {
+          name: '102 (9")',
+          product: 'OPT · One Piece Toilet',
+          changes: { name: { from: '102', to: '102 (9")' }, size: { from: null, to: 'L-27' } },
+        },
+      ]);
     });
   });
 

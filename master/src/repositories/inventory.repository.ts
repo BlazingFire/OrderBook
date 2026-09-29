@@ -26,29 +26,38 @@ import * as reservationsRepo from './reservation.repository.js';
 type Runner = Knex | Knex.Transaction;
 
 /**
- * Driven from `inventory_stock` joined back to its variant and product: a
- * product has one row *per variant*, so there is no single row to left-join
- * to. Variants that are reserved but have never been stocked are unioned in
- * at zero by `listStockLevels`, so nothing vanishes from the inventory screen.
+ * Driven from the **variant**, with its `inventory_stock` row left-joined: every
+ * variant is a stock line whether or not a box of it was ever counted
+ * (`docs/catalogue/CATALOGUE_MODEL.md` §7), so one never stocked reads 0 rather
+ * than vanishing — and a variant reserved but never stocked needs no second
+ * query to show its shortfall.
+ *
+ * No liveness filter here. This is also the single-row read behind every
+ * movement, and a dispatch against a model deactivated since the order was
+ * taken must still find its row; the listing adds its own filter.
  */
 function stockQuery(tenantId: string, runner: Runner = db()) {
-  return runner('inventory_stock as s')
-    .join('product_variants as v', 'v.id', 's.variant_id')
+  return runner('product_variants as v')
     .join('products as p', 'p.id', 'v.product_id')
     .leftJoin('product_categories as c', 'c.id', 'p.category_id')
-    .where('s.tenant_id', tenantId)
-    .andWhere('p.is_active', true)
-    .whereNull('p.deleted_at')
+    .leftJoin('inventory_stock as s', (join) =>
+      join.on('s.variant_id', 'v.id').andOn('s.tenant_id', 'v.tenant_id'),
+    )
+    .where('v.tenant_id', tenantId)
     .select(
-      's.product_id',
-      's.variant_id',
+      'v.product_id',
+      'v.id as variant_id',
       'v.code as variant_code',
       'v.label as variant_label',
       'v.weight_kg',
       'p.name as product_name',
       'p.size',
+      'p.multi_colour',
+      'p.category_id',
       'c.name as category_name',
-      's.quantity_boxes',
+      'c.code as category_code',
+      'c.brand',
+      runner.raw('coalesce(s.quantity_boxes, 0) as quantity_boxes'),
       's.reorder_level',
       's.min_stock_level',
       's.max_stock_level',
@@ -61,12 +70,17 @@ export async function listStockLevels(
   options: {
     search?: string;
     lowOnly?: boolean;
-    limit: number;
-    offset: number;
+    /** A `product.brand` value, matched case-insensitively. */
+    brand?: string;
+    /** The category (the owner's Product). */
+    categoryId?: string;
+    /** Absent means every row — the low-stock count reads the whole list. */
+    limit?: number;
+    offset?: number;
     /**
      * False with the company's free-to-sell switch off: nothing is held back,
-     * so free is the floor count, low stock is judged on it, and a colour that
-     * exists only as a reservation is not a row.
+     * so free is the floor count, low stock is judged on it, and a variant
+     * taken off the form that exists only as a reservation is not a row.
      */
     reservations?: boolean;
     /**
@@ -76,7 +90,23 @@ export async function listStockLevels(
     defaultReorderLevel?: number | null;
   },
 ): Promise<InventoryStockLevel[]> {
-  const query = stockQuery(tenantId);
+  const held =
+    options.reservations === false ? new Map<string, number>() : await reservationsRepo.reservedTotals(tenantId);
+
+  // Live, on-offer models only: a deleted or deactivated model is never a
+  // stock line. A variant taken off the form stays while boxes of it are on
+  // the floor or held for an order — those exist whatever the form says.
+  const query = stockQuery(tenantId)
+    .andWhere('p.is_active', true)
+    .whereNull('p.deleted_at')
+    .whereNull('v.deleted_at')
+    .andWhere((builder) => {
+      builder.where('v.is_active', true).orWhere('s.quantity_boxes', '<>', 0);
+      if (held.size > 0) builder.orWhereIn('v.id', [...held.keys()]);
+    });
+
+  if (options.brand) query.whereRaw('lower(c.brand) = lower(?)', [options.brand]);
+  if (options.categoryId) query.andWhere('p.category_id', options.categoryId);
 
   if (options.search) {
     const pattern = `%${options.search}%`;
@@ -85,27 +115,28 @@ export async function listStockLevels(
         .whereILike('p.name', pattern)
         .orWhereILike('v.code', pattern)
         .orWhereILike('v.label', pattern)
-        .orWhereILike('c.name', pattern),
+        .orWhereILike('c.name', pattern)
+        .orWhereILike('c.code', pattern)
+        .orWhereILike('c.brand', pattern),
     );
   }
 
-  const rows = await query
-    .orderBy(['p.name', 'v.sequence', 'v.code'])
-    .limit(options.limit)
-    .offset(options.offset);
+  // Catalogue order: the category's place, then the sub product's, then the
+  // variant's. A name sort put `Vitrosa 100` before `Vitrosa 41`.
+  query.orderByRaw(
+    'c.sort_order ASC NULLS LAST, lower(c.name), c.id, p.sort_order ASC NULLS LAST, lower(p.name), p.id, v.sequence, v.id',
+  );
 
-  const held =
-    options.reservations === false ? new Map<string, number>() : await reservationsRepo.reservedTotals(tenantId);
+  // Paged in SQL only when every row fetched is a row shown. "Low" is judged
+  // on reservation totals SQL does not see in this pass, so a low-only page
+  // filters first and slices after — slicing first returned short pages.
+  const offset = options.offset ?? 0;
+  if (!options.lowOnly && options.limit !== undefined) query.limit(options.limit).offset(offset);
 
+  const rows = await query;
   const levels = rows.map((row) =>
     mapStockLevel({ ...row, reserved_boxes: held.get(String(row.variant_id)) ?? 0 }),
   );
-
-  // A variant can be reserved that has no stock row at all — someone sold blue
-  // basins the shop has never carried. Driving the list from `inventory_stock`
-  // alone would hide exactly that case, which is the one worth seeing, so the
-  // reserved-but-unstocked variants are folded in at zero.
-  levels.push(...(await unstockedReservations(tenantId, held, levels)));
 
   // The company's default low-stock level, for any line with none of its own.
   // Applied here rather than in the service because `lowOnly` filters on the
@@ -116,95 +147,27 @@ export async function listStockLevels(
       ? levels
       : levels.map((level) => withDefaultReorderLevel(level, options.defaultReorderLevel ?? null));
 
-  // Filtered after the reservation totals are known, because "low" is judged on
-  // what is free to sell and SQL cannot see those totals in the same pass.
-  const visible = options.lowOnly ? judged.filter((level) => level.isLow) : judged;
+  if (!options.lowOnly) return judged;
 
-  return visible.sort(
-    (a, b) =>
-      a.productName.localeCompare(b.productName) ||
-      (a.variantLabel ?? '').localeCompare(b.variantLabel ?? '') ||
-      a.variantCode.localeCompare(b.variantCode),
-  );
+  const low = judged.filter((level) => level.isLow);
+  return options.limit === undefined ? low : low.slice(offset, offset + options.limit);
 }
 
 /**
- * Stock rows that exist only as a reservation.
- *
- * Synthesised rather than written to `inventory_stock`, because nothing has
- * physically moved — inventing a zero row would put a variant in the ledger's
- * derived snapshot that no movement ever created.
+ * One variant's level — at zero when it has never been stocked, so a released
+ * hold publishes the figure a panel should now show rather than nothing.
+ * Null only for a variant that does not exist.
  */
-async function unstockedReservations(
-  tenantId: string,
-  held: Map<string, number>,
-  existing: InventoryStockLevel[],
-  runner: Runner = db(),
-): Promise<InventoryStockLevel[]> {
-  const known = new Set(existing.map((level) => level.variantId));
-  const missing = [...held.entries()].filter(([variantId]) => !known.has(variantId));
-  if (missing.length === 0) return [];
-
-  const variants = await runner('product_variants as v')
-    .join('products as p', 'p.id', 'v.product_id')
-    .leftJoin('product_categories as c', 'c.id', 'p.category_id')
-    .where('v.tenant_id', tenantId)
-    .whereIn(
-      'v.id',
-      missing.map(([variantId]) => variantId),
-    )
-    .select(
-      'v.id as variant_id',
-      'v.product_id',
-      'v.code as variant_code',
-      'v.label as variant_label',
-      'v.weight_kg',
-      'p.name as product_name',
-      'p.size',
-      'c.name as category_name',
-    );
-
-  const byId = new Map(variants.map((variant) => [String(variant.variant_id), variant]));
-
-  return missing.flatMap(([variantId, quantity]) => {
-    const variant = byId.get(variantId);
-    if (!variant) return [];
-
-    return [
-      mapStockLevel({
-        ...variant,
-        quantity_boxes: 0,
-        reserved_boxes: quantity,
-        reorder_level: null,
-        updated_at: null,
-      }),
-    ];
-  });
-}
-
 export async function findStockLevel(
   tenantId: string,
   variantId: string,
   runner: Runner = db(),
 ): Promise<InventoryStockLevel | null> {
-  const row = await stockQuery(tenantId, runner).andWhere('s.variant_id', variantId).first();
+  const row = await stockQuery(tenantId, runner).andWhere('v.id', variantId).first();
+  if (!row) return null;
 
   const held = await reservationsRepo.reservedTotals(tenantId, runner);
-  const reserved = held.get(variantId) ?? 0;
-
-  if (row) return mapStockLevel({ ...row, reserved_boxes: reserved });
-
-  // No stock row, but stock is reserved against this variant — report the
-  // shortfall rather than nothing.
-  if (reserved === 0) return null;
-
-  const [synthetic] = await unstockedReservations(
-    tenantId,
-    new Map([[variantId, reserved]]),
-    [],
-    runner,
-  );
-  return synthetic ?? null;
+  return mapStockLevel({ ...row, reserved_boxes: held.get(variantId) ?? 0 });
 }
 
 export async function listMovements(
@@ -346,34 +309,20 @@ export async function hasMovementForOrder(
 }
 
 /**
- * Variants at or below their reorder level — judged on free-to-sell stock, or
- * on the floor count while the company's free-to-sell switch is off, and
- * against `defaultReorderLevel` for any variant that has none of its own.
+ * Variants at or below their reorder level: the listing's own low-only rows,
+ * counted. One query for the Dashboard tile and the Inventory "Low only"
+ * filter means the two cannot disagree — the count used to scan
+ * `inventory_stock` alone, and so counted deleted models and missed the
+ * never-stocked ones the list showed.
  *
- * The `whereNotNull('reorder_level')` this used to carry excluded every
- * defaulted row before the default could be applied. Dropping it is only half
- * the fix: `Number(null)` is **0**, so the JS compare below would then have
- * silently judged every previously-excluded row against zero. The two must
- * change together.
+ * ponytail: reads the low rows to count them; a SQL count if the catalogue
+ * grows past a few thousand variants.
  */
 export async function countLowStock(
   tenantId: string,
   reservations = true,
   defaultReorderLevel: number | null = null,
 ): Promise<number> {
-  const rows = await db()('inventory_stock')
-    .where({ tenant_id: tenantId })
-    .select<Array<{ variant_id: string; quantity_boxes: string; reorder_level: string | null }>>(
-      'variant_id',
-      'quantity_boxes',
-      'reorder_level',
-    );
-
-  const held = reservations ? await reservationsRepo.reservedTotals(tenantId) : new Map<string, number>();
-
-  return rows.filter((row) => {
-    const available = Number(row.quantity_boxes) - (held.get(String(row.variant_id)) ?? 0);
-    const level = row.reorder_level === null ? defaultReorderLevel : Number(row.reorder_level);
-    return level !== null && available <= level;
-  }).length;
+  const low = await listStockLevels(tenantId, { lowOnly: true, reservations, defaultReorderLevel });
+  return low.length;
 }

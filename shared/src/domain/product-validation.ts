@@ -22,6 +22,14 @@
 import type { ProductInput, ProductVariantInput } from './inputs.js';
 import type { MessageKey } from '../i18n/keys.js';
 
+/**
+ * A category's software code (`OPT`, `V1812`): letters and digits only, so it
+ * types cleanly into the product bar and prefixes the generated sub-product
+ * codes (`OPT-0001`) without a separator of its own. One pattern for the
+ * catalogue file, the category service and its form.
+ */
+export const CATEGORY_CODE_PATTERN = /^[A-Za-z0-9]+$/;
+
 /** Thrown with a catalogue token, so the message reaches a person translated. */
 export class ProductValidationError extends Error {
   constructor(readonly messageKey: MessageKey) {
@@ -33,9 +41,15 @@ export class ProductValidationError extends Error {
 /**
  * The product master holds no closed sets or ranges any more — a model is a
  * name, a category, an alias, a size and a colour switch — so the product-level
- * check is only that the variant set, when asserted, obeys its rules.
+ * check is that the variant set, when asserted, obeys its rules, and that the
+ * catalogue order is what its INTEGER column holds: anything else reached the
+ * database as a 500, and on the offline merge as a rejection replayed forever.
  */
 export function validateProductInput(input: ProductInput): void {
+  const { sortOrder } = input;
+  if (sortOrder !== undefined && sortOrder !== null && !(Number.isInteger(sortOrder) && sortOrder >= 0)) {
+    throw new ProductValidationError('validation.category.sortOrder');
+  }
   if (input.variants !== undefined) {
     validateProductVariants(input.variants, input.hasVariants ?? input.variants.some((v) => hasText(v.label)));
   }

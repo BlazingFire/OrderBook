@@ -207,7 +207,8 @@ export async function pickProducts(
   // One more than asked for, so "there are more" is a fact rather than a guess.
   const fetch = options.limit + 1;
   const hasInclude = options.include.length > 0;
-  const hasCategory = typeof options.categoryId === 'string' && options.categoryId !== '';
+  const categoryId = options.categoryId?.trim();
+  if (categoryId) return pickSubProducts(tenantId, categoryId, options, fetch, runner);
 
   // The codes live on the variants, so the prefix boost and the prefix
   // filter both look there: typing `41` puts the model that sells `41` first.
@@ -217,14 +218,13 @@ export async function pickProducts(
   )`;
 
   const { rows } = await runner.raw<{ rows: Row[] }>(
-    `SELECT p.*, c.name AS category_name,
+    `SELECT p.*, ${PICKED_CATEGORY_COLUMNS},
             (${CODE_PREFIX}
              OR COALESCE(p.name ILIKE ? ESCAPE '\\', false)) AS exact_prefix,
             CASE WHEN ? THEN ts_rank(p.search_vector, to_tsquery('simple', ?)) ELSE 0 END AS rank
        FROM products p
        LEFT JOIN product_categories c ON c.id = p.category_id
       WHERE p.tenant_id = ?
-        AND (NOT ? OR p.category_id = ?)
         AND (
           (p.is_active AND p.deleted_at IS NULL AND (
             NOT ?
@@ -242,8 +242,6 @@ export async function pickProducts(
       hasQuery,
       tsQuery ?? '',
       tenantId,
-      hasCategory,
-      options.categoryId ?? '',
       hasQuery,
       tsQuery ?? '',
       pattern,
@@ -257,15 +255,71 @@ export async function pickProducts(
   return { rows: rows.slice(0, options.limit), truncated: rows.length > options.limit };
 }
 
+/** What `mapProduct` reads of the category, joined as `c`: brand lives only there. */
+const PICKED_CATEGORY_COLUMNS =
+  'c.name AS category_name, c.code AS category_code, c.brand AS category_brand';
+
 /**
- * Categories for the first stage of the lead screen's search: typing
- * "toilet" offers *ONE PIECE TOILET* and nothing below it. A name that
- * starts with the term outranks one that merely contains it, and an empty
- * term lists everything, alphabetically — the stage is a menu as much as a
- * search.
+ * The sub-product bar: every live sub product of one product (category), in
+ * catalogue order (`docs/catalogue/CATALOGUE_MODEL.md` §5), narrowed as
+ * somebody types by the printed name anywhere in it or a code from its start.
  *
- * Only categories holding a live product are offered (the v1.1.0 rule): an
- * empty category is a dead end the counter cannot add anything from. An
+ * Not ranked like the whole-catalogue pick above. Inside one product the
+ * counter reads the list the way the printed page lays it out, and a list
+ * that reshuffles by relevance on every keystroke loses their place in it.
+ */
+async function pickSubProducts(
+  tenantId: string,
+  categoryId: string,
+  options: { term: string; limit: number; include: string[] },
+  fetch: number,
+  runner: Runner,
+): Promise<{ rows: Row[]; truncated: boolean }> {
+  const term = options.term.trim();
+
+  const { rows } = await runner.raw<{ rows: Row[] }>(
+    `SELECT p.*, ${PICKED_CATEGORY_COLUMNS}
+       FROM products p
+       LEFT JOIN product_categories c ON c.id = p.category_id
+      WHERE p.tenant_id = ?
+        AND p.category_id = ?
+        AND (
+          (p.is_active AND p.deleted_at IS NULL AND (
+            ? = ''
+            OR p.name ILIKE ? ESCAPE '\\'
+            OR EXISTS (
+              SELECT 1 FROM product_variants v
+               WHERE v.product_id = p.id AND v.is_active AND v.code ILIKE ? ESCAPE '\\'
+            )
+          ))
+          OR (? AND p.id = ANY(?))
+        )
+      ORDER BY p.sort_order ASC NULLS LAST, lower(p.name) ASC, p.id ASC
+      LIMIT ?`,
+    [
+      tenantId,
+      categoryId,
+      term,
+      likeContains(term),
+      likePrefix(term),
+      options.include.length > 0,
+      options.include,
+      fetch,
+    ],
+  );
+
+  return { rows: rows.slice(0, options.limit), truncated: rows.length > options.limit };
+}
+
+/**
+ * Categories — the owner's Products — for the product bar
+ * (`docs/catalogue/CATALOGUE_MODEL.md` §5): the code from its start, the
+ * name or the brand anywhere in it. A code typed in full comes first; the
+ * rest keep catalogue order rather than a relevance order, and an empty term
+ * lists them all — the bar is a menu as much as a search.
+ *
+ * Only live categories holding a live sub product are offered (the v1.1.0
+ * rule): an empty one is a dead end the counter cannot add anything from. An
  * `include`d id comes back regardless, so a chosen chip never vanishes.
  */
 export async function pickCategories(
@@ -279,14 +333,20 @@ export async function pickCategories(
   const fetch = options.limit + 1;
   const hasInclude = options.include.length > 0;
 
+  // Nothing typed is no code at all: without the `<> ''` guard every category
+  // with no code would "match" it exactly and lead the idle list.
   const { rows } = await runner.raw<{ rows: Row[] }>(
     `SELECT c.*,
-            COALESCE(c.name ILIKE ? ESCAPE '\\', false) AS exact_prefix
+            (? <> '' AND lower(coalesce(c.code, '')) = lower(?)) AS exact_code
        FROM product_categories c
       WHERE c.tenant_id = ?
         AND (
           (
-            (? = '' OR c.name ILIKE ? ESCAPE '\\')
+            c.deleted_at IS NULL
+            AND (? = ''
+              OR c.code ILIKE ? ESCAPE '\\'
+              OR c.name ILIKE ? ESCAPE '\\'
+              OR c.brand ILIKE ? ESCAPE '\\')
             AND EXISTS (
               SELECT 1 FROM products p
                WHERE p.tenant_id = c.tenant_id
@@ -297,9 +357,9 @@ export async function pickCategories(
           )
           OR (? AND c.id = ANY(?))
         )
-      ORDER BY exact_prefix DESC, c.name ASC
+      ORDER BY exact_code DESC, c.sort_order ASC NULLS LAST, lower(c.name) ASC, c.id ASC
       LIMIT ?`,
-    [pattern, tenantId, term, contains, hasInclude, options.include, fetch],
+    [term, term, tenantId, term, pattern, contains, contains, hasInclude, options.include, fetch],
   );
 
   return { rows: rows.slice(0, options.limit), truncated: rows.length > options.limit };

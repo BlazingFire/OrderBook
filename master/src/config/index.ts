@@ -116,6 +116,14 @@ export const config = {
     fontsDir: path.join(packageRoot, 'assets', 'fonts'),
   },
 
+  /**
+   * The catalogue the loader reads (`docs/catalogue/CATALOGUE_MODEL.md` §4) —
+   * Markdown, parsed by `domain/catalogue-markdown.ts`. Shipped under
+   * `assets/` with the Master, like the fonts, so Settings → Developer → Load
+   * catalogue works on an installed copy that has no repository beside it.
+   */
+  catalogueFile: path.join(packageRoot, 'assets', 'catalogue', 'swisware-plus-2026.md'),
+
   session: {
     cookieName: 'orderbook_session',
     /** Sessions live in memory; restarting the Master signs admins out. */

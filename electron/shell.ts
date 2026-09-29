@@ -45,6 +45,7 @@ import {
 } from './lib/appimage.js';
 import { interpretHealth, type HealthOutcome } from './lib/health.js';
 import { approveInstaller, updateMethod } from './lib/installer.js';
+import { isLeadPdfUrl } from './lib/lead-pdf.js';
 import { openLogFile, type LogFile } from './lib/log-file.js';
 import {
   readDataDirOverride,
@@ -378,6 +379,9 @@ export function runPanelShell(config: PanelShellConfig): void {
   /** Same-origin, and not `startsWith` — that accepts `localhost:4100.evil`. */
   const sameOrigin = (url: string): boolean => url === ORIGIN || url.startsWith(`${ORIGIN}/`);
 
+  /** A lead's PDF on this panel — the one URL it may open a window of its own for. */
+  const isLeadPdf = (url: string): boolean => isLeadPdfUrl(ORIGIN, url);
+
   async function waitForServerThenShow(): Promise<void> {
     const outcome = await waitForServer((step) => void showSplash(step));
 
@@ -425,11 +429,41 @@ export function runPanelShell(config: PanelShellConfig): void {
     const window = mainWindow;
 
     window.webContents.setWindowOpenHandler(({ url }) => {
-      // Anything that is not this panel opens in the real browser, never in
-      // here — a window with no address bar is no place to land on an
+      // A lead's Preview PDF opens beside the panel, in Chromium's own viewer:
+      // loaded over the app window it would leave the panel with no way back.
+      // No preload and no Node — the window shows bytes this panel served and
+      // is given nothing to reach the shell with. `plugins` is the viewer.
+      if (isLeadPdf(url)) {
+        return {
+          action: 'allow',
+          overrideBrowserWindowOptions: {
+            width: 960,
+            height: 900,
+            autoHideMenuBar: true,
+            backgroundColor: '#FFFFFF',
+            webPreferences: {
+              contextIsolation: true,
+              nodeIntegration: false,
+              sandbox: true,
+              plugins: true,
+              spellcheck: false,
+              webviewTag: false,
+              devTools: !app.isPackaged,
+            },
+          },
+        };
+      }
+      // Anything else that is not this panel opens in the real browser, never
+      // in here — a window with no address bar is no place to land on an
       // unexpected page.
       if (!sameOrigin(url)) void electronShell.openExternal(url);
       return { action: 'deny' };
+    });
+
+    // The PDF window stays a PDF window: it opens nothing and goes nowhere.
+    window.webContents.on('did-create-window', (child) => {
+      child.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+      child.webContents.on('will-navigate', (event) => event.preventDefault());
     });
 
     window.webContents.on('will-navigate', (event, url) => {

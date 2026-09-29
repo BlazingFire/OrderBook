@@ -56,10 +56,10 @@ immediately, given a temporary ID, and pushed to the Master when the link return
 |---|---|---|
 | `partyId` | **Required** | Picked from the Party list — the customer |
 | `ownerId` | **Required** | Defaults to the creating user; reassignment needs `record.reassignOwner` |
-| `sourcePlatform` | Configurable option list | WhatsApp / call / website / walk-in — company-defined rows in `option_lists`, not a hardcoded enum |
+| `sourcePlatform` | Configurable option list | WhatsApp / call / website / walk-in — company-defined rows in `option_lists`, not a hardcoded enum. The form offers the **active** `lead.sourcePlatform` values only; its free-text "Other" path was removed with catalogue v2, and the Master refuses a source that is not on the list. The list is managed from Settings → Leads on either panel (the same editor and permissions as the Master's Fields → Values) |
 | `stageId` | Auto-set | The lead pipeline's first configured stage (also the first Kanban column) |
 | `lineItems[]` | **Required** — at least one | See §3.2 |
-| `followUpDate` | Optional | Drives the reminder surfaced in the panel |
+| `followUpDate` | Optional | Drives the reminder surfaced in the panel. The form starts it at today + `leads.followUpDefaultDays` (**3** unless the company changed it; 0 means today), re-seeds it when the setting changes and after a save, and keeps the quick chips beside it |
 | `partyWiseMode` | Optional toggle | Pulls that party's saved product records (their own name/alias/size for a model, and a packaging suggestion) instead of catalogue defaults |
 | `notes` | Optional | Free text |
 | `timeline[]` | Auto-generated | Stage changes log themselves; users may add remarks |
@@ -75,6 +75,12 @@ variant*, where every variant owns the code, the colour or pattern text and the 
 with no colour choices has exactly one, unlabelled variant. White ×5 and Blue ×10 of the same
 model are therefore two lines, each with its own code, weight and total.
 
+Since catalogue v2 (2026-09-29, `docs/catalogue/CATALOGUE_MODEL.md`) the screens use the owner's
+words: a **Product** is a category (`OPT · One Piece Toilet · Swisware+`) and a **Sub product** is
+a model with exactly one variant (`102 (9")`, `1111`, `MAGENTA`). A sub product's colour rule is
+derived (`colourRuleOf`): **fixed** (its one variant's label is the colour), **dedicated** (no
+colour at all) or **selectable** (a multi-colour model: any colour of the colour range).
+
 Picking a variant snapshots these onto the line **at that moment**:
 
 | Field | Source |
@@ -82,24 +88,43 @@ Picking a variant snapshots these onto the line **at that moment**:
 | `productId`, `variantId` | Selected model and variant — kept live for stock movement and traceability; the variant must belong to the product and still be active (`validation.lead.variantMissing`) |
 | `code`, `variantLabel`, `weightKg` | Copied from the **variant** — a party's record never changes what a basin weighs |
 | `productName`, `alias`, `size` | Copied from the product, or from the party's record when `partyWiseMode` is on |
-| `colour` | **Chosen manually**, from the company's colour list, and only on a model with `multiColour` on (`validation.lead.colourUnexpected` otherwise). Blank means the variant's own colour |
+| `categoryName`, `categoryCode`, `brandName` | Copied from the product's category (the owner's Product) — its name, code and brand — unless the panel sent them with the line, as its catalogue had them (`categoryCode` and `brandName` since 2026-09-29) |
+| `colour` | **Chosen manually**, from the company's colour list, and only on a `selectable` (multi-colour) sub product; several colours are several lines, one per colour with its own quantity. Sent for any other product it is **dropped** (`colour = null`), not refused — a queued offline lead must not bounce on it (until catalogue v2 it was refused with `validation.lead.colourUnexpected`). Blank means the variant's own colour |
 | `quantity` | **Required**, greater than zero (`validation.lead.quantityRequired`) |
-| `packaging` | **Chosen manually** — never auto-filled, even in `partyWiseMode` |
+| `packaging` | **Chosen manually** — never auto-filled, even in `partyWiseMode`. The form shows the field only while the company requires packaging on convert (`leads.packagingRequiredOnConvert`, **off** unless switched on) |
 | `grade` | **Chosen manually**, from the company's `line.grade` list. Allowed on any product — a grade says what this line was sold as, not what the article is. Blank is a legal answer |
 | `sequence` | Display order, auto-assigned |
 | `fromPartyVariant` | Auto-set `true` when the values came from a party variant |
 | `imagePath`, `notes` | Optional |
 
-**How a line is found, on the screen:** the search box offers **categories only** first — typing
-"toilet" shows *ONE PIECE TOILET* and never a product. The chosen category becomes a chip and the
-same box then searches the models inside it, by name or by any of their codes. Picking a model
-opens a card with one row per variant (code and weight already filled, a quantity to type);
-adding the card adds one line per row with a quantity. The card decides packaging and *Grade* for
-everything it adds — Grade a pick over the `line.grade` list, blank by default — and on a model
-made in every colour it also offers a *Colour* select over the colour list; one colour per card,
-copied onto every line it adds, and the same model in a second colour is the card added again.
-The category chip stays for the next product; Backspace on an empty box, or the chip's ✕, goes
-back to choosing a category.
+**How a lead is entered, on the screen** (the Office's `AddLeadScreen`, catalogue v2; the Master
+still has no New lead page). The keyboard path, in order:
+
+1. **Party** — a typeahead; the list appears only once something is typed.
+2. **Source** — the active `lead.sourcePlatform` values (§3.1). A source the company stops
+   listing while the form is open is dropped for the first listed one, never sent.
+3. **Follow-up** — today + `leads.followUpDefaultDays` (§3.1); the quick chips stay.
+4. **Product bar** — finds a Product (category) by name, code or brand, never a sub product (and
+   only a Product that holds a live sub product). Rows read
+   `CODE · Name · Brand`; an exact code match comes first, then catalogue order. Matched on the
+   panel over every Product, like the sub-product bar, so a code and Enter typed at speed take
+   that code rather than the list from before it.
+5. **Sub-product bar** — lists **every** sub product of the chosen Product in catalogue order
+   (`sort_order`), filtered as you type; a row shows the printed name, the size and, for a
+   colour-named one, a swatch. The pick limit is `PICK_MAX_LIMIT` (1000; it was 50), because
+   the largest SWISWARE product, Table Top Vitrosa Basin, holds 69 and One Piece Toilet 56.
+6. **Colour and quantity**, by the sub product's rule — `fixed`: the colour shown locked and a
+   quantity; `dedicated`: a quantity only; `selectable`: the colour range, several colours each
+   with its own quantity (one line per colour). *Grade* stays an optional pick over `line.grade`,
+   out of the Enter path; packaging shows only when the company requires it.
+7. **Enter** on the last quantity adds the sub product and returns to the sub-product bar.
+   **Shift+Q**, or the **Complete sub product** button, adds a pending valid sub product and
+   moves to the product bar; with nothing pending and an empty sub-product box it just finishes
+   the product. A capital Q still types in any other field, the colour and packaging boxes
+   included.
+8. **Ctrl+Enter** opens a review of the lead once it is ready (the lines of one sub product
+   grouped back into one row); Ctrl+Enter again saves it, once (key repeat is swallowed).
+   Ctrl+S still saves directly. The form resets after a save.
 
 `packaging` and `grade` are pointedly excluded from every auto-fill. A variant whose weight nobody
 has entered yet shows **weight missing** rather than a zero, on the card, on the line and in the
@@ -173,8 +198,30 @@ Trigger: a user holding **`lead.convert`** presses **Convert to Order**.
 - **Handoff to accounting** — the confirmed order leaves for the company's separate accounting
   software. This system does no invoicing, tax or GST.
 
-Printing (PDF Designer) and the `Order.exports[]` log are named in the guide but are **not built**;
-see §11.
+**The lead PDF** (catalogue v2, 2026-09-29) is a fixed-layout document, not a designer:
+`GET /api/leads/:id/pdf` on the Master, behind `leads.export`, forwarded by the Office server while
+the Master is reachable. It is drawn by the report-table renderer (`master/src/pdf/`), extended to
+wrap text cells: the company name, the lead's id and the print date, the party block (name,
+address, phone, GST number), then one row per sub product —
+`# | [Brand] | Main product | Model | Size | Colour | Code | Qty`. What prints where is decided
+in `master/src/domain/lead-pdf.ts`; the headings are English, like the report PDFs.
+
+- The lines of one sub product print as **one row**, their quantities summed.
+- A sub product whose name is not purely numeric prints in **Model**; a purely numeric one
+  (`1111`, `41`) in **Code**, right-aligned. Exactly one of the two is filled
+  (`subProductCells`, `shared/src/domain/colour-rule.ts`). The software code (`OPT-0001`) never
+  prints.
+- **Colour** is empty for a dedicated sub product, the fixed colour unless it only repeats the
+  name, and for a multicolour one its lines grouped as `White ×10, Ivory ×5` (`lineColourText`).
+- Left-aligned cells wrap and grow the row; figures stay on one line.
+- The **Brand** column appears only when the lines span more than one brand. No money anywhere.
+- **Preview PDF** opens it from the Master's Leads list and the Office's lead detail (not for a
+  lead still waiting in the Office outbox — the Master renders the PDF); the Electron shell lets
+  that one same-origin URL, `/api/leads/<id>/pdf`, open a sandboxed PDF window that can neither
+  navigate nor open another.
+
+Templates (the PDF Designer, removed on 2026-09-19) and the `Order.exports[]` log are named in the
+guide but are **not built**; see §11.
 
 ---
 
@@ -216,8 +263,9 @@ numbered first.
 lead raised on a party created offline in the same session — are resolved through it
 (`resolveId`). The outbox sends the party's create ahead of the lead's, so the pair exists by the
 time the lead is applied. Search and the list screens do not consult `id_map`. The pair is kept
-until the business data is wiped (the Master workspace's `wipe:business` and `reload:catalog`
-scripts clear the table). A party-wise record's temporary ID never reaches `id_map`: the Master
+until the business data is wiped (the Master workspace's `wipe:business` and `seed:parties`
+scripts clear the table; since catalogue v2 `reload:catalog` keeps it, along with the parties it
+maps and every id counter). A party-wise record's temporary ID never reaches `id_map`: the Master
 does not map it, since `partyVariant.upsert` is keyed by party and product rather than by the ID.
 
 Tables only the Master writes keep other keys: `tenants` and `office_panels` a UUID, the logs a
@@ -235,7 +283,8 @@ The same shape is reused unchanged on orders.
 
 Frozen the moment the line is added; editing the product or its variant later does not change them.
 
-`productName`, `categoryName`, `alias`, `code`, `variantLabel`, `colour`, `size`, `weightKg`
+`productName`, `categoryName`, `categoryCode`, `brandName`, `alias`, `code`, `variantLabel`,
+`colour`, `size`, `weightKg`
 
 ### 8.2 Other fields
 
@@ -288,7 +337,7 @@ excluded from the vector itself.
  [Office Panel — user with leads.create]
         |
         v
- Pick party (required) -> add line items (product, variant+qty, colour, grade, packaging) -> Save
+ Party -> source -> follow-up -> product bar -> sub-product bar -> colour(s) + qty -> Ctrl+Enter review -> save
         |                                   |
         |                    Saved to the local store instantly
         |                    (temporary ID until the Master applies it)
@@ -305,7 +354,7 @@ excluded from the vector itself.
  +------------------------------------------+
  | New Order:                                |
  |  - line items copied unchanged            |
- |  - stock reserved per (product, colour)   |
+ |  - stock reserved per variant             |
  |  - lead.convertedOrderId / convertedAt set|
  +---------------------+--------------------+
                        |
@@ -331,6 +380,6 @@ excluded from the vector itself.
 | SQLite + FTS5 virtual tables | PostgreSQL `tsvector` + GIN | FTS5 is SQLite-only. Postgres was chosen over SQLite by the owner (`HANDOFF.md` decision 2); the search *design* is ported unchanged (§9) |
 | Electron main process vs renderer | Office Panel **server process** vs browser | Same trust boundary, different runtime — OrderBook is an Express-served web app, not Electron |
 | Offline store implied to be the same SQLite database | Durable file-backed local store (outbox + snapshot overlay) in the Office Panel server | Office PCs are thin clients. Installing and maintaining a second database on every office PC contradicts the project's "operator installs nothing" rule; the outbox provides the same guarantee — a write survives a crash and syncs later |
-| PDF Designer, pixel-identical export, `Order.exports[]` | **Not built** | Out of the lead-generation flow. Named here so it is not mistaken for an oversight |
+| PDF Designer, pixel-identical export, `Order.exports[]` | A **fixed-layout lead PDF** only (§6); no designer, no templates, no export log | The owner asked for the lead PDF back without the Designer (2026-09-28). Named here so the rest is not mistaken for an oversight |
 | Universal search across Products and Parties | Built as part of this work | It did not exist yet |
 | Dashboard and Notifications modules | Follow-up dates are surfaced in the Office Panel; no separate notifications module | Out of scope of the lead flow |

@@ -81,6 +81,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
 
   'fieldSet.lead.sourcePlatform': 'लीड स्रोत',
   'fieldSet.stock.colour': 'रंग',
+  'fieldSet.product.brand': 'ब्रांड',
   'fieldSet.line.packaging': 'पैकेजिंग',
   'fieldSet.line.grade': 'ग्रेड',
 
@@ -160,6 +161,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'error.conflict.alreadySetUp': 'यह मास्टर पैनल पहले ही सेटअप किया जा चुका है',
   'error.conflict.notSetUp': 'यह मास्टर पैनल अभी तक सेटअप नहीं किया गया है',
   'error.conflict.productCodeTaken': 'उत्पाद कोड "{productCode}" पहले से उपयोग में है',
+  'error.conflict.categoryCodeTaken': 'किसी दूसरे उत्पाद का कोड पहले से {code} है',
+  'error.conflict.categoryNameTaken': 'इस ब्रांड में {name} नाम का उत्पाद पहले से है',
   'error.conflict.nameTaken.role': '"{value}" नाम की भूमिका पहले से मौजूद है',
   'error.conflict.nameTaken.username': 'उपयोगकर्ता नाम "{value}" पहले से लिया जा चुका है',
   'error.conflict.staleVersion':
@@ -253,7 +256,14 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.stock.levelNegative': 'स्टॉक स्तर ऋणात्मक नहीं हो सकता',
   'validation.pick.unknownKind': 'यह ऐसी चीज़ नहीं है जिसे यह पैनल खोज सके',
   'validation.product.nameRequired': 'उत्पाद का नाम आवश्यक है',
-  'validation.product.categoryRequired': 'इस उत्पाद के लिए एक श्रेणी चुनें',
+  'validation.product.categoryRequired': 'यह उप-उत्पाद जिस उत्पाद के अंतर्गत है, वह चुनें',
+  'validation.product.categoryCodeUnknown': 'कोड {code} वाला कोई उत्पाद नहीं है',
+  'validation.product.nameTaken': '{category} में {name} नाम का उप-उत्पाद पहले से है',
+  'validation.category.nameRequired': 'उत्पाद का नाम दर्ज करें',
+  'validation.category.codeRequired': 'उत्पाद का कोड दर्ज करें',
+  'validation.category.codeInvalid': 'उत्पाद कोड में केवल अक्षर और अंक होते हैं',
+  'validation.category.sortOrder': 'कैटलॉग क्रम शून्य या उससे बड़ी पूर्ण संख्या होनी चाहिए',
+  'validation.category.brandUnknown': '{brand} ब्रांड सूची में नहीं है',
   'validation.product.variantRequired': 'उत्पाद में कम से कम एक कोड होना चाहिए',
   'validation.product.variantCodeRequired': 'हर वेरिएंट के लिए कोड आवश्यक है',
   'validation.product.variantCodeDuplicate': 'इस उत्पाद के दो वेरिएंट का कोड एक ही है',
@@ -265,7 +275,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.product.restoreCodesTaken':
     'पुनर्स्थापित नहीं किया जा सकता — {codes} अब किसी अन्य उत्पाद में उपयोग हो रहा है',
   'validation.lead.variantMissing': 'चुने गए उत्पाद वेरिएंट में से एक अब मौजूद नहीं है',
-  'validation.lead.colourUnexpected': '{productName} रंगों में नहीं बनता — उस लाइन से रंग हटाएँ',
   'validation.stock.variantRequired': 'चुनें कि यह स्टॉक किस उत्पाद वेरिएंट का है',
   // --- Bulk product import: file-level refusals and per-row issues ----------
   'validation.import.fileRequired': 'कोई CSV या Excel फ़ाइल चुनें',
@@ -391,6 +400,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'activity.connector.deleted': '{actor} ने कनेक्शन {name} हटाया',
   'activity.connector.ran': '{actor} ने कनेक्शन {name} चलाया',
   'activity.catalog.imported': '{actor} ने {fileName} से {count} उत्पाद आयात किए',
+  'activity.catalog.reloaded': '{actor} ने उत्पाद कैटलॉग फिर से लोड किया',
   'activity.office_panel.created': '{actor} ने ऑफ़िस पैनल {name} जोड़ा',
   'activity.office_panel.updated': '{actor} ने ऑफ़िस पैनल {name} को अपडेट किया',
   'activity.lead.created': '{actor} ने यह लीड बनाई',
@@ -408,6 +418,10 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'activity.party.variant_saved': '{actor} ने पार्टी {name} के लिए {product} का पार्टी-वार रिकॉर्ड सहेजा',
   'activity.product.deleted': '{actor} ने उत्पाद {name} हटाया',
   'activity.product.restored': '{actor} ने उत्पाद {name} पुनर्स्थापित किया',
+  'activity.product_category.created': '{actor} ने कैटलॉग में उत्पाद {name} जोड़ा',
+  'activity.product_category.updated': '{actor} ने कैटलॉग में उत्पाद {name} बदला',
+  'activity.product_category.deleted': '{actor} ने कैटलॉग से उत्पाद {name} हटाया',
+  'activity.product_category.restored': '{actor} ने उत्पाद {name} को कैटलॉग में वापस रखा',
   'activity.option_list_item.created': '{actor} ने विकल्प {name} जोड़ा',
   'activity.option_list_item.updated': '{actor} ने विकल्प {name} को अपडेट किया',
   'activity.option_list_item.deleted': '{actor} ने विकल्प {name} हटाया',
@@ -868,33 +882,73 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'catalog.parties.searchLabel': 'Search parties',
   // TODO(i18n-hi)
   'catalog.parties.searchPlaceholder': 'Search name, code, phone…',
-  // TODO(i18n-hi)
-  'catalog.products.column.name': 'Product',
+  'catalog.products.column.name': 'उप-उत्पाद',
   // TODO(i18n-hi)
   'catalog.products.column.size': 'Size',
   'catalog.products.column.colours': 'रंग',
   'product.multiColour.pill': 'कोई भी रंग',
-  'product.multiColour.detailYes': 'हाँ — लीड लाइन पर रंग सूची का कोई भी रंग चुना जा सकता है',
-  'product.multiColour.detailNo': 'नहीं — केवल ऊपर के वेरिएंट',
   // TODO(i18n-hi)
   'catalog.products.created': '{name} saved — syncs when the Master is reachable',
-  // TODO(i18n-hi)
-  'catalog.products.empty.description': 'Products you create appear here, online or off.',
-  // TODO(i18n-hi)
-  'catalog.products.empty.filtered': 'No products match this search.',
-  // TODO(i18n-hi)
-  'catalog.products.empty.title': 'No products yet',
-  // TODO(i18n-hi)
-  'catalog.products.new': 'New product',
-  // TODO(i18n-hi)
-  'catalog.products.searchLabel': 'Search products',
-  // TODO(i18n-hi)
-  'catalog.products.searchPlaceholder': 'Search code, name, alias, category…',
+  'catalog.products.empty.description': 'आपके बनाए उप-उत्पाद यहाँ दिखते हैं, ऑनलाइन हों या ऑफ़लाइन।',
+  'catalog.products.empty.filtered': 'इन फ़िल्टरों से कोई उप-उत्पाद मेल नहीं खाता।',
+  'catalog.products.empty.title': 'अभी कोई उप-उत्पाद नहीं',
+  'catalog.products.new': 'नया उप-उत्पाद',
+  'catalog.products.searchLabel': 'उप-उत्पाद खोजें',
+  'catalog.products.searchPlaceholder': 'उप-उत्पाद, कोड, ब्रांड या उत्पाद खोजें…',
   'catalog.products.import': 'आयात करें',
   'catalog.products.loadMore': 'और दिखाएँ',
   'catalog.products.shown': '{total} में से {shown} दिखाए जा रहे हैं',
   'catalog.products.cachedPage': 'कैश किया पृष्ठ — मास्टर पैनल पहुँच से बाहर है',
   'catalog.products.loadFailed': 'कैटलॉग लोड नहीं हो सका',
+  // --- Catalogue v2 (docs/catalogue/CATALOGUE_MODEL.md): brand, product, sub product ---
+  'catalog.nav.subProducts': 'उप-उत्पाद',
+  'catalog.nav.mainProducts': 'उत्पाद',
+  'catalog.nav.brands': 'ब्रांड',
+  'catalog.products.column.brand': 'ब्रांड',
+  'catalog.products.column.stock': 'स्टॉक',
+  'catalog.products.productFilter': 'उत्पाद से छाँटें',
+  'catalog.products.allProducts': 'सभी उत्पाद',
+  'catalog.colourRule.multicolour': 'बहुरंगी',
+  'catalog.mainProducts.searchLabel': 'उत्पाद खोजें',
+  'catalog.mainProducts.searchPlaceholder': 'कोड, नाम या ब्रांड खोजें…',
+  'catalog.mainProducts.new': 'नया उत्पाद',
+  'catalog.mainProducts.new.title': 'नया उत्पाद',
+  'catalog.mainProducts.edit.title': 'उत्पाद संपादित करें',
+  'catalog.mainProducts.created': '{name} जोड़ा गया',
+  'catalog.mainProducts.updated': '{name} अपडेट किया गया',
+  'catalog.mainProducts.deleted': '{name} रीसायकल बिन में भेजा गया',
+  'catalog.mainProducts.saveFailed': 'उत्पाद सहेजा नहीं जा सका',
+  'catalog.mainProducts.deleteFailed': 'उत्पाद हटाया नहीं जा सका',
+  'catalog.mainProducts.loadFailed': 'उत्पाद लोड नहीं हो सके',
+  'catalog.mainProducts.codeInvalid': 'केवल अक्षरों और अंकों वाला कोड लिखें, जैसे OPT',
+  'catalog.mainProducts.nameRequired': 'उत्पाद का नाम लिखें',
+  'catalog.mainProducts.delete.title': '{name} हटाएँ?',
+  'catalog.mainProducts.delete.body':
+    'यह रीसायकल बिन में जाएगा, जहाँ से इसे वापस लाया जा सकता है। जिस उत्पाद में अभी उप-उत्पाद हैं उसे हटाया नहीं जा सकता — पहले उन्हें दूसरे उत्पाद में ले जाएँ या हटाएँ।',
+  'catalog.mainProducts.field.code': 'कोड',
+  'catalog.mainProducts.field.codeHint':
+    'केवल अक्षर और अंक, जैसे OPT। कर्मचारी नाम की जगह इसे टाइप कर सकते हैं।',
+  'catalog.mainProducts.field.name': 'नाम',
+  'catalog.mainProducts.field.brand': 'ब्रांड',
+  'catalog.mainProducts.field.noBrand': 'कोई ब्रांड नहीं',
+  'catalog.mainProducts.field.sortOrder': 'कैटलॉग क्रम',
+  'catalog.mainProducts.field.sortOrderHint':
+    '1 सबसे पहले आता है। बिना संख्या वाला उत्पाद संख्या वाले उत्पादों के बाद आता है।',
+  'catalog.mainProducts.column.code': 'कोड',
+  'catalog.mainProducts.column.name': 'उत्पाद',
+  'catalog.mainProducts.column.subProducts': 'उप-उत्पाद',
+  'catalog.mainProducts.column.sortOrder': 'क्रम',
+  'catalog.mainProducts.detail.subProducts': 'उप-उत्पाद ({count})',
+  'catalog.mainProducts.detail.none': 'इस उत्पाद में अभी कोई उप-उत्पाद नहीं है।',
+  'catalog.mainProducts.empty.title': 'अभी कोई उत्पाद नहीं',
+  'catalog.mainProducts.empty.description':
+    'एक उत्पाद उप-उत्पादों को एक कोड और ब्रांड के अंतर्गत रखता है — जैसे OPT, वन पीस टॉयलेट।',
+  'catalog.mainProducts.empty.filtered': 'इन फ़िल्टरों से कोई उत्पाद मेल नहीं खाता।',
+  'catalog.brands.noAccess.title': 'ब्रांड आपकी भूमिका में शामिल नहीं हैं',
+  'catalog.brands.noAccess.description': 'किसी प्रशासक से {permission} माँगें।',
+  'product.field.brand': 'ब्रांड',
+  'product.field.brandHint': 'यह उत्पाद से आता है। इसे उत्पाद पृष्ठ पर बदलें।',
+  'product.detail.colour': 'रंग',
   // TODO(i18n-hi)
   'common.no': 'No',
   // TODO(i18n-hi)
@@ -1413,10 +1467,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'inventory.drawer.ledgerTitle': 'Ledger — signed, append-only',
   // TODO(i18n-hi)
   'inventory.drawer.title': '{product} — {variant}',
-  // TODO(i18n-hi)
-  'inventory.empty.description': 'Record stock in, and it will appear here.',
-  // TODO(i18n-hi)
-  'inventory.empty.title': 'No stock yet',
+  'inventory.empty.description':
+    'कैटलॉग का हर उप-उत्पाद यहाँ दिखता है, स्टॉक हो या न हो। फ़िल्टर हटाएँ, या उत्पाद को कैटलॉग में जोड़ें।',
+  'inventory.empty.title': 'दिखाने को कुछ नहीं',
   // TODO(i18n-hi)
   'inventory.error.adjust': 'Could not save the count',
   // TODO(i18n-hi)
@@ -1429,10 +1482,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'inventory.field.note': 'Note',
   // TODO(i18n-hi)
   'inventory.field.notePlaceholder': 'e.g. factory lot A-77, breakage',
-  // TODO(i18n-hi)
-  'inventory.field.product': 'Product',
-  // TODO(i18n-hi)
-  'inventory.field.productPlaceholder': 'Choose a product…',
+  'inventory.field.product': 'उत्पाद',
+  'inventory.field.productPlaceholder': 'उत्पाद चुनें…',
   // TODO(i18n-hi)
   'inventory.filter.all': 'All stock',
   // TODO(i18n-hi)
@@ -1477,8 +1528,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'inventory.physicalCount.titleForLine': 'भौतिक गिनती — {product} ({variant})',
   // TODO(i18n-hi)
   'inventory.reorderLevelLabel': '{product} {variant} का रीऑर्डर स्तर',
-  // TODO(i18n-hi)
-  'inventory.search.placeholder': 'उत्पाद, कोड या रंग खोजें',
+  'inventory.search.placeholder': 'उत्पाद, ब्रांड, कोड या रंग खोजें',
   // TODO(i18n-hi)
   'inventory.section.stockLevels': 'Stock levels',
   // TODO(i18n-hi)
@@ -1528,7 +1578,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.products.remove': 'Remove',
   // TODO(i18n-hi)
-  'lead.add.products.searchLabel': 'उत्पाद खोजें — पहले श्रेणी, फिर मॉडल',
+  'lead.add.products.searchLabel': 'उत्पाद खोजें — पहले उत्पाद, फिर उसका उप-उत्पाद',
   // TODO(i18n-hi)
   'lead.add.products.title': '2. Products',
   // TODO(i18n-hi)
@@ -1658,6 +1708,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.list.pending': 'pending',
   // TODO(i18n-hi)
   'lead.list.synced': 'synced',
+  'lead.previewPdf': 'PDF पूर्वावलोकन',
   // TODO(i18n-hi)
   'leadsOrders.error.convert': 'Could not convert the lead',
   // TODO(i18n-hi)
@@ -2443,14 +2494,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'partyAccess.summary': '{restricted} of {total} parties are restricted.',
   // TODO(i18n-hi)
   'partyAccess.title': 'Party access',
-  // TODO(i18n-hi)
-  'product.createFailed': 'Could not create the product',
-  // TODO(i18n-hi)
-  'product.detail.editAction': 'Edit product',
+  'product.createFailed': 'उप-उत्पाद नहीं बनाया जा सका',
+  'product.detail.editAction': 'उप-उत्पाद संपादित करें',
   // TODO(i18n-hi)
   'product.detail.size': 'Size',
-  // TODO(i18n-hi)
-  'product.edit.title': 'Edit product',
+  'product.edit.title': 'उप-उत्पाद संपादित करें',
   'product.group.identity': 'पहचान',
   'product.field.alias': 'Alias',
   // TODO(i18n-hi)
@@ -2500,18 +2548,14 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'photo.editor.output': 'परिणाम {width} × {height} px',
   'photo.editor.outputSmall':
     'परिणाम {width} × {height} px — इस उत्पाद के लिए संग्रहित {longEdge} px से छोटा, इसलिए सबसे बड़ा आकार पूरा नहीं भरेगा',
-  // TODO(i18n-hi)
-  'product.field.name': 'Product name',
+  'product.field.name': 'उप-उत्पाद का नाम',
   // TODO(i18n-hi)
   'product.field.size': 'Size',
   // TODO(i18n-hi)
   'product.field.weight': 'वज़न (kg)',
-  // TODO(i18n-hi)
-  'product.nameRequired': 'Enter the product name',
-  // TODO(i18n-hi)
-  'product.new.title': 'New product',
-  // TODO(i18n-hi)
-  'product.save': 'Save product',
+  'product.nameRequired': 'उप-उत्पाद का नाम लिखें',
+  'product.new.title': 'नया उप-उत्पाद',
+  'product.save': 'उप-उत्पाद सहेजें',
   // TODO(i18n-hi)
   'product.saveChanges': 'Save changes',
   // TODO(i18n-hi)
@@ -2556,8 +2600,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'recycleBin.entity.order': 'Order',
   // TODO(i18n-hi)
   'recycleBin.entity.party': 'Party',
-  // TODO(i18n-hi)
-  'recycleBin.entity.product': 'Product',
+  'recycleBin.entity.product': 'उप-उत्पाद',
+  'recycleBin.entity.product_category': 'उत्पाद',
   // TODO(i18n-hi)
   'recycleBin.entity.role': 'Role',
   // TODO(i18n-hi)
@@ -2816,6 +2860,10 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'settings.tab.shortcuts': 'Shortcuts',
   // TODO(i18n-hi)
   'settings.tab.company': 'Company',
+  'settings.tab.leads': 'लीड',
+  'settings.leads.sources.title': 'स्रोत',
+  'settings.leads.sources.description':
+    'लीड कहाँ से आ सकती है। नई लीड में सिर्फ़ ये मिलते हैं; किसी को हटाने पर वह पहले से दर्ज लीड पर बना रहता है।',
   // TODO(i18n-hi)
   'settings.tab.connection': 'Connection',
   // TODO(i18n-hi)
@@ -3175,9 +3223,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.draft.editing': 'editing saved product',
   // TODO(i18n-hi)
   'lead.add.draft.colour': 'रंग',
-  'lead.add.draft.colourAsVariant': 'वेरिएंट के अनुसार',
-  'lead.add.draft.colourAsVariantHint': 'हर लाइन अपने वेरिएंट का रंग रखती है। इस मॉडल को दूसरे रंग में लेने के लिए एक चुनें।',
-  'lead.add.draft.colourHint': 'इस कार्ड की हर लाइन पर यह रंग रहेगा।',
   'lead.add.draft.grade': 'ग्रेड',
   'lead.add.draft.gradeNone': 'कोई ग्रेड नहीं',
   'lead.add.draft.gradeHint': 'इस कार्ड की हर लाइन पर यह ग्रेड रहेगा।',
@@ -3216,16 +3261,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.notes.placeholder': 'Anything the next person should know…',
   // TODO(i18n-hi)
   'lead.add.products.col.code': 'कोड',
-  // TODO(i18n-hi)
-  'lead.add.products.col.product': 'Product',
+  'lead.add.products.col.product': 'उप-उत्पाद',
   // TODO(i18n-hi)
   'lead.add.products.overFree': 'over free stock',
   // TODO(i18n-hi)
   'lead.add.progress': '{done} of {total} required steps',
-  // TODO(i18n-hi)
-  'lead.add.source.otherLabel': 'Other source platform',
-  // TODO(i18n-hi)
-  'lead.add.source.otherPlaceholder': 'Which platform? e.g. Instagram, referral, exhibition',
   // TODO(i18n-hi)
   'lead.add.status.draft': 'Save or cancel the open product first',
   // TODO(i18n-hi)
@@ -3257,11 +3297,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.products.clear': 'Clear selection',
   // TODO(i18n-hi)
-  'lead.add.products.pickedHint': 'नीचे कार्ड भरें, फिर उत्पाद जोड़ें। अगले के लिए खोज उसी श्रेणी में वापस आती है।',
+  'lead.add.products.pickedHint': 'आखिरी मात्रा पर Enter से यह उप-उत्पाद जुड़कर सूची पर लौटता है; Shift+Q से जुड़कर अगले उत्पाद पर जाता है।',
   // TODO(i18n-hi)
   'lead.add.products.searchAdds': 'खोज से और जोड़ें',
   // TODO(i18n-hi)
-  'lead.add.products.searchFirst': 'श्रेणी चुनें, फिर मॉडल — कम से कम एक',
+  'lead.add.products.searchFirst': 'उत्पाद चुनें, फिर उप-उत्पाद — कम से कम एक',
   // TODO(i18n-hi)
   'lead.add.saved': 'Lead saved — {id} syncs when the Master is reachable',
   // TODO(i18n-hi)
@@ -3342,17 +3382,24 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'developer.tool.sample.count.deleted': "In the Recycle Bin",
 
   // --- Product model → variant restructure (2026-09): categories, variants, weights ---
-  'lead.add.products.categoryPlaceholder': 'श्रेणी लिखें — जैसे toilet, basin, urinal',
-  'lead.add.products.productPlaceholder': '{category} में खोजें — मॉडल का नाम या कोड',
-  'lead.add.products.changeCategory': 'श्रेणी बदलें',
-  'lead.add.products.categoryHint': 'पहले श्रेणी चुनें; उसके अंदर के मॉडल बाद में आते हैं। खाली बॉक्स पर Backspace से पीछे जाएँ।',
-  'lead.add.products.productHint': 'मॉडल चुनें; उसके वेरिएंट, कोड और वज़न नीचे कार्ड में भर जाते हैं।',
-  'lead.add.products.col.category': 'श्रेणी',
+  'lead.add.products.categoryPlaceholder': 'उत्पाद का नाम या कोड लिखें — जैसे OPT, one piece toilet',
+  'lead.add.products.productPlaceholder': '{category} का उप-उत्पाद — सूची छोटी करने के लिए लिखें, जैसे 41, Magenta',
+  'lead.add.products.changeCategory': 'उत्पाद बदलें',
+  'lead.add.products.categoryHint': 'नाम या कोड से उत्पाद चुनें; उसके उप-उत्पाद उसके बाद आते हैं।',
+  'lead.add.products.productHint': 'उप-उत्पाद चुनें। खाली बॉक्स पर Shift+Q से यह उत्पाद पूरा होता है; Backspace से उत्पाद बार पर वापस जाएँ।',
+  'lead.add.products.col.category': 'उत्पाद',
   'lead.add.products.col.variant': 'वेरिएंट',
   'lead.add.products.col.weight': 'वज़न',
   'lead.add.products.variantCount': '{count} वेरिएंट',
-  'lead.add.products.noCategory': 'कोई श्रेणी नहीं मिली — कैटलॉग पहले श्रेणी से व्यवस्थित है।',
-  'lead.add.products.noProduct': 'इस श्रेणी में कोई मॉडल इससे मेल नहीं खाता।',
+  'lead.add.products.noCategory': 'इस नाम या कोड से कोई उत्पाद नहीं मिला।',
+  'lead.add.products.noProduct': 'इस उत्पाद का कोई उप-उत्पाद इससे मेल नहीं खाता।',
+  'lead.add.flow.completeSubProduct': 'उप-उत्पाद पूरा करें',
+  'lead.add.flow.addColour': 'रंग जोड़ें',
+  'lead.add.flow.addColourPlaceholder': 'रंग लिखें — Enter से जुड़ता है; खाली बॉक्स पर Enter से मात्रा पर जाएँ',
+  'lead.add.draft.hintColour': 'कम से कम एक रंग जोड़ें',
+  'lead.add.draft.removeColour': 'रंग {colour} हटाएँ',
+  'lead.add.review.title': 'लीड जाँचें',
+  'lead.add.review.hint': 'Ctrl+Enter से सहेजें; Esc से फ़ॉर्म पर वापस जाएँ।',
   'lead.add.draft.quantityTitleVariants': 'मात्रा — प्रति वेरिएंट पीस',
   'lead.add.draft.col.lineWeight': 'लाइन वज़न',
   'lead.add.line.qtyShort': '{count} पीस',
@@ -3372,15 +3419,15 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'orders.column.lineWeight': 'लाइन वज़न',
   'orders.detail.linesWithoutWeight': '{count} लाइनों का वज़न अभी नहीं है — गणना में वे शामिल नहीं',
   'orders.detail.linesWithoutWeightOne': '{count} लाइन का वज़न अभी नहीं है — गणना में वह शामिल नहीं',
-  'catalog.products.column.category': 'श्रेणी',
+  'catalog.products.column.category': 'उत्पाद',
   'catalog.products.column.codes': 'कोड',
   'catalog.products.column.weight': 'वज़न',
   'catalog.products.variantCount': '{count} वेरिएंट · {first}…',
   'product.weight.missing': 'वज़न नहीं',
   'product.weight.missingShort': 'नहीं',
   'product.weight.range': '{low} – {high}',
-  'product.field.category': 'श्रेणी',
-  'product.field.categoryHint': 'लीड स्क्रीन इसे यहीं ढूँढती है। नया नाम श्रेणी बना देता है।',
+  'product.field.category': 'उत्पाद',
+  'product.field.categoryHint': 'यह जिस उत्पाद के अंतर्गत आता है। नए उत्पाद उत्पाद पृष्ठ पर जोड़े जाते हैं।',
   'product.field.weightHint': 'प्रति पीस। तौलने तक खाली छोड़ें — यह “नहीं” दिखेगा, शून्य नहीं।',
   'product.group.colours': 'रंग',
   'product.multiColour.label': 'हर रंग में बनता है?',
@@ -3402,42 +3449,50 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'product.variants.add': '+ वेरिएंट जोड़ें',
   'product.variants.remove': 'वेरिएंट {label} हटाएँ',
   'product.variants.weightHint': 'वज़न प्रति पीस है। खाली वज़न दर्ज होने तक हर लीड पर “नहीं” दिखता है।',
-  'product.detail.category': 'श्रेणी',
+  'product.detail.category': 'उत्पाद',
   'product.detail.detailsTitle': 'विवरण',
   'product.detail.photoTitle': 'फ़ोटो',
-  'product.detail.code': 'उत्पाद कोड',
+  'product.detail.code': 'कोड',
   'product.detail.weight': 'वज़न',
   'unit.pieces': 'पीस',
   'unit.line': 'लाइन',
   'unit.lines': 'लाइनें',
 
   // --- Master panel: inventory per variant, catalogue loader ---
-  'inventory.table.variant': 'वेरिएंट',
+  'inventory.table.brand': 'ब्रांड',
+  'inventory.table.subProduct': 'उप-उत्पाद',
+  'inventory.table.size': 'साइज़',
+  'inventory.table.colour': 'रंग',
   'inventory.table.weight': 'वज़न',
   'inventory.table.min': 'न्यूनतम',
   'inventory.table.max': 'अधिकतम',
   'inventory.minLevelLabel': '{product} {variant} का न्यूनतम स्टॉक',
   'inventory.maxLevelLabel': '{product} {variant} का अधिकतम स्टॉक',
   'inventory.piecesFree': '{count} पीस उपलब्ध',
+  'inventory.piecesOnHand': '{count} पीस स्टॉक में',
   'inventory.field.variant': 'वेरिएंट',
   'inventory.field.variantPlaceholder': 'वेरिएंट चुनें…',
   'inventory.field.pieces': 'पीस',
   'inventory.movements.table.variant': 'वेरिएंट',
   'leadsOrders.leads.column.weight': 'वज़न',
   'leadsOrders.linesWithoutWeight': '{count} लाइनों का वज़न अभी नहीं है — आँकड़े में वे शामिल नहीं',
-  'developer.tool.swisware.title': 'Swisware कैटलॉग लोड करें',
-  'developer.tool.swisware.description': 'Swisware मास्टर कैटलॉग की हर श्रेणी, मॉडल और वेरिएंट को उत्पाद मास्टर में लोड करता है — कोड जैसे छपे हैं, वज़न प्रशासक के भरने के लिए खाली। दोबारा दबाना सुरक्षित है: पहले से मौजूद मॉडल छोड़ दिया जाता है।',
+  'developer.tool.swisware.title': 'SWISWARE कैटलॉग लोड करें',
+  'developer.tool.swisware.description': 'मास्टर के साथ आया SWISWARE कैटलॉग लोड करता है: उसका ब्रांड, रंगों की सूची, हर उत्पाद अपने कोड के साथ और हर उप-उत्पाद कैटलॉग के क्रम में — वज़न प्रशासक के भरने के लिए खाली। कुछ भी हटाया नहीं जाता, और दोबारा दबाना सुरक्षित है: अपने उत्पाद में पहले से मौजूद उप-उत्पाद छोड़ दिया जाता है।',
   'developer.tool.swisware.action': 'कैटलॉग लोड करें',
   'developer.tool.swisware.done': 'कैटलॉग लोड हुआ',
   'developer.tool.swisware.loaded': 'कैटलॉग उत्पाद मास्टर में है। वज़न भरने के लिए Office पैनल का कैटलॉग खोलें।',
-  'developer.tool.swisware.alreadyPresent': 'लोड करने को कुछ नहीं — कैटलॉग का हर मॉडल पहले से उत्पाद मास्टर में है।',
-  'developer.tool.swisware.count.categories': 'बनी श्रेणियाँ',
-  'developer.tool.swisware.count.products': 'बने मॉडल',
-  'developer.tool.swisware.count.variants': 'बने वेरिएंट',
-  'developer.tool.swisware.count.skipped': 'पहले से मौजूद मॉडल, अछूते',
+  'developer.tool.swisware.alreadyPresent': 'लोड करने को कुछ नहीं — कैटलॉग का हर उप-उत्पाद पहले से उत्पाद मास्टर में है।',
+  'developer.tool.swisware.count.products': 'बने उत्पाद',
+  'developer.tool.swisware.count.subProducts': 'बने उप-उत्पाद',
+  'developer.tool.swisware.count.colours': 'जोड़े गए रंग',
+  'developer.tool.swisware.count.skipped': 'पहले से मौजूद उप-उत्पाद, अछूते',
   'lead.add.draft.col.qty': 'मात्रा',
   'lead.add.draft.col.free': 'उपलब्ध',
-  'inventory.field.productSearchPlaceholder': 'उत्पाद खोजने के लिए नाम या कोड लिखें',
+  'inventory.field.subProduct': 'उप-उत्पाद',
+  'inventory.field.subProductPlaceholder': 'उप-उत्पाद चुनें…',
+  'inventory.field.colour': 'रंग',
+  'inventory.filter.product': 'उत्पाद फ़िल्टर',
+  'inventory.filter.allProducts': 'सभी उत्पाद',
 
   // --- Carried over from the v1.1.0 line (sub-pages, free-to-sell) ---
   'nav.fold': 'उप-पृष्ठ छिपाएँ',
@@ -3533,10 +3588,10 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
     'सुधार उस आँकड़े को बदल देता है जिसे दोबारा निकाला नहीं जा सकता। यह चालू होने पर सुधार करने वाले को कारण लिखना होगा। जो गिनती पहले से मेल खाती है उसकी पुष्टि करने पर कुछ दर्ज नहीं होता, इसलिए उसके लिए कारण नहीं चाहिए।',
   'setting.leads.followUpDefaultDays.label': 'नई लीड पर इतने दिन बाद संपर्क करें',
   'setting.leads.followUpDefaultDays.help':
-    'नई लीड इसी फ़ॉलो-अप तारीख़ के साथ शुरू होती है। 0 का अर्थ है आज। पूछताछ लेने वाला इसे बदल सकता है, और कल / 3 दिन में / अगले हफ़्ते वाले बटन पहले जैसे ही रहते हैं।',
+    'नई लीड आज से इतने दिन बाद की फ़ॉलो-अप तारीख़ के साथ शुरू होती है। जब तक आप इसे न बदलें यह 3 है; 0 का अर्थ है आज। पूछताछ लेने वाला इसे बदल सकता है, और कल / 3 दिन में / अगले हफ़्ते वाले बटन पहले जैसे ही रहते हैं।',
   'setting.leads.packagingRequiredOnConvert.label': 'लीड को ऑर्डर बनाने से पहले पैकेजिंग अनिवार्य है',
   'setting.leads.packagingRequiredOnConvert.help':
-    'बंद रहने पर जिस लीड की पंक्तियों में पैकेजिंग नहीं है वह भी ऑर्डर बन सकती है। पहले से भरी हुई पैकेजिंग दोनों स्थितियों में सुरक्षित रहती है।',
+    'डिफ़ॉल्ट रूप से बंद: लीड दर्ज करते समय पैकेजिंग नहीं पूछी जाती, और जिस लीड की पंक्तियों में पैकेजिंग नहीं है वह भी ऑर्डर बन सकती है। चालू होने पर लीड दर्ज करते समय हर पंक्ति के लिए पैकेजिंग पूछी जाती है और उसके बिना लीड को ऑर्डर नहीं बनाया जा सकता। पहले से भरी हुई पैकेजिंग दोनों स्थितियों में सुरक्षित रहती है।',
   'setting.leads.quietAfterDays.label': 'लीड इतने दिन बाद शांत मानी जाएगी',
   'setting.leads.quietAfterDays.help': 'लीड आउटकम रिपोर्ट किसी लीड को कितने दिन तक बिना छेड़े खुला गिनती रहे।',
   'error.unauthorized.developerDisabled': 'इस PC के लिए डेवलपर मोड बंद है। एक प्रशासक इसे सेटिंग्स → कौन अंदर आ सकता है में चालू कर सकता है।',

@@ -14,11 +14,12 @@
  */
 
 import { useState } from 'react';
-import { resolveCompanyFeatures } from '@orderbook/shared';
+import { resolveCompanyFeatures, shownColour } from '@orderbook/shared';
 import type { Lead, PartyScopeFilter, SyncSnapshot } from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
 import {
+  ButtonLink,
   ColourChip,
   DataTable,
   EditorScreen,
@@ -47,6 +48,8 @@ interface Props {
   openId: string | null;
   onOpenId: (id: string | null) => void;
   canConvert: boolean;
+  /** `leads.export` — the open lead's header offers Preview PDF. */
+  canPreviewPdf: boolean;
   onError: (message: string) => void;
   onAddLead?: () => void;
 }
@@ -57,13 +60,16 @@ function leadPieces(lead: Lead): number {
   return lead.items.reduce((sum, item) => sum + item.quantity, 0);
 }
 
-/** The colours on the lead's lines — a pattern or a one-form product has none to show. */
-/** The colours on the card: the variant's own, or the colour chosen on a multi-colour line. */
+/**
+ * The colours on the card: the colour chosen on a multi-colour line, or the
+ * variant's own — less one that only repeats the name, `MAGENTA` in Magenta
+ * (CATALOGUE_MODEL §2). A dedicated sub product has none to show.
+ */
 function leadColours(lead: Lead): string[] {
   return Array.from(
     new Set(
       lead.items
-        .map((item) => item.colour ?? item.variantLabel)
+        .map((item) => item.colour ?? shownColour(item.variantLabel, item.productName))
         .filter((label): label is string => label !== null),
     ),
   );
@@ -93,7 +99,15 @@ function onMyParties<T extends { partyId: string }>(
   return rows.filter((row) => mine.has(row.partyId));
 }
 
-export function LeadBoardScreen({ view, openId, onOpenId, canConvert, onError, onAddLead }: Props) {
+export function LeadBoardScreen({
+  view,
+  openId,
+  onOpenId,
+  canConvert,
+  canPreviewPdf,
+  onError,
+  onAddLead,
+}: Props) {
   const [tab, setTab] = useState<BoardTab>('list');
   const [stageFilter, setStageFilter] = useState<string | null>(null);
   const [scope, setScope] = useState<PartyScopeFilter>('all');
@@ -182,6 +196,20 @@ export function LeadBoardScreen({ view, openId, onOpenId, canConvert, onError, o
             )}
             <span className="ob-mono ob-small">{openLead.id}</span>
           </>
+        }
+        actions={
+          // The Master renders the PDF, so a lead it has not received yet has
+          // none to show. Opens beside the app (CATALOGUE_MODEL §8).
+          canPreviewPdf && openLead.sync.hlc ? (
+            <ButtonLink
+              href={`/api/leads/${encodeURIComponent(openLead.id)}/pdf`}
+              target="_blank"
+              variant="secondary"
+              size="sm"
+            >
+              {t('lead.previewPdf')}
+            </ButtonLink>
+          ) : undefined
         }
         onBack={() => {
           onOpenId(null);

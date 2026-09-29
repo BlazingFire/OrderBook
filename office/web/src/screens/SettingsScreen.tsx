@@ -14,21 +14,33 @@
  * way to reach this panel's reset. That tab is shown to everybody signed in:
  * the developer password is the door, not a permission
  * (`shared/src/domain/developer.ts`).
+ *
+ * The Leads tab is the one place this panel edits company-wide values: the
+ * lead sources and the follow-up default (docs/catalogue/CATALOGUE_MODEL.md
+ * §5). Both are forwarded to the Master, which checks the permission again —
+ * so, like the rest of the forwarded writes, they need the Master reachable.
  */
 
-import { DEVELOPER_RESET_CONFIRMATION } from '@orderbook/shared';
+import { useState } from 'react';
+import { DEVELOPER_RESET_CONFIRMATION, SETTINGS } from '@orderbook/shared';
 
 import type { ConnectionInfo, PanelSession } from '../api';
 import { api, desktopBridge } from '../api';
+import { optionListTransport } from '../optionListTransport';
 import { StorageBackupActions } from '../components/StorageBackup';
 import { StoragePathCard } from '../components/StoragePathCard';
 import {
   AppearanceSettings,
   DeveloperPanel,
+  FieldError,
   KeyValueList,
+  NumberSetting,
+  OptionListEditor,
+  SettingRow,
   SettingsPage,
   SettingsSection,
   ShortcutSettings,
+  apiErrorText,
   formatDateTime,
   t,
   useDeveloperSession,
@@ -45,6 +57,15 @@ interface Props {
   /** Which tab is showing — remembered by the shell, chosen here or from the sidebar. */
   tab: string;
   onTabChange: (tab: string) => void;
+  /**
+   * The company's follow-up default, resolved from the synced view's features;
+   * null before the first sync, when there is no company value to show yet.
+   * A save here is not echoed locally: the setting change forces a snapshot,
+   * and the new value arrives through this prop like anybody else's.
+   */
+  followUpDays: number | null;
+  /** Moves whenever the synced option lists do; the sources list reloads on it. */
+  sourcesRevision: number;
 }
 
 const CONNECTION_STATE_KEY: Record<ConnectionInfo['state'], string> = {
@@ -57,6 +78,7 @@ const CONNECTION_STATE_KEY: Record<ConnectionInfo['state'], string> = {
 export const SETTINGS_TAB_IDS = [
   'appearance',
   'shortcuts',
+  'leads',
   'machine',
   'storage',
   'developer',
@@ -69,8 +91,9 @@ export function SettingsScreen({
   openConflicts,
   tab,
   onTabChange,
+  followUpDays,
+  sourcesRevision,
 }: Props) {
-
   const machineItems = [
     { label: t('settings.machine.panel'), value: connection.panelName },
     { label: t('settings.machine.company'), value: connection.companyName ?? '—' },
@@ -121,6 +144,36 @@ export function SettingsScreen({
       ),
     },
     {
+      id: 'leads',
+      label: t('settings.tab.leads'),
+      render: () => (
+        <>
+          {/* The same option list, and the same permissions, as the Master's
+              Fields → Values. */}
+          {session.permissions.includes('fields.view') && (
+            <SettingsSection
+              title={t('settings.leads.sources.title')}
+              description={t('settings.leads.sources.description')}
+            >
+              <OptionListEditor
+                listKey="lead.sourcePlatform"
+                canManage={session.permissions.includes('fields.manage')}
+                transport={optionListTransport}
+                revision={sourcesRevision}
+                compact
+              />
+            </SettingsSection>
+          )}
+          <SettingsSection title={t('settingGroup.leads')}>
+            <FollowUpDefault
+              days={followUpDays}
+              canManage={session.permissions.includes('settings.manage')}
+            />
+          </SettingsSection>
+        </>
+      ),
+    },
+    {
       id: 'machine',
       label: t('settings.tab.machine'),
       render: () => (
@@ -165,6 +218,52 @@ export function SettingsScreen({
       activeId={tab}
       onChange={onTabChange}
     />
+  );
+}
+
+/**
+ * `leads.followUpDefaultDays` — the one company setting this panel may write.
+ *
+ * Saved through `PUT /api/settings/:key`, which the Master accepts from a panel
+ * for this key alone and still checks `settings.manage` on. Without that
+ * permission the value is shown, not offered: a greyed box on a permission the
+ * reader's role cannot gain here would be a permanent tease.
+ */
+function FollowUpDefault({ days, canManage }: { days: number | null; canManage: boolean }) {
+  const definition = SETTINGS['leads.followUpDefaultDays'];
+  const label = t(definition.labelToken);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save(next: number | null): Promise<void> {
+    setSaving(true);
+    setError(null);
+    try {
+      await api.saveSetting('leads.followUpDefaultDays', next);
+    } catch (caught) {
+      setError(apiErrorText(caught, 'settings.company.saveFailed'));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <SettingRow label={label} hint={t(definition.descriptionToken)}>
+      {canManage ? (
+        <NumberSetting
+          control={definition.control}
+          value={days}
+          label={label}
+          saving={saving}
+          onSave={save}
+        />
+      ) : (
+        <span className="ob-body">
+          {days === null ? '—' : `${days} ${t(definition.control.unitToken)}`}
+        </span>
+      )}
+      {error && <FieldError>{error}</FieldError>}
+    </SettingRow>
   );
 }
 

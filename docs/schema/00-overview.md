@@ -9,7 +9,11 @@ migration has run — checked on 2026-09-24 by running all 30 migrations
 (`master/src/db/migrations/index.ts`, in registry order) against an empty
 PostgreSQL 16 database and reading `pg_dump --schema-only`. The DDL blocks are that
 shape written out by hand, with the real constraint and index names where they
-matter; they are a description, not a script. **The migrations are the record of
+matter; they are a description, not a script. Catalogue v2 (2026-09-29) added two
+more, 32 in all: a no-op stub and `20260326000000_catalogue_brands_and_codes_port`,
+whose columns and indexes are written into `02` and `03` from the migration and its
+integration test (`master/tests/migration-catalogue-port.integration.test.ts`), not from
+a fresh `pg_dump`. **The migrations are the record of
 every step**; where a table changed, each file says briefly what it used to be and
 which migration changed it. `docs/STRUCTURE.md` §6 carries the same facts as tables
 (counts, the migration list, what each migration leaves behind).

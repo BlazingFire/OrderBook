@@ -397,11 +397,40 @@ export interface Party {
   sync: SyncMeta;
 }
 
+/**
+ * A Product in the owner's words (`docs/catalogue/CATALOGUE_MODEL.md` §1) —
+ * "OPT — One Piece Toilet" — and a category in the code's. Its sub products
+ * are the `Product` rows (models) inside it.
+ */
 export interface ProductCategory {
   id: RecordId;
   tenantId: Uuid;
   name: string;
+  /**
+   * The software code staff can type instead of the name (`OPT`). Letters and
+   * digits (`CATEGORY_CODE_PATTERN`), unique among live rows per tenant. Null
+   * on a category from before catalogue v2.
+   */
+  code: string | null;
+  /**
+   * The `product.brand` option value it is sold under. Brand lives here and
+   * only here: a sub product reads it through its category.
+   */
+  brand: string | null;
+  /** Catalogue order; null sorts last, then by name. */
+  sortOrder: number | null;
   createdAt: IsoTimestamp;
+  updatedAt: IsoTimestamp;
+  /** Set while it sits in the Recycle Bin; lists and picks never return such a row. */
+  deletedAt: IsoTimestamp | null;
+}
+
+/**
+ * A category as the Products list shows it: with how many live sub products
+ * sit under it, which is also what decides whether its delete is refused.
+ */
+export interface ProductCategoryListRow extends ProductCategory {
+  subProductCount: number;
 }
 
 /**
@@ -442,6 +471,12 @@ export interface Product {
   /** Every product belongs to a category; the category-first search depends on it. */
   categoryId: RecordId;
   categoryName: string;
+  /** The category's code (`OPT`), joined for display — read-only here, never written through a product. */
+  categoryCode: string | null;
+  /** The category's brand, joined the same way: brand is not a product column. */
+  brand: string | null;
+  /** Catalogue order inside its category; null sorts last. */
+  sortOrder: number | null;
   size: string | null;
   /**
    * True when the administrator said the model comes in colours or patterns.
@@ -596,6 +631,10 @@ export interface LineItem {
   productName: string;
   /** The main product (category) the line was entered under — snapshot like `productName`. */
   categoryName: string | null;
+  /** That category's code (`OPT`) on the day — a snapshot, like `categoryName`. */
+  categoryCode: string | null;
+  /** The brand the line was sold under on the day; the lead PDF shows it when lines span two. */
+  brandName: string | null;
   alias: string | null;
   /** The variant's code as it was when the line was added. */
   code: string | null;
@@ -604,6 +643,8 @@ export interface LineItem {
   /**
    * The colour chosen on the line, from the company's colour list — only on a
    * `multiColour` product, and null when the variant's own colour was meant.
+   * Several colours of one sub product are several lines on the same variant,
+   * one per colour, each with its own quantity.
    */
   colour: string | null;
   size: string | null;
@@ -770,7 +811,18 @@ export interface StockReservation {
 export interface InventoryStockLevel {
   productId: RecordId;
   productName: string;
+  /** The category (the owner's Product) — for the Product column and its filter. */
+  categoryId: RecordId;
   categoryName: string | null;
+  /** The category's code (`OPT`), for the Product column's `code · name`. */
+  categoryCode: string | null;
+  /** The category's brand, for the Brand column and the brand filter. */
+  brand: string | null;
+  /**
+   * The product's `multiColour`: its one stock row stands for every colour, so
+   * the Colour cell stays blank rather than naming one.
+   */
+  multiColour: boolean;
   size: string | null;
   variantId: RecordId;
   /** The variant's own code — the number somebody types at the counter. */

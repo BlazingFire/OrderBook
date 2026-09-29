@@ -384,6 +384,8 @@ function provisionalLine(
     variantId: String(item.variantId ?? ''),
     productName: String(item.productName ?? partyRecord?.productName ?? product?.name ?? ''),
     categoryName: (item.categoryName as string | null) ?? product?.categoryName ?? null,
+    categoryCode: (item.categoryCode as string | null) ?? product?.categoryCode ?? null,
+    brandName: (item.brandName as string | null) ?? product?.brand ?? null,
     alias: (item.alias as string | null) ?? partyRecord?.alias ?? product?.alias ?? null,
     code: (item.code as string | null) ?? variant?.code ?? null,
     variantLabel: (item.variantLabel as string | null) ?? variant?.label ?? null,
@@ -443,6 +445,11 @@ function provisionalProduct(mutation: Mutation): Product {
     alias: payload.alias ?? null,
     categoryId: String(payload.categoryId ?? ''),
     categoryName: String(payload.categoryName ?? ''),
+    // Read through the category on the Master; a provisional row only knows
+    // what its payload said.
+    categoryCode: payload.categoryCode ?? null,
+    brand: payload.categoryBrand ?? null,
+    sortOrder: payload.sortOrder ?? null,
     size: payload.size ?? null,
     hasVariants: Boolean(payload.hasVariants),
     // The Master mints the variant ids; until it answers, these rows carry

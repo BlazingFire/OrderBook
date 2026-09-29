@@ -133,7 +133,8 @@ const SCREEN_ENTITIES: Record<string, readonly string[]> = {
   records: ['lead', 'order', 'party', 'product', 'catalog', 'stock', 'reservation'],
   /** Leads & orders' stage picker, apart from `records` so a lead edit does not re-read it. */
   stages: ['pipeline'],
-  inventory: ['stock', 'product', 'catalog', 'reservation'],
+  /** `product_category` and `option_list` feed its Product filter and brand chips. */
+  inventory: ['stock', 'product', 'catalog', 'reservation', 'product_category', 'option_list'],
   reports: ['lead', 'order', 'party', 'stock'],
   fields: ['option_list', 'custom_field', 'pipeline'],
   access: ['user', 'role'],
@@ -141,6 +142,9 @@ const SCREEN_ENTITIES: Record<string, readonly string[]> = {
   parties: ['party'],
   recycleBin: ['lead', 'order', 'party', 'product', 'role', 'user', 'option_list', 'custom_field'],
   conflicts: ['sync_conflict'],
+  /** Settings' company rows, and apart from them the lead sources on its Leads tab. */
+  settings: ['setting'],
+  leadSources: ['option_list'],
 };
 
 /** One number that moves when any of the named entities does. */
@@ -1020,6 +1024,8 @@ function MasterPanel() {
           onTabChange={setSettingsTab}
           onSaved={refreshUser}
           permissions={user.permissions}
+          settingsRevision={revisionOf(revisions, 'settings')}
+          sourcesRevision={revisionOf(revisions, 'leadSources')}
         />
       ),
     },

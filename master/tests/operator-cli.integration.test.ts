@@ -15,6 +15,11 @@
  * say so. And it once kept the connectors' links while restarting the id
  * counters those links name records by, so a link came to point at whatever
  * record took its old id.
+ *
+ * Since catalogue v2 (`docs/catalogue/CATALOGUE_MODEL.md` §4) `reload:catalog`
+ * is not a wipe: it replaces the catalogue and keeps parties and the log, and
+ * it refuses while anything else — this test's own pool included — is
+ * connected. `seed:demo-parties` adds dealers and wipes nothing.
  */
 
 import { spawn } from 'node:child_process';
@@ -33,10 +38,9 @@ import {
   testActor,
   testTenantId,
 } from './helpers/fixtures.js';
-import { db } from '../src/db/knex.js';
+import { closeDatabase, db, initDatabase } from '../src/db/knex.js';
 import { formatMigrationStatus, type MigrationList } from '../src/db/migration-status.js';
 import { migrations, RegistryMigrationSource, type Migration } from '../src/db/migrations/index.js';
-import { catalogueTotals } from '../src/domain/swisware-catalogue.js';
 import { verifyChain } from '../src/repositories/activity-log.repository.js';
 import * as connectorRepo from '../src/repositories/connector.repository.js';
 import * as catalog from '../src/services/catalog.service.js';
@@ -123,7 +127,7 @@ describe.skipIf(!canRunIntegrationTests)('the operator CLIs (integration)', () =
     }, 60_000);
   });
 
-  describe('reload:catalog', () => {
+  describe('wipe:business', () => {
     let before: Record<string, number>;
     let run: { code: number | null; output: string };
     let linkedProductId = '';
@@ -183,7 +187,7 @@ describe.skipIf(!canRunIntegrationTests)('the operator CLIs (integration)', () =
       };
       expect(before.activity).toBeGreaterThan(0);
 
-      run = await runScript('reload:catalog');
+      run = await runScript('wipe:business');
     }, 180_000);
 
     it('exits cleanly', () => {
@@ -198,13 +202,9 @@ describe.skipIf(!canRunIntegrationTests)('the operator CLIs (integration)', () =
       ).toBe(0);
     });
 
-    it('then loads the Swisware catalogue, which is what the name promises', async () => {
-      const totals = catalogueTotals();
-      expect(await count('products', (query) => query.whereNull('deleted_at'))).toBe(
-        totals.products,
-      );
-      expect(await count('product_variants')).toBe(totals.variants);
-      expect(await count('product_categories')).toBe(totals.categories);
+    it('loads nothing after it', async () => {
+      expect(await count('products')).toBe(0);
+      expect(await count('product_categories')).toBe(0);
     });
 
     it('can reach no table outside its list through CASCADE', async () => {
@@ -250,23 +250,20 @@ describe.skipIf(!canRunIntegrationTests)('the operator CLIs (integration)', () =
       });
     });
 
-    it('forgets what a connection linked, because the reload hands those ids to other records', async () => {
-      // The id counters restart at 1, so the wiped product's permanent id now
-      // names a catalogue product. A link kept past the wipe would make the
+    it('forgets what a connection linked, because the wipe hands those ids to other records', async () => {
+      // The id counters restart at 1, so the wiped product's permanent id goes
+      // to the next product created. A link kept past the wipe would make the
       // connection's next run skip that product (the remote row's hash is
       // unchanged) or overwrite it with the remote's fields.
-      const reused = await db()('products')
-        .where({ id: linkedProductId })
-        .first<{ name: string } | undefined>('name');
-      expect(reused).toBeDefined();
-      expect(reused?.name).not.toBe('Wiped basin');
+      const { product } = await createTestProduct(await testActor(), { name: 'After the wipe' });
+      expect(product.id).toBe(linkedProductId);
 
       expect(await count('api_connector_links')).toBe(0);
     });
 
     it('empties the activity log, restarts its chain intact, and says so', async () => {
       // Nothing from before the wipe: the party, the role and the user all
-      // logged themselves, and only the reload's own entries remain.
+      // logged themselves, and only what was written since remains.
       expect(
         await count('activity_log', (query) =>
           query.whereIn('entity_type', ['party', 'role', 'user']),
@@ -291,5 +288,69 @@ describe.skipIf(!canRunIntegrationTests)('the operator CLIs (integration)', () =
       expect(run.output).toMatch(/activity log/i);
       expect(run.output).toContain(`${before.activity} activity entries`);
     });
+  });
+
+  describe('reload:catalog', () => {
+    let partyId = '';
+    let activityBefore = 0;
+
+    beforeAll(async () => {
+      await resetData();
+      const actor = await testActor();
+      partyId = (await catalog.createParty({ name: 'Kept Traders', city: 'Morbi' }, actor)).id;
+      await createTestProduct(actor, { name: 'Old basin', categoryName: 'Old range' });
+      activityBefore = await count('activity_log');
+    });
+
+    it("refuses while anything else is connected — here, this test's own pool — and touches nothing", async () => {
+      const { code, output } = await runScript('reload:catalog');
+
+      expect(code, output).not.toBe(0);
+      expect(output).toMatch(/Refusing to reload/);
+      expect(await count('products', (query) => query.where({ name: 'Old basin' }))).toBe(1);
+      expect(await count('activity_log')).toBe(activityBefore);
+    }, 120_000);
+
+    it('replaces the catalogue with the shipped file, keeping parties and the whole log', async () => {
+      // The one way to be alone on the database from inside the test process.
+      await closeDatabase();
+      let run: { code: number | null; output: string };
+      try {
+        run = await runScript('reload:catalog');
+      } finally {
+        initDatabase(testConnectionUrl());
+      }
+
+      expect(run.code, run.output).toBe(0);
+      expect(run.output).toMatch(/outbox/);
+      expect(await count('products', (query) => query.whereNull('deleted_at'))).toBe(549);
+      expect(await count('product_categories', (query) => query.whereNull('deleted_at'))).toBe(41);
+      expect(await count('products', (query) => query.where({ name: 'Old basin' }))).toBe(0);
+      expect(await count('parties', (query) => query.where({ id: partyId }))).toBe(1);
+      // Everything from before, plus the one reload row.
+      expect(await count('activity_log')).toBe(activityBefore + 1);
+      expect(
+        await count('activity_log', (query) =>
+          query.where({ entity_type: 'catalog', action: 'reloaded' }),
+        ),
+      ).toBe(1);
+    }, 180_000);
+  });
+
+  describe('seed:demo-parties', () => {
+    it('adds the thirteen demo dealers, wipes nothing, and adds nothing twice', async () => {
+      await resetData();
+      await catalog.createParty({ name: 'ganesh traders', city: 'Nashik' }, await testActor());
+
+      const first = await runScript('seed:demo-parties');
+      expect(first.code, first.output).toBe(0);
+      // Ganesh Traders was already on the books, in another case.
+      expect(await count('parties')).toBe(13);
+
+      const second = await runScript('seed:demo-parties');
+      expect(second.code, second.output).toBe(0);
+      expect(await count('parties')).toBe(13);
+      expect(second.output).toContain('0 added');
+    }, 180_000);
   });
 });

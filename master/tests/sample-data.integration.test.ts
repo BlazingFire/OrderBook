@@ -25,7 +25,6 @@ import {
   SAMPLE_PARTIES,
   SAMPLE_WINDOW_DAYS,
 } from '../src/domain/sample-data.js';
-import { catalogueTotals } from '../src/domain/swisware-catalogue.js';
 import { chainBounds, verifyChain } from '../src/repositories/activity-log.repository.js';
 import * as auth from '../src/services/auth.service.js';
 import * as catalog from '../src/services/catalog.service.js';
@@ -59,8 +58,9 @@ describe.skipIf(!canRunIntegrationTests)('sample data seed (integration)', () =>
 
     expect(result.counts).toMatchObject({
       parties: SAMPLE_PARTIES.length,
-      // The product master is the whole Swisware catalogue, loaded on day one.
-      products: catalogueTotals().products,
+      // The product master is the whole SWISWARE catalogue file, loaded on
+      // day one: 549 sub products (`docs/catalogue/CATALOGUE_MODEL.md` §4).
+      products: 549,
       images: 0,
       leads: SAMPLE_LEADS.length,
       orders: wonLeads.length,
@@ -187,10 +187,11 @@ describe.skipIf(!canRunIntegrationTests)('sample data seed (integration)', () =>
 
     // Toilet 102: opening 90, one dispatch of 20, a truck of 60, counted down
     // to 128, then three more dispatches of 60, 40 and 24 — the ledger replays
-    // to 4, and stock is keyed by the variant the code belongs to.
+    // to 4, and stock is keyed by the variant the code belongs to — `OPT-0001`,
+    // the first sub product of One Piece Toilet in the catalogue file.
     const toilet = await db()('inventory_stock')
       .join('product_variants', 'product_variants.id', 'inventory_stock.variant_id')
-      .where({ 'inventory_stock.tenant_id': tenantId, 'product_variants.code': '102' })
+      .where({ 'inventory_stock.tenant_id': tenantId, 'product_variants.code': 'OPT-0001' })
       .first<{ quantity_boxes: string }>('inventory_stock.quantity_boxes');
     expect(Number(toilet?.quantity_boxes)).toBe(4);
 

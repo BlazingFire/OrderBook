@@ -235,10 +235,7 @@ export function ProductImages({
     if (!swapWith) return;
 
     const reordered = [...nonPrimary];
-    [reordered[index], reordered[index + direction]] = [
-      reordered[index + direction],
-      reordered[index],
-    ];
+    [reordered[index], reordered[index + direction]] = [swapWith, image];
 
     // The server validates the id list as a *complete* permutation of every
     // image on the product (`imageRepo.imageIdsForProduct`), primary included

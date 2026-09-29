@@ -35,6 +35,15 @@ import { BOOT_ID, currentSeq } from '../realtime/change-ring.js';
 const SNAPSHOT_LIMIT = 500;
 
 /**
+ * The catalogue and its stock rows get the catalogue's own, larger page: the
+ * sub-product bar offline lists every sub product of a product from this
+ * snapshot, and the SWISWARE catalogue alone is 549 of them
+ * (`docs/catalogue/CATALOGUE_MODEL.md` §5). At 500 the tail went missing
+ * with nothing on screen to say so.
+ */
+const CATALOGUE_SNAPSHOT_LIMIT = catalogService.PRODUCT_PAGING.maxLimit;
+
+/**
  * Each collection is gated on the permission its own list endpoint requires,
  * resolving to empty rather than calling through — `listParties` and its
  * siblings throw `ForbiddenError` via `requirePermission`, and a snapshot
@@ -56,7 +65,9 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
       ? catalogService.listParties({ limit: SNAPSHOT_LIMIT }, actor).then((page) => page.items)
       : Promise.resolve([]),
     canProducts
-      ? catalogService.listProducts({ limit: SNAPSHOT_LIMIT }, actor).then((page) => page.items)
+      ? catalogService
+          .listProducts({ limit: CATALOGUE_SNAPSHOT_LIMIT }, actor)
+          .then((page) => page.items)
       : Promise.resolve([]),
     canProducts ? catalogService.listCategories(actor) : Promise.resolve([]),
     canLeads
@@ -65,7 +76,9 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
     canOrders
       ? orderService.listOrders({ limit: SNAPSHOT_LIMIT }, actor).then((page) => page.items)
       : Promise.resolve([]),
-    canInventory ? inventoryService.listStock({ limit: SNAPSHOT_LIMIT }, actor) : Promise.resolve([]),
+    canInventory
+      ? inventoryService.listStock({ limit: CATALOGUE_SNAPSHOT_LIMIT }, actor)
+      : Promise.resolve([]),
   ]);
 
   // The six collections above come from services that scope themselves. These
@@ -126,9 +139,9 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
     serverTime: new Date().toISOString(),
     serverVersion: appVersion(),
     // False whenever `products` was denied by permission or clamped by
-    // SNAPSHOT_LIMIT — either way it is not the complete catalogue, and the
-    // Office image cache sweep must not treat it as one.
-    productsComplete: canProducts && products.length < SNAPSHOT_LIMIT,
+    // CATALOGUE_SNAPSHOT_LIMIT — either way it is not the complete catalogue,
+    // and the Office image cache sweep must not treat it as one.
+    productsComplete: canProducts && products.length < CATALOGUE_SNAPSHOT_LIMIT,
     features,
   };
 }

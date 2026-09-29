@@ -22,6 +22,7 @@ import {
   measureRuns,
   mm,
   truncateToWidth,
+  wrapLines,
   type TextStyle,
 } from '../src/pdf/primitives.js';
 import { splitByScript } from '../src/pdf/text.js';
@@ -85,6 +86,21 @@ describe('pdf primitives', () => {
 
     // A string that already fits comes back untouched, ellipsis and all.
     expect(truncateToWidth(doc, text, mm(200), STYLE)).toBe(text);
+  });
+
+  it('PDF-81: wrapLines breaks between words so every line fits, and keeps a typed newline', () => {
+    const doc = measuringDoc();
+    const text = 'शर्मा टाइल्स (Sharma Tiles) Station Road, Morbi, Gujarat';
+    const width = mm(25);
+
+    const lines = wrapLines(doc, text, width, STYLE);
+
+    expect(lines.length).toBeGreaterThan(1);
+    for (const line of lines) expect(measureRuns(doc, line, STYLE)).toBeLessThanOrEqual(width);
+    // Word boundaries only: joining the lines gives the text back.
+    expect(lines.join(' ')).toBe(text);
+
+    expect(wrapLines(doc, 'One\nTwo', mm(200), STYLE)).toEqual(['One', 'Two']);
   });
 
   it('PDF-80: a millimetre is 72/25.4 points, and mm() agrees with it', () => {

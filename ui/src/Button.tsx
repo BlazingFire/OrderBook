@@ -74,17 +74,21 @@ export function ButtonLink({
   children,
   variant = 'primary',
   size = 'md',
+  target,
 }: {
   href: string;
   children: ReactNode;
   variant?: ButtonVariant;
   size?: ButtonSize;
+  /** `_blank` for a document that opens beside the app — a lead's PDF. */
+  target?: '_blank';
 }) {
   const classes = ['ob-btn', `ob-btn--${variant}`, size !== 'md' ? `ob-btn--${size}` : '']
     .filter(Boolean)
     .join(' ');
   return (
-    <a href={href} className={classes}>
+    // `noopener`: the new window gets no handle back to the app that opened it.
+    <a href={href} className={classes} target={target} rel={target ? 'noopener' : undefined}>
       {children}
     </a>
   );

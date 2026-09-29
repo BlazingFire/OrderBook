@@ -28,6 +28,13 @@ const ROOT = path.resolve(__dirname, '..', '..');
 /** `t('key'` / `t("key"` — a template literal deliberately does not match. */
 const CALL = /\bt\(\s*(['"])([A-Za-z0-9_.]+)\1/g;
 
+/**
+ * `t(cond ? 'a' : 'b'` — both keys. `inventory.piecesOnHand` went missing
+ * behind exactly this shape: `CALL` sees neither branch, so the Stock screen
+ * showed the raw key and nothing failed.
+ */
+const TERNARY = /\bt\(\s*[\w.!?&|\s]+?\?\s*(['"])([A-Za-z0-9_.]+)\1\s*:\s*(['"])([A-Za-z0-9_.]+)\3/g;
+
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir)) {
@@ -49,8 +56,11 @@ function keysUsedIn(webDir: string): Map<string, string[]> {
     if (file.endsWith(path.join('i18n', 'strings.ts'))) continue;
 
     const text = readFileSync(file, 'utf8');
-    for (const match of text.matchAll(CALL)) {
-      const key = match[2];
+    const keys = [
+      ...[...text.matchAll(CALL)].map((match) => match[2]),
+      ...[...text.matchAll(TERNARY)].flatMap((match) => [match[2], match[4]]),
+    ];
+    for (const key of keys) {
       if (!key) continue;
       const at = path.relative(ROOT, file);
       const seen = used.get(key);
