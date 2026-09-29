@@ -63,6 +63,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import type {
   ColourRule,
+  Lead,
   LineItemInput,
   OptionListItem,
   Party,
@@ -117,6 +118,12 @@ interface Props {
   /** Carries the queued lead's temporary id, so the shell can name it. */
   onSaved: (id: string) => void;
   onCancel: () => void;
+  /**
+   * A saved lead to edit instead of starting a new one. The form opens on its
+   * party, source, follow-up, notes and lines, and Save replaces them (the
+   * Master's `updateLead` swaps the whole line set).
+   */
+  lead?: Lead;
 }
 
 /** What every line and every draft row knows about its variant. */
@@ -292,21 +299,60 @@ function chorded(event: {
   return event.ctrlKey || event.altKey || event.metaKey || event.shiftKey;
 }
 
-export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props) {
+/** A saved lead's lines as the form's own, so they can be modified and removed like new ones. */
+function linesOf(lead: Lead, view: LocalView): DraftLine[] {
+  const free = new Map(view.stock.map((level) => [level.variantId, level.availableBoxes]));
+  return lead.items.map((item, index) => {
+    const product = view.products.find((candidate) => candidate.id === item.productId);
+    // The product's own rule while the catalogue still has it; otherwise read
+    // off the line — a chosen colour only exists on a multicolour one.
+    const rule: ColourRule = product
+      ? colourRuleOf(product)
+      : item.colour
+        ? 'selectable'
+        : item.variantLabel
+          ? 'fixed'
+          : 'dedicated';
+    return {
+      key: `saved-${index + 1}`,
+      productId: item.productId,
+      productName: item.productName,
+      categoryName: item.categoryName ?? '',
+      categoryCode: item.categoryCode,
+      brand: item.brandName,
+      alias: item.alias,
+      size: item.size,
+      packaging: item.packaging ?? '',
+      rule,
+      grade: item.grade ?? '',
+      fromPartyVariant: item.fromPartyVariant,
+      notes: item.notes ?? '',
+      variantId: item.variantId,
+      variantLabel: item.variantLabel,
+      code: item.code ?? '',
+      weightKg: item.weightKg,
+      availableBoxes: free.get(item.variantId) ?? null,
+      colour: item.colour ?? '',
+      quantity: item.quantity,
+    };
+  });
+}
+
+export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel, lead }: Props) {
   const colourHex = useColourHex(view.optionLists);
   // The company's switches, each absence resolved to the setting's own
   // declared fallback at this panel's edge.
   const features = resolveCompanyFeatures(view.features);
   const packagingRequired = features.packagingRequiredOnConvert;
 
-  const [partyId, setPartyId] = useState('');
+  const [partyId, setPartyId] = useState(lead?.partyId ?? '');
   const [partyQuery, setPartyQuery] = useState('');
   const [partyOpen, setPartyOpen] = useState(false);
   const [partySel, setPartySel] = useState(0);
   const [partyRows, setPartyRows] = useState<Party[]>([]);
   const [partyDrawerOpen, setPartyDrawerOpen] = useState(false);
 
-  const [sourcePlatform, setSourcePlatform] = useState('');
+  const [sourcePlatform, setSourcePlatform] = useState(lead?.sourcePlatform ?? '');
   /*
    * Today plus the company's default (`leads.followUpDefaultDays`, 3 unless
    * the company says otherwise; 0 = today), not blank.
@@ -322,14 +368,16 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
    * picked stays theirs.
    */
   const followUpDays = features.followUpDefaultDays;
-  const [followUpDate, setFollowUpDate] = useState(() => isoDate(followUpDays));
+  const [followUpDate, setFollowUpDate] = useState(() =>
+    lead ? (lead.followUpDate ?? '') : isoDate(followUpDays),
+  );
   const seededDays = useRef(followUpDays);
   useEffect(() => {
     const seeded = isoDate(seededDays.current);
     seededDays.current = followUpDays;
     setFollowUpDate((current) => (current === seeded ? isoDate(followUpDays) : current));
   }, [followUpDays]);
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState(lead?.notes ?? '');
 
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -340,7 +388,7 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
   const [allCategories, setAllCategories] = useState<ProductCategory[]>([]);
   /** Every live sub product of the chosen product, in catalogue order. */
   const [subRows, setSubRows] = useState<Product[]>([]);
-  const [lines, setLines] = useState<DraftLine[]>([]);
+  const [lines, setLines] = useState<DraftLine[]>(() => (lead ? linesOf(lead, view) : []));
   const [draft, setDraft] = useState<DraftProduct | null>(null);
   /** Which panel rows are expanded, ticked, and what is filtering them. */
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -390,11 +438,18 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
    * without it nothing at all was highlighted and the header read "Office
    * Panel".
    */
-  useSubNav('addLead', {
-    parentId: 'leads',
-    items: [{ id: 'addLead.new', label: t('lead.add.title'), icon: 'leads' }],
-    activeId: 'addLead.new',
-  });
+  // Not when editing: the form is then the body of the lead's own sub-screen,
+  // which carries the entry, and a New-lead draft may still hold `addLead`.
+  useSubNav(
+    lead ? 'leadEdit' : 'addLead',
+    lead
+      ? null
+      : {
+          parentId: 'leads',
+          items: [{ id: 'addLead.new', label: t('lead.add.title'), icon: 'leads' }],
+          activeId: 'addLead.new',
+        },
+  );
 
   const sourceOptions = useMemo(
     () =>
@@ -442,13 +497,17 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
    * the select would show the first option over a value it no longer holds,
    * and the Master refuses an unlisted source on a new lead (§6.2).
    */
+  const savedSource = lead?.sourcePlatform ?? null;
   useEffect(() => {
     setSourcePlatform((current) =>
-      sourceOptions.some((option) => option.value === current)
+      sourceOptions.some((option) => option.value === current) ||
+      // The source a saved lead already has stays, listed or not; the Master
+      // accepts an unchanged one (`assertSourcePlatform`).
+      (current !== '' && current === savedSource)
         ? current
         : (sourceOptions[0]?.value ?? ''),
     );
-  }, [sourceOptions]);
+  }, [sourceOptions, savedSource]);
 
   /**
    * Parties this person may actually put a lead against.
@@ -585,7 +644,8 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
   }, [category, draft]);
 
   const categoryRows = useMemo(
-    () => productMatches(allCategories, query.trim().toLowerCase()).slice(0, 7),
+    // Every product, not the first seven: the list scrolls (`.ob-suggest`).
+    () => productMatches(allCategories, query.trim().toLowerCase()),
     [allCategories, query],
   );
 
@@ -627,6 +687,15 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
   const rows: Array<ProductCategory | Product> = category ? subMatches : categoryRows;
   const pick = rows.length ? Math.min(sel, rows.length - 1) : 0;
   const listOpen = !draft && searchOpen;
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Keep the highlighted row on screen as the arrows walk past the list's
+  // visible rows. `?.()`: jsdom has no `scrollIntoView`.
+  useEffect(() => {
+    if (!listOpen) return;
+    const rowEls = listRef.current?.querySelectorAll<HTMLElement>('button.ob-suggest-row');
+    rowEls?.[pick]?.scrollIntoView?.({ block: 'nearest' });
+  }, [listOpen, pick, category]);
 
   function chooseCategory(next: ProductCategory): void {
     setCategory(next);
@@ -991,16 +1060,22 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
         notes: line.notes.trim() || null,
       }));
 
-      const queued = await api.createLead({
+      const input = {
         partyId,
         sourcePlatform: sourcePlatform || null,
         followUpDate: followUpDate || null,
         partyWiseMode,
         notes: notes.trim() || null,
         items,
-      });
+      };
 
-      onSaved(queued.id);
+      if (lead) {
+        await api.updateLead(lead.id, input);
+        onSaved(lead.id);
+      } else {
+        const queued = await api.createLead(input);
+        onSaved(queued.id);
+      }
     } catch (caught) {
       saving.current = false;
       setError(caught instanceof Error ? caught.message : t('lead.add.errors.generic'));
@@ -1132,7 +1207,7 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
         <h1 className="ob-title" style={{ margin: 0 }}>
-          {t('lead.add.title')}
+          {lead ? t('lead.edit.title') : t('lead.add.title')}
         </h1>
         <span
           className="ob-small"
@@ -1568,7 +1643,7 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
               )}
 
               {listOpen && !category && (
-                <div role="listbox" className="ob-suggest">
+                <div role="listbox" className="ob-suggest" ref={listRef}>
                   <div
                     className="ob-suggest-row ob-eyebrow"
                     style={{ gridTemplateColumns: 'minmax(0, 1fr)', color: 'var(--fg-tertiary)' }}
@@ -1628,7 +1703,7 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel }: Props
               )}
 
               {listOpen && category && (
-                <div role="listbox" className="ob-suggest">
+                <div role="listbox" className="ob-suggest" ref={listRef}>
                   <div
                     className="ob-suggest-row ob-eyebrow"
                     style={{ gridTemplateColumns: SUGGEST_GRID, color: 'var(--fg-tertiary)' }}

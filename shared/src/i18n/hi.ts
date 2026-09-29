@@ -1591,6 +1591,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.savingHint': 'Saves on this machine first — offline is the normal path',
   // TODO(i18n-hi)
   'lead.add.title': 'New lead',
+  'lead.edit.action': 'लीड संपादित करें',
+  'lead.edit.saved': 'लीड {id} अपडेट हुई',
+  'lead.edit.title': 'लीड संपादित करें',
   // TODO(i18n-hi)
   'lead.badge.converted': 'converted',
   // TODO(i18n-hi)

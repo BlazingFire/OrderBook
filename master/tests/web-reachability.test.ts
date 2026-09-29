@@ -206,7 +206,6 @@ const ALLOWED_UNCALLED: Record<'master' | 'office', Record<string, string>> = {
       'PartyAccessScreen edits a party out of the assignment list it loaded; nothing reads one party alone',
     upsertVariant:
       'no screen edits a party’s own product records — PartyDetail and New lead only read view.partyVariants',
-    updateLead: 'the lead board edits through stage/remark calls, not a whole-record update',
 
     // --- Built ahead of the screens that will use them.
     refreshDashboard: 'the dashboard refreshes off the snapshot stream',

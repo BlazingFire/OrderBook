@@ -746,3 +746,122 @@ describe('the order weight override', () => {
     ]);
   });
 });
+
+describe('Edit lead', () => {
+  const LEAD_PIPELINE = {
+    id: 'pipe-leads',
+    kind: 'lead',
+    name: 'Leads',
+    stages: [{ id: 'stage-lead', name: 'New', sequence: 1, isDefault: true, isTerminal: false }],
+  };
+
+  const LEAD = {
+    id: 'LD-1',
+    partyId: PARTY.id,
+    partyName: PARTY.name,
+    ownerId: 'user-1',
+    stageId: 'stage-lead',
+    stageName: 'New',
+    sourcePlatform: null,
+    followUpDate: '2026-10-02',
+    partyWiseMode: false,
+    notes: 'Call before noon',
+    customFields: {},
+    incomplete: false,
+    missingFields: [],
+    convertedOrderId: null,
+    items: [
+      {
+        id: 'li-1',
+        productId: PRODUCT.id,
+        variantId: 'var-1',
+        productName: PRODUCT.name,
+        categoryName: CATEGORY.name,
+        categoryCode: null,
+        brandName: null,
+        alias: null,
+        code: 'AQ-W',
+        variantLabel: 'White',
+        colour: null,
+        size: null,
+        weightKg: 30,
+        packaging: null,
+        grade: null,
+        sequence: 1,
+        fromPartyVariant: false,
+        notes: null,
+        quantity: 5,
+        lineWeightKg: 150,
+      },
+    ],
+    timeline: [],
+    totalWeightKg: 150,
+    linesWithoutWeight: 0,
+    createdAt: '2026-09-24T00:00:00.000Z',
+    sync: { hlc: 'h1' },
+  };
+
+  it('opens the saved lead in the entry form and sends its lines back on save', async () => {
+    const calls = await boot({
+      permissions: ['leads.view', 'leads.edit'],
+      view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] },
+      route: ({ method, url }) =>
+        method === 'PUT' && url === `/api/leads/${LEAD.id}`
+          ? json({ queued: true, id: LEAD.id, mutationId: 'mut-3', pendingCount: 1 })
+          : undefined,
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTitle(t('nav.leads')));
+    });
+    await act(async () => {
+      fireEvent.click((await screen.findAllByText(PARTY.name))[0]!);
+    });
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: t('lead.edit.action') }));
+    });
+
+    expect(
+      await screen.findByRole('heading', { name: t('lead.edit.title') }, { timeout: 10_000 }),
+    ).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
+      await wait(0);
+    });
+
+    const writes = calls.filter(
+      (call) => call.method === 'PUT' && call.url === `/api/leads/${LEAD.id}`,
+    );
+    expect(writes).toHaveLength(1);
+    const body = writes[0]!.body as {
+      partyId: string;
+      notes: string;
+      followUpDate: string;
+      items: Array<{ variantId: string; quantity: number }>;
+    };
+    expect(body).toMatchObject({
+      partyId: PARTY.id,
+      notes: 'Call before noon',
+      followUpDate: '2026-10-02',
+      items: [{ variantId: 'var-1', quantity: 5 }],
+    });
+    // Back on the lead, not left on the form.
+    expect(screen.queryByRole('heading', { name: t('lead.edit.title') })).toBeNull();
+    expect(calls.some((call) => call.url === '/api/leads' && call.method === 'POST')).toBe(false);
+  });
+
+  it('is not offered without leads.edit', async () => {
+    await boot({
+      permissions: ['leads.view'],
+      view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTitle(t('nav.leads')));
+    });
+    await act(async () => {
+      fireEvent.click((await screen.findAllByText(PARTY.name))[0]!);
+    });
+
+    await screen.findByText(t('lead.detail.lineItems'));
+    expect(screen.queryByRole('button', { name: t('lead.edit.action') })).toBeNull();
+  });
+});

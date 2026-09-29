@@ -1124,6 +1124,7 @@ function OfficePanel() {
               onOpenId={setOpenLeadId}
               canConvert={can('lead.convert')}
               canPreviewPdf={can('leads.export')}
+              canEdit={can('leads.edit')}
               onError={setError}
               onAddLead={can('leads.create') ? openNewLead : undefined}
             />

@@ -190,6 +190,34 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-29 - Edit lead, lead detail layout, scrolling product lists (Claude)
+
+Scope, all on the Office Panel, from the owner's screenshot:
+- **Lead detail layout.** `.ob-detail-grid` named two things in `base.css`:
+  the label/value `<dl>` and the lead page's two columns. The `<dl>` rule
+  `.ob-detail-grid > div { align-items: baseline; border-bottom }` hit both
+  columns, so every card shrank to its content and each column drew a
+  hairline. The layout is now `.ob-record-grid` (only `LeadDetail` used it).
+- **Edit lead.** The open lead's header has an Edit lead button (`leads.edit`,
+  not on a converted lead or one the Master has not received). It opens
+  `AddLeadScreen` with a new `lead` prop, prefilled with the party, source,
+  follow-up, notes and lines; Save sends `PUT /api/leads/:id`, which already
+  existed and replaces the whole line set on the Master. In edit mode the form
+  publishes no `addLead` sub-nav, so a New-lead draft is left alone.
+- **Product and sub-product lists.** The product list was capped at seven
+  rows; it now lists every product. Both lists' scrollbars are always drawn
+  (`reset.css` paints a thumb only on hover or focus-within, and focus stays
+  in the input), and the arrow-key highlight scrolls into view.
+
+Verified: two new tests in `ui/tests/office-shell.test.tsx` ("Edit lead")
+open a lead, press Edit lead, save, and read the `PUT` body; and check the
+button is absent without `leads.edit`. `web-reachability.test.ts` no longer
+lists `updateLead` as unused. `npm run verify`: lint 0, typecheck 0, vitest
+2210 passed with that one stale entry failing; after removing it the file
+passes. Not verified in a browser: the
+auto-mode classifier refused a local static server, and this session's
+browser cannot reach the owner's running panel.
+
 ### 2026-09-29 - option_lists repair for databases on 20260306's older body (Claude)
 
 Scope: the owner's first `reload:catalog` on 1.2 applied its five pending

@@ -19,6 +19,7 @@ import type { Lead, PartyScopeFilter, SyncSnapshot } from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
 import {
+  Button,
   ButtonLink,
   ColourChip,
   DataTable,
@@ -40,6 +41,7 @@ import {
   useToast,
   type DataTableColumn,
 } from '@orderbook/ui';
+import { AddLeadScreen } from './AddLeadScreen';
 import { LeadDetail } from './LeadDetail';
 
 interface Props {
@@ -50,6 +52,8 @@ interface Props {
   canConvert: boolean;
   /** `leads.export` — the open lead's header offers Preview PDF. */
   canPreviewPdf: boolean;
+  /** `leads.edit` — the open lead's header offers Edit lead. */
+  canEdit: boolean;
   onError: (message: string) => void;
   onAddLead?: () => void;
 }
@@ -105,9 +109,12 @@ export function LeadBoardScreen({
   onOpenId,
   canConvert,
   canPreviewPdf,
+  canEdit,
   onError,
   onAddLead,
 }: Props) {
+  /** The open lead whose lines are in the entry form, or null. */
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [tab, setTab] = useState<BoardTab>('list');
   const [stageFilter, setStageFilter] = useState<string | null>(null);
   const [scope, setScope] = useState<PartyScopeFilter>('all');
@@ -182,7 +189,35 @@ export function LeadBoardScreen({
       : null,
   );
 
+  if (openLead && editingId === openLead.id) {
+    return (
+      <EditorScreen
+        title={openLead.partyName}
+        meta={<span className="ob-mono ob-small">{openLead.id}</span>}
+        onBack={() => {
+          setEditingId(null);
+          return true;
+        }}
+        backLabel={t('action.cancel')}
+      >
+        <AddLeadScreen
+          key={openLead.id}
+          view={view}
+          lead={openLead}
+          onSaved={(id) => {
+            setEditingId(null);
+            toast.push(t('lead.edit.saved', { id }));
+          }}
+          onCancel={() => setEditingId(null)}
+        />
+      </EditorScreen>
+    );
+  }
+
   if (openLead) {
+    // A converted lead is locked on the Master, and one it has not received
+    // yet has nothing there to update.
+    const editable = canEdit && !openLead.convertedOrderId && Boolean(openLead.sync.hlc);
     return (
       <EditorScreen
         title={openLead.partyName}
@@ -198,18 +233,25 @@ export function LeadBoardScreen({
           </>
         }
         actions={
-          // The Master renders the PDF, so a lead it has not received yet has
-          // none to show. Opens beside the app (CATALOGUE_MODEL §8).
-          canPreviewPdf && openLead.sync.hlc ? (
-            <ButtonLink
-              href={`/api/leads/${encodeURIComponent(openLead.id)}/pdf`}
-              target="_blank"
-              variant="secondary"
-              size="sm"
-            >
-              {t('lead.previewPdf')}
-            </ButtonLink>
-          ) : undefined
+          <>
+            {editable && (
+              <Button variant="secondary" size="sm" onClick={() => setEditingId(openLead.id)}>
+                {t('lead.edit.action')}
+              </Button>
+            )}
+            {/* The Master renders the PDF, so a lead it has not received yet
+                has none to show. Opens beside the app (CATALOGUE_MODEL §8). */}
+            {canPreviewPdf && openLead.sync.hlc && (
+              <ButtonLink
+                href={`/api/leads/${encodeURIComponent(openLead.id)}/pdf`}
+                target="_blank"
+                variant="secondary"
+                size="sm"
+              >
+                {t('lead.previewPdf')}
+              </ButtonLink>
+            )}
+          </>
         }
         onBack={() => {
           onOpenId(null);

@@ -77,7 +77,7 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
   const totalPieces = lead.items.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
-    <div className="ob-detail-grid">
+    <div className="ob-record-grid">
       <div className="ob-detail-main">
         {lead.incomplete && (
           <ConflictBanner>
