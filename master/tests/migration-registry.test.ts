@@ -83,6 +83,9 @@ describe('the migration registry matches the directory', () => {
     // Catalogue v2's columns and indexes, pinned behind the trim for the same
     // reason. Idempotent, because the stale-branch database already has them.
     '20260326000000_catalogue_brands_and_codes_port',
+    // `option_lists` brought level for databases that ran `20260306`'s older
+    // body. Behind everything pinned above, so it runs last everywhere.
+    '20260327000000_option_lists_repair',
   ];
 
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {
@@ -157,6 +160,7 @@ describe('the migration registry matches the directory', () => {
     // lives on as a no-op so that database still boots.
     '20260323000000_catalogue_brands_and_codes',
     '20260326000000_catalogue_brands_and_codes_port',
+    '20260327000000_option_lists_repair',
   ];
 
   it('still lists every migration that has ever run on a real installation', () => {

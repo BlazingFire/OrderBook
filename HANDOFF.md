@@ -680,6 +680,17 @@ terms, multiple contacts); concurrent edits of one lead from two panels
   work**, every statement `IF NOT EXISTS`, pinned last in
   `DELIBERATELY_LAST`: a fresh, a 1.2.0 and the stale database all end on the
   same schema. Do not "tidy" the stub away.
+- **And once more with a body (found 2026-09-29).** Three migrations have two
+  bodies in history under one name (`20260301`, `20260306`, `20260312`; the
+  August line merged in as `c9091c7`/`e16dcca`/`a363adf`). Only `20260306`'s
+  differ in schema: the older body never added `option_lists.created_by` /
+  `updated_by` and its hex check refused uppercase. The owner's PC database
+  ran that one, and its first `reload:catalog` on 1.2 failed on `column
+  "created_by" of relation "option_lists" does not exist`.
+  `20260327000000_option_lists_repair` (additive, idempotent, pinned last)
+  brings both shapes level. Before trusting that two databases share a
+  schema because they share `knex_migrations`, compare the bodies:
+  `git log --all --format=%h -- <migration>` then `git rev-parse <c>:<path>`.
 - **A migration must never import a live shared constant.** Inline what it
   writes.
 - **`20260325000000_line_item_grade` is registered after the trim** (and in

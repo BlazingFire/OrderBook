@@ -46,6 +46,7 @@ import * as catalogueBrandsAndCodes from './20260323000000_catalogue_brands_and_
 import * as productMasterTrim from './20260324000000_product_master_trim.js';
 import * as lineItemGrade from './20260325000000_line_item_grade.js';
 import * as catalogueBrandsAndCodesPort from './20260326000000_catalogue_brands_and_codes_port.js';
+import * as optionListsRepair from './20260327000000_option_lists_repair.js';
 
 export interface Migration {
   name: string;
@@ -185,6 +186,13 @@ export const migrations: Migration[] = [
   {
     name: '20260326000000_catalogue_brands_and_codes_port',
     ...catalogueBrandsAndCodesPort,
+  },
+  // `option_lists` columns and hex check for databases that ran the older of
+  // `20260306`'s two bodies (the owner's PC database among them). Additive and
+  // idempotent; pinned last like the two above.
+  {
+    name: '20260327000000_option_lists_repair',
+    ...optionListsRepair,
   },
 ];
 

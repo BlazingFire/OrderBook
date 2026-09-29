@@ -190,6 +190,29 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-29 - option_lists repair for databases on 20260306's older body (Claude)
+
+Scope: the owner's first `reload:catalog` on 1.2 applied its five pending
+migrations and then failed on `column "created_by" of relation "option_lists"
+does not exist`. Cause: `20260306000000_field_values_and_stage_ordering` has
+two bodies in history under one name; the owner's database ran the August
+one (`c9091c7`), which never added `created_by` / `updated_by` and whose hex
+check refused uppercase (the catalogue's colours are `#FEFEFE`-style). Checked
+every migration for the same split: `20260301` and `20260312` also have two
+bodies, but they differ only in seeded permissions and `IF NOT EXISTS`, not in
+schema. Added `20260327000000_option_lists_repair` — additive and idempotent,
+pinned last — which adds any missing `option_lists` column and replaces the
+hex check with the current either-case one (a widening; no stored value can
+fail it). `HANDOFF.md` trap recorded.
+
+Verified: `master/tests/migration-option-lists-repair.integration.test.ts`
+recreates the old shape (no `created_by`/`updated_by`, lowercase-only check),
+shows an uppercase colour refused, runs the repair, and reads back an
+uppercase colour and the old lowercase one; it fails with the repair's check
+replacement removed. Migration registry and additive guard pass. `npm run
+lint` 0, `npm run typecheck` 0, vitest 176 files passed, 1 skipped, 2209
+tests passed, 17 platform skips.
+
 ### 2026-09-29 - Catalogue v2 on the 1.2 product master (Claude)
 
 Scope: the owner's 2026-09-28 catalogue restructure — Brand → Product → Sub
