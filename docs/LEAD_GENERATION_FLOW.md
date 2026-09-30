@@ -115,13 +115,15 @@ still has no New lead page). The keyboard path, in order:
    the largest SWISWARE product, Table Top Vitrosa Basin, holds 69 and One Piece Toilet 56.
 6. **Colour and quantity**, by the sub product's rule — `fixed`: the colour shown locked and a
    quantity; `dedicated`: a quantity only; `selectable`: the colour range, several colours each
-   with its own quantity (one line per colour). *Grade* stays an optional pick over `line.grade`,
-   out of the Enter path. **Packaging** sits right beside each quantity, the same box, a pick
-   from `line.packaging` (Box, Grass, Paper to start; owner's instruction, 2026-09-30); "—" is
-   none, and it is required only while the company requires packaging.
-7. **Enter** walks each row's quantity and then its packaging (a letter narrows the list; Enter
-   takes the highlighted one and steps on); Enter on the last packaging adds the sub product and
-   returns to the sub-product bar. **Escape** walks back one field.
+   with its own quantity (one line per colour). **Packaging** and **Grade** sit right beside each
+   quantity, the same box each (owner's instructions, 2026-09-30): picks from `line.packaging`
+   (Box, Grass, Paper to start) and `line.grade`; "—" is none. Packaging is required only while
+   the company requires it; grade is always optional.
+7. **Enter** walks each row's quantity, packaging and grade (a letter narrows a list; Enter takes
+   the highlighted one and steps on — a mouse pick steps on too), then the next row; after the
+   last grade it lands on **Add product**, whose Enter adds the sub product and returns to the
+   sub-product bar. A card still short of something keeps the caret on its last grade (Add
+   product is disabled). **Escape** walks back one field, Add product included.
    **Shift+Q**, or the **Complete sub product** button, adds a pending valid sub product and
    moves to the product bar; with nothing pending and an empty sub-product box it just finishes
    the product. A capital Q still types in any other field, the colour and packaging boxes

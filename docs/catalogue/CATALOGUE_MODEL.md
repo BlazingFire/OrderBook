@@ -161,9 +161,10 @@ Never edit a shipped migration.
    colour-named ones.
 6. **Colour / quantity** — `fixed`: colour shown locked + qty; `dedicated`: qty
    only; `selectable`: colour-range list, several colours each with a qty.
-   Grade stays optional and out of the Enter path; packaging shows only when
-   the company requires it.
-7. **Enter** on the last qty adds the sub product and returns to the sub-product
+   Packaging and grade sit beside each qty, the same box each; grade is
+   optional, packaging required only while the company requires it.
+7. **Enter** walks qty → packaging → grade, row by row, then lands on **Add
+   product**, whose Enter adds the sub product and returns to the sub-product
    bar. **Shift+Q** or **Complete sub product** adds a pending valid sub product
    and moves to the product bar; with nothing pending and an empty sub-product
    box it just finishes the product. A capital Q still types anywhere else.

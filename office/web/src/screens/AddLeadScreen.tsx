@@ -24,14 +24,16 @@
  *    several if the customer wants several, each with its own quantity.
  * Each row's packaging sits right beside its quantity, a pick from the
  * company's `line.packaging` list (Box, Grass and Paper to start; Settings →
- * Fields keeps it), required only while the company requires it. Grade is
- * optional and sits below the quantities, out of the Enter path.
+ * Fields keeps it), required only while the company requires it. Grade sits
+ * beside the packaging, the same box over the company's `line.grade` list, and
+ * is always optional.
  *
  * Keys, the way the counter works:
- *  · **Enter** walks each row's quantity and then its packaging; Enter on the
- *    last packaging adds the sub product and returns to the sub-product bar,
- *    the product still chosen, for the next sub product. **Escape** walks back
- *    one field, packaging to quantity to the row above;
+ *  · **Enter** walks each row's quantity, its packaging and its grade (a pick
+ *    in either moves on by itself), then the next row; after the last grade
+ *    it lands on Add product, whose Enter adds the sub product and returns to
+ *    the sub-product bar, the product still chosen. **Escape** walks back one
+ *    field, Add product to grade to packaging to quantity to the row above;
  *  · **Shift+Q** (or Complete sub product) adds a pending valid one and goes
  *    to the product bar; with nothing pending and an empty sub-product box it
  *    just finishes the product. Anywhere it would do nothing it is a capital Q;
@@ -152,6 +154,8 @@ interface DraftRow extends VariantFacts {
   qty: string;
   /** From the company's packaging list, beside the quantity; blank until somebody picks. */
   packaging: string;
+  /** From the company's grade list, beside the packaging; blank is no grade. */
+  grade: string;
 }
 
 /** What is decided once for the whole card, and copied onto every line it adds. */
@@ -166,11 +170,6 @@ interface ProductFacts {
   size: string | null;
   /** Decides what the card asks about colour (§2). */
   rule: ColourRule;
-  /**
-   * The grade every line off this card is sold as, from the company's grade
-   * list. Blank means no grade — a legal answer, and the starting one.
-   */
-  grade: string;
   fromPartyVariant: boolean;
   notes: string;
 }
@@ -191,6 +190,7 @@ interface DraftLine extends ProductFacts, VariantFacts {
   key: string;
   colour: string;
   packaging: string;
+  grade: string;
   quantity: number;
 }
 
@@ -750,9 +750,6 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel, lead }:
       alias: partyRecord?.alias ?? product.alias,
       size: partyRecord?.size ?? product.size,
       rule,
-      // Not carried over from the party's record either — there is no grade on
-      // one. Blank until somebody picks.
-      grade: '',
       fromPartyVariant: partyRecord !== null,
       notes: '',
       /*
@@ -763,12 +760,19 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel, lead }:
        * the plain rows rather than become impossible to add.
        *
        * Packaging starts empty on purpose (§3.2): the party's saved packaging
-       * is offered on the card as a suggestion, never applied.
+       * is offered on the card as a suggestion, never applied. Grade starts
+       * empty too — there is no grade on a party's record to carry over.
        */
       rows:
         rule === 'selectable' && colourOptions.length > 0
           ? []
-          : variants.map((variant) => ({ ...variant, colour: '', packaging: '', qty: '' })),
+          : variants.map((variant) => ({
+              ...variant,
+              colour: '',
+              packaging: '',
+              grade: '',
+              qty: '',
+            })),
       variants,
       at: null,
       editKey: null,
@@ -776,10 +780,6 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel, lead }:
     setQuery('');
     setSel(0);
     setSearchOpen(false);
-  }
-
-  function patchDraft(patch: Partial<DraftProduct>): void {
-    setDraft((current) => (current ? { ...current, ...patch } : current));
   }
 
   function patchRow(key: string, patch: Partial<DraftRow>): void {
@@ -806,7 +806,7 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel, lead }:
                   (variant) =>
                     !current.rows.some((row) => rowKey(row) === rowKey({ ...variant, colour })),
                 )
-                .map((variant) => ({ ...variant, colour, packaging: '', qty: '' })),
+                .map((variant) => ({ ...variant, colour, packaging: '', grade: '', qty: '' })),
             ],
           }
         : current,
@@ -830,15 +830,11 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel, lead }:
   /**
    * One line per row with a quantity — per variant, and on a multicolour card
    * per colour: White ×10 and Ivory ×5 are two lines on the same variant.
-   *
-   * `candidate` is the card as the key that asked for this saw it: Enter on
-   * the last packaging picks a value and adds the card in one press, before
-   * the pick has rendered into `draft`.
    */
-  function saveDraft(candidate: DraftProduct | null = draft): void {
-    if (!candidate || !draftIsReady(candidate)) return;
+  function saveDraft(): void {
+    if (!draft || !draftIsReady(draft)) return;
 
-    const { rows: draftRows, variants: _variants, at, editKey, ...facts } = candidate;
+    const { rows: draftRows, variants: _variants, at, editKey, ...facts } = draft;
     const added: DraftLine[] = draftRows
       .filter((row) => Number(row.qty) > 0)
       .map((row, index) => {
@@ -875,6 +871,7 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel, lead }:
       quantity,
       colour,
       packaging,
+      grade,
       variantId,
       variantLabel,
       code,
@@ -891,7 +888,7 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel, lead }:
     };
     setDraft({
       ...facts,
-      rows: [{ ...variant, colour, packaging, qty: String(quantity) }],
+      rows: [{ ...variant, colour, packaging, grade, qty: String(quantity) }],
       variants: [variant],
       at: index,
       editKey: key,
@@ -1154,8 +1151,9 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel, lead }:
   /*
    * Enter forward, Escape back — one field at a time, down the whole column:
    * party, source, follow-up, the product search, the draft card's colours,
-   * then each row's quantity and packaging (the card claims those Enters, and
-   * the last packaging's adds the card), then the notes and any custom fields.
+   * then each row's quantity, packaging and grade (the card claims those
+   * Enters, and after the last grade lands on Add product), then the notes and
+   * any custom fields.
    *
    * A select opens its list on Enter instead of skipping past it, and the
    * native popup then owns the arrows and its own Enter; the Enter after it
@@ -1839,7 +1837,6 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel, lead }:
                 colourOptions={colourOptions}
                 suggestedPackaging={partyRecordFor.get(draft.productId)?.packaging ?? null}
                 colourHex={colourHex}
-                onPatch={patchDraft}
                 onRow={patchRow}
                 onAddColour={addColour}
                 onRemoveColour={removeColour}
@@ -2077,12 +2074,13 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel, lead }:
 
 const SUGGEST_GRID = `${rem(84)} minmax(0, 1fr) minmax(0, 0.7fr) ${rem(84)}`;
 /*
- * Five columns in the form column's width — code, variant, weight, quantity,
- * packaging: the fixed ones are as narrow as their figures allow, so the
- * variant's name — the one column that can wrap or shrink — keeps room to be
- * read. Packaging is wide enough for its longest word and the list's chevron.
+ * Six columns in the form column's width — code, variant, weight, quantity,
+ * packaging, grade. It shares the screen with the Added-products panel, so at
+ * the 1024-wide floor the minimums must fit about 27rem: the figures get as
+ * little as they need, packaging and grade shrink from a comfortable width to
+ * a word and the chevron, and the variant's name takes what is left.
  */
-const VARIANT_GRID = `${rem(64)} minmax(${rem(72)}, 1fr) ${rem(68)} ${rem(64)} ${rem(96)}`;
+const VARIANT_GRID = `${rem(64)} minmax(${rem(48)}, 1fr) ${rem(60)} ${rem(56)} minmax(${rem(72)}, ${rem(96)}) minmax(${rem(72)}, ${rem(96)})`;
 
 /** The small upper-case label that names a row without becoming a heading. */
 function Eyebrow({ children }: { children: ReactNode }) {
@@ -2390,11 +2388,13 @@ function LeadLine({
  *
  * One row per variant — per variant *and colour* on a multicolour card — the
  * code and weight already filled from the master; what is left to say is how
- * many and, right beside it, how they are packed. A row with no quantity
- * simply adds nothing.
+ * many and, right beside it, how they are packed and in which grade. A row
+ * with no quantity simply adds nothing.
  *
- * Grade sits below the quantities on purpose: it is optional, and the Enter
- * path ends at the last packaging, which adds the card (§6.6–6.7).
+ * Enter walks quantity → packaging → grade on each row, then on to Add
+ * product; Enter there adds the card (§6.6–6.7). Escape walks the same stops
+ * back — the screen's `useEscapeToPrevious` does that, the Add button being a
+ * `data-field` stop of it.
  */
 function DraftCard({
   draft,
@@ -2405,7 +2405,6 @@ function DraftCard({
   colourOptions,
   suggestedPackaging,
   colourHex,
-  onPatch,
   onRow,
   onAddColour,
   onRemoveColour,
@@ -2421,16 +2420,15 @@ function DraftCard({
   colourOptions: OptionListItem[];
   suggestedPackaging: string | null;
   colourHex: (name: string) => string | undefined;
-  onPatch: (patch: Partial<DraftProduct>) => void;
   onRow: (key: string, patch: Partial<DraftRow>) => void;
   onAddColour: (colour: string) => void;
   onRemoveColour: (colour: string) => void;
-  /** Adds the card when it is ready — `candidate` when the caller's picture is newer than `draft`. */
-  onSave: (candidate?: DraftProduct) => void;
+  onSave: () => void;
   /** Shift+Q's button: add the card and go to the product bar. */
   onComplete: () => boolean;
 }) {
   const quantitiesRef = useRef<HTMLDivElement>(null);
+  const addRef = useRef<HTMLDivElement>(null);
   const filled = draft.rows.filter((row) => Number(row.qty) > 0);
   const pieces = filled.reduce((sum, row) => sum + Number(row.qty), 0);
   const previewKg = filled.reduce(
@@ -2458,35 +2456,18 @@ function DraftCard({
     onRow(rowKey(row), { qty: String(Math.max(0, current + delta)) });
   }
 
-  /*
-   * The packaging picked by the key being handled, before it has rendered.
-   *
-   * The packaging list takes the highlighted value on Enter and hands it to
-   * `onChange` during the very keydown the row's own Enter then handles; the
-   * card on screen does not have it yet. Read back — and cleared — by
-   * `packagingKey`, so one Enter both picks and adds.
-   *
-   * Good for that one keydown only, so it is also dropped after every commit.
-   * A mouse pick sets it too, and renders; left standing, it overrode a row
-   * later emptied or refilled some other way (a colour removed and added
-   * back, "Use …", a Modify) on the next Enter there.
-   */
-  const picked = useRef<{ key: string; packaging: string } | null>(null);
-  useEffect(() => {
-    picked.current = null;
-  });
-
   /**
-   * Enter's step inside the rows: quantity, its packaging, the next row's
-   * quantity… and after the last packaging, the card goes on the lead and the
-   * caret back to the sub-product bar (§6.7) — or, while it is short of
-   * something, stays put rather than running on into the optional grade.
+   * One stop on: each row's quantity, packaging and grade, then Add product.
+   * A disabled Add takes no focus, so a card still short of something keeps
+   * the caret on its last grade and the hint says what is missing.
    */
-  function advance(from: HTMLElement, candidate: DraftProduct = draft): void {
-    const inputs = Array.from(quantitiesRef.current?.querySelectorAll('input') ?? []);
-    const next = inputs[inputs.indexOf(from as HTMLInputElement) + 1];
-    if (next) next.focus();
-    else onSave(candidate);
+  function stepOn(from: Element | null): void {
+    const stops: HTMLElement[] = [
+      ...Array.from(quantitiesRef.current?.querySelectorAll('input') ?? []),
+      ...Array.from(addRef.current?.querySelectorAll<HTMLElement>('[data-add-card]') ?? []),
+    ];
+    const index = stops.indexOf(from as HTMLElement);
+    if (index >= 0) stops[index + 1]?.focus();
   }
 
   function quantityKey(event: ReactKeyboardEvent<HTMLInputElement>, row: DraftRow): void {
@@ -2502,52 +2483,43 @@ function DraftCard({
       return;
     }
     if (event.key !== 'Enter' || chorded(event)) return;
-    /*
-     * Claimed, not left to the walk: Enter goes on to this row's packaging
-     * (`advance`). Left to the walk it used to reach the Add button — a second
-     * Enter for every sub product, and over a disabled button it ran on into
-     * the notes.
-     */
+    // Claimed, not left to the screen's walk, which would run on past the Add
+    // button into the notes.
     event.preventDefault();
-    advance(event.currentTarget);
+    stepOn(event.currentTarget);
   }
 
   /**
-   * The packaging box's Enter, heard after the list inside it has taken the
-   * highlighted value (a wrapper's handler runs after the box's own). Escape
-   * needs nothing here: the list closes on its first press when somebody
-   * opened it, and otherwise the screen's walk steps back to the quantity.
+   * A packaging or grade box's Enter, heard after the list inside it has
+   * taken the highlighted value (a wrapper's handler runs after the box's
+   * own). Escape needs nothing here: the list closes on its first press when
+   * somebody opened it, and otherwise the screen's walk steps back.
    */
-  function packagingKey(event: ReactKeyboardEvent<HTMLElement>): void {
-    const pick = picked.current;
-    picked.current = null;
+  function pickKey(event: ReactKeyboardEvent<HTMLElement>): void {
     if (event.key !== 'Enter' || chorded(event)) return;
     event.preventDefault();
-    advance(
-      event.target as HTMLElement,
-      pick
-        ? {
-            ...draft,
-            rows: draft.rows.map((row) =>
-              rowKey(row) === pick.key ? { ...row, packaging: pick.packaging } : row,
-            ),
-          }
-        : draft,
-    );
+    stepOn(event.target as Element);
   }
 
-  /** Same guard as a modified line's colour: a grade retired since stays pickable. */
-  const gradeValues = [
-    ...gradeOptions.map((option) => ({ value: option.value, label: option.label })),
-    ...(draft.grade && !gradeOptions.some((option) => option.value === draft.grade)
-      ? [{ value: draft.grade, label: draft.grade }]
-      : []),
-  ];
-  /** Same guard for a row's packaging: a retired one, or one typed on an older lead, stays shown. */
-  function packagingValuesFor(row: DraftRow): Array<{ value: string; label: string }> {
-    const listed = packagingOptions.map((option) => ({ value: option.value, label: option.label }));
-    return row.packaging && !listed.some((option) => option.value === row.packaging)
-      ? [...listed, { value: row.packaging, label: row.packaging }]
+  /**
+   * A pick — by Enter or by mouse — moves on by itself (owner's instruction,
+   * 2026-09-30). The list keeps focus in its box while it is clicked, so the
+   * box is the focused element here; on Enter `pickKey` then steps from the
+   * same box to the same next stop.
+   */
+  function picked(key: string, patch: Partial<DraftRow>): void {
+    onRow(key, patch);
+    stepOn(document.activeElement);
+  }
+
+  /** A retired value, or one typed on an older lead, stays shown — not silently blanked. */
+  function valuesFor(
+    options: OptionListItem[],
+    current: string,
+  ): Array<{ value: string; label: string }> {
+    const listed = options.map((option) => ({ value: option.value, label: option.label }));
+    return current && !listed.some((option) => option.value === current)
+      ? [...listed, { value: current, label: current }]
       : listed;
   }
   /**
@@ -2670,6 +2642,7 @@ function DraftCard({
                   </span>
                 )}
               </span>
+              <span>{t('lead.add.draft.grade')}</span>
             </div>
           </>
         )}
@@ -2678,9 +2651,10 @@ function DraftCard({
             // The chosen colour on a multicolour row, else the fixed one.
             const colour = row.colour || row.variantLabel;
             const named = row.colour || variantName(row);
+            const key = rowKey(row);
             return (
               <div
-                key={rowKey(row)}
+                key={key}
                 style={{
                   display: 'grid',
                   gridTemplateColumns: VARIANT_GRID,
@@ -2720,29 +2694,40 @@ function DraftCard({
                   aria-label={`${t('lead.add.draft.col.quantity')} — ${named}`}
                   style={{ textAlign: 'right', minWidth: 0, width: '100%' }}
                   onChange={(event) =>
-                    onRow(rowKey(row), { qty: event.target.value.replace(/[^0-9]/g, '') })
+                    onRow(key, { qty: event.target.value.replace(/[^0-9]/g, '') })
                   }
                   onKeyDown={(event) => quantityKey(event, row)}
                 />
                 {/*
-                 * Beside the quantity and the same box (owner's instruction,
-                 * 2026-09-30): the kit's pick-only `Select` is an `Input` with
-                 * a list under it. Type a letter or arrow down, Enter takes it
-                 * and steps on; "—" is no packaging.
+                 * Packaging and grade beside the quantity and the same box
+                 * (owner's instructions, 2026-09-30): the kit's pick-only
+                 * `Select` is an `Input` with a list under it. Type a letter or
+                 * arrow down, Enter takes it and steps on; "—" is none.
                  */}
-                <span style={{ minWidth: 0 }} onKeyDown={packagingKey}>
+                <span style={{ minWidth: 0 }} onKeyDown={pickKey}>
                   <Select
                     value={row.packaging}
                     aria-label={`${t('lead.add.draft.packaging')} — ${named}`}
                     aria-required={packagingRequired || undefined}
                     aria-invalid={unpacked(row) || undefined}
-                    onChange={(event) => {
-                      picked.current = { key: rowKey(row), packaging: event.target.value };
-                      onRow(rowKey(row), { packaging: event.target.value });
-                    }}
+                    onChange={(event) => picked(key, { packaging: event.target.value })}
                   >
                     <option value="">—</option>
-                    {packagingValuesFor(row).map((option) => (
+                    {valuesFor(packagingOptions, row.packaging).map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                </span>
+                <span style={{ minWidth: 0 }} onKeyDown={pickKey}>
+                  <Select
+                    value={row.grade}
+                    aria-label={`${t('lead.add.draft.grade')} — ${named}`}
+                    onChange={(event) => picked(key, { grade: event.target.value })}
+                  >
+                    <option value="">—</option>
+                    {valuesFor(gradeOptions, row.grade).map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
                       </option>
@@ -2758,47 +2743,14 @@ function DraftCard({
             {t('lead.add.draft.packagingEmpty')}
           </p>
         )}
-
-        <label
-          className="ob-small"
-          style={{
-            display: 'block',
-            maxWidth: rem(280),
-            marginTop: 'var(--s-12)',
-            color: 'var(--fg-secondary)',
-          }}
-        >
-          {t('lead.add.draft.grade')}
-          {/* A pick, not a free field (owner's instruction, 2026-09-22): a
-              grade is one of a short ladder the company sells by, and the
-              ladder is decided in Settings → Fields, not retyped per lead.
-              Blank is the first option and the default — plenty of lines
-              carry no grade at all. */}
-          <Select
-            value={draft.grade}
-            aria-label={t('lead.add.draft.grade')}
-            onChange={(event) => onPatch({ grade: event.target.value })}
-          >
-            <option value="">{t('lead.add.draft.gradeNone')}</option>
-            {gradeValues.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </Select>
-          <span
-            className="ob-micro"
-            style={{ display: 'block', marginTop: rem(4), color: 'var(--fg-tertiary)' }}
-          >
-            {gradeValues.length === 0
-              ? t('lead.add.draft.gradeEmpty')
-              : draft.grade
-                ? t('lead.add.draft.gradeHint')
-                : t('lead.add.draft.gradeNoneHint')}
-          </span>
-        </label>
+        {draft.rows.length > 0 && gradeOptions.length === 0 && (
+          <p className="ob-micro" style={{ margin: `${rem(4)} 0 0`, color: 'var(--fg-tertiary)' }}>
+            {t('lead.add.draft.gradeEmpty')}
+          </p>
+        )}
 
         <div
+          ref={addRef}
           style={{
             display: 'flex',
             flexWrap: 'wrap',
@@ -2828,12 +2780,13 @@ function DraftCard({
             {t('lead.add.flow.completeSubProduct')}
           </Button>
           {/*
-           * `data-field` keeps this a stop of the Enter walk for somebody who
-           * stepped on past the quantities into the grade: Enter over a button
-           * is a click. While the draft is short of something the button is
-           * disabled, which takes it out of the walk.
+           * The last stop of the card's Enter walk, after the last grade: Enter
+           * over a button is a click. `data-field` makes it a stop of the
+           * screen's Escape walk too, back to that grade. While the draft is
+           * short of something the button is disabled, which takes it out of
+           * both.
            */}
-          <Button variant="primary" data-field disabled={!ready} onClick={() => onSave()}>
+          <Button variant="primary" data-field data-add-card disabled={!ready} onClick={onSave}>
             {draft.editKey ? t('lead.add.draft.saveChanges') : t('lead.add.draft.saveProduct')}
           </Button>
         </div>

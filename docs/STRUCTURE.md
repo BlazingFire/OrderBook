@@ -3833,13 +3833,13 @@ each with a reason in `ALLOWED_UNCALLED.office`).
   (`api.pick('product', { categoryId, limit: PICK_MAX_LIMIT })`) in catalogue order
   and filtered locally. A sub product opens a draft card by its `colourRuleOf` rule —
   `fixed` the colour shown locked, `dedicated` no colour, `selectable` several
-  colour + quantity rows (one line each) — with grade optional and out of the Enter
-  path, and each row's packaging right beside its quantity: the kit's pick-only
-  `Select` over `line.packaging`, required only while `packagingRequiredOnConvert`
-  is on (never auto-filled; the party's saved packaging is a "Use …" button). Enter
-  walks quantity, then packaging, row by row, and on the last packaging adds the
-  card and returns to the sub-product bar — the pick and the add in one press
-  (`saveDraft(candidate)`); Escape walks back; Shift+Q (a document listener scoped to the products section) or **Complete sub
+  colour + quantity rows (one line each) — each row's packaging and grade right
+  beside its quantity: the kit's pick-only `Select` over `line.packaging` and
+  `line.grade`, packaging required only while `packagingRequiredOnConvert` is on
+  (never auto-filled; the party's saved packaging is a "Use …" button), grade
+  always optional. Enter walks quantity, packaging, grade, row by row (a pick
+  steps on by itself), then lands on Add product (`data-add-card`), whose Enter
+  adds the card and returns to the sub-product bar; Escape walks back; Shift+Q (a document listener scoped to the products section) or **Complete sub
   product** adds a pending one and returns to the product bar; Ctrl+Enter opens the
   review and Ctrl+Enter there saves once (repeat swallowed); Ctrl+S still saves. ≤ 60 lines drawn (`PANEL_LIMIT`). `save()` → `api.createLead` →
   `onSaved(queued.id)` (App clears the `addLead` sub-nav entry, bumps its reset nonce

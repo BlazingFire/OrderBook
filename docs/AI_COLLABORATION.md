@@ -190,6 +190,45 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-30 - Grade beside packaging; the Enter walk ends on Add product (Claude)
+
+Owner: grade beside packaging and the same box; a packaging pick moves to the
+grade; Enter/Escape walk packaging → grade → Add product, and Enter there adds
+the product. And "the options are Box, Grass and Paper" — the owner's Master
+still showed Carton / Pallet / Shrink wrap.
+- **Grade per row.** `grade` moved from `ProductFacts` to `DraftRow` /
+  `DraftLine`; each draft row has a GRADE column after PACKAGING, the same
+  pick-only `Select`, "—" for none. The card-level grade select and its keys
+  (`gradeNone`, `gradeHint`, `gradeNoneHint`) are gone; `gradeEmpty` is a
+  footnote under the rows like `packagingEmpty`.
+- **Walk.** `stepOn` walks each row's quantity → packaging → grade, then the
+  Add product button (`data-add-card`); a disabled Add takes no focus, so a
+  card short of something keeps the caret on its last grade. A pick, by Enter
+  or mouse, steps on by itself. Enter no longer adds the card from a box, so
+  the `picked` ref and `saveDraft(candidate)` are gone; `saveDraft()` reads
+  `draft`. Escape back from Add product works through `data-field`.
+- **Grid** reworked to fit the card at the 1024-wide floor (the grade box ran
+  past the card edge in the browser): packaging and grade `minmax(72, 96)`,
+  variant `minmax(48, 1fr)`, weight 60, qty 56.
+- `pickedHint` (en, hi) now describes the walk to Add product.
+- **Owner's database** (with the owner's say-so): Carton, Pallet and Shrink
+  wrap soft-deleted in `option_lists` (restorable from the Recycle bin; no
+  line used them); Master and Office stopped, rebuilt and restarted, which ran
+  `20260328000000_line_packaging_defaults` — Box, Grass, Paper now live. The
+  company's `line.grade` list is empty, so grade offers only "—" until grades
+  are added under Settings → Fields. `.claude/launch.json` gained
+  `master-start` / `office-start` (the built panels).
+
+Verified: `add-lead-flow` tests rewritten for the walk (packaging → grade →
+Add, Escape back through all four, mouse pick steps on, per-colour packaging
+and grade sent, required packaging holds the card). `npm run verify` with
+`TEMP` at `.tmp/itest`: lint 0, typecheck 0, 177 files / 2217 tests passed,
+17 skipped, integration suites running. Browser (Office at 4200, 1024×768):
+qty Enter → packaging list Box/Grass/Paper, ArrowDown+Enter took Box and moved
+to Grade, Enter → Add product, Escape → Grade, Enter, Enter → line in Added
+products; the card fits. One early ArrowDown+Enter left packaging at "—" and
+did not reproduce in four later tries.
+
 ### 2026-09-30 - Packaging beside each quantity; Box, Grass, Paper (Claude)
 
 Owner: packaging right beside QTY, in the Enter and Esc walk, options Box,

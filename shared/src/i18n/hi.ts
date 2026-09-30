@@ -3226,9 +3226,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.draft.colour': 'रंग',
   'lead.add.draft.grade': 'ग्रेड',
-  'lead.add.draft.gradeNone': 'कोई ग्रेड नहीं',
-  'lead.add.draft.gradeHint': 'इस कार्ड की हर लाइन पर यह ग्रेड रहेगा।',
-  'lead.add.draft.gradeNoneHint': 'इस कार्ड से जुड़ने वाली लाइनों पर कोई ग्रेड नहीं रहेगा।',
   'lead.add.draft.gradeEmpty': 'अभी कोई ग्रेड सूची में नहीं है — इन्हें सेटिंग्स → फ़ील्ड्स में जोड़ें।',
   'lead.add.draft.hintPieces': 'इस कार्ड पर {count} पीस — लीड में जोड़ें',
   // TODO(i18n-hi)
@@ -3300,7 +3297,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.products.clear': 'Clear selection',
   // TODO(i18n-hi)
-  'lead.add.products.pickedHint': 'आखिरी पैकेजिंग पर Enter से यह उप-उत्पाद जुड़कर सूची पर लौटता है; Shift+Q से जुड़कर अगले उत्पाद पर जाता है।',
+  'lead.add.products.pickedHint': 'Enter मात्रा, पैकेजिंग और ग्रेड से होकर Add product पर जाता है, जहाँ Enter से यह उप-उत्पाद जुड़कर सूची पर लौटता है; Shift+Q से जुड़कर अगले उत्पाद पर जाता है।',
   // TODO(i18n-hi)
   'lead.add.products.searchAdds': 'खोज से और जोड़ें',
   // TODO(i18n-hi)
