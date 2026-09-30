@@ -1574,7 +1574,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.party.title': '1. Party',
   // TODO(i18n-hi)
-  'lead.add.products.packagingPlaceholder': 'e.g. carton, pallet',
   // TODO(i18n-hi)
   'lead.add.products.remove': 'Remove',
   // TODO(i18n-hi)
@@ -3240,6 +3239,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.draft.new': 'new product',
   // TODO(i18n-hi)
   'lead.add.draft.packaging': 'Packaging',
+  'lead.add.draft.packagingEmpty': 'No packaging listed yet — add it under Settings → Fields.',
   // TODO(i18n-hi)
   'lead.add.draft.quantityTitle': 'मात्रा — पीस',
   // TODO(i18n-hi)
@@ -3300,7 +3300,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.products.clear': 'Clear selection',
   // TODO(i18n-hi)
-  'lead.add.products.pickedHint': 'आखिरी मात्रा पर Enter से यह उप-उत्पाद जुड़कर सूची पर लौटता है; Shift+Q से जुड़कर अगले उत्पाद पर जाता है।',
+  'lead.add.products.pickedHint': 'आखिरी पैकेजिंग पर Enter से यह उप-उत्पाद जुड़कर सूची पर लौटता है; Shift+Q से जुड़कर अगले उत्पाद पर जाता है।',
   // TODO(i18n-hi)
   'lead.add.products.searchAdds': 'खोज से और जोड़ें',
   // TODO(i18n-hi)
@@ -3404,7 +3404,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.review.title': 'लीड जाँचें',
   'lead.add.review.hint': 'Ctrl+Enter से सहेजें; Esc से फ़ॉर्म पर वापस जाएँ।',
   'lead.add.draft.quantityTitleVariants': 'मात्रा — प्रति वेरिएंट पीस',
-  'lead.add.draft.col.lineWeight': 'लाइन वज़न',
   'lead.add.line.qtyShort': '{count} पीस',
   'lead.add.line.lineWeight': 'इस लाइन पर {kg}',
   'lead.add.summary.weight': 'कुल {kg}',
@@ -3490,7 +3489,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'developer.tool.swisware.count.colours': 'जोड़े गए रंग',
   'developer.tool.swisware.count.skipped': 'पहले से मौजूद उप-उत्पाद, अछूते',
   'lead.add.draft.col.qty': 'मात्रा',
-  'lead.add.draft.col.free': 'उपलब्ध',
   'inventory.field.subProduct': 'उप-उत्पाद',
   'inventory.field.subProductPlaceholder': 'उप-उत्पाद चुनें…',
   'inventory.field.colour': 'रंग',

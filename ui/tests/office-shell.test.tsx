@@ -495,7 +495,7 @@ describe('the New lead form', () => {
     );
   });
 
-  it('does not ask for packaging while the company does not require it', async () => {
+  it('offers packaging beside the quantity, not required, while the company does not require it', async () => {
     await boot({
       permissions: ['leads.view', 'leads.create'],
       view: { features: { packagingRequiredOnConvert: false } },
@@ -504,7 +504,12 @@ describe('the New lead form', () => {
     fireEvent.click(newLeadButton());
     await draftOneProduct();
 
-    expect(screen.queryByPlaceholderText(t('lead.add.products.packagingPlaceholder'))).toBeNull();
+    const packaging = screen.getByLabelText(`${t('lead.add.draft.packaging')} — White`);
+    expect(packaging.getAttribute('aria-required')).toBeNull();
+    // Nothing picked and nothing required: the card adds as it is.
+    expect(
+      screen.getAllByRole('button', { name: t('lead.add.draft.saveProduct') })[0],
+    ).toHaveProperty('disabled', false);
   });
 
   it('still marks packaging required when the company requires it', async () => {
@@ -516,9 +521,12 @@ describe('the New lead form', () => {
     fireEvent.click(newLeadButton());
     await draftOneProduct();
 
-    const packaging = screen.getByPlaceholderText(t('lead.add.products.packagingPlaceholder'));
-    const label = packaging.closest('label')!;
-    expect(within(label).getByText(t('lead.add.step.required'))).toBeTruthy();
+    const packaging = screen.getByLabelText(`${t('lead.add.draft.packaging')} — White`);
+    expect(packaging.getAttribute('aria-required')).toBe('true');
+    // Counted but not packed: the card cannot be added yet.
+    expect(
+      screen.getAllByRole('button', { name: t('lead.add.draft.saveProduct') })[0],
+    ).toHaveProperty('disabled', true);
   });
 
   it('asks before a reset throws a half-typed lead away, in the themed dialog', async () => {

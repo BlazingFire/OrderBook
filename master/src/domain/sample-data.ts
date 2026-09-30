@@ -51,12 +51,9 @@ export const SAMPLE_OPTION_VALUES: Record<FieldListKey, readonly SampleOptionVal
   'lead.sourcePlatform': [],
   'stock.colour': [],
   'product.brand': [],
-  'line.packaging': [
-    { value: 'Carton' },
-    { value: 'Thermocol box' },
-    { value: 'Wooden crate' },
-    { value: 'Loose' },
-  ],
+  // Box, Grass and Paper are seeded by `20260328000000_line_packaging_defaults`;
+  // the sample lines below use those three, so there is nothing to add.
+  'line.packaging': [],
   /*
    * Demo values only. The live list ships empty — a company's grade ladder is
    * its own, and Settings → Fields is where it puts one (see
@@ -306,12 +303,12 @@ export interface SamplePartyVariant {
 }
 
 export const SAMPLE_PARTY_VARIANTS: readonly SamplePartyVariant[] = [
-  { party: 'ganesh', code: '102', alias: 'OPT 102', packaging: 'Carton' },
-  { party: 'ganesh', code: 'DAMRU-WHITE', alias: 'Damru', packaging: 'Thermocol box' },
-  { party: 'ganesh', code: 'BIG-STERLING-SET-WHITE', alias: 'Big Sterling', packaging: 'Carton' },
-  { party: 'patel', code: 'WB-18X12', alias: 'WB 18x12', packaging: 'Carton' },
-  { party: 'patel', code: 'SOFIYA-SET-WHITE', packaging: 'Carton' },
-  { party: 'omsai', code: 'NOVA-WHITE', alias: 'Nova', packaging: 'Thermocol box' },
+  { party: 'ganesh', code: '102', alias: 'OPT 102', packaging: 'Box' },
+  { party: 'ganesh', code: 'DAMRU-WHITE', alias: 'Damru', packaging: 'Paper' },
+  { party: 'ganesh', code: 'BIG-STERLING-SET-WHITE', alias: 'Big Sterling', packaging: 'Box' },
+  { party: 'patel', code: 'WB-18X12', alias: 'WB 18x12', packaging: 'Box' },
+  { party: 'patel', code: 'SOFIYA-SET-WHITE', packaging: 'Box' },
+  { party: 'omsai', code: 'NOVA-WHITE', alias: 'Nova', packaging: 'Paper' },
 ];
 
 /** Who may see which party. Parties absent from here are open to everyone. */
@@ -464,9 +461,9 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
     day: 12, party: 'ganesh', owner: 'management', source: 'call', partyWise: true, priority: 'High',
     notes: 'Showroom refill for the new season.',
     lines: [
-      { code: '102', quantity: 20, packaging: 'Carton' },
-      { code: 'DAMRU-WHITE', quantity: 15, packaging: 'Thermocol box' },
-      { code: '41', quantity: 6, packaging: 'Thermocol box' },
+      { code: '102', quantity: 20, packaging: 'Box' },
+      { code: 'DAMRU-WHITE', quantity: 15, packaging: 'Paper' },
+      { code: '41', quantity: 6, packaging: 'Paper' },
     ],
     remarks: ['Catalogue shared on WhatsApp', 'Confirmed with the party, godown address noted'],
     outcome: {
@@ -478,8 +475,8 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
     day: 15, party: 'balaji', owner: 'admin', source: 'referral', priority: 'High',
     siteLocation: 'Sun Residency, Alkapuri, Vadodara',
     lines: [
-      { code: 'EWC-S-TRAP', quantity: 48, packaging: 'Carton', colour: 'Ivory' },
-      { code: 'WB-18X12', quantity: 48, packaging: 'Carton' },
+      { code: 'EWC-S-TRAP', quantity: 48, packaging: 'Box', colour: 'Ivory' },
+      { code: 'WB-18X12', quantity: 48, packaging: 'Box' },
     ],
     remarks: ['Quoted for tower A — 48 flats', 'Site engineer approved the EWC sample'],
     outcome: {
@@ -489,15 +486,15 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   },
   {
     day: 19, party: 'jaiambe', owner: 'office', source: 'whatsapp',
-    lines: [{ code: '107', quantity: 10, packaging: 'Carton' }],
+    lines: [{ code: '107', quantity: 10, packaging: 'Box' }],
     remarks: ['Asked for ivory — told white only in this lot'],
     outcome: { kind: 'lost', remark: 'Went with a cheaper local supplier' },
   },
   {
     day: 24, party: 'omsai', owner: 'management', source: 'walk_in', partyWise: true, priority: 'Medium',
     lines: [
-      { code: 'NOVA-WHITE', quantity: 12, packaging: 'Thermocol box' },
-      { code: '150', quantity: 4, packaging: 'Thermocol box' },
+      { code: 'NOVA-WHITE', quantity: 12, packaging: 'Paper' },
+      { code: '150', quantity: 4, packaging: 'Paper' },
     ],
     remarks: ['Sample piece given from showroom stock'],
     outcome: {
@@ -507,7 +504,7 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   },
   {
     day: 31, party: 'nakoda', owner: 'office', source: 'website',
-    lines: [{ code: '7501', quantity: 6, packaging: 'Thermocol box' }],
+    lines: [{ code: '7501', quantity: 6, packaging: 'Paper' }],
     outcome: { kind: 'lost', remark: 'Budget cut — will revisit next season' },
   },
   {
@@ -515,9 +512,9 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
     siteLocation: 'Vishwakarma Township, Scheme 78, Indore',
     notes: 'Township phase 1 — every flat gets an EWC and a wash basin.',
     lines: [
-      { code: 'EWC-S-TRAP', quantity: 120, packaging: 'Carton' },
-      { code: 'WB-18X12', quantity: 120, packaging: 'Carton' },
-      { code: '20-OP', quantity: 40, packaging: 'Loose', colour: 'Ivory' },
+      { code: 'EWC-S-TRAP', quantity: 120, packaging: 'Box' },
+      { code: 'WB-18X12', quantity: 120, packaging: 'Box' },
+      { code: '20-OP', quantity: 40, packaging: 'Grass', colour: 'Ivory' },
     ],
     remarks: ['Quoted with freight included up to Indore', 'PO received by email'],
     outcome: {
@@ -528,9 +525,9 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   {
     day: 42, party: 'anand', owner: 'management', source: 'referral',
     lines: [
-      { code: 'SOFIYA-SET-WHITE', quantity: 12, packaging: 'Carton' },
-      { code: 'SOFIYA-SET-VITROSA-MAGENTA', quantity: 4, packaging: 'Carton' },
-      { code: 'HEXA-URINAL', quantity: 10, packaging: 'Carton' },
+      { code: 'SOFIYA-SET-WHITE', quantity: 12, packaging: 'Box' },
+      { code: 'SOFIYA-SET-VITROSA-MAGENTA', quantity: 4, packaging: 'Box' },
+      { code: 'HEXA-URINAL', quantity: 10, packaging: 'Box' },
     ],
     remarks: ['Referred by Shree Ganesh Tiles'],
     outcome: {
@@ -540,15 +537,15 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   },
   {
     day: 49, party: 'krishna', owner: 'office', source: 'walk_in',
-    lines: [{ code: '20-OP', quantity: 10, packaging: 'Loose' }],
+    lines: [{ code: '20-OP', quantity: 10, packaging: 'Grass' }],
     outcome: { kind: 'lost', remark: 'Customer did not return after quotation' },
   },
   {
     day: 55, party: 'metro', owner: 'admin', source: 'website', priority: 'High',
     siteLocation: 'Penthouse project, Bandra West',
     lines: [
-      { code: '1181', quantity: 2, packaging: 'Wooden crate' },
-      { code: '7721', quantity: 3, packaging: 'Wooden crate' },
+      { code: '1181', quantity: 2, packaging: 'Grass' },
+      { code: '7721', quantity: 3, packaging: 'Grass' },
     ],
     remarks: ['Architect wants the red triangle design — confirmed same lot', 'Confirmed on call, crating agreed'],
     outcome: {
@@ -559,8 +556,8 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   {
     day: 63, party: 'ganesh', owner: 'management', source: 'call', partyWise: true,
     lines: [
-      { code: 'DAMRU-WHITE', quantity: 10, packaging: 'Thermocol box' },
-      { code: '42', quantity: 6, packaging: 'Thermocol box' },
+      { code: 'DAMRU-WHITE', quantity: 10, packaging: 'Paper' },
+      { code: '42', quantity: 6, packaging: 'Paper' },
     ],
     remarks: ['Second lot for the same showroom'],
     outcome: {
@@ -573,9 +570,9 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
     siteLocation: 'Sunrise Heights, Bopal — Tower B',
     notes: 'Full sanitaryware for tower B. Phase-wise delivery.',
     lines: [
-      { code: '102', quantity: 60, packaging: 'Carton' },
-      { code: 'WB-20X16', quantity: 60, packaging: 'Carton' },
-      { code: 'DUAL-FLUSH-TANK-CISTERN', quantity: 60, packaging: 'Carton' },
+      { code: '102', quantity: 60, packaging: 'Box' },
+      { code: 'WB-20X16', quantity: 60, packaging: 'Box' },
+      { code: 'DUAL-FLUSH-TANK-CISTERN', quantity: 60, packaging: 'Box' },
     ],
     remarks: ['Agreed to split dispatch into two phases', 'Work order signed'],
     outcome: {
@@ -586,8 +583,8 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   {
     day: 78, party: 'laxmi', owner: 'management', source: 'whatsapp',
     lines: [
-      { code: 'WB-18X12-VITROSA-BLACK', quantity: 8, packaging: 'Carton' },
-      { code: 'WB-18X12-RUSTIC-COFFEE-BROWN', quantity: 8, packaging: 'Carton' },
+      { code: 'WB-18X12-VITROSA-BLACK', quantity: 8, packaging: 'Box' },
+      { code: 'WB-18X12-RUSTIC-COFFEE-BROWN', quantity: 8, packaging: 'Box' },
     ],
     outcome: { kind: 'lost', remark: 'Project postponed indefinitely' },
   },
@@ -595,8 +592,8 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
     day: 85, party: 'greenvalley', owner: 'admin', source: 'call', priority: 'Medium',
     siteLocation: 'Green Valley Phase 2, Gangapur Road, Nashik',
     lines: [
-      { code: 'EWC-S-TRAP', quantity: 40, packaging: 'Carton' },
-      { code: '20-OP', quantity: 30, packaging: 'Loose' },
+      { code: 'EWC-S-TRAP', quantity: 40, packaging: 'Box' },
+      { code: '20-OP', quantity: 30, packaging: 'Grass' },
     ],
     remarks: ['Quoted ex-godown', 'Confirmed — wants delivery after monsoon'],
     outcome: {
@@ -607,9 +604,9 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   {
     day: 92, party: 'patel', owner: 'office', source: 'whatsapp', partyWise: true,
     lines: [
-      { code: 'WB-18X12', quantity: 30, packaging: 'Carton' },
-      { code: 'SOFIYA-SET-WHITE', quantity: 10, packaging: 'Carton' },
-      { code: 'SOFIYA-SET-VITROSA-MINT-GREEN', quantity: 4, packaging: 'Carton' },
+      { code: 'WB-18X12', quantity: 30, packaging: 'Box' },
+      { code: 'SOFIYA-SET-WHITE', quantity: 10, packaging: 'Box' },
+      { code: 'SOFIYA-SET-VITROSA-MINT-GREEN', quantity: 4, packaging: 'Box' },
     ],
     remarks: ['Weekly order — same as last month'],
     outcome: {
@@ -621,8 +618,8 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
     day: 99, party: 'royal', owner: 'management', source: 'referral',
     siteLocation: 'Bungalow at Kalawad Road, Rajkot',
     lines: [
-      { code: '1184', quantity: 2, packaging: 'Wooden crate' },
-      { code: '46', quantity: 2, packaging: 'Thermocol box' },
+      { code: '1184', quantity: 2, packaging: 'Grass' },
+      { code: '46', quantity: 2, packaging: 'Paper' },
     ],
     remarks: ['Interior designer picked the blue triangle for the guest bath'],
     outcome: {
@@ -634,9 +631,9 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
     day: 106, party: 'mehta', owner: 'management', source: 'call', priority: 'High',
     siteLocation: 'Andheri commercial tower',
     lines: [
-      { code: 'HEXA-URINAL', quantity: 24, packaging: 'Carton' },
-      { code: 'WB-20X16', quantity: 30, packaging: 'Carton' },
-      { code: 'EWC-S-TRAP', quantity: 36, packaging: 'Carton' },
+      { code: 'HEXA-URINAL', quantity: 24, packaging: 'Box' },
+      { code: 'WB-20X16', quantity: 30, packaging: 'Box' },
+      { code: 'EWC-S-TRAP', quantity: 36, packaging: 'Box' },
     ],
     remarks: ['Washrooms on all six floors', 'Purchase order no. MC/2026/118'],
     outcome: {
@@ -646,15 +643,15 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   },
   {
     day: 113, party: 'omsai', owner: 'office', source: 'call', partyWise: true,
-    lines: [{ code: 'NOVA-WHITE', quantity: 8, packaging: 'Thermocol box' }],
+    lines: [{ code: 'NOVA-WHITE', quantity: 8, packaging: 'Paper' }],
     outcome: { kind: 'lost', remark: 'Comparing with another Thangadh unit — lost on terms' },
   },
   {
     day: 120, party: 'balaji', owner: 'admin', source: 'referral', priority: 'Medium',
     siteLocation: 'Sun Residency — tower B',
     lines: [
-      { code: 'EWC-S-TRAP', quantity: 40, packaging: 'Carton' },
-      { code: 'WB-18X12', quantity: 40, packaging: 'Carton' },
+      { code: 'EWC-S-TRAP', quantity: 40, packaging: 'Box' },
+      { code: 'WB-18X12', quantity: 40, packaging: 'Box' },
     ],
     remarks: ['Repeat of tower A order', 'Confirmed'],
     outcome: {
@@ -665,8 +662,8 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   {
     day: 127, party: 'jaiambe', owner: 'management', source: 'whatsapp',
     lines: [
-      { code: '107', quantity: 12, packaging: 'Carton' },
-      { code: 'BIG-STERLING-SET-WHITE', quantity: 6, packaging: 'Carton' },
+      { code: '107', quantity: 12, packaging: 'Box' },
+      { code: 'BIG-STERLING-SET-WHITE', quantity: 6, packaging: 'Box' },
     ],
     remarks: ['Plain white — exactly what they asked for last time'],
     outcome: {
@@ -676,7 +673,7 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   },
   {
     day: 134, party: 'nakoda', owner: 'office', source: 'website',
-    lines: [{ code: '7501', quantity: 8, packaging: 'Thermocol box' }],
+    lines: [{ code: '7501', quantity: 8, packaging: 'Paper' }],
     remarks: ['Wants to see the table top in daylight — photos sent'],
     outcome: { kind: 'won', order: { kind: 'inProgress' }, dispatchAddress: 'Shop — Sukhadia Circle, Udaipur', transport: 'Transporter' },
   },
@@ -685,8 +682,8 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
     day: 141, party: 'sunrise', owner: 'admin', source: 'referral', priority: 'High',
     siteLocation: 'Sunrise Heights, Bopal — Tower B (phase 2)',
     lines: [
-      { code: '102', quantity: 40, packaging: 'Carton' },
-      { code: 'DAMRU-WHITE', quantity: 12, packaging: 'Thermocol box' },
+      { code: '102', quantity: 40, packaging: 'Box' },
+      { code: 'DAMRU-WHITE', quantity: 12, packaging: 'Paper' },
     ],
     remarks: ['Phase 2 — lobby washrooms get Damru basins', 'Confirmed against the same work order'],
     outcome: {
@@ -696,7 +693,7 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   },
   {
     day: 148, party: 'anand', owner: 'management', source: 'call',
-    lines: [{ code: 'BIG-STERLING-SET-RUSTIC-MAGENTA', quantity: 4, packaging: 'Carton' }],
+    lines: [{ code: 'BIG-STERLING-SET-RUSTIC-MAGENTA', quantity: 4, packaging: 'Box' }],
     remarks: ['For a café washroom — needs by month end'],
     outcome: {
       kind: 'won', order: { kind: 'inProgress' },
@@ -706,8 +703,8 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   {
     day: 152, party: 'ganesh', owner: 'management', source: 'call', partyWise: true, priority: 'Medium',
     lines: [
-      { code: '102', quantity: 24, packaging: 'Carton' },
-      { code: 'BIG-STERLING-SET-WHITE', quantity: 6, packaging: 'Carton' },
+      { code: '102', quantity: 24, packaging: 'Box' },
+      { code: 'BIG-STERLING-SET-WHITE', quantity: 6, packaging: 'Box' },
     ],
     remarks: ['Monthly refill'],
     outcome: {
@@ -719,9 +716,9 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
     day: 155, party: 'vishwa', owner: 'admin', source: 'call', priority: 'High',
     siteLocation: 'Vishwakarma Township — phase 2',
     lines: [
-      { code: 'EWC-S-TRAP', quantity: 100, packaging: 'Carton' },
-      { code: '20-OP', quantity: 60, packaging: 'Loose' },
-      { code: 'DUAL-FLUSH-TANK-CISTERN', quantity: 100, packaging: 'Carton' },
+      { code: 'EWC-S-TRAP', quantity: 100, packaging: 'Box' },
+      { code: '20-OP', quantity: 60, packaging: 'Grass' },
+      { code: 'DUAL-FLUSH-TANK-CISTERN', quantity: 100, packaging: 'Box' },
     ],
     remarks: ['Phase 2 — PO awaited', 'PO received, loading next week'],
     outcome: {
@@ -733,8 +730,8 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
     day: 158, party: 'metro', owner: 'admin', source: 'website', priority: 'High', followUpInDays: -3,
     siteLocation: 'Villa project, Alibaug',
     lines: [
-      { code: '1184', quantity: 3, packaging: 'Wooden crate' },
-      { code: '7721', quantity: 4, packaging: 'Wooden crate' },
+      { code: '1184', quantity: 3, packaging: 'Grass' },
+      { code: '7721', quantity: 4, packaging: 'Grass' },
     ],
     remarks: ['Quoted with wooden crating', 'Architect asking for a matt finish — need approval'],
     outcome: { kind: 'open', stage: 'Negotiating' },
@@ -742,8 +739,8 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   {
     day: 160, party: 'patel', owner: 'office', source: 'whatsapp', partyWise: true, followUpInDays: -1,
     lines: [
-      { code: 'WB-18X12', quantity: 40, packaging: 'Carton' },
-      { code: 'WB-18X12-VITROSA-BLACK', quantity: 6, packaging: 'Carton' },
+      { code: 'WB-18X12', quantity: 40, packaging: 'Box' },
+      { code: 'WB-18X12-VITROSA-BLACK', quantity: 6, packaging: 'Box' },
     ],
     remarks: ['Quotation sent on WhatsApp'],
     outcome: { kind: 'open', stage: 'Quoted' },
@@ -752,7 +749,7 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
     day: 162, party: 'royal', owner: 'management', source: 'referral', priority: 'Medium', followUpInDays: 2,
     siteLocation: 'Clinic interior, Rajkot',
     lines: [
-      { code: '7501', quantity: 3, packaging: 'Thermocol box' },
+      { code: '7501', quantity: 3, packaging: 'Paper' },
       { code: 'HEXA-URINAL', quantity: 4, packaging: null },
     ],
     remarks: ['Catalogue shared, waiting for the urinal selection'],
@@ -761,8 +758,8 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   {
     day: 164, party: 'laxmi', owner: 'management', source: 'call', followUpInDays: 0,
     lines: [
-      { code: '20-OP', quantity: 40, packaging: 'Loose', colour: 'Ivory' },
-      { code: 'EWC-S-TRAP', quantity: 20, packaging: 'Carton' },
+      { code: '20-OP', quantity: 40, packaging: 'Grass', colour: 'Ivory' },
+      { code: 'EWC-S-TRAP', quantity: 20, packaging: 'Box' },
     ],
     remarks: ['Wants delivery to site — checking with transporter'],
     outcome: { kind: 'open', stage: 'Negotiating' },
@@ -770,8 +767,8 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   {
     day: 165, party: 'krishna', owner: 'office', source: 'walk_in', followUpInDays: 5,
     lines: [
-      { code: 'WB-18X12', quantity: 6, packaging: 'Carton' },
-      { code: 'DUAL-FLUSH-TANK-CISTERN', quantity: 6, packaging: 'Carton' },
+      { code: 'WB-18X12', quantity: 6, packaging: 'Box' },
+      { code: 'DUAL-FLUSH-TANK-CISTERN', quantity: 6, packaging: 'Box' },
     ],
     outcome: { kind: 'open', stage: 'Quoted' },
   },
@@ -787,21 +784,21 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
   },
   {
     day: 167, party: 'omsai', owner: 'office', source: 'whatsapp', partyWise: true, followUpInDays: 1,
-    lines: [{ code: '150', quantity: 5, packaging: 'Thermocol box' }],
+    lines: [{ code: '150', quantity: 5, packaging: 'Paper' }],
     outcome: { kind: 'open', stage: 'New' },
   },
   {
     day: 168, party: 'nakoda', owner: 'management', source: 'referral', priority: 'Medium', followUpInDays: 3,
     lines: [
-      { code: '107', quantity: 10, packaging: 'Carton' },
-      { code: 'NOVA-WHITE', quantity: 6, packaging: 'Thermocol box' },
+      { code: '107', quantity: 10, packaging: 'Box' },
+      { code: 'NOVA-WHITE', quantity: 6, packaging: 'Paper' },
     ],
     remarks: ['Asked for a combined quote for both'],
     outcome: { kind: 'open', stage: 'New' },
   },
   {
     day: 169, party: 'anand', owner: 'office', source: 'call', followUpInDays: 7,
-    lines: [{ code: 'HEXA-URINAL', quantity: 8, packaging: 'Carton' }],
+    lines: [{ code: 'HEXA-URINAL', quantity: 8, packaging: 'Box' }],
     outcome: { kind: 'open', stage: 'New' },
   },
 ];

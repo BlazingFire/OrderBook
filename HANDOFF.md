@@ -150,6 +150,14 @@ on it.
   convert off** (was on). An Office panel may save the follow-up default from
   its own Settings → Leads tab, as the signed-in user; the Master still checks
   `settings.manage`.
+- **Packaging (2026-09-30, owner's instruction):** on the New lead card each
+  row's packaging sits right beside its quantity, the same box (the kit's
+  pick-only `Select`), in the Enter/Escape walk: quantity → packaging → next
+  row, the last packaging's Enter adds the card. The choices are the
+  `line.packaging` list, which `20260328000000_line_packaging_defaults` seeds
+  with **Box, Grass, Paper** (added after any existing values, never doubling
+  one). The owner's dev database also holds Carton, Pallet and Shrink wrap
+  from before; the migration leaves them, and Settings → Fields removes them.
 - **Product master (catalogue v2, 2026-09-29):** the owner's **Brand →
   Product → Sub product** on the 1.2 tables. A Product is a
   `product_categories` row with a software `code` (`OPT`), a `brand` (a

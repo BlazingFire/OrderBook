@@ -86,6 +86,8 @@ describe('the migration registry matches the directory', () => {
     // `option_lists` brought level for databases that ran `20260306`'s older
     // body. Behind everything pinned above, so it runs last everywhere.
     '20260327000000_option_lists_repair',
+    // Seeds the packaging list into that table, so it stays behind the repair.
+    '20260328000000_line_packaging_defaults',
   ];
 
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {

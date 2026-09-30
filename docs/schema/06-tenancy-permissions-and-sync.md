@@ -365,8 +365,10 @@ CREATE INDEX idx_custom_fields_deleted ON custom_field_definitions (tenant_id, d
 
 `option_lists` holds the five managed sets in `FIELD_LIST_KEYS` (`shared/src/domain/fields.ts`):
 `lead.sourcePlatform`, `stock.colour`, `product.brand`, `line.packaging` and `line.grade`. A fresh
-database has six `lead.sourcePlatform` values (whatsapp, call, website, walk_in, referral, other) and
-nothing else; the other four start empty for a company to fill under Settings → Fields, and the
+database has six `lead.sourcePlatform` values (whatsapp, call, website, walk_in, referral, other)
+and, since `20260328000000_line_packaging_defaults` (owner's instruction, 2026-09-30), Box, Grass and
+Paper in `line.packaging` — added after whatever an existing list held, never doubling a value it
+already had. The other three start empty for a company to fill under Settings → Fields, and the
 catalogue loader fills `product.brand` (value = label = the brand name) and `stock.colour` (the
 catalogue's colour range, with hex). On an installation that already had data, `20260306` backfilled
 `stock.colour`, `line.packaging` and a `product.productType` set from the distinct values in use,

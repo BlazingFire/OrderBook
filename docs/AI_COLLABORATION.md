@@ -190,6 +190,81 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-30 - Packaging beside each quantity; Box, Grass, Paper (Claude)
+
+Owner: packaging right beside QTY, in the Enter and Esc walk, options Box,
+Grass and Paper, styled like the QTY box. Supersedes the card-level picker in
+the entry below (same day, same working tree).
+- **Per-row packaging.** `packaging` moved from `ProductFacts` to `DraftRow` /
+  `DraftLine`. Each quantity row of the draft card has a fifth column after
+  QTY: the kit's pick-only `Select`, which is an `Input` with a list, so it is
+  the QTY box (same `ob-input`, 30 px in the browser). "—" is none. While
+  `leads.packagingRequiredOnConvert` is on the header carries `*`, the box
+  `aria-required`, a counted row without one `aria-invalid`, and
+  `draftIsReady` needs every counted row packed. The party's saved packaging
+  is a "Use …" button filling the rows still without one. Removed
+  `lead.add.draft.packagingNone`; `lead.add.products.pickedHint` now names the
+  last packaging.
+- **Keys.** Enter: quantity → its packaging → the next row's quantity; Enter
+  on the last packaging adds the card. The list takes the highlighted value
+  during that same keydown, so the pick is carried to `saveDraft(candidate)`
+  through a `picked` ref instead of waiting a render. The ref is dropped after
+  every commit: a review workflow (3 lenses, each finding adversarially
+  verified) caught a mouse pick left standing and overriding a row refilled
+  later; `add-lead-flow` "forgets a mouse pick…" pins it (fails without the
+  fix). Escape walks back via the screen's `useEscapeToPrevious`; a list
+  somebody opened closes first.
+- **Box, Grass, Paper.** `20260328000000_line_packaging_defaults`, additive,
+  pinned last behind the `option_lists` repair: per tenant, inserted after the
+  list's highest `sequence`, skipping a value present in any case or state
+  (live, retired, deleted). Sample data now uses those three and adds no
+  packaging values of its own (it would collide with the seeded rows).
+- Docs: HANDOFF (current state), STRUCTURE (§6.1 pins and data-safety list,
+  migration rows #33–#34, the New lead flow), schema/06, LEAD_GENERATION_FLOW
+  §6–7, TESTING_PLAN.
+
+Verified: lint 0, typecheck 0, `npm test` 177 files / 2216 tests passed (17
+skipped) before the ref fix and `vitest run ui` 26 files / 181 tests after it;
+integration suites **running** — with `TEMP` pointed at the
+gitignored `.tmp/itest`, because embedded PostgreSQL's `initdb` gets
+"Permission denied" creating its cluster under `%TEMP%` on this machine (a
+plain `mkdir` there works). `packaging-switch-reach.test.ts` flagged the
+"Use …" offer as an unguarded packaging test; it is an offer, not a refusal,
+so it now reads `row.packaging === ''` and the refusal in `draftIsReady` is
+written as one guarded line the check recognises. Browser (Chromium, Office
+bundle rebuilt, localhost:4200): Enter from QTY lands on packaging with its
+list open, Esc returns to QTY, typing `c` narrowed to Carton and Enter added
+the card with the caret back in the sub-product bar, the line shows Carton,
+Modify reopens with Carton. **Not seen live: Box/Grass/Paper** — the owner's
+Master runs from `dist` (`start:master`) and was not restarted, so the
+migration had not run; that database's list shows Carton / Pallet / Shrink
+wrap, pre-existing values the migration leaves alone. Seen in the integration
+and jsdom tests only.
+
+### 2026-09-30 - Packaging picker on the lead draft card, Free and Line weight gone (Claude)
+
+*Superseded the same day by the entry above: packaging moved into each
+quantity row and `lead.add.draft.packagingNone` was removed.*
+
+Owner's screenshot of the Office Panel's "Details for this product" card:
+- **Packaging** is now on every draft card, as a `Select` over the
+  `line.packaging` list (Settings → Fields), beside the colour picker. It was
+  a typed `SuggestInput` shown only while `leads.packagingRequiredOnConvert`
+  was on; the setting now only adds the "required" marker, the autofocus and
+  the Add-button block. A value off the list (retired, or typed on an older
+  lead) stays shown, the same guard grade uses. Key `packagingPlaceholder`
+  removed; `packagingNone` / `packagingEmpty` added.
+- **Free** and **Line weight** columns removed from the quantity rows (and
+  their keys `lead.add.draft.col.free` / `col.lineWeight`). With Free went the
+  red over-stock border on the quantity box. The card's total weight in the
+  bottom hint is unchanged.
+
+Verified: `ui/tests/office-shell.test.tsx` packaging tests rewritten to find
+the select by label (not required while off, required while on). Lint 0,
+typecheck 0, `vitest run ui` 177/177. The full suite's 51 integration files
+fail on this machine before any test runs — embedded PostgreSQL's `initdb`
+fails — and fail identically with this change stashed. No browser pass.
+
 ### 2026-09-29 - Edit lead, lead detail layout, scrolling product lists (Claude)
 
 Scope, all on the Office Panel, from the owner's screenshot:

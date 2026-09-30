@@ -47,6 +47,7 @@ import * as productMasterTrim from './20260324000000_product_master_trim.js';
 import * as lineItemGrade from './20260325000000_line_item_grade.js';
 import * as catalogueBrandsAndCodesPort from './20260326000000_catalogue_brands_and_codes_port.js';
 import * as optionListsRepair from './20260327000000_option_lists_repair.js';
+import * as linePackagingDefaults from './20260328000000_line_packaging_defaults.js';
 
 export interface Migration {
   name: string;
@@ -193,6 +194,13 @@ export const migrations: Migration[] = [
   {
     name: '20260327000000_option_lists_repair',
     ...optionListsRepair,
+  },
+  // Box, Grass and Paper on the packaging list (owner's instruction,
+  // 2026-09-30). Inserts only, skipping a value already there; behind the
+  // repair so `option_lists` has its final shape when it runs.
+  {
+    name: '20260328000000_line_packaging_defaults',
+    ...linePackagingDefaults,
   },
 ];
 

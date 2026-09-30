@@ -1468,7 +1468,7 @@ is off.
 |---|---|
 | `master/` (everything) | 347 |
 | `master/src/` | 199 |
-| `master/src/db/migrations/` | 33 (32 migrations + `master/src/db/migrations/index.ts`; catalogue v2 added two on 2026-09-29) |
+| `master/src/db/migrations/` | 35 (34 migrations + `master/src/db/migrations/index.ts`; catalogue v2 added two on 2026-09-29, the `option_lists` repair one the same day, the packaging defaults one on 2026-09-30) |
 | `master/src/db/` other than migrations | 9 |
 | `master/src/domain/` | 23 (3,653 lines) |
 | `master/src/services/` | 43 (14,595 lines) |
@@ -2641,7 +2641,7 @@ structure — no upgrade path was replayed. Its seed data certainly can differ
 
 ### 6.1 How migrations run, and the rules
 
-- `master/src/db/migrations/index.ts` (204 lines) is an explicit registry: it imports
+- `master/src/db/migrations/index.ts` (220 lines) is an explicit registry: it imports
   each file, exports `migrations: Migration[]` (`{name, up, down}`), and wraps them in
   `class RegistryMigrationSource` whose `getMigrations()` returns the array as is.
   **Knex applies them in array order, not filename order.**
@@ -2651,28 +2651,32 @@ structure — no upgrade path was replayed. Its seed data certainly can differ
 - With the installed Knex (3.3.0), `migrate.latest()` runs all pending migrations in
   one transaction (no migration opts out), so a failure rolls back the whole batch.
 - **Ordering rule** (`master/tests/migration-registry.test.ts`): the array must be in
-  ascending timestamp order except for `DELIBERATELY_LAST`, five names that must be
-  the **last five entries** in exactly this order:
+  ascending timestamp order except for `DELIBERATELY_LAST`, seven names that must be
+  the **last seven entries** in exactly this order:
   `20260309000000_new_module_permission_grant` (grants keys that later modules
   mint), `20260322000000_drop_document_designer` and
   `20260324000000_product_master_trim` (strip keys earlier grants hand out),
-  `20260325000000_line_item_grade` (re-adds a column the trim drops), and
+  `20260325000000_line_item_grade` (re-adds a column the trim drops),
   `20260326000000_catalogue_brands_and_codes_port` (catalogue v2, 2026-09-29;
-  pinned behind the trim for the same reason). The same test
+  pinned behind the trim for the same reason), `20260327000000_option_lists_repair`
+  (behind everything pinned above), and `20260328000000_line_packaging_defaults`
+  (writes the table the repair levels, so behind it). The same test
   requires files on disk and names in the array to match one to one, a `./<name>.js`
   import for each, a 14-digit timestamp prefix, and that no name in the `SHIPPED`
-  list (32 since catalogue v2: every migration in the registry) ever disappears. Duplicate timestamps are allowed if full names are
+  list (33 since the 2026-09-29 repair; `20260328000000_line_packaging_defaults`
+  joins it once it reaches an installation) ever disappears. Duplicate timestamps are allowed if full names are
   unique (the tree has two `20260312…`, two `20260313…`, two `20260322…`, two
   `20260323…`).
   **Consequence:** a new migration either goes *before* the pinned entries, so
   on a fresh database it runs before the trim, or — when it must run after the
   trim — is appended and added to the end of `DELIBERATELY_LAST`, as
-  `20260325` and `20260326` were.
+  `20260325` to `20260328` were.
 - **Data-safety rule** (`master/tests/migration-data-safety.test.ts`):
   `LAST_DESTRUCTIVE = '20260324000000_product_master_trim'`, `EXEMPT = []`. Every
   migration whose name sorts after it must not truncate, drop a table or column, or
-  delete rows in `up()`. Today that is `20260325000000_line_item_grade` and
-  `20260326000000_catalogue_brands_and_codes_port`. An
+  delete rows in `up()`. Today that is `20260325000000_line_item_grade`,
+  `20260326000000_catalogue_brands_and_codes_port`,
+  `20260327000000_option_lists_repair` and `20260328000000_line_packaging_defaults`. An
   exemption is the owner's decision (`docs/PRODUCTION_READINESS.md`).
 - **A migration must not import a live constant** that can change later (freeze the
   list, as `NEW_KEYS` in `20260309` does). `20260301000000_tenancy_access_and_sync`
@@ -2719,6 +2723,8 @@ structure — no upgrade path was replayed. Its seed data certainly can differ
 | 30 | `master/src/db/migrations/20260324000000_product_master_trim.ts` | 232 | **Pinned, destructive, `LAST_DESTRUCTIVE`.** Drops 26 product columns incl. all pricing; `rate`/`line_total`/`sin`/`grade`/`product_type` from lines; `total_amount` from leads and orders; `rate`/`sin`/`grade`/`product_type` from party variants. Adds `products.multi_colour`, `line_items.colour`. Deletes the `pricing.enabled` setting, the `product.*` and `line.grade` option lists, the 4 `field.*Rate.*` keys, orphaned field maps and conflicts. Idempotent; `down()` throws |
 | 31 | `master/src/db/migrations/20260325000000_line_item_grade.ts` | 37 | **Pinned.** `ADD COLUMN IF NOT EXISTS line_items.grade` — the first migration held to the additive rule |
 | 32 | `master/src/db/migrations/20260326000000_catalogue_brands_and_codes_port.ts` | 108 | **Pinned, additive, idempotent** (catalogue v2, 2026-09-29). `product_categories.code`, `brand`, `sort_order`, `updated_at`, `deleted_at`; `idx_categories_brand_name (tenant_id, lower(coalesce(brand,'')), lower(name)) WHERE deleted_at IS NULL`, then drops `idx_categories_name_tenant`; `idx_categories_code (tenant_id, lower(code)) WHERE code IS NOT NULL AND deleted_at IS NULL`; `products.sort_order`; `line_items.brand_name`, `category_code`. Every statement `IF NOT EXISTS`, so a fresh, a 1.2.0 and the stale-branch database end on one schema; `master/tests/migration-catalogue-port.integration.test.ts` |
+| 33 | `master/src/db/migrations/20260327000000_option_lists_repair.ts` | 53 | **Pinned, additive, idempotent** (2026-09-29). Adds any of `option_lists.hex`, `created_by`, `updated_by`, `deleted_at`, `deleted_by`, `version`, `created_at`, `updated_at` a database is missing (the older `20260306` body never added `created_by`/`updated_by`) and replaces the hex check with the either-case one; `master/tests/migration-option-lists-repair.integration.test.ts` |
+| 34 | `master/src/db/migrations/20260328000000_line_packaging_defaults.ts` | 55 | **Pinned, additive** (owner's instruction, 2026-09-30). Inserts Box, Grass and Paper into every tenant's `line.packaging` list, after its highest `sequence`, skipping a value the list already holds in any case or state (live, retired or deleted); `master/tests/migration-line-packaging-defaults.integration.test.ts` |
 
 ### 6.3 Conventions across the schema
 
@@ -3828,9 +3834,12 @@ each with a reason in `ALLOWED_UNCALLED.office`).
   and filtered locally. A sub product opens a draft card by its `colourRuleOf` rule —
   `fixed` the colour shown locked, `dedicated` no colour, `selectable` several
   colour + quantity rows (one line each) — with grade optional and out of the Enter
-  path and packaging only while `packagingRequiredOnConvert` is on (never
-  auto-filled). Enter on the last quantity adds it and returns to the sub-product
-  bar; Shift+Q (a document listener scoped to the products section) or **Complete sub
+  path, and each row's packaging right beside its quantity: the kit's pick-only
+  `Select` over `line.packaging`, required only while `packagingRequiredOnConvert`
+  is on (never auto-filled; the party's saved packaging is a "Use …" button). Enter
+  walks quantity, then packaging, row by row, and on the last packaging adds the
+  card and returns to the sub-product bar — the pick and the add in one press
+  (`saveDraft(candidate)`); Escape walks back; Shift+Q (a document listener scoped to the products section) or **Complete sub
   product** adds a pending one and returns to the product bar; Ctrl+Enter opens the
   review and Ctrl+Enter there saves once (repeat swallowed); Ctrl+S still saves. ≤ 60 lines drawn (`PANEL_LIMIT`). `save()` → `api.createLead` →
   `onSaved(queued.id)` (App clears the `addLead` sub-nav entry, bumps its reset nonce
