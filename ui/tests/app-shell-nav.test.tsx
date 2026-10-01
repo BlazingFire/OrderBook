@@ -4,6 +4,7 @@
  * brand mark goes home. `graftSubNav` hangs an open operation under a child.
  */
 
+import { useState } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -99,5 +100,45 @@ describe('graftSubNav', () => {
       'leads.followups',
     ]);
     expect(graftSubNav(groups[0]!.items, null)).toBe(groups[0]!.items);
+  });
+});
+
+describe('folding the modules left behind', () => {
+  it('folds Orders when the person moves to Leads', () => {
+    const groups = [
+      {
+        label: 'Work',
+        items: [
+          { id: 'leads', label: 'Leads', icon: 'leads' as const, children: [{ id: 'leads.list', label: 'List', icon: 'leads' as const }] },
+          { id: 'orders', label: 'Orders', icon: 'orders' as const, children: [{ id: 'orders.all', label: 'All stages', icon: 'orders' as const }] },
+        ],
+      },
+    ];
+    function Harness() {
+      const [active, setActive] = useState('dashboard');
+      return (
+        <AppShell
+          groups={groups}
+          activeId={active}
+          onNavigate={setActive}
+          collapsed={false}
+          onToggleCollapsed={() => undefined}
+          topbar={null}
+          footer={null}
+          rail="synced"
+          railLabel=""
+          onRailClick={() => undefined}
+        >
+          <div />
+        </AppShell>
+      );
+    }
+    render(<Harness />);
+    fireEvent.click(screen.getByTitle('Orders'));
+    expect(screen.queryByText('All stages')).not.toBeNull();
+
+    fireEvent.click(screen.getByTitle('Leads'));
+    expect(screen.queryByText('List')).not.toBeNull();
+    expect(screen.queryByText('All stages')).toBeNull();
   });
 });

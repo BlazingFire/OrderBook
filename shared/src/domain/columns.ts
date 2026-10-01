@@ -82,6 +82,7 @@ export const ORDER_COLUMNS = {
   dispatchAddressLabel: 'dispatch_address_label',
   expectedDispatchDate: 'expected_dispatch_date',
   totalWeightKgOverride: 'total_weight_kg_override',
+  vehicleNumber: 'vehicle_number',
   notes: 'notes',
   customFields: 'custom_fields',
 } as const satisfies Record<string, string>;

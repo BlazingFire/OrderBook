@@ -67,6 +67,16 @@ contextBridge.exposeInMainWorld('orderbook', {
   uninstall: (options: { keepData: boolean }): Promise<boolean> =>
     ipcRenderer.invoke('orderbook:uninstall', options) as Promise<boolean>,
 
+  /** The printers Windows lists on this PC — the order-note preview's picker. */
+  listPrinters: (): Promise<{ name: string; displayName: string; isDefault: boolean }[]> =>
+    ipcRenderer.invoke('orderbook:listPrinters') as Promise<
+      { name: string; displayName: string; isDefault: boolean }[]
+    >,
+
+  /** Print the page (A4, its print stylesheet) — to a named printer, or via the system dialog. */
+  printPage: (options: { deviceName?: string }): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('orderbook:printPage', options) as Promise<{ ok: boolean; error?: string }>,
+
   /**
    * The application menu asking the page to go somewhere. One-way and
    * id-based: the menu is built in the main process and the renderer only

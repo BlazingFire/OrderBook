@@ -1,0 +1,706 @@
+/*
+ * The Filling note and Dispatch note (docs/ORDER_NOTES_PLAN.md).
+ *
+ * A note is paper, so its colours are its own: they do not follow the app's
+ * light/dark theme and they are not tokens the UI kit may use. Every height
+ * that page breaks depend on arrives as a custom property set by
+ * `OrderNote.tsx` from `NOTE_LAYOUT` — change a row height there, never here.
+ *
+ * The sheets never inherit the UI scale (79–157 %): the scale changes the root
+ * font size, so every measurement below is in px, and print resets `zoom`.
+ */
+
+.ob-note-scope {
+  --note-ink: #10161a;
+  --note-muted: #6e7c84;
+  --note-soft: #46535b;
+  --note-rule: #d6dbde;
+  --note-dots: #aeb7bc;
+  --note-chip: #e4e8ea;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+.ob-note-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-8) var(--s-16);
+}
+
+.ob-note-toolbar-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-8);
+}
+
+.ob-note-canvas {
+  background: #e9ecee;
+  padding: 24px;
+  overflow-x: auto;
+  border-radius: var(--r-md);
+}
+
+.ob-note-page {
+  position: relative;
+  box-sizing: border-box;
+  flex: none;
+  width: var(--note-page-w);
+  height: var(--note-page-h);
+  padding: 26px 30px 20px;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  color: var(--note-ink);
+  font-family: Inter, 'Noto Sans Devanagari', system-ui, sans-serif;
+  font-size: 12px;
+  line-height: 1.2;
+  box-shadow: 0 1px 3px rgba(16, 22, 26, 0.18), 0 8px 24px rgba(16, 22, 26, 0.12);
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+}
+
+.ob-note-page * {
+  box-sizing: border-box;
+}
+
+.ob-note-mono {
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.ob-note-eyebrow {
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--note-muted);
+}
+
+.ob-note-clip {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* ---- Headers -------------------------------------------------------------- */
+
+.ob-note-head-full {
+  flex: none;
+  height: var(--note-head-first-filling);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 28px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--note-ink);
+}
+
+.ob-note-party {
+  font-size: 28px;
+  line-height: 32px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  margin-top: 2px;
+}
+
+.ob-note-party-meta {
+  margin-top: 4px;
+  font-size: 10.5px;
+  line-height: 14px;
+  color: var(--note-soft);
+}
+
+.ob-note-dealer {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 5px;
+  padding: 2px 9px;
+  border: 1.5px solid var(--note-ink);
+  border-radius: 3px;
+  background: var(--note-chip);
+}
+
+.ob-note-dealer .ob-note-eyebrow {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #3a464c;
+}
+
+.ob-note-dealer-code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.ob-note-meta {
+  flex: none;
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 4px 16px;
+  align-items: baseline;
+}
+
+.ob-note-meta .ob-note-eyebrow {
+  text-align: right;
+}
+
+.ob-note-meta-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 600;
+  text-align: right;
+  letter-spacing: 0.01em;
+}
+
+.ob-note-unsynced {
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 1px solid var(--note-ink);
+  border-radius: 2px;
+  font-family: Inter, sans-serif;
+  font-size: 7.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ob-note-head-slim {
+  flex: none;
+  height: 44px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 6px;
+}
+
+.ob-note-head-slim h2 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 32px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.ob-note-printed {
+  flex: none;
+  font-size: 10px;
+  color: var(--note-soft);
+  letter-spacing: 0.01em;
+}
+
+.ob-note-head-cont {
+  flex: none;
+  height: var(--note-head-cont-filling);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 6px;
+}
+
+.ob-note-filling .ob-note-head-cont {
+  border-bottom: 2px solid var(--note-ink);
+}
+
+.ob-note-head-cont-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.ob-note-head-cont-suffix {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--note-muted);
+}
+
+.ob-note-head-cont-page {
+  flex: none;
+  font-size: 10px;
+  color: var(--note-soft);
+}
+
+/* ---- Totals strip (top on Dispatch, bottom on Filling) -------------------- */
+
+.ob-note-strip {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.ob-note-strip-top {
+  height: 64px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--note-ink);
+}
+
+.ob-note-strip-bottom {
+  height: var(--note-footer-filling);
+  padding-top: 8px;
+  border-top: 2px solid var(--note-ink);
+}
+
+.ob-note-strip-cell {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.ob-note-strip-rule {
+  flex: none;
+  width: 1px;
+  align-self: stretch;
+  background: var(--note-rule);
+}
+
+.ob-note-strip-figure {
+  margin-top: 2px;
+  font-size: 16px;
+  line-height: 26px;
+  font-weight: 700;
+}
+
+.ob-note-strip-figure--total {
+  font-size: 21px;
+}
+
+.ob-note-strip-unit {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--note-soft);
+}
+
+.ob-note-strip-note {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 8.5px;
+  color: #8c979d;
+}
+
+.ob-note-vehicle {
+  margin-top: 2px;
+  min-height: 24px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 16px;
+  line-height: 26px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.ob-note-strip-top .ob-note-vehicle {
+  font-size: 20px;
+  line-height: 28px;
+  min-height: 26px;
+}
+
+.ob-note-filling .ob-note-vehicle {
+  border-bottom: 1px dotted #98a3a9;
+}
+
+.ob-note-strip-page {
+  flex: none;
+  width: 148px;
+  text-align: right;
+}
+
+.ob-note-strip-page-id {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--note-muted);
+}
+
+.ob-note-strip-page-no {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 26px;
+  font-weight: 700;
+}
+
+/* ---- Body ----------------------------------------------------------------- */
+
+.ob-note-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  padding-top: 8px;
+  overflow: hidden;
+}
+
+.ob-note-half {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ob-note-half--left {
+  padding-right: 22px;
+}
+
+.ob-note-half--right {
+  padding-left: 22px;
+}
+
+.ob-note-half--only {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.ob-note-divider {
+  flex: none;
+  width: 1px;
+  background: var(--note-ink);
+}
+
+.ob-note-caption {
+  flex: none;
+  height: var(--note-caption);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--note-muted);
+}
+
+.ob-note-caption span:last-child {
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+.ob-note-columns {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+.ob-note-columns--named {
+  gap: 16px;
+}
+
+.ob-note-columns--coded {
+  gap: 20px;
+}
+
+.ob-note-column {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Named lines ---------------------------------------------------------- */
+
+.ob-note-colhead {
+  flex: none;
+  height: var(--note-column-label);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border-bottom: 1px solid var(--note-ink);
+  font-size: 7.5px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--note-muted);
+}
+
+.ob-note-row {
+  flex: none;
+  height: var(--note-row-named);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border-bottom: 1px dotted var(--note-dots);
+}
+
+.ob-note-grow {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.ob-note-colour {
+  flex: 0 0 64px;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 13px;
+  font-weight: 500;
+}
+
+.ob-note-qty {
+  flex: none;
+  width: 34px;
+  text-align: right;
+  font-size: 15px;
+  line-height: 18px;
+  font-weight: 700;
+}
+
+.ob-note-tick {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--note-soft);
+  border-radius: 2px;
+}
+
+.ob-note-product {
+  display: block;
+  font-size: 12px;
+  line-height: 14px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+}
+
+.ob-note-sub {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+.ob-note-sub-name {
+  min-width: 0;
+  font-size: 11.5px;
+  line-height: 13px;
+  color: #2b353b;
+}
+
+.ob-note-chip.ob-note-chip--empty {
+  min-width: 22px;
+  text-align: center;
+  border-style: dashed;
+  color: var(--note-muted);
+}
+
+.ob-note-chip {
+  flex: none;
+  padding: 0 3px;
+  border: 1px solid var(--note-muted);
+  border-radius: 2px;
+  font-size: 7.5px;
+  line-height: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* ---- Coded lines ---------------------------------------------------------- */
+
+.ob-note-group {
+  flex: none;
+  height: var(--note-group-header);
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  padding: 0 0 3px;
+  border-bottom: 1px solid var(--note-ink);
+  color: var(--note-ink);
+  font-size: 10px;
+  line-height: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.ob-note-group-name {
+  flex: 1 1 0;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ob-note-group-cont {
+  flex: none;
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--note-muted);
+}
+
+.ob-note-coderow {
+  flex: none;
+  height: var(--note-row-coded);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 10px;
+}
+
+.ob-note-coderow--labelled {
+  height: var(--note-row-coded-labelled);
+}
+
+.ob-note-cell {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+}
+
+.ob-note-cell-product {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: normal;
+  text-align: center;
+  font-size: 8px;
+  line-height: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--note-soft);
+}
+
+.ob-note-cell-code {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+.ob-note-cell-code span {
+  max-width: 100%;
+  min-width: 28px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 16px;
+  font-weight: 700;
+  border-bottom: 1px solid var(--note-ink);
+}
+
+.ob-note-cell-detail {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ob-note-cell-detail span:not(.ob-note-chip):nth-last-child(2) {
+  min-width: 0;
+  font-size: 9.5px;
+  line-height: 11px;
+}
+
+.ob-note-cell-detail span:last-child {
+  flex: none;
+  font-size: 10.5px;
+  line-height: 11px;
+  font-weight: 700;
+}
+
+/* ---- Signatures ----------------------------------------------------------- */
+
+.ob-note-sign {
+  flex: none;
+  height: var(--note-signature);
+  display: flex;
+  align-items: flex-end;
+  gap: 26px;
+  padding: 12px 0 8px;
+}
+
+.ob-note-sign-slot {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.ob-note-sign-line {
+  height: 20px;
+  border-bottom: 1px solid var(--note-ink);
+}
+
+.ob-note-sign-slot .ob-note-eyebrow {
+  padding-top: 4px;
+}
+
+/* ---- Print ----------------------------------------------------------------
+ *
+ * The preview lives inside the app shell, whose fixed heights and clipped
+ * overflow would cut a multi-page note off. So a second copy of the sheets is
+ * portalled to <body> (`OrderNoteScreen`), hidden on screen, and print shows
+ * only that copy.
+ */
+
+.ob-note-print-portal {
+  display: none;
+}
+
+@page {
+  size: A4;
+  margin: 0;
+}
+
+@media print {
+  html,
+  body {
+    background: #ffffff !important;
+    zoom: 1 !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  body > *:not(.ob-note-print-portal) {
+    display: none !important;
+  }
+
+  .ob-note-print-portal {
+    display: block;
+    zoom: 1;
+  }
+
+  .ob-note-print-portal .ob-note-scope {
+    display: block;
+    gap: 0;
+  }
+
+  .ob-note-page {
+    box-shadow: none;
+    break-after: page;
+    page-break-after: always;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .ob-note-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+}
+
+.ob-note-meta-id {
+  font-size: 13px;
+}
+
+.ob-note-meta-when {
+  font-size: 11px;
+}
+
+.ob-note-colhead .ob-note-colour,
+.ob-note-colhead .ob-note-qty {
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+}
+
+.ob-note-tick--head {
+  border-color: transparent;
+}
+
+.ob-note-vehicle-input {
+  width: 180px;
+  font-family: var(--font-mono);
+}

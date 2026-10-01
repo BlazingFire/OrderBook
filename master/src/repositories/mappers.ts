@@ -551,6 +551,8 @@ export function mapOrder(
     // The override does not replace the computed figure, it relabels which one
     // the UI shows — so both travel and the source says which is authoritative.
     weightSource: override === null ? 'computed' : 'manual',
+    vehicleNumber: (row.vehicle_number as string | null) ?? null,
+    leadCreatedAt: toIso(row.lead_created_at),
     notes: (row.notes as string | null) ?? null,
     customFields: toJsonObject(row.custom_fields),
     incomplete: completeness.incomplete,

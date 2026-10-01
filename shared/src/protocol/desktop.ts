@@ -118,6 +118,26 @@ export interface DesktopBridge {
    * hash route the panel does not have.
    */
   onMenuCommand?(handler: (id: string) => void): void;
+
+  /** The printers Windows knows on this PC, for the order-note preview's picker. */
+  listPrinters?(): Promise<PrinterInfo[]>;
+
+  /**
+   * Print the page as it stands, on A4 with no margins, using its print
+   * stylesheet — the order-note preview's Print button.
+   *
+   * With `deviceName` the job goes straight to that printer; without it the
+   * system's print dialog opens. A name the shell cannot find among the
+   * installed printers also opens the dialog rather than failing, so a
+   * remembered printer that has been unplugged never blocks a print.
+   */
+  printPage?(options: { deviceName?: string }): Promise<{ ok: boolean; error?: string }>;
+}
+
+export interface PrinterInfo {
+  name: string;
+  displayName: string;
+  isDefault: boolean;
 }
 
 export type PanelBootState = 'starting' | 'ready' | 'failed';

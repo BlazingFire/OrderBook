@@ -563,6 +563,7 @@ export const api = {
 
   parties: (search?: string, limit?: number, offset?: number) =>
     request<Paginated<Party>>(`/api/parties${pagedQuery(search, limit, offset)}`),
+  party: (id: string) => request<Party>(`/api/parties/${id}`),
   createParty: (input: PartyInput) => post<Party>('/api/parties', input),
   /**
    * `baseFieldHlc` is what the form last saw for each field. Sent so the

@@ -230,6 +230,13 @@ dataRoutes.get(
   }),
 );
 
+dataRoutes.get(
+  '/parties/:id',
+  asyncHandler(async (req, res) => {
+    res.json(await catalogService.getParty(String(req.params.id), actorFromRequest(req)));
+  }),
+);
+
 dataRoutes.post(
   '/parties',
   asyncHandler(async (req, res) => {

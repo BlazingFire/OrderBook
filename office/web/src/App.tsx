@@ -1138,6 +1138,8 @@ function OfficePanel() {
               openId={openOrderId}
               onOpenId={setOpenOrderId}
               canDispatch={can('orders.dispatch')}
+              canExport={can('orders.export')}
+              canEdit={can('orders.edit')}
               onError={setError}
               stageId={
                 subKeyOf('orders').startsWith('stage:')

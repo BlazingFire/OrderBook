@@ -17,9 +17,17 @@
 
 import { useEffect, useState } from 'react';
 import { shownColour } from '@orderbook/shared';
-import type { Lead, LineItem, Order, PartyScopeFilter, Pipeline } from '@orderbook/shared';
+import type {
+  Lead,
+  LineItem,
+  NoteKind,
+  Order,
+  Party,
+  PartyScopeFilter,
+  Pipeline,
+} from '@orderbook/shared';
 
-import { ApiError, api } from '../api';
+import { ApiError, api, desktopBridge } from '../api';
 import {
   Button,
   ButtonLink,
@@ -28,6 +36,7 @@ import {
   DataTable,
   EmptyState,
   IconButton,
+  OrderNoteScreen,
   Segmented,
   Select,
   SkeletonTable,
@@ -38,6 +47,7 @@ import {
   rem,
   t,
   useFilterBar,
+  useSubNav,
   type DataTableColumn,
   type TabItem,
 } from '@orderbook/ui';
@@ -131,6 +141,32 @@ export function LeadsOrdersScreen({
   const canDeleteLeads = permissions.includes('leads.delete');
   const canDeleteOrders = permissions.includes('orders.delete');
   const canPreviewPdf = permissions.includes('leads.export');
+  const canPrintNotes = permissions.includes('orders.export');
+  const canEditOrders = permissions.includes('orders.edit');
+  /** The order whose Filling or Dispatch note is open, with its party for the header. */
+  const [note, setNote] = useState<{ id: string; kind: NoteKind; party: Party | null } | null>(null);
+  const noteOrder = note ? (orders.find((order) => order.id === note.id) ?? null) : null;
+
+  function openNote(order: Order, kind: NoteKind): void {
+    setNote({ id: order.id, kind, party: null });
+    // The header's city, phone and GSTIN. Without `parties.view` the note still
+    // prints — with the party's name from the order, and no meta line.
+    api
+      .party(order.partyId)
+      .then((party) => setNote((current) => (current?.id === order.id ? { ...current, party } : current)))
+      .catch(() => undefined);
+  }
+
+  useSubNav(
+    'orders',
+    noteOrder
+      ? {
+          parentId: 'orders',
+          items: [{ id: 'orders.note', label: noteOrder.partyName, icon: 'orders' }],
+          activeId: 'orders.note',
+        }
+      : null,
+  );
 
   useEffect(() => {
     void api
@@ -350,7 +386,7 @@ export function LeadsOrdersScreen({
     {
       key: 'actions',
       header: '',
-      width: rem(280),
+      width: rem(400),
       render: (order) => (
         <div
           style={{
@@ -361,6 +397,16 @@ export function LeadsOrdersScreen({
             width: '100%',
           }}
         >
+          {canPrintNotes && (
+            <>
+              <Button size="sm" onClick={() => openNote(order, 'filling')}>
+                {t('orderNote.filling')}
+              </Button>
+              <Button size="sm" onClick={() => openNote(order, 'dispatch')}>
+                {t('orderNote.dispatch')}
+              </Button>
+            </>
+          )}
           {order.dispatchedAt ? (
             <StatusPill tone="ok">
               {t('leadsOrders.orders.dispatched', { when: formatDateTime(order.dispatchedAt) })}
@@ -556,6 +602,25 @@ export function LeadsOrdersScreen({
       },
     },
   ];
+
+  if (note && noteOrder) {
+    return (
+      <OrderNoteScreen
+        // A new mount per note, so the vehicle field starts from that order's.
+        key={note.id}
+        order={noteOrder}
+        party={note.party}
+        initialKind={note.kind}
+        canEditVehicle={canEditOrders && !noteOrder.dispatchedAt}
+        onSaveVehicle={async (vehicleNumber) => {
+          const saved = await api.updateOrder(noteOrder.id, { vehicleNumber });
+          setOrders((current) => current.map((order) => (order.id === saved.id ? saved : order)));
+        }}
+        onBack={() => setNote(null)}
+        desktop={desktopBridge() ?? undefined}
+      />
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>

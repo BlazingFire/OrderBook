@@ -759,6 +759,10 @@ export interface Order {
   totalWeightKgOverride: number | null;
   /** Which of the two the UI should label — "computed" or "manual". */
   weightSource: WeightSource;
+  /** The vehicle it goes out on, for the Dispatch note. */
+  vehicleNumber?: string | null;
+  /** When the lead this order came from was generated; null for an order with no lead. */
+  leadCreatedAt?: IsoTimestamp | null;
 
   notes: string | null;
   customFields: Record<string, unknown>;

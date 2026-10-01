@@ -47,6 +47,7 @@ import { interpretHealth, type HealthOutcome } from './lib/health.js';
 import { approveInstaller, updateMethod } from './lib/installer.js';
 import { isLeadPdfUrl } from './lib/lead-pdf.js';
 import { openLogFile, type LogFile } from './lib/log-file.js';
+import { printOptions } from './lib/print-options.js';
 import {
   readDataDirOverride,
   readShellSettings,
@@ -839,6 +840,33 @@ export function runPanelShell(config: PanelShellConfig): void {
     const openAtLogin = (value as { openAtLogin?: unknown } | null)?.openAtLogin === true;
     if (app.isPackaged) app.setLoginItemSettings({ openAtLogin, ...loginItemOptions(standalone) });
     return true;
+  });
+
+  /*
+   * Printing for the order notes. Only the panel's own window may ask — the
+   * frame check is `mainWindow`, not a sender's claim — and the printer name it
+   * sends is checked against what Windows lists (`lib/print-options.ts`).
+   */
+  ipcMain.handle('orderbook:listPrinters', async (event) => {
+    if (event.sender !== mainWindow?.webContents) return [];
+    const printers = await event.sender.getPrintersAsync();
+    return printers.map((printer) => ({
+      name: printer.name,
+      displayName: printer.displayName || printer.name,
+      isDefault: printer.isDefault,
+    }));
+  });
+
+  ipcMain.handle('orderbook:printPage', async (event, value: unknown) => {
+    if (event.sender !== mainWindow?.webContents) return { ok: false, error: 'Not allowed' };
+    const installed = (await event.sender.getPrintersAsync()).map((printer) => printer.name);
+    const options = printOptions(value, installed);
+    return new Promise<{ ok: boolean; error?: string }>((resolve) => {
+      event.sender.print(options, (success, reason) => {
+        // Closing the system dialog is a cancel, not a failure worth a toast.
+        resolve(success || reason === 'cancelled' ? { ok: true } : { ok: false, error: reason });
+      });
+    });
   });
 
   ipcMain.handle('orderbook:openLogFolder', () => {

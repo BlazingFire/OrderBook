@@ -371,3 +371,56 @@ describe('a change made elsewhere reaches the screen built from it', () => {
     },
   );
 });
+
+describe('the Filling and Dispatch notes on an order', () => {
+  const ORDER = {
+    id: 'OD0000000001', partyId: 'party-1', partyName: 'Shree Ceramics', leadId: null,
+    stageId: 'stage-1', stageName: 'Confirmed', dispatchedAt: null, totalWeightKg: 24,
+    totalWeightKgOverride: null, weightSource: 'computed', vehicleNumber: null,
+    items: [{
+      id: 'l1', variantId: 'v1', productName: 'Rustic Wood', categoryName: 'Duragres',
+      size: '600x600', brandName: null, variantLabel: 'Ivory', colour: null, grade: null,
+      packaging: 'Box', quantity: 12, weightKg: 2, lineWeightKg: 24,
+    }],
+  };
+
+  async function openOrders(permissions: string[], extra?: (call: Call) => Response | undefined) {
+    const calls = await boot(permissions, (call) => {
+      const path = call.url.split('?')[0];
+      if (path === '/api/orders') return json({ items: [ORDER], total: 1, limit: 100, offset: 0 });
+      if (path === '/api/parties/party-1') {
+        return json({ id: 'party-1', name: 'Shree Ceramics', partyCode: 'P-0001', city: 'Rajkot' });
+      }
+      return extra?.(call);
+    });
+    await open(t('nav.master.leadsOrders'));
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('tab', { name: t('leadsOrders.tab.orders') }));
+      await wait(0);
+    });
+    return calls;
+  }
+
+  it('is offered only with orders.export', async () => {
+    await openOrders([...ADMIN]);
+    await screen.findByText(ORDER.id);
+    expect(screen.queryByRole('button', { name: t('orderNote.filling') })).toBeNull();
+  });
+
+  it('opens the Dispatch note with the party fetched for its header, and prints through the shell', async () => {
+    const printPage = vi.fn().mockResolvedValue({ ok: true });
+    (window as { orderbook?: unknown }).orderbook = { shellVersion: 't', applyUpdate: vi.fn(), printPage };
+    const calls = await openOrders([...ADMIN, 'orders.export']);
+
+    fireEvent.click(await screen.findByRole('button', { name: t('orderNote.dispatch') }));
+
+    expect((await screen.findAllByText(t('orderNote.page', { n: 1, total: 1 }))).length).toBeGreaterThan(0);
+    expect(calls.some((call) => call.url === '/api/parties/party-1')).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.print') }));
+    await waitFor(() => expect(printPage).toHaveBeenCalledWith({ deviceName: undefined }));
+
+    fireEvent.click(screen.getByRole('button', { name: t('action.backToList') }));
+    expect(await screen.findByText(ORDER.id)).toBeTruthy();
+  });
+});

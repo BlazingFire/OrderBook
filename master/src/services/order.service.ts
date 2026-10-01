@@ -269,6 +269,14 @@ export async function updateOrder(
     patch.total_weight_kg_override = input.totalWeightKgOverride;
   }
 
+  if (input.vehicleNumber !== undefined) {
+    const vehicle = input.vehicleNumber?.trim().toUpperCase().replace(/\s+/g, ' ') || null;
+    if (vehicle !== null && !/^[A-Z0-9 -]{1,20}$/.test(vehicle)) {
+      throw new ValidationError('validation.order.vehicleInvalid');
+    }
+    patch.vehicle_number = vehicle;
+  }
+
   await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
     // Keyed by wire field, not column. `mergeFields` looks these up by wire

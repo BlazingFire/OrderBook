@@ -805,6 +805,49 @@ table.ob-table {
   text-align: right;
 }
 
+/*
+ * A hand-written `<table className="ob-table ob-table--flat">` — a short,
+ * fixed list such as an order's lines — with no column template to share, so
+ * it takes the browser's own table layout: columns sized by content, header
+ * over its data, and a cell that wraps rather than truncates (nothing
+ * virtualises these, so row height is free).
+ */
+table.ob-table--flat {
+  display: table;
+  table-layout: auto;
+}
+.ob-table--flat thead {
+  display: table-header-group;
+  position: static;
+}
+.ob-table--flat tbody {
+  display: table-row-group;
+}
+.ob-table--flat tr {
+  display: table-row;
+  width: auto;
+}
+.ob-table--flat th,
+.ob-table--flat td {
+  display: table-cell;
+}
+.ob-table--flat thead th {
+  background: var(--bg-sunken);
+  overflow: visible;
+}
+.ob-table--flat tbody td {
+  height: auto;
+  min-height: var(--row-h);
+  padding-top: var(--s-8);
+  padding-bottom: var(--s-8);
+  white-space: normal;
+  overflow: visible;
+  contain: none;
+}
+.ob-table--flat tbody td > * {
+  overflow: visible;
+}
+
 /* Redaction renders as an em dash with a tooltip naming the permission (§9.1).
  * The cell must cope with `undefined` — the key is absent, not null. */
 .ob-redacted::after {
@@ -2421,6 +2464,14 @@ html[data-window-blur='true'] .ob-busy rect {
   align-items: center;
   gap: var(--s-8);
   color: var(--fg-secondary);
+}
+
+/* Trailing controls sit at the far end of the head, spaced apart. */
+.ob-editorscreen-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  margin-left: auto;
 }
 
 .ob-editorscreen-body {

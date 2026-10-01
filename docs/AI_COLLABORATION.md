@@ -190,6 +190,41 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-09-30 - Order notes built: Filling note and Dispatch note (Claude)
+
+Owner: "start working on this plan" (`docs/ORDER_NOTES_PLAN.md`). All six steps.
+- **Data:** migration `20260401000000_order_vehicle_number` (nullable, add-only,
+  pinned last in `migration-registry.test.ts`); `Order.vehicleNumber` /
+  `leadCreatedAt` (optional, joined from `leads`); `OrderUpdateInput.vehicleNumber`
+  validated in `updateOrder`; `ORDER_COLUMNS.vehicleNumber` so offline edits merge.
+- **Shared:** `shared/src/domain/order-note.ts` (build + paginate, `NOTE_LAYOUT`).
+- **UI:** `OrderNote`, `OrderNoteScreen`, `order-note.css`; buttons on the Office
+  order detail and the Master orders table (`orders.export`); new
+  `GET /api/parties/:id` on the Master for the header.
+- **Desktop:** `listPrinters` / `printPage` on `DesktopBridge`, preload, `shell.ts`,
+  `electron/lib/print-options.ts`.
+- **Deviation from the plan:** the remembered printer is in `localStorage` (per
+  PC, since each PC has its own profile), not in `shell.json`. Same effect,
+  no shell-settings change. Escape-to-go-back was not added (no screen does it).
+- **Verified:** `npm run verify` exit 0, 179 files / 2270 tests, integration
+  suites running (`ORDERBOOK_PG_BIN` = PostgreSQL 17, since embedded `initdb` is
+  refused here). The Dispatch note was rendered in a browser (3 pages, no
+  overflow). **Not done:** Electron / real printer / Microsoft Print to PDF,
+  the Filling note visually, 157 % scale and the 1024 × 768 floor.
+
+### 2026-09-30 - Order notes plan: Filling note and Dispatch note (Claude)
+
+Owner: two print documents per order from the design artifact "A4 print
+notes" — a preview, then one Print button to the PC's printer; named sub
+products on the left, coded ones on the right grouped by product.
+- New `docs/ORDER_NOTES_PLAN.md`: the decoded design, what the tree has
+  today (no order print, no print IPC, no vehicle number), the decisions
+  (HTML in the web app with pure pagination in `shared/`, a desktop
+  `printPage` bridge with a per-PC printer, `orders.vehicle_number` add-only
+  column), six build steps with tests, traps, and four owner decisions with
+  defaults.
+- Docs only; no code changed, nothing run.
+
 ### 2026-09-30 - Grade beside packaging; the Enter walk ends on Add product (Claude)
 
 Owner: grade beside packaging and the same box; a packaging pick moves to the

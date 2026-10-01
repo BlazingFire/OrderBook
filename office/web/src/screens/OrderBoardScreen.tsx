@@ -17,6 +17,7 @@
 import { useRef, useState } from 'react';
 import { resolveCompanyFeatures, shownColour } from '@orderbook/shared';
 import type {
+  NoteKind,
   Order,
   PartyScopeFilter,
   PipelineStage,
@@ -24,7 +25,7 @@ import type {
   SyncSnapshot,
 } from '@orderbook/shared';
 
-import { api, type LocalView } from '../api';
+import { api, desktopBridge, type LocalView } from '../api';
 import {
   Button,
   Card,
@@ -37,6 +38,7 @@ import {
   FormField,
   Input,
   NumberInput,
+  OrderNoteScreen,
   Section,
   Segmented,
   Select,
@@ -59,6 +61,10 @@ interface Props {
   openId: string | null;
   onOpenId: (id: string | null) => void;
   canDispatch: boolean;
+  /** `orders.export`: may open the Filling and Dispatch notes. */
+  canExport: boolean;
+  /** `orders.edit`: may set the vehicle number on the Dispatch note. */
+  canEdit: boolean;
   onError: (message: string) => void;
   /** The stage showing, or null for all — chosen here or from the sidebar's sub-pages. */
   stageId: string | null;
@@ -118,6 +124,8 @@ export function OrderBoardScreen({
   openId,
   onOpenId,
   canDispatch,
+  canExport,
+  canEdit,
   onError,
   stageId: stageFilter,
   onStageChange: setStageFilter,
@@ -133,6 +141,19 @@ export function OrderBoardScreen({
   const stages = sortedStages(pipeline);
   const orders = onMyParties(view.orders, scope === 'assigned' ? view.partyGrants : undefined);
   const openOrder = orders.find((order) => order.id === openId) ?? null;
+  /** The note showing over the open order — for that order only, so opening another starts at its detail. */
+  const [note, setNote] = useState<{ id: string; kind: NoteKind } | null>(null);
+  const noteKind = note && note.id === openOrder?.id ? note.kind : null;
+  /**
+   * Vehicle numbers this panel has sent, by order. A write here is queued and
+   * the order in the snapshot does not change until the Master sends it back —
+   * never, while offline — so reopening the note would print the old number.
+   */
+  const [sentVehicles, setSentVehicles] = useState<Record<string, string | null>>({});
+  const noteOrder =
+    openOrder && noteKind && openOrder.id in sentVehicles
+      ? { ...openOrder, vehicleNumber: sentVehicles[openOrder.id] }
+      : openOrder;
 
   useFilterBar(
     pipeline && !openOrder ? (
@@ -175,11 +196,35 @@ export function OrderBoardScreen({
     openOrder
       ? {
           parentId: 'orders',
-          items: [{ id: 'orders.detail', label: openOrder.partyName, icon: 'orders' }],
-          activeId: 'orders.detail',
+          items: [
+            {
+              id: noteKind ? 'orders.note' : 'orders.detail',
+              label: openOrder.partyName,
+              icon: 'orders',
+            },
+          ],
+          activeId: noteKind ? 'orders.note' : 'orders.detail',
         }
       : null,
   );
+
+  if (openOrder && noteOrder && noteKind) {
+    return (
+      <OrderNoteScreen
+        key={openOrder.id}
+        order={noteOrder}
+        party={view.parties.find((candidate) => candidate.id === openOrder.partyId) ?? null}
+        initialKind={noteKind}
+        canEditVehicle={canEdit && !openOrder.dispatchedAt}
+        onSaveVehicle={async (vehicleNumber) => {
+          await api.updateOrder(openOrder.id, { vehicleNumber });
+          setSentVehicles((current) => ({ ...current, [openOrder.id]: vehicleNumber }));
+        }}
+        onBack={() => setNote(null)}
+        desktop={desktopBridge() ?? undefined}
+      />
+    );
+  }
 
   if (openOrder) {
     return (
@@ -200,6 +245,14 @@ export function OrderBoardScreen({
                 : t('orders.detail.subtitleNoLead', { id: openOrder.id })}
             </span>
           </>
+        }
+        actions={
+          canExport ? (
+            <>
+              <Button onClick={() => setNote({ id: openOrder.id, kind: 'filling' })}>{t('orderNote.filling')}</Button>
+              <Button onClick={() => setNote({ id: openOrder.id, kind: 'dispatch' })}>{t('orderNote.dispatch')}</Button>
+            </>
+          ) : undefined
         }
         onBack={() => {
           onOpenId(null);
@@ -412,7 +465,7 @@ function OrderDetailBody({
       <Card>
         <Section title={t('orders.detail.products')}>
           <div className="ob-tablewrap">
-            <table className="ob-table">
+            <table className="ob-table ob-table--flat">
               <thead>
                 <tr>
                   <th>{t('orders.column.code')}</th>
@@ -474,7 +527,7 @@ function OrderDetailBody({
             <p className="ob-small">{t('orders.detail.noReservations')}</p>
           ) : (
             <div className="ob-tablewrap">
-              <table className="ob-table">
+              <table className="ob-table ob-table--flat">
                 <thead>
                   <tr>
                     <th>{t('orders.column.code')}</th>

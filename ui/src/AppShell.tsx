@@ -9,7 +9,7 @@
  * anchor to the working area rather than the window.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { t } from './i18n.js';
 import { Icon, type IconName } from './icons';
@@ -77,6 +77,23 @@ export function AppShell({
 }) {
   // Folds the operator has set by hand; anything unset follows the current page.
   const [folded, setFolded] = useState<Record<string, boolean>>({});
+
+  /*
+   * Moving to another module folds the ones left behind. A click on a module
+   * records it as unfolded by hand, and that override used to outlive the
+   * visit: Orders stayed open under Leads for as long as the app did. Only the
+   * module holding the current page keeps a hand-set fold.
+   */
+  useEffect(() => {
+    setFolded((current) => {
+      const keep = Object.entries(current).filter(([id]) =>
+        groups.some((group) => group.items.some((item) => item.id === id && contains(item, activeId))),
+      );
+      return keep.length === Object.keys(current).length ? current : Object.fromEntries(keep);
+    });
+    // `groups` is rebuilt every render; only a change of page should reset.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
 
   /*
    * Ctrl+\ and the palette's "Toggle sidebar" run the same toggle as the

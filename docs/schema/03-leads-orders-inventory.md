@@ -107,6 +107,7 @@ CREATE TABLE orders (
   expected_dispatch_date   DATE,
   total_weight_kg          NUMERIC(12,3) NOT NULL DEFAULT 0,
   total_weight_kg_override NUMERIC(12,3),
+  vehicle_number           TEXT CHECK (char_length(vehicle_number) <= 20),
   notes                    TEXT,
   custom_fields            JSONB NOT NULL DEFAULT '{}',
   dispatched_at            TIMESTAMPTZ,
@@ -140,6 +141,13 @@ two tables can only be truncated together).
 (`computeTotalWeightKg`); `total_weight_kg_override` is set only when a human disagrees. The
 computed figure is never discarded, so an override can always be undone — and the UI labels which
 one it is showing.
+
+`vehicle_number` (added by `20260401000000_order_vehicle_number`, nullable, no backfill) is the
+vehicle the order goes out on. The Dispatch note prints it large; the Filling note leaves a line
+to write it in. It is upper-cased and trimmed by `updateOrder`, and is a mergeable order column
+(`ORDER_COLUMNS.vehicleNumber`), so an offline Office edit merges like the weight override. The
+Dispatch note also shows the lead's creation date, which `mapOrder` joins from `leads` as
+`leadCreatedAt` — not stored on the order.
 
 ## `line_items` — one table, both parents
 

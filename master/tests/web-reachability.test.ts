@@ -160,7 +160,6 @@ const ALLOWED_UNCALLED: Record<'master' | 'office', Record<string, string>> = {
 
     // --- Built ahead of the screens that will use them.
     addLeadRemark: 'the Master has no lead detail, so nowhere to add a remark yet',
-    updateOrder: 'no order edit form on the Master yet',
     reportRangeQuery: 'a helper the report calls use inside api.ts; no screen needs it directly',
     connectorProfiles:
       'the Integrations screen builds a connector from scratch and offers no profiles',

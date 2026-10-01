@@ -48,6 +48,7 @@ import * as lineItemGrade from './20260325000000_line_item_grade.js';
 import * as catalogueBrandsAndCodesPort from './20260326000000_catalogue_brands_and_codes_port.js';
 import * as optionListsRepair from './20260327000000_option_lists_repair.js';
 import * as linePackagingDefaults from './20260328000000_line_packaging_defaults.js';
+import * as orderVehicleNumber from './20260401000000_order_vehicle_number.js';
 
 export interface Migration {
   name: string;
@@ -201,6 +202,10 @@ export const migrations: Migration[] = [
   {
     name: '20260328000000_line_packaging_defaults',
     ...linePackagingDefaults,
+  },
+  {
+    name: '20260401000000_order_vehicle_number',
+    ...orderVehicleNumber,
   },
 ];
 

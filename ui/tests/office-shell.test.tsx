@@ -873,3 +873,107 @@ describe('Edit lead', () => {
     expect(screen.queryByRole('button', { name: t('lead.edit.action') })).toBeNull();
   });
 });
+
+describe('the Filling and Dispatch notes on an order', () => {
+  const LINE = {
+    id: 'line-1', variantId: 'var-1', productId: 'prod-1', productName: 'Rustic Wood',
+    categoryName: 'Duragres', size: '600x600', brandName: null, variantLabel: 'Ivory',
+    colour: null, grade: 'Std', packaging: 'Box', quantity: 12, weightKg: 2, lineWeightKg: 24,
+  };
+  const NOTE_ORDER = { ...ORDER, items: [LINE] };
+
+  async function openOrder(permissions: string[]): Promise<Call[]> {
+    const calls = await boot({
+      permissions,
+      view: { orders: [NOTE_ORDER], pipelines: [ORDER_PIPELINE] },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTitle(t('nav.orders')));
+    });
+    await act(async () => {
+      fireEvent.click(await screen.findByText(ORDER.id));
+    });
+    return calls;
+  }
+
+  const pageLabel = t('orderNote.page', { n: 1, total: 1 });
+
+  afterEach(() => {
+    delete (window as Window & { orderbook?: unknown }).orderbook;
+  });
+
+  it('is not offered without orders.export', async () => {
+    await openOrder(['orders.view']);
+    await screen.findByText(t('orders.detail.products'));
+    expect(screen.queryByRole('button', { name: t('orderNote.filling') })).toBeNull();
+    expect(screen.queryByRole('button', { name: t('orderNote.dispatch') })).toBeNull();
+  });
+
+  it('opens a preview with the order on it, and back returns to the order', async () => {
+    await openOrder(['orders.view', 'orders.export']);
+    fireEvent.click(await screen.findByRole('button', { name: t('orderNote.filling') }));
+
+    // Twice: the preview, and the copy that print shows.
+    expect((await screen.findAllByText(pageLabel)).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Duragres').length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: t('action.backToList') }));
+    expect(await screen.findByText(t('orders.detail.products'))).toBeTruthy();
+  });
+
+  it('prints through the shell to the printer picked, and asks each time until one is', async () => {
+    const printPage = vi.fn().mockResolvedValue({ ok: true });
+    (window as Window & { orderbook?: unknown }).orderbook = {
+      shellVersion: 'test',
+      applyUpdate: vi.fn(),
+      listPrinters: vi
+        .fn()
+        .mockResolvedValue([{ name: 'HP Laser', displayName: 'HP Laser', isDefault: true }]),
+      printPage,
+    };
+    await openOrder(['orders.view', 'orders.export']);
+    fireEvent.click(await screen.findByRole('button', { name: t('orderNote.filling') }));
+
+    const printer = await screen.findByLabelText(t('orderNote.printer'));
+    await screen.findByRole('option', { name: 'HP Laser' });
+
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.print') }));
+    await waitFor(() => expect(printPage).toHaveBeenLastCalledWith({ deviceName: undefined }));
+
+    fireEvent.change(printer, { target: { value: 'HP Laser' } });
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.print') }));
+    await waitFor(() => expect(printPage).toHaveBeenLastCalledWith({ deviceName: 'HP Laser' }));
+  });
+
+  it('falls back to the browser print when there is no shell', async () => {
+    const print = vi.fn();
+    vi.stubGlobal('print', print);
+    await openOrder(['orders.view', 'orders.export']);
+    fireEvent.click(await screen.findByRole('button', { name: t('orderNote.dispatch') }));
+
+    fireEvent.click(await screen.findByRole('button', { name: t('orderNote.print') }));
+    expect(print).toHaveBeenCalledTimes(1);
+  });
+
+  it('saves the vehicle number, tidied, when the field is left', async () => {
+    const calls = await openOrder(['orders.view', 'orders.export', 'orders.edit']);
+    fireEvent.click(await screen.findByRole('button', { name: t('orderNote.dispatch') }));
+
+    const field = await screen.findByLabelText(t('orderNote.vehicleNo'));
+    await act(async () => {
+      fireEvent.change(field, { target: { value: 'gj 03  ab 4471' } });
+      fireEvent.blur(field);
+      await wait(0);
+    });
+
+    const writes = calls.filter((call) => call.method === 'PUT' && call.url === `/api/orders/${ORDER.id}`);
+    expect(writes.map((call) => call.body)).toEqual([{ vehicleNumber: 'GJ 03 AB 4471' }]);
+  });
+
+  it('leaves the vehicle number read-only without orders.edit', async () => {
+    await openOrder(['orders.view', 'orders.export']);
+    fireEvent.click(await screen.findByRole('button', { name: t('orderNote.dispatch') }));
+    const field = await screen.findByLabelText(t('orderNote.vehicleNo'));
+    expect((field as HTMLInputElement).disabled).toBe(true);
+  });
+});

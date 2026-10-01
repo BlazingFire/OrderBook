@@ -694,5 +694,27 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
       expect(cleared.weightSource).toBe('computed');
       expect(cleared.totalWeightKg).toBe(325);
     });
+
+    it('sets, normalises and clears the vehicle number, and rejects a bad one', async () => {
+      const { party, plain, plainVariant } = await seed();
+      const lead = await leads.createLead(
+        { partyId: party.id, items: [line(plain.id, plainVariant.id, 10)] },
+        actor,
+      );
+      const order = await orders.convertLead({ leadId: lead.id }, actor);
+      expect(order.vehicleNumber).toBeNull();
+      expect(order.leadCreatedAt).toBe(lead.createdAt);
+
+      const set = await orders.updateOrder(order.id, { vehicleNumber: ' mh 12  ab-1234 ' }, actor);
+      expect(set.vehicleNumber).toBe('MH 12 AB-1234');
+
+      await expect(
+        orders.updateOrder(order.id, { vehicleNumber: 'X'.repeat(21) }, actor),
+      ).rejects.toThrow();
+      await expect(orders.updateOrder(order.id, { vehicleNumber: 'MH!12' }, actor)).rejects.toThrow();
+
+      const cleared = await orders.updateOrder(order.id, { vehicleNumber: '  ' }, actor);
+      expect(cleared.vehicleNumber).toBeNull();
+    });
   });
 });

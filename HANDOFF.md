@@ -52,7 +52,18 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
-## Current state (2026-09-29, catalogue v2 on the 1.2 product master)
+## Current state (2026-09-30, order notes built; catalogue v2 on the 1.2 product master)
+
+- **Order notes (2026-09-30):** Filling note and Dispatch note per
+  `docs/ORDER_NOTES_PLAN.md`, all six steps. Pure pagination in
+  `shared/src/domain/order-note.ts`; preview sub-screen `ui/src/OrderNoteScreen.tsx`;
+  buttons on the Office order detail and the Master orders table
+  (`orders.export`); `orders.vehicle_number` (migration `20260401`, pinned last);
+  Electron `listPrinters` / `printPage`. **Not yet seen on paper or in Electron**:
+  the browser and Microsoft-Print-to-PDF pass in the plan's §6 is owed, and
+  the four owner decisions in §8 are still on their defaults (unit "pcs",
+  grouped coded side, dialog until a printer is picked, blank vehicle line).
+  Trap: the row heights live only in `NOTE_LAYOUT`; the CSS reads them.
 
 - **Catalogue v2 (2026-09-29):** the owner's Brand → Product → Sub product
   restructure (`docs/catalogue/CATALOGUE_MODEL.md`) is ported onto `main`'s

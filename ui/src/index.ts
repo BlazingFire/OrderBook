@@ -44,6 +44,8 @@ export * from './KeyboardProvider.js';
 export * from './Logo.js';
 export * from './Modal.js';
 export * from './OptionListEditor.js';
+export * from './OrderNote.js';
+export * from './OrderNoteScreen.js';
 export * from './PermissionGrid.js';
 export * from './PermissionSummary.js';
 export * from './PartyFormModal.js';

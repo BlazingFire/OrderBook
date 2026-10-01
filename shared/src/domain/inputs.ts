@@ -250,6 +250,8 @@ export interface OrderUpdateInput {
   expectedDispatchDate?: IsoDate | null;
   /** Null clears the override and returns the UI to the computed weight. */
   totalWeightKgOverride?: number | null;
+  /** Printed on the Dispatch note. Trimmed and upper-cased; null clears it. */
+  vehicleNumber?: string | null;
   notes?: string | null;
   customFields?: Record<string, unknown>;
 }

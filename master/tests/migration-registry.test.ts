@@ -88,6 +88,9 @@ describe('the migration registry matches the directory', () => {
     '20260327000000_option_lists_repair',
     // Seeds the packaging list into that table, so it stays behind the repair.
     '20260328000000_line_packaging_defaults',
+    // Highest timestamp, but the pinned block above already sits at the tail of
+    // the array, so a new migration goes behind it and joins the pin.
+    '20260401000000_order_vehicle_number',
   ];
 
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {

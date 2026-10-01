@@ -1,0 +1,181 @@
+/**
+ * Building and paginating the Filling / Dispatch notes (docs/ORDER_NOTES_PLAN.md).
+ *
+ * Pagination is arithmetic on fixed row heights, so everything that can go
+ * wrong with it — a line printed twice or not at all, a page total that does
+ * not add up, a signature row on the wrong page — is checked here, not on paper.
+ */
+
+import { describe, expect, it } from 'vitest';
+
+import { buildOrderNote, paginateOrderNote } from '../src/index.js';
+import type { LineItem, NoteKind, NotePage, Order } from '../src/index.js';
+
+let seq = 0;
+
+function line(over: Partial<LineItem> = {}): LineItem {
+  seq += 1;
+  return {
+    id: `l${seq}`, tenantId: 't', parentType: 'order', parentId: 'OD1',
+    productId: `p${seq}`, variantId: `v${seq}`,
+    productName: `Sub ${seq}`, categoryName: 'Duragres', categoryCode: 'DUR', brandName: null,
+    alias: null, code: null, variantLabel: 'Ivory', colour: null, size: '600x600', weightKg: 2,
+    packaging: 'Box', grade: 'Std', sequence: seq, fromPartyVariant: false, imagePath: null,
+    notes: null, quantity: 3, lineWeightKg: 6, createdAt: '', updatedAt: '',
+    ...over,
+  } as LineItem;
+}
+
+function orderOf(items: LineItem[], over: Partial<Order> = {}): Order {
+  return {
+    id: 'OD0000000001', items, totalWeightKg: 0, totalWeightKgOverride: null, weightSource: 'computed',
+    ...over,
+  } as unknown as Order;
+}
+
+function orderWith(named: number, coded: number, over: Partial<Order> = {}): Order {
+  const items: LineItem[] = [];
+  for (let i = 0; i < named; i += 1) items.push(line({ productName: `Model ${String(i).padStart(4, '0')}` }));
+  for (let i = 0; i < coded; i += 1) {
+    items.push(line({ productName: String(100 + i), categoryName: i % 7 === 0 ? 'Alpha' : 'Beta' }));
+  }
+  return orderOf(items, over);
+}
+
+function printed(pages: NotePage[]): string[] {
+  return pages.flatMap((page) => [
+    ...page.left.flat().map((l) => l.key),
+    ...page.right.flat().flatMap((slot) => (slot.kind === 'row' ? slot.lines.map((l) => l.key) : [])),
+  ]);
+}
+
+const PRESETS: Array<[number, number]> = [[14, 84], [46, 430], [120, 1100], [0, 300], [200, 0], [1, 1]];
+
+describe('buildOrderNote', () => {
+  it('puts a name left and a plain code right, and reuses isNumericSubProduct for the test', () => {
+    const model = buildOrderNote(orderOf([
+      line({ productName: '102 (9")' }),
+      line({ productName: '102' }),
+    ]));
+    expect(model.named.map((l) => l.subProduct)).toEqual(['102 (9")']);
+    expect(model.coded.flatMap((g) => g.lines.map((l) => l.subProduct))).toEqual(['102']);
+  });
+
+  it('merges lines of one variant, colour, grade and packaging, and keeps different ones apart', () => {
+    const base = { variantId: 'v', productName: 'Rustic' };
+    const model = buildOrderNote(orderOf([
+      line({ ...base, quantity: 2, lineWeightKg: 4 }),
+      line({ ...base, quantity: 5, lineWeightKg: 10 }),
+      line({ ...base, quantity: 1, lineWeightKg: 2, grade: 'Prem' }),
+    ]));
+    expect(model.named.map((l) => l.quantity).sort()).toEqual([1, 7]);
+    expect(model.totalQuantity).toBe(8);
+  });
+
+  it('gives a merged weight of null when any part has none', () => {
+    const base = { variantId: 'v', productName: 'Rustic' };
+    const model = buildOrderNote(orderOf([
+      line({ ...base, lineWeightKg: 4 }),
+      line({ ...base, lineWeightKg: null }),
+    ]));
+    expect(model.named[0]?.weightKg).toBeNull();
+  });
+
+  it('sorts codes ascending as numbers and groups them under their product', () => {
+    const model = buildOrderNote(orderOf([
+      line({ productName: '1111', categoryName: 'Opt' }),
+      line({ productName: '102', categoryName: 'Opt' }),
+      line({ productName: '102', categoryName: 'Prm' }),
+    ]));
+    expect(model.coded.map((g) => g.product)).toEqual(['Opt', 'Prm']);
+    expect(model.coded[0]?.lines.map((l) => l.subProduct)).toEqual(['102', '1111']);
+  });
+
+  it('takes the order override for the total weight when one is set', () => {
+    const items = [line()];
+    expect(buildOrderNote(orderOf(items, { totalWeightKg: 6 })).totalWeightKg).toBe(6);
+    expect(
+      buildOrderNote(orderOf(items, { totalWeightKg: 6, totalWeightKgOverride: 9, weightSource: 'manual' })).totalWeightKg,
+    ).toBe(9);
+  });
+});
+
+describe.each(['filling', 'dispatch'] as NoteKind[])('paginateOrderNote (%s)', (kind) => {
+  it.each(PRESETS)('prints every line exactly once for %i named + %i coded', (named, coded) => {
+    const model = buildOrderNote(orderWith(named, coded));
+    const keys = printed(paginateOrderNote(model, kind));
+    expect(keys).toHaveLength(model.itemCount);
+    expect(new Set(keys).size).toBe(model.itemCount);
+  });
+
+  it.each(PRESETS)('per-page quantities add up to the total for %i + %i', (named, coded) => {
+    const model = buildOrderNote(orderWith(named, coded));
+    const pages = paginateOrderNote(model, kind);
+    expect(pages.reduce((sum, p) => sum + p.quantity, 0)).toBe(model.totalQuantity);
+    expect(pages.at(-1)?.runQuantity).toBe(model.totalQuantity);
+    const runs = pages.map((p) => p.runQuantity);
+    expect(runs).toEqual([...runs].sort((a, b) => a - b));
+  });
+
+  it('is one page for a short order and grows for the long presets', () => {
+    expect(paginateOrderNote(buildOrderNote(orderWith(6, 10)), kind)).toHaveLength(1);
+    const typical = paginateOrderNote(buildOrderNote(orderWith(46, 430)), kind).length;
+    const long = paginateOrderNote(buildOrderNote(orderWith(120, 1100)), kind).length;
+    expect(typical).toBeGreaterThan(1);
+    expect(long).toBeGreaterThan(typical);
+  });
+
+  it('numbers pages and marks only the last one', () => {
+    const pages = paginateOrderNote(buildOrderNote(orderWith(46, 430)), kind);
+    pages.forEach((page, i) => {
+      expect(page.pageNo).toBe(i + 1);
+      expect(page.pageCount).toBe(pages.length);
+      expect(page.isLast).toBe(i === pages.length - 1);
+      expect(page.isFirst).toBe(i === 0);
+    });
+  });
+
+  it('gives the named half two columns when a page has no coded lines, and the coded half more columns when it has no named lines', () => {
+    const onlyNamed = paginateOrderNote(buildOrderNote(orderWith(20, 0)), kind)[0];
+    expect(onlyNamed?.wideLeft).toBe(true);
+    expect(onlyNamed?.left).toHaveLength(2);
+
+    const onlyCoded = paginateOrderNote(buildOrderNote(orderWith(0, 500)), kind)[0];
+    expect(onlyCoded?.wideRight).toBe(true);
+    expect(onlyCoded?.right.length).toBeLessThanOrEqual(2);
+  });
+
+  it('gives a product of three or more codes one header, codes three to a row, and never leaves the header alone at a column foot', () => {
+    const pages = paginateOrderNote(buildOrderNote(orderWith(0, 300)), kind);
+    for (const page of pages) {
+      for (const column of page.right) {
+        expect(column[0]?.kind).toBe('header');
+        expect(column.at(-1)?.kind).toBe('row');
+      }
+    }
+    const slots = pages.flatMap((p) => p.right.flat());
+    expect(slots.some((slot) => slot.kind === 'header' && slot.continued)).toBe(true);
+    const rows = slots.flatMap((slot) => (slot.kind === 'row' ? [slot] : []));
+    expect(Math.max(...rows.map((row) => row.lines.length))).toBe(3);
+  });
+
+  it('prints the product on each code of a product with fewer than three, and gives it no header', () => {
+    const items = [
+      line({ productName: '101', categoryName: 'Solo' }),
+      line({ productName: '102', categoryName: 'Pair' }),
+      line({ productName: '103', categoryName: 'Pair' }),
+      ...['201', '202', '203'].map((code) => line({ productName: code, categoryName: 'Trio' })),
+    ];
+    const slots = paginateOrderNote(buildOrderNote(orderOf(items)), kind)[0]!.right.flat();
+    expect(slots.flatMap((s) => (s.kind === 'header' ? [s.product] : []))).toEqual(['Trio']);
+    const rows = slots.flatMap((s) => (s.kind === 'row' ? [s] : []));
+    expect(rows.filter((r) => r.labelled).map((r) => r.product).sort()).toEqual(['Pair', 'Solo']);
+    expect(rows.filter((r) => !r.labelled).flatMap((r) => r.lines)).toHaveLength(3);
+  });
+
+  it('still prints one page for an order with no lines', () => {
+    const pages = paginateOrderNote(buildOrderNote(orderOf([])), kind);
+    expect(pages).toHaveLength(1);
+    expect(pages[0]?.isLast).toBe(true);
+  });
+});
