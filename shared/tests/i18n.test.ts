@@ -60,12 +60,12 @@ describe('t()', () => {
 
 describe('tCount()', () => {
   it('selects the singular form for a count of 1', () => {
-    expect(tCount('en', 'count.leads', 1)).toBe('1 lead');
+    expect(tCount('en', 'count.leads', 1)).toBe('1 pending order');
   });
 
   it('selects the plural form for a count other than 1', () => {
-    expect(tCount('en', 'count.leads', 0)).toBe('0 leads');
-    expect(tCount('en', 'count.leads', 5)).toBe('5 leads');
+    expect(tCount('en', 'count.leads', 0)).toBe('0 pending orders');
+    expect(tCount('en', 'count.leads', 5)).toBe('5 pending orders');
   });
 
   it('injects the count as a number, never pre-formatted with a separator', () => {
@@ -87,7 +87,7 @@ describe('createTranslator()', () => {
 
   it('exposes tCount bound to the same locale', () => {
     const translator = createTranslator('en');
-    expect(translator.tCount('count.leads', 2)).toBe('2 leads');
+    expect(translator.tCount('count.leads', 2)).toBe('2 pending orders');
   });
 });
 

@@ -454,9 +454,9 @@ describe.skipIf(!canRunIntegrationTests)('audited writes commit with their entry
       const trail = await entries({ entity_type: 'order', entity_id: order.id });
       expect(trail.map((entry) => entry.action)).toEqual(['created', 'updated', 'stage_changed']);
       expect(trail.map(rendered)).toEqual([
-        'Test Actor created this order',
-        'Test Actor updated this order',
-        'Test Actor moved this order to Postpone',
+        'Test Actor created this final order',
+        'Test Actor updated this final order',
+        'Test Actor moved this final order to Postpone',
       ]);
     });
 
@@ -485,7 +485,7 @@ describe.skipIf(!canRunIntegrationTests)('audited writes commit with their entry
       expect(merged.map(rendered)).toEqual([
         'Front Desk updated the party Audit Traders',
         'Front Desk updated the product Audit Basin',
-        'Front Desk updated this order',
+        'Front Desk updated this final order',
       ]);
       expect(merged[0]?.details).toMatchObject({ fields: ['city'] });
     });

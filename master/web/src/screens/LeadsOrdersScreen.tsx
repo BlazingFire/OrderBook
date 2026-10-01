@@ -16,7 +16,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { shownColour } from '@orderbook/shared';
+import { matchesRecordSearch, shownColour } from '@orderbook/shared';
 import type {
   Lead,
   LineItem,
@@ -36,6 +36,7 @@ import {
   DataTable,
   EmptyState,
   IconButton,
+  Input,
   OrderNoteScreen,
   Segmented,
   Select,
@@ -125,6 +126,7 @@ export function LeadsOrdersScreen({
    * are explicitly assigned to, hiding the unclaimed ones.
    */
   const [scope, setScope] = useState<PartyScopeFilter>('all');
+  const [search, setSearch] = useState('');
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -271,14 +273,24 @@ export function LeadsOrdersScreen({
    * unrelated controls read as one segmented switch.
    */
   useFilterBar(
-    <Segmented<PartyScopeFilter>
-      value={scope}
-      onChange={setScope}
-      options={[
-        { value: 'all', label: t('partyAccess.scope.all') },
-        { value: 'assigned', label: t('partyAccess.scope.assigned') },
-      ]}
-    />,
+    <>
+      <Input
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        placeholder={view === 'orders' ? t('orders.search.placeholder') : t('leads.search.placeholder')}
+        aria-label={view === 'orders' ? t('orders.search.label') : t('leads.search.label')}
+        data-screen-search
+        style={{ width: rem(320) }}
+      />
+      <Segmented<PartyScopeFilter>
+        value={scope}
+        onChange={setScope}
+        options={[
+          { value: 'all', label: t('partyAccess.scope.all') },
+          { value: 'assigned', label: t('partyAccess.scope.assigned') },
+        ]}
+      />
+    </>,
   );
 
   const tabItems: TabItem[] = [
@@ -645,7 +657,7 @@ export function LeadsOrdersScreen({
       ) : view === 'orders' ? (
         <DataTable
           columns={orderColumns}
-          rows={orders}
+          rows={orders.filter((order) => matchesRecordSearch(order, search))}
           rowKey={(order) => order.id}
           empty={
             <EmptyState
@@ -657,7 +669,7 @@ export function LeadsOrdersScreen({
       ) : (
         <DataTable
           columns={leadColumns}
-          rows={leads}
+          rows={leads.filter((lead) => matchesRecordSearch(lead, search))}
           rowKey={(lead) => lead.id}
           empty={
             <EmptyState

@@ -90,7 +90,7 @@ function NamedRow({ line, tick }: { line: NoteLine; tick: boolean }) {
           {line.grade && <span className="ob-note-chip">{line.grade}</span>}
         </span>
       </span>
-      <span className="ob-note-colour ob-note-clip">{line.colour}</span>
+      <span className="ob-note-colour ob-note-wrap">{line.colour}</span>
       <span className="ob-note-qty">{num(line.quantity)}</span>
       {tick && <span className="ob-note-tick" />}
     </div>
@@ -116,7 +116,7 @@ function CodedSlot({ slot }: { slot: NoteSlot }) {
           </div>
           <div className="ob-note-cell-detail">
             <PackagingChip value={line.packaging} />
-            <span className="ob-note-clip">{[line.colour, line.grade].filter(Boolean).join(' - ')}</span>
+            <span className="ob-note-wrap">{[line.colour, line.grade].filter(Boolean).join(' - ')}</span>
             <span>{num(line.quantity)}</span>
           </div>
         </div>

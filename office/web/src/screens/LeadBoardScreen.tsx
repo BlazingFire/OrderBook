@@ -14,7 +14,7 @@
  */
 
 import { useState } from 'react';
-import { resolveCompanyFeatures, shownColour } from '@orderbook/shared';
+import { matchesRecordSearch, resolveCompanyFeatures, shownColour } from '@orderbook/shared';
 import type { Lead, PartyScopeFilter, SyncSnapshot } from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
@@ -27,6 +27,7 @@ import {
   EmptyState,
   FilterChip,
   FilterDivider,
+  Input,
   IconButton,
   KanbanBoard,
   Popover,
@@ -118,6 +119,7 @@ export function LeadBoardScreen({
   const [tab, setTab] = useState<BoardTab>('list');
   const [stageFilter, setStageFilter] = useState<string | null>(null);
   const [scope, setScope] = useState<PartyScopeFilter>('all');
+  const [search, setSearch] = useState('');
   const [menuId, setMenuId] = useState<string | null>(null);
   const colourHex = useColourHex(view.optionLists);
   const toast = useToast();
@@ -131,12 +133,22 @@ export function LeadBoardScreen({
     view.leads.filter((lead) => !lead.convertedOrderId),
     scope === 'assigned' ? view.partyGrants : undefined,
   );
-  const filtered = stageFilter ? open.filter((lead) => lead.stageId === stageFilter) : open;
+  const filtered = (stageFilter ? open.filter((lead) => lead.stageId === stageFilter) : open).filter(
+    (lead) => matchesRecordSearch(lead, search),
+  );
   const openLead = view.leads.find((lead) => lead.id === openId) ?? null;
 
   useFilterBar(
     pipeline && !openLead ? (
       <>
+        <Input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder={t('leads.search.placeholder')}
+          aria-label={t('leads.search.label')}
+          data-screen-search
+          style={{ width: rem(320) }}
+        />
         <Segmented
           options={[
             { value: 'board' as const, label: t('lead.board.tab.board') },

@@ -14,8 +14,8 @@
 import type { MessageKey } from './keys.js';
 
 export const HI_MESSAGES: Record<MessageKey, string> = {
-  'permission.lead.convert': 'लीड को ऑर्डर में बदलें',
-  'permission.orders.dispatch': 'ऑर्डर भेजें',
+  'permission.lead.convert': 'पेंडिंग ऑर्डर को फ़ाइनल ऑर्डर में बदलें',
+  'permission.orders.dispatch': 'फ़ाइनल ऑर्डर भेजें',
   'permission.record.reassignOwner': 'रिकॉर्ड का स्वामी बदलें',
   'permission.stock.adjust': 'भौतिक गणना से स्टॉक समायोजित करें',
   'permission.users.manage': 'उपयोगकर्ता प्रबंधित करें',
@@ -28,17 +28,17 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'permission.fields.manage': 'पाइपलाइन, चरण और कस्टम फ़ील्ड प्रबंधित करें',
   'permission.sync.resolveConflicts': 'सिंक टकराव सुलझाएँ',
 
-  'permission.leads.view': 'लीड देखें',
-  'permission.leads.create': 'लीड बनाएँ',
-  'permission.leads.edit': 'लीड संपादित करें',
-  'permission.leads.delete': 'लीड हटाएँ',
-  'permission.leads.export': 'लीड निर्यात करें',
-  'permission.leads.bulk': 'लीड थोक में संपादित करें',
-  'permission.orders.view': 'ऑर्डर देखें',
-  'permission.orders.edit': 'ऑर्डर संपादित करें',
-  'permission.orders.delete': 'ऑर्डर हटाएँ',
-  'permission.orders.export': 'ऑर्डर निर्यात करें',
-  'permission.orders.bulk': 'ऑर्डर थोक में संपादित करें',
+  'permission.leads.view': 'पेंडिंग ऑर्डर देखें',
+  'permission.leads.create': 'पेंडिंग ऑर्डर बनाएँ',
+  'permission.leads.edit': 'पेंडिंग ऑर्डर संपादित करें',
+  'permission.leads.delete': 'पेंडिंग ऑर्डर हटाएँ',
+  'permission.leads.export': 'पेंडिंग ऑर्डर निर्यात करें',
+  'permission.leads.bulk': 'पेंडिंग ऑर्डर थोक में संपादित करें',
+  'permission.orders.view': 'फ़ाइनल ऑर्डर देखें',
+  'permission.orders.edit': 'फ़ाइनल ऑर्डर संपादित करें',
+  'permission.orders.delete': 'फ़ाइनल ऑर्डर हटाएँ',
+  'permission.orders.export': 'फ़ाइनल ऑर्डर निर्यात करें',
+  'permission.orders.bulk': 'फ़ाइनल ऑर्डर थोक में संपादित करें',
   'permission.parties.view': 'पार्टियाँ देखें',
   'permission.parties.create': 'पार्टी बनाएँ',
   'permission.parties.edit': 'पार्टी संपादित करें',
@@ -70,8 +70,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'permission.party.accessAll': 'हर पार्टी देखें, चाहे सौंपी गई हो या नहीं',
   'permission.party.assign': 'तय करें कि कौन किस पार्टी को देख और प्रबंधित कर सकता है',
 
-  'module.leads': 'लीड',
-  'module.orders': 'ऑर्डर',
+  'module.leads': 'पेंडिंग ऑर्डर',
+  'module.orders': 'फ़ाइनल ऑर्डर',
   'module.parties': 'पार्टियाँ',
   'module.products': 'उत्पाद',
   'module.inventory': 'इन्वेंट्री',
@@ -79,7 +79,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'module.roles': 'भूमिकाएँ',
   'module.logs': 'लॉग',
 
-  'fieldSet.lead.sourcePlatform': 'लीड स्रोत',
+  'fieldSet.lead.sourcePlatform': 'पेंडिंग ऑर्डर स्रोत',
   'fieldSet.stock.colour': 'रंग',
   'fieldSet.product.brand': 'ब्रांड',
   'fieldSet.line.packaging': 'पैकेजिंग',
@@ -107,7 +107,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
     'नेटवर्क के अन्य प्रोग्रामों से कुंजी-युक्त अनुरोधों के लिए इस मास्टर को खोलता है।',
   'setting.inventory.freeToSell.label': 'बिक्री-योग्य स्टॉक ट्रैक करें',
   'setting.inventory.freeToSell.help':
-    'चालू होने पर हर स्टॉक आँकड़ा तीन हिस्सों में दिखता है — उपलब्ध, खुले ऑर्डरों के लिए आरक्षित, और बिक्री-योग्य — और कम स्टॉक बिक्री-योग्य पर आँका जाता है। बंद होने पर हर वेरिएंट के लिए एक ही संख्या दिखती है, फ़र्श पर रखे पीस, और आरक्षित/बिक्री-योग्य कहीं नहीं दिखते। ऑर्डर नीचे अपना स्टॉक रोके रखते हैं, इसलिए वापस चालू करने पर सही तस्वीर दिखती है।',
+    'चालू होने पर हर स्टॉक आँकड़ा तीन हिस्सों में दिखता है — उपलब्ध, खुले फ़ाइनल ऑर्डरों के लिए आरक्षित, और बिक्री-योग्य — और कम स्टॉक बिक्री-योग्य पर आँका जाता है। बंद होने पर हर वेरिएंट के लिए एक ही संख्या दिखती है, फ़र्श पर रखे पीस, और आरक्षित/बिक्री-योग्य कहीं नहीं दिखते। फ़ाइनल ऑर्डर नीचे अपना स्टॉक रोके रखते हैं, इसलिए वापस चालू करने पर सही तस्वीर दिखती है।',
   'setting.catalog.importCreatesCategories.label': 'उत्पाद आयात को नई श्रेणियाँ बनाने दें',
   'setting.catalog.importCreatesCategories.help':
     'चालू रहने पर बल्क आयात शीट में लिखी श्रेणी के अनुसार उत्पाद रखता है, और श्रेणी नई हो तो बना देता है। बंद रहने पर श्रेणी पहले से होनी चाहिए — जिस पंक्ति में ऐसी श्रेणी लिखी है जो आपके पास नहीं है वह पंक्ति संख्या सहित अस्वीकार होगी ताकि आप वर्तनी ठीक कर सकें, और जिस पंक्ति में कोई श्रेणी नहीं है वह पहले की तरह आयात होगी।',
@@ -213,24 +213,24 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
     '"{field}" को स्वतः पुनर्स्थापित नहीं किया जा सकता — रिकॉर्ड सीधे संपादित करें',
   'validation.conflict.cannotRestoreEntity': '{entity} मान को स्वतः पुनर्स्थापित नहीं किया जा सकता',
   'validation.conflict.actionRequired': 'चुनें कि मौजूदा मान रखना है या दूसरा पुनर्स्थापित करना है',
-  'validation.order.dispatchedLocked': 'यह ऑर्डर भेजा जा चुका है और अब संपादित नहीं किया जा सकता',
+  'validation.order.dispatchedLocked': 'यह फ़ाइनल ऑर्डर भेजा जा चुका है और अब संपादित नहीं किया जा सकता',
   'validation.order.weightNegative': 'वज़न ऋणात्मक नहीं हो सकता',
   'validation.order.vehicleInvalid': 'वाहन नंबर: अधिकतम 20 अक्षर, अंक, स्पेस या डैश',
-  'validation.order.alreadyDispatched': 'यह ऑर्डर पहले ही भेजा जा चुका है',
-  'validation.order.stockAlreadyMoved': 'इस ऑर्डर के लिए स्टॉक पहले ही स्थानांतरित हो चुका है',
+  'validation.order.alreadyDispatched': 'यह फ़ाइनल ऑर्डर पहले ही भेजा जा चुका है',
+  'validation.order.stockAlreadyMoved': 'इस फ़ाइनल ऑर्डर के लिए स्टॉक पहले ही स्थानांतरित हो चुका है',
   'validation.remark.textRequired': 'टिप्पणी में कुछ पाठ होना चाहिए',
   'validation.stock.boxesArrivedRequired': 'कितने बॉक्स आए यह दर्ज करें',
   'validation.stock.countedBoxesRequired': 'गिने गए बॉक्सों की संख्या दर्ज करें',
   'validation.stock.adjustmentNoteRequired': 'बताइए कि यह गिनती क्यों सुधारी जा रही है',
-  'validation.lead.partyRequired': 'इस लीड के लिए एक पार्टी चुनें',
-  'validation.lead.itemsRequired': 'इस लीड में कम से कम एक उत्पाद जोड़ें',
+  'validation.lead.partyRequired': 'इस पेंडिंग ऑर्डर के लिए एक पार्टी चुनें',
+  'validation.lead.itemsRequired': 'इस पेंडिंग ऑर्डर में कम से कम एक उत्पाद जोड़ें',
   'validation.lead.partyMissing': 'चुनी गई पार्टी अब मौजूद नहीं है',
-  'validation.lead.convertedLocked': 'यह लीड ऑर्डर बन चुकी है और अब संपादित नहीं की जा सकती',
+  'validation.lead.convertedLocked': 'यह पेंडिंग ऑर्डर फ़ाइनल ऑर्डर बन चुकी है और अब संपादित नहीं की जा सकती',
   'validation.lead.productMissing': 'चुने गए उत्पादों में से एक अब मौजूद नहीं है',
   'validation.lead.quantityRequired': '{productName} के लिए मात्रा जोड़ें',
-  'validation.lead.sourceInvalid': '"{value}" कोई कॉन्फ़िगर किया गया लीड स्रोत नहीं है',
-  'validation.lead.alreadyConverted': 'यह लीड पहले ही ऑर्डर में बदली जा चुकी है',
-  'validation.lead.noItemsToConvert': 'ऑर्डर बनने से पहले लीड में कम से कम एक उत्पाद होना चाहिए',
+  'validation.lead.sourceInvalid': '"{value}" कोई कॉन्फ़िगर किया गया पेंडिंग ऑर्डर स्रोत नहीं है',
+  'validation.lead.alreadyConverted': 'यह पेंडिंग ऑर्डर पहले ही फ़ाइनल ऑर्डर में बदली जा चुकी है',
+  'validation.lead.noItemsToConvert': 'फ़ाइनल ऑर्डर बनने से पहले पेंडिंग ऑर्डर में कम से कम एक उत्पाद होना चाहिए',
   'validation.lead.quantityMissingOnConvert':
     'बदलने से पहले हर पंक्ति में मात्रा होनी चाहिए — जाँचें: {items}',
   'validation.lead.packagingMissing': 'बदलने से पहले {items} के लिए पैकेजिंग चुनें',
@@ -312,7 +312,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
     'इस बदलाव में यह नहीं बताया गया कि यह किस संस्करण पर आधारित था, इसलिए इसे सुरक्षित रूप से सहेजा नहीं जा सकता।',
   'validation.stage.differentPipeline': 'वह चरण एक अलग पाइपलाइन से संबंधित है',
   'validation.stage.leadConverted':
-    'यह लीड पहले ही ऑर्डर बन चुकी है — इसके बजाय ऑर्डर को स्थानांतरित करें',
+    'यह पेंडिंग ऑर्डर पहले ही फ़ाइनल ऑर्डर बन चुकी है — इसके बजाय फ़ाइनल ऑर्डर को स्थानांतरित करें',
   'validation.stage.archived': 'वह चरण संग्रहीत है और नए रिकॉर्ड स्वीकार नहीं कर सकता',
   'validation.stage.required': 'एक चरण चुनें',
   'validation.signIn.credentialsRequired': 'अपना आईडी और पासवर्ड दर्ज करें',
@@ -392,8 +392,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'activity.role.updated': '{actor} ने भूमिका {name} को अपडेट किया',
   'activity.role.deleted': '{actor} ने भूमिका {name} हटाई',
   'activity.role.restored': '{actor} ने भूमिका {name} पुनर्स्थापित की',
-  'activity.order.created': '{actor} ने यह ऑर्डर बनाया',
-  'activity.order.dispatched': '{actor} ने यह ऑर्डर भेजा',
+  'activity.order.created': '{actor} ने यह फ़ाइनल ऑर्डर बनाया',
+  'activity.order.dispatched': '{actor} ने यह फ़ाइनल ऑर्डर भेजा',
   'activity.api_key.created': '{actor} ने API कुंजी {name} जारी की',
   'activity.api_key.revoked': '{actor} ने API कुंजी {name} रद्द की',
   'activity.connector.created': '{actor} ने कनेक्शन {name} जोड़ा',
@@ -404,15 +404,15 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'activity.catalog.reloaded': '{actor} ने उत्पाद कैटलॉग फिर से लोड किया',
   'activity.office_panel.created': '{actor} ने ऑफ़िस पैनल {name} जोड़ा',
   'activity.office_panel.updated': '{actor} ने ऑफ़िस पैनल {name} को अपडेट किया',
-  'activity.lead.created': '{actor} ने यह लीड बनाई',
-  'activity.lead.updated': '{actor} ने यह लीड अपडेट की',
-  'activity.lead.stage_changed': '{actor} ने इस लीड को {to} में ले जाया',
-  'activity.lead.deleted': '{actor} ने यह लीड हटाई',
-  'activity.lead.restored': '{actor} ने यह लीड पुनर्स्थापित की',
-  'activity.order.updated': '{actor} ने यह ऑर्डर अपडेट किया',
-  'activity.order.stage_changed': '{actor} ने इस ऑर्डर को {to} में ले जाया',
-  'activity.order.deleted': '{actor} ने यह ऑर्डर हटाया',
-  'activity.order.restored': '{actor} ने यह ऑर्डर पुनर्स्थापित किया',
+  'activity.lead.created': '{actor} ने यह पेंडिंग ऑर्डर बनाई',
+  'activity.lead.updated': '{actor} ने यह पेंडिंग ऑर्डर अपडेट की',
+  'activity.lead.stage_changed': '{actor} ने इस पेंडिंग ऑर्डर को {to} में ले जाया',
+  'activity.lead.deleted': '{actor} ने यह पेंडिंग ऑर्डर हटाई',
+  'activity.lead.restored': '{actor} ने यह पेंडिंग ऑर्डर पुनर्स्थापित की',
+  'activity.order.updated': '{actor} ने यह फ़ाइनल ऑर्डर अपडेट किया',
+  'activity.order.stage_changed': '{actor} ने इस फ़ाइनल ऑर्डर को {to} में ले जाया',
+  'activity.order.deleted': '{actor} ने यह फ़ाइनल ऑर्डर हटाया',
+  'activity.order.restored': '{actor} ने यह फ़ाइनल ऑर्डर पुनर्स्थापित किया',
   'activity.party.deleted': '{actor} ने पार्टी {name} हटाई',
   'activity.party.restored': '{actor} ने पार्टी {name} पुनर्स्थापित की',
   'activity.party.access_changed': '{actor} ने बदला कि पार्टी {name} तक किसकी पहुँच है',
@@ -466,8 +466,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'common.noMatches': 'कोई मेल नहीं',
   'common.working': 'काम हो रहा है',
 
-  'count.leads.one': '{count} लीड',
-  'count.leads.other': '{count} लीड',
+  'count.leads.one': '{count} पेंडिंग ऑर्डर',
+  'count.leads.other': '{count} पेंडिंग ऑर्डर',
   'count.rows.one': '{count} पंक्ति',
   'count.rows.other': '{count} पंक्तियाँ',
   // TODO(i18n-hi)
@@ -678,7 +678,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'access.users.deactivate': 'Deactivate',
   // TODO(i18n-hi)
   'access.users.deactivateConfirmBody':
-    '{name} will not be able to sign in. Their leads, orders and audit history are unchanged. This is not a delete — use Delete to send them to the Recycle Bin.',
+    '{name} will not be able to sign in. Their pending orders, final orders and audit history are unchanged. This is not a delete — use Delete to send them to the Recycle Bin.',
   // TODO(i18n-hi)
   'access.users.deactivateConfirmTitle': 'Deactivate {name}?',
   // TODO(i18n-hi)
@@ -787,7 +787,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'action.done': 'Done',
   // TODO(i18n-hi)
-  'action.newLead': 'New lead',
+  'action.newLead': 'New pending order',
   'action.retryNow': 'अभी फिर कोशिश करें',
   // TODO(i18n-hi)
   'action.reviewConflicts': 'Review conflicts',
@@ -1070,12 +1070,12 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'dashboard.dispatched.title': 'Dispatched this week',
   // TODO(i18n-hi)
-  'dashboard.dispatched.unitMany': 'orders',
+  'dashboard.dispatched.unitMany': 'final orders',
   // TODO(i18n-hi)
-  'dashboard.dispatched.unitOne': 'order',
+  'dashboard.dispatched.unitOne': 'final order',
   // TODO(i18n-hi)
   'dashboard.empty.description':
-    'Once leads, orders or stock exist on this panel, your dashboard fills in.',
+    'Once pending orders, final orders or stock exist on this panel, your dashboard fills in.',
   // TODO(i18n-hi)
   'dashboard.empty.title': 'Nothing here yet',
   // TODO(i18n-hi)
@@ -1083,13 +1083,13 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'dashboard.leads.noneDueToday': 'None due today',
   // TODO(i18n-hi)
-  'dashboard.leads.title': 'Open leads',
+  'dashboard.leads.title': 'Open pending orders',
   // TODO(i18n-hi)
   'dashboard.orders.boxesReserved': '{count} boxes reserved',
   // TODO(i18n-hi)
   'dashboard.orders.noneReserved': 'Nothing reserved',
   // TODO(i18n-hi)
-  'dashboard.orders.title': 'Open orders',
+  'dashboard.orders.title': 'Open final orders',
   // TODO(i18n-hi)
   'dashboard.panels.addressUnknown': 'Unknown address',
   // TODO(i18n-hi)
@@ -1100,7 +1100,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'dashboard.panels.empty.title': 'No office panels yet',
   // TODO(i18n-hi)
   'dashboard.panels.footerNote':
-    'A panel that is offline is still taking leads — they arrive here when it reconnects.',
+    'A panel that is offline is still taking pending orders — they arrive here when it reconnects.',
   // TODO(i18n-hi)
   'dashboard.panels.subtitle': '{connected} of {total} online',
   // TODO(i18n-hi)
@@ -1156,7 +1156,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'fields.action.save': 'Save',
   // TODO(i18n-hi)
-  'fields.col.order': 'Order',
+  'fields.col.order': 'Final Order',
   // TODO(i18n-hi)
   'fields.conflict.notSet': 'not set',
   // TODO(i18n-hi)
@@ -1226,9 +1226,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'fields.definitions.requiredYes': 'Required',
   // TODO(i18n-hi)
-  'fields.entity.lead': 'Leads',
+  'fields.entity.lead': 'Pending Orders',
   // TODO(i18n-hi)
-  'fields.entity.order': 'Orders',
+  'fields.entity.order': 'Final Orders',
   // TODO(i18n-hi)
   'fields.entity.party': 'Parties',
   // TODO(i18n-hi)
@@ -1267,7 +1267,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'fields.stages.edit.title': 'Edit {name}',
   // TODO(i18n-hi)
-  'fields.stages.empty.description': 'Lead and order pipelines are created with the company.',
+  'fields.stages.empty.description': 'Pending Order and final order pipelines are created with the company.',
   // TODO(i18n-hi)
   'fields.stages.empty.pipelines': 'No pipelines on this company',
   // TODO(i18n-hi)
@@ -1296,7 +1296,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'fields.stages.refusal.moveTo': 'The default stage, “{target}”, is where they would normally go.',
   // TODO(i18n-hi)
   'fields.stages.refusal.occupied':
-    '“{stage}” still holds {leads} leads and {orders} orders. Move them out and it can be archived.',
+    '“{stage}” still holds {leads} pending orders and {orders} final orders. Move them out and it can be archived.',
   // TODO(i18n-hi)
   'fields.status.active': 'In pickers',
   // TODO(i18n-hi)
@@ -1324,9 +1324,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'fields.usedBy.label': 'Used by {sources}',
   // TODO(i18n-hi)
-  'fields.usedBy.leads': 'leads',
+  'fields.usedBy.leads': 'pending orders',
   // TODO(i18n-hi)
-  'fields.usedBy.orders': 'orders',
+  'fields.usedBy.orders': 'final orders',
   // TODO(i18n-hi)
   'fields.usedBy.products': 'products',
   // TODO(i18n-hi)
@@ -1563,11 +1563,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.details.notes': 'Notes',
   // TODO(i18n-hi)
-  'lead.add.errors.generic': 'Could not save the lead',
+  'lead.add.errors.generic': 'Could not save the pending order',
   // TODO(i18n-hi)
   'lead.add.errors.noProducts': 'Add at least one product',
   // TODO(i18n-hi)
-  'lead.add.errors.partyRequired': 'Choose a party for this lead',
+  'lead.add.errors.partyRequired': 'Choose a party for this pending order',
   // TODO(i18n-hi)
   'lead.add.party.change': 'Change',
   // TODO(i18n-hi)
@@ -1584,16 +1584,16 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.products.useSuggested': 'Use “{value}”',
   // TODO(i18n-hi)
-  'lead.add.save': 'Save lead',
+  'lead.add.save': 'Save pending order',
   // TODO(i18n-hi)
   'lead.add.saving': 'Saving…',
   // TODO(i18n-hi)
   'lead.add.savingHint': 'Saves on this machine first — offline is the normal path',
   // TODO(i18n-hi)
-  'lead.add.title': 'New lead',
-  'lead.edit.action': 'लीड संपादित करें',
-  'lead.edit.saved': 'लीड {id} अपडेट हुई',
-  'lead.edit.title': 'लीड संपादित करें',
+  'lead.add.title': 'New pending order',
+  'lead.edit.action': 'पेंडिंग ऑर्डर संपादित करें',
+  'lead.edit.saved': 'पेंडिंग ऑर्डर {id} अपडेट हुई',
+  'lead.edit.title': 'पेंडिंग ऑर्डर संपादित करें',
   // TODO(i18n-hi)
   'lead.badge.converted': 'converted',
   // TODO(i18n-hi)
@@ -1601,21 +1601,21 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.badge.notSynced': 'not synced',
   // TODO(i18n-hi)
-  'lead.board.cardMenu': 'Lead actions',
+  'lead.board.cardMenu': 'Pending Order actions',
   // TODO(i18n-hi)
-  'lead.board.convertedNote': 'Converted leads leave the board',
+  'lead.board.convertedNote': 'Converted pending orders leave the board',
   // TODO(i18n-hi)
   'lead.board.convertedToast': 'बदल गया — {qty} पीस {orderId} के लिए आरक्षित',
   // TODO(i18n-hi)
-  'lead.board.emptyColumn': 'No leads at this stage.',
+  'lead.board.emptyColumn': 'No pending orders at this stage.',
   // TODO(i18n-hi)
-  'lead.board.emptyDesc': 'Leads you create appear here, online or off.',
+  'lead.board.emptyDesc': 'Pending Orders you create appear here, online or off.',
   // TODO(i18n-hi)
-  'lead.board.emptyTitle': 'No leads yet',
+  'lead.board.emptyTitle': 'No pending orders yet',
   // TODO(i18n-hi)
   'lead.board.filter.all': 'All stages',
   // TODO(i18n-hi)
-  'lead.board.menu.convert': 'Convert to order',
+  'lead.board.menu.convert': 'Convert to final order',
   // TODO(i18n-hi)
   'lead.board.menu.convertBlocked': 'Choose packaging before converting',
   // TODO(i18n-hi)
@@ -1624,7 +1624,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.board.menu.open': 'Open',
   // TODO(i18n-hi)
   'lead.board.noPipelineDesc':
-    'The lead pipeline configuration has not arrived from the Master Panel yet.',
+    'The pending order pipeline configuration has not arrived from the Master Panel yet.',
   // TODO(i18n-hi)
   'lead.board.noPipelineTitle': 'Waiting for the pipeline',
   // TODO(i18n-hi)
@@ -1641,17 +1641,17 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.detail.code': 'Code',
   // TODO(i18n-hi)
-  'lead.detail.convertAction': 'Convert to order',
+  'lead.detail.convertAction': 'Convert to final order',
   // TODO(i18n-hi)
   'lead.detail.convertDesc':
-    'इन लाइनों को ज्यों का त्यों कॉपी करके ऑर्डर बनाता है, और हर वेरिएंट का स्टॉक आरक्षित करता है।',
+    'इन लाइनों को ज्यों का त्यों कॉपी करके फ़ाइनल ऑर्डर बनाता है, और हर वेरिएंट का स्टॉक आरक्षित करता है।',
   // TODO(i18n-hi)
   'lead.detail.convertMissingPackaging':
     'Choose packaging for {names} first — it is never filled in automatically.',
   // TODO(i18n-hi)
-  'lead.detail.convertTitle': 'Convert to order',
+  'lead.detail.convertTitle': 'Convert to final order',
   // TODO(i18n-hi)
-  'lead.detail.convertedMessage': 'This lead became order {orderId}.',
+  'lead.detail.convertedMessage': 'This pending order became final order {orderId}.',
   // TODO(i18n-hi)
   'lead.detail.created': 'Created',
   // TODO(i18n-hi)
@@ -1666,7 +1666,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.detail.history': 'History',
   // TODO(i18n-hi)
   'lead.detail.incompleteWarning':
-    'Missing required information: {fields}. The lead is saved — fill this in when you can.',
+    'Missing required information: {fields}. The pending order is saved — fill this in when you can.',
   // TODO(i18n-hi)
   'lead.detail.lineItems': 'Line items',
   // TODO(i18n-hi)
@@ -1688,16 +1688,16 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.detail.source': 'Source',
   // TODO(i18n-hi)
-  'lead.detail.stageLabel': 'Move this lead to',
+  'lead.detail.stageLabel': 'Move this pending order to',
   // TODO(i18n-hi)
   'lead.detail.yes': 'Yes',
   'lead.error.addNote': 'नोट नहीं जोड़ा जा सका',
-  'lead.error.convert': 'लीड को ऑर्डर में नहीं बदला जा सका',
-  'lead.error.move': 'लीड का चरण नहीं बदला जा सका',
+  'lead.error.convert': 'पेंडिंग ऑर्डर को फ़ाइनल ऑर्डर में नहीं बदला जा सका',
+  'lead.error.move': 'पेंडिंग ऑर्डर का चरण नहीं बदला जा सका',
   // TODO(i18n-hi)
   'lead.list.col.followUp': 'Follow up',
   // TODO(i18n-hi)
-  'lead.list.col.lead': 'Lead',
+  'lead.list.col.lead': 'Pending Order',
   // TODO(i18n-hi)
   'lead.list.col.party': 'Party',
   'lead.list.col.products': 'उत्पाद',
@@ -1713,19 +1713,19 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.list.synced': 'synced',
   'lead.previewPdf': 'PDF पूर्वावलोकन',
   // TODO(i18n-hi)
-  'leadsOrders.error.convert': 'Could not convert the lead',
+  'leadsOrders.error.convert': 'Could not convert the pending order',
   // TODO(i18n-hi)
-  'leadsOrders.error.dispatch': 'Could not dispatch the order',
+  'leadsOrders.error.dispatch': 'Could not dispatch the final order',
   // TODO(i18n-hi)
   'leadsOrders.error.load': 'Could not load',
   // TODO(i18n-hi)
-  'leadsOrders.error.moveLead': 'Could not move the lead',
+  'leadsOrders.error.moveLead': 'Could not move the pending order',
   // TODO(i18n-hi)
-  'leadsOrders.error.moveOrder': 'Could not move the order',
+  'leadsOrders.error.moveOrder': 'Could not move the final order',
   // TODO(i18n-hi)
   'leadsOrders.leads.column.created': 'Created',
   // TODO(i18n-hi)
-  'leadsOrders.leads.column.lead': 'Lead',
+  'leadsOrders.leads.column.lead': 'Pending Order',
   // TODO(i18n-hi)
   'leadsOrders.leads.column.party': 'Party',
   // TODO(i18n-hi)
@@ -1733,25 +1733,25 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'leadsOrders.leads.column.stage': 'Stage',
   // TODO(i18n-hi)
-  'leadsOrders.leads.convert': 'Convert to order',
+  'leadsOrders.leads.convert': 'Convert to final order',
   // TODO(i18n-hi)
-  'leadsOrders.leads.convertBlocked': 'Every line needs packaging before this can become an order',
+  'leadsOrders.leads.convertBlocked': 'Every line needs packaging before this can become a final order',
   // TODO(i18n-hi)
   'leadsOrders.leads.converted': 'converted',
   // TODO(i18n-hi)
-  'leadsOrders.leads.convertedOrder': 'order {id}',
+  'leadsOrders.leads.convertedOrder': 'final order {id}',
   // TODO(i18n-hi)
-  'leadsOrders.leads.empty.converted.title': 'No converted leads yet',
+  'leadsOrders.leads.empty.converted.title': 'No converted pending orders yet',
   // TODO(i18n-hi)
   'leadsOrders.leads.empty.open.description': 'Office Panels raise them.',
   // TODO(i18n-hi)
-  'leadsOrders.leads.empty.open.title': 'No open leads',
+  'leadsOrders.leads.empty.open.title': 'No open pending orders',
   // TODO(i18n-hi)
   'leadsOrders.leads.incomplete': 'incomplete',
   // TODO(i18n-hi)
-  'leadsOrders.orders.column.fromLead': 'From lead',
+  'leadsOrders.orders.column.fromLead': 'From pending order',
   // TODO(i18n-hi)
-  'leadsOrders.orders.column.order': 'Order',
+  'leadsOrders.orders.column.order': 'Final Order',
   // TODO(i18n-hi)
   'leadsOrders.orders.column.party': 'Party',
   // TODO(i18n-hi)
@@ -1765,19 +1765,19 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'leadsOrders.orders.dispatched': 'Dispatched {when}',
   // TODO(i18n-hi)
-  'leadsOrders.orders.empty.description': 'They appear here once a lead is converted.',
+  'leadsOrders.orders.empty.description': 'They appear here once a pending order is converted.',
   // TODO(i18n-hi)
-  'leadsOrders.orders.empty.title': 'No orders yet',
+  'leadsOrders.orders.empty.title': 'No final orders yet',
   // TODO(i18n-hi)
   'leadsOrders.orders.weightManual': 'Entered by hand, not summed from the lines',
   // TODO(i18n-hi)
-  'leadsOrders.tab.converted': 'Converted leads',
+  'leadsOrders.tab.converted': 'Converted pending orders',
   // TODO(i18n-hi)
-  'leadsOrders.tab.leads': 'Open leads',
+  'leadsOrders.tab.leads': 'Open pending orders',
   // TODO(i18n-hi)
-  'leadsOrders.tab.orders': 'Orders',
+  'leadsOrders.tab.orders': 'Final Orders',
   // TODO(i18n-hi)
-  'leadsOrders.title': 'Leads & orders',
+  'leadsOrders.title': 'Pending Orders & final orders',
   // TODO(i18n-hi)
   'leadsOrders.unit.kg': 'kg',
   // TODO(i18n-hi)
@@ -2051,7 +2051,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'nav.dashboard': 'Dashboard',
   'nav.expandSidebar': 'साइडबार फैलाएँ',
   // TODO(i18n-hi)
-  'nav.leads': 'Leads',
+  'nav.leads': 'Pending Orders',
   // TODO(i18n-hi)
   'nav.master.access': 'Roles & users',
   // TODO(i18n-hi)
@@ -2069,7 +2069,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'nav.master.inventory': 'Inventory',
   // TODO(i18n-hi)
-  'nav.master.leadsOrders': 'Leads & orders',
+  'nav.master.leadsOrders': 'Pending Orders & final orders',
   // TODO(i18n-hi)
   'nav.master.logs': 'Activity log',
   // TODO(i18n-hi)
@@ -2086,7 +2086,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'nav.master.work': 'Work',
   'nav.modules': 'मॉड्यूल',
   // TODO(i18n-hi)
-  'nav.orders': 'Orders',
+  'nav.orders': 'Final Orders',
   // TODO(i18n-hi)
   'nav.parties': 'Parties',
   // TODO(i18n-hi)
@@ -2128,9 +2128,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'orders.badge.dispatched': 'dispatched',
   // TODO(i18n-hi)
-  'orders.column.fromLead': 'From lead',
+  'orders.column.fromLead': 'From pending order',
   // TODO(i18n-hi)
-  'orders.column.order': 'Order',
+  'orders.column.order': 'Final Order',
   // TODO(i18n-hi)
   'orders.column.packaging': 'Packaging',
   'orders.column.grade': 'ग्रेड',
@@ -2170,13 +2170,17 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'orders.detail.products': 'Products',
   // TODO(i18n-hi)
-  'orders.detail.reservations': 'Stock held for this order',
+  'orders.detail.reservations': 'Stock held for this final order',
   // TODO(i18n-hi)
   'orders.detail.stage': 'Stage',
   // TODO(i18n-hi)
-  'orders.detail.stageLabel': 'Move this order to',
+  'orders.detail.stageLabel': 'Move this final order to',
   // TODO(i18n-hi)
   'orders.detail.subtitleNoLead': '{id}',
+  'leads.search.label': 'पेंडिंग ऑर्डर खोजें',
+  'leads.search.placeholder': 'पार्टी, आईडी, प्रोडक्ट, कोड खोजें…',
+  'orders.search.label': 'फ़ाइनल ऑर्डर खोजें',
+  'orders.search.placeholder': 'पार्टी, आईडी, प्रोडक्ट, कोड खोजें…',
   'orderNote.filling': 'फिलिंग नोट',
   'orderNote.dispatch': 'डिस्पैच नोट',
   'orderNote.print': 'प्रिंट',
@@ -2187,15 +2191,15 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'orderNote.vehicleNo': 'वाहन नं.',
   'orderNote.dispatchVehicle': 'डिस्पैच वाहन नं.',
   'orderNote.vehiclePlaceholder': 'जैसे GJ-AB-XXXX',
-  'orderNote.vehicleLocked': 'भेजा जा चुका ऑर्डर अब संपादित नहीं हो सकता',
+  'orderNote.vehicleLocked': 'भेजा जा चुका फ़ाइनल ऑर्डर अब संपादित नहीं हो सकता',
   'orderNote.productLines': 'प्रोडक्ट लाइनें',
   'orderNote.codedProducts': 'कोड वाले प्रोडक्ट',
   'orderNote.productSubProduct': 'प्रोडक्ट · सब-प्रोडक्ट',
   'orderNote.colour': 'रंग',
   'orderNote.qty': 'मात्रा',
   'orderNote.dealer': 'डीलर',
-  'orderNote.orderId': 'ऑर्डर आईडी',
-  'orderNote.leadGenerated': 'लीड बनी',
+  'orderNote.orderId': 'फ़ाइनल ऑर्डर आईडी',
+  'orderNote.leadGenerated': 'पेंडिंग ऑर्डर बनी',
   'orderNote.printed': 'प्रिंट',
   'orderNote.continued': 'जारी',
   'orderNote.groupContinued': 'जारी',
@@ -2233,13 +2237,13 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'orders.detail.weightShowing': 'Showing the {source} figure.',
   // TODO(i18n-hi)
-  'orders.empty.description': 'Orders converted from leads appear here.',
+  'orders.empty.description': 'Final Orders converted from pending orders appear here.',
   // TODO(i18n-hi)
-  'orders.empty.filteredTitle': 'No orders at this stage.',
+  'orders.empty.filteredTitle': 'No final orders at this stage.',
   // TODO(i18n-hi)
-  'orders.empty.title': 'No orders yet',
-  'orders.error.dispatch': 'ऑर्डर नहीं भेजा जा सका',
-  'orders.error.move': 'ऑर्डर का चरण नहीं बदला जा सका',
+  'orders.empty.title': 'No final orders yet',
+  'orders.error.dispatch': 'फ़ाइनल ऑर्डर नहीं भेजा जा सका',
+  'orders.error.move': 'फ़ाइनल ऑर्डर का चरण नहीं बदला जा सका',
   'orders.error.saveWeight': 'वज़न सहेजा नहीं जा सका',
   // TODO(i18n-hi)
   'orders.filter.allStages': 'All stages',
@@ -2378,9 +2382,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'party.detail.email': 'Email',
   // TODO(i18n-hi)
-  'party.detail.leads.none': 'No leads yet for this party.',
+  'party.detail.leads.none': 'No pending orders yet for this party.',
   // TODO(i18n-hi)
-  'party.detail.leadsTitle': 'Recent leads',
+  'party.detail.leadsTitle': 'Recent pending orders',
   // TODO(i18n-hi)
   'party.detail.phone': 'Phone',
   // TODO(i18n-hi)
@@ -2439,7 +2443,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'import.failed': 'आयात पूरा नहीं हो सका',
   'import.templateFailed': 'टेम्पलेट डाउनलोड नहीं हो सका',
   'import.another': 'एक और फ़ाइल आयात करें',
-  'reports.column.orderCount': 'ऑर्डर',
+  'reports.column.orderCount': 'फ़ाइनल ऑर्डर',
   'reports.column.boxCount': 'बॉक्स',
   'reports.column.partyId': 'पार्टी आईडी',
   'reports.column.partyName': 'पार्टी',
@@ -2465,7 +2469,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'party.saveChanges': 'Save changes',
   // TODO(i18n-hi)
-  'party.saveHint': 'Available in every lead form the moment it saves — online or off',
+  'party.saveHint': 'Available in every pending order form the moment it saves — online or off',
   // TODO(i18n-hi)
   'party.saving': 'Saving…',
   // TODO(i18n-hi)
@@ -2501,7 +2505,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
     'Nobody is assigned, so everyone with the right role can see and work this party.',
   // TODO(i18n-hi)
   'partyAccess.explainRestricted':
-    'Only the people below can see this party and its leads and orders. View can read; manage can also create and edit.',
+    'Only the people below can see this party and its pending orders and final orders. View can read; manage can also create and edit.',
   // TODO(i18n-hi)
   'partyAccess.filter.all': 'All',
   // TODO(i18n-hi)
@@ -2604,7 +2608,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'product.saveChanges': 'Save changes',
   // TODO(i18n-hi)
-  'product.saveHint': 'Available in every lead form the moment it saves — online or off',
+  'product.saveHint': 'Available in every pending order form the moment it saves — online or off',
   // TODO(i18n-hi)
   'product.saving': 'Saving…',
   // TODO(i18n-hi)
@@ -2638,11 +2642,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'recycleBin.entity.custom_field_definition': 'Custom field',
   // TODO(i18n-hi)
-  'recycleBin.entity.lead': 'Lead',
+  'recycleBin.entity.lead': 'Pending Order',
   // TODO(i18n-hi)
   'recycleBin.entity.option_list_item': 'Option value',
   // TODO(i18n-hi)
-  'recycleBin.entity.order': 'Order',
+  'recycleBin.entity.order': 'Final Order',
   // TODO(i18n-hi)
   'recycleBin.entity.party': 'Party',
   'recycleBin.entity.product': 'उप-उत्पाद',
@@ -2720,7 +2724,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'reports.column.open': 'Still open',
   // TODO(i18n-hi)
-  'reports.column.orders': 'Orders',
+  'reports.column.orders': 'Final Orders',
   // TODO(i18n-hi)
   'reports.column.parties': 'Parties',
   // TODO(i18n-hi)
@@ -2729,7 +2733,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'reports.column.quiet': 'Went quiet',
   // TODO(i18n-hi)
   'reports.kind.dispatches': 'डिस्पैच',
-  'reports.kind.leadOutcomes': 'लीड परिणाम',
+  'reports.kind.leadOutcomes': 'पेंडिंग ऑर्डर परिणाम',
   'reports.kind.topParties': 'शीर्ष पार्टियाँ',
   'reports.dispatches.byColour': 'By colour',
   // TODO(i18n-hi)
@@ -2752,10 +2756,10 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'reports.leadOutcomes.byMonth': 'By month',
   // TODO(i18n-hi)
   'reports.leadOutcomes.empty.description':
-    'No leads were raised in these months. Try a wider range.',
+    'No pending orders were raised in these months. Try a wider range.',
   // TODO(i18n-hi)
   'reports.leadOutcomes.quietNote':
-    'A lead counts as gone quiet after {days} days with no movement.',
+    'A pending order counts as gone quiet after {days} days with no movement.',
   // TODO(i18n-hi)
   'reports.noPermission.description': 'Ask an administrator to add {permission}.',
   // TODO(i18n-hi)
@@ -2783,11 +2787,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'reports.stat.boxes': 'Boxes dispatched',
   // TODO(i18n-hi)
-  'reports.stat.orders': 'Orders dispatched',
+  'reports.stat.orders': 'Final Orders dispatched',
   // TODO(i18n-hi)
   'reports.tab.dispatches': 'Dispatches',
   // TODO(i18n-hi)
-  'reports.tab.leadOutcomes': 'Lead outcomes',
+  'reports.tab.leadOutcomes': 'Pending Order outcomes',
   // TODO(i18n-hi)
   'reports.tab.topParties': 'Top parties',
   // TODO(i18n-hi)
@@ -2801,7 +2805,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'reports.topParties.empty.description': 'No party ordered in these months. Try a wider range.',
   // TODO(i18n-hi)
-  'reports.topParties.orderedByCount': 'ऑर्डर संख्या के अनुसार शीर्ष {limit}।',
+  'reports.topParties.orderedByCount': 'फ़ाइनल ऑर्डर संख्या के अनुसार शीर्ष {limit}।',
   // TODO(i18n-hi)
   'reports.topParties.parties': 'Parties',
   // TODO(i18n-hi)
@@ -2842,11 +2846,18 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'settings.connection.title': 'Connection details',
   // TODO(i18n-hi)
+  'settings.density.comfortable': 'Comfortable',
   // TODO(i18n-hi)
+  'settings.density.compact': 'Compact',
   // TODO(i18n-hi)
+  'settings.density.label': 'Density',
   // TODO(i18n-hi)
+  'settings.density.large': 'Large',
   // TODO(i18n-hi)
+  'settings.density.note': 'Row and control heights only — text size is the scale above.',
   // TODO(i18n-hi)
+  'settings.language.label': 'भाषा',
+  'settings.language.hint': 'भाषा बदलने पर यह पैनल फिर से लोड होगा।',
   'settings.machine.company': 'Company',
   // TODO(i18n-hi)
   'settings.machine.connection': 'Connection',
@@ -2898,10 +2909,10 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'settings.tab.shortcuts': 'Shortcuts',
   // TODO(i18n-hi)
   'settings.tab.company': 'Company',
-  'settings.tab.leads': 'लीड',
+  'settings.tab.leads': 'पेंडिंग ऑर्डर',
   'settings.leads.sources.title': 'स्रोत',
   'settings.leads.sources.description':
-    'लीड कहाँ से आ सकती है। नई लीड में सिर्फ़ ये मिलते हैं; किसी को हटाने पर वह पहले से दर्ज लीड पर बना रहता है।',
+    'पेंडिंग ऑर्डर कहाँ से आ सकती है। नई पेंडिंग ऑर्डर में सिर्फ़ ये मिलते हैं; किसी को हटाने पर वह पहले से दर्ज पेंडिंग ऑर्डर पर बना रहता है।',
   // TODO(i18n-hi)
   'settings.tab.connection': 'Connection',
   // TODO(i18n-hi)
@@ -3024,7 +3035,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'updates.behind': 'Different version',
   // TODO(i18n-hi)
   'updates.dataStays':
-    'Your data stays exactly where it is. The setup replaces the program only — parties, leads, orders and settings are untouched.',
+    'Your data stays exactly where it is. The setup replaces the program only — parties, pending orders, final orders and settings are untouched.',
   // TODO(i18n-hi)
   'updates.downloading': 'Getting it from the Master…',
   // TODO(i18n-hi)
@@ -3110,7 +3121,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'screen.resetHint':
     'Clear the filters, scroll and unsaved entry on this screen and load it fresh.',
   // TODO(i18n-hi)
-  'lead.add.discardConfirm': 'Discard this lead and start over?',
+  'lead.add.discardConfirm': 'Discard this pending order and start over?',
   // TODO(i18n-hi)
   'settings.scale.label': 'UI scale',
   // TODO(i18n-hi)
@@ -3118,7 +3129,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'settings.scale.smaller': 'छोटा',
   'settings.scale.larger': 'बड़ा',
   // TODO(i18n-hi)
-  'settings.scale.note': 'Root {size} — applies when you let go',
+  'settings.scale.note': 'Root {size} — this screen resizes live',
   // TODO(i18n-hi)
   'keys.command.toggleSidebar': 'Toggle sidebar',
   // TODO(i18n-hi)
@@ -3185,7 +3196,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'developer.tool.resetAll.confirmHint':
     'What stays: the database server itself, the log files, and the data-folder location.',
   // TODO(i18n-hi)
-  'developer.tool.resetAll.detail.records': 'Every record — parties, products, leads and orders',
+  'developer.tool.resetAll.detail.records': 'Every record — parties, products, pending orders and final orders',
   // TODO(i18n-hi)
   'developer.tool.resetAll.detail.files': 'Uploads',
   // TODO(i18n-hi)
@@ -3254,7 +3265,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'dashboard.asOf.stale': 'Figures from the last time the Master was reachable · {when}',
   // TODO(i18n-hi)
-  'dashboard.pipeline.title': 'Lead pipeline',
+  'dashboard.pipeline.title': 'Pending Order pipeline',
   // TODO(i18n-hi)
   'lead.add.draft.col.quantity': 'Quantity',
   // TODO(i18n-hi)
@@ -3263,7 +3274,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.draft.colour': 'रंग',
   'lead.add.draft.grade': 'ग्रेड',
   'lead.add.draft.gradeEmpty': 'अभी कोई ग्रेड सूची में नहीं है — इन्हें सेटिंग्स → फ़ील्ड्स में जोड़ें।',
-  'lead.add.draft.hintPieces': 'इस कार्ड पर {count} पीस — लीड में जोड़ें',
+  'lead.add.draft.hintPieces': 'इस कार्ड पर {count} पीस — पेंडिंग ऑर्डर में जोड़ें',
   // TODO(i18n-hi)
   'lead.add.draft.hintPackaging': 'Choose packaging to save this product',
   // TODO(i18n-hi)
@@ -3339,7 +3350,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.products.searchFirst': 'उत्पाद चुनें, फिर उप-उत्पाद — कम से कम एक',
   // TODO(i18n-hi)
-  'lead.add.saved': 'Lead saved — {id} syncs when the Master is reachable',
+  'lead.add.saved': 'Pending Order saved — {id} syncs when the Master is reachable',
   // TODO(i18n-hi)
   'lead.add.source.label': 'Source',
   // TODO(i18n-hi)
@@ -3379,7 +3390,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'developer.tool.sample.title': "Sample data",
   // TODO(i18n-hi)
-  'developer.tool.sample.description': 'इस Master को छह महीने के एक छोटे सैनिटरीवेयर व्यापार से भरता है — Swisware कैटलॉग, बेचे जाने वाले मॉडलों पर वज़न, पार्टियाँ, प्रति वेरिएंट स्टॉक, हर चरण पर लीड, चालू और भेजे गए ऑर्डर, टिप्पणियाँ, पार्टी-वार रिकॉर्ड, पार्टी एक्सेस, कस्टम फ़ील्ड और Recycle Bin में कुछ रिकॉर्ड — ताकि हर स्क्रीन पर कुछ दिखे। पहले तीन टेस्ट उपयोगकर्ता बनाता है, ठीक "Seed test users" की तरह। प्रति इंस्टॉलेशन एक बार चलता है; फिर से शुरू करने के लिए सब मिटाएँ।',
+  'developer.tool.sample.description': 'इस Master को छह महीने के एक छोटे सैनिटरीवेयर व्यापार से भरता है — Swisware कैटलॉग, बेचे जाने वाले मॉडलों पर वज़न, पार्टियाँ, प्रति वेरिएंट स्टॉक, हर चरण पर पेंडिंग ऑर्डर, चालू और भेजे गए फ़ाइनल ऑर्डर, टिप्पणियाँ, पार्टी-वार रिकॉर्ड, पार्टी एक्सेस, कस्टम फ़ील्ड और Recycle Bin में कुछ रिकॉर्ड — ताकि हर स्क्रीन पर कुछ दिखे। पहले तीन टेस्ट उपयोगकर्ता बनाता है, ठीक "Seed test users" की तरह। प्रति इंस्टॉलेशन एक बार चलता है; फिर से शुरू करने के लिए सब मिटाएँ।',
   // TODO(i18n-hi)
   'developer.tool.sample.action': "Seed sample data",
   // TODO(i18n-hi)
@@ -3399,11 +3410,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'developer.tool.sample.count.stockMovements': "Stock movements",
   // TODO(i18n-hi)
-  'developer.tool.sample.count.leads': "Leads",
+  'developer.tool.sample.count.leads': "Pending Orders",
   // TODO(i18n-hi)
-  'developer.tool.sample.count.orders': "Orders",
+  'developer.tool.sample.count.orders': "Final Orders",
   // TODO(i18n-hi)
-  'developer.tool.sample.count.dispatched': "Orders dispatched",
+  'developer.tool.sample.count.dispatched': "Final Orders dispatched",
   // TODO(i18n-hi)
   'developer.tool.sample.count.remarks': "Remarks",
   // TODO(i18n-hi)
@@ -3434,7 +3445,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.flow.addColourPlaceholder': 'रंग लिखें — Enter से जुड़ता है; खाली बॉक्स पर Enter से मात्रा पर जाएँ',
   'lead.add.draft.hintColour': 'कम से कम एक रंग जोड़ें',
   'lead.add.draft.removeColour': 'रंग {colour} हटाएँ',
-  'lead.add.review.title': 'लीड जाँचें',
+  'lead.add.review.title': 'पेंडिंग ऑर्डर जाँचें',
   'lead.add.review.hint': 'Ctrl+Enter से सहेजें; Esc से फ़ॉर्म पर वापस जाएँ।',
   'lead.add.draft.quantityTitleVariants': 'मात्रा — प्रति वेरिएंट पीस',
   'lead.add.line.qtyShort': '{count} पीस',
@@ -3468,22 +3479,22 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'product.multiColour.label': 'हर रंग में बनता है?',
   'product.multiColour.no': 'नहीं — केवल ऊपर के वेरिएंट',
   'product.multiColour.yes': 'हाँ — रंग सूची का कोई भी रंग',
-  'product.multiColour.noHint': 'लीड लाइन वेरिएंट को जैसा है वैसा दर्ज करती है।',
-  'product.multiColour.yesHint': 'इस उत्पाद की लीड लाइन पर रंग सूची (सेटिंग्स → फ़ील्ड → रंग) से एक रंग भी चुना जा सकता है।',
+  'product.multiColour.noHint': 'पेंडिंग ऑर्डर लाइन वेरिएंट को जैसा है वैसा दर्ज करती है।',
+  'product.multiColour.yesHint': 'इस उत्पाद की पेंडिंग ऑर्डर लाइन पर रंग सूची (सेटिंग्स → फ़ील्ड → रंग) से एक रंग भी चुना जा सकता है।',
   'product.field.sizePlaceholder': 'जैसे 18x12, L-27 B-15 H-26',
   'product.group.codes': 'कोड और वज़न',
   'product.variants.hasVariants': 'वेरिएंट (रंग या पैटर्न) में आता है?',
   'product.variants.no': 'नहीं — एक कोड',
   'product.variants.yes': 'हाँ — हर वेरिएंट का अपना कोड',
   'product.variants.noHint': 'एक उत्पाद, एक कोड, एक वज़न।',
-  'product.variants.yesHint': 'हर रंग या पैटर्न लीड पर अपनी लाइन है, अपने कोड और वज़न के साथ।',
+  'product.variants.yesHint': 'हर रंग या पैटर्न पेंडिंग ऑर्डर पर अपनी लाइन है, अपने कोड और वज़न के साथ।',
   'product.variants.col.label': 'रंग',
   'product.variants.col.code': 'कोड',
   'product.variants.col.weight': 'वज़न (kg)',
   'product.variants.labelPlaceholder': 'जैसे White, Vitrosa 41',
   'product.variants.add': '+ वेरिएंट जोड़ें',
   'product.variants.remove': 'वेरिएंट {label} हटाएँ',
-  'product.variants.weightHint': 'वज़न प्रति पीस है। खाली वज़न दर्ज होने तक हर लीड पर “नहीं” दिखता है।',
+  'product.variants.weightHint': 'वज़न प्रति पीस है। खाली वज़न दर्ज होने तक हर पेंडिंग ऑर्डर पर “नहीं” दिखता है।',
   'product.detail.category': 'उत्पाद',
   'product.detail.detailsTitle': 'विवरण',
   'product.detail.photoTitle': 'फ़ोटो',
@@ -3533,19 +3544,19 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'nav.home': 'डैशबोर्ड पर जाएँ',
 
   // --- Parity with en.ts after the 2026-09-19 merge ---
-  'dashboard.activity.convertedOrder': "Order {orderId} created from {leadId}",
+  'dashboard.activity.convertedOrder': "Final Order {orderId} created from {leadId}",
   'dashboard.activity.emptyDescription': "Moves, conversions and dispatches show up here.",
   'dashboard.activity.emptyTitle': "No activity yet",
-  'dashboard.activity.leadSavedOffline': "Lead saved offline on Panel {device}",
-  'dashboard.activity.orderReady': "Order {orderId} marked {stage}",
+  'dashboard.activity.leadSavedOffline': "Pending Order saved offline on Panel {device}",
+  'dashboard.activity.orderReady': "Final Order {orderId} marked {stage}",
   'dashboard.activity.title': "Recent activity",
   'dashboard.activity.today': "Today {time}",
   'dashboard.activity.yesterday': "Yesterday {time}",
-  'dashboard.followUp.emptyDescription': "Leads whose follow-up date arrives show up here.",
+  'dashboard.followUp.emptyDescription': "Pending Orders whose follow-up date arrives show up here.",
   'dashboard.followUp.emptyTitle': "Nothing due",
   'dashboard.followUp.title': "Follow up today",
-  'dashboard.pipeline.emptyDescription': "Leads you create appear here, online or off.",
-  'dashboard.pipeline.emptyTitle': "No open leads",
+  'dashboard.pipeline.emptyDescription': "Pending Orders you create appear here, online or off.",
+  'dashboard.pipeline.emptyTitle': "No open pending orders",
   'dashboard.pipeline.openBoard': "Open board",
   // TODO(i18n-hi)
   'updates.standaloneBody': "This is the standalone build, which cannot install an update over itself. Get the new standalone file, close this window, and replace the old file with it. The database and every setting stay exactly where they are.",
@@ -3562,10 +3573,10 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'parties.error.load': 'पार्टियाँ लोड नहीं हो सकीं',
   'parties.loadMore': 'और लोड करें',
   'parties.summary': '{total} में से {shown} दिख रहे हैं',
-  'leadsOrders.delete.lead': 'लीड हटाएँ',
-  'leadsOrders.delete.order': 'ऑर्डर हटाएँ',
-  'leadsOrders.delete.lead.title': 'लीड {id} हटाएँ?',
-  'leadsOrders.delete.order.title': 'ऑर्डर {id} हटाएँ?',
+  'leadsOrders.delete.lead': 'पेंडिंग ऑर्डर हटाएँ',
+  'leadsOrders.delete.order': 'फ़ाइनल ऑर्डर हटाएँ',
+  'leadsOrders.delete.lead.title': 'पेंडिंग ऑर्डर {id} हटाएँ?',
+  'leadsOrders.delete.order.title': 'फ़ाइनल ऑर्डर {id} हटाएँ?',
   'leadsOrders.delete.body': 'यह रीसायकल बिन में जाता है और वापस लाया जा सकता है।',
   'leadsOrders.delete.failed': 'वह रिकॉर्ड हटाया नहीं जा सका',
   'leadsOrders.delete.blocked': '{items} में अब भी उपयोग में है — पहले उन्हें निपटाएँ',
@@ -3600,7 +3611,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'partyAccess.showing': 'अब तक {shown} दिख रहे हैं।',
   'settingGroup.access': 'कौन अंदर आ सकता है',
   'settingGroup.stock': 'स्टॉक',
-  'settingGroup.leads': 'लीड और फ़ॉलो-अप',
+  'settingGroup.leads': 'पेंडिंग ऑर्डर और फ़ॉलो-अप',
   'settingGroup.integrations': 'अन्य सॉफ़्टवेयर',
   'setting.unit.hours': 'घंटे',
   'setting.unit.days': 'दिन',
@@ -3620,13 +3631,13 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'setting.inventory.adjustmentNoteRequired.label': 'स्टॉक गिनती सुधारते समय कारण अनिवार्य करें',
   'setting.inventory.adjustmentNoteRequired.help':
     'सुधार उस आँकड़े को बदल देता है जिसे दोबारा निकाला नहीं जा सकता। यह चालू होने पर सुधार करने वाले को कारण लिखना होगा। जो गिनती पहले से मेल खाती है उसकी पुष्टि करने पर कुछ दर्ज नहीं होता, इसलिए उसके लिए कारण नहीं चाहिए।',
-  'setting.leads.followUpDefaultDays.label': 'नई लीड पर इतने दिन बाद संपर्क करें',
+  'setting.leads.followUpDefaultDays.label': 'नई पेंडिंग ऑर्डर पर इतने दिन बाद संपर्क करें',
   'setting.leads.followUpDefaultDays.help':
-    'नई लीड आज से इतने दिन बाद की फ़ॉलो-अप तारीख़ के साथ शुरू होती है। जब तक आप इसे न बदलें यह 3 है; 0 का अर्थ है आज। पूछताछ लेने वाला इसे बदल सकता है, और कल / 3 दिन में / अगले हफ़्ते वाले बटन पहले जैसे ही रहते हैं।',
-  'setting.leads.packagingRequiredOnConvert.label': 'लीड को ऑर्डर बनाने से पहले पैकेजिंग अनिवार्य है',
+    'नई पेंडिंग ऑर्डर आज से इतने दिन बाद की फ़ॉलो-अप तारीख़ के साथ शुरू होती है। जब तक आप इसे न बदलें यह 3 है; 0 का अर्थ है आज। पूछताछ लेने वाला इसे बदल सकता है, और कल / 3 दिन में / अगले हफ़्ते वाले बटन पहले जैसे ही रहते हैं।',
+  'setting.leads.packagingRequiredOnConvert.label': 'पेंडिंग ऑर्डर को फ़ाइनल ऑर्डर बनाने से पहले पैकेजिंग अनिवार्य है',
   'setting.leads.packagingRequiredOnConvert.help':
-    'डिफ़ॉल्ट रूप से बंद: लीड दर्ज करते समय पैकेजिंग नहीं पूछी जाती, और जिस लीड की पंक्तियों में पैकेजिंग नहीं है वह भी ऑर्डर बन सकती है। चालू होने पर लीड दर्ज करते समय हर पंक्ति के लिए पैकेजिंग पूछी जाती है और उसके बिना लीड को ऑर्डर नहीं बनाया जा सकता। पहले से भरी हुई पैकेजिंग दोनों स्थितियों में सुरक्षित रहती है।',
-  'setting.leads.quietAfterDays.label': 'लीड इतने दिन बाद शांत मानी जाएगी',
-  'setting.leads.quietAfterDays.help': 'लीड आउटकम रिपोर्ट किसी लीड को कितने दिन तक बिना छेड़े खुला गिनती रहे।',
+    'डिफ़ॉल्ट रूप से बंद: पेंडिंग ऑर्डर दर्ज करते समय पैकेजिंग नहीं पूछी जाती, और जिस पेंडिंग ऑर्डर की पंक्तियों में पैकेजिंग नहीं है वह भी फ़ाइनल ऑर्डर बन सकती है। चालू होने पर पेंडिंग ऑर्डर दर्ज करते समय हर पंक्ति के लिए पैकेजिंग पूछी जाती है और उसके बिना पेंडिंग ऑर्डर को फ़ाइनल ऑर्डर नहीं बनाया जा सकता। पहले से भरी हुई पैकेजिंग दोनों स्थितियों में सुरक्षित रहती है।',
+  'setting.leads.quietAfterDays.label': 'पेंडिंग ऑर्डर इतने दिन बाद शांत मानी जाएगी',
+  'setting.leads.quietAfterDays.help': 'पेंडिंग ऑर्डर आउटकम रिपोर्ट किसी पेंडिंग ऑर्डर को कितने दिन तक बिना छेड़े खुला गिनती रहे।',
   'error.unauthorized.developerDisabled': 'इस PC के लिए डेवलपर मोड बंद है। एक प्रशासक इसे सेटिंग्स → कौन अंदर आ सकता है में चालू कर सकता है।',
 };

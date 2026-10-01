@@ -272,7 +272,10 @@ export function KeyboardProvider({
         // cannot see, and `Alt+3` would move the pane under an open editor.
         if (modal && command.scope === 'screen') continue;
 
-        if (command.id === 'view.find') {
+        if (command.id === 'view.find' || command.id === 'palette.search') {
+          // `/` is the easy one: it does what Ctrl+F does, so one bare key
+          // reaches the search box of Pending Orders, Final Orders, Products and
+          // Parties alike — and the palette's record search on a screen with none.
           event.preventDefault();
           // The screen's own search box when it has one — the one on screen,
           // not one on a hidden pane — and the palette's record search when

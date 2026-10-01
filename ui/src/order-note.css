@@ -79,6 +79,16 @@
   color: var(--note-muted);
 }
 
+/* Long colour names wrap onto a second line instead of being cut off. */
+.ob-note-wrap {
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
 .ob-note-clip {
   white-space: nowrap;
   overflow: hidden;

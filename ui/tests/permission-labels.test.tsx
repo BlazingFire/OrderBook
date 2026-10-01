@@ -36,8 +36,8 @@ afterEach(() => {
 describe('permission labels', () => {
   it('reads modules and actions exactly as the grid always showed them in English', () => {
     expect(MODULES.map(moduleLabel)).toEqual([
-      'Leads',
-      'Orders',
+      'Pending Orders',
+      'Final Orders',
       'Parties',
       'Products',
       'Inventory',
@@ -76,7 +76,7 @@ describe('permission labels', () => {
     expect(actionLabel('view')).toBe(hi['action.view']);
     expect(capabilityLabel('lead.convert')).toBe(hi['permission.lead.convert']);
     expect(groupLabel('admin')).toBe(hi['capabilityGroup.admin']);
-    expect(moduleLabel('leads')).not.toBe('Leads');
+    expect(moduleLabel('leads')).not.toBe('Pending Orders');
   });
 
   it('still names a key this bundle’s catalogue does not know', () => {

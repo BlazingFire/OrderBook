@@ -977,3 +977,25 @@ describe('the Filling and Dispatch notes on an order', () => {
     expect((field as HTMLInputElement).disabled).toBe(true);
   });
 });
+
+describe('searching the final orders list', () => {
+  it('narrows the rows to the words typed, across party, id and lines', async () => {
+    const other = { ...ORDER, id: 'ORD-2', partyName: 'Blue Sky Traders' };
+    await boot({
+      permissions: ['orders.view'],
+      view: { orders: [ORDER, other], pipelines: [ORDER_PIPELINE] },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTitle(t('nav.orders')));
+    });
+    await screen.findByText('ORD-2');
+
+    const box = await screen.findByLabelText(t('orders.search.label'));
+    await act(async () => {
+      fireEvent.change(box, { target: { value: 'blue sky' } });
+    });
+
+    expect(screen.queryByText('ORD-1')).toBeNull();
+    expect(screen.getByText('ORD-2')).toBeTruthy();
+  });
+});

@@ -406,7 +406,7 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
           },
           actor,
         ),
-      ).rejects.toThrow(/not a configured lead source/i);
+      ).rejects.toThrow(/not a configured pending order source/i);
     });
 
     it('accepts a configured source platform', async () => {
@@ -667,7 +667,7 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
 
       await expect(
         leads.setStage({ id: lead.id, stageId: await stageIdByName('lead', 'Lost') }, actor),
-      ).rejects.toThrow(/already become an order/i);
+      ).rejects.toThrow(/already become a final order/i);
 
       await expect(leads.updateLead(lead.id, { notes: 'too late' }, actor)).rejects.toThrow(
         /can no longer be edited/i,

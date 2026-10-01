@@ -15,7 +15,7 @@
  */
 
 import { useRef, useState } from 'react';
-import { resolveCompanyFeatures, shownColour } from '@orderbook/shared';
+import { matchesRecordSearch, resolveCompanyFeatures, shownColour } from '@orderbook/shared';
 import type {
   NoteKind,
   Order,
@@ -131,6 +131,7 @@ export function OrderBoardScreen({
   onStageChange: setStageFilter,
 }: Props) {
   const [scope, setScope] = useState<PartyScopeFilter>('all');
+  const [search, setSearch] = useState('');
   const colourHex = useColourHex(view.optionLists);
   // Absent means an older Master, which sends every figure — read as "on".
   // Through the shared resolver rather than a literal written here, so this
@@ -158,6 +159,14 @@ export function OrderBoardScreen({
   useFilterBar(
     pipeline && !openOrder ? (
       <>
+        <Input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder={t('orders.search.placeholder')}
+          aria-label={t('orders.search.label')}
+          data-screen-search
+          style={{ width: rem(320) }}
+        />
         <Segmented
           options={[
             { value: 'all' as const, label: t('partyAccess.scope.all') },
@@ -281,9 +290,9 @@ export function OrderBoardScreen({
     );
   }
 
-  const filteredOrders = stageFilter
-    ? orders.filter((order) => order.stageId === stageFilter)
-    : orders;
+  const filteredOrders = (
+    stageFilter ? orders.filter((order) => order.stageId === stageFilter) : orders
+  ).filter((order) => matchesRecordSearch(order, search));
 
   const columns: DataTableColumn<Order>[] = [
     {

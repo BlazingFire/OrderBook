@@ -314,3 +314,24 @@ describe('what the palette lists', () => {
     expect(rowLabels()).not.toContain(t('keys.command.save'));
   });
 });
+
+describe('the bare / key', () => {
+  it('focuses the screen’s own search box, as Ctrl+F does', () => {
+    // jsdom has no layout, so every element reads as hidden to the visibility test.
+    Object.defineProperty(HTMLElement.prototype, 'offsetParent', {
+      configurable: true,
+      get: () => document.body,
+    });
+    try {
+      render(
+        <KeyboardProvider panel="office">
+          <input data-screen-search aria-label="Find here" />
+        </KeyboardProvider>,
+      );
+      fireEvent.keyDown(document.body, { key: '/', code: 'Slash' });
+      expect(document.activeElement).toBe(screen.getByLabelText('Find here'));
+    } finally {
+      delete (HTMLElement.prototype as { offsetParent?: unknown }).offsetParent;
+    }
+  });
+});
