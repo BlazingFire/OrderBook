@@ -14,7 +14,10 @@ import request from 'supertest';
 import type { Express } from 'express';
 import bcrypt from 'bcryptjs';
 
+import { MAX_PRODUCT_IMPORT_BYTES } from '@orderbook/shared';
+
 import { createApp } from '../src/http/app.js';
+import { IMPORT_HEADERS } from '../src/domain/product-import.js';
 import { db } from '../src/db/knex.js';
 import type { ActorContext } from '../src/domain/actor.js';
 import * as panelRepo from '../src/repositories/office-panel.repository.js';
@@ -156,13 +159,13 @@ describe.skipIf(!canRunIntegrationTests)('the panel catalogue import routes (int
     expect(response.body).toMatchObject({ error: 'forbidden', details: { permission: 'products.bulk' } });
   });
 
-  it('serves the CSV template as an attachment whose header row is the column keys', async () => {
+  it('serves the CSV template as an attachment whose header row is the column labels', async () => {
     const token = await importerToken();
     const response = await asPanel(request(app).get('/api/panel/products/import/template.csv'), token).expect(200);
 
     expect(response.headers['content-type']).toMatch(/^text\/csv/);
     expect(response.headers['content-disposition']).toBe('attachment; filename="products-template.csv"');
-    expect(response.text.split('\r\n')[0]).toMatch(/^categoryName,name,variant,code,weightKg,/);
+    expect(response.text.split('\r\n')[0]).toBe(IMPORT_HEADERS.join(','));
   });
 
   it('serves the Excel template', async () => {
@@ -179,6 +182,41 @@ describe.skipIf(!canRunIntegrationTests)('the panel catalogue import routes (int
     expect(response.headers['content-type']).toMatch(/spreadsheetml/);
     expect(response.headers['content-disposition']).toBe('attachment; filename="products-template.xlsx"');
     expect((response.body as Buffer).subarray(0, 2).toString('latin1')).toBe('PK');
+  });
+
+  it('lets the panel export on its own role: seeing the catalogue is enough', async () => {
+    await catalog.createProduct(
+      { name: 'Ivory', categoryName: 'Basins', variants: [{ code: 'R-1' }] },
+      admin,
+    );
+
+    const response = await asPanel(request(app).get('/api/panel/products/export.csv')).expect(200);
+    expect(response.headers['content-type']).toMatch(/^text\/csv/);
+    expect(response.headers['content-disposition']).toMatch(
+      /^attachment; filename="products-\d{4}-\d{2}-\d{2}\.csv"$/,
+    );
+    const lines = response.text.replace(/^\uFEFF/, '').split('\r\n');
+    expect(lines[0]).toBe(IMPORT_HEADERS.join(','));
+    expect(lines[1]).toContain('Basins,Ivory');
+    expect(lines[1]).toContain('R-1');
+
+    const main = await asPanel(request(app).get('/api/panel/products/export.csv?level=main')).expect(200);
+    expect(main.headers['content-disposition']).toMatch(/filename="main-products-\d{4}-\d{2}-\d{2}\.csv"/);
+
+    const xlsx = await asPanel(request(app).get('/api/panel/products/export.xlsx'))
+      .buffer()
+      .parse((res, done) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => done(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+    expect(xlsx.headers['content-type']).toMatch(/spreadsheetml/);
+    expect(xlsx.headers['content-disposition']).toMatch(/filename="products-\d{4}-\d{2}-\d{2}\.xlsx"/);
+    expect((xlsx.body as Buffer).subarray(0, 2).toString('latin1')).toBe('PK');
+
+    await asPanel(request(app).get('/api/panel/products/export.pdf')).expect(400);
+    await request(app).get('/api/panel/products/export.csv').expect(401);
   });
 
   it('refuses a template format it does not know', async () => {
@@ -215,6 +253,14 @@ describe.skipIf(!canRunIntegrationTests)('the panel catalogue import routes (int
     // The person, not the machine, is on the audit row.
     const [activity] = await db()('activity_log').where({ entity_type: 'catalog' });
     expect(activity).toMatchObject({ actor_type: 'user', actor_name: 'Sunita Shah' });
+  });
+
+  it('answers a file past the size ceiling with its own message, not the photo one', async () => {
+    const token = await importerToken();
+    const response = await asPanel(request(app).post('/api/panel/products/import'), token)
+      .attach('file', Buffer.alloc(MAX_PRODUCT_IMPORT_BYTES + 1, 97), 'huge.csv')
+      .expect(400);
+    expect(response.body).toMatchObject({ error: 'validation_error', messageKey: 'validation.import.tooLarge' });
   });
 
   it('answers 400 with a named token when no file is attached', async () => {

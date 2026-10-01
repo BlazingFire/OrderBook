@@ -22,6 +22,7 @@ vi.mock('../src/lib/master-fetch.js', () => ({
 }));
 
 import { createApp } from '../src/http/app.js';
+import { masterFetch } from '../src/lib/master-fetch.js';
 import { MasterCommandError, masterConnection } from '../src/realtime/master-connection.js';
 import * as userSession from '../src/services/user-session.service.js';
 import * as localStore from '../src/sync/local-store.js';
@@ -244,6 +245,63 @@ describe('bulk product import', () => {
 
     expect(response.status).toBe(400);
     expect(response.body).toMatchObject({ messageKey: 'validation.import.fileRequired' });
+  });
+
+  it('proxies the export with the Master\'s own type, dated file name and level, whatever the format', async () => {
+    const csvBody = '\uFEFFBrand,Code\r\n';
+    vi.mocked(masterFetch).mockResolvedValueOnce(
+      new Response(csvBody, {
+        status: 200,
+        headers: {
+          'content-type': 'text/csv; charset=utf-8',
+          'content-disposition': 'attachment; filename="main-products-2026-10-01.csv"',
+        },
+      }),
+    );
+
+    const response = await request(createApp()).get('/api/products/export.csv?level=main');
+
+    expect(response.status).toBe(200);
+    expect(vi.mocked(masterFetch)).toHaveBeenLastCalledWith('/api/panel/products/export.csv?level=main');
+    expect(response.headers['content-type']).toBe('text/csv; charset=utf-8');
+    expect(response.headers['content-disposition']).toBe('attachment; filename="main-products-2026-10-01.csv"');
+    expect(response.text).toBe(csvBody);
+  });
+
+  it('passes the Master\'s refusal of an export through with its status and message key', async () => {
+    vi.mocked(masterFetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'forbidden', messageKey: 'error.forbidden.permission' }), {
+        status: 403,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const response = await request(createApp()).get('/api/products/export.xlsx');
+    expect(response.status).toBe(403);
+    expect(response.body).toMatchObject({ error: 'forbidden' });
+  });
+
+  it('forwards the file, the mode and the dry-run flag to the Master as one multipart form', async () => {
+    vi.mocked(masterFetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ dryRun: true, created: 1, unchanged: 0 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    const response = await request(createApp())
+      .post('/api/products/import')
+      .field('dryRun', 'true')
+      .field('mode', 'upsert')
+      .attach('file', Buffer.from('Code\r\nA\r\n'), 'products.csv');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ dryRun: true, created: 1 });
+    const [path, init] = vi.mocked(masterFetch).mock.calls.at(-1) ?? [];
+    expect(path).toBe('/api/panel/products/import');
+    const form = init?.body as FormData;
+    expect(form.get('dryRun')).toBe('true');
+    expect(form.get('mode')).toBe('upsert');
+    expect((form.get('file') as File).name).toBe('products.csv');
   });
 
   it('serves the template through the Master, and 503 without one', async () => {

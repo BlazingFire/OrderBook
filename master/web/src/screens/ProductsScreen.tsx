@@ -67,6 +67,8 @@ export function ProductsScreen({
   const [products, setProducts] = useState<Product[] | null>(null);
   const [stock, setStock] = useState<Stock>(NO_STOCK);
   const [error, setError] = useState<string | null>(null);
+  /** Bumped by a bulk import so lists, brands and stock refetch at once, without waiting for the socket. */
+  const [importBump, setImportBump] = useState(0);
 
   // A later answer replaces an earlier one; a superseded one is dropped. The
   // previous data stays on screen while the next loads, so a list never blanks
@@ -84,7 +86,7 @@ export function ProductsScreen({
     return () => {
       superseded = true;
     };
-  }, [listsRevision]);
+  }, [listsRevision, importBump]);
 
   useEffect(() => {
     let superseded = false;
@@ -104,7 +106,7 @@ export function ProductsScreen({
     return () => {
       superseded = true;
     };
-  }, [catalogueRevision, canViewProducts]);
+  }, [catalogueRevision, canViewProducts, importBump]);
 
   useEffect(() => {
     if (!canViewStock) {
@@ -124,7 +126,7 @@ export function ProductsScreen({
     return () => {
       superseded = true;
     };
-  }, [stockRevision, canViewStock]);
+  }, [stockRevision, canViewStock, importBump]);
 
   if (!optionLists || !categories || !products) {
     return error ? <ConflictBanner>{error}</ConflictBanner> : <BusyMark />;
@@ -139,21 +141,22 @@ export function ProductsScreen({
         <SubProductsScreen
           view={view}
           transport={catalogueTransport}
-          revision={catalogueRevision}
+          revision={catalogueRevision + importBump}
+          onImported={() => setImportBump((current) => current + 1)}
         />
       </Activity>
       <Activity mode={page === 'main' ? 'visible' : 'hidden'}>
         <MainProductsScreen
           view={view}
           transport={catalogueTransport}
-          revision={catalogueRevision}
+          revision={catalogueRevision + importBump}
         />
       </Activity>
       <Activity mode={page === 'brands' ? 'visible' : 'hidden'}>
         <BrandsScreen
           permissions={permissions}
           transport={optionListTransport}
-          revision={listsRevision}
+          revision={listsRevision + importBump}
         />
       </Activity>
     </>

@@ -525,6 +525,129 @@ describe('the import dialog', () => {
   });
 });
 
+describe('the import dialog: guards, problems and export', () => {
+  const BASE = {
+    dryRun: true,
+    mode: 'create' as const,
+    fileName: 'p.csv',
+    totalRows: 3,
+    created: 2,
+    updated: 0,
+    skipped: 0,
+    failed: 1,
+    issues: [
+      { row: 4, kind: 'error' as const, messageKey: 'validation.import.fileRequired' as const },
+    ],
+    issuesTruncated: false,
+    ignoredColumns: [],
+    sample: [],
+  };
+
+  function open(transport: CatalogueTransport, onError = vi.fn()) {
+    render(
+      <ProductImportModal
+        open
+        transport={transport}
+        onClose={() => undefined}
+        onImported={() => undefined}
+        onError={onError}
+      />,
+    );
+    return onError;
+  }
+
+  it('refuses a wrong extension and an empty file before asking the server', async () => {
+    const importProducts = vi.fn(async () => BASE);
+    open(makeTransport({ importProducts }));
+    const input = () => document.querySelector('input[type="file"]')!;
+
+    fireEvent.change(input(), { target: { files: [new File(['x'], 'p.pdf')] } });
+    expect(await screen.findByText(t('validation.import.unsupportedFormat'))).toBeTruthy();
+    fireEvent.change(input(), { target: { files: [new File([], 'p.csv')] } });
+    expect(await screen.findByText(t('validation.import.emptyFile'))).toBeTruthy();
+    expect(importProducts).not.toHaveBeenCalled();
+  });
+
+  it('shows the row-numbered problems, the left-out count, and downloads the report', async () => {
+    const importProducts = vi.fn(async () => BASE);
+    const createObjectURL = vi.fn(() => 'blob:x');
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
+    open(makeTransport({ importProducts }));
+
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: { files: [new File(['x'], 'p.csv')] },
+    });
+    expect(await screen.findByText(t('import.preview.partial', { count: 1 }))).toBeTruthy();
+    expect(screen.getByText('4')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: t('import.report.download') }));
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the unchanged count so an unedited round trip is not silent', async () => {
+    const importProducts = vi.fn(async () => ({
+      ...BASE,
+      created: 0,
+      failed: 0,
+      issues: [],
+      unchanged: 5,
+    }));
+    open(makeTransport({ importProducts }));
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: { files: [new File(['x'], 'p.csv')] },
+    });
+    expect(await screen.findByText(t('import.unchanged', { count: 5 }))).toBeTruthy();
+    expect(screen.queryByText(t('import.preview.nothing'))).toBeNull();
+  });
+
+  it('shows a server message key with its params (too many rows)', async () => {
+    const refused = Object.assign(new Error('x'), {
+      code: 'validation_failed',
+      messageKey: 'validation.import.tooManyRows',
+      params: { max: 20000 },
+    });
+    open(
+      makeTransport({
+        importProducts: vi.fn(async () => {
+          throw refused;
+        }),
+      }),
+    );
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: { files: [new File(['x'], 'p.csv')] },
+    });
+    expect(
+      await screen.findByText(t('validation.import.tooManyRows', { max: 20000 })),
+    ).toBeTruthy();
+  });
+
+  it('does not import a file with nothing importable', async () => {
+    const importProducts = vi.fn(async () => ({ ...BASE, created: 0 }));
+    open(makeTransport({ importProducts }));
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: { files: [new File(['x'], 'p.csv')] },
+    });
+    const confirm = await screen.findByRole('button', { name: t('import.confirm', { count: 0 }) });
+    expect((confirm as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('exports through the transport and reports a failure', async () => {
+    const createObjectURL = vi.fn(() => 'blob:x');
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
+    const exportProducts = vi
+      .fn()
+      .mockResolvedValueOnce({ blob: new Blob(['a']), fileName: 'products.csv' })
+      .mockRejectedValueOnce(new Error('boom'));
+    const onError = open(makeTransport({ exportProducts }));
+
+    fireEvent.click(screen.getByRole('button', { name: t('import.export.csv') }));
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
+    expect(exportProducts).toHaveBeenCalledWith('csv');
+
+    fireEvent.click(screen.getByRole('button', { name: t('import.export.csv') }));
+    await waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+  });
+});
+
 describe('the photo card', () => {
   const COVER: ProductImage = {
     id: 'img-1',

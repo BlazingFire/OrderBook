@@ -376,6 +376,10 @@ export const EN_MESSAGES = {
   'validation.import.duplicateInFile': '"{column}" repeats row {firstRow}',
   'validation.import.unknownCategory':
     'There is no category named "{categoryName}" — this company does not let an import create one',
+  'validation.import.tooManyRows': 'The file has more than {max} rows — split it and import the parts',
+  'validation.import.tooLarge': 'That file is too large to import',
+  'validation.import.sameProduct':
+    '{name} and another product in this file both match the same existing product',
   'validation.import.rowFailed': 'The row could not be saved: {reason}',
   'validation.import.mixedVariants':
     '{name} names a variant on some rows and none on others — fill in every row or leave every row blank',
@@ -1929,6 +1933,10 @@ export const EN_MESSAGES = {
   'import.failed': 'The import could not be completed',
   'import.templateFailed': 'Could not download the template',
   'import.another': 'Import another file',
+  'import.report.download': 'Download problem list',
+  'import.report.fileName': 'import-problems.csv',
+  'import.preview.partial': '{count} rows with problems will be left out.',
+  'import.unchanged': '{count} already match the catalogue and need no change.',
   'reports.column.orderCount': 'Final Orders',
   'reports.column.boxCount': 'Boxes',
   'reports.column.partyId': 'Party ID',

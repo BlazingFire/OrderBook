@@ -45,7 +45,7 @@ describe('reading CSV', () => {
     const csv = 'name\nfirst\n\nthird\n';
     const rows = await readSheetRows(Buffer.from(csv, 'utf8'));
 
-    expect(rows).toEqual([['name'], ['first'], [], ['third']]);
+    expect(rows).toEqual([['name'], ['first'], [''], ['third']]);
   });
 });
 

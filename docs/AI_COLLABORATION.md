@@ -190,6 +190,49 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-01 - Catalogue import/export, server side (Claude)
+
+`master/src` (domain, service, `lib/spreadsheet.ts`, `panel-catalog.routes.ts`), `office/src/http/app.ts`,
+`shared/` (`MAX_PRODUCT_IMPORT_ROWS`, `ProductImportResult.unchanged`, 3 keys en + hi), tests, `CATALOGUE_MODEL.md` §5.
+- **Header drift settled:** the true format is the owner's labels (`IMPORT_HEADERS`: Brand, Main product code,
+  Main product, Sub product, Size, Colour rule, Colour, Code, Weight (kg), Alias); the template, the export and
+  the import already agreed — the three CSV-template tests still expected the old `categoryName,name,variant,...`.
+- **Round trip:** an upsert of an unedited export reported every row `updated`. New `unchanged` count (additive
+  field on `ProductImportResult`); the real SWISWARE catalogue (41 / 549) exports and re-imports as 0 created,
+  0 updated, 549 unchanged, 0 errors in about a second, both formats, both modes.
+- **Defects fixed:** CSV read by exceljs shifted row numbers past blank lines, assumed commas and coerced
+  nothing consistently — now a small RFC 4180 reader (BOM, UTF-16, Windows-1252, `;`/tab, quoted line breaks,
+  formula-guard apostrophe removed); weights `12,5` read as 125 and `0x10`/`1e3` were accepted; inner whitespace
+  made "ONE  PIECE" a second product; brand and colour case now follow the Fields lists, and a new brand joins
+  the Brands list; the export listed deactivated variants and an upsert revived them; two models of a file
+  resolving to one product overwrote each other; oversized files said "photo too large" (`validation.import.tooLarge`
+  on both panels); no row ceiling (`validation.import.tooManyRows`, 20,000); export file names carry the date.
+- **Office:** `/api/products/export.:format` already proxied the Master route; tests now pin the type, dated
+  disposition, `?level=main`, refusal pass-through and the multipart forwarding of file, mode and dryRun.
+- **Tests:** new `spreadsheet-reader.test.ts`, `product-import-roundtrip.integration.test.ts`; additions in
+  `panel-catalog-route`, `catalog-import-session`, `office/tests/module-forwarding`.
+- **Not done / decisions:** partial import of the valid rows is kept (a model is atomic, the file is not);
+  a blank cell still cannot clear a stored Alias/Weight; Excel cells already coerced to numbers by the person
+  (`0012` typed as a number) cannot be recovered — the template's Code column is text-formatted for that.
+
+### 2026-10-01 - Catalogue import/export, web UI side (Claude)
+
+`office/web`, `ui/`, `master/web`, `shared/` i18n (add only), tests.
+- **Master gained Export:** an Export CSV button on Sub products and Main products (it had only the
+  buttons hidden inside the import dialog, and none for main products); `exportProducts(format, level)`
+  now threads `level` through `CatalogueTransport` and `master/web/src/api.ts` to `?level=main`.
+- **Both import dialogs (Office and the `ui/` port, kept in step):** a wrong extension or an empty
+  file is refused before upload; picks, drops, template and export are ignored while anything is busy
+  (no double submit); Esc and the scrim no longer close the dialog mid-import; the problem list can be
+  downloaded as a row-numbered CSV; a preview with some bad rows says how many will be left out; the
+  confirm button takes focus so Enter imports.
+- **Success toast** after an import on both panels; Office export failures say the Master is off
+  (`exportFailureText`) instead of a bare error.
+- Keys added (en + hi): `import.report.download`, `import.report.fileName`, `import.preview.partial`.
+- **Not done:** an `update`-only mode (`ProductImportMode` is `create | upsert`, shared/server-owned).
+- Verified: targeted vitest 62 files / 761 tests pass (4 new in `ui/tests/master-catalogue.test.tsx`);
+  `npm run lint` and `npm run typecheck` exit 0.
+
 ### 2026-10-01 - Master parity plan, P7: dead code only (Claude)
 
 Master web/server, `shared/` (i18n text only), docs; nothing under `office/`, no `ui/src` edit.

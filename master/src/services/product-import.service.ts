@@ -44,6 +44,7 @@ import {
   columnPatch,
   fieldFor,
   MAX_PRODUCT_IMPORT_ISSUES,
+  MAX_PRODUCT_IMPORT_ROWS,
   PRODUCT_COLUMNS,
 } from '@orderbook/shared';
 
@@ -73,6 +74,7 @@ import {
 } from '../lib/spreadsheet.js';
 import { readSheetRows } from '../lib/spreadsheet.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
+import * as customFieldRepo from '../repositories/custom-field.repository.js';
 import { allocatePermanentIds, nextHlc } from '../repositories/identity.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
 import * as productVariantRepo from '../repositories/product-variant.repository.js';
@@ -101,6 +103,13 @@ const TEMPLATE_WIDTHS: Partial<Record<ImportField, number>> = {
 };
 
 const TEXT_COLUMNS = new Set<ImportField>(['code']);
+
+/** Today as `2026-10-01`, the PC's own date — an export's file name says when it was taken. */
+function today(): string {
+  const now = new Date();
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
 
 export async function productImportTemplate(
   format: 'csv' | 'xlsx',
@@ -158,7 +167,7 @@ export async function exportProducts(
       return {
         bytes: Buffer.from('﻿' + toCsv(headers, mainRows), 'utf8'),
         contentType: 'text/csv; charset=utf-8',
-        fileName: 'main-products.csv',
+        fileName: `main-products-${today()}.csv`,
       };
     }
     const bytes = await buildXlsxTable({
@@ -166,7 +175,7 @@ export async function exportProducts(
       columns: headers.map((header) => ({ header, width: 24, text: header === 'Main product code' })),
       rows: mainRows,
     });
-    return { bytes, contentType: XLSX_CONTENT_TYPE, fileName: 'main-products.xlsx' };
+    return { bytes, contentType: XLSX_CONTENT_TYPE, fileName: `main-products-${today()}.xlsx` };
   }
 
   // ponytail: one page of everything; paginate the read if a catalogue ever outgrows memory.
@@ -174,9 +183,12 @@ export async function exportProducts(
 
   const columns = IMPORT_COLUMNS.filter((column) => !column.legacy);
   const rows = items.flatMap((product) => {
-    const rule = colourRuleOf(product);
+    // A variant taken off the form while history still quotes it stays in the
+    // database, inactive; it is not part of the catalogue a person would edit.
+    const live = { ...product, variants: product.variants.filter((variant) => variant.isActive) };
+    const rule = colourRuleOf(live);
     const ruleName = rule === 'selectable' ? 'multicolour' : rule;
-    return product.variants.map((variant) => [
+    return live.variants.map((variant) => [
       product.brand ?? '',
       product.categoryCode ?? '',
       product.categoryName,
@@ -194,7 +206,7 @@ export async function exportProducts(
     return {
       bytes: Buffer.from('﻿' + toCsv(columns.map((column) => column.label), rows), 'utf8'),
       contentType: 'text/csv; charset=utf-8',
-      fileName: 'products.csv',
+      fileName: `products-${today()}.csv`,
     };
   }
 
@@ -207,7 +219,7 @@ export async function exportProducts(
     })),
     rows,
   });
-  return { bytes, contentType: XLSX_CONTENT_TYPE, fileName: 'products.xlsx' };
+  return { bytes, contentType: XLSX_CONTENT_TYPE, fileName: `products-${today()}.xlsx` };
 }
 
 interface ImportFile {
@@ -260,6 +272,28 @@ export async function importProducts(
     return (at >= 0 ? headerRow[at] : undefined) || labelOf(field);
   };
 
+  if (rows.length - headerIndex - 1 > MAX_PRODUCT_IMPORT_ROWS) {
+    throw new ValidationError('validation.import.tooManyRows', { max: MAX_PRODUCT_IMPORT_ROWS });
+  }
+
+  // Read once, up front: the live products (to know a brand that exists) and
+  // the Fields lists, so a brand or colour is matched the way the person sees
+  // it — case and spacing aside — instead of minting "swisware+" beside
+  // "Swisware+". A colour nobody listed stays as typed (the form allows it);
+  // a brand nobody listed is a new brand: kept as typed and, on a real import,
+  // added to the Brands list so the catalogue's brand filter can find it.
+  const liveCategories = await productRepo.listCategories(actor.tenantId);
+  const [brandOptions, colourOptions] = await Promise.all([
+    customFieldRepo.listOptionsForKey(actor.tenantId, 'product.brand'),
+    customFieldRepo.listOptionsForKey(actor.tenantId, 'stock.colour'),
+  ]);
+  const brandByLower = new Map<string, string>();
+  for (const category of liveCategories) {
+    if (category.brand) brandByLower.set(category.brand.toLowerCase(), category.brand);
+  }
+  for (const option of brandOptions) brandByLower.set(option.value.toLowerCase(), option.value);
+  const colourByLower = new Map(colourOptions.map((option) => [option.value.toLowerCase(), option.value]));
+
   const issues: ProductImportIssue[] = [];
   const parsed: ParsedRow[] = [];
   let totalRows = 0;
@@ -269,8 +303,17 @@ export async function importProducts(
     totalRows += 1;
     const row = headerIndex + 2 + offset;
     const outcome = parseImportRow(cells, match, headerRow, row);
-    if (outcome.input) parsed.push({ row, input: outcome.input });
-    else issues.push(...outcome.issues);
+    if (!outcome.input) {
+      issues.push(...outcome.issues);
+      return;
+    }
+
+    const { product, variant } = outcome.input;
+    const brand = product.categoryBrand?.trim();
+    if (brand) product.categoryBrand = brandByLower.get(brand.toLowerCase()) ?? brand;
+    if (variant.label) variant.label = colourByLower.get(variant.label.toLowerCase()) ?? variant.label;
+
+    parsed.push({ row, input: outcome.input });
   });
 
   if (totalRows === 0) throw new ValidationError('validation.import.emptyFile');
@@ -297,6 +340,7 @@ export async function importProducts(
 
   let creates: ImportGroup[] = [];
   let updates: UpdateGroup[] = [];
+  const claimedOwners = new Set<string>();
   for (const group of grouped.groups) {
     const owners = new Set<string>();
     for (const variant of group.input.variants ?? []) {
@@ -326,6 +370,21 @@ export async function importProducts(
     if (!existing) {
       creates.push(group);
     } else if (options.mode === 'upsert') {
+      // Two models of the file resolving to one product would each rewrite it
+      // from the same stale copy; the later one is refused rather than lost.
+      if (claimedOwners.has(existing.id)) {
+        for (const entry of group.rows) {
+          issues.push({
+            row: entry.row,
+            kind: 'error',
+            column: headerFor('code'),
+            messageKey: 'validation.import.sameProduct',
+            params: { name: group.input.name },
+          });
+        }
+        continue;
+      }
+      claimedOwners.add(existing.id);
       updates.push({ ...group, existing });
     } else {
       for (const entry of group.rows) {
@@ -353,7 +412,6 @@ export async function importProducts(
   // header gives: one function answers "what would this file do" and "do it",
   // so a preview that says "ok" and a commit that refuses would be the defect.
   const mayCreateCategories = await getSetting(actor.tenantId, 'catalog.importCreatesCategories');
-  const liveCategories = await productRepo.listCategories(actor.tenantId);
   const categoryCodeOf = (group: ImportGroup): string | null =>
     group.input.categoryCode?.trim() || null;
   const existingCategoryOf = (group: ImportGroup): string | undefined => {
@@ -402,6 +460,12 @@ export async function importProducts(
   creates = creates.filter(keepKnownCategory);
   updates = updates.filter(keepKnownCategory);
 
+  // An upsert row whose product already says exactly this is not an update:
+  // an export uploaded back unedited must read "nothing to do", not "N updated".
+  const unchangedGroups = updates.filter((group) => isUnchanged(group, existingCategoryOf(group)));
+  updates = updates.filter((group) => !unchangedGroups.includes(group));
+  const unchanged = rowCount(unchangedGroups);
+
   const sample = [...creates, ...updates]
     .sort((a, b) => (a.rows[0]?.row ?? 0) - (b.rows[0]?.row ?? 0))
     .slice(0, 5)
@@ -415,6 +479,7 @@ export async function importProducts(
       totalRows,
       created: rowCount(creates),
       updated: rowCount(updates),
+      unchanged,
       issues,
       sample,
       ignoredColumns: match.ignored,
@@ -434,6 +499,12 @@ export async function importProducts(
         // and trusted to find everything: every surviving group was matched.
         // A product binned between that check and this insert is the one gap
         // left; the chunk then files the sub product under it, as before.
+        await registerBrands(
+          actor.tenantId,
+          chunk.map((group) => group.input.categoryBrand ?? ''),
+          brandOptions,
+          trx,
+        );
         const seedOf = (group: ImportGroup) => ({
           name: group.input.categoryName ?? '',
           brand: group.input.categoryBrand ?? null,
@@ -488,6 +559,7 @@ export async function importProducts(
         try {
           await db().transaction(async (trx) => {
             const hlc = await nextHlc(trx);
+            await registerBrands(actor.tenantId, [group.input.categoryBrand ?? ''], brandOptions, trx);
             await productRepo.insertProduct(
               { tenantId: actor.tenantId, input: group.input, hlc, fieldHlc: {}, temporaryId: null },
               trx,
@@ -500,6 +572,9 @@ export async function importProducts(
       }
     }
   }
+
+  // A brand the file introduced is now in the Brands list; the cached copy is stale.
+  customFieldRepo.invalidateFieldCache(actor.tenantId);
 
   for (const chunk of chunks(updates, BATCH)) {
     try {
@@ -535,6 +610,7 @@ export async function importProducts(
     totalRows,
     created,
     updated,
+    unchanged,
     issues,
     sample,
     ignoredColumns: match.ignored,
@@ -550,7 +626,7 @@ export async function importProducts(
           action: 'imported',
           actorType: actor.actorType,
           actorId: actor.actorId,
-          details: { count: created + updated, fileName: file.fileName },
+          details: { count: created + updated, fileName: file.fileName, mode: options.mode, created, updated },
         },
         actor,
         trx,
@@ -568,6 +644,93 @@ export async function importProducts(
   return result;
 }
 
+
+/**
+ * The product as the sheet leaves it: the existing sub products with the
+ * file's rows folded in. A deactivated variant (history still quotes it) stays
+ * out unless a row names its code — it is not resurrected by a sheet that
+ * never mentioned it.
+ */
+function mergedUpdate(group: UpdateGroup): ProductInput {
+  const merged: Array<ProductVariantInput & { active: boolean; touched?: boolean }> =
+    group.existing.variants.map((variant) => ({
+      id: variant.id,
+      code: variant.code,
+      label: variant.label,
+      weightKg: variant.weightKg,
+      active: variant.isActive,
+    }));
+
+  for (const incoming of group.input.variants ?? []) {
+    const byCode = merged.find((variant) => variant.code.toLowerCase() === incoming.code.toLowerCase());
+    const byLabel = merged.find(
+      (variant) =>
+        variant.active && (variant.label ?? '').toLowerCase() === (incoming.label ?? '').toLowerCase(),
+    );
+    const target = byCode ?? byLabel;
+    if (target) {
+      target.code = incoming.code;
+      target.label = incoming.label ?? null;
+      target.touched = true;
+      if (incoming.weightKg !== undefined && incoming.weightKg !== null) target.weightKg = incoming.weightKg;
+    } else {
+      merged.push({
+        code: incoming.code,
+        label: incoming.label ?? null,
+        weightKg: incoming.weightKg ?? null,
+        active: true,
+        touched: true,
+      });
+    }
+  }
+
+  const kept = merged.filter((variant) => variant.active || variant.touched);
+  const hasVariants = group.existing.hasVariants || Boolean(group.input.hasVariants);
+  return {
+    ...group.input,
+    hasVariants,
+    variants: kept.map(({ active: _active, touched: _touched, ...variant }, index) => ({
+      ...variant,
+      // A one-form product that a sheet now gives colours: its single
+      // unlabelled row is the plain member, and needs a name to keep.
+      label: hasVariants ? (variant.label ?? 'Standard') : null,
+      sequence: index + 1,
+    })),
+  };
+}
+
+/**
+ * True when applying `mergedUpdate` would change nothing the product already
+ * holds. Compared on what the sheet asserts (an absent key is untouched, as
+ * `columnPatch` reads it), against the live variants only.
+ */
+function isUnchanged(group: UpdateGroup, categoryId: string | undefined): boolean {
+  const { existing } = group;
+  const input = mergedUpdate(group);
+
+  if (categoryId === undefined || categoryId !== existing.categoryId) return false;
+  for (const key of ['name', 'alias', 'size'] as const) {
+    if (input[key] !== undefined && (input[key] ?? null) !== (existing[key] ?? null)) return false;
+  }
+  if (input.multiColour !== undefined && input.multiColour !== existing.multiColour) return false;
+  if (input.hasVariants !== existing.hasVariants) return false;
+
+  const live = existing.variants.filter((variant) => variant.isActive);
+  const next = input.variants ?? [];
+  return (
+    next.length === live.length &&
+    next.every((variant, index) => {
+      const was = live[index];
+      return (
+        was !== undefined &&
+        variant.code === was.code &&
+        (variant.label ?? null) === (was.label ?? null) &&
+        (variant.weightKg ?? null) === (was.weightKg ?? null)
+      );
+    })
+  );
+}
+
 /**
  * One update inside the caller's transaction, stamping the per-field clocks
  * the way `catalog.service.ts#updateProduct` does — so an offline edit to a
@@ -577,53 +740,39 @@ export async function importProducts(
  * than replacing it: a sheet naming three of DAMRU's forty codes must
  * not delete the other thirty-seven. A row matches an existing variant by
  * code, else by label, else it is a new variant.
- */
-async function applyUpdate(
+ */async function applyUpdate(
   group: UpdateGroup,
   hlc: string,
   tenantId: string,
   trx: Parameters<typeof productRepo.updateProduct>[4],
 ): Promise<void> {
-  const merged: ProductVariantInput[] = group.existing.variants.map((variant) => ({
-    id: variant.id,
-    code: variant.code,
-    label: variant.label,
-    weightKg: variant.weightKg,
-  }));
-
-  for (const incoming of group.input.variants ?? []) {
-    const byCode = merged.find((variant) => variant.code.toLowerCase() === incoming.code.toLowerCase());
-    const byLabel = merged.find(
-      (variant) => (variant.label ?? '').toLowerCase() === (incoming.label ?? '').toLowerCase(),
-    );
-    const target = byCode ?? byLabel;
-    if (target) {
-      target.code = incoming.code;
-      target.label = incoming.label ?? null;
-      if (incoming.weightKg !== undefined && incoming.weightKg !== null) target.weightKg = incoming.weightKg;
-    } else {
-      merged.push({ code: incoming.code, label: incoming.label ?? null, weightKg: incoming.weightKg ?? null });
-    }
-  }
-
-  const hasVariants = group.existing.hasVariants || Boolean(group.input.hasVariants);
-  const input: ProductInput = {
-    ...group.input,
-    hasVariants,
-    variants: merged.map((variant, index) => ({
-      ...variant,
-      // A one-form product that a sheet now gives colours: its single
-      // unlabelled row is the plain member, and needs a name to keep.
-      label: hasVariants ? (variant.label ?? 'Standard') : null,
-      sequence: index + 1,
-    })),
-  };
+  const input = mergedUpdate(group);
 
   const touched = Object.keys(columnPatch(input, PRODUCT_COLUMNS));
   const fieldHlc: Record<string, string> = { ...group.existing.sync.fieldHlc, variants: hlc };
   for (const column of touched) fieldHlc[fieldFor(PRODUCT_COLUMNS, column)] = hlc;
 
   await productRepo.updateProduct(tenantId, group.existing.id, input, { hlc, fieldHlc }, trx);
+}
+
+/** Brands the file introduces, added to the Brands list (`product.brand`) beside the ones already there. */
+async function registerBrands(
+  tenantId: string,
+  brands: readonly string[],
+  listed: ReadonlyArray<{ value: string; sequence: number }>,
+  trx: Parameters<typeof customFieldRepo.insertOption>[1],
+): Promise<void> {
+  const have = new Set(listed.map((option) => option.value.toLowerCase()));
+  let sequence = Math.max(0, ...listed.map((option) => option.sequence));
+  for (const brand of new Set(brands.map((value) => value.trim()).filter(Boolean))) {
+    if (have.has(brand.toLowerCase())) continue;
+    have.add(brand.toLowerCase());
+    sequence += 1;
+    await customFieldRepo.insertOption(
+      { tenantId, listKey: 'product.brand', value: brand, label: brand, hex: null, sequence, createdBy: null },
+      trx,
+    );
+  }
 }
 
 function chunks<T>(items: readonly T[], size: number): T[][] {
@@ -701,6 +850,7 @@ function finish(partial: {
   totalRows: number;
   created: number;
   updated: number;
+  unchanged: number;
   issues: ProductImportIssue[];
   sample: ProductInput[];
   ignoredColumns: string[];
@@ -717,6 +867,7 @@ function finish(partial: {
     totalRows: partial.totalRows,
     created: partial.created,
     updated: partial.updated,
+    unchanged: partial.unchanged,
     skipped,
     failed,
     issues: sorted.slice(0, MAX_PRODUCT_IMPORT_ISSUES),

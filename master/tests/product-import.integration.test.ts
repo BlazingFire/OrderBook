@@ -28,6 +28,7 @@ import { resetChangeRing, since } from '../src/realtime/change-ring.js';
 import * as productRepo from '../src/repositories/product.repository.js';
 import * as productVariantRepo from '../src/repositories/product-variant.repository.js';
 import * as catalog from '../src/services/catalog.service.js';
+import { IMPORT_HEADERS } from '../src/domain/product-import.js';
 import { importProducts, productImportTemplate } from '../src/services/product-import.service.js';
 
 let admin: ActorContext;
@@ -375,7 +376,7 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
   it('serves a CSV and an Excel template', async () => {
     const csvTemplate = await productImportTemplate('csv', admin);
     expect(csvTemplate.contentType).toMatch(/^text\/csv/);
-    expect(csvTemplate.bytes.toString('utf8').split('\r\n')[0]).toMatch(/^categoryName,name,variant,code,weightKg,/);
+    expect(csvTemplate.bytes.toString('utf8').split('\r\n')[0]).toBe(IMPORT_HEADERS.join(','));
 
     const xlsxTemplate = await productImportTemplate('xlsx', admin);
     expect(xlsxTemplate.fileName).toBe('products-template.xlsx');

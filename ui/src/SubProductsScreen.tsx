@@ -61,7 +61,7 @@ import { t } from './i18n.js';
 import { LoadMorePager } from './CursorPager.js';
 import { ProductDetail, SubProductColour } from './ProductDetail.js';
 import { ProductDrawer, type CreatedProduct } from './ProductDrawer.js';
-import { ProductImportModal } from './ProductImportModal.js';
+import { ProductImportModal, exportCatalogueCsv } from './ProductImportModal.js';
 import { rem } from './rem.js';
 import { Select } from './SuggestInput.js';
 import { EmptyState, ErrorState, SkeletonTable } from './States.js';
@@ -92,9 +92,12 @@ export function SubProductsScreen({
   view,
   transport,
   revision,
+  onImported,
 }: {
   view: CatalogueView;
   transport: CatalogueTransport;
+  /** A bulk import wrote something; the host refetches what else it shows (brands, stock). */
+  onImported?: () => void;
   /** Moves when the catalogue changed anywhere; the list is read again. */
   revision: number;
 }) {
@@ -305,6 +308,18 @@ export function SubProductsScreen({
           </FilterChip>
         ))}
         <span style={{ flex: 1 }} />
+        <Button
+          variant="secondary"
+          size="sm"
+          icon="download"
+          onClick={() =>
+            void exportCatalogueCsv(transportRef.current, 'sub').catch((caught) =>
+              toast.push(apiErrorText(caught, 'catalog.export.failed'), { tone: 'error' }),
+            )
+          }
+        >
+          {t('catalog.export')}
+        </Button>
         {canImport && (
           <Button variant="secondary" size="sm" icon="upload" onClick={() => setImportOpen(true)}>
             {t('catalog.products.import')}
@@ -565,7 +580,11 @@ export function SubProductsScreen({
         open={importOpen}
         transport={transport}
         onClose={() => setImportOpen(false)}
-        onImported={() => setRefetch((current) => current + 1)}
+        onImported={(result) => {
+          setRefetch((current) => current + 1);
+          onImported?.();
+          toast.push(t('import.done', { created: result.created, updated: result.updated }));
+        }}
         onError={onDrawerError}
       />
     </>

@@ -28,7 +28,7 @@
  * other managed list.
  */
 
-import { exportCatalogueCsv } from '../components/exportCatalogue';
+import { exportCatalogueCsv, exportFailureText } from '../components/exportCatalogue';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CategoryInput, ProductCategory, ProductCategoryListRow } from '@orderbook/shared';
 import { CATEGORY_CODE_PATTERN } from '@orderbook/shared';
@@ -201,8 +201,8 @@ export function MainProductsScreen({ view }: { view: LocalView }) {
           size="sm"
           icon="download"
           onClick={() =>
-            void exportCatalogueCsv('main').catch(() =>
-              toast.push(t('catalog.export.failed'), { tone: 'error' }),
+            void exportCatalogueCsv('main').catch((caught) =>
+              toast.push(exportFailureText(caught), { tone: 'error' }),
             )
           }
         >

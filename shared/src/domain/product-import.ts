@@ -21,6 +21,9 @@ export const MAX_PRODUCT_IMPORT_BYTES = 50 * 1024 * 1024;
  */
 export const MAX_PRODUCT_IMPORT_ISSUES = 1000;
 
+/** Data rows past which a file is refused whole, before any row is read — a typo'd range, not a catalogue. */
+export const MAX_PRODUCT_IMPORT_ROWS = 20000;
+
 /**
  * `create` adds new products and reports a row whose code already exists as
  * skipped. `upsert` also updates those rows in place, by code — how a whole
@@ -54,6 +57,12 @@ export interface ProductImportResult {
   /** Rows created — or, on a dry run, rows that would be. */
   created: number;
   updated: number;
+  /**
+   * Rows an `upsert` matched to a product that already says exactly this —
+   * nothing to change, so not counted in `updated`. An export uploaded back
+   * unedited is all `unchanged`. Absent from a Master older than 1.2.5.
+   */
+  unchanged?: number;
   skipped: number;
   failed: number;
   issues: ProductImportIssue[];

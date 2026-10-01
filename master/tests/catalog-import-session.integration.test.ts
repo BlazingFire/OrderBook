@@ -87,6 +87,34 @@ describe.skipIf(!canRunIntegrationTests)('the session catalogue import routes (i
     expect((response.body as Buffer).subarray(0, 2).toString('latin1')).toBe('PK');
   });
 
+  it('exports the catalogue to anyone who can view it, as a dated attachment that imports back unchanged', async () => {
+    await catalog.createProduct(
+      { name: 'Ivory', categoryName: 'Basins', size: '18x12', variants: [{ code: '0012', weightKg: 9.5 }] },
+      admin,
+    );
+    const viewer = await agentWith(['products.view'], 'viewer');
+    const response = await viewer.get('/api/products/export.csv').expect(200);
+    expect(response.headers['content-type']).toMatch(/^text\/csv/);
+    expect(response.headers['content-disposition']).toMatch(
+      /^attachment; filename="products-\d{4}-\d{2}-\d{2}\.csv"$/,
+    );
+    expect(response.text.startsWith('﻿')).toBe(true);
+
+    // The leading zeros and the size survive the trip, and nothing is left to do.
+    const agent = await importer();
+    const back = await agent
+      .post('/api/products/import')
+      .field('dryRun', 'true')
+      .field('mode', 'upsert')
+      .attach('file', Buffer.from(response.text, 'utf8'), 'products.csv')
+      .expect(200);
+    expect(back.body).toMatchObject({ created: 0, updated: 0, unchanged: 1, failed: 0, issues: [] });
+
+    await request(app).get('/api/products/export.csv').expect(401);
+    await agentWith([], 'nobody').then((blind) => blind.get('/api/products/export.csv').expect(403));
+    await viewer.get('/api/products/export.pdf').expect(400);
+  });
+
   it('refuses a template format it does not know', async () => {
     const agent = await importer();
     await agent.get('/api/products/import/template.pdf').expect(400);

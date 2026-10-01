@@ -50,6 +50,6 @@ export const catalogueTransport: CatalogueTransport = {
   reorderProductImages: (productId, ids) => api.reorderProductImages(productId, ids),
   deleteProductImage: (productId, imageId) => api.deleteProductImage(productId, imageId),
   productImportTemplate: (format) => api.productImportTemplate(format),
-  exportProducts: (format) => api.exportProducts(format),
+  exportProducts: (format, level) => api.exportProducts(format, level),
   importProducts: (file, options) => api.importProducts(file, options),
 };

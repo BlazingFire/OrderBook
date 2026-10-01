@@ -202,9 +202,15 @@ export function isBlankRow(cells: readonly string[]): boolean {
   return cells.every((cell) => (cell ?? '').trim() === '');
 }
 
+/**
+ * "1,200.50", "12.5 kg", "12,5" (a decimal comma, as a semicolon-separated
+ * CSV writes it) → a number; anything else, including `0x10` and `1e3` which
+ * `Number()` would accept, is NaN.
+ */
 function parseNumber(text: string): number {
-  // "1,200.50", "12.5 kg" — strip separators and the unit.
-  return Number(text.replace(/\s*kgs?$/i, '').replace(/[,\s]/g, ''));
+  const bare = text.replace(/\s*kgs?$/i, '').replace(/\s/g, '');
+  const plain = /^-?\d+,\d{1,2}$/.test(bare) ? bare.replace(',', '.') : bare.replace(/,/g, '');
+  return /^-?(\d+\.?\d*|\.\d+)$/.test(plain) ? Number(plain) : Number.NaN;
 }
 
 
@@ -244,7 +250,10 @@ export function parseImportRow(
 
     switch (column.kind) {
       case 'text':
-        target[column.field] = raw;
+        // Inner runs of whitespace (a pasted line break, a double space, a
+        // non-breaking space) would make "ONE  PIECE" a different product from
+        // "ONE PIECE"; a code is left as typed.
+        target[column.field] = column.field === 'code' ? raw : raw.replace(/\s+/g, ' ');
         return;
 
       case 'boolean': {

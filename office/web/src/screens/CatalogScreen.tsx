@@ -75,7 +75,7 @@ import type { Party, Product } from '@orderbook/shared';
 import { ApiError, api, type LocalView } from '../api';
 import { partyFormTransport } from '../partyFormTransport';
 import { ProductDrawer, type CreatedProduct } from '../components/ProductDrawer';
-import { exportCatalogueCsv } from '../components/exportCatalogue';
+import { exportCatalogueCsv, exportFailureText } from '../components/exportCatalogue';
 import { ProductImportModal } from '../components/ProductImportModal';
 import { byCatalogueOrder, codesOf, productLabel, weightLabel } from '../productSummary';
 import {
@@ -517,8 +517,8 @@ export function CatalogScreen({
           size="sm"
           icon="download"
           onClick={() =>
-            void exportCatalogueCsv('sub').catch(() =>
-              toast.push(t('catalog.export.failed'), { tone: 'error' }),
+            void exportCatalogueCsv('sub').catch((caught) =>
+              toast.push(exportFailureText(caught), { tone: 'error' }),
             )
           }
         >
@@ -941,7 +941,10 @@ export function CatalogScreen({
       <ProductImportModal
         open={importOpen}
         onClose={() => setImportOpen(false)}
-        onImported={() => setRevision((current) => current + 1)}
+        onImported={(result) => {
+          setRevision((current) => current + 1);
+          toast.push(t('import.done', { created: result.created, updated: result.updated }));
+        }}
         onError={onDrawerError}
       />
     </>

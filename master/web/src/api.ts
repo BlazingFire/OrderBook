@@ -623,8 +623,11 @@ export const api = {
   // Bulk product import (`products.bulk`, checked by the service).
   productImportTemplate: (format: ProductImportFormat) =>
     requestFile(`/api/products/import/template.${format}`, `products-template.${format}`),
-  exportProducts: (format: ProductImportFormat) =>
-    requestFile(`/api/products/export.${format}`, `products.${format}`),
+  exportProducts: (format: ProductImportFormat, level: 'sub' | 'main' = 'sub') =>
+    requestFile(
+      `/api/products/export.${format}${level === 'main' ? '?level=main' : ''}`,
+      `products.${format}`,
+    ),
   importProducts: (file: File, options: { dryRun: boolean; mode: ProductImportMode }) => {
     const form = new FormData();
     form.append('file', file);

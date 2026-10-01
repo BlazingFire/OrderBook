@@ -162,7 +162,11 @@ export interface CatalogueTransport {
   reorderProductImages(productId: string, ids: string[]): Promise<Product>;
   deleteProductImage(productId: string, imageId: string): Promise<Product>;
   productImportTemplate(format: ProductImportFormat): Promise<{ blob: Blob; fileName: string }>;
-  exportProducts(format: ProductImportFormat): Promise<{ blob: Blob; fileName: string }>;
+  /** `level` `main` exports the main products; the default is every sub product. */
+  exportProducts(
+    format: ProductImportFormat,
+    level?: 'sub' | 'main',
+  ): Promise<{ blob: Blob; fileName: string }>;
   importProducts(
     file: File,
     options: { dryRun: boolean; mode: ProductImportMode },

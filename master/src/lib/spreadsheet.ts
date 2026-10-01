@@ -1,7 +1,7 @@
 /**
  * Spreadsheet bytes in, rows of text out — and the blank template the other way.
  *
- * `exceljs` reads both `.xlsx` and `.csv` and writes the template with the
+ * `exceljs` reads `.xlsx` (a CSV is parsed by `parseCsv` below) and writes the template with the
  * things a CSV cannot carry: a frozen header row, column widths, text format
  * on the code columns (so Excel does not turn `00123` into `123`) and a
  * dropdown on each closed-set column. It is the one spreadsheet dependency in
@@ -39,9 +39,91 @@ export function sheetKindOf(buffer: Buffer): SheetKind {
     : 'csv';
 }
 
-function stripBom(buffer: Buffer): string {
-  const text = buffer.toString('utf8');
-  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+/**
+ * A CSV's text, whatever Excel saved it as: UTF-8 (with or without a BOM),
+ * UTF-16 ("Unicode Text"), or — when the bytes are not valid UTF-8 — the
+ * Windows-1252 that "CSV (Comma delimited)" writes on an English-locale PC.
+ */
+export function decodeCsv(buffer: Buffer): string {
+  if (buffer[0] === 0xff && buffer[1] === 0xfe) return buffer.subarray(2).toString('utf16le');
+  if (buffer[0] === 0xfe && buffer[1] === 0xff) {
+    return Buffer.from(buffer.subarray(2)).swap16().toString('utf16le');
+  }
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+  } catch {
+    try {
+      return new TextDecoder('windows-1252').decode(buffer);
+    } catch {
+      return buffer.toString('latin1');
+    }
+  }
+}
+
+/** The separator the first line uses: a comma, or the semicolon / tab a non-English Excel writes. */
+function detectDelimiter(text: string): string {
+  const counts: Record<string, number> = { ',': 0, ';': 0, '\t': 0 };
+  let quoted = false;
+  for (const char of text) {
+    if (char === '"') quoted = !quoted;
+    else if (!quoted && (char === '\n' || char === '\r')) {
+      if (Object.values(counts).some((n) => n > 0)) break;
+    } else if (!quoted && char in counts) counts[char] = (counts[char] ?? 0) + 1;
+  }
+  return Object.keys(counts).reduce((best, key) => ((counts[key] ?? 0) > (counts[best] ?? 0) ? key : best), ',');
+}
+
+/**
+ * RFC 4180 records, one array per line **including blank ones**, so the index
+ * is the row number Excel shows. Quoted fields may hold the delimiter, quotes
+ * (`""`) and line breaks. A leading apostrophe on a `=`/`+`/`-`/`@` cell is the
+ * export's formula guard (`lib/csv.ts`) and is taken off again, so an export
+ * re-imports unchanged.
+ */
+export function parseCsv(text: string): string[][] {
+  const delimiter = detectDelimiter(text);
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let quoted = false;
+  let touched = false;
+
+  const endCell = (): void => {
+    row.push(cell.trim().replace(/^'(?=[=+\-@])/, ''));
+    cell = '';
+  };
+  const endRow = (): void => {
+    endCell();
+    rows.push(row);
+    row = [];
+    touched = false;
+  };
+
+  for (let at = 0; at < text.length; at += 1) {
+    const char = text[at] as string;
+    if (quoted) {
+      if (char !== '"') cell += char;
+      else if (text[at + 1] === '"') {
+        cell += '"';
+        at += 1;
+      } else quoted = false;
+    } else if (char === '"' && cell.trim() === '') {
+      quoted = true;
+      touched = true;
+    } else if (char === delimiter) {
+      endCell();
+      touched = true;
+    } else if (char === '\r' || char === '\n') {
+      if (char === '\r' && text[at + 1] === '\n') at += 1;
+      endRow();
+    } else {
+      cell += char;
+      touched = true;
+    }
+  }
+  if (touched || cell !== '') endRow();
+
+  return rows;
 }
 
 /** One cell's text, whatever exceljs decoded it as. */
@@ -66,18 +148,16 @@ function cellText(value: ExcelJS.CellValue): string {
  * back to the person matches what Excel shows down the left-hand edge.
  */
 export async function readSheetRows(buffer: Buffer): Promise<string[][]> {
+  // A CSV is parsed here, not by exceljs: that reader coerces numbers and
+  // dates, assumes a comma, and drops blank lines — shifting every row number
+  // the report quotes.
+  if (sheetKindOf(buffer) === 'csv') return parseCsv(decodeCsv(buffer));
+
   const workbook = new ExcelJS.Workbook();
-  let sheet: ExcelJS.Worksheet | undefined;
-
-  if (sheetKindOf(buffer) === 'xlsx') {
-    await workbook.xlsx.read(Readable.from([buffer]));
-    sheet = workbook.worksheets[0];
-  } else {
-    // The identity `map` is the whole point: without it exceljs turns every
-    // numeric-looking cell into a number and a date-looking one into a Date.
-    sheet = await workbook.csv.read(Readable.from([stripBom(buffer)]), { map: (value) => value });
-  }
-
+  await workbook.xlsx.read(Readable.from([buffer]));
+  // The first sheet that holds anything: a workbook saved with the Guide
+  // sheet in front still imports.
+  const sheet = workbook.worksheets.find((candidate) => candidate.actualRowCount > 0);
   if (!sheet) return [];
 
   const rows: string[][] = [];

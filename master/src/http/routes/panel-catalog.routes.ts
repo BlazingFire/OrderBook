@@ -9,7 +9,7 @@
  * the person and the audit trail names them.
  */
 
-import { Router, type Request } from 'express';
+import { Router, type NextFunction, type Request, type Response } from 'express';
 import multer from 'multer';
 import { MAX_PRODUCT_IMPORT_BYTES } from '@orderbook/shared';
 
@@ -23,6 +23,17 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_PRODUCT_IMPORT_BYTES },
 });
+
+/** The file, or — for one past the size ceiling — the import's own named refusal, not a generic 400. */
+function uploadFile(req: Request, res: Response, next: NextFunction): void {
+  upload.single('file')(req, res, (error: unknown) => {
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      next(new ValidationError('validation.import.tooLarge'));
+      return;
+    }
+    next(error);
+  });
+}
 
 /**
  * The import handlers, parameterised on who is acting: a paired Office panel
@@ -71,7 +82,7 @@ export function productImportRoutes(actorOf: (req: Request) => ActorContext): Ro
 
   routes.post(
     '/products/import',
-    upload.single('file'),
+    uploadFile,
     asyncHandler(async (req, res) => {
       if (!req.file) throw new ValidationError('validation.import.fileRequired');
 

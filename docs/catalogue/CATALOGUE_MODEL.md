@@ -150,6 +150,45 @@ Never edit a shipped migration.
   caller may not see). The screens are the `ui/` ports `SubProductsScreen`,
   `MainProductsScreen`, `BrandsScreen`, `ProductDetail`, `ProductDrawer`,
   `ProductImages`, `ProductImportModal`.
+- **Import and export** (`product-import.service.ts`; one handler set, `productImportRoutes`,
+  serves the Master session route `/api/products/…` and the paired-panel route `/api/panel/products/…`;
+  the Office's `/api/products/…` proxies the latter byte for byte, query string included).
+  - *Format.* One header row, in this order, written identically by the template, the Sub product export
+    and read by the import: **Brand, Main product code, Main product, Sub product, Size, Colour rule,
+    Colour, Code, Weight (kg), Alias** (`IMPORT_HEADERS`). Headers match ignoring case, spaces and
+    punctuation, and the field keys (`categoryName`, `name`, `variant`, `code`, `weightKg`…) and trade
+    words (`SKU`, `Model`, `Colour`) still read. `GET …/export.:format?level=main` writes the Main
+    product list instead (Brand, Main product code, Main product, Sub products) — not importable.
+  - *Round trip.* An export re-imported unedited changes nothing: `upsert` reports every row `unchanged`
+    (new `unchanged` count; not `updated`), `create` reports every row skipped as existing. Rows are
+    folded into the product only for cells the sheet fills — a blank Alias or Weight leaves the stored
+    value alone, it cannot clear it. A deactivated variant (history still quotes it) is neither exported
+    nor revived by an upsert; Recycle Bin products are neither exported nor matched.
+  - *Reading.* CSV is parsed in `lib/spreadsheet.ts` (not by exceljs): UTF-8 with or without BOM, UTF-16
+    "Unicode Text", Windows-1252; comma, semicolon or tab; CRLF/LF; quoted commas, quotes and line
+    breaks; blank lines keep their row number so reported rows match Excel. The export's formula-guard
+    apostrophe (`'=…`, `'-…`) is removed on read. Every cell is text — `0012` and `18x12` are never
+    coerced; Excel number cells become their digits, dates `YYYY-MM-DD`; a Guide sheet in front of the
+    data is skipped. Weights accept `18.5`, `1,200.50`, `12,5` (decimal comma) and `12.5 kg`; `0x10`/`1e3`
+    are refused. Inner whitespace in names is folded to one space (codes are left as typed).
+  - *Matching.* Brand, Main product, Sub product and Colour match case-insensitively. A listed brand or
+    colour takes the list's own spelling; an unlisted colour stays as typed; an unlisted brand is a new
+    brand and, on a real import, is added to the Brands list in the same transaction.
+  - *Limits and errors.* 50 MB (`validation.import.tooLarge`, 400, both panels) and 20,000 data rows
+    (`validation.import.tooManyRows`); the issue list is cut at 1,000 (`issuesTruncated`). Every issue
+    carries the spreadsheet row, the header as written and a `messageKey` (en + hi). Two models of one file
+    resolving to one existing product → the later is refused (`validation.import.sameProduct`).
+  - *Atomicity.* A bad row never half-imports: rows are validated first, a model (all its rows) is
+    inserted or not at all, in chunks of 500 products per transaction; a chunk that fails is replayed
+    model by model, so one clash costs one model. Valid rows of a file with bad rows do import — the
+    report names the rest. One `imported` activity row (count, file, mode, created, updated) and one
+    `catalog` change event per real import; none for a dry run or an all-unchanged upsert.
+  - *Permissions.* Template and import need `products.bulk` (+ `products.create`; `upsert` also
+    `products.edit`); **export needs only `products.view`**. The panel route runs as the signed-in person
+    when an acting token is presented, else as the panel's own role.
+  - *Files.* Export names are dated: `products-YYYY-MM-DD.csv|xlsx`, `main-products-YYYY-MM-DD.csv|xlsx`
+    (the PC's date); the template stays `products-template.csv|xlsx`. CSV exports start with a BOM so
+    Excel opens Hindi names correctly.
 - Snapshot and list caps rise so 549+ sub products and their stock rows reach
   panels complete.
 - Settings: main's existing `leads.followUpDefaultDays` — **fallback 3**

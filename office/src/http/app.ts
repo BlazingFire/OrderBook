@@ -655,38 +655,55 @@ export function createApp(): Express {
     })();
   });
 
-  app.post('/api/products/import', importUpload.single('file'), (req, res) => {
-    if (!req.file) {
-      res.status(400).json({
-        error: 'validation_error',
-        message: 'Choose a CSV or Excel file',
-        messageKey: 'validation.import.fileRequired',
+  app.post(
+    '/api/products/import',
+    (req, res, next) => {
+      // An oversized sheet gets the import's own sentence, not the photo one.
+      importUpload.single('file')(req, res, (error: unknown) => {
+        if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+          res.status(400).json({
+            error: 'validation_error',
+            message: 'That file is too large to import',
+            messageKey: 'validation.import.tooLarge',
+          });
+          return;
+        }
+        next(error);
       });
-      return;
-    }
-
-    void (async () => {
-      try {
-        const form = new FormData();
-        form.append('file', new Blob([req.file!.buffer]), req.file!.originalname || 'products.csv');
-        const body = (req.body ?? {}) as Record<string, unknown>;
-        form.append('dryRun', String(body.dryRun === 'true' || body.dryRun === true));
-        form.append('mode', body.mode === 'upsert' ? 'upsert' : 'create');
-
-        const response = await masterFetch('/api/panel/products/import', {
-          method: 'POST',
-          body: form,
+    },
+    (req, res) => {
+      if (!req.file) {
+        res.status(400).json({
+          error: 'validation_error',
+          message: 'Choose a CSV or Excel file',
+          messageKey: 'validation.import.fileRequired',
         });
-        res.status(response.status).json(await response.json().catch(() => null));
-      } catch (error) {
-        res.status(503).json({
-          error: 'unavailable',
-          message: error instanceof Error ? error.message : 'The Master Panel is not reachable',
-          messageKey: 'error.unavailable',
-        });
+        return;
       }
-    })();
-  });
+
+      void (async () => {
+        try {
+          const form = new FormData();
+          form.append('file', new Blob([req.file!.buffer]), req.file!.originalname || 'products.csv');
+          const body = (req.body ?? {}) as Record<string, unknown>;
+          form.append('dryRun', String(body.dryRun === 'true' || body.dryRun === true));
+          form.append('mode', body.mode === 'upsert' ? 'upsert' : 'create');
+
+          const response = await masterFetch('/api/panel/products/import', {
+            method: 'POST',
+            body: form,
+          });
+          res.status(response.status).json(await response.json().catch(() => null));
+        } catch (error) {
+          res.status(503).json({
+            error: 'unavailable',
+            message: error instanceof Error ? error.message : 'The Master Panel is not reachable',
+            messageKey: 'error.unavailable',
+          });
+        }
+      })();
+    },
+  );
 
   app.post('/api/products', (req, res) =>
     queue(res, { kind: 'product.create', entity: 'product', payload: req.body }),

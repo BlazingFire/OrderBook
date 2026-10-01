@@ -295,6 +295,10 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.import.codesSplit': '{name} के कोड पहले से एक से अधिक उत्पादों के हैं',
   'validation.import.unknownCategory':
     '"{categoryName}" नाम की कोई श्रेणी नहीं है — यह कंपनी आयात से नई श्रेणी बनाने की अनुमति नहीं देती',
+  'validation.import.tooManyRows': 'फ़ाइल में {max} से अधिक पंक्तियाँ हैं — इसे बाँटकर अलग-अलग आयात करें',
+  'validation.import.tooLarge': 'यह फ़ाइल आयात करने के लिए बहुत बड़ी है',
+  'validation.import.sameProduct':
+    '{name} और इस फ़ाइल का कोई दूसरा उत्पाद, दोनों पहले से मौजूद एक ही उत्पाद से मेल खाते हैं',
   'validation.import.rowFailed': 'पंक्ति सहेजी नहीं जा सकी: {reason}',
   'import.skip.codeExists': 'उत्पाद कोड "{productCode}" पहले से मौजूद है — छोड़ा गया',
   'validation.role.nameRequired': 'भूमिका को एक नाम दें',
@@ -2475,6 +2479,10 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'import.failed': 'आयात पूरा नहीं हो सका',
   'import.templateFailed': 'टेम्पलेट डाउनलोड नहीं हो सका',
   'import.another': 'एक और फ़ाइल आयात करें',
+  'import.report.download': 'समस्याओं की सूची डाउनलोड करें',
+  'import.report.fileName': 'import-problems.csv',
+  'import.preview.partial': 'समस्या वाली {count} पंक्तियाँ छोड़ दी जाएँगी।',
+  'import.unchanged': '{count} पंक्तियाँ कैटलॉग से पहले ही मेल खाती हैं, बदलाव की ज़रूरत नहीं।',
   'reports.column.orderCount': 'फ़ाइनल ऑर्डर',
   'reports.column.boxCount': 'बॉक्स',
   'reports.column.partyId': 'पार्टी आईडी',

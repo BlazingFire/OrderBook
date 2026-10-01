@@ -77,6 +77,22 @@ function describe(error: unknown): string {
   return t('import.failed');
 }
 
+/** The row-numbered problems as a CSV (BOM so Excel reads Hindi), for fixing the file. */
+function issuesCsv(issues: ProductImportIssue[]): Blob {
+  const cell = (value: string | number): string => `"${String(value).replace(/"/g, '""')}"`;
+  const line = (cells: Array<string | number>): string => cells.map(cell).join(',');
+  const rows = issues.map((issue) =>
+    line([
+      issue.row,
+      issue.column ?? '',
+      `${issue.kind === 'skipped' ? t('import.kind.skipped') : t('import.kind.error')}: ${t(issue.messageKey, issue.params as never)}`,
+    ]),
+  );
+  const header = line([t('import.column.row'), t('import.column.column'), t('import.column.problem')]);
+  // The BOM lets Excel read non-Latin text as UTF-8.
+  return new Blob(['﻿' + [header, ...rows].join('\r\n')], { type: 'text/csv;charset=utf-8' });
+}
+
 export function ProductImportModal({
   open,
   onClose,
@@ -106,6 +122,7 @@ export function ProductImportModal({
   }
 
   async function downloadTemplate(format: ProductImportFormat): Promise<void> {
+    if (busy !== null) return;
     setBusy('template');
     setFailure(null);
     try {
@@ -119,6 +136,7 @@ export function ProductImportModal({
   }
 
   async function downloadExport(format: ProductImportFormat): Promise<void> {
+    if (busy !== null) return;
     setBusy('export');
     setFailure(null);
     try {
@@ -133,6 +151,15 @@ export function ProductImportModal({
 
   /** Validate locally, then ask the Master what the file would do. */
   async function accept(chosen: File): Promise<void> {
+    if (busy !== null) return;
+    if (!/\.(csv|xlsx)$/i.test(chosen.name)) {
+      setFailure(t('validation.import.unsupportedFormat'));
+      return;
+    }
+    if (chosen.size === 0) {
+      setFailure(t('validation.import.emptyFile'));
+      return;
+    }
     if (chosen.size > MAX_PRODUCT_IMPORT_BYTES) {
       setFailure(t('import.fileTooLarge', { maxMb: MAX_MB }));
       return;
@@ -152,7 +179,7 @@ export function ProductImportModal({
   }
 
   async function runImport(): Promise<void> {
-    if (!file) return;
+    if (!file || busy !== null) return;
     setBusy('importing');
     setFailure(null);
     try {
@@ -227,6 +254,16 @@ export function ProductImportModal({
       <h3 className="ob-body-strong" style={{ margin: 0 }}>
         {t('import.preview.issues')}
       </h3>
+      <div>
+        <Button
+          variant="secondary"
+          size="sm"
+          icon="download"
+          onClick={() => saveBlob(issuesCsv(result.issues), t('import.report.fileName'))}
+        >
+          {t('import.report.download')}
+        </Button>
+      </div>
       {result.issuesTruncated && (
         <p className="ob-small" style={{ margin: 0, color: 'var(--fg-secondary)' }}>
           {t('import.preview.issuesTruncated', { count: MAX_PRODUCT_IMPORT_ISSUES })}
@@ -251,6 +288,7 @@ export function ProductImportModal({
         <Button
           variant="primary"
           icon="upload"
+          autoFocus
           busy={busy === 'importing'}
           disabled={!result || result.created + result.updated === 0}
           onClick={() => void runImport()}
@@ -270,7 +308,7 @@ export function ProductImportModal({
     );
 
   return (
-    <Modal open={open} onClose={close} size="lg" title={t('import.title')} footer={footer}>
+    <Modal open={open} onClose={busy === 'importing' ? () => undefined : close} size="lg" title={t('import.title')} footer={footer}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
         {step === 'pick' && (
           <>
@@ -282,6 +320,7 @@ export function ProductImportModal({
                 variant="secondary"
                 icon="download"
                 busy={busy === 'template'}
+                disabled={busy !== null}
                 onClick={() => void downloadTemplate('xlsx')}
               >
                 {t('import.template.xlsx')}
@@ -290,6 +329,7 @@ export function ProductImportModal({
                 variant="secondary"
                 icon="download"
                 busy={busy === 'template'}
+                disabled={busy !== null}
                 onClick={() => void downloadTemplate('csv')}
               >
                 {t('import.template.csv')}
@@ -303,6 +343,7 @@ export function ProductImportModal({
                 variant="secondary"
                 icon="download"
                 busy={busy === 'export'}
+                disabled={busy !== null}
                 onClick={() => void downloadExport('xlsx')}
               >
                 {t('import.export.xlsx')}
@@ -311,6 +352,7 @@ export function ProductImportModal({
                 variant="secondary"
                 icon="download"
                 busy={busy === 'export'}
+                disabled={busy !== null}
                 onClick={() => void downloadExport('csv')}
               >
                 {t('import.export.csv')}
@@ -388,7 +430,17 @@ export function ProductImportModal({
                 {t('import.preview.ignored', { columns: result.ignoredColumns.join(', ') })}
               </p>
             )}
-            {result.created + result.updated === 0 && (
+            {result.created + result.updated > 0 && result.skipped + result.failed > 0 && (
+              <p className="ob-small" style={{ margin: 0, color: 'var(--fg-secondary)' }}>
+                {t('import.preview.partial', { count: result.skipped + result.failed })}
+              </p>
+            )}
+            {(result.unchanged ?? 0) > 0 && (
+              <p className="ob-small" style={{ margin: 0, color: 'var(--fg-secondary)' }}>
+                {t('import.unchanged', { count: result.unchanged ?? 0 })}
+              </p>
+            )}
+            {result.created + result.updated === 0 && (result.unchanged ?? 0) === 0 && (
               <p className="ob-small" style={{ margin: 0, color: 'var(--fg-secondary)' }}>
                 {t('import.preview.nothing')}
               </p>
@@ -465,6 +517,11 @@ export function ProductImportModal({
                     failed: result.failed,
                   })}
             </p>
+            {(result.unchanged ?? 0) > 0 && (
+              <p className="ob-small" style={{ margin: 0, color: 'var(--fg-secondary)' }}>
+                {t('import.unchanged', { count: result.unchanged ?? 0 })}
+              </p>
+            )}
             {issuesTable}
           </>
         )}

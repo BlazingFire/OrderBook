@@ -57,6 +57,7 @@ import { KeyValueList, useColourHex } from './DataDisplay.js';
 import { DataTable, type DataTableColumn } from './DataTable.js';
 import { EditorScreen } from './EditorScreen.js';
 import { apiErrorText } from './errorText.js';
+import { exportCatalogueCsv } from './ProductImportModal.js';
 import { Field, FieldGroup } from './FieldGrid.js';
 import { FilterChip } from './FilterBar.js';
 import { useFilterBar } from './FilterBarSlot.js';
@@ -194,6 +195,18 @@ export function MainProductsScreen({
           </FilterChip>
         ))}
         <span style={{ flex: 1 }} />
+        <Button
+          variant="secondary"
+          size="sm"
+          icon="download"
+          onClick={() =>
+            void exportCatalogueCsv(transportRef.current, 'main').catch((caught) =>
+              toast.push(apiErrorText(caught, 'catalog.export.failed'), { tone: 'error' }),
+            )
+          }
+        >
+          {t('catalog.export')}
+        </Button>
         {can('products.create') && (
           <Button variant="primary" size="sm" icon="plus" onClick={() => setEditing('new')}>
             {t('catalog.mainProducts.new')}
