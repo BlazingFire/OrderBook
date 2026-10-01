@@ -29,6 +29,11 @@ export interface TrustedReleaseKey {
 export const TRUSTED_RELEASE_KEYS: readonly TrustedReleaseKey[] = [
   // Populated by `npm run release:keygen`. Empty until somebody has generated
   // one — see `allowUnsignedReleases` for what a panel does in the meantime.
+  {
+    keyId: 'release-2026-10-01',
+    publicKey: 'MCowBQYDK2VwAyEACC8l4564Y0QIQM+pjQnDPqErh2YZXRxtsd7AbAQeE98=',
+    addedAt: '2026-10-01',
+  },
 ];
 
 export const trustedKeyById = (keyId: string): TrustedReleaseKey | undefined =>
