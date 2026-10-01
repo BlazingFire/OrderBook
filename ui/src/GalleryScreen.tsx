@@ -13,7 +13,7 @@ import { t } from './i18n.js';
 import { BusyMark } from './BusyMark';
 import { Icon } from './icons';
 import { Logo, LogoLockup } from './Logo';
-import { applyDensity, applyMotion, applyTheme, type Density, type Theme } from './theme';
+import { applyMotion, applyTheme, type Theme } from './theme';
 
 const RAMPS: Array<{ label: string; tokens: string[] }> = [
   {
@@ -111,9 +111,6 @@ export function GalleryScreen() {
   const [theme, setThemeState] = useState<Theme>(
     () => (document.documentElement.dataset.theme as Theme) ?? 'light',
   );
-  const [density, setDensityState] = useState<Density>(
-    () => (document.documentElement.dataset.density as Density) ?? 'comfortable',
-  );
   const [motionOn, setMotionOn] = useState(document.documentElement.dataset.motion !== 'off');
   const [selected, setSelected] = useState('r1');
   const [, force] = useState(0);
@@ -128,10 +125,6 @@ export function GalleryScreen() {
   const pickTheme = (next: Theme) => {
     applyTheme(next);
     setThemeState(next);
-  };
-  const pickDensity = (next: Density) => {
-    applyDensity(next);
-    setDensityState(next);
   };
   const toggleMotion = () => {
     applyMotion(!motionOn);
@@ -161,13 +154,6 @@ export function GalleryScreen() {
           {(['light', 'dark'] as Theme[]).map((value) => (
             <button key={value} aria-pressed={theme === value} onClick={() => pickTheme(value)}>
               {value === 'light' ? 'Light' : 'Dark'}
-            </button>
-          ))}
-        </div>
-        <div className="ob-seg">
-          {(['compact', 'comfortable', 'large'] as Density[]).map((value) => (
-            <button key={value} aria-pressed={density === value} onClick={() => pickDensity(value)}>
-              {value === 'compact' ? 'Compact' : value === 'large' ? 'Large' : 'Comfortable'}
             </button>
           ))}
         </div>

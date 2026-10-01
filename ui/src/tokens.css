@@ -185,13 +185,10 @@
   --z-toast: 70;
   --z-splash: 100;
 
-  /* ---- Scale and density (§10) --------------------------------------------
-     Two separate jobs, which used to be one. `--root-size` is the continuous
-     scale knob, owned by `theme.ts` and set on the root element from the
-     Settings slider (11-22px). Density keeps only the height-to-text RATIOS,
-     which is why they are rem: each is the old absolute value over the old
-     per-density root, so every preset keeps its exact proportions and now
-     scales with the slider too. */
+  /* ---- Scale (§10) ---------------------------------------------------------
+     `--root-size` is the scale knob, owned by `theme.ts` and set on the root
+     element from the Settings slider (11-22px). Row and control heights are
+     rem so they scale with it. */
   --root-size: 14px;
   --row-h: 2.2857rem;
   --ctl-h-sm: 1.8571rem;
@@ -233,27 +230,6 @@
   --sh-3: 0 16px 40px rgba(0, 0, 0, 0.6);
   --overlay-scrim: rgba(0, 0, 0, 0.4);
   --swatch-ring: rgba(230, 237, 240, 0.14);
-}
-
-/* Density (§10): per-machine, never synced. Only the three height families
- * change — every component is in rem or reads these tokens, so no component
- * knows density or scale exists.
- *
- * Density deliberately no longer touches `--root-size`. It used to, which made
- * "denser" and "smaller text" the same control and left no way to ask for
- * small text with roomy rows, or the reverse. Ratios are the old px over the
- * old root: compact 28/13, large 38/16, and so on. */
-[data-density='compact'] {
-  --row-h: 2.1538rem;
-  --ctl-h-sm: 1.8462rem;
-  --ctl-h-md: 2rem;
-  --ctl-h-lg: 2.3077rem;
-}
-[data-density='large'] {
-  --row-h: 2.375rem;
-  --ctl-h-sm: 1.875rem;
-  --ctl-h-md: 2.25rem;
-  --ctl-h-lg: 2.625rem;
 }
 
 html {

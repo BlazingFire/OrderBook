@@ -5,10 +5,9 @@
  */
 
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
-  AppearanceSettings,
   SettingsPage,
   requestSettingsTab,
   useSettingsTab,
@@ -87,66 +86,5 @@ describe('useSettingsTab', () => {
 
     await act(async () => requestSettingsTab('appearance'));
     expect(screen.getByTestId('pane-appearance')).toBeTruthy();
-  });
-});
-
-describe('the language picker', () => {
-  /**
-   * `window.location` is not writable in jsdom, so the whole object is
-   * replaced for the duration — `reload` is the only member these tests touch
-   * and the component reads nothing else from it.
-   */
-  const realLocation = window.location;
-  let reload: ReturnType<typeof vi.fn>;
-
-  beforeEach(() => {
-    reload = vi.fn();
-    Object.defineProperty(window, 'location', {
-      configurable: true,
-      value: { ...realLocation, reload },
-    });
-  });
-
-  afterEach(() => {
-    Object.defineProperty(window, 'location', { configurable: true, value: realLocation });
-  });
-
-  it('offers every shipped language, each named in its own script', () => {
-    render(<AppearanceSettings />);
-
-    // Deliberately not translated: a picker that renames the language you
-    // cannot read into the language you cannot read is useless.
-    expect(screen.getByRole('button', { name: 'English' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'हिन्दी' })).toBeTruthy();
-  });
-
-  it('stores the choice and reloads, which is the only way the whole panel changes', () => {
-    // Before this control existed `ob.locale` was read on every render and
-    // written nowhere in the tree, so the Hindi catalogue shipped unreachable.
-    render(<AppearanceSettings />);
-    fireEvent.click(screen.getByRole('button', { name: 'हिन्दी' }));
-
-    expect(window.localStorage.getItem('ob.locale')).toBe('hi');
-    expect(reload).toHaveBeenCalledTimes(1);
-  });
-
-  it('does nothing when the language already in use is picked again', () => {
-    // Otherwise clicking the highlighted button would throw away whatever
-    // somebody had half-typed on another screen, for no change at all.
-    render(<AppearanceSettings />);
-    fireEvent.click(screen.getByRole('button', { name: 'English' }));
-
-    expect(reload).not.toHaveBeenCalled();
-    expect(window.localStorage.getItem('ob.locale')).toBeNull();
-  });
-
-  it('starts on the stored language rather than always on English', () => {
-    window.localStorage.setItem('ob.locale', 'hi');
-    render(<AppearanceSettings />);
-
-    expect(screen.getByRole('button', { name: 'हिन्दी' }).getAttribute('aria-pressed')).toBe('true');
-    expect(screen.getByRole('button', { name: 'English' }).getAttribute('aria-pressed')).toBe(
-      'false',
-    );
   });
 });

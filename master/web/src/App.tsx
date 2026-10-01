@@ -56,7 +56,6 @@ import {
   flattenNav,
   graftSubNav,
   loadSidebarMode,
-  requestSettingsTab,
   rem,
   storeSidebarMode,
   t,
@@ -1050,25 +1049,6 @@ function MasterPanel() {
       <KeyboardOverlays
         subscribeMenu={(handler) =>
           desktopBridge()?.onMenuCommand?.((id) => {
-            /*
-             * `settings.developer` is not a keyboard command and never will be
-             * — there is no chord for it — so it is answered here rather than
-             * in the palette's own whitelist, which only knows `COMMANDS`.
-             *
-             * The Settings *nav entry* needs `settings.manage`; the Settings
-             * *screen* does not, and neither does developer mode, which is
-             * guarded by a password precisely so it does not depend on a
-             * permission somebody could hand out. So the screen opens for
-             * anyone the shell's menu asks — through `openScreen`, because
-             * `navigate` refuses what the sidebar does not offer — the tabs
-             * they may not see are absent from it, and the sidebar simply
-             * highlights nothing.
-             */
-            if (id === 'settings.developer') {
-              openScreen('settings');
-              requestSettingsTab('developer');
-              return;
-            }
             handler(id);
           })
         }

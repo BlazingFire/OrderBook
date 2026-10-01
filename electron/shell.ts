@@ -560,14 +560,6 @@ export function runPanelShell(config: PanelShellConfig): void {
           },
           { type: 'separator' },
           { label: 'Open log folder', click: () => electronShell.showItemInFolder(openLogPath()) },
-          {
-            label: 'Uninstall OrderBook',
-            // Navigates, and nothing more. The page owns the choice that
-            // matters — whether the company's database goes with the program —
-            // and a menu item that started the uninstall itself would put that
-            // choice one stray click away with no screen in between.
-            click: () => mainWindow?.webContents.send('orderbook:menuCommand', 'settings.developer'),
-          },
           ...(isMac ? [] : [{ label: `Version ${app.getVersion()}`, enabled: false }]),
         ],
       },

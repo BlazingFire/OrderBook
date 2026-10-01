@@ -2842,18 +2842,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'settings.connection.title': 'Connection details',
   // TODO(i18n-hi)
-  'settings.density.comfortable': 'Comfortable',
   // TODO(i18n-hi)
-  'settings.density.compact': 'Compact',
   // TODO(i18n-hi)
-  'settings.density.label': 'Density',
   // TODO(i18n-hi)
-  'settings.density.large': 'Large',
   // TODO(i18n-hi)
-  'settings.density.note': 'Row and control heights only — text size is the scale above.',
   // TODO(i18n-hi)
-  'settings.language.label': 'भाषा',
-  'settings.language.hint': 'भाषा बदलने पर यह पैनल फिर से लोड होगा।',
   'settings.machine.company': 'Company',
   // TODO(i18n-hi)
   'settings.machine.connection': 'Connection',
@@ -3125,7 +3118,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'settings.scale.smaller': 'छोटा',
   'settings.scale.larger': 'बड़ा',
   // TODO(i18n-hi)
-  'settings.scale.note': 'Root {size} — this screen resizes live',
+  'settings.scale.note': 'Root {size} — applies when you let go',
   // TODO(i18n-hi)
   'keys.command.toggleSidebar': 'Toggle sidebar',
   // TODO(i18n-hi)

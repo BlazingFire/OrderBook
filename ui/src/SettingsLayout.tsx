@@ -15,8 +15,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { LOCALES, LOCALE_LABELS } from '@orderbook/shared';
-import type { DeveloperStatus, DeveloperUnlock, Locale, SettingControl } from '@orderbook/shared';
+import type { DeveloperStatus, DeveloperUnlock, SettingControl } from '@orderbook/shared';
 
 import { Button, IconButton } from './Button.js';
 import { Card } from './Card.js';
@@ -25,21 +24,18 @@ import { Modal } from './Modal.js';
 import { rem } from './rem.js';
 import { Segmented, Tabs } from './Tabs.js';
 import { useToast } from './Toast.js';
-import { locale, setLocale, t } from './i18n.js';
+import { t } from './i18n.js';
 import {
   SCALE_DEFAULT,
   SCALE_MAX,
   SCALE_MIN,
   SCALE_STEP,
-  applyDensity,
   applyMotion,
   applyScale,
   applyTheme,
-  loadDensity,
   loadScale,
   loadTheme,
   motionDisabled,
-  type Density,
   type Theme,
 } from './theme.js';
 
@@ -301,51 +297,23 @@ function currentRootSize(): string {
   return getComputedStyle(document.documentElement).getPropertyValue('--root-size').trim();
 }
 
-/** Language, theme, scale, density and motion — per machine, never synced (§10). */
+/** Theme, scale and motion — per machine, never synced (§10). */
 export function AppearanceSettings() {
   const [theme, setTheme] = useState<Theme>(loadTheme);
-  const [density, setDensity] = useState<Density>(loadDensity);
   const [scale, setScale] = useState<number>(loadScale);
+  // The slider moves a draft; the page only resizes on release. Resizing the
+  // UI mid-drag also resizes the slider under the pointer, which is the jitter.
+  const [draft, setDraft] = useState<number | null>(null);
   const [motionOn, setMotionOn] = useState<boolean>(() => !motionDisabled());
-  const [language] = useState<Locale>(locale);
-
-  /*
-   * The whole catalogue ships in Hindi and, until this control existed, there
-   * was no way to reach it: `ob.locale` was read on every render and written
-   * by nothing in the tree.
-   *
-   * Ungated on purpose, and it is the design's own answer rather than an
-   * omission — `docs/backend-modules/09-I18N.md` §14.2 works through gating it
-   * on `settings.manage` and rejects it: that key is tier `admin`, so it would
-   * stop an office-tier user reading their own screen in Hindi, which inverts
-   * the point. It writes `localStorage` and nothing else, so nobody else's
-   * screen changes.
-   *
-   * Reloading is the honest way to apply it. `t()` consults storage per call
-   * rather than through a provider, so re-rendering only the picker would
-   * leave the rest of the panel in the old language until each component
-   * happened to re-render for its own reasons. Picking the language already in
-   * use is a no-op — otherwise clicking the highlighted button would throw
-   * away whatever somebody had half-typed on another screen for no change at
-   * all. The hint says the panel reloads, before the click rather than after.
-   */
-  function pickLanguage(next: Locale): void {
-    if (next === language) return;
-    setLocale(next);
-    window.location.reload();
-  }
 
   function pickTheme(next: Theme): void {
     applyTheme(next);
     setTheme(next);
   }
-  function pickDensity(next: Density): void {
-    applyDensity(next);
-    setDensity(next);
-  }
   function pickScale(next: number): void {
     applyScale(next);
     setScale(next);
+    setDraft(null);
   }
   // The switch reads "Turn animation off", so checked means motion is off.
   function toggleMotion(motionOff: boolean): void {
@@ -354,7 +322,7 @@ export function AppearanceSettings() {
   }
 
   /*
-   * Scale, density and motion together — **not** theme.
+   * Scale and motion together — **not** theme.
    *
    * Scale already had a per-control reset; density and motion had none, so
    * putting a machine back to its shipped defaults after experimenting meant
@@ -366,11 +334,10 @@ export function AppearanceSettings() {
    * The per-scale reset stays: somebody who only moved the slider wants only
    * the slider back.
    */
-  const atDefaults = scale === SCALE_DEFAULT && density === 'comfortable' && motionOn;
+  const atDefaults = scale === SCALE_DEFAULT && motionOn;
 
   function resetAppearance(): void {
     pickScale(SCALE_DEFAULT);
-    pickDensity('comfortable');
     // `toggleMotion` takes "motion is off", so false restores motion.
     toggleMotion(false);
   }
@@ -386,16 +353,6 @@ export function AppearanceSettings() {
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
-        <SettingRow label={t('settings.language.label')} hint={t('settings.language.hint')}>
-          {/* Each language named in its own script, deliberately untranslated —
-              see `LOCALE_LABELS`. */}
-          <Segmented
-            options={LOCALES.map((code) => ({ value: code, label: LOCALE_LABELS[code] }))}
-            value={language}
-            onChange={pickLanguage}
-          />
-        </SettingRow>
-
         <SettingRow label={t('settings.theme.label')}>
           <Segmented
             options={[
@@ -422,12 +379,13 @@ export function AppearanceSettings() {
               onClick={() => pickScale(Math.max(SCALE_MIN, roundScale(scale - SCALE_STEP)))}
             />
             <Slider
-              value={scale}
+              value={draft ?? scale}
               min={SCALE_MIN}
               max={SCALE_MAX}
               step={SCALE_STEP}
               label={t('settings.scale.label')}
-              onChange={pickScale}
+              onChange={setDraft}
+              onCommit={pickScale}
             />
             <IconButton
               icon="plus"
@@ -436,7 +394,7 @@ export function AppearanceSettings() {
               onClick={() => pickScale(Math.min(SCALE_MAX, roundScale(scale + SCALE_STEP)))}
             />
             <span className="ob-mono ob-small" style={{ minWidth: '3.5rem', textAlign: 'right' }}>
-              {Math.round((scale / SCALE_DEFAULT) * 100)}%
+              {Math.round(((draft ?? scale) / SCALE_DEFAULT) * 100)}%
             </span>
             <Button
               variant="ghost"
@@ -447,18 +405,6 @@ export function AppearanceSettings() {
               {t('settings.scale.reset')}
             </Button>
           </div>
-        </SettingRow>
-
-        <SettingRow label={t('settings.density.label')} hint={t('settings.density.note')}>
-          <Segmented
-            options={[
-              { value: 'compact' as const, label: t('settings.density.compact') },
-              { value: 'comfortable' as const, label: t('settings.density.comfortable') },
-              { value: 'large' as const, label: t('settings.density.large') },
-            ]}
-            value={density}
-            onChange={pickDensity}
-          />
         </SettingRow>
 
         <SettingRow label={t('settings.motion.label')} hint={t('settings.motion.hint')}>

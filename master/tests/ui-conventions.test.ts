@@ -46,18 +46,6 @@ describe('scale tokens', () => {
     expect(shouldBePx.filter(([, value]) => !value.endsWith('px'))).toEqual([]);
   });
 
-  it('never lets a density preset set the root size', () => {
-    /*
-     * Density governs row and control heights; scale governs text. They were
-     * one control, which is why there was no way to ask for small text with
-     * roomy rows. A `--root-size` inside a `[data-density]` block would
-     * silently re-merge them and make the slider fight the segmented control.
-     */
-    const blocks = [...TOKENS.matchAll(/\[data-density='[a-z]+'\]\s*\{([^}]*)\}/g)];
-    expect(blocks.length).toBeGreaterThan(0);
-    expect(blocks.filter((block) => block[1]?.includes('--root-size'))).toEqual([]);
-  });
-
   it('declares --root-size in px, since it is what rem resolves against', () => {
     const [root] = declarations(TOKENS, /^--root-size$/);
     expect(root?.[1]).toMatch(/^\d+(\.\d+)?px$/);

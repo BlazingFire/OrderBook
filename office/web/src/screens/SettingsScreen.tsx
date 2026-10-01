@@ -22,16 +22,15 @@
  */
 
 import { useState } from 'react';
-import { DEVELOPER_RESET_CONFIRMATION, SETTINGS } from '@orderbook/shared';
+import { SETTINGS } from '@orderbook/shared';
 
 import type { ConnectionInfo, PanelSession } from '../api';
-import { api, desktopBridge } from '../api';
+import { api } from '../api';
 import { optionListTransport } from '../optionListTransport';
 import { StorageBackupActions } from '../components/StorageBackup';
 import { StoragePathCard } from '../components/StoragePathCard';
 import {
   AppearanceSettings,
-  DeveloperPanel,
   FieldError,
   KeyValueList,
   NumberSetting,
@@ -43,9 +42,6 @@ import {
   apiErrorText,
   formatDateTime,
   t,
-  useDeveloperSession,
-  useUninstallTool,
-  type DeveloperTool,
   type SettingsTab,
 } from '@orderbook/ui';
 
@@ -81,7 +77,6 @@ export const SETTINGS_TAB_IDS = [
   'leads',
   'machine',
   'storage',
-  'developer',
 ] as const;
 
 export function SettingsScreen({
@@ -207,7 +202,6 @@ export function SettingsScreen({
         </>
       ),
     },
-    { id: 'developer', label: t('settings.tab.developer'), render: () => <DeveloperTab /> },
   ];
 
   return (
@@ -264,68 +258,5 @@ function FollowUpDefault({ days, canManage }: { days: number | null; canManage: 
       )}
       {error && <FieldError>{error}</FieldError>}
     </SettingRow>
-  );
-}
-
-/**
- * Long enough for the "reset" toast to be read, short enough that nobody
- * starts clicking around a panel that is no longer paired with anything.
- */
-const RELOAD_AFTER_RESET_MS = 1500;
-
-/**
- * This panel's one developer tool.
- *
- * Its own component so the unlock lives and dies with the tab: mounting it is
- * what asks the panel for a status, and nothing here is fetched while somebody
- * is on Appearance.
- */
-function DeveloperTab() {
-  const developer = useDeveloperSession(api.developer);
-  const { token } = developer;
-
-  // Built unconditionally: it owns the "delete the data too?" switch, and a
-  // hook cannot be called only when a token exists.
-  const uninstall = useUninstallTool(desktopBridge());
-
-  const tools: DeveloperTool[] = token
-    ? [
-        {
-          id: 'reset-panel',
-          danger: true,
-          title: t('developer.tool.resetPanel.title'),
-          description: t('developer.tool.resetPanel.description'),
-          action: t('developer.tool.resetPanel.action'),
-          confirmWord: DEVELOPER_RESET_CONFIRMATION,
-          confirmTitle: t('developer.tool.resetPanel.confirmTitle'),
-          confirmHint: t('developer.tool.resetPanel.confirmHint'),
-          confirmDetails: [
-            t('developer.tool.resetPanel.detail.pairing'),
-            t('developer.tool.resetPanel.detail.users'),
-            t('developer.tool.resetPanel.detail.queue'),
-            t('developer.tool.resetPanel.detail.snapshot'),
-          ],
-          done: t('developer.tool.resetPanel.done'),
-          run: async () => {
-            await api.developer.resetAll(token);
-            // The session, the cached screens and the event stream all describe
-            // a pairing that no longer exists. Reloading is the only honest way
-            // back to the connection screen.
-            setTimeout(() => window.location.reload(), RELOAD_AFTER_RESET_MS);
-          },
-        },
-        uninstall,
-      ]
-    : [];
-
-  return (
-    <DeveloperPanel
-      status={developer.status}
-      busy={developer.busy}
-      error={developer.error}
-      onUnlock={developer.unlock}
-      onLock={developer.lock}
-      tools={tools}
-    />
   );
 }

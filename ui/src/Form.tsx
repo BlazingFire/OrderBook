@@ -197,6 +197,7 @@ export function Slider({
   max,
   step,
   onChange,
+  onCommit,
   label,
   disabled,
 }: {
@@ -205,9 +206,13 @@ export function Slider({
   max: number;
   step: number;
   onChange: (value: number) => void;
+  /** Fires once when a drag or key press ends, with the final value. */
+  onCommit?: (value: number) => void;
   label: string;
   disabled?: boolean;
 }) {
+  const commit = (event: { currentTarget: HTMLInputElement }) =>
+    onCommit?.(Number(event.currentTarget.value));
   return (
     <input
       className="ob-slider"
@@ -219,6 +224,8 @@ export function Slider({
       disabled={disabled}
       aria-label={label}
       onChange={(event) => onChange(Number(event.target.value))}
+      onPointerUp={commit}
+      onKeyUp={commit}
     />
   );
 }

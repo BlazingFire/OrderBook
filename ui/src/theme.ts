@@ -1,19 +1,17 @@
 /**
- * Appearance state: theme, density and the motion kill switch (§5, §10).
+ * Appearance state: theme and the motion kill switch (§5, §10).
  *
- * All three live on <html> as data attributes and persist in localStorage —
+ * Both live on <html> as data attributes and persist in localStorage —
  * per machine, never synced. CSS reads only these attributes; no component
- * needs to know a theme or density exists beyond offering the toggle.
+ * needs to know a theme exists beyond offering the toggle.
  */
 
 import { uiConfig, type Theme } from './config.js';
 
 export type { Theme };
-export type Density = 'compact' | 'comfortable' | 'large';
 
-// The theme key and default are per-panel and live in `config.ts`; these two
+// The theme key and default are per-panel and live in `config.ts`; these
 // are the same everywhere.
-const KEY_DENSITY = 'ob.density';
 const KEY_MOTION = 'ob.motion';
 const KEY_SCALE = 'ob.scale';
 const KEY_SIDEBAR = 'ob.sidebar';
@@ -59,27 +57,11 @@ export function loadTheme(): Theme {
   return read<Theme>(themeStorageKey, ['light', 'dark'], defaultTheme);
 }
 
-export function loadDensity(): Density {
-  return read<Density>(KEY_DENSITY, ['compact', 'comfortable', 'large'], 'comfortable');
-}
-
-/**
- * The stored scale, or one migrated from whatever density this machine was
- * last using.
- *
- * Density used to carry the root size, so a machine set to Compact was also
- * asking for 13px text. Reading that across once keeps those machines looking
- * the way they did. `ob.density` is deliberately NOT cleared: density is still
- * a live, independent setting — it just governs row and control heights now.
- */
 export function loadScale(): number {
   try {
     const raw = window.localStorage.getItem(KEY_SCALE);
-    if (raw !== null) {
-      const parsed = Number(raw);
-      if (Number.isFinite(parsed)) return clampScale(parsed);
-    }
-    return { compact: 13, comfortable: 14, large: 16 }[loadDensity()];
+    const parsed = raw === null ? NaN : Number(raw);
+    return Number.isFinite(parsed) ? clampScale(parsed) : SCALE_DEFAULT;
   } catch {
     return SCALE_DEFAULT;
   }
@@ -130,11 +112,6 @@ export function applyTheme(theme: Theme): void {
   store(uiConfig().themeStorageKey, theme);
 }
 
-export function applyDensity(density: Density): void {
-  document.documentElement.dataset.density = density;
-  store(KEY_DENSITY, density);
-}
-
 export function applyMotion(motionOn: boolean): void {
   document.documentElement.dataset.motion = motionOn ? 'on' : 'off';
   store(KEY_MOTION, motionOn ? 'on' : 'off');
@@ -144,6 +121,5 @@ export function applyMotion(motionOn: boolean): void {
 export function initAppearance(): void {
   applyTheme(loadTheme());
   applyScale(loadScale());
-  applyDensity(loadDensity());
   applyMotion(!motionDisabled());
 }

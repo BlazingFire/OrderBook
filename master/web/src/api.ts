@@ -1,6 +1,5 @@
 /** Thin wrapper over the Master's local HTTP API. */
 
-import { DEVELOPER_RESET_CONFIRMATION, DEVELOPER_TOKEN_HEADER } from '@orderbook/shared';
 import { publishSessionEnded, t } from '@orderbook/ui';
 import type {
   Locale,
@@ -23,12 +22,6 @@ import type {
   CustomFieldDefinitionUpdateInput,
   CustomFieldReorderInput,
   DashboardSummary,
-  DeveloperStatus,
-  DeveloperUnlock,
-  ResetAllResult,
-  SeedDummyUsersResult,
-  LoadCatalogueResult,
-  SeedSampleDataResult,
   ApiKey,
   ApiKeyInput,
   Connector,
@@ -326,14 +319,6 @@ function pagedQuery(search?: string, limit?: number, offset?: number): string {
   const query = params.toString();
   return query ? `?${query}` : '';
 }
-
-/** `post`, plus the developer unlock token the route checks instead of a permission. */
-const postAsDeveloper = <T>(path: string, token: string, body?: unknown) =>
-  request<T>(path, {
-    method: 'POST',
-    body: JSON.stringify(body ?? {}),
-    headers: { [DEVELOPER_TOKEN_HEADER]: token },
-  });
 
 /** Extracts `ApiError` from a non-JSON (or empty) failure body, for the two `fetch` helpers below. */
 async function throwIfNotOk(response: Response): Promise<void> {
@@ -871,27 +856,4 @@ export const api = {
   runConnector: (id: string, mode: 'dry_run' | 'import') =>
     post<ConnectorRun & { runId: number }>(`/api/integrations/connectors/${id}/run`, { mode }),
   connectorRuns: (id: string) => request<ConnectorRun[]>(`/api/integrations/connectors/${id}/runs`),
-
-  // --- Developer mode (`shared/src/domain/developer.ts`) --------------------
-  // The unlock token rides in a header, never in the path: these URLs reach
-  // the activity log and the shell's console, and a token written down there
-  // outlives the fifteen minutes it is supposed to live.
-  developer: {
-    status: (token: string | null) =>
-      request<DeveloperStatus>('/api/developer/status', {
-        headers: token ? { [DEVELOPER_TOKEN_HEADER]: token } : undefined,
-      }),
-    unlock: (password: string) => post<DeveloperUnlock>('/api/developer/unlock', { password }),
-    lock: (token: string) => postAsDeveloper<{ ok: true }>('/api/developer/lock', token),
-    resetAll: (token: string) =>
-      postAsDeveloper<ResetAllResult>('/api/developer/reset-all', token, {
-        confirmation: DEVELOPER_RESET_CONFIRMATION,
-      }),
-    seedDummyUsers: (token: string) =>
-      postAsDeveloper<SeedDummyUsersResult>('/api/developer/seed-dummy-users', token),
-    seedSampleData: (token: string) =>
-      postAsDeveloper<SeedSampleDataResult>('/api/developer/seed-sample-data', token),
-    loadSwiswareCatalogue: (token: string) =>
-      postAsDeveloper<LoadCatalogueResult>('/api/developer/load-catalogue', token),
-  },
 };

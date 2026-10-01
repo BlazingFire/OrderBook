@@ -212,26 +212,6 @@ describe('Alt+N', () => {
 
     await pressAltDigitUntil(7, t('nav.master.panels'));
   });
-
-  it('leaves the desktop menu’s Developer entry opening Settings for anybody', async () => {
-    let menu: ((id: string) => void) | null = null;
-    (window as { orderbook?: unknown }).orderbook = {
-      onMenuCommand: (handler: (id: string) => void) => {
-        menu = handler;
-        return () => undefined;
-      },
-    };
-    await boot(['leads.view']);
-
-    // The panel subscribes from an effect that may not have run yet.
-    await waitFor(() => expect(menu).not.toBeNull());
-    await act(async () => {
-      menu!('settings.developer');
-      await wait(0);
-    });
-
-    expect(await screen.findByRole('tab', { name: t('settings.tab.developer') })).toBeTruthy();
-  });
 });
 
 describe('the next person to sign in at this window', () => {

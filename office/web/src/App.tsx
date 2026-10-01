@@ -51,7 +51,6 @@ import {
   flattenNav,
   graftSubNav,
   loadSidebarMode,
-  requestSettingsTab,
   rem,
   storeSidebarMode,
   t,
@@ -926,16 +925,6 @@ function OfficePanel() {
       <KeyboardOverlays
         subscribeMenu={(handler) =>
           desktopBridge()?.onMenuCommand?.((id) => {
-            /*
-             * `settings.developer` is not a keyboard command and never will be
-             * — there is no chord for it — so it is answered here rather than
-             * in the palette's own whitelist, which only knows `COMMANDS`.
-             */
-            if (id === 'settings.developer') {
-              goToTab('settings');
-              requestSettingsTab('developer');
-              return;
-            }
             handler(id);
           })
         }

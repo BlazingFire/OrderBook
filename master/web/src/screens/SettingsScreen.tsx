@@ -19,26 +19,21 @@
 import { useCallback, useEffect, useState } from 'react';
 import type {
   MasterIdentity,
-  SeedDummyUsersResult,
-  LoadCatalogueResult,
-  SeedSampleDataResult,
   SettingGroup,
   SettingKey,
   SettingView,
   StorageUsage,
   VaultStatus,
 } from '@orderbook/shared';
-import { DEVELOPER_RESET_CONFIRMATION, SETTINGS, SETTING_GROUPS } from '@orderbook/shared';
+import { SETTINGS, SETTING_GROUPS } from '@orderbook/shared';
 
-import { api, desktopBridge } from '../api';
+import { api } from '../api';
 import { StorageBackupActions } from '../components/StorageBackup';
 import { optionListTransport } from './FieldsScreen';
 import {
   AppearanceSettings,
   Button,
-  DataTable,
   FieldError,
-  DeveloperPanel,
   IdField,
   Input,
   KeyValueList,
@@ -54,9 +49,6 @@ import {
   formatBytes,
   formatDateTime,
   t,
-  useDeveloperSession,
-  useUninstallTool,
-  type DeveloperTool,
   type SettingsTab,
 } from '@orderbook/ui';
 
@@ -77,7 +69,6 @@ export const SETTINGS_TAB_IDS = [
   'leads',
   'connection',
   'storage',
-  'developer',
 ] as const;
 
 export function SettingsScreen({
@@ -392,7 +383,6 @@ export function SettingsScreen({
           },
         ]
       : []),
-    { id: 'developer', label: t('settings.tab.developer'), render: () => <DeveloperTab /> },
   ];
 
   return (
@@ -403,243 +393,6 @@ export function SettingsScreen({
       activeId={tab}
       onChange={onTabChange}
     />
-  );
-}
-
-/**
- * Long enough for the "erased" toast to be read, short enough that nobody
- * starts clicking around an installation that no longer has a database.
- */
-const RELOAD_AFTER_RESET_MS = 1500;
-
-/**
- * The Master's developer tools.
- *
- * Its own component so the unlock lives and dies with the tab: mounting it is
- * what asks the server for a status, and nothing here is fetched while
- * somebody is on Appearance.
- */
-function DeveloperTab() {
-  const session = useDeveloperSession(api.developer);
-  const [seeded, setSeeded] = useState<SeedDummyUsersResult | null>(null);
-  const [sampled, setSampled] = useState<SeedSampleDataResult | null>(null);
-  const [catalogue, setCatalogue] = useState<LoadCatalogueResult | null>(null);
-  const { token } = session;
-
-  // Built unconditionally: it owns the "delete the data too?" switch, and a
-  // hook cannot be called only when a token exists.
-  const uninstall = useUninstallTool(desktopBridge());
-
-  const tools: DeveloperTool[] = token
-    ? [
-        {
-          id: 'seed',
-          title: t('developer.tool.seed.title'),
-          description: t('developer.tool.seed.description'),
-          action: t('developer.tool.seed.action'),
-          done: t('developer.tool.seed.done'),
-          run: async () => setSeeded(await api.developer.seedDummyUsers(token)),
-          result: seeded ? <SeedResult result={seeded} /> : undefined,
-        },
-        {
-          id: 'swisware-catalogue',
-          title: t('developer.tool.swisware.title'),
-          description: t('developer.tool.swisware.description'),
-          action: t('developer.tool.swisware.action'),
-          done: t('developer.tool.swisware.done'),
-          run: async () => setCatalogue(await api.developer.loadSwiswareCatalogue(token)),
-          result: catalogue ? <CatalogueResult result={catalogue} /> : undefined,
-        },
-        {
-          id: 'sample-data',
-          title: t('developer.tool.sample.title'),
-          description: t('developer.tool.sample.description'),
-          action: t('developer.tool.sample.action'),
-          done: t('developer.tool.sample.done'),
-          run: async () => setSampled(await api.developer.seedSampleData(token)),
-          result: sampled ? <SampleDataResult result={sampled} /> : undefined,
-        },
-        {
-          id: 'reset-all',
-          danger: true,
-          title: t('developer.tool.resetAll.title'),
-          description: t('developer.tool.resetAll.description'),
-          action: t('developer.tool.resetAll.action'),
-          confirmWord: DEVELOPER_RESET_CONFIRMATION,
-          confirmTitle: t('developer.tool.resetAll.confirmTitle'),
-          confirmHint: t('developer.tool.resetAll.confirmHint'),
-          confirmDetails: [
-            t('developer.tool.resetAll.detail.records'),
-            t('developer.tool.resetAll.detail.files'),
-            t('developer.tool.resetAll.detail.people'),
-            t('developer.tool.resetAll.detail.settings'),
-            t('developer.tool.resetAll.detail.pairings'),
-            t('developer.tool.resetAll.detail.vault'),
-          ],
-          done: t('developer.tool.resetAll.done'),
-          run: async () => {
-            await api.developer.resetAll(token);
-            // Every screen this page has visited, the signed-in session and the
-            // socket now describe a Master that no longer exists. Reloading is
-            // the only honest way to the first-run screen — there is nothing
-            // left for this page to re-render.
-            setTimeout(() => window.location.reload(), RELOAD_AFTER_RESET_MS);
-          },
-        },
-        uninstall,
-      ]
-    : [];
-
-  return (
-    <DeveloperPanel
-      status={session.status}
-      busy={session.busy}
-      error={session.error}
-      onUnlock={session.unlock}
-      onLock={session.lock}
-      tools={tools}
-    />
-  );
-}
-
-/**
- * What the seed produced, as a table to be read off the screen and typed into
- * a sign-in form — which is why the credentials are monospaced and selectable
- * rather than merely printed.
- */
-function SeedResult({ result }: { result: SeedDummyUsersResult }) {
-  const mono = { userSelect: 'text' } as const;
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}>
-      <DataTable
-        rows={result.users}
-        rowKey={(row) => row.username}
-        columns={[
-          {
-            key: 'username',
-            header: t('developer.tool.seed.username'),
-            render: (row) => (
-              <span className="ob-mono" style={mono}>
-                {row.username}
-              </span>
-            ),
-          },
-          {
-            key: 'password',
-            header: t('developer.tool.seed.password'),
-            render: (row) => (
-              <span className="ob-mono" style={mono}>
-                {row.password}
-              </span>
-            ),
-          },
-          {
-            key: 'tier',
-            header: t('developer.tool.seed.tier'),
-            // The tier is a key, like the username — not a sentence to translate.
-            render: (row) => <span className="ob-mono">{row.tier}</span>,
-          },
-          {
-            key: 'outcome',
-            header: t('developer.tool.seed.outcome'),
-            render: (row) =>
-              row.outcome === 'created'
-                ? t('developer.tool.seed.outcomeCreated')
-                : t('developer.tool.seed.outcomeReset'),
-          },
-        ]}
-      />
-      {result.pairingPassword && (
-        <p className="ob-small" style={{ margin: 0 }}>
-          {t('developer.tool.seed.pairingPassword')}{' '}
-          <span className="ob-mono" style={mono}>
-            {result.pairingPassword}
-          </span>
-        </p>
-      )}
-    </div>
-  );
-}
-
-/**
- * What loading the catalogue produced — or, on a second press, what it left
- * alone. The four counts are the whole story: a sub product already in its
- * product is skipped, and nothing existing is changed or deleted.
- */
-function CatalogueResult({ result }: { result: LoadCatalogueResult }) {
-  const lines: Array<[string, number]> = [
-    [t('developer.tool.swisware.count.products'), result.products],
-    [t('developer.tool.swisware.count.subProducts'), result.subProducts],
-    [t('developer.tool.swisware.count.colours'), result.colours],
-    [t('developer.tool.swisware.count.skipped'), result.skipped],
-  ];
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}>
-      <p className="ob-small" style={{ margin: 0 }}>
-        {result.subProducts > 0
-          ? t('developer.tool.swisware.loaded')
-          : t('developer.tool.swisware.alreadyPresent')}
-      </p>
-      <DataTable
-        rows={lines.map(([label, count]) => ({ label, count }))}
-        rowKey={(row) => row.label}
-        columns={[
-          { key: 'label', header: t('developer.tool.sample.what'), render: (row) => row.label },
-          {
-            key: 'count',
-            header: t('developer.tool.sample.howMany'),
-            render: (row) => <span className="ob-mono">{row.count}</span>,
-          },
-        ]}
-      />
-    </div>
-  );
-}
-
-/**
- * What the sample seed produced: the sign-ins it made on the way (the same
- * table the test-user seed shows) and a count of each kind of record, so the
- * person knows what to go and look at.
- */
-function SampleDataResult({ result }: { result: SeedSampleDataResult }) {
-  const { counts } = result;
-  const lines: Array<[string, number]> = [
-    [t('developer.tool.sample.count.parties'), counts.parties],
-    [t('developer.tool.sample.count.products'), counts.products],
-    [t('developer.tool.sample.count.images'), counts.images],
-    [t('developer.tool.sample.count.stockMovements'), counts.stockMovements],
-    [t('developer.tool.sample.count.leads'), counts.leads],
-    [t('developer.tool.sample.count.orders'), counts.orders],
-    [t('developer.tool.sample.count.dispatched'), counts.dispatched],
-    [t('developer.tool.sample.count.remarks'), counts.remarks],
-    [t('developer.tool.sample.count.optionValues'), counts.optionValues],
-    [t('developer.tool.sample.count.customFields'), counts.customFields],
-    [t('developer.tool.sample.count.partyVariants'), counts.partyVariants],
-    [t('developer.tool.sample.count.partyAssignments'), counts.partyAssignments],
-    [t('developer.tool.sample.count.deleted'), counts.deleted],
-  ];
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}>
-      <p className="ob-small" style={{ margin: 0 }}>
-        {t('developer.tool.sample.span', { from: result.from, to: result.to })}
-      </p>
-      <DataTable
-        rows={lines.map(([label, count]) => ({ label, count }))}
-        rowKey={(row) => row.label}
-        columns={[
-          { key: 'label', header: t('developer.tool.sample.what'), render: (row) => row.label },
-          {
-            key: 'count',
-            header: t('developer.tool.sample.howMany'),
-            render: (row) => <span className="ob-mono">{row.count}</span>,
-          },
-        ]}
-      />
-      <SeedResult result={result} />
-    </div>
   );
 }
 
