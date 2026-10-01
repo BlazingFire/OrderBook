@@ -75,6 +75,7 @@ import type { Party, Product } from '@orderbook/shared';
 import { ApiError, api, type LocalView } from '../api';
 import { partyFormTransport } from '../partyFormTransport';
 import { ProductDrawer, type CreatedProduct } from '../components/ProductDrawer';
+import { exportCatalogueCsv } from '../components/exportCatalogue';
 import { ProductImportModal } from '../components/ProductImportModal';
 import { byCatalogueOrder, codesOf, productLabel, weightLabel } from '../productSummary';
 import {
@@ -511,6 +512,18 @@ export function CatalogScreen({
           </FilterChip>
         ))}
         <span style={{ flex: 1 }} />
+        <Button
+          variant="secondary"
+          size="sm"
+          icon="download"
+          onClick={() =>
+            void exportCatalogueCsv('sub').catch(() =>
+              toast.push(t('catalog.export.failed'), { tone: 'error' }),
+            )
+          }
+        >
+          {t('catalog.export')}
+        </Button>
         {canImport && (
           <Button variant="secondary" size="sm" icon="upload" onClick={() => setImportOpen(true)}>
             {t('catalog.products.import')}

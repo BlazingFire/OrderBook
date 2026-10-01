@@ -4,6 +4,9 @@
  * The merge already decided what each record holds — nothing here is broken and
  * nothing is urgent. This screen exists for the one judgement the merge cannot
  * make: whether the value that lost happened to be the right one.
+ *
+ * The module is offered only to people who may resolve conflicts
+ * (`sync.resolveConflicts`, see App.tsx), so every control here is live.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -22,12 +25,11 @@ import {
 
 interface Props {
   revision: number;
-  canResolve: boolean;
 }
 
 type ConflictAction = 'keepWinner' | 'restoreLoser';
 
-export function ConflictsScreen({ revision, canResolve }: Props) {
+export function ConflictsScreen({ revision }: Props) {
   const [conflicts, setConflicts] = useState<SyncConflict[]>([]);
   const [showResolved, setShowResolved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,12 +78,6 @@ export function ConflictsScreen({ revision, canResolve }: Props) {
         />
       </div>
 
-      {!canResolve && (
-        <p className="ob-small" style={{ margin: 0, color: 'var(--fg-tertiary)' }}>
-          {t('conflicts.noPermission', { permission: 'sync.resolveConflicts' })}
-        </p>
-      )}
-
       {error && <ConflictBanner>{error}</ConflictBanner>}
 
       {visible.length === 0 ? (
@@ -129,7 +125,7 @@ export function ConflictsScreen({ revision, canResolve }: Props) {
                 <Button
                   variant="secondary"
                   busy={busy?.id === conflict.id && busy.action === 'keepWinner'}
-                  disabled={!canResolve || (busy !== null && busy.id !== conflict.id)}
+                  disabled={busy !== null && busy.id !== conflict.id}
                   onClick={() => void resolve(conflict, 'keepWinner')}
                 >
                   {t('conflicts.action.keepWinner')}
@@ -137,7 +133,7 @@ export function ConflictsScreen({ revision, canResolve }: Props) {
                 <Button
                   variant="primary"
                   busy={busy?.id === conflict.id && busy.action === 'restoreLoser'}
-                  disabled={!canResolve || (busy !== null && busy.id !== conflict.id)}
+                  disabled={busy !== null && busy.id !== conflict.id}
                   onClick={() => void resolve(conflict, 'restoreLoser')}
                 >
                   {t('conflicts.action.restoreLoser')}
@@ -162,12 +158,31 @@ function ConflictValue({ label, value }: { label: string; value: unknown }) {
       }}
     >
       <div className="ob-small">{label}</div>
-      <pre
-        className="ob-data"
-        style={{ margin: 'var(--s-6) 0 0', whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}
-      >
-        {stringify(value)}
-      </pre>
+      {isLineSet(value) ? (
+        // A lead's lines or a product's variants: one row each, not a JSON dump.
+        <ul
+          className="ob-data"
+          style={{
+            margin: 'var(--s-6) 0 0',
+            padding: 0,
+            listStyle: 'none',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--s-4)',
+          }}
+        >
+          {value.map((entry, index) => (
+            <li key={index}>{lineText(entry)}</li>
+          ))}
+        </ul>
+      ) : (
+        <pre
+          className="ob-data"
+          style={{ margin: 'var(--s-6) 0 0', whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}
+        >
+          {stringify(value)}
+        </pre>
+      )}
     </div>
   );
 }
@@ -176,4 +191,38 @@ function stringify(value: unknown): string {
   if (value === null || value === undefined) return t('conflicts.emptyValue');
   if (typeof value === 'string') return value || t('conflicts.emptyValue');
   return JSON.stringify(value, null, 2);
+}
+
+/** A non-empty array of objects: the line items or variants of a lead or a product. */
+function isLineSet(value: unknown): value is Array<Record<string, unknown>> {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((entry) => typeof entry === 'object' && entry !== null)
+  );
+}
+
+function text(value: unknown): string | null {
+  return typeof value === 'string' && value !== '' ? value : null;
+}
+
+/**
+ * One line as a person reads it: the product (or variant code), what
+ * distinguishes it, and the quantity. Drafts carry only ids, so those stand in
+ * when no name was snapshotted.
+ */
+function lineText(entry: Record<string, unknown>): string {
+  const parts = [
+    text(entry.productName),
+    text(entry.code),
+    text(entry.variantLabel) ?? text(entry.label),
+    text(entry.colour),
+    text(entry.size),
+  ].filter((part): part is string => part !== null);
+  if (parts.length === 0) {
+    const fallback = text(entry.productId) ?? text(entry.variantId) ?? text(entry.id);
+    if (fallback) parts.push(fallback);
+  }
+  const quantity = typeof entry.quantity === 'number' ? ` × ${entry.quantity}` : '';
+  return `${parts.join(' · ')}${quantity}`;
 }

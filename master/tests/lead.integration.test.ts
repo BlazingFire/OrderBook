@@ -27,6 +27,7 @@ import {
 } from './helpers/fixtures.js';
 import { db } from '../src/db/knex.js';
 import type { ActorContext } from '../src/domain/actor.js';
+import { ConflictError } from '../src/lib/errors.js';
 import * as productRepo from '../src/repositories/product.repository.js';
 import * as catalog from '../src/services/catalog.service.js';
 import * as leads from '../src/services/lead.service.js';
@@ -102,6 +103,33 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
   beforeEach(async () => {
     await resetData();
     actor = await testActor();
+  });
+
+  describe('editing racing a conversion', () => {
+    it('refuses an update that was waiting on the lock when the lead got converted', async () => {
+      const { party, plain, plainVariant } = await seed();
+      const make = () =>
+        leads.createLead({ partyId: party.id, items: [line(plain.id, plainVariant.id, 1)] }, actor);
+      const target = await make();
+      const donor = await make();
+      const order = await orders.convertLead({ leadId: donor.id }, actor);
+
+      // Hold the target's row lock, start the edit (it passes its unlocked
+      // checks and queues behind the lock), then convert and release.
+      const holder = await db().transaction();
+      await holder('leads').where({ id: target.id }).forUpdate().first('id');
+      const edit = leads.updateLead(target.id, { notes: 'late' }, actor);
+      const outcome = edit.then(
+        () => 'saved',
+        (error: Error) => error.message,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await holder('leads').where({ id: target.id }).update({ converted_order_id: order.id });
+      await holder.commit();
+
+      expect(await outcome).toMatch(/final order|converted/i);
+      expect((await leads.getLead(target.id, actor)).notes).not.toBe('late');
+    });
   });
 
   describe('creating', () => {
@@ -425,6 +453,48 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
     });
   });
 
+  describe('editing', () => {
+    it('stamps the lines\' clock, the lead\'s hlc and its version when only the items change', async () => {
+      const { party, plain, plainVariant } = await seed();
+      const lead = await leads.createLead(
+        { partyId: party.id, items: [line(plain.id, plainVariant.id, 1)] },
+        actor,
+      );
+
+      const edited = await leads.updateLead(
+        lead.id,
+        { items: [line(plain.id, plainVariant.id, 6)] },
+        actor,
+      );
+
+      expect(edited.items[0]?.quantity).toBe(6);
+      expect(edited.sync.fieldHlc.items).not.toBe(lead.sync.fieldHlc.items);
+      expect(edited.sync.hlc).not.toBe(lead.sync.hlc);
+      expect(edited.sync.version).toBe(lead.sync.version + 1);
+    });
+
+    it('refuses lines with no product or variant id, and a party id that is not text', async () => {
+      const { party, plain, plainVariant } = await seed();
+      const lead = await leads.createLead(
+        { partyId: party.id, items: [line(plain.id, plainVariant.id, 1)] },
+        actor,
+      );
+
+      await expect(leads.updateLead(lead.id, { items: [{} as never] }, actor)).rejects.toThrow(
+        /no longer exists/i,
+      );
+      await expect(
+        leads.updateLead(lead.id, { items: [{ productId: plain.id, quantity: 1 } as never] }, actor),
+      ).rejects.toThrow(/variants? no longer exists/i);
+      await expect(leads.updateLead(lead.id, { partyId: 42 as never }, actor)).rejects.toThrow(
+        /select a party/i,
+      );
+      await expect(
+        leads.createLead({ partyId: 42 as never, items: [line(plain.id, plainVariant.id, 1)] }, actor),
+      ).rejects.toThrow(/select a party/i);
+    });
+  });
+
   describe('moving through the pipeline', () => {
     it('records a system timeline entry for every stage change', async () => {
       const { party, plain, plainVariant } = await seed();
@@ -672,6 +742,47 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
       await expect(leads.updateLead(lead.id, { notes: 'too late' }, actor)).rejects.toThrow(
         /can no longer be edited/i,
       );
+    });
+  });
+
+  describe('deleting an order', () => {
+    async function convertedOrder() {
+      const { party, plain, plainVariant } = await seed();
+      const lead = await leads.createLead(
+        { partyId: party.id, items: [line(plain.id, plainVariant.id, 2)] },
+        actor,
+      );
+      return orders.convertLead({ leadId: lead.id }, actor);
+    }
+
+    it('refuses a dispatched order with the blocker named', async () => {
+      const order = await convertedOrder();
+      await orders.dispatchOrder({ orderId: order.id }, actor);
+
+      const failure = await orders.deleteOrder(order.id, actor).catch((error: unknown) => error);
+
+      expect(failure).toBeInstanceOf(ConflictError);
+      expect((failure as ConflictError).details).toMatchObject({
+        blockedBy: [expect.objectContaining({ id: order.id, reason: 'dispatched' })],
+      });
+    });
+
+    it('re-checks under the row lock, so a dispatch that commits mid-delete still blocks it', async () => {
+      const order = await convertedOrder();
+
+      // Hold the row, start the delete (its first read sees an undispatched
+      // order and its transaction then queues on the lock), dispatch under the
+      // lock and commit. Without the re-check the delete went on to tombstone a
+      // shipped order.
+      const holder = await db().transaction();
+      await holder('orders').where({ id: order.id }).forUpdate().first();
+      const deletion = orders.deleteOrder(order.id, actor).catch((error: unknown) => error);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await holder('orders').where({ id: order.id }).update({ dispatched_at: holder.fn.now() });
+      await holder.commit();
+
+      expect(await deletion).toBeInstanceOf(ConflictError);
+      expect((await db()('orders').where({ id: order.id }).first())?.deleted_at).toBeNull();
     });
   });
 

@@ -10,7 +10,7 @@ import { configureUi, ErrorBoundary, initAppearance } from '@orderbook/ui';
 // from the Office Panel's. Must run before `initAppearance()`, which reads them.
 configureUi({ panel: 'master', defaultTheme: 'dark', themeStorageKey: 'ob.theme.v2' });
 
-// Before first paint, so there is no flash of the wrong theme or density.
+// Before first paint, so there is no flash of the wrong theme.
 initAppearance();
 
 const container = document.getElementById('root');

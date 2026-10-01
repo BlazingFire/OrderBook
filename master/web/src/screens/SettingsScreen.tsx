@@ -1,19 +1,24 @@
 /**
  * Settings, as tabs rather than as one long stack of cards.
  *
- * The skeleton — the page, the sections, the rows, the appearance controls and
- * the Developer tab — lives in `@orderbook/ui`'s `SettingsLayout`, shared with
- * the Office Panel. What is left here is what only the Master has: the company
- * settings, the connection identity, the storage figures, and the two
- * developer tools that reach the database.
+ * The skeleton — the page, the sections, the rows and the appearance controls
+ * — lives in `@orderbook/ui`'s `SettingsLayout`, shared with the Office Panel.
+ * What is left here is what only the Master has: the company settings, the
+ * lead sources and rules, the connection identity and the storage figures.
+ *
+ * Settings is offered to every signed-in person, as on the Office: Appearance
+ * and Shortcuts are per-desk preferences nobody needs a permission for. The
+ * other four tabs (company, leads, connection, storage) are the company's own
+ * and need `settings.manage` - both in the sidebar's sub-pages (App.tsx, via
+ * `settingsTabIdsFor`) and here, where the reads behind them are not made at
+ * all without it, since each would only come back 403.
+ *
+ * The developer routes survive on the server behind the
+ * `security.developerModeEnabled` setting, which stays a row of the company tab;
+ * there is no Developer tab any more.
  *
  * The pairing password is deliberately absent from the connection tab: it was
  * shown once at setup and only its hash is stored, so it cannot be shown again.
- *
- * The Developer tab is present for every signed-in person, with no permission
- * in front of it. That is the design (`shared/src/domain/developer.ts`): the
- * developer password is the door, and there is no permission that could grant
- * or withhold it without letting an administrator hand developer mode out.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -71,6 +76,13 @@ export const SETTINGS_TAB_IDS = [
   'storage',
 ] as const;
 
+/** The tabs a person with these permissions is offered; the company's own need `settings.manage`. */
+export function settingsTabIdsFor(permissions: readonly string[]): readonly string[] {
+  return permissions.includes('settings.manage')
+    ? SETTINGS_TAB_IDS
+    : SETTINGS_TAB_IDS.filter((id) => id === 'appearance' || id === 'shortcuts');
+}
+
 export function SettingsScreen({
   tab,
   onTabChange,
@@ -125,12 +137,11 @@ export function SettingsScreen({
   const [savingKey, setSavingKey] = useState<SettingKey | null>(null);
 
   /*
-   * The usage figures are `settings.manage` at the route and export and
-   * restore are `storage.manage` — so the session's own permissions decide
-   * what appears, rather than offering a read or two buttons whose only
-   * possible answer is a refusal. `settings.manage` is also what the Settings
-   * nav entry needs, but the screen opens for anybody who reaches it another
-   * way, the desktop menu's Developer command among them.
+   * The usage figures and the connection identity are `settings.manage` at the
+   * route, and export and restore are `storage.manage` — so the session's own
+   * permissions decide what is read and what appears, rather than offering a
+   * read or two buttons whose only possible answer is a refusal. Everybody
+   * reaches this screen (Appearance, Shortcuts); only a manager reaches the rest.
    */
   const canManageSettings = permissions.includes('settings.manage');
   const canReadStorage = canManageSettings;
@@ -147,11 +158,12 @@ export function SettingsScreen({
   }, []);
 
   useEffect(() => {
+    if (!canManageSettings) return;
     void api
       .identity()
       .then(setIdentity)
       .catch(() => setIdentity(null));
-  }, []);
+  }, [canManageSettings]);
 
   // Keyed on the answers, not on the array: the shell hands down a new one
   // each time it re-reads the session, and the same permissions again are no
@@ -266,7 +278,7 @@ export function SettingsScreen({
      * here from Company rather than shown on both. Absent when the reader may
      * see neither half.
      */
-    ...(canViewSources || settings
+    ...(canManageSettings && (canViewSources || settings)
       ? [
           {
             id: 'leads',
@@ -293,6 +305,8 @@ export function SettingsScreen({
           },
         ]
       : []),
+    ...(canManageSettings
+      ? [
     {
       id: 'connection',
       label: t('settings.tab.connection'),
@@ -339,9 +353,11 @@ export function SettingsScreen({
         </SettingsSection>
       ),
     },
-    // Absent, not empty, for a session that may neither read the figures nor
-    // export — the same rule as the company tab.
-    ...(canReadStorage || canManageStorage
+        ]
+      : []),
+    // Absent, not empty, without `settings.manage` — the same rule as the
+    // company tab. Inside it, export and restore still need `storage.manage`.
+    ...(canManageSettings
       ? [
           {
             id: 'storage',

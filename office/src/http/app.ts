@@ -624,11 +624,11 @@ export function createApp(): Express {
   // queued creates would be quadratic on disk and invisible on refusal. The
   // file goes to the Master over the panel HTTP surface and the row-numbered
   // report comes straight back.
-  app.get('/api/products/import/template.:format', (req, res) => {
+  app.get(['/api/products/import/template.:format', '/api/products/export.:format'], (req, res) => {
     void (async () => {
       try {
         const response = await masterFetch(
-          `/api/panel/products/import/template.${encodeURIComponent(String(req.params.format))}`,
+          `/api/panel${req.originalUrl.slice('/api'.length)}`,
         );
 
         if (!response.ok) {

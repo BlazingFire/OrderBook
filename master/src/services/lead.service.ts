@@ -111,7 +111,9 @@ export async function createLead(input: LeadInput, actor: ActorContext): Promise
   const stages = await pipelineRepo.stagesFor(actor.tenantId, 'lead');
   const definitions = await customFieldRepo.definitionsFor(actor.tenantId, 'lead');
 
-  if (!input.partyId) throw new ValidationError('validation.lead.partyRequired');
+  if (typeof input.partyId !== 'string' || !input.partyId) {
+    throw new ValidationError('validation.lead.partyRequired');
+  }
   if (!input.items?.length) throw new ValidationError('validation.lead.itemsRequired');
 
   // A party created on the panel and used on a lead straight away is named by
@@ -221,6 +223,9 @@ export async function updateLead(
   const definitions = await customFieldRepo.definitionsFor(actor.tenantId, 'lead');
   const patch: Record<string, unknown> = {};
 
+  if (input.partyId !== undefined && (typeof input.partyId !== 'string' || !input.partyId)) {
+    throw new ValidationError('validation.lead.partyRequired');
+  }
   const partyId = input.partyId === undefined ? undefined : await resolveId(actor.tenantId, input.partyId);
   if (partyId !== undefined) {
     if (!(await partyRepo.findPartyById(actor.tenantId, partyId))) {
@@ -258,12 +263,22 @@ export async function updateLead(
         });
 
   await db().transaction(async (trx) => {
+    // Lock, then reload: the read above is stale by now, and a convert or a
+    // merge that landed in between must be neither overwritten nor missed.
+    if (!(await leadRepo.lockLead(actor.tenantId, id, trx))) throw new NotFoundError('Lead');
+    const locked = await leadRepo.findLeadById(actor.tenantId, id, UNSCOPED_PARTY_ACCESS, trx);
+    if (!locked) throw new NotFoundError('Lead');
+    if (locked.convertedOrderId) throw new ValidationError('validation.lead.convertedLocked');
+
     const hlc = await nextHlc(trx);
-    const fieldHlc = { ...existing.sync.fieldHlc };
+    const fieldHlc = { ...locked.sync.fieldHlc };
     for (const field of Object.keys(patch)) fieldHlc[columnToField(field)] = hlc;
     if (lines) fieldHlc.items = hlc;
 
-    if (Object.keys(patch).length > 0) {
+    // Also when only the lines changed: the clock (`fieldHlc.items`, `hlc`,
+    // `version`) has to move with them or a later offline merge reads the
+    // old lines as unedited.
+    if (Object.keys(patch).length > 0 || lines) {
       await leadRepo.updateLeadColumns(actor.tenantId, id, patch, { hlc, fieldHlc }, trx);
     }
     if (lines) await leadRepo.replaceLeadLines(actor.tenantId, id, lines, trx);
@@ -413,12 +428,33 @@ export async function addRemark(
  * has to exist on the product the line names and still be on offer. A colour
  * is kept only on a multi-colour product and dropped anywhere else.
  */
-async function buildLines(
+/**
+ * Shape check on what a client sent as lines, for every caller: the offline
+ * merge hands `buildLines` an untyped payload, and a missing id would
+ * otherwise surface as a database error.
+ */
+export function assertLineDrafts(drafts: unknown): asserts drafts is LineDraft[] {
+  if (!Array.isArray(drafts) || drafts.length === 0) {
+    throw new ValidationError('validation.lead.itemsRequired');
+  }
+  for (const draft of drafts as Array<{ productId?: unknown; variantId?: unknown } | null>) {
+    if (typeof draft?.productId !== 'string' || !draft.productId) {
+      throw new ValidationError('validation.lead.productMissing');
+    }
+    if (typeof draft.variantId !== 'string' || !draft.variantId) {
+      throw new ValidationError('validation.lead.variantMissing');
+    }
+  }
+}
+
+export async function buildLines(
   tenantId: string,
   partyId: string,
   drafts: LineDraft[],
   options: { partyWiseMode: boolean },
 ): Promise<LineSnapshot[]> {
+  assertLineDrafts(drafts);
+
   const partyVariants = options.partyWiseMode
     ? await variantRepo.listForParty(tenantId, partyId)
     : [];
@@ -523,7 +559,7 @@ async function resolveOwner(
   return requested;
 }
 
-async function assertSourcePlatform(
+export async function assertSourcePlatform(
   tenantId: string,
   value: string | null,
   previous: string | null = null,

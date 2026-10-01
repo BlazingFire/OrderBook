@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { OfficePanelWithPresence } from '@orderbook/shared';
+import type { OfficePanelDetail, OfficePanelWithPresence } from '@orderbook/shared';
 
 import { api } from '../api';
 import {
@@ -14,6 +14,7 @@ import {
   Card,
   ConflictBanner,
   DataTable,
+  EditorScreen,
   EmptyState,
   FormField,
   IdField,
@@ -23,6 +24,7 @@ import {
   formatDateTime,
   rem,
   t,
+  useSubNav,
   type DataTableColumn,
 } from '@orderbook/ui';
 
@@ -47,6 +49,8 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
   /** Which panel's detail dialog is open, by id rather than by value so the
    *  dialog keeps re-reading the live row as the socket pushes updates. */
   const [openPanelId, setOpenPanelId] = useState<string | null>(null);
+  /** The server's fuller account (acting role, work counts); the list row stands in until it arrives. */
+  const [detail, setDetail] = useState<OfficePanelDetail | null>(null);
   const previousPanelCount = useRef(panels.length);
 
   const stopWaiting = useCallback(async () => {
@@ -67,6 +71,19 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
       void api.closePairingWindow().catch(() => {});
     };
   }, []);
+
+  useEffect(() => {
+    setDetail(null);
+    if (!openPanelId) return;
+    let live = true;
+    api
+      .panel(openPanelId)
+      .then((next) => live && setDetail(next))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [openPanelId]);
 
   async function startWaiting() {
     setError(null);
@@ -173,6 +190,17 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
 
   const openPanel = panels.find((panel) => panel.id === openPanelId) ?? null;
 
+  useSubNav(
+    'panels',
+    openPanel
+      ? {
+          parentId: 'panels',
+          items: [{ id: 'panels.detail', label: openPanel.name, icon: 'server' }],
+          activeId: 'panels.detail',
+        }
+      : null,
+  );
+
   /**
    * Everything the Master actually knows about a panel: the fields the table
    * has no room for, and the two actions that used to sit on every row and made
@@ -196,7 +224,21 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
             </div>
             <div>
               <dt>{t('panels.detail.role')}</dt>
-              <dd>{panel.roleId ?? t('panels.detail.roleDefault')}</dd>
+              <dd>
+                {detail
+                  ? detail.role.isFallback
+                    ? t('panels.detail.roleDefault')
+                    : detail.role.name
+                  : (panel.roleId ?? t('panels.detail.roleDefault'))}
+                {detail && (
+                  <div className="ob-small">
+                    {t('panels.detail.roleSummary', {
+                      tier: detail.role.tier,
+                      count: detail.role.permissions.length,
+                    })}
+                  </div>
+                )}
+              </dd>
             </div>
             <div>
               <dt>{t('panels.detail.statusLabel')}</dt>
@@ -245,12 +287,136 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
           </dl>
         </section>
 
+        {detail && (
+          <section className="ob-detail-section">
+            <div className="ob-eyebrow">{t('panels.detail.work')}</div>
+            <dl className="ob-detail-grid">
+              <div>
+                <dt>{t('panels.detail.workLeads')}</dt>
+                <dd>{detail.work.leads}</dd>
+              </div>
+              <div>
+                <dt>{t('panels.detail.workOrders')}</dt>
+                <dd>{detail.work.orders}</dd>
+              </div>
+              <div>
+                <dt>{t('panels.detail.workLast')}</dt>
+                <dd>
+                  {detail.work.lastActionAt
+                    ? formatDateTime(detail.work.lastActionAt)
+                    : t('panels.detail.workNone')}
+                </dd>
+              </div>
+            </dl>
+          </section>
+        )}
+
         {panel.status === 'revoked' && (
           <p className="ob-small" style={{ margin: 0 }}>
             {t('panels.detail.revokedNote')}
           </p>
         )}
       </div>
+    );
+  }
+
+  const dialogs = (
+    <>
+      <Modal
+        open={Boolean(renaming)}
+        onClose={() => setRenaming(null)}
+        title={renaming ? t('panels.rename.title', { name: renaming.name }) : ''}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setRenaming(null)}>
+              {t('panels.rename.cancel')}
+            </Button>
+            <Button
+              variant="primary"
+              disabled={!renameValue.trim()}
+              onClick={() => void submitRename()}
+            >
+              {t('panels.rename.save')}
+            </Button>
+          </>
+        }
+      >
+        <FormField label={t('panels.rename.label')}>
+          {(id) => (
+            <Input
+              id={id}
+              value={renameValue}
+              onChange={(event) => setRenameValue(event.target.value)}
+              autoFocus
+            />
+          )}
+        </FormField>
+      </Modal>
+
+      <Modal
+        open={Boolean(confirmRevoke)}
+        onClose={() => setConfirmRevoke(null)}
+        title={confirmRevoke ? t('panels.revoke.title', { name: confirmRevoke.name }) : ''}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmRevoke(null)}>
+              {t('panels.revoke.cancel')}
+            </Button>
+            <Button variant="danger" onClick={() => void confirmRevokePanel()}>
+              {t('panels.action.remove')}
+            </Button>
+          </>
+        }
+      >
+        <p className="ob-body">{t('panels.revoke.body')}</p>
+      </Modal>
+    </>
+  );
+
+  if (openPanel) {
+    return (
+      <>
+        {error && <ConflictBanner>{error}</ConflictBanner>}
+        <EditorScreen
+          title={openPanel.name}
+          meta={
+            <>
+              {openPanel.status === 'revoked'
+                ? t('panels.status.removed')
+                : openPanel.isConnected
+                  ? t('panels.detail.connectionLive')
+                  : t('panels.detail.connectionDown')}
+              <span className="ob-mono ob-small">{openPanel.deviceCode}</span>
+            </>
+          }
+          actions={
+            openPanel.status !== 'revoked' && (
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setRenameValue(openPanel.name);
+                    setRenaming(openPanel);
+                  }}
+                >
+                  {t('panels.action.rename')}
+                </Button>
+                <Button variant="danger" onClick={() => setConfirmRevoke(openPanel)}>
+                  {t('panels.action.remove')}
+                </Button>
+              </>
+            )
+          }
+          onBack={() => {
+            setOpenPanelId(null);
+            return true;
+          }}
+          backLabel={t('action.backToList')}
+        >
+          {renderPanelDetail(openPanel)}
+        </EditorScreen>
+        {dialogs}
+      </>
     );
   }
 
@@ -309,109 +475,7 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
         )}
       </Card>
 
-      <Modal
-        open={Boolean(openPanel)}
-        onClose={() => setOpenPanelId(null)}
-        size="md"
-        title={openPanel?.name ?? ''}
-        subtitle={
-          openPanel && (
-            <>
-              {openPanel.status === 'revoked'
-                ? t('panels.status.removed')
-                : openPanel.isConnected
-                  ? t('panels.detail.connectionLive')
-                  : t('panels.detail.connectionDown')}
-              {' · '}
-              <span className="ob-mono">{openPanel.deviceCode}</span>
-            </>
-          )
-        }
-        footer={
-          <>
-            {openPanel && openPanel.status !== 'revoked' && (
-              <>
-                <Button
-                  variant="danger"
-                  onClick={() => {
-                    // One dialog at a time: a confirmation stacked on the detail
-                    // buries the record it is asking about (HIG, Modality).
-                    setOpenPanelId(null);
-                    setConfirmRevoke(openPanel);
-                  }}
-                >
-                  {t('panels.action.remove')}
-                </Button>
-                <span style={{ flex: 1 }} />
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setRenameValue(openPanel.name);
-                    setOpenPanelId(null);
-                    setRenaming(openPanel);
-                  }}
-                >
-                  {t('panels.action.rename')}
-                </Button>
-              </>
-            )}
-            <Button variant="primary" onClick={() => setOpenPanelId(null)}>
-              {t('action.done')}
-            </Button>
-          </>
-        }
-      >
-        {openPanel && renderPanelDetail(openPanel)}
-      </Modal>
-
-      <Modal
-        open={Boolean(renaming)}
-        onClose={() => setRenaming(null)}
-        title={renaming ? t('panels.rename.title', { name: renaming.name }) : ''}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setRenaming(null)}>
-              {t('panels.rename.cancel')}
-            </Button>
-            <Button
-              variant="primary"
-              disabled={!renameValue.trim()}
-              onClick={() => void submitRename()}
-            >
-              {t('panels.rename.save')}
-            </Button>
-          </>
-        }
-      >
-        <FormField label={t('panels.rename.label')}>
-          {(id) => (
-            <Input
-              id={id}
-              value={renameValue}
-              onChange={(event) => setRenameValue(event.target.value)}
-              autoFocus
-            />
-          )}
-        </FormField>
-      </Modal>
-
-      <Modal
-        open={Boolean(confirmRevoke)}
-        onClose={() => setConfirmRevoke(null)}
-        title={confirmRevoke ? t('panels.revoke.title', { name: confirmRevoke.name }) : ''}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setConfirmRevoke(null)}>
-              {t('panels.revoke.cancel')}
-            </Button>
-            <Button variant="danger" onClick={() => void confirmRevokePanel()}>
-              {t('panels.action.remove')}
-            </Button>
-          </>
-        }
-      >
-        <p className="ob-body">{t('panels.revoke.body')}</p>
-      </Modal>
+      {dialogs}
     </div>
   );
 }

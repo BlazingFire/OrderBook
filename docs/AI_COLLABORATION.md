@@ -190,6 +190,239 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-01 - Master parity plan, P7: dead code only (Claude)
+
+Master web/server, `shared/` (i18n text only), docs; nothing under `office/`, no `ui/src` edit.
+- **Removed:** `api.dashboard`, `updatePanel`, `refreshPanel`, `rotatePanelSecret`, `setPanelStoragePath`,
+  `disconnectPanel`, `panelActivity`, `connectorProfiles`, `deleteConnector` from `master/web/src/api.ts`
+  (routes stay); `reportRangeQuery` is a module function; their `ALLOWED_UNCALLED.master` lines are gone.
+  `GET /api/custom-fields` and `fieldsService.listCustomFieldsUnguarded` (no caller in either web app,
+  `ui`, `office/`, `electron/`; the Office reads definitions from the snapshot); test, comments and
+  the API-CONTRACT / PERMISSIONS / FILE-STRUCTURE / STRUCTURE docs updated.
+- **Moved:** `fontkit` to `master` devDependencies (only `pdf-fonts.test.ts` imports it), lockfile refreshed
+  with `--package-lock-only --ignore-scripts`.
+- **Reworded:** stale "Developer tab" comments to "the /api/developer/load-catalogue route (no screen since
+  5a32106)"; the uninstaller sentence dropped from `setting.security.developerModeEnabled.help` (en, hi).
+- **Docs:** HANDOFF, TESTING_PLAN, ROLES_AND_USERS, DEVELOPER_MODE, uninstall README, PRODUCTION_READINESS
+  (loading the catalogue is now a stated go-live gap: no screen, route behind the developer token),
+  CATALOGUE_MODEL, `.env.example`.
+- **Kept (owner):** Integrations, developer routes and service, ui Developer exports, Fields Definitions,
+  Access Recycle Bin card, `GET /api/panels/pairing-window`, the unused hub handlers.
+
+### 2026-10-01 - Master parity plan, P6: admin record details become sub-screens (Claude)
+
+Master web, `shared/` (six new `panels.detail.*` keys, en and hi), tests; nothing under `office/`, no `ui/src` edit.
+- **Panels:** the detail modal is an `EditorScreen` (sub-nav `panels.detail`, back button). It reads
+  `api.panel(id)` for the role the panel acts under (with the Office-default fallback), tier and
+  permission count, and its work counts (pending orders, final orders, last action); the list row fills in until
+  it arrives. Rename and remove stay modal confirms and now open over the detail.
+- **Roles & users:** the person detail is an `EditorScreen` (sub-nav `access.person`; its id is held by `AccessScreen`
+  so the sidebar can name it); reset, reveal, deactivate and delete dialogs stay modals over it. The role editor
+  loads `api.role(id)` on open (`RoleEditorLoader`), so it edits the current version, not the list row;
+  falls back to the row if the read fails. `RoleEditor`'s `confirm()` and the role-list detail modal are unchanged.
+- **Activity log:** the entry detail is an `EditorScreen` (sub-nav `logs.entry`); the verify dialog stays a modal.
+- **Tests:** three `master-shell` cases (panel row reads `GET /api/panels/:id`, log entry, role edit reads
+  `GET /api/access/roles/:id`); `panel` and `role` dropped from `ALLOWED_UNCALLED.master`.
+- `PartyAccessScreen.tsx` untouched.
+
+### 2026-10-01 - Master parity plan, P5: the remaining parity (Claude)
+
+Master server and web, `shared/` (i18n only) and tests; nothing under `office/`, no new `ui/`
+file, `PartyAccessScreen.tsx` untouched, no migration.
+- **Server (additive):** `catalogService.listPartyRecords` (`GET /parties/:id/variants` now carries
+  `catalogueName`, null for a deleted product or without `products.view`; `findProductsByIds` gained
+  an `includeDeleted` option, default unchanged), `getPartyWithAccess` (`GET /parties/:id` carries
+  `myAccess`), `listPartiesWithMeta` (`GET /parties` rows carry `recordCount` and `myAccess`;
+  `partyVariantRepo.countByParty`). The hub handlers use the plain services.
+- **Dashboard:** a card only for each figure present; Panels card and list `panels.manage`; new
+  cards Pending Orders (`dashboard.leads.due` / `noneDue`, "due or overdue"), Final Orders,
+  Dispatched this week; stage bars with Open board; follow-ups via `api.leads({followUpDueOnly,
+  limit: 8})` only with `leads.view`, refetched on `records`, a row opens the lead; the sync
+  popover's low-stock row only when the figure exists. **Skipped:** the recent-activity box, and
+  `reservedBoxes` on `DashboardSummary` - the Office server's `DASHBOARD_FIGURE_PERMISSIONS` is an
+  exhaustive `Record` over the summary's keys, so a new shared field fails its typecheck (tried,
+  reverted).
+- **Parties:** the detail modal is now an `EditorScreen` sub-screen (`openIds.parties`; a palette party
+  hit opens it); contact, own access (+ assignees and a Party access button for
+  `party.assign`/`party.accessAll`), own records, recent pending orders; Edit/Delete as header actions;
+  `LoadMorePager`; Products-count and My access columns added to the list.
+- **Inventory:** `permissions` prop; Stock in `inventory.edit`, Physical count `stock.adjust`, band
+  cells read-only without `inventory.edit`; the row modal is an `inventory.detail` sub-screen, the
+  movement forms stay modals.
+- **Conflicts:** `canResolve` and the read-only banner removed; line and variant sets read one row per
+  line. **Settings:** offered to everyone; company/leads/connection/storage need `settings.manage` in
+  `settingsTabIdsFor` (sub-pages and screen), no identity/settings/storage read without it; header
+  comments rewritten; no setting row hidden. **Fields:** `fields.col.position` ("Order") on the Master's
+  own two tables. **Password:** `ChangePasswordDialog` publishes `signIn.notice.passwordChanged`.
+- **Tests:** `master-shell` (Dashboard cards, leads gating and follow-up row, party sub-screen and
+  search hit, Inventory permissions, password notice, Settings reach), `http-api` (`catalogueName`,
+  `myAccess`, list fields), `inventory-stock-race` (`permissions`), `web-reachability`
+  (`partyAccessFor` entry dropped).
+- **Not done:** the Office's city chips on Parties (needs a server city facet).
+
+### 2026-10-01 - Master parity plan, P4: the product catalogue on the Master (Claude)
+
+Master server and web, `shared/` (nav command, i18n), `ui/` (seven new files plus the barrel)
+and tests; nothing under `office/`, no migration.
+- **Server:** `panel-catalog.routes.ts` is the factory `productImportRoutes(actorOf)`
+  (`panelCatalogRoutes = productImportRoutes(panelActorFromRequest)`, panel path unchanged,
+  still pinned by `panel-catalog-route.integration.test.ts`); `dataRoutes` mounts it for a
+  session (`GET /api/products/import/template.:format`, `POST /api/products/import`; the
+  service checks `products.bulk`). `app.ts` mounts `imageFilesRoutes` at `/uploads/images`
+  (same session check, same 404), before the SPA catch-all. `images.routes.ts`: no file →
+  `ValidationError('validation.image.fileRequired')` (the key already existed, en + hi).
+  P3 gap: `buildLeadEntryView` carries `products` (the snapshot's catalogue page, scoped by
+  the service) only with `products.view`, so the edit form keeps a multicolour line's colour rule.
+- **ui/:** `catalogueSummary.ts` (the summaries verbatim + `CatalogueView`, `CatalogueTransport`),
+  `SubProductsScreen`, `ProductDetail`, `ProductDrawer`, `ProductImages`, `ProductImportModal`,
+  `MainProductsScreen` (with `BrandsScreen`) — ports with "keep in step" headers; transport read
+  through `transportRef`; controls absent without `products.create/edit/bulk`; Master wording
+  keys `catalog.products.savedOnline`, `catalog.products.empty.descriptionOnline`,
+  `product.saveHintOnline` (en + hi); `ui/src/ProductImages.tsx` added to the strict-i18n lint list.
+- **Master web:** `screens/ProductsScreen.tsx` (view loaded on `catalogue`, `catalogueStock`,
+  `catalogueLists` revisions; stock only with `inventory.view`; three pages in `<Activity>`),
+  `transports.catalogueTransport`; `api.ts` gains `listProducts`, `updateProduct`, `createCategory`,
+  `updateCategory`, `deleteCategory`, `productImportTemplate`, `importProducts`, `uploadProductImage`,
+  `updateProductImage`, `reorderProductImages`, `deleteProductImage`; `throwIfNotOk` passes
+  `messageKey`/`params`; `deleteProduct` removed. `App.tsx`: `products` tab and module before
+  Parties (`products.view`), sub-pages sub/main/brands (brands always offered), palette product hit →
+  `products.sub`. `MASTER_NAV` gains `products` (Alt+5): Parties Alt+6, Inventory Alt+7, Reports
+  Alt+8, Office panels Alt+9; Roles & users and Party access lose their chord.
+- **Tests:** `ui/tests/master-catalogue.test.tsx` (15), `master/tests/catalog-import-session.integration.test.ts`,
+  `http-api` (`/uploads/images` webp / 404, auth table rows, lead-entry `products`),
+  `lead-entry-screen` (multicolour edit keeps its rule), `master-shell` (Products module, Alt+5 title,
+  Alt+9 panels, row opens a sub-screen, boot routes), `screen-reachability` (`PANEL_ONLY.products`
+  dropped), `web-reachability` (`createProduct`/`deleteProduct` entries dropped).
+- **Owed:** the catalogue screens exist twice until the Office switches to `ui/` (HANDOFF decision 18).
+
+### 2026-10-01 - Master parity plan, P3: New and Edit pending order on the Master (Claude)
+
+Master server and web, `shared/` (keys and i18n), `ui/` (one new file plus the barrel)
+and tests; nothing under `office/`, no migration.
+- **Server:** `PUT /api/leads/:id` (`leads.edit` → `updateLead`; whole line set replaced,
+  malformed `items` 400, converted lead 400 `convertedLocked`); `GET /api/lead-entry` →
+  `buildLeadEntryView` beside `buildSnapshot` (untouched): party-scoped `partyVariants`,
+  `optionLists`, `stock` (`[]` without `inventory.view`), unbounded `partyGrants`,
+  `features`; 403 without `leads.create`/`leads.edit`.
+- **ui/:** `LeadEntryScreen` (port of `AddLeadScreen`, 3,050 lines, compiles under ui's
+  strict tsconfig with one fix: `view.products?.`), `LeadEntryView`,
+  `LeadEntryTransport` (read through `transportRef`). Deliberate differences: relative
+  imports, Master wording keys, `canCreateParty`, `onSaved(id, saved?)`,
+  `apiErrorText`, edit seeds the party picker with the lead's party. No existing ui
+  file edited.
+- **Master web:** `screens/LeadEntry.tsx` (view re-read on `leadEntry` revision, form
+  never unmounted), `transports.leadEntryTransport`, `api.createLead/updateLead/
+  leadEntryView`; `App.tsx`: nav-less `addLead` tab (`NOT_IN_SIDEBAR` exemption for
+  `shownTab`), `canCreateLead` and `newLeadNonce` above the early returns, `leads.new`
+  sub-page, topbar button, `record.new`, `SCREEN_ENTITIES.leadEntry`; `LeadsScreen`:
+  Edit pending order (`leads.edit`, not converted) in an `EditorScreen`, New pending
+  order on the empty state.
+- **shared:** `record.new` is `panel: 'both'` (Office list unchanged); four keys,
+  en + hi (`lead.add.savingHintOnline`, `savedOnline`, `draft.packagingEmptyFields`,
+  `draft.gradeEmptyFields`).
+- **Tests:** `ui/tests/lead-entry-screen.test.tsx` (the `add-lead-flow` cases over a
+  fake transport, plus view-only party, Create party gating, edit sends the whole line
+  set, server message on a refused save, transport identity does not re-query);
+  `packaging-switch-reach` reads both copies; `master-shell` (button and sub-page only
+  with `leads.create`, Ctrl+Shift+N renders the form, draft survives Alt+1, save →
+  POST + toast + list, Reset asks, Edit button gating; boot routes `/api/lead-entry`,
+  `/api/pick/*`); `http-api.integration` (PUT, converted lock, 403, malformed items,
+  view fields, stock `[]`, 403, restricted party hidden; two auth-guard rows);
+  `screen-reachability` (`NAVLESS_SCREENS.master.addLead`, `PANEL_ONLY.addLead` dropped).
+- **Verified:** lint, typecheck, `npm test` (PostgreSQL available: 182 files passed, 1
+  skipped = `release-workflow`), `npm run build` each exit 0; `git diff --stat office/`
+  empty. Not done: browser/Electron pass.
+- **Owed:** the lead form exists twice until the Office switches to `ui/` (HANDOFF).
+
+### 2026-10-01 - Master parity plan, P2: Pending Orders and Final Orders modules (Claude)
+
+Master web, `ui/` (new files plus the barrel), a small additive server change and
+tests; nothing under `office/`, no migration, no new i18n keys.
+- **Server (additive):** `GET /api/leads` reads `partyId` and `convertedOnly`
+  (`convertedOnly` skips the `includeConverted` guard instead of contradicting it);
+  `search` on leads and orders is split into words (AND), each matching the
+  record's id, party, owner, stage, notes, converted/lead id or any line item's
+  product, category, brand, code, variant, colour, packaging or grade, in one query
+  (`repositories/record-search.ts`; `%` and `_` typed are literal). The public
+  `/api/v1` gets the same matches.
+- **ui/:** `LeadRecordView`, `OrderRecordView` (ports of the Office's `LeadDetail` and
+  `OrderDetailBody`; transport read through a ref; stage select, note, convert,
+  dispatch and weight override absent without their permission). No existing ui file
+  edited.
+- **Master web:** `LeadsScreen`, `OrdersScreen`, `transports.ts`; `LeadsOrdersScreen`
+  deleted. `App.tsx`: `leads` tab, modules gated on `leads.view`, `orders.view`,
+  `inventory.view`, `sync.resolveConflicts`; sub-pages leads = list/converted and
+  orders = all + `stage:<id>`; stages loaded once in the shell; `openIds` cleared on
+  reset, sign-out and session end; `refreshUser` on `role`/`user` changes;
+  `shownTab` falls back to the Dashboard; palette hits open the record;
+  `navigate('conflicts')`; `SCREEN_ENTITIES` additions. `api.leads`/`api.orders` gain
+  `limit`, `offset`, `search`, `partyId`, `convertedOnly`, `followUpDueOnly`.
+- **MASTER_NAV** interim order: dashboard, leads, orders, conflicts, parties,
+  inventory, reports, panels, access, ... (Products arrives in P4).
+- **Release-note items:** list-row actions moved into the record screen; one-click
+  Convert became the Convert card (dispatch label and date); one-click Dispatch
+  became the Dispatch card (with a note); Final Orders lost its Products column;
+  Alt+N changed (see HANDOFF).
+- **Tests:** `master-shell` (Alt+N on sub-page titles, row opens detail with back
+  button and sidebar entry, Convert/Dispatch absent without permission, palette hit
+  for an unloaded order calls `GET /api/orders/:id`, Conflicts gating, role change
+  re-reads `/api/auth/me` and falls back to the Dashboard, notes tests retargeted),
+  three `http-api` cases (convertedOnly, partyId, multi-word and line-item search),
+  reachability allow-lists (`PANEL_ONLY.leads`, `lead`, `order`, `addLeadRemark`
+  dropped), `ui-conventions` also scans `ui/src`, keyboard-provider token.
+
+### 2026-10-01 - Master parity plan, P1: server pushes to panels (Claude)
+
+Master server and `master/tests` only (plus two new i18n keys and a devDependency);
+nothing under `office/`, no migration.
+- **PanelLink** gains optional `sessionsEnded?` and `resnapshotAll?`, called with `?.`.
+- **C5** `invalidateSessionsForUser` collects the tokens it ends and the hub emits
+  `session:rejected` to the panels holding them. Office-visible: renaming a user
+  also signs an idle Office user out now rather than at their next action.
+- **C6** role update/delete/restore and party-access replace re-send
+  `sync:snapshot`. Per socket it resolves with `resolvePanelActorAllowingRefusal`
+  and skips a refused token: no `session:rejected`, no panel-role snapshot.
+- **C7** lead/order edit with an empty base map: stored field clock older than the
+  edit becomes the base, so a newer edit applies and an older one still loses.
+  Two tests that relied on the old behaviour now pass a stale non-empty base.
+- **C8** narrowed: 503 `error.unavailable.signInToSync` only when an `office_panel`
+  push has a mutation with `actorUserId` that the panel role lacks the permission
+  for; otherwise it applies under the panel role as before.
+- **Tests:** new `panel-push.integration.test.ts` (real hub + socket.io-client:
+  C5, C6 role, C6 party access, dead token gets nothing); C7 x2 and C8 x3 in
+  `sync.integration.test.ts`. `socket.io-client` added to master devDependencies
+  (`package-lock.json` regenerated with `--package-lock-only --ignore-scripts`; it
+  also synced stale workspace version fields to 1.2.2).
+
+### 2026-10-01 - Master parity plan, P0: server fixes for Office writes (Claude)
+
+Owner: make the Master do everything the Office needs, Office untouched. Master
+server and `master/tests` only; nothing under `office/` changed, no migration.
+- **C1** an Office lead edit keeps its lines: `mergeUpdate` accepts `items` for a
+  lead, shape-checked up front (`assertLineDrafts`, shared with `buildLines`),
+  dropped when identical to the stored lines, built from the accepted party and
+  mode, written with `replaceLeadLines`. An `items` conflict is recorded only
+  when the incoming set loses. Restore now handles a lead's `items` and a
+  product's `variants` (`conflict.service.ts`).
+- **C2** restore stamps only the restored field's clock (locks and reads the row).
+- **C3** merges run the online checks: converted lead / dispatched order locks,
+  owner dropped without `record.reassignOwner`, source, party exists, weight,
+  vehicle (`normaliseVehicleNumber`), party name. Refusals are readable.
+- **C4** `categoryId` merges through `master/src/domain/merge-columns.ts`; an
+  unresolvable id is ignored (clock put back) and the rest of the edit kept.
+  Name rule re-checked when the category moves. Comment in `shared/.../columns.ts`
+  reworded (comment only).
+- **C9** `deleteOrder` locks and re-checks `dispatchedAt` inside the transaction.
+  **C10** party codes grow past `P-9999`. `updateLead` now stamps the clock when
+  only the lines change; a non-string `partyId` is refused.
+- **Not changed on purpose:** C7 (spurious conflicts on an empty base map) is P1,
+  so an Office edit of `notes` etc. still reports a conflict until then.
+- **Verified:** `lint`, `typecheck`, `test` each exit 0 (180 files passed, 1
+  skipped; 2301 tests passed, 17 skipped, none of them integration). Integration
+  suites ran, not skipped (`ORDERBOOK_PG_BIN` = PostgreSQL 17; the embedded one
+  is refused here): sync 43, lead 38, audit-atomicity 52. New tests cover C1-C4,
+  C9, C10, restore clocks, and a losing `items` edit writing no activity.
+
 ### 2026-09-30 - Order notes built: Filling note and Dispatch note (Claude)
 
 Owner: "start working on this plan" (`docs/ORDER_NOTES_PLAN.md`). All six steps.

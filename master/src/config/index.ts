@@ -119,8 +119,9 @@ export const config = {
   /**
    * The catalogue the loader reads (`docs/catalogue/CATALOGUE_MODEL.md` §4) —
    * Markdown, parsed by `domain/catalogue-markdown.ts`. Shipped under
-   * `assets/` with the Master, like the fonts, so Settings → Developer → Load
-   * catalogue works on an installed copy that has no repository beside it.
+   * `assets/` with the Master, like the fonts, so the /api/developer/load-catalogue
+   * route (no screen since 5a32106) works on an installed copy that has no
+   * repository beside it.
    */
   catalogueFile: path.join(packageRoot, 'assets', 'catalogue', 'swisware-plus-2026.md'),
 

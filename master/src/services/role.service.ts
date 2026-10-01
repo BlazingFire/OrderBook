@@ -28,6 +28,7 @@ import * as accessGuard from '../repositories/access-guard.repository.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import { nextHlc } from '../repositories/identity.repository.js';
 import * as roleRepo from '../repositories/role.repository.js';
+import { panelLink } from '../realtime/panel-link.js';
 import { publishChange } from './change-bus.js';
 
 /** Fields the offline merge can arbitrate over, in wire-format names. */
@@ -200,6 +201,8 @@ export async function updateRole(
   if (!role) throw new NotFoundError('Role');
 
   publishChange({ entity: 'role', action: 'updated', id, payload: role });
+  // A role's permissions change what its holders' panels may show.
+  panelLink()?.resnapshotAll?.();
   return role;
 }
 
@@ -247,6 +250,8 @@ export async function deleteRole(id: string, actor: ActorContext): Promise<Role>
   if (!role) throw new NotFoundError('Role');
 
   publishChange({ entity: 'role', action: 'deleted', id, payload: role });
+  // A role's permissions change what its holders' panels may show.
+  panelLink()?.resnapshotAll?.();
   return role;
 }
 
@@ -298,6 +303,8 @@ export async function restoreRole(
   if (!role) throw new NotFoundError('Role');
 
   publishChange({ entity: 'role', action: 'restored', id, payload: role });
+  // A role's permissions change what its holders' panels may show.
+  panelLink()?.resnapshotAll?.();
   return role;
 }
 

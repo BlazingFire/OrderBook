@@ -3,9 +3,9 @@
 Two scripts that take OrderBook off a machine completely. They ship inside both
 setup files **and inside the standalone clean-install tool**
 (`resources/uninstall`, via `extraResources` in all three
-`electron-builder.yml` files), and are what the desktop app's **Settings →
-Developer → Uninstall OrderBook** button, the Windows uninstaller's "also delete
-all data?" question, and `cleaner/` all run. They can also be run by hand from
+`electron-builder.yml` files), and are what the Windows uninstaller's "also delete
+all data?" question and `cleaner/` run (the in-app Uninstall button went with the
+Settings Developer tab in 5a32106). They can also be run by hand from
 this folder.
 
 There is one copy of each script in this repository and every entry point runs

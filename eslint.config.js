@@ -90,7 +90,11 @@ export default tseslint.config(
      * to ESLint, so the block would quietly cover less than it says.
      * `master/tests/tooling-config.test.ts` fails on an entry naming no file.
      */
-    files: ['ui/src/ImageCropModal.tsx', 'office/web/src/components/ProductImages.tsx'],
+    files: [
+      'ui/src/ImageCropModal.tsx',
+      'ui/src/ProductImages.tsx',
+      'office/web/src/components/ProductImages.tsx',
+    ],
     plugins: { 'orderbook-i18n': orderbookI18n },
     rules: {
       'orderbook-i18n/no-untranslated-jsx-text': 'error',

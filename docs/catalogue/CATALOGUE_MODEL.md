@@ -3,7 +3,7 @@
 Design for the owner's 2026-09-28 catalogue restructure, **ported onto main's
 1.2 product master** (category → model → variant, per-variant stock, no money).
 The data lives in [`master/assets/catalogue/swisware-plus-2026.md`](../../master/assets/catalogue/swisware-plus-2026.md)
-(shipped with the Master so the Developer tab can load it in an installed copy).
+(shipped with the Master so the `/api/developer/load-catalogue` route can load it in an installed copy; no screen calls it since 5a32106).
 
 The owner's request, in short: load the SWISWARE 2026 catalogue as Brand →
 Product → Sub product, allow more than one brand, give every product a software
@@ -107,7 +107,7 @@ Never edit a shipped migration.
   transaction: upsert brand values and colours (hex, reactivate), products =
   categories with code/brand/sort order, sub products = one-variant models with
   `CODE-0001…` codes in catalogue order, `sort_order`, size, rule per §2,
-  weights NULL. Additive mode (Settings → Developer → Load catalogue,
+  weights NULL. Additive mode (the `/api/developer/load-catalogue` route,
   `seed:catalogue`) skips what exists; `replace` (reload) first clears the
   catalogue-dependent data only.
 - `npm run reload:catalog` — parse, refuse while another connection to the
@@ -139,6 +139,17 @@ Never edit a shipped migration.
   `categoryId` returns **every** live sub product of that category in
   `sort_order` order (limit raised; `PICK_MAX_LIMIT` ≥ 200), rows carry size,
   `multiColour`, `hasVariants`, variants.
+- **The Master's own Products module** (parity plan P4, 2026-10-01): Products /
+  Sub products / Brands over the same routes — `GET /api/products` (limit up to
+  2000), `/api/categories` CRUD, `/api/products/:id/images…` for photos — plus
+  two the Master gained for a signed-in user: the **import** (`GET
+  /api/products/import/template.:format`, `POST /api/products/import`, the
+  `productImportRoutes` handlers the panel path also uses; `products.bulk` is
+  checked by the service) and the **photo files** (`/uploads/images/:id/:variant`,
+  the same permission-checked router as `/api/images`, 404 for a product the
+  caller may not see). The screens are the `ui/` ports `SubProductsScreen`,
+  `MainProductsScreen`, `BrandsScreen`, `ProductDetail`, `ProductDrawer`,
+  `ProductImages`, `ProductImportModal`.
 - Snapshot and list caps rise so 549+ sub products and their stock rows reach
   panels complete.
 - Settings: main's existing `leads.followUpDefaultDays` — **fallback 3**
@@ -148,7 +159,7 @@ Never edit a shipped migration.
   `settings:save`, as the signed-in user only (refused for the panel's own role
   actor); the Master still enforces `settings.manage`.
 
-## 6. Lead entry (Office `AddLeadScreen`; the Master keeps no New lead page)
+## 6. Lead entry (`ui/LeadEntryScreen`, a port of the Office `AddLeadScreen`; both panels mount it — the Master since 2026-10-01 as New / Edit pending order)
 
 1. **Party** — typeahead; the list appears only once something is typed.
 2. **Source** — active `lead.sourcePlatform` values; the free-text "Other" path

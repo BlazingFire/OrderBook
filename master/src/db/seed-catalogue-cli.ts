@@ -2,7 +2,7 @@
  * Standalone catalogue loader: `npm run seed:catalogue` (root) or
  * `npm run seed:catalogue --workspace @orderbook/master`.
  *
- * The same additive `seedCatalogue` the developer tab calls, reachable
+ * The same additive `seedCatalogue` the /api/developer/load-catalogue route (no screen since 5a32106) calls, reachable
  * without a browser: the shipped SWISWARE catalogue file
  * (`master/assets/catalogue/swisware-plus-2026.md`, `docs/catalogue/CATALOGUE_MODEL.md`
  * §4) — brands, colours, products and sub products, weights left blank —

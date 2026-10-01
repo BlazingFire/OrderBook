@@ -12,6 +12,7 @@ import type {
   ListQuery,
   Paginated,
   Party,
+  PartyAccessLevel,
   PartyInput,
   PartyProductVariant,
   PartyProductVariantInput,
@@ -33,7 +34,7 @@ import {
   validateProductInput,
 } from '@orderbook/shared';
 
-import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
+import { actorCan, actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { clampPaging } from '../domain/paging.js';
 import { resolvePartyScope } from '../domain/party-scope.js';
 import { assertParentsLive, suggestRestoredName } from '../domain/recycle-bin.js';
@@ -42,6 +43,7 @@ import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js'
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as customFieldRepo from '../repositories/custom-field.repository.js';
 import { nextHlc } from '../repositories/identity.repository.js';
+import * as partyAccessRepo from '../repositories/party-access.repository.js';
 import * as partyRepo from '../repositories/party.repository.js';
 import * as variantRepo from '../repositories/party-variant.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
@@ -1150,6 +1152,73 @@ export async function listVariantsForParty(
   await requirePartyAccess(partyId, 'view', actor);
 
   return variantRepo.listForParty(actor.tenantId, partyId);
+}
+
+/** A party's own record plus the catalogue model it stands for, named. */
+export type PartyRecord = PartyProductVariant & { catalogueName: string | null };
+
+/**
+ * `listVariantsForParty` with the catalogue name resolved, for the Master's
+ * party screen. `catalogueName` is null when the product is deleted or the
+ * caller may not read the catalogue. The hub's `partyVariant:list` keeps the
+ * plain service.
+ */
+export async function listPartyRecords(
+  partyId: string,
+  actor: ActorContext,
+): Promise<PartyRecord[]> {
+  const variants = await listVariantsForParty(partyId, actor);
+  const names = actorCan(actor, 'products.view')
+    ? await productRepo.findProductsByIds(
+        actor.tenantId,
+        [...new Set(variants.map((variant) => variant.productId))],
+        undefined,
+        { includeDeleted: false },
+      )
+    : new Map();
+  return variants.map((variant) => ({
+    ...variant,
+    catalogueName: names.get(variant.productId)?.name ?? null,
+  }));
+}
+
+/** The caller's own grant on one party; null = unassigned (open) or no grant of theirs. */
+export type PartyMyAccess = PartyAccessLevel | null;
+
+/** `getParty` plus the caller's own access to it — what the Master's detail screen shows everyone. */
+export async function getPartyWithAccess(
+  id: string,
+  actor: ActorContext,
+): Promise<Party & { myAccess: PartyMyAccess }> {
+  const party = await getParty(id, actor);
+  const [grant] = await partyAccessRepo.grantsForUser(
+    actor.tenantId,
+    resolvePartyScope(actor).userId,
+    [id],
+  );
+  return { ...party, myAccess: grant?.level ?? null };
+}
+
+/** `listParties` with each row's own-record count and the caller's own access to it. */
+export async function listPartiesWithMeta(
+  query: ListQuery,
+  actor: ActorContext,
+): Promise<Paginated<Party & { recordCount: number; myAccess: PartyMyAccess }>> {
+  const page = await listParties(query, actor);
+  const ids = page.items.map((party) => party.id);
+  const [counts, grants] = await Promise.all([
+    variantRepo.countByParty(actor.tenantId, ids),
+    partyAccessRepo.grantsForUser(actor.tenantId, resolvePartyScope(actor).userId, ids),
+  ]);
+  const levels = new Map(grants.map((grant) => [grant.partyId, grant.level]));
+  return {
+    ...page,
+    items: page.items.map((party) => ({
+      ...party,
+      recordCount: counts.get(party.id) ?? 0,
+      myAccess: levels.get(party.id) ?? null,
+    })),
+  };
 }
 
 export async function upsertVariant(

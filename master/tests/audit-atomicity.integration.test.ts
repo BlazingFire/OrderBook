@@ -517,6 +517,41 @@ describe.skipIf(!canRunIntegrationTests)('audited writes commit with their entry
       expect(await countRows('activity_log')).toBe(before);
     });
 
+    it('a lead edit whose lines lose changes nothing and records nothing but the conflict', async () => {
+      const { lead, product, variant } = await seedLead();
+      // The Master's own edit of the lines lands first and stamps `items`.
+      await leads.updateLead(
+        lead.id,
+        { items: [{ productId: product.id, variantId: variant.id, quantity: 9, packaging: 'carton' }] },
+        actor,
+      );
+      const activityBefore = await countRows('activity_log');
+      const conflictsBefore = await countRows('sync_conflicts');
+
+      const response = await sync.applyPush(
+        {
+          mutations: [
+            mergeMutation({
+              kind: 'lead.update',
+              entity: 'lead',
+              entityId: lead.id,
+              hlc: hlcFor(-600_000),
+              fields: ['items'],
+              payload: {
+                items: [{ productId: product.id, variantId: variant.id, quantity: 1, packaging: 'carton' }],
+              },
+            }),
+          ],
+        },
+        await testActor({ deviceCode: PANEL, actorType: 'office_panel' }),
+      );
+
+      expect(response.results[0]?.conflicts.map((conflict) => conflict.field)).toEqual(['items']);
+      expect(await countRows('sync_conflicts')).toBe(conflictsBefore + 1);
+      expect((await leads.getLead(lead.id, actor)).items[0]?.quantity).toBe(9);
+      expect(await countRows('activity_log')).toBe(activityBefore);
+    });
+
     it('pairing a panel names it', async () => {
       await setup.runFirstTimeSetup('Shree Ceramics');
       panels.openPairingWindow();

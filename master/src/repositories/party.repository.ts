@@ -152,7 +152,10 @@ export async function insertParty(party: NewParty, trx: TransactionContext): Pro
   // nextval() rather than MAX(code)+1: two Office Panels can create a party in
   // the same instant, and the sequence guarantees distinct codes regardless.
   const { rows } = await trx.raw<{ rows: [{ code: string }] }>(
-    `SELECT 'P-' || lpad(nextval('party_code_seq')::text, 4, '0') AS code`,
+    // lpad truncates, so past P-9999 a fixed width would cut the code short and
+    // collide; the width grows with the number instead.
+    `SELECT 'P-' || lpad(s::text, greatest(4, length(s::text)), '0') AS code
+       FROM (SELECT nextval('party_code_seq') AS s) n`,
   );
 
   const [row] = await trx(TABLE)

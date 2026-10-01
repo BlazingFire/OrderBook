@@ -228,6 +228,15 @@ export async function convertLead(
   return order;
 }
 
+/** Upper-cased, spaces collapsed; null when blank. Shared with the offline merge. */
+export function normaliseVehicleNumber(value: string | null): string | null {
+  const vehicle = value?.trim().toUpperCase().replace(/\s+/g, ' ') || null;
+  if (vehicle !== null && !/^[A-Z0-9 -]{1,20}$/.test(vehicle)) {
+    throw new ValidationError('validation.order.vehicleInvalid');
+  }
+  return vehicle;
+}
+
 export async function updateOrder(
   id: string,
   input: OrderUpdateInput,
@@ -270,11 +279,7 @@ export async function updateOrder(
   }
 
   if (input.vehicleNumber !== undefined) {
-    const vehicle = input.vehicleNumber?.trim().toUpperCase().replace(/\s+/g, ' ') || null;
-    if (vehicle !== null && !/^[A-Z0-9 -]{1,20}$/.test(vehicle)) {
-      throw new ValidationError('validation.order.vehicleInvalid');
-    }
-    patch.vehicle_number = vehicle;
+    patch.vehicle_number = normaliseVehicleNumber(input.vehicleNumber);
   }
 
   await db().transaction(async (trx) => {
@@ -546,11 +551,27 @@ export async function deleteOrder(
     });
   }
 
-  const releasedTargets = await reservationRepo.activeForOrder(actor.tenantId, id);
+  let releasedTargets: Array<{ productId: string; variantId: string; quantity: number }> = [];
 
   const order = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
-    const fieldHlc = { ...existing.sync.fieldHlc, deletedAt: hlc };
+
+    // Re-checked under the row's lock: the `dispatchedAt` check above ran
+    // outside any transaction, so a `dispatchOrder` committing in between
+    // would otherwise be followed by a delete of a shipped order.
+    const locked = await orderRepo.lockOrder(actor.tenantId, id, trx);
+    if (!locked) throw new NotFoundError('Order');
+    if (locked.dispatchedAt) {
+      throw new ConflictError('error.conflict.blockedByLiveReferences', {}, {
+        blockedBy: [
+          { entityType: 'order', id, label: id, reason: 'dispatched' },
+        ] satisfies BinBlocker[],
+      });
+    }
+
+    releasedTargets = await reservationRepo.activeForOrder(actor.tenantId, id, trx);
+
+    const fieldHlc = { ...locked.fieldHlc, deletedAt: hlc };
     const row = await orderRepo.softDeleteOrder(actor.tenantId, id, actorUserId(actor), { hlc, fieldHlc }, trx);
 
     await reservationRepo.releaseForOrder(actor.tenantId, id, trx);

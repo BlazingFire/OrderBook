@@ -38,7 +38,7 @@ import { ProductValidationError, validateProductInput } from '@orderbook/shared'
 export type ProductField = Exclude<keyof ProductInput, 'categoryId' | 'customFields' | 'variants' | 'hasVariants'>;
 
 /** The three columns that describe the row's variant rather than its model. */
-export type VariantField = 'variant' | 'code' | 'weightKg';
+export type VariantField = 'variant' | 'code' | 'weightKg' | 'colourRule';
 
 export type ImportField = ProductField | VariantField;
 
@@ -46,8 +46,12 @@ type ImportKind = 'text' | 'number' | 'boolean';
 
 export interface ImportColumn {
   field: ImportField;
+  /** The header the template writes — the owner's catalogue words; the field key is still read. */
+  label: string;
   kind: ImportKind;
   required?: true;
+  /** Read from an older sheet but left out of the template: `colourRule` replaced it. */
+  legacy?: true;
   min?: number;
   /** `true` when `min` is a floor the value must clear, not merely reach. */
   exclusiveMin?: true;
@@ -64,24 +68,27 @@ export interface ImportColumn {
  * `categoryCode` instead — the one pair where either will do (`matchHeaders`).
  */
 export const IMPORT_COLUMNS: readonly ImportColumn[] = [
-  { field: 'categoryName', kind: 'text', required: true, note: 'Required unless categoryCode is filled. The product — e.g. ONE PIECE TOILET. Created if it does not exist yet.' },
-  { field: 'name', kind: 'text', required: true, note: 'Required. The sub product — e.g. DAMRU. Rows sharing a product and sub product are one sub product.' },
-  { field: 'variant', kind: 'text', note: 'Colour or pattern of this row — e.g. Blue, Vitrosa 41. Leave blank for a product that comes in one form.' },
-  { field: 'code', kind: 'text', required: true, note: 'Required. Unique across the whole catalogue.' },
-  { field: 'weightKg', kind: 'number', min: 0, exclusiveMin: true, note: 'Weight of one piece in kilograms. Blank until known.' },
-  { field: 'categoryCode', kind: 'text', note: 'The product by its code — e.g. OPT. It must exist already; filled, it is used instead of categoryName.' },
-  { field: 'categoryBrand', kind: 'text', note: 'The brand the product is sold under — e.g. Swisware+. Read with categoryName, since two brands may share a product name.' },
-  { field: 'alias', kind: 'text', note: 'A short name staff use at the counter.' },
-  { field: 'size', kind: 'text', note: 'e.g. 18x12, L-27 B-15 H-26' },
-  { field: 'multiColour', kind: 'boolean', note: 'yes when the model is made in every colour of the colour list, so a lead line can name one. Defaults to no.' },
+  { field: 'categoryBrand', label: 'Brand', kind: 'text', note: 'The brand the product is sold under — e.g. Swisware+. Read with Main product, since two brands may share a product name.' },
+  { field: 'categoryCode', label: 'Main product code', kind: 'text', note: 'The main product by its code — e.g. OPT. It must exist already; filled, it is used instead of Main product.' },
+  { field: 'categoryName', label: 'Main product', kind: 'text', required: true, note: 'Required unless Main product code is filled. The main product — e.g. ONE PIECE TOILET. Created if it does not exist yet.' },
+  { field: 'name', label: 'Sub product', kind: 'text', required: true, note: 'Required. The sub product as printed — e.g. 102 (9"), DAMRU. Rows sharing a main product and sub product are one sub product.' },
+  { field: 'size', label: 'Size', kind: 'text', note: 'e.g. 18x12, L-27 B-15 H-26' },
+  { field: 'colourRule', label: 'Colour rule', kind: 'text', note: 'fixed = made in the one colour named in Colour; dedicated = the design is its own colour, none shown; multicolour = any colour of the colour range, picked on the lead. Blank reads the Colour column the old way.' },
+  { field: 'variant', label: 'Colour', kind: 'text', note: 'The colour of a fixed sub product — e.g. White, Magenta. Leave blank for dedicated and multicolour.' },
+  { field: 'code', label: 'Code', kind: 'text', required: true, note: 'Required. The sub product software code — e.g. OPT-0001. Unique across the whole catalogue.' },
+  { field: 'weightKg', label: 'Weight (kg)', kind: 'number', min: 0, exclusiveMin: true, note: 'Weight of one piece in kilograms. Blank until known.' },
+  { field: 'alias', label: 'Alias', kind: 'text', note: 'A short name staff use at the counter.' },
+  { field: 'multiColour', label: 'Multicolour', kind: 'boolean', legacy: true, note: 'yes when the model is made in every colour of the colour list. Superseded by Colour rule.' },
 ];
 
 /** The template's header row, in order. */
-export const IMPORT_HEADERS: readonly string[] = IMPORT_COLUMNS.map((column) => column.field);
+export const IMPORT_HEADERS: readonly string[] = IMPORT_COLUMNS.filter((column) => !column.legacy).map(
+  (column) => column.label,
+);
 
 const COLUMN_BY_FIELD = new Map(IMPORT_COLUMNS.map((column) => [column.field, column]));
 
-const VARIANT_FIELDS = new Set<ImportField>(['variant', 'code', 'weightKg']);
+const VARIANT_FIELDS = new Set<ImportField>(['variant', 'code', 'weightKg', 'colourRule']);
 
 /** Lower-case letters and digits only: "Weight (kg)" and "weight_kg" are the same header. */
 export function normalizeHeader(text: string): string {
@@ -110,11 +117,21 @@ const HEADER_ALIASES: Record<string, ImportField> = Object.fromEntries(
       ['alias', ['shortname', 'nickname']],
       ['size', ['dimensions']],
       ['multiColour', ['multicolor', 'allcolours', 'allcolors', 'anycolour', 'anycolor']],
+      ['colourRule', ['colorrule', 'rule']],
     ] as Array<[ImportField, string[]]>
   ).flatMap(([field, aliases]) =>
-    [field, ...aliases].map((alias): [string, ImportField] => [normalizeHeader(alias), field]),
+    [field, COLUMN_BY_FIELD.get(field)?.label ?? field, ...aliases].map((alias): [string, ImportField] => [normalizeHeader(alias), field]),
   ),
 );
+
+/** What the Colour rule column accepts, by `normalizeHeader` form; `selectable` is the stored name. */
+const COLOUR_RULES: Record<string, 'fixed' | 'dedicated' | 'multicolour'> = {
+  fixed: 'fixed',
+  dedicated: 'dedicated',
+  multicolour: 'multicolour',
+  multicolor: 'multicolour',
+  selectable: 'multicolour',
+};
 
 /** What a boolean column accepts: sheets say "yes", "Y", "true", "1", "no", "N", "false", "0". */
 const BOOLEAN_WORDS: Record<string, boolean> = {
@@ -273,11 +290,28 @@ export function parseImportRow(
 
   // Built as loose records above because the fields are chosen at runtime;
   // by here the required strings are present.
+  // The colour rule decides what the Colour cell means (docs/catalogue/
+  // CATALOGUE_MODEL.md §2): only a fixed sub product carries one, and a
+  // multicolour one is the single flag the model stores. No rule at all reads
+  // the sheet the way it was read before the column existed.
+  const ruleText = typeof variant.colourRule === 'string' ? variant.colourRule.toLowerCase() : '';
+  const rule = ruleText ? COLOUR_RULES[normalizeHeader(ruleText)] : undefined;
+  const colour = typeof variant.variant === 'string' ? variant.variant : null;
+  if (ruleText && !rule) {
+    issue(COLUMN_BY_FIELD.get('colourRule'), indexOf('colourRule'), 'validation.import.invalidValue', {
+      column: (headerRow[indexOf('colourRule')] ?? 'colourRule').trim() || 'colourRule',
+      allowed: 'fixed, dedicated, multicolour',
+    });
+  } else if (rule === 'fixed' && !colour) {
+    issue(COLUMN_BY_FIELD.get('variant'), indexOf('variant'), 'validation.import.fixedNeedsColour');
+  }
+  if (rule) product.multiColour = rule === 'multicolour';
+
   const built: ImportRow = {
     product: product as unknown as ProductInput,
     variant: {
       code: String(variant.code ?? ''),
-      label: typeof variant.variant === 'string' ? variant.variant : null,
+      label: rule === 'dedicated' || rule === 'multicolour' ? null : colour,
       weightKg: typeof variant.weightKg === 'number' ? variant.weightKg : null,
     },
   };
@@ -436,8 +470,8 @@ export function groupImportRows(
  * reads before filling the sheet in.
  */
 export function templateGuideRows(createsCategories: boolean): string[][] {
-  return IMPORT_COLUMNS.map((column) => [
-    column.field,
+  return IMPORT_COLUMNS.filter((column) => !column.legacy).map((column) => [
+    column.label,
     column.required ? 'yes' : '',
     column.kind === 'boolean' ? 'yes / no' : column.kind,
     noteFor(column, createsCategories),
@@ -447,7 +481,7 @@ export function templateGuideRows(createsCategories: boolean): string[][] {
 /** The note that is the company's answer rather than a fixed sentence. */
 function noteFor(column: (typeof IMPORT_COLUMNS)[number], createsCategories: boolean): string {
   if (column.field === 'categoryName' && !createsCategories) {
-    return 'Required unless categoryCode is filled. Must already exist — an import cannot create one.';
+    return 'Required unless Main product code is filled. Must already exist — an import cannot create one.';
   }
   return column.note;
 }

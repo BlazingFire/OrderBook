@@ -29,6 +29,24 @@ export async function listForParty(
   return rows.map(mapPartyProductVariant);
 }
 
+/** How many own records each of these parties holds; parties with none are absent. */
+export async function countByParty(
+  tenantId: string,
+  partyIds: readonly string[],
+  runner: Runner = db(),
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  if (partyIds.length === 0) return counts;
+  const rows = await runner(TABLE)
+    .where({ tenant_id: tenantId })
+    .whereIn('party_id', [...partyIds])
+    .groupBy('party_id')
+    .select<Array<{ party_id: string; n: string }>>('party_id')
+    .count('id as n');
+  for (const row of rows) counts.set(String(row.party_id), Number(row.n));
+  return counts;
+}
+
 /**
  * Every variant the caller may see — scoped, because a variant is what one
  * named party agreed for a product (its own name, size and packaging) and is

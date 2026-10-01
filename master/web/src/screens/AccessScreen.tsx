@@ -8,7 +8,7 @@
  * changeable state is disabled with the reason attached.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import type { OneTimeSecret, PermissionCatalogue, Role, RoleTier, User } from '@orderbook/shared';
 
 import { api, ApiError, type FieldDifference } from '../api';
@@ -89,6 +89,8 @@ export function AccessScreen({
   const [vaultEnabled, setVaultEnabled] = useState(false);
   const [editing, setEditing] = useState<Role | 'new' | null>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  /** Which person's detail screen is open, by id so it re-reads the live row. */
+  const [openUserId, setOpenUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   /*
    * The role editor's own dirty-aware cancel.
@@ -176,6 +178,8 @@ export function AccessScreen({
   // two are mutually exclusive.
   const roleEditorOpen = editing !== null;
   const userEditorOpen = editingUser !== null;
+  const openPerson = users.find((user) => user.id === openUserId) ?? null;
+  const personOpen = openPerson !== null && active === 'users';
 
   /*
    * The Users/Roles switcher lives in the topbar, beside the screen's name,
@@ -188,7 +192,7 @@ export function AccessScreen({
    * between inside one, and a live switcher there would throw away a draft.
    */
   useTopbarActions(
-    tabItems.length > 1 && !roleEditorOpen && !userEditorOpen ? (
+    tabItems.length > 1 && !roleEditorOpen && !userEditorOpen && !personOpen ? (
       <Segmented options={tabItems} value={active} onChange={onTabChange} />
     ) : null,
   );
@@ -226,7 +230,13 @@ export function AccessScreen({
             ],
             activeId: 'access.user',
           }
-        : null,
+        : personOpen
+          ? {
+              parentId: 'access',
+              items: [{ id: 'access.person', label: openPerson.displayName, icon: 'parties' }],
+              activeId: 'access.person',
+            }
+          : null,
   );
 
   if (roleEditorOpen) {
@@ -268,7 +278,7 @@ export function AccessScreen({
           </div>
         )}
         {catalogue ? (
-          <RoleEditor
+          <RoleEditorLoader
             key={editing === 'new' ? 'new' : editing.id}
             catalogue={catalogue}
             role={editing === 'new' ? null : editing}
@@ -357,6 +367,8 @@ export function AccessScreen({
           currentUserId={currentUserId}
           actorTier={currentUserTier}
           loading={loading}
+          openUserId={openUserId}
+          onOpenUser={setOpenUserId}
           onEdit={setEditingUser}
           onSecret={setSecret}
           onRun={run}
@@ -390,6 +402,8 @@ function UsersTab({
   currentUserId,
   actorTier,
   loading,
+  openUserId,
+  onOpenUser,
   onEdit,
   onSecret,
   onRun,
@@ -404,6 +418,9 @@ function UsersTab({
   /** The caller's own tier, so the role picker cannot offer one above it. */
   actorTier: RoleTier;
   loading: boolean;
+  /** The person whose detail screen is open — held by the screen so its sidebar entry can name it. */
+  openUserId: string | null;
+  onOpenUser: (id: string | null) => void;
   /** Opens the person's own editor screen — this tab does not host it. */
   onEdit: (user: User) => void;
   onSecret: (secret: OneTimeSecret) => void;
@@ -416,8 +433,6 @@ function UsersTab({
   const [sort, setSort] = useState<'created' | 'name' | 'role' | 'lastSignIn'>('created');
   const [confirmDeactivate, setConfirmDeactivate] = useState<User | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<User | null>(null);
-  /** Which person's detail dialog is open, by id so it re-reads the live row. */
-  const [openUserId, setOpenUserId] = useState<string | null>(null);
   /** The person whose password is being set, and the value being set. */
   const [settingPassword, setSettingPassword] = useState<User | null>(null);
   const [passwordValue, setPasswordValue] = useState('');
@@ -605,7 +620,7 @@ function UsersTab({
             variant="secondary"
             size="sm"
             icon="expand"
-            onClick={() => setOpenUserId(user.id)}
+            onClick={() => onOpenUser(user.id)}
           >
             {t('access.users.open')}
           </Button>
@@ -749,21 +764,15 @@ function UsersTab({
                 blocked ?? (user.id === currentUserId ? t('access.users.thisIsYou') : undefined)
               }
               onClick={() => {
-                // One dialog at a time: a confirmation stacked on the detail
-                // buries the person it is asking about (HIG, Modality).
-                setOpenUserId(null);
                 setConfirmDelete(user);
               }}
             >
               {t('access.users.delete')}
             </Button>
-            <span style={{ flex: 1 }} />
             {canReveal && (
               <Button
                 variant="secondary"
                 onClick={() => {
-                  // One dialog at a time (HIG, Modality).
-                  setOpenUserId(null);
                   setConfirmPassword('');
                   setRevealing(user);
                 }}
@@ -774,8 +783,6 @@ function UsersTab({
             <Button
               variant="secondary"
               onClick={() => {
-                // One dialog at a time (HIG, Modality).
-                setOpenUserId(null);
                 setPasswordValue('');
                 setSettingPassword(user);
               }}
@@ -793,7 +800,6 @@ function UsersTab({
                 // Only deactivating asks first; reactivating never needs a
                 // confirmation.
                 if (user.isActive) {
-                  setOpenUserId(null);
                   setConfirmDeactivate(user);
                 } else {
                   void onRun(
@@ -813,7 +819,6 @@ function UsersTab({
               variant="secondary"
               icon="edit"
               onClick={() => {
-                setOpenUserId(null);
                 onEdit(user);
               }}
             >
@@ -821,94 +826,12 @@ function UsersTab({
             </Button>
           </>
         )}
-        <Button variant="primary" onClick={() => setOpenUserId(null)}>
-          {t('action.done')}
-        </Button>
       </>
     );
   }
 
-  return (
-    <Card>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 'var(--s-12)',
-        }}
-      >
-        <h2 className="ob-title" style={{ margin: 0 }}>
-          {/* Not "0 people" before the first response — that is a false claim
-              about the company, and a worse one than the spinner §7 forbids. */}
-          {loading
-            ? t('access.users.titleLoading')
-            : t('access.users.title', { count: users.length })}
-        </h2>
-        {canManage && (
-          <Button variant="primary" icon="plus" onClick={() => setAdding(true)}>
-            {t('access.users.add')}
-          </Button>
-        )}
-      </div>
-
-      {adding && (
-        <UserForm
-          roles={roles}
-          actorTier={actorTier}
-          onCancel={() => setAdding(false)}
-          onCreated={(secret) => {
-            setAdding(false);
-            onSecret(secret);
-          }}
-          onRun={onRun}
-        />
-      )}
-
-      {loading ? (
-        <SkeletonTable columns={columns} />
-      ) : (
-        <DataTable
-          columns={columns}
-          rows={visible}
-          rowKey={(user) => user.id}
-          selectedId={openUserId ?? undefined}
-          onRowOpen={(user) => setOpenUserId(user.id)}
-          empty={
-            <EmptyState
-              title={users.length === 0 ? t('access.users.empty') : t('access.users.emptyFiltered')}
-            />
-          }
-        />
-      )}
-
-      <Modal
-        open={Boolean(openUser)}
-        onClose={() => setOpenUserId(null)}
-        size="md"
-        title={
-          openUser && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-12)' }}>
-              <Avatar name={openUser.displayName} avatar={openUser.avatar} size="md" />
-              {openUser.displayName}
-            </span>
-          )
-        }
-        label={openUser?.displayName ?? ''}
-        subtitle={
-          openUser && (
-            <>
-              <span className="ob-mono">{openUser.username}</span>
-              {' · '}
-              {openUser.roleName}
-            </>
-          )
-        }
-        footer={openUser && renderUserActions(openUser)}
-      >
-        {openUser && renderUserDetail(openUser)}
-      </Modal>
-
+  const dialogs = (
+    <>
       {/*
        * "Show this person's password" exists here only on an installation that
        * has deliberately switched the password vault on: `canReveal` is the
@@ -1102,6 +1025,88 @@ function UsersTab({
       >
         <p className="ob-body">{confirmDelete ? t('access.users.deleteConfirmBody') : ''}</p>
       </Modal>
+    </>
+  );
+
+  if (openUser) {
+    return (
+      <>
+        <EditorScreen
+          meta={
+            <>
+              <span className="ob-mono ob-small">{openUser.username}</span>
+              <span className="ob-small">{openUser.roleName}</span>
+            </>
+          }
+          actions={renderUserActions(openUser)}
+          onBack={() => {
+            onOpenUser(null);
+            return true;
+          }}
+          backLabel={t('access.editor.backToList')}
+        >
+          {renderUserDetail(openUser)}
+        </EditorScreen>
+        {dialogs}
+      </>
+    );
+  }
+
+  return (
+    <Card>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 'var(--s-12)',
+        }}
+      >
+        <h2 className="ob-title" style={{ margin: 0 }}>
+          {/* Not "0 people" before the first response — that is a false claim
+              about the company, and a worse one than the spinner §7 forbids. */}
+          {loading
+            ? t('access.users.titleLoading')
+            : t('access.users.title', { count: users.length })}
+        </h2>
+        {canManage && (
+          <Button variant="primary" icon="plus" onClick={() => setAdding(true)}>
+            {t('access.users.add')}
+          </Button>
+        )}
+      </div>
+
+      {adding && (
+        <UserForm
+          roles={roles}
+          actorTier={actorTier}
+          onCancel={() => setAdding(false)}
+          onCreated={(secret) => {
+            setAdding(false);
+            onSecret(secret);
+          }}
+          onRun={onRun}
+        />
+      )}
+
+      {loading ? (
+        <SkeletonTable columns={columns} />
+      ) : (
+        <DataTable
+          columns={columns}
+          rows={visible}
+          rowKey={(user) => user.id}
+          selectedId={openUserId ?? undefined}
+          onRowOpen={(user) => onOpenUser(user.id)}
+          empty={
+            <EmptyState
+              title={users.length === 0 ? t('access.users.empty') : t('access.users.emptyFiltered')}
+            />
+          }
+        />
+      )}
+
+      {dialogs}
     </Card>
   );
 }
@@ -1502,6 +1507,28 @@ function RolesTab({
       </Modal>
     </Card>
   );
+}
+
+/** Reads the role again on open, so the editor works on the current version and not the list row. */
+function RoleEditorLoader(props: ComponentProps<typeof RoleEditor>) {
+  const roleId = props.role?.id ?? null;
+  const [fresh, setFresh] = useState<Role | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (!roleId) return;
+    let live = true;
+    api
+      .role(roleId)
+      .then((role) => live && setFresh(role))
+      .catch(() => live && setFailed(true));
+    return () => {
+      live = false;
+    };
+  }, [roleId]);
+
+  if (roleId && !fresh && !failed) return <SkeletonRows rows={6} columns={6} />;
+  return <RoleEditor {...props} role={fresh ?? props.role} />;
 }
 
 function RoleEditor({

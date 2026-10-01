@@ -324,6 +324,10 @@ export interface LeadListQuery extends ListQuery {
   ownerId?: Uuid;
   /** Leads already converted are excluded unless this is set. */
   includeConverted?: boolean;
+  /** Only leads already converted (the Master's Converted page); wins over `includeConverted`. */
+  convertedOnly?: boolean;
+  /** Only this party's leads. */
+  partyId?: string;
   followUpDueOnly?: boolean;
 }
 

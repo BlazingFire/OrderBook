@@ -109,7 +109,8 @@ export const USER_COLUMNS = {
  * panel that has been offline since before a category was renamed into a hard
  * Postgres error — and a mutation that throws is recorded as permanently
  * rejected and replayed as that rejection for ever, so the panel's work is
- * destroyed rather than bounced. Assigning a category stays online-only.
+ * destroyed rather than bounced. The Master merges `categoryId` itself, through
+ * `master/src/domain/merge-columns.ts`, which checks the id names a live category.
  */
 export const MERGEABLE_PRODUCT_COLUMNS = (() => {
   const { categoryId: _categoryId, ...rest } = PRODUCT_COLUMNS;

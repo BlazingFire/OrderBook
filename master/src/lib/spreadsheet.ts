@@ -144,6 +144,35 @@ export async function buildXlsxTemplate(spec: {
   return Buffer.isBuffer(out) ? out : Buffer.from(out as ArrayBuffer);
 }
 
+/**
+ * A filled sheet — the export. Same look as the template (frozen bold header,
+ * widths, text format on the code column) so what is exported opens and
+ * re-imports exactly like a template someone filled in.
+ */
+export async function buildXlsxTable(spec: {
+  columns: readonly TemplateColumn[];
+  rows: ReadonlyArray<ReadonlyArray<string | number | null>>;
+  sheetName: string;
+}): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'OrderBook';
+
+  const sheet = workbook.addWorksheet(spec.sheetName, { views: [{ state: 'frozen', ySplit: 1 }] });
+  sheet.columns = spec.columns.map((column) => ({
+    header: column.header,
+    key: column.header,
+    width: column.width,
+  }));
+  sheet.getRow(1).font = { bold: true };
+  spec.columns.forEach((column, index) => {
+    if (column.text) sheet.getColumn(index + 1).numFmt = '@';
+  });
+  for (const row of spec.rows) sheet.addRow([...row]);
+
+  const out = await workbook.xlsx.writeBuffer();
+  return Buffer.isBuffer(out) ? out : Buffer.from(out as ArrayBuffer);
+}
+
 export function buildCsvTemplate(headers: readonly string[]): string {
   return toCsv(headers, []);
 }

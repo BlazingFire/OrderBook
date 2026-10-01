@@ -19,9 +19,11 @@ import * as inventoryService from '../../services/inventory.service.js';
 import * as leadService from '../../services/lead.service.js';
 import * as orderService from '../../services/order.service.js';
 import * as searchService from '../../services/search.service.js';
+import * as snapshotService from '../../services/snapshot.service.js';
 import * as storageService from '../../services/storage.service.js';
 import { asyncHandler } from '../async-handler.js';
 import { idList, paging } from '../query.js';
+import { productImportRoutes } from './panel-catalog.routes.js';
 import {
   actorFromRequest,
   requireAuth,
@@ -35,9 +37,8 @@ dataRoutes.use(requireAuth);
 /**
  * A route-level permission guard, for the handlers on this router that carry
  * one. The rest rely on the service-layer check, or are deliberately ungated
- * and say so where they are declared — the three reference reads below
- * (`/pipelines`, `/option-lists`, `/custom-fields`), whose services check
- * nothing. The Recycle Bin's four DELETE routes were the first guarded here:
+ * and say so where they are declared — the two reference reads below
+ * (`/pipelines`, `/option-lists`), whose services check nothing. The Recycle Bin's four DELETE routes were the first guarded here:
  * `leads.delete` / `orders.delete` /
  * `parties.delete` / `products.delete` have been in the frozen catalogue and
  * in stored role rows since `20260303`, and were enforced nowhere because no
@@ -139,8 +140,8 @@ dataRoutes.post(
 );
 
 /**
- * Deliberately ungated — `fieldsService.listPipelinesUnguarded` and its two
- * siblings below check nothing. They feed the Add Lead form and
+ * Deliberately ungated — `fieldsService.listPipelinesUnguarded` and its
+ * sibling below check nothing. They feed the Add Lead form and
  * `buildSnapshot`'s `Promise.all`; routing them through a `fields.view`
  * check would make that `Promise.all` reject for anyone lacking the key, and
  * a rejected `buildSnapshot` produces no snapshot at all
@@ -157,13 +158,6 @@ dataRoutes.get(
   '/option-lists',
   asyncHandler(async (req, res) => {
     res.json(await fieldsService.listOptionListsUnguarded(actorFromRequest(req).tenantId));
-  }),
-);
-
-dataRoutes.get(
-  '/custom-fields',
-  asyncHandler(async (req, res) => {
-    res.json(await fieldsService.listCustomFieldsUnguarded(actorFromRequest(req).tenantId));
   }),
 );
 
@@ -226,14 +220,16 @@ dataRoutes.get(
 dataRoutes.get(
   '/parties',
   asyncHandler(async (req, res) => {
-    res.json(await catalogService.listParties(paging(req.query), actorFromRequest(req)));
+    res.json(await catalogService.listPartiesWithMeta(paging(req.query), actorFromRequest(req)));
   }),
 );
 
 dataRoutes.get(
   '/parties/:id',
   asyncHandler(async (req, res) => {
-    res.json(await catalogService.getParty(String(req.params.id), actorFromRequest(req)));
+    res.json(
+      await catalogService.getPartyWithAccess(String(req.params.id), actorFromRequest(req)),
+    );
   }),
 );
 
@@ -265,7 +261,7 @@ dataRoutes.get(
   '/parties/:id/variants',
   asyncHandler(async (req, res) => {
     res.json(
-      await catalogService.listVariantsForParty(String(req.params.id), actorFromRequest(req)),
+      await catalogService.listPartyRecords(String(req.params.id), actorFromRequest(req)),
     );
   }),
 );
@@ -294,6 +290,10 @@ dataRoutes.get(
     );
   }),
 );
+
+// Bulk import for a signed-in user — the same handlers the paired-panel path
+// uses (`panel-catalog.routes.ts`); the service checks `products.bulk`.
+dataRoutes.use(productImportRoutes(actorFromRequest));
 
 dataRoutes.get(
   '/products/by-code/:code',
@@ -468,6 +468,26 @@ dataRoutes.post(
   }),
 );
 
+dataRoutes.put(
+  '/leads/:id',
+  needs('leads.edit'),
+  asyncHandler(async (req, res) => {
+    res.json(await leadService.updateLead(String(req.params.id), req.body ?? {}, actorFromRequest(req)));
+  }),
+);
+
+/**
+ * What the New / Edit pending order form needs that no list route gives it —
+ * the Master's stand-in for the Office's local snapshot. Its own path, not
+ * `/leads/…`, so `GET /leads/:id` cannot capture it.
+ */
+dataRoutes.get(
+  '/lead-entry',
+  asyncHandler(async (req, res) => {
+    res.json(await snapshotService.buildLeadEntryView(actorFromRequest(req)));
+  }),
+);
+
 dataRoutes.get(
   '/leads',
   asyncHandler(async (req, res) => {
@@ -477,6 +497,8 @@ dataRoutes.get(
           ...paging(req.query),
           stageIds: idList(req.query.stageIds),
           includeConverted: req.query.includeConverted === 'true',
+          convertedOnly: req.query.convertedOnly === 'true',
+          partyId: typeof req.query.partyId === 'string' && req.query.partyId ? req.query.partyId : undefined,
           followUpDueOnly: req.query.followUpDueOnly === 'true',
         },
         actorFromRequest(req),

@@ -548,6 +548,12 @@ export const api = {
 
   productImportTemplate: (format: ProductImportFormat) =>
     fetchBlob(`/api/products/import/template.${format}`, undefined, `products-template.${format}`),
+  exportProducts: (format: ProductImportFormat, level: 'sub' | 'main' = 'sub') =>
+    fetchBlob(
+      `/api/products/export.${format}${level === 'main' ? '?level=main' : ''}`,
+      undefined,
+      level === 'main' ? `main-products.${format}` : `products.${format}`,
+    ),
   importProducts: (file: File, options: { dryRun: boolean; mode: ProductImportMode }) => {
     const form = new FormData();
     form.append('file', file);

@@ -4,8 +4,11 @@ Three things this software can do are too destructive to leave behind an
 ordinary permission, and are needed most often by somebody who cannot sign in as
 anybody: **erasing an installation back to first run**, **seeding throwaway test
 accounts**, and **filling a Master with sample data** to look at. All three live
-behind a *developer password* on the Settings screen's **Developer** tab (the
-Master has all three; the Office has the reset).
+behind a *developer password*. **There is no screen for them any more:** the
+Settings **Developer** tab was removed on both panels in 5a32106. The Master's
+`/api/developer/*` routes remain, behind the developer token and the
+`security.developerModeEnabled` setting, and `npm run seed:*` still works from a
+checkout; nothing in the app calls the routes.
 
 It is a password and not a permission on purpose. The person who needs it is
 usually not a user of the company at all — support on the phone, or the owner
@@ -30,15 +33,15 @@ ORDERBOOK_DEVELOPER_PASSWORD=something-only-you-know
 ```
 
 When that is set it **replaces** the built-in one — the built-in stops working.
-The Developer tab says `passwordOverridden` so an operator can tell which is in
+The unlock status route says `passwordOverridden` so an operator can tell which is in
 force without being shown either.
 
 ### What unlocking gets you
 
 A token, held in the server's memory and in the page's React state — never on
 disk, never in `localStorage`. It expires **15 minutes** after it is issued
-(`DEVELOPER_TOKEN_TTL_MS`) and the tab shows the countdown. Reloading the page
-locks it again; switching to another screen and back does not.
+(`DEVELOPER_TOKEN_TTL_MS`) and there was a countdown on the removed tab. The token is
+held by whoever called the unlock route.
 
 Five wrong passwords in a row lock the unlock route for **60 seconds**
 (`DEVELOPER_UNLOCK_MAX_FAILURES`, `DEVELOPER_UNLOCK_LOCKOUT_MS`). The counter is
@@ -62,7 +65,8 @@ both ways of seeding them read that list.
 
 ### Seeding them
 
-**From the app** — Settings → Developer → unlock → *Seed test users*. The result
+**From the app** — no longer possible (the Developer tab is gone); the route
+`POST /api/developer/seed-dummy-users` remains behind the developer token. The result
 table shows each account and whether it was `created` or `reset`.
 
 **From a checkout**, with no browser and nobody to sign in as:
@@ -111,8 +115,8 @@ a category with its code, brand and catalogue order; each sub product as a model
 with **exactly one variant**, coded `CODE-0001…` in catalogue order, its colour
 rule stored the way `colourRuleOf` reads it back.
 
-**From the app** — Settings → Developer → unlock → *Load the SWISWARE
-catalogue* (*Load catalogue*). The result reports the brands, colours,
+**From the app** — no longer possible (the Developer tab is gone); the route
+`/api/developer/load-catalogue` remains behind the developer token. The result reports the brands, colours,
 products and sub products added and the sub products it left alone.
 
 **From a checkout:**
@@ -182,7 +186,8 @@ have a curve; party-wise rates, party-access assignments, custom fields on all
 four entities, values in every option list, and one party, one product and one
 lead in the Recycle Bin.
 
-**From the app** — Settings → Developer → unlock → *Seed sample data*. The result
+**From the app** — no longer possible (the Developer tab is gone); the
+`/api/developer/seed-sample-data` route remains behind the developer token. The result
 lists what was made, and the three sign-ins beside it.
 
 **From a checkout:**
@@ -269,19 +274,17 @@ them first if the link has been down.
 
 ## Uninstalling
 
-Three ways in, all ending at the same two scripts under `tools/uninstall/`.
+Two ways in now, ending at the same two scripts under `tools/uninstall/`.
 
-**From the app** — Settings → Developer → *Uninstall OrderBook*, or Help →
-*Uninstall OrderBook…*, which just takes you to that tab. A checkbox decides
-whether the data goes with the program; the shell then asks once more in a native
-dialog, stops the server (so the PostgreSQL cluster closes properly and nothing
-still holds `postgres.exe` open), hands the script to the OS and quits.
+**From the app** — removed in 5a32106 along with the Developer tab and the Help →
+*Uninstall OrderBook…* menu item. The shell's `orderbook:uninstall` handler
+remains but no screen or menu reaches it.
 
 **From Windows** — Settings → Apps, or the Start-menu entry. The NSIS uninstaller
 now asks whether to delete all OrderBook data on this PC, defaulting to **No**,
 and then runs the same script to clear what an uninstaller cannot reach itself.
 
-**By hand**, which is also what the two above end up running:
+**By hand**, which is also what the Windows route ends up running:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\uninstall\uninstall-orderbook.ps1 -Panel all -DryRun

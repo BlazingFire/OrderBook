@@ -301,13 +301,34 @@ describe('the file as a whole', () => {
     ]);
   });
 
+  it('reads the colour rule: fixed keeps the colour, dedicated drops it, multicolour sets the flag', () => {
+    const cols = ['Main product', 'Sub product', 'Code', 'Colour rule', 'Colour'];
+    const fixed = parse(cols, ['Basins', 'Damru', 'D-1', 'fixed', 'White']).input;
+    expect(fixed?.variant.label).toBe('White');
+    expect(fixed?.product.multiColour).toBe(false);
+
+    const dedicated = parse(cols, ['Basins', '1111', 'D-2', 'dedicated', 'White']).input;
+    expect(dedicated?.variant.label).toBeNull();
+
+    const multi = parse(cols, ['Pans', 'Orissa', 'P-1', 'Multicolour', '']).input;
+    expect(multi?.product.multiColour).toBe(true);
+    expect(multi?.variant.label).toBeNull();
+
+    expect(parse(cols, ['Basins', 'Damru', 'D-3', 'fixed', '']).issues.map((i) => i.messageKey)).toEqual([
+      'validation.import.fixedNeedsColour',
+    ]);
+    expect(parse(cols, ['Basins', 'Damru', 'D-4', 'odd', '']).issues.map((i) => i.messageKey)).toEqual([
+      'validation.import.invalidValue',
+    ]);
+  });
+
   it('writes one guide row per template column', () => {
     const guide = templateGuideRows(true);
     expect(guide).toHaveLength(IMPORT_HEADERS.length);
-    expect(guide.find((row) => row[0] === 'multiColour')?.[2]).toBe('yes / no');
-    expect(guide.find((row) => row[0] === 'name')?.[1]).toBe('yes');
-    expect(guide.find((row) => row[0] === 'code')?.[1]).toBe('yes');
-    expect(guide.find((row) => row[0] === 'categoryName')?.[3]).toMatch(/Created if it does not exist yet/);
+    expect(guide.find((row) => row[0] === 'Colour rule')?.[1]).toBe('');
+    expect(guide.find((row) => row[0] === 'Sub product')?.[1]).toBe('yes');
+    expect(guide.find((row) => row[0] === 'Code')?.[1]).toBe('yes');
+    expect(guide.find((row) => row[0] === 'Main product')?.[3]).toMatch(/Created if it does not exist yet/);
   });
 
   it('tells the truth about categories when the company does not let an import create one', () => {
@@ -315,13 +336,13 @@ describe('the file as a whole', () => {
     // in. Left alone it would promise the opposite of what the import does.
     const standing = templateGuideRows(true);
     const changed = templateGuideRows(false);
-    expect(changed.find((row) => row[0] === 'categoryName')?.[3]).toBe(
-      'Required unless categoryCode is filled. Must already exist — an import cannot create one.',
+    expect(changed.find((row) => row[0] === 'Main product')?.[3]).toBe(
+      'Required unless Main product code is filled. Must already exist — an import cannot create one.',
     );
     // Every other note is untouched.
     const differing = changed
       .filter((row, index) => row[3] !== standing[index]?.[3])
       .map((row) => row[0]);
-    expect(differing).toEqual(['categoryName']);
+    expect(differing).toEqual(['Main product']);
   });
 });

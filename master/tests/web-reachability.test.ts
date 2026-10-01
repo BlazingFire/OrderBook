@@ -132,38 +132,9 @@ describe('every Tab in a panel can actually be shown', () => {
  */
 const ALLOWED_UNCALLED: Record<'master' | 'office', Record<string, string>> = {
   master: {
-    // --- Panel administration: `PanelsScreen`'s detail dialog offers rename and
-    // --- revoke (plus the pairing window); these actions have no control yet.
-    updatePanel: 'no PanelsScreen control edits a panel beyond its name',
-    refreshPanel: 'no PanelsScreen control asks a panel to re-report itself',
-    rotatePanelSecret: 'no PanelsScreen control rotates a panel secret',
-    setPanelStoragePath: 'no PanelsScreen control moves a panel’s storage',
-    disconnectPanel: 'no PanelsScreen control disconnects a panel',
-    panelActivity: 'the panel detail dialog shows no activity list',
-    partyAccessFor:
-      'PartyAccessScreen edits a party out of the assignment list it loaded; nothing reads one party alone',
-
-    // --- No Master catalogue surface. Decision recorded in HANDOFF.md:
-    // --- products stay Office-owned; parties came to the Master (PartiesScreen).
-    createProduct: 'products are catalogued on the Office Panel — no Master products screen',
-    deleteProduct: 'as createProduct',
-
     // --- Single-record fetches superseded by the list the screen already holds.
     // --- Kept because a detail screen that deep-links to one record will want
     // --- exactly these, and the routes are part of the shipped API contract.
-    dashboard:
-      'the summary arrives on the socket (`dashboard:changed`, sent on connect and after each change), never by GET',
-    panel: 'PanelsScreen renders the panel out of the list it already loaded',
-    lead: 'LeadsOrdersScreen acts on the rows of the page it loaded and opens no single lead',
-    order: 'as lead',
-    role: 'AccessScreen edits a role out of the loaded list',
-
-    // --- Built ahead of the screens that will use them.
-    addLeadRemark: 'the Master has no lead detail, so nowhere to add a remark yet',
-    reportRangeQuery: 'a helper the report calls use inside api.ts; no screen needs it directly',
-    connectorProfiles:
-      'the Integrations screen builds a connector from scratch and offers no profiles',
-    deleteConnector: 'no connector delete action on the Integrations screen yet',
   },
   office: {
     // --- Administration lives on the Master. These exist because both clients

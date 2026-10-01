@@ -1,6 +1,6 @@
 /** Thin wrapper over the Master's local HTTP API. */
 
-import { publishSessionEnded, t } from '@orderbook/ui';
+import { publishSessionEnded, t, type LeadEntryView } from '@orderbook/ui';
 import type {
   Locale,
   PickKind,
@@ -21,13 +21,11 @@ import type {
   CustomFieldDefinitionInput,
   CustomFieldDefinitionUpdateInput,
   CustomFieldReorderInput,
-  DashboardSummary,
   ApiKey,
   ApiKeyInput,
   Connector,
   ConnectorFieldMapInput,
   ConnectorInput,
-  ConnectorProfile,
   ConnectorResourceInput,
   ConnectorRun,
   ConnectorTestResult,
@@ -38,12 +36,12 @@ import type {
   StockListQuery,
   LeadOutcomesReport,
   Lead,
+  LeadInput,
+  LeadUpdateInput,
   MasterIdentity,
   MessageKey,
   MessageParams,
-  OfficePanel,
   OfficePanelDetail,
-  OfficePanelUpdateInput,
   OfficePanelWithPresence,
   OptionListItem,
   OptionListItemInput,
@@ -51,9 +49,6 @@ import type {
   OptionListReorderInput,
   Order,
   Paginated,
-  PanelSecretRotation,
-  PanelStoragePathInput,
-  PanelStoragePathResult,
   Party,
   AssignablePerson,
   PartyAccessInput,
@@ -63,14 +58,24 @@ import type {
   UpdateAvailability,
   PartyScopeFilter,
   PartyInput,
+  PartyProductVariant,
   Pipeline,
   PipelineStage,
   PipelineStageInput,
   OneTimeSecret,
   PermissionCatalogue,
+  CategoryInput,
+  CategoryUpdateInput,
   Product,
+  ProductCategory,
   ProductCategoryListRow,
+  ProductImageUpdateInput,
+  ProductImportFormat,
+  ProductImportMode,
+  ProductImportResult,
   ProductInput,
+  ProductListPage,
+  ProductListQuery,
   RecycleBinQuery,
   ReportKind,
   ReportRangeInput,
@@ -97,6 +102,18 @@ export interface FieldDifference {
   stored: unknown;
   incoming: unknown;
 }
+
+/** The caller's own grant on a party; null = open to them (no grant of theirs). */
+export type PartyMyAccess = 'view' | 'manage' | null;
+
+/** A party list row: the party plus its own-record count and the caller's own access. */
+export type PartyListRow = Party & { recordCount?: number; myAccess?: PartyMyAccess };
+
+/** One party with the caller's own access to it. */
+export type PartyDetailRecord = Party & { myAccess?: PartyMyAccess };
+
+/** A party's own record; `catalogueName` is null when the product is gone or not the caller's to read. */
+export type PartyRecord = PartyProductVariant & { catalogueName: string | null };
 
 export class ApiError extends Error {
   constructor(
@@ -260,7 +277,8 @@ function request<T>(path: string, init?: RequestInit): Promise<T> {
    * The dedupe key is the path *plus* whatever headers the caller set. A GET
    * carrying `x-developer-token` is a different question from the same GET
    * without one, and sharing the two would answer "still locked" to the status
-   * call made immediately after an unlock.
+   * call made immediately after an unlock. (No screen sends the header now: the
+   * /api/developer/load-catalogue route has had no screen since 5a32106.)
    */
   const key = init?.headers ? JSON.stringify([path, init.headers]) : path;
 
@@ -328,11 +346,15 @@ async function throwIfNotOk(response: Response): Promise<void> {
     error?: string;
     message?: string;
     details?: Record<string, unknown>;
+    messageKey?: MessageKey;
+    params?: MessageParams;
   } | null;
   throw new ApiError(
     detail?.message ?? t('error.requestFailed'),
     detail?.error ?? 'internal_error',
     detail?.details ?? {},
+    detail?.messageKey,
+    detail?.params,
   );
 }
 
@@ -348,6 +370,15 @@ async function requestBlob(path: string, body: unknown): Promise<{ blob: Blob; f
 
   const match = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') ?? '');
   return { blob: await response.blob(), fileName: match?.[1] ?? 'orderbook-backup.obbackup' };
+}
+
+/** A binary download by GET, for the product import template — the response is the file itself. */
+async function requestFile(path: string, fallbackName: string): Promise<{ blob: Blob; fileName: string }> {
+  const response = await fetch(path, { credentials: 'same-origin' });
+  await throwIfNotOk(response);
+
+  const match = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') ?? '');
+  return { blob: await response.blob(), fileName: match?.[1] ?? fallbackName };
 }
 
 /** A multipart upload, for storage restore — the backup file rides as form data, not JSON. */
@@ -375,6 +406,14 @@ export interface FirstRunCredentials {
  */
 export function desktopBridge(): DesktopBridge | null {
   return (window as Window & { orderbook?: DesktopBridge }).orderbook ?? null;
+}
+
+function reportRangeQuery(input: ReportRangeInput = {}) {
+  const params = new URLSearchParams();
+  if (input.period) params.set('period', input.period);
+  if (input.fromMonth) params.set('fromMonth', input.fromMonth);
+  if (input.toMonth) params.set('toMonth', input.toMonth);
+  return params;
 }
 
 export const api = {
@@ -406,7 +445,6 @@ export const api = {
   me: () =>
     request<{ user: SignedInUser; sessionToken: string; defaultLocale: Locale }>('/api/auth/me'),
 
-  dashboard: () => request<DashboardSummary>('/api/dashboard'),
   storage: () => request<StorageUsage>('/api/storage'),
 
   exportStorage: (passphrase: string) =>
@@ -533,22 +571,12 @@ export const api = {
   // --- One panel, administered (docs/UI_REDESIGN.md — Office Panels) --------
 
   panel: (id: string) => request<OfficePanelDetail>(`/api/panels/${id}`),
-  /** Omitted fields are left alone; `notes: null` clears the note. */
-  updatePanel: (id: string, input: OfficePanelUpdateInput) =>
-    request<OfficePanel>(`/api/panels/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
-  /** Pulls a fresh account of the panel's machine instead of the last timed one. */
-  refreshPanel: (id: string) => post<OfficePanelDetail>(`/api/panels/${id}/refresh`),
-  /** The plaintext secret is in this response and nowhere else — there is no second chance. */
-  rotatePanelSecret: (id: string) => post<PanelSecretRotation>(`/api/panels/${id}/rotate-secret`),
-  setPanelStoragePath: (id: string, input: PanelStoragePathInput) =>
-    post<PanelStoragePathResult>(`/api/panels/${id}/storage-path`, input),
-  disconnectPanel: (id: string) => post<{ disconnected: boolean }>(`/api/panels/${id}/disconnect`),
-  panelActivity: (id: string, limit = 50) =>
-    request<{ entries: ActivityLogEntry[] }>(`/api/panels/${id}/activity?limit=${limit}`),
 
   parties: (search?: string, limit?: number, offset?: number) =>
-    request<Paginated<Party>>(`/api/parties${pagedQuery(search, limit, offset)}`),
-  party: (id: string) => request<Party>(`/api/parties/${id}`),
+    request<Paginated<PartyListRow>>(`/api/parties${pagedQuery(search, limit, offset)}`),
+  party: (id: string) => request<PartyDetailRecord>(`/api/parties/${id}`),
+  /** One party's own product records, each with the catalogue model it stands for named. */
+  partyRecords: (id: string) => request<PartyRecord[]>(`/api/parties/${id}/variants`),
   createParty: (input: PartyInput) => post<Party>('/api/parties', input),
   /**
    * `baseFieldHlc` is what the form last saw for each field. Sent so the
@@ -559,10 +587,26 @@ export const api = {
   updateParty: (id: string, input: PartyInput & { baseFieldHlc?: Record<string, string> }) =>
     request<Party>(`/api/parties/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   createProduct: (input: ProductInput) => post<Product>('/api/products', input),
+  updateProduct: (id: string, input: ProductInput) =>
+    request<Product>(`/api/products/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+  /** One page of the catalogue; `limit` is clamped by the server (2000 at most). */
+  listProducts: (query: ProductListQuery, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (query.search) params.set('search', query.search);
+    if (query.categoryId) params.set('categoryId', query.categoryId);
+    if (query.brand) params.set('brand', query.brand);
+    if (query.missingWeight) params.set('missingWeight', 'true');
+    if (query.limit) params.set('limit', String(query.limit));
+    if (query.offset) params.set('offset', String(query.offset));
+    const qs = params.toString();
+    return request<ProductListPage>(
+      `/api/products${qs ? `?${qs}` : ''}`,
+      signal ? { signal } : undefined,
+    );
+  },
 
-  // Categories — the owner's Products (`docs/catalogue/CATALOGUE_MODEL.md` §5).
-  // Read-only here: products are catalogued on the Office Panel, so the
-  // Master's `/api/categories` writes have no screen of their own.
+  // Categories — the owner's Products (`docs/catalogue/CATALOGUE_MODEL.md` §5),
+  // written from the Products module's Products page.
   categories: (query: { search?: string; brand?: string } = {}) => {
     const params = new URLSearchParams();
     if (query.search) params.set('search', query.search);
@@ -570,6 +614,57 @@ export const api = {
     const qs = params.toString();
     return request<ProductCategoryListRow[]>(`/api/categories${qs ? `?${qs}` : ''}`);
   },
+  createCategory: (input: CategoryInput) => post<ProductCategory>('/api/categories', input),
+  updateCategory: (id: string, input: CategoryUpdateInput) =>
+    request<ProductCategory>(`/api/categories/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+  deleteCategory: (id: string) =>
+    request<{ id: string; deletedAt: string }>(`/api/categories/${id}`, { method: 'DELETE' }),
+
+  // Bulk product import (`products.bulk`, checked by the service).
+  productImportTemplate: (format: ProductImportFormat) =>
+    requestFile(`/api/products/import/template.${format}`, `products-template.${format}`),
+  exportProducts: (format: ProductImportFormat) =>
+    requestFile(`/api/products/export.${format}`, `products.${format}`),
+  importProducts: (file: File, options: { dryRun: boolean; mode: ProductImportMode }) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('dryRun', String(options.dryRun));
+    form.append('mode', options.mode);
+    return requestForm<ProductImportResult>('/api/products/import', form);
+  },
+
+  // Product photos (`7-IMAGE-PIPELINE.md`): each answers with the whole `Product`.
+  uploadProductImage: (
+    productId: string,
+    file: Blob,
+    crop: {
+      cropX: number;
+      cropY: number;
+      cropWidth: number;
+      cropHeight: number;
+      rotationDeg: number;
+      caption?: string | null;
+    },
+  ) => {
+    const form = new FormData();
+    form.set('file', file, 'image');
+    form.set('cropX', String(crop.cropX));
+    form.set('cropY', String(crop.cropY));
+    form.set('cropWidth', String(crop.cropWidth));
+    form.set('cropHeight', String(crop.cropHeight));
+    form.set('rotationDeg', String(crop.rotationDeg));
+    if (crop.caption) form.set('caption', crop.caption);
+    return requestForm<Product>(`/api/products/${productId}/images`, form);
+  },
+  updateProductImage: (productId: string, imageId: string, input: ProductImageUpdateInput) =>
+    request<Product>(`/api/products/${productId}/images/${imageId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    }),
+  reorderProductImages: (productId: string, ids: string[]) =>
+    post<Product>(`/api/products/${productId}/images/reorder`, { ids }),
+  deleteProductImage: (productId: string, imageId: string) =>
+    request<Product>(`/api/products/${productId}/images/${imageId}`, { method: 'DELETE' }),
 
   stock: (options: Omit<StockListQuery, 'offset' | 'scope'> = {}) => {
     const params = new URLSearchParams();
@@ -608,16 +703,38 @@ export const api = {
   }) => post<InventoryStockLevel>('/api/stock/reorder-level', input),
 
   leads: (
-    options: { stageIds?: string[]; includeConverted?: boolean; scope?: PartyScopeFilter } = {},
+    options: {
+      stageIds?: string[];
+      includeConverted?: boolean;
+      /** Only converted leads — the Converted page; wins over `includeConverted`. */
+      convertedOnly?: boolean;
+      partyId?: string;
+      followUpDueOnly?: boolean;
+      scope?: PartyScopeFilter;
+      search?: string;
+      limit?: number;
+      offset?: number;
+    } = {},
   ) => {
     const params = new URLSearchParams();
     if (options.stageIds?.length) params.set('stageIds', options.stageIds.join(','));
     if (options.includeConverted) params.set('includeConverted', 'true');
+    if (options.convertedOnly) params.set('convertedOnly', 'true');
+    if (options.partyId) params.set('partyId', options.partyId);
+    if (options.followUpDueOnly) params.set('followUpDueOnly', 'true');
     if (options.scope === 'assigned') params.set('scope', 'assigned');
+    if (options.search) params.set('search', options.search);
+    if (options.limit) params.set('limit', String(options.limit));
+    if (options.offset) params.set('offset', String(options.offset));
     const query = params.toString();
     return request<Paginated<Lead>>(`/api/leads${query ? `?${query}` : ''}`);
   },
   lead: (id: string) => request<Lead>(`/api/leads/${id}`),
+  createLead: (input: LeadInput) => post<Lead>('/api/leads', input),
+  updateLead: (id: string, input: LeadUpdateInput) =>
+    request<Lead>(`/api/leads/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+  /** What the New / Edit pending order form reads besides its pickers. */
+  leadEntryView: () => request<LeadEntryView>('/api/lead-entry'),
   setLeadStage: (id: string, stageId: string, remark?: string | null) =>
     post<Lead>(`/api/leads/${id}/stage`, { stageId, remark }),
   addLeadRemark: (id: string, message: string) =>
@@ -627,10 +744,21 @@ export const api = {
     input: { dispatchAddressLabel?: string | null; expectedDispatchDate?: string | null } = {},
   ) => post<Order>(`/api/leads/${id}/convert`, input),
 
-  orders: (options: { stageIds?: string[]; scope?: PartyScopeFilter } = {}) => {
+  orders: (
+    options: {
+      stageIds?: string[];
+      scope?: PartyScopeFilter;
+      search?: string;
+      limit?: number;
+      offset?: number;
+    } = {},
+  ) => {
     const params = new URLSearchParams();
     if (options.stageIds?.length) params.set('stageIds', options.stageIds.join(','));
     if (options.scope === 'assigned') params.set('scope', 'assigned');
+    if (options.search) params.set('search', options.search);
+    if (options.limit) params.set('limit', String(options.limit));
+    if (options.offset) params.set('offset', String(options.offset));
     const query = params.toString();
     return request<Paginated<Order>>(`/api/orders${query ? `?${query}` : ''}`);
   },
@@ -735,8 +863,6 @@ export const api = {
 
   deleteParty: (id: string) =>
     request<{ id: string; deletedAt: string }>(`/api/parties/${id}`, { method: 'DELETE' }),
-  deleteProduct: (id: string) =>
-    request<{ id: string; deletedAt: string }>(`/api/products/${id}`, { method: 'DELETE' }),
   deleteLead: (id: string) =>
     request<{ id: string; deletedAt: string }>(`/api/leads/${id}`, { method: 'DELETE' }),
   deleteOrder: (id: string) =>
@@ -801,24 +927,17 @@ export const api = {
 
   // --- Reports (docs/backend-modules/04-API-CONTRACT.md §3) -----------------
 
-  reportRangeQuery: (input: ReportRangeInput = {}) => {
-    const params = new URLSearchParams();
-    if (input.period) params.set('period', input.period);
-    if (input.fromMonth) params.set('fromMonth', input.fromMonth);
-    if (input.toMonth) params.set('toMonth', input.toMonth);
-    return params;
-  },
   dispatchReport: (input: ReportRangeInput = {}) =>
-    request<DispatchesReport>(`/api/reports/dispatches?${api.reportRangeQuery(input)}`),
+    request<DispatchesReport>(`/api/reports/dispatches?${reportRangeQuery(input)}`),
   leadOutcomeReport: (input: ReportRangeInput = {}) =>
-    request<LeadOutcomesReport>(`/api/reports/lead-outcomes?${api.reportRangeQuery(input)}`),
+    request<LeadOutcomesReport>(`/api/reports/lead-outcomes?${reportRangeQuery(input)}`),
   topPartiesReport: (input: ReportRangeInput & { limit?: number } = {}) => {
-    const params = api.reportRangeQuery(input);
+    const params = reportRangeQuery(input);
     if (input.limit) params.set('limit', String(input.limit));
     return request<TopPartiesReport>(`/api/reports/top-parties?${params}`);
   },
   reportExportUrl: (kind: ReportKind, input: ReportRangeInput & { limit?: number } = {}) => {
-    const params = api.reportRangeQuery(input);
+    const params = reportRangeQuery(input);
     if (input.limit) params.set('limit', String(input.limit));
     const qs = params.toString();
     return `/api/reports/${kind}/export${qs ? `?${qs}` : ''}`;
@@ -833,7 +952,6 @@ export const api = {
   revokeApiKey: (id: string) => post<ApiKey>(`/api/integrations/keys/${id}/revoke`),
 
   connectors: () => request<Connector[]>('/api/integrations/connectors'),
-  connectorProfiles: () => request<ConnectorProfile[]>('/api/integrations/connectors/profiles'),
   createConnector: (input: ConnectorInput & { fromProfile?: string }) =>
     post<Connector>('/api/integrations/connectors', input),
   updateConnector: (id: string, input: ConnectorInput) =>
@@ -841,8 +959,6 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(input),
     }),
-  deleteConnector: (id: string) =>
-    request<void>(`/api/integrations/connectors/${id}`, { method: 'DELETE' }),
   setConnectorMapping: (
     id: string,
     resources: Array<ConnectorResourceInput & { fieldMaps: ConnectorFieldMapInput[] }>,

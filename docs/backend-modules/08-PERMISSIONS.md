@@ -313,8 +313,8 @@ not been wired up — it has been moved from enforcing nothing to enforcing noth
 
 ### 3.2 What deliberately stays ungated
 
-`GET /api/pipelines`, `GET /api/option-lists` and `GET /api/custom-fields`
-(`master/src/http/routes/data.routes.ts`) keep `requireAuth` and gain no `fields.view` check. The
+`GET /api/pipelines` and `GET /api/option-lists`
+(`master/src/http/routes/data.routes.ts`; the `/api/custom-fields` route this once listed was removed as uncalled) keep `requireAuth` and gain no `fields.view` check. The
 reason is mechanical, not philosophical: `buildSnapshot` reads those three inside a `Promise.all`, and
 a rejected `buildSnapshot` produces **no snapshot at all**, swallowed into a log line. Gating them
 would lock a user out of the entire Office Panel over a key that governs a management screen. The new
@@ -669,7 +669,7 @@ socket event names and the names below are copied from it verbatim.
 | `POST /api/fields/stages/reorder` | `needs('fields.manage')` | same | `fields:reorderStages` |
 | `POST /api/fields/stages/:id/archive` | `needs('fields.manage')` | same | `fields:archiveStage` |
 | `POST /api/fields/stages/:id/restore` | `needs('fields.manage')` | same | `fields:restoreStage` |
-| `GET /api/pipelines`, `/api/option-lists`, `/api/custom-fields` | **unchanged — `requireAuth` only** | none | unchanged |
+| `GET /api/pipelines`, `/api/option-lists` | **unchanged — `requireAuth` only** | none | unchanged |
 
 The last row is not an omission; §3.2 gives the reason.
 

@@ -2,10 +2,10 @@
  * Fields: managed pipelines, stages, option lists (including colour hex) and
  * custom-field definitions (`docs/backend-modules/04-API-CONTRACT.md` §5).
  *
- * **Reading is available to every tier; editing is management+.** The three
+ * **Reading is available to every tier; editing is management+.** The two
  * unguarded exports at the top (`listPipelinesUnguarded`,
- * `listOptionListsUnguarded`, `listCustomFieldsUnguarded`) back the existing
- * `GET /api/pipelines`, `/api/option-lists`, `/api/custom-fields` routes and
+ * `listOptionListsUnguarded`) back the existing
+ * `GET /api/pipelines`, `/api/option-lists` routes and
  * `buildSnapshot`'s `Promise.all` — they check nothing, deliberately. Adding a
  * `fields.view` check to any of them would make that `Promise.all` reject for
  * anyone lacking the key, and a rejected `buildSnapshot` produces **no
@@ -63,10 +63,6 @@ export function listPipelinesUnguarded(tenantId: string): Promise<Pipeline[]> {
 
 export function listOptionListsUnguarded(tenantId: string): Promise<OptionListItem[]> {
   return customFieldRepo.listOptions(tenantId);
-}
-
-export function listCustomFieldsUnguarded(tenantId: string): Promise<CustomFieldDefinition[]> {
-  return customFieldRepo.listDefinitions(tenantId);
 }
 
 // --- Reads: fields.view -----------------------------------------------------

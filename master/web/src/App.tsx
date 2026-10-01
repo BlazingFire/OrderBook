@@ -18,6 +18,7 @@ import type {
   DashboardSummary,
   MessageKey,
   OfficePanelWithPresence,
+  Pipeline,
   RecycleBinEntityType,
   ReportKind,
   ServerToClientEvents,
@@ -61,6 +62,7 @@ import {
   t,
   useClearSubNav,
   useMediaQuery,
+  useToast,
   useResetGate,
   useSettingsTab,
   useSubNavState,
@@ -80,14 +82,17 @@ import { PartyAccessScreen } from './screens/PartyAccessScreen';
 import { FirstRunScreen } from './screens/FirstRunScreen';
 import { IntegrationsScreen } from './screens/IntegrationsScreen';
 import { InventoryScreen } from './screens/InventoryScreen';
-import { LeadsOrdersScreen } from './screens/LeadsOrdersScreen';
+import { LeadEntry } from './screens/LeadEntry';
+import { LeadsScreen } from './screens/LeadsScreen';
 import { LogsScreen } from './screens/LogsScreen';
+import { OrdersScreen } from './screens/OrdersScreen';
 import { PanelsScreen } from './screens/PanelsScreen';
 import { ChangePasswordDialog } from './components/ChangePasswordDialog';
 import { PartiesScreen } from './screens/PartiesScreen';
+import { ProductsScreen, type ProductsPage } from './screens/ProductsScreen';
 import { RecycleBinScreen } from './screens/RecycleBinScreen';
 import { ReportsScreen } from './screens/ReportsScreen';
-import { SETTINGS_TAB_IDS, SettingsScreen } from './screens/SettingsScreen';
+import { SETTINGS_TAB_IDS, SettingsScreen, settingsTabIdsFor } from './screens/SettingsScreen';
 import { UpdatesScreen } from './screens/UpdatesScreen';
 import { SignInScreen } from './screens/SignInScreen';
 
@@ -95,7 +100,10 @@ type Phase = 'loading' | 'first-run' | 'signed-out' | 'ready';
 type Tab =
   | 'dashboard'
   | 'panels'
+  | 'leads'
+  | 'addLead'
   | 'orders'
+  | 'products'
   | 'parties'
   | 'inventory'
   | 'reports'
@@ -109,6 +117,13 @@ type Tab =
   | 'settings'
   | 'updates';
 type Route = '' | 'gallery';
+/** The record each list module has open as a sub-screen, by module. */
+interface OpenIds {
+  leads: string | null;
+  orders: string | null;
+  parties: string | null;
+}
+const NO_OPEN_IDS: OpenIds = { leads: null, orders: null, parties: null };
 type RecycleBinType = RecycleBinEntityType | '';
 
 /**
@@ -128,18 +143,44 @@ type RecycleBinType = RecycleBinEntityType | '';
  * deletes. The Bin follows `option_list` and `custom_field` because its field
  * value and field definition branches are deleted and restored as those.
  */
+/** Screens whose open record publishes a sidebar label; signing out must not leave them for the next user. */
+const SUB_NAV_SCREENS = [
+  'leads', 'orders', 'parties', 'inventory', 'panels', 'logs', 'access', 'products', 'addLead',
+] as const;
+
 const SCREEN_ENTITIES: Record<string, readonly string[]> = {
-  records: ['lead', 'order', 'party', 'product', 'catalog', 'stock', 'reservation'],
-  /** Leads & orders' stage picker, apart from `records` so a lead edit does not re-read it. */
+  records: ['lead', 'order', 'party', 'product', 'catalog', 'stock', 'reservation', 'option_list'],
+  /** Pending and Final Orders stage pages, apart from `records` so a lead edit does not re-read it. */
   stages: ['pipeline'],
+  /** The New / Edit pending order form: what `/api/lead-entry` is built from. */
+  leadEntry: ['option_list', 'party', 'party_variant', 'stock', 'reservation', 'product', 'catalog', 'setting'],
+  /**
+   * The Products module, in three slices so a stock movement does not re-read
+   * the catalogue and a lead edit reads none of them: the products and their
+   * sub products (`catalog` is the one event a bulk import publishes), free
+   * stock, and the option lists the brand chips and colour swatches read.
+   */
+  catalogue: ['product', 'catalog', 'product_category'],
+  catalogueStock: ['stock', 'reservation'],
+  catalogueLists: ['option_list'],
   /** `product_category` and `option_list` feed its Product filter and brand chips. */
   inventory: ['stock', 'product', 'catalog', 'reservation', 'product_category', 'option_list'],
   reports: ['lead', 'order', 'party', 'stock'],
   fields: ['option_list', 'custom_field', 'pipeline'],
   access: ['user', 'role'],
   partyAccess: ['party'],
-  parties: ['party'],
-  recycleBin: ['lead', 'order', 'party', 'product', 'role', 'user', 'option_list', 'custom_field'],
+  parties: ['party', 'party_variant'],
+  recycleBin: [
+    'lead',
+    'order',
+    'party',
+    'product',
+    'product_category',
+    'role',
+    'user',
+    'option_list',
+    'custom_field',
+  ],
   conflicts: ['sync_conflict'],
   /** Settings' company rows, and apart from them the lead sources on its Leads tab. */
   settings: ['setting'],
@@ -193,22 +234,32 @@ function MasterPanel() {
   /** Why this window is at the sign-in screen, when it did not sign out itself. */
   const [signInNotice, setSignInNotice] = useState<MessageKey | null>(null);
   const [tab, setTab] = useState<Tab>('dashboard');
+  const toast = useToast();
+  /** Bumped each time New pending order is asked for, so the form can take the cursor when blank. */
+  const [newLeadNonce, setNewLeadNonce] = useState(0);
+  // Above the early returns: the topbar button, the sub-page and Ctrl+Shift+N all read it.
+  const canCreateLead = user?.permissions.includes('leads.create') ?? false;
   /*
    * Which sub-page each module is showing, keyed by module. A screen's tabs
    * are offered from the sidebar too, and both controls read from here so
    * they never disagree. Settings keeps its own remembered tab (per machine,
-   * validated against the tabs this panel has) through the same hook the
-   * desktop menu's "Developer" request already lands in.
+   * validated against the tabs this panel has) through its own hook.
    */
   const [subKeys, setSubKeys] = useState<Record<string, string>>({});
+  /*
+   * The record each list module has open as a sub-screen, held here so a search
+   * hit or a link from another screen can open one. Declared with the other
+   * hooks above the early returns, like every hook in this component.
+   */
+  const [openIds, setOpenIds] = useState<OpenIds>(NO_OPEN_IDS);
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [settingsTab, setSettingsTab] = useSettingsTab(
     'ob.settings.tab.master',
     SETTINGS_TAB_IDS,
-    // The company settings, not the theme picker. Settings is reached from a
-    // nav entry gated on `settings.manage`, so whoever opens it came to change
-    // something the company decides — and landed on a per-desk preference.
-    // `SettingsPage` falls back to the first tab for anyone without that
-    // permission, and a remembered tab still wins for anyone who has chosen.
+    // The company settings, not the theme picker, for whoever manages them: they
+    // came to change something the company decides. Everyone else is shown
+    // Appearance instead (`shownSettingsTab`, below), and a remembered tab
+    // still wins for anyone who has chosen one their role offers.
     'company',
   );
 
@@ -348,10 +399,13 @@ function MasterPanel() {
         // Whoever signs in next at this window starts on the Dashboard, as
         // after `signOut` — see there.
         setTab('dashboard');
+        setOpenIds(NO_OPEN_IDS);
+        for (const screen of SUB_NAV_SCREENS) clearSubNav(screen);
+        setSubKeys({});
         setSignInNotice(reason);
         setPhase('signed-out');
       }),
-    [],
+    [clearSubNav],
   );
 
   /*
@@ -392,6 +446,10 @@ function MasterPanel() {
       // save refreshed it. A second administrator's flip left this one drawing
       // the old shape with no way to notice.
       if (event.entity === 'setting') refreshUser();
+      // Likewise a role or a user: the permissions this window holds ride on
+      // the signed-in user, so an edit to either is re-read, and a revoked
+      // session lands on sign-in through the 401 path.
+      if (event.entity === 'role' || event.entity === 'user') refreshUser();
     });
 
     // A merge shadowed somebody's value; the conflicts screen and the dashboard
@@ -403,6 +461,25 @@ function MasterPanel() {
       socket.close();
     };
   }, [phase, sessionToken, refreshUser]);
+
+  // The stage pages and chips of both modules, read once here rather than by
+  // each screen. Above the early returns, and only when signed in.
+  const stagesRevision = revisionOf(revisions, 'stages');
+  useEffect(() => {
+    if (phase !== 'ready') return;
+    let cancelled = false;
+    void api
+      .pipelines()
+      .then((loaded) => {
+        if (!cancelled) setPipelines(loaded);
+      })
+      .catch(() => {
+        if (!cancelled) setPipelines([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [phase, stagesRevision]);
 
   // Stable, or every boot-step render would hand Splash a new callback and
   // restart its hold timer.
@@ -460,6 +537,9 @@ function MasterPanel() {
      * signing in after them saw: Office panels, under a title naming nothing.
      */
     setTab('dashboard');
+    setOpenIds(NO_OPEN_IDS);
+    for (const screen of SUB_NAV_SCREENS) clearSubNav(screen);
+    setSubKeys({});
   }
 
   // The splash owns the whole cold start now — the minimum hold, the boot
@@ -504,7 +584,6 @@ function MasterPanel() {
   const canManageRoles =
     user.permissions.includes('roles.view') || user.permissions.includes('users.manage');
   const canManagePanels = user.permissions.includes('panels.manage');
-  const canManageSettings = user.permissions.includes('settings.manage');
   const canManageApi = user.permissions.includes('api.manage');
   const canViewFields = user.permissions.includes('fields.view');
   // Either key opens the screen: `party.assign` to redraw the map,
@@ -519,6 +598,11 @@ function MasterPanel() {
   const canViewLogs = user.permissions.includes('logs.view');
   const canViewRecycleBin = user.permissions.includes('recycleBin.view');
   const canViewReports = user.permissions.includes('reports.view');
+  const canViewLeads = user.permissions.includes('leads.view');
+  const canViewOrders = user.permissions.includes('orders.view');
+  const canViewInventory = user.permissions.includes('inventory.view');
+  const canViewProducts = user.permissions.includes('products.view');
+  const canResolveConflicts = user.permissions.includes('sync.resolveConflicts');
 
   let railState: 'synced' | 'syncing' | 'offline' | 'offlinePending' | 'conflict';
   if (openConflicts > 0) railState = 'conflict';
@@ -560,24 +644,32 @@ function MasterPanel() {
   // ---- Sidebar modules. Absent, not greyed, when the role cannot use them.
   const workItems: Array<NavItem | null> = [
     { id: 'dashboard', label: t('nav.master.dashboard'), icon: 'dashboard' },
-    { id: 'orders', label: t('nav.master.leadsOrders'), icon: 'orders' },
+    canViewLeads ? { id: 'leads', label: t('nav.leads'), icon: 'leads' } : null,
+    canViewOrders ? { id: 'orders', label: t('nav.orders'), icon: 'orders' } : null,
+    canResolveConflicts
+      ? {
+          id: 'conflicts',
+          label: t('nav.master.conflicts'),
+          icon: 'conflicts',
+          count: openConflicts > 0 ? openConflicts : undefined,
+        }
+      : null,
+    canViewProducts ? { id: 'products', label: t('nav.products'), icon: 'products' } : null,
     canViewParties ? { id: 'parties', label: t('nav.master.parties'), icon: 'parties' } : null,
-    {
-      id: 'inventory',
-      label: t('nav.master.inventory'),
-      icon: 'inventory',
-      count:
-        summary?.lowStockCount && summary.lowStockCount > 0 ? summary.lowStockCount : undefined,
-    },
+    canViewInventory
+      ? {
+          id: 'inventory',
+          label: t('nav.master.inventory'),
+          icon: 'inventory',
+          count:
+            summary?.lowStockCount && summary.lowStockCount > 0
+              ? summary.lowStockCount
+              : undefined,
+        }
+      : null,
     // Reports sit under Work rather than Admin: a report is something a manager
     // produces during the day, not a setting anyone administers.
     canViewReports ? { id: 'reports', label: t('nav.master.reports'), icon: 'calendar' } : null,
-    {
-      id: 'conflicts',
-      label: t('nav.master.conflicts'),
-      icon: 'conflicts',
-      count: openConflicts > 0 ? openConflicts : undefined,
-    },
   ];
 
   const adminItems: Array<NavItem | null> = [
@@ -594,9 +686,9 @@ function MasterPanel() {
     canManageApi
       ? { id: 'integrations', label: t('nav.master.integrations'), icon: 'server' }
       : null,
-    canManageSettings
-      ? { id: 'settings', label: t('nav.master.settings'), icon: 'settings' }
-      : null,
+    // Everyone: Appearance and Shortcuts are per-desk. The company's own tabs
+    // are `settings.manage`, gated in the sub-pages below and in the screen.
+    { id: 'settings', label: t('nav.master.settings'), icon: 'settings' },
     // Visible to everyone: which version a machine runs is not privileged
     // information, and the person asked to read it out is rarely an admin.
     { id: 'updates', label: t('nav.updates'), icon: 'sync' },
@@ -609,8 +701,13 @@ function MasterPanel() {
     if (!(await askReset())) return;
     // The screen is going away, so its sidebar entry must go with it — the
     // registry deliberately does not clear itself on teardown any more.
-    clearSubNav(tab);
-    setResetNonce((current) => ({ ...current, [tab]: (current[tab] ?? 0) + 1 }));
+    clearSubNav(shownTab);
+    setOpenIds((current) =>
+      shownTab === 'leads' || shownTab === 'orders' || shownTab === 'parties'
+        ? { ...current, [shownTab]: null }
+        : current,
+    );
+    setResetNonce((current) => ({ ...current, [shownTab]: (current[shownTab] ?? 0) + 1 }));
   }
 
   /*
@@ -620,11 +717,44 @@ function MasterPanel() {
    * here the same way, so the sidebar never offers a page the screen would
    * refuse to show.
    */
+  const sortedStages = (kind: 'lead' | 'order') =>
+    [...(pipelines.find((pipeline) => pipeline.kind === kind)?.stages ?? [])].sort(
+      (a, b) => a.sequence - b.sequence,
+    );
+  const leadStages = sortedStages('lead');
+  const orderStages = sortedStages('order');
+
+  // The remembered tab may be one this person's role no longer offers (a
+  // manager's company tab on a shared desk): then the first one is showing.
+  const settingsTabIds = settingsTabIdsFor(user.permissions);
+  const shownSettingsTab = settingsTabIds.includes(settingsTab)
+    ? settingsTab
+    : (settingsTabIds[0] ?? 'appearance');
+
   const subPages: Record<string, SubPage[]> = {
-    orders: [
-      { key: 'leads', label: t('leadsOrders.tab.leads'), icon: 'leads' },
-      { key: 'orders', label: t('leadsOrders.tab.orders'), icon: 'orders' },
+    leads: [
+      { key: 'list', label: t('lead.board.tab.list'), icon: 'orders' },
       { key: 'converted', label: t('leadsOrders.tab.converted'), icon: 'check' },
+      ...(canCreateLead
+        ? [{ key: 'new', label: t('lead.add.title'), icon: 'plus' as const }]
+        : []),
+    ],
+    // All stages, then one page per stage - read off the pipeline, so the
+    // sidebar names whatever the company calls them.
+    orders: [
+      { key: 'all', label: t('orders.filter.allStages'), icon: 'orders' },
+      ...orderStages.map((stage) => ({
+        key: `stage:${stage.id}`,
+        label: stage.name,
+        icon: 'chevron-right' as const,
+      })),
+    ],
+    // Brands is always offered, as on the Office: without `fields.view` the
+    // page says so itself rather than the sidebar quietly dropping it.
+    products: [
+      { key: 'sub', label: t('catalog.nav.subProducts'), icon: 'products' },
+      { key: 'main', label: t('catalog.nav.mainProducts'), icon: 'inventory' },
+      { key: 'brands', label: t('catalog.nav.brands'), icon: 'edit' },
     ],
     inventory: [
       { key: 'all', label: t('inventory.filter.all'), icon: 'inventory' },
@@ -667,20 +797,49 @@ function MasterPanel() {
       { key: 'keys', label: t('integrations.tab.keys'), icon: 'shield' },
       { key: 'connectors', label: t('integrations.tab.connectors'), icon: 'server' },
     ],
-    settings: SETTINGS_TAB_IDS.map((id) => ({
+    settings: settingsTabIdsFor(user.permissions).map((id) => ({
       key: id,
       label: t(`settings.tab.${id}`),
       icon: 'settings' as const,
     })),
   };
 
-  /** The sub-page a module is showing: the chosen one, else its first. */
-  const subKeyOf = (module: string): string =>
-    module === 'settings' ? settingsTab : (subKeys[module] ?? subPages[module]?.[0]?.key ?? '');
+  /**
+   * The sub-page a module is showing: the chosen one, else its first - also
+   * when the chosen one is no longer offered (a stage that was archived).
+   */
+  const subKeyOf = (module: string): string => {
+    if (module === 'settings') return shownSettingsTab;
+    if (module === 'leads' && tab === 'addLead') return 'new';
+    const pages = subPages[module];
+    const chosen = subKeys[module];
+    return chosen && pages?.some((page) => page.key === chosen) ? chosen : (pages?.[0]?.key ?? '');
+  };
+
+  /** The New pending order form, with the cursor placed only when the form is blank. */
+  function openNewLead(): void {
+    if (!canCreateLead) return;
+    setRoute('');
+    setOpenIds((current) => ({ ...current, leads: null }));
+    setSubKeys((current) => ({ ...current, leads: 'list' }));
+    setTab('addLead');
+    setNewLeadNonce((current) => current + 1);
+  }
+
+  /** Leaving the New form lands on the Pending list, not a record opened before it. */
+  function closeNewLead(): void {
+    setOpenIds((current) => ({ ...current, leads: null }));
+    setSubKeys((current) => ({ ...current, leads: 'list' }));
+    setTab('leads');
+  }
 
   function selectSubPage(module: string, key: string): void {
     if (module === 'settings') setSettingsTab(key);
-    else setSubKeys((current) => ({ ...current, [module]: key }));
+    else if (module === 'leads' && key === 'new') openNewLead();
+    else if (module === 'leads') {
+      setSubKeys((current) => ({ ...current, leads: key }));
+      setTab('leads');
+    } else setSubKeys((current) => ({ ...current, [module]: key }));
   }
 
   const nest = (items: Array<NavItem | null>): NavItem[] =>
@@ -689,7 +848,10 @@ function MasterPanel() {
         items.filter((item): item is NavItem => item !== null),
         subPages,
       ),
-      subNav,
+      // The shell's own `leads.new` entry stands for the form; drop the form's grafted twin.
+      subNav && tab === 'addLead'
+        ? { ...subNav, items: subNav.items.filter((item) => item.id !== 'addLead.new') }
+        : subNav,
     );
 
   const groups: NavGroup[] = [
@@ -697,18 +859,35 @@ function MasterPanel() {
     { label: t('nav.master.admin'), items: nest(adminItems) },
   ];
 
-  const activeId = subNav
-    ? subNav.activeId
-    : route === 'gallery'
-      ? 'gallery'
-      : subPages[tab]?.length
-        ? `${tab}.${subKeyOf(tab)}`
-        : tab;
   const flatItems = groups.flatMap((group) => flattenNav(group.items));
-  /** Whether the sidebar offers this person the screen — navigation's gate and the palette's. */
+  /** Whether the sidebar offers this person the screen - navigation's gate and the palette's. */
   function offered(id: string): boolean {
     return flatItems.some((item) => item.id === id);
   }
+  /*
+   * The screen drawn: `tab` while the sidebar offers it, else the Dashboard. A
+   * role edit can take a screen away from a window that has it open, and the
+   * sidebar then offers nothing that matches `tab` - drawing it anyway would
+   * leave the person on a screen they may no longer use, under a title naming
+   * nothing.
+   */
+  // Screens that are reached by a button, not the sidebar, so `offered` can never
+  // say yes to them: New pending order (Ctrl+Shift+N, the topbar button) for
+  // whoever may create one. Keeping the exemption in one place means that tab is
+  // not shown as the Dashboard.
+  const NOT_IN_SIDEBAR: readonly string[] = canCreateLead ? ['addLead'] : [];
+  const shownTab: Tab = NOT_IN_SIDEBAR.includes(tab) || offered(tab) ? tab : 'dashboard';
+  const activeId = subNav && shownTab !== 'addLead'
+    ? subNav.activeId
+    : route === 'gallery'
+      ? 'gallery'
+      : // `addLead` is not in the sidebar, so it is named here or it would fall
+        // through to a sidebar item and the sidebar would highlight nothing.
+        shownTab === 'addLead'
+        ? 'leads.new'
+        : subPages[shownTab]?.length
+        ? `${shownTab}.${subKeyOf(shownTab)}`
+        : shownTab;
   const activeLabel =
     route === 'gallery' && !subNav
       ? t('footer.designSystem')
@@ -731,19 +910,10 @@ function MasterPanel() {
      * refuses the calls; this keeps the panel from drawing the screen at all.
      */
     if (!offered(id)) return;
-    openScreen(id);
-  }
-
-  /**
-   * Shows a screen without asking whether the sidebar offers it — for the one
-   * caller entitled to that, the desktop menu's Developer entry (see below).
-   */
-  function openScreen(id: string): void {
     /*
-     * No "are you sure" on the way out any more. Leaving an open editor used
-     * to unmount it and throw its draft away, so the shell had to ask; now the
-     * screen stays exactly as it was and is still there when you come back.
-     * The deliberate discard is the Reset button.
+     * No "are you sure" on the way out: leaving an open editor does not unmount
+     * it, so its draft is still there when you come back. The deliberate
+     * discard is the Reset button.
      */
     if (id === 'gallery') return;
     if (readHash())
@@ -753,10 +923,21 @@ function MasterPanel() {
     const sub = splitSubPage(id);
     if (sub && subPages[sub.module]?.some((page) => page.key === sub.key)) {
       selectSubPage(sub.module, sub.key);
-      setTab(sub.module as Tab);
+      // Leads sets its own tab: `new` is a different screen from the list.
+      if (sub.module !== 'leads') setTab(sub.module as Tab);
       return;
     }
     setTab(id as Tab);
+  }
+
+  /** Opens one record of a list module as that module's sub-screen. */
+  function openRecord(target: 'leads' | 'orders' | 'parties', id: string): void {
+    if (!offered(target)) {
+      toast.push(t('nav.recordNotAvailable'), { tone: 'info' });
+      return;
+    }
+    navigate(target);
+    setOpenIds((current) => ({ ...current, [target]: id }));
   }
 
   const topbar = (
@@ -768,6 +949,11 @@ function MasterPanel() {
       {/* The screen's own control sits inside the app-wide ones: Search and
           Sign out mean the same thing on every screen, this does not. */}
       <TopbarActionsOutlet />
+      {shownTab !== 'addLead' && route !== 'gallery' && canCreateLead && (
+        <button className="ob-btn ob-btn--primary" onClick={openNewLead}>
+          {t('action.newLead')}
+        </button>
+      )}
       <IconButton
         icon="reset"
         label={t('screen.reset')}
@@ -855,8 +1041,12 @@ function MasterPanel() {
           <dd className="ob-data">
             {panels.length - offlinePanels}/{panels.length}
           </dd>
-          <dt>{t('sync.lowStock')}</dt>
-          <dd className="ob-data">{summary?.lowStockCount ?? 0}</dd>
+          {summary?.lowStockCount !== undefined && (
+            <>
+              <dt>{t('sync.lowStock')}</dt>
+              <dd className="ob-data">{summary.lowStockCount}</dd>
+            </>
+          )}
         </dl>
         {openConflicts > 0 && (
           <div
@@ -871,8 +1061,7 @@ function MasterPanel() {
               style={{ color: 'var(--accent)' }}
               onClick={() => {
                 setSyncPopover(false);
-                setRoute('');
-                setTab('conflicts');
+                navigate('conflicts');
               }}
             >
               {t('action.reviewConflicts')}
@@ -898,7 +1087,11 @@ function MasterPanel() {
         <DashboardScreen
           summary={summary}
           panels={panels}
-          onOpenConflicts={() => setTab('conflicts')}
+          canManagePanels={canManagePanels}
+          canViewLeads={canViewLeads}
+          revision={revisionOf(revisions, 'records')}
+          onNavigate={navigate}
+          onOpenLead={(id) => openRecord('leads', id)}
         />
       ),
     },
@@ -906,19 +1099,85 @@ function MasterPanel() {
     {
       id: 'parties',
       render: () => (
-        <PartiesScreen revision={revisionOf(revisions, 'parties')} permissions={user.permissions} />
+        <PartiesScreen
+          revision={revisionOf(revisions, 'parties')}
+          recordsRevision={revisionOf(revisions, 'records')}
+          permissions={user.permissions}
+          openId={openIds.parties}
+          onOpenId={(id) => setOpenIds((current) => ({ ...current, parties: id }))}
+          onOpenLead={(id) => openRecord('leads', id)}
+          onOpenPartyAccess={() => navigate('partyAccess')}
+        />
       ),
     },
     {
-      id: 'orders',
+      id: 'leads',
       render: () => (
-        <LeadsOrdersScreen
+        <LeadsScreen
           revision={revisionOf(revisions, 'records')}
-          stagesRevision={revisionOf(revisions, 'stages')}
+          stages={leadStages}
           permissions={user.permissions}
           packagingRequired={companyFeatures.packagingRequiredOnConvert}
-          view={subKeyOf('orders') as 'leads' | 'orders' | 'converted'}
-          onViewChange={(view) => selectSubPage('orders', view)}
+          view={subKeys.leads === 'converted' ? 'converted' : 'list'}
+          canCreate={canCreateLead}
+          onNewLead={openNewLead}
+          canCreateParty={user.permissions.includes('parties.create')}
+          leadEntryRevision={revisionOf(revisions, 'leadEntry')}
+          openId={openIds.leads}
+          onOpenId={(id) => setOpenIds((current) => ({ ...current, leads: id }))}
+          onOpenOrder={(orderId) => openRecord('orders', orderId)}
+        />
+      ),
+    },
+    ...(canCreateLead
+      ? [
+          {
+            id: 'addLead',
+            render: () => (
+              <LeadEntry
+                revision={revisionOf(revisions, 'leadEntry')}
+                focusNonce={newLeadNonce}
+                canCreateParty={user.permissions.includes('parties.create')}
+                onSaved={(id) => {
+                  closeNewLead();
+                  // A saved lead is done with: the form starts over, as Reset does, minus the question.
+                  clearSubNav('addLead');
+                  setResetNonce((current) => ({ ...current, addLead: (current.addLead ?? 0) + 1 }));
+                  toast.push(t('lead.add.savedOnline', { id }));
+                }}
+                onCancel={closeNewLead}
+              />
+            ),
+          } satisfies ScreenSpec,
+        ]
+      : []),
+    {
+      id: 'orders',
+      render: () => (
+        <OrdersScreen
+          revision={revisionOf(revisions, 'records')}
+          stages={orderStages}
+          permissions={user.permissions}
+          freeToSell={companyFeatures.freeToSell}
+          stageId={
+            subKeyOf('orders').startsWith('stage:') ? subKeyOf('orders').slice('stage:'.length) : null
+          }
+          onStageChange={(stageId) => selectSubPage('orders', stageId === null ? 'all' : `stage:${stageId}`)}
+          openId={openIds.orders}
+          onOpenId={(id) => setOpenIds((current) => ({ ...current, orders: id }))}
+          onOpenLead={(leadId) => openRecord('leads', leadId)}
+        />
+      ),
+    },
+    {
+      id: 'products',
+      render: () => (
+        <ProductsScreen
+          page={subKeyOf('products') as ProductsPage}
+          permissions={user.permissions}
+          catalogueRevision={revisionOf(revisions, 'catalogue')}
+          stockRevision={revisionOf(revisions, 'catalogueStock')}
+          listsRevision={revisionOf(revisions, 'catalogueLists')}
         />
       ),
     },
@@ -931,6 +1190,7 @@ function MasterPanel() {
           onFilterChange={(filter) => selectSubPage('inventory', filter)}
           freeToSell={companyFeatures.freeToSell}
           adjustmentNoteRequired={companyFeatures.adjustmentNoteRequired}
+          permissions={user.permissions}
         />
       ),
     },
@@ -995,10 +1255,7 @@ function MasterPanel() {
     {
       id: 'conflicts',
       render: () => (
-        <ConflictsScreen
-          revision={revisionOf(revisions, 'conflicts')}
-          canResolve={user.permissions.includes('sync.resolveConflicts')}
-        />
+        <ConflictsScreen revision={revisionOf(revisions, 'conflicts')} />
       ),
     },
     {
@@ -1019,7 +1276,7 @@ function MasterPanel() {
       id: 'settings',
       render: () => (
         <SettingsScreen
-          tab={settingsTab}
+          tab={shownSettingsTab}
           onTabChange={setSettingsTab}
           onSaved={refreshUser}
           permissions={user.permissions}
@@ -1041,7 +1298,7 @@ function MasterPanel() {
         <GalleryScreen />
       </div>
     ) : (
-      <ScreenHost screens={screens} activeId={tab} resetNonce={resetNonce} />
+      <ScreenHost screens={screens} activeId={shownTab} resetNonce={resetNonce} />
     );
 
   const overlays = (
@@ -1054,10 +1311,13 @@ function MasterPanel() {
         }
         searchRecords={async (term) => ({ hits: await api.search(term) })}
         onOpenRecord={(hit) => {
-          // Route the hit to the screen that owns it — which is exactly what
-          // `parent_type`/`parent_id` on a line-item hit are for.
-          if (hit.kind === 'lead_line' || hit.kind === 'order_line') setTab('orders');
-          else if (hit.kind === 'product') setTab('inventory');
+          // Route the hit to the screen that owns it. A line hit's `id` is its
+          // parent lead or order, which that screen opens as a sub-screen.
+          if (hit.kind === 'lead_line') openRecord('leads', hit.id);
+          else if (hit.kind === 'order_line') openRecord('orders', hit.id);
+          else if (hit.kind === 'party') openRecord('parties', hit.id);
+          // Like the Office, a product hit lands on the list, not on the record.
+          else if (hit.kind === 'product') navigate(offered('products.sub') ? 'products.sub' : 'inventory');
         }}
       />
       {syncOverlay}
@@ -1072,6 +1332,7 @@ function MasterPanel() {
       onNavigate={navigate}
       canNavigate={offered}
       shellCommands={{
+        'record.new': canCreateLead ? openNewLead : null,
         'view.reset': () => void resetActiveScreen(),
         // F5 is swallowed by the desktop shell so it cannot bypass the panel;
         // binding it here gives the key back its ordinary meaning, and in a

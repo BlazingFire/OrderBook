@@ -32,6 +32,7 @@ import { companyFeatures } from './company-features.js';
 import { rememberPassword } from './password-vault.service.js';
 import { clearRecentReauth, sweepRecentReauth } from './reauth-cache.js';
 import { getSetting } from './settings.service.js';
+import { panelLink } from '../realtime/panel-link.js';
 
 const log = createLogger('auth');
 
@@ -492,12 +493,18 @@ export function invalidateSessionsForUser(
   userId: string,
   options: { except?: string; reason?: 'revoked' | 'expired' } = {},
 ): void {
+  const ended = new Set<string>();
   for (const [token, session] of sessions) {
     if (session.userId !== userId || token === options.except) continue;
 
     sessions.delete(token);
+    ended.add(token);
     if (options.reason === 'revoked') revokedTokens.set(token, session.expiresAt);
   }
+  // Pushed, not left for the panel's next command: an idle Office would
+  // otherwise keep showing the person signed in (and keep their offline
+  // verifier) until it happened to issue one.
+  if (ended.size > 0) panelLink()?.sessionsEnded?.(ended, options.reason ?? 'expired');
 }
 
 /**

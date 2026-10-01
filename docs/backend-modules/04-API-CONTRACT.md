@@ -914,6 +914,25 @@ with the new `'restored'` `ChangeAction` (§9.4).
 
 ---
 
+### 4.6 Editing a pending order, and the form's view (2026-10-01, parity plan P3)
+
+Both in `master/src/http/routes/data.routes.ts`, for the Master's own web client.
+
+| Route | Guard | Does |
+|---|---|---|
+| `PUT /api/leads/:id` | `needs('leads.edit')` | `leadService.updateLead`. A body carrying `items` **replaces the whole line set** (absent leaves the lines alone); malformed `items` (not a non-empty list, a line with no `productId` or `variantId`) is a 400 `validation.lead.*`, never a 500; a converted lead is a 400 `validation.lead.convertedLocked`; party access at `manage` is required on the old and the new party. Answers the saved `Lead`. |
+| `GET /api/lead-entry` | session; `leads.create` or `leads.edit` (else 403 naming `leads.create`) | `buildLeadEntryView` (`snapshot.service.ts`, beside `buildSnapshot`, which is untouched): `{ partyVariants, optionLists, stock, partyGrants, features }`. `partyVariants` are party-scoped (a restricted party's records are absent); `stock` is `[]` without `inventory.view`; `partyGrants` is every grant the caller holds (the snapshot's list stops at its 500 parties); `products` is deliberately omitted. Its own path so `GET /leads/:id` cannot capture it. |
+
+### 4.7 The party screen's reads (2026-10-01, parity plan P5)
+
+Additive fields on routes the Master's own web client calls; the hub's `party:*` / `partyVariant:list` handlers and the Office are unchanged.
+
+| Route | Adds |
+|---|---|
+| `GET /api/parties/:id` | `myAccess`: the caller's own grant (`'view'` or `'manage'`), `null` when they hold none (an unassigned party is open). Built from `grantsForUser`, so every user gets it, not only holders of `party.assign` / `party.accessAll`. |
+| `GET /api/parties` | each row carries `recordCount` (the party's own product records) and `myAccess`, for the list's Products and My access columns. |
+| `GET /api/parties/:id/variants` | each record carries `catalogueName`: the catalogue model's name, `null` when the product is deleted or the caller lacks `products.view`. |
+
 ## 5. Fields
 
 Management of option-list values, custom-field definitions and pipeline stages. Mounted
@@ -1126,13 +1145,14 @@ Bin. `restore` clears it.
 | `ConflictError` | 409 | `{ field: 'isDefault' }` | `archive` on the pipeline's default stage |
 | `NotFoundError` | 404 | — | No such stage, or another tenant's |
 
-### 5.6 The three existing reads stay exactly as they are
+### 5.6 The existing reads stay exactly as they are
 
-`GET /api/pipelines`, `GET /api/option-lists` and `GET /api/custom-fields`
-(`data.routes.ts:65-84`) remain gated by `requireAuth` **only**. They now call `fieldsService` read
+`GET /api/pipelines` and `GET /api/option-lists` (`data.routes.ts`) remain gated by `requireAuth`
+**only**. (`GET /api/custom-fields` was the third; nothing called it, so P7 removed it — custom-field
+definitions reach the Office in the snapshot.) They now call `fieldsService` read
 functions instead of repositories directly, but those particular exports do not check `fields.view`.
 
-This is not an oversight. Those three feed the Add Lead form and `buildSnapshot`'s `Promise.all`
+This is not an oversight. Those feed the Add Lead form and `buildSnapshot`'s `Promise.all`
 (`master/src/services/snapshot.service.ts:43-49`). Routing them through a `fields.view`-checking read
 would make that `Promise.all` reject for anyone lacking the key — and a rejected `buildSnapshot`
 produces **no snapshot at all**, swallowed into a log line at `hub.ts:176`. A permission check there

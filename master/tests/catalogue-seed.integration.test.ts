@@ -59,7 +59,7 @@ describe.skipIf(!canRunIntegrationTests)('loading the SWISWARE catalogue (integr
   });
   afterAll(teardownDatabase);
 
-  describe('additively, as the Developer tab and seed:catalogue do', () => {
+  describe('additively, as the /api/developer/load-catalogue route and seed:catalogue do', () => {
     let first: LoadCatalogueResult;
     let events: DataChangedEvent[] = [];
 

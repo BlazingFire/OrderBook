@@ -45,9 +45,9 @@ import {
   ProductValidationError,
   validateProductInput,
   compareForIdAssignment,
+  compareHlc,
   isSyncableEntity,
   isTemporaryId,
-  MERGEABLE_COLUMNS,
   type MergeableEntity,
   mergeFields,
   MUTATION_PERMISSIONS,
@@ -55,16 +55,27 @@ import {
 } from '@orderbook/shared';
 
 import { actorCan, type ActorContext } from '../domain/actor.js';
+import type { LineDraft } from '../domain/line-items.js';
+import { MASTER_MERGE_COLUMNS } from '../domain/merge-columns.js';
 import { UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
+import { assertStageMove } from '../domain/pipeline.js';
 import { requirePartyAccess } from './party-access.service.js';
 import { db } from '../db/knex.js';
-import { ForbiddenError, NotFoundError, toErrorMessage, ValidationError } from '../lib/errors.js';
+import {
+  AppError,
+  ForbiddenError,
+  NotFoundError,
+  toErrorMessage,
+  ValidationError,
+} from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as identityRepo from '../repositories/identity.repository.js';
 import * as leadRepo from '../repositories/lead.repository.js';
 import * as orderRepo from '../repositories/order.repository.js';
 import * as partyRepo from '../repositories/party.repository.js';
+import * as pipelineRepo from '../repositories/pipeline.repository.js';
+import * as userRepo from '../repositories/user.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
 import * as productVariantRepo from '../repositories/product-variant.repository.js';
 import * as syncRepo from '../repositories/sync.repository.js';
@@ -90,6 +101,19 @@ export async function applyPush(
   actor: ActorContext,
 ): Promise<SyncPushResponse> {
   const mutations = [...(request.mutations ?? [])].sort(compareForIdAssignment);
+
+  // A push under the panel's own role that carries a person's work the panel
+  // role cannot do would be refused and recorded permanently. That person's
+  // session is usually just not upgraded yet, so ask the panel to retry rather
+  // than lose it. Work the panel role may do still applies as before.
+  if (
+    actor.actorType === 'office_panel' &&
+    mutations.some(
+      (m) => m.actorUserId && !actorCan(actor, REQUIRED_PERMISSION[m.kind] as Permission),
+    )
+  ) {
+    throw new AppError('error.unavailable.signInToSync', {}, 503, 'unavailable');
+  }
 
   const alreadyApplied = await syncRepo.findAppliedMutations(
     actor.tenantId,
@@ -492,24 +516,107 @@ async function mergeUpdate(
     // way around the whole feature.
     await assertMergeTargetAccessible(entity, current.values, id, actor);
 
-    const columns = MERGEABLE_COLUMNS[entity] as Record<string, string>;
+    const columns = MASTER_MERGE_COLUMNS[entity] as Record<string, string>;
     // `variants` is not a column — it is a child table replaced as a set —
     // but it merges like one field: the whole set wins or loses by HLC, and
-    // a losing set is recorded as one conflict a person can put back.
-    const fields = mutation.fields.filter(
-      (field) => field in columns || (entity === 'product' && field === 'variants'),
+    // a losing set is recorded as one conflict a person can put back. A
+    // lead's `items` are the same thing.
+    let fields = mutation.fields.filter(
+      (field) =>
+        field in columns ||
+        (entity === 'product' && field === 'variants') ||
+        (entity === 'lead' && field === 'items'),
     );
+
+    assertMergeUnlocked(entity, current.values, fields);
+
+    // The offline form never sends an owner, but a hand-built push could; an
+    // online edit needs `record.reassignOwner` for it, so the merge drops it
+    // rather than becoming the way around that.
+    if (entity === 'lead' && !actorCan(actor, 'record.reassignOwner')) {
+      fields = fields.filter((field) => field !== 'ownerId');
+    }
+
+    if (entity === 'lead' && fields.includes('items')) {
+      // Before the merge, so a malformed set is refused rather than recorded
+      // as a conflict nobody could restore.
+      leadService.assertLineDrafts(mutation.payload.items);
+      // The Office sends the whole form on every edit. Lines identical to the
+      // stored set are not an edit: dropping them keeps a notes-only change
+      // from rewriting the lines and bumping their clock.
+      if (sameLines(current.values.items, mutation.payload.items)) {
+        fields = fields.filter((field) => field !== 'items');
+      }
+    }
+
+    // The Office outbox stores `{}` as the base of every lead/order edit, so
+    // "stored clock newer than the base" would flag every second edit as a
+    // clash. With no base at all, treat each field's stored clock as the base
+    // when it predates this edit: a newer edit wins, an older one still loses
+    // and is recorded. Parties and products send real bases and are untouched.
+    const base: Record<string, string> = { ...(mutation.baseFieldHlc ?? {}) };
+    if ((entity === 'lead' || entity === 'order') && Object.keys(base).length === 0) {
+      for (const field of fields) {
+        const stored = current.fieldHlc[field];
+        if (stored && compareHlc(mutation.hlc, stored) > 0) base[field] = stored;
+      }
+    }
 
     const outcome = mergeFields(
       { values: current.values, fieldHlc: current.fieldHlc },
       {
         fields,
         values: mutation.payload,
-        baseFieldHlc: mutation.baseFieldHlc ?? {},
+        baseFieldHlc: base,
         hlc: mutation.hlc,
         deviceCode: mutation.deviceCode,
       },
     );
+
+    // An `items` clash is reported only when the incoming set lost. When it
+    // won, the "losing" side is the stored line rows, which are not an
+    // editable value anybody could put back.
+    outcome.conflicts = outcome.conflicts.filter(
+      (conflict) => !(conflict.field === 'items' && conflict.winningHlc === mutation.hlc),
+    );
+
+    if (entity === 'product' && 'categoryId' in outcome.accepted) {
+      const categoryId = outcome.accepted.categoryId;
+      const live =
+        categoryId === current.values.categoryId ||
+        (typeof categoryId === 'string' &&
+          (await productRepo.findCategoryById(actor.tenantId, categoryId, trx)) !== null);
+      if (!live) {
+        // A stale id from a panel offline since before a category was removed.
+        // Ignored, with its clock put back, so the rest of the edit lands
+        // instead of the whole mutation being refused.
+        delete outcome.accepted.categoryId;
+        if (current.fieldHlc.categoryId) outcome.fieldHlc.categoryId = current.fieldHlc.categoryId;
+        else delete outcome.fieldHlc.categoryId;
+        outcome.conflicts = outcome.conflicts.filter((conflict) => conflict.field !== 'categoryId');
+      }
+    }
+
+    await assertMergeAllowed(entity, current.values, outcome.accepted, actor);
+
+    outcome.status = outcome.conflicts.length > 0 ? 'merged' : 'applied';
+
+    const acceptedItems =
+      entity === 'lead' && outcome.accepted.items !== undefined
+        ? await leadService.buildLines(
+            actor.tenantId,
+            typeof outcome.accepted.partyId === 'string'
+              ? outcome.accepted.partyId
+              : String(current.values.partyId),
+            outcome.accepted.items as LineDraft[],
+            {
+              partyWiseMode:
+                typeof outcome.accepted.partyWiseMode === 'boolean'
+                  ? outcome.accepted.partyWiseMode
+                  : Boolean(current.values.partyWiseMode),
+            },
+          )
+        : null;
 
     /*
      * Validate before writing, on the one path that has no validation layer.
@@ -523,13 +630,7 @@ async function mergeUpdate(
      */
     const acceptedVariants =
       entity === 'product' && Array.isArray(outcome.accepted.variants)
-        ? (outcome.accepted.variants as Array<Record<string, unknown>>).map((variant) => ({
-            ...(typeof variant.id === 'string' ? { id: variant.id } : {}),
-            code: String(variant.code ?? ''),
-            label: typeof variant.label === 'string' ? variant.label : null,
-            weightKg: typeof variant.weightKg === 'number' ? variant.weightKg : null,
-            ...(typeof variant.sequence === 'number' ? { sequence: variant.sequence } : {}),
-          }))
+        ? normaliseVariants(outcome.accepted.variants)
         : null;
 
     if (entity === 'product') {
@@ -558,10 +659,12 @@ async function mergeUpdate(
       await requirePartyAccess(patch.party_id, 'manage', actor);
     }
 
-    const wrote = Object.keys(patch).length > 0 || acceptedVariants !== null;
+    const wrote =
+      Object.keys(patch).length > 0 || acceptedVariants !== null || acceptedItems !== null;
     if (wrote) {
       await writeMergedColumns(entity, actor.tenantId, id, patch, outcome.fieldHlc, hlc, trx);
     }
+    if (acceptedItems) await leadRepo.replaceLeadLines(actor.tenantId, id, acceptedItems, trx);
     if (acceptedVariants) {
       await productVariantRepo.replaceVariants(actor.tenantId, id, acceptedVariants, trx);
     }
@@ -570,10 +673,13 @@ async function mergeUpdate(
     // offline too. A rename merged here is checked on the row as written, as
     // the online edit is, so a clash rolls the merge back and comes back to
     // the panel as a refusal it can read rather than a second "1111" in OPT.
+    // The same rule holds when the category changes: a name that was free in
+    // the old category may be taken in the new one.
     if (
       entity === 'product' &&
-      typeof patch.name === 'string' &&
-      patch.name.toLowerCase() !== String(current.values.name ?? '').toLowerCase()
+      ((typeof patch.name === 'string' &&
+        patch.name.toLowerCase() !== String(current.values.name ?? '').toLowerCase()) ||
+        (typeof patch.category_id === 'string' && patch.category_id !== current.values.categoryId))
     ) {
       const written = await productRepo.findProductById(actor.tenantId, id, trx);
       if (written) await catalogService.assertSubProductNameFree(actor.tenantId, written, trx);
@@ -641,8 +747,128 @@ async function mergeUpdate(
   };
 }
 
+/** A variant set as the repository takes it, from a merge payload or a stored conflict value. */
+export function normaliseVariants(variants: unknown[]): Array<{
+  id?: string;
+  code: string;
+  label: string | null;
+  weightKg: number | null;
+  sequence?: number;
+}> {
+  return (variants as Array<Record<string, unknown>>).map((variant) => ({
+    ...(typeof variant.id === 'string' ? { id: variant.id } : {}),
+    code: String(variant.code ?? ''),
+    label: typeof variant.label === 'string' ? variant.label : null,
+    weightKg: typeof variant.weightKg === 'number' ? variant.weightKg : null,
+    ...(typeof variant.sequence === 'number' ? { sequence: variant.sequence } : {}),
+  }));
+}
+
+/** Everything a person can edit on a line, for "did the lines change". */
+function lineKey(line: unknown): string {
+  const l = (line ?? {}) as Record<string, unknown>;
+  const text = (value: unknown) => (typeof value === 'string' && value !== '' ? value : null);
+  return JSON.stringify([
+    l.productId,
+    l.variantId,
+    Number(l.quantity),
+    text(l.colour),
+    text(l.grade),
+    text(l.packaging),
+    text(l.notes),
+  ]);
+}
+
+function sameLines(stored: unknown, incoming: unknown): boolean {
+  if (!Array.isArray(stored) || !Array.isArray(incoming) || stored.length !== incoming.length) return false;
+  return stored.every((line, index) => lineKey(line) === lineKey(incoming[index]));
+}
+
+/**
+ * Locks that hold before a merge reads anything: a converted lead and a
+ * dispatched order are no longer editable, offline or on.
+ */
+export function assertMergeUnlocked(
+  entity: MergeableEntity,
+  values: Record<string, unknown>,
+  fields: string[],
+): void {
+  if (fields.length === 0) return;
+  if (entity === 'lead' && values.convertedOrderId) {
+    throw new ValidationError('validation.lead.convertedLocked');
+  }
+  if (entity === 'order' && values.dispatchedAt) {
+    throw new ValidationError('validation.order.dispatchedLocked');
+  }
+}
+
+/**
+ * The online edit's value checks, run on what the merge accepted. A merge
+ * writes columns directly, so without these an offline panel would be the way
+ * around every rule `updateLead` / `updateOrder` / `updateParty` enforce.
+ * Normalised values are written back into `accepted`.
+ */
+export async function assertMergeAllowed(
+  entity: MergeableEntity,
+  current: Record<string, unknown>,
+  accepted: Record<string, unknown>,
+  actor: ActorContext,
+): Promise<void> {
+  if (entity === 'lead') {
+    if ('sourcePlatform' in accepted) {
+      const value = accepted.sourcePlatform;
+      if (value !== null && typeof value !== 'string') {
+        throw new ValidationError('validation.lead.sourceInvalid', { value: String(value) });
+      }
+      await leadService.assertSourcePlatform(
+        actor.tenantId,
+        value,
+        typeof current.sourcePlatform === 'string' ? current.sourcePlatform : null,
+      );
+    }
+    if ('partyId' in accepted) {
+      const party =
+        typeof accepted.partyId === 'string'
+          ? await partyRepo.findPartyById(actor.tenantId, accepted.partyId)
+          : null;
+      if (!party) throw new ValidationError('validation.lead.partyMissing');
+    }
+    if ('stageId' in accepted && accepted.stageId !== current.stageId) {
+      // The same pipeline / converted / archived rules `setStage` applies.
+      const stages = await pipelineRepo.stagesFor(actor.tenantId, 'lead');
+      assertStageMove(stages, String(current.stageId), String(accepted.stageId), {
+        convertedOrderId: current.convertedOrderId as string | null,
+      });
+    }
+    if ('ownerId' in accepted && accepted.ownerId !== current.ownerId) {
+      const owner =
+        typeof accepted.ownerId === 'string'
+          ? await userRepo.findById(actor.tenantId, accepted.ownerId)
+          : null;
+      if (!owner) throw new ValidationError('validation.lead.ownerMissing');
+    }
+    if (typeof accepted.notes === 'string') accepted.notes = accepted.notes.trim() || null;
+  } else if (entity === 'order') {
+    const weight = accepted.totalWeightKgOverride;
+    if (typeof weight === 'number' && weight < 0) {
+      throw new ValidationError('validation.order.weightNegative');
+    }
+    if ('vehicleNumber' in accepted) {
+      const vehicle = accepted.vehicleNumber;
+      if (vehicle !== null && typeof vehicle !== 'string') {
+        throw new ValidationError('validation.order.vehicleInvalid');
+      }
+      accepted.vehicleNumber = orderService.normaliseVehicleNumber(vehicle);
+    }
+  } else if (entity === 'party') {
+    if ('name' in accepted && (typeof accepted.name !== 'string' || accepted.name.trim() === '')) {
+      throw new ValidationError('validation.party.nameRequired');
+    }
+  }
+}
+
 /** Row-locks the merge target within the caller's transaction — see `mergeUpdate`. */
-async function lockMergeTarget(
+export async function lockMergeTarget(
   entity: MergeableEntity,
   tenantId: string,
   id: string,
@@ -687,7 +913,7 @@ async function assertMergeTargetAccessible(
   if (typeof partyId === 'string') await requirePartyAccess(partyId, 'manage', actor);
 }
 
-async function loadMergeTarget(
+export async function loadMergeTarget(
   entity: MergeableEntity,
   tenantId: string,
   id: string,

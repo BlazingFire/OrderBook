@@ -926,7 +926,7 @@ appends every missing key just before the final `};` with its English text and a
 
 | File | Purpose / exports |
 |---|---|
-| `shared/src/keys/commands.ts` | `COMMANDS`, **33** entries: 9 chrome commands (`palette.open` Ctrl+K, `palette.search` `/`, `record.save` Ctrl+S, `record.new` Ctrl+Shift+N (Office only), `view.reset` Ctrl+Shift+R, `view.refresh` F5, `keys.help` Ctrl+/, `view.toggleSidebar` Ctrl+\\, `view.find` Ctrl+F), 15 Master nav and 9 Office nav commands (`nav.<panel>.<tab>`; the first 9 per panel get `Alt+N`, with `platformDefaultChord.darwin` `Meta+N`). `MASTER_NAV` and `OFFICE_NAV` are declared lists in each sidebar's order, held to the two `App.tsx` sidebars by `shared/tests/keys-nav-order.test.ts`: Parties joined `MASTER_NAV` third on 2026-09-25 (Alt+3), moving Inventory … Party access down one to Alt+4 … Alt+9, and Fields, now tenth, is reached from the palette. Most chrome commands also carry a `Meta+…` Mac default. `CommandScope` (`global`/`screen`), `CommandDef`, `COMMANDS_BY_ID`, `commandsFor(panel)`. |
+| `shared/src/keys/commands.ts` | `COMMANDS`, **35** entries: 9 chrome commands (`palette.open` Ctrl+K, `palette.search` `/`, `record.save` Ctrl+S, `record.new` Ctrl+Shift+N (both panels: New pending order; on the Master only for `leads.create`), `view.reset` Ctrl+Shift+R, `view.refresh` F5, `keys.help` Ctrl+/, `view.toggleSidebar` Ctrl+\\, `view.find` Ctrl+F), 17 Master nav and 9 Office nav commands (`nav.<panel>.<tab>`; the first 9 per panel get `Alt+N`, with `platformDefaultChord.darwin` `Meta+N`). `MASTER_NAV` and `OFFICE_NAV` are declared lists in each sidebar's order, held to the two `App.tsx` sidebars by `shared/tests/keys-nav-order.test.ts`: Parties joined `MASTER_NAV` third on 2026-09-25 (Alt+3), moving Inventory … Party access down one to Alt+4 … Alt+9, and Fields, now tenth, is reached from the palette. Products joined fifth on 2026-10-01 (P4): Alt+1 to Alt+6 now match the Office, Office panels is Alt+9, and Roles & users and Party access have no chord. Most chrome commands also carry a `Meta+…` Mac default. `CommandScope` (`global`/`screen`), `CommandDef`, `COMMANDS_BY_ID`, `commandsFor(panel)`. |
 | `shared/src/keys/chord.ts` | DOM-free chord parsing and matching. Digits, function keys and named keys match on `code`; letters on `key` unless Alt is held; an Alt-only chord requires Ctrl up (so AltGr does not fire it). Escape and Tab are reserved. `KeyEventLike`, `Chord`, `isReservedChord`, `parseChord`, `formatChord`, `formatChordMac` (⌃⌥⇧⌘), `chordFromEvent`, `matchesChord`. |
 | `shared/src/keys/bindings.ts` | Exports `BINDINGS_STORAGE_KEY = 'ob.keys.v1'`; does no I/O itself. `ui/src/KeyboardProvider.tsx` stores remaps in `localStorage` under `ob.keys.v1:<userId>` (both panels pass `userId`), or bare `ob.keys.v1` with nobody signed in. `BindingMap`: absent = default, `null` = unbound. `chordFor()` picks the `darwin` default when `navigator` reports a Mac (false on the server). `findConflicts(panel, overrides)`, `parseBindings(raw)` (drops anything unrecognised). |
 
@@ -1248,6 +1248,12 @@ removed on 2026-09-25.
 | `ui/src/PartyFormModal.tsx` | `CreatedParty`, `PartyFormTransport`, `PartyFormModal` | Full party create/edit form (11 text fields); registers `useEnterToAdvance` and `useCommand('record.save')`. Transport `{ createParty(input) → {id}, updateParty(id, input & { baseFieldHlc? }) }` implemented by `master/web/src/partyFormTransport.ts` and `office/web/src/partyFormTransport.ts`. Mounted by `master/web/src/screens/PartiesScreen.tsx`, `office/web/src/screens/AddLeadScreen.tsx`, `office/web/src/screens/CatalogScreen.tsx`. |
 | `ui/src/SettingsLayout.tsx` | `SettingsTab`, `SettingsPage`, `requestSettingsTab`, `useSettingsTab`, `SettingsSection`, `SettingRow`, `NumberSetting` (moved here from the Master's Settings screen for catalogue v2, so the Office Leads tab can use it: `{ control, value, label, saving, onSave(value) }`), `AppearanceSettings`, `DeveloperTransport`, `useDeveloperSession`, `DeveloperTool`, `DeveloperPanel`, `useUninstallTool`, `UninstallBridge` | Both panels' `screens/SettingsScreen.tsx`. `useSettingsTab` stores the tab under `ob.settings.tab.master`/`.office`. `AppearanceSettings`: language (`setLocale` then `window.location.reload()`), theme, scale slider, density, motion. Developer tab: password unlock, token only in React state; `confirmWord` gates destructive tools; `useUninstallTool(bridge)` shows "unavailable" in a plain browser. |
 | `ui/src/OrderNoteScreen.tsx`, `ui/src/OrderNote.tsx`, `ui/src/order-note.css` | 2026-09-30: the order's Filling / Dispatch note. `OrderNoteScreen` is the preview sub-screen (`EditorScreen`): note switch (also Alt+F / Alt+D), Dispatch-only Vehicle no. field saved on blur/Enter via `onSaveVehicle`, printer picker (desktop only, remembered in `localStorage['ob.note.printer']`), Print (also Ctrl+P) → `desktop.printPage` else `window.print()`. `OrderNote` draws the sheets (794 × 1123 px, heights from `NOTE_LAYOUT` as CSS custom properties); a second copy is portalled to `<body>` and is all `@media print` shows. Paper colours are the sheet's own, not theme tokens. | `OrderBoardScreen` (Office), `LeadsOrdersScreen` (Master) |
+| `ui/src/LeadEntryScreen.tsx` | 2026-10-01 (P3): the New / Edit pending order form, a port of `office/web/src/screens/AddLeadScreen.tsx` — keep in step; the Office still has its own copy (HANDOFF owed work). `LeadEntryView` (`optionLists`, `partyVariants`, `stock`, `partyGrants`, `features`, optional `products`), `LeadEntryTransport extends PartyFormTransport { pick, createLead, updateLead }` read through `transportRef`. Differences: Master wording keys (`lead.add.savingHintOnline`, `…draft.packagingEmptyFields`/`gradeEmptyFields`), `canCreateParty` hides Create party, `onSaved(id, saved?)`, errors through `apiErrorText`, edit seeds the picker with the lead's own party. | `LeadEntry` (Master) |
+| `ui/src/catalogueSummary.ts` | 2026-10-01 (P4): `productLabel`, `byCatalogueOrder`, `shownColours`, `codesOf`, `weightLabel` (verbatim from `office/web/src/productSummary.ts` — keep in step) and the two types the catalogue ports share: `CatalogueView` (`permissions`, `optionLists`, `categories`, `products`, `stock`) and `CatalogueTransport` (list/paging, category and product writes, photos, import) | the six catalogue ports below |
+| `ui/src/SubProductsScreen.tsx` | 2026-10-01 (P4): Products → Sub products, the products half of `office/web/src/screens/CatalogScreen.tsx` — keep in step. Brand chips, the Product picker above the table, search, `LoadMorePager`; refetch on the host's `revision` and after its own writes. Dropped from the Office copy: parties, not-synced rows, snapshot overlay, "cached page". New / Import / Edit / photo controls absent without `products.create` / `products.bulk` / `products.edit`. | `ProductsScreen` (Master) |
+| `ui/src/MainProductsScreen.tsx` | 2026-10-01 (P4): `MainProductsScreen` (Products page: list, detail with sub products from `view.products` in catalogue order, `MainProductForm`; a brand retired since it was set is not re-sent) and `BrandsScreen({ permissions, transport, revision })` (the shared `OptionListEditor` on `product.brand`; no-access message without `fields.view`). Port of `office/web/src/screens/MainProductsScreen.tsx`. | `ProductsScreen` (Master) |
+| `ui/src/ProductDetail.tsx`, `ui/src/ProductDrawer.tsx`, `ui/src/ProductImages.tsx`, `ui/src/ProductImportModal.tsx` | 2026-10-01 (P4): ports of the Office's `ProductDetail`, `ProductDrawer`, `ProductImages`, `ProductImportModal` — keep in step. Every one reads the `CatalogueTransport` through `transportRef`; `ProductDetail` and `ProductImages` take `canEdit`; the import shows `apiErrorText`. `ProductImages` is in the strict-i18n lint list. Photos load through `ProgressiveImage` → `/uploads/images/:id/:variant`, which the Master now serves. | `SubProductsScreen`, `MainProductsScreen` |
+| `ui/src/LeadRecordView.tsx`, `ui/src/OrderRecordView.tsx` | 2026-10-01: the Master's record bodies, ports of `office/web/src/screens/LeadDetail.tsx` and `OrderDetailBody` (`OrderBoardScreen.tsx`) — keep in step; the Office still has its own copies (HANDOFF owed work). Props plus a transport read through `transportRef` (`LeadRecordTransport { addLeadRemark, setLeadStage, convertLead }`, `OrderRecordTransport { updateOrder, setOrderStage, dispatchOrder }`). Unlike the Office copies, the stage select, Add note, weight override, Convert card and Dispatch card are **absent** without `canEdit` / `canConvert` / `canDispatch`. | `LeadsScreen`, `OrdersScreen` (Master) |
 | `ui/src/OptionListEditor.tsx` | `OptionListEditor`, `OptionListEditorProps`, `OptionListTransport`, `FieldDifference`, `ConflictNotice`, `HexField`, `HEX_PATTERN`, `HEX_EXAMPLE` | Catalogue v2 (2026-09-29): one option list's values — add, relabel, hex, reorder, remove to the Recycle Bin, "used by" counts, the stale-save conflict with Overwrite — lifted out of the Master's Fields screen so a Settings tab can edit the lead sources and the brands. Props `{ listKey, canManage, transport, revision?, compact? }`; it reads its list descriptors from `buildFieldCatalogue()`, as the server does. Transport `{ fieldValues, fieldUsage, createFieldValue, updateFieldValue, deleteFieldValue, reorderFieldValues, conflictOf(error) }`; the Master's is `optionListTransport` in `master/web/src/screens/FieldsScreen.tsx`. Test: `ui/tests/option-list-editor.test.tsx`. |
 | `ui/src/ShortcutSettings.tsx` | `ShortcutSettings` | rebinding by capture (`chordFromEvent`, `isReservedChord`), stored via `keyboard.setBinding(id, formatChord(chord))` |
 | `ui/src/GalleryScreen.tsx` | `GalleryScreen` | token and component gallery, reached only at `#/gallery` (footer link), rendered outside `ScreenHost` |
@@ -1984,7 +1990,11 @@ exercised only through service integration tests.
   `pg_advisory_xact_lock` (namespace 4712); permission from `MUTATION_PERMISSIONS`;
   creates and actions delegate to services, `*.update` goes through `mergeUpdate`
   (`mergeFields` against the repositories under `FOR UPDATE`, explicit party-access
-  check, and since 2026-09-25 an audit entry for the merged update); transient
+  check, and since 2026-09-25 an audit entry for the merged update; a lead/order edit
+  with an empty `baseFieldHlc` takes each stored field clock older than the edit as
+  its base, so only an older edit records a conflict); an `office_panel` push whose
+  mutation carries an `actorUserId` the panel role cannot perform throws a retryable
+  503 (`error.unavailable.signInToSync`) before anything is recorded; transient
   errors (`40001`, `40P01`, pool timeout) are rethrown, not recorded. Only
   `lead.create`, `party.create` and `product.create` record a temporary-id mapping
   (`mapTemporaryId`).
@@ -2059,8 +2069,8 @@ exercised only through service integration tests.
   counter present only with its module key (there is no `dashboard.view`).
 - `master/src/services/fields.service.ts` (839) — option lists, custom-field
   definitions and pipeline stages. Ungated readers (`listPipelinesUnguarded`,
-  `listOptionListsUnguarded`, `listCustomFieldsUnguarded`) behind `GET
-  /api/pipelines`, `/api/option-lists` and `/api/custom-fields` in `data.routes.ts`,
+  `listOptionListsUnguarded`) behind `GET
+  /api/pipelines` and `/api/option-lists` in `data.routes.ts`,
   also used by `catalogue-seed.service.ts` (`buildSnapshot` does not call them; it
   reads the repositories directly);
   gated reads (`fieldsCatalogue`, `listValues`, `fieldUsage`, `listDefinitions`,
@@ -2300,7 +2310,7 @@ mount runs `requirePanel`, then both routers pass the path on). `notFoundHandler
 | `/api/reports` | `reportRoutes` | `requireAuth` |
 | `/api/products/:productId/images` | `imagesRoutes` (`images.routes.ts`) | `requireAuth` |
 | `/api/panel` | `panelImageRoutes`, then `panelCatalogRoutes` | `requirePanel`, once, at the mount in front of both (each router used to `.use` its own, so an import paid two bcrypt compares; fixed 2026-09-25) |
-| `/api/images` | `imageFilesRoutes` (`images.routes.ts`) | `requireAuth` |
+| `/api/images` and `/uploads/images` | `imageFilesRoutes` (`images.routes.ts`, mounted twice — `ui/ProgressiveImage` loads `/uploads/images/:id/:variant`; 404 for a product the caller may not see) | `requireAuth` |
 | `/api/access/users/:userId/avatar` | `avatarRoutes` (`avatar.routes.ts`) | `requireAuth` |
 | `/api/avatars` and `/uploads/avatars` | `avatarFilesRoutes` (mounted twice) | `requireAuth` |
 | `/api/integrations` | `integrationRoutes` | `requireAuth` |
@@ -2366,10 +2376,12 @@ the service checks.
 - `master/src/http/routes/panel-image.routes.ts` (`/api/panel`, 3, behind the
   mount's `requirePanel`): `POST /products/:productId/images`, `GET
   /avatars/:avatarId/:variant`, `GET /images/:imageId/:variant`.
-- `master/src/http/routes/panel-catalog.routes.ts` (`/api/panel`, 2, behind the
-  mount's `requirePanel`): `GET /products/import/template.:format`, `POST
+- `master/src/http/routes/panel-catalog.routes.ts`: the factory
+  `productImportRoutes(actorOf)` — `GET /products/import/template.:format`, `POST
   /products/import` (multipart; `dryRun`, `mode`; the service checks
-  `products.bulk`).
+  `products.bulk`). `panelCatalogRoutes = productImportRoutes(panelActorFromRequest)`
+  is mounted at `/api/panel` behind `requirePanel`; `dataRoutes` mounts
+  `productImportRoutes(actorFromRequest)` for a signed-in user (`/api/products/import…`).
 - `master/src/http/routes/avatar.routes.ts`: `avatarRoutes` — `POST /`, `DELETE /`
   (no route guard; `avatar.service.ts#assertMayEdit`); `avatarFilesRoutes` — `GET
   /:avatarId/:variant` (immutable-cached WebP).
@@ -2390,7 +2402,7 @@ the service checks.
   surface): `GET /dashboard`; `GET /storage` (`settings.manage` since 2026-09-25); `POST
   /storage/export`, `/storage/restore/preview`, `/storage/restore`
   (`storage.manage`, multipart ≤ 1 GiB, buffered in memory); reference data `GET
-  /pipelines`, `/option-lists`, `/custom-fields` (ungated by design); `GET /search`,
+  /pipelines`, `/option-lists` (ungated by design); `GET /search`,
   `GET /pick/:kind`; parties `GET`/`POST /parties`, `PUT /parties/:id`, `DELETE
   /parties/:id` (`parties.delete`), `GET /parties/:id/variants`, `POST
   /party-variants`; products `GET /products`, `GET /products/by-code/:code`, `POST
@@ -2452,7 +2464,13 @@ the service checks.
   `BOOT_ID`. A cursor from before a restart falls back to a snapshot.
 - **`master/src/realtime/panel-link.ts`** — `setPanelLink()`/`panelLink()`, a seam so
   `panel.service.ts` can reach one panel's socket (`isConnected`, `request`,
-  `disconnect`, `notify`) without importing the hub.
+  `disconnect`, `notify`) without importing the hub. Two optional members push to
+  every panel: `sessionsEnded(tokens, reason)` (called by
+  `auth.service#invalidateSessionsForUser`; emits `session:rejected` to the sockets
+  whose acting token ended) and `resnapshotAll()` (called after role update/delete/
+  restore and party-access replace; sends `sync:snapshot` per socket via
+  `resolvePanelActorAllowingRefusal`, skipping any socket whose token is refused,
+  so a broadcast never signs anyone out).
 - **`master/src/realtime/socket-origin.ts`** (added 2026-09-25) —
   `isAllowedSocketOrigin(origin, host)`: no `Origin` passes (an Office Panel's
   server, in Node; a browser leaves it off only where the page cannot read the
@@ -2969,6 +2987,7 @@ files of its own** — §7.6 lists the tests that read or boot this source.
 | `master/web/src/App.tsx` | 1116 | the shell (§7.2) |
 | `master/web/src/api.ts` | 875 | the only HTTP client (§7.3) |
 | `master/web/src/partyFormTransport.ts` | 20 | hands the shared `PartyFormModal` `api.createParty`/`api.updateParty` |
+| `master/web/src/transports.ts` | 22 | `leadRecordTransport`, `orderRecordTransport`, `leadEntryTransport` and `catalogueTransport`: module-level `api.x` references handed to the shared views (2026-10-01) |
 | `master/web/src/styles.css` | 152 | legacy layer styling bare elements; every element-selector rule (`button`, `input`/`select`/`textarea`, `label`, `table`) is guarded by `:not(:where([class*='ob-']))`; the only class rules left are `.dot` and `.num` (the `:root` alias tokens, `.card`, `.row`, `.muted`, `.chip*` and the rest went on 2026-09-25) |
 | `master/web/src/components/ChangePasswordDialog.tsx` | 137 | change your own password: 8-char minimum and match checked client-side, then `api.changeOwnPassword`; the server invalidates every session for the user, so the 401 path returns to sign-in |
 | `master/web/src/components/DataDirCard.tsx` | 74 | first-run-only data-folder chooser; renders only when `desktopBridge()` has `getDataDir`, `setDataDir`, `chooseDirectory` |
@@ -2994,18 +3013,20 @@ files of its own** — §7.6 lists the tests that read or boot this source.
   reset `tab` to `dashboard` (since 2026-09-25): `ScreenHost` draws `tab` whatever
   the sidebar offers, so the next person to sign in at that window used to start on
   the previous person's screen.
-- **`type Tab`** (15): `dashboard, panels, orders, parties, inventory, reports,
+- **`type Tab`** (16): `dashboard, panels, leads, orders, parties, inventory, reports,
   access, partyAccess, fields, integrations, logs, recycleBin, conflicts, settings,
   updates`. A separate `Route = '' | 'gallery'` shows `GalleryScreen`.
 
 | Group | id | Label key | Shown when | Badge |
 |---|---|---|---|---|
 | Work | `dashboard` | `nav.master.dashboard` | always | — |
-| Work | `orders` | `nav.master.leadsOrders` | always | — |
+| Work | `leads` | `nav.leads` (Pending Orders) | `leads.view` | — |
+| Work | `orders` | `nav.orders` (Final Orders) | `orders.view` | — |
+| Work | `conflicts` | `nav.master.conflicts` | `sync.resolveConflicts` | `openConflictCount` |
+| Work | `products` | `nav.products` | `products.view` | — |
 | Work | `parties` | `nav.master.parties` | `parties.view` | — |
-| Work | `inventory` | `nav.master.inventory` | always | `summary.lowStockCount` |
+| Work | `inventory` | `nav.master.inventory` | `inventory.view` | `summary.lowStockCount` |
 | Work | `reports` | `nav.master.reports` | `reports.view` | — |
-| Work | `conflicts` | `nav.master.conflicts` | always | `openConflictCount` |
 | Admin | `panels` | `nav.master.panels` | `panels.manage` | — |
 | Admin | `access` | `nav.master.access` | `roles.view` or `users.manage` | — |
 | Admin | `partyAccess` | `nav.master.partyAccess` | `party.assign` or `party.accessAll` | — |
@@ -3017,6 +3038,36 @@ files of its own** — §7.6 lists the tests that read or boot this source.
 | Admin | `updates` | `nav.updates` | always | — |
 
 An entry the user may not use is **absent**, not greyed out.
+
+**Pending and Final Orders (2026-10-01, parity plan P2).** `leads` and `orders` are
+modules of their own (`LeadsOrdersScreen` is gone). Sub-pages: leads = `list`,
+`converted`; orders = `all` plus one `stage:<id>` per order stage, read off
+`api.pipelines()`, which the shell loads once (on `phase === 'ready'` and each
+`stages` revision) and passes down. `subKeyOf` falls back to a module's first page
+when the chosen one is no longer offered. `openIds {leads, orders}` live in the shell
+so a palette hit (`SearchHit.id` is the parent record) or a link can open a record:
+`openRecord(target, id)` navigates and then sets the id; they are cleared by reset,
+sign-out and session end. `shownTab = offered(tab) ? tab : 'dashboard'` draws the
+Dashboard when a role edit removed the open screen (`NOT_IN_SIDEBAR` is the place to
+exempt a button-only screen; empty until New pending order). `data:changed` for `role`
+or `user` re-runs `refreshUser()`. Alt+N: `MASTER_NAV` is dashboard, leads, orders,
+conflicts, products, parties, inventory, reports, panels, access, partyAccess, ...; the topbar
+shows the active sub-page's label (`lead.board.tab.list`, `orders.filter.allStages`),
+not the module's.
+
+**Products (2026-10-01, parity plan P4).** `products` is a module (`products.view`,
+Alt+5, before Parties) with three always-offered sub-pages: `sub` (Sub products),
+`main` (Products) and `brands` (Brands — without `fields.view` the page says so
+inside itself, as on the Office). `ProductsScreen` loads a `CatalogueView` — option
+lists on `catalogueLists` (`option_list`), categories and every sub product
+(`GET /api/products?limit=2000`) on `catalogue` (`product`, `catalog`,
+`product_category`), free stock on `catalogueStock` (`stock`, `reservation`) and
+only with `inventory.view` — and mounts the three `ui/` ports in `<Activity>`
+blocks so each page keeps its search, filters and open record. A record opens as a
+sub-screen (`products.detail` under `products.sub`, `products.main.detail` under
+`products.main`); the edit forms, the delete confirm, the import and the photo
+crop are modals. A `product` search hit goes to `products.sub` when offered, else
+Inventory. Free-stock cells read "—" without `inventory.view`.
 
 **Sub-pages** (grafted with `withSubPages` and `graftSubNav`; key in `subKeys`
 state, Settings via `useSettingsTab('ob.settings.tab.master', SETTINGS_TAB_IDS,
@@ -3048,13 +3099,15 @@ transports: ['websocket'] })` once `ready`. On connect the server emits
 | `sync:conflict` | `bump('sync_conflict')` |
 
 `revisionOf(revisions, key)` sums counters for `SCREEN_ENTITIES[key]`: `records`
-(lead, order, party, product, catalog, stock, reservation → LeadsOrdersScreen),
-`stages` (pipeline → LeadsOrdersScreen's stage picker, apart from `records` so a lead
-edit does not re-read it), `inventory` (stock, product, catalog, reservation),
+(lead, order, party, product, catalog, stock, reservation, option_list → LeadsScreen and
+OrdersScreen), `leadEntry` (option_list, party, party_variant, stock, reservation, product, catalog, setting → the New / Edit pending order form's `GET /api/lead-entry`),
+`stages` (pipeline → the shell's own `api.pipelines()` read, which feeds both screens'
+stage chips and the sidebar's `stage:<id>` pages; apart from `records` so a lead edit
+does not re-read it), `inventory` (stock, product, catalog, reservation),
 `reports` (lead, order, party, stock), `fields` (option_list, custom_field,
 pipeline), `access` (user, role → AccessScreen), `partyAccess` (party), `parties`
-(party), `recycleBin` (lead, order, party, product, role, user, option_list,
-custom_field), `conflicts` (sync_conflict). Every key is read by a screen; `catalog`
+(party), `recycleBin` (lead, order, party, product, product_category, role, user,
+option_list, custom_field), `conflicts` (sync_conflict). Every key is read by a screen; `catalog`
 (the one event a bulk import or the catalogue seed publishes) and the `stages`,
 `access` and Bin field wiring were added on 2026-09-25. Dashboard (fed only
 `summary`, `panels` and `onOpenConflicts`), Panels, Logs, Updates, Integrations and
@@ -3087,21 +3140,23 @@ resolveCompanyFeatures(user?.features)` supplies the feature props:
 
 | Screen id | Component and props |
 |---|---|
-| `dashboard` | `DashboardScreen summary panels onOpenConflicts` |
+| `dashboard` | `DashboardScreen summary panels canManagePanels canViewLeads revision onNavigate onOpenLead` |
 | `panels` | `PanelsScreen panels onRefresh` |
-| `parties` | `PartiesScreen revision permissions` |
-| `orders` | `LeadsOrdersScreen revision stagesRevision permissions packagingRequired view onViewChange` |
-| `inventory` | `InventoryScreen revision filter onFilterChange freeToSell adjustmentNoteRequired` |
+| `parties` | `PartiesScreen revision recordsRevision permissions openId onOpenId onOpenLead onOpenPartyAccess` |
+| `leads` | `LeadsScreen revision stages permissions packagingRequired view openId onOpenId onOpenOrder canCreate onNewLead canCreateParty leadEntryRevision` |
+| `addLead` | `LeadEntry revision focusNonce canCreateParty onSaved onCancel` — only registered with `leads.create`; no sidebar row (`NAVLESS_SCREENS.master.addLead`), reached by the topbar "New pending order", the `leads.new` sub-page or `record.new`; `shownTab` exempts it (`NOT_IN_SIDEBAR`), `activeId` maps it to `leads.new` |
+| `orders` | `OrdersScreen revision stages permissions freeToSell stageId onStageChange openId onOpenId onOpenLead` |
+| `inventory` | `InventoryScreen revision filter onFilterChange freeToSell adjustmentNoteRequired permissions` |
 | `reports` | `ReportsScreen revision permissions kind onKindChange` |
 | `access` | `AccessScreen revision permissions currentUserId currentUserTier tab onTabChange` |
 | `partyAccess` | `PartyAccessScreen permissions revision restriction onRestrictionChange` |
 | `fields` | `FieldsScreen permissions revision tab onTabChange` |
 | `logs` | `LogsScreen permissions` |
 | `recycleBin` | `RecycleBinScreen permissions revision type onTypeChange` |
-| `conflicts` | `ConflictsScreen revision canResolve` |
+| `conflicts` | `ConflictsScreen revision` |
 | `updates` | `UpdatesScreen panels permissions` |
 | `integrations` | `IntegrationsScreen canManage tab onTabChange` |
-| `settings` | `SettingsScreen tab onTabChange onSaved={refreshUser} permissions` |
+| `settings` | `SettingsScreen tab onTabChange onSaved={refreshUser} permissions settingsRevision sourcesRevision` - offered to everyone; the company / leads / connection / storage tabs need `settings.manage` (`settingsTabIdsFor`) |
 
 `FirstRunScreen` and `SignInScreen` are rendered by the phase logic.
 
@@ -3142,9 +3197,10 @@ resolveCompanyFeatures(user?.features)` supplies the feature props:
 | Party access | `partyAccess`, `partyAccessPeople`, `partyAccessFor`, `savePartyAccess`, `partyAccessExportUrl` | `party-access/*` |
 | Fields (17) | `fieldsCatalogue` … `restoreFieldStage` | `fields/*` |
 | Panels (12) | `panels`, `openPairingWindow`, `closePairingWindow`, `revokePanel`, `renamePanel`, `panel`, `updatePanel`, `refreshPanel`, `rotatePanelSecret`, `setPanelStoragePath`, `disconnectPanel`, `panelActivity` | `panels/*` |
-| Parties, products | `parties`, `createParty`, `updateParty` (optional `baseFieldHlc`), `deleteParty`, `createProduct`, `deleteProduct`, `categories` | `parties`, `products`, `categories` |
+| Parties, products | `parties`, `createParty`, `updateParty` (optional `baseFieldHlc`), `deleteParty`, `createProduct`, `updateProduct`, `listProducts`, `categories`, `createCategory`, `updateCategory`, `deleteCategory` (`deleteProduct` removed: the Office has no sub-product delete either) | `parties`, `products`, `categories` |
+| Catalogue import and photos (6) | `productImportTemplate` (GET blob via `requestFile`), `importProducts`, `uploadProductImage` (both `requestForm`), `updateProductImage` (PATCH), `reorderProductImages`, `deleteProductImage` | `products/import…`, `products/:id/images…` |
 | Stock | `stock`, `stockMovements`, `stockInbound`, `stockAdjust`, `setReorderLevel` | `stock/*` |
-| Leads, orders (12) | `leads`, `lead`, `setLeadStage`, `addLeadRemark`, `convertLead`, `deleteLead`, `orders`, `order`, `updateOrder`, `setOrderStage`, `dispatchOrder`, `deleteOrder` | `leads/*`, `orders/*` |
+| Leads, orders (15) | `leads`, `lead`, `createLead`, `updateLead` (PUT), `leadEntryView`, `setLeadStage`, `addLeadRemark`, `convertLead`, `deleteLead`, `orders`, `order`, `updateOrder`, `setOrderStage`, `dispatchOrder`, `deleteOrder` | `leads/*`, `orders/*` |
 | Access (19) | `permissionCatalogue`, `roles`, `deletedRoles`, `role`, `createRole`, `updateRole`, `deleteRole`, `restoreRole`, `users`, `deletedUsers`, `createUser`, `updateUser`, `deleteUser`, `restoreUser`, `resetPassword`, `revealPassword`, `changeOwnPassword`, `uploadAvatar`, `removeAvatar` | `access/*` |
 | Settings | `settings`, `saveSetting`, `vaultStatus` | `settings/*` |
 | Conflicts | `conflicts`, `resolveConflict` | `conflicts/*` |
@@ -3154,31 +3210,33 @@ resolveCompanyFeatures(user?.features)` supplies the feature props:
 | Integrations (12) | `apiKeys`, `issueApiKey`, `revokeApiKey`, `connectors`, `connectorProfiles`, `createConnector`, `updateConnector`, `deleteConnector`, `setConnectorMapping`, `testConnector`, `runConnector`, `connectorRuns` | `integrations/*` |
 | Developer | `developer.{status, unlock, lock, resetAll, seedDummyUsers, seedSampleData, loadSwiswareCatalogue}` | `developer/*` |
 
-**20 members have no caller** in `master/web/src`, each listed with a reason in
+**18 members have no caller** in `master/web/src`, each listed with a reason in
 `ALLOWED_UNCALLED.master` in `master/tests/web-reachability.test.ts`: `dashboard`,
 `panel`, `updatePanel`, `refreshPanel`, `rotatePanelSecret`, `setPanelStoragePath`,
-`disconnectPanel`, `panelActivity`, `partyAccessFor`, `createProduct`, `categories`,
-`deleteProduct`, `lead`, `order`, `role`, `addLeadRemark`, `updateOrder`,
+`disconnectPanel`, `panelActivity`, `partyAccessFor`, `lead`, `order`, `role`, `addLeadRemark`, `updateOrder`,
 `reportRangeQuery` (used inside `api.ts`), `connectorProfiles`, `deleteConnector`.
 
 ### 7.4 Screens (`master/web/src/screens/`, 17 files)
 
 | Screen (lines) | What it shows and does | `api` calls | Permissions checked inside |
 |---|---|---|---|
-| `master/web/src/screens/DashboardScreen.tsx` (214) | four stat cards (panels online, open conflicts → Conflicts, pending sync, low stock) and active panels; all from props | none | none |
-| `master/web/src/screens/PanelsScreen.tsx` (417) | "Add Office Panel" opens the pairing window and waits until a new row arrives over the socket (the window is also closed on effect cleanup); table of status, name, device code, LAN IP, paired, last seen; detail modal with **Rename** and **Remove** only | `openPairingWindow`, `closePairingWindow`, `renamePanel`, `revokePanel` | none (nav needs `panels.manage`) |
-| `master/web/src/screens/LeadsOrdersScreen.tsx` (623) | Leads / Orders / Converted with scope all/assigned; lead rows with an "incomplete" pill, line summary, weight, stage `Select`, **Convert** (disabled when `packagingRequired` and a line lacks packaging), **Preview PDF** (catalogue v2, `leads.export`: a link to `/api/leads/:id/pdf` opened beside the app), delete; order rows with stage `Select`, **Dispatch**, delete; a 409 delete lists `blockedBy`. Stages re-read on a `pipeline` change (`stagesRevision`). No pager (server default 100). **No "New lead" page** — leads are entered on an Office panel. | `pipelines`, `leads`, `orders`, `setLeadStage`, `setOrderStage`, `convertLead`, `dispatchOrder`, `deleteLead`, `deleteOrder` | `leads.delete`, `orders.delete` |
-| `master/web/src/screens/PartiesScreen.tsx` (360) | paged list (`PAGE_SIZE = 100`, Load more), debounced search, client sort, detail modal; create/edit via `PartyFormModal`; delete with confirm, 409 lists blockers | `parties`, `deleteParty` (+ transport) | `parties.create`, `parties.edit`, `parties.delete` |
-| `master/web/src/screens/InventoryScreen.tsx` (1201) | one row per variant — since catalogue v2 **every live variant**, at zero when never stocked, read as Brand, Product (`CODE · Name`), Sub product, Size, Colour (the fixed colour only), Code (on hand; reserved and free only when `freeToSell`; inline reorder/min/max saved on blur); recent-movements ledger; search (also product code and brand), brand chips, product filter, All/Low chips, an older answer never overwriting a newer one; row modal with its ledger; Stock in and Physical count (`MovementForm`: product bar → sub-product bar → the variant); note required when `adjustmentNoteRequired` | `stock`, `stockMovements`, `optionLists`, `setReorderLevel`, `stockInbound`, `stockAdjust`, `pick` | none |
+| `master/web/src/screens/DashboardScreen.tsx` | a card only for each figure the summary carries (Pending Orders → `leads`, Final Orders → `orders`, Dispatched this week, panels online (`panels.manage`), conflicts → Conflicts, pending sync, low stock); stage bars with "Open board"; follow-ups due (`leads.view` only; a row opens the lead); active panels (`panels.manage`). Not ported: the Office's recent-activity box and reserved-boxes note (`reservedBoxes` would break the Office server's exhaustive `DASHBOARD_FIGURE_PERMISSIONS` type) | `leads` (follow-ups) | `panels.manage`, `leads.view` |
+| `master/web/src/screens/PanelsScreen.tsx` (417) | "Add Office Panel" opens the pairing window and waits until a new row arrives over the socket (the window is also closed on effect cleanup); table of status, name, device code, LAN IP, paired, last seen; detail is an `EditorScreen` sub-screen (sub-nav `panels.detail`) that loads `api.panel(id)` for the acting role and work counts, with **Rename** and **Remove** (modal confirms) only | `openPairingWindow`, `closePairingWindow`, `panel`, `renamePanel`, `revokePanel` | none (nav needs `panels.manage`) |
+| `master/web/src/screens/LeadsScreen.tsx` | Pending Orders (leads), 2026-10-01 (parity plan P2). List: server `search` (debounced, `data-screen-search`), All / My parties, client-side stage chips counting the loaded rows, `LoadMorePager` at 500 per page, no actions column; `view` `list` or `converted` (`convertedOnly`). A row opens `EditorScreen` as a sub-screen (back button, `useSubNav('leads', ...)`): Preview PDF (`leads.export`), Delete (`leads.delete`, 409 `blockedBy` named), then `LeadRecordView`; party card via `api.party` only with `parties.view`. `openId` not in the loaded rows falls back to `api.lead(id)` (a 404 clears it). | `leads`, `lead`, `party`, `optionLists`, `deleteLead` (+ the transport's `addLeadRemark`, `setLeadStage`, `convertLead`) | `leads.edit`, `lead.convert`, `leads.delete`, `leads.export`, `parties.view` |
+| `master/web/src/screens/LeadEntry.tsx` | New / Edit pending order, 2026-10-01 (P3). Host of `ui/LeadEntryScreen`: reads `api.leadEntryView()` (`GET /api/lead-entry`) on mount and whenever `revision` moves, shows a busy mark only until the first answer and never unmounts the form afterwards, so a half-typed draft survives. Mounted by `App.tsx` as the nav-less `addLead` screen and by `LeadsScreen` inside an `EditorScreen` (`lead` prop) for Edit pending order. | `leadEntryView` (+ the transport's `pick`, `createLead`, `updateLead`, `createParty`, `updateParty`) | `canCreateParty` prop (`parties.create`) |
+| `master/web/src/screens/OrdersScreen.tsx` | Final Orders, 2026-10-01 (P2). Same list shape as Pending Orders; stage chips follow the sidebar's `stage:<id>` pages (`stageId`/`onStageChange`); columns Final Order, Party, From pending order (a link that opens the lead), Qty, Weight (`*` = manual), Stage. A row opens the order as a sub-screen: Filling / Dispatch note (`orders.export`, `OrderNoteScreen`, sub-nav `orders.note`, party loaded with `parties.view`), Delete (`orders.delete`, 409 named), then `OrderRecordView`. `openId` not loaded falls back to `api.order(id)`. | `orders`, `order`, `party`, `optionLists`, `updateOrder`, `deleteOrder` (+ the transport's `setOrderStage`, `dispatchOrder`) | `orders.edit`, `orders.dispatch`, `orders.export`, `orders.delete`, `parties.view` |
+| `master/web/src/screens/ProductsScreen.tsx` | Products, 2026-10-01 (P4). Host of the catalogue ports: loads option lists, categories, every sub product (`listProducts({limit: 2000})`) and (with `inventory.view`) free stock, each on its own revision, keeping the previous data on screen while the next loads; renders `SubProductsScreen`, `MainProductsScreen` and `BrandsScreen` (with Fields' `optionListTransport`) in `<Activity>` blocks. | `optionLists`, `categories`, `listProducts`, `stock` (+ the transport's catalogue writes) | `permissions` prop |
+| `master/web/src/screens/PartiesScreen.tsx` | paged list (`PAGE_SIZE = 100`, `LoadMorePager`), debounced search, client sort, columns incl. own-record count and the caller's own access; a row opens a **sub-screen** (`useSubNav('parties', …'parties.detail')`, `openId` held by the shell, deep link falls back to `api.party`): contact, own access (`myAccess`; plus assignees and a "Party access" button with `party.assign`/`party.accessAll`), own product records with `catalogueName`, recent pending orders (`leads.view`; a row opens the lead); Edit via `PartyFormModal`; Delete with confirm, 409 lists blockers | `parties`, `party`, `partyRecords`, `partyAccessFor`, `leads`, `deleteParty` (+ transport) | `parties.create`, `parties.edit`, `parties.delete`, `leads.view`, `party.assign`/`party.accessAll` |
+| `master/web/src/screens/InventoryScreen.tsx` (1201) | one row per variant — since catalogue v2 **every live variant**, at zero when never stocked, read as Brand, Product (`CODE · Name`), Sub product, Size, Colour (the fixed colour only), Code (on hand; reserved and free only when `freeToSell`; inline reorder/min/max saved on blur); recent-movements ledger; search (also product code and brand), brand chips, product filter, All/Low chips, an older answer never overwriting a newer one; row opens a **sub-screen** (`useSubNav('inventory', …'inventory.detail')`) with its ledger; Stock in (`inventory.edit`) and Physical count (`stock.adjust`) stay modals, absent without their key, and the reorder/min/max cells are plain figures without `inventory.edit`; the form (`MovementForm`: product bar → sub-product bar → the variant); note required when `adjustmentNoteRequired` | `stock`, `stockMovements`, `optionLists`, `setReorderLevel`, `stockInbound`, `stockAdjust`, `pick` | `inventory.edit`, `stock.adjust` |
 | `master/web/src/screens/ReportsScreen.tsx` (508) | Dispatches / Lead outcomes / Top parties; period `Select` (`thisMonth`, `last3Months`, `last6Months` default, `last12Months`, `custom`); range errors under the named control; CSV export link | `dispatchReport`, `leadOutcomeReport`, `topPartiesReport`, `reportExportUrl` | `reports.view`, `reports.export` |
-| `master/web/src/screens/AccessScreen.tsx` (1999) | Users and Roles; refetches on another administrator's `user`/`role` change (`revision`). Users: filters, add (`UserForm`, password shown once in `OneTimeSecretDialog`), detail modal (role change with `expectedVersion`, avatar, activate/deactivate, set/generate/reveal password, delete), `UserEditForm` as an `EditorScreen` with a sub-nav entry; last active admin protected client-side. Roles: `RoleEditor` (`PermissionGrid`, tier, stale-version banner with Reload/Overwrite), delete. Inline restore of deleted roles and users. | `permissionCatalogue`, `roles`, `users`, `vaultStatus`, user and role CRUD, `resetPassword`, `revealPassword`, `uploadAvatar`, `removeAvatar`, `deletedRoles`, `deletedUsers`, `restoreRole`, `restoreUser` | `users.manage`, `roles.*`, `roles.assign`, `users.viewPassword` |
+| `master/web/src/screens/AccessScreen.tsx` (1999) | Users and Roles; refetches on another administrator's `user`/`role` change (`revision`). Users: filters, add (`UserForm`, password shown once in `OneTimeSecretDialog`), detail as an `EditorScreen` sub-screen (sub-nav `access.person`; role change with `expectedVersion`, avatar, activate/deactivate, set/generate/reveal password, delete), `UserEditForm` as an `EditorScreen` with a sub-nav entry; last active admin protected client-side. Roles: `RoleEditor` (loaded through `api.role(id)` on open; `PermissionGrid`, tier, stale-version banner with Reload/Overwrite), delete. Inline restore of deleted roles and users. | `permissionCatalogue`, `roles`, `role`, `users`, `vaultStatus`, user and role CRUD, `resetPassword`, `revealPassword`, `uploadAvatar`, `removeAvatar`, `deletedRoles`, `deletedUsers`, `restoreRole`, `restoreUser` | `users.manage`, `roles.*`, `roles.assign`, `users.viewPassword` |
 | `master/web/src/screens/PartyAccessScreen.tsx` (509) | who may see/manage each party; `PAGE_SIZE = 200` + a `limit: 1` restricted count; All/Restricted/Open; editor saves with `expectedVersion`; CSV export. **Byte-identical to the Office copy.** | `partyAccess`, `partyAccessPeople`, `savePartyAccess`, `partyAccessExportUrl` | `party.assign`, `parties.export` |
 | `master/web/src/screens/FieldsScreen.tsx` (1096) | **Values** (per set, now `product.brand` among them: the shared `ui/src/OptionListEditor.tsx` since catalogue v2 — add/edit with hex check, reorder, remove to Bin, usage; this file exports its transport as `optionListTransport`), **Definitions** (per entity, 5 types, reorder, delete, stale-version notice), **Stages** (edit name/colour/terminal, default, reorder, archive/restore; default-stage and occupied-stage refusals reported separately). No create-stage call. | the 17 fields members | `fields.view`, `fields.manage` |
-| `master/web/src/screens/LogsScreen.tsx` (664) | hash-chained log with text/actor/entity/action/date filters, `NewerOlderPager`, rows rendered with `renderActivity(createTranslator('en'), …)`, "Verify chain" (`VerificationVerdict`), CSV export; no live refresh | `logs`, `logFacets`, `verifyLogChain`, `logsExportUrl` | `logs.view`, `logs.verifyChain`, `logs.export` |
+| `master/web/src/screens/LogsScreen.tsx` (664) | hash-chained log with text/actor/entity/action/date filters, `NewerOlderPager`, rows rendered with `renderActivity(createTranslator('en'), …)`, entry detail as an `EditorScreen` sub-screen (sub-nav `logs.entry`), "Verify chain" (`VerificationVerdict`), CSV export; no live refresh | `logs`, `logFacets`, `verifyLogChain`, `logsExportUrl` | `logs.view`, `logs.verifyChain`, `logs.export` |
 | `master/web/src/screens/RecycleBinScreen.tsx` (578) | soft-deleted records, `LoadMorePager`, type/search/deleted-by filters, counts, own/everyone scope; restore per row with `RESTORE_PERMISSION[type]`; a 409 opens `RefusalDialog` (suggested rename, or restore parents first and retry with `cascadeParents: true`) | `recycleBin`, `recycleBinCounts`, `recycleBinDeleters`, `restoreFromBin` | `recycleBin.view`, `recycleBin.viewAll`, `RESTORE_PERMISSION` |
-| `master/web/src/screens/ConflictsScreen.tsx` (179) | one card per conflict: kept vs overwritten with device codes; Keep (`keepWinner`) / Restore overwritten (`restoreLoser`) | `conflicts`, `resolveConflict` | `canResolve` (`sync.resolveConflicts`) |
+| `master/web/src/screens/ConflictsScreen.tsx` (179) | one card per conflict: kept vs overwritten with device codes (a line or variant set reads one row per line, not JSON); Keep (`keepWinner`) / Restore overwritten (`restoreLoser`). The module is gated `sync.resolveConflicts`, so no control is conditional | `conflicts`, `resolveConflict` | none (module gate `sync.resolveConflicts`) |
 | `master/web/src/screens/IntegrationsScreen.tsx` (1108) | Keys (issue — token shown once in `IssuedTokenDialog`, copied with `copyText` — and revoke) and Connectors (list, `ConnectorDialog`, dry run and import, run history, `MappingEditor` as a sub-nav editor) | `apiKeys`, `connectors`, `issueApiKey`, `revokeApiKey`, `users`, `createConnector`, `updateConnector`, `runConnector`, `connectorRuns`, `setConnectorMapping`, `testConnector` | `canManage` (`api.manage`) |
-| `master/web/src/screens/SettingsScreen.tsx` (770) | `SettingsPage`; exports `SETTINGS_TAB_IDS`. Since catalogue v2 a **Leads** tab holds the lead-source list (`OptionListEditor`, the Fields permissions) and the `leads` settings group, which left the Company tab; `NumberSetting` moved to `ui/src/SettingsLayout.tsx`. Takes `permissions` from the shell (since 2026-09-25; it used to read `/me` on mount and start from "yes"), so tabs and reads are right on the first render and keyed on booleans. Appearance; Shortcuts; **Company** (only if `api.settings()` returned — `settings.manage`; one section per `SETTING_GROUPS` entry, row-level save; vault coverage beside `security.passwordRevealEnabled`); Connection (company, LAN address:port, master id, setup date); Storage (usage figures with `settings.manage`, `StorageBackupActions` with `storage.manage`; the tab is absent with neither); Developer (`DeveloperPanel`: seed dummy users, load Swisware catalogue, seed sample data, reset all; `useUninstallTool(desktopBridge())`) | `identity`, `storage`, `settings`, `saveSetting`, `vaultStatus`, `developer.*` | `settings.manage`, `storage.manage`, `users.viewPassword` |
+| `master/web/src/screens/SettingsScreen.tsx` (770) | `SettingsPage`; exports `SETTINGS_TAB_IDS`. Since catalogue v2 a **Leads** tab holds the lead-source list (`OptionListEditor`, the Fields permissions) and the `leads` settings group, which left the Company tab; `NumberSetting` moved to `ui/src/SettingsLayout.tsx`. Takes `permissions` from the shell (since 2026-09-25; it used to read `/me` on mount and start from "yes"), so tabs and reads are right on the first render and keyed on booleans. Appearance; Shortcuts; **Company** (only if `api.settings()` returned — `settings.manage`; one section per `SETTING_GROUPS` entry, row-level save; vault coverage beside `security.passwordRevealEnabled`); Connection (company, LAN address:port, master id, setup date; `settings.manage`, the identity read is not made without it); Storage (usage figures, `StorageBackupActions` with `storage.manage`; `settings.manage`). Appearance and Shortcuts are offered to everyone; there is no Developer tab (the routes remain) | `identity`, `storage`, `settings`, `saveSetting`, `vaultStatus`, `developer.*` | `settings.manage`, `storage.manage`, `users.viewPassword` |
 | `master/web/src/screens/UpdatesScreen.tsx` (372) | this Master's version, panels behind (`standing()`), the offer from the local releases folder; **Install** → `prepareMasterUpdate` → `desktopBridge().applyUpdate()` (in a browser shows the path); a build that cannot install over itself shows how to update by hand instead of the button — the standalone `.exe` (`updates.standaloneBody`) or a Linux copy not started from an AppImage (`getShellSettings().systemPackage`, `updates.systemPackageBody`); panel version table | `updateStatus`, `prepareMasterUpdate` | `settings.manage` |
 | `master/web/src/screens/FirstRunScreen.tsx` (411) | "Set up new site" (company name → `initialize` → one-time display of username, password, LAN addresses, master id, pairing password) or "Restore from backup" (preview, passphrase, restore, new pairing password); `DataDirCard` | `initialize`, `previewRestoreSetup`, `restoreSetup` | none |
 | `master/web/src/screens/SignInScreen.tsx` (127) | username (pre-filled `admin`) and password; errors via `apiErrorText`; shows the shell's `notice` | `signIn` | none |
@@ -4891,7 +4949,7 @@ Each flow names the files and functions in the order they run. "Master" means
    `SyncSnapshot.features`.
 3. **Master web:** `data:changed` with `entity: 'setting'` → `refreshUser()` →
    `api.me()` → `resolveCompanyFeatures(user.features)` → the feature props of
-   `LeadsOrdersScreen` and `InventoryScreen`.
+   `LeadsScreen`, `OrdersScreen` and `InventoryScreen`.
 4. **Office:** `setting` is in `SNAPSHOT_FORCING_ENTITIES`, so `applyChangeToSnapshot`
    returns `refresh` → `sync:request` → a new snapshot with `features` →
    `snapshot.json` → SSE `snapshot` → the four screens that call
@@ -4977,7 +5035,8 @@ Each flow names the files and functions in the order they run. "Master" means
 
 1. **Open.** Office: the order detail's *Filling note* / *Dispatch note* actions
    (`orders.export`, `OrderBoardScreen`); Master: the same two buttons in the
-   orders table's actions column (`LeadsOrdersScreen`). Both mount
+   order detail's header (`OrdersScreen`, since 2026-10-01; they were in the table's
+   actions column). Both mount
    `OrderNoteScreen` over the list/detail as a sub-screen with its own nested
    sidebar entry. Office builds it from the local snapshot (order and party),
    so it works with the Master unreachable; the Master fetches the party with

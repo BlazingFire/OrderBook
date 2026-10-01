@@ -81,6 +81,12 @@ export function createApp(): Express {
   // through, and paid for both again in its own.
   app.use('/api/panel', requirePanel, panelImageRoutes, panelCatalogRoutes);
   app.use('/api/images', imageFilesRoutes);
+  // The same router, mounted a second time, for the same reason as avatars
+  // below: `ui/src/ProgressiveImage.tsx` loads `/uploads/images/:id/:variant`,
+  // the path the Office Panel serves from its own cache. Same session check,
+  // same 404 for a product the caller may not see — and before the SPA
+  // catch-all, which would otherwise answer it with index.html.
+  app.use('/uploads/images', imageFilesRoutes);
   app.use('/api/access/users/:userId/avatar', avatarRoutes);
   app.use('/api/avatars', avatarFilesRoutes);
   // The same router, mounted a second time. `ui/src/Avatar.tsx`'s default

@@ -6,6 +6,8 @@
  *   npm run release              -- current version, both panels, this OS
  *   npm run release -- 1.1.0     -- bump every package.json first
  *   npm run release -- --panel office
+ *   npm run release -- --fast    -- Windows only: the Standalone .exe alone, uncompressed — a
+ *                                   quick build to try a change; no Setup file, no manifest
  *   npm run release -- --os mac  -- macOS .dmg (only runs on a Mac)
  *   npm run release -- --os linux -- x64 AppImage and .deb (the Master only on x64 Linux)
  *
@@ -114,6 +116,7 @@ const PANELS = {
 
 const args = process.argv.slice(2);
 const only = args.includes('--panel') ? args[args.indexOf('--panel') + 1] : null;
+const fast = args.includes('--fast');
 const requestedVersion = args.find((arg) => /^\d+\.\d+\.\d+$/.test(arg)) ?? null;
 
 /**
@@ -717,6 +720,9 @@ async function build(panel, version) {
     [
       'electron-builder',
       RELEASE_TARGET.builderFlag,
+      // `--fast`: only the portable target (no NSIS installer, no uninstaller
+      // pass, no block map) and no compression — most of a build's minutes.
+      ...(fast ? ['portable', '--config.compression=store'] : []),
       '--config',
       'electron-builder.yml',
       `--config.electronVersion=${electronVersion}`,
@@ -739,6 +745,7 @@ async function build(panel, version) {
   // space in an artifact name is a different kind of trouble on three OSes.
   const name = config.artifact ?? config.label;
   const expected = `OrderBook-${name}-${version}-Setup.${RELEASE_TARGET.ext}`;
+  const wantedSetup = fast ? [] : [expected];
   // The files built beside the setup file (`TARGETS[*].besides`) — the Windows
   // standalone `.exe`, the Linux `.deb` — all out of the one electron-builder
   // run above. Only on what gets published: the clean-install tool builds one
@@ -749,7 +756,7 @@ async function build(panel, version) {
       : RELEASE_TARGET.besides.map((tail) => `OrderBook-${name}-${version}-${tail}`);
   const files = await readdir(outDir);
 
-  for (const wanted of [expected, ...besides]) {
+  for (const wanted of [...wantedSetup, ...besides]) {
     if (!files.includes(wanted)) {
       throw new Error(
         `electron-builder did not produce ${wanted} in ${outDir}.
@@ -759,7 +766,7 @@ It built: ${files.join(', ')}`,
   }
 
   return {
-    setup: path.join(outDir, expected),
+    setup: fast ? null : path.join(outDir, expected),
     besides: besides.map((file) => path.join(outDir, file)),
   };
 }
@@ -791,6 +798,13 @@ async function publish(panel, version, built, notes) {
   const config = PANELS[panel];
   const target = path.join(RELEASES_DIR, config.folder);
   await mkdir(target, { recursive: true });
+
+  // A fast build is a try-out, not a release: the Standalone goes in the folder
+  // and the manifest stays on the last real release.
+  if (!built.setup) {
+    for (const beside of built.besides) await publishBeside(target, beside);
+    return;
+  }
 
   const setupPath = built.setup;
   const file = path.basename(setupPath);
@@ -855,13 +869,14 @@ async function main() {
     }
   }
   assertHostArch(panels);
+  if (fast && osName !== 'win') throw new Error('--fast is Windows only (it builds the portable .exe).');
 
   console.log(`Releasing ${version} to ${RELEASES_DIR}`);
   run('npm', ['run', 'build:shared']);
 
   for (const panel of panels) {
     const built = await build(panel, version);
-    if (PANELS[panel].publish === false) {
+    if (PANELS[panel].publish === false && built.setup) {
       console.log(`  built ${path.relative(ROOT, built.setup)} (not published — hand it over directly)`);
       continue;
     }

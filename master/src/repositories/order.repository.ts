@@ -21,6 +21,7 @@ import { allocatePermanentId } from './identity.repository.js';
 import * as lineItems from './line-item.repository.js';
 import { firstCount, mapOrder, toJsonObject } from './mappers.js';
 import { applyPartyScope } from './party-access.repository.js';
+import { applyRecordSearch } from './record-search.js';
 import * as reservations from './reservation.repository.js';
 import * as timeline from './timeline.repository.js';
 import type { TransactionContext } from './transaction.js';
@@ -66,12 +67,11 @@ export async function listOrders(
   if (options.stageIds?.length) base.whereIn('o.stage_id', options.stageIds);
   if (options.ownerId) base.where('o.owner_id', options.ownerId);
 
-  if (options.search) {
-    const pattern = `%${options.search}%`;
-    base.andWhere((builder) =>
-      builder.whereILike('o.id', pattern).orWhereILike('pa.name', pattern),
-    );
-  }
+  applyRecordSearch(base, options.search, {
+    alias: 'o',
+    parentType: 'order',
+    columns: ['o.id', 'pa.name', 'ow.display_name', 'st.name', 'o.notes', 'o.lead_id'],
+  });
 
   const countRows = await base
     .clone()

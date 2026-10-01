@@ -60,11 +60,13 @@ export interface CommandDef {
  */
 const MASTER_NAV: Array<[id: string, token: MessageKey]> = [
   ['dashboard', 'nav.master.dashboard'],
-  ['orders', 'nav.master.leadsOrders'],
+  ['leads', 'nav.leads'],
+  ['orders', 'nav.orders'],
+  ['conflicts', 'nav.master.conflicts'],
+  ['products', 'nav.products'],
   ['parties', 'nav.master.parties'],
   ['inventory', 'nav.master.inventory'],
   ['reports', 'nav.master.reports'],
-  ['conflicts', 'nav.master.conflicts'],
   ['panels', 'nav.master.panels'],
   ['access', 'nav.master.access'],
   ['partyAccess', 'nav.master.partyAccess'],
@@ -142,11 +144,10 @@ export const COMMANDS: readonly CommandDef[] = [
     id: 'record.new',
     titleToken: 'keys.command.new',
     scope: 'screen',
-    // Office only. "New record" means one thing there — a lead — and nothing in
-    // particular on the Master, where each screen has its own new-record
-    // action. A palette entry that does nothing on half the installation is
-    // worse than an absent one.
-    panel: 'office',
+    // Both panels: on each it opens New pending order (a lead), and on the
+    // Master only for a role with `leads.create` — the shell registers `null`
+    // for everyone else, so the palette entry is absent rather than inert.
+    panel: 'both',
     defaultChord: 'Ctrl+Shift+N',
     platformDefaultChord: { darwin: 'Meta+Shift+N' },
   },

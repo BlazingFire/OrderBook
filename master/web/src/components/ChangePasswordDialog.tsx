@@ -20,7 +20,16 @@
 import { useState } from 'react';
 
 import { api } from '../api';
-import { Button, FieldError, FormField, Input, Modal, apiErrorText, t } from '@orderbook/ui';
+import {
+  Button,
+  FieldError,
+  FormField,
+  Input,
+  Modal,
+  apiErrorText,
+  publishSessionEnded,
+  t,
+} from '@orderbook/ui';
 
 /** The server's own floor (`validation.password.tooShort`), checked here too. */
 const MIN_LENGTH = 8;
@@ -54,10 +63,12 @@ export function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose
     setError(null);
     try {
       await api.changeOwnPassword({ currentPassword: current, newPassword: next });
-      // No success toast: the window is about to be signed out by the server,
-      // and a toast that outlives the screen it was raised on reads as a bug.
-      // The sign-in screen says what happened instead.
+      // No success toast: this window's own session ended with the change, and
+      // a toast that outlives the screen it was raised on reads as a bug. Ending
+      // it here, with the reason, lands on sign-in saying what happened instead
+      // of waiting for the next request to come back 401.
       close();
+      publishSessionEnded('signIn.notice.passwordChanged');
     } catch (caught) {
       // Named, not generic — a wrong current password is the common case and
       // the server says so specifically.

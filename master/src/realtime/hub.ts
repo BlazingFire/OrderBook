@@ -206,6 +206,18 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
       (socket.emit as (name: string) => void)(event);
       return true;
     },
+    sessionsEnded: (tokens, reason) => {
+      for (const socket of panelSockets.values()) {
+        const token = socket.data.actingUserToken;
+        if (!token || !tokens.has(token)) continue;
+        // The same two steps `panelActor` takes on the command path.
+        socket.data.actingUserToken = undefined;
+        socket.emit('session:rejected', reason);
+      }
+    },
+    resnapshotAll: () => {
+      for (const socket of panelSockets.values()) void resnapshot(socket);
+    },
   });
 
   const unsubscribeChanges = onChange((event) => {
@@ -967,6 +979,30 @@ async function emitGatedConflict(io: RealtimeHub['io'], conflict: SyncConflict):
       }
     }),
   );
+}
+
+/**
+ * Send one panel a fresh snapshot for whoever it is acting as, without ever
+ * signing anybody out. A socket whose token is now refused is skipped: sending
+ * it the panel-role view would replace a still-signed-in person's data, and the
+ * next command on that socket goes through `panelActor`, which ends the session
+ * properly.
+ */
+async function resnapshot(socket: PanelSocket): Promise<void> {
+  const { tenantId, panelId } = socket.data;
+  if (!tenantId || !panelId) return;
+  try {
+    const resolution = await resolvePanelActorAllowingRefusal({
+      tenantId,
+      panelId,
+      deviceCode: socket.data.deviceCode ?? null,
+      actingUserToken: socket.data.actingUserToken,
+    });
+    if (!resolution.tokenAccepted) return;
+    socket.emit('sync:snapshot', await buildSnapshot(resolution.actor));
+  } catch (error: unknown) {
+    log.warn(`Could not re-send a snapshot: ${toErrorMessage(error)}`);
+  }
 }
 
 /**

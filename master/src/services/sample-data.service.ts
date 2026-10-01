@@ -14,8 +14,8 @@
  * order and, after each one, moves the timestamps that event created back to
  * the date it was meant to happen on. Nothing else is touched by hand.
  *
- * Reached from the Developer tab and from `npm run seed:sample`; both behind
- * the developer gate or a terminal, like the other developer tools.
+ * Reached from the /api/developer routes (no screen since 5a32106) and from
+ * `npm run seed:sample`; both behind the developer gate or a terminal, like the other developer tools.
  */
 
 import type {

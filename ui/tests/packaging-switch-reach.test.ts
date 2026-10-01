@@ -16,21 +16,19 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-const source = readFileSync(
-  path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    '..',
-    '..',
-    'office',
-    'web',
-    'src',
-    'screens',
-    'AddLeadScreen.tsx',
-  ),
-  'utf8',
-)
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/\/\/.*$/gm, '');
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+
+/** Both copies of the form: the Office's and the shared one the Master mounts. */
+const COPIES: Array<[name: string, file: string[]]> = [
+  ['office AddLeadScreen', ['office', 'web', 'src', 'screens', 'AddLeadScreen.tsx']],
+  ['ui LeadEntryScreen', ['ui', 'src', 'LeadEntryScreen.tsx']],
+];
+
+function read(file: string[]): string {
+  return readFileSync(path.resolve(HERE, '..', '..', ...file), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '');
+}
 
 /**
  * Every line that makes a *decision* from a line's packaging — a truth test,
@@ -43,14 +41,16 @@ const source = readFileSync(
  * and flagged that line, which would have pushed the switch into the write
  * path.
  */
-function packagingDecisions(): string[] {
+function packagingDecisions(source: string): string[] {
   return source
     .split('\n')
     .filter((line) => /(!|Boolean\()\s*\w+\.packaging(\?)?\.trim\(\)/.test(line))
     .map((line) => line.trim());
 }
 
-describe('the packaging switch', () => {
+describe.each(COPIES)('the packaging switch in %s', (_name, file) => {
+  const source = read(file);
+
   it('is read somewhere in the form at all', () => {
     expect(source).toContain('packagingRequired');
   });
@@ -69,13 +69,13 @@ describe('the packaging switch', () => {
     // Written as "find them all, then check each" rather than naming the two
     // sites: a third refusal added later is caught without anybody editing
     // this test, which is the only way a reach guard stays true.
-    const unguarded = packagingDecisions().filter((line) => !line.includes('packagingRequired'));
+    const unguarded = packagingDecisions(source).filter((line) => !line.includes('packagingRequired'));
     expect(unguarded).toEqual([]);
   });
 
   it('finds the sites it claims to be checking', () => {
     // Without this the assertion above passes on an empty list — the failure
     // mode of every "none of them are wrong" test.
-    expect(packagingDecisions().length).toBeGreaterThanOrEqual(2);
+    expect(packagingDecisions(source).length).toBeGreaterThanOrEqual(2);
   });
 });

@@ -133,8 +133,8 @@ describe('the two-layer permission check', () => {
     // Every Fields endpoint is gated by `fields.view` or `fields.manage` — the
     // `- 2` exemption above is specific to `access.routes.ts`'s two genuinely
     // ungated routes and must never be copied here or generalised into a loop
-    // over routers. The three pre-existing ungated reads (`GET /api/pipelines`,
-    // `/api/option-lists`, `/api/custom-fields`) are a deliberately separate
+    // over routers. The two pre-existing ungated reads (`GET /api/pipelines`,
+    // `/api/option-lists`) are a deliberately separate
     // surface on `data.routes.ts`, not on this router.
     expect(guards.length).toBe(handlers.length);
   });

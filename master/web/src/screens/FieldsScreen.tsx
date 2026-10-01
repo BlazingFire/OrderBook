@@ -293,7 +293,7 @@ function DefinitionsTab({
       ? [
           {
             key: 'order',
-            header: t('fields.col.order'),
+            header: t('fields.col.position'),
             width: rem(72),
             render: (definition: CustomFieldDefinition) => {
               const index = definitions.indexOf(definition);
@@ -799,7 +799,7 @@ function StagesTab({ canManage, revision }: { canManage: boolean; revision: numb
         ? [
             {
               key: 'order',
-              header: t('fields.col.order'),
+              header: t('fields.col.position'),
               width: rem(72),
               render: (stage: PipelineStage) => {
                 const index = stages.indexOf(stage);

@@ -178,6 +178,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'error.conflict.dataDirectoryPopulated':
     'इस इंस्टॉलेशन में पहले से डेटा है। पुनर्स्थापित करने से पहले इसे मिटाने की पुष्टि करें।',
   'error.unavailable': 'मास्टर पैनल तक नहीं पहुँचा जा सका। लिंक वापस आने पर फिर कोशिश करें।',
+  'error.unavailable.signInToSync':
+    'कतार में रखा काम तब तक रुका रहेगा जब तक उसे करने वाला व्यक्ति दोबारा साइन इन नहीं करता।',
   'error.unknown': 'कुछ गड़बड़ हो गई',
   'error.requestFailed': 'अनुरोध विफल रहा',
   'error.requestTimedOut': 'सर्वर ने समय पर जवाब नहीं दिया',
@@ -225,6 +227,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.lead.partyRequired': 'इस पेंडिंग ऑर्डर के लिए एक पार्टी चुनें',
   'validation.lead.itemsRequired': 'इस पेंडिंग ऑर्डर में कम से कम एक उत्पाद जोड़ें',
   'validation.lead.partyMissing': 'चुनी गई पार्टी अब मौजूद नहीं है',
+  'validation.lead.ownerMissing': 'चुना गया मालिक अब मौजूद नहीं है',
   'validation.lead.convertedLocked': 'यह पेंडिंग ऑर्डर फ़ाइनल ऑर्डर बन चुकी है और अब संपादित नहीं की जा सकती',
   'validation.lead.productMissing': 'चुने गए उत्पादों में से एक अब मौजूद नहीं है',
   'validation.lead.quantityRequired': '{productName} के लिए मात्रा जोड़ें',
@@ -284,6 +287,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.import.emptyFile': 'फ़ाइल में आयात करने के लिए कोई पंक्ति नहीं है',
   'validation.import.missingColumn': 'फ़ाइल में "{column}" कॉलम नहीं है',
   'validation.import.notANumber': '"{column}" एक संख्या होनी चाहिए',
+  'validation.import.fixedNeedsColour': 'कलर नियम "fixed" है, इसलिए कलर खाली नहीं हो सकता',
   'validation.import.invalidValue': '"{column}" इनमें से एक होना चाहिए: {allowed}',
   'validation.import.duplicateInFile': '"{column}" पंक्ति {firstRow} में दोहराया गया है',
   'validation.import.mixedVariants':
@@ -890,7 +894,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'product.multiColour.pill': 'कोई भी रंग',
   // TODO(i18n-hi)
   'catalog.products.created': '{name} saved — syncs when the Master is reachable',
+  'catalog.products.savedOnline': '{name} सहेजा गया',
   'catalog.products.empty.description': 'आपके बनाए उप-उत्पाद यहाँ दिखते हैं, ऑनलाइन हों या ऑफ़लाइन।',
+  'catalog.products.empty.descriptionOnline': 'आपके बनाए उप-उत्पाद यहाँ दिखेंगे।',
   'catalog.products.empty.filtered': 'इन फ़िल्टरों से कोई उप-उत्पाद मेल नहीं खाता।',
   'catalog.products.empty.title': 'अभी कोई उप-उत्पाद नहीं',
   'catalog.products.new': 'नया उप-उत्पाद',
@@ -913,6 +919,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'catalog.mainProducts.searchLabel': 'उत्पाद खोजें',
   'catalog.mainProducts.searchPlaceholder': 'कोड, नाम या ब्रांड खोजें…',
   'catalog.mainProducts.new': 'नया उत्पाद',
+  'catalog.export': 'CSV एक्सपोर्ट',
+  'catalog.export.failed': 'कैटलॉग एक्सपोर्ट नहीं हो सका',
   'catalog.mainProducts.new.title': 'नया उत्पाद',
   'catalog.mainProducts.edit.title': 'उत्पाद संपादित करें',
   'catalog.mainProducts.created': '{name} जोड़ा गया',
@@ -1084,6 +1092,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'dashboard.leads.noneDueToday': 'None due today',
   // TODO(i18n-hi)
   'dashboard.leads.title': 'Open pending orders',
+  'dashboard.leads.due': '{count} का फ़ॉलो-अप बाकी या देर से',
+  'dashboard.leads.noneDue': 'कोई बाकी या देर से नहीं',
+  'dashboard.followUp.dueTitle': 'बाकी फ़ॉलो-अप',
+  'fields.col.position': 'क्रम',
+  'party.detail.access.assigned': 'इन्हें सौंपा गया',
   // TODO(i18n-hi)
   'dashboard.orders.boxesReserved': '{count} boxes reserved',
   // TODO(i18n-hi)
@@ -1589,6 +1602,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.saving': 'Saving…',
   // TODO(i18n-hi)
   'lead.add.savingHint': 'Saves on this machine first — offline is the normal path',
+  'lead.add.savingHintOnline': 'सीधे मास्टर में सेव होता है',
   // TODO(i18n-hi)
   'lead.add.title': 'New pending order',
   'lead.edit.action': 'पेंडिंग ऑर्डर संपादित करें',
@@ -2052,6 +2066,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'nav.expandSidebar': 'साइडबार फैलाएँ',
   // TODO(i18n-hi)
   'nav.leads': 'Pending Orders',
+  'nav.recordNotAvailable': 'यह रिकॉर्ड आपकी भूमिका के लिए उपलब्ध नहीं है।',
   // TODO(i18n-hi)
   'nav.master.access': 'Roles & users',
   // TODO(i18n-hi)
@@ -2320,6 +2335,18 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'panels.detail.updated': 'Last changed',
   // TODO(i18n-hi)
+  'panels.detail.roleSummary': '{tier} tier, {count} permissions',
+  // TODO(i18n-hi)
+  'panels.detail.work': 'Work from this panel',
+  // TODO(i18n-hi)
+  'panels.detail.workLast': 'Last action',
+  // TODO(i18n-hi)
+  'panels.detail.workLeads': 'Pending orders',
+  // TODO(i18n-hi)
+  'panels.detail.workNone': 'None yet',
+  // TODO(i18n-hi)
+  'panels.detail.workOrders': 'Final orders',
+  // TODO(i18n-hi)
   'panels.empty.description': 'Panels you pair appear here, online or off.',
   // TODO(i18n-hi)
   'panels.empty.title': 'No office panels yet',
@@ -2416,7 +2443,12 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'import.template.csv': 'खाली CSV',
   'import.template.xlsx': 'खाली Excel',
   'import.template.hint':
-    'खाली टेम्पलेट डाउनलोड करें, उसे भरें और वापस अपलोड करें। हर वेरिएंट की एक पंक्ति; Guide शीट में हर कॉलम की जानकारी है।',
+    'खाली टेम्पलेट डाउनलोड करें, उसे भरें और वापस अपलोड करें। हर सब प्रोडक्ट की एक पंक्ति; Guide शीट में हर कॉलम की जानकारी है।',
+  'import.export.hint':
+    'या पूरा कैटलॉग उन्हीं कॉलम में एक्सपोर्ट करें, बदलाव करें और "अपडेट करें" से वापस अपलोड करें।',
+  'import.export.csv': 'CSV एक्सपोर्ट',
+  'import.export.xlsx': 'Excel एक्सपोर्ट',
+  'import.exportFailed': 'कैटलॉग एक्सपोर्ट नहीं हो सका',
   'import.mode.label': 'पहले से मौजूद उत्पाद कोड',
   'import.mode.create': 'छोड़ दें',
   'import.mode.upsert': 'अपडेट करें',
@@ -2609,6 +2641,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'product.saveChanges': 'Save changes',
   // TODO(i18n-hi)
   'product.saveHint': 'Available in every pending order form the moment it saves — online or off',
+  'product.saveHintOnline': 'सहेजते ही हर पेंडिंग ऑर्डर फ़ॉर्म में उपलब्ध हो जाता है',
   // TODO(i18n-hi)
   'product.saving': 'Saving…',
   // TODO(i18n-hi)
@@ -3274,6 +3307,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.draft.colour': 'रंग',
   'lead.add.draft.grade': 'ग्रेड',
   'lead.add.draft.gradeEmpty': 'अभी कोई ग्रेड सूची में नहीं है — इन्हें सेटिंग्स → फ़ील्ड्स में जोड़ें।',
+  'lead.add.draft.gradeEmptyFields': 'अभी कोई ग्रेड सूची में नहीं है — इन्हें फ़ील्ड्स → विकल्प सूचियाँ में जोड़ें।',
   'lead.add.draft.hintPieces': 'इस कार्ड पर {count} पीस — पेंडिंग ऑर्डर में जोड़ें',
   // TODO(i18n-hi)
   'lead.add.draft.hintPackaging': 'Choose packaging to save this product',
@@ -3284,6 +3318,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.draft.packaging': 'Packaging',
   'lead.add.draft.packagingEmpty': 'No packaging listed yet — add it under Settings → Fields.',
+  'lead.add.draft.packagingEmptyFields': 'अभी कोई पैकेजिंग सूची में नहीं है — इसे फ़ील्ड्स → विकल्प सूचियाँ में जोड़ें।',
   // TODO(i18n-hi)
   'lead.add.draft.quantityTitle': 'मात्रा — पीस',
   // TODO(i18n-hi)
@@ -3351,6 +3386,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.products.searchFirst': 'उत्पाद चुनें, फिर उप-उत्पाद — कम से कम एक',
   // TODO(i18n-hi)
   'lead.add.saved': 'Pending Order saved — {id} syncs when the Master is reachable',
+  'lead.add.savedOnline': 'पेंडिंग ऑर्डर {id} सेव हुई',
   // TODO(i18n-hi)
   'lead.add.source.label': 'Source',
   // TODO(i18n-hi)
@@ -3620,7 +3656,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'setting.panels.autoPairingEnabled.label': 'नए ऑफ़िस पैनल को बिना पासवर्ड जुड़ने दें',
   'setting.panels.autoPairingEnabled.help': 'जब तक ऑफ़िस पैनल जोड़ें खुला है, इस WiFi का कोई भी PC एक क्लिक में जुड़ सकता है। पैनल सेट हो जाने पर इसे बंद कर दें — फिर जुड़ने के लिए पेयरिंग पासवर्ड हमेशा ज़रूरी होगा।',
   'setting.security.developerModeEnabled.label': 'इस PC पर डेवलपर मोड की अनुमति दें',
-  'setting.security.developerModeEnabled.help': 'डेवलपर मोड सारा डेटा मिटा सकता है और टेस्ट उपयोगकर्ता बना सकता है, और इसका पासवर्ड OrderBook की हर कॉपी में एक ही है। इसे बंद करने पर ऐप के अंदर का अनइंस्टॉलर भी बंद हो जाता है — OrderBook को Windows Settings → Apps से तब भी हटाया जा सकता है।',
+  'setting.security.developerModeEnabled.help': 'डेवलपर मोड सारा डेटा मिटा सकता है और टेस्ट उपयोगकर्ता बना सकता है, और इसका पासवर्ड OrderBook की हर कॉपी में एक ही है।',
   'setting.security.sessionHours.label': 'इतने समय बाद साइन आउट करें',
   'setting.security.sessionHours.help': 'कोई व्यक्ति दोबारा पासवर्ड डाले बिना कितनी देर साइन इन रहेगा। जो पहले से साइन इन हैं उनका समय वही रहेगा; यह उनके अगले साइन-इन से लागू होगा।',
   'setting.inventory.defaultReorderLevel.label': 'इससे कम होने पर स्टॉक कम',

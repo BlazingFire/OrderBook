@@ -33,6 +33,7 @@ import {
   ConflictBanner,
   DataTable,
   DateField,
+  EditorScreen,
   EmptyState,
   ErrorState,
   Input,
@@ -47,6 +48,7 @@ import {
   rem,
   t,
   useFilterBar,
+  useSubNav,
   type DataTableColumn,
 } from '@orderbook/ui';
 
@@ -306,6 +308,17 @@ export function LogsScreen({ permissions }: Props) {
     ) : null,
   );
 
+  useSubNav(
+    'logs',
+    openEntry
+      ? {
+          parentId: 'logs',
+          items: [{ id: 'logs.entry', label: describe(openEntry), icon: 'eye' }],
+          activeId: 'logs.entry',
+        }
+      : null,
+  );
+
   if (!canView) {
     return (
       <EmptyState
@@ -481,6 +494,22 @@ export function LogsScreen({ permissions }: Props) {
 
   const entries = page?.items ?? [];
 
+  if (openEntry) {
+    return (
+      <EditorScreen
+        title={describe(openEntry)}
+        meta={<span className="ob-small">{formatDateTime(openEntry.createdAt)}</span>}
+        onBack={() => {
+          setOpenEntry(null);
+          return true;
+        }}
+        backLabel={t('action.backToList')}
+      >
+        {renderEntryDetail(openEntry)}
+      </EditorScreen>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
       <Section
@@ -525,7 +554,6 @@ export function LogsScreen({ permissions }: Props) {
               rows={entries}
               rowKey={(entry) => entry.id}
               onRowOpen={setOpenEntry}
-              selectedId={openEntry?.id}
               empty={
                 <EmptyState
                   title={filtered ? t('logs.emptyFiltered.title') : t('logs.empty.title')}
@@ -548,21 +576,6 @@ export function LogsScreen({ permissions }: Props) {
           </>
         )}
       </Section>
-
-      <Modal
-        open={openEntry !== null}
-        onClose={() => setOpenEntry(null)}
-        size="lg"
-        title={openEntry ? describe(openEntry) : ''}
-        subtitle={openEntry ? formatDateTime(openEntry.createdAt) : undefined}
-        footer={
-          <Button variant="primary" onClick={() => setOpenEntry(null)}>
-            {t('action.done')}
-          </Button>
-        }
-      >
-        {openEntry && renderEntryDetail(openEntry)}
-      </Modal>
 
       <Modal
         open={verifyOpen}

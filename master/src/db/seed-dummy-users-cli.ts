@@ -2,7 +2,7 @@
  * Standalone seeder: `npm run seed:dummy` (root) or
  * `npm run seed:dummy --workspace @orderbook/master`.
  *
- * The same `seedDummyUsers` the developer tab calls, reachable without a
+ * The same `seedDummyUsers` the /api/developer route (no screen since 5a32106) calls, reachable without a
  * browser — for a machine that has just been installed and has nobody to sign
  * in as yet. Starts the database the way the Master does, migrates, seeds,
  * prints the credentials, and shuts down. Re-running resets the passwords.

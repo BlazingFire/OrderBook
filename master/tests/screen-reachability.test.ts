@@ -108,6 +108,8 @@ const NAVLESS_SCREENS: Record<string, Record<string, string>> = {
   master: {
     firstRun: 'Shown once, before any sidebar exists — the panel routes to it from boot state.',
     dashboard: 'The default landing screen; reached by starting the app, not by a sidebar row.',
+    addLead:
+      'Opened by the `record.new` command, the topbar button and Pending Orders → New pending order, never as a sidebar row of its own.',
   },
   office: {
     addLead: 'Opened by the `record.new` command and the Leads screen, never from the sidebar.',
@@ -143,11 +145,6 @@ const PANEL_ONLY: Record<string, string> = {
   // sentence attached: `api.createParty` had zero callers on the Master and an
   // administrator had no way to add a customer. Both panels have the screen
   // now, and this test's other direction is what made the stale claim visible.
-
-  // Office only — these are the order desk's own working surfaces.
-  leads: 'Office only: the lead board is the sales desk’s workflow, not the Master’s.',
-  products: 'Office only: the Master edits the catalogue from Inventory.',
-  addLead: 'Office only: creating a lead is an Office action, and it has no sidebar row.',
 };
 
 for (const [panel, file] of [

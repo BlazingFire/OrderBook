@@ -36,6 +36,7 @@ import { nextHlc } from '../repositories/identity.repository.js';
 import * as partyAccessRepo from '../repositories/party-access.repository.js';
 import * as partyRepo from '../repositories/party.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
+import { panelLink } from '../realtime/panel-link.js';
 import { publishChange } from './change-bus.js';
 
 const PAGING = { defaultLimit: 50, maxLimit: 200 };
@@ -183,6 +184,10 @@ export async function replaceAssignments(
   // per-recipient filter in the realtime hub is what decides who still gets it.
   const party = await partyRepo.findPartyById(actor.tenantId, partyId);
   if (party) publishChange({ entity: 'party', action: 'updated', id: partyId, payload: party });
+
+  // The per-row broadcast cannot say "you lost this party's other records" or
+  // refresh `partyGrants`; a fresh snapshot per panel does, without a reconnect.
+  panelLink()?.resnapshotAll?.();
 
   return row;
 }

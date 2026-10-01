@@ -39,7 +39,13 @@ import type {
   ProductInput,
   ProductVariantInput,
 } from '@orderbook/shared';
-import { columnPatch, fieldFor, MAX_PRODUCT_IMPORT_ISSUES, PRODUCT_COLUMNS } from '@orderbook/shared';
+import {
+  colourRuleOf,
+  columnPatch,
+  fieldFor,
+  MAX_PRODUCT_IMPORT_ISSUES,
+  PRODUCT_COLUMNS,
+} from '@orderbook/shared';
 
 import { requirePermission, type ActorContext } from '../domain/actor.js';
 import {
@@ -58,7 +64,13 @@ import {
 import { db } from '../db/knex.js';
 import { AppError, ValidationError } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
-import { buildCsvTemplate, buildXlsxTemplate, XLSX_CONTENT_TYPE } from '../lib/spreadsheet.js';
+import { toCsv } from '../lib/csv.js';
+import {
+  buildCsvTemplate,
+  buildXlsxTable,
+  buildXlsxTemplate,
+  XLSX_CONTENT_TYPE,
+} from '../lib/spreadsheet.js';
 import { readSheetRows } from '../lib/spreadsheet.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import { allocatePermanentIds, nextHlc } from '../repositories/identity.repository.js';
@@ -76,14 +88,16 @@ const ACCEPTED_EXTENSIONS = new Set(['csv', 'xlsx', 'txt']);
 
 /** Width of each template column, in Excel character units. */
 const TEMPLATE_WIDTHS: Partial<Record<ImportField, number>> = {
-  categoryName: 22,
-  name: 28,
-  variant: 20,
+  categoryBrand: 14,
+  categoryCode: 18,
+  categoryName: 24,
+  name: 24,
+  size: 18,
+  colourRule: 14,
+  variant: 18,
   code: 14,
   weightKg: 12,
   alias: 18,
-  size: 18,
-  multiColour: 12,
 };
 
 const TEXT_COLUMNS = new Set<ImportField>(['code']);
@@ -105,16 +119,95 @@ export async function productImportTemplate(
   const mayCreateCategories = await getSetting(actor.tenantId, 'catalog.importCreatesCategories');
 
   const bytes = await buildXlsxTemplate({
-    columns: IMPORT_COLUMNS.map((column) => ({
-      header: column.field,
+    columns: IMPORT_COLUMNS.filter((column) => !column.legacy).map((column) => ({
+      header: column.label,
       width: TEMPLATE_WIDTHS[column.field] ?? 12,
       text: TEXT_COLUMNS.has(column.field),
-      ...(column.kind === 'boolean' ? { values: ['yes', 'no'] } : {}),
+      ...(column.field === 'colourRule' ? { values: ['fixed', 'dedicated', 'multicolour'] } : {}),
     })),
     guide: [['column', 'required', 'kind', 'note'], ...templateGuideRows(mayCreateCategories)],
   });
 
   return { bytes, contentType: XLSX_CONTENT_TYPE, fileName: 'products-template.xlsx' };
+}
+
+/**
+ * The live catalogue as a sheet in the template's own columns, one row per
+ * sub product (per variant, for an older multi-variant model), in catalogue
+ * order — so an export edited and uploaded back with "Update them" matches
+ * every row by its code. `level: 'main'` is the list of main products instead.
+ */
+export async function exportProducts(
+  format: 'csv' | 'xlsx',
+  actor: ActorContext,
+  level: 'sub' | 'main' = 'sub',
+): Promise<{ bytes: Buffer; contentType: string; fileName: string }> {
+  // Reading the catalogue needs no more than seeing it; only the import writes.
+  requirePermission(actor, 'products.view');
+
+  if (level === 'main') {
+    const categories = await productRepo.listCategories(actor.tenantId);
+    const headers = ['Brand', 'Main product code', 'Main product', 'Sub products'];
+    const mainRows = categories.map((category) => [
+      category.brand ?? '',
+      category.code ?? '',
+      category.name,
+      category.subProductCount,
+    ]);
+    if (format === 'csv') {
+      return {
+        bytes: Buffer.from('﻿' + toCsv(headers, mainRows), 'utf8'),
+        contentType: 'text/csv; charset=utf-8',
+        fileName: 'main-products.csv',
+      };
+    }
+    const bytes = await buildXlsxTable({
+      sheetName: 'Main products',
+      columns: headers.map((header) => ({ header, width: 24, text: header === 'Main product code' })),
+      rows: mainRows,
+    });
+    return { bytes, contentType: XLSX_CONTENT_TYPE, fileName: 'main-products.xlsx' };
+  }
+
+  // ponytail: one page of everything; paginate the read if a catalogue ever outgrows memory.
+  const { items } = await productRepo.listProducts(actor.tenantId, { limit: 100000, offset: 0 });
+
+  const columns = IMPORT_COLUMNS.filter((column) => !column.legacy);
+  const rows = items.flatMap((product) => {
+    const rule = colourRuleOf(product);
+    const ruleName = rule === 'selectable' ? 'multicolour' : rule;
+    return product.variants.map((variant) => [
+      product.brand ?? '',
+      product.categoryCode ?? '',
+      product.categoryName,
+      product.name,
+      product.size ?? '',
+      ruleName,
+      rule === 'fixed' ? (variant.label ?? '') : '',
+      variant.code,
+      variant.weightKg ?? '',
+      product.alias ?? '',
+    ]);
+  });
+
+  if (format === 'csv') {
+    return {
+      bytes: Buffer.from('﻿' + toCsv(columns.map((column) => column.label), rows), 'utf8'),
+      contentType: 'text/csv; charset=utf-8',
+      fileName: 'products.csv',
+    };
+  }
+
+  const bytes = await buildXlsxTable({
+    sheetName: 'Products',
+    columns: columns.map((column) => ({
+      header: column.label,
+      width: TEMPLATE_WIDTHS[column.field] ?? 12,
+      text: TEXT_COLUMNS.has(column.field),
+    })),
+    rows,
+  });
+  return { bytes, contentType: XLSX_CONTENT_TYPE, fileName: 'products.xlsx' };
 }
 
 interface ImportFile {
@@ -154,15 +247,17 @@ export async function importProducts(
   const headerIndex = rows.findIndex((row) => !isBlankRow(row));
   if (headerIndex === -1) throw new ValidationError('validation.import.emptyFile');
 
+  const labelOf = (field: ImportField): string =>
+    IMPORT_COLUMNS.find((column) => column.field === field)?.label ?? field;
   const headerRow = (rows[headerIndex] ?? []).map((cell) => cell.trim());
   const match = matchHeaders(headerRow);
   if (match.missing.length > 0) {
-    throw new ValidationError('validation.import.missingColumn', { column: match.missing[0] as string });
+    throw new ValidationError('validation.import.missingColumn', { column: labelOf(match.missing[0] as ImportField) });
   }
 
   const headerFor = (field: ImportField): string => {
     const at = match.byIndex.findIndex((column) => column?.field === field);
-    return (at >= 0 ? headerRow[at] : undefined) || field;
+    return (at >= 0 ? headerRow[at] : undefined) || labelOf(field);
   };
 
   const issues: ProductImportIssue[] = [];

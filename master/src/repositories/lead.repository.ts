@@ -15,6 +15,7 @@ import * as customFields from './custom-field.repository.js';
 import { allocatePermanentId } from './identity.repository.js';
 import * as lineItems from './line-item.repository.js';
 import { firstCount, mapLead } from './mappers.js';
+import { applyRecordSearch } from './record-search.js';
 import { applyPartyScope } from './party-access.repository.js';
 import * as timeline from './timeline.repository.js';
 import type { TransactionContext } from './transaction.js';
@@ -67,18 +68,21 @@ export async function listLeads(
 
   // A converted lead is history: it stays out of the board unless asked for,
   // otherwise every won deal would clutter the pipeline forever.
-  if (!options.includeConverted) base.whereNull('l.converted_order_id');
+  // `convertedOnly` is the opposite slice, so it skips that guard rather than
+  // contradicting it.
+  if (options.convertedOnly) base.whereNotNull('l.converted_order_id');
+  else if (!options.includeConverted) base.whereNull('l.converted_order_id');
+  if (options.partyId) base.where('l.party_id', options.partyId);
 
   if (options.followUpDueOnly) {
     base.whereNotNull('l.follow_up_date').andWhere('l.follow_up_date', '<=', db().fn.now());
   }
 
-  if (options.search) {
-    const pattern = `%${options.search}%`;
-    base.andWhere((builder) =>
-      builder.whereILike('l.id', pattern).orWhereILike('pa.name', pattern),
-    );
-  }
+  applyRecordSearch(base, options.search, {
+    alias: 'l',
+    parentType: 'lead',
+    columns: ['l.id', 'pa.name', 'ow.display_name', 'st.name', 'l.notes', 'l.converted_order_id'],
+  });
 
   const countRows = await base
     .clone()

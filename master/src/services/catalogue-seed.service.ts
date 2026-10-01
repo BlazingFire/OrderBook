@@ -5,8 +5,8 @@
  * One loader, two modes, **one transaction** each: an error halfway leaves the
  * master exactly as it was, never half of each.
  *
- * - **Additive** (`replace: false`) — Settings → Developer → Load catalogue and
- *   `npm run seed:catalogue`. Nothing is deleted and nothing existing is
+ * - **Additive** (`replace: false`) — the /api/developer/load-catalogue route (no screen
+ *   since 5a32106) and `npm run seed:catalogue`. Nothing is deleted and nothing existing is
  *   changed: a product (category) is found by its code, or by (brand, name),
  *   before one is created; a sub product already live in its product under the
  *   same name is skipped. A second press writes nothing and says so.
@@ -237,7 +237,7 @@ export async function loadCatalogue(
 
   // Option lists are cached per tenant, and the upsert above wrote around the
   // cache. The CLI exits and the Master it waits for starts empty; the
-  // Developer tab's press runs inside the Master, whose cache this is.
+  // /api/developer/load-catalogue route runs inside the Master, whose cache this is.
   customFieldRepo.invalidateFieldCache(tenantId);
 
   // One event for the whole load: every panel refetches its catalogue once.
@@ -262,7 +262,7 @@ export async function loadCatalogue(
 }
 
 /**
- * The shipped file, loaded additively — the Developer tab's button,
+ * The shipped file, loaded additively — the /api/developer/load-catalogue route (no screen since 5a32106),
  * `seed:catalogue` and the sample data. As `actor`, or else the installation's
  * first administrator, so the activity log names somebody.
  */

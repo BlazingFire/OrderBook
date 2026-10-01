@@ -30,6 +30,16 @@ describe.skipIf(!canRunIntegrationTests)('catalog service (integration)', () => 
       expect(second.partyCode).toBe('P-0002');
     });
 
+    it('keeps codes unique past P-9999 instead of truncating them', async () => {
+      await db().raw(`SELECT setval('party_code_seq', 9999)`);
+
+      const first = await catalog.createParty({ name: 'Ten Thousand' }, actor);
+      const second = await catalog.createParty({ name: 'Ten Thousand And One' }, actor);
+
+      expect(first.partyCode).toBe('P-10000');
+      expect(second.partyCode).toBe('P-10001');
+    });
+
     it('allows two parties to share a name, since real customers do', async () => {
       await catalog.createParty({ name: 'Sharma Traders', city: 'Morbi' }, actor);
       const duplicate = await catalog.createParty({ name: 'Sharma Traders', city: 'Rajkot' }, actor);

@@ -76,6 +76,7 @@ type ScreenProps = {
   onFilterChange: (filter: 'all' | 'low') => void;
   freeToSell: boolean;
   adjustmentNoteRequired: boolean;
+  permissions: string[];
 };
 
 let InventoryScreen: ComponentType<ScreenProps>;
@@ -128,6 +129,7 @@ describe('InventoryScreen stock list', () => {
           onFilterChange={() => undefined}
           freeToSell
           adjustmentNoteRequired={false}
+          permissions={['inventory.view', 'inventory.edit', 'stock.adjust']}
         />
       </FilterBarProvider>,
     );

@@ -2,13 +2,13 @@
  * Standalone seeder: `npm run seed:sample` (root) or
  * `npm run seed:sample --workspace @orderbook/master`.
  *
- * The same `seedSampleData` the developer tab calls, reachable without a
+ * The same `seedSampleData` the /api/developer route (no screen since 5a32106) calls, reachable without a
  * browser: six months of a small tile trade — parties, products with photos,
  * stock, leads, orders, remarks — created through the ordinary services as
  * the three test users, which it seeds first. Starts the database the way the
  * Master does, migrates, seeds, prints what it made, and shuts down. It
- * refuses to run twice on the same Master; erase first (Settings →
- * Developer → Erase everything) to start over.
+ * refuses to run twice on the same Master; erase first (the
+ * /api/developer erase route; no screen since 5a32106) to start over.
  */
 
 import { createLogger } from '../lib/logger.js';

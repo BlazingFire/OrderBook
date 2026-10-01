@@ -13,7 +13,7 @@
  * which is why every caller has to handle "no link" rather than assume one.
  */
 
-import type { ServerToClientEvents } from '@orderbook/shared';
+import type { ServerToClientEvents, SessionRejection } from '@orderbook/shared';
 
 /** Only the Master→panel events that carry an acknowledgement belong here. */
 export type PanelRequest = 'panel:describe' | 'panel:credentials' | 'panel:setStoragePath';
@@ -32,6 +32,18 @@ export interface PanelLink {
   disconnect(panelId: string): boolean;
   /** Fire-and-forget push, for events with no ack (`panel:revoked`). */
   notify(panelId: string, event: keyof ServerToClientEvents): boolean;
+  /**
+   * Tell every panel whose signed-in person held one of these session tokens
+   * that the session is over (`session:rejected`). Optional so a partial link
+   * in a test still compiles; callers use `?.`.
+   */
+  sessionsEnded?(tokens: ReadonlySet<string>, reason: SessionRejection): void;
+  /**
+   * Re-send a fresh snapshot to every connected panel, for changes (roles,
+   * party access) that alter what a panel's current actor may see. Never signs
+   * anybody out: a socket holding a refused token is skipped.
+   */
+  resnapshotAll?(): void;
 }
 
 let link: PanelLink | null = null;

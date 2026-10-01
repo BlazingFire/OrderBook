@@ -189,24 +189,26 @@ on it.
   spec is `docs/catalogue/CATALOGUE_MODEL.md`; the SWISWARE data (1 brand,
   21 colours, 41 products, 549 sub products) is
   `master/assets/catalogue/swisware-plus-2026.md`.
-- **Master shortcuts moved** (worth a line in the release notes): Parties
-  is now Alt+3, its place in the sidebar, and the screens below it move down
-  one — Inventory Alt+4, Reports Alt+5, Conflicts Alt+6, Office panels
-  Alt+7, Roles & users Alt+8, Party access Alt+9. Fields and everything after
-  it are reached from the command palette. Shortcuts a person remapped are
-  kept.
+- **Master shortcuts moved** (worth a line in the release notes). 2026-10-01,
+  parity plan P2 and P4: Pending Orders is Alt+2, Final Orders Alt+3, Conflicts
+  Alt+4, Products Alt+5, Parties Alt+6, Inventory Alt+7, Reports Alt+8, Office
+  panels Alt+9 — the same Alt+1 to Alt+6 as the Office. **Roles & users and Party
+  access lose their chord** (Ctrl+K reaches them, as it does Fields and
+  everything after). The topbar names the active sub-page ("List", "All stages"),
+  not the module. Shortcuts a person remapped are kept. (Earlier, 2026-09-25:
+  Parties moved to Alt+3 and the screens below it down one.)
 - **Hindi is 1,245 strings behind** (`grep -c 'TODO(i18n-hi)'
   shared/src/i18n/hi.ts`). The parity test only checks keys exist, so nothing
   fails on it — except an `activity.*` template, where
   `shared/tests/i18n-coverage.test.ts` fails the English stub until it is
-  translated. Settings → Appearance has a language picker.
+  translated. There is no language picker (removed in 5a32106).
 - **Live databases:** external PostgreSQL via `.env` `DATABASE_URL` on both of
   the owner's machines (`order_book` on the PC, `order_book_new` on the
   laptop). The first Master started from a pre-1.2 database runs
   `20260323000000_product_variants` (wipes every product-linked table) and
   `20260324000000_product_master_trim` (drops the pricing/tile columns in
-  place; `down()` throws). Settings → Developer → *Load catalogue* (or
-  `npm run seed:catalogue`) loads the SWISWARE catalogue additively: 41
+  place; `down()` throws). the `/api/developer/load-catalogue` route (no screen since
+  5a32106) or `npm run seed:catalogue` loads the SWISWARE catalogue additively: 41
   products, 549 sub products (one variant each) and the 21-colour range, with
   blank weights.
 - **Take a `pg_dump` before main first boots on the owner's PC database.**
@@ -314,7 +316,7 @@ stops it when done (with `DATABASE_URL` set it stops nothing).
   behaviour (wipe, then load) is `npm run wipe:business -- --with-catalog`.
 - `seed:catalogue` loads the same file additively — a product found by code
   or (brand, name), a sub product already live under the same name skipped
-  — as Settings → Developer → *Load catalogue* does, and writes one
+  — as the `/api/developer/load-catalogue` route does (no screen since 5a32106), and writes one
   `catalog.imported` row when it adds anything.
 - `seed:demo-parties` adds 13 demo dealers through `createParty`, wipes
   nothing and skips a name already on the books.
@@ -434,7 +436,9 @@ docs/          all prose; nothing source-of-truth lives in a code comment
     hand. Only `main` publishes a release.
 12. **Product catalogue:** category → model (`products`) → variant
     (`product_variants`: code, colour/pattern label, weight). Lead entry is
-    the Office panel's `AddLeadScreen`; the Master has no New lead page.
+    the Office panel's `AddLeadScreen`; the Master had no New lead page
+    (**reversed by decisions 16 and 17** — the Master has Pending and Final Order
+    modules, and from 2026-10-01 a New / Edit pending order form of its own).
     **Catalogue v2 (owner, 2026-09-28; `docs/catalogue/CATALOGUE_MODEL.md`)**
     maps the owner's Brand → Product → Sub product onto those tables without
     renaming them: a **Product** is a category, which gains a software
@@ -470,6 +474,57 @@ docs/          all prose; nothing source-of-truth lives in a code comment
     The two briefs that recorded these (`docs/ai-handoffs/product-model-variants.md`,
     `product-master-trim.md`) were deleted on 2026-09-25 as done; git history
     has them.
+
+16. **The Master has Pending Orders and Final Orders modules (owner, 2026-10-01,
+    parity plan P2).** The one `Leads & orders` screen is split into `leads`
+    (`leads.view`) and `orders` (`orders.view`), each a list that searches on the
+    server and pages 500 at a time, whose rows open as sub-screens with a back
+    button and a nested sidebar entry; every action (stage, note, convert,
+    dispatch, weight, delete, PDF, Filling/Dispatch note) moved from list rows into
+    that record screen, and the Final Orders list lost its Products column (the
+    Office's has none). The record bodies are `ui/src/LeadRecordView.tsx` and
+    `ui/src/OrderRecordView.tsx`, ports of the Office's `LeadDetail` and
+    `OrderDetailBody` — **the code exists twice until the Office is switched to
+    the ports (owed)**, so a change to one must be made in the other. A control
+    the role lacks is absent, not disabled.
+17. **New / Edit pending order on the Master (owner, 2026-10-01, parity plan P3).**
+    Decision 12's "the Master has no New lead page" is reversed. The form is
+    `ui/src/LeadEntryScreen.tsx`, a near-verbatim port of the Office's
+    `AddLeadScreen` behind a `LeadEntryTransport`; the Master mounts it through
+    `master/web/src/screens/LeadEntry.tsx` as the nav-less `addLead` tab (topbar
+    "New pending order", the `leads.new` sub-page, Ctrl+Shift+N — `record.new` is now
+    `panel: 'both'`) and from "Edit pending order" on a lead that is not yet
+    converted. Server: `PUT /api/leads/:id` (`leads.edit`) and `GET /api/lead-entry`
+    (`buildLeadEntryView`: party-scoped records, option lists, stock only with
+    `inventory.view`, all of the caller's grants, features; `leads.create` or
+    `leads.edit`). Differences from the Office copy are listed in the port's header.
+
+18. **The Master has the product catalogue (owner, 2026-10-01, parity plan P4).**
+    Decision 12's "the Master edits the catalogue from Inventory" was false —
+    Inventory only reads it — and `PANEL_ONLY.products` is gone. The Master's
+    **Products** module (`products.view`, Alt+5, before Parties) has three
+    sub-pages: Sub products, Products and Brands (always offered; without
+    `fields.view` the page says so inside itself, as the Office does). The screens
+    are `ui/src/SubProductsScreen.tsx`, `MainProductsScreen.tsx` (with
+    `BrandsScreen`), `ProductDetail.tsx`, `ProductDrawer.tsx`, `ProductImages.tsx`,
+    `ProductImportModal.tsx` and `catalogueSummary.ts` — ports of the Office's
+    `CatalogScreen` / `MainProductsScreen` / ... behind one `CatalogueTransport`
+    and `CatalogueView` (**the code exists twice until the Office is switched to
+    the ports, owed**). `master/web/src/screens/ProductsScreen.tsx` loads the view
+    (option lists, categories, every sub product via `GET /api/products?limit=2000`,
+    free stock only with `inventory.view`) and mounts them. Controls are absent,
+    not disabled: New (`products.create`), Edit and every photo control
+    (`products.edit` — the Office leaves these ungated), Import (`products.bulk`).
+    Sub-product delete is not offered, as on the Office, and `api.deleteProduct`
+    is gone. Server: the import handlers are `productImportRoutes(actorOf)` — the
+    panel path (`/api/panel/products/import…`) is unchanged, and
+    `dataRoutes` mounts the same handlers for a session (the service checks
+    `products.bulk`); `/uploads/images/:id/:variant` is mounted for the Master
+    session, so `ProgressiveImage` shows photos; a photo upload with no file is a
+    `ValidationError` (`validation.image.fileRequired`). The edit form of a lead
+    now gets `products` in `GET /api/lead-entry` (with `products.view`), so a
+    multicolour line reopens as multicolour. No filter chip for a missing weight
+    (the Office has none).
 
 ## Owed work
 
@@ -525,9 +580,13 @@ branch deletion and tag pushes (HTTP 403), and the last needs real Macs:
    assign party").
 3. **Password-change tail:** `invalidateSessionsForUser` records no reason, and
    Reset password has no self-exclusion warning.
-4. **Master-side New lead:** port the Office `AddLeadScreen` into `ui/` behind
-   a transport if the Master should create leads again (`POST /api/leads`
-   still exists).
+4. ~~**Master-side New lead**~~ — **done 2026-10-01** (decision 17). What it
+   left: **two copies of the lead form** — `office/web/src/screens/AddLeadScreen.tsx`
+   and `ui/src/LeadEntryScreen.tsx` — until the Office is switched to the `ui`
+   one, so a change to either must be made in both (`ui/tests/packaging-switch-reach.test.ts`
+   reads both). The Master's edit form is given no `products`, so a multicolour
+   line saved with no colour chosen re-opens as fixed or dedicated, not
+   multicolour; add `products` to `buildLeadEntryView` if that matters.
 5. **Offline product + lead in one session:** a lead line needs a variant id,
    which a panel cannot know for a product the Master has not created yet, so
    a lead cannot reference a product created offline in the same session. The
@@ -622,8 +681,10 @@ audit listed here is fixed (see "Session history").
 17. **`ROLE_TEMPLATES`** (`shared/src/domain/permissions.ts`) are defined and
     their `roleTemplate.*` names translated, but no screen offers them when a
     role is created. Wire them into the role editor or drop them.
-18. **`signIn.notice.passwordChanged` is never sent** — it exists only in the
-    two catalogues (the password-change tail in *Code* item 3 above is why).
+18. ~~**`signIn.notice.passwordChanged` is never sent**~~ — wired 2026-10-01
+    (parity plan P5): `ChangePasswordDialog` calls
+    `publishSessionEnded('signIn.notice.passwordChanged')` after a successful change, so
+    the window lands on sign-in saying why.
 19. **`fontkit` is a Master runtime dependency used only by
     `master/tests/pdf-fonts.test.ts`** (PDFKit brings its own); it could move to
     `devDependencies`.

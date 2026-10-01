@@ -24,10 +24,16 @@
  * Stock is allowed to go negative — a dealer routinely sells against a factory
  * order that has not arrived. The shortfall is surfaced, never blocked.
  *
- * Clicking a stock row opens a dialog scoped to that one variant: the same
- * three quantities, a ledger of just its movements, and "Stock in" / "Adjust
- * to physical count" pre-locked to the line so the fast path never requires
- * re-picking the product and sub product (6-UI-DESIGN.md §8).
+ * Clicking a stock row opens that variant as a sub-screen (with a back button
+ * and a nested sidebar entry): the same three quantities, a ledger of just
+ * its movements, and "Stock in" / "Adjust to physical count" pre-locked to the
+ * line so the fast path never requires re-picking the product and sub product.
+ * The two forms themselves stay modals over it.
+ *
+ * What a person may do follows their role, as on the Office: Stock in needs
+ * `inventory.edit`, Physical count `stock.adjust`, and the reorder / min / max
+ * cells are plain figures without `inventory.edit`. The buttons are absent,
+ * not greyed.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -49,6 +55,7 @@ import {
   ColourChip,
   ColourName,
   DataTable,
+  EditorScreen,
   EmptyState,
   FilterChip,
   FilterDivider,
@@ -68,6 +75,7 @@ import {
   useDebounced,
   useEnterToAdvance,
   useFilterBar,
+  useSubNav,
   type DataTableColumn,
 } from '@orderbook/ui';
 
@@ -84,6 +92,8 @@ interface Props {
   freeToSell: boolean;
   /** `inventory.adjustmentNoteRequired`, already coalesced by the shell. */
   adjustmentNoteRequired: boolean;
+  /** The signed-in user's permission keys. */
+  permissions: string[];
 }
 
 const MOVEMENT_TYPE_KEY = {
@@ -158,7 +168,11 @@ export function InventoryScreen({
   onFilterChange,
   freeToSell,
   adjustmentNoteRequired,
+  permissions,
 }: Props) {
+  const canStockIn = permissions.includes('inventory.edit');
+  const canCount = permissions.includes('stock.adjust');
+  const canEditBand = permissions.includes('inventory.edit');
   const [levels, setLevels] = useState<InventoryStockLevel[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [optionLists, setOptionLists] = useState<OptionListItem[]>([]);
@@ -288,7 +302,22 @@ export function InventoryScreen({
     }
   }, []);
 
+  // The opened line is held, so a filter or refetch that drops it from `levels` does not close its screen.
+  const [heldLevel, setHeldLevel] = useState<InventoryStockLevel | null>(null);
+  const freshLevel = openVariantId
+    ? (levels.find((level) => level.variantId === openVariantId) ?? null)
+    : null;
+  useEffect(() => {
+    if (freshLevel) setHeldLevel(freshLevel);
+  }, [freshLevel]);
+  const openLevel = openVariantId
+    ? (freshLevel ?? (heldLevel?.variantId === openVariantId ? heldLevel : null))
+    : null;
+  const openColour = openLevel && lineColour(openLevel);
+  const openHex = openColour ? colourHex(openColour) : undefined;
+
   function openLine(level: InventoryStockLevel): void {
+    setHeldLevel(level);
     setOpenVariantId(level.variantId);
     void loadLineMovements(level.variantId);
   }
@@ -304,6 +333,7 @@ export function InventoryScreen({
   }
 
   useFilterBar(
+    openLevel ? null : (
     <>
       <div className="ob-search" style={{ width: rem(320) }}>
         <Input
@@ -344,7 +374,28 @@ export function InventoryScreen({
           {t('inventory.filterNote')}
         </span>
       )}
-    </>,
+    </>
+    ),
+  );
+
+  useSubNav(
+    'inventory',
+    openLevel
+      ? {
+          parentId: 'inventory',
+          items: [
+            {
+              id: 'inventory.detail',
+              label: t('inventory.drawer.title', {
+                product: lineName(openLevel),
+                variant: variantName(openLevel),
+              }),
+              icon: 'inventory',
+            },
+          ],
+          activeId: 'inventory.detail',
+        }
+      : null,
   );
 
   const totalFree = levels.reduce((sum, level) => sum + level.availableBoxes, 0);
@@ -358,7 +409,10 @@ export function InventoryScreen({
     level: InventoryStockLevel,
     field: 'reorderLevel' | 'minStockLevel' | 'maxStockLevel',
     labelKey: 'inventory.reorderLevelLabel' | 'inventory.minLevelLabel' | 'inventory.maxLevelLabel',
-  ) => (
+  ) =>
+    !canEditBand ? (
+      <span>{level[field] ?? '—'}</span>
+    ) : (
     <NumberInput
       key={`${level.variantId}-${field}-${level[field] ?? ''}`}
       defaultValue={level[field] ?? ''}
@@ -373,7 +427,7 @@ export function InventoryScreen({
         );
       }}
     />
-  );
+    );
 
   const levelColumns: DataTableColumn<InventoryStockLevel>[] = [
     {
@@ -618,12 +672,6 @@ export function InventoryScreen({
     },
   ];
 
-  const openLevel = openVariantId
-    ? (levels.find((level) => level.variantId === openVariantId) ?? null)
-    : null;
-  const openColour = openLevel && lineColour(openLevel);
-  const openHex = openColour ? colourHex(openColour) : undefined;
-
   /**
    * One stock line, in full: the three figures that matter and that line's own
    * ledger. The two writes that act on it live in the dialog's footer.
@@ -697,158 +745,9 @@ export function InventoryScreen({
     );
   }
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-24)' }}>
-      {error && (
-        <div className="ob-banner ob-banner--conflict" role="alert">
-          <span style={{ flex: 1 }}>{error}</span>
-        </div>
-      )}
-
-      <Section
-        title={t('inventory.section.stockLevels')}
-        action={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
-            {/* Here rather than in the filter strip: the strip scrolls sideways
-                and clips anything taller than itself, so this list would open
-                out of sight there. Typing a code or a name narrows it. */}
-            <Select
-              value={categoryId}
-              aria-label={t('inventory.filter.product')}
-              style={{ width: rem(260) }}
-              onChange={(event) => setCategoryId(event.target.value)}
-            >
-              <option value="">{t('inventory.filter.allProducts')}</option>
-              {productOptions.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {categoryLabel(category.code, category.name)}
-                </option>
-              ))}
-            </Select>
-            <span className="ob-pill">
-              {t(freeToSell ? 'inventory.piecesFree' : 'inventory.piecesOnHand', {
-                count: totalFree,
-              })}
-            </span>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => {
-                setLineLock(null);
-                setStockInOpen(true);
-              }}
-            >
-              {t('inventory.action.stockIn')}
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setLineLock(null);
-                setAdjustOpen(true);
-              }}
-            >
-              {t('inventory.action.physicalCount')}
-            </Button>
-          </div>
-        }
-      >
-        <DataTable
-          columns={levelColumns}
-          rows={levels}
-          rowKey={(level) => level.variantId}
-          onRowOpen={openLine}
-          selectedId={openVariantId ?? undefined}
-          empty={
-            <EmptyState
-              title={t('inventory.empty.title')}
-              description={t('inventory.empty.description')}
-            />
-          }
-        />
-      </Section>
-
-      <Section title={t('inventory.movements.title')}>
-        <p className="ob-small" style={{ margin: 0 }}>
-          {t('inventory.movements.description')}
-        </p>
-        <DataTable
-          columns={movementColumns}
-          rows={movements}
-          rowKey={(movement) => String(movement.id)}
-          empty={
-            <EmptyState
-              title={t('inventory.movements.empty.title')}
-              description={t('inventory.movements.empty.description')}
-            />
-          }
-        />
-      </Section>
-
-      <Modal
-        open={Boolean(openLevel)}
-        onClose={() => setOpenVariantId(null)}
-        size="lg"
-        title={
-          openLevel && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-8)' }}>
-              {openColour && openHex && <ColourChip hex={openHex} name={openColour} />}
-              {t('inventory.drawer.title', {
-                product: lineName(openLevel),
-                variant: variantName(openLevel),
-              })}
-            </span>
-          )
-        }
-        label={
-          openLevel
-            ? t('inventory.drawer.title', {
-                product: lineName(openLevel),
-                variant: variantName(openLevel),
-              })
-            : ''
-        }
-        subtitle={
-          openLevel && (
-            <span className="ob-mono">
-              {openLevel.variantCode}
-              {openLevel.weightKg !== null ? ` · ${formatKg(openLevel.weightKg)}` : ''}
-            </span>
-          )
-        }
-        footer={
-          openLevel && (
-            <>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  // One dialog at a time: the movement form replaces this one
-                  // rather than stacking on it (HIG, Modality).
-                  setOpenVariantId(null);
-                  openLineAdjust(openLevel);
-                }}
-              >
-                {t('inventory.drawer.adjust')}
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setOpenVariantId(null);
-                  openLineStockIn(openLevel);
-                }}
-              >
-                {t('inventory.action.stockIn')}
-              </Button>
-              <Button variant="primary" onClick={() => setOpenVariantId(null)}>
-                {t('action.done')}
-              </Button>
-            </>
-          )
-        }
-      >
-        {openLevel && renderLineDetail(openLevel)}
-      </Modal>
-
+  // Over either view: the forms are modals, the detail is a screen.
+  const movementModals = (
+    <>
       <Modal
         open={stockInOpen}
         onClose={() => {
@@ -926,6 +825,151 @@ export function InventoryScreen({
           }}
         />
       </Modal>
+    </>
+  );
+
+  if (openLevel) {
+    return (
+      <>
+        <EditorScreen
+          title={t('inventory.drawer.title', {
+            product: lineName(openLevel),
+            variant: variantName(openLevel),
+          })}
+          meta={
+            <>
+              {openColour && openHex && <ColourChip hex={openHex} name={openColour} />}
+              <span className="ob-mono ob-small">
+                {openLevel.variantCode}
+                {openLevel.weightKg !== null ? ` · ${formatKg(openLevel.weightKg)}` : ''}
+              </span>
+            </>
+          }
+          actions={
+            <>
+              {canCount && (
+                <Button variant="secondary" size="sm" onClick={() => openLineAdjust(openLevel)}>
+                  {t('inventory.drawer.adjust')}
+                </Button>
+              )}
+              {canStockIn && (
+                <Button variant="primary" size="sm" onClick={() => openLineStockIn(openLevel)}>
+                  {t('inventory.action.stockIn')}
+                </Button>
+              )}
+            </>
+          }
+          onBack={() => {
+            setOpenVariantId(null);
+            return true;
+          }}
+          backLabel={t('action.backToList')}
+        >
+          {error && (
+            <div className="ob-banner ob-banner--conflict" role="alert">
+              <span style={{ flex: 1 }}>{error}</span>
+            </div>
+          )}
+          {renderLineDetail(openLevel)}
+        </EditorScreen>
+        {movementModals}
+      </>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-24)' }}>
+      {error && (
+        <div className="ob-banner ob-banner--conflict" role="alert">
+          <span style={{ flex: 1 }}>{error}</span>
+        </div>
+      )}
+
+      <Section
+        title={t('inventory.section.stockLevels')}
+        action={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
+            {/* Here rather than in the filter strip: the strip scrolls sideways
+                and clips anything taller than itself, so this list would open
+                out of sight there. Typing a code or a name narrows it. */}
+            <Select
+              value={categoryId}
+              aria-label={t('inventory.filter.product')}
+              style={{ width: rem(260) }}
+              onChange={(event) => setCategoryId(event.target.value)}
+            >
+              <option value="">{t('inventory.filter.allProducts')}</option>
+              {productOptions.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {categoryLabel(category.code, category.name)}
+                </option>
+              ))}
+            </Select>
+            <span className="ob-pill">
+              {t(freeToSell ? 'inventory.piecesFree' : 'inventory.piecesOnHand', {
+                count: totalFree,
+              })}
+            </span>
+            {canStockIn && (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  setLineLock(null);
+                  setStockInOpen(true);
+                }}
+              >
+                {t('inventory.action.stockIn')}
+              </Button>
+            )}
+            {canCount && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setLineLock(null);
+                  setAdjustOpen(true);
+                }}
+              >
+                {t('inventory.action.physicalCount')}
+              </Button>
+            )}
+          </div>
+        }
+      >
+        <DataTable
+          columns={levelColumns}
+          rows={levels}
+          rowKey={(level) => level.variantId}
+          onRowOpen={openLine}
+          selectedId={openVariantId ?? undefined}
+          empty={
+            <EmptyState
+              title={t('inventory.empty.title')}
+              description={t('inventory.empty.description')}
+            />
+          }
+        />
+      </Section>
+
+      <Section title={t('inventory.movements.title')}>
+        <p className="ob-small" style={{ margin: 0 }}>
+          {t('inventory.movements.description')}
+        </p>
+        <DataTable
+          columns={movementColumns}
+          rows={movements}
+          rowKey={(movement) => String(movement.id)}
+          empty={
+            <EmptyState
+              title={t('inventory.movements.empty.title')}
+              description={t('inventory.movements.empty.description')}
+            />
+          }
+        />
+      </Section>
+
+      {movementModals}
     </div>
   );
 }

@@ -95,8 +95,11 @@ is true.
 8. **Do not ship a seeded database.** `npm run seed:dummy` /
    `seed:sample` / the Developer tools exist for demos and tests. A customer
    PC starts from first-run setup, which shows the administrator credentials
-   once, and loads the Swisware catalogue from Settings → Developer only if
-   that is the customer's catalogue.
+   once, and has no screen for loading the Swisware catalogue: the Settings →
+   Developer tab was removed in 5a32106, so on a customer PC the catalogue can
+   no longer be loaded from the app. **This is a go-live gap.** The
+   `/api/developer/load-catalogue` route is still present behind the developer
+   token, and `npm run seed:catalogue` works from a checkout; nothing else loads it.
 9. **Tell the customer where the data is and how to back it up.** The
    automatic pre-update copy is insurance against a bad update on the same
    disk; it is not a backup against a stolen or dead PC. Settings → Backup

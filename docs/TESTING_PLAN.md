@@ -216,7 +216,7 @@ This is the most important end-to-end path — run it fully, both directions.
    - [ ] Disconnect PC-C from network, create 2–3 leads while offline.
    - [ ] Reconnect — confirm the outbox drains automatically and all offline-created leads appear on Master and PC-B without duplication.
 8. **Delete & Recycle Bin:**
-   - [ ] Delete a lead/order/party (as a user with delete permission) — confirm it disappears from active lists on all panels.
+   - [ ] Delete a lead/order/party (as a user with delete permission) — on the Master, leads and orders are deleted from the record screen opened from the list (header trash button; there is no delete in a row) — confirm it disappears from active lists on all panels.
    - [ ] On Master's **RecycleBinScreen**, confirm the deleted item appears with the deleter's name/time, restore it, confirm it reappears everywhere.
    - [ ] Attempt the same delete as a user **without** the recycle-bin/delete permission — confirm it's blocked.
 
@@ -236,7 +236,7 @@ database with parties and a few leads from §8, so the reload and the lead PDF h
          `pg_dump` first (`HANDOFF.md`, "Live databases") — main's first boot wipes its
          product-linked tables. Confirm the Master boots rather than stopping on "migration
          directory is corrupt".
-   - [ ] Settings → Developer → *Load catalogue*: 41 products, 549 sub products, the 21-colour
+   - [ ] `npm run seed:catalogue` (the Settings → Developer tab is gone; the `/api/developer/load-catalogue` route remains): 41 products, 549 sub products, the 21-colour
          range with swatches, one brand (Swisware+). Run it again — everything is skipped, nothing
          doubles.
    - [ ] Every sub product's code is its product's code and four digits in catalogue order
@@ -366,12 +366,12 @@ Run once with each combination:
 Screen: **SettingsScreen**.
 
 - [ ] View storage usage numbers — confirm they look sane (non-zero, grows after adding data).
-- [ ] Signed in as a role without `settings.manage`, open Settings through **Help → Uninstall OrderBook** (it lands on the Developer tab): there is no Storage tab unless the role holds `storage.manage`, and then it offers export and restore with no usage figures (`GET /api/storage` needs `settings.manage`).
+- [ ] Signed in as a role without `settings.manage`, open Settings: there is no Storage tab unless the role holds `storage.manage`, and then it offers export and restore with no usage figures (`GET /api/storage` needs `settings.manage`).
 - [ ] Export a full backup (passphrase-protected) — save the file.
 - [ ] Preview a restore from that backup file without committing — confirm preview shows what would change.
 - [ ] Perform the actual restore into a **separate clean Master install** (see Section 2, restore path) and confirm parties/leads/users all come back correctly, including custom fields and role/permission setup.
 - [ ] Check password vault status indicator reflects actual vault state.
-- [ ] Office `SettingsScreen` — confirm it has no company settings: Appearance and Shortcuts are this machine's preferences, Machine is read-only, and Storage holds this panel's own data folder (plus backup actions for `storage.manage`); Developer (shown to everybody signed in, unlocked by the developer password) holds this panel's reset and the uninstall.
+- [ ] Office `SettingsScreen` — confirm it has no company settings: Appearance and Shortcuts are this machine's preferences, Machine is read-only, and Storage holds this panel's own data folder (plus backup actions for `storage.manage`); there is no Developer tab on either panel (removed in 5a32106).
 - [ ] Office Settings → Storage — moving the data folder to a drive root, the home folder, or a folder already holding other files is refused with the folder named; a move to an empty folder succeeds, and after quitting and relaunching the app the panel is still using the new folder with its queued work intact.
 
 ---

@@ -9,11 +9,15 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
+import sharp from 'sharp';
 import type { Express } from 'express';
 
 import { canRunIntegrationTests } from './helpers/db.js';
 import { config } from '../src/config/index.js';
+import * as catalog from '../src/services/catalog.service.js';
+import * as imageService from '../src/services/image.service.js';
 import * as leads from '../src/services/lead.service.js';
+import * as partyAccess from '../src/services/party-access.service.js';
 import * as roles from '../src/services/role.service.js';
 import * as users from '../src/services/user.service.js';
 import { resetData, setupDatabase, teardownDatabase, stageIdByName, testActor } from './helpers/fixtures.js';
@@ -94,14 +98,57 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       try {
         const response = await request(app).get('/uploads/images/tenant-under-test/image-under-test/master.webp');
 
-        // The SPA fallback answers non-`/api` paths with index.html, so a 200 is
-        // expected here — what must never happen is the *file's own bytes*
-        // coming back, which is what an `express.static(uploadsDir)` mount did.
+        // `/uploads/images` is the permission-checked image route, so a signed-out
+        // caller gets its 401 JSON. What must never happen is the *file's own
+        // bytes* coming back, which is what an `express.static(uploadsDir)`
+        // mount did.
+        expect(response.status).toBe(401);
         expect(response.headers['content-type'] ?? '').not.toContain('image/webp');
         expect(response.body?.toString?.() ?? '').not.toContain('uniquely identifiable');
         expect(response.text ?? '').not.toContain('uniquely identifiable');
       } finally {
         await rm(path.join(config.imagesDir, 'tenant-under-test'), { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('product image files at /uploads/images', () => {
+    async function imageFixture() {
+      const admin = await testActor();
+      const product = await catalog.createProduct(
+        { categoryName: 'Tiles', variants: [{ code: 'IMG-1' }], name: 'Glossy' },
+        admin,
+      );
+      const source = await sharp({ create: { width: 400, height: 300, channels: 3, background: { r: 200, g: 120, b: 40 } } })
+        .jpeg()
+        .toBuffer();
+      const updated = await imageService.uploadImage(
+        { productId: product.id, fileBuffer: source, crop: { cropX: 0, cropY: 0, cropWidth: 400, cropHeight: 300, rotationDeg: 0 } },
+        admin,
+      );
+      return { admin, imageId: updated.images[0]!.id, tenantDir: path.join(config.imagesDir, admin.tenantId) };
+    }
+
+    async function agentWith(permissions: string[], username: string) {
+      const admin = await testActor();
+      const role = await roles.createRole({ name: `Role ${username}`, tier: 'office', permissions }, admin);
+      await users.createUser({ username, displayName: username, roleId: role.id, password: 'correct-horse' }, admin);
+      const agent = request.agent(app);
+      await agent.post('/api/auth/sign-in').send({ username, password: 'correct-horse' }).expect(200);
+      return agent;
+    }
+
+    it('serves image/webp to a user with products.view and 404 to one without', async () => {
+      const { imageId, tenantDir } = await imageFixture();
+      try {
+        const viewer = await agentWith(['products.view'], 'vera');
+        const ok = await viewer.get(`/uploads/images/${imageId}/thumb`).expect(200);
+        expect(ok.headers['content-type']).toContain('image/webp');
+
+        const blind = await agentWith(['leads.view'], 'blake');
+        await blind.get(`/uploads/images/${imageId}/thumb`).expect(404);
+      } finally {
+        await rm(tenantDir, { recursive: true, force: true });
       }
     });
   });
@@ -169,10 +216,15 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       ['post', '/api/products'],
       ['get', '/api/categories'],
       ['post', '/api/categories'],
+      ['get', '/api/products/import/template.csv'],
+      ['post', '/api/products/import'],
+      ['get', '/uploads/images/IMG0000000001/thumb'],
       ['put', '/api/categories/PC0000000001'],
       ['delete', '/api/categories/PC0000000001'],
       ['get', '/api/leads/LD0000000001/pdf'],
       ['get', '/api/leads'],
+      ['put', '/api/leads/LD0000000001'],
+      ['get', '/api/lead-entry'],
       ['get', '/api/orders'],
       ['get', '/api/conflicts'],
       ['get', '/api/pipelines'],
@@ -252,6 +304,79 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
 
       // A live sub product sits under it.
       await agent.delete(`/api/categories/${created.body.id}`).expect(409);
+    });
+
+    describe("a party's own records and access, for the Master's party screen", () => {
+      async function agentWith(permissions: string[], username: string) {
+        const admin = await testActor();
+        const role = await roles.createRole({ name: `Role ${username}`, tier: 'office', permissions }, admin);
+        await users.createUser(
+          { username, displayName: username, roleId: role.id, password: 'correct-horse' },
+          admin,
+        );
+        const agent = request.agent(app);
+        await agent.post('/api/auth/sign-in').send({ username, password: 'correct-horse' }).expect(200);
+        return agent;
+      }
+
+      async function seedRecord() {
+        const actor = await testActor();
+        const party = await catalog.createParty({ name: 'Patel Tiles' }, actor);
+        const product = await catalog.createProduct(
+          { name: 'Carrara White', categoryName: 'Tiles', variants: [{ code: 'GVT-01' }] },
+          actor,
+        );
+        await catalog.upsertVariant(
+          { partyId: party.id, productId: product.id, alias: 'PW' },
+          actor,
+        );
+        return { actor, party, product };
+      }
+
+      it('names the catalogue model with products.view, and sends null without it', async () => {
+        await initialize();
+        const { party } = await seedRecord();
+
+        const viewer = await agentWith(['parties.view', 'products.view'], 'vera');
+        const named = await viewer.get(`/api/parties/${party.id}/variants`).expect(200);
+        expect(named.body).toMatchObject([{ alias: 'PW', catalogueName: 'Carrara White' }]);
+
+        const blind = await agentWith(['parties.view'], 'blake');
+        const unnamed = await blind.get(`/api/parties/${party.id}/variants`).expect(200);
+        expect(unnamed.body).toMatchObject([{ alias: 'PW', catalogueName: null }]);
+      });
+
+      it('sends a null catalogue name once the product is deleted', async () => {
+        await initialize();
+        const { actor, party, product } = await seedRecord();
+        await catalog.deleteProduct(product.id, actor);
+
+        const viewer = await agentWith(['parties.view', 'products.view'], 'vera');
+        const records = await viewer.get(`/api/parties/${party.id}/variants`).expect(200);
+
+        expect(records.body).toMatchObject([{ catalogueName: null }]);
+      });
+
+      it("sends the caller's own grant on a party as myAccess, and the list rows carry it with a records count", async () => {
+        const { password } = await initialize();
+        const admin = await signedInAgent(password);
+        const { actor, party } = await seedRecord();
+        const open = await admin.get(`/api/parties/${party.id}`).expect(200);
+        expect(open.body.myAccess).toBeNull();
+
+        const adminId = ((await admin.get('/api/auth/me').expect(200)).body as { user: { id: string } }).user.id;
+        await partyAccess.replaceAssignments(
+          party.id,
+          { entries: [{ userId: adminId, level: 'manage' }], expectedVersion: open.body.sync.version },
+          actor,
+        );
+
+        const granted = await admin.get(`/api/parties/${party.id}`).expect(200);
+        expect(granted.body.myAccess).toBe('manage');
+
+        const list = await admin.get('/api/parties').expect(200);
+        expect(list.body.items).toMatchObject([{ id: party.id, recordCount: 1, myAccess: 'manage' }]);
+      });
     });
 
     it('filters parties by search term', async () => {
@@ -428,6 +553,191 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       await agent.post(`/api/leads/${lead.id}/convert`).send({}).expect(400);
     });
 
+    describe('editing a lead and the form that reads from the Master', () => {
+      /** Signs in as a user holding exactly `permissions`. */
+      async function agentWith(permissions: string[], username = 'meena') {
+        const admin = await testActor();
+        const role = await roles.createRole(
+          { name: `Role ${username}`, tier: 'office', permissions },
+          admin,
+        );
+        await users.createUser(
+          { username, displayName: username, roleId: role.id, password: 'correct-horse' },
+          admin,
+        );
+        const agent = request.agent(app);
+        await agent.post('/api/auth/sign-in').send({ username, password: 'correct-horse' }).expect(200);
+        return agent;
+      }
+
+      const line = (seeded: { productId: string; variantId: string }, quantity: number) => ({
+        productId: seeded.productId,
+        variantId: seeded.variantId,
+        quantity,
+        packaging: 'carton',
+      });
+
+      it('replaces the lines on PUT /api/leads/:id', async () => {
+        const { password } = await initialize();
+        const agent = await signedInAgent(password);
+        const seeded = await seedLead(agent);
+
+        const saved = await agent
+          .put(`/api/leads/${seeded.lead.id}`)
+          .send({ notes: 'ring back', items: [line(seeded, 7), line(seeded, 3)] })
+          .expect(200);
+
+        expect(saved.body.notes).toBe('ring back');
+        expect(saved.body.items.map((item: { quantity: number }) => item.quantity)).toEqual([7, 3]);
+        const read = await agent.get(`/api/leads/${seeded.lead.id}`).expect(200);
+        expect(read.body.items).toHaveLength(2);
+      });
+
+      it('leaves the lines alone when the body carries none', async () => {
+        const { password } = await initialize();
+        const agent = await signedInAgent(password);
+        const seeded = await seedLead(agent);
+
+        const saved = await agent
+          .put(`/api/leads/${seeded.lead.id}`)
+          .send({ notes: 'only the note' })
+          .expect(200);
+
+        expect(saved.body.items).toHaveLength(1);
+        expect(saved.body.items[0].quantity).toBe(12);
+      });
+
+      it('refuses an edit once the lead is converted (400 convertedLocked)', async () => {
+        const { password } = await initialize();
+        const agent = await signedInAgent(password);
+        const seeded = await seedLead(agent);
+        await agent.post(`/api/leads/${seeded.lead.id}/convert`).send({}).expect(201);
+
+        const refused = await agent
+          .put(`/api/leads/${seeded.lead.id}`)
+          .send({ items: [line(seeded, 1)] })
+          .expect(400);
+
+        expect(JSON.stringify(refused.body)).toContain('convertedLocked');
+      });
+
+      it('refuses PUT without leads.edit (403)', async () => {
+        const { password } = await initialize();
+        const admin = await signedInAgent(password);
+        const seeded = await seedLead(admin);
+        const desk = await agentWith(['leads.view', 'leads.create']);
+
+        const refused = await desk
+          .put(`/api/leads/${seeded.lead.id}`)
+          .send({ notes: 'x' })
+          .expect(403);
+
+        expect(refused.body).toMatchObject({ error: 'forbidden', details: { permission: 'leads.edit' } });
+      });
+
+      it.each([
+        ['an empty item list', []],
+        ['items that are not a list', 'nonsense'],
+        ['a line with no product', [{ variantId: 'x', quantity: 1 }]],
+        ['a line with no variant', [{ productId: 'x', quantity: 1 }]],
+      ])('answers %s with 400, not 500', async (_name, items) => {
+        const { password } = await initialize();
+        const agent = await signedInAgent(password);
+        const seeded = await seedLead(agent);
+
+        await agent.put(`/api/leads/${seeded.lead.id}`).send({ items }).expect(400);
+
+        // And nothing was lost: the lead still has its line.
+        const read = await agent.get(`/api/leads/${seeded.lead.id}`).expect(200);
+        expect(read.body.items).toHaveLength(1);
+      });
+
+      it('answers GET /api/lead-entry with what the form reads', async () => {
+        const { password } = await initialize();
+        const agent = await signedInAgent(password);
+        const seeded = await seedLead(agent);
+        await catalog.upsertVariant(
+          { partyId: seeded.partyId, productId: seeded.productId, alias: 'Carrara (Patel)' },
+          await testActor(),
+        );
+
+        const view = await agent.get('/api/lead-entry').expect(200);
+
+        expect(Object.keys(view.body).sort()).toEqual(
+          ['features', 'optionLists', 'partyGrants', 'partyVariants', 'products', 'stock'].sort(),
+        );
+        // The catalogue rides along so editing a multicolour line keeps its colour rule.
+        expect(view.body.products.map((product: { id: string }) => product.id)).toContain(seeded.productId);
+        expect(view.body.partyVariants).toEqual([
+          expect.objectContaining({ partyId: seeded.partyId, alias: 'Carrara (Patel)' }),
+        ]);
+        expect(Array.isArray(view.body.optionLists)).toBe(true);
+        expect(view.body.stock.length).toBeGreaterThan(0);
+      });
+
+      it('sends stock as [] without inventory.view', async () => {
+        const { password } = await initialize();
+        const admin = await signedInAgent(password);
+        await seedLead(admin);
+        const desk = await agentWith(['leads.create']);
+
+        const view = await desk.get('/api/lead-entry').expect(200);
+
+        expect(view.body.stock).toEqual([]);
+      });
+
+      it('leaves products out without products.view', async () => {
+        const { password } = await initialize();
+        const admin = await signedInAgent(password);
+        await seedLead(admin);
+        const desk = await agentWith(['leads.create']);
+
+        const view = await desk.get('/api/lead-entry').expect(200);
+
+        expect(view.body).not.toHaveProperty('products');
+      });
+
+      it('refuses GET /api/lead-entry without leads.create or leads.edit (403)', async () => {
+        await initialize();
+        const desk = await agentWith(['leads.view', 'parties.view']);
+
+        const refused = await desk.get('/api/lead-entry').expect(403);
+
+        expect(refused.body).toMatchObject({ error: 'forbidden' });
+      });
+
+      it('leaves a restricted party’s own records out of the view', async () => {
+        const { password } = await initialize();
+        const admin = await signedInAgent(password);
+        const seeded = await seedLead(admin);
+        const actor = await testActor();
+        const other = await catalog.createParty({ name: 'Open Traders' }, actor);
+        await catalog.upsertVariant(
+          { partyId: seeded.partyId, productId: seeded.productId, alias: 'Restricted alias' },
+          actor,
+        );
+        await catalog.upsertVariant(
+          { partyId: other.id, productId: seeded.productId, alias: 'Open alias' },
+          actor,
+        );
+        // Patel Tiles is assigned to the administrator alone; Meena is not on it.
+        const adminId = ((await admin.get('/api/auth/me').expect(200)).body as { user: { id: string } }).user.id;
+        const patel = await catalog.getParty(seeded.partyId, actor);
+        await partyAccess.replaceAssignments(
+          seeded.partyId,
+          { entries: [{ userId: adminId, level: 'manage' }], expectedVersion: patel.sync.version },
+          actor,
+        );
+        const desk = await agentWith(['leads.create', 'parties.view']);
+
+        const view = await desk.get('/api/lead-entry').expect(200);
+
+        expect(view.body.partyVariants.map((variant: { alias: string }) => variant.alias)).toEqual([
+          'Open alias',
+        ]);
+      });
+    });
+
     it('dispatches an order and moves the stock ledger', async () => {
       const { password } = await initialize();
       const agent = await signedInAgent(password);
@@ -445,6 +755,89 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
 
       const after = await agent.get('/api/stock').expect(200);
       expect(after.body[0]).toMatchObject({ quantityBoxes: 38, reservedBoxes: 0 });
+    });
+
+    it('lists only converted leads for convertedOnly, which skips the open-board guard', async () => {
+      const { password } = await initialize();
+      const agent = await signedInAgent(password);
+      const { lead } = await seedLead(agent);
+
+      // Nothing converted yet: the converted slice is empty while the board has it.
+      const before = await agent.get('/api/leads?convertedOnly=true').expect(200);
+      expect(before.body.items).toHaveLength(0);
+      expect(before.body.total).toBe(0);
+
+      await agent.post(`/api/leads/${lead.id}/convert`).send({}).expect(201);
+
+      const converted = await agent.get('/api/leads?convertedOnly=true').expect(200);
+      expect(converted.body.items.map((row: { id: string }) => row.id)).toEqual([lead.id]);
+      expect(converted.body.total).toBe(1);
+      // ...and it wins over includeConverted rather than contradicting it.
+      const both = await agent.get('/api/leads?convertedOnly=true&includeConverted=true').expect(200);
+      expect(both.body.items).toHaveLength(1);
+    });
+
+    it('filters the lead list by partyId', async () => {
+      const { password } = await initialize();
+      const agent = await signedInAgent(password);
+      const { partyId } = await seedLead(agent);
+
+      const mine = await agent.get(`/api/leads?partyId=${partyId}`).expect(200);
+      expect(mine.body.items).toHaveLength(1);
+
+      const other = await agent.get('/api/leads?partyId=no-such-party').expect(200);
+      expect(other.body.items).toHaveLength(0);
+      expect(other.body.total).toBe(0);
+    });
+
+    it('searches leads and orders by a line item, in words that must all match', async () => {
+      const { password } = await initialize();
+      const agent = await signedInAgent(password);
+      const { lead } = await seedLead(agent);
+      await agent.post(`/api/leads/${lead.id}/convert`).send({}).expect(201);
+      // Seeded again, so there is an open lead on a second party to be excluded.
+      const second = await agent.post('/api/parties').send({ name: 'Mehta Traders' }).expect(201);
+      const product = await agent
+        .post('/api/products')
+        .send({ name: 'Slate Grey', categoryName: 'Stone', variants: [{ code: 'SLT-01', weightKg: 10 }] })
+        .expect(201);
+      const other = await leads.createLead(
+        {
+          partyId: second.body.id as string,
+          items: [
+            {
+              productId: product.body.id as string,
+              variantId: (product.body as { variants: Array<{ id: string }> }).variants[0]!.id,
+              quantity: 3,
+              packaging: 'carton',
+            },
+          ],
+        },
+        await testActor(),
+      );
+
+      // By product name: matches the line, not the party or the id.
+      const leadsByProduct = await agent
+        .get('/api/leads?includeConverted=true&search=carrara')
+        .expect(200);
+      expect(leadsByProduct.body.items.map((row: { id: string }) => row.id)).toEqual([lead.id]);
+
+      const ordersByProduct = await agent.get('/api/orders?search=carrara').expect(200);
+      expect(ordersByProduct.body.items).toHaveLength(1);
+      expect((await agent.get('/api/orders?search=slate').expect(200)).body.items).toHaveLength(0);
+
+      // By a line's code, and by packaging.
+      expect((await agent.get('/api/leads?search=SLT-01').expect(200)).body.items).toHaveLength(1);
+      expect((await agent.get('/api/leads?search=carton').expect(200)).body.items).toHaveLength(1);
+
+      // Several words are ANDed, each anywhere on the record: party + product.
+      const both = await agent.get('/api/leads?search=mehta%20slate').expect(200);
+      expect(both.body.items.map((row: { id: string }) => row.id)).toEqual([other.id]);
+      const crossed = await agent.get('/api/leads?search=mehta%20carrara').expect(200);
+      expect(crossed.body.items).toHaveLength(0);
+
+      // A typed % is not a wildcard.
+      expect((await agent.get('/api/leads?search=%25').expect(200)).body.items).toHaveLength(0);
     });
 
     it('reports dashboard counts', async () => {

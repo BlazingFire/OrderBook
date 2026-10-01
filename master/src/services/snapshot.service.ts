@@ -15,6 +15,7 @@
 import type { SyncSnapshot } from '@orderbook/shared';
 
 import { actorCan, type ActorContext } from '../domain/actor.js';
+import { ForbiddenError } from '../lib/errors.js';
 import * as customFieldRepo from '../repositories/custom-field.repository.js';
 import { peekHlc } from '../repositories/identity.repository.js';
 import * as partyAccessRepo from '../repositories/party-access.repository.js';
@@ -143,5 +144,50 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
     // and the Office image cache sweep must not treat it as one.
     productsComplete: canProducts && products.length < CATALOGUE_SNAPSHOT_LIMIT,
     features,
+  };
+}
+
+/**
+ * The slice of the snapshot the New / Edit pending order form reads, for the
+ * Master's own web client: option lists, the party's own product records
+ * (party-scoped), free stock (empty without `inventory.view`), this person's
+ * grants (all of them — the snapshot's list stops at its 500 parties) and the
+ * company switches. `products` is the catalogue page the snapshot carries, and
+ * only for a caller with `products.view` (absent otherwise): editing a lead
+ * reads each line's colour rule off its product, and without it a multicolour
+ * line would reopen as fixed or dedicated.
+ */
+export async function buildLeadEntryView(
+  actor: ActorContext,
+): Promise<
+  Pick<SyncSnapshot, 'optionLists' | 'partyVariants' | 'stock' | 'partyGrants' | 'features'> & {
+    products?: SyncSnapshot['products'];
+  }
+> {
+  if (!actorCan(actor, 'leads.create') && !actorCan(actor, 'leads.edit')) {
+    throw new ForbiddenError('leads.create');
+  }
+  const partyScope = resolvePartyScope(actor);
+  const [partyVariants, optionLists, stock, partyGrants, features, products] = await Promise.all([
+    variantRepo.listAll(actor.tenantId, partyScope),
+    customFieldRepo.listOptions(actor.tenantId),
+    actorCan(actor, 'inventory.view')
+      ? inventoryService.listStock({ limit: CATALOGUE_SNAPSHOT_LIMIT }, actor)
+      : Promise.resolve([]),
+    partyAccessRepo.grantsForUser(actor.tenantId, partyScope.userId),
+    companyFeatures(actor.tenantId),
+    actorCan(actor, 'products.view')
+      ? catalogService
+          .listProducts({ limit: CATALOGUE_SNAPSHOT_LIMIT }, actor)
+          .then((page) => page.items)
+      : Promise.resolve(undefined),
+  ]);
+  return {
+    optionLists,
+    partyVariants,
+    stock,
+    partyGrants,
+    features,
+    ...(products ? { products } : {}),
   };
 }

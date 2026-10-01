@@ -286,7 +286,7 @@ describe('what the palette lists', () => {
 
     // Offered by the sidebar, answered by the shell, the screen or the provider.
     expect(labels).toContain(t('nav.master.dashboard'));
-    expect(labels).toContain(t('nav.master.leadsOrders'));
+    expect(labels).toContain(t('nav.orders'));
     expect(labels).toContain(t('keys.command.refresh'));
     expect(labels).toContain(t('keys.command.save'));
     expect(labels).toContain(t('keys.command.help'));
@@ -297,7 +297,7 @@ describe('what the palette lists', () => {
     expect(labels).not.toContain(t('keys.command.new'));
     expect(labels).not.toContain(t('keys.command.find'));
 
-    fireEvent.click(screen.getByText(t('nav.master.leadsOrders')));
+    fireEvent.click(screen.getByText(t('nav.orders')));
     expect(went).toEqual(['orders']);
   });
 

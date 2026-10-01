@@ -76,8 +76,9 @@ Specifically:
   on the Master's physical count.
 - The Master's **Parties** screen end to end, and the Office's Catalog and New
   lead afterwards — the party form is now one shared `PartyFormModal`.
-- **Delete** on the Master's leads and orders lists, including the blocked
-  case (the reason is named, not "could not delete").
+- **Delete** in the Master's Pending Order and Final Order record screens (the
+  header's trash button, not a list row), including the blocked case (the reason is
+  named, not "could not delete").
 - The **filter strip** on every list screen (it pads and grows now).
 - **Change password** in the Master topbar lands on sign-in *with a message*.
 - The **language picker** (Settings → Appearance) — switching back must work

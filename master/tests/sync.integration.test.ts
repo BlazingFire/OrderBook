@@ -15,6 +15,7 @@ import { formatTemporaryId, initialHlcState, tickHlc } from '@orderbook/shared';
 
 import { canRunIntegrationTests } from './helpers/db.js';
 import {
+  ALL_PERMISSIONS,
   actorWith,
   resetData,
   setupDatabase,
@@ -27,6 +28,10 @@ import type { ActorContext } from '../src/domain/actor.js';
 import * as catalog from '../src/services/catalog.service.js';
 import * as conflicts from '../src/services/conflict.service.js';
 import * as leads from '../src/services/lead.service.js';
+import * as partyAccess from '../src/services/party-access.service.js';
+import * as roleService from '../src/services/role.service.js';
+import * as userService from '../src/services/user.service.js';
+import * as orders from '../src/services/order.service.js';
 import * as sync from '../src/services/sync.service.js';
 
 const PANEL_A = 'A3F9K2';
@@ -434,6 +439,10 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
               deviceCode: PANEL_B,
               hlc: hlcFor(PANEL_B, 200_000),
               fields: ['notes'],
+              // A stale, non-empty base: B had seen an older note than the one
+              // stored. (An empty base now means "unknown", and a newer edit
+              // with no base wins silently — see the next describe.)
+              baseFieldHlc: { notes: hlcFor(PANEL_A, -60_000) },
               payload: { notes: 'B overwrote it' },
             }),
           ],
@@ -449,6 +458,455 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
 
       expect((await leads.getLead(lead.id, actor)).notes).toBe('original note');
       expect(await conflicts.listConflicts(actor)).toHaveLength(0);
+    });
+  });
+
+  describe('an Office edit that names no base clock', () => {
+    const noteEdit = (leadId: string, offsetMs: number, notes: string) =>
+      mutation({
+        kind: 'lead.update',
+        entity: 'lead',
+        entityId: leadId,
+        deviceCode: PANEL_B,
+        hlc: hlcFor(PANEL_B, offsetMs),
+        fields: ['notes'],
+        // The Office outbox stores `{}` for every lead and order edit.
+        baseFieldHlc: {},
+        payload: { notes },
+      });
+
+    async function aLead() {
+      const { party, product } = await seed();
+      return leads.createLead(
+        {
+          partyId: party.id,
+          notes: 'original note',
+          items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 1, packaging: 'carton' }],
+        },
+        actor,
+      );
+    }
+
+    it('applies a newer edit without recording a spurious conflict (C7)', async () => {
+      const lead = await aLead();
+
+      const { results } = await sync.applyPush({ mutations: [noteEdit(lead.id, 200_000, 'newer')] }, actor);
+
+      expect(results[0]?.status).toBe('applied');
+      expect((await leads.getLead(lead.id, actor)).notes).toBe('newer');
+      expect(await conflicts.listConflicts(actor)).toHaveLength(0);
+    });
+
+    it('still records an older edit as the loser (C7)', async () => {
+      const lead = await aLead();
+      await leads.updateLead(lead.id, { notes: 'master wrote this' }, actor);
+
+      const { results } = await sync.applyPush({ mutations: [noteEdit(lead.id, -60_000, 'stale')] }, actor);
+
+      expect(results[0]?.status).toBe('merged');
+      expect((await leads.getLead(lead.id, actor)).notes).toBe('master wrote this');
+      expect(await conflicts.listConflicts(actor)).toHaveLength(1);
+    });
+  });
+
+  describe('a push carrying a signed-in person work under the panel own role (C8)', () => {
+    const edit = (leadId: string, actorUserId: string | null) =>
+      mutation({
+        kind: 'lead.update',
+        entity: 'lead',
+        entityId: leadId,
+        fields: ['notes'],
+        payload: { notes: 'queued by a person' },
+        actorUserId,
+      });
+
+    async function aLead() {
+      const { party, product } = await seed();
+      return leads.createLead(
+        {
+          partyId: party.id,
+          items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 1, packaging: 'carton' }],
+        },
+        actor,
+      );
+    }
+
+    const recorded = async (mutationId: string) =>
+      db()('applied_mutations').where({ mutation_id: mutationId }).first();
+
+    it('is retried with a 503 when the panel role could not do it, and records nothing', async () => {
+      const lead = await aLead();
+      const panel = await actorWith(['leads.view']);
+      const m = edit(lead.id, 'some-user-id');
+
+      await expect(
+        sync.applyPush({ mutations: [m] }, { ...panel, actorType: 'office_panel' }),
+      ).rejects.toMatchObject({ statusCode: 503, messageKey: 'error.unavailable.signInToSync' });
+
+      expect(await recorded(m.mutationId)).toBeUndefined();
+    });
+
+    it('still applies under the panel role when the panel role may do it', async () => {
+      const lead = await aLead();
+      const m = edit(lead.id, 'some-user-id');
+
+      const { results } = await sync.applyPush({ mutations: [m] }, { ...actor, actorType: 'office_panel' });
+
+      expect(results[0]?.status).toBe('applied');
+    });
+
+    it('applies under a user actor with the permission', async () => {
+      const lead = await aLead();
+      const user = { ...(await actorWith(['leads.view', 'leads.edit'])), actorType: 'user' as const };
+
+      const { results } = await sync.applyPush({ mutations: [edit(lead.id, 'some-user-id')] }, user);
+
+      expect(results[0]?.status).toBe('applied');
+    });
+  });
+
+  describe('what an Office edit now carries, and what a merge refuses', () => {
+    /** A lead with one line, the way an Office edit would find it, plus a second product to swap in. */
+    async function leadWithLine() {
+      const { party, product } = await seed();
+      const variant = product.variants[0]!;
+      const other = await catalog.createProduct(
+        { categoryName: 'Tiles', variants: [{ code: 'OFF-09' }], name: 'Gloss Tile' },
+        actor,
+      );
+      const line = { productId: product.id, variantId: variant.id, quantity: 2, packaging: 'carton' };
+      const lead = await leads.createLead({ partyId: party.id, notes: 'original note', items: [line] }, actor);
+      const otherLine = { productId: other.id, variantId: other.variants[0]!.id, quantity: 4, packaging: 'carton' };
+      return { party, product, lead, line, otherLine };
+    }
+
+    const push = (...mutations: Mutation[]) => sync.applyPush({ mutations }, actor);
+
+    const leadEdit = (leadId: string, overrides: Partial<Mutation>) =>
+      mutation({ kind: 'lead.update', entity: 'lead', entityId: leadId, ...overrides });
+
+    describe('lead lines (items)', () => {
+      it('an Office-shaped edit replaces the line set, with no conflict', async () => {
+        const { lead, line, otherLine } = await leadWithLine();
+
+        const response = await push(
+          leadEdit(lead.id, {
+            fields: ['items'],
+            // The Office stores `{}` for every edit it queues.
+            baseFieldHlc: {},
+            payload: { items: [{ ...line, quantity: 7 }, otherLine] },
+          }),
+        );
+
+        expect(response.results[0]?.status).toBe('applied');
+        expect(response.results[0]?.conflicts).toEqual([]);
+        const after = await leads.getLead(lead.id, actor);
+        expect(after.items.map((item) => item.quantity)).toEqual([7, 4]);
+        expect(after.sync.fieldHlc.items).not.toBe(lead.sync.fieldHlc.items);
+        expect(await conflicts.listConflicts(actor)).toHaveLength(0);
+      });
+
+      it('identical lines plus a notes change rewrite neither the lines nor their clock', async () => {
+        const { lead, line } = await leadWithLine();
+
+        const response = await push(
+          leadEdit(lead.id, {
+            fields: ['items', 'notes'],
+            // Names the note's clock, as a panel that had pulled the lead would.
+            baseFieldHlc: { notes: lead.sync.fieldHlc.notes! },
+            payload: { items: [line], notes: 'only the note moved' },
+          }),
+        );
+
+        expect(response.results[0]?.status).toBe('applied');
+        const after = await leads.getLead(lead.id, actor);
+        expect(after.notes).toBe('only the note moved');
+        expect(after.items.map((item) => item.id)).toEqual(lead.items.map((item) => item.id));
+        expect(after.sync.fieldHlc.items).toBe(lead.sync.fieldHlc.items);
+      });
+
+      it('refuses a converted lead, readably', async () => {
+        const { lead, line } = await leadWithLine();
+        await orders.convertLead({ leadId: lead.id }, actor);
+
+        const response = await push(
+          leadEdit(lead.id, { fields: ['items'], payload: { items: [{ ...line, quantity: 9 }] } }),
+        );
+
+        expect(response.results[0]?.status).toBe('rejected');
+        expect(response.results[0]?.error).toMatch(/become a final order/i);
+        expect((await leads.getLead(lead.id, actor)).items[0]?.quantity).toBe(2);
+      });
+
+      it('refuses an unknown variant and applies none of the same edit', async () => {
+        const { lead, line } = await leadWithLine();
+
+        const response = await push(
+          leadEdit(lead.id, {
+            fields: ['items', 'notes'],
+            payload: { items: [{ ...line, variantId: 'gone' }], notes: 'should not land' },
+          }),
+        );
+
+        expect(response.results[0]?.status).toBe('rejected');
+        expect(response.results[0]?.error).toMatch(/variants? no longer exists/i);
+        expect((await leads.getLead(lead.id, actor)).notes).toBe('original note');
+      });
+
+      it('an older edit loses, is recorded once, and can be put back', async () => {
+        const { lead, line } = await leadWithLine();
+        // The Master's own edit lands first and stamps `items`.
+        const online = await leads.updateLead(lead.id, { items: [{ ...line, quantity: 5 }] }, actor);
+        expect(online.sync.fieldHlc.items).not.toBe(lead.sync.fieldHlc.items);
+
+        const response = await push(
+          leadEdit(lead.id, {
+            fields: ['items'],
+            hlc: hlcFor(PANEL_A, -1_000_000_000),
+            payload: { items: [{ ...line, quantity: 9 }] },
+          }),
+        );
+
+        expect(response.results[0]?.status).toBe('merged');
+        expect(response.results[0]?.conflicts.map((conflict) => conflict.field)).toEqual(['items']);
+        expect((await leads.getLead(lead.id, actor)).items[0]?.quantity).toBe(5);
+
+        const [conflict] = await conflicts.listConflicts(actor);
+        await conflicts.resolveConflict({ conflictId: conflict!.id, action: 'restoreLoser' }, actor);
+
+        const restored = await leads.getLead(lead.id, actor);
+        expect(restored.items[0]?.quantity).toBe(9);
+        expect(restored.sync.fieldHlc.items).not.toBe(online.sync.fieldHlc.items);
+      });
+
+      it.each([['x'], [[{}]], [[]]])('refuses malformed items %j with a sentence', async (items) => {
+        const { lead } = await leadWithLine();
+
+        const response = await push(leadEdit(lead.id, { fields: ['items'], payload: { items } }));
+
+        expect(response.results[0]?.status).toBe('rejected');
+        expect(response.results[0]?.error).toMatch(/at least one product|no longer exists/i);
+        expect((await leads.getLead(lead.id, actor)).items).toHaveLength(1);
+      });
+    });
+
+    describe('restoring a value', () => {
+      it('keeps the other fields\' clocks, so a stale edit to them still loses', async () => {
+        const { lead } = await leadWithLine();
+        const online = await leads.updateLead(lead.id, { followUpDate: '2026-09-01' }, actor);
+        const followUpClock = online.sync.fieldHlc.followUpDate;
+        expect(followUpClock).toBeDefined();
+
+        // A stale non-empty base: an empty one would now read as "unknown" and a
+        // newer edit would win silently, leaving nothing to restore.
+        await push(
+          leadEdit(lead.id, {
+            fields: ['notes'],
+            baseFieldHlc: { notes: hlcFor(PANEL_A, -60_000) },
+            payload: { notes: 'B overwrote it' },
+          }),
+        );
+        const [conflict] = await conflicts.listConflicts(actor);
+        await conflicts.resolveConflict({ conflictId: conflict!.id, action: 'restoreLoser' }, actor);
+
+        const restored = await leads.getLead(lead.id, actor);
+        expect(restored.notes).toBe('original note');
+        expect(restored.sync.fieldHlc.followUpDate).toBe(followUpClock);
+
+        // Replaying an older follow-up edit must still lose to the Master's.
+        const stale = await push(
+          leadEdit(lead.id, {
+            fields: ['followUpDate'],
+            hlc: hlcFor(PANEL_A, -1_000_000_000),
+            payload: { followUpDate: '2026-01-01' },
+          }),
+        );
+        expect(stale.results[0]?.conflicts.map((conflict) => conflict.field)).toEqual(['followUpDate']);
+        expect((await leads.getLead(lead.id, actor)).followUpDate).toBe('2026-09-01');
+      });
+    });
+
+    describe('restoring is no way around the merge checks', () => {
+      /** A lead whose note lost a clash, so there is one open conflict to restore. */
+      async function leadWithOpenConflict() {
+        const { party, lead } = await leadWithLine();
+        await push(
+          leadEdit(lead.id, {
+            fields: ['notes'],
+            baseFieldHlc: { notes: hlcFor(PANEL_A, -60_000) },
+            payload: { notes: 'B overwrote it' },
+          }),
+        );
+        const [conflict] = await conflicts.listConflicts(actor);
+        return { party, lead, conflict: conflict! };
+      }
+
+      it('refuses to restore a field of a lead that has since been converted', async () => {
+        const { lead, conflict } = await leadWithOpenConflict();
+        await orders.convertLead({ leadId: lead.id }, actor);
+
+        await expect(
+          conflicts.resolveConflict({ conflictId: conflict.id, action: 'restoreLoser' }, actor),
+        ).rejects.toThrow(/final order|converted/i);
+        expect((await leads.getLead(lead.id, actor)).notes).toBe('B overwrote it');
+      });
+
+      it('refuses a conflict on a party the caller is not assigned to', async () => {
+        const { party, conflict } = await leadWithOpenConflict();
+        const role = await roleService.createRole(
+          { name: 'Desk mine', tier: 'office', permissions: ['leads.view'] },
+          actor,
+        );
+        const { user } = await userService.createUser(
+          { username: 'mine', displayName: 'mine', roleId: role.id },
+          actor,
+        );
+        await partyAccess.replaceAssignments(
+          party.id,
+          { entries: [{ userId: user.id, level: 'manage' }], expectedVersion: party.sync.version },
+          actor,
+        );
+        const outsider = {
+          ...(await actorWith(['sync.resolveConflicts'])),
+          actorId: 'someone-else',
+          userId: 'someone-else',
+        };
+
+        await expect(
+          conflicts.resolveConflict({ conflictId: conflict.id, action: 'restoreLoser' }, outsider),
+        ).rejects.toThrow();
+        expect(await conflicts.listConflicts(actor)).toHaveLength(1);
+      });
+    });
+
+    describe('the same checks an online edit makes', () => {
+      it('refuses a stage that does not exist, readably', async () => {
+        const { lead } = await leadWithLine();
+        const response = await push(
+          leadEdit(lead.id, { fields: ['stageId'], payload: { stageId: 'no-such-stage' } }),
+        );
+        expect(response.results[0]?.status).toBe('rejected');
+        expect(response.results[0]?.error).toMatch(/stage/i);
+      });
+
+      it('refuses an owner who is not a user, readably', async () => {
+        const { lead } = await leadWithLine();
+        const response = await push(
+          leadEdit(lead.id, { fields: ['ownerId'], payload: { ownerId: 'nobody-here' } }),
+        );
+        expect(response.results[0]?.status).toBe('rejected');
+        expect(response.results[0]?.error).toMatch(/owner/i);
+      });
+
+      async function dispatchedOrder() {
+        const { lead } = await leadWithLine();
+        const order = await orders.convertLead({ leadId: lead.id }, actor);
+        return order;
+      }
+
+      const orderEdit = (orderId: string, overrides: Partial<Mutation>) =>
+        mutation({ kind: 'order.update', entity: 'order', entityId: orderId, ...overrides });
+
+      it('drops an owner change the actor may not make, and keeps the rest', async () => {
+        const { lead } = await leadWithLine();
+        const limited = await testActor({
+          deviceCode: PANEL_A,
+          actorType: 'office_panel',
+          permissions: {
+            ...ALL_PERMISSIONS,
+            permissions: ALL_PERMISSIONS.permissions.filter((permission) => permission !== 'record.reassignOwner'),
+          },
+        });
+
+        const response = await sync.applyPush(
+          {
+            mutations: [
+              leadEdit(lead.id, {
+                fields: ['ownerId', 'notes'],
+                baseFieldHlc: { notes: lead.sync.fieldHlc.notes! },
+                payload: { ownerId: 'somebody-else', notes: 'kept' },
+              }),
+            ],
+          },
+          limited,
+        );
+
+        expect(response.results[0]?.status).toBe('applied');
+        const after = await leads.getLead(lead.id, actor);
+        expect(after.ownerId).toBe(lead.ownerId);
+        expect(after.notes).toBe('kept');
+      });
+
+      it('refuses a source that is not on the list', async () => {
+        const { lead } = await leadWithLine();
+        const response = await push(
+          leadEdit(lead.id, { fields: ['sourcePlatform'], payload: { sourcePlatform: 'carrier-pigeon' } }),
+        );
+        expect(response.results[0]?.status).toBe('rejected');
+        expect(response.results[0]?.error).toMatch(/not a configured pending order source/i);
+      });
+
+      it('refuses any edit of a converted lead', async () => {
+        const { lead } = await leadWithLine();
+        await orders.convertLead({ leadId: lead.id }, actor);
+        const response = await push(leadEdit(lead.id, { fields: ['notes'], payload: { notes: 'too late' } }));
+        expect(response.results[0]?.status).toBe('rejected');
+        expect((await leads.getLead(lead.id, actor)).notes).toBe('original note');
+      });
+
+      it('refuses a move onto a party that does not exist', async () => {
+        const { lead } = await leadWithLine();
+        const response = await push(leadEdit(lead.id, { fields: ['partyId'], payload: { partyId: 'PT0000000099' } }));
+        expect(response.results[0]?.status).toBe('rejected');
+        expect(response.results[0]?.error).toMatch(/no longer exists/i);
+      });
+
+      it('refuses an edit of a dispatched order', async () => {
+        const order = await dispatchedOrder();
+        await orders.dispatchOrder({ orderId: order.id }, actor);
+
+        const response = await push(orderEdit(order.id, { fields: ['notes'], payload: { notes: 'too late' } }));
+
+        expect(response.results[0]?.status).toBe('rejected');
+        expect(response.results[0]?.error).toMatch(/dispatched/i);
+      });
+
+      it('refuses a negative weight override', async () => {
+        const order = await dispatchedOrder();
+        const response = await push(
+          orderEdit(order.id, { fields: ['totalWeightKgOverride'], payload: { totalWeightKgOverride: -3 } }),
+        );
+        expect(response.results[0]?.status).toBe('rejected');
+        expect(response.results[0]?.error).toMatch(/cannot be negative/i);
+      });
+
+      it('normalises a vehicle number the way the online edit does', async () => {
+        const order = await dispatchedOrder();
+        const response = await push(
+          orderEdit(order.id, { fields: ['vehicleNumber'], payload: { vehicleNumber: 'gj 01  ab 1234' } }),
+        );
+        expect(response.results[0]?.status).toBe('applied');
+        expect((await orders.getOrder(order.id, actor)).vehicleNumber).toBe('GJ 01 AB 1234');
+      });
+
+      it('refuses a vehicle number with characters it cannot hold', async () => {
+        const order = await dispatchedOrder();
+        const response = await push(
+          orderEdit(order.id, { fields: ['vehicleNumber'], payload: { vehicleNumber: 'GJ/01*AB' } }),
+        );
+        expect(response.results[0]?.status).toBe('rejected');
+        expect(response.results[0]?.error).toMatch(/vehicle number/i);
+      });
+
+      it('refuses a blank party name', async () => {
+        const { party } = await leadWithLine();
+        const response = await push(
+          mutation({ kind: 'party.update', entity: 'party', entityId: party.id, fields: ['name'], payload: { name: '   ' } }),
+        );
+        expect(response.results[0]?.status).toBe('rejected');
+        expect(response.results[0]?.error).toMatch(/party name is required/i);
+        expect((await catalog.getParty(party.id, actor)).name).toBe('Offline Traders');
+      });
     });
   });
 
@@ -714,7 +1172,7 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
     expect((await reload(product.id)).variants[0]?.weightKg).toBe(20);
   });
 
-  it('does not merge a category assignment', async () => {
+  it('ignores an unresolvable category id and keeps the rest of the edit', async () => {
     const product = await existingProduct();
 
     const response = await sync.applyPush(
@@ -724,8 +1182,8 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
             kind: 'product.update',
             entity: 'product',
             entityId: product.id,
-            fields: ['categoryId'],
-            payload: { categoryId: 'CT0000000099' },
+            fields: ['categoryId', 'alias'],
+            payload: { categoryId: 'CT0000000099', alias: 'Kept' },
             baseFieldHlc: product.sync.fieldHlc,
           }),
         ],
@@ -733,11 +1191,99 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
       actor,
     );
 
-    // Category is deliberately absent from `MERGEABLE_PRODUCT_COLUMNS`. The
-    // merge cannot run `resolveCategoryId`, so a stale id would be a foreign
-    // key error rather than a rename — assignment stays an online operation.
-    expect(response.results[0]?.status).not.toBe('rejected');
-    expect((await reload(product.id)).categoryId).toBe(product.categoryId);
+    // The merge does move a category, but only onto one that exists. A stale
+    // id (a panel offline since before a category was removed) would
+    // otherwise be a foreign key error recorded as a permanent refusal, so it
+    // is dropped and the other fields of the same edit still land.
+    expect(response.results[0]?.status).toBe('applied');
+    const after = await reload(product.id);
+    expect(after.categoryId).toBe(product.categoryId);
+    expect(after.alias).toBe('Kept');
+    expect(after.sync.fieldHlc.categoryId).toBe(product.sync.fieldHlc.categoryId);
+  });
+
+  describe('moving a sub product to another main product', () => {
+    async function inTwoCategories() {
+      const product = await existingProduct();
+      const basin = await catalog.createProduct(
+        { categoryName: 'Basins', variants: [{ code: 'MRG-B1' }], name: 'Basin One' },
+        actor,
+      );
+      return { product, target: basin.categoryId };
+    }
+
+    const move = (productId: string, categoryId: string, overrides: Partial<Mutation> = {}) =>
+      mutation({
+        kind: 'product.update',
+        entity: 'product',
+        entityId: productId,
+        fields: ['categoryId'],
+        payload: { categoryId },
+        ...overrides,
+      });
+
+    it('applies a newer move through the field clock', async () => {
+      const { product, target } = await inTwoCategories();
+
+      const response = await sync.applyPush(
+        { mutations: [move(product.id, target, { baseFieldHlc: product.sync.fieldHlc })] },
+        actor,
+      );
+
+      expect(response.results[0]?.status).toBe('applied');
+      expect((await reload(product.id)).categoryId).toBe(target);
+    });
+
+    it('lets an older panel move lose to the Master\'s, and records it', async () => {
+      const { product, target } = await inTwoCategories();
+      const [tiles] = (await catalog.listCategories(actor)).filter((category) => category.id !== target);
+      // The Master moves it first.
+      await catalog.updateProduct(product.id, { name: product.name, categoryId: target }, actor);
+
+      const response = await sync.applyPush(
+        { mutations: [move(product.id, tiles!.id, { hlc: hlcFor(PANEL_A, -1_000_000_000) })] },
+        actor,
+      );
+
+      expect(response.results[0]?.conflicts.map((conflict) => conflict.field)).toEqual(['categoryId']);
+      expect((await reload(product.id)).categoryId).toBe(target);
+    });
+
+    it('refuses a move onto a main product that already has that name', async () => {
+      const { product, target } = await inTwoCategories();
+      await catalog.createProduct(
+        { categoryId: target, variants: [{ code: 'MRG-B2' }], name: 'Merge Tile' },
+        actor,
+      );
+
+      const response = await sync.applyPush(
+        { mutations: [move(product.id, target, { baseFieldHlc: product.sync.fieldHlc })] },
+        actor,
+      );
+
+      expect(response.results[0]?.status).toBe('rejected');
+      expect(response.results[0]?.error ?? '').toMatch(/already has a sub product named/i);
+      expect((await reload(product.id)).categoryId).toBe(product.categoryId);
+    });
+
+    it('puts a losing category back, if that category is still there', async () => {
+      const { product, target } = await inTwoCategories();
+      await sync.applyPush(
+        { mutations: [move(product.id, target, { baseFieldHlc: product.sync.fieldHlc })] },
+        actor,
+      );
+      // A second panel's older move to the original category loses and is recorded.
+      await sync.applyPush(
+        { mutations: [move(product.id, product.categoryId, { hlc: hlcFor(PANEL_A, -1_000_000_000) })] },
+        actor,
+      );
+
+      const [conflict] = await conflicts.listConflicts(actor);
+      expect(conflict?.field).toBe('categoryId');
+      await conflicts.resolveConflict({ conflictId: conflict!.id, action: 'restoreLoser' }, actor);
+
+      expect((await reload(product.id)).categoryId).toBe(product.categoryId);
+    });
   });
 
   it('replaces the variant set as one field, keeping the ids stock is keyed by', async () => {
@@ -809,6 +1355,40 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
     expect(response.results[0]?.conflicts.map((conflict) => conflict.field)).toEqual(['variants']);
     expect((await reload(product.id)).variants[0]?.weightKg).toBe(30);
     expect(online.variants[0]?.weightKg).toBe(30);
+  });
+
+  it('puts a losing variant set back', async () => {
+    const product = await existingProduct();
+    const [existing] = product.variants;
+    await catalog.updateProduct(
+      product.id,
+      { name: product.name, variants: [{ id: existing!.id, code: 'MRG-01', weightKg: 30 }] },
+      await testActor(),
+    );
+    await sync.applyPush(
+      {
+        mutations: [
+          mutation({
+            kind: 'product.update',
+            entity: 'product',
+            entityId: product.id,
+            fields: ['variants'],
+            payload: { variants: [{ id: existing!.id, code: 'MRG-01', weightKg: 25 }] },
+            hlc: hlcFor(PANEL_A, -1_000_000_000),
+          }),
+        ],
+      },
+      actor,
+    );
+
+    const [conflict] = await conflicts.listConflicts(actor);
+    expect(conflict?.field).toBe('variants');
+    await conflicts.resolveConflict({ conflictId: conflict!.id, action: 'restoreLoser' }, actor);
+
+    const after = await reload(product.id);
+    expect(after.variants[0]?.weightKg).toBe(25);
+    // Same variant row, so the stock keyed by it is not orphaned.
+    expect(after.variants[0]?.id).toBe(existing!.id);
   });
 
   it('refuses a variant set that breaks the rules, with a reason', async () => {

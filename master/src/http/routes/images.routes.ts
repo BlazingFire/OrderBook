@@ -13,6 +13,7 @@ import { Router } from 'express';
 import multer from 'multer';
 
 import { MAX_SOURCE_BYTES } from '../../domain/images.js';
+import { ValidationError } from '../../lib/errors.js';
 import * as imageService from '../../services/image.service.js';
 import { asyncHandler } from '../async-handler.js';
 import { actorFromRequest, requireAuth, requirePermissionMiddleware } from '../middleware/require-auth.js';
@@ -30,10 +31,7 @@ imagesRoutes.post(
   upload.single('file'),
   asyncHandler(async (req, res) => {
     const productId = String(req.params.productId);
-    if (!req.file) {
-      res.status(400).json({ error: { code: 'validation_error', message: 'Choose an image file' } });
-      return;
-    }
+    if (!req.file) throw new ValidationError('validation.image.fileRequired');
 
     const product = await imageService.uploadImage(
       {

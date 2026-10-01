@@ -173,11 +173,15 @@ export async function findProductsByIds(
   tenantId: string,
   ids: string[],
   runner: Runner = db(),
+  /** Deleted products are returned unless asked otherwise: the snapshot needs them. */
+  options: { includeDeleted?: boolean } = {},
 ): Promise<Map<string, Product>> {
   const found = new Map<string, Product>();
   if (ids.length === 0) return found;
 
-  const rows = await baseQuery(tenantId, runner, { includeDeleted: true }).whereIn('p.id', ids);
+  const rows = await baseQuery(tenantId, runner, {
+    includeDeleted: options.includeDeleted ?? true,
+  }).whereIn('p.id', ids);
   const rowIds = rows.map((row) => String(row.id));
   const [images, variants] = await Promise.all([
     loadImagesFor(tenantId, rowIds, runner),

@@ -87,7 +87,7 @@ export function ProductImportModal({
   const [mode, setMode] = useState<ProductImportMode>('create');
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<ProductImportResult | null>(null);
-  const [busy, setBusy] = useState<'template' | 'checking' | 'importing' | null>(null);
+  const [busy, setBusy] = useState<'template' | 'export' | 'checking' | 'importing' | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [dropping, setDropping] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -113,6 +113,19 @@ export function ProductImportModal({
       saveBlob(blob, fileName);
     } catch (caught) {
       onError(caught instanceof ApiError && caught.code === 'unavailable' ? t('import.offline') : t('import.templateFailed'));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function downloadExport(format: ProductImportFormat): Promise<void> {
+    setBusy('export');
+    setFailure(null);
+    try {
+      const { blob, fileName } = await api.exportProducts(format);
+      saveBlob(blob, fileName);
+    } catch (caught) {
+      onError(caught instanceof ApiError && caught.code === 'unavailable' ? t('import.offline') : t('import.exportFailed'));
     } finally {
       setBusy(null);
     }
@@ -280,6 +293,27 @@ export function ProductImportModal({
                 onClick={() => void downloadTemplate('csv')}
               >
                 {t('import.template.csv')}
+              </Button>
+            </div>
+            <p className="ob-small" style={{ margin: 0, color: 'var(--fg-secondary)' }}>
+              {t('import.export.hint')}
+            </p>
+            <div style={{ display: 'flex', gap: 'var(--s-8)', flexWrap: 'wrap' }}>
+              <Button
+                variant="secondary"
+                icon="download"
+                busy={busy === 'export'}
+                onClick={() => void downloadExport('xlsx')}
+              >
+                {t('import.export.xlsx')}
+              </Button>
+              <Button
+                variant="secondary"
+                icon="download"
+                busy={busy === 'export'}
+                onClick={() => void downloadExport('csv')}
+              >
+                {t('import.export.csv')}
               </Button>
             </div>
 

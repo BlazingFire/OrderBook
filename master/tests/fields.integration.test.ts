@@ -450,11 +450,10 @@ describe.skipIf(!canRunIntegrationTests)('Fields (integration)', () => {
       ).resolves.toBeDefined();
     });
 
-    it('the three existing reads (GET /api/pipelines, /option-lists, /custom-fields) stay ungated', async () => {
+    it('the two existing reads (GET /api/pipelines, /option-lists) stay ungated', async () => {
       const noFieldsActor = await actorWith(['leads.view']);
       await expect(fieldsService.listPipelinesUnguarded(noFieldsActor.tenantId)).resolves.toBeDefined();
       await expect(fieldsService.listOptionListsUnguarded(noFieldsActor.tenantId)).resolves.toBeDefined();
-      await expect(fieldsService.listCustomFieldsUnguarded(noFieldsActor.tenantId)).resolves.toBeDefined();
     });
 
     it('an actor lacking fields.view still receives a complete SyncSnapshot', async () => {

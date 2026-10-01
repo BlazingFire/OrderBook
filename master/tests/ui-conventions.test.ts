@@ -173,7 +173,7 @@ describe('record detail opens on its own screen', () => {
   it('only lets a column be dropped on a table whose rows open', () => {
     const offenders: string[] = [];
 
-    for (const app of ['master/web/src/screens', 'office/web/src/screens']) {
+    for (const app of ['master/web/src/screens', 'office/web/src/screens', 'ui/src']) {
       for (const file of screenFiles(path.join(ROOT, app))) {
         const text = readFileSync(file, 'utf8');
         // A file that tags priorities must also open its rows. Per-file rather
