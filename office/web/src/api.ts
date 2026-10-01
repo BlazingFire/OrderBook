@@ -9,7 +9,7 @@
  * hidden behind an optimistic fake.
  */
 
-import { publishSessionEnded, t } from '@orderbook/ui';
+import { anySignal, publishSessionEnded, t } from '@orderbook/ui';
 import type {
   Locale,
   PickKind,
@@ -298,7 +298,7 @@ function request<T>(path: string, init?: RequestInit): Promise<T> {
   };
 
   if (method !== 'GET' || init?.signal) {
-    const own = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+    const own = init?.signal ? anySignal([init.signal, timeout]) : timeout;
     return send<T>(path, init, own).catch(asFailure);
   }
 
@@ -317,7 +317,7 @@ function request<T>(path: string, init?: RequestInit): Promise<T> {
     const created = {
       controller,
       waiters: 0,
-      promise: send<unknown>(path, init, AbortSignal.any([controller.signal, timeout])),
+      promise: send<unknown>(path, init, anySignal([controller.signal, timeout])),
     };
 
     void created.promise.catch(() => undefined).finally(() => inFlight.delete(key));

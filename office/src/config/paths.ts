@@ -12,9 +12,9 @@
  * changes — this module is only interesting on the day somebody moves a folder.
  */
 
-import { constants } from 'node:fs';
+import { execFile } from 'node:child_process';
+import fsSync, { constants } from 'node:fs';
 import fs from 'node:fs/promises';
-import { statfs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -26,7 +26,6 @@ import { createLogger } from '../lib/logger.js';
 import { writeEnvValue } from '../lib/env-file.js';
 
 const log = createLogger('storage');
-const statfsAsync = promisify(statfs);
 
 export interface PanelPaths {
   dataDir: string;
@@ -306,21 +305,63 @@ export async function countFiles(dir: string): Promise<number> {
 }
 
 export async function freeDiskBytes(dir: string): Promise<number | null> {
+  return (await diskSpace(dir))?.free ?? null;
+}
+
+/**
+ * Free and total bytes on the drive holding `dir`, or null when this PC cannot
+ * say. Callers treat null as "unknown" and carry on.
+ *
+ * `fs.statfs` arrived in Node 18.15, and the Windows 7 build runs on Node 16,
+ * so it is looked up on the module rather than imported by name: a named
+ * import of an export that does not exist fails when the module links, which
+ * would stop the whole server from starting. Without it, Windows asks `wmic`,
+ * and anything else answers null. One `wmic` run answers both figures, so a
+ * caller that wants both asks once.
+ */
+export async function diskSpace(dir: string): Promise<{ free: number; total: number } | null> {
   try {
-    const stats = await statfsAsync(dir);
-    return stats.bavail * stats.bsize;
+    // eslint-disable-next-line no-restricted-properties -- feature-detected on the next line; Node 16 takes the wmic fallback
+    const statfs = fsSync.statfs;
+    if (typeof statfs === 'function') {
+      const stats = await promisify(statfs)(dir);
+      return { free: stats.bavail * stats.bsize, total: stats.blocks * stats.bsize };
+    }
+    if (process.platform !== 'win32') return null;
+
+    // Only a plain drive letter goes into the query, so a UNC path or anything
+    // odd answers null rather than reaching `wmic`.
+    const drive = path.parse(path.resolve(dir)).root.slice(0, 2);
+    if (!/^[A-Za-z]:$/.test(drive)) return null;
+
+    const { stdout } = await promisify(execFile)(
+      'wmic',
+      [
+        'logicaldisk',
+        'where',
+        `DeviceID='${drive.toUpperCase()}'`,
+        'get',
+        'FreeSpace,Size',
+        '/value',
+      ],
+      { windowsHide: true, timeout: 10_000 },
+    );
+    return parseWmicDisk(stdout);
   } catch {
     return null;
   }
 }
 
-export async function totalDiskBytes(dir: string): Promise<number | null> {
-  try {
-    const stats = await statfsAsync(dir);
-    return stats.blocks * stats.bsize;
-  } catch {
-    return null;
-  }
+/**
+ * Reads `wmic logicaldisk ... get FreeSpace,Size /value`, whose answer is
+ * `FreeSpace=<n>` and `Size=<n>` on lines of their own. Null unless both are
+ * there and are whole numbers.
+ */
+export function parseWmicDisk(text: string): { free: number; total: number } | null {
+  const free = /^\s*FreeSpace=(\d+)\s*$/m.exec(text)?.[1];
+  const total = /^\s*Size=(\d+)\s*$/m.exec(text)?.[1];
+  if (free === undefined || total === undefined) return null;
+  return { free: Number(free), total: Number(total) };
 }
 
 /** Test seam: drops any relocation, back to whatever the environment configured. */

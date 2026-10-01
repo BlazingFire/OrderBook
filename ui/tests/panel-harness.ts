@@ -10,7 +10,7 @@
  *  · `fetch` is answered by a route table the test supplies, so every screen
  *    runs its real `api.ts` code rather than a mock of it;
  *  · the browser APIs jsdom lacks (`matchMedia`, `document.fonts`,
- *    `AbortSignal.any`, `EventSource`) get the smallest stand-in that works;
+ *    `EventSource`) get the smallest stand-in that works;
  *  · motion is switched off, which is also how the real splash skips its
  *    minimum hold;
  *  · `configureUi` is called with the panel's name, as its `main.tsx` does,
@@ -105,22 +105,6 @@ export function installBrowserStubs(): void {
   window.localStorage.clear();
   window.localStorage.setItem('ob.motion', 'off');
   window.history.replaceState(null, '', '/');
-
-  // jsdom 25 has `AbortSignal.timeout` but not `AbortSignal.any`, which both
-  // api clients use to join a caller's signal to their own timeout.
-  if (!('any' in AbortSignal)) {
-    Object.defineProperty(AbortSignal, 'any', {
-      configurable: true,
-      value: (signals: AbortSignal[]) => {
-        const controller = new AbortController();
-        for (const signal of signals) {
-          if (signal.aborted) controller.abort(signal.reason);
-          else signal.addEventListener('abort', () => controller.abort(signal.reason));
-        }
-        return controller.signal;
-      },
-    });
-  }
 
   Object.defineProperty(window, 'matchMedia', {
     configurable: true,

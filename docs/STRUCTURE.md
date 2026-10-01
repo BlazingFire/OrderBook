@@ -325,6 +325,16 @@ installer into `userData/pending-update` before running it.
 - **Desktop only.** Design floor 1024×768, laptop to 4K at 79–157 % scale. No phone
   layout.
 - **Customer data survives updates.** Migrations after 1.2.0 may only add (§6.1).
+- **Runtime floors (the Windows 7 Office build, `docs/WINDOWS7.md`).** The Office
+  Panel also ships on Electron 22.3.27 (Node 16.17.1, Chromium 108), so `office/src`,
+  `shared/src` and the shell files it runs (`electron/shell.ts`, `office.main.ts`,
+  `preload.cts`, `electron/lib/*.ts`) must run on Node 16.17, the shell also as
+  CommonJS, and `ui/src` and both `web/src` trees on Chromium 108. Held by the
+  ESLint floor blocks (§2.7 item 8), tsconfig `lib` ES2022, `tsc -p
+  electron/tsconfig.legacy.json --noEmit` in `npm run typecheck`, the Vite
+  `build.target` (`chrome108` for the Office UI; Vite's default list with `chrome108`
+  added for the Master UI), `master/tests/legacy-floor.test.ts` and, at runtime,
+  `npm run smoke:legacy` (§10.5). The Master stays Windows 10+ (PostgreSQL 17).
 
 ---
 
@@ -342,15 +352,15 @@ not counted here.
 |---|---|---|
 | `.agents/` | 1 | `.agents/skills/ui-consistency/SKILL.md` — a byte-identical copy of the Command Code skill, for Muse Code discovery. |
 | `.commandcode/` | 6 | Team-shared Command Code skills in `skills/*/SKILL.md` (§2.12). Only `skills/` is tracked. |
-| `.github/` | 2 | `.github/workflows/ci.yml` (the verify gate on every push and PR) and `.github/workflows/release.yml` (installers for three operating systems). §10.7. |
+| `.github/` | 2 | `.github/workflows/ci.yml` (the verify gate on every push and PR, and the `legacy-runtime` job) and `.github/workflows/release.yml` (installers for three operating systems plus the Windows 7 Office build). §10.7. |
 | `cleaner/` | 5 | Packaging for the **OrderBook Clean Install** tool (`cleaner/electron-builder.yml`, `cleaner/package.json`, `cleaner/web/index.html`, `cleaner/installer/` 2). An npm workspace with no scripts. Its logic is in `electron/lib/cleaner/`. §10.3. |
-| `docs/` | 49 | All prose: 12 files at the root (this file among them), `docs/ai-handoffs/` 5, `docs/backend-modules/` 12, `docs/overhaul/` 12, `docs/schema/` 8. §13. |
-| `electron/` | 34 | The desktop shell: 7 root files (incl. the two preload bridges `electron/preload.cts` → `window.orderbook` and `electron/cleaner.preload.cts` → `window.cleaner`, which is why `electron/tsconfig.json` includes `**/*.cts`), `electron/lib/` 13 (incl. `electron/lib/cleaner/` 4), `electron/tests/` 14 (12 tests + 2 fixtures in `electron/tests/fixtures/`). **Not an npm workspace.** §10.1. |
-| `master/` | 347 | Master server and frontend: `master/src/` 199, `master/tests/` 106, `master/web/` 30, `master/assets/fonts/` 5, `master/installer/` 3, plus `master/package.json`, `master/tsconfig.json`, `master/electron-builder.yml` and `master/Launch Master Panel.bat`. |
-| `office/` | 82 | Office server and frontend: `office/src/` 32, `office/tests/` 12, `office/web/` 31, `office/installer/` 3, plus `office/package.json`, `office/tsconfig.json`, `office/electron-builder.yml` and `office/Launch Office Panel.bat`. |
-| `shared/` | 62 | Types, protocol, sync and i18n: `shared/src/` 44, `shared/tests/` 16, `shared/package.json`, `shared/tsconfig.json`. §3. |
-| `tools/` | 11 | Node scripts (`tools/build-web.mjs`, `tools/copy-shell.mjs`, `tools/i18n-sync.mjs`, `tools/make-icons.mjs`, `tools/make-release-key.mjs`, `tools/release.mjs`), `tools/eslint-rules/` (2), `tools/uninstall/` (3). **Not a workspace.** |
-| `ui/` | 93 | The shared React kit and screens: `ui/src/` 72 (66 modules/CSS + 6 fonts), `ui/tests/` 19 (17 tests, the `ui/tests/panel-harness.ts` helper, `ui/tests/tsconfig.json`), `ui/package.json`, `ui/tsconfig.json`. §4. |
+| `docs/` | 50 | All prose: 13 files at the root (this file and `docs/WINDOWS7.md` among them), `docs/ai-handoffs/` 5, `docs/backend-modules/` 12, `docs/overhaul/` 12, `docs/schema/` 8. §13. |
+| `electron/` | 37 | The desktop shell: 8 root files (incl. the two preload bridges `electron/preload.cts` → `window.orderbook` and `electron/cleaner.preload.cts` → `window.cleaner`, which is why `electron/tsconfig.json` includes `**/*.cts`, and `electron/tsconfig.legacy.json`, the CommonJS compile for the Windows 7 build), `electron/lib/` 14 (incl. `electron/lib/cleaner/` 4), `electron/tests/` 15 (13 tests + 2 fixtures in `electron/tests/fixtures/`). **Not an npm workspace.** §10.1. |
+| `master/` | 348 | Master server and frontend: `master/src/` 199, `master/tests/` 107, `master/web/` 30, `master/assets/fonts/` 5, `master/installer/` 3, plus `master/package.json`, `master/tsconfig.json`, `master/electron-builder.yml` and `master/Launch Master Panel.bat`. |
+| `office/` | 87 | Office server and frontend: `office/src/` 33, `office/tests/` 14, `office/web/` 31, `office/installer/` 4, plus `office/package.json`, `office/tsconfig.json`, `office/electron-builder.yml`, `office/electron-builder.legacy.yml` (the Windows 7 build) and `office/Launch Office Panel.bat`. |
+| `shared/` | 71 | Types, protocol, sync and i18n: `shared/src/` 47, `shared/tests/` 22, `shared/package.json`, `shared/tsconfig.json`. §3. |
+| `tools/` | 13 | Node scripts (`tools/build-web.mjs`, `tools/copy-shell.mjs`, `tools/i18n-sync.mjs`, `tools/legacy-electron.mjs`, `tools/legacy-smoke.mjs`, `tools/make-icons.mjs`, `tools/make-release-key.mjs`, `tools/release.mjs`), `tools/eslint-rules/` (2), `tools/uninstall/` (3). **Not a workspace.** |
+| `ui/` | 95 | The shared React kit and screens: `ui/src/` 73 (67 modules/CSS + 6 fonts), `ui/tests/` 20 (18 tests, the `ui/tests/panel-harness.ts` helper, `ui/tests/tsconfig.json`), `ui/package.json`, `ui/tsconfig.json`. §4. |
 | `.editorconfig` | 1 | UTF-8, LF, 2-space indent, final newline, trim trailing whitespace (except `*.md`). |
 | `.env.example` | 1 | Documents the optional runtime environment variables (§2.10). |
 | `.gitignore` | 1 | §2.9. |
@@ -390,7 +400,7 @@ Third-party runtime dependencies:
   `@embedded-postgres/*` platform packages (`windows-x64`, `darwin-x64`,
   `darwin-arm64`, `linux-x64`, `linux-arm64`, all ^17.10.0-beta.17) are
   `optionalDependencies`. `tsx` is a devDependency.
-- **office:** `express`, `multer`, `socket.io-client`. `tsx` is a devDependency.
+- **office:** `express`, `multer`, `socket.io-client`, and `undici` pinned at exactly 5.29.0 (the last 5.x, which still runs on Node 16; loaded only by `office/src/lib/legacy-globals.ts`, and only on the Windows 7 build). `tsx` is a devDependency.
 - **master-web:** `socket.io-client` in addition to react/shared/ui. office-web does
   not have it (it uses `EventSource`).
 - **ui:** `blurhash`.
@@ -420,6 +430,12 @@ shared  (tsc -> shared/dist)             everything imports its dist/, so it is 
 - **How `ui` is compiled:** both `vite.config.ts` files set
   `optimizeDeps: { exclude: ['@orderbook/ui'] }` and `build.assetsInlineLimit: 0`,
   so `ui`'s `.tsx`, `.css` and `.woff2` files are transpiled and emitted locally.
+  Both also name Chromium 108 in `build.target`: the Win7 Office build runs Electron 22
+  (Chromium 108), and a Win7 PC opens the Master UI in Chrome 109. The Office UI's
+  target is `'chrome108'` alone, since it only ever runs in Electron; the Master UI's
+  keeps Vite's default list (`es2020`, `edge88`, `firefox78`, `safari14`) beside
+  `chrome108`, so a Safari or Firefox on the LAN keeps its down-levelling and
+  `-webkit-` prefixes. The target lowers syntax only; a newer built-in is kept out by the ESLint floors (§2.7).
   Each web app's `tsc -b` typechecks `ui/src` under its own compiler options — which
   lack `noUncheckedIndexedAccess` and the other base-only flags (§2.6), so `ui/src`
   gets that check only from the ui workspace's own `typecheck`.
@@ -436,7 +452,7 @@ shared  (tsc -> shared/dist)             everything imports its dist/, so it is 
 ### 2.4 The verification gate
 
 - `npm run verify` = `npm run lint && npm run typecheck && npm run test`. **A change
-  is not done until all three exit 0.** The suite is 160 test files / 2015
+  is not done until all three exit 0.** The suite is 193 test files / 2593
   tests.
 - `npm run build` builds shared, both servers and both frontends (not the shell).
 - Integration tests need PostgreSQL and **skip silently** when it is unavailable or
@@ -457,7 +473,7 @@ shared  (tsc -> shared/dist)             everything imports its dist/, so it is 
 is `>=20`**; both CI workflows use Node 22. **Workspaces:** `shared`, `ui`,
 `master`, `master/web`, `office`, `office/web`, `cleaner`.
 
-**All 30 root scripts:**
+**All 32 root scripts:**
 
 | Script | Runs |
 |---|---|
@@ -465,6 +481,7 @@ is `>=20`**; both CI workflows use Node 22. **Workspaces:** `shared`, `ui`,
 | `build` | builds shared, then `@orderbook/master` (tsc + master-web), then `@orderbook/office` (tsc + office-web). Not `ui` (nothing to build) and not the shell. |
 | `build:shared` | `npm run build --workspace @orderbook/shared` |
 | `build:shell` | `tsc -p electron/tsconfig.json && node tools/copy-shell.mjs` — copies to `master/` and `office/` only, not `cleaner/` |
+| `build:shell:legacy` | `tsc -p electron/tsconfig.legacy.json && node tools/copy-shell.mjs --legacy` — the CommonJS shell for the Windows 7 build, from `build/shell-legacy` into `office/electron/dist` only, with `office/electron/dist/package.json` = `{"type":"commonjs"}` beside it (the panel is `"type": "module"`). `build:shell` puts the ESM shell back |
 | `dev:shared` | `tsc --watch` in shared |
 | `predev:master` / `dev:master` | build shared and master-web, then `tsx watch src/index.ts` in master |
 | `predev:office` / `dev:office` | build shared and office-web, then `tsx watch src/index.ts` in office |
@@ -474,7 +491,7 @@ is `>=20`**; both CI workflows use Node 22. **Workspaces:** `shared`, `ui`,
 | `seed:dummy` | build shared, then `tsx src/db/seed-dummy-users-cli.ts` |
 | `seed:sample` | build shared, then `tsx src/db/seed-sample-data-cli.ts` |
 | `seed:catalogue` | build shared, then `tsx src/db/seed-catalogue-cli.ts` |
-| `typecheck` | (1) `npm run typecheck --workspaces --if-present` — shared, ui, master, office run `tsc --noEmit`; master-web, office-web run `tsc -b`; cleaner has none; (2) `tsc -p tsconfig.test.json`; (3) `tsc -p ui/tests/tsconfig.json`; (4) `tsc -p electron/tsconfig.json --noEmit` |
+| `typecheck` | (1) `npm run typecheck --workspaces --if-present` — shared, ui, master, office run `tsc --noEmit`; master-web, office-web run `tsc -b`; cleaner has none; (2) `tsc -p tsconfig.test.json`; (3) `tsc -p ui/tests/tsconfig.json`; (4) `tsc -p electron/tsconfig.json --noEmit`; (5) `tsc -p electron/tsconfig.legacy.json --noEmit` (the shell as CommonJS, §2.6) |
 | `lint` | `eslint .` |
 | `i18n:sync` | `node tools/i18n-sync.mjs` — appends every `EN_MESSAGES` key missing from `HI_MESSAGES` with the English text and `// TODO(i18n-hi)`. `shared/src/i18n/hi.ts` has 1245 such lines. |
 | `format` | `prettier --write .` — not part of `verify`; no check-only variant |
@@ -482,7 +499,8 @@ is `>=20`**; both CI workflows use Node 22. **Workspaces:** `shared`, `ui`,
 | `test:watch` | `vitest` |
 | `test:coverage` | `vitest run --coverage` (v8 provider, `@vitest/coverage-v8` 2.1.9, a root devDependency since 2026-09-25 — before that the script failed on its first line). Writes `coverage/`, which is gitignored and ignored by ESLint. `master/tests/tooling-config.test.ts` holds the provider's version to Vitest's. |
 | `verify` | `npm run lint && npm run typecheck && npm run test` |
-| `release` | `node tools/release.mjs [x.y.z] [--panel master\|office\|cleaner] [--os win\|mac\|linux]` |
+| `release` | `node tools/release.mjs [x.y.z] [--panel master\|office\|cleaner] [--os win\|mac\|linux\|win7]` |
+| `smoke:legacy` | `node tools/legacy-smoke.mjs` — the Windows 7 build's runtime check (§10.5); downloads Node 16.17.1 and Electron 22.3.27 into `.tmp/legacy-runtime`. Not part of `verify`; CI runs it in the `legacy-runtime` job |
 | `release:keygen` | `node tools/make-release-key.mjs` — Ed25519 private PEM outside the repo; public half appended to `TRUSTED_RELEASE_KEYS` in `shared/src/domain/release-keys.ts` |
 | `icons` | `node tools/make-icons.mjs` — renders `{master,office,cleaner}/installer/icon.png` with `sharp` from `ui/src/logoCells.ts` and `--glaze-50` in `ui/src/tokens.css` |
 
@@ -542,7 +560,11 @@ with install scripts that are not listed: `esbuild` 0.28.2, the nested
 - **Extending it:** `shared/tsconfig.json`, `master/tsconfig.json`,
   `office/tsconfig.json` (`rootDir ./src`, `outDir ./dist`); `electron/tsconfig.json`
   (`outDir dist`, `rootDir .`, `types: ["node"]`, includes `**/*.ts` and `**/*.cts`,
-  excludes `tests` and `dist`); `ui/tsconfig.json` (DOM libs, `ESNext`/`bundler`,
+  excludes `tests` and `dist`); `electron/tsconfig.legacy.json` (extends
+  `electron/tsconfig.json`: `module CommonJS`, `moduleResolution Node10`,
+  `outDir ../build/shell-legacy`, no declarations; includes only `shell.ts`,
+  `office.main.ts`, `preload.cts` and `lib/*.ts`, excludes `lib/cleaner/**` — the
+  Windows 7 Office shell, §10.6); `ui/tsconfig.json` (DOM libs, `ESNext`/`bundler`,
   `jsx: react-jsx`, `noEmit`, `noUnusedLocals`/`Parameters`,
   `allowImportingTsExtensions`); `ui/tests/tsconfig.json` (DOM, `react-jsx`,
   `types: ["vitest/globals","node"]`, bundler resolution).
@@ -564,8 +586,10 @@ with install scripts that are not listed: `esbuild` 0.28.2, the nested
 
 `tseslint.config(...)` with these blocks, in order:
 
-1. `ignores: ['**/dist/**','**/node_modules/**','**/data/**','coverage/**']` — a flat
-   config does not read `.gitignore`, so these are the only exclusions.
+1. `ignores: ['**/dist/**','**/node_modules/**','**/data/**','coverage/**','build/**','.tmp/**']`
+   — a flat config does not read `.gitignore`, so these are the only exclusions.
+   `build/` (packaging and the `build/shell-legacy` CommonJS compile) and `.tmp/`
+   (the runtimes `npm run smoke:legacy` downloads) joined in Phase 0.
 2. `js.configs.recommended` and `tseslint.configs.recommended`.
 3. `@typescript-eslint/no-unused-vars` (error, `^_` ignored) and
    `@typescript-eslint/consistent-type-imports` (error).
@@ -578,6 +602,24 @@ with install scripts that are not listed: `esbuild` 0.28.2, the nested
    and `office/web/src/components/ProductImages.tsx`. A path that matches nothing is
    not an ESLint error, so `master/tests/tooling-config.test.ts` fails on an entry
    naming no file.
+8. The **runtime floors** (Phase 0 of the 1.3 batch, docs/WINDOWS7.md), four named
+   blocks built by `floor(name, ...lists)` from the `NODE16`, `SHELL` and `CHROMIUM108`
+   lists at the top of the file. Each block sets `no-restricted-properties`,
+   `no-restricted-globals`, `no-restricted-imports` and `no-restricted-syntax`, every
+   message naming the floor and the replacement. A file set gets exactly one block,
+   because a later flat-config block replaces a rule's options rather than merging
+   them. `floor/office-server` (`office/src/**/*.ts`) gets NODE16; `floor/shared`
+   (`shared/src/**/*.ts`) gets NODE16 + CHROMIUM108, since shared runs in the Office
+   server and in both UIs; `floor/web` (`ui/src`, both `web/src` trees) gets
+   CHROMIUM108; `floor/shell` (`electron/shell.ts`, `electron/office.main.ts`,
+   `electron/preload.cts`, `electron/lib/*.ts`, not `lib/cleaner/`) gets NODE16 +
+   SHELL (no web globals such as `fetch`, no `import.meta`, no Electron 25+ APIs).
+   `master/src`, `master.main.ts` and the cleaner run on Node 22 and are not held.
+   ES2023+ builtins are not listed: every tsconfig's `lib` stops at ES2022.
+   A feature-detected use carries `// eslint-disable-next-line <rule> -- <why>`
+   (`office/src/config/paths.ts` `statfs`, `ui/src/useEnterToAdvance.ts` `showPicker`).
+   `master/tests/legacy-floor.test.ts` lints a snippet per covered path to prove the
+   blocks fire.
 
 Lint is **not type-aware**: no `parserOptions.project`/`projectService`, only the
 non-type-checked `tseslint.configs.recommended`, and no import-resolution plugin.
@@ -587,14 +629,15 @@ The custom rule (`tools/eslint-rules/index.js`, plugin `orderbook-i18n`, rule
 reports a JSX text node containing a Unicode letter (`\p{L}`) that is not inside an
 element whose JSX name is `Untranslated`. A string in an expression container
 (`{'Primary'}`) or an attribute is never inspected. There is no import-restriction
-rule, so the Master's layering (§5.1) is not enforced by lint.
+rule outside the runtime floors (item 8), so the Master's layering (§5.1) is not
+enforced by lint.
 
 ### 2.8 Vitest (`vitest.config.ts`)
 
 - **`include`:** `{shared,master,office,electron}/tests/**/*.test.ts` and
   `ui/tests/**/*.test.{ts,tsx}`.
 - **Environments:** `node`, with `environmentMatchGlobs: [['ui/tests/**','jsdom']]`.
-  No `projects` (Vitest 2.1 lacks them), no `setupFiles`, no `globals`: all 160 test
+  No `projects` (Vitest 2.1 lacks them), no `setupFiles`, no `globals`: all 193 test
   files import from `'vitest'` explicitly.
 - **`env.ORDERBOOK_DATA_DIR`** is `<os.tmpdir()>/orderbook-test-data`, so suites stay
   out of `master/data/` (`master/src/config/index.ts` resolves `dataDir` at module
@@ -696,9 +739,11 @@ refuses a path inside the repo); `ORDERBOOK_TEST_PG_PORT` (default 55433);
 ### 2.11 CI in one paragraph
 
 `.github/workflows/ci.yml` runs on every push and PR (ubuntu, Node 22): install
-`postgresql-16`, `npm ci`, `build:shared`, `lint`, `typecheck`, `test`, `build`.
-`.github/workflows/release.yml` builds installers on Windows, macOS and Linux, and
-publishes a real release only from `main`. Both are described in §10.7.
+`postgresql-16`, `npm ci`, `build:shared`, `lint`, `typecheck`, `test`, `build`. A
+second job, `legacy-runtime` (windows-latest), runs `npm run smoke:legacy` with
+`.tmp/legacy-runtime` cached. `.github/workflows/release.yml` builds installers on
+Windows, macOS and Linux, plus the Windows 7 Office build, and publishes a real
+release only from `main`. Both are described in §10.7.
 
 ### 2.12 Agent skills (tracked)
 
@@ -740,8 +785,8 @@ uses Node's `Buffer`). If a rule must mean the same thing on both sides of the L
 a permission key, a setting's fallback, a column name, how two offline edits
 merge, a socket event's payload — it is declared here once.
 
-Tracked: **62 files** — 44 in `shared/src/` (`domain/` 21, `i18n/` 9, `keys/` 3,
-`protocol/` 5, `sync/` 5, `shared/src/index.ts`), 16 in `shared/tests/` (15 suites +
+Tracked: **71 files** — 47 in `shared/src/` (`domain/` 24, `i18n/` 9, `keys/` 3,
+`protocol/` 5, `sync/` 5, `shared/src/index.ts`), 22 in `shared/tests/` (21 suites +
 `shared/tests/activity-tokens.lock.json`), `shared/package.json`,
 `shared/tsconfig.json`.
 
@@ -782,7 +827,7 @@ Tracked: **62 files** — 44 in `shared/src/` (`domain/` 21, `i18n/` 9, `keys/` 
 | `shared/src/domain/api-keys.ts` | LAN API key shape; the token and its hash are deliberately not on the type. | `ApiKey`, `ApiKeyInput`, `API_KEY_TOKEN_PREFIX` (`'obk'`), `API_KEY_RATE_LIMIT_DEFAULT`/`MIN`/`MAX` (120/1/6000), `ApiKeyIdentity` |
 | `shared/src/domain/connectors.ts` | Outbound connectors to other systems, described as data. Conflicts resolve by a per-field rule, not by HLC. Entities: `party` and `product`. | `Connector`, `ConnectorInput`, `ConnectorResource(Input)`, `ConnectorFieldMap(Input)`, `ConnectorTransform`, `CONNECTOR_TRANSFORMS`, `ConnectorRun`, `ConnectorRowResult`, `ConnectorTestResult`, `ConnectorProfile`, `ConnectorConflictRule`, `CONNECTOR_MIN_INTERVAL_MIN` (5), `CONNECTOR_FLAGGABLE_FIELDS` |
 | `shared/src/domain/developer.ts` | Developer-mode constants. The password hash is `scrypt$…`; the plaintext is only in `docs/DEVELOPER_MODE.md`. | `DEVELOPER_TOKEN_TTL_MS` (15 min), `DEVELOPER_TOKEN_HEADER` (`x-developer-token`), `DEVELOPER_UNLOCK_MAX_FAILURES` (5), `DEVELOPER_UNLOCK_LOCKOUT_MS`, `DEVELOPER_PASSWORD_HASH`, `DEVELOPER_RESET_CONFIRMATION` (`'RESET'`), `DUMMY_USERS` (admin, management, office), `SeedDummyUsersResult`, `ResetAllResult`, `SeedSampleDataResult`, `LoadCatalogueResult`, `SampleDataCounts` |
-| `shared/src/domain/version.ts` | Version comparison and the release manifest. | `parseVersion`, `compareVersions`, `isNewer`, `standing`, `VersionStanding`, `PanelKind`, `ReleasePlatform` (`win32`/`darwin`/`linux`), `LEGACY_RELEASE_PLATFORM` (`'win32'`: a manifest with no `platform` is a Windows build), `ReleaseManifest`, `UpdateAvailability` |
+| `shared/src/domain/version.ts` | Version comparison and the release manifest. | `parseVersion`, `compareVersions`, `isNewer`, `standing`, `VersionStanding`, `PanelKind`, `ReleasePlatform` (`win32`/`darwin`/`linux`, plus `win7` for the Electron 22 Office line), `releasePlatformFor(platform, electronVersion)` (`win7` for Windows on an Electron major below `LEGACY_ELECTRON_CEILING` = 23), `LEGACY_RELEASE_PLATFORM` (`'win32'`: a manifest with no `platform` is a Windows build), `ReleaseManifest`, `UpdateAvailability` |
 | `shared/src/domain/release-signature.ts` | Exactly which bytes an Ed25519 release signature covers. Browser-safe (no `node:crypto`). | `SIGNED_MANIFEST_FIELDS` (`panel`, `platform`, `version`, `file`, `sizeBytes`, `sha256`, `releasedAt`), `canonicalManifestPayload()` (`field=value` lines joined by newlines, `sha256` lower-cased), `ManifestSignature`, `isManifestSigned` |
 | `shared/src/domain/release-keys.ts` | The public keys a build trusts; rewritten by `tools/make-release-key.mjs`. **`TRUSTED_RELEASE_KEYS` is currently empty.** | `TrustedReleaseKey`, `TRUSTED_RELEASE_KEYS`, `trustedKeyById`, `allowUnsignedReleases(env)` |
 
@@ -1045,7 +1090,7 @@ shipped build the `.deb`, which `applyUpdate` refuses), `setShellSettings`,
 only. Also `PanelBootState`, `PanelBootStatus`, `PanelHealthInterface`,
 `PreparedInstaller` (path, sha256, version), `PanelRuntimeHealth`.
 
-### 3.11 `shared/tests/` (17 suites, no database)
+### 3.11 `shared/tests/` (21 suites, no database)
 
 Counts are tests passed at `43fd5b0`. The three files the 2026-09-25 round changed
 and the one it added show their `it(` count instead, marked `it(`.
@@ -1070,6 +1115,9 @@ and the one it added show their `it(` count instead, marked `it(`.
 | `shared/tests/stock-note.test.ts` | 3 | `isBlankNote` |
 | `shared/tests/colour-rule.test.ts` | 12 `it(` | catalogue v2: `colourRuleOf` precedence (`multiColour` wins even with a label), blank labels, `shownColour`/`colourRepeatsName`, the numeric Model/Code split, `lineColourText` summing and grouping |
 | `shared/tests/fields.test.ts` | 3 `it(` | catalogue v2: `product.brand` is a managed set with no hex, in `FIELD_LIST_KEYS` and the catalogue |
+| `shared/tests/apply-category-change.test.ts` | 1 `it(` | a `deleted` category change takes the category out of a connected panel's snapshot, and a restore puts it back |
+| `shared/tests/record-search.test.ts` | 3 `it(` | `matchesRecordSearch`: an empty term matches everything; finds by id, party, owner, notes, product, code and packaging, ignoring case; needs every word, in any order |
+| `shared/tests/release-platform.test.ts` | 4 `it(` | `releasePlatformFor`: Windows on Electron 22 gets `win7`; Windows on Electron 23 or 33 gets `win32`; Windows with no Electron version, or an empty one, gets `win32`; Linux and macOS on Electron 22 keep their own platform |
 | `shared/tests/activity-tokens.lock.json` | — | 59 committed `activity.*` tokens that must never disappear from `en.ts` (the catalogue has 79) |
 
 ### 3.12 Where the code and its comments or docs disagree
@@ -1123,12 +1171,12 @@ and CSS source, never built**. Neither panel keeps its own copy.
 
 | What | Count (`git ls-files ui`) |
 |---|---|
-| Tracked files | **93** |
+| Tracked files | **95** |
 | `ui/src/*.tsx` | 43 |
-| `ui/src/*.ts` (incl. the `ui/src/index.ts` barrel) | 18 (61 modules, 8,864 lines) |
+| `ui/src/*.ts` (incl. the `ui/src/index.ts` barrel) | 19 (62 modules, 8,864 lines) |
 | `ui/src/*.css` | 5 (3,777 lines; `ui/src/base.css` alone is 3,230) |
 | `ui/src/fonts/*.woff2` | 6 (223,072 bytes) |
-| `ui/tests/` | 17 test files + the `ui/tests/panel-harness.ts` helper + `ui/tests/tsconfig.json` |
+| `ui/tests/` | 18 test files + the `ui/tests/panel-harness.ts` helper + `ui/tests/tsconfig.json` |
 
 **External imports in `ui/src`:** only `react`, `@orderbook/shared` and `blurhash`.
 No `fetch(`, no `socket.io`, no `react-dom`, no `../` out of the package. **The kit
@@ -1265,12 +1313,13 @@ removed on 2026-09-25.
 |---|---|---|
 | `ui/src/useDebounced.ts` | `DEBOUNCE_MS` (150), `useDebounced` | |
 | `ui/src/useMediaQuery.ts` | `useMediaQuery` | `useSyncExternalStore`, correct on first render |
-| `ui/src/useEnterToAdvance.ts` | `useEnterToAdvance`, `useEscapeToPrevious` | Enter walks fields (`input`, `select`, `textarea`, `[data-field]`) in a container ref, skipping `[data-keys-grid]`, leaving textareas alone; on the last field calls `onSubmit`. On a native `<select>` the first Enter opens its picker (`showPicker()`) and only the next Enter advances; Enter on a `button` or an element with `role="button"` is left alone (it is a click). Escape walks back. |
+| `ui/src/useEnterToAdvance.ts` | `useEnterToAdvance`, `useEscapeToPrevious` | Enter walks fields (`input`, `select`, `textarea`, `[data-field]`) in a container ref, skipping `[data-keys-grid]`, leaving textareas alone; on the last field calls `onSubmit`. On a native `<select>` the first Enter opens its picker (`showPicker()`) and only the next Enter advances (Chromium 121+; on the Win7 build's Chromium 108 the call throws, is caught, and Enter just advances); Enter on a `button` or an element with `role="button"` is left alone (it is a click). Escape walks back. |
 | `ui/src/breakpoints.ts` | `BP_NARROW` (`max-width: 1180px`) | physical px; `base.css` repeats it and also steps at 1080px wide and 800px tall (the unused `BP_TIGHT`/`BP_SHORT` constants were removed 2026-09-25) |
 | `ui/src/rem.ts` | `rem` | `rem(px)` = `px/14` rem for inline styles |
 | `ui/src/format.ts` | `formatKg`, `formatBytes`, `formatDateTime` | `formatKg` uses `en-IN`, ≤ 3 decimals; `null` → `—` |
 | `ui/src/errorText.ts` | `apiErrorText` | if the error is an `Error` with a string `code`: `t(messageKey)`, else `t(errorMessageKey(code))` (a `CODE_TOKENS` entry or `error.unknown` — so a coded error never falls through to its English message); otherwise an `Error`'s `.message`, else `t(fallback)`. Checks shape rather than importing a panel's `ApiError` |
 | `ui/src/sessionEnded.ts` | `SessionEndedReason`, `publishSessionEnded`, `onSessionEnded` | module-level emitter the api clients call on a 401 |
+| `ui/src/abort.ts` | `anySignal` | added in 1.3 Phase 0: `AbortSignal.any` for Chromium 108 (which has it only from 116). Aborts with the first input's reason, returns an already-aborted signal for an already-aborted input, and removes its listeners once settled. Used by both panels' `api.ts` to join a caller's signal to the request timeout. Test: `ui/tests/abort.test.ts` |
 | `ui/src/clipboard.ts` | `copyText` | added 2026-09-25: `navigator.clipboard.writeText` where the browser offers and allows it, else a selected off-screen textarea and `document.execCommand('copy')`; resolves to whether the text was copied, never throws. `navigator.clipboard` is `undefined` outside a secure context, so the Master opened by LAN address over plain HTTP could not copy before. Used by `IdField`, the crash screen, and the Master's one-time password (`AccessScreen`) and API token (`IntegrationsScreen`) dialogs |
 | `ui/src/config.ts` | `PanelKind`, `Theme`, `UiConfig`, `configureUi`, `uiConfig` | default is the Master's config. **No module may read `uiConfig()` at top level** (the barrel evaluates before `configureUi`); only `i18n.ts` and `theme.ts` read it, inside functions. |
 | `ui/src/theme.ts` | `Theme`, `Density`, `SidebarMode`, `SCALE_MIN` (11), `SCALE_MAX` (22), `SCALE_STEP` (0.5), `SCALE_DEFAULT` (14), `read`, `store`, `loadTheme`, `loadDensity`, `loadScale`, `applyScale`, `loadSidebarMode`, `storeSidebarMode`, `motionDisabled`, `applyTheme`, `applyDensity`, `applyMotion`, `initAppearance` | appearance lives on `<html>`: `data-theme`, `data-density`, `data-motion`, `style="--root-size: Npx"`, and `color-scheme` |
@@ -1343,7 +1392,7 @@ is therefore kept as two byte-identical copies** (`master/web/src/screens/PartyA
 
 ### 4.11 Tests that guard the kit
 
-`ui/tests/` (jsdom, 17 files; the counts in brackets are tests passed at `43fd5b0`):
+`ui/tests/` (jsdom, 18 files; the counts in brackets are tests passed at `43fd5b0`):
 `ui/tests/activity-spike.test.tsx` (3, `<Activity>` semantics),
 `ui/tests/screen-host.test.tsx` (5), `ui/tests/app-shell-nav.test.tsx` (4),
 `ui/tests/settings-layout.test.tsx` (9), `ui/tests/developer-panel.test.tsx` (6),
@@ -1359,6 +1408,9 @@ Added 2026-09-25:
 - `ui/tests/keyboard-provider.test.tsx` — a dialog mounted inside a screen answers
   Ctrl+S however often the tree re-renders; `view.toggleSidebar`, `keys.help` and
   the palette rows reach a handler; the palette lists only what `offers()` accepts.
+- `ui/tests/abort.test.ts` (4, added in 1.3 Phase 0) — `anySignal` aborts with
+  either input's reason, returns an already-aborted signal for an aborted input,
+  ignores a second abort once settled, and carries a timeout's `TimeoutError`.
 - `ui/tests/clipboard.test.tsx` — `copyText` with and without `navigator.clipboard`
   (jsdom has none, like a plain-HTTP tab).
 - `ui/tests/kit-i18n.test.tsx` — the kit's chrome renders its Hindi from the
@@ -1368,7 +1420,8 @@ Added 2026-09-25:
 - `ui/tests/master-shell.test.tsx` and `ui/tests/office-shell.test.tsx` — each boots
   a panel's whole `App.tsx` through `ui/tests/panel-harness.ts` (`fetch` answered from
   a route table so the real `api.ts` runs; stand-ins for `matchMedia`,
-  `document.fonts`, `AbortSignal.any`, `EventSource`; motion off; `configureUi` with
+  `document.fonts`, `EventSource`; motion off; jsdom has no `AbortSignal.any`, so
+  both clients' `anySignal` runs for real; `configureUi` with
   the panel's name). The app is imported through a variable path so the web apps do
   not enter `ui/tests/tsconfig.json`'s stricter program. Both failed against the old
   shells. They pin the gallery link, Alt+N reaching only what the sidebar offers,
@@ -1821,7 +1874,7 @@ primaryLanAddress() ?? '127.0.0.1', httpPort: config.http.port, acceptingPairing
 | `master/src/lib/errors.ts` | 157 | `AppError(messageKey, params, statusCode, code, details)` and `ValidationError` 400, `UnauthorizedError` 401, `ForbiddenError` 403, `TenantViolationError` 403, `NotFoundError` 404, `ConflictError` 409, `TooManyRequestsError` 429, `BackupError`; `toErrorMessage()`. The message is generated from the English catalogue. | 66 non-test files |
 | `master/src/lib/logger.ts` | 40 | `createLogger(scope)` — ISO time, level, `[scope]`; warn/error to stderr; `LOG_LEVEL` | 29 |
 | `master/src/lib/memory-monitor.ts` | 66 | `startMemoryMonitor({onWarn,onCritical})` — logs only | 1 |
-| `master/src/lib/network.ts` | 74 | `listLanInterfaces()` ranks real LAN adapters ahead of Docker/VPN/VM; `listLanAddresses()`, `primaryLanAddress()`, `hasNetworkLink()`, broadcast addresses | 4 |
+| `master/src/lib/network.ts` | 97 | `listLanInterfaces()` ranks real LAN adapters ahead of Docker/VPN/VM; `listLanAddresses()`, `primaryLanAddress()`, `hasNetworkLink()`, broadcast addresses; `isLoopbackAddress(addr)` and `isLoopback(req)`, the one loopback check (`health.ts` uses it) | 4 |
 | `master/src/lib/password.ts` | 134 | `hashPassword()` (`scrypt$16384$8$1$salt$hash`); `verifyPassword()` also accepts legacy bcrypt and flags `needsUpgrade`; `generateTemporaryPassword()`; `PASSWORD_MIN_LENGTH` 8; `assertPasswordLongEnough()` | 4 |
 | `master/src/lib/release-signature.ts` | 75 | `verifyManifest()` — Ed25519 against `trustedKeyById`; unsigned passes only with `ORDERBOOK_ALLOW_UNSIGNED_RELEASES=1`. Duplicated in `office/src/lib/release-signature.ts`. | 2 |
 | `master/src/lib/secret-box.ts` | 178 | `loadOrCreateKey()` (`<dataDir>/secrets/vault.key`), `seal(plaintext, aad)`, `open(sealed, aad)`, `isSealedValue`, `resetSecretBox`, `CURRENT_KEY_VERSION`, `SecretBoxError`; AES-256-GCM with AAD; the key is never in a backup | 6 |
@@ -3300,8 +3353,8 @@ working while the Master is off.
 
 | Area | Tracked files | Lines |
 |---|---|---|
-| `office/src` | 32 (`config` 2, `discovery` 1, `domain` 1, `http` 1, `lib` 8, `realtime` 1, `services` 12, `sync` 5, `office/src/index.ts`) | 7,509 |
-| `office/tests` | 12 (150 `it(` cases) | 3,483 |
+| `office/src` | 33 (`config` 2, `discovery` 1, `domain` 1, `http` 1, `lib` 9, `realtime` 1, `services` 12, `sync` 5, `office/src/index.ts`) | 7,670 |
+| `office/tests` | 14 (165 `it(` cases) | 3,827 |
 | `office/installer` | 3 | — |
 | `office/web` | 31 (§9) | 11,993 |
 
@@ -3309,7 +3362,8 @@ working while the Master is off.
 
 - `office/package.json` — `@orderbook/office` 1.2.0, ESM; scripts `dev` (`tsx watch
   src/index.ts`), `build` (`tsc` + office-web build), `build:server`, `start`,
-  `typecheck`; deps `@orderbook/shared`, `express`, `multer`, `socket.io-client`;
+  `typecheck`; deps `@orderbook/shared`, `express`, `multer`, `socket.io-client`,
+  `undici` (exact 5.29.0);
   `main: electron/dist/office.main.js` (shell source `electron/office.main.ts`).
 - `office/tsconfig.json` — extends base, `src` → `dist`.
 - `office/Launch Office Panel.bat` — Windows dev launcher: starts `npm run dev`
@@ -3319,6 +3373,11 @@ working while the Master is off.
 
 ### 8.2 Boot — `office/src/index.ts`
 
+0. Its first import is `office/src/lib/legacy-globals.ts`, which installs
+   `fetch`, `FormData`, `Headers`, `Request` and `Response` from undici 5.29.0, and
+   `Blob` from `node:buffer`, only where they are missing. That is the Windows 7
+   build's Node 16.17; on Node 20 and later nothing is installed and undici is never
+   loaded.
 1. `createApp()` + `http.createServer`; listens at once, even unpaired (the
    connection screen is served from here).
 2. Wires `masterConnection` events into `user-session.service`: `user` →
@@ -3328,7 +3387,9 @@ working while the Master is off.
    awaiting**, so an off Master cannot block the panel.
 4. Shutdown on SIGINT, SIGTERM, IPC `{type:'orderbook:shutdown'}`, IPC
    `disconnect`: runs `disposables` (nothing pushes into it today),
-   `masterConnection.disconnect()`, then `closeAllConnections()`.
+   `masterConnection.disconnect()`, then `server.close()` and a `destroy()` of every
+   socket tracked from the server's `connection` event (`closeAllConnections()`
+   needs Node 18.2).
 
 ### 8.3 Configuration and storage paths
 
@@ -3344,7 +3405,7 @@ working while the Master is off.
   `office-location.json`, or null from a terminal). Its per-file path constants
   (`credentialsFile`, `outboxFile`, …) are read by nothing outside `config/` —
   every store uses `paths()`.
-- `office/src/config/paths.ts` (398 lines) — **`paths()` is the live answer** for
+- `office/src/config/paths.ts` (440 lines) — **`paths()` is the live answer** for
   where the data folder is (it can move at runtime; never capture it).
   `relocateDataDir(target, {moveExisting})` checks everything before anything is
   copied or recorded (it creates the target folder to test that it can write
@@ -3355,14 +3416,17 @@ working while the Master is off.
   the files under `paths()`, `images/`, `avatars/`, `updates/`, the shell's `logs/`
   and `shell.json`, their `.tmp` and `.unreadable-…` forms, Finder/Explorer litter;
   the refusal names the folder and one foreign file, as `storage.refused.*` keys);
-  enough free disk via `statfs`. Then it copies the tree when `moveExisting` is set
+  enough free disk (`freeDiskBytes`, or `diskSpace` for free and total from one lookup:
+  `fs.statfs` looked up on the module, never a named import, because Node 16 has
+  none and a named import would fail at link time; else on Windows
+  `wmic logicaldisk` read by `parseWmicDisk`; else null, meaning unknown). Then it copies the tree when `moveExisting` is set
   (each file `chmod 0o600`; `POST /api/storage/path` and `moveStorage` default it to
   true, and with `false` nothing is copied), records the folder where the next start
   will read it (`rememberDataDir`: the shell's pointer `config.locationFile`,
   temp-then-rename in the shell's `{"dataDir"}` format, or `writeEnvValue` into
   `config.settingsFile` when run from source), and only then switches; the old
   folder is never deleted. Also `directorySize`, `countFiles`, `freeDiskBytes`,
-  `totalDiskBytes`, `StorageRelocationError`, `resetPathsForTest`. The refusals exist
+  `diskSpace`, `StorageRelocationError`, `resetPathsForTest`. The refusals exist
   because the uninstaller's "delete data" removes the folder the pointer names,
   whole; hardening the uninstall scripts themselves is left to the owner (§10.10).
 
@@ -3617,9 +3681,14 @@ Singleton `masterConnection` (an `EventEmitter`).
   image count, last snapshot time, signed-in username) for `panel:report` /
   `panel:describe`; `moveStorage(input)`.
 - `office/src/services/update.service.ts` — `availableUpdate()` (paired only; fetches
-  the office manifest from the Master, **verifies the signature locally** with
-  `verifyManifest`, compares with `isNewer`); `downloadUpdate()` (reuses a file whose
-  size and sha256 match, else streams to `<file>.part` while hashing, renames, prunes
+  the office manifest from the Master for its own channel,
+  `?platform=releasePlatformFor(process.platform, process.versions.electron)`, so
+  the Windows 7 build asks for `win7`; **refuses a manifest for any other platform**
+  (no platform counts as `win32`) with `noRelease` before checking the signature;
+  **verifies the signature locally** with `verifyManifest`; compares with
+  `isNewer`); `downloadUpdate()` (reuses a file whose
+  size and sha256 match, else streams to `<file>.part` while hashing, through
+  `Readable.from` rather than `fromWeb`, which Node 16 lacks, renames, prunes
   older downloads, remembers `preparedInstaller()` for `/api/health`); `updatesDir()`;
   `UpdateError` codes `unpaired`, `unreachable`, `noRelease`, `checksum`, `untrusted`.
 - `office/src/services/backup-export.service.ts` / `backup-restore.service.ts` —
@@ -3634,7 +3703,10 @@ Singleton `masterConnection` (an `EventEmitter`).
   keeps the pointer to the folder on purpose (`config.settingsFile` from source, the
   shell's `config.locationFile` under the desktop app). Also
   `isUnlocked`, `status`, `lock`, `setDeveloperClockForTest`.
-- `office/src/lib/` (8): `office/src/lib/master-fetch.ts` (`masterFetch`),
+- `office/src/lib/` (9): `office/src/lib/master-fetch.ts` (`masterFetch`),
+  `office/src/lib/legacy-globals.ts` (`installLegacyGlobals`, run at import, see
+  §8.2; and `timeoutSignal(ms)`, used in place of `AbortSignal.timeout` by
+  `pairing.service.ts` and `update.service.ts`),
   `office/src/lib/network.ts` (`listLanInterfaces`, `hasNetworkLink`,
   `broadcastTargets`), `office/src/lib/env-file.ts` (`loadEnvFiles`, `writeEnvValue`
   — replaces a line in place, quotes paths with spaces),
@@ -3643,12 +3715,12 @@ Singleton `masterConnection` (an `EventEmitter`).
   `verifyAgainst` with `timingSafeEqual`), `office/src/lib/backup-crypto.ts` (a
   hand-kept duplicate of the Master's), `office/src/lib/release-signature.ts`
   (**byte-identical** to `master/src/lib/release-signature.ts` — `diff` prints
-  nothing — and no test pins that parity; `office/tests` has no test for it or for
-  `office/src/services/update.service.ts`).
+  nothing — and no test pins that parity; `office/tests` has no test for it.
+  `office/tests/update-platform.test.ts` covers `update.service.ts` with it mocked).
 - `office/src/domain/backup.ts` — `BackupValidationError`,
   `assertImportableFormatVersion`, `assertPassphraseStrong`, `summarizeManifest`.
 
-### 8.8 `office/tests` (12 files, 150 `it(` cases, no PostgreSQL)
+### 8.8 `office/tests` (14 files, 165 `it(` cases, no PostgreSQL)
 
 They mock `../src/config/index.js` or use `mkdtemp`, load modules with dynamic
 `await import()`, and several use `supertest` against `createApp()` with a stubbed
@@ -3671,6 +3743,8 @@ does.
 | `office/tests/local-store-restore.test.ts` | 4 | concurrent `restore()`, never-synced, torn file |
 | `office/tests/health-route.test.ts` | 3 | `/api/health` without a session; the gate holds; JSON 404 |
 | `office/tests/dashboard-staleness.test.ts` | 2 | `forCurrentUser` strips figures (DSH-3) |
+| `office/tests/legacy-compat.test.ts` | 8 (+1 `it.each` over 9 patterns) | the Node 16.17 floor: no named `statfs` import, `fromWeb`, `closeAllConnections`, `AbortSignal.any`/`timeout`, `structuredClone` or ES2023 builtins in `office/src` or `shared/src`; `legacy-globals.js` is the entry point's first import; undici stays on 5.x; `installLegacyGlobals` fills only what is missing; `parseWmicDisk`; the `wmic` fallback when `fs.statfs` is missing |
+| `office/tests/update-platform.test.ts` | 8 | the Windows 7 build asks for and downloads `?platform=win7`; a manifest for another platform (or none, which is `win32`) is refused with `noRelease` before `verifyManifest`; Electron 33 and plain Node keep asking for their own platform |
 
 ### 8.9 Where the code and its comments disagree
 
@@ -4047,11 +4121,12 @@ Still true:
 
 | Area | Tracked files | What it is |
 |---|---|---|
-| `electron/` | 34 | one shell for both panels, the Clean Install tool's main process, pure helpers, 12 tests + 2 fixtures |
+| `electron/` | 37 | one shell for both panels, the Clean Install tool's main process, pure helpers, the legacy tsconfig, 13 tests + 2 fixtures |
 | `cleaner/` | 5 | the standalone Clean Install app's config, page and icon |
-| `master/installer/`, `office/installer/` | 3 each | NSIS hook, macOS entitlements, 1024 px icon |
+| `master/installer/`, `office/installer/` | 3, 4 | NSIS hook, macOS entitlements, 1024 px icon; the Office also `installer-legacy.nsh` |
 | `master/electron-builder.yml`, `office/electron-builder.yml` | 1 each | packaging for Windows, macOS and Linux |
-| `tools/` | 11 | release pipeline, build scripts, uninstall scripts, ESLint rule |
+| `office/electron-builder.legacy.yml` | 1 | the Windows 7 Office build (Electron 22, x64 + ia32) |
+| `tools/` | 13 | release pipeline, build scripts, the legacy Electron pin and smoke, uninstall scripts, ESLint rule |
 | `.github/workflows/` | 2 | `ci.yml` and `release.yml` |
 
 Toolchain: Electron 33.4.11 (declared `^33.2.1` in the root devDependencies; the
@@ -4059,9 +4134,10 @@ lockfile and `allowScripts` pin 33.4.11) and electron-builder 25.1.8 (root
 devDependencies). No packaging output is tracked.
 
 ```
-npm run release -- --os <win|mac|linux>          (tools/release.mjs, on the matching OS)
+npm run release -- --os <win|mac|linux|win7>     (tools/release.mjs, on the matching OS; win7 = the Office on Windows)
   assertTarget, assertHostArch (the Master's x64 targets only on an x64 machine)
   build shared -> per panel: build server + web -> tsc electron/ -> copy to <panel>/electron/dist
+     ([win7] tsc -p electron/tsconfig.legacy.json -> copy build/shell-legacy + {"type":"commonjs"})
   -> [mac] fetch the other CPU's native packages -> [master] vendor PostgreSQL
   -> stage <panel>/staging -> electron-builder -> build/<panel>/OrderBook-<Panel>-<v>-Setup.<ext>
      (+ -Standalone.exe on Windows, -Setup.deb on Linux)
@@ -4083,15 +4159,24 @@ or `release.mjs` copies it into `<panel>/electron/dist`, which each panel's
 `package.json` `main` points at. At runtime the shell loads nothing from
 `node_modules` except `electron`; its `@orderbook/shared` imports are type-only.
 
+**The Windows 7 build** compiles the Office's shell files a second time with
+`electron/tsconfig.legacy.json` (CommonJS, into `build/shell-legacy`), because
+Electron 22 loads its main script through the CommonJS loader; `copy-shell.mjs
+--legacy` and `release.mjs --os win7` put it in `office/electron/dist` with a
+`package.json` of `{"type":"commonjs"}` beside it. So `shell.ts`, `office.main.ts`,
+`preload.cts` and `electron/lib/*.ts` stay valid as both module formats and within
+Node 16 (§1.6): no `import.meta`, no `fetch`, no `AbortSignal.timeout`.
+
 | File | Lines | Purpose |
 |---|---|---|
-| `electron/shell.ts` | 999 | `runPanelShell(config)` — the whole panel shell (below) |
+| `electron/shell.ts` | 1050 | `runPanelShell(config)` — the whole panel shell (below) |
 | `electron/master.main.ts` | 37 | Master config: port `PORT` or 4100, `readyTimeoutMs: 180_000` (first-run `initdb`), `autoStartByDefault: true`; passes `ORDERBOOK_DATA_DIR`, `PORT`, `ORDERBOOK_LOG_FILE` (no settings file, §1.5) |
 | `electron/office.main.ts` | 22 | Office config: `OFFICE_PORT` or 4200, `readyTimeoutMs: 60_000`, `autoStartByDefault: false`; `serverEnv: officeServerEnv` from `electron/lib/office-env.ts` |
 | `electron/preload.cts` | 79 | CommonJS preload for both panels: `window.orderbook` with `shellVersion`, `applyUpdate()` (takes no path), `getDataDir`, `setDataDir`, `chooseDirectory`, `getShellSettings` (`openAtLogin`, `logFile`, `standalone`, `systemPackage`), `setShellSettings`, `openLogFolder`, `uninstall({keepData})`, `onMenuCommand` |
 | `electron/cleaner.main.ts` | 285 | the Clean Install tool's main process; shares only `lib/uninstall.ts` and `lib/cleaner/*` |
 | `electron/cleaner.preload.cts` | 50 | `window.cleaner`: `detect`, `chooseBackupFolder`, `backup`, `wipe`, `verify`, `chooseSetupFile`, `checkSetupFile`, `install`, `onLine` |
 | `electron/tsconfig.json` | 14 | extends base, NodeNext, `outDir: dist`, excludes `tests` |
+| `electron/tsconfig.legacy.json` | 16 | the Windows 7 shell as CommonJS (§2.6) |
 
 **What `shell.ts` does, in order:**
 
@@ -4110,12 +4195,17 @@ or `release.mjs` copies it into `<panel>/electron/dist`, which each panel's
 3. **Starts the server** (`startServer`): spawns `process.execPath` with
    `ELECTRON_RUN_AS_NODE=1` on `<serverRoot>/dist/index.js` with an `ipc` stdio
    slot. Packaged `serverRoot` = `process.resourcesPath/panel`; from source, two
-   levels above `electron/dist`. RAM cap and `--max-old-space-size` as in §2.10; a
-   packaged build deletes `DATABASE_URL`. `serverEnv` receives `{dataDir, port,
+   levels above `electron/dist`. The shell's own folder (`here`, which the preload
+   path hangs off) is `<app path>/electron/dist`, or the app path itself when a
+   developer launches `electron <panel>/electron/dist/<panel>.main.js` directly —
+   `app.getAppPath()` rather than `import.meta.url`, which CommonJS lacks. RAM cap as
+   in §2.10; `--max-old-space-size` from `serverHeapMb()` (`electron/lib/memory.ts`);
+   a packaged build deletes `DATABASE_URL`. `serverEnv` receives `{dataDir, port,
    logFile, locationFile}` — `locationFile` is the pointer `dataDir` was read from,
    for a server that moves its own folder (the Office).
 4. **Waits:** polls `http://localhost:<port>/api/health` every 400 ms until
-   `readyTimeoutMs`; `electron/lib/health.ts` sorts each answer into `ready`,
+   `readyTimeoutMs`, through `getJson()` (node:http, 800 ms each — Node 16 has no
+   `fetch`); `electron/lib/health.ts` sorts each answer into `ready`,
    `starting`, `failed`, `wrong-app`, `not-listening`. `ready`/`failed` → load the
    panel; `wrong-app`/timeout → splash message.
 5. **Supervises** (`onServerExit`, `electron/lib/supervisor.ts`): ignores expected
@@ -4165,7 +4255,8 @@ or `release.mjs` copies it into `<panel>/electron/dist`, which each panel's
 
 | File | Purpose |
 |---|---|
-| `electron/lib/health.ts` | `interpretHealth(body, expect)` — anything not positively healthy is `not-listening` |
+| `electron/lib/health.ts` | `interpretHealth(body, expect)` — anything not positively healthy is `not-listening`; `getJson(url, timeoutMs)` — a node:http GET whose body is parsed as JSON whatever the status, `null` (never a rejection) for a refused port, a non-JSON body or a timeout |
+| `electron/lib/memory.ts` | `serverHeapMb(totalMb, panel, arch)` — the server's `--max-old-space-size`: 70 % of the panel's RAM share (Office 40 %, Master 60 %), floor 2048 MB (the Office 1024 MB on a PC with 4.5 GB or less), ceiling 4096 MB, 1024 MB for an `ia32` process |
 | `electron/lib/supervisor.ts` | `isExpectedExit`, `isUpdating`, `pruneRestarts`, `canRestart`; `UPDATE_WINDOW_MS` 60 000, `RESTART_LIMIT` 3, `RESTART_WINDOW_MS` 10 min |
 | `electron/lib/installer.ts` | `installerExtension` (`.dmg` on darwin, `.AppImage` on linux — compared case-blind — `.exe` on Windows; linux used to fall through to `.exe`, so every AppImage was refused), `updateMethod(platform, {standalone, appImage})` → `installer` / `appimage` / `standalone` / `system-package`, `isInside` (containment via `path.relative`), `resolveInstaller` (containment, extension check), `digestOf` (streamed SHA-256), `approveInstaller` (copy, then hash, then compare) |
 | `electron/lib/appimage.ts` | added 2026-09-25: `detectAppImage` (trusts `APPIMAGE` only when this executable runs from inside `APPDIR`, compared by real path, so variables inherited from another AppImage cannot point the shell at somebody else's program), `replaceAppImage` (verified copy written beside the target, created exclusively, `chmod 0755`, fsync, atomic rename), `relaunchCommand`, `relaunchArguments` (keeps `--appimage-extract-and-run`, detected from `APPDIR`'s `appimage_extracted_` folder, unless `APPIMAGE_EXTRACT_AND_RUN` is set), `startDetached` (resolves once the relaunch is running, since `spawn` reports `ENOENT`/`EACCES` asynchronously) |
@@ -4197,7 +4288,12 @@ both `installer.nsh`), `electron/tests/cleaner-setup-file.test.ts` (17),
 `electron/tests/fixtures/linux-dry-run.txt` and
 `electron/tests/fixtures/windows-dry-run.txt`), `electron/tests/supervisor.test.ts`
 (10), `electron/tests/cleaner-backup.test.ts` (7), `electron/tests/health.test.ts`
-(7), `electron/tests/standalone.test.ts` (6). Grown or added on 2026-09-25:
+(7; Phase 0 added five `getJson` cases against a local server: JSON, a JSON 503,
+HTML, a refused port, a stall), `electron/tests/standalone.test.ts` (6). Phase 0 also
+added `electron/tests/memory.test.ts` (`serverHeapMb` at 3, 4, 4.5, 8 and 64 GB and
+on ia32) and grew `uninstall.test.ts` with the PowerShell 2.0 checks (a static list
+of what 3.0+ added, the six parameter names, and a `-DryRun` on win32). Grown or
+added on 2026-09-25:
 `electron/tests/installer.test.ts` (the `.AppImage` extension and `updateMethod`),
 `electron/tests/appimage.test.ts` (detection, replacement, relaunch; the replacement
 block is skipped on win32, which has no 0755 mode, symlinks or rename over an open
@@ -4211,7 +4307,8 @@ exercised by `office/tests/storage-path.test.ts`.
 
 ### 10.2 Running without a package
 
-There is no npm script that launches the Electron shell from source. `npm run
+There is no npm script that launches the Electron shell from source (`npm run
+smoke:legacy` launches the Windows 7 one, §10.5). `npm run
 build:shell` compiles it and copies it to `master/electron/dist` and
 `office/electron/dist`, which is what each panel's `package.json` `main` names; from
 source, `serverRoot` is two levels above `electron/dist` (the panel folder), so the
@@ -4273,22 +4370,35 @@ targets equal to what `release.mjs` picks up.
   `-Panel master -LeftoversOnly -Yes` (+ `-KeepData` unless yes).
 - `office/installer/installer.nsh` — the same without firewall rules
   (`$TEMP\OrderBook-uninstall-office`, `-Panel office`).
+- `office/electron-builder.legacy.yml` — **the Windows 7 Office build.** Written out
+  in full (not an `extends`, so the invariants test can read it): the same `appId`,
+  `productName`, `directories`, `files`, `extraResources`, icon and NSIS settings as
+  `office/electron-builder.yml`; `win` only, `nsis` and `portable` each for
+  `[x64, ia32]` in one file; artifacts `OrderBook-Office-Win7-${version}-Setup.exe`
+  and `…-Standalone.exe`; `include: installer/installer-legacy.nsh`. Electron 22.3.27
+  comes from `release.mjs` (`tools/legacy-electron.mjs`), not the yml.
+- `office/installer/installer-legacy.nsh` — `!include "${__FILEDIR__}\installer.nsh"`
+  (by its own folder: electron-builder's template folder has an `installer.nsh` too),
+  plus `customInit`: a warning, not a refusal, when `$SYSDIR\ucrtbase.dll` is missing
+  (update KB2999226, the Universal C Runtime the build expects on Windows 7).
 - `master/installer/entitlements.mac.plist`, `office/installer/entitlements.mac.plist`
   — `allow-jit`, `allow-unsigned-executable-memory`, `disable-library-validation`,
   `allow-dyld-environment-variables`, `network.server`, `network.client`.
 - `master/installer/icon.png` (`#111318`), `office/installer/icon.png` (`#1c2230`).
 
-### 10.5 `tools/` (11 files)
+### 10.5 `tools/` (13 files)
 
 | File | Lines | Purpose |
 |---|---|---|
-| `tools/release.mjs` | 877 | the release pipeline (§10.6) |
+| `tools/release.mjs` | 966 | the release pipeline (§10.6) |
 | `tools/build-web.mjs` | 90 | the web apps' `build` (§2.3) |
-| `tools/copy-shell.mjs` | 26 | copies `electron/dist` into `master/electron/dist` and `office/electron/dist` |
+| `tools/copy-shell.mjs` | 38 | copies `electron/dist` into `master/electron/dist` and `office/electron/dist`; `--legacy` copies `build/shell-legacy` into `office/electron/dist` only and writes the `{"type":"commonjs"}` marker |
+| `tools/legacy-electron.mjs` | 19 | `LEGACY_ELECTRON = '22.3.27'` and `LEGACY_NODE = '16.17.1'`, the one pin for the Windows 7 build. Not an npm dependency: an `electron` alias would put the 22 binary behind `npx electron` and add a 100 MB download to every `npm ci` |
+| `tools/legacy-smoke.mjs` | 623 | `npm run smoke:legacy`: builds shared, `office/dist` and the CommonJS shell stage; downloads Node 16.17.1 (checked against nodejs.org's SHASUMS256) and Electron 22.3.27 (`@electron/get`, checked the same way) into `.tmp/legacy-runtime`; runs `office/dist` on each against a stub Master on loopback — pairing, a product CSV upload passed on as multipart, an update download on the runtime's channel (`win32` on plain Node, `win7` on Electron 22 on Windows), `/api/connection`, the event stream, `/api/storage/path`'s free space, a shutdown with the stream open; then launches the Electron 22 main process on `office.main.js` through a wrapper app with a scratch `appData`/`userData` and `--in-process-gpu`, checks the marker and Chromium 108, and waits for the shell's server. Puts the ESM shell back afterwards when that is what it found |
 | `tools/i18n-sync.mjs` | 129 | §3.7 |
 | `tools/make-icons.mjs` | 71 | renders the three `installer/icon.png` files; run as `npm run icons` (root script) |
 | `tools/make-release-key.mjs` | 104 | Ed25519 pair; private PEM (0600) to `ORDERBOOK_RELEASE_KEY_DIR` (refuses the repo); public key (base64 DER SPKI) appended to `TRUSTED_RELEASE_KEYS` |
-| `tools/uninstall/uninstall-orderbook.ps1` | 454 | Windows sweep: `-Panel master\|office\|all`, `-KeepData`, `-Yes`, `-LeftoversOnly`, `-DryRun`, `-Elevated`; self-elevates unless dry-run; stops processes by path, never by name; removes install folders, profiles, caches, shortcuts, registry entries, firewall rules and (without `-KeepData`) data folders and the releases drop box |
+| `tools/uninstall/uninstall-orderbook.ps1` | 491 | Windows sweep: `-Panel master\|office\|all`, `-KeepData`, `-Yes`, `-LeftoversOnly`, `-DryRun`, `-Elevated`; self-elevates unless dry-run; stops processes by path, never by name; removes install folders, profiles, caches, shortcuts, registry entries, firewall rules and (without `-KeepData`) data folders and the releases drop box. **PowerShell 2.0** since Phase 0 (Windows 7 ships it): the pointer is read with `JavaScriptSerializer`, sets are hashtables, folders are picked by `PSIsContainer`, the script path is `$MyInvocation.MyCommand.Path`; a shortcut root it may not read (another user's, during a non-elevated dry run) is skipped with a `[skip]` line instead of ending the run |
 | `tools/uninstall/uninstall-orderbook.sh` | 258 | macOS and Linux sweep (`uname`): `--panel`, `--keep-data`, `--yes`, `--dry-run`; `rm` then `sudo`; knows the `.deb` paths |
 | `tools/uninstall/README.md` | 107 | flag table; the flag spelling is a contract |
 | `tools/eslint-rules/index.js`, `tools/eslint-rules/no-untranslated-jsx-text.js` | — | §2.7 |
@@ -4299,7 +4409,7 @@ IPC), both NSIS uninstallers, and the Clean Install tool.
 ### 10.6 `tools/release.mjs`, step by step
 
 Usage `npm run release [-- X.Y.Z] [--panel master|office|cleaner] [--os
-win|mac|linux]`. `RELEASES_DIR` = `ORDERBOOK_RELEASES_DIR` or
+win|mac|linux|win7]`. `RELEASES_DIR` = `ORDERBOOK_RELEASES_DIR` or
 `<filesystem root>/OrderBook-Releases`. `PANELS`: `master` (`vendorPostgres: true`,
 `extras: ['assets']`, `native: true` — it stages binaries built for one
 architecture), `office`, `cleaner` (`serverless`, `publish: false`,
@@ -4310,6 +4420,20 @@ architecture), `office`, `cleaner` (`serverless`, `publish: false`,
 | `win` | `--win` | `win32` | `exe` | `x64` | `windows-x64` | win32 | `Standalone.exe` |
 | `mac` | `--mac` | `darwin` | `dmg` | — (`universal: true`) | `darwin-x64`, `darwin-arm64` | darwin | — |
 | `linux` | `--linux` | `linux` | `AppImage` | `x64` | `linux-x64` (until 2026-09-25, the build host's arch) | linux | `Setup.deb` |
+| `win7` | `--win` | `win7` | `exe` | `x64` (`archs: ['x64','ia32']`) | — | win32 | `Standalone.exe` |
+
+`win7` is the Windows 7 Office build and carries the optional fields: `panels:
+['office']` (the default panel list for the target; `--panel master` or `cleaner` is
+refused, naming Windows 10 and PostgreSQL 17), `config:
+'electron-builder.legacy.yml'`, `electron: LEGACY_ELECTRON`
+(`tools/legacy-electron.mjs`, passed as `electronVersion` instead of the installed
+33), `legacyShell: true` (step 6.2 compiles `electron/tsconfig.legacy.json` into a
+fresh `build/shell-legacy`, copies it into `office/electron/dist` and writes
+`{"type":"commonjs"}` beside it) and `tag: 'Win7'` (every file name becomes
+`OrderBook-Office-Win7-<v>-…`). `--fast` is allowed for any `--win` target and, for
+one with `archs`, names them again (`--x64 --ia32`), because a target given on the
+command line drops the yml's arch list. Its manifest is `latest-win7.json`; no
+`latest.json` shim.
 
 1. **`assertTarget()`** refuses an unknown `--os` or a target not buildable on this
    OS (no cross-compile). Failures print `Release failed: …` and exit 1.
@@ -4369,13 +4493,15 @@ architecture), `office`, `cleaner` (`serverless`, `publish: false`,
 
 ### 10.7 GitHub workflows
 
-**`.github/workflows/ci.yml`** (41 lines) — on push to any branch and every PR; one
-job `verify` on ubuntu-latest, Node 22, npm cache: apt `postgresql-16`,
+**`.github/workflows/ci.yml`** (68 lines) — on push to any branch and every PR. Job
+`verify` on ubuntu-latest, Node 22, npm cache: apt `postgresql-16`,
 `ORDERBOOK_PG_BIN=/usr/lib/postgresql/16/bin`, `npm ci`, `build:shared`, `lint`,
-`typecheck`, `test`, `build`. The runner is not root, so integration suites run. CI
+`typecheck`, `test`, `build`. The runner is not root, so integration suites run. Job
+`legacy-runtime` on windows-latest, Node 22: `actions/cache` of `.tmp/legacy-runtime`
+keyed on `tools/legacy-electron.mjs`, `npm ci`, `npm run smoke:legacy` (§10.5). CI
 packages nothing; the Release workflow runs no tests.
 
-**`.github/workflows/release.yml`** (331 lines) — on push to `main` and
+**`.github/workflows/release.yml`** (337 lines) — on push to `main` and
 `workflow_dispatch` (boolean `publish`, default false); `contents: write`.
 
 - **`check`** (ubuntu) — `released` = `gh release view v<version> --repo "$REPO"`
@@ -4406,7 +4532,8 @@ packages nothing; the Release workflow runs no tests.
   release published from `workflow_dispatch` gets empty `--notes` and an empty
   `ORDERBOOK_RELEASE_NOTES`.
 - **`build`** — matrix `win`/windows-latest, `mac`/macos-latest,
-  `linux`/ubuntu-latest, `fail-fast: false`: checkout, Node 22, `npm ci`, write the
+  `linux`/ubuntu-latest, `win7`/windows-latest (the Windows 7 Office build; its
+  `latest-win7.json` is uploaded as `latest-office-win7.json`), `fail-fast: false`: checkout, Node 22, `npm ci`, write the
   key to `$RUNNER_TEMP/release.pem` if set, `npm run release -- --os <os>` with
   `ORDERBOOK_RELEASES_DIR=<runner.temp>/release-out`, `ORDERBOOK_RELEASE_KEY`,
   `ORDERBOOK_RELEASE_KEY_ID=${{ vars.RELEASE_KEY_ID }}`, `ORDERBOOK_RELEASE_NOTES`;
@@ -4434,7 +4561,11 @@ packages nothing; the Release workflow runs no tests.
    download to `<file>.part` with a byte cap, rename → write the manifest with
    `writeDurable` under **the names `release.mjs` writes**: `latest-<platform>.json`,
    plus `latest.json` for a Windows build → sweep superseded
-   `OrderBook-(Master|Office)-*-Setup.(exe|dmg|AppImage)` files. Fixed 2026-09-25:
+   `OrderBook-(Master|Office)-*-Setup.(exe|dmg|AppImage)` files. The Windows 7 Office
+   build is its own platform, `win7` (`latest-office-win7.json` on GitHub,
+   `latest-win7.json` in the folder): `sameOs` compares the extension and the
+   `/^OrderBook-\w+-Win7-/i` marker, so a win32 sync and a win7 sync never sweep each
+   other's setup files or debris. Fixed 2026-09-25:
    - the setup file's body is no longer under the 15 s clock (a 150 MB download was
      cut off every time); it gives up after a minute of silence
      (`DOWNLOAD_STALL_MS`) or three hours in all (`DOWNLOAD_LIMIT_MS`);
@@ -4469,9 +4600,12 @@ packages nothing; the Release workflow runs no tests.
    `approveInstaller`, then runs the installer (stop the server, `shell.openPath`,
    quit) or replaces the AppImage (§10.1 step 9).
 4. **Office update over the LAN** (the Office never talks to GitHub):
-   `availableUpdate()` → `GET /api/updates/office/latest?platform=<os>` on the Master
+   `availableUpdate()` → `GET /api/updates/office/latest?platform=<channel>` on the
+   Master, where the channel is `releasePlatformFor(process.platform,
+   process.versions.electron)` (`win7` for Electron 22 on Windows); a manifest for
+   another channel is refused before its signature is checked
    (`requirePanel`) → **signature verified on the panel** → `isNewer`;
-   `downloadUpdate()` streams `GET /api/updates/office/download?platform=<os>` into
+   `downloadUpdate()` streams `GET /api/updates/office/download?platform=<channel>` into
    `<dataDir>/updates/<file>.part`, hashing; then the shell applies it as in step 3
    with `installerDir = updatesDir()`.
 5. **Signatures and the draft rule:** Ed25519 over `canonicalManifestPayload`
@@ -5104,17 +5238,17 @@ Each flow names the files and functions in the order they run. "Master" means
 
 ### 12.1 Where the tests are
 
-167 tracked files in test directories, 160 of them test files (2015 tests in
+201 files in test directories, 193 of them test files (2593 tests in
 the last full run). **No test file exists outside these five directories;
 `master/web` and `office/web` have none of their own** — `ui/tests` boots both
 (§4.11).
 
 | Directory | Tracked | Test files | Other |
 |---|---|---|---|
-| `master/tests` | 106 | 104 (48 `*.integration.test.ts`) | `master/tests/helpers/db.ts`, `master/tests/helpers/fixtures.ts` |
+| `master/tests` | 107 | 105 (48 `*.integration.test.ts`) | `master/tests/helpers/db.ts`, `master/tests/helpers/fixtures.ts` |
 | `office/tests` | 12 | 12 | — |
 | `shared/tests` | 16 | 15 | `shared/tests/activity-tokens.lock.json` |
-| `ui/tests` | 19 | 17 (14 `.tsx`, 3 `.ts`) | `ui/tests/panel-harness.ts`, `ui/tests/tsconfig.json` |
+| `ui/tests` | 20 | 18 (14 `.tsx`, 4 `.ts`) | `ui/tests/panel-harness.ts`, `ui/tests/tsconfig.json` |
 | `electron/tests` | 14 | 12 | two dry-run fixtures |
 
 How the suite runs (config, environments, timeouts, coverage): §2.8. Typecheck of
@@ -5152,7 +5286,7 @@ They read files and assert on the text; they need no database and cannot skip.
 
 | File | Reads | Protects |
 |---|---|---|
-| `master/tests/packaging-invariants.test.ts` | `tools/release.mjs`, both panel ymls, root `allowScripts`, `tools/uninstall/uninstall-orderbook.sh` | three `TARGETS` with literal per-arch PostgreSQL packages; `vendorPostgres` uses `RELEASE_TARGET.postgres`; every `@embedded-postgres` package in `allowScripts`; mac vendors both darwin packages; `verbatimSymlinks: true` in `vendorPostgres` and `stage`; `ensureUniversalPackages()` before `vendorPostgres()`; `win:`/`mac:`/`linux:` blocks with `artifactName` ending `.${ext}`; the yml targets, read in every shape a target can be written, equal to what `release.mjs` picks up (so the mac `.zip` cannot come back unnoticed); `x64ArchFiles`; `executableName: orderbook-<panel>`; the host-arch refusal, run as an arm64 machine against what `npm ls` finds native in each panel; the `.deb` sweep. **The mac-build guard.** |
+| `master/tests/packaging-invariants.test.ts` | `tools/release.mjs`, both panel ymls, root `allowScripts`, `tools/uninstall/uninstall-orderbook.sh` | three `TARGETS` with literal per-arch PostgreSQL packages; `vendorPostgres` uses `RELEASE_TARGET.postgres`; every `@embedded-postgres` package in `allowScripts`; mac vendors both darwin packages; `verbatimSymlinks: true` in `vendorPostgres` and `stage`; `ensureUniversalPackages()` before `vendorPostgres()`; `win:`/`mac:`/`linux:` blocks with `artifactName` ending `.${ext}`; the yml targets, read in every shape a target can be written, equal to what `release.mjs` picks up (so the mac `.zip` cannot come back unnoticed); `x64ArchFiles`; `executableName: orderbook-<panel>`; the host-arch refusal, run as an arm64 machine against what `npm ls` finds native in each panel; the `.deb` sweep. Since Phase 0 also the fourth target, `win7`: Office only (the Master and the cleaner refused by name), any Windows machine, its yml (`office/electron-builder.legacy.yml`: same `appId`, `productName`, data rule and NSIS hook as the main Office yml, `include` of `installer-legacy.nsh` with the UCRT check), its `x64`+`ia32` archs and `Win7`-tagged file names, the CommonJS shell stage with its `{"type":"commonjs"}` marker in `build()` and `copy-shell.mjs`, and `LEGACY_ELECTRON` from `tools/legacy-electron.mjs` matching `22.3.x`. **The mac-build guard.** |
 | `master/tests/web-reachability.test.ts` | both `App.tsx` and `api.ts` | every Tab reachable (`NAV_LESS`); every `api.*` member has a caller or an `ALLOWED_UNCALLED` reason, none stale |
 | `master/tests/screen-reachability.test.ts` | both `App.tsx`, `COMMANDS` | nav entries, `ScreenSpec`s and the Tab union agree; one-panel screens need a `PANEL_ONLY` reason; every `command.tab` resolves |
 | `master/tests/migration-registry.test.ts` | `master/src/db/migrations/` | §6.1 |
@@ -5173,6 +5307,7 @@ They read files and assert on the text; they need no database and cannot skip.
 | `master/tests/socket-contract.test.ts` | `socket.ts`, `master/src`, `office/src` | every server→client event is emitted by the Master and handled by the Office |
 | `master/tests/panel-naming.test.ts` (mixed) | `responder.ts` | `nextPanelName` arithmetic; discovery asks the same question as pairing |
 | `master/tests/operator-scripts.test.ts` | root and `master/package.json`, the operator CLIs | the root `migrate` forwards its arguments; `reload:catalog` (`--catalogue` since catalogue v2), `wipe:business`, `seed:parties` and `seed:demo-parties` (`--demo-parties`) pass the flags their names promise; no money wording in the operator CLIs (added 2026-09-25) |
+| `master/tests/legacy-floor.test.ts` | the tsconfigs, both `vite.config.ts`, every `.css` under `ui/src` and both `web/src`, `electron/tsconfig.legacy.json`, `eslint.config.js` (through the ESLint API) | the Win7 floors (1.3 Phase 0): every `lib` stops at ES2022 (+ DOM for the web code); the Office web build targets `chrome108` alone and the Master's list names `chrome108` and no newer Chrome; no CSS above Chromium 108 (comments stripped); the legacy shell tsconfig compiles to CommonJS; a snippet above each floor is flagged in `office/src`, `shared/src`, `ui/src`, both `web/src` and the shell, and nothing is flagged in `master/src` or `electron/master.main.ts` |
 | `master/tests/tooling-config.test.ts` | `eslint.config.js` (imported), `package.json`, `vitest.config.ts`, the installed packages' manifests | every swept file exists; the coverage provider `test:coverage` asks for is installed at Vitest's version (added 2026-09-25) |
 | `master/tests/web-catalogue-text.test.ts` | both web apps' sources | error fallbacks and the api clients' timeout/cancel texts come from the catalogue, in the forms they are written in (added 2026-09-25) |
 
@@ -5453,7 +5588,7 @@ matches 2,074 → 2,122; `t` from `@orderbook/ui` 42 → 44 files and from `./i1
 | 7 | `rem()` | `ui/src/rem.ts` | 30 files via `@orderbook/ui`, 6 in `ui/src`; ~253 `rem(` matches | px → rem so the UI scales; enforced by `ui-conventions` |
 | 8 | `nextHlc()` | `master/src/repositories/identity.repository.ts` | 13 `master/src` files; `identity.repository.ts` has 28 importers | stamps the HLC on every Master-started write |
 | 9 | Integration harness | `master/tests/helpers/fixtures.ts`, `master/tests/helpers/db.ts` | all 48 integration files (`testActor` 41) | shared PostgreSQL fixtures; `canRunIntegrationTests` is the skip switch |
-| 10 | `vitest` | root `package.json` | 160 test files + `vitest.config.ts` | the runner |
+| 10 | `vitest` | root `package.json` | 193 test files + `vitest.config.ts` | the runner |
 
 Smaller confirmed hubs: `formatDateTime()` (`ui/src/format.ts`, 17 importers),
 `MessageKey` (`shared/src/i18n/keys.ts`, 17 via the package), `requireAuth()`
@@ -5601,9 +5736,9 @@ also imports `masterConnection`.
 | Change sync merge rules | `shared/src/sync/merge.ts`, `MERGEABLE_COLUMNS` in `shared/src/domain/columns.ts`, `sync.service.ts#mergeUpdate` | `shared/tests/sync.test.ts`, `master/tests/sync.integration.test.ts` |
 | Change the backup format | `shared/src/protocol/backup.ts`, **both** `master/src/lib/backup-crypto.ts` and `office/src/lib/backup-crypto.ts`, `master/src/repositories/backup.repository.ts` | `master/tests/backup-crypto.test.ts`, `master/tests/backup-domain.test.ts`, `master/tests/backup-chain.integration.test.ts`, `master/tests/backup-sequences.integration.test.ts`, `master/tests/password-vault-invariants.test.ts` |
 | Change how PostgreSQL is found or started | `master/src/db/postgres-server.ts` (`candidateBinDirs`), and `vendorPostgres()` in `tools/release.mjs` for the vendor layout | `master/tests/postgres-launcher.test.ts`, `master/tests/packaging-invariants.test.ts` |
-| Change the release pipeline, packaging or the mac build | `tools/release.mjs` (`TARGETS`, `besides`, `native`), `master/electron-builder.yml`, `office/electron-builder.yml`, `cleaner/electron-builder.yml`, `.github/workflows/release.yml`, root `allowScripts`; every yml target must be one `release.mjs` publishes | `master/tests/packaging-invariants.test.ts`, `master/tests/release-signed-fields.test.ts`, `master/tests/release-workflow.test.ts`, `master/tests/release-folder-besides.test.ts` |
+| Change the release pipeline, packaging or the mac build | `tools/release.mjs` (`TARGETS`, `besides`, `native`), `master/electron-builder.yml`, `office/electron-builder.yml`, `office/electron-builder.legacy.yml` (the Windows 7 build, kept in step with the main Office yml), `cleaner/electron-builder.yml`, `.github/workflows/release.yml`, root `allowScripts`; every yml target must be one `release.mjs` publishes | `master/tests/packaging-invariants.test.ts`, `master/tests/release-signed-fields.test.ts`, `master/tests/release-workflow.test.ts`, `master/tests/release-folder-besides.test.ts` |
 | Change which fields a release signature covers | `SIGNED_MANIFEST_FIELDS` in `shared/src/domain/release-signature.ts` **and** `SIGNED_FIELDS` in `tools/release.mjs` together; the verifier is duplicated byte for byte in `master/src/lib/release-signature.ts` and `office/src/lib/release-signature.ts` — change both | `master/tests/release-signed-fields.test.ts`, `master/tests/release-signature.test.ts` (Master copy only; nothing pins the two copies equal) |
-| Change what an uninstall removes | `tools/uninstall/uninstall-orderbook.ps1` and `tools/uninstall/uninstall-orderbook.sh` — one copy, four callers; if you touch a flag, also `electron/lib/uninstall.ts` and both `installer/installer.nsh` | `electron/tests/uninstall.test.ts` (pins the spelling in five places), `master/tests/packaging-invariants.test.ts`, `electron/tests/cleaner-detect.test.ts` |
+| Change what an uninstall removes | `tools/uninstall/uninstall-orderbook.ps1` (PowerShell 2.0 only: Windows 7 runs it) and `tools/uninstall/uninstall-orderbook.sh` — one copy, four callers; if you touch a flag, also `electron/lib/uninstall.ts` and both `installer/installer.nsh` | `electron/tests/uninstall.test.ts` (pins the spelling in five places), `master/tests/packaging-invariants.test.ts`, `electron/tests/cleaner-detect.test.ts` |
 | Change the desktop shell | `electron/shell.ts` and the pure helpers in `electron/lib/` (keep logic there so it stays testable); a server's environment in its entrypoint or `electron/lib/office-env.ts`, and only variables that server reads; anything that names the log uses `openLogPath()` | `electron/tests/*` (`health`, `supervisor`, `installer`, `appimage`, `standalone`, `uninstall`, `office-env`, `server-env`, `shell-log`) |
 | Change the update path | `master/src/services/update.service.ts`, `master/src/services/github-releases.ts`, `office/src/services/update.service.ts`, `office/src/lib/release-signature.ts`, `master/src/http/routes/update.routes.ts`, `electron/lib/installer.ts`, `electron/lib/appimage.ts` | `master/tests/updates.test.ts`, `master/tests/github-releases.test.ts`, `master/tests/release-folder-besides.test.ts`, `electron/tests/installer.test.ts`, `electron/tests/appimage.test.ts` (no test covers `office/src/services/update.service.ts` or the Office verifier) |
 | Add a workspace or directory | root `package.json` `workspaces`, `vitest.config.ts` include, `tsconfig.test.json`, `eslint.config.js` blocks; a row in §2.1 of this file | `shared/tests/version.test.ts` (version parity), `master/tests/tooling-config.test.ts` (the swept-files list names real files) |

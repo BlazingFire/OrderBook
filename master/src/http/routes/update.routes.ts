@@ -49,9 +49,13 @@ import { requirePanel } from '../middleware/require-panel.js';
  * paired panel, and a panel that lies about its own OS only breaks its own
  * update. A panel that sends nothing is one built before this existed, and
  * every one of those is Windows.
+ *
+ * `win7` is the legacy Electron 22 Office line. It is answered from
+ * `latest-win7.json` only: `readManifest` refuses the plain Windows
+ * `latest.json` it falls back to, because that manifest says `win32`.
  */
 function askingPlatform(value: unknown): ReleasePlatform {
-  return value === 'darwin' || value === 'linux' || value === 'win32'
+  return value === 'darwin' || value === 'linux' || value === 'win32' || value === 'win7'
     ? value
     : LEGACY_RELEASE_PLATFORM;
 }

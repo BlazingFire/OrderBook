@@ -8,9 +8,13 @@
  * the reading end.
  */
 
-import { describe, expect, it } from 'vitest';
+import { once } from 'node:events';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 
-import { interpretHealth } from '../lib/health.js';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { getJson, interpretHealth } from '../lib/health.js';
 
 describe('interpreting a panel health response', () => {
   it('reads a live Master as ready', () => {
@@ -95,5 +99,69 @@ describe('interpreting a panel health response', () => {
     // An older installed panel, before the shared contract. Forward compatible
     // in the direction that matters: a missing `boot` must not mean "wait".
     expect(interpretHealth({ status: 'ok' }, 'master').kind).toBe('ready');
+  });
+});
+
+describe('getJson, the node:http health read', () => {
+  let server: Server;
+  let base: string;
+
+  beforeAll(async () => {
+    server = createServer((req, res) => {
+      if (req.url === '/json') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'ok', panel: 'office' }));
+      } else if (req.url === '/starting') {
+        // A panel still booting answers with an error status and a real body.
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'starting' }));
+      } else if (req.url === '/html') {
+        res.writeHead(404, { 'Content-Type': 'text/html' });
+        res.end('<!doctype html><title>Not found</title>');
+      } else if (req.url === '/stall') {
+        // Headers and half a body, then nothing.
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.write('{"status":');
+      }
+      // Anything else: never answer at all.
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+
+  afterAll(async () => {
+    server.closeAllConnections();
+    server.close();
+    await once(server, 'close');
+  });
+
+  it('returns the parsed body of a JSON answer', async () => {
+    expect(await getJson(`${base}/json`, 2000)).toEqual({ status: 'ok', panel: 'office' });
+  });
+
+  it('parses the body whatever the status, as fetch did', async () => {
+    expect(await getJson(`${base}/starting`, 2000)).toEqual({ status: 'starting' });
+  });
+
+  it('returns null for an HTML body', async () => {
+    expect(await getJson(`${base}/html`, 2000)).toBeNull();
+  });
+
+  it('returns null when nothing listens on the port', async () => {
+    const closed = createServer();
+    closed.listen(0, '127.0.0.1');
+    await once(closed, 'listening');
+    const { port } = closed.address() as AddressInfo;
+    closed.close();
+    await once(closed, 'close');
+    expect(await getJson(`http://127.0.0.1:${port}/`, 2000)).toBeNull();
+  });
+
+  it('returns null when the answer never comes, or stops halfway, within the timeout', async () => {
+    const started = Date.now();
+    expect(await getJson(`${base}/silent`, 150)).toBeNull();
+    expect(await getJson(`${base}/stall`, 150)).toBeNull();
+    expect(Date.now() - started).toBeLessThan(1500);
   });
 });

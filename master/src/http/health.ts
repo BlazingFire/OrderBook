@@ -21,7 +21,7 @@ import type { PanelHealth } from '@orderbook/shared';
 import { bootStatus } from '../boot-status.js';
 import { config } from '../config/index.js';
 import { appVersion } from '../lib/app-version.js';
-import { hasNetworkLink, listLanInterfaces } from '../lib/network.js';
+import { hasNetworkLink, isLoopback, listLanInterfaces } from '../lib/network.js';
 import { currentSeq } from '../realtime/change-ring.js';
 import { socketCounts } from '../realtime/hub.js';
 import { sessionCount } from '../services/auth.service.js';
@@ -35,11 +35,6 @@ import { preparedInstaller, releaseDirFor } from '../services/update.service.js'
  * readable by anything on the shop LAN. Where the company's database lives on
  * disk is not something to hand out to the network.
  */
-function isLoopback(req: Request): boolean {
-  const address = req.socket.remoteAddress;
-  return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
-}
-
 function localOnly(
   req: Request,
 ): Pick<PanelHealth, 'dataDir' | 'logFile' | 'installerDir' | 'installer' | 'runtime'> {

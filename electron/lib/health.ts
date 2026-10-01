@@ -13,6 +13,8 @@
  * what the splash is for.
  */
 
+import http from 'node:http';
+
 import type { PanelHealth } from '@orderbook/shared';
 
 export type HealthOutcome =
@@ -61,4 +63,38 @@ export function interpretHealth(body: unknown, expect: 'master' | 'office'): Hea
 
   const step = boot && typeof boot.step === 'string' ? boot.step : 'Starting…';
   return { kind: 'starting', step };
+}
+
+/**
+ * GET `url` over node:http and parse the body as JSON, whatever the status:
+ * a starting panel answers its health route with a non-200 and a body that
+ * still says what it is doing. Resolves `null`, and never rejects, when the
+ * port refuses, the body is not JSON or no full answer arrives within
+ * `timeoutMs`.
+ *
+ * node:http rather than fetch, because the Windows 7 build runs this on
+ * Electron 22, whose Node 16 has no fetch without a flag.
+ */
+export function getJson(url: string, timeoutMs: number): Promise<unknown> {
+  return new Promise((resolve) => {
+    const request = http.get(url, (response) => {
+      const chunks: Buffer[] = [];
+      response.on('data', (chunk: Buffer) => chunks.push(chunk));
+      response.on('end', () => {
+        clearTimeout(timer);
+        try {
+          resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+        } catch {
+          resolve(null);
+        }
+      });
+      // A stall cut short by the timer ends here rather than at 'end'.
+      response.on('close', () => resolve(null));
+    });
+    const timer = setTimeout(() => request.destroy(), timeoutMs);
+    request.on('error', () => {
+      clearTimeout(timer);
+      resolve(null);
+    });
+  });
 }

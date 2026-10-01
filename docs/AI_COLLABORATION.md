@@ -190,6 +190,45 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-02 - 1.3 Phase 0: Windows 7 legacy Office build and runtime floors (Claude)
+
+`office/`, `electron/`, `ui/`, both `web/`, `shared/src/domain/version.ts`, `master/src` (update channel, health,
+network), `tools/`, `eslint.config.js`, both workflows, tests, docs (`WINDOWS7.md`, `UPDATES.md`, `STRUCTURE.md`).
+- **Win7 Office build:** a fourth release target `win7` — the Office only, Electron 22.3.27
+  (`tools/legacy-electron.mjs`), x64 and ia32, `office/electron-builder.legacy.yml` with a UCRT (KB2999226) check
+  in `installer-legacy.nsh`, file names tagged `Win7`, its own update channel `latest-win7.json` (a Win7 panel
+  refuses a manifest for any other platform; the Master serves the channel). The Master stays Windows 10+.
+- **Office server on Node 16.17:** undici 5.29.0 fills fetch/FormData/Headers/Request/Response and Blob only where
+  missing (`office/src/lib/legacy-globals.ts`, the entry point's first import); tracked sockets replace
+  `closeAllConnections`; `Readable.from` replaces `Readable.fromWeb`; `fs.statfs` is feature-detected with a
+  `wmic` fallback, and the panel report asks for free and total disk once (`diskSpace`).
+- **Shell:** compiled to CommonJS by `electron/tsconfig.legacy.json` (`build:shell:legacy`, a
+  `{"type":"commonjs"}` marker), health polled over `node:http`, no `import.meta`, a 1 GB heap ceiling on ia32
+  (`electron/lib/memory.ts`).
+- **Web:** `anySignal()` in `@orderbook/ui` replaces `AbortSignal.any`; the Office UI builds for `chrome108`;
+  the Master UI keeps Vite's default list with `chrome108` added, so other LAN browsers keep their down-levelling.
+- **Guards:** `floor/office-server`, `floor/shared`, `floor/web` and `floor/shell` ESLint blocks (NODE16, SHELL,
+  CHROMIUM108 lists, including named `fs` imports of `statfs`, `glob`, `cp`); `master/tests/legacy-floor.test.ts`
+  (libs, Vite targets, CSS above Chromium 108, the legacy tsconfig, the ESLint blocks);
+  `office/tests/legacy-compat.test.ts`; `npm run smoke:legacy`, which runs `office/dist` on real Node 16.17.1 and
+  Electron 22.3.27 against a stub Master and boots the CommonJS shell; a `legacy-runtime` CI job; a `win7` leg in
+  `release.yml`. `tools/uninstall/uninstall-orderbook.ps1` was rewritten for PowerShell 2.0.
+- **Deviations from the design:** no `electron-legacy` npm alias (the smoke and the release download Electron 22
+  by version); CI runs the smoke on Node 22 and downloads Node 16.17.1 itself rather than using setup-node 16.
+- **Not done:** real Windows 7 PCs (x64 and x86), the PowerShell 2.0 run of the uninstall script and the first
+  GitHub runs of the new CI job and release leg — all in HANDOFF "Owed work". `Array.prototype.at` is not
+  banned: Node 16.17.1 and Chromium 92+ have it (checked on the smoke's Node 16.17.1).
+- **Review fixes:** `legacy-globals.ts` no longer loads the logger (it loaded before the .env files were read, so
+  a `LOG_LEVEL` set in one was ignored); it exports what it installed and `index.ts` logs it, with a static test
+  that it imports only `node:` modules. The smoke now requires a number for free disk space wherever `wmic`
+  exists. STRUCTURE test totals updated to 193 files / 2592 tests (2593 after round 3). The 55 integration suites
+  could not start PostgreSQL in the agent's environment (`postmaster.pid`: Permission denied for every PostgreSQL
+  binary, while node and cmd write there fine), so they still need a run from the owner's shell.
+- **Review fixes, round 3:** undici 5.29.0's open advisories (`npm audit` high; no 5.x fix, 6.x needs Node 18)
+  are recorded as an accepted risk in `WINDOWS7.md` § Limits, with a HANDOFF trap against `npm audit fix` and a
+  `legacy-compat.test.ts` check that undici stays on 5.x. STRUCTURE §3 shared counts corrected (71 files) and
+  rows added for `release-platform`, `record-search` and `apply-category-change` tests.
+
 ### 2026-10-01 - Catalogue import/export, server side (Claude)
 
 `master/src` (domain, service, `lib/spreadsheet.ts`, `panel-catalog.routes.ts`), `office/src/http/app.ts`,

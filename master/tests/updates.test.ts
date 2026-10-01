@@ -16,6 +16,8 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import express from 'express';
+import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ReleaseManifest, ReleasePlatform } from '@orderbook/shared';
@@ -93,18 +95,20 @@ async function publish(
 
 /**
  * Publish under `latest-<platform>.json`, the name a panel built from the
- * platform-aware change onwards looks for first.
+ * platform-aware change onwards looks for first. A `win7` build carries the
+ * `Win7` tag `tools/release.mjs` names it with.
  */
 async function publishFor(
   panel: 'master' | 'office',
-  platform: 'win32' | 'darwin',
+  platform: 'win32' | 'darwin' | 'win7',
   version: string,
 ): Promise<ReleaseManifest> {
   const dir = path.join(root, panel === 'master' ? 'master-panel' : 'office-panel');
   await mkdir(dir, { recursive: true });
 
   const body = `setup-bytes-for-${platform}-${version}`;
-  const file = `OrderBook-${panel}-${version}-Setup.${platform === 'darwin' ? 'dmg' : 'exe'}`;
+  const tag = platform === 'win7' ? 'Win7-' : '';
+  const file = `OrderBook-${panel}-${tag}${version}-Setup.${platform === 'darwin' ? 'dmg' : 'exe'}`;
 
   const manifest: ReleaseManifest = {
     panel,
@@ -128,6 +132,7 @@ describe('the releases folder', () => {
   });
 
   afterEach(async () => {
+    vi.doUnmock('../src/http/middleware/require-panel.js');
     delete process.env.ORDERBOOK_RELEASES_DIR;
     await rm(root, { recursive: true, force: true });
   });
@@ -284,5 +289,57 @@ describe('the releases folder', () => {
     expect((await service.availability('office', '1.0.0')).available?.version).toBe('2.0.0');
     // Publishing an office build must not offer itself to the Master.
     expect((await service.availability('master', '1.0.0')).reason).toBe('noFolder');
+  });
+
+  /**
+   * The routes an Office panel asks, with the pairing check waved through:
+   * what is under test is which manifest a `?platform=` reads, not pairing,
+   * which `http-api.integration.test.ts` covers against a real database.
+   */
+  async function panelRoutes(): Promise<express.Express> {
+    await loadService();
+    vi.doMock('../src/http/middleware/require-panel.js', () => ({
+      requirePanel: (_req: unknown, _res: unknown, next: () => void) => next(),
+    }));
+    const { publicUpdateRoutes } = await import('../src/http/routes/update.routes.js');
+
+    const app = express();
+    app.use('/api/updates', publicUpdateRoutes);
+    return app;
+  }
+
+  it('UPD-68: a Win7 panel is answered from latest-win7.json, beside the Windows build', async () => {
+    const windows = await publishFor('office', 'win32', '2.0.0');
+    const win7 = await publishFor('office', 'win7', '2.0.0');
+    const app = await panelRoutes();
+
+    const asked = await request(app).get('/api/updates/office/latest?platform=win7').expect(200);
+    expect(asked.body.available?.file).toBe(win7.file);
+    expect(asked.body.available?.platform).toBe('win7');
+
+    // The Windows panel next to it still gets its own build out of the same folder.
+    const plain = await request(app).get('/api/updates/office/latest?platform=win32').expect(200);
+    expect(plain.body.available?.file).toBe(windows.file);
+
+    const download = await request(app)
+      .get('/api/updates/office/download?platform=win7')
+      .expect(200);
+    expect(download.headers['content-disposition']).toContain(win7.file);
+  });
+
+  it('UPD-68: a Win7 panel is never handed the Windows build when no Win7 one is there', async () => {
+    // Only the plain `latest.json` a Windows release writes. `readManifest`
+    // falls back to it, then refuses it for saying `win32`: the Electron 33
+    // build it names cannot start on Windows 7.
+    await publish('office', '2.0.0');
+    const app = await panelRoutes();
+
+    // The same folder is a good Windows build, so the refusal is the platform's.
+    const plain = await request(app).get('/api/updates/office/latest?platform=win32').expect(200);
+    expect(plain.body.available?.version).toBe('2.0.0');
+
+    const asked = await request(app).get('/api/updates/office/latest?platform=win7').expect(200);
+    expect(asked.body.available).toBeNull();
+    expect(asked.body.reason).toBe('noRelease');
   });
 });

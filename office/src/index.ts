@@ -6,7 +6,12 @@
  * the link to the Master in the background.
  */
 
+// First, before anything that might use `fetch` or `FormData`: on the Windows 7
+// build's Node 16 it installs them. See the module for why.
+import { installedLegacyGlobals } from './lib/legacy-globals.js';
+
 import { createServer } from 'node:http';
+import type { Socket } from 'node:net';
 
 import { config } from './config/index.js';
 import { createApp } from './http/app.js';
@@ -17,6 +22,9 @@ import { loadCredentials } from './services/credentials.store.js';
 import * as userSession from './services/user-session.service.js';
 
 const log = createLogger('office');
+if (installedLegacyGlobals.length > 0) {
+  log.info(`Installed missing web globals: ${installedLegacyGlobals.join(', ')}`);
+}
 
 /*
  * At module scope, and registered before `main()` runs, so a panel killed
@@ -25,6 +33,12 @@ const log = createLogger('office');
  */
 let httpServer: ReturnType<typeof createServer> | null = null;
 let shuttingDown = false;
+
+/*
+ * Every open connection, so shutdown can end them. `server.closeAllConnections()`
+ * does the same job but needs Node 18.2, and the Windows 7 build runs on 16.
+ */
+const sockets = new Set<Socket>();
 
 /** Extra teardown a subsystem registers for itself. See the master's copy. */
 export const disposables: Array<() => void | Promise<void>> = [];
@@ -48,7 +62,7 @@ async function shutdown(reason: string): Promise<void> {
     const server = httpServer;
     await new Promise<void>((resolve) => {
       server.close(() => resolve());
-      server.closeAllConnections();
+      for (const socket of sockets) socket.destroy();
     });
   }
 
@@ -77,6 +91,10 @@ async function main(): Promise<void> {
   const app = createApp();
   const server = createServer(app);
   httpServer = server;
+  server.on('connection', (socket) => {
+    sockets.add(socket);
+    socket.once('close', () => sockets.delete(socket));
+  });
 
   // The link re-establishes the acting user on every reconnect; these two
   // events are how the outcome reaches the session. Wired here rather than

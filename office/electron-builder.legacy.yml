@@ -1,0 +1,69 @@
+# The Windows 7 Office Panel (docs/WINDOWS7.md): `npm run release -- --os win7`,
+# `TARGETS.win7` in tools/release.mjs. The same panel, server, web bundle and
+# shell source as electron-builder.yml, packaged on Electron 22.3.27 (the last
+# Electron that runs on Windows 7, 8 and 8.1), which release.mjs passes as
+# `electronVersion` from tools/legacy-electron.mjs. The shell is the CommonJS
+# build from electron/tsconfig.legacy.json, with an `electron/dist/package.json`
+# of `{"type":"commonjs"}` beside it.
+#
+# Written out in full rather than extending electron-builder.yml, so that
+# master/tests/packaging-invariants.test.ts can read it as text. Keep appId,
+# productName, the data rules and the NSIS hook the same as there: a Windows 7
+# PC installs, updates, uninstalls and keeps its data exactly as a Windows 10
+# PC does, and can install the normal build over this one after an upgrade.
+#
+# Windows only. The Master is not built here: it needs Windows 10 or later,
+# because PostgreSQL 17 does not run on Windows 7.
+appId: com.orderbook.office
+productName: OrderBook Office Panel
+copyright: OrderBook
+
+directories:
+  output: ../build/office
+  buildResources: installer
+
+# As in electron-builder.yml: nothing to rebuild, and an `npm install
+# --omit=dev` against this workspace would strip the repo's dev dependencies.
+npmRebuild: false
+buildDependenciesFromSource: false
+
+files:
+  - electron/dist/**/*
+  - package.json
+  - '!**/node_modules/**/*'
+
+extraResources:
+  - from: staging
+    to: panel
+  - from: ../tools/uninstall
+    to: uninstall
+
+icon: installer/icon.png
+
+# x64 and ia32 in one file each: many Windows 7 office PCs are 32-bit, and the
+# Office panel has nothing native, so the same staged panel serves both. Each
+# file is about twice the size of the x64-only one. The shell caps a 32-bit
+# server's heap at 1024 MB (electron/lib/memory.ts).
+win:
+  target:
+    - target: nsis
+      arch: [x64, ia32]
+    - target: portable
+      arch: [x64, ia32]
+  signAndEditExecutable: false
+
+portable:
+  requestExecutionLevel: user
+  unpackDirName: OrderBook-Office
+  artifactName: OrderBook-Office-Win7-${version}-Standalone.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  deleteAppDataOnUninstall: false
+  # installer.nsh, plus a warning when the PC lacks the Universal C Runtime.
+  include: installer/installer-legacy.nsh
+  artifactName: OrderBook-Office-Win7-${version}-Setup.${ext}

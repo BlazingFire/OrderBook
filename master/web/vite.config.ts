@@ -19,6 +19,12 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    // Vite's default browser list with Chrome raised from 87 to 108, the floor:
+    // Chrome 109 on a Windows 7 PC opens this UI over the LAN, the same engine
+    // as the Win7 Office build's Electron 22. The rest stay so a Safari or
+    // Firefox on the LAN keeps its down-levelling and its -webkit- CSS
+    // prefixes. docs/WINDOWS7.md.
+    target: ['es2020', 'chrome108', 'edge88', 'firefox78', 'safari14'],
     // Everything is inlined/bundled locally — this app must never reach for a
     // CDN at runtime, because the shop network has no internet.
     assetsInlineLimit: 0,

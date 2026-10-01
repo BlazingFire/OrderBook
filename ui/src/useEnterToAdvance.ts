@@ -53,13 +53,15 @@ function fieldsIn(container: HTMLElement): HTMLElement[] {
 /**
  * True once the native dropdown is actually open.
  *
- * `showPicker` is Chromium 121 and later, which every packaged panel is; jsdom
- * does not implement it at all. Both failures land here as `false`, and Enter
- * falls through to the plain advance rather than trapping the caret on a select
- * whose list never appeared.
+ * `showPicker` on a select is Chromium 121 and later. The Electron 33 panels
+ * have it; the Windows 7 Office build (Chromium 108) and jsdom do not, and
+ * calling it there throws. Every failure lands here as `false`, and Enter falls
+ * through to the plain advance rather than trapping the caret on a select whose
+ * list never appeared.
  */
 function openPicker(select: HTMLSelectElement): boolean {
   try {
+    // eslint-disable-next-line no-restricted-properties -- a throw on Chromium 108 is caught below
     select.showPicker();
     return true;
   } catch {

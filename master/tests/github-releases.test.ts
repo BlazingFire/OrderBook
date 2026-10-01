@@ -814,6 +814,15 @@ const officeBuild = (platform: keyof typeof SETUP_EXTENSION, version = '2.0.0') 
     file: `OrderBook-Office-${version}-Setup.${SETUP_EXTENSION[platform]}`,
   });
 
+/** A signed office build for the legacy Windows 7 line, named as `tools/release.mjs` tags it. */
+const win7Build = (version = '2.0.0') =>
+  signed({
+    panel: 'office',
+    platform: 'win7',
+    version,
+    file: `OrderBook-Office-Win7-${version}-Setup.exe`,
+  });
+
 describe('one releases folder, several operating systems', () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -1022,6 +1031,101 @@ describe('one releases folder, several operating systems', () => {
     expect((await readManifest('office', 'win32'))?.file).toBe(windows.file);
     expect((await readManifest('master', 'win32'))?.file).toBe(master.file);
     expect(requested).not.toContain(`${DOWNLOADS}/${linux.file}`);
+  });
+
+  it('UPD-64: a Windows sync and a Win7 sync each sweep only their own superseded build', async () => {
+    // Both builds are `.exe`, so a sweep keyed on the extension alone read them
+    // as one OS: each sync took the other's setup file as "superseded" and
+    // fetched 150 MB to put its own back on the next ask.
+    const windowsOld = 'OrderBook-Office-1.0.0-Setup.exe';
+    const win7Old = 'OrderBook-Office-Win7-1.0.0-Setup.exe';
+    await writeFile(path.join(dir, windowsOld), PAYLOAD);
+    await writeFile(path.join(dir, win7Old), PAYLOAD);
+    const before = officeBuild('win32', '1.0.0');
+    for (const name of ['latest-win32.json', 'latest.json']) {
+      await writeFile(path.join(dir, name), JSON.stringify(before));
+    }
+    await writeFile(path.join(dir, 'latest-win7.json'), JSON.stringify(win7Build('1.0.0')));
+
+    const windows = officeBuild('win32');
+    const win7 = win7Build();
+    serve(publishedTogether(windows, win7));
+    const { syncFromGitHub } = await loadService();
+
+    expect(await syncFromGitHub('office', dir, null, 'win32')).not.toBeNull();
+    let left = await readdir(dir);
+    expect(left).not.toContain(windowsOld);
+    expect(left).toContain(win7Old);
+
+    expect(await syncFromGitHub('office', dir, null, 'win7')).not.toBeNull();
+    left = await readdir(dir);
+    expect(left).not.toContain(win7Old);
+    expect(left).toContain(windows.file);
+    expect(left).toContain(win7.file);
+  });
+
+  it("UPD-65: a Win7 sync leaves the Windows sync's half-written files alone", async () => {
+    // The two syncs can run at once, so the Windows `.part` and manifest
+    // `.tmp` may be being written right now. Only the Win7 line's are debris.
+    const windowsInFlight = [
+      'OrderBook-Office-2.0.0-Setup.exe.part',
+      'latest-win32.json.tmp',
+      'latest.json.tmp',
+    ];
+    const win7Debris = ['OrderBook-Office-Win7-1.9.0-Setup.exe.part', 'latest-win7.json.tmp'];
+    for (const name of [...windowsInFlight, ...win7Debris]) {
+      await writeFile(path.join(dir, name), PAYLOAD);
+    }
+
+    serve(publishedTogether(win7Build()));
+    const { syncFromGitHub } = await loadService();
+    expect(await syncFromGitHub('office', dir, null, 'win7')).not.toBeNull();
+
+    const left = await readdir(dir);
+    for (const name of windowsInFlight) expect(left, name).toContain(name);
+    for (const name of win7Debris) expect(left, name).not.toContain(name);
+  });
+
+  it('UPD-66: a Win7 sync reads latest-office-win7.json and writes only latest-win7.json', async () => {
+    // Plain `latest.json` is what a Windows panel older than per-OS names
+    // reads. A Win7 sync writing it would hand those panels a build their
+    // Electron cannot be replaced by.
+    const win7 = win7Build();
+    serve(publishedTogether(win7));
+    const { syncFromGitHub } = await loadService();
+
+    expect(await syncFromGitHub('office', dir, null, 'win7')).not.toBeNull();
+
+    expect(requested).toContain(`${DOWNLOADS}/latest-office-win7.json`);
+    expect((await readdir(dir)).sort()).toEqual([win7.file, 'latest-win7.json'].sort());
+  });
+
+  it('UPD-67: the poll fetches the Win7 office build once a Win7 panel has had one', async () => {
+    // `win7` is never the Master's own platform, so a `latest-win7.json` in the
+    // folder is the only thing that puts it on the poll.
+    const officeDir = path.join(dir, 'office-panel');
+    await mkdir(officeDir, { recursive: true });
+    const win7Before = win7Build('1.0.0');
+    await writeFile(path.join(officeDir, win7Before.file), PAYLOAD);
+    await writeFile(path.join(officeDir, 'latest-win7.json'), JSON.stringify(win7Before));
+
+    const master = signed({ platform: 'win32' });
+    const windows = officeBuild('win32');
+    const win7 = win7Build();
+    serve(publishedTogether(master, windows, win7));
+
+    await loadService({ ORDERBOOK_RELEASES_POLL_MINUTES: '60', ORDERBOOK_RELEASES_DIR: dir });
+    const { readManifest, startReleasePolling } = await import('../src/services/update.service.js');
+
+    vi.useFakeTimers();
+    const stop = startReleasePolling();
+    await vi.advanceTimersByTimeAsync(3 * 60_000);
+    await vi.waitFor(async () =>
+      expect((await readManifest('office', 'win7'))?.file).toBe(win7.file),
+    );
+    stop();
+
+    expect((await readManifest('office', 'win32'))?.file).toBe(windows.file);
   });
 });
 

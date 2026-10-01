@@ -12,6 +12,7 @@
 import { PAIRING_ENDPOINT, type PairingRequest, type PairingSuccess } from '@orderbook/shared';
 
 import { config } from '../config/index.js';
+import { timeoutSignal } from '../lib/legacy-globals.js';
 import { createLogger } from '../lib/logger.js';
 import { discoverMasters, type DiscoveredMaster } from '../discovery/client.js';
 import { saveCredentials, type StoredCredentials } from './credentials.store.js';
@@ -96,7 +97,7 @@ async function requestPairing(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
-      signal: AbortSignal.timeout(10_000),
+      signal: timeoutSignal(10_000),
     });
   } catch (error) {
     log.warn(`Could not reach ${url}`, error);

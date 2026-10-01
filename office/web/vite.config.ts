@@ -19,6 +19,9 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    // The Windows 7 Office build runs Electron 22, which is Chromium 108.
+    // docs/WINDOWS7.md.
+    target: 'chrome108',
     assetsInlineLimit: 0,
   },
   server: {

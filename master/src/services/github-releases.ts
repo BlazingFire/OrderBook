@@ -515,7 +515,14 @@ const isOurArtefact = (entry: string): boolean =>
   /^OrderBook-(Master|Office)-.+-Setup\.(exe|dmg|AppImage)$/i.test(entry);
 
 /**
- * Whether `entry` is a build for the same OS as `file`, by its extension.
+ * A build from the legacy Windows 7 line, by the `Win7` tag `tools/release.mjs`
+ * puts after the panel name.
+ */
+const isWin7Build = (name: string): boolean => /^OrderBook-\w+-Win7-/i.test(name);
+
+/**
+ * Whether `entry` is a build for the same OS as `file`, by its extension and
+ * the Win7 tag.
  *
  * Every sweep is limited to the OS being synced. One folder holds a build per
  * OS the shop runs — the Master's poll fetches its own, and a panel on another
@@ -523,14 +530,18 @@ const isOurArtefact = (entry: string): boolean =>
  * once. A sweep that took every setup file but its own deleted the other OS's
  * build on every ask, so each re-fetched 150 MB to put it back, and a panel
  * could be offered a file that was gone by the time it asked for it.
+ *
+ * The Win7 and Windows builds are both `.exe`, so the extension alone would
+ * read them as one OS and each sync would sweep the other's build.
  */
 const sameOs = (entry: string, file: string): boolean =>
-  path.extname(entry).toLowerCase() === path.extname(file).toLowerCase();
+  path.extname(entry).toLowerCase() === path.extname(file).toLowerCase() &&
+  isWin7Build(entry) === isWin7Build(file);
 
 /**
  * Half-written files of this OS's: a download that died, or a manifest write
  * that was cut off partway. Nothing reads either, so they can go before a
- * download starts.
+ * download starts. "This OS" counts Win7 and Windows as two (`sameOs`).
  *
  * Only this OS's, though. Another OS's `.part` may be a download that OS's sync
  * is writing at this moment, and deleting it succeeds on every OS — Windows

@@ -20,11 +20,10 @@ import { appVersion } from '../lib/app-version.js';
 import {
   countFiles,
   directorySize,
-  freeDiskBytes,
+  diskSpace,
   paths,
   relocateDataDir,
   StorageRelocationError,
-  totalDiskBytes,
 } from '../config/paths.js';
 import { createLogger } from '../lib/logger.js';
 import * as localStore from '../sync/local-store.js';
@@ -45,14 +44,12 @@ const startedAt = new Date().toISOString();
 export async function buildReport(): Promise<OfficePanelReportInput> {
   const current = paths();
 
-  const [storageBytes, diskFreeBytes, diskTotalBytes, pendingMutations, cachedImages] =
-    await Promise.all([
-      directorySize(current.dataDir),
-      freeDiskBytes(current.dataDir),
-      totalDiskBytes(current.dataDir),
-      outbox.pendingCount().catch(() => null),
-      countFiles(current.imagesDir),
-    ]);
+  const [storageBytes, disk, pendingMutations, cachedImages] = await Promise.all([
+    directorySize(current.dataDir),
+    diskSpace(current.dataDir),
+    outbox.pendingCount().catch(() => null),
+    countFiles(current.imagesDir),
+  ]);
 
   const session = currentSession();
 
@@ -65,8 +62,8 @@ export async function buildReport(): Promise<OfficePanelReportInput> {
     dataDir: current.dataDir,
     imagesDir: current.imagesDir,
     storageBytes,
-    diskFreeBytes,
-    diskTotalBytes,
+    diskFreeBytes: disk?.free ?? null,
+    diskTotalBytes: disk?.total ?? null,
     localPort: config.http.port,
     startedAt,
     pendingMutations,

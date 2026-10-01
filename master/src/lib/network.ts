@@ -5,6 +5,8 @@
 
 import { networkInterfaces } from 'node:os';
 
+import type { Request } from 'express';
+
 export interface LanInterface {
   name: string;
   address: string;
@@ -41,6 +43,27 @@ export function listLanAddresses(): string[] {
 
 export function primaryLanAddress(): string | null {
   return listLanInterfaces()[0]?.address ?? null;
+}
+
+/**
+ * Whether a socket's remote address is this PC itself.
+ *
+ * The three spellings a Node server sees for a local caller: IPv4, IPv6, and
+ * IPv4 mapped into IPv6 on a dual-stack socket. Exact matches only, so a
+ * missing address (a socket already torn down) is never local.
+ */
+export function isLoopbackAddress(address: string | null | undefined): boolean {
+  return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+}
+
+/**
+ * Whether a request came from a program on the Master PC itself.
+ *
+ * Read off the socket rather than any header, because `X-Forwarded-For` is
+ * whatever the caller chose to write and nothing proxies the Master.
+ */
+export function isLoopback(req: Request): boolean {
+  return isLoopbackAddress(req.socket.remoteAddress);
 }
 
 /** True when this PC has any non-loopback IPv4 address — the "is it on the network" check. */

@@ -74,6 +74,7 @@ export * from './catalogueSummary.js';
 export * from './Tabs.js';
 export * from './Toast.js';
 export * from './TopbarSlot.js';
+export * from './abort.js';
 export * from './breakpoints.js';
 export * from './clipboard.js';
 export * from './config.js';

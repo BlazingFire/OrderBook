@@ -14,7 +14,9 @@ vi.mock('node:os', () => ({
   hostname: () => 'test-host',
 }));
 
-const { hasNetworkLink, listLanInterfaces, primaryLanAddress } = await import('../src/lib/network.js');
+const { hasNetworkLink, isLoopbackAddress, listLanInterfaces, primaryLanAddress } = await import(
+  '../src/lib/network.js'
+);
 
 function iface(name: string, address: string, netmask: string, internal = false) {
   return {
@@ -104,5 +106,24 @@ describe('hasNetworkLink', () => {
     mockInterfaces([]);
     expect(hasNetworkLink()).toBe(false);
     expect(primaryLanAddress()).toBeNull();
+  });
+});
+
+describe('isLoopbackAddress', () => {
+  // Health paths now, and the Master-PC-only routes after it, hang off this:
+  // a LAN address read as local would hand the shop's file paths and setup
+  // routes to anyone on the network.
+  it('accepts the three ways a local caller arrives', () => {
+    expect(isLoopbackAddress('127.0.0.1')).toBe(true);
+    expect(isLoopbackAddress('::1')).toBe(true);
+    expect(isLoopbackAddress('::ffff:127.0.0.1')).toBe(true);
+  });
+
+  it('refuses a LAN address, a lookalike and a missing address', () => {
+    expect(isLoopbackAddress('192.168.1.10')).toBe(false);
+    expect(isLoopbackAddress('::ffff:192.168.1.10')).toBe(false);
+    expect(isLoopbackAddress('127.0.0.1.evil')).toBe(false);
+    expect(isLoopbackAddress(undefined)).toBe(false);
+    expect(isLoopbackAddress(null)).toBe(false);
   });
 });

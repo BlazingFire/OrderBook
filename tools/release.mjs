@@ -10,6 +10,8 @@
  *                                   quick build to try a change; no Setup file, no manifest
  *   npm run release -- --os mac  -- macOS .dmg (only runs on a Mac)
  *   npm run release -- --os linux -- x64 AppImage and .deb (the Master only on x64 Linux)
+ *   npm run release -- --os win7 -- the Windows 7 Office Panel (Electron 22, x64 + ia32);
+ *                                   Office only, on Windows (docs/WINDOWS7.md)
  *
  * The output folder is the whole distribution story: copy it to the Master PC
  * and the Master installs its own build from it and serves the office build to
@@ -54,6 +56,8 @@ import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promi
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { LEGACY_ELECTRON } from './legacy-electron.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -153,6 +157,16 @@ const requestedVersion = args.find((arg) => /^\d+\.\d+\.\d+$/.test(arg)) ?? null
  * Master writes one, so its superseded-build sweep (`github-releases.ts`) must
  * never take one; `master/tests/release-folder-besides.test.ts` holds it to
  * that.
+ *
+ * The Windows 7 build, `win7`, is the one target that is not an OS of its own,
+ * and the optional fields are its. `panels` limits what it builds (the Office
+ * only: the Master needs Windows 10, because PostgreSQL 17 does not run on
+ * Windows 7). `config` names its own yml, `electron` the Electron it ships on
+ * instead of the installed one, and `tag` goes into every file name after the
+ * panel (`OrderBook-Office-Win7-<v>-Setup.exe`), which is also how the Master's
+ * folder sweep tells the two Windows builds apart. `legacyShell` stages the
+ * CommonJS build of the shell (`electron/tsconfig.legacy.json`). `archs` is
+ * every architecture its yml builds, where that is more than `arch`.
  */
 const TARGETS = {
   win: {
@@ -198,6 +212,26 @@ const TARGETS = {
     // entry, which is what a shop PC that should come up running OrderBook
     // needs. The AppImage stays the file the manifest names.
     besides: ['Setup.deb'],
+  },
+  win7: {
+    builderFlag: '--win',
+    // Not a `process.platform`: the update channel the Windows 7 Office asks
+    // for (`releasePlatformFor()` in shared/src/domain/version.ts), so the
+    // manifest is `latest-win7.json` and never the Windows 10 one.
+    platform: 'win7',
+    ext: 'exe',
+    // The Office stages nothing native, so `assertHostArch()` never refuses it;
+    // `archs` is what electron-builder.legacy.yml builds into each file.
+    arch: 'x64',
+    archs: ['x64', 'ia32'],
+    postgres: [],
+    buildsOn: ['win32'],
+    besides: ['Standalone.exe'],
+    panels: ['office'],
+    config: 'electron-builder.legacy.yml',
+    electron: LEGACY_ELECTRON,
+    legacyShell: true,
+    tag: 'Win7',
   },
 };
 
@@ -693,10 +727,27 @@ async function build(panel, version) {
    * `electron/dist/**\/*` from the panel folder, so the built shell is copied
    * in rather than the yml learning about a path outside the panel.
    */
-  run('npx', ['tsc', '-p', path.join('electron', 'tsconfig.json')]);
   const shellDist = path.join(panelRoot, 'electron', 'dist');
-  await rm(shellDist, { recursive: true, force: true });
-  await cp(path.join(ROOT, 'electron', 'dist'), shellDist, { recursive: true });
+  if (RELEASE_TARGET.legacyShell) {
+    /*
+     * The Windows 7 build: the same shell compiled to CommonJS, because
+     * Electron 22 loads its main script through the CommonJS loader. The
+     * panel's package.json says `"type": "module"`, so the `{"type":"commonjs"}`
+     * beside the compiled files is what makes Electron 22 read them as
+     * CommonJS; the server in `dist` stays ESM. `tools/copy-shell.mjs --legacy`
+     * does the same for running from source.
+     */
+    const legacyOut = path.join(ROOT, 'build', 'shell-legacy');
+    await rm(legacyOut, { recursive: true, force: true });
+    run('npx', ['tsc', '-p', path.join('electron', 'tsconfig.legacy.json')]);
+    await rm(shellDist, { recursive: true, force: true });
+    await cp(legacyOut, shellDist, { recursive: true });
+    await writeFile(path.join(shellDist, 'package.json'), '{"type":"commonjs"}\n');
+  } else {
+    run('npx', ['tsc', '-p', path.join('electron', 'tsconfig.json')]);
+    await rm(shellDist, { recursive: true, force: true });
+    await cp(path.join(ROOT, 'electron', 'dist'), shellDist, { recursive: true });
+  }
 
   if (RELEASE_TARGET.universal) ensureUniversalPackages();
   if (config.vendorPostgres) await vendorPostgres();
@@ -709,11 +760,13 @@ async function build(panel, version) {
    * is a devDependency of the workspace root — one copy for both panels, which
    * is the right place for a 270 MB toolchain. Telling it the version outright
    * is cheaper than installing Electron twice, and reading it from the
-   * installed package means the two can never drift.
+   * installed package means the two can never drift. The Windows 7 target
+   * names its own (`tools/legacy-electron.mjs`), which electron-builder
+   * downloads into its cache.
    */
-  const electronVersion = (
-    await readJson(path.join(ROOT, 'node_modules', 'electron', 'package.json'))
-  ).version;
+  const electronVersion =
+    RELEASE_TARGET.electron ??
+    (await readJson(path.join(ROOT, 'node_modules', 'electron', 'package.json'))).version;
 
   run(
     'npx',
@@ -722,9 +775,17 @@ async function build(panel, version) {
       RELEASE_TARGET.builderFlag,
       // `--fast`: only the portable target (no NSIS installer, no uninstaller
       // pass, no block map) and no compression — most of a build's minutes.
-      ...(fast ? ['portable', '--config.compression=store'] : []),
+      // Naming a target on the command line drops the yml's `arch` list, so a
+      // target that builds more than x64 (`win7`) names its archs again.
+      ...(fast
+        ? [
+            'portable',
+            ...(RELEASE_TARGET.archs ?? []).map((arch) => `--${arch}`),
+            '--config.compression=store',
+          ]
+        : []),
       '--config',
-      'electron-builder.yml',
+      RELEASE_TARGET.config ?? 'electron-builder.yml',
       `--config.electronVersion=${electronVersion}`,
     ],
     panelRoot,
@@ -743,7 +804,8 @@ async function build(panel, version) {
   // `artifact` where the folder name and the filename differ: the tool is
   // "Clean Install" to a reader and `CleanInstall` in a filename, because a
   // space in an artifact name is a different kind of trouble on three OSes.
-  const name = config.artifact ?? config.label;
+  // The Windows 7 build adds its `tag` after the panel: `Office-Win7`.
+  const name = [config.artifact ?? config.label, RELEASE_TARGET.tag].filter(Boolean).join('-');
   const expected = `OrderBook-${name}-${version}-Setup.${RELEASE_TARGET.ext}`;
   const wantedSetup = fast ? [] : [expected];
   // The files built beside the setup file (`TARGETS[*].besides`) — the Windows
@@ -859,17 +921,29 @@ async function main() {
    *
    * A plain `npm run release` publishes a folder somebody copies to the Master
    * PC, and the clean-install tool does not belong in it — see its entry
-   * above. It is built on request: `npm run release -- --panel cleaner`.
+   * above. It is built on request: `npm run release -- --panel cleaner`. A
+   * target that builds only some panels (`win7`) defaults to those.
    */
-  const panels = only ? [only] : Object.keys(PANELS).filter((name) => PANELS[name].publish !== false);
+  const panels = only
+    ? [only]
+    : (RELEASE_TARGET.panels ??
+      Object.keys(PANELS).filter((name) => PANELS[name].publish !== false));
 
   for (const panel of panels) {
     if (!PANELS[panel]) {
       throw new Error(`Unknown target "${panel}" — expected ${Object.keys(PANELS).join(', ')}`);
     }
+    if (RELEASE_TARGET.panels && !RELEASE_TARGET.panels.includes(panel)) {
+      throw new Error(
+        `The ${osName} target builds the Office panel only, not the ${PANELS[panel].label}. ` +
+          'The Master needs Windows 10 or later: PostgreSQL 17 does not run on Windows 7.',
+      );
+    }
   }
   assertHostArch(panels);
-  if (fast && osName !== 'win') throw new Error('--fast is Windows only (it builds the portable .exe).');
+  if (fast && RELEASE_TARGET.builderFlag !== '--win') {
+    throw new Error('--fast is Windows only (it builds the portable .exe).');
+  }
 
   console.log(`Releasing ${version} to ${RELEASES_DIR}`);
   run('npm', ['run', 'build:shared']);

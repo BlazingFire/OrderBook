@@ -7,6 +7,7 @@
  * erase it. So the exact shape, and where `keepData` lands in it, is pinned.
  */
 
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -360,4 +361,70 @@ describe('the whole-machine sweep', () => {
       sweepCommand({ platform: 'freebsd', panel: 'all', dryRun: true, scriptsDir: SCRIPTS }),
     ).toBeNull();
   });
+});
+
+/*
+ * The Windows script runs on PowerShell 2.0 too: the Windows 7 Office build
+ * ships it (docs/WINDOWS7.md), and Windows 7 has nothing newer. PowerShell 2.0
+ * cannot run in CI, so this list of what 3.0 and later added is the guard, and
+ * the dry run below proves the 2.0-shaped script still works on 5.1.
+ */
+describe('the Windows uninstall script on PowerShell 2.0', () => {
+  const SCRIPT = path.resolve('tools', 'uninstall', 'uninstall-orderbook.ps1');
+  const source = readFileSync(SCRIPT, 'utf8');
+  // Comment lines dropped: saying what is missing is not using it.
+  const code = source
+    .split(/\r?\n/)
+    .filter((line) => !line.trim().startsWith('#'))
+    .join('\n');
+
+  const NEWER_THAN_2: [string, RegExp][] = [
+    ['Get-Content -Raw', /-Raw\b/i],
+    ['$PSCommandPath', /\$PSCommandPath\b/i],
+    ['$PSScriptRoot', /\$PSScriptRoot\b/i],
+    ['$PSItem', /\$PSItem\b/i],
+    ['Get-ChildItem -Directory', /\s-Directory\b/i],
+    ['the -in / -notin operators', /\s-(not)?in\s/i],
+    ['[ordered]', /\[ordered\]/i],
+    ['[pscustomobject]', /\[pscustomobject\]/i],
+    ['.ForEach( / .Where(', /\.(ForEach|Where)\(/i],
+    ['-ErrorAction Ignore', /-ErrorAction\s+Ignore\b/i],
+    ['::new(', /::new\(/i],
+    ['ConvertFrom-Json / ConvertTo-Json', /Convert(From|To)-Json/i],
+    ['HashSet', /HashSet/i],
+  ];
+
+  it.each(NEWER_THAN_2)('uses nothing PowerShell 2.0 lacks: %s', (_name, pattern) => {
+    expect(code).not.toMatch(pattern);
+  });
+
+  it('keeps the flags its four callers pass', () => {
+    const param = /param\(([\s\S]*?)\n\)/.exec(source)?.[1] ?? '';
+    const names = [...param.matchAll(/\$(\w+)/g)].map((match) => match[1]);
+    expect(names).toEqual(['Panel', 'KeepData', 'Yes', 'LeftoversOnly', 'DryRun', 'Elevated']);
+    expect(param).toContain("[ValidateSet('master', 'office', 'all')]");
+  });
+
+  it.skipIf(process.platform !== 'win32')(
+    'completes a dry run on this PC',
+    () => {
+      const result = spawnSync(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-File',
+          SCRIPT,
+          '-Panel',
+          'office',
+          '-DryRun',
+        ],
+        { encoding: 'utf8', timeout: 90_000 },
+      );
+      expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+      expect(result.stdout).toContain('Dry run complete. Nothing was changed.');
+    },
+    120_000,
+  );
 });

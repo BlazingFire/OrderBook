@@ -39,3 +39,30 @@ jobs:
 
       - name: Build both panels
         run: npm run build
+
+  # The Windows 7 Office build (docs/WINDOWS7.md) runs the Office server on
+  # Node 16.17.1 and the shell on Electron 22, neither of which the verify job
+  # can run: Vitest needs Node 18. `npm run smoke:legacy` builds what it needs,
+  # downloads both runtimes (cached below), runs office/dist on Node 16 and on
+  # Electron 22 against a stub Master, and launches the Electron 22 main
+  # process from the CommonJS shell stage. On Windows, because that is the
+  # build's only OS and the runner has a desktop for the window.
+  legacy-runtime:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - uses: actions/cache@v4
+        with:
+          path: .tmp/legacy-runtime
+          key: legacy-runtime-${{ runner.os }}-${{ hashFiles('tools/legacy-electron.mjs') }}
+
+      - run: npm ci
+
+      - run: npm run smoke:legacy

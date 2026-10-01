@@ -1,0 +1,16 @@
+{
+  // The Windows 7 Office build (docs/WINDOWS7.md). Electron 22 loads its main
+  // script through the CommonJS loader, so the same shell source is compiled a
+  // second time as CommonJS. Only the files the Office shell runs are here: the
+  // Master and the Clean Install tool are not built for Windows 7.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../build/shell-legacy",
+    "module": "CommonJS",
+    "moduleResolution": "Node10",
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": ["shell.ts", "office.main.ts", "preload.cts", "lib/*.ts"],
+  "exclude": ["lib/cleaner/**", "tests", "dist"]
+}

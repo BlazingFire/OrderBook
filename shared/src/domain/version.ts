@@ -86,8 +86,38 @@ export type PanelKind = 'master' | 'office';
  * The strings are Node's own `process.platform` values rather than prettier
  * ones, so every comparison in the update path is against something a running
  * panel can produce without a lookup table.
+ *
+ * `'win7'` is the one exception: it is not a `process.platform` value but the
+ * legacy Office line built on Electron 22 for Windows 7, 8 and 8.1. Those PCs
+ * report `win32` like any other Windows, so the channel is worked out from the
+ * Electron version instead (`releasePlatformFor`).
  */
-export type ReleasePlatform = 'win32' | 'darwin' | 'linux';
+export type ReleasePlatform = 'win32' | 'darwin' | 'linux' | 'win7';
+
+/**
+ * The first Electron major that no longer runs on Windows 7, 8 or 8.1. A
+ * Windows panel on anything older is the legacy build.
+ */
+export const LEGACY_ELECTRON_CEILING = 23;
+
+/**
+ * Which release channel a running panel belongs to.
+ *
+ * `'win7'` for a Windows panel whose Electron major is below
+ * `LEGACY_ELECTRON_CEILING`; otherwise the platform itself. No Electron
+ * version at all is a plain-Node dev run, which is never the legacy build.
+ */
+export function releasePlatformFor(
+  platform: string,
+  electronVersion: string | null | undefined,
+): ReleasePlatform {
+  if (platform === 'win32' && electronVersion) {
+    const major = parseVersion(electronVersion)[0];
+    if (major > 0 && major < LEGACY_ELECTRON_CEILING) return 'win7';
+  }
+
+  return platform as ReleasePlatform;
+}
 
 /**
  * Every release before platform-aware manifests existed was a Windows build —

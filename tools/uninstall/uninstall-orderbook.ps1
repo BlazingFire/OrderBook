@@ -48,6 +48,14 @@
   powershell -NoProfile -ExecutionPolicy Bypass -File uninstall-orderbook.ps1 -Panel all -DryRun
 .EXAMPLE
   powershell -NoProfile -ExecutionPolicy Bypass -File uninstall-orderbook.ps1 -Panel master -KeepData -Yes
+
+.NOTES
+  Written for PowerShell 2.0, which is what Windows 7 ships, because the
+  Windows 7 Office build runs this same script (docs/WINDOWS7.md). Nothing
+  from PowerShell 3.0 or later: JSON is read with the .NET serializer, sets are
+  hashtables (case-insensitive like the paths they hold), and folders are
+  picked out with PSIsContainer. electron/tests/uninstall.test.ts holds the
+  script to that list.
 #>
 [CmdletBinding()]
 param(
@@ -60,6 +68,10 @@ param(
   [switch]$Elevated
 )
 
+# This script's own path, for the elevated re-run. Read here at script scope:
+# inside a function $MyInvocation describes the function instead.
+$scriptPath = $MyInvocation.MyCommand.Path
+
 Set-StrictMode -Version Latest
 # Stop on the unexpected; every removal that may legitimately fail (a locked
 # file, a missing key) is wrapped so it is counted and reported instead.
@@ -70,7 +82,7 @@ $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIde
   ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
 if (-not $isAdmin -and -not $DryRun) {
-  $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $PSCommandPath + '"'), '-Panel', $Panel, '-Elevated')
+  $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $scriptPath + '"'), '-Panel', $Panel, '-Elevated')
   foreach ($flag in 'KeepData', 'Yes', 'LeftoversOnly') {
     if ((Get-Variable -Name $flag -ValueOnly)) { $argList += "-$flag" }
   }
@@ -123,6 +135,18 @@ function Get-RegValue($item, [string]$name) {
   return $prop.Value
 }
 
+# The `dataDir` a `<panel>-location.json` pointer names. The serializer is in
+# .NET 3.5, which Windows 7 has built in, and in every .NET 4.x. A pointer
+# without the field, or that is not a JSON object, throws, and the caller
+# reads that as "no relocated folder".
+function Read-DataDir([string]$file) {
+  Add-Type -AssemblyName System.Web.Extensions
+  $json = New-Object System.Web.Script.Serialization.JavaScriptSerializer
+  $parsed = $json.DeserializeObject([IO.File]::ReadAllText($file))
+  if (-not $parsed.ContainsKey('dataDir')) { return $null }
+  return [string]$parsed['dataDir']
+}
+
 # ------------------------------------------------------------------- panels
 $allPanels = @(
   @{ Panel = 'master'; Word = 'Master'; Product = 'OrderBook Master Panel'; AppId = 'com.orderbook.master' }
@@ -167,15 +191,18 @@ foreach ($root in $uninstallRoots) {
 $programRoots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}, (Join-Path $env:LOCALAPPDATA 'Programs')) |
   Where-Object { $_ }
 $installDirs = New-Object System.Collections.Generic.List[string]
-$seenDirs = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+$seenDirs = @{}
 function Add-InstallDir([string]$dir) {
   if (-not $dir) { return }
   $dir = $dir.TrimEnd('\')
-  if ($seenDirs.Add($dir)) { $installDirs.Add($dir) }
+  if (-not $seenDirs.ContainsKey($dir)) {
+    $seenDirs[$dir] = $true
+    $installDirs.Add($dir)
+  }
 }
 foreach ($e in $entries) { Add-InstallDir $e.InstallLocation }
 foreach ($root in $programRoots) {
-  foreach ($d in (Get-ChildItem -Path $root -Directory -Filter 'OrderBook*' -ErrorAction SilentlyContinue)) {
+  foreach ($d in @(Get-ChildItem -Path $root -Filter 'OrderBook*' -ErrorAction SilentlyContinue | Where-Object { $_.PSIsContainer })) {
     if (Test-Ours $d.Name) { Add-InstallDir $d.FullName }
   }
 }
@@ -188,16 +215,17 @@ foreach ($p in $panels) {
 # Every profile on the PC. The current user's folders come from the
 # environment (they may be redirected); the others from C:\Users.
 $profiles = New-Object System.Collections.Generic.List[object]
-$seenProfiles = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+$seenProfiles = @{}
 function Add-Profile([string]$homeDir, [string]$roaming, [string]$local) {
-  if ($seenProfiles.Add($homeDir)) {
+  if (-not $seenProfiles.ContainsKey($homeDir)) {
+    $seenProfiles[$homeDir] = $true
     $profiles.Add(@{ Home = $homeDir; Roaming = $roaming; Local = $local })
   }
 }
 Add-Profile $env:USERPROFILE $env:APPDATA $env:LOCALAPPDATA
 $usersRoot = Join-Path $env:SystemDrive 'Users'
-foreach ($u in (Get-ChildItem -Path $usersRoot -Directory -ErrorAction SilentlyContinue)) {
-  if ($u.Name -in @('Public', 'Default', 'Default User', 'All Users')) { continue }
+foreach ($u in @(Get-ChildItem -Path $usersRoot -ErrorAction SilentlyContinue | Where-Object { $_.PSIsContainer })) {
+  if (@('Public', 'Default', 'Default User', 'All Users') -contains $u.Name) { continue }
   Add-Profile $u.FullName (Join-Path $u.FullName 'AppData\Roaming') (Join-Path $u.FullName 'AppData\Local')
 }
 
@@ -312,7 +340,7 @@ foreach ($p in $panels) {
     $dataDir = Join-Path $ob $p.Panel
     $relocated = $null
     if (Test-Path -LiteralPath $pointer) {
-      try { $relocated = (Get-Content -LiteralPath $pointer -Raw | ConvertFrom-Json).dataDir } catch { $relocated = $null }
+      try { $relocated = Read-DataDir $pointer } catch { $relocated = $null }
     }
     if ($KeepData) {
       Keep $dataDir 'data folder'
@@ -357,7 +385,16 @@ foreach ($u in $profiles) {
 }
 $found = 0
 foreach ($root in $shortcutRoots) {
-  foreach ($lnk in (Get-ChildItem -Path $root -Recurse -Filter '*OrderBook*.lnk' -ErrorAction SilentlyContinue)) {
+  # A recursive listing with -Filter stops dead, whatever -ErrorAction says, at
+  # the first folder it may not read (another user's Start Menu, run without
+  # elevation as -DryRun is). That costs this one root, not the whole run.
+  $links = @()
+  try {
+    $links = @(Get-ChildItem -Path $root -Recurse -Filter '*OrderBook*.lnk' -ErrorAction SilentlyContinue)
+  } catch {
+    Note 'skip' ("could not search {0} for shortcuts: {1}" -f $root, $_.Exception.Message)
+  }
+  foreach ($lnk in $links) {
     if (-not (Test-Ours $lnk.Name)) { continue }
     $found++
     Remove-Leftover $lnk.FullName 'shortcut'

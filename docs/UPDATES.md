@@ -219,6 +219,35 @@ copy that crossed a USB stick can be checked (`certutil -hashfile <file>
 SHA256`). The Master's releases-folder sweep leaves standalone files alone;
 old ones are the operator's to delete.
 
+## The Windows 7 Office build
+
+The Office Panel has a second Windows build for Windows 7, 8 and 8.1
+([`WINDOWS7.md`](WINDOWS7.md)): `OrderBook-Office-Win7-<version>-Setup.exe`
+and `-Standalone.exe`, on Electron 22, for x64 and ia32 in one file. It has its
+own update channel, `win7`, beside `win32`, `darwin` and `linux`:
+
+- In the releases folder its manifest is `office-panel/latest-win7.json`. No
+  `latest.json` is written for it: that name stays the Windows 10 build's.
+- On GitHub the manifest is `latest-office-win7.json`, uploaded by the
+  workflow's `win7` leg. A Master with the GitHub poll fetches it once a
+  Windows 7 panel has asked, like any other operating system's build.
+- A Windows 7 panel works out its channel itself (an Electron older than 23 on
+  Windows means `win7`) and asks for it with `?platform=win7`. It refuses any
+  manifest whose signed platform is not `win7`, before even checking the
+  signature, so it can never be offered the Windows 10 build.
+- The Master's sweeps tell the two Windows builds apart by the `Win7` in the
+  file name, so syncing one never removes the other's setup file or its
+  `.part` download.
+
+**Update the Master before the Windows 7 panels.** A Master from before this
+channel reads an unknown platform as Windows 10 and would offer that build;
+the panel refuses it, and its Updates screen says there is no update until the
+Master is updated.
+
+A release by hand needs both builds: `npm run release -- --os win` and
+`npm run release -- --os win7`, on Windows, into the same releases folder. The
+second builds the Office only.
+
 ## The Linux `.deb`
 
 Beside each `-Setup.AppImage` the release makes an
@@ -298,7 +327,10 @@ purpose:
 The sweep only removes files it could have written itself, for the operating
 system it is fetching: setup files named `OrderBook-Master-<version>-Setup.<ext>`
 or `OrderBook-Office-<version>-Setup.<ext>` (`exe`, `dmg` or `AppImage`), their
-`.part` downloads, and that OS's manifest `.tmp` files. A Master whose panels run
+`.part` downloads, and that OS's manifest `.tmp` files. The Windows 7 Office
+build counts as an OS of its own here: its files carry `Win7` in the name
+(`OrderBook-Office-Win7-<version>-Setup.exe`), and a Windows sync and a Windows
+7 sync each leave the other's alone. A Master whose panels run
 more than one OS keeps one build per OS in the same folder — its own OS's comes
 with the background poll, and another OS's first build when a panel on that OS
 asks, its later ones with the poll too (see *When a new build shows up*) — and

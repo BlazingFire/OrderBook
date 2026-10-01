@@ -32,7 +32,6 @@ import { once } from 'node:events';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell as electronShell } from 'electron';
 
@@ -43,10 +42,11 @@ import {
   replaceAppImage,
   startDetached,
 } from './lib/appimage.js';
-import { interpretHealth, type HealthOutcome } from './lib/health.js';
+import { getJson, interpretHealth, type HealthOutcome } from './lib/health.js';
 import { approveInstaller, updateMethod } from './lib/installer.js';
 import { isLeadPdfUrl } from './lib/lead-pdf.js';
 import { openLogFile, type LogFile } from './lib/log-file.js';
+import { serverHeapMb } from './lib/memory.js';
 import { printOptions } from './lib/print-options.js';
 import {
   readDataDirOverride,
@@ -89,14 +89,20 @@ const STOP_GRACE_MS = 10_000;
 export function runPanelShell(config: PanelShellConfig): void {
   const ORIGIN = `http://localhost:${config.port}`;
   /*
-   * `fileURLToPath`, not `URL#pathname`: the latter keeps the URL's percent
-   * encoding, so under the default `C:\Program Files\OrderBook … Panel`
-   * install this came out as `C:\Program%20Files\…` — a path that exists
-   * nowhere. The server root below is unaffected (it uses `resourcesPath`
-   * when packaged); the preload script is not, and without it the window has
-   * no `orderbook` bridge, which the page reads as "not the desktop app".
+   * The folder this compiled shell sits in, `<panel>/electron/dist`. It comes
+   * from `app.getAppPath()` rather than `import.meta.url`, because the Windows 7
+   * build compiles this same file to CommonJS, where `import.meta` does not
+   * exist. The app path is the panel folder (or its `app.asar`) when the panel
+   * is launched as an app, and the `dist` folder itself when a developer
+   * launches `electron <panel>/electron/dist/<panel>.main.js` directly
+   * (Electron's default app then uses the script's own folder). Getting this
+   * wrong loses the preload script, and without it the window has no
+   * `orderbook` bridge, which the page reads as "not the desktop app".
    */
-  const here = path.dirname(fileURLToPath(import.meta.url));
+  const appPath = app.getAppPath();
+  const here = existsSync(path.join(appPath, 'electron', 'dist'))
+    ? path.join(appPath, 'electron', 'dist')
+    : appPath;
 
   /**
    * The standalone `.exe`, or `null` for an installed build. Decided once:
@@ -181,12 +187,8 @@ export function runPanelShell(config: PanelShellConfig): void {
     // Office gets 40% of total RAM; Master gets up to 60%.
     const ramCapMb =
       config.panel === 'office' ? Math.round(totalRamMb * 0.4) : Math.round(totalRamMb * 0.6);
-    // 70% of the cap for the heap, the rest for Postgres buffers and overhead.
-    // Clamped between 2048 MB (minimum usable) and 4096 MB (Node's default).
-    // On a 4 GB machine the unclamped value was ~1720 MB, lower than Node's
-    // default and a fresh OOM risk. On a 64 GB machine the unclamped value was
-    // ~26 GB, which is meaningless — V8 does not use that much.
-    const maxOldSpaceMb = Math.max(2048, Math.min(4096, Math.round(ramCapMb * 0.7)));
+    // The floors and ceilings, and why, are in `lib/memory.ts`.
+    const maxOldSpaceMb = serverHeapMb(totalRamMb, config.panel, process.arch);
 
     const env: NodeJS.ProcessEnv = {
       ...process.env,
@@ -312,15 +314,10 @@ export function runPanelShell(config: PanelShellConfig): void {
   }
 
   async function pollHealth(): Promise<HealthOutcome> {
-    try {
-      const response = await fetch(`${ORIGIN}/api/health`, {
-        signal: AbortSignal.timeout(POLL_INTERVAL_MS * 2),
-      });
-      const body: unknown = await response.json();
-      return interpretHealth(body, config.panel);
-    } catch {
-      return { kind: 'not-listening' };
-    }
+    // node:http rather than fetch: Electron 22 (the Windows 7 build) runs the
+    // main process on Node 16, where fetch is not there without a flag.
+    const body = await getJson(`${ORIGIN}/api/health`, POLL_INTERVAL_MS * 2);
+    return body === null ? { kind: 'not-listening' } : interpretHealth(body, config.panel);
   }
 
   async function waitForServer(onStep: (step: string) => void): Promise<HealthOutcome> {

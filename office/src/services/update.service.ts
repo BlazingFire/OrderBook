@@ -25,11 +25,17 @@ import path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
-import type { PreparedInstaller, ReleaseManifest, UpdateAvailability } from '@orderbook/shared';
-import { isNewer } from '@orderbook/shared';
+import type {
+  PreparedInstaller,
+  ReleaseManifest,
+  ReleasePlatform,
+  UpdateAvailability,
+} from '@orderbook/shared';
+import { isNewer, LEGACY_RELEASE_PLATFORM, releasePlatformFor } from '@orderbook/shared';
 
 import { paths } from '../config/paths.js';
 import { appVersion } from '../lib/app-version.js';
+import { timeoutSignal } from '../lib/legacy-globals.js';
 import { createLogger } from '../lib/logger.js';
 import { loadCredentials } from './credentials.store.js';
 import { masterFetch } from '../lib/master-fetch.js';
@@ -47,6 +53,15 @@ export class UpdateError extends Error {
   ) {
     super(message);
   }
+}
+
+/**
+ * The release channel this panel installs from. The Windows 7 build runs on an
+ * older Electron and asks for `win7`; everything else asks for its own OS.
+ * Read on each call rather than once, so a test can stub the Electron version.
+ */
+function ownPlatform(): ReleasePlatform {
+  return releasePlatformFor(process.platform, process.versions.electron);
 }
 
 /** Refuse early and by name, so "not paired" never reads as "no update". */
@@ -75,8 +90,8 @@ export async function availableUpdate(): Promise<UpdateAvailability> {
     // `masterFetch`, so the request carries this panel's pairing credentials.
     // The route refuses a stranger now, which is half of why the answer below
     // is worth anything.
-    const response = await masterFetch(`/api/updates/office/latest?platform=${process.platform}`, {
-      signal: AbortSignal.timeout(METADATA_TIMEOUT_MS),
+    const response = await masterFetch(`/api/updates/office/latest?platform=${ownPlatform()}`, {
+      signal: timeoutSignal(METADATA_TIMEOUT_MS),
     });
     if (!response.ok) throw new Error(`Master answered ${response.status}`);
     payload = (await response.json()) as UpdateAvailability;
@@ -88,6 +103,21 @@ export async function availableUpdate(): Promise<UpdateAvailability> {
   const manifest = payload.available;
   if (!manifest)
     return { current: running, available: null, reason: payload.reason ?? 'noRelease' };
+
+  /*
+   * A build for another OS is no update at all, whoever signed it. A Master
+   * older than the Windows 7 build reads `?platform=win7` as Windows and would
+   * offer that PC the Windows 10 build, which cannot start there. Checked before
+   * the signature because refusing is always safe; a manifest with no platform
+   * is a Windows one, as everywhere else.
+   */
+  const platform = manifest.platform ?? LEGACY_RELEASE_PLATFORM;
+  if (platform !== ownPlatform()) {
+    log.warn(
+      `Ignoring office release ${manifest.version}: it is for ${platform}, not ${ownPlatform()}`,
+    );
+    return { current: running, available: null, reason: 'noRelease' };
+  }
 
   /*
    * Verified here, on the panel, not merely at the Master.
@@ -182,7 +212,7 @@ export async function downloadUpdate(): Promise<{ path: string; manifest: Releas
   // The same OS the manifest was chosen for. Asking for one platform's
   // manifest and then downloading whatever the other route feels like would
   // hand this panel bytes whose digest cannot match.
-  const response = await masterFetch(`/api/updates/office/download?platform=${process.platform}`);
+  const response = await masterFetch(`/api/updates/office/download?platform=${ownPlatform()}`);
   if (!response.ok || !response.body) {
     throw new UpdateError('The Master would not send the update file', 'unreachable');
   }
@@ -206,7 +236,9 @@ export async function downloadUpdate(): Promise<{ path: string; manifest: Releas
   await rm(partial, { force: true }).catch(() => undefined);
 
   const hash = createHash('sha256');
-  const source = Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]);
+  // `Readable.from`, not `Readable.fromWeb`: a web stream is async-iterable
+  // from Node 16.5, and `fromWeb` needs Node 17, newer than the Windows 7 build.
+  const source = Readable.from(response.body as unknown as AsyncIterable<Uint8Array>);
   source.on('data', (chunk: Buffer) => hash.update(chunk));
 
   try {

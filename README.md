@@ -13,6 +13,11 @@ Two programs work together:
 
 Both are web apps: each PC runs a small local server and staff open a browser.
 
+**System requirements.** The Master Panel needs Windows 10 or later (or macOS
+or Linux). The Office Panel runs on Windows 10 or later, macOS and Linux, and
+on Windows 7 SP1, 8 and 8.1 through its Windows 7 build
+([`docs/WINDOWS7.md`](docs/WINDOWS7.md)).
+
 ## Documentation
 
 | Document | What it covers |
@@ -92,6 +97,7 @@ npm run release          # both panels, current version
 npm run release 1.2.1    # bump every package.json first
 npm run release -- --panel office
 npm run release -- --os linux   # or mac; a build only runs on its own OS
+npm run release -- --os win7    # the Windows 7 Office build (docs/WINDOWS7.md)
 ```
 
 Each panel comes out twice: `OrderBook-<Panel>-<version>-Setup.exe` installs

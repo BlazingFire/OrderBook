@@ -405,6 +405,14 @@ docs/          all prose; nothing source-of-truth lives in a code comment
   the code back — and check the assertion reaches the thing it names.
 - **Agent self-documentation is a claim, not evidence.** Verify a HANDOFF or
   change-log entry against the code before relying on it.
+- **New code keeps to the Windows 7 floors** (since 2026-10-02, 1.3 Phase 0;
+  `docs/WINDOWS7.md`). `office/src`, `shared/src` and the shell files the
+  Win7 build compiles (`electron/shell.ts`, `office.main.ts`, `preload.cts`,
+  `electron/lib/*.ts`) run on Node 16.17; `ui/src` and both `web/src` run on
+  Chromium 108. The `floor/*` ESLint blocks, `master/tests/legacy-floor.test.ts`
+  and `office/tests/legacy-compat.test.ts` catch what they can statically;
+  `npm run smoke:legacy` is the runtime check, so run it after touching the
+  Office server or the shell.
 
 ## Key decisions (do not re-decide without a reason)
 
@@ -565,6 +573,19 @@ branch deletion and tag pushes (HTTP 403), and the last needs real Macs:
    downloaded copy needs a right-click Open). Launch it on an Intel and an
    Apple silicon Mac: first boot must create the database, and a product
    photo upload exercises `sharp`.
+4. **Windows 7 acceptance on real PCs** (1.3 Phase 0, `docs/WINDOWS7.md`).
+   On a 64-bit and a 32-bit Windows 7 SP1 PC: install the Win7 Setup, pair
+   with a Windows 10 Master, create a pending order online and offline,
+   print an order note, update over the LAN to the next build, run the
+   Standalone file, uninstall with and without keeping data, and open the
+   Master UI in Chrome 109. That uninstall is also the first run of
+   `tools/uninstall/uninstall-orderbook.ps1` on PowerShell 2.0 (only its
+   constructs are tested here). The `wmic` free-disk fallback in
+   `office/src/config/paths.ts` has unit tests, and the smoke requires a
+   number from it wherever `wmic` exists (the CI runner; this PC has none);
+   a Win7 PC is its first real run on real hardware.
+5. **First GitHub runs of the Win7 jobs:** the `legacy-runtime` job in
+   `ci.yml` and the `win7` leg of `release.yml` have not run on GitHub yet.
 
 **Code** — the queue is `docs/ai-handoffs/README.md`:
 
@@ -728,6 +749,25 @@ terms, multiple contacts); concurrent edits of one lead from two panels
 
 ## Traps worth knowing
 
+- **`npm audit fix` will try to move undici off 5.29.0. Don't let it.** The
+  Windows 7 Office build runs on Node 16, and every undici from 6.0 on needs
+  Node 18, so the bump breaks that build's `fetch`. The audit's "high" for
+  undici is a recorded, accepted risk (`docs/WINDOWS7.md` § Limits).
+  `office/tests/legacy-compat.test.ts` fails on a bump.
+- **`npm run build:shell:legacy` and `npm run release -- --os win7` leave a
+  CommonJS shell in `office/electron/dist`** with a `{"type":"commonjs"}`
+  marker. `npm run build:shell` (or `npm run build`) puts the normal ESM shell
+  back; run it before starting the Office from source on Electron 33.
+  (`smoke:legacy` puts it back by itself.)
+- **Typecheck does not hold the floors for ES2022 and older APIs.** `lib`
+  ES2022 makes only ES2023+ builtins a type error; a Node or DOM API newer
+  than Node 16.17 or Chromium 108 has to be listed in the `eslint.config.js`
+  floor blocks.
+- **On the owner's PC the bundled `pg_ctl.exe` cannot start the test cluster**
+  ("Access is denied", seen 2026-10-02 from a Claude Code session), so every
+  `*.integration.test.ts` fails in `beforeAll` with `pg_ctl start exited with 1`.
+  The system PostgreSQL 17 install works: run the suite as
+  `$env:ORDERBOOK_PG_BIN='C:\Program Files\PostgreSQL\17\bin'; npm run test`.
 - **An integration suite that skips is not a suite that passed.** As root
   every integration file skips and the summary reads green. Check the count.
 - **Release-test fixtures publish for the host platform.** `updates.test.ts`
@@ -904,6 +944,23 @@ terms, multiple contacts); concurrent edits of one lead from two panels
 
 Condensed. The full entries are in `git show 5b8ebe2:HANDOFF.md` and in
 `docs/AI_COLLABORATION.md`.
+
+- **2026-10-02 — 1.3 Phase 0: Windows 7 legacy Office build and runtime floors
+  (Claude).** A fourth release target, `win7`: the Office only, on Electron
+  22.3.27 (`tools/legacy-electron.mjs`), x64 and ia32, from
+  `office/electron-builder.legacy.yml` with a UCRT check in the installer, on
+  its own update channel (`latest-win7.json`; a Win7 panel refuses any other
+  platform's build). The Office server gained the undici 5.29 shim for Node 16
+  (`office/src/lib/legacy-globals.ts`, first import of `index.ts`), tracked
+  sockets instead of `closeAllConnections`, `Readable.from` for downloads and a
+  feature-detected `fs.statfs` with a `wmic` fallback. The shell builds to
+  CommonJS (`electron/tsconfig.legacy.json`), polls health over `node:http`
+  and caps an ia32 server heap at 1 GB (`electron/lib/memory.ts`). The web
+  apps lost `AbortSignal.any` (`anySignal` in `@orderbook/ui`) and name
+  Chromium 108 in their Vite target. ESLint floor blocks, two static tests
+  and `npm run smoke:legacy` hold the floors; the uninstall script was
+  rewritten for PowerShell 2.0. Not done: real Win7 PCs and the first GitHub
+  runs ("Owed work", owner-only 4 and 5).
 
 - **2026-09-29 — Catalogue v2 ported onto the 1.2 product master (Claude).**
   The owner's 2026-09-28 restructure — Brand → Product → Sub product from the

@@ -86,6 +86,14 @@ interface DeclaredTarget {
   universal: boolean;
   /** Filename tails published beside the setup file. */
   besides: string[];
+  /** Every architecture the yml builds, where that is more than `arch` (`win7`). */
+  archs: string[] | null;
+  /** The panels it builds, where that is not all of them (`win7`: the Office). */
+  panels: string[] | null;
+  /** The yml it builds from, where that is not `electron-builder.yml`. */
+  config: string | null;
+  /** The word after the panel in every file name (`Win7`), or null. */
+  tag: string | null;
 }
 
 /** A `[ 'a', 'b' ]` array literal's entries, as written. */
@@ -100,6 +108,31 @@ function arrayEntries(source: string | undefined): string[] {
 function literal(entry: string): string | null {
   return /^'([^'$`]+)'$/.exec(entry)?.[1] ?? null;
 }
+
+/** A declared `[ 'a', 'b' ]` list's literals, or null when the field is absent. */
+function listed(source: string | undefined): string[] | null {
+  return source === undefined
+    ? null
+    : arrayEntries(source)
+        .map(literal)
+        .filter((entry): entry is string => entry !== null);
+}
+
+/** The yml a target builds from, and the panels it builds. */
+const configOf = (target: DeclaredTarget): string => target.config ?? 'electron-builder.yml';
+const builds = (target: DeclaredTarget, thing: string): boolean =>
+  target.panels === null || target.panels.includes(thing);
+
+/** `OrderBook-<Panel>[-<tag>]-<v>-<tail>`, the shape `build()` looks for. */
+const fileName = (thing: string, target: DeclaredTarget, tail: string): string =>
+  ['OrderBook', ARTIFACT[thing], ...(target.tag ? [target.tag] : []), `<v>-${tail}`].join('-');
+
+/**
+ * The yml key electron-builder reads a target from: its own name, except for
+ * the Windows 7 build, which is a Windows build from another yml.
+ */
+const YML_KEY: Record<string, string> = { win7: 'win' };
+const ymlKey = (name: string): string => YML_KEY[name] ?? name;
 
 /**
  * Each `--os` name's declaration, read out of the source.
@@ -134,6 +167,10 @@ function declaredTargets(): Record<string, DeclaredTarget> {
       besides: arrayEntries(/besides: \[([^\]]*)\]/.exec(body)?.[1])
         .map(literal)
         .filter((tail): tail is string => tail !== null),
+      archs: listed(/archs: \[([^\]]*)\]/.exec(body)?.[1]),
+      panels: listed(/panels: \[([^\]]*)\]/.exec(body)?.[1]),
+      config: /config: '([^']+)'/.exec(body)?.[1] ?? null,
+      tag: /tag: '([^']+)'/.exec(body)?.[1] ?? null,
     };
   });
 
@@ -227,8 +264,9 @@ function nativePackages(panel: string): string[] {
 describe('release targets', () => {
   const targets = declaredTargets();
 
-  it('declares all three operating systems', () => {
-    expect(Object.keys(targets).sort()).toEqual(['linux', 'mac', 'win']);
+  it('declares every release target', () => {
+    // The three operating systems, and the Windows 7 Office build.
+    expect(Object.keys(targets).sort()).toEqual(['linux', 'mac', 'win', 'win7']);
   });
 
   it('names every PostgreSQL package outright, never from the build host', () => {
@@ -323,6 +361,79 @@ describe('release targets', () => {
     // Universal: either kind of Mac builds both halves.
     expect(releaseAs('darwin', 'arm64', 'mac')).toContain('Release failed: STOP before npm');
     expect(releaseAs('darwin', 'x64', 'mac')).toContain('Release failed: STOP before npm');
+    // The Windows 7 build is the Office alone, which carries nothing native,
+    // so any Windows machine builds it.
+    expect(releaseAs('win32', 'x64', 'win7')).toContain('Release failed: STOP before npm');
+    expect(releaseAs('win32', 'arm64', 'win7')).toContain('Release failed: STOP before npm');
+  });
+
+  it('builds the Windows 7 target for the Office only, and says why for the Master', () => {
+    // PostgreSQL 17 does not run on Windows 7, so a Windows 7 Master is not a
+    // build that can work. Asked for by name it is refused, never skipped.
+    expect(targets.win7?.panels).toEqual(['office']);
+    const master = releaseAs('win32', 'x64', 'win7', 'master');
+    expect(master).toContain('Office panel only');
+    expect(master).toContain('Windows 10');
+    expect(master).not.toContain('STOP before');
+    expect(releaseAs('win32', 'x64', 'win7', 'cleaner')).toContain('Office panel only');
+    expect(releaseAs('win32', 'x64', 'win7', 'office')).toContain(
+      'Release failed: STOP before npm',
+    );
+    // Only a Windows machine makes a Windows setup file.
+    expect(releaseAs('linux', 'x64', 'win7')).toMatch(/Release failed: .*only be built on win32/);
+  });
+
+  it('stages the CommonJS shell, with its marker, for the Windows 7 target', () => {
+    // Electron 22 loads its main script through the CommonJS loader, and the
+    // panel's package.json says "type": "module". Without the marker beside the
+    // compiled shell, the Windows 7 build dies on its first `require`.
+    const office = JSON.parse(readText('office', 'package.json')) as { type?: string };
+    expect(office.type).toBe('module');
+
+    const build = bodyOf('async function build(');
+    const legacy = build.slice(build.indexOf('if (RELEASE_TARGET.legacyShell)'));
+    expect(legacy).toContain("path.join('electron', 'tsconfig.legacy.json')");
+    expect(legacy).toContain("path.join(ROOT, 'build', 'shell-legacy')");
+    expect(legacy).toMatch(
+      /writeFile\(path\.join\(shellDist, 'package\.json'\), '\{"type":"commonjs"\}\\n'\)/,
+    );
+    expect(code(RELEASE).join('\n')).toMatch(/legacyShell: true/);
+
+    // And the same for running from source: `npm run build:shell:legacy`.
+    const copyShell = readText('tools', 'copy-shell.mjs');
+    expect(copyShell).toContain("path.join(ROOT, 'build', 'shell-legacy')");
+    expect(copyShell).toMatch(
+      /if \(LEGACY\) await writeFile\(path\.join\(target, 'package\.json'\), '\{"type":"commonjs"\}\\n'\)/,
+    );
+    const scripts = (JSON.parse(readText('package.json')) as { scripts: Record<string, string> })
+      .scripts;
+    expect(scripts['build:shell:legacy']).toBe(
+      'tsc -p electron/tsconfig.legacy.json && node tools/copy-shell.mjs --legacy',
+    );
+    expect(scripts.typecheck).toContain('tsc -p electron/tsconfig.legacy.json --noEmit');
+
+    // The legacy compile goes where both of them copy from.
+    const legacyConfig = JSON.parse(
+      readText('electron', 'tsconfig.legacy.json').replace(/^\s*\/\/.*$/gm, ''),
+    ) as { compilerOptions: { outDir: string } };
+    expect(legacyConfig.compilerOptions.outDir).toBe('../build/shell-legacy');
+  });
+
+  it('ships the Windows 7 target on the Electron pinned in tools/legacy-electron.mjs', () => {
+    const block = RELEASE.slice(
+      RELEASE.indexOf('  win7: {'),
+      RELEASE.indexOf('\n};', RELEASE.indexOf('  win7: {')),
+    );
+    expect(block).toMatch(/electron: LEGACY_ELECTRON,/);
+    expect(RELEASE).toContain("import { LEGACY_ELECTRON } from './legacy-electron.mjs';");
+    expect(bodyOf('async function build(')).toMatch(/RELEASE_TARGET\.electron \?\?/);
+
+    const pin = /export const LEGACY_ELECTRON = '([^']+)';/.exec(
+      readText('tools', 'legacy-electron.mjs'),
+    )?.[1];
+    // 22 is the last Electron that runs on Windows 7 (LEGACY_ELECTRON_CEILING
+    // in shared/src/domain/version.ts is the first that does not).
+    expect(pin).toMatch(/^22\.3\.\d+$/);
   });
 
   it('vendors PostgreSQL from the target, never from a hardcoded platform', () => {
@@ -589,24 +700,28 @@ describe('what electron-builder builds is what release.mjs picks up', () => {
   const targets = declaredTargets();
 
   for (const thing of [...PANELS, 'cleaner'] as const) {
-    const yml = readText(thing, 'electron-builder.yml');
-
     for (const [name, target] of Object.entries(targets)) {
+      // A target that builds some panels only (`win7`) has nothing to say
+      // about the others.
+      if (!builds(target, thing)) continue;
+      const yml = readText(thing, configOf(target));
+      const key = ymlKey(name);
+
       it(`${thing} builds exactly the ${name} files release.mjs looks for`, () => {
-        const built = ymlTargets(yml, name).map(({ target: kind }) => builtFile(yml, name, kind));
+        const built = ymlTargets(yml, key).map(({ target: kind }) => builtFile(yml, key, kind));
 
         // `build()` looks for the setup file, plus — on what it publishes —
         // each `besides` file. The cleaner is never published and builds one
         // setup file per OS.
         const tails = [`Setup.${target.ext}`, ...(thing === 'cleaner' ? [] : target.besides)];
-        const expected = tails.map((tail) => `OrderBook-${ARTIFACT[thing]}-<v>-${tail}`);
+        const expected = tails.map((tail) => fileName(thing, target, tail));
 
         expect(built.sort()).toEqual(expected.sort());
       });
 
       it(`${thing} builds its ${name} files for the architecture release.mjs stages`, () => {
-        const wanted = target.universal ? ['universal'] : [target.arch];
-        const built = ymlTargets(yml, name);
+        const wanted = target.universal ? ['universal'] : (target.archs ?? [target.arch]);
+        const built = ymlTargets(yml, key);
         expect(built).not.toHaveLength(0);
         for (const { target: kind, arch } of built) {
           expect(arch, `${thing}'s ${name} ${kind} target`).toEqual(wanted);
@@ -620,7 +735,7 @@ describe('electron-builder configuration', () => {
   const targets = declaredTargets();
 
   /** `win:` → the yml key electron-builder uses for that `--os` name. */
-  const KEY: Record<string, string> = { win: 'win', mac: 'mac', linux: 'linux' };
+  const KEY: Record<string, string> = { win: 'win', mac: 'mac', linux: 'linux', win7: 'win' };
 
   /*
    * Which blocks may name the artifact for a target.
@@ -633,6 +748,7 @@ describe('electron-builder configuration', () => {
    */
   const NAMED_BY: Record<string, string[]> = {
     win: ['win', 'nsis'],
+    win7: ['win', 'nsis', 'portable'],
     mac: ['mac', 'dmg'],
     linux: ['linux', 'deb', 'appImage'],
   };
@@ -641,8 +757,11 @@ describe('electron-builder configuration', () => {
     const yml = readText(panel, 'electron-builder.yml');
 
     for (const [name, target] of Object.entries(targets)) {
+      if (!builds(target, panel)) continue;
+      const targetYml = readText(panel, configOf(target));
+
       it(`${panel} configures the ${name} target`, () => {
-        expect(yml, `no ${KEY[name]}: block in ${panel}/electron-builder.yml`).toMatch(
+        expect(targetYml, `no ${KEY[name]}: block in ${panel}/${configOf(target)}`).toMatch(
           new RegExp(`^${KEY[name]}:$`, 'm'),
         );
       });
@@ -658,9 +777,9 @@ describe('electron-builder configuration', () => {
         const named = (NAMED_BY[name] as string[])
           .map((key) => {
             const header = `\n${key}:\n`;
-            const at = yml.indexOf(header);
+            const at = targetYml.indexOf(header);
             if (at < 0) return null;
-            const after = yml.slice(at + header.length);
+            const after = targetYml.slice(at + header.length);
             // Up to the next top-level key, so `mac:`'s artifactName cannot
             // answer for `linux:` just because it comes later in the file.
             const next = /^\w+:$/m.exec(after);
@@ -691,6 +810,56 @@ describe('electron-builder configuration', () => {
       expect(yml).toMatch(new RegExp(`executableName: orderbook-${panel}$`, 'm'));
     });
   }
+});
+
+describe('the Windows 7 Office yml', () => {
+  /*
+   * Its own file, not an `extends` of electron-builder.yml, so it can drift.
+   * What must not: the same appId and product name, or Windows treats the two
+   * builds as two programs and a PC moved from one to the other ends up with
+   * both; the same data rule and NSIS hook, or an uninstall of one takes the
+   * company's data or leaves the leftovers behind.
+   */
+  const main = readText('office', 'electron-builder.yml');
+  const legacy = readText('office', 'electron-builder.legacy.yml');
+  const field = (yml: string, pattern: RegExp): string | undefined => pattern.exec(yml)?.[1];
+
+  it('is the same program as the main Office build', () => {
+    for (const pattern of [
+      /^appId: (.+)$/m,
+      /^productName: (.+)$/m,
+      /^ {2}output: (.+)$/m,
+      /^ {2}buildResources: (.+)$/m,
+      /^ {2}deleteAppDataOnUninstall: (.+)$/m,
+      /^ {2}perMachine: (.+)$/m,
+      /^ {2}unpackDirName: (.+)$/m,
+    ]) {
+      expect(field(legacy, pattern), String(pattern)).toBe(field(main, pattern));
+    }
+    expect(field(legacy, /^appId: (.+)$/m)).toBe('com.orderbook.office');
+  });
+
+  it('runs the main NSIS hook, and adds the Universal C Runtime warning', () => {
+    expect(field(main, /^ {2}include: (.+)$/m)).toBe('installer/installer.nsh');
+    expect(field(legacy, /^ {2}include: (.+)$/m)).toBe('installer/installer-legacy.nsh');
+
+    const hook = readText('office', 'installer', 'installer-legacy.nsh');
+    expect(hook).toContain('!include "${__FILEDIR__}\\installer.nsh"');
+    expect(hook).toContain('!macro customInit');
+    expect(hook).toContain('$SYSDIR\\ucrtbase.dll');
+    expect(hook).toContain('KB2999226');
+  });
+
+  it('ships the uninstall scripts and the staged panel the same way', () => {
+    for (const line of [
+      '  - from: staging\n    to: panel',
+      '  - from: ../tools/uninstall\n    to: uninstall',
+      '  - electron/dist/**/*',
+    ]) {
+      expect(legacy).toContain(line);
+      expect(main).toContain(line);
+    }
+  });
 });
 
 describe('the uninstall script knows what the .deb installs', () => {

@@ -11,8 +11,9 @@ name: Release
 #   1. Bump the version and push to main.
 #   2. This builds both panels on all three operating systems (plus the two
 #      standalone `.exe`s on Windows and the two `.deb`s on Linux, published
-#      for installing by hand and named by no manifest), signs each manifest,
-#      and publishes one GitHub Release holding every artefact.
+#      for installing by hand and named by no manifest), and the Windows 7
+#      Office build on a fourth leg, signs each manifest, and publishes one
+#      GitHub Release holding every artefact.
 #   3. Each Master polls that release, verifies the signature, downloads into
 #      its releases folder, and serves the office build to its panels over the
 #      LAN exactly as it does for a USB stick today.
@@ -229,6 +230,11 @@ jobs:
             runner: macos-latest
           - os: linux
             runner: ubuntu-latest
+          # The Windows 7 Office build (docs/WINDOWS7.md): the Office only, on
+          # Electron 22, for x64 and ia32. Its manifest is `latest-win7.json`,
+          # which the collect step below uploads as `latest-office-win7.json`.
+          - os: win7
+            runner: windows-latest
 
     steps:
       - uses: actions/checkout@v4

@@ -396,11 +396,15 @@ const ownPlatform = (): ReleasePlatform => process.platform as ReleasePlatform;
  * Every OS a release is built for. Written as the keys of a record over the
  * type so that a platform added to `ReleasePlatform` fails to compile here
  * rather than going unpolled.
+ *
+ * `win7` is never a Master's own platform, so its office build is polled only
+ * once a Win7 panel has asked and left `latest-win7.json` in the folder.
  */
 const RELEASE_PLATFORMS = Object.keys({
   win32: true,
   darwin: true,
   linux: true,
+  win7: true,
 } satisfies Record<ReleasePlatform, true>) as ReleasePlatform[];
 
 /**
