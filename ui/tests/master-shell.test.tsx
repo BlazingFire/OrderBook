@@ -6,13 +6,16 @@
  *  · Alt+N reaches only what the sidebar offers — with the desktop menu's
  *    Developer entry still opening Settings for anybody, as it always has;
  *  · the screen somebody was on does not outlive their session: whoever signs
- *    in next at that window starts on the Dashboard, not on a screen the
+ *    in next at that window starts on their own landing screen (the Dashboard
+ *    for an Admin, Basic Home for Office and Management), not on a screen the
  *    sidebar does not offer them;
+ *  · Basic Home offers a tile for each module the sidebar offers, the brand
+ *    mark goes to the landing screen, and the footer names the company;
  *  · a Master whose server cannot be reached says so on the splash, rather
  *    than "Request cancelled" in English;
  *  · a change another administrator makes reaches the screens built from it:
- *    people and roles on Roles & users, a catalogue import on Inventory and on
- *    Pending Orders, a field value or definition in the Recycle Bin, and a
+ *    people and roles on Roles & users, a catalogue import on Pending Orders,
+ *    a field value or definition in the Recycle Bin, and a
  *    stage edit in the stage pages and chips;
  *  · Pending Orders and Final Orders are modules of their own, each gated on its
  *    permission, whose rows open as sub-screens with a way back, and whose
@@ -26,7 +29,7 @@
  *  · the Dashboard draws a card only for a figure the server sent, and reads no
  *    leads without `leads.view`; a follow-up row opens that lead;
  *  · a party opens as a sub-screen that reads its own records (also from a
- *    search hit), Inventory's writes follow `inventory.edit`, a password change
+ *    search hit), a password change
  *    lands on sign-in with its notice, and Settings reaches Appearance for
  *    anyone without reading what only a manager may.
  */
@@ -92,7 +95,6 @@ const PICK_PRODUCT = {
 const ADMIN = [
   'leads.view',
   'orders.view',
-  'inventory.view',
   'products.view',
   'roles.view',
   'users.manage',
@@ -103,7 +105,7 @@ const ADMIN = [
   'settings.manage',
 ];
 
-function user(permissions: string[]) {
+function user(permissions: string[], roleTier = 'admin') {
   return {
     id: 'user-1',
     tenantId: 'tenant-1',
@@ -111,7 +113,7 @@ function user(permissions: string[]) {
     displayName: 'Owner',
     roleId: 'role-1',
     roleName: 'Administrator',
-    roleTier: 'admin',
+    roleTier,
     isActive: true,
     avatar: null,
     permissions,
@@ -138,7 +140,6 @@ async function boot(
     if (path === '/api/access/permission-catalogue') {
       return json({ modules: [], capabilities: [], tiers: [] });
     }
-    if (path === '/api/stock' || path === '/api/stock/movements') return json([]);
     if (path === '/api/pipelines') return json([]);
     // The Products module: its categories, and the catalogue page it lists from.
     if (path === '/api/categories') return json([]);
@@ -231,13 +232,13 @@ describe('the design-system gallery', () => {
 
 describe('Alt+N', () => {
   it('does not open a screen the sidebar does not offer', async () => {
-    // Alt+3 is Final Orders, which needs `orders.view`: the Master's Alt+N follow
-    // its sidebar order (`shared/tests/keys-nav-order.test.ts`), Work then Admin.
+    // Alt+4 is Final Orders, which needs `orders.view`: the Master's Alt+N follow
+    // the chord map both panels share (`shared/tests/keys-nav-order.test.ts`).
     // The topbar names the sub-page showing, which for Pending Orders is its List.
     await boot(['leads.view']);
-    await pressAltDigitUntil(2, t('lead.board.tab.list'));
+    await pressAltDigitUntil(3, t('lead.board.tab.list'));
 
-    await act(async () => pressAltDigit(3));
+    await act(async () => pressAltDigit(4));
 
     expect(topbarTitle()).toBe(t('lead.board.tab.list'));
   });
@@ -245,13 +246,15 @@ describe('Alt+N', () => {
   it('opens Final Orders on its first page, All stages', async () => {
     await boot(['orders.view']);
 
-    await pressAltDigitUntil(3, t('orders.filter.allStages'));
+    await pressAltDigitUntil(4, t('orders.filter.allStages'));
   });
 
   it('opens a screen the sidebar does offer', async () => {
+    // Alt+9 is Settings, loaded on first visit; the topbar names its tab. The
+    // Admin screens have no digit since 1.3, and the palette reaches them.
     await boot(ADMIN);
 
-    await pressAltDigitUntil(9, t('nav.master.panels'));
+    await pressAltDigitUntil(9, t('settings.tab.company'));
   });
 
   it('opens Products on its first page, Sub products', async () => {
@@ -259,7 +262,7 @@ describe('Alt+N', () => {
     // `catalog.nav.mainProducts` are both "Products".
     await boot(ADMIN);
 
-    await pressAltDigitUntil(5, t('catalog.nav.subProducts'));
+    await pressAltDigitUntil(6, t('catalog.nav.subProducts'));
   });
 });
 
@@ -303,6 +306,23 @@ describe('the next person to sign in at this window', () => {
     expect(topbarTitle()).toBe(t('nav.master.dashboard'));
   });
 
+  it('starts an Office user on Basic Home', async () => {
+    await boot(ADMIN, (call) =>
+      call.url === '/api/auth/sign-in' && call.method === 'POST'
+        ? json({ user: user(['leads.view'], 'office'), sessionToken: 'session-2' })
+        : answers(call),
+    );
+    await open(t('nav.master.panels'));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('action.signOut') }));
+      await wait(0);
+    });
+    await signInAsSales();
+
+    expect(topbarTitle()).toBe(t('nav.basicHome'));
+  });
+
   it('does not show the last person open record in the sidebar', async () => {
     await openList(ADMIN, t('nav.leads'), answers);
     fireEvent.click(await screen.findByText(LEAD.id));
@@ -332,6 +352,81 @@ describe('the next person to sign in at this window', () => {
   });
 });
 
+describe('Basic Home and the landing screen', () => {
+  const MANAGER = ['leads.view', 'leads.create', 'products.view'];
+
+  /** Boots as somebody whose role has the given tier. */
+  function bootAs(tier: string, permissions: string[]): Promise<Call[]> {
+    return boot(permissions, ({ url }) =>
+      url === '/api/auth/me'
+        ? json({ user: user(permissions, tier), sessionToken: 'session-1', defaultLocale: 'en' })
+        : undefined,
+    );
+  }
+
+  const launcher = () => document.querySelector<HTMLElement>('.ob-launcher')!;
+
+  it('lands an Admin on the Dashboard', async () => {
+    await boot(ADMIN);
+
+    expect(topbarTitle()).toBe(t('nav.master.dashboard'));
+  });
+
+  it('lands Management on Basic Home, with a tile for each module the sidebar offers', async () => {
+    await bootAs('management', MANAGER);
+
+    expect(topbarTitle()).toBe(t('nav.basicHome'));
+    const tiles = [...launcher().querySelectorAll('.ob-tile-label')].map((tile) => tile.textContent);
+    // Not Basic Home itself, and nothing the role cannot open (Final Orders,
+    // Office panels): absent, not greyed.
+    expect(tiles).toEqual([
+      t('basicHome.newLead'),
+      t('nav.master.dashboard'),
+      t('nav.leads'),
+      t('nav.products'),
+      t('nav.master.settings'),
+      t('nav.updates'),
+    ]);
+  });
+
+  it('opens a module from its tile, and the brand mark comes back to Basic Home', async () => {
+    await bootAs('management', MANAGER);
+
+    await act(async () => {
+      fireEvent.click(within(launcher()).getByRole('button', { name: t('nav.leads') }));
+      await wait(0);
+    });
+    expect(topbarTitle()).toBe(t('lead.board.tab.list'));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('nav.home') }));
+      await wait(0);
+    });
+    expect(topbarTitle()).toBe(t('nav.basicHome'));
+  });
+
+  it('opens the New pending order form from its tile', async () => {
+    await bootAs('office', MANAGER);
+
+    await act(async () => {
+      fireEvent.click(within(launcher()).getByRole('button', { name: t('basicHome.newLead') }));
+      await wait(0);
+    });
+
+    expect(await screen.findByLabelText(t('lead.add.party.search'))).toBeTruthy();
+  });
+
+  it('names the company in the footer, from the setup status', async () => {
+    await boot(['leads.view'], ({ url }) =>
+      url === '/api/setup/status'
+        ? json({ setupComplete: true, companyName: 'Shree Ceramics' })
+        : undefined,
+    );
+
+    expect(screen.getByText(`${t('footer.company')} · Shree Ceramics`)).toBeTruthy();
+  });
+});
+
 describe('the splash', () => {
   it('says the server could not be reached when the request never got there', async () => {
     routeFetch(() => Promise.reject(new TypeError('Failed to fetch')));
@@ -350,8 +445,9 @@ describe('a change made elsewhere reaches the screen built from it', () => {
   it('Roles & users refetches the people when one changes', async () => {
     const calls = await boot(ADMIN);
     await open(t('nav.master.access'));
+    // Roles & users loads on first visit, so its first read comes a moment later.
+    await waitFor(() => expect(gets(calls, '/api/access/users')).toBeGreaterThan(0));
     const before = gets(calls, '/api/access/users');
-    expect(before).toBeGreaterThan(0);
 
     await changed('user');
 
@@ -361,22 +457,12 @@ describe('a change made elsewhere reaches the screen built from it', () => {
   it('Roles & users refetches the roles when one changes', async () => {
     const calls = await boot(ADMIN);
     await open(t('nav.master.access'));
+    await waitFor(() => expect(gets(calls, '/api/access/roles')).toBeGreaterThan(0));
     const before = gets(calls, '/api/access/roles');
 
     await changed('role');
 
     expect(gets(calls, '/api/access/roles')).toBeGreaterThan(before);
-  });
-
-  it('Inventory refetches after a catalogue import', async () => {
-    const calls = await boot(ADMIN);
-    await open(t('nav.master.inventory'));
-    const before = gets(calls, '/api/stock');
-    expect(before).toBeGreaterThan(0);
-
-    await changed('catalog');
-
-    expect(gets(calls, '/api/stock')).toBeGreaterThan(before);
   });
 
   it('Pending Orders refetches after a catalogue import', async () => {
@@ -406,8 +492,8 @@ describe('a change made elsewhere reaches the screen built from it', () => {
     async (entity) => {
       const calls = await boot(ADMIN);
       await open(t('nav.master.recycleBin'));
+      await waitFor(() => expect(gets(calls, '/api/recycle-bin')).toBeGreaterThan(0));
       const before = gets(calls, '/api/recycle-bin');
-      expect(before).toBeGreaterThan(0);
 
       await changed(entity);
 
@@ -699,7 +785,7 @@ describe('New pending order', () => {
     await openFormByKey();
     expect(topbarTitle()).toBe(t('lead.add.title'));
 
-    await pressAltDigitUntil(2, t('lead.board.tab.list'));
+    await pressAltDigitUntil(3, t('lead.board.tab.list'));
     await act(async () => {
       fireEvent.click(screen.getByTitle(t('lead.add.title')));
       await wait(0);
@@ -710,7 +796,7 @@ describe('New pending order', () => {
 
   it('does nothing on Ctrl+Shift+N without leads.create', async () => {
     await boot(['leads.view']);
-    await pressAltDigitUntil(2, t('lead.board.tab.list'));
+    await pressAltDigitUntil(3, t('lead.board.tab.list'));
 
     await pressCtrlShiftN();
 
@@ -718,14 +804,14 @@ describe('New pending order', () => {
     expect(topbarTitle()).toBe(t('lead.board.tab.list'));
   });
 
-  it('keeps a half-typed draft across Alt+1 and back', async () => {
+  it('keeps a half-typed draft across Alt+2 and back', async () => {
     await boot(CREATE);
     await openFormByKey();
     fireEvent.change(screen.getByLabelText(t('lead.add.details.notes')), {
       target: { value: 'ring back' },
     });
 
-    await pressAltDigitUntil(1, t('nav.master.dashboard'));
+    await pressAltDigitUntil(2, t('nav.master.dashboard'));
     await openFormByKey();
 
     expect((screen.getByLabelText(t('lead.add.details.notes')) as HTMLTextAreaElement).value).toBe(
@@ -917,9 +1003,21 @@ describe('the Dashboard', () => {
 
     expect(await screen.findByText(t('dashboard.leads.title'))).toBeTruthy();
     expect(screen.getByText(t('dashboard.leads.due', { count: 2 }))).toBeTruthy();
-    expect(screen.queryByText(t('dashboard.stat.lowStock'))).toBeNull();
+    expect(screen.queryByText(t('dashboard.stat.convertedToday'))).toBeNull();
     expect(screen.queryByText(t('dashboard.stat.panelsOnline'))).toBeNull();
     expect(screen.queryByText(t('dashboard.orders.title'))).toBeNull();
+  });
+
+  it("draws the day's converted and dispatched counts when the server sends them", async () => {
+    await boot(['orders.view']);
+
+    await summaryArrives({ openOrderCount: 4, convertedTodayCount: 2, dispatchedTodayCount: 1 });
+
+    expect(await screen.findByText(t('dashboard.stat.convertedToday'))).toBeTruthy();
+    expect(screen.getByText(t('dashboard.stat.dispatchedToday'))).toBeTruthy();
+    // Fed by the Printroom and the Chatroom, which this release does not have.
+    expect(screen.queryByText(t('dashboard.stat.printPending'))).toBeNull();
+    expect(screen.queryByText(t('dashboard.stat.chatUnread'))).toBeNull();
   });
 
   it('reads no leads without leads.view', async () => {
@@ -1002,26 +1100,6 @@ describe('Parties', () => {
   });
 });
 
-describe('Inventory', () => {
-  it('is absent without inventory.view', async () => {
-    await boot(['leads.view']);
-    expect(screen.queryByTitle(t('nav.master.inventory'))).toBeNull();
-  });
-
-  it.each([
-    [['inventory.view'], false, false],
-    [['inventory.view', 'inventory.edit', 'stock.adjust'], true, true],
-  ])('offers Stock in and Physical count by permission: %j', async (permissions, stockIn, count) => {
-    await boot(permissions);
-    await open(t('nav.master.inventory'));
-    await screen.findByText(t('inventory.section.stockLevels'));
-
-    const has = (name: string) => screen.queryByRole('button', { name }) !== null;
-    expect(has(t('inventory.action.stockIn'))).toBe(stockIn);
-    expect(has(t('inventory.action.physicalCount'))).toBe(count);
-  });
-});
-
 describe('changing your own password', () => {
   it('ends on sign-in saying the password changed', async () => {
     await boot(ADMIN, ({ method, url }) =>
@@ -1078,7 +1156,7 @@ describe('Settings', () => {
   it('offers a manager the company tabs as well', async () => {
     await boot(ADMIN);
     await open(t('nav.master.settings'));
-    expect(screen.getByTitle(t('settings.tab.connection'))).toBeTruthy();
+    expect(await screen.findByTitle(t('settings.tab.connection'))).toBeTruthy();
   });
 });
 

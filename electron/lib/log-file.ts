@@ -25,10 +25,21 @@ export interface LogFile {
   close(): void;
 }
 
-function rotate(file: string): void {
+/**
+ * Shift `file` to `file.1`, `.1` to `.2` and so on, dropping the oldest.
+ * Returns false, having touched nothing, when the live file cannot be moved —
+ * on Windows another program holding it open (an editor, a technician's
+ * `Get-Content -Wait`, a virus scanner) is enough. Moving the live file first
+ * is what keeps a failed attempt from pushing the old files down regardless.
+ */
+function rotate(file: string): boolean {
+  const moving = `${file}.rotating`;
   try {
-    if (!fs.existsSync(file) || fs.statSync(file).size < MAX_BYTES) return;
-
+    fs.renameSync(file, moving);
+  } catch {
+    return false;
+  }
+  try {
     // Oldest first, so each rename lands on a free name.
     const oldest = `${file}.${KEEP}`;
     if (fs.existsSync(oldest)) fs.rmSync(oldest, { force: true });
@@ -36,40 +47,79 @@ function rotate(file: string): void {
       const from = `${file}.${index}`;
       if (fs.existsSync(from)) fs.renameSync(from, `${file}.${index + 1}`);
     }
-    fs.renameSync(file, `${file}.1`);
+    fs.renameSync(moving, `${file}.1`);
   } catch {
     // A log that cannot rotate must not stop the app from starting.
+  }
+  return true;
+}
+
+function sizeOf(file: string): number {
+  try {
+    return fs.statSync(file).size;
+  } catch {
+    return 0;
   }
 }
 
 /**
  * @param tee also write to stdout — useful unpackaged, pointless packaged.
+ * @param maxBytes the size at which the file rotates; a test passes a small one.
  */
-export function openLogFile(file: string, tee = false): LogFile {
+export function openLogFile(file: string, tee = false, maxBytes = MAX_BYTES): LogFile {
   let stream: fs.WriteStream | null = null;
+  let written = 0;
+
+  const open = (): void => {
+    try {
+      const opened = fs.createWriteStream(file, { flags: 'a' });
+      /*
+       * Without this, a failed write raises an unhandled `error` event and
+       * takes the process down — and worse, a stalled writer back-pressures
+       * the pipe the child is writing into until the child blocks. That is the
+       * same failure class `master/tests/postgres-launcher.test.ts` exists
+       * for. If the log breaks, drop the log, not the application.
+       */
+      opened.on('error', () => {
+        if (stream === opened) stream = null;
+      });
+      stream = opened;
+      written = sizeOf(file);
+    } catch {
+      stream = null;
+    }
+  };
 
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    rotate(file);
-    stream = fs.createWriteStream(file, { flags: 'a' });
-    /*
-     * Without this, a failed write raises an unhandled `error` event and takes
-     * the process down — and worse, a stalled writer back-pressures the pipe
-     * the child is writing into until the child blocks. That is the same
-     * failure class `master/tests/postgres-launcher.test.ts` exists for. If
-     * the log breaks, drop the log, not the application.
-     */
-    stream.on('error', () => {
-      stream = null;
-    });
+    if (sizeOf(file) >= maxBytes) rotate(file);
+    open();
   } catch {
     stream = null;
   }
 
   const writeRaw = (chunk: string): void => {
     if (tee) process.stdout.write(chunk);
+    if (!stream) return;
     try {
-      stream?.write(chunk);
+      stream.write(chunk);
+      written += Buffer.byteLength(chunk);
+      /*
+       * Rotate while running too, not only at start: a Master left on for
+       * weeks would otherwise grow one file without bound. The old stream's
+       * unflushed lines follow its handle into `.1`, which is where they
+       * belong; Windows allows the rename because Node opens files shareable
+       * for delete.
+       */
+      if (written >= maxBytes) {
+        stream.end();
+        stream = null;
+        const rotated = rotate(file);
+        open();
+        // A file that would not move waits another full size before the
+        // next try, rather than retrying on every line.
+        if (!rotated) written = 0;
+      }
     } catch {
       stream = null;
     }

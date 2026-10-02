@@ -7,9 +7,9 @@
  * root at all — office's copy omitted it, which is a bug rather than a
  * preference, so the shared version always sets it.
  *
- * The first two are real configuration: the Master's chrome is dark so it is
- * unmistakable from an Office Panel at a glance when both sit open on a desk.
- * They are declared here instead of forking the module.
+ * The first two are real configuration, declared here instead of forking the
+ * module. Both panels default to light since 1.3 (the Master was dark until
+ * then); the Master's key is versioned and the Office's is not.
  */
 
 export type PanelKind = 'master' | 'office';
@@ -30,8 +30,8 @@ export interface UiConfig {
 
 const DEFAULT: UiConfig = {
   panel: 'master',
-  defaultTheme: 'dark',
-  themeStorageKey: 'ob.theme.v2',
+  defaultTheme: 'light',
+  themeStorageKey: 'ob.theme.v3',
 };
 
 let current: UiConfig = DEFAULT;

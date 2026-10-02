@@ -1,11 +1,13 @@
 /**
- * Dashboard — the landing screen, rebuilt around the mockup in 07-UI-SPEC §9.
+ * Dashboard, rebuilt around the mockup in 07-UI-SPEC §9. Admin-tier people
+ * land here; Office and Management land on Basic Home.
  *
- * Four stat cards, then two columns: the lead pipeline with its per-stage
- * bars beside recent activity, and follow-ups underneath the pipeline. Every
- * figure is derived from the panel's already-synced `LocalView`, the same
- * arithmetic the old screen used — only the arrangement changed, so cards are
- * still gated by the permissions the sidebar uses to hide their screens.
+ * Four stat tiles (`StatTile`), then two columns: the lead pipeline with its
+ * per-stage bars beside recent activity, and follow-ups underneath the
+ * pipeline. Every figure is derived from the panel's already-synced
+ * `LocalView`, the same arithmetic the old screen used — only the arrangement
+ * changed, so tiles are still gated by the permissions the sidebar uses to
+ * hide their screens.
  *
  * Recent activity reads from the leads' and orders' own timelines: the Master
  * writes a system entry on every move, conversion and dispatch, and the
@@ -19,18 +21,10 @@
  * stages and counts the leads in each.
  */
 
-import type { ReactNode } from 'react';
 import type { Lead } from '@orderbook/shared';
 
 import type { LocalView } from '../api';
-import {
-  Card,
-  EmptyState,
-  Timeline,
-  formatDateTime,
-  rem,
-  t,
-} from '@orderbook/ui';
+import { Card, EmptyState, StatTile, Timeline, formatDateTime, rem, t } from '@orderbook/ui';
 
 type DashboardTab = 'leads' | 'orders' | 'conflicts' | 'parties' | 'products';
 
@@ -59,54 +53,6 @@ function startOfWeek(): Date {
   const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMonday);
   monday.setHours(0, 0, 0, 0);
   return monday;
-}
-
-function StatCard({
-  label,
-  value,
-  valueColor,
-  note,
-  onClick,
-  borderColor,
-}: {
-  label: string;
-  value: ReactNode;
-  valueColor?: string;
-  note?: ReactNode;
-  onClick?: () => void;
-  borderColor?: string;
-}) {
-  const body = (
-    <>
-      <div className="ob-eyebrow">{label}</div>
-      <div
-        className="ob-display"
-        style={{ marginTop: 'var(--s-6)', color: valueColor, fontVariantNumeric: 'tabular-nums' }}
-      >
-        {value}
-      </div>
-      {note && (
-        <div className="ob-small" style={{ marginTop: 'var(--s-2)' }}>
-          {note}
-        </div>
-      )}
-    </>
-  );
-
-  if (onClick) {
-    return (
-      <button
-        type="button"
-        className="ob-card ob-card--pad"
-        style={{ display: 'block', width: '100%', textAlign: 'left', borderColor }}
-        onClick={onClick}
-      >
-        {body}
-      </button>
-    );
-  }
-
-  return <Card style={{ borderColor }}>{body}</Card>;
 }
 
 interface ActivityItem {
@@ -190,10 +136,10 @@ function describeActivity(
         const dispatch = /^Dispatched\b/.exec(entry.message);
         const moved = /^Moved from .* to (.+)\s*$/.exec(entry.message);
         const stage = dispatch
-          ? view.pipelines
+          ? (view.pipelines
               .find((pipeline) => pipeline.kind === 'order')
               ?.stages.find((candidate) => candidate.id === entry.toStageId)?.name ??
-            order.stageName
+            order.stageName)
           : moved?.[1];
         const line =
           stage !== undefined
@@ -276,12 +222,7 @@ export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead }: Prop
       : pendingCount > 0
         ? t('dashboard.sync.pendingNote')
         : t('dashboard.sync.allSyncedNote');
-  const syncColor =
-    openConflicts > 0
-      ? 'var(--state-conflict)'
-      : pendingCount > 0
-        ? 'var(--state-offline)'
-        : undefined;
+  const syncTone = openConflicts > 0 ? 'conflict' : pendingCount > 0 ? 'offline' : undefined;
 
   // Already ordered by the Master, but the sequence is the contract, not the
   // array order.
@@ -308,7 +249,7 @@ export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead }: Prop
         }}
       >
         {canViewLeads && (
-          <StatCard
+          <StatTile
             label={t('dashboard.leads.title')}
             value={openLeads.length.toLocaleString('en-IN')}
             note={
@@ -321,7 +262,7 @@ export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead }: Prop
         )}
 
         {canViewOrders && (
-          <StatCard
+          <StatTile
             label={t('dashboard.orders.title')}
             value={openOrders.length.toLocaleString('en-IN')}
             note={
@@ -336,7 +277,7 @@ export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead }: Prop
         )}
 
         {canViewOrders && (
-          <StatCard
+          <StatTile
             label={t('dashboard.dispatched.title')}
             value={
               <>
@@ -357,16 +298,13 @@ export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead }: Prop
           />
         )}
 
-        <StatCard
+        <StatTile
           label={t('dashboard.sync.title')}
           value={syncValue}
-          valueColor={syncColor}
+          tone={syncTone}
           note={
-            linkDown && asOf
-              ? t('dashboard.asOf.stale', { when: formatDateTime(asOf) })
-              : syncNote
+            linkDown && asOf ? t('dashboard.asOf.stale', { when: formatDateTime(asOf) }) : syncNote
           }
-          borderColor={syncColor}
           onClick={canViewConflicts ? () => onNavigate('conflicts') : undefined}
         />
       </div>

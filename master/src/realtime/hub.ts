@@ -266,8 +266,13 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
       // this it keeps running on a dead pairing until it next reconnects — which
       // for an idle panel can be hours, and looks to the operator like the panel
       // still being trusted.
+      //
+      // Emitted synchronously, from the panel's socket on file, because
+      // `revokePanel` closes that socket straight after publishing. An emit
+      // after an await (it used to wait on `fetchSockets()`) landed on a
+      // closed socket and the notice was lost.
       if ((event.payload as { status?: string } | null)?.status === 'revoked') {
-        void notifyPanelRevoked(io, event.id);
+        panelSockets.get(event.id)?.emit('panel:revoked');
       }
     }
 
@@ -1087,8 +1092,8 @@ async function broadcastPanels(io: RealtimeHub['io']): Promise<void> {
  * was ever going to read.
  *
  * `unref`'d so a pending flush never holds the process open at shutdown, and
- * `.catch`'d because nothing in this project installs an `unhandledRejection`
- * handler.
+ * `.catch`'d so a failed broadcast says which broadcast failed. The process's
+ * own `unhandledRejection` handler (`src/index.ts`) only logs a bare reason.
  */
 const DASHBOARD_DEBOUNCE_MS = 250;
 let dashboardTimer: NodeJS.Timeout | null = null;
@@ -1175,19 +1180,6 @@ async function broadcastDashboard(io: RealtimeHub['io']): Promise<void> {
   // stock/conflict change**, for a payload nothing read. If a panel ever needs a
   // figure `LocalView` cannot produce, restore the fan-out and add the handler in
   // the same change — one without the other is what this comment exists to stop.
-}
-
-/**
- * Push `panel:revoked` to whichever live sockets belong to one panel.
- *
- * Matched by `socket.data.panelId` rather than a per-panel Socket.IO room,
- * because revocation is rare and a room would be a second piece of membership
- * bookkeeping to keep in step with the one that already exists.
- */
-async function notifyPanelRevoked(io: RealtimeHub['io'], panelId: string): Promise<void> {
-  for (const socket of await io.in(ROOM_OFFICE_PANELS).fetchSockets()) {
-    if (socket.data.panelId === panelId) socket.emit('panel:revoked');
-  }
 }
 
 /**

@@ -143,6 +143,15 @@ export function SignInScreen({ connection, onSignedIn, notice }: Props) {
           {connection.companyName ?? t('signin.subtitleFallback')}
         </p>
 
+        {/* Which PC this is, so a person can read it out to whoever runs the
+            Master. Absent when the panel's server could not read it. */}
+        {connection.deviceCode && (
+          <p className="ob-small" style={{ textAlign: 'center', margin: 0 }}>
+            {`${t('signin.deviceCode')} · `}
+            <span className="ob-mono">{connection.deviceCode}</span>
+          </p>
+        )}
+
         {/* Above the card: it explains why this screen is here, which is not
             about the fields below. */}
         {notice && (

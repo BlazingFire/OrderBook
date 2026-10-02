@@ -109,6 +109,16 @@ export function useSubNavState(screenId: string | null): SubNavState | null {
   return screenId ? (entries.get(screenId) ?? null) : null;
 }
 
+/**
+ * The screens holding an entry right now: an open record, a draft, an editor.
+ * `ScreenHost` never evicts these, because evicting one would throw away the
+ * very thing its sidebar entry points at.
+ */
+export function useSubNavHeld(): ReadonlySet<string> {
+  const { entries } = useContext(RegistryContext);
+  return new Set(entries.keys());
+}
+
 /** Drop a screen's entry — used by the shell when that screen is reset. */
 export function useClearSubNav(): (screenId: string) => void {
   const { publish } = useContext(RegistryContext);

@@ -198,9 +198,9 @@ export async function revokePanel(panelId: string, actor?: ActorContext): Promis
 
   forgetPanelConnection(panelId);
 
-  // Publish before closing the socket: hub.ts's onChange listener delivers
-  // `panel:revoked` to sockets still in the office-panels room, so emitting
-  // it after the socket is gone sends the cooperative notice to nobody and
+  // Publish before closing the socket: hub.ts's onChange listener emits
+  // `panel:revoked` synchronously on the panel's live socket, so emitting it
+  // after the socket is gone sends the cooperative notice to nobody and
   // the panel sits on "disconnected" forever instead of dropping to the
   // pairing screen. Close the live socket rather than only asking it to
   // leave: the cooperative push only works on a well-behaved client, and

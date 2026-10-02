@@ -71,14 +71,6 @@ const CONNECTION_STATE_KEY: Record<ConnectionInfo['state'], string> = {
   disconnected: 'settings.connection.state.disconnected',
 };
 
-export const SETTINGS_TAB_IDS = [
-  'appearance',
-  'shortcuts',
-  'leads',
-  'machine',
-  'storage',
-] as const;
-
 export function SettingsScreen({
   connection,
   session,

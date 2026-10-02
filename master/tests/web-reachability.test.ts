@@ -150,7 +150,7 @@ const ALLOWED_UNCALLED: Record<'master' | 'office', Record<string, string>> = {
     snapshot: 'the panel reads its view from the change stream, not by polling',
     conflicts: 'ConflictsScreen reads view.conflicts from the same stream',
 
-    // The option-list value calls are reached through `optionListTransport.ts`
+    // The option-list value calls are reached through `optionListTransport`
     // (Products → Brands, Settings → Leads' sources); the rest stay Master-only.
     fieldsCatalogue: 'Fields is a Master screen',
     fieldDefinitions: 'as fieldsCatalogue',

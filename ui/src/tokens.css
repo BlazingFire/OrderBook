@@ -91,6 +91,53 @@
   --state-ok: var(--kiln-green);
   --state-ok-tint: var(--kiln-green-05);
 
+  /* ---- Basic Home tiles ---------------------------------------------------
+     The owner's mockup (docs/design/basic-home-mockup.html), value for
+     value. Each module colour is a top-to-bottom pair; the glyph inks are
+     shared by every face. These are illustrations on a coloured face, so
+     they do not follow the porcelain/glaze ramps. */
+  --tile-sheen: rgba(255, 255, 255, 0.16);
+  --tile-gloss: rgba(255, 255, 255, 0.18);
+  --tile-shade: rgba(0, 0, 0, 0.26);
+  --tile-rim: rgba(255, 255, 255, 0.24);
+  --tile-paper: #ffffff;
+  --tile-ink: #1f2b33;
+  --tile-spark: #ffd23f;
+  --tile-tick: #2fb457;
+  --tile-led: #62d67a;
+  --tile-water: #a8dcff;
+  --tile-tint-green: #d3e8c4;
+  --tile-tint-orange: #ffe1b5;
+  --tile-tint-purple: #e7dcf1;
+  --tile-tint-pink: #ffd2e3;
+  --tile-green-a: #72b844;
+  --tile-green-b: #3a7d1e;
+  --tile-orange-a: #f7a31c;
+  --tile-orange-b: #cc6303;
+  --tile-blue-a: #2e8fe0;
+  --tile-blue-b: #0c57a5;
+  --tile-teal-a: #1db4a2;
+  --tile-teal-b: #08766a;
+  --tile-red-a: #ef4a3f;
+  --tile-red-b: #ae1d1d;
+  --tile-purple-a: #9b52c9;
+  --tile-purple-b: #5a2488;
+  --tile-pink-a: #e0508a;
+  --tile-pink-b: #a31d54;
+  --tile-indigo-a: #5566d6;
+  --tile-indigo-b: #283490;
+  --tile-slate-a: #6e7c87;
+  --tile-slate-b: #39444d;
+  --tile-cyan-a: #22a9dc;
+  --tile-cyan-b: #0a6b9d;
+  /* Not in the mockup: Reports, Chatroom and Printroom, in the same style. */
+  --tile-amber-a: #e9b51c;
+  --tile-amber-b: #a8750a;
+  --tile-violet-a: #8a6cf0;
+  --tile-violet-b: #4a2db5;
+  --tile-brown-a: #c08257;
+  --tile-brown-b: #7a4a2a;
+
   /* ---- Elevation (§5) — exactly three levels ---------------------------- */
   --sh-2: 0 4px 12px rgba(16, 22, 26, 0.1);
   --sh-3: 0 16px 40px rgba(16, 22, 26, 0.18);
@@ -153,6 +200,7 @@
   --r-sm: 4px; /* chips, inputs   */
   --r-md: 6px; /* buttons, cards  */
   --r-lg: 10px; /* modals, drawers */
+  --r-xl: 12px; /* Basic Home tile faces */
 
   /* ---- Motion (§5) -------------------------------------------------------- */
   --d-fast: 120ms;
@@ -230,6 +278,38 @@
   --sh-3: 0 16px 40px rgba(0, 0, 0, 0.6);
   --overlay-scrim: rgba(0, 0, 0, 0.4);
   --swatch-ring: rgba(230, 237, 240, 0.14);
+
+  /* Basic Home faces, a step deeper so a tile does not glare off the dark
+     canvas. The glyph inks stay as they are: they sit on the face. */
+  --tile-sheen: rgba(255, 255, 255, 0.1);
+  --tile-gloss: rgba(255, 255, 255, 0.12);
+  --tile-rim: rgba(255, 255, 255, 0.16);
+  --tile-green-a: #5e933c;
+  --tile-green-b: #30611b;
+  --tile-orange-a: #d18710;
+  --tile-orange-b: #9d4f09;
+  --tile-blue-a: #2375ba;
+  --tile-blue-b: #0e467f;
+  --tile-teal-a: #1d8f81;
+  --tile-teal-b: #0a5b52;
+  --tile-red-a: #dc271b;
+  --tile-red-b: #871c1c;
+  --tile-purple-a: #813cac;
+  --tile-purple-b: #48206a;
+  --tile-pink-a: #cd2c6d;
+  --tile-pink-b: #7e1b44;
+  --tile-indigo-a: #3648c0;
+  --tile-indigo-b: #232c70;
+  --tile-slate-a: #5b666e;
+  --tile-slate-b: #2e363d;
+  --tile-cyan-a: #2288ae;
+  --tile-cyan-b: #0d5479;
+  --tile-amber-a: #bc931a;
+  --tile-amber-b: #815c0d;
+  --tile-violet-a: #613ae3;
+  --tile-violet-b: #3e288c;
+  --tile-brown-a: #a26a43;
+  --tile-brown-b: #5f3c24;
 }
 
 html {

@@ -35,6 +35,7 @@ import {
   adoptDefaultLocale,
   AppShell,
   Avatar,
+  BasicHome,
   BP_NARROW,
   Clock,
   FilterBarOutlet,
@@ -43,6 +44,8 @@ import {
   Icon,
   IconButton,
   KeyboardOverlays,
+  landingScreen,
+  lazyScreen,
   KeyboardProvider,
   PaletteButton,
   ConfirmProvider,
@@ -54,6 +57,7 @@ import {
   ToastProvider,
   TopbarActionsOutlet,
   TopbarActionsProvider,
+  TopbarTitle,
   flattenNav,
   graftSubNav,
   loadSidebarMode,
@@ -74,30 +78,44 @@ import {
   type SidebarMode,
   type SubPage,
 } from '@orderbook/ui';
-import { AccessScreen } from './screens/AccessScreen';
-import { ConflictsScreen } from './screens/ConflictsScreen';
+import { ChangePasswordDialog } from './components/ChangePasswordDialog';
 import { DashboardScreen } from './screens/DashboardScreen';
-import { FieldsScreen } from './screens/FieldsScreen';
-import { PartyAccessScreen } from './screens/PartyAccessScreen';
 import { FirstRunScreen } from './screens/FirstRunScreen';
-import { IntegrationsScreen } from './screens/IntegrationsScreen';
-import { InventoryScreen } from './screens/InventoryScreen';
 import { LeadEntry } from './screens/LeadEntry';
 import { LeadsScreen } from './screens/LeadsScreen';
-import { LogsScreen } from './screens/LogsScreen';
 import { OrdersScreen } from './screens/OrdersScreen';
-import { PanelsScreen } from './screens/PanelsScreen';
-import { ChangePasswordDialog } from './components/ChangePasswordDialog';
 import { PartiesScreen } from './screens/PartiesScreen';
 import { ProductsScreen, type ProductsPage } from './screens/ProductsScreen';
-import { RecycleBinScreen } from './screens/RecycleBinScreen';
-import { ReportsScreen } from './screens/ReportsScreen';
-import { SETTINGS_TAB_IDS, SettingsScreen, settingsTabIdsFor } from './screens/SettingsScreen';
-import { UpdatesScreen } from './screens/UpdatesScreen';
 import { SignInScreen } from './screens/SignInScreen';
+import { SETTINGS_TAB_IDS, settingsTabIdsFor } from './settingsTabs';
+
+/*
+ * Screens most people open rarely, loaded on first visit rather than at
+ * start-up (`ScreenHost` shows the loading mark meanwhile). The landing and
+ * daily screens above stay in the first bundle, so signing in and the daily
+ * path never wait on a fetch.
+ */
+const AccessScreen = lazyScreen(() => import('./screens/AccessScreen'), 'AccessScreen');
+const ConflictsScreen = lazyScreen(() => import('./screens/ConflictsScreen'), 'ConflictsScreen');
+const FieldsScreen = lazyScreen(() => import('./screens/FieldsScreen'), 'FieldsScreen');
+const IntegrationsScreen = lazyScreen(
+  () => import('./screens/IntegrationsScreen'),
+  'IntegrationsScreen',
+);
+const LogsScreen = lazyScreen(() => import('./screens/LogsScreen'), 'LogsScreen');
+const PanelsScreen = lazyScreen(() => import('./screens/PanelsScreen'), 'PanelsScreen');
+const PartyAccessScreen = lazyScreen(
+  () => import('./screens/PartyAccessScreen'),
+  'PartyAccessScreen',
+);
+const RecycleBinScreen = lazyScreen(() => import('./screens/RecycleBinScreen'), 'RecycleBinScreen');
+const ReportsScreen = lazyScreen(() => import('./screens/ReportsScreen'), 'ReportsScreen');
+const SettingsScreen = lazyScreen(() => import('./screens/SettingsScreen'), 'SettingsScreen');
+const UpdatesScreen = lazyScreen(() => import('./screens/UpdatesScreen'), 'UpdatesScreen');
 
 type Phase = 'loading' | 'first-run' | 'signed-out' | 'ready';
 type Tab =
+  | 'basicHome'
   | 'dashboard'
   | 'panels'
   | 'leads'
@@ -105,7 +123,6 @@ type Tab =
   | 'orders'
   | 'products'
   | 'parties'
-  | 'inventory'
   | 'reports'
   | 'access'
   | 'partyAccess'
@@ -145,7 +162,7 @@ type RecycleBinType = RecycleBinEntityType | '';
  */
 /** Screens whose open record publishes a sidebar label; signing out must not leave them for the next user. */
 const SUB_NAV_SCREENS = [
-  'leads', 'orders', 'parties', 'inventory', 'panels', 'logs', 'access', 'products', 'addLead',
+  'leads', 'orders', 'parties', 'panels', 'logs', 'access', 'products', 'addLead',
 ] as const;
 
 const SCREEN_ENTITIES: Record<string, readonly string[]> = {
@@ -155,16 +172,13 @@ const SCREEN_ENTITIES: Record<string, readonly string[]> = {
   /** The New / Edit pending order form: what `/api/lead-entry` is built from. */
   leadEntry: ['option_list', 'party', 'party_variant', 'stock', 'reservation', 'product', 'catalog', 'setting'],
   /**
-   * The Products module, in three slices so a stock movement does not re-read
-   * the catalogue and a lead edit reads none of them: the products and their
-   * sub products (`catalog` is the one event a bulk import publishes), free
-   * stock, and the option lists the brand chips and colour swatches read.
+   * The Products module, in two slices so a lead edit reads neither: the
+   * products and their sub products (`catalog` is the one event a bulk import
+   * publishes), and the option lists the brand chips and colour swatches read.
+   * No free stock on the Master since 1.3, so no stock slice.
    */
   catalogue: ['product', 'catalog', 'product_category'],
-  catalogueStock: ['stock', 'reservation'],
   catalogueLists: ['option_list'],
-  /** `product_category` and `option_list` feed its Product filter and brand chips. */
-  inventory: ['stock', 'product', 'catalog', 'reservation', 'product_category', 'option_list'],
   reports: ['lead', 'order', 'party', 'stock'],
   fields: ['option_list', 'custom_field', 'pipeline'],
   access: ['user', 'role'],
@@ -233,7 +247,10 @@ function MasterPanel() {
   const [changingPassword, setChangingPassword] = useState(false);
   /** Why this window is at the sign-in screen, when it did not sign out itself. */
   const [signInNotice, setSignInNotice] = useState<MessageKey | null>(null);
-  const [tab, setTab] = useState<Tab>('dashboard');
+  // Set to the person's landing screen at sign-in and on the boot restore.
+  const [tab, setTab] = useState<Tab>('basicHome');
+  /** The company's name for the footer, from `/api/setup/status`; null until set up. */
+  const [companyName, setCompanyName] = useState<string | null>(null);
   const toast = useToast();
   /** Bumped each time New pending order is asked for, so the form can take the cursor when blank. */
   const [newLeadNonce, setNewLeadNonce] = useState(0);
@@ -331,11 +348,12 @@ function MasterPanel() {
       setBootStep(0);
 
       try {
-        const { setupComplete } = await api.setupStatus();
+        const status = await api.setupStatus();
         if (cancelled) return;
+        setCompanyName(status.companyName ?? null);
         setBootStep(1);
 
-        if (!setupComplete) {
+        if (!status.setupComplete) {
           setPhase('first-run');
         } else {
           try {
@@ -348,6 +366,8 @@ function MasterPanel() {
             adoptDefaultLocale(me.defaultLocale);
             setUser(me.user);
             setSessionToken(me.sessionToken);
+            // Office and Management start on Basic Home, Admin on the Dashboard.
+            setTab(landingScreen(me.user.roleTier));
             setPhase('ready');
           } catch {
             // No session, or one the server no longer honours. That is the
@@ -396,9 +416,9 @@ function MasterPanel() {
       onSessionEnded((reason) => {
         setUser(null);
         setSessionToken(null);
-        // Whoever signs in next at this window starts on the Dashboard, as
-        // after `signOut` — see there.
-        setTab('dashboard');
+        // Whoever signs in next at this window starts on their own landing
+        // screen, as after `signOut` — see there.
+        setTab('basicHome');
         setOpenIds(NO_OPEN_IDS);
         for (const screen of SUB_NAV_SCREENS) clearSubNav(screen);
         setSubKeys({});
@@ -535,8 +555,9 @@ function MasterPanel() {
      * out of `tab` — and signing in again renders this same component, so the
      * tab an administrator signed out from was the first screen a salesperson
      * signing in after them saw: Office panels, under a title naming nothing.
+     * Signing in sets the next person's own landing screen.
      */
-    setTab('dashboard');
+    setTab('basicHome');
     setOpenIds(NO_OPEN_IDS);
     for (const screen of SUB_NAV_SCREENS) clearSubNav(screen);
     setSubKeys({});
@@ -560,7 +581,18 @@ function MasterPanel() {
   }
 
   if (phase === 'first-run') {
-    return <FirstRunScreen onComplete={() => setPhase('signed-out')} />;
+    return (
+      <FirstRunScreen
+        onComplete={() => {
+          setPhase('signed-out');
+          // The name was only just typed in, so the boot read had none.
+          void api
+            .setupStatus()
+            .then((status) => setCompanyName(status.companyName ?? null))
+            .catch(() => undefined);
+        }}
+      />
+    );
   }
 
   if (phase === 'signed-out' || !user) {
@@ -571,6 +603,7 @@ function MasterPanel() {
           setUser(signedInUser);
           setSessionToken(token);
           setSignInNotice(null);
+          setTab(landingScreen(signedInUser.roleTier));
           setPhase('ready');
         }}
       />
@@ -600,7 +633,6 @@ function MasterPanel() {
   const canViewReports = user.permissions.includes('reports.view');
   const canViewLeads = user.permissions.includes('leads.view');
   const canViewOrders = user.permissions.includes('orders.view');
-  const canViewInventory = user.permissions.includes('inventory.view');
   const canViewProducts = user.permissions.includes('products.view');
   const canResolveConflicts = user.permissions.includes('sync.resolveConflicts');
 
@@ -640,59 +672,6 @@ function MasterPanel() {
           : railState === 'syncing'
             ? 'sync.popoverTitle.syncing'
             : 'sync.popoverTitle.synced';
-
-  // ---- Sidebar modules. Absent, not greyed, when the role cannot use them.
-  const workItems: Array<NavItem | null> = [
-    { id: 'dashboard', label: t('nav.master.dashboard'), icon: 'dashboard' },
-    canViewLeads ? { id: 'leads', label: t('nav.leads'), icon: 'leads' } : null,
-    canViewOrders ? { id: 'orders', label: t('nav.orders'), icon: 'orders' } : null,
-    canResolveConflicts
-      ? {
-          id: 'conflicts',
-          label: t('nav.master.conflicts'),
-          icon: 'conflicts',
-          count: openConflicts > 0 ? openConflicts : undefined,
-        }
-      : null,
-    canViewProducts ? { id: 'products', label: t('nav.products'), icon: 'products' } : null,
-    canViewParties ? { id: 'parties', label: t('nav.master.parties'), icon: 'parties' } : null,
-    canViewInventory
-      ? {
-          id: 'inventory',
-          label: t('nav.master.inventory'),
-          icon: 'inventory',
-          count:
-            summary?.lowStockCount && summary.lowStockCount > 0
-              ? summary.lowStockCount
-              : undefined,
-        }
-      : null,
-    // Reports sit under Work rather than Admin: a report is something a manager
-    // produces during the day, not a setting anyone administers.
-    canViewReports ? { id: 'reports', label: t('nav.master.reports'), icon: 'calendar' } : null,
-  ];
-
-  const adminItems: Array<NavItem | null> = [
-    canManagePanels ? { id: 'panels', label: t('nav.master.panels'), icon: 'server' } : null,
-    canManageRoles ? { id: 'access', label: t('nav.master.access'), icon: 'shield' } : null,
-    canViewPartyAccess
-      ? { id: 'partyAccess', label: t('nav.master.partyAccess'), icon: 'parties' }
-      : null,
-    canViewFields ? { id: 'fields', label: t('nav.master.fields'), icon: 'filter' } : null,
-    canViewLogs ? { id: 'logs', label: t('nav.master.logs'), icon: 'eye' } : null,
-    canViewRecycleBin
-      ? { id: 'recycleBin', label: t('nav.master.recycleBin'), icon: 'trash' }
-      : null,
-    canManageApi
-      ? { id: 'integrations', label: t('nav.master.integrations'), icon: 'server' }
-      : null,
-    // Everyone: Appearance and Shortcuts are per-desk. The company's own tabs
-    // are `settings.manage`, gated in the sub-pages below and in the screen.
-    { id: 'settings', label: t('nav.master.settings'), icon: 'settings' },
-    // Visible to everyone: which version a machine runs is not privileged
-    // information, and the person asked to read it out is rarely an admin.
-    { id: 'updates', label: t('nav.updates'), icon: 'sync' },
-  ];
 
   async function resetActiveScreen(): Promise<void> {
     if (route === 'gallery') return;
@@ -755,10 +734,6 @@ function MasterPanel() {
       { key: 'sub', label: t('catalog.nav.subProducts'), icon: 'products' },
       { key: 'main', label: t('catalog.nav.mainProducts'), icon: 'inventory' },
       { key: 'brands', label: t('catalog.nav.brands'), icon: 'edit' },
-    ],
-    inventory: [
-      { key: 'all', label: t('inventory.filter.all'), icon: 'inventory' },
-      { key: 'low', label: t('inventory.filter.lowOnly'), icon: 'warning' },
     ],
     reports: [
       { key: 'dispatches', label: t('reports.tab.dispatches'), icon: 'upload' },
@@ -854,18 +829,81 @@ function MasterPanel() {
         : subNav,
     );
 
+  /*
+   * The sidebar: Work, Catalogue, Admin, System, in the order `MASTER_NAV`
+   * declares (`keys-nav-order.test.ts` reads this literal to prove it). A
+   * module the role cannot use is absent, not greyed. Basic Home's tiles are
+   * built from these same groups, so a module without a row has no tile.
+   */
   const groups: NavGroup[] = [
-    { label: t('nav.master.work'), items: nest(workItems) },
-    { label: t('nav.master.admin'), items: nest(adminItems) },
-  ];
+    {
+      label: t('nav.work'),
+      items: [
+        // Basic Home and the Dashboard need nothing beyond being signed in.
+        { id: 'basicHome', label: t('nav.basicHome'), icon: 'home' },
+        { id: 'dashboard', label: t('nav.master.dashboard'), icon: 'dashboard' },
+        canViewLeads ? { id: 'leads', label: t('nav.leads'), icon: 'leads' } : null,
+        canViewOrders ? { id: 'orders', label: t('nav.orders'), icon: 'orders' } : null,
+        canResolveConflicts
+          ? {
+              id: 'conflicts',
+              label: t('nav.master.conflicts'),
+              icon: 'conflicts',
+              count: openConflicts > 0 ? openConflicts : undefined,
+            }
+          : null,
+        // Under Work rather than Admin: a report is something a manager
+        // produces during the day, not a setting anyone administers.
+        canViewReports ? { id: 'reports', label: t('nav.reports'), icon: 'report' } : null,
+      ] satisfies Array<NavItem | null>,
+    },
+    {
+      label: t('nav.catalogue'),
+      items: [
+        canViewProducts ? { id: 'products', label: t('nav.products'), icon: 'products' } : null,
+        canViewParties ? { id: 'parties', label: t('nav.master.parties'), icon: 'parties' } : null,
+        canViewPartyAccess
+          ? { id: 'partyAccess', label: t('nav.master.partyAccess'), icon: 'shield' }
+          : null,
+      ] satisfies Array<NavItem | null>,
+    },
+    {
+      label: t('nav.master.admin'),
+      items: [
+        canManagePanels ? { id: 'panels', label: t('nav.master.panels'), icon: 'server' } : null,
+        canManageRoles ? { id: 'access', label: t('nav.master.access'), icon: 'shield' } : null,
+        canViewFields ? { id: 'fields', label: t('nav.master.fields'), icon: 'filter' } : null,
+        canViewLogs ? { id: 'logs', label: t('nav.master.logs'), icon: 'eye' } : null,
+        canViewRecycleBin
+          ? { id: 'recycleBin', label: t('nav.master.recycleBin'), icon: 'trash' }
+          : null,
+        canManageApi
+          ? { id: 'integrations', label: t('nav.master.integrations'), icon: 'server' }
+          : null,
+      ] satisfies Array<NavItem | null>,
+    },
+    {
+      label: t('nav.system'),
+      items: [
+        // Everyone: Appearance and Shortcuts are per-desk. The company's own tabs
+        // are `settings.manage`, gated in the sub-pages above and in the screen.
+        { id: 'settings', label: t('nav.master.settings'), icon: 'settings' },
+        // Visible to everyone: which version a machine runs is not privileged
+        // information, and the person asked to read it out is rarely an admin.
+        { id: 'updates', label: t('nav.updates'), icon: 'sync' },
+      ] satisfies Array<NavItem | null>,
+    },
+  ].map((group) => ({ ...group, items: nest(group.items) }));
 
   const flatItems = groups.flatMap((group) => flattenNav(group.items));
   /** Whether the sidebar offers this person the screen - navigation's gate and the palette's. */
   function offered(id: string): boolean {
     return flatItems.some((item) => item.id === id);
   }
+  /** Where this person lands: Basic Home for Office and Management, else the Dashboard. */
+  const landing = landingScreen(user.roleTier);
   /*
-   * The screen drawn: `tab` while the sidebar offers it, else the Dashboard. A
+   * The screen drawn: `tab` while the sidebar offers it, else the landing screen. A
    * role edit can take a screen away from a window that has it open, and the
    * sidebar then offers nothing that matches `tab` - drawing it anyway would
    * leave the person on a screen they may no longer use, under a title naming
@@ -874,9 +912,9 @@ function MasterPanel() {
   // Screens that are reached by a button, not the sidebar, so `offered` can never
   // say yes to them: New pending order (Ctrl+Shift+N, the topbar button) for
   // whoever may create one. Keeping the exemption in one place means that tab is
-  // not shown as the Dashboard.
+  // not shown as the landing screen.
   const NOT_IN_SIDEBAR: readonly string[] = canCreateLead ? ['addLead'] : [];
-  const shownTab: Tab = NOT_IN_SIDEBAR.includes(tab) || offered(tab) ? tab : 'dashboard';
+  const shownTab: Tab = NOT_IN_SIDEBAR.includes(tab) || offered(tab) ? tab : landing;
   const activeId = subNav && shownTab !== 'addLead'
     ? subNav.activeId
     : route === 'gallery'
@@ -942,9 +980,7 @@ function MasterPanel() {
 
   const topbar = (
     <>
-      <h1 className="ob-title" style={{ marginRight: 'var(--s-4)' }}>
-        {activeLabel}
-      </h1>
+      <TopbarTitle groups={groups} activeId={activeId} fallback={activeLabel} />
       <span style={{ flex: 1 }} />
       {/* The screen's own control sits inside the app-wide ones: Search and
           Sign out mean the same thing on every screen, this does not. */}
@@ -984,6 +1020,7 @@ function MasterPanel() {
         {syncLabel}
       </button>
       <span style={{ flex: 1 }} />
+      {companyName && <span>{`${t('footer.company')} · ${companyName}`}</span>}
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-6)' }}>
         <Avatar name={user.displayName} avatar={user.avatar} size="xs" />
         {t('footer.signedInAs', { name: user.username, role: user.roleName })}
@@ -1041,12 +1078,6 @@ function MasterPanel() {
           <dd className="ob-data">
             {panels.length - offlinePanels}/{panels.length}
           </dd>
-          {summary?.lowStockCount !== undefined && (
-            <>
-              <dt>{t('sync.lowStock')}</dt>
-              <dd className="ob-data">{summary.lowStockCount}</dd>
-            </>
-          )}
         </dl>
         {openConflicts > 0 && (
           <div
@@ -1081,6 +1112,16 @@ function MasterPanel() {
    * which unmounted the outgoing screen and threw all of that away.
    */
   const screens: ScreenSpec[] = [
+    {
+      id: 'basicHome',
+      render: () => (
+        <BasicHome
+          groups={groups}
+          onOpen={navigate}
+          onNewLead={canCreateLead ? openNewLead : undefined}
+        />
+      ),
+    },
     {
       id: 'dashboard',
       render: () => (
@@ -1176,21 +1217,7 @@ function MasterPanel() {
           page={subKeyOf('products') as ProductsPage}
           permissions={user.permissions}
           catalogueRevision={revisionOf(revisions, 'catalogue')}
-          stockRevision={revisionOf(revisions, 'catalogueStock')}
           listsRevision={revisionOf(revisions, 'catalogueLists')}
-        />
-      ),
-    },
-    {
-      id: 'inventory',
-      render: () => (
-        <InventoryScreen
-          revision={revisionOf(revisions, 'inventory')}
-          filter={subKeyOf('inventory') as 'all' | 'low'}
-          onFilterChange={(filter) => selectSubPage('inventory', filter)}
-          freeToSell={companyFeatures.freeToSell}
-          adjustmentNoteRequired={companyFeatures.adjustmentNoteRequired}
-          permissions={user.permissions}
         />
       ),
     },
@@ -1317,7 +1344,7 @@ function MasterPanel() {
           else if (hit.kind === 'order_line') openRecord('orders', hit.id);
           else if (hit.kind === 'party') openRecord('parties', hit.id);
           // Like the Office, a product hit lands on the list, not on the record.
-          else if (hit.kind === 'product') navigate(offered('products.sub') ? 'products.sub' : 'inventory');
+          else if (hit.kind === 'product') navigate(offered('products.sub') ? 'products.sub' : 'products');
         }}
       />
       {syncOverlay}
@@ -1345,6 +1372,7 @@ function MasterPanel() {
           groups={groups}
           activeId={activeId}
           onNavigate={navigate}
+          homeId={landing}
           collapsed={collapsed}
           onToggleCollapsed={toggleSidebar}
           topbar={topbar}

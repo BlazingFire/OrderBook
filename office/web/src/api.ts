@@ -9,7 +9,7 @@
  * hidden behind an optimistic fake.
  */
 
-import { anySignal, publishSessionEnded, t } from '@orderbook/ui';
+import { anySignal, publishSessionEnded, t, trackLoad } from '@orderbook/ui';
 import type {
   Locale,
   PickKind,
@@ -129,6 +129,12 @@ export interface ConnectionInfo {
   lastSyncedAt: string | null;
   /** What the Master reported in its last snapshot; null until one arrives. */
   masterVersion: string | null;
+  /**
+   * This PC's device code, the prefix of the ids it gives records made
+   * offline. Taken from the hostname until pairing, then from the panel id.
+   * Absent when the server could not read it.
+   */
+  deviceCode?: string;
 }
 
 export interface DiscoveredMaster {
@@ -277,7 +283,12 @@ async function send<T>(
   return body as T;
 }
 
+/** Every JSON call: counted by the loading strip along the top (`trackLoad`) until it settles. */
 function request<T>(path: string, init?: RequestInit): Promise<T> {
+  return trackLoad(requestUntracked<T>(path, init));
+}
+
+function requestUntracked<T>(path: string, init?: RequestInit): Promise<T> {
   const method = (init?.method ?? 'GET').toUpperCase();
   const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
 

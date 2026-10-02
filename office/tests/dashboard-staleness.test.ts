@@ -55,6 +55,8 @@ const DASHBOARD_FOR_MANAGER = {
   pendingSyncCount: 0,
   openOrderCount: 3,
   dispatchedThisWeekCount: 6,
+  convertedTodayCount: 2,
+  dispatchedTodayCount: 1,
   pipelineBreakdown: [{ stageId: 's1', stageName: 'New', sequence: 1, colourHex: null, leadCount: 12 }],
   asOf: NOW,
 };
@@ -98,9 +100,20 @@ describe('dashboard staleness — permission stripping (DSH-3)', () => {
     expect(dashboard.pipelineBreakdown).toEqual(DASHBOARD_FOR_MANAGER.pipelineBreakdown);
     expect(dashboard.asOf).toBe(NOW);
 
-    for (const key of ['orderCount', 'partyCount', 'productCount', 'lowStockCount', 'openConflictCount', 'pendingSyncCount', 'openOrderCount', 'dispatchedThisWeekCount']) {
+    for (const key of ['orderCount', 'partyCount', 'productCount', 'lowStockCount', 'openConflictCount', 'pendingSyncCount', 'openOrderCount', 'dispatchedThisWeekCount', 'convertedTodayCount', 'dispatchedTodayCount']) {
       expect(key in dashboard).toBe(false);
     }
+  });
+
+  it('keeps the today counts for a session holding orders.view', async () => {
+    vi.spyOn(userSession, 'sessionPermissions').mockReturnValue(['orders.view']);
+
+    const response = await request(createApp()).get('/api/snapshot');
+    const dashboard = response.body.dashboard;
+
+    expect(dashboard.convertedTodayCount).toBe(2);
+    expect(dashboard.dispatchedTodayCount).toBe(1);
+    expect('leadCount' in dashboard).toBe(false);
   });
 
   it('replaces the cached permissions list with the current session\'s own', async () => {

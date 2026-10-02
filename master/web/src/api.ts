@@ -1,6 +1,6 @@
 /** Thin wrapper over the Master's local HTTP API. */
 
-import { anySignal, publishSessionEnded, t, type LeadEntryView } from '@orderbook/ui';
+import { anySignal, publishSessionEnded, t, trackLoad, type LeadEntryView } from '@orderbook/ui';
 import type {
   Locale,
   PickKind,
@@ -32,8 +32,6 @@ import type {
   DispatchesReport,
   FieldCatalogue,
   FieldUsageBreakdown,
-  InventoryStockLevel,
-  StockListQuery,
   LeadOutcomesReport,
   Lead,
   LeadInput,
@@ -86,7 +84,6 @@ import type {
   RoleInput,
   SearchHit,
   StageReorderInput,
-  StockMovement,
   StorageUsage,
   SignedInUser,
   SyncConflict,
@@ -246,7 +243,12 @@ async function send<T>(
   return body as T;
 }
 
+/** Every JSON call: counted by the loading strip along the top (`trackLoad`) until it settles. */
 function request<T>(path: string, init?: RequestInit): Promise<T> {
+  return trackLoad(requestUntracked<T>(path, init));
+}
+
+function requestUntracked<T>(path: string, init?: RequestInit): Promise<T> {
   const method = (init?.method ?? 'GET').toUpperCase();
   const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
 
@@ -417,7 +419,9 @@ function reportRangeQuery(input: ReportRangeInput = {}) {
 }
 
 export const api = {
-  setupStatus: () => request<{ setupComplete: boolean }>('/api/setup/status'),
+  /** `companyName` once set up: the footer shows it (already public through discovery). */
+  setupStatus: () =>
+    request<{ setupComplete: boolean; companyName?: string | null }>('/api/setup/status'),
   initialize: (companyName: string) =>
     post<FirstRunCredentials>('/api/setup/initialize', { companyName }),
   identity: () => request<MasterIdentity>('/api/setup/identity'),
@@ -668,42 +672,6 @@ export const api = {
     post<Product>(`/api/products/${productId}/images/reorder`, { ids }),
   deleteProductImage: (productId: string, imageId: string) =>
     request<Product>(`/api/products/${productId}/images/${imageId}`, { method: 'DELETE' }),
-
-  stock: (options: Omit<StockListQuery, 'offset' | 'scope'> = {}) => {
-    const params = new URLSearchParams();
-    if (options.search) params.set('search', options.search);
-    if (options.lowOnly) params.set('lowOnly', 'true');
-    if (options.brand) params.set('brand', options.brand);
-    if (options.categoryId) params.set('categoryId', options.categoryId);
-    if (options.limit) params.set('limit', String(options.limit));
-    const query = params.toString();
-    return request<InventoryStockLevel[]>(`/api/stock${query ? `?${query}` : ''}`);
-  },
-  /** The ledger, newest first; scoped to one product or one variant when asked. */
-  stockMovements: (scope: { productId?: string; variantId?: string } = {}) => {
-    const params = new URLSearchParams();
-    if (scope.productId) params.set('productId', scope.productId);
-    if (scope.variantId) params.set('variantId', scope.variantId);
-    const query = params.toString();
-    return request<StockMovement[]>(`/api/stock/movements${query ? `?${query}` : ''}`);
-  },
-  stockInbound: (input: { variantId: string; quantityBoxes: number; note?: string }) =>
-    post<InventoryStockLevel>('/api/stock/inbound', input),
-  stockAdjust: (input: { variantId: string; quantityBoxes: number; note?: string }) =>
-    post<InventoryStockLevel>('/api/stock/adjust', input),
-  /**
-   * The stock band for one variant.
-   *
-   * Every level is optional and **absent means untouched** — which is what
-   * lets the reorder, min and max cells on one row each save without wiping
-   * the others.
-   */
-  setReorderLevel: (input: {
-    variantId: string;
-    reorderLevel?: number | null;
-    minStockLevel?: number | null;
-    maxStockLevel?: number | null;
-  }) => post<InventoryStockLevel>('/api/stock/reorder-level', input),
 
   leads: (
     options: {

@@ -21,6 +21,7 @@ import { createRealtimeHub, type RealtimeHub } from '../src/realtime/hub.js';
 import * as panelRepo from '../src/repositories/office-panel.repository.js';
 import * as authService from '../src/services/auth.service.js';
 import * as catalog from '../src/services/catalog.service.js';
+import * as panelService from '../src/services/panel.service.js';
 import * as partyAccessService from '../src/services/party-access.service.js';
 import * as roleService from '../src/services/role.service.js';
 import * as userService from '../src/services/user.service.js';
@@ -64,16 +65,18 @@ async function waitFor(client: Client, event: string, n = 1): Promise<void> {
   }
 }
 
-async function connectPanel(deviceCode: string): Promise<Client> {
+async function connectPanel(deviceCode: string): Promise<Client & { panelId: string }> {
   const panelId = await pairPanel(deviceCode);
   const { port } = server.address() as AddressInfo;
   const socket = connect(`http://127.0.0.1:${port}`, {
     transports: ['websocket'],
     auth: { kind: 'office-panel', panelId, panelSecret: 'panel-secret' },
   });
-  const client: Client = { socket, seen: [] };
+  const client = { socket, seen: [] as Client['seen'], panelId };
   socket.onAny((event: string, ...args: unknown[]) => client.seen.push({ event, args }));
   socket.on('connect_error', (error) => client.seen.push({ event: 'connect_error', args: [error.message] }));
+  // A reserved event, so onAny never sees it; the revoke case needs its order.
+  socket.on('disconnect', (reason) => client.seen.push({ event: 'disconnect', args: [reason] }));
   clients.push(client);
   await waitFor(client, 'sync:snapshot');
   return client;
@@ -220,5 +223,21 @@ describe.skipIf(!canRunIntegrationTests)('what the Master pushes to Office panel
 
     expect(count(panel, 'sync:snapshot')).toBe(before);
     expect(count(panel, 'session:rejected')).toBe(0);
+  });
+
+  it('tells a revoked panel before closing its socket', async () => {
+    const panel = await connectPanel('PUSH06');
+    const other = await connectPanel('PUSH07');
+
+    await panelService.revokePanel(panel.panelId, admin);
+
+    await waitFor(panel, 'disconnect');
+    const order = panel.seen.map((entry) => entry.event);
+    // hub.ts emits on the live socket synchronously; an await before that emit
+    // would land after revokePanel closes the socket and the notice is lost.
+    expect(order).toContain('panel:revoked');
+    expect(order.indexOf('panel:revoked')).toBeLessThan(order.indexOf('disconnect'));
+    await settle();
+    expect(count(other, 'panel:revoked')).toBe(0);
   });
 });

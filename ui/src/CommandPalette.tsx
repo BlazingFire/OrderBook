@@ -35,7 +35,8 @@ const IS_MAC =
   (navigator.userAgent.includes('Mac') ||
     (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform === 'macOS');
 
-function displayChord(chord: { key: string; ctrl?: boolean; alt?: boolean; shift?: boolean; meta?: boolean }): string {
+/** A chord as this machine spells it: glyphs on a Mac, `Ctrl+K` elsewhere. */
+export function displayChord(chord: { key: string; ctrl?: boolean; alt?: boolean; shift?: boolean; meta?: boolean }): string {
   return IS_MAC ? formatChordMac(chord) : formatChord(chord);
 }
 

@@ -298,6 +298,9 @@ export default tseslint.config(
      * `master/tests/tooling-config.test.ts` fails on an entry naming no file.
      */
     files: [
+      'ui/src/BasicHome.tsx',
+      'ui/src/StatTile.tsx',
+      'ui/src/TopProgress.tsx',
       'ui/src/ImageCropModal.tsx',
       'ui/src/ProductImages.tsx',
       'office/web/src/components/ProductImages.tsx',

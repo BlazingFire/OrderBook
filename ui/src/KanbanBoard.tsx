@@ -6,10 +6,19 @@ import { rem } from './rem.js';
  * HTML5 API — a few dozen lines, no library, no CDN dependency — and every
  * card is also a button that opens the record, so the board is never the
  * only way to move something (drag is mouse-only).
+ *
+ * A column draws at most `COLUMN_CAP` cards, then a "Show N more" button that
+ * draws the rest of that column. A board of a few thousand open records would
+ * otherwise hold every card in the DOM at once, which a 4 GB PC feels. The
+ * header count is always the whole column.
  */
 
 import { useState } from 'react';
 import type { ReactNode } from 'react';
+import { Button } from './Button';
+import { t } from './i18n.js';
+
+const COLUMN_CAP = 60;
 
 export interface BoardStage {
   id: string;
@@ -46,6 +55,8 @@ export function KanbanBoard<T extends BoardItem>({
 }) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [hoverStageId, setHoverStageId] = useState<string | null>(null);
+  // Columns somebody has asked to see in full.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
 
   const ordered = [...stages].sort((a, b) => a.sequence - b.sequence);
 
@@ -101,7 +112,7 @@ export function KanbanBoard<T extends BoardItem>({
                   {emptyMessage}
                 </p>
               )}
-              {inStage.map((item) => {
+              {(expanded.has(stage.id) ? inStage : inStage.slice(0, COLUMN_CAP)).map((item) => {
                 const locked = isLocked?.(item) ?? false;
                 return (
                   // A card carries its own interactive controls (a kebab menu, say),
@@ -127,6 +138,14 @@ export function KanbanBoard<T extends BoardItem>({
                   </div>
                 );
               })}
+              {!expanded.has(stage.id) && inStage.length > COLUMN_CAP && (
+                <Button
+                  variant="ghost"
+                  onClick={() => setExpanded((current) => new Set(current).add(stage.id))}
+                >
+                  {t('kanban.showMore', { count: inStage.length - COLUMN_CAP })}
+                </Button>
+              )}
             </div>
           </section>
         );

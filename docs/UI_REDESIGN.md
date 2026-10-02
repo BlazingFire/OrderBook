@@ -7,6 +7,63 @@ This is the working document for porting the supplied Claude Design UI system on
 two real frontends. Update it as phases land, the same way `docs/LEAD_GENERATION_FLOW.md` and
 `docs/ROLES_AND_USERS.md` track their modules.
 
+### 1.3 Phase 1: Basic Home, loading bars, the light Master (2026-10-02)
+
+Three owner decisions from the 1.3 batch (`docs/plans/1.3-BATCH.md`, Phase 1) change
+rules this document set earlier.
+
+**Loading bars: the owner overrode "the busy mark is the only mover".** The owner asked
+for loading bars, so two more things may move:
+
+- `TopProgress` (`ui/src/TopProgress.tsx`, drawn by `AppShell`) is a 2px indeterminate
+  accent strip along the top of the main column. It appears only after 300 ms of
+  requests in flight (each panel's `api.ts` counts every JSON call through
+  `trackLoad`), so a quick answer shows nothing.
+- `ProgressBar({value, label})` is the one progress bar in the kit: determinate for a
+  number from 0 to 1, indeterminate for `null`. It shares the splash bar's CSS.
+
+Both pause under `html[data-window-blur='true']`, like every looping animation, and
+stand still as a static 40 % segment under `data-motion='off'` and
+`prefers-reduced-motion`. Skeletons stay static: still no shimmer. `LoadingMark` (the
+busy mark, counted while mounted) is what a lazy screen shows while its code loads.
+
+**The Master is light by default.** Its default theme is now light and its stored key
+moved from `ob.theme.v2` to `ob.theme.v3`, so every Master starts on light once after
+the update. Dark is still offered, and a choice made after that sticks. The Office was
+already light and keeps its `ob.theme` key.
+
+**Basic Home, the launcher.** Office- and Management-tier people land on Basic Home;
+admin-tier people land on the Dashboard (`landingScreen(tier)` in
+`ui/src/BasicHome.tsx`). Basic Home is a grid of tiles, one section per sidebar group,
+built from the panel's own permission-filtered sidebar, so a module a role cannot use
+has no tile and a module added later gets one without touching the launcher. The tile
+spec, from the owner's mockup:
+
+- A tile is 128px wide with a 104×104 face at radius 12 (`--r-xl`).
+- The face is a layered gradient in the module's colour (`--tile-<hue>-a`/`-b` plus
+  sheen, gloss, shade and rim layers, with deeper variants in dark mode): green for New
+  pending order, orange Pending Orders, blue Final Orders, teal Dashboard, red
+  Conflicts, purple Products, pink Parties, indigo Party access, slate Settings, cyan
+  App update. Reports, Chatroom and Printroom get amber, violet and brown in the same
+  style. A module outside this list reuses one of these hues.
+- White glyphs: the mockup's ten are drawn as 120-unit SVGs with a masked long shadow;
+  any other module shows its sidebar icon in white.
+- The label is 12.5px at weight 550. Under it sits a chord chip in IBM Plex Mono
+  10.5px showing the module's Alt shortcut, hidden when the person has unbound it.
+- A count badge comes from the sidebar item. Hover lifts the tile 2px; keyboard focus
+  shows the accent focus ring.
+- Every size is in rem or a token (the `ui-conventions` test), and the colours use no
+  `color-mix` or `oklch` (the Chromium 108 floor of the Windows 7 build).
+
+The Alt digits follow the launcher and are the same on both panels: Basic Home Alt+1,
+Dashboard 2, Pending Orders 3, Final Orders 4, Conflicts 5, Products 6, Parties 7,
+Party access 8, Settings 9. The Master's Admin screens, Reports and Updates are reached
+from the palette.
+
+**Dashboard figures are `StatTile`s** (`ui/src/StatTile.tsx`) on both panels: an
+eyebrow label, a big count and a note, counts only. The Master's low-stock card went
+with its Inventory screen, which 1.3 hides from the Master's UI.
+
 ### Phase 1 landing notes (2026-08-25)
 
 The design-system foundation is built and verified (`tsc`, eslint, `vite build`, budgets all

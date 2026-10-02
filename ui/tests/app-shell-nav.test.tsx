@@ -8,8 +8,9 @@ import { useState } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { AppShell, flattenNav, type NavGroup } from '../src/AppShell.js';
+import { AppShell, TopbarTitle, flattenNav, type NavGroup } from '../src/AppShell.js';
 import { graftSubNav } from '../src/SubNavSlot.js';
+import { t } from '../src/i18n.js';
 
 afterEach(cleanup);
 
@@ -31,12 +32,13 @@ const groups: NavGroup[] = [
   },
 ];
 
-function shell(activeId: string, onNavigate = vi.fn()) {
+function shell(activeId: string, onNavigate = vi.fn(), homeId?: string) {
   render(
     <AppShell
       groups={groups}
       activeId={activeId}
       onNavigate={onNavigate}
+      homeId={homeId}
       collapsed={false}
       onToggleCollapsed={() => undefined}
       topbar={null}
@@ -76,10 +78,32 @@ describe('AppShell nav', () => {
     expect(screen.getByTitle('All leads')).toBeTruthy();
   });
 
-  it('sends the brand mark to the dashboard', () => {
+  it('sends the brand mark to the dashboard by default', () => {
     const onNavigate = shell('leads.list');
-    fireEvent.click(screen.getByRole('button', { name: 'Go to Dashboard' }));
+    fireEvent.click(screen.getByRole('button', { name: t('nav.home') }));
     expect(onNavigate).toHaveBeenCalledWith('dashboard');
+  });
+
+  it('sends the brand mark to the screen this person lands on', () => {
+    // Office and Management land on Basic Home, and home is where they land.
+    const onNavigate = shell('leads.list', vi.fn(), 'basicHome');
+    fireEvent.click(screen.getByRole('button', { name: t('nav.home') }));
+    expect(onNavigate).toHaveBeenCalledWith('basicHome');
+  });
+});
+
+describe('TopbarTitle', () => {
+  it('heads a page with its module icon, its group and its own name', () => {
+    render(<TopbarTitle groups={groups} activeId="leads.followups" fallback="Somewhere" />);
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Follow-ups');
+    expect(screen.getByText('Work').className).toContain('ob-eyebrow');
+    expect(document.querySelector('.ob-topbar-title svg')).not.toBeNull();
+  });
+
+  it('falls back to the given name for a page with no sidebar entry', () => {
+    render(<TopbarTitle groups={groups} activeId="nowhere" fallback="Somewhere" />);
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Somewhere');
+    expect(screen.queryByText('Work')).toBeNull();
   });
 });
 
@@ -109,8 +133,18 @@ describe('folding the modules left behind', () => {
       {
         label: 'Work',
         items: [
-          { id: 'leads', label: 'Leads', icon: 'leads' as const, children: [{ id: 'leads.list', label: 'List', icon: 'leads' as const }] },
-          { id: 'orders', label: 'Orders', icon: 'orders' as const, children: [{ id: 'orders.all', label: 'All stages', icon: 'orders' as const }] },
+          {
+            id: 'leads',
+            label: 'Leads',
+            icon: 'leads' as const,
+            children: [{ id: 'leads.list', label: 'List', icon: 'leads' as const }],
+          },
+          {
+            id: 'orders',
+            label: 'Orders',
+            icon: 'orders' as const,
+            children: [{ id: 'orders.all', label: 'All stages', icon: 'orders' as const }],
+          },
         ],
       },
     ];

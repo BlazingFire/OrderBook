@@ -1130,9 +1130,11 @@ table.ob-table--flat {
   animation: ob-rail-travel 1.4s linear infinite;
 }
 
-/* The two looping animations stop when the window loses focus (§5). */
+/* The looping animations stop when the window loses focus (§5). */
 html[data-window-blur='true'] .ob-rail-highlight,
-html[data-window-blur='true'] .ob-busy rect {
+html[data-window-blur='true'] .ob-busy rect,
+html[data-window-blur='true'] .ob-topprogress-bar,
+html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   animation-play-state: paused;
 }
 
@@ -1316,6 +1318,27 @@ html[data-window-blur='true'] .ob-busy rect {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The page header every screen shares: module icon, its sidebar group as an
+ * eyebrow, then the page name. The name is the part that truncates. */
+.ob-topbar-title {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  min-width: 0;
+  margin-right: var(--s-4);
+}
+.ob-topbar-title > svg {
+  flex: none;
+  color: var(--fg-tertiary);
+}
+.ob-topbar-eyebrow {
+  flex: none;
+  white-space: nowrap;
+}
+.ob-topbar-title h1 {
+  margin: 0;
 }
 
 /*
@@ -1662,7 +1685,8 @@ html[data-window-blur='true'] .ob-busy rect {
   animation: ob-rise-in 280ms var(--e-standard) 500ms both;
 }
 
-.ob-splash-track {
+.ob-splash-track,
+.ob-progress {
   width: 100%;
   height: var(--s-4);
   border-radius: var(--r-sm);
@@ -1674,14 +1698,16 @@ html[data-window-blur='true'] .ob-busy rect {
  * Splash.tsx alongside the figure, so a CSS transition on top would only lag
  * behind it. The glint is a 1px light line riding the fill's top edge — the
  * bar reads as a liquid surface, not a flat block. */
-.ob-splash-fill {
+.ob-splash-fill,
+.ob-progress-fill {
   position: relative;
   height: 100%;
   border-radius: inherit;
   background: var(--accent);
 }
 
-.ob-splash-fill::after {
+.ob-splash-fill::after,
+.ob-progress-fill::after {
   content: '';
   position: absolute;
   inset: 0 0 auto 0;
@@ -1724,6 +1750,311 @@ html[data-window-blur='true'] .ob-busy rect {
   border-radius: var(--s-2);
   background: var(--bg-sunken);
   height: var(--s-8);
+}
+
+/* ===========================================================================
+ * Loading bars. The owner asked for them (2026-10-01), which overrides "the
+ * busy mark is the only mover". Both freeze into a static segment when
+ * motion is off and pause while the window is in the background.
+ * ======================================================================== */
+
+/* A 2px strip along the top of the working area, shown only once requests
+ * have been in flight for 300 ms (TopProgress.tsx). */
+.ob-topprogress {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  overflow: hidden;
+  z-index: var(--z-popover);
+  pointer-events: none;
+}
+
+@keyframes ob-topprogress-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+.ob-topprogress-bar,
+.ob-progress-fill--indeterminate {
+  width: 40%;
+  height: 100%;
+  background: var(--accent);
+  animation: ob-topprogress-slide 1.2s var(--e-standard) infinite;
+}
+
+html[data-motion='off'] .ob-topprogress-bar,
+html[data-motion='off'] .ob-progress-fill--indeterminate {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ob-topprogress-bar,
+  .ob-progress-fill--indeterminate {
+    animation: none;
+  }
+}
+
+/* The determinate bar is the splash track and fill above, plus a caption. */
+.ob-progress-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+  min-width: 0;
+}
+.ob-progress-fill {
+  transition: width var(--d-base) var(--e-standard);
+}
+
+/* ===========================================================================
+ * Basic Home, the launcher (docs/design/basic-home-mockup.html). One section
+ * per sidebar group, one tile per module.
+ * ======================================================================== */
+
+.ob-launcher {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-32);
+  /* On top of the pane's own 16px 20px, for the mockup's 24px 32px 32px. */
+  padding: var(--s-8) var(--s-12) var(--s-16);
+}
+
+.ob-launcher-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+}
+
+.ob-launcher-section > h2 {
+  margin: 0;
+}
+
+.ob-launcher-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-20) var(--s-16);
+}
+
+.ob-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-8);
+  width: 9.1429rem; /* 128px */
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ob-tile:focus-visible {
+  outline: none;
+}
+
+.ob-tile-face {
+  position: relative;
+  display: block;
+  width: 7.4286rem; /* 104px */
+  height: 7.4286rem;
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  background:
+    radial-gradient(150% 95% at 0% -30%, var(--tile-sheen) 99.4%, transparent 100%),
+    linear-gradient(180deg, var(--tile-gloss) 0%, transparent 46%),
+    linear-gradient(180deg, var(--tile-a) 0%, var(--tile-b) 100%);
+}
+
+.ob-tile-face,
+.ob-tile-count {
+  transition: transform var(--d-fast) var(--e-standard);
+}
+
+.ob-tile:hover .ob-tile-face,
+.ob-tile:hover .ob-tile-count {
+  transform: translateY(-2px);
+}
+
+.ob-tile:active .ob-tile-face,
+.ob-tile:active .ob-tile-count {
+  transform: translateY(0);
+}
+
+.ob-tile:focus-visible .ob-tile-face {
+  outline: 2px solid var(--line-focus);
+  outline-offset: 3px;
+}
+
+/* The glyph and its long shadow, drawn on a 120-unit box over the face. */
+.ob-tile-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.ob-tile-shadow {
+  -webkit-mask-image: linear-gradient(135deg, black 40%, transparent 95%);
+}
+
+/* A module with no drawn glyph shows its sidebar icon, in white. */
+.ob-tile-icon {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--tile-paper);
+}
+.ob-tile-icon > svg {
+  width: 2.8571rem; /* 40px */
+  height: 2.8571rem;
+}
+
+/* Positioned on the tile, not the face, so it can follow the label in the
+ * DOM; 0.8571rem is the 12px between the tile's edge and the face's. */
+.ob-tile-count {
+  position: absolute;
+  top: var(--s-6);
+  right: calc(0.8571rem + var(--s-6));
+  min-width: 1.2857rem;
+  height: 1.2857rem;
+  padding: 0 var(--s-6);
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: var(--tile-paper);
+  color: var(--tile-ink);
+  font-size: var(--t-micro-size);
+  line-height: 1.2857rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.ob-tile-label {
+  max-width: 9.1429rem;
+  font-size: var(--t-small-size); /* 12.5px */
+  line-height: var(--t-small-line);
+  font-weight: 550;
+  color: var(--fg-primary);
+  text-align: center;
+}
+
+.ob-tile-chord {
+  height: 1.2857rem; /* 18px */
+  box-sizing: border-box;
+  padding: 0 0.3571rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  font-family: var(--font-mono);
+  font-size: 0.75rem; /* 10.5px */
+  line-height: 1.1429rem;
+  color: var(--fg-secondary);
+  white-space: nowrap;
+}
+
+.ob-tile[data-hue='green'] {
+  --tile-a: var(--tile-green-a);
+  --tile-b: var(--tile-green-b);
+}
+.ob-tile[data-hue='orange'] {
+  --tile-a: var(--tile-orange-a);
+  --tile-b: var(--tile-orange-b);
+}
+.ob-tile[data-hue='blue'] {
+  --tile-a: var(--tile-blue-a);
+  --tile-b: var(--tile-blue-b);
+}
+.ob-tile[data-hue='teal'] {
+  --tile-a: var(--tile-teal-a);
+  --tile-b: var(--tile-teal-b);
+}
+.ob-tile[data-hue='red'] {
+  --tile-a: var(--tile-red-a);
+  --tile-b: var(--tile-red-b);
+}
+.ob-tile[data-hue='purple'] {
+  --tile-a: var(--tile-purple-a);
+  --tile-b: var(--tile-purple-b);
+}
+.ob-tile[data-hue='pink'] {
+  --tile-a: var(--tile-pink-a);
+  --tile-b: var(--tile-pink-b);
+}
+.ob-tile[data-hue='indigo'] {
+  --tile-a: var(--tile-indigo-a);
+  --tile-b: var(--tile-indigo-b);
+}
+.ob-tile[data-hue='slate'] {
+  --tile-a: var(--tile-slate-a);
+  --tile-b: var(--tile-slate-b);
+}
+.ob-tile[data-hue='cyan'] {
+  --tile-a: var(--tile-cyan-a);
+  --tile-b: var(--tile-cyan-b);
+}
+.ob-tile[data-hue='amber'] {
+  --tile-a: var(--tile-amber-a);
+  --tile-b: var(--tile-amber-b);
+}
+.ob-tile[data-hue='violet'] {
+  --tile-a: var(--tile-violet-a);
+  --tile-b: var(--tile-violet-b);
+}
+.ob-tile[data-hue='brown'] {
+  --tile-a: var(--tile-brown-a);
+  --tile-b: var(--tile-brown-b);
+}
+
+/* ===========================================================================
+ * Stat tile, one figure on a dashboard (StatTile.tsx). Counts only.
+ * ======================================================================== */
+
+.ob-stattile {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+button.ob-stattile {
+  cursor: pointer;
+}
+button.ob-stattile:hover {
+  border-color: var(--line-strong);
+}
+.ob-stattile-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-6);
+  min-width: 0;
+}
+.ob-stattile-head > svg {
+  flex: none;
+  color: var(--fg-tertiary);
+}
+.ob-stattile-value {
+  margin-top: var(--s-6);
+  font-variant-numeric: tabular-nums;
+}
+.ob-stattile-note {
+  margin-top: var(--s-2);
+}
+.ob-stattile[data-tone='conflict'] .ob-stattile-value {
+  color: var(--state-conflict);
+}
+.ob-stattile[data-tone='offline'] .ob-stattile-value {
+  color: var(--state-offline);
+}
+.ob-stattile[data-tone='ok'] .ob-stattile-value {
+  color: var(--state-ok);
 }
 
 /* ===========================================================================

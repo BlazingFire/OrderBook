@@ -190,6 +190,59 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-02 - 1.3 Phase 1: shell, Basic Home, Master UI refresh, Inventory UI hidden, loading bars, device code, low RAM (Claude)
+
+`shared/src/keys`, `shared/src/domain/entities.ts`, `shared/src/i18n`, `ui/src`, `master/web`, `master/src` (setup
+status, dashboard figures, PostgreSQL start-up, hub), `office/src`, `office/web`, `electron/`, `eslint.config.js`,
+tests, docs (`UI_REDESIGN.md`, `STRUCTURE.md`, `HANDOFF.md`). No migration. Built in four slices in one working
+tree: the shared kit, the Master server and shell, the Master web app, then the Office web app and the docs.
+- **Shared:** nav rows are `NavEntry` tuples `[id, token, chord?]`; a row without a chord takes the next free Alt
+  digit, a string is an explicit chord with no Mac `Meta+` twin, `null` is none. Both panels: Basic Home Alt+1 …
+  Settings Alt+9; the Master's Admin rows, Reports and Updates have no chord, and Inventory has no row.
+  `DashboardSummary` gained `convertedTodayCount` and `dispatchedTodayCount`.
+- **Kit:** `BasicHome` and `landingScreen(tier)` (office and management land on Basic Home, admin on the
+  Dashboard), `StatTile`, `TopProgress` (`trackLoad`, `LoadingMark`, the one `ProgressBar`), `TopbarTitle`,
+  `AppShell` `homeId` and `banner`, `ScreenHost` LRU (4 live screens when `deviceMemory` is 4 or less or
+  undefined, else 8) with pins (the active screen, `addLead`, `settings`, whose rows hold unsaved drafts inline,
+  and any screen holding a sub-nav entry), `Frozen`, Suspense and `lazyScreen` (one reload on a chunk failure),
+  `useSubNavHeld`, a 60-card Kanban column cap, `displayChord` exported, and the `--r-xl`/`--tile-*` tokens and
+  launcher CSS.
+- **Master web:** one `groups` literal (Work, Catalogue, Admin, System); landing on boot and sign-in; the company
+  name in the footer; eleven lazy screens (`settingsTabs.ts` and `optionListTransport` in `transports.ts` keep them
+  out of the first bundle); light by default under `ob.theme.v3`; a `StatTile` Dashboard; Inventory removed from
+  the UI, with the five stock members of `api.ts`, the Products stock column and two inventory settings hidden.
+  The stock routes, socket and public API are untouched.
+- **Master server:** `/api/setup/status` returns `companyName`; `convertedToday` and `dispatchedSince(day|week)`;
+  `pgMemoryOptions(totalMb)` and `postgres.log` rotation at start; `unhandledRejection` logged on both servers;
+  `panel:revoked` emitted before the socket is closed.
+- **Office:** `GET /api/connection` returns `deviceCode` (a failed read leaves it out rather than failing the
+  status); the sign-in screen shows it in mono and the connection screen marks it provisional until paired;
+  `api.ts` wraps `request` in `trackLoad` and types `ConnectionInfo.deviceCode?`; `App.tsx` adds Basic Home to
+  `alwaysAvailable` (it draws before the first snapshot), the nav row first in Work, `idToTab.basicHome`, landing
+  on the boot restore and in `onSignedIn` only (not `refreshSession`), `basicHome` on sign-out and session end,
+  `homeId`, `TopbarTitle`, and lazy Conflicts, PartyAccess, Settings and Updates (`office/web/src/settingsTabs.ts`
+  holds the tab ids). The Dashboard uses `StatTile`. Its sync tile following `railState` and the Master's "Offline over
+  an hour" panels tile stay in Phase 3, on the shared `LONG_OFFLINE_MS`/`isLongOffline`.
+- **Electron:** renderer `js-flags` `--max-old-space-size=1024` on PCs with 4.5 GB or less; one renderer reload per
+  5 minutes; `backgroundColor #f2f4f5` and a light splash; `log-file.ts` rotates while running.
+- **Tests:** new `ui/tests/basic-home`, `top-progress`, `kanban-cap`, `electron/tests/log-file`,
+  `master/tests/postgres-memory`; extended `screen-host`, `app-shell-nav`, `keys`, `keys-nav-order`,
+  `dashboard.integration` (DSH-10), `dashboard-staleness`, `http-api.integration` (`companyName`); both shell
+  tests follow the new digits and await lazy screens with `findBy`. `office-shell.test.tsx` adds: the office
+  fixture lands on Basic Home before any snapshot, an admin fixture lands on the Dashboard, Alt+1 and Alt+9, and
+  the device code on the sign-in screen; its one-stream SSE test is unchanged. Deleted with Inventory:
+  `inventory-stock-race` and `inventory-movement-form`.
+- **Docs:** `UI_REDESIGN.md` records the owner's override of "the busy mark is the only mover", the light Master
+  and the tile spec; `STRUCTURE.md` §2.7, §3.8, §4.2/4.5/4.9/4.11, §5.2/5.3/5.6/5.8/5.9, §7.1–7.4, §8.4, §9.1–9.4,
+  §10.1 and §12.4; HANDOFF release note (digits moved, Master Admin digits gone, Inventory gone from the Master UI,
+  the Master resets to light once), traps and session history.
+- **Verified by the slices:** `npm run typecheck` and `npm run lint` exit 0; targeted vitest runs of the touched
+  unit and guard suites pass (the Office slice: `office-shell` 37/37, `keys-nav-order`, `keys`,
+  `web-reachability`, `screen-reachability`, the i18n, convention, floor and transport guards). Not run by the
+  slices: the integration suites and the full `npm run verify` (left to the verifier with `ORDERBOOK_PG_BIN`), a
+  production `vite build` (esbuild could not delete its temp files under this PC's sandbox), and any browser or
+  Electron walk of Basic Home, the loading bar and the light Master.
+
 ### 2026-10-02 - 1.3 Phase 0: Windows 7 legacy Office build and runtime floors (Claude)
 
 `office/`, `electron/`, `ui/`, both `web/`, `shared/src/domain/version.ts`, `master/src` (update channel, health,

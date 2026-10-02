@@ -8,6 +8,9 @@ const log = createLogger('db');
 
 let instance: Knex | null = null;
 
+/** The pool's ceiling. PostgreSQL's `max_connections` is sized above it (`postgres-server.ts`). */
+export const POOL_MAX = 10;
+
 function buildKnexConfig(connectionUrl: string): Knex.Config {
   return {
     client: 'pg',
@@ -27,7 +30,7 @@ function buildKnexConfig(connectionUrl: string): Knex.Config {
      */
     pool: {
       min: 2,
-      max: 10,
+      max: POOL_MAX,
       acquireTimeoutMillis: 10_000,
       idleTimeoutMillis: 30_000,
       reapIntervalMillis: 5_000,

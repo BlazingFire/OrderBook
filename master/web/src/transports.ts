@@ -11,10 +11,11 @@ import type {
   CatalogueTransport,
   LeadEntryTransport,
   LeadRecordTransport,
+  OptionListTransport,
   OrderRecordTransport,
 } from '@orderbook/ui';
 
-import { api } from './api';
+import { api, ApiError } from './api';
 import { partyFormTransport } from './partyFormTransport';
 
 export const leadRecordTransport: LeadRecordTransport = {
@@ -52,4 +53,22 @@ export const catalogueTransport: CatalogueTransport = {
   productImportTemplate: (format) => api.productImportTemplate(format),
   exportProducts: (format, level) => api.exportProducts(format, level),
   importProducts: (file, options) => api.importProducts(file, options),
+};
+
+/**
+ * The Master's own calls behind the shared editor. `conflictOf` is the only
+ * part that is not a straight hand-over: it reads this panel's `ApiError`.
+ * Fields, Products → Brands and Settings → Leads all mount the editor with it.
+ */
+export const optionListTransport: OptionListTransport = {
+  fieldValues: api.fieldValues,
+  fieldUsage: api.fieldUsage,
+  createFieldValue: api.createFieldValue,
+  updateFieldValue: api.updateFieldValue,
+  deleteFieldValue: api.deleteFieldValue,
+  reorderFieldValues: api.reorderFieldValues,
+  conflictOf: (error) =>
+    error instanceof ApiError && error.isConflict && error.storedVersion !== undefined
+      ? { message: error.message, storedVersion: error.storedVersion, diff: error.diff }
+      : null,
 };

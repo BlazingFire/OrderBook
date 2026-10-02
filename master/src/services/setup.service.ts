@@ -38,6 +38,12 @@ export async function isSetupComplete(): Promise<boolean> {
   return (await findMasterConfig()) !== null;
 }
 
+/** `GET /api/setup/status`: the company name appears only once setup is done. */
+export async function getSetupStatus(): Promise<{ setupComplete: boolean; companyName?: string | null }> {
+  const row = await findMasterConfig();
+  return row ? { setupComplete: true, companyName: row.company_name } : { setupComplete: false };
+}
+
 export async function runFirstTimeSetup(companyName: string | null): Promise<FirstRunCredentials> {
   if (await isSetupComplete()) {
     throw new ConflictError('error.conflict.alreadySetUp');

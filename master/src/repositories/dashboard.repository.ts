@@ -60,26 +60,43 @@ export async function leadCountsByStage(
 }
 
 /**
- * Dispatched since the start of the current business week. The boundary is
- * computed **in SQL against `config.locale.timeZone`** — a week that starts
- * at UTC midnight starts at 05:30 IST, which would put an early-morning
- * dispatch in the wrong week.
+ * Orders whose `column` falls in the current local day or business week. The
+ * boundary is computed **in SQL against `config.locale.timeZone`** — a day
+ * that starts at UTC midnight starts at 05:30 IST, which would put an
+ * early-morning dispatch on the wrong day.
  */
-export async function dispatchedThisWeek(
+async function ordersSince(
+  column: 'created_at' | 'dispatched_at',
+  unit: 'day' | 'week',
   tenantId: string,
   scope: PartyScope,
-  runner: Runner = db(),
+  runner: Runner,
 ): Promise<number> {
   const tz = config.locale.timeZone;
   const query = runner('orders')
     .where({ tenant_id: tenantId })
     .whereNull('deleted_at')
-    .andWhereRaw('dispatched_at >= (date_trunc(\'week\', now() AT TIME ZONE ?) AT TIME ZONE ?)', [tz, tz]);
+    .andWhereRaw('?? >= (date_trunc(?, now() AT TIME ZONE ?) AT TIME ZONE ?)', [`orders.${column}`, unit, tz, tz]);
 
   applyPartyScope(query, tenantId, 'orders.party_id', scope, { level: 'view' });
 
   const rows = await query.count<Array<{ count: string }>>('id as count');
   return firstCount(rows);
+}
+
+/** Dispatched since the start of the current local day or business week. */
+export function dispatchedSince(
+  tenantId: string,
+  scope: PartyScope,
+  unit: 'day' | 'week',
+  runner: Runner = db(),
+): Promise<number> {
+  return ordersSince('dispatched_at', unit, tenantId, scope, runner);
+}
+
+/** Final orders created since local midnight, which is when a lead converts into one. */
+export function convertedToday(tenantId: string, scope: PartyScope, runner: Runner = db()): Promise<number> {
+  return ordersSince('created_at', 'day', tenantId, scope, runner);
 }
 
 export async function openOrderCount(

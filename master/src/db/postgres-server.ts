@@ -15,6 +15,7 @@
 import { execFile, spawn } from 'node:child_process';
 import { accessSync, constants as fsConstants, existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { randomBytes } from 'node:crypto';
@@ -27,6 +28,47 @@ const execFileAsync = promisify(execFile);
 const log = createLogger('postgres');
 
 const PASSWORD_FILE = 'pg-superuser-password';
+
+/** 4.5 GB: at or below this a PC counts as small, as in `electron/lib/memory.ts`. */
+const SMALL_PC_MB = 4608;
+/** `postgres.log` is set aside at start once it passes this. */
+const PG_LOG_MAX_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Memory settings for the cluster, as `pg_ctl --options` flags.
+ *
+ * On a PC with 4.5 GB or less, PostgreSQL's defaults assume memory the window,
+ * the server and Windows need: shared buffers, per-sort memory and the
+ * planner's idea of the OS cache all come down. `max_connections` drops from
+ * the default 100 to 30, which still covers the knex pool (10), a migration
+ * or backup connection and the superuser reserve. Bigger PCs keep the
+ * defaults apart from a `max_connections` of 40, as there is no use for 100.
+ */
+export function pgMemoryOptions(totalMb: number): string[] {
+  if (totalMb > SMALL_PC_MB) return ['-c max_connections=40'];
+  return [
+    '-c shared_buffers=64MB',
+    '-c work_mem=2MB',
+    '-c maintenance_work_mem=32MB',
+    '-c effective_cache_size=512MB',
+    '-c max_connections=30',
+  ];
+}
+
+/**
+ * Keep one old `postgres.log` and start a fresh one when it has grown past
+ * 5 MB. Only at start, before PostgreSQL holds the file open. A log that
+ * cannot be moved is left alone rather than stopping the start.
+ */
+async function rotatePostgresLog(logFile: string): Promise<void> {
+  try {
+    if ((await fs.stat(logFile)).size < PG_LOG_MAX_BYTES) return;
+    await fs.rm(`${logFile}.1`, { force: true });
+    await fs.rename(logFile, `${logFile}.1`);
+  } catch {
+    // Missing (first start) or locked: nothing to do.
+  }
+}
 
 /**
  * The `@embedded-postgres/*` package directory for this machine.
@@ -308,8 +350,10 @@ async function startCluster(binDir: string, clusterDir: string, socketDir: strin
 
   const serverOptions = [`-p ${config.database.port}`, `-h 127.0.0.1`];
   if (process.platform !== 'win32') serverOptions.push(`-k ${socketDir}`);
+  serverOptions.push(...pgMemoryOptions(Math.round(os.totalmem() / (1024 * 1024))));
 
   const logFile = path.join(config.dataDir, 'postgres.log');
+  await rotatePostgresLog(logFile);
 
   /*
    * `spawn` with `stdio: 'ignore'`, never `execFile`.

@@ -16,6 +16,7 @@ import { Icon, type IconName } from './icons';
 import { useCommand } from './KeyboardProvider.js';
 import { Logo } from './Logo';
 import { PresenceRail, type RailState } from './PresenceRail';
+import { TopProgress } from './TopProgress';
 
 export interface NavItem {
   id: string;
@@ -45,13 +46,45 @@ export interface NavGroup {
   items: NavItem[];
 }
 
+/**
+ * The page header every screen shares, for the topbar: the module's icon, its
+ * sidebar group as an eyebrow, then the page name as the `h1`.
+ *
+ * Read from the same groups the sidebar draws, so an open record nested under
+ * its module is titled by its own entry and still carries the module's icon.
+ * `fallback` is the name when the page has no sidebar entry at all.
+ */
+export function TopbarTitle({
+  groups,
+  activeId,
+  fallback,
+}: {
+  groups: NavGroup[];
+  activeId: string;
+  fallback: string;
+}) {
+  const group = groups.find((candidate) => candidate.items.some((item) => contains(item, activeId)));
+  const top = group?.items.find((item) => contains(item, activeId));
+  const page = top ? flattenNav([top]).find((item) => item.id === activeId) : undefined;
+
+  return (
+    <span className="ob-topbar-title">
+      {top && <Icon name={top.icon} size={18} />}
+      {group && <span className="ob-eyebrow ob-topbar-eyebrow">{group.label}</span>}
+      <h1 className="ob-title">{page?.label ?? fallback}</h1>
+    </span>
+  );
+}
+
 export function AppShell({
   groups,
   activeId,
   onNavigate,
+  homeId = 'dashboard',
   collapsed,
   onToggleCollapsed,
   topbar,
+  banner,
   filterbar,
   footer,
   rail,
@@ -63,9 +96,13 @@ export function AppShell({
   groups: NavGroup[];
   activeId: string;
   onNavigate: (id: string) => void;
+  /** Where the brand mark goes: the screen this person lands on after signing in. */
+  homeId?: string;
   collapsed: boolean;
   onToggleCollapsed: () => void;
   topbar: ReactNode;
+  /** A full-width notice between the topbar and the filter strip. */
+  banner?: ReactNode;
   /** The strip under the topbar — list screens only (§8). Omit elsewhere. */
   filterbar?: ReactNode;
   footer: ReactNode;
@@ -160,7 +197,7 @@ export function AppShell({
           className="ob-sidebar-brand"
           title={t('nav.home')}
           aria-label={t('nav.home')}
-          onClick={() => onNavigate('dashboard')}
+          onClick={() => onNavigate(homeId)}
         >
           <Logo size={24} />
           {!collapsed && <span className="ob-sidebar-wordmark">{t('app.name')}</span>}
@@ -192,7 +229,9 @@ export function AppShell({
       </nav>
 
       <div className="ob-main">
+        <TopProgress />
         <header className="ob-topbar">{topbar}</header>
+        {banner}
         {filterbar}
         <main className="ob-content">{children}</main>
         <footer className="ob-footer">{footer}</footer>

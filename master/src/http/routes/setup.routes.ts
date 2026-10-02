@@ -14,11 +14,15 @@ const needs = requirePermissionMiddleware;
 // See data.routes.ts's `backupUpload` for why this buffers in memory.
 const backupUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024 * 1024 } });
 
-/** Drives the very first screen: has this Master been configured yet? */
+/**
+ * Drives the very first screen: has this Master been configured yet? Once it
+ * has, also the company name for the panel's footer. That name is already
+ * public: UDP discovery broadcasts it and the Office sign-in screen shows it.
+ */
 setupRoutes.get(
   '/status',
   asyncHandler(async (_req, res) => {
-    res.json({ setupComplete: await setupService.isSetupComplete() });
+    res.json(await setupService.getSetupStatus());
   }),
 );
 

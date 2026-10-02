@@ -184,6 +184,15 @@ export function ConnectionScreen({ connection, onConnected }: Props) {
             {t('connection.status.hint')}
           </p>
         )}
+        {/* Before pairing the code comes from this PC's name; pairing replaces
+            it with one derived from the id the Master issues. */}
+        {connection.deviceCode && (
+          <p className="ob-small" style={{ marginTop: 'var(--s-6)' }}>
+            {`${t('signin.deviceCode')} · `}
+            <span className="ob-mono">{connection.deviceCode}</span>
+            {!connection.isPaired && ` · ${t('connection.deviceCodeProvisional')}`}
+          </p>
+        )}
       </Card>
 
       {error && <FieldError>{error}</FieldError>}

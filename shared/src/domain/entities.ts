@@ -972,6 +972,10 @@ export interface DashboardSummary {
   openOrderCount?: number;
   /** Dispatched since the start of the current business week. */
   dispatchedThisWeekCount?: number;
+  /** Final orders created since local midnight — a count, never an amount. */
+  convertedTodayCount?: number;
+  /** Final orders dispatched since local midnight. */
+  dispatchedTodayCount?: number;
   pipelineBreakdown?: Array<{
     stageId: Uuid;
     stageName: string;

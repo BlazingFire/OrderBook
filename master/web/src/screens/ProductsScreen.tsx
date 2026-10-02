@@ -5,13 +5,13 @@
  * they read and hands them the Master's transport.
  *
  * What it loads, and when it loads it again (each on its own revision, so a
- * stock movement does not re-read the catalogue and a lead edit reads nothing):
+ * lead edit reads nothing):
  *  - the option lists (brands, colours) when `option_list` moved;
  *  - the products (categories) and every sub product when the catalogue moved,
- *    `limit: 2000` being the cap the snapshot hands an Office panel;
- *  - free stock when stock or a reservation moved, and only with
- *    `inventory.view`, as the snapshot does - without it the free-stock column
- *    reads a dash.
+ *    `limit: 2000` being the cap the snapshot hands an Office panel.
+ *
+ * No free stock: the Master's Inventory UI was hidden in 1.3, so its list has
+ * no free-stock column (the view carries no `stock`). The Office keeps its own.
  *
  * The three pages sit in `<Activity>` so switching between them keeps each
  * one's search, filters and open record, as `ScreenHost` does between modules.
@@ -32,8 +32,7 @@ import {
 } from '@orderbook/ui';
 
 import { api } from '../api';
-import { catalogueTransport } from '../transports';
-import { optionListTransport } from './FieldsScreen';
+import { catalogueTransport, optionListTransport } from '../transports';
 
 export type ProductsPage = 'sub' | 'main' | 'brands';
 
@@ -42,32 +41,23 @@ interface Props {
   permissions: readonly string[];
   /** Moves when a product, a product (category) or a bulk import changed. */
   catalogueRevision: number;
-  /** Moves when stock or a reservation changed. */
-  stockRevision: number;
   /** Moves when an option list changed. */
   listsRevision: number;
 }
-
-type Stock = CatalogueView['stock'];
-
-const NO_STOCK: Stock = [];
 
 export function ProductsScreen({
   page,
   permissions,
   catalogueRevision,
-  stockRevision,
   listsRevision,
 }: Props) {
   const canViewProducts = permissions.includes('products.view');
-  const canViewStock = permissions.includes('inventory.view');
 
   const [optionLists, setOptionLists] = useState<OptionListItem[] | null>(null);
   const [categories, setCategories] = useState<ProductCategory[] | null>(null);
   const [products, setProducts] = useState<Product[] | null>(null);
-  const [stock, setStock] = useState<Stock>(NO_STOCK);
   const [error, setError] = useState<string | null>(null);
-  /** Bumped by a bulk import so lists, brands and stock refetch at once, without waiting for the socket. */
+  /** Bumped by a bulk import so lists and brands refetch at once, without waiting for the socket. */
   const [importBump, setImportBump] = useState(0);
 
   // A later answer replaces an earlier one; a superseded one is dropped. The
@@ -108,31 +98,11 @@ export function ProductsScreen({
     };
   }, [catalogueRevision, canViewProducts, importBump]);
 
-  useEffect(() => {
-    if (!canViewStock) {
-      setStock(NO_STOCK);
-      return;
-    }
-    let superseded = false;
-    api
-      .stock({ limit: 2000 })
-      .then((levels) => {
-        if (!superseded) setStock(levels);
-      })
-      .catch(() => {
-        // Free stock is a nicety on this screen: a dash, not a failed page.
-        if (!superseded) setStock(NO_STOCK);
-      });
-    return () => {
-      superseded = true;
-    };
-  }, [stockRevision, canViewStock, importBump]);
-
   if (!optionLists || !categories || !products) {
     return error ? <ConflictBanner>{error}</ConflictBanner> : <BusyMark />;
   }
 
-  const view: CatalogueView = { permissions, optionLists, categories, products, stock };
+  const view: CatalogueView = { permissions, optionLists, categories, products };
 
   return (
     <>

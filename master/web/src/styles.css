@@ -1,7 +1,7 @@
 /*
  * Master Panel legacy-compatibility layer — the sibling of
  * `office/web/src/styles.css`. The screens built before the design system
- * (Dashboard, Panels, LeadsOrders, Inventory, Access, Conflicts, Settings,
+ * (Dashboard, Panels, LeadsOrders, Access, Conflicts, Settings,
  * Sign-in, First-run) style themselves through the plain class names below;
  * this file re-expresses them in tokens so the whole panel already speaks the
  * same visual language as the Office Panel.

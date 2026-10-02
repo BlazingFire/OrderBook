@@ -160,7 +160,9 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
 
     it('initialises once and then refuses', async () => {
       await initialize();
-      await request(app).get('/api/setup/status').expect(200, { setupComplete: true });
+      await request(app)
+        .get('/api/setup/status')
+        .expect(200, { setupComplete: true, companyName: 'Shree Ceramics' });
       await request(app).post('/api/setup/initialize').send({}).expect(409);
     });
 

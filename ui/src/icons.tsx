@@ -5,7 +5,9 @@
  */
 
 export type IconName =
+  | 'home'
   | 'dashboard'
+  | 'report'
   | 'leads'
   | 'orders'
   | 'inventory'
@@ -43,7 +45,10 @@ export type IconName =
   | 'download';
 
 const PATHS: Record<IconName, string> = {
+  // The Basic Home launcher, as drawn in the owner's mockup.
+  home: 'M2.5 7.3L8 2.8l5.5 4.5M4 6.2v7.3h8V6.2M6.6 13.5V9.8h2.8v3.7',
   dashboard: 'M2.5 2.5h4.5v4.5h-4.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5h-4.5zM9 9h4.5v4.5H9z',
+  report: 'M2.5 13.5h11M4.5 11V8M8 11V4.5M11.5 11V6.5',
   leads: 'M2.5 3h11L9.5 8.5V13l-3-1.8V8.5z',
   orders: 'M3 4h10M3 8h10M3 12h7',
   inventory: 'M3 5.5h10v7H3zM3 5.5L5 3h6l2 2.5M8 5.5V12.5',

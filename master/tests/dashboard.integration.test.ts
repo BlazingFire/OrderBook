@@ -96,6 +96,40 @@ describe.skipIf(!canRunIntegrationTests)('Dashboard (integration)', () => {
     expect(summary.dispatchedThisWeekCount).toBe(1);
   });
 
+  it('DSH-10: convertedTodayCount and dispatchedTodayCount count from local midnight, not UTC midnight', async () => {
+    const tz = config.locale.timeZone;
+    const { rows } = await db().raw<{ rows: Array<{ day_start: string }> }>(
+      `SELECT (date_trunc('day', now() AT TIME ZONE ?) AT TIME ZONE ?) AS day_start`,
+      [tz, tz],
+    );
+    const dayStartUtc = new Date(rows[0]!.day_start);
+    // 30 minutes after today's 00:00 IST — must count.
+    const insideIso = new Date(dayStartUtc.getTime() + 30 * 60 * 1000).toISOString();
+    // 23:55 IST yesterday — must not.
+    const outsideIso = new Date(dayStartUtc.getTime() - 5 * 60 * 1000).toISOString();
+
+    const { orderId: insideId } = await createDispatchedOrder();
+    await db()('orders').where({ id: insideId }).update({ created_at: insideIso, dispatched_at: insideIso });
+
+    const { orderId: outsideId } = await createDispatchedOrder();
+    await db()('orders').where({ id: outsideId }).update({ created_at: outsideIso, dispatched_at: outsideIso });
+
+    // Converted today but not dispatched yet.
+    const { leadId } = await createLead();
+    const open = await orderService.convertLead({ leadId }, actor);
+    await db()('orders').where({ id: open.id }).update({ created_at: insideIso });
+
+    const summary = await dashboardService.getDashboardSummary(actor);
+    expect(summary.convertedTodayCount).toBe(2);
+    expect(summary.dispatchedTodayCount).toBe(1);
+
+    // Counts are an orders.view figure: absent, not 0, without it.
+    const without = await actorWith(['leads.view']);
+    const hidden = await dashboardService.getDashboardSummary(without);
+    expect('convertedTodayCount' in hidden).toBe(false);
+    expect('dispatchedTodayCount' in hidden).toBe(false);
+  });
+
   it('DSH-6: pipeline breakdown excludes converted leads and names stages from pipeline_stages', async () => {
     const newStageId = await stageIdByName('lead', 'New');
 

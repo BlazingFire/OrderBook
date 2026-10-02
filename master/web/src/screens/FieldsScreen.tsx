@@ -28,6 +28,7 @@ import type {
 } from '@orderbook/shared';
 
 import { api, ApiError, type FieldDifference } from '../api';
+import { optionListTransport } from '../transports';
 import {
   Button,
   ColourChip,
@@ -55,7 +56,6 @@ import {
   rem,
   t,
   type DataTableColumn,
-  type OptionListTransport,
   type TabItem,
 } from '@orderbook/ui';
 
@@ -177,24 +177,6 @@ export function FieldsScreen({ permissions, revision, tab, onTabChange }: Props)
 }
 
 // --- Option-list values -----------------------------------------------------
-
-/**
- * The Master's own calls behind the shared editor. `conflictOf` is the only
- * part that is not a straight hand-over: it reads this panel's `ApiError`.
- * Exported so another Master screen mounting the editor uses the same one.
- */
-export const optionListTransport: OptionListTransport = {
-  fieldValues: api.fieldValues,
-  fieldUsage: api.fieldUsage,
-  createFieldValue: api.createFieldValue,
-  updateFieldValue: api.updateFieldValue,
-  deleteFieldValue: api.deleteFieldValue,
-  reorderFieldValues: api.reorderFieldValues,
-  conflictOf: (error) =>
-    error instanceof ApiError && error.isConflict && error.storedVersion !== undefined
-      ? { message: error.message, storedVersion: error.storedVersion, diff: error.diff }
-      : null,
-};
 
 /** The list chooser; everything below it is the shared `OptionListEditor`. */
 function ValuesTab({

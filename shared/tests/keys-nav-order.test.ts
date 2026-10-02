@@ -57,17 +57,16 @@ function navTabs(panel: 'master' | 'office'): string[] {
 }
 
 describe('each panel numbers its nav commands in its own sidebar order', () => {
-  it('the Master: Work then Admin, as `workItems` and `adminItems` declare them', () => {
+  it('the Master: its sidebar groups, in order', () => {
     const source = read('master/web/src/App.tsx');
-    const work = sidebarIds(between(source, 'const workItems', 'const adminItems'));
-    const admin = sidebarIds(between(source, 'const adminItems', '\n  ];'));
+    const ids = sidebarIds(between(source, 'const groups: NavGroup[] = [', '].map((group)'));
 
     // Guards the slicing above: a reformatted App.tsx that matched nothing
     // would otherwise compare two short lists and prove little.
-    expect(work).toContain('dashboard');
-    expect(admin).toContain('settings');
+    expect(ids).toContain('dashboard');
+    expect(ids).toContain('settings');
 
-    expect(navTabs('master')).toEqual([...work, ...admin]);
+    expect(navTabs('master')).toEqual(ids);
   });
 
   it('the Office: its sidebar groups, in order', () => {
@@ -77,5 +76,20 @@ describe('each panel numbers its nav commands in its own sidebar order', () => {
     expect(ids).toContain('dashboard');
 
     expect(navTabs('office')).toEqual(ids);
+  });
+
+  it('both panels give a screen they share the same chord', () => {
+    const chords = (panel: 'master' | 'office') =>
+      new Map(
+        COMMANDS.filter((command) => command.panel === panel && command.navOrder !== undefined).map(
+          (command) => [command.tab as string, command.defaultChord],
+        ),
+      );
+    const master = chords('master');
+    const office = chords('office');
+    const shared = [...office.keys()].filter((tab) => master.has(tab));
+
+    expect(shared).toContain('basicHome');
+    for (const tab of shared) expect(master.get(tab), tab).toBe(office.get(tab));
   });
 });

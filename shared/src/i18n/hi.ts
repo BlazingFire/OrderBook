@@ -1127,12 +1127,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'dashboard.stat.conflicts.noteSome': 'Waiting for review',
   // TODO(i18n-hi)
-  'dashboard.stat.lowStock': 'Low stock',
-  // TODO(i18n-hi)
-  'dashboard.stat.lowStock.noteNone': 'All products healthy',
-  // TODO(i18n-hi)
-  'dashboard.stat.lowStock.noteSome': 'Below reorder level',
-  // TODO(i18n-hi)
   'dashboard.stat.panelsOnline': 'Panels online',
   // TODO(i18n-hi)
   'dashboard.stat.panelsOnline.noteAll': 'All panels connected',
@@ -2086,8 +2080,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'nav.master.fields': 'Fields',
   // TODO(i18n-hi)
-  'nav.master.inventory': 'Inventory',
-  // TODO(i18n-hi)
   'nav.master.leadsOrders': 'Pending Orders & final orders',
   // TODO(i18n-hi)
   'nav.master.logs': 'Activity log',
@@ -2098,11 +2090,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'nav.master.recycleBin': 'Recycle bin',
   // TODO(i18n-hi)
-  'nav.master.reports': 'Reports',
-  // TODO(i18n-hi)
   'nav.master.settings': 'Settings',
-  // TODO(i18n-hi)
-  'nav.master.work': 'Work',
   'nav.modules': 'मॉड्यूल',
   // TODO(i18n-hi)
   'nav.orders': 'Final Orders',
@@ -3048,8 +3036,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'sync.lastSuccessful': 'Last successful sync',
   // TODO(i18n-hi)
-  'sync.lowStock': 'Products low on stock',
-  // TODO(i18n-hi)
   'sync.pairedServer': 'Paired server',
   // TODO(i18n-hi)
   'sync.panelsOnline': 'Panels online',
@@ -3585,7 +3571,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
 
   // --- Carried over from the v1.1.0 line (sub-pages, free-to-sell) ---
   'nav.fold': 'उप-पृष्ठ छिपाएँ',
-  'nav.home': 'डैशबोर्ड पर जाएँ',
+  'nav.home': 'अपनी होम स्क्रीन पर जाएँ',
 
   // --- Parity with en.ts after the 2026-09-19 merge ---
   'dashboard.activity.convertedOrder': "Final Order {orderId} created from {leadId}",
@@ -3684,4 +3670,21 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'setting.leads.quietAfterDays.label': 'पेंडिंग ऑर्डर इतने दिन बाद शांत मानी जाएगी',
   'setting.leads.quietAfterDays.help': 'पेंडिंग ऑर्डर आउटकम रिपोर्ट किसी पेंडिंग ऑर्डर को कितने दिन तक बिना छेड़े खुला गिनती रहे।',
   'error.unauthorized.developerDisabled': 'इस PC के लिए डेवलपर मोड बंद है। एक प्रशासक इसे सेटिंग्स → कौन अंदर आ सकता है में चालू कर सकता है।',
+
+  // --- 1.3 Phase 1: Basic Home, loading, dashboard figures, device code ---
+  'nav.basicHome': 'बेसिक होम',
+  'nav.reports': 'रिपोर्ट',
+  'common.loading': 'लोड हो रहा है…',
+  'basicHome.newLead': 'नया पेंडिंग ऑर्डर',
+  'kanban.showMore': '{count} और दिखाएँ',
+  'dashboard.stat.convertedToday': 'आज बने फ़ाइनल ऑर्डर',
+  'dashboard.stat.convertedToday.note': 'आधी रात से बने फ़ाइनल ऑर्डर',
+  'dashboard.stat.dispatchedToday': 'आज भेजे गए',
+  'dashboard.stat.dispatchedToday.note': 'आधी रात से भेजे गए फ़ाइनल ऑर्डर',
+  'dashboard.stat.followUpsDue': 'बकाया फ़ॉलो-अप',
+  'dashboard.stat.followUpsDue.note': 'जिन पेंडिंग ऑर्डर पर संपर्क का समय आ गया या निकल गया',
+  'dashboard.stat.printPending': 'छपाई के लिए रुके काम',
+  'dashboard.stat.chatUnread': 'बिना पढ़े संदेश',
+  'signin.deviceCode': 'डिवाइस कोड',
+  'connection.deviceCodeProvisional': 'अस्थायी — इस PC के जुड़ने पर Master अंतिम कोड देता है',
 };

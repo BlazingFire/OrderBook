@@ -189,14 +189,26 @@ on it.
   spec is `docs/catalogue/CATALOGUE_MODEL.md`; the SWISWARE data (1 brand,
   21 colours, 41 products, 549 sub products) is
   `master/assets/catalogue/swisware-plus-2026.md`.
-- **Master shortcuts moved** (worth a line in the release notes). 2026-10-01,
-  parity plan P2 and P4: Pending Orders is Alt+2, Final Orders Alt+3, Conflicts
-  Alt+4, Products Alt+5, Parties Alt+6, Inventory Alt+7, Reports Alt+8, Office
-  panels Alt+9 — the same Alt+1 to Alt+6 as the Office. **Roles & users and Party
-  access lose their chord** (Ctrl+K reaches them, as it does Fields and
-  everything after). The topbar names the active sub-page ("List", "All stages"),
-  not the module. Shortcuts a person remapped are kept. (Earlier, 2026-09-25:
-  Parties moved to Alt+3 and the screens below it down one.)
+- **Release note for 1.3 (Phase 1, 2026-10-02) — shortcuts, home screen,
+  theme.** Put these lines in the release notes:
+  - *The Alt digits moved on both panels.* Basic Home Alt+1, Dashboard Alt+2,
+    Pending Orders Alt+3, Final Orders Alt+4, Conflicts Alt+5, Products Alt+6,
+    Parties Alt+7, Party access Alt+8, Settings Alt+9. The Master's Admin items
+    (Office panels, Roles & users, Fields, Logs, Recycle Bin, Integrations), its
+    Reports (now under Work) and Updates on both panels **lost their digits**;
+    Ctrl+K reaches them. Shortcuts a person remapped are kept.
+  - *Office and Management staff now start on Basic Home*, a page of large
+    tiles for the screens they may use; admins still start on the Dashboard.
+  - *Inventory is gone from the Master's screens.* Stock still moves on dispatch
+    and the Dispatches report is unchanged; the server routes and the public API
+    are untouched.
+  - *The Master switches to the light theme once* after the update (its stored
+    theme key changed to `ob.theme.v3`). Dark is still in Settings → Appearance,
+    and a choice made after that sticks.
+  - Loading now shows a thin bar along the top of the window after 300 ms, and
+    the Office shows its device code on the sign-in and connection screens.
+  (Earlier, 2026-10-01, parity plan P2 and P4 had already moved the Master's
+  digits once, to match Alt+1 to Alt+6 on the Office.)
 - **Hindi is 1,245 strings behind** (`grep -c 'TODO(i18n-hi)'
   shared/src/i18n/hi.ts`). The parity test only checks keys exist, so nothing
   fails on it — except an `activity.*` template, where
@@ -510,7 +522,7 @@ docs/          all prose; nothing source-of-truth lives in a code comment
 18. **The Master has the product catalogue (owner, 2026-10-01, parity plan P4).**
     Decision 12's "the Master edits the catalogue from Inventory" was false —
     Inventory only reads it — and `PANEL_ONLY.products` is gone. The Master's
-    **Products** module (`products.view`, Alt+5, before Parties) has three
+    **Products** module (`products.view`, Alt+5 then, Alt+6 since 1.3 Phase 1, before Parties) has three
     sub-pages: Sub products, Products and Brands (always offered; without
     `fields.view` the page says so inside itself, as the Office does). The screens
     are `ui/src/SubProductsScreen.tsx`, `MainProductsScreen.tsx` (with
@@ -909,8 +921,23 @@ terms, multiple contacts); concurrent edits of one lead from two panels
   `view.find` is left out on purpose: only the chord answers it.
 - **The sidebars and `MASTER_NAV`/`OFFICE_NAV` must agree**
   (`shared/src/keys/commands.ts`; `shared/tests/keys-nav-order.test.ts` reads
-  both `App.tsx` sidebars). A Master screen added above the ninth moves every
-  Alt+N below it; say so in the release notes.
+  both `App.tsx` `const groups: NavGroup[] = [ … ].map((group)` literals). A
+  row that leaves its chord out takes the next free digit, so a new row of that
+  kind moves every Alt+N below it; say so in the release notes. Give a new
+  module `null` (no chord) or an explicit chord unless it should take a digit.
+- **Basic Home builds its tiles from the sidebar groups** (`ui/src/BasicHome.tsx`).
+  A module with no sidebar row has no tile; there is no separate tile list to
+  keep in step. On the Office it sits in `alwaysAvailable`, because it must
+  draw before the first snapshot. Landing (`landingScreen(tier)`) is set on the
+  boot restore and at sign-in only; setting it in `refreshSession`, which runs on
+  every reconnect, would throw people back to Basic Home whenever the link
+  blinked.
+- **Lazy screens need `findBy` in the shell tests.** Since 1.3 Phase 1 some
+  screens load on first visit (`lazyScreen` in `ui/src/ScreenHost.tsx`), so
+  their text is not on screen in the same tick as the click. A lazy screen must
+  not be imported statically anywhere else in its panel, or the chunk never
+  splits: that is why `settingsTabs.ts` exists on both panels and
+  `optionListTransport` moved to the Master's `transports.ts`.
 - **Socket.IO has no CORS; the handshake checks the Origin.**
   `isAllowedSocketOrigin` (`master/src/realtime/socket-origin.ts`) admits no
   Origin (an Office server in Node) or a page served from exactly the Host it
@@ -944,6 +971,34 @@ terms, multiple contacts); concurrent edits of one lead from two panels
 
 Condensed. The full entries are in `git show 5b8ebe2:HANDOFF.md` and in
 `docs/AI_COLLABORATION.md`.
+
+- **2026-10-02 — 1.3 Phase 1: shell, Basic Home, Master UI refresh, Inventory UI
+  hidden, loading bars, device code, low RAM (Claude).** No migration. Shared:
+  nav rows are `NavEntry` tuples with an optional explicit chord, both nav lists
+  start with Basic Home, and `DashboardSummary` gained `convertedTodayCount` and
+  `dispatchedTodayCount`. Kit: `BasicHome`/`landingScreen`, `StatTile`,
+  `TopProgress` (`trackLoad`, `LoadingMark`, the one `ProgressBar`),
+  `TopbarTitle`, `homeId` and a `banner` slot on `AppShell`, an LRU of 4 or 8
+  live screens with pins, a freeze memo, Suspense and `lazyScreen` in
+  `ScreenHost`, a 60-card cap per Kanban column, and the tile tokens and CSS.
+  Master web: one `groups` literal (Work, Catalogue, Admin, System), landing on
+  boot and sign-in, the company name in the footer, eleven lazy screens, light by
+  default (`ob.theme.v3`), a `StatTile` Dashboard, and Inventory removed from the
+  UI (screen, nav row, sub-pages, the stock column on Products, the five `api`
+  members, two inventory settings hidden). Master server: `/api/setup/status`
+  returns `companyName`, converted/dispatched-today counts, PostgreSQL memory
+  options on small PCs and `postgres.log` rotation, `unhandledRejection` logged,
+  and the revoke notice sent before the socket closes. Office: `deviceCode` on
+  `GET /api/connection`, shown on sign-in and (provisional) on the connection
+  screen; Basic Home in `alwaysAvailable`; four lazy screens; a `StatTile`
+  Dashboard (its sync tile following the link state is Phase 3 work). Electron: a 1 GB renderer heap on PCs with 4.5 GB or
+  less, one renderer reload per 5 minutes, a light window background, and log
+  rotation while running. Docs: `docs/UI_REDESIGN.md` records the owner's
+  override of "the busy mark is the only mover" and the tile spec; this file's
+  release note above. Not done here: a browser or Electron walk of the new home
+  screen, the light Master and the loading bar, and a local `vite build` (esbuild
+  could not delete its temp files under this PC's sandbox), so the lazy chunks
+  splitting is for the verifier's `npm run build` to confirm.
 
 - **2026-10-02 — 1.3 Phase 0: Windows 7 legacy Office build and runtime floors
   (Claude).** A fourth release target, `win7`: the Office only, on Electron

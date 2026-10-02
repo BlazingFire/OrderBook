@@ -46,7 +46,7 @@ import { getJson, interpretHealth, type HealthOutcome } from './lib/health.js';
 import { approveInstaller, updateMethod } from './lib/installer.js';
 import { isLeadPdfUrl } from './lib/lead-pdf.js';
 import { openLogFile, type LogFile } from './lib/log-file.js';
-import { serverHeapMb } from './lib/memory.js';
+import { rendererHeapFlag, serverHeapMb } from './lib/memory.js';
 import { printOptions } from './lib/print-options.js';
 import {
   readDataDirOverride,
@@ -85,6 +85,7 @@ export interface PanelShellConfig {
 
 const POLL_INTERVAL_MS = 400;
 const STOP_GRACE_MS = 10_000;
+const RENDERER_RELOAD_WINDOW_MS = 5 * 60_000;
 
 export function runPanelShell(config: PanelShellConfig): void {
   const ORIGIN = `http://localhost:${config.port}`;
@@ -348,7 +349,7 @@ export function runPanelShell(config: PanelShellConfig): void {
     const safe = message.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     return `data:text/html;charset=utf-8,${encodeURIComponent(`
       <html><body style="margin:0;display:flex;align-items:center;justify-content:center;
-        height:100vh;background:#111318;color:#e7e9ee;
+        height:100vh;background:#f2f4f5;color:#10161a;
         font:14px/1.5 'Segoe UI',system-ui,sans-serif">
         <div style="text-align:center">
           <div style="font-size:18px;font-weight:600;margin-bottom:8px">${config.productName}</div>
@@ -404,7 +405,9 @@ export function runPanelShell(config: PanelShellConfig): void {
       // taskbar inside a 768-tall screen.
       minWidth: 1024,
       minHeight: 640,
-      backgroundColor: '#111318',
+      // The light theme's page colour, which both panels now open in, so the
+      // window does not flash dark before the first paint.
+      backgroundColor: '#f2f4f5',
       show: true,
       title: config.productName,
       webPreferences: {
@@ -474,14 +477,17 @@ export function runPanelShell(config: PanelShellConfig): void {
       done(false);
     });
 
-    let rendererReloaded = false;
+    // One reload per five minutes. A single crash in a long day is reloaded
+    // past; a window that crashes again straight after is shown the splash
+    // rather than reloaded in a loop.
+    let lastRendererReload = 0;
     window.webContents.on('render-process-gone', (_event, details) => {
       say(`Renderer gone: ${details.reason}`);
-      if (rendererReloaded) {
+      if (Date.now() - lastRendererReload < RENDERER_RELOAD_WINDOW_MS) {
         void showSplash('The window stopped responding. Close it and start OrderBook again.');
         return;
       }
-      rendererReloaded = true;
+      lastRendererReload = Date.now();
       void showPanel();
     });
 
@@ -994,6 +1000,11 @@ export function runPanelShell(config: PanelShellConfig): void {
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
   });
+
+  // The window's heap cap on a small PC (`lib/memory.ts`). Chromium reads
+  // switches only before the app is ready.
+  const rendererFlag = rendererHeapFlag(Math.round(os.totalmem() / (1024 * 1024)));
+  if (rendererFlag) app.commandLine.appendSwitch('js-flags', rendererFlag);
 
   void app.whenReady().then(async () => {
     log = openLogFile(logPath(), !app.isPackaged);

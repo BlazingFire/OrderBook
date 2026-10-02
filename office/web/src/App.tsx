@@ -28,6 +28,7 @@ import {
 import {
   AppShell,
   adoptDefaultLocale,
+  BasicHome,
   BP_NARROW,
   BusyMark,
   Clock,
@@ -38,6 +39,8 @@ import {
   IconButton,
   KeyboardOverlays,
   KeyboardProvider,
+  landingScreen,
+  lazyScreen,
   PaletteButton,
   apiErrorText,
   ConfirmProvider,
@@ -47,6 +50,7 @@ import {
   Splash,
   SubNavProvider,
   ToastProvider,
+  TopbarTitle,
   translator,
   flattenNav,
   graftSubNav,
@@ -72,17 +76,28 @@ import { searchLocalView } from './localSearch';
 import { AddLeadScreen } from './screens/AddLeadScreen';
 import { CatalogScreen } from './screens/CatalogScreen';
 import { BrandsScreen, MainProductsScreen } from './screens/MainProductsScreen';
-import { PartyAccessScreen } from './screens/PartyAccessScreen';
-import { ConflictsScreen } from './screens/ConflictsScreen';
 import { ConnectionScreen } from './screens/ConnectionScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
 import { LeadBoardScreen } from './screens/LeadBoardScreen';
 import { OrderBoardScreen } from './screens/OrderBoardScreen';
-import { SETTINGS_TAB_IDS, SettingsScreen } from './screens/SettingsScreen';
-import { UpdatesScreen } from './screens/UpdatesScreen';
 import { SignInScreen } from './screens/SignInScreen';
+import { SETTINGS_TAB_IDS } from './settingsTabs';
+
+/*
+ * Screens most people open rarely, loaded on first visit rather than at
+ * start-up (`ScreenHost` shows the loading mark meanwhile). Basic Home and the
+ * daily screens above stay in the first bundle.
+ */
+const ConflictsScreen = lazyScreen(() => import('./screens/ConflictsScreen'), 'ConflictsScreen');
+const PartyAccessScreen = lazyScreen(
+  () => import('./screens/PartyAccessScreen'),
+  'PartyAccessScreen',
+);
+const SettingsScreen = lazyScreen(() => import('./screens/SettingsScreen'), 'SettingsScreen');
+const UpdatesScreen = lazyScreen(() => import('./screens/UpdatesScreen'), 'UpdatesScreen');
 
 type Tab =
+  | 'basicHome'
   | 'dashboard'
   | 'leads'
   | 'orders'
@@ -160,7 +175,8 @@ function OfficePanel() {
   const [optionListsRevision, setOptionListsRevision] = useState(0);
   useEffect(() => setOptionListsRevision((count) => count + 1), [view?.optionLists]);
 
-  const [tab, setTab] = useState<Tab>('dashboard');
+  // Set to the person's landing screen at sign-in and on the boot restore.
+  const [tab, setTab] = useState<Tab>('basicHome');
   /*
    * Which sub-page each module is showing, keyed by module. A screen's tabs
    * are offered from the sidebar too, and both controls read from here so
@@ -292,8 +308,9 @@ function OfficePanel() {
         // — the Conflicts page, which stays offered while it is the open one,
         // for somebody with no refusals and no right to adjudicate, or a view
         // of the last person's parties until the first snapshot replaced it.
+        // Signing in sets the next person's own landing screen.
         setView(null);
-        setTab('dashboard');
+        setTab('basicHome');
         setSignInNotice(reason);
       }),
     [],
@@ -335,6 +352,10 @@ function OfficePanel() {
           // `adoptDefaultLocale`.
           adoptDefaultLocale(defaultLocale);
           setSession(restored);
+          // Office and Management start on Basic Home, Admin on the Dashboard.
+          // Only here and at sign-in: `refreshSession` runs on every reconnect
+          // and must leave the open screen alone.
+          if (restored) setTab(landingScreen(restored.roleTier));
         } catch {
           // Nobody signed in, or a session the Master no longer honours. That
           // is the sign-in screen, not a failure to start.
@@ -518,7 +539,7 @@ function OfficePanel() {
     await api.signOut();
     setSession(null);
     setView(null);
-    setTab('dashboard');
+    setTab('basicHome');
   }
 
   /*
@@ -575,6 +596,7 @@ function OfficePanel() {
         onSignedIn={(next) => {
           setSignInNotice(null);
           setSession(next);
+          setTab(landingScreen(next.roleTier));
         }}
       />
     );
@@ -582,6 +604,9 @@ function OfficePanel() {
 
   const permissions = session.permissions;
   const can = (permission: string): boolean => permissions.includes(permission);
+
+  /** Where this person lands: Basic Home for Office and Management, else the Dashboard. */
+  const landing = landingScreen(session.roleTier);
 
   const openConflicts = (view?.conflicts ?? []).filter((conflict) => !conflict.resolvedAt).length;
   const pendingCount = view?.pendingCount ?? 0;
@@ -690,14 +715,20 @@ function OfficePanel() {
   /** Hangs each module's sub-pages, then the open record's entry, under it. */
   const nest = (items: NavItem[]): NavItem[] => graftSubNav(withSubPages(items, subPages), subNav);
 
+  /*
+   * The sidebar, in the order `OFFICE_NAV` declares (`keys-nav-order.test.ts`
+   * reads this literal to prove it). Basic Home's tiles are built from these
+   * same groups, so a module without a row has no tile.
+   */
   const groups: NavGroup[] = [
     {
       label: t('nav.work'),
       items: (
         [
-          // Always present, unlike the rest of this group: it only aggregates
-          // what the screens below already show, so it needs no permission of
-          // its own beyond being signed in.
+          // Basic Home and the Dashboard are always present, unlike the rest of
+          // this group: they only gather what the screens below already show,
+          // so they need no permission of their own beyond being signed in.
+          { id: 'basicHome', label: t('nav.basicHome'), icon: 'home' as const },
           { id: 'dashboard', label: t('nav.dashboard'), icon: 'dashboard' as const },
           can('leads.view') ? { id: 'leads', label: t('nav.leads'), icon: 'leads' as const } : null,
           can('orders.view')
@@ -764,6 +795,7 @@ function OfficePanel() {
 
   // Map sidebar ids back onto the tabs the screens know.
   const idToTab: Record<string, Tab> = {
+    basicHome: 'basicHome',
     dashboard: 'dashboard',
     leads: 'leads',
     orders: 'orders',
@@ -809,7 +841,7 @@ function OfficePanel() {
      * only way in — Alt+N and the palette's nav commands come through here for
      * every screen in `OFFICE_NAV`, and so do the Dashboard's links and a
      * search hit — and without this a role with no `leads.view` reached the
-     * lead board by pressing Alt+2. The Master still refuses what the role may
+     * lead board by pressing what is now Alt+3. The Master still refuses what the role may
      * not do; this keeps the panel from drawing the screen at all.
      */
     if (!offered(id)) return;
@@ -842,7 +874,7 @@ function OfficePanel() {
           ? `${tab}.${subKeyOf(tab)}`
           : groups.some((group) => group.items.some((item) => item.id === idToTab[tab]))
             ? tab
-            : (groups.flatMap((group) => group.items)[0]?.id ?? '');
+            : landing;
 
   const flatItems = groups.flatMap((group) => flattenNav(group.items));
   /** Whether the sidebar offers this person the screen — navigation's gate and the palette's. */
@@ -860,9 +892,7 @@ function OfficePanel() {
 
   const topbar = (
     <>
-      <h1 className="ob-title" style={{ marginRight: 'var(--s-4)' }}>
-        {activeLabel}
-      </h1>
+      <TopbarTitle groups={groups} activeId={activeId} fallback={activeLabel} />
 
       <span style={{ flex: 1 }} />
 
@@ -1059,7 +1089,8 @@ function OfficePanel() {
    *
    * `updates` and `settings` read the connection rather than the merged view,
    * so they work before the first snapshot ever arrives — which is exactly
-   * when an operator needs them. Everything else takes a non-null `LocalView`.
+   * when an operator needs them. Basic Home reads only the sidebar, so it is
+   * here too: it is where most people land, and it must not wait on a sync. Everything else takes a non-null `LocalView`.
    * `ScreenHost` renders all visited screens at once, so a null view must
    * never reach the second tier; the gate stays outside the host.
    *
@@ -1067,6 +1098,16 @@ function OfficePanel() {
    * half-filled lead being thrown away by navigating to another tab.
    */
   const alwaysAvailable: ScreenSpec[] = [
+    {
+      id: 'basicHome',
+      render: () => (
+        <BasicHome
+          groups={groups}
+          onOpen={goToTab}
+          onNewLead={can('leads.create') ? openNewLead : undefined}
+        />
+      ),
+    },
     {
       id: 'updates',
       render: () => <UpdatesScreen connection={connection} permissions={permissions} />,
@@ -1269,6 +1310,7 @@ function OfficePanel() {
           groups={groups}
           activeId={activeId}
           onNavigate={goToTab}
+          homeId={landing}
           collapsed={collapsed}
           onToggleCollapsed={toggleSidebar}
           topbar={topbar}

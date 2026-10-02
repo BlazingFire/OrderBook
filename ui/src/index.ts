@@ -19,6 +19,7 @@
 
 export * from './AppShell.js';
 export * from './Avatar.js';
+export * from './BasicHome.js';
 export * from './AvatarPicker.js';
 export * from './BusyMark.js';
 export * from './Button.js';
@@ -67,6 +68,7 @@ export * from './ShortcutSettings.js';
 export * from './Splash.js';
 export * from './SuggestInput.js';
 export * from './States.js';
+export * from './StatTile.js';
 export * from './SubProductsScreen.js';
 export * from './SubNavSlot.js';
 export * from './subPages.js';
@@ -74,6 +76,7 @@ export * from './catalogueSummary.js';
 export * from './Tabs.js';
 export * from './Toast.js';
 export * from './TopbarSlot.js';
+export * from './TopProgress.js';
 export * from './abort.js';
 export * from './breakpoints.js';
 export * from './clipboard.js';

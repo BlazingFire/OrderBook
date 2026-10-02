@@ -30,3 +30,15 @@ export function serverHeapMb(totalMb: number, panel: 'master' | 'office', arch: 
   const ceiling = arch === 'ia32' ? 1024 : 4096;
   return Math.min(ceiling, Math.max(floor, Math.round(shareMb * 0.7)));
 }
+
+/**
+ * The window's own heap cap, as a Chromium `js-flags` value, or null to leave
+ * V8's default alone.
+ *
+ * On a PC with 4.5 GB or less the renderer is held to 1024 MB, so a long day of
+ * screens makes V8 collect sooner instead of growing into memory the server,
+ * PostgreSQL and Windows need. Bigger PCs keep the default.
+ */
+export function rendererHeapFlag(totalMb: number): string | null {
+  return totalMb <= SMALL_PC_MB ? '--max-old-space-size=1024' : null;
+}

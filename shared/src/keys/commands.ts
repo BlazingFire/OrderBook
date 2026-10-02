@@ -8,12 +8,12 @@
  * people stop trusting, and two sets of strings drift the first time somebody
  * renames a tab.
  *
- * `navOrder` is the number Alt+N binds to, and it is **declared here rather
- * than taken from the rendered sidebar index**. The sidebar filters out the
- * screens a person's permissions exclude, so a rendered index would move Alt+3
- * on the Master from Parties to Inventory for somebody who cannot see Parties —
- * a shortcut that means something different per person is worse than no
- * shortcut.
+ * `navOrder` is a screen's place in its sidebar and the Alt digits follow
+ * it, and both are **declared here rather than taken from the rendered
+ * sidebar index**. The sidebar filters out the screens a person's permissions
+ * exclude, so a rendered index would move Alt+3 for somebody who cannot see
+ * one of the screens above it — a shortcut that means something different per
+ * person is worse than no shortcut.
  */
 
 import type { MessageKey } from '../i18n/keys.js';
@@ -39,8 +39,9 @@ export interface CommandDef {
   /** The screen id a nav command opens. */
   tab?: string;
   /**
-   * The screen's place in its panel's sidebar, from 1 — the N of Alt+N for the
-   * first nine. Absent for anything that is not a nav destination.
+   * The screen's place in its panel's sidebar, from 1. Absent for anything
+   * that is not a nav destination. The Alt digit is in `defaultChord`, since a
+   * row with an explicit chord or none does not use a digit up.
    */
   navOrder?: number;
   /** The chord this ships bound to, in `parseChord` form. */
@@ -50,43 +51,53 @@ export interface CommandDef {
 }
 
 /**
- * The Master's nav order, matching its own sidebar — Work then Admin, in the
- * order `workItems`/`adminItems` declare them (`keys-nav-order.test.ts` reads
- * both and holds this list to them).
+ * One sidebar row: its screen id, its title token and, optionally, its chord.
  *
- * More screens than usable numbers, so the tail has no chord. That is
- * deliberate rather than a limit worked around: Alt+0 reads as "the tenth" to
- * nobody, and the palette reaches every one of them by name.
+ * Leave the chord out and the row takes the next free Alt digit — counted only
+ * over rows that left it out, so a row with an explicit chord or with `null`
+ * does not use one up. A string is an explicit chord; `null` means no chord at
+ * all, which the palette still reaches by name.
+ *
+ * An explicit chord has no darwin `Meta+` twin. Alt/Option plus a letter
+ * already matches on the physical key on a Mac, and `Meta+C` or `Meta+P` would
+ * take Copy and Print away from a Mac browser on the shop LAN.
  */
-const MASTER_NAV: Array<[id: string, token: MessageKey]> = [
+export type NavEntry = [id: string, token: MessageKey, chord?: string | null];
+
+/**
+ * The Master's nav order, matching its own sidebar: Work, Catalogue, Admin,
+ * System (`keys-nav-order.test.ts` holds this list to the sidebar).
+ *
+ * The digits match the Office's, so Alt+3 is Pending Orders on both panels.
+ * Reports and the Admin screens have no chord; nobody reads Alt+0 as "the
+ * tenth", and the palette reaches every one of them by name.
+ */
+const MASTER_NAV: NavEntry[] = [
+  ['basicHome', 'nav.basicHome'],
   ['dashboard', 'nav.master.dashboard'],
   ['leads', 'nav.leads'],
   ['orders', 'nav.orders'],
   ['conflicts', 'nav.master.conflicts'],
+  ['reports', 'nav.reports', null],
   ['products', 'nav.products'],
   ['parties', 'nav.master.parties'],
-  ['inventory', 'nav.master.inventory'],
-  ['reports', 'nav.master.reports'],
-  ['panels', 'nav.master.panels'],
-  ['access', 'nav.master.access'],
   ['partyAccess', 'nav.master.partyAccess'],
-  ['fields', 'nav.master.fields'],
-  ['logs', 'nav.master.logs'],
-  ['recycleBin', 'nav.master.recycleBin'],
-  ['integrations', 'nav.master.integrations'],
+  ['panels', 'nav.master.panels', null],
+  ['access', 'nav.master.access', null],
+  ['fields', 'nav.master.fields', null],
+  ['logs', 'nav.master.logs', null],
+  ['recycleBin', 'nav.master.recycleBin', null],
+  ['integrations', 'nav.master.integrations', null],
   ['settings', 'nav.master.settings'],
-  ['updates', 'nav.updates'],
+  ['updates', 'nav.updates', null],
 ];
 
 /**
- * The Office panel's nav order — **its own sidebar's**, not the Master's.
- *
- * Conflicts sits fourth here and nowhere near fourth on the Master. Copying the
- * Master's order would have put Alt+4 on a different screen than the one the
- * office sidebar shows fourth, which is exactly the mismatch a numbered
- * shortcut cannot survive.
+ * The Office panel's nav order — **its own sidebar's**. It shares the Master's
+ * chord map for every screen both panels have, and has no Admin group.
  */
-const OFFICE_NAV: Array<[id: string, token: MessageKey]> = [
+const OFFICE_NAV: NavEntry[] = [
+  ['basicHome', 'nav.basicHome'],
   ['dashboard', 'nav.dashboard'],
   ['leads', 'nav.leads'],
   ['orders', 'nav.orders'],
@@ -95,23 +106,27 @@ const OFFICE_NAV: Array<[id: string, token: MessageKey]> = [
   ['parties', 'nav.parties'],
   ['partyAccess', 'nav.partyAccess'],
   ['settings', 'nav.settings'],
-  ['updates', 'nav.updates'],
+  ['updates', 'nav.updates', null],
 ];
 
-function navCommands(
-  panel: 'master' | 'office',
-  entries: Array<[string, MessageKey]>,
-): CommandDef[] {
-  return entries.map(([tab, titleToken], index) => ({
-    id: `nav.${panel}.${tab}`,
-    titleToken,
-    scope: 'screen' as const,
-    panel,
-    tab,
-    navOrder: index + 1,
-    defaultChord: index < 9 ? `Alt+${index + 1}` : undefined,
-    platformDefaultChord: index < 9 ? { darwin: `Meta+${index + 1}` } : undefined,
-  }));
+/** Builds one panel's nav commands. Exported for `keys.test.ts`. */
+export function navCommands(panel: 'master' | 'office', entries: NavEntry[]): CommandDef[] {
+  let digit = 0;
+  return entries.map(([tab, titleToken, chord], index) => {
+    // Only a row that left its chord out takes a digit, and only nine exist.
+    const auto = chord === undefined && digit < 9 ? (digit += 1) : undefined;
+    return {
+      id: `nav.${panel}.${tab}`,
+      titleToken,
+      scope: 'screen' as const,
+      panel,
+      tab,
+      // The sidebar position, whatever the chord is.
+      navOrder: index + 1,
+      defaultChord: auto ? `Alt+${auto}` : (chord ?? undefined),
+      platformDefaultChord: auto ? { darwin: `Meta+${auto}` } : undefined,
+    };
+  });
 }
 
 export const COMMANDS: readonly CommandDef[] = [

@@ -1,26 +1,37 @@
 /**
- * The Master's dashboard: the Office's cards plus the ones only the Master has.
+ * The Master's dashboard: a row of figures, then the stage bars, the due
+ * follow-ups and the Office panels.
  *
  * Every figure comes from `DashboardSummary`, which the server builds per
  * person and leaves a figure **out** of when they hold none of the keys behind
- * it (`dashboard.service.ts`). A card therefore draws only when its figure is
- * there - `0` would be a claim about data this person may not see. The panels
- * card and list are `panels.manage`, the Office panels being that module's.
+ * it (`dashboard.service.ts`). A tile therefore draws only when its figure is
+ * there - `0` would be a claim about data this person may not see. The panel
+ * tiles and list are `panels.manage`, the Office panels being that module's.
+ * Counts only: this software carries no money anywhere.
  *
- * Pending Orders, Final Orders, Dispatched this week and the stage bars are the
- * Office's four, from the same summary; "Open board" goes to the Pending Orders
- * module. The follow-ups list is one small read (`leads.view` only, refetched
- * when a lead changes), and a row opens that lead.
+ * "Offline over an hour" is worked out here from the panel list, so a panel
+ * that dropped off a minute ago and is reconnecting does not count. Print jobs
+ * waiting and unread messages come in as props from the screens that own
+ * them, and draw only when given.
  *
- * Not ported: the Office's recent-activity box. The summary carries no timeline,
- * and the Activity log is the Master's place for it.
+ * The follow-ups list is one small read (`leads.view` only, refetched when a
+ * lead changes), and a row opens that lead.
  */
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import type { DashboardSummary, Lead, OfficePanelWithPresence } from '@orderbook/shared';
 
 import { api } from '../api';
-import { Button, Card, EmptyState, Skeleton, rem, t } from '@orderbook/ui';
+import {
+  Button,
+  Card,
+  EmptyState,
+  Skeleton,
+  StatTile,
+  StatTileSkeleton,
+  rem,
+  t,
+} from '@orderbook/ui';
 
 interface Props {
   summary: DashboardSummary | null;
@@ -33,6 +44,10 @@ interface Props {
   revision: number;
   onNavigate: (target: 'leads' | 'orders' | 'conflicts') => void;
   onOpenLead: (id: string) => void;
+  /** Print jobs waiting, from the Printroom; no tile when absent. */
+  printPending?: number;
+  /** Unread chat messages, from the Chatroom; no tile when absent. */
+  chatUnread?: number;
 }
 
 export function DashboardScreen({
@@ -43,6 +58,8 @@ export function DashboardScreen({
   revision,
   onNavigate,
   onOpenLead,
+  printPending,
+  chatUnread,
 }: Props) {
   const connected = panels.filter((panel) => panel.isConnected).length;
   const active = panels.filter((panel) => panel.status === 'active');
@@ -68,14 +85,16 @@ export function DashboardScreen({
 
   const conflictCount = summary?.openConflictCount;
   const pendingCount = summary?.pendingSyncCount;
-  const lowStockCount = summary?.lowStockCount;
   const leadCount = summary?.leadCount;
-  const dueCount = summary?.followUpsDueCount ?? 0;
+  const dueCount = summary?.followUpsDueCount;
   const openOrderCount = summary?.openOrderCount;
+  const convertedToday = summary?.convertedTodayCount;
+  const dispatchedToday = summary?.dispatchedTodayCount;
   const dispatchedCount = summary?.dispatchedThisWeekCount;
   const stages = [...(summary?.pipelineBreakdown ?? [])].sort((a, b) => a.sequence - b.sequence);
   const stagedLeads = stages.reduce((sum, stage) => sum + stage.leadCount, 0);
   const pipelineMax = Math.max(1, ...stages.map((stage) => stage.leadCount));
+  const count = (value: number) => value.toLocaleString('en-IN');
 
   return (
     <div
@@ -91,47 +110,56 @@ export function DashboardScreen({
       >
         {loading ? (
           <>
-            <StatSkeleton />
-            <StatSkeleton />
-            <StatSkeleton />
-            <StatSkeleton />
+            <StatTileSkeleton />
+            <StatTileSkeleton />
+            <StatTileSkeleton />
+            <StatTileSkeleton />
+            <StatTileSkeleton />
           </>
         ) : (
           <>
             {leadCount !== undefined && (
-              <StatCard
+              <StatTile
+                icon="leads"
                 label={t('dashboard.leads.title')}
-                value={leadCount.toLocaleString('en-IN')}
+                value={count(leadCount)}
                 note={
-                  dueCount > 0
-                    ? t('dashboard.leads.due', { count: dueCount })
+                  (dueCount ?? 0) > 0
+                    ? t('dashboard.leads.due', { count: dueCount ?? 0 })
                     : t('dashboard.leads.noneDue')
                 }
                 onClick={() => onNavigate('leads')}
               />
             )}
-            {openOrderCount !== undefined && (
-              <StatCard
-                label={t('dashboard.orders.title')}
-                value={openOrderCount.toLocaleString('en-IN')}
+            {convertedToday !== undefined && (
+              <StatTile
+                icon="check"
+                label={t('dashboard.stat.convertedToday')}
+                value={count(convertedToday)}
+                note={t('dashboard.stat.convertedToday.note')}
                 onClick={() => onNavigate('orders')}
               />
             )}
-            {dispatchedCount !== undefined && (
-              <StatCard
-                label={t('dashboard.dispatched.title')}
-                value={dispatchedCount.toLocaleString('en-IN')}
-                note={
-                  dispatchedCount === 0
-                    ? t('dashboard.dispatched.none')
-                    : dispatchedCount === 1
-                      ? t('dashboard.dispatched.unitOne')
-                      : t('dashboard.dispatched.unitMany')
-                }
+            {dispatchedToday !== undefined && (
+              <StatTile
+                icon="upload"
+                label={t('dashboard.stat.dispatchedToday')}
+                value={count(dispatchedToday)}
+                note={t('dashboard.stat.dispatchedToday.note')}
+              />
+            )}
+            {dueCount !== undefined && (
+              <StatTile
+                icon="calendar"
+                label={t('dashboard.stat.followUpsDue')}
+                value={count(dueCount)}
+                note={t('dashboard.stat.followUpsDue.note')}
+                onClick={() => onNavigate('leads')}
               />
             )}
             {canManagePanels && (
-              <StatCard
+              <StatTile
+                icon="server"
                 label={t('dashboard.stat.panelsOnline')}
                 value={`${connected} / ${active.length}`}
                 note={
@@ -144,10 +172,33 @@ export function DashboardScreen({
                 tone={active.length > 0 && offlineCount > 0 ? 'offline' : undefined}
               />
             )}
+            {openOrderCount !== undefined && (
+              <StatTile
+                icon="orders"
+                label={t('dashboard.orders.title')}
+                value={count(openOrderCount)}
+                onClick={() => onNavigate('orders')}
+              />
+            )}
+            {dispatchedCount !== undefined && (
+              <StatTile
+                icon="upload"
+                label={t('dashboard.dispatched.title')}
+                value={count(dispatchedCount)}
+                note={
+                  dispatchedCount === 0
+                    ? t('dashboard.dispatched.none')
+                    : dispatchedCount === 1
+                      ? t('dashboard.dispatched.unitOne')
+                      : t('dashboard.dispatched.unitMany')
+                }
+              />
+            )}
             {conflictCount !== undefined && (
-              <StatCard
+              <StatTile
+                icon="conflicts"
                 label={t('dashboard.stat.conflicts')}
-                value={conflictCount}
+                value={count(conflictCount)}
                 note={
                   conflictCount > 0
                     ? t('dashboard.stat.conflicts.noteSome')
@@ -158,24 +209,19 @@ export function DashboardScreen({
               />
             )}
             {pendingCount !== undefined && (
-              <StatCard
+              <StatTile
+                icon="sync"
                 label={t('dashboard.stat.pendingSync')}
-                value={pendingCount}
+                value={count(pendingCount)}
                 note={t('dashboard.stat.pendingSync.note')}
                 tone={pendingCount > 0 ? 'offline' : undefined}
               />
             )}
-            {lowStockCount !== undefined && (
-              <StatCard
-                label={t('dashboard.stat.lowStock')}
-                value={lowStockCount}
-                note={
-                  lowStockCount > 0
-                    ? t('dashboard.stat.lowStock.noteSome')
-                    : t('dashboard.stat.lowStock.noteNone')
-                }
-                tone={lowStockCount > 0 ? 'offline' : undefined}
-              />
+            {printPending !== undefined && (
+              <StatTile label={t('dashboard.stat.printPending')} value={count(printPending)} />
+            )}
+            {chatUnread !== undefined && (
+              <StatTile label={t('dashboard.stat.chatUnread')} value={count(chatUnread)} />
             )}
           </>
         )}
@@ -367,75 +413,5 @@ function FollowUpRow({ lead, onOpen }: { lead: Lead; onOpen: () => void }) {
         </span>
       </span>
     </button>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  note,
-  tone,
-  onClick,
-}: {
-  label: string;
-  value: ReactNode;
-  note?: ReactNode;
-  tone?: 'conflict' | 'offline';
-  onClick?: () => void;
-}) {
-  const toneColour =
-    tone === 'conflict'
-      ? 'var(--state-conflict)'
-      : tone === 'offline'
-        ? 'var(--state-offline)'
-        : undefined;
-  const body = (
-    <>
-      <div className="ob-eyebrow">{label}</div>
-      <div
-        className="ob-display"
-        style={{ marginTop: 'var(--s-6)', color: toneColour, fontVariantNumeric: 'tabular-nums' }}
-      >
-        {value}
-      </div>
-      {note && (
-        <div className="ob-small" style={{ marginTop: 'var(--s-2)' }}>
-          {note}
-        </div>
-      )}
-    </>
-  );
-
-  if (onClick) {
-    return (
-      <button
-        type="button"
-        className="ob-card ob-card--pad"
-        style={{
-          textAlign: 'left',
-          width: '100%',
-          font: 'inherit',
-          color: 'inherit',
-          cursor: 'pointer',
-        }}
-        onClick={onClick}
-      >
-        {body}
-      </button>
-    );
-  }
-
-  return <Card>{body}</Card>;
-}
-
-function StatSkeleton() {
-  return (
-    <Card>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}>
-        <Skeleton width="60%" height="var(--t-eyebrow-line)" />
-        <Skeleton width="40%" height="var(--t-display-line)" />
-        <Skeleton width="80%" height="var(--t-small-line)" />
-      </div>
-    </Card>
   );
 }

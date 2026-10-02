@@ -64,7 +64,7 @@ import {
 import * as updateService from '../services/update.service.js';
 import { UpdateError } from '../services/update.service.js';
 import * as userSession from '../services/user-session.service.js';
-import { nextTemporaryId, refreshAfterPairing } from '../sync/device.js';
+import { deviceCode, nextTemporaryId, refreshAfterPairing } from '../sync/device.js';
 import * as localStore from '../sync/local-store.js';
 import * as outbox from '../sync/outbox.store.js';
 import * as sync from '../sync/sync.service.js';
@@ -147,6 +147,11 @@ export function createApp(): Express {
       interfaces: listLanInterfaces(),
       isPaired: credentials !== null,
       panelName: config.panelName,
+      // Shown on the sign-in and connection screens so a person can tell the
+      // Master's operator which PC this is. Before pairing it comes from the
+      // hostname and changes once paired; a failed read leaves it out rather
+      // than failing the whole status.
+      deviceCode: await deviceCode().catch(() => undefined),
       ...masterConnection.getStatus(),
     });
   });
@@ -1711,6 +1716,8 @@ const DASHBOARD_FIGURE_PERMISSIONS: Record<
   orderCount: 'orders.view',
   openOrderCount: 'orders.view',
   dispatchedThisWeekCount: 'orders.view',
+  convertedTodayCount: 'orders.view',
+  dispatchedTodayCount: 'orders.view',
   partyCount: 'parties.view',
   productCount: 'products.view',
   lowStockCount: 'inventory.view',

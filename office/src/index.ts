@@ -87,6 +87,15 @@ process.on('message', (message: unknown) => {
 });
 process.on('disconnect', () => void shutdown('parent gone'));
 
+/*
+ * A promise nobody awaited that then failed. Node's default since v15 is to
+ * kill the process, which on a shop PC means a restart in the middle of the
+ * day over what is usually one failed broadcast. Log it and keep running.
+ * `uncaughtException` is still left to end the process: a thrown error leaves
+ * state half-changed, and the shell restarts a dead server.
+ */
+process.on('unhandledRejection', (reason) => log.error('Unhandled rejection', reason));
+
 async function main(): Promise<void> {
   const app = createApp();
   const server = createServer(app);

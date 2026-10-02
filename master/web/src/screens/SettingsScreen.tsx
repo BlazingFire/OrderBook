@@ -10,7 +10,7 @@
  * and Shortcuts are per-desk preferences nobody needs a permission for. The
  * other four tabs (company, leads, connection, storage) are the company's own
  * and need `settings.manage` - both in the sidebar's sub-pages (App.tsx, via
- * `settingsTabIdsFor`) and here, where the reads behind them are not made at
+ * `settingsTabIdsFor` in `settingsTabs.ts`) and here, where the reads behind them are not made at
  * all without it, since each would only come back 403.
  *
  * The developer routes survive on the server behind the
@@ -34,7 +34,7 @@ import { SETTINGS, SETTING_GROUPS } from '@orderbook/shared';
 
 import { api } from '../api';
 import { StorageBackupActions } from '../components/StorageBackup';
-import { optionListTransport } from './FieldsScreen';
+import { optionListTransport } from '../transports';
 import {
   AppearanceSettings,
   Button,
@@ -58,30 +58,14 @@ import {
 } from '@orderbook/ui';
 
 /**
- * Every tab this panel can have, including the one that needs a permission.
- *
- * The list is fixed rather than derived from the tabs actually built, because
- * the company tab waits for its rows, which arrive a tick after the screen
- * mounts: a remembered `company` validated against the tabs of that first tick
- * would be thrown away every single load. `SettingsPage` shows the first tab
- * while a remembered one has nothing to render, so nothing is left blank in
- * the meantime.
+ * Company settings this panel does not show. Both fed the Inventory screen,
+ * which the Master no longer has (1.3); the keys stay valid and keep their
+ * stored values, so nothing is lost if the screen comes back.
  */
-export const SETTINGS_TAB_IDS = [
-  'appearance',
-  'shortcuts',
-  'company',
-  'leads',
-  'connection',
-  'storage',
-] as const;
-
-/** The tabs a person with these permissions is offered; the company's own need `settings.manage`. */
-export function settingsTabIdsFor(permissions: readonly string[]): readonly string[] {
-  return permissions.includes('settings.manage')
-    ? SETTINGS_TAB_IDS
-    : SETTINGS_TAB_IDS.filter((id) => id === 'appearance' || id === 'shortcuts');
-}
+const MASTER_HIDDEN_SETTINGS: ReadonlySet<SettingKey> = new Set<SettingKey>([
+  'inventory.defaultReorderLevel',
+  'inventory.adjustmentNoteRequired',
+]);
 
 export function SettingsScreen({
   tab,
@@ -199,7 +183,10 @@ export function SettingsScreen({
 
   /** One declared group's rows as a section; null when none of them was read. */
   function groupSection(rows: SettingView[], group: SettingGroup) {
-    const inGroup = rows.filter((setting) => SETTINGS[setting.key].group === group);
+    const inGroup = rows.filter(
+      (setting) =>
+        SETTINGS[setting.key].group === group && !MASTER_HIDDEN_SETTINGS.has(setting.key),
+    );
     if (inGroup.length === 0) return null;
 
     return (

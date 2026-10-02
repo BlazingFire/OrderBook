@@ -31,12 +31,14 @@ export async function getDashboardSummary(actor: ActorContext): Promise<Dashboar
   // how much business sits on the parties they cannot open.
   const scope = resolvePartyScope(actor);
 
-  const [leadFigures, orderCount, openOrderCount, dispatchedThisWeekCount, partyCount, productCount, lowStockCount, pipelineBreakdown, openConflictCount, pendingSyncCount] =
+  const [leadFigures, orderCount, openOrderCount, dispatchedThisWeekCount, convertedTodayCount, dispatchedTodayCount, partyCount, productCount, lowStockCount, pipelineBreakdown, openConflictCount, pendingSyncCount] =
     await Promise.all([
       canLeads ? leadService.getDashboardCounts(actor) : Promise.resolve(null),
       canOrders ? orderService.countOrders(actor) : Promise.resolve(null),
       canOrders ? dashboardRepo.openOrderCount(actor.tenantId, scope) : Promise.resolve(null),
-      canOrders ? dashboardRepo.dispatchedThisWeek(actor.tenantId, scope) : Promise.resolve(null),
+      canOrders ? dashboardRepo.dispatchedSince(actor.tenantId, scope, 'week') : Promise.resolve(null),
+      canOrders ? dashboardRepo.convertedToday(actor.tenantId, scope) : Promise.resolve(null),
+      canOrders ? dashboardRepo.dispatchedSince(actor.tenantId, scope, 'day') : Promise.resolve(null),
       canParties ? catalogService.countParties(actor) : Promise.resolve(null),
       canProducts ? catalogService.countProducts(actor.tenantId) : Promise.resolve(null),
       canInventory ? inventoryService.countLowStock(actor.tenantId) : Promise.resolve(null),
@@ -63,6 +65,8 @@ export async function getDashboardSummary(actor: ActorContext): Promise<Dashboar
   if (orderCount !== null) summary.orderCount = orderCount;
   if (openOrderCount !== null) summary.openOrderCount = openOrderCount;
   if (dispatchedThisWeekCount !== null) summary.dispatchedThisWeekCount = dispatchedThisWeekCount;
+  if (convertedTodayCount !== null) summary.convertedTodayCount = convertedTodayCount;
+  if (dispatchedTodayCount !== null) summary.dispatchedTodayCount = dispatchedTodayCount;
   if (partyCount !== null) summary.partyCount = partyCount;
   if (productCount !== null) summary.productCount = productCount;
   if (lowStockCount !== null) summary.lowStockCount = lowStockCount;

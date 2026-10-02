@@ -271,6 +271,67 @@ describe('the event stream', () => {
   });
 });
 
+describe('where a person lands', () => {
+  it('starts an office-tier person on Basic Home, before any snapshot', async () => {
+    routeFetch(({ url }) => {
+      const path = url.split('?')[0] ?? url;
+      if (path === '/api/connection') return json(CONNECTION);
+      if (path === '/api/session') {
+        return json({ session: panelSession(['leads.view']), defaultLocale: 'en' });
+      }
+      if (path === '/api/sync') return json({ ...CONNECTION, pendingCount: 0, rejections: [] });
+      return undefined;
+    });
+    const App = await loadApp('office');
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+    await screen.findByRole('link', { name: t('footer.designSystem') });
+
+    // No snapshot has been sent: Basic Home reads only the sidebar.
+    expect(topbarTitle()).toBe(t('nav.basicHome'));
+    const work = within(screen.getByRole('region', { name: t('nav.work') }));
+    expect(work.getByRole('button', { name: new RegExp(`^${t('nav.leads')}`) })).toBeTruthy();
+  });
+
+  it('starts an admin-tier person on the Dashboard', async () => {
+    await boot({
+      permissions: ['leads.view'],
+      route: ({ url }) =>
+        url.split('?')[0] === '/api/session'
+          ? json({
+              session: { ...panelSession(['leads.view']), roleTier: 'admin' },
+              defaultLocale: 'en',
+            })
+          : undefined,
+    });
+
+    expect(topbarTitle()).toBe(t('nav.dashboard'));
+  });
+});
+
+describe('the sign-in screen', () => {
+  it("shows this PC's device code", async () => {
+    routeFetch(({ url }) => {
+      const path = url.split('?')[0] ?? url;
+      if (path === '/api/connection') return json({ ...CONNECTION, deviceCode: 'K7Q' });
+      if (path === '/api/session') return json({ session: null, defaultLocale: 'en' });
+      return undefined;
+    });
+    const App = await loadApp('office');
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+
+    expect(await screen.findByText('K7Q')).toBeTruthy();
+    expect(screen.getByText(new RegExp(t('signin.deviceCode')))).toBeTruthy();
+  });
+});
+
 describe('the splash', () => {
   it("says this panel's server could not be reached when the request never got there", async () => {
     routeFetch(() => Promise.reject(new TypeError('Failed to fetch')));
@@ -347,11 +408,11 @@ describe('the design-system gallery', () => {
 
 describe('Alt+N', () => {
   it('does not open a screen the sidebar does not offer', async () => {
-    // No `leads.view`, so no Leads item — Alt+2 is the Leads shortcut.
+    // No `leads.view`, so no Leads item — Alt+3 is the Leads shortcut.
     await boot({ permissions: ['orders.view'] });
-    await pressAltDigitUntil(3, t('orders.filter.allStages'));
+    await pressAltDigitUntil(4, t('orders.filter.allStages'));
 
-    await act(async () => pressAltDigit(2));
+    await act(async () => pressAltDigit(3));
 
     expect(topbarTitle()).toBe(t('orders.filter.allStages'));
     expect(document.querySelector('.ob-topbar')?.textContent).not.toContain(t('action.newLead'));
@@ -360,7 +421,15 @@ describe('Alt+N', () => {
   it('still opens a screen the sidebar does offer', async () => {
     await boot({ permissions: ['orders.view'] });
 
-    await pressAltDigitUntil(3, t('orders.filter.allStages'));
+    await pressAltDigitUntil(4, t('orders.filter.allStages'));
+  });
+
+  it('opens Basic Home on Alt+1 and Settings on Alt+9', async () => {
+    await boot({ permissions: ['orders.view'] });
+
+    // Settings folds its tabs, so the title names the tab it opens on.
+    await pressAltDigitUntil(9, t('settings.tab.appearance'));
+    await pressAltDigitUntil(1, t('nav.basicHome'));
   });
 });
 
@@ -401,14 +470,14 @@ describe('the refusal toast', () => {
     await syncAndReview();
 
     expect(topbarTitle()).toBe(t('nav.conflicts'));
-    expect(screen.getByText('Party is view-only for you')).toBeTruthy();
+    expect(await screen.findByText('Party is view-only for you')).toBeTruthy();
   });
 
   it('keeps the page open while the last refusal is dismissed, and drops it after', async () => {
     await syncAndReview();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: t('sync.rejections.dismiss') }));
+      fireEvent.click(await screen.findByRole('button', { name: t('sync.rejections.dismiss') }));
       await wait(0);
     });
     expect(topbarTitle()).toBe(t('nav.conflicts'));
@@ -425,7 +494,7 @@ describe('the refusal toast', () => {
     await syncAndReview({ fromGallery: true });
 
     expect(topbarTitle()).toBe(t('nav.conflicts'));
-    expect(screen.getByText('Party is view-only for you')).toBeTruthy();
+    expect(await screen.findByText('Party is view-only for you')).toBeTruthy();
     // And a reload does not put the gallery back.
     expect(window.location.hash).toBe('');
   });
@@ -438,7 +507,7 @@ describe('the refusal toast', () => {
           : undefined,
     });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: t('sync.rejections.dismiss') }));
+      fireEvent.click(await screen.findByRole('button', { name: t('sync.rejections.dismiss') }));
       await wait(0);
     });
     expect(topbarTitle()).toBe(t('nav.conflicts'));
@@ -455,8 +524,13 @@ describe('the refusal toast', () => {
       fireEvent.submit(screen.getByLabelText(t('signin.password')).closest('form')!);
       await wait(0);
     });
-    // Nothing of the last person's view is drawn for this one: the screens
-    // wait for this session's own first snapshot.
+    // An office-tier person starts on Basic Home, which needs no snapshot.
+    expect(topbarTitle()).toBe(t('nav.basicHome'));
+    // Nothing of the last person's view is drawn for this one: the data
+    // screens wait for this session's own first snapshot.
+    await act(async () => {
+      fireEvent.click(screen.getByTitle(t('nav.dashboard')));
+    });
     expect(screen.getByText(t('shell.waitingFirstSync'))).toBeTruthy();
     await sendSnapshot(snapshot());
 

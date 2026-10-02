@@ -17,6 +17,7 @@ import {
   formatChord,
   isReservedChord,
   matchesChord,
+  navCommands,
   parseBindings,
   parseChord,
   type KeyEventLike,
@@ -180,17 +181,91 @@ describe('bindings', () => {
   });
 });
 
+/** A panel's nav commands in sidebar order, as `[tab, chord]` pairs. */
+function navChords(panel: 'master' | 'office'): Array<[string, string | undefined]> {
+  return COMMANDS.filter((command) => command.panel === panel && command.navOrder)
+    .sort((a, b) => (a.navOrder as number) - (b.navOrder as number))
+    .map((command) => [command.tab as string, command.defaultChord]);
+}
+
 describe('the command catalogue', () => {
   it('numbers each panel nav from one, in that panel own sidebar order', () => {
     const office = COMMANDS.filter((command) => command.panel === 'office' && command.navOrder);
-    // Conflicts is fourth on the office sidebar and nowhere near fourth on the
-    // Master's. Copying the Master's order would put Alt+4 on a screen the
-    // office sidebar shows somewhere else.
-    expect(office[3]?.tab).toBe('conflicts');
-    // Nine modules since Documents left with the PDF Designer, so every one
-    // has an Alt+N — App update included, as the ninth.
-    expect(office.map((command) => command.navOrder)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    expect(office[8]?.defaultChord).toBe('Alt+9');
+    expect(office.map((command) => command.navOrder)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(office[0]?.tab).toBe('basicHome');
+    expect(office[4]?.tab).toBe('conflicts');
+    expect(office[8]?.tab).toBe('settings');
+  });
+
+  it('gives both panels the mockup chord map', () => {
+    // Basic Home 1 to Settings 9 on both panels, so a person moving between
+    // the Master and an Office PC finds every screen under the same digit.
+    const map = {
+      basicHome: 'Alt+1',
+      dashboard: 'Alt+2',
+      leads: 'Alt+3',
+      orders: 'Alt+4',
+      conflicts: 'Alt+5',
+      products: 'Alt+6',
+      parties: 'Alt+7',
+      partyAccess: 'Alt+8',
+      settings: 'Alt+9',
+    };
+    for (const panel of ['master', 'office'] as const) {
+      const chords = Object.fromEntries(navChords(panel));
+      for (const [tab, chord] of Object.entries(map)) expect(chords[tab], `${panel} ${tab}`).toBe(chord);
+    }
+  });
+
+  it('leaves Reports, App update and the Master Admin screens without a chord', () => {
+    const master = Object.fromEntries(navChords('master'));
+    for (const tab of [
+      'reports',
+      'panels',
+      'access',
+      'fields',
+      'logs',
+      'recycleBin',
+      'integrations',
+      'updates',
+    ]) {
+      expect(tab in master, tab).toBe(true);
+      expect(master[tab], tab).toBeUndefined();
+    }
+    expect(Object.fromEntries(navChords('office')).updates).toBeUndefined();
+    // Inventory's screen is hidden on the Master; its row went with it.
+    expect('inventory' in master).toBe(false);
+  });
+
+  it('does not use up an Alt digit on a row with an explicit chord or none', () => {
+    const built = navCommands('office', [
+      ['a', 'nav.dashboard'],
+      ['b', 'nav.leads', 'Alt+C'],
+      ['c', 'nav.orders', null],
+      ['d', 'nav.products'],
+    ]);
+    expect(built.map((command) => command.defaultChord)).toEqual([
+      'Alt+1',
+      'Alt+C',
+      undefined,
+      'Alt+2',
+    ]);
+    // The sidebar position still counts every row.
+    expect(built.map((command) => command.navOrder)).toEqual([1, 2, 3, 4]);
+    // An explicit letter chord has no Mac twin; a digit chord keeps Cmd+N.
+    expect(built[1]?.platformDefaultChord).toBeUndefined();
+    expect(built[3]?.platformDefaultChord).toEqual({ darwin: 'Meta+2' });
+  });
+
+  it('never binds Cmd+C, Cmd+V, Cmd+X or Cmd+P', () => {
+    // On a Mac browser those are Copy, Paste, Cut and Print. A shortcut that
+    // took one of them would break the browser for everybody on the LAN.
+    const taken = COMMANDS.flatMap((command) =>
+      [command.defaultChord, command.platformDefaultChord?.darwin]
+        .filter((text): text is string => Boolean(text))
+        .map((text) => [command.id, parseChord(text)] as const),
+    ).filter(([, chord]) => chord?.meta && ['c', 'v', 'x', 'p'].includes(chord.key));
+    expect(taken).toEqual([]);
   });
 
   it('has a unique id for every command', () => {

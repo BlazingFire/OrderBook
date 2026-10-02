@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { serverHeapMb } from '../lib/memory.js';
+import { rendererHeapFlag, serverHeapMb } from '../lib/memory.js';
 
 const GB = 1024;
 
@@ -32,5 +32,14 @@ describe('serverHeapMb', () => {
       expect(serverHeapMb(totalMb, 'office', 'ia32')).toBe(1024);
       expect(serverHeapMb(totalMb, 'master', 'ia32')).toBe(1024);
     }
+  });
+});
+
+describe('rendererHeapFlag', () => {
+  it('caps the window at 1024 MB on a PC with 4.5 GB or less, and only there', () => {
+    expect(rendererHeapFlag(3 * GB)).toBe('--max-old-space-size=1024');
+    expect(rendererHeapFlag(4608)).toBe('--max-old-space-size=1024');
+    expect(rendererHeapFlag(4609)).toBeNull();
+    expect(rendererHeapFlag(8 * GB)).toBeNull();
   });
 });
