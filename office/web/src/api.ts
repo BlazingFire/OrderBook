@@ -61,6 +61,9 @@ import type {
   ProductCategory,
   ProductCategoryListRow,
   ProductImageUpdateInput,
+  PartyImportFormat,
+  PartyImportMode,
+  PartyImportResult,
   ProductImportFormat,
   ProductImportMode,
   ProductImportResult,
@@ -571,6 +574,20 @@ export const api = {
     form.append('dryRun', String(options.dryRun));
     form.append('mode', options.mode);
     return postFile<ProductImportResult>('/api/products/import', form);
+  },
+
+  // --- Bulk party import and export: online-only, through the Master --------
+
+  partyImportTemplate: (format: PartyImportFormat) =>
+    fetchBlob(`/api/parties/import/template.${format}`, undefined, `parties-template.${format}`),
+  exportParties: (format: PartyImportFormat) =>
+    fetchBlob(`/api/parties/export.${format}`, undefined, `parties.${format}`),
+  importParties: (file: File, options: { dryRun: boolean; mode: PartyImportMode }) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('dryRun', String(options.dryRun));
+    form.append('mode', options.mode);
+    return postFile<PartyImportResult>('/api/parties/import', form);
   },
 
   upsertVariant: (input: PartyProductVariantInput) =>

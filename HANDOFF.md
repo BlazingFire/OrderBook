@@ -972,6 +972,8 @@ terms, multiple contacts); concurrent edits of one lead from two panels
 Condensed. The full entries are in `git show 5b8ebe2:HANDOFF.md` and in
 `docs/AI_COLLABORATION.md`.
 
+- **2026-10-03 — 1.3 H1 (helper): party import and export (Claude, Sonnet, branch `helper/1.3`).** One format (`docs/PARTY_IMPORT_FORMAT.md`), both panels, online-only. Shared `party-import.ts`; Master `domain/party-import.ts` and `services/party-import.service.ts` (modes `create` / `updateByCode`, dry run, chunks of 200, Party Access held per row, one `party_list` activity row, one `party_bulk` event); routes on `dataRoutes` before `/parties/:id` and on `/api/panel`; the Office proxies through two generalised helpers. UI: `ImportDialog` extracted from `ProductImportModal` (DOM unchanged), `PartyImportModal` and `PartyImportControls` on the Master's Parties screen and the Office's Catalog Parties tab. `party_bulk` is snapshot-forcing; until the Phase 2 handshake records `socket.data.protocol`, every panel gets a snapshot rather than the event (`hub.ts#emitGatedChange`, read through a loose cast to drop once `SocketData.protocol` exists). No migration. Not done: a browser or Electron walk of the two buttons and the dialog.
+
 - **2026-10-02 — 1.3 Phase 1: shell, Basic Home, Master UI refresh, Inventory UI
   hidden, loading bars, device code, low RAM (Claude).** No migration. Shared:
   nav rows are `NavEntry` tuples with an optional explicit chord, both nav lists

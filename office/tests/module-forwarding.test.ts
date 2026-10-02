@@ -312,6 +312,97 @@ describe('bulk product import', () => {
   });
 });
 
+describe('bulk party import', () => {
+  beforeEach(() => {
+    vi.spyOn(userSession, 'currentSession').mockReturnValue(FAKE_SESSION as never);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('is online-only: an unreachable Master is a 503, never a queued write', async () => {
+    const response = await request(createApp())
+      .post('/api/parties/import')
+      .field('dryRun', 'true')
+      .attach('file', Buffer.from('Name\r\nShah\r\n'), 'parties.csv');
+
+    expect(response.status).toBe(503);
+    expect(response.body).toMatchObject({ error: 'unavailable', messageKey: 'error.unavailable' });
+  });
+
+  it('refuses a request with no file before touching the Master', async () => {
+    const response = await request(createApp()).post('/api/parties/import').field('dryRun', 'true');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({ messageKey: 'validation.import.fileRequired' });
+  });
+
+  it('forwards the file, the mode and the dry-run flag to the Master as one multipart form', async () => {
+    vi.mocked(masterFetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ dryRun: true, created: 1 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    const response = await request(createApp())
+      .post('/api/parties/import')
+      .field('dryRun', 'true')
+      .field('mode', 'updateByCode')
+      .attach('file', Buffer.from('Party Code\r\nP-0001\r\n'), 'parties.csv');
+
+    expect(response.status).toBe(200);
+    const [path, init] = vi.mocked(masterFetch).mock.calls.at(-1) ?? [];
+    expect(path).toBe('/api/panel/parties/import');
+    const form = init?.body as FormData;
+    expect(form.get('dryRun')).toBe('true');
+    expect(form.get('mode')).toBe('updateByCode');
+    expect((form.get('file') as File).name).toBe('parties.csv');
+  });
+
+  it('reads any other mode as create, so a stray value cannot become an update', async () => {
+    vi.mocked(masterFetch).mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    await request(createApp())
+      .post('/api/parties/import')
+      .field('mode', 'upsert')
+      .attach('file', Buffer.from('Name\r\nA\r\n'), 'parties.csv');
+
+    const [, init] = vi.mocked(masterFetch).mock.calls.at(-1) ?? [];
+    expect((init?.body as FormData).get('mode')).toBe('create');
+  });
+
+  it('proxies the export with the Master’s own type and dated file name', async () => {
+    const csvBody = '\uFEFFParty Code,Name\r\n';
+    vi.mocked(masterFetch).mockResolvedValueOnce(
+      new Response(csvBody, {
+        status: 200,
+        headers: {
+          'content-type': 'text/csv; charset=utf-8',
+          'content-disposition': 'attachment; filename="parties-2026-10-03.csv"',
+        },
+      }),
+    );
+
+    const response = await request(createApp()).get('/api/parties/export.csv');
+
+    expect(response.status).toBe(200);
+    expect(vi.mocked(masterFetch)).toHaveBeenLastCalledWith('/api/panel/parties/export.csv');
+    expect(response.headers['content-disposition']).toBe('attachment; filename="parties-2026-10-03.csv"');
+    expect(response.text).toBe(csvBody);
+  });
+
+  it('passes the Master’s refusal through with its status, and serves the template or a 503', async () => {
+    vi.mocked(masterFetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: { 'content-type': 'application/json' } }),
+    );
+    expect((await request(createApp()).get('/api/parties/export.xlsx')).status).toBe(403);
+
+    const offline = await request(createApp()).get('/api/parties/import/template.csv');
+    expect(offline.status).toBe(503);
+  });
+});
+
 /*
  * Catalogue v2 (`docs/catalogue/CATALOGUE_MODEL.md` §5, §8): the Products list
  * answers offline from the snapshot, its writes are online-only, a panel's one

@@ -166,11 +166,11 @@ const SUB_NAV_SCREENS = [
 ] as const;
 
 const SCREEN_ENTITIES: Record<string, readonly string[]> = {
-  records: ['lead', 'order', 'party', 'product', 'catalog', 'stock', 'reservation', 'option_list'],
+  records: ['lead', 'order', 'party', 'party_bulk', 'product', 'catalog', 'stock', 'reservation', 'option_list'],
   /** Pending and Final Orders stage pages, apart from `records` so a lead edit does not re-read it. */
   stages: ['pipeline'],
   /** The New / Edit pending order form: what `/api/lead-entry` is built from. */
-  leadEntry: ['option_list', 'party', 'party_variant', 'stock', 'reservation', 'product', 'catalog', 'setting'],
+  leadEntry: ['option_list', 'party', 'party_bulk', 'party_variant', 'stock', 'reservation', 'product', 'catalog', 'setting'],
   /**
    * The Products module, in two slices so a lead edit reads neither: the
    * products and their sub products (`catalog` is the one event a bulk import
@@ -179,15 +179,15 @@ const SCREEN_ENTITIES: Record<string, readonly string[]> = {
    */
   catalogue: ['product', 'catalog', 'product_category'],
   catalogueLists: ['option_list'],
-  reports: ['lead', 'order', 'party', 'stock'],
+  reports: ['lead', 'order', 'party', 'party_bulk', 'stock'],
   fields: ['option_list', 'custom_field', 'pipeline'],
   access: ['user', 'role'],
-  partyAccess: ['party'],
-  parties: ['party', 'party_variant'],
+  partyAccess: ['party', 'party_bulk'],
+  parties: ['party', 'party_bulk', 'party_variant'],
   recycleBin: [
     'lead',
     'order',
-    'party',
+    'party', 'party_bulk',
     'product',
     'product_category',
     'role',

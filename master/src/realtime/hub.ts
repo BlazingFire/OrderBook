@@ -12,6 +12,7 @@ import type { Server as HttpServer } from 'node:http';
 import { Server, type Socket } from 'socket.io';
 import {
   ROOM_MASTER_ADMINS,
+  PARTY_BULK_MIN_PROTOCOL,
   ROOM_OFFICE_PANELS,
   type ClientToServerEvents,
   type CommandAck,
@@ -949,6 +950,20 @@ async function emitGatedChange(io: RealtimeHub['io'], event: DataChangedEvent): 
         const actor = await actorForRecipient(socket);
         if (!actor) return;
         if (!mayReceive(actor, event, [])) return;
+
+        // A panel that predates `party_bulk` cannot fold the event in, and an
+        // unknown entity would be dropped, leaving it on the old party book:
+        // it is sent the snapshot instead. `protocol` is read loosely because
+        // the handshake that records it ships separately; until then it is
+        // absent, which reads as the oldest panel.
+        if (event.entity === 'party_bulk' && socket.data.kind === 'office-panel') {
+          const protocol = (socket.data as { protocol?: number }).protocol ?? 0;
+          if (protocol < PARTY_BULK_MIN_PROTOCOL) {
+            const own = socket.data.panelId ? panelSockets.get(socket.data.panelId) : undefined;
+            if (own) await resnapshot(own);
+            return;
+          }
+        }
 
         socket.emit('data:changed', event);
       } catch (error: unknown) {

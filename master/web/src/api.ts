@@ -68,6 +68,9 @@ import type {
   ProductCategory,
   ProductCategoryListRow,
   ProductImageUpdateInput,
+  PartyImportFormat,
+  PartyImportMode,
+  PartyImportResult,
   ProductImportFormat,
   ProductImportMode,
   ProductImportResult,
@@ -638,6 +641,19 @@ export const api = {
     form.append('dryRun', String(options.dryRun));
     form.append('mode', options.mode);
     return requestForm<ProductImportResult>('/api/products/import', form);
+  },
+
+  // Bulk party import and export (`parties.bulk` / `parties.view`, checked by the service).
+  partyImportTemplate: (format: PartyImportFormat) =>
+    requestFile(`/api/parties/import/template.${format}`, `parties-template.${format}`),
+  exportParties: (format: PartyImportFormat) =>
+    requestFile(`/api/parties/export.${format}`, `parties.${format}`),
+  importParties: (file: File, options: { dryRun: boolean; mode: PartyImportMode }) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('dryRun', String(options.dryRun));
+    form.append('mode', options.mode);
+    return requestForm<PartyImportResult>('/api/parties/import', form);
   },
 
   // Product photos (`7-IMAGE-PIPELINE.md`): each answers with the whole `Product`.

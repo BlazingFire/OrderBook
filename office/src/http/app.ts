@@ -25,6 +25,7 @@ import {
   IMAGE_VARIANTS,
   isPickKind,
   MAX_IMAGE_SOURCE_BYTES,
+  MAX_PARTY_IMPORT_BYTES,
   MAX_PRODUCT_IMPORT_BYTES,
   MUTATION_PERMISSIONS,
   type DataChangedEvent,
@@ -89,6 +90,11 @@ const importUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_PRODUCT_IMPORT_BYTES },
 });
+const partyImportUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_PARTY_IMPORT_BYTES },
+});
+
 
 export function createApp(): Express {
   const app = express();
@@ -628,43 +634,50 @@ export function createApp(): Express {
   // mutations and rewrites its whole file per mutation, so five thousand
   // queued creates would be quadratic on disk and invisible on refusal. The
   // file goes to the Master over the panel HTTP surface and the row-numbered
-  // report comes straight back.
-  app.get(['/api/products/import/template.:format', '/api/products/export.:format'], (req, res) => {
-    void (async () => {
-      try {
-        const response = await masterFetch(
-          `/api/panel${req.originalUrl.slice('/api'.length)}`,
-        );
+  // report comes straight back. Products and parties share the two helpers.
+  const unavailable = (res: express.Response, error: unknown): void => {
+    res.status(503).json({
+      error: 'unavailable',
+      message: error instanceof Error ? error.message : 'The Master Panel is not reachable',
+      messageKey: 'error.unavailable',
+    });
+  };
 
-        if (!response.ok) {
-          res.status(response.status).json(await response.json().catch(() => null));
-          return;
+  /** A template or an export: the Master's bytes, type and file name, whatever the format. */
+  const proxyDownload =
+    (fallbackName: string): express.RequestHandler =>
+    (req, res) => {
+      void (async () => {
+        try {
+          const response = await masterFetch(`/api/panel${req.originalUrl.slice('/api'.length)}`);
+
+          if (!response.ok) {
+            res.status(response.status).json(await response.json().catch(() => null));
+            return;
+          }
+
+          res.setHeader('Content-Type', response.headers.get('content-type') ?? 'application/octet-stream');
+          res.setHeader(
+            'Content-Disposition',
+            response.headers.get('content-disposition') ?? `attachment; filename="${fallbackName}"`,
+          );
+          res.send(Buffer.from(await response.arrayBuffer()));
+        } catch (error) {
+          unavailable(res, error);
         }
+      })();
+    };
 
-        res.setHeader(
-          'Content-Type',
-          response.headers.get('content-type') ?? 'application/octet-stream',
-        );
-        res.setHeader(
-          'Content-Disposition',
-          response.headers.get('content-disposition') ?? 'attachment; filename="products-template"',
-        );
-        res.send(Buffer.from(await response.arrayBuffer()));
-      } catch (error) {
-        res.status(503).json({
-          error: 'unavailable',
-          message: error instanceof Error ? error.message : 'The Master Panel is not reachable',
-          messageKey: 'error.unavailable',
-        });
-      }
-    })();
-  });
-
-  app.post(
-    '/api/products/import',
+  /** An import: the file, the mode and the dry-run flag as one multipart form to the Master. */
+  const proxyImport = (
+    upload: multer.Multer,
+    masterPath: string,
+    fallbackName: string,
+    modeOf: (value: unknown) => string,
+  ): express.RequestHandler[] => [
     (req, res, next) => {
       // An oversized sheet gets the import's own sentence, not the photo one.
-      importUpload.single('file')(req, res, (error: unknown) => {
+      upload.single('file')(req, res, (error: unknown) => {
         if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
           res.status(400).json({
             error: 'validation_error',
@@ -689,25 +702,37 @@ export function createApp(): Express {
       void (async () => {
         try {
           const form = new FormData();
-          form.append('file', new Blob([req.file!.buffer]), req.file!.originalname || 'products.csv');
+          form.append('file', new Blob([req.file!.buffer]), req.file!.originalname || fallbackName);
           const body = (req.body ?? {}) as Record<string, unknown>;
           form.append('dryRun', String(body.dryRun === 'true' || body.dryRun === true));
-          form.append('mode', body.mode === 'upsert' ? 'upsert' : 'create');
+          form.append('mode', modeOf(body.mode));
 
-          const response = await masterFetch('/api/panel/products/import', {
-            method: 'POST',
-            body: form,
-          });
+          const response = await masterFetch(masterPath, { method: 'POST', body: form });
           res.status(response.status).json(await response.json().catch(() => null));
         } catch (error) {
-          res.status(503).json({
-            error: 'unavailable',
-            message: error instanceof Error ? error.message : 'The Master Panel is not reachable',
-            messageKey: 'error.unavailable',
-          });
+          unavailable(res, error);
         }
       })();
     },
+  ];
+
+  app.get(
+    ['/api/products/import/template.:format', '/api/products/export.:format'],
+    proxyDownload('products-template'),
+  );
+  app.post(
+    '/api/products/import',
+    ...proxyImport(importUpload, '/api/panel/products/import', 'products.csv', (mode) =>
+      mode === 'upsert' ? 'upsert' : 'create',
+    ),
+  );
+
+  app.get(['/api/parties/import/template.:format', '/api/parties/export.:format'], proxyDownload('parties-template'));
+  app.post(
+    '/api/parties/import',
+    ...proxyImport(partyImportUpload, '/api/panel/parties/import', 'parties.csv', (mode) =>
+      mode === 'updateByCode' ? 'updateByCode' : 'create',
+    ),
   );
 
   app.post('/api/products', (req, res) =>

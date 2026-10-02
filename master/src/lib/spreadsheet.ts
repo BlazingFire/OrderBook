@@ -185,11 +185,13 @@ export async function buildXlsxTemplate(spec: {
   columns: readonly TemplateColumn[];
   /** The Guide sheet, header row first. */
   guide: readonly (readonly string[])[];
+  /** The data sheet's name; the products template is the default. */
+  sheetName?: string;
 }): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'OrderBook';
 
-  const sheet = workbook.addWorksheet('Products', {
+  const sheet = workbook.addWorksheet(spec.sheetName ?? 'Products', {
     views: [{ state: 'frozen', ySplit: 1 }],
   });
   sheet.columns = spec.columns.map((column) => ({

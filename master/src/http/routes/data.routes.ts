@@ -23,7 +23,7 @@ import * as snapshotService from '../../services/snapshot.service.js';
 import * as storageService from '../../services/storage.service.js';
 import { asyncHandler } from '../async-handler.js';
 import { idList, paging } from '../query.js';
-import { productImportRoutes } from './panel-catalog.routes.js';
+import { partyImportRoutes, productImportRoutes } from './panel-catalog.routes.js';
 import {
   actorFromRequest,
   requireAuth,
@@ -216,6 +216,10 @@ dataRoutes.get(
 );
 
 // --- Parties & products ----------------------------------------------------
+
+// Party import and export, ahead of `/parties/:id` so `export.csv` is not read
+// as an id; the service checks `parties.bulk` / `parties.view`.
+dataRoutes.use(partyImportRoutes(actorFromRequest));
 
 dataRoutes.get(
   '/parties',

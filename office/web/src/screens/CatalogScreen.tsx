@@ -74,6 +74,7 @@ import type { Party, Product } from '@orderbook/shared';
 
 import { ApiError, api, type LocalView } from '../api';
 import { partyFormTransport } from '../partyFormTransport';
+import { partyImportTransport } from '../partyImportTransport';
 import { ProductDrawer, type CreatedProduct } from '../components/ProductDrawer';
 import { exportCatalogueCsv, exportFailureText } from '../components/exportCatalogue';
 import { ProductImportModal } from '../components/ProductImportModal';
@@ -87,6 +88,7 @@ import {
   ErrorState,
   FilterChip,
   PartyFormModal,
+  PartyImportControls,
   Input,
   LoadMorePager,
   Select,
@@ -475,6 +477,15 @@ export function CatalogScreen({
           </FilterChip>
         ))}
         <span style={{ flex: 1 }} />
+        {/* Online-only, through the Master. The list below is the snapshot, which
+            the Master re-sends after an import (`party_bulk`), so there is
+            nothing to refetch here. */}
+        <PartyImportControls
+          transport={partyImportTransport}
+          canExport={view.permissions.includes('parties.view')}
+          canImport={view.permissions.includes('parties.bulk')}
+          onImported={() => undefined}
+        />
         {canCreateParty && (
           <Button variant="primary" size="sm" icon="plus" onClick={() => setPartyFormOpen(true)}>
             {t('catalog.parties.new')}

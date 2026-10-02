@@ -13,6 +13,7 @@ import type {
   LeadRecordTransport,
   OptionListTransport,
   OrderRecordTransport,
+  PartyImportTransport,
 } from '@orderbook/ui';
 
 import { api, ApiError } from './api';
@@ -53,6 +54,12 @@ export const catalogueTransport: CatalogueTransport = {
   productImportTemplate: (format) => api.productImportTemplate(format),
   exportProducts: (format, level) => api.exportProducts(format, level),
   importProducts: (file, options) => api.importProducts(file, options),
+};
+
+export const partyImportTransport: PartyImportTransport = {
+  partyImportTemplate: (format) => api.partyImportTemplate(format),
+  exportParties: (format) => api.exportParties(format),
+  importParties: (file, options) => api.importParties(file, options),
 };
 
 /**

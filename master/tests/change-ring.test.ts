@@ -98,6 +98,7 @@ describe('every changed entity is in exactly one bucket', () => {
     'role',
     'user',
     'catalog',
+    'party_bulk',
     'setting',
   ];
 

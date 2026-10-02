@@ -254,6 +254,47 @@ export async function liveReferencesToParty(
 }
 
 /**
+ * The live parties the codes name, by lower-case code — what a bulk update
+ * matches its rows against. Soft-deleted parties are not matched: their code
+ * is free again.
+ */
+export async function findLivePartiesByCodes(
+  tenantId: string,
+  codes: readonly string[],
+  runner: Runner = db(),
+): Promise<Map<string, Party>> {
+  const found = new Map<string, Party>();
+  const wanted = [...new Set(codes.map((code) => code.trim().toLowerCase()).filter(Boolean))];
+
+  for (let at = 0; at < wanted.length; at += 1000) {
+    const rows = await runner(TABLE)
+      .where({ tenant_id: tenantId })
+      .whereNull('deleted_at')
+      .whereRaw('lower(party_code) = ANY(?)', [wanted.slice(at, at + 1000)]);
+    for (const row of rows) found.set(String(row.party_code).toLowerCase(), mapParty(row));
+  }
+
+  return found;
+}
+
+/**
+ * Name and city of every live party, **whoever may see it** — a bulk add must
+ * skip a duplicate of a party its person has no access to, or Party Access
+ * would be a way to create a second copy of somebody else's customer. Only
+ * the two strings leave this function, never a row.
+ */
+export async function listLivePartyNameCities(
+  tenantId: string,
+  runner: Runner = db(),
+): Promise<Array<{ name: string; city: string | null }>> {
+  const rows = await runner(TABLE).where({ tenant_id: tenantId }).whereNull('deleted_at').select('name', 'city');
+  return rows.map((row: Record<string, unknown>) => ({
+    name: String(row.name),
+    city: (row.city as string | null) ?? null,
+  }));
+}
+
+/**
  * Only the columns this input actually asserts.
  *
  * This used to list every column with `?? null` and was spread straight into
