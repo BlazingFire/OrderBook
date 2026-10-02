@@ -352,6 +352,73 @@ describe('the next person to sign in at this window', () => {
   });
 });
 
+describe('Reports', () => {
+  const REPORT_OPTIONS = { kinds: ['dispatches', 'by-user'], subjects: [{ id: 'user-1', name: 'Owner' }], canExport: true };
+  const REPORT_TABLE = {
+    kind: 'dispatches',
+    range: { period: 'last6Months', fromDate: '2026-05-01', toDateExclusive: '2026-11-01', months: ['2026-05', '2026-10'], timeZone: 'Asia/Kolkata' },
+    subject: { id: null, name: null },
+    columns: [
+      { key: 'month', labelToken: 'reports.column.month', unit: 'text' },
+      { key: 'orderCount', labelToken: 'reports.column.orderCount', unit: 'count' },
+    ],
+    rows: [{ month: '2026-10', orderCount: 3 }],
+    totals: { orderCount: 3 },
+    rowCount: 1,
+    truncated: false,
+    sections: [],
+  };
+
+  /** Boots as a person of the given tier, whose company features are as given. */
+  function bootWith(tier: string, permissions: string[], features: Record<string, unknown> = {}): Promise<Call[]> {
+    return boot(permissions, ({ url }) => {
+      const path = url.split('?')[0] ?? url;
+      if (path === '/api/auth/me') {
+        return json({ user: { ...user(permissions, tier), features }, sessionToken: 'session-1', defaultLocale: 'en' });
+      }
+      if (path === '/api/reports/options') return json(REPORT_OPTIONS);
+      if (path.startsWith('/api/reports/table/')) return json(REPORT_TABLE);
+      return undefined;
+    });
+  }
+
+  // Sidebar rows carry their label as a title; Basic Home's tiles do not.
+  const reportsRow = () => screen.queryByTitle(t('nav.reports'));
+
+  it('is a Work row that opens the first kind on offer, asking the Master for its table', async () => {
+    const calls = await bootWith('admin', ['reports.view', 'reports.export']);
+
+    await act(async () => {
+      fireEvent.click(reportsRow()!);
+      await wait(0);
+    });
+
+    expect(await screen.findByText('2026-10')).toBeTruthy();
+    expect(document.querySelector('.ob-topbar')?.textContent).toContain(t('reports.kind.dispatches'));
+    const asked = calls.map((call) => call.url);
+    expect(asked).toContain('/api/reports/options');
+    expect(asked.some((url) => url.startsWith('/api/reports/table/dispatches'))).toBe(true);
+  });
+
+  it('is not offered without reports.view', async () => {
+    await bootWith('admin', ['leads.view']);
+    expect(reportsRow()).toBeNull();
+  });
+
+  it('follows the company switch for Management, and never hides from an Administrator', async () => {
+    await bootWith('management', ['reports.view'], { reportsVisibleToManagement: false });
+    expect(reportsRow()).toBeNull();
+    cleanup();
+
+    await bootWith('management', ['reports.view'], { reportsVisibleToManagement: true });
+    expect(reportsRow()).not.toBeNull();
+    cleanup();
+
+    await bootWith('admin', ['reports.view'], { reportsVisibleToManagement: false, reportsVisibleToOffice: false });
+    expect(reportsRow()).not.toBeNull();
+  });
+});
+
 describe('Basic Home and the landing screen', () => {
   const MANAGER = ['leads.view', 'leads.create', 'products.view'];
 

@@ -12,6 +12,7 @@ import type { Server as HttpServer } from 'node:http';
 import { Server, type Socket } from 'socket.io';
 import {
   ROOM_MASTER_ADMINS,
+  PARTY_BULK_MIN_PROTOCOL,
   ROOM_OFFICE_PANELS,
   type ClientToServerEvents,
   type CommandAck,
@@ -669,6 +670,10 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   socket.on('report:export', (payload, ack) =>
     run(ack, (actor) => reportService.exportReport(payload.report, payload.query, actor)),
   );
+  socket.on('report:table', (payload, ack) =>
+    run(ack, (actor) => reportService.reportTable(payload.report, payload.query, actor)),
+  );
+  socket.on('report:options', (ack) => run(ack, (actor) => reportService.reportOptions(actor)));
 
   // The one live pull; everything else rides on `SyncSnapshot.dashboard` and
   // the `dashboard:changed` push both extended below.
@@ -987,6 +992,19 @@ async function emitGatedChange(io: RealtimeHub['io'], event: DataChangedEvent): 
         const actor = await actorForRecipient(socket);
         if (!actor) return;
         if (!mayReceive(actor, event, [])) return;
+
+        // A panel that predates `party_bulk` cannot fold the event in, and an
+        // unknown entity would be dropped, leaving it on the old party book:
+        // it is sent the snapshot instead. A panel whose handshake sent no
+        // protocol reads as the oldest.
+        if (event.entity === 'party_bulk' && socket.data.kind === 'office-panel') {
+          const protocol = socket.data.protocol ?? 0;
+          if (protocol < PARTY_BULK_MIN_PROTOCOL) {
+            const own = socket.data.panelId ? panelSockets.get(socket.data.panelId) : undefined;
+            if (own) await resnapshot(own);
+            return;
+          }
+        }
 
         socket.emit('data:changed', event);
       } catch (error: unknown) {

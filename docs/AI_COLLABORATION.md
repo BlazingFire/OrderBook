@@ -190,6 +190,24 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-03 - Merge of `helper/1.3` into `main`: H1 party import/export, H2 reports (Claude)
+
+- Merged the helper session's branch (Claude, Sonnet): H1 party import and export on both panels
+  (`docs/PARTY_IMPORT_FORMAT.md`) and H2 reports (fifteen kinds, report visibility switches, migration
+  `20261004000000_report_indexes_and_grants`), over 1.3 Phases 0-2. Conflicts resolved keeping both sides.
+- Registry: `20261001000000_server_master_tier` then `20261004000000_report_indexes_and_grants`, in the array and
+  in `DELIBERATELY_LAST`. H2 adds no permission key; the Server Master role's frozen list already holds
+  `reports.view`/`reports.export`, so neither migration changed.
+- `PARTY_BULK_MIN_PROTOCOL` 5 -> 2: the 1.3 Office announces `PANEL_PROTOCOL_VERSION` 2 and knows `party_bulk`,
+  so at 5 every panel was re-snapshotted. The loose cast on `socket.data.protocol` in `hub.ts` is gone. New
+  `panel-push` case: a panel at the minimum gets the event itself.
+- Office nav: Reports (Work, after Conflicts, no chord) and Logs (System, no chord) both stay; `keys.test.ts`
+  now expects 12 Office rows. `logs.entity.party_list` added (en, hi), which Phase 2's Logs coverage test needs
+  for H1's `party_list` activity rows.
+- Not done: a browser or Electron walk of the merged panels.
+- Verified: lint 0, typecheck 0, test 0 (214 files passed, 1 skipped; 3025 tests passed, 17 skipped;
+  integration suites ran against the system PostgreSQL 17), build 0, smoke:legacy 0.
+
 ### 2026-10-03 - 1.3 Phase 2 review fixes, round 3 (Claude)
 
 - Master: a log export no longer refuses. As in 1.2 it keeps the newest 250,000 rows; past the byte cap (128 MiB

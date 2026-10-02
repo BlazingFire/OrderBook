@@ -51,7 +51,10 @@ import type {
   LeadOutcomesReport,
   ReportKind,
   ReportExportOptions,
+  ReportOptions,
+  ReportQuery,
   ReportRangeInput,
+  ReportTable,
   TopPartiesReport,
 } from '../domain/reports.js';
 import type {
@@ -303,6 +306,13 @@ export type ChangedEntity =
    */
   | 'catalog'
   /**
+   * The party book moved at once — a bulk party import. Like `catalog`: no
+   * single row to upsert, one event, one refresh. `id` is the tenant and
+   * `payload` the counts. A panel older than `PARTY_BULK_MIN_PROTOCOL` does not
+   * know the name, so the Master sends it a snapshot instead.
+   */
+  | 'party_bulk'
+  /**
    * A company switch was written.
    *
    * Not a row a panel upserts — a field of the snapshot itself. `id` is the
@@ -413,6 +423,8 @@ export const SNAPSHOT_FORCING_ENTITIES: readonly ChangedEntity[] = [
   // A bulk import: many rows, one event, and the only honest answer is to
   // fetch the catalogue page again.
   'catalog',
+  // A bulk party import, for the same reason.
+  'party_bulk',
   // A company switch. It is not in any id-keyed list, so there is nothing to
   // upsert — `features` is a field of the snapshot. Listing it here buys both
   // halves from one place: the live path refreshes, and a reconnecting panel's
@@ -785,12 +797,12 @@ export interface ClientToServerEvents {
   'report:export': (
     payload: {
       report: ReportKind;
-      query: ReportRangeInput & { limit?: number } & ReportExportOptions;
+      query: ReportQuery & ReportExportOptions;
     },
     ack: CommandAck<
       | { format: 'csv'; csv: string; rowCount: number }
       | {
-          format: 'pdf';
+          format: 'pdf' | 'xlsx';
           fileName: string;
           contentType: string;
           bytes: Uint8Array;
@@ -798,6 +810,14 @@ export interface ClientToServerEvents {
         }
     >,
   ) => void;
+  /**
+   * Any of the fifteen reports as one table — the shape both panels' Reports
+   * screen draws and an export writes. The legacy `report:dispatches` /
+   * `leadOutcomes` / `topParties` events stay for Offices that predate it.
+   */
+  'report:table': (payload: { report: ReportKind; query: ReportQuery }, ack: CommandAck<ReportTable>) => void;
+  /** The kinds on offer to this person, who they may pick as a subject (null: only themselves), and whether to offer an export. */
+  'report:options': (ack: CommandAck<ReportOptions>) => void;
 
 
   // --- Dashboard (docs/backend-modules/04-API-CONTRACT.md §7) ---------------

@@ -433,6 +433,79 @@ describe('Alt+N', () => {
   });
 });
 
+describe('Reports', () => {
+  const OPTIONS = {
+    kinds: ['dispatches', 'by-user'],
+    subjects: null,
+    canExport: false,
+  };
+  const TABLE = {
+    kind: 'dispatches',
+    range: { period: 'last6Months', fromDate: '2026-05-01', toDateExclusive: '2026-11-01', months: ['2026-05', '2026-10'], timeZone: 'Asia/Kolkata' },
+    subject: { id: 'user-1', name: 'Asha' },
+    columns: [
+      { key: 'month', labelToken: 'reports.column.month', unit: 'text' },
+      { key: 'orderCount', labelToken: 'reports.column.orderCount', unit: 'count' },
+    ],
+    rows: [{ month: '2026-10', orderCount: 3 }],
+    totals: { orderCount: 3 },
+    rowCount: 1,
+    truncated: false,
+    sections: [],
+  };
+
+  function reportRoutes(call: Call): Response | undefined {
+    const path = call.url.split('?')[0] ?? call.url;
+    if (path === '/api/reports/options') return json(OPTIONS);
+    if (path.startsWith('/api/reports/table/')) return json(TABLE);
+    return undefined;
+  }
+
+  it('is a Work row for somebody with reports.view, and opens the first kind from the Master', async () => {
+    const calls = await boot({ permissions: ['reports.view'], route: reportRoutes });
+
+    const work = within(screen.getByRole('region', { name: t('nav.work') }));
+    await act(async () => {
+      fireEvent.click(work.getByRole('button', { name: new RegExp(`^${t('nav.reports')}`) }));
+    });
+
+    expect(await screen.findByText('2026-10')).toBeTruthy();
+    const asked = calls.map((call) => call.url);
+    expect(asked).toContain('/api/reports/options');
+    expect(asked.some((url) => url.startsWith('/api/reports/table/dispatches'))).toBe(true);
+    // The sidebar opens it on the first kind on offer, and the title says which.
+    expect(document.querySelector('.ob-topbar')?.textContent).toContain(t('reports.kind.dispatches'));
+  });
+
+  it('is not offered without reports.view, nor when the company has switched it off for the Office tier', async () => {
+    await boot({ permissions: ['orders.view'], route: reportRoutes });
+    expect(within(screen.getByRole('region', { name: t('nav.work') })).queryByRole('button', { name: new RegExp(`^${t('nav.reports')}`) })).toBeNull();
+    cleanup();
+
+    await boot({
+      permissions: ['reports.view'],
+      route: reportRoutes,
+      view: { features: { freeToSell: false, reportsVisibleToOffice: false } },
+    });
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('region', { name: t('nav.work') })).queryByRole('button', { name: new RegExp(`^${t('nav.reports')}`) }),
+      ).toBeNull(),
+    );
+  });
+
+  it('is offered again when the switch is on, whatever else the snapshot says', async () => {
+    await boot({
+      permissions: ['reports.view'],
+      route: reportRoutes,
+      view: { features: { freeToSell: false, reportsVisibleToOffice: true } },
+    });
+    expect(
+      within(screen.getByRole('region', { name: t('nav.work') })).getByRole('button', { name: new RegExp(`^${t('nav.reports')}`) }),
+    ).toBeTruthy();
+  });
+});
+
 describe('the refusal toast', () => {
   /** Sync now, from the footer's popover, as somebody holding one queued write. */
   async function syncAndReview({

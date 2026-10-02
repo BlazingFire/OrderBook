@@ -123,9 +123,11 @@ export async function renderReportPdf(table: ReportTablePdf): Promise<Buffer> {
 
   let y = 0;
   let firstPage = true;
+  let pages = 0;
 
   const drawHeader = (): void => {
     doc.addPage();
+    pages += 1;
     y = mm(MARGIN_MM);
 
     runText(doc, table.title, left, y, { size: 13, bold: true, colour: '#1C2530' });
@@ -191,7 +193,17 @@ export async function renderReportPdf(table: ReportTablePdf): Promise<Buffer> {
     y += height;
   };
 
-  for (const row of table.rows) drawRow(row, CELL_STYLE);
+  // A long report is built page by page; between pages the event loop gets a
+  // turn, so the Master keeps answering its sockets while a ten-thousand-row
+  // PDF is drawn instead of going quiet for the whole of it.
+  let yielded = pages;
+  for (const row of table.rows) {
+    drawRow(row, CELL_STYLE);
+    if (pages !== yielded) {
+      yielded = pages;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+  }
 
   if (table.totals) {
     horizontalRule(doc, left, y, width);

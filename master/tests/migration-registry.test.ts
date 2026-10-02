@@ -94,6 +94,9 @@ describe('the migration registry matches the directory', () => {
     // 1.3 batch, migration #1: the Server Master tier. Every later migration of
     // the batch goes behind it, so their grants see the role.
     '20261001000000_server_master_tier',
+    // Reports indexes and the office / management grant (1.3 H2). Pinned in the
+    // order the 1.3 batch lands its migrations.
+    '20261004000000_report_indexes_and_grants',
   ];
 
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {

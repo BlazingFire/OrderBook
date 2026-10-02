@@ -149,11 +149,13 @@ on it.
   a run from source, or an unpacked copy is told to update by hand
   (`updates.systemPackageBody`). No AppImage update has been run end to end
   on a real Linux PC yet (see "Owed work").
-- **Company settings: thirteen**, in four groups on the Settings tab
+- **Company settings: fifteen**, in five groups on the Settings tab
   (`shared/src/domain/settings.ts`): password reveal, free-to-sell, public API,
   auto pairing, developer mode, session hours, default reorder level, offline
   sign-in, adjustment note required, import creates categories, follow-up
-  default days, packaging required on convert, quiet-after days. Adding one is
+  default days, packaging required on convert, quiet-after days, and (1.3 H2,
+  group *Reports*) **show Reports to Office users / to Management users**, both
+  on unless switched off and enforced by the Master on every report request. Adding one is
   a single entry there plus two i18n tokens; the screens read switches through
   `resolveCompanyFeatures()`. Since catalogue v2 two fallbacks changed, so an
   installation that never saved them changes on upgrade, as the owner asked:
@@ -207,6 +209,15 @@ on it.
     and a choice made after that sticks.
   - Loading now shows a thin bar along the top of the window after 300 ms, and
     the Office shows its device code on the sign-in and connection screens.
+- **Release note for 1.3 (H2, 2026-10-03) — Reports.**
+  - *Reports is on both panels and has fifteen reports,* Excel and PDF as well as
+    CSV, in English or Hindi. The Office and Management tiers see their own
+    figures only; an administrator can pick any user. The existing three reports
+    and their CSV files are unchanged.
+  - *Office and Management roles now hold `reports.view` and `reports.export`*
+    after the update. A company that does not want that has two switches under
+    Settings → Reports; an administrator can also untick the keys on one role.
+  - *New periods:* this financial year (from 1 April) and exact dates.
   (Earlier, 2026-10-01, parity plan P2 and P4 had already moved the Master's
   digits once, to match Alt+1 to Alt+6 on the Office.)
 - **Release note for 1.3 (Phase 2, 2026-10-03) — Server Masters and the master
@@ -1044,6 +1055,9 @@ Condensed. The full entries are in `git show 5b8ebe2:HANDOFF.md` and in
   restore is loopback plus master key; whether the v1 restore should follow it
   is the owner's call. A browser or Electron walk of the new flows is still to
   do.
+- **2026-10-03 — 1.3 H2 (helper): reports end to end (Claude, Sonnet, branch `helper/1.3`).** Fifteen report kinds on both panels, each answered as one `ReportTable` (`report:table`, `GET /api/reports/table/:kind`); the three legacy kinds keep their routes, socket events and CSV bytes (a golden test passes against the pre-refactor code too). **Who may ask is decided in `report.service.ts` only** (`shared/src/domain/report-access.ts` states the rule): `reports.view`, then the company switch for the tier, then the subject — the Office and Management tiers see only their own figures (`DateRange.ownerId` beside Party Access on every query; a different `subjectId` is refused), an administrator may pick any live user. Excel is streamed row by row and the PDF yields between pages (a test holds the longest stall under 400 ms; with the yields removed it is about 850 ms), both in English or Hindi, capped at 100,000 / 100,000 / 10,000 rows. New periods: this financial year (from 1 April) and exact dates (inclusive, at most 366 days, no `Date`). The Office has Reports as a Work row with no chord, online-only through the Master; the Master's own `ReportsScreen` is deleted for the shared `ui/src/ReportsScreen.tsx`. Migration `20261004000000_report_indexes_and_grants` (owner-by-date indexes; `reports.view` and `reports.export` to every office and management role — add-only, idempotent). `open-pending-orders` shows the pending order's id until the Master-assigned PO number lands: **when Phase 4 adds `leads.po_number`, that column becomes `COALESCE(l.po_number, l.id)` in `report.repository.ts#openPendingOrders`.** Not done: a browser or Electron walk of the Reports screen, an Excel file opened in real Excel, and the Preview PDF link (BATCH Phase 7).
+
+- **2026-10-03 — 1.3 H1 (helper): party import and export (Claude, Sonnet, branch `helper/1.3`).** One format (`docs/PARTY_IMPORT_FORMAT.md`), both panels, online-only. Shared `party-import.ts`; Master `domain/party-import.ts` and `services/party-import.service.ts` (modes `create` / `updateByCode`, dry run, chunks of 200, Party Access held per row, one `party_list` activity row, one `party_bulk` event); routes on `dataRoutes` before `/parties/:id` and on `/api/panel`; the Office proxies through two generalised helpers. UI: `ImportDialog` extracted from `ProductImportModal` (DOM unchanged), `PartyImportModal` and `PartyImportControls` on the Master's Parties screen and the Office's Catalog Parties tab. `party_bulk` is snapshot-forcing; a panel below `PARTY_BULK_MIN_PROTOCOL` gets a snapshot rather than the event (`hub.ts#emitGatedChange`). At the merge into `main` the minimum became 2 (the 1.3 handshake's `PANEL_PROTOCOL_VERSION`; the branch had 5) and the loose cast on `socket.data.protocol` was dropped. No migration. Not done: a browser or Electron walk of the two buttons and the dialog.
 
 - **2026-10-02 — 1.3 Phase 1: shell, Basic Home, Master UI refresh, Inventory UI
   hidden, loading bars, device code, low RAM (Claude).** No migration. Shared:

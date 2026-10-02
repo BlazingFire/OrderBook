@@ -32,11 +32,9 @@ import type {
   CustomFieldDefinitionUpdateInput,
   CustomFieldReorderInput,
   DashboardSummary,
-  DispatchesReport,
   FieldCatalogue,
   FieldUsageBreakdown,
   LeadInput,
-  LeadOutcomesReport,
   LeadUpdateInput,
   MessageKey,
   MessageParams,
@@ -61,6 +59,9 @@ import type {
   ProductCategory,
   ProductCategoryListRow,
   ProductImageUpdateInput,
+  PartyImportFormat,
+  PartyImportMode,
+  PartyImportResult,
   ProductImportFormat,
   ProductImportMode,
   ProductImportResult,
@@ -68,8 +69,12 @@ import type {
   ProductListPage,
   ProductListQuery,
   RecycleBinQuery,
+  ReportFormat,
   ReportKind,
-  ReportRangeInput,
+  ReportLocale,
+  ReportOptions,
+  ReportQuery,
+  ReportTable,
   RestoreInput,
   SettingKey,
   SettingView,
@@ -77,8 +82,8 @@ import type {
   StageReorderInput,
   SyncConflict,
   SyncSnapshot,
-  TopPartiesReport,
 } from '@orderbook/shared';
+import { reportQueryParams } from '@orderbook/shared';
 
 /**
  * Mirrors `master/web/src/api.ts`'s `ApiError` — the Office is the primary
@@ -573,6 +578,20 @@ export const api = {
     return postFile<ProductImportResult>('/api/products/import', form);
   },
 
+  // --- Bulk party import and export: online-only, through the Master --------
+
+  partyImportTemplate: (format: PartyImportFormat) =>
+    fetchBlob(`/api/parties/import/template.${format}`, undefined, `parties-template.${format}`),
+  exportParties: (format: PartyImportFormat) =>
+    fetchBlob(`/api/parties/export.${format}`, undefined, `parties.${format}`),
+  importParties: (file: File, options: { dryRun: boolean; mode: PartyImportMode }) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('dryRun', String(options.dryRun));
+    form.append('mode', options.mode);
+    return postFile<PartyImportResult>('/api/parties/import', form);
+  },
+
   upsertVariant: (input: PartyProductVariantInput) =>
     post<QueuedResult>('/api/party-variants', input),
 
@@ -806,28 +825,22 @@ export const api = {
   },
 
   // --- Reports (docs/backend-modules/04-API-CONTRACT.md §3) -----------------
+  // Online-only, like the party import: the Office forwards the person's own
+  // choices to the Master, which decides who may see whose figures, and answers
+  // a 503 while the Master is out of reach. Every kind is one table; the three
+  // typed legacy routes stay on the server for older Offices.
 
-  reportRangeQuery: (input: ReportRangeInput = {}) => {
-    const params = new URLSearchParams();
-    if (input.period) params.set('period', input.period);
-    if (input.fromMonth) params.set('fromMonth', input.fromMonth);
-    if (input.toMonth) params.set('toMonth', input.toMonth);
-    return params;
+  reportOptions: (signal?: AbortSignal) =>
+    request<ReportOptions>('/api/reports/options', signal ? { signal } : undefined),
+  reportTable: (kind: ReportKind, query: ReportQuery, signal?: AbortSignal) => {
+    const qs = reportQueryParams(query).toString();
+    return request<ReportTable>(`/api/reports/table/${kind}${qs ? `?${qs}` : ''}`, signal ? { signal } : undefined);
   },
-  dispatchReport: (input: ReportRangeInput = {}) =>
-    request<DispatchesReport>(`/api/reports/dispatches?${api.reportRangeQuery(input)}`),
-  leadOutcomeReport: (input: ReportRangeInput = {}) =>
-    request<LeadOutcomesReport>(`/api/reports/lead-outcomes?${api.reportRangeQuery(input)}`),
-  topPartiesReport: (input: ReportRangeInput & { limit?: number } = {}) => {
-    const params = api.reportRangeQuery(input);
-    if (input.limit) params.set('limit', String(input.limit));
-    return request<TopPartiesReport>(`/api/reports/top-parties?${params}`);
-  },
-  reportExportUrl: (kind: ReportKind, input: ReportRangeInput & { limit?: number } = {}) => {
-    const params = api.reportRangeQuery(input);
-    if (input.limit) params.set('limit', String(input.limit));
-    const qs = params.toString();
-    return `/api/reports/${kind}/export${qs ? `?${qs}` : ''}`;
+  reportExport: (kind: ReportKind, query: ReportQuery & { format: ReportFormat; lang?: ReportLocale }) => {
+    const params = reportQueryParams(query);
+    params.set('format', query.format);
+    if (query.lang) params.set('lang', query.lang);
+    return fetchBlob(`/api/reports/${kind}/export?${params}`, undefined, `${kind}.${query.format}`);
   },
 
   // --- Dashboard (docs/backend-modules/04-API-CONTRACT.md §7.2) ------------

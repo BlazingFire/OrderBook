@@ -47,6 +47,7 @@ import {
   type PartyRecord,
 } from '../api';
 import { partyFormTransport } from '../partyFormTransport';
+import { partyImportTransport } from '../transports';
 import {
   Button,
   Card,
@@ -61,6 +62,7 @@ import {
   KeyValueList,
   LoadMorePager,
   PartyFormModal,
+  PartyImportControls,
   SkeletonTable,
   StatusPill,
   formatDateTime,
@@ -302,6 +304,12 @@ export function PartiesScreen({
         {/* Absent rather than disabled when the permission is missing — the house rule
             stated in PartyAccessScreen.tsx: a control nobody may use is not a control
             to be greyed, it is one not to render. */}
+        <PartyImportControls
+          transport={partyImportTransport}
+          canExport={permissions.includes('parties.view') && permissions.includes('parties.export')}
+          canImport={permissions.includes('parties.bulk')}
+          onImported={refresh}
+        />
         {canCreate && (
           <Button variant="primary" size="sm" icon="plus" onClick={() => setCreating(true)}>
             {t('catalog.parties.new')}

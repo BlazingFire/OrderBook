@@ -25,10 +25,14 @@ import {
   IMAGE_VARIANTS,
   isLocale,
   isPickKind,
+  isReportFormat,
   MAX_IMAGE_SOURCE_BYTES,
+  MAX_PARTY_IMPORT_BYTES,
   MAX_PRODUCT_IMPORT_BYTES,
   MUTATION_PERMISSIONS,
+  parseReportQuery,
   type DataChangedEvent,
+  type ReportKind,
   type PanelHealth,
   type SyncSnapshot,
 } from '@orderbook/shared';
@@ -90,6 +94,11 @@ const importUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_PRODUCT_IMPORT_BYTES },
 });
+const partyImportUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_PARTY_IMPORT_BYTES },
+});
+
 
 export function createApp(): Express {
   const app = express();
@@ -629,43 +638,50 @@ export function createApp(): Express {
   // mutations and rewrites its whole file per mutation, so five thousand
   // queued creates would be quadratic on disk and invisible on refusal. The
   // file goes to the Master over the panel HTTP surface and the row-numbered
-  // report comes straight back.
-  app.get(['/api/products/import/template.:format', '/api/products/export.:format'], (req, res) => {
-    void (async () => {
-      try {
-        const response = await masterFetch(
-          `/api/panel${req.originalUrl.slice('/api'.length)}`,
-        );
+  // report comes straight back. Products and parties share the two helpers.
+  const unavailable = (res: express.Response, error: unknown): void => {
+    res.status(503).json({
+      error: 'unavailable',
+      message: error instanceof Error ? error.message : 'The Master Panel is not reachable',
+      messageKey: 'error.unavailable',
+    });
+  };
 
-        if (!response.ok) {
-          res.status(response.status).json(await response.json().catch(() => null));
-          return;
+  /** A template or an export: the Master's bytes, type and file name, whatever the format. */
+  const proxyDownload =
+    (fallbackName: string): express.RequestHandler =>
+    (req, res) => {
+      void (async () => {
+        try {
+          const response = await masterFetch(`/api/panel${req.originalUrl.slice('/api'.length)}`);
+
+          if (!response.ok) {
+            res.status(response.status).json(await response.json().catch(() => null));
+            return;
+          }
+
+          res.setHeader('Content-Type', response.headers.get('content-type') ?? 'application/octet-stream');
+          res.setHeader(
+            'Content-Disposition',
+            response.headers.get('content-disposition') ?? `attachment; filename="${fallbackName}"`,
+          );
+          res.send(Buffer.from(await response.arrayBuffer()));
+        } catch (error) {
+          unavailable(res, error);
         }
+      })();
+    };
 
-        res.setHeader(
-          'Content-Type',
-          response.headers.get('content-type') ?? 'application/octet-stream',
-        );
-        res.setHeader(
-          'Content-Disposition',
-          response.headers.get('content-disposition') ?? 'attachment; filename="products-template"',
-        );
-        res.send(Buffer.from(await response.arrayBuffer()));
-      } catch (error) {
-        res.status(503).json({
-          error: 'unavailable',
-          message: error instanceof Error ? error.message : 'The Master Panel is not reachable',
-          messageKey: 'error.unavailable',
-        });
-      }
-    })();
-  });
-
-  app.post(
-    '/api/products/import',
+  /** An import: the file, the mode and the dry-run flag as one multipart form to the Master. */
+  const proxyImport = (
+    upload: multer.Multer,
+    masterPath: string,
+    fallbackName: string,
+    modeOf: (value: unknown) => string,
+  ): express.RequestHandler[] => [
     (req, res, next) => {
       // An oversized sheet gets the import's own sentence, not the photo one.
-      importUpload.single('file')(req, res, (error: unknown) => {
+      upload.single('file')(req, res, (error: unknown) => {
         if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
           res.status(400).json({
             error: 'validation_error',
@@ -690,25 +706,37 @@ export function createApp(): Express {
       void (async () => {
         try {
           const form = new FormData();
-          form.append('file', new Blob([req.file!.buffer]), req.file!.originalname || 'products.csv');
+          form.append('file', new Blob([req.file!.buffer]), req.file!.originalname || fallbackName);
           const body = (req.body ?? {}) as Record<string, unknown>;
           form.append('dryRun', String(body.dryRun === 'true' || body.dryRun === true));
-          form.append('mode', body.mode === 'upsert' ? 'upsert' : 'create');
+          form.append('mode', modeOf(body.mode));
 
-          const response = await masterFetch('/api/panel/products/import', {
-            method: 'POST',
-            body: form,
-          });
+          const response = await masterFetch(masterPath, { method: 'POST', body: form });
           res.status(response.status).json(await response.json().catch(() => null));
         } catch (error) {
-          res.status(503).json({
-            error: 'unavailable',
-            message: error instanceof Error ? error.message : 'The Master Panel is not reachable',
-            messageKey: 'error.unavailable',
-          });
+          unavailable(res, error);
         }
       })();
     },
+  ];
+
+  app.get(
+    ['/api/products/import/template.:format', '/api/products/export.:format'],
+    proxyDownload('products-template'),
+  );
+  app.post(
+    '/api/products/import',
+    ...proxyImport(importUpload, '/api/panel/products/import', 'products.csv', (mode) =>
+      mode === 'upsert' ? 'upsert' : 'create',
+    ),
+  );
+
+  app.get(['/api/parties/import/template.:format', '/api/parties/export.:format'], proxyDownload('parties-template'));
+  app.post(
+    '/api/parties/import',
+    ...proxyImport(partyImportUpload, '/api/panel/parties/import', 'parties.csv', (mode) =>
+      mode === 'updateByCode' ? 'updateByCode' : 'create',
+    ),
   );
 
   app.post('/api/products', (req, res) =>
@@ -1269,15 +1297,10 @@ export function createApp(): Express {
   });
 
   // Reports (docs/backend-modules/04-API-CONTRACT.md §3). Forwarded live and
-  // failing hard offline, like every other module in this batch.
-  function parseReportQuery(query: Record<string, unknown>): Record<string, unknown> {
-    return {
-      period: typeof query.period === 'string' ? query.period : undefined,
-      fromMonth: typeof query.fromMonth === 'string' ? query.fromMonth : undefined,
-      toMonth: typeof query.toMonth === 'string' ? query.toMonth : undefined,
-    };
-  }
-
+  // failing hard offline, like every other module in this batch. The query is
+  // read once, by the shared `parseReportQuery`, so this server and the Master's
+  // own routes cannot disagree about what a period or a subject is; who may ask
+  // about whom is the Master's decision, never this server's.
   app.get('/api/reports/dispatches', (req, res) =>
     forward(res, 'report:dispatches', parseReportQuery(req.query)),
   );
@@ -1285,10 +1308,13 @@ export function createApp(): Express {
     forward(res, 'report:leadOutcomes', parseReportQuery(req.query)),
   );
   app.get('/api/reports/top-parties', (req, res) =>
-    forward(res, 'report:topParties', {
-      ...parseReportQuery(req.query),
-      limit: req.query.limit ? Number(req.query.limit) : undefined,
-    }),
+    forward(res, 'report:topParties', parseReportQuery(req.query)),
+  );
+  // The kinds on offer, whom the person may pick, and whether to offer an export.
+  app.get('/api/reports/options', (_req, res) => forward(res, 'report:options'));
+  // Any of the fifteen kinds as one table — what the Reports screen draws.
+  app.get('/api/reports/table/:report', (req, res) =>
+    forward(res, 'report:table', { report: req.params.report, query: parseReportQuery(req.query) }),
   );
   /**
    * A report export, in whichever format the Master answered with.
@@ -1297,7 +1323,7 @@ export function createApp(): Express {
    * cast to `{ csv: string }` and always set `text/csv` with a `.csv`
    * filename, so the moment a second format existed a PDF would have reached
    * the browser as a corrupt CSV — a file that opens, looks like nonsense, and
-   * says nothing about why.
+   * says nothing about why. The workbook is the third door through it.
    */
   app.get('/api/reports/:report/export', (req, res) => {
     const report = req.params.report;
@@ -1313,22 +1339,22 @@ export function createApp(): Express {
           'report:export',
           | { format: 'csv'; csv: string; rowCount: number }
           | {
-              format: 'pdf';
+              format: 'pdf' | 'xlsx';
               fileName: string;
               contentType: string;
               bytes: Uint8Array;
               rowCount: number;
             }
         >('report:export', {
-          report,
+          report: report as ReportKind,
           query: {
             ...parseReportQuery(req.query),
-            limit: req.query.limit ? Number(req.query.limit) : undefined,
-            format: req.query.format === 'pdf' ? 'pdf' : undefined,
+            format: isReportFormat(req.query.format) ? req.query.format : undefined,
             columns: columns.length > 0 ? columns : undefined,
             totals: req.query.totals === 'true',
             paperSize: req.query.paperSize === 'letter' ? 'letter' : undefined,
             orientation: req.query.orientation === 'portrait' ? 'portrait' : undefined,
+            lang: req.query.lang === 'hi' ? 'hi' : undefined,
           },
         });
 

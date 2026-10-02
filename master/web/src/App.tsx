@@ -25,13 +25,17 @@ import type {
   SignedInUser,
 } from '@orderbook/shared';
 import {
+  offeredReportKinds,
   RECYCLE_BIN_ENTITIES,
+  REPORT_META,
+  reportsOffered,
   RESTORE_PERMISSION,
   resolveCompanyFeatures,
   SERVER_MASTER_TIER,
 } from '@orderbook/shared';
 
 import { ApiError, api, desktopBridge } from './api';
+import { reportsTransport } from './transports';
 import {
   adoptDefaultLocale,
   AppShell,
@@ -52,6 +56,7 @@ import {
   PaletteButton,
   ConfirmProvider,
   onSessionEnded,
+  ReportsScreen,
   ResetProvider,
   ScreenHost,
   Splash,
@@ -111,7 +116,6 @@ const PartyAccessScreen = lazyScreen(
   'PartyAccessScreen',
 );
 const RecycleBinScreen = lazyScreen(() => import('./screens/RecycleBinScreen'), 'RecycleBinScreen');
-const ReportsScreen = lazyScreen(() => import('./screens/ReportsScreen'), 'ReportsScreen');
 const SettingsScreen = lazyScreen(() => import('./screens/SettingsScreen'), 'SettingsScreen');
 const UpdatesScreen = lazyScreen(() => import('./screens/UpdatesScreen'), 'UpdatesScreen');
 
@@ -168,11 +172,11 @@ const SUB_NAV_SCREENS = [
 ] as const;
 
 const SCREEN_ENTITIES: Record<string, readonly string[]> = {
-  records: ['lead', 'order', 'party', 'product', 'catalog', 'stock', 'reservation', 'option_list'],
+  records: ['lead', 'order', 'party', 'party_bulk', 'product', 'catalog', 'stock', 'reservation', 'option_list'],
   /** Pending and Final Orders stage pages, apart from `records` so a lead edit does not re-read it. */
   stages: ['pipeline'],
   /** The New / Edit pending order form: what `/api/lead-entry` is built from. */
-  leadEntry: ['option_list', 'party', 'party_variant', 'stock', 'reservation', 'product', 'catalog', 'setting'],
+  leadEntry: ['option_list', 'party', 'party_bulk', 'party_variant', 'stock', 'reservation', 'product', 'catalog', 'setting'],
   /**
    * The Products module, in two slices so a lead edit reads neither: the
    * products and their sub products (`catalog` is the one event a bulk import
@@ -181,15 +185,15 @@ const SCREEN_ENTITIES: Record<string, readonly string[]> = {
    */
   catalogue: ['product', 'catalog', 'product_category'],
   catalogueLists: ['option_list'],
-  reports: ['lead', 'order', 'party', 'stock'],
+  reports: ['lead', 'order', 'party', 'party_bulk', 'stock'],
   fields: ['option_list', 'custom_field', 'pipeline'],
   access: ['user', 'role'],
-  partyAccess: ['party'],
-  parties: ['party', 'party_variant'],
+  partyAccess: ['party', 'party_bulk'],
+  parties: ['party', 'party_bulk', 'party_variant'],
   recycleBin: [
     'lead',
     'order',
-    'party',
+    'party', 'party_bulk',
     'product',
     'product_category',
     'role',
@@ -645,7 +649,9 @@ function MasterPanel() {
   const canViewParties = user.permissions.includes('parties.view');
   const canViewLogs = user.permissions.includes('logs.view');
   const canViewRecycleBin = user.permissions.includes('recycleBin.view');
-  const canViewReports = user.permissions.includes('reports.view');
+  // The permission and the company's switch for this person's tier: the Master
+  // enforces both on every request, this only decides whether to draw the row.
+  const canViewReports = reportsOffered(user.roleTier, user.features, user.permissions);
   const canViewLeads = user.permissions.includes('leads.view');
   const canViewOrders = user.permissions.includes('orders.view');
   const canViewProducts = user.permissions.includes('products.view');
@@ -750,11 +756,11 @@ function MasterPanel() {
       { key: 'main', label: t('catalog.nav.mainProducts'), icon: 'inventory' },
       { key: 'brands', label: t('catalog.nav.brands'), icon: 'edit' },
     ],
-    reports: [
-      { key: 'dispatches', label: t('reports.tab.dispatches'), icon: 'upload' },
-      { key: 'lead-outcomes', label: t('reports.tab.leadOutcomes'), icon: 'leads' },
-      { key: 'top-parties', label: t('reports.tab.topParties'), icon: 'parties' },
-    ],
+    reports: offeredReportKinds(user.roleTier, user.features, user.permissions).map((kind) => ({
+      key: kind,
+      label: t(REPORT_META[kind].titleToken),
+      icon: REPORT_META[kind].icon,
+    })),
     access: [
       ...(user.permissions.includes('users.manage')
         ? [{ key: 'users', label: t('access.tab.users'), icon: 'parties' as const }]
@@ -1246,8 +1252,8 @@ function MasterPanel() {
       id: 'reports',
       render: () => (
         <ReportsScreen
+          transport={reportsTransport}
           revision={revisionOf(revisions, 'reports')}
-          permissions={user.permissions}
           kind={subKeyOf('reports') as ReportKind}
           onKindChange={(kind) => selectSubPage('reports', kind)}
         />

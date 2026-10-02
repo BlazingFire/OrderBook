@@ -43,6 +43,7 @@ export const DASHBOARD_ENTITIES = new Set<ChangedEntity>([
   'party',
   'product',
   'catalog',
+  'party_bulk',
   'stock',
   'sync_conflict',
 ]);
@@ -82,6 +83,8 @@ export const REQUIRED_PERMISSION: Partial<Record<ChangedEntity, Permission>> = {
   // A bulk import's single "the catalogue moved" event: the same gate as the
   // rows it stands for.
   catalog: 'products.view',
+  // A bulk party import's single "the party book moved" event.
+  party_bulk: 'parties.view',
   stock: 'inventory.view',
   sync_conflict: 'sync.resolveConflicts',
 };

@@ -52,6 +52,8 @@ describe('every parser rejects a wrong shape', () => {
     'security.offlineSignInEnabled': 'yes',
     'inventory.adjustmentNoteRequired': 'yes',
     'leads.packagingRequiredOnConvert': 'yes',
+    'reports.visibleToOffice': 'yes',
+    'reports.visibleToManagement': 'yes',
     // Below their floors rather than the wrong type: for a bounded number the
     // interesting refusal is the in-range-looking value that is out of range —
     // 0 hours signs the administrator out on their next request, and 0 quiet

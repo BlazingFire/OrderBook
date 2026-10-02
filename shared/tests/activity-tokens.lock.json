@@ -37,6 +37,8 @@
   "activity.party.restored",
   "activity.party.updated",
   "activity.party.variant_saved",
+  "activity.party_list.exported",
+  "activity.party_list.imported",
   "activity.product.created",
   "activity.product.deleted",
   "activity.product.restored",

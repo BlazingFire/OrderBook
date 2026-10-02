@@ -10,7 +10,9 @@
  * absent-not-zero rule the wire contract uses everywhere else.
  */
 
-const FORMULA_PREFIX_CHARS = new Set(['=', '+', '-', '@']);
+// `=` `+` `-` `@` start a formula; a TAB or a carriage return in front of one is
+// how a cell gets past a check that looks only at the first character.
+const FORMULA_PREFIX_CHARS = new Set(['=', '+', '-', '@', '\t', '\r']);
 
 /** Renders one CSV field: quoted if needed, formula-injection-guarded. */
 function csvCell(value: unknown): string {

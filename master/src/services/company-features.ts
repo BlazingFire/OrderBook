@@ -44,6 +44,8 @@ export async function companyFeatures(tenantId: string): Promise<CompanyFeatures
       read('inventory.adjustmentNoteRequired'),
       read('leads.followUpDefaultDays'),
       read('leads.packagingRequiredOnConvert'),
+      read('reports.visibleToOffice'),
+      read('reports.visibleToManagement'),
     ]),
   ) as {
     'inventory.freeToSell': boolean;
@@ -51,6 +53,8 @@ export async function companyFeatures(tenantId: string): Promise<CompanyFeatures
     'inventory.adjustmentNoteRequired': boolean;
     'leads.followUpDefaultDays': number;
     'leads.packagingRequiredOnConvert': boolean;
+    'reports.visibleToOffice': boolean;
+    'reports.visibleToManagement': boolean;
   };
 
   return {
@@ -59,6 +63,8 @@ export async function companyFeatures(tenantId: string): Promise<CompanyFeatures
     adjustmentNoteRequired: values['inventory.adjustmentNoteRequired'],
     followUpDefaultDays: values['leads.followUpDefaultDays'],
     packagingRequiredOnConvert: values['leads.packagingRequiredOnConvert'],
+    reportsVisibleToOffice: values['reports.visibleToOffice'],
+    reportsVisibleToManagement: values['reports.visibleToManagement'],
   };
 }
 

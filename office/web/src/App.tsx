@@ -14,8 +14,15 @@
  */
 
 import { Activity, useCallback, useEffect, useState } from 'react';
-import { applyChangeToSnapshot, resolveCompanyFeatures } from '@orderbook/shared';
-import type { DataChangedEvent, MessageKey, MutationResult } from '@orderbook/shared';
+import {
+  applyChangeToSnapshot,
+  isRoleTier,
+  offeredReportKinds,
+  REPORT_META,
+  reportsOffered,
+  resolveCompanyFeatures,
+} from '@orderbook/shared';
+import type { DataChangedEvent, MessageKey, MutationResult, ReportKind } from '@orderbook/shared';
 
 import {
   ApiError,
@@ -31,6 +38,7 @@ import {
   BasicHome,
   BP_NARROW,
   BusyMark,
+  ReportsScreen,
   Clock,
   FilterBarOutlet,
   FilterBarProvider,
@@ -73,6 +81,7 @@ import {
   type SubPage,
 } from '@orderbook/ui';
 import { searchLocalView } from './localSearch';
+import { reportsTransport } from './reportsTransport';
 import { AddLeadScreen } from './screens/AddLeadScreen';
 import { CatalogScreen } from './screens/CatalogScreen';
 import { BrandsScreen, MainProductsScreen } from './screens/MainProductsScreen';
@@ -106,6 +115,7 @@ type Tab =
   | 'partyAccess'
   | 'products'
   | 'conflicts'
+  | 'reports'
   | 'settings'
   | 'logs'
   | 'updates'
@@ -606,6 +616,8 @@ function OfficePanel() {
 
   const permissions = session.permissions;
   const can = (permission: string): boolean => permissions.includes(permission);
+  // The session names the tier as text; the report rules take the tiers there are.
+  const tier = isRoleTier(session.roleTier) ? session.roleTier : 'office';
 
   /** Where this person lands: Basic Home for Office and Management, else the Dashboard. */
   const landing = landingScreen(session.roleTier);
@@ -671,6 +683,12 @@ function OfficePanel() {
         icon: 'chevron-right' as const,
       })),
     ],
+    // One page per kind on offer, in tab order.
+    reports: offeredReportKinds(tier, view?.features, permissions).map((kind) => ({
+      key: kind,
+      label: t(REPORT_META[kind].titleToken),
+      icon: REPORT_META[kind].icon,
+    })),
     partyAccess: [
       { key: 'all', label: t('partyAccess.filter.all'), icon: 'parties' },
       { key: 'restricted', label: t('partyAccess.filter.restricted'), icon: 'shield' },
@@ -759,6 +777,12 @@ function OfficePanel() {
                   count: rejections.length > 0 ? rejections.length : undefined,
                 }
               : null,
+          // The permission and the company's switch for this person's tier. The
+          // Master enforces both on every request; this only decides whether to
+          // draw the row, so it is offered before the first snapshot too.
+          reportsOffered(tier, view?.features, permissions)
+            ? { id: 'reports', label: t('nav.reports'), icon: 'report' as const }
+            : null,
         ] satisfies Array<NavItem | null>
       ).filter((item): item is NonNullable<typeof item> => item !== null),
     },
@@ -807,6 +831,7 @@ function OfficePanel() {
     partyAccess: 'partyAccess',
     products: 'products',
     conflicts: 'conflicts',
+    reports: 'reports',
     settings: 'settings',
     logs: 'logs',
     updates: 'updates',
@@ -1118,6 +1143,20 @@ function OfficePanel() {
       render: () => <UpdatesScreen connection={connection} permissions={permissions} />,
     },
     { id: 'logs', render: () => <LogsScreen permissions={permissions} /> },
+    {
+      // Online-only through the Master, so it needs no snapshot: with the Master
+      // out of reach the screen says so (the proxy answers 503) and a fresh
+      // snapshot re-reads whatever is on screen.
+      id: 'reports',
+      render: () => (
+        <ReportsScreen
+          transport={reportsTransport}
+          revision={view ? `${view.leads.length}:${view.orders.length}:${view.parties.length}` : 0}
+          kind={subKeyOf('reports') as ReportKind}
+          onKindChange={(kind) => selectSubPage('reports', kind)}
+        />
+      ),
+    },
     {
       id: 'settings',
       render: () => (

@@ -159,6 +159,10 @@ export interface CompanyFeatures {
   followUpDefaultDays?: number;
   /** `leads.packagingRequiredOnConvert`: whether the lead screens ask for packaging. */
   packagingRequiredOnConvert?: boolean;
+  /** `reports.visibleToOffice`: whether the Office tier sees the Reports module. */
+  reportsVisibleToOffice?: boolean;
+  /** `reports.visibleToManagement`: the same for the Management tier. */
+  reportsVisibleToManagement?: boolean;
 }
 
 export interface SignedInUser extends User {
