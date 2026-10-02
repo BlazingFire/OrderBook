@@ -33,7 +33,7 @@ const HEADER_ALIASES: Record<string, Field> = Object.fromEntries(
     [
       ['partyCode', ['code', 'customercode', 'partyid']],
       ['name', ['partyname', 'party', 'customer', 'customername', 'dealer', 'dealername']],
-      ['phone', ['phoneno', 'phonenumber', 'mobile', 'mobileno', 'mobilenumber']],
+      ['phone', ['phone1', 'phoneno', 'phonenumber', 'mobile', 'mobileno', 'mobilenumber']],
       ['altPhone', ['alternatephone', 'alternatemobile', 'altmobile', 'phone2', 'secondaryphone']],
       ['email', ['emailid', 'emailaddress', 'mail']],
       ['addressLine1', ['address1', 'address', 'addr1', 'street']],
@@ -119,6 +119,8 @@ export function parsePartyRow(
   const issues: PartyImportIssue[] = [];
   const input: Record<string, string> = {};
   let code: string | null = null;
+  /** Cells already reported as too long, so a missing name or code is not reported on top of them. */
+  const tooLong = new Set<Field>();
 
   const indexOf = (field: Field): number => match.byIndex.findIndex((column) => column?.field === field);
   const headerOf = (field: Field): string | undefined => {
@@ -135,7 +137,10 @@ export function parsePartyRow(
     const raw = (cells[index] ?? '').trim();
     if (raw === '') return;
 
-    if (column.field === 'partyCode') code = raw;
+    if (raw.length > column.max) {
+      tooLong.add(column.field);
+      issue(column.field, 'validation.party.tooLong', { column: headerOf(column.field) ?? column.label, max: column.max });
+    } else if (column.field === 'partyCode') code = raw;
     // Inner runs of whitespace (a pasted line break, a double space, a
     // non-breaking space) would make "Shah  Ceramics" a second party beside
     // "Shah Ceramics"; notes are free text and keep theirs.
@@ -144,8 +149,8 @@ export function parsePartyRow(
 
   if (mode === 'create') {
     if (code !== null) issue('partyCode', 'validation.import.partyCodeNotAllowed');
-    if (!input.name) issue('name', 'validation.party.nameRequired');
-  } else if (code === null) {
+    if (!input.name && !tooLong.has('name')) issue('name', 'validation.party.nameRequired');
+  } else if (code === null && !tooLong.has('partyCode')) {
     issue('partyCode', 'validation.import.partyCodeRequired');
   }
 

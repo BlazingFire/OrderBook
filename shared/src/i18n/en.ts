@@ -389,6 +389,7 @@ export const EN_MESSAGES = {
   'validation.party.pincodeInvalid': 'Pincode must be six digits',
   'validation.party.gstInvalid': 'GST number must be a valid 15-character GSTIN',
   'validation.party.emailInvalid': 'Email address is not valid',
+  'validation.party.tooLong': '"{column}" is longer than {max} characters',
   'validation.import.partyCodeNotAllowed': 'Party Code must be blank when adding parties — codes are given automatically',
   'validation.import.partyCodeRequired': 'Party Code is needed to update a party',
   'validation.import.partyCodeUnknown': 'No party has the code {code}',

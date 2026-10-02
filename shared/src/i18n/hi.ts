@@ -305,6 +305,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.party.pincodeInvalid': 'पिनकोड छह अंकों का होना चाहिए',
   'validation.party.gstInvalid': 'GST नंबर मान्य 15 अक्षरों का GSTIN होना चाहिए',
   'validation.party.emailInvalid': 'ईमेल पता मान्य नहीं है',
+  'validation.party.tooLong': '"{column}" {max} अक्षरों से लंबा है',
   'validation.import.partyCodeNotAllowed': 'पार्टी जोड़ते समय पार्टी कोड खाली रहना चाहिए — कोड अपने आप दिए जाते हैं',
   'validation.import.partyCodeRequired': 'पार्टी अपडेट करने के लिए पार्टी कोड चाहिए',
   'validation.import.partyCodeUnknown': 'कोड {code} वाली कोई पार्टी नहीं है',

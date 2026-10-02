@@ -191,3 +191,26 @@ describe('blank rows', () => {
     expect(isBlankRow(['', 'x'])).toBe(false);
   });
 });
+
+describe('column lengths', () => {
+  const HEAD = ['Party Code', 'Name', 'Pincode'];
+
+  it('refuses a cell longer than its column allows, once, naming the header as written', () => {
+    const { parsed, issues } = parse(['Party Code', 'Customer'], ['', 'x'.repeat(121)], 'create', 6);
+    expect(parsed).toBeNull();
+    // Too long is the whole answer: the name is not also reported as missing.
+    expect(issues).toEqual([
+      { row: 6, kind: 'error', column: 'Customer', messageKey: 'validation.party.tooLong', params: { column: 'Customer', max: 120 } },
+    ]);
+  });
+
+  it('accepts a cell exactly at the limit, and reads Phone 1 as the main phone', () => {
+    const { parsed } = parse(['Name', 'Phone 1'], ['x'.repeat(120), '9'.repeat(20)]);
+    expect(parsed?.input).toEqual({ name: 'x'.repeat(120), phone: '9'.repeat(20) });
+  });
+
+  it('refuses a Party Code that is too long when updating, without also calling it missing', () => {
+    const { issues } = parse(HEAD, ['P'.repeat(21), '', ''], 'updateByCode');
+    expect(issues.map((issue) => issue.messageKey)).toEqual(['validation.party.tooLong']);
+  });
+});

@@ -49,24 +49,26 @@ export interface PartyImportColumn {
   /** The header the template and the export write. */
   label: string;
   required?: true;
+  /** Longest cell accepted, in characters. */
+  max: number;
   /** One line for the template's Guide sheet. */
   note: string;
 }
 
 /** Template and export order. */
 export const PARTY_IMPORT_COLUMNS: readonly PartyImportColumn[] = [
-  { field: 'partyCode', label: 'Party Code', note: 'Leave blank to add a party. To update one, give its code, e.g. P-0001.' },
-  { field: 'name', label: 'Name', required: true, note: 'Required. The party as it is called in the office.' },
-  { field: 'phone', label: 'Phone', note: 'Main phone number.' },
-  { field: 'altPhone', label: 'Alt Phone', note: 'A second phone number.' },
-  { field: 'email', label: 'Email', note: 'Email address.' },
-  { field: 'addressLine1', label: 'Address Line 1', note: 'First line of the address.' },
-  { field: 'addressLine2', label: 'Address Line 2', note: 'Second line of the address.' },
-  { field: 'city', label: 'City', note: 'With the name, tells two parties apart: the same name in the same city is one party.' },
-  { field: 'state', label: 'State', note: 'State.' },
-  { field: 'pincode', label: 'Pincode', note: 'Six digits.' },
-  { field: 'gstNumber', label: 'GST Number', note: 'The 15-character GSTIN, e.g. 24ABCDE1234F1Z5.' },
-  { field: 'notes', label: 'Notes', note: 'Anything staff should know.' },
+  { field: 'partyCode', label: 'Party Code', max: 20, note: 'Leave blank to add a party. To update one, give its code, e.g. P-0001.' },
+  { field: 'name', label: 'Name', required: true, max: 120, note: 'Required. The party as it is called in the office.' },
+  { field: 'phone', label: 'Phone', max: 20, note: 'Main phone number.' },
+  { field: 'altPhone', label: 'Alt Phone', max: 20, note: 'A second phone number.' },
+  { field: 'email', label: 'Email', max: 120, note: 'Email address.' },
+  { field: 'addressLine1', label: 'Address Line 1', max: 200, note: 'First line of the address.' },
+  { field: 'addressLine2', label: 'Address Line 2', max: 200, note: 'Second line of the address.' },
+  { field: 'city', label: 'City', max: 80, note: 'With the name, tells two parties apart: the same name in the same city is one party.' },
+  { field: 'state', label: 'State', max: 80, note: 'State.' },
+  { field: 'pincode', label: 'Pincode', max: 10, note: 'Six digits.' },
+  { field: 'gstNumber', label: 'GST Number', max: 15, note: 'The 15-character GSTIN, e.g. 24ABCDE1234F1Z5.' },
+  { field: 'notes', label: 'Notes', max: 1000, note: 'Anything staff should know.' },
 ];
 
 /** The header row, in order. */

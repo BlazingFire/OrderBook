@@ -56,6 +56,8 @@ second copy of a customer.
 | GST Number | | The 15-character GSTIN; read in upper case. |
 | Notes | | Free text; line breaks are kept. |
 
+**Longest cell**, in characters: Party Code 20, Name 120, Phone 20, Alt Phone 20, Email 120, Address Line 1 and 2 200 each, City 80, State 80, Pincode 10 (six digits once spaces are removed), GST Number 15, Notes 1000. A longer cell is an error on its row, once, naming its column.
+
 **Headers** match their name, the template's header, or the usual office word,
 ignoring case, spaces and punctuation: `Customer`, `Party name`, `Mobile`,
 `Phone No`, `GSTIN`, `PIN`, `Remarks`, `Town` and so on all read. A column
