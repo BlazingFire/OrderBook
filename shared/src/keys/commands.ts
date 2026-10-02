@@ -102,6 +102,7 @@ const OFFICE_NAV: NavEntry[] = [
   ['leads', 'nav.leads'],
   ['orders', 'nav.orders'],
   ['conflicts', 'nav.conflicts'],
+  ['reports', 'nav.reports', null],
   ['products', 'nav.products'],
   ['parties', 'nav.parties'],
   ['partyAccess', 'nav.partyAccess'],

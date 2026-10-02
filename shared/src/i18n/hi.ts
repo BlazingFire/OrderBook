@@ -2899,6 +2899,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'reports.range.toDate': 'अंतिम तारीख',
   'reports.range.toDateHint': 'आज तक के लिए खाली छोड़ें',
   'reports.subject.label': 'किसके आँकड़े',
+  'reports.search': 'इस रिपोर्ट में खोजें',
   'reports.subject.everyone': 'सभी',
   'reports.subject.own': 'आपके अपने आँकड़े',
   'reports.snapshotNote': 'यह रिपोर्ट अभी जो खुला है वह दिखाती है, इसलिए तारीख की अवधि इस पर लागू नहीं होती।',

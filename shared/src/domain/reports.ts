@@ -290,7 +290,7 @@ export const REPORT_COLUMNS: Record<ReportKind, readonly ReportColumn[]> = {
 export interface ReportMeta {
   titleToken: MessageKey;
   /** A kit icon name; the screen's tab and the sidebar sub-page use it. */
-  icon: 'orders' | 'report' | 'parties' | 'users' | 'calendar' | 'products';
+  icon: 'orders' | 'report' | 'parties' | 'calendar' | 'products';
   /**
    * `range` — the date range decides the rows. `snapshot` — it is a picture of
    * now (open pending orders, stage ageing), so the range is echoed but
@@ -303,7 +303,7 @@ export const REPORT_META: Record<ReportKind, ReportMeta> = {
   dispatches: { titleToken: 'reports.kind.dispatches', icon: 'orders', basis: 'range' },
   'lead-outcomes': { titleToken: 'reports.kind.leadOutcomes', icon: 'report', basis: 'range' },
   'top-parties': { titleToken: 'reports.kind.topParties', icon: 'parties', basis: 'range' },
-  'by-user': { titleToken: 'reports.kind.byUser', icon: 'users', basis: 'range' },
+  'by-user': { titleToken: 'reports.kind.byUser', icon: 'parties', basis: 'range' },
   'user-daily': { titleToken: 'reports.kind.userDaily', icon: 'calendar', basis: 'range' },
   'by-party': { titleToken: 'reports.kind.byParty', icon: 'parties', basis: 'range' },
   'party-dormant': { titleToken: 'reports.kind.partyDormant', icon: 'parties', basis: 'range' },

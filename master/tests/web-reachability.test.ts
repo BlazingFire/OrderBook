@@ -167,11 +167,6 @@ const ALLOWED_UNCALLED: Record<'master' | 'office', Record<string, string>> = {
     logFacets: 'as logs',
     verifyLogChain: 'as logs',
     logsExportUrl: 'as logs',
-    reportRangeQuery: 'Reports is a Master screen',
-    dispatchReport: 'as reportRangeQuery',
-    leadOutcomeReport: 'as reportRangeQuery',
-    topPartiesReport: 'as reportRangeQuery',
-    reportExportUrl: 'as reportRangeQuery',
     partyAccessFor:
       'PartyAccessScreen edits a party out of the assignment list it loaded; nothing reads one party alone',
     upsertVariant:

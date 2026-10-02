@@ -132,7 +132,6 @@ const NAVLESS_SCREENS: Record<string, Record<string, string>> = {
 const PANEL_ONLY: Record<string, string> = {
   // Master only — these read or write the database directly.
   panels: 'Master only: pairing and revoking Office panels is the Master’s own registry.',
-  reports: 'Master only: reports aggregate across the whole tenant, which only the Master sees.',
   access: 'Master only: roles and users are administered where the credentials are stored.',
   fields: 'Master only: custom-field definitions are schema, and schema is single-writer.',
   logs: 'Master only: the activity log is a Master table with no panel-local copy.',

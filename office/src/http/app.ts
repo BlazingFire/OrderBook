@@ -24,11 +24,14 @@ import {
   DEVELOPER_TOKEN_HEADER,
   IMAGE_VARIANTS,
   isPickKind,
+  isReportFormat,
   MAX_IMAGE_SOURCE_BYTES,
   MAX_PARTY_IMPORT_BYTES,
   MAX_PRODUCT_IMPORT_BYTES,
   MUTATION_PERMISSIONS,
+  parseReportQuery,
   type DataChangedEvent,
+  type ReportKind,
   type PanelHealth,
   type SyncSnapshot,
 } from '@orderbook/shared';
@@ -1291,15 +1294,10 @@ export function createApp(): Express {
   });
 
   // Reports (docs/backend-modules/04-API-CONTRACT.md §3). Forwarded live and
-  // failing hard offline, like every other module in this batch.
-  function parseReportQuery(query: Record<string, unknown>): Record<string, unknown> {
-    return {
-      period: typeof query.period === 'string' ? query.period : undefined,
-      fromMonth: typeof query.fromMonth === 'string' ? query.fromMonth : undefined,
-      toMonth: typeof query.toMonth === 'string' ? query.toMonth : undefined,
-    };
-  }
-
+  // failing hard offline, like every other module in this batch. The query is
+  // read once, by the shared `parseReportQuery`, so this server and the Master's
+  // own routes cannot disagree about what a period or a subject is; who may ask
+  // about whom is the Master's decision, never this server's.
   app.get('/api/reports/dispatches', (req, res) =>
     forward(res, 'report:dispatches', parseReportQuery(req.query)),
   );
@@ -1307,10 +1305,13 @@ export function createApp(): Express {
     forward(res, 'report:leadOutcomes', parseReportQuery(req.query)),
   );
   app.get('/api/reports/top-parties', (req, res) =>
-    forward(res, 'report:topParties', {
-      ...parseReportQuery(req.query),
-      limit: req.query.limit ? Number(req.query.limit) : undefined,
-    }),
+    forward(res, 'report:topParties', parseReportQuery(req.query)),
+  );
+  // The kinds on offer, whom the person may pick, and whether to offer an export.
+  app.get('/api/reports/options', (_req, res) => forward(res, 'report:options'));
+  // Any of the fifteen kinds as one table — what the Reports screen draws.
+  app.get('/api/reports/table/:report', (req, res) =>
+    forward(res, 'report:table', { report: req.params.report, query: parseReportQuery(req.query) }),
   );
   /**
    * A report export, in whichever format the Master answered with.
@@ -1319,7 +1320,7 @@ export function createApp(): Express {
    * cast to `{ csv: string }` and always set `text/csv` with a `.csv`
    * filename, so the moment a second format existed a PDF would have reached
    * the browser as a corrupt CSV — a file that opens, looks like nonsense, and
-   * says nothing about why.
+   * says nothing about why. The workbook is the third door through it.
    */
   app.get('/api/reports/:report/export', (req, res) => {
     const report = req.params.report;
@@ -1335,22 +1336,22 @@ export function createApp(): Express {
           'report:export',
           | { format: 'csv'; csv: string; rowCount: number }
           | {
-              format: 'pdf';
+              format: 'pdf' | 'xlsx';
               fileName: string;
               contentType: string;
               bytes: Uint8Array;
               rowCount: number;
             }
         >('report:export', {
-          report,
+          report: report as ReportKind,
           query: {
             ...parseReportQuery(req.query),
-            limit: req.query.limit ? Number(req.query.limit) : undefined,
-            format: req.query.format === 'pdf' ? 'pdf' : undefined,
+            format: isReportFormat(req.query.format) ? req.query.format : undefined,
             columns: columns.length > 0 ? columns : undefined,
             totals: req.query.totals === 'true',
             paperSize: req.query.paperSize === 'letter' ? 'letter' : undefined,
             orientation: req.query.orientation === 'portrait' ? 'portrait' : undefined,
+            lang: req.query.lang === 'hi' ? 'hi' : undefined,
           },
         });
 

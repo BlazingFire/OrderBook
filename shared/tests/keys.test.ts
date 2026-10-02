@@ -191,10 +191,12 @@ function navChords(panel: 'master' | 'office'): Array<[string, string | undefine
 describe('the command catalogue', () => {
   it('numbers each panel nav from one, in that panel own sidebar order', () => {
     const office = COMMANDS.filter((command) => command.panel === 'office' && command.navOrder);
-    expect(office.map((command) => command.navOrder)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(office.map((command) => command.navOrder)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
     expect(office[0]?.tab).toBe('basicHome');
     expect(office[4]?.tab).toBe('conflicts');
-    expect(office[8]?.tab).toBe('settings');
+    // Reports has a row and no chord, so it takes no digit and pushes nothing else.
+    expect(office[5]?.tab).toBe('reports');
+    expect(office[9]?.tab).toBe('settings');
   });
 
   it('gives both panels the mockup chord map', () => {

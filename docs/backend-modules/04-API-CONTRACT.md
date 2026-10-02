@@ -30,7 +30,7 @@ this batch; the web i18n layer is deferred to the UI phase (`02-FILE-STRUCTURE.m
 |---|---|
 | 1 | Conventions — mounting, guards, envelope, paging |
 | 2 | Logs — 4 endpoints |
-| 3 | Reports — 4 endpoints |
+| 3 | Reports — 6 endpoints (1.3 H2 added `/options` and `/table/:report`; §3.7–§3.9) |
 | 4 | Recycle Bin — 3 endpoints + 4 DELETE routes |
 | 5 | Fields — 17 endpoints (3 existing reads deliberately untouched) |
 | 6 | PDF Designer — 13 endpoints |
@@ -625,19 +625,85 @@ sense of, so the response states which ordering it used.
 
 | | |
 |---|---|
-| **Permission** | `reports.export` |
-| **Path param** | `:report` ∈ `dispatches` \| `lead-outcomes` \| `top-parties`, validated against a literal list |
-| **Query** | The same range params as the report it exports |
-| **Response** | `200 text/csv`, `Content-Disposition: attachment` |
-| **Paging** | None — already bounded by the range |
-| **Audit** | `recordActivity(entry, actor, trx)`, `report` / `exported` |
+| **Permission** | `reports.export` — and Reports must not be switched off for the caller's tier (§3.9) |
+| **Path param** | `:report` — any of the fifteen `ReportKind`s (§3.8), validated against `REPORT_KINDS` |
+| **Query** | The `ReportQuery` of §3.8 (`period`, `fromMonth`, `toMonth`, `fromDate`, `toDate`, `subjectId`, `limit`) plus `format` = `csv` (default) \| `xlsx` \| `pdf`, `lang` = `en` (default) \| `hi`, `columns`, `totals`, `paperSize`, `orientation` |
+| **Response** | `200` — `text/csv; charset=utf-8` for a CSV, the workbook's or the PDF's own type otherwise; `Content-Disposition: attachment`. Over the Office's socket the ack is a union: `{ format: 'csv', csv }` or `{ format: 'pdf' \| 'xlsx', fileName, contentType, bytes }` (it was CSV-only until 1.3; an Office older than that reads only the CSV arm) |
+| **Caps** | 100,000 rows for CSV and Excel, 10,000 for PDF (`REPORT_EXPORT_CAPS`); more is a `ValidationError` `validation.reports.tooManyRows`, never a silent cut |
+| **Language** | `lang` writes Excel and PDF headings and cells in that language; a CSV is always the column **keys**, so a spreadsheet pointed at the URL never changes |
+| **Streaming** | The workbook is written row by row and the PDF page by page, each yielding to the event loop, so the Master keeps answering its panels while a capped export is built |
+| **Audit** | `recordActivity(entry, actor, trx)`, `report` / `exported`, with `{ report, from, to, rowCount, format }` |
 
-A redacted money column is written as an **empty cell**, never `0`.
+There is no money anywhere in a report.
+
+The three legacy kinds' CSV is **byte-identical** to every earlier release (`master/tests/report-tables.integration.test.ts`
+pins the exact strings, and they pass against the pre-1.3 code too).
 
 | Error | Status | `details` | Trigger |
 |---|---|---|---|
-| `ValidationError` | 400 | `{ field: 'report', allowed: ['dispatches','lead-outcomes','top-parties'] }` | Unknown report name |
+| `ValidationError` | 400 | `{ field: 'report' }` | Unknown report name |
+| `ValidationError` | 400 | `{ field: 'fromDate' \| 'toDate' \| 'subjectId' }` | A refused exact-dates range, or a subject that is not a live user |
+| `ForbiddenError` | 403 | `{ permission: 'reports.view' }` | `error.forbidden.reportsHidden`, or `validation.reports.subject.forbidden` (§3.9) |
 | *range errors* | 400 | as §3.2 | |
+
+### 3.7 `GET /api/reports/options`
+
+| | |
+|---|---|
+| **Permission** | `reports.view`, and Reports not switched off for the caller's tier |
+| **Response** | `200 ReportOptions` — `{ kinds: ReportKind[]; subjects: Array<{ id, name }> \| null; canExport: boolean }` |
+
+`subjects` is every live user for an administrator and `null` for anyone who may only see their own
+figures; the Reports screen draws the "whose figures" picker only when it is not `null`. Over the
+Office's socket this is `report:options`.
+
+### 3.8 `GET /api/reports/table/:report`
+
+| | |
+|---|---|
+| **Permission** | `reports.view`, and Reports not switched off for the caller's tier |
+| **Path param** | `:report` — one of `REPORT_KINDS` |
+| **Query** | `ReportQuery` — `period` (`thisMonth`, `last3Months`, `last6Months`, `last12Months`, `thisFinancialYear`, `custom`, `customDates`), `fromMonth` / `toMonth` (`custom`), `fromDate` / `toDate` inclusive (`customDates`, at most 366 days), `subjectId`, `limit` (the ranking kinds) |
+| **Response** | `200 ReportTable` — `{ kind, range, subject, columns, rows, totals, rowCount, truncated, sections, quietAfterDays? }` |
+
+Every kind answers the same shape, the three legacy ones included (their colours and cities arrive as
+`sections`). `columns` carry a unit (`count`, `pieces`, `kg`, `days`, `percent`, `date`, `text`); `totals` sums
+the `count`, `pieces` and `kg` columns over **every** row; `rows` is cut at 2,000 for the screen and
+`truncated` says so (an export has the lot). Over the Office's socket this is `report:table`.
+
+The kinds and what each counts — pieces are an order's `line_items.quantity`; kilograms are the order's own
+weight (`COALESCE(override, computed)`) wherever the grain is an order, and `quantity × weight_kg` over the lines
+that have a weight wherever the grain is a product (a line with no weight is left out, not counted as zero):
+
+| Kind | Rows | Anchor |
+|---|---|---|
+| `dispatches`, `lead-outcomes`, `top-parties` | as §3.3–§3.5 | `dispatched_at`, `created_at`, `dispatched_at` |
+| `by-user` | one per person: created, converted, lost, open, dispatched, pieces, kg | leads by `created_at`, orders by `dispatched_at` |
+| `user-daily` | one per person per day | creation, conversion and dispatch day |
+| `by-party` | one per party: leads, orders, pieces, kg, last order, days since | as `by-user`; the last order is the party's last ever |
+| `party-dormant` | parties that ordered before the range and not in it, longest silent first | `dispatched_at` |
+| `by-city`, `by-product`, `by-variant`, `by-brand` | orders, pieces, kg per city / category / variant code / brand (as each line snapshotted it) | `dispatched_at` |
+| `stage-ageing`, `open-pending-orders` | a picture of now — **the range does not apply** | days since the stage was entered / the lead was raised |
+| `lead-sources`, `conversion-time` | per source with the conversion rate / per month converted with average and longest days | `created_at` / `converted_at` |
+
+### 3.9 Who may ask, and about whom
+
+Decided in `report.service.ts` and nowhere else (`shared/src/domain/report-access.ts` states the rule for the
+screens):
+
+- `reports.view` (and `reports.export` for a file), then the company switch for the caller's tier —
+  `reports.visibleToOffice` / `reports.visibleToManagement`, both on unless switched off. An administrator is never
+  switched off. A hidden report answers `403` `error.forbidden.reportsHidden`.
+- **The Office and Management tiers see only their own figures.** Every query carries `owner_id = the caller`
+  beside Party Access. A `subjectId` that is not the caller's is refused (`validation.reports.subject.forbidden`),
+  never silently answered with their own; a caller with no signed-in user is refused rather than shown everyone's.
+- **An administrator** may name any live user — another administrator included — or nobody, which is everyone.
+- Migration `20261004000000_report_indexes_and_grants` gives `reports.view` and `reports.export` to every office
+  and management role and adds the owner-by-date indexes the queries read through.
+
+Since 1.3 the Office has the Reports module too; its server only forwards (`GET /api/reports/options`,
+`/table/:report`, `/:report/export`, and the three legacy routes), online-only, answering 503 through
+`failForward` while the Master is out of reach.
 
 ---
 

@@ -2229,6 +2229,7 @@ export const EN_MESSAGES = {
   'reports.range.toDate': 'To date',
   'reports.range.toDateHint': 'Leave empty to run up to today',
   'reports.subject.label': 'Figures for',
+  'reports.search': 'Search this report',
   'reports.subject.everyone': 'Everyone',
   'reports.subject.own': 'Your own figures',
   'reports.snapshotNote': 'This report shows what is open right now, so the date range does not apply to it.',

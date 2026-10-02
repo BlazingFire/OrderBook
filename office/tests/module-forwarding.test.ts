@@ -404,6 +404,146 @@ describe('bulk party import', () => {
 });
 
 /*
+ * Reports (1.3 H2): every one is forwarded live and fails hard offline — the
+ * Master decides who may see whose figures, so this server forwards the
+ * person's own words (`subjectId` included) and adds none of its own.
+ */
+describe('reports', () => {
+  const UNREACHABLE = new MasterCommandError('Not connected', undefined, undefined, true);
+
+  beforeEach(() => {
+    vi.spyOn(userSession, 'currentSession').mockReturnValue(FAKE_SESSION as never);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('forwards the options as report:options, with nothing else', async () => {
+    const commandSpy = vi.spyOn(masterConnection, 'command').mockResolvedValue({ kinds: [], subjects: null, canExport: false } as never);
+
+    const response = await request(createApp()).get('/api/reports/options');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ kinds: [], subjects: null, canExport: false });
+    expect(commandSpy).toHaveBeenCalledWith('report:options');
+  });
+
+  it('forwards a table with the kind and the whole query, read by the shared parser', async () => {
+    const commandSpy = vi.spyOn(masterConnection, 'command').mockResolvedValue({ kind: 'by-user' } as never);
+
+    await request(createApp()).get(
+      '/api/reports/table/by-user?period=customDates&fromDate=2026-04-01&toDate=2026-04-30&subjectId=US0000000007&limit=5&bogus=x&period2=y',
+    );
+
+    expect(commandSpy).toHaveBeenCalledWith('report:table', {
+      report: 'by-user',
+      query: {
+        period: 'customDates',
+        fromMonth: undefined,
+        toMonth: undefined,
+        fromDate: '2026-04-01',
+        toDate: '2026-04-30',
+        subjectId: 'US0000000007',
+        limit: 5,
+      },
+    });
+  });
+
+  it('drops a period it does not know rather than forwarding a guess', async () => {
+    const commandSpy = vi.spyOn(masterConnection, 'command').mockResolvedValue({} as never);
+    await request(createApp()).get('/api/reports/table/by-city?period=forever');
+    expect(commandSpy.mock.calls.at(-1)?.[1]).toMatchObject({ query: { period: undefined } });
+  });
+
+  it('keeps the three legacy routes on their own events', async () => {
+    const commandSpy = vi.spyOn(masterConnection, 'command').mockResolvedValue({} as never);
+
+    await request(createApp()).get('/api/reports/dispatches?period=thisMonth');
+    await request(createApp()).get('/api/reports/lead-outcomes?period=last3Months');
+    await request(createApp()).get('/api/reports/top-parties?limit=7');
+
+    expect(commandSpy.mock.calls.map((call) => call[0])).toEqual(['report:dispatches', 'report:leadOutcomes', 'report:topParties']);
+    expect(commandSpy.mock.calls[0]?.[1]).toMatchObject({ period: 'thisMonth' });
+    expect(commandSpy.mock.calls[2]?.[1]).toMatchObject({ limit: 7 });
+  });
+
+  it('is online-only: an unreachable Master is a 503 on every report route', async () => {
+    vi.spyOn(masterConnection, 'command').mockRejectedValue(UNREACHABLE);
+
+    for (const url of ['/api/reports/options', '/api/reports/table/by-user', '/api/reports/dispatches', '/api/reports/by-user/export']) {
+      const response = await request(createApp()).get(url);
+      expect(response.status, url).toBe(503);
+    }
+  });
+
+  it('answers an export in the format the Master sent: CSV as text, Excel and PDF as the file', async () => {
+    const commandSpy = vi.spyOn(masterConnection, 'command');
+
+    commandSpy.mockResolvedValueOnce({ format: 'csv', csv: 'city,orders\r\nMorbi,2\r\n', rowCount: 1 } as never);
+    const asCsv = await request(createApp()).get('/api/reports/by-city/export');
+    expect(asCsv.headers['content-type']).toBe('text/csv; charset=utf-8');
+    expect(asCsv.headers['content-disposition']).toBe('attachment; filename="by-city.csv"');
+    expect(asCsv.text).toBe('city,orders\r\nMorbi,2\r\n');
+
+    const workbook = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    commandSpy.mockResolvedValueOnce({
+      format: 'xlsx',
+      fileName: 'by-city.xlsx',
+      contentType: workbook,
+      bytes: new Uint8Array([0x50, 0x4b, 3, 4]),
+      rowCount: 1,
+    } as never);
+    const asXlsx = await request(createApp())
+      .get('/api/reports/by-city/export?format=xlsx&lang=hi&subjectId=US0000000007')
+      .buffer(true)
+      .parse((res, done) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => done(null, Buffer.concat(chunks)));
+      });
+    expect(asXlsx.headers['content-type']).toBe(workbook);
+    expect(asXlsx.headers['content-disposition']).toBe('attachment; filename="by-city.xlsx"');
+    expect((asXlsx.body as Buffer).subarray(0, 2).toString('latin1')).toBe('PK');
+    expect(commandSpy.mock.calls.at(-1)).toEqual([
+      'report:export',
+      expect.objectContaining({
+        report: 'by-city',
+        query: expect.objectContaining({ format: 'xlsx', lang: 'hi', subjectId: 'US0000000007' }),
+      }),
+    ]);
+
+    commandSpy.mockResolvedValueOnce({
+      format: 'pdf',
+      fileName: 'by-city.pdf',
+      contentType: 'application/pdf',
+      bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+      rowCount: 1,
+    } as never);
+    const asPdf = await request(createApp()).get('/api/reports/by-city/export?format=pdf&paperSize=letter&orientation=portrait&totals=true');
+    expect(asPdf.headers['content-type']).toBe('application/pdf');
+    expect(commandSpy.mock.calls.at(-1)?.[1]).toMatchObject({
+      query: { format: 'pdf', paperSize: 'letter', orientation: 'portrait', totals: true },
+    });
+  });
+
+  it('does not forward a format it does not know', async () => {
+    const commandSpy = vi.spyOn(masterConnection, 'command').mockResolvedValue({ format: 'csv', csv: '', rowCount: 0 } as never);
+    await request(createApp()).get('/api/reports/by-city/export?format=docx');
+    expect(commandSpy.mock.calls.at(-1)?.[1]).toMatchObject({ query: { format: undefined } });
+  });
+
+  it('passes the Master’s refusal of a hidden or foreign report through with its status', async () => {
+    vi.spyOn(masterConnection, 'command').mockRejectedValue(
+      new MasterCommandError('Reports are switched off for your role', 'forbidden', 'reports.view', false, undefined, 'error.forbidden.reportsHidden'),
+    );
+    const response = await request(createApp()).get('/api/reports/table/by-user');
+    expect(response.status).toBe(403);
+    expect(response.body).toMatchObject({ error: 'forbidden', messageKey: 'error.forbidden.reportsHidden' });
+  });
+});
+
+/*
  * Catalogue v2 (`docs/catalogue/CATALOGUE_MODEL.md` §5, §8): the Products list
  * answers offline from the snapshot, its writes are online-only, a panel's one
  * company setting goes through `settings:save`, and the lead PDF comes back as

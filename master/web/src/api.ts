@@ -29,10 +29,8 @@ import type {
   ConnectorResourceInput,
   ConnectorRun,
   ConnectorTestResult,
-  DispatchesReport,
   FieldCatalogue,
   FieldUsageBreakdown,
-  LeadOutcomesReport,
   Lead,
   LeadInput,
   LeadUpdateInput,
@@ -78,8 +76,12 @@ import type {
   ProductListPage,
   ProductListQuery,
   RecycleBinQuery,
+  ReportFormat,
   ReportKind,
-  ReportRangeInput,
+  ReportLocale,
+  ReportOptions,
+  ReportQuery,
+  ReportTable,
   RestoreInput,
   Role,
   SettingKey,
@@ -90,12 +92,12 @@ import type {
   StorageUsage,
   SignedInUser,
   SyncConflict,
-  TopPartiesReport,
   User,
   VaultStatus,
   UserInput,
   UserUpdateInput,
 } from '@orderbook/shared';
+import { reportQueryParams } from '@orderbook/shared';
 
 /** A field a stale save disagrees with the server about. */
 export interface FieldDifference {
@@ -411,14 +413,6 @@ export interface FirstRunCredentials {
  */
 export function desktopBridge(): DesktopBridge | null {
   return (window as Window & { orderbook?: DesktopBridge }).orderbook ?? null;
-}
-
-function reportRangeQuery(input: ReportRangeInput = {}) {
-  const params = new URLSearchParams();
-  if (input.period) params.set('period', input.period);
-  if (input.fromMonth) params.set('fromMonth', input.fromMonth);
-  if (input.toMonth) params.set('toMonth', input.toMonth);
-  return params;
 }
 
 export const api = {
@@ -913,21 +907,22 @@ export const api = {
   },
 
   // --- Reports (docs/backend-modules/04-API-CONTRACT.md §3) -----------------
+  // Every kind is one table (`GET /api/reports/table/:kind`); the three typed
+  // legacy routes stay on the server for Offices that predate it and have no
+  // caller here. Who may ask about whom is the Master's decision, so the query
+  // carries what the person chose and nothing else.
 
-  dispatchReport: (input: ReportRangeInput = {}) =>
-    request<DispatchesReport>(`/api/reports/dispatches?${reportRangeQuery(input)}`),
-  leadOutcomeReport: (input: ReportRangeInput = {}) =>
-    request<LeadOutcomesReport>(`/api/reports/lead-outcomes?${reportRangeQuery(input)}`),
-  topPartiesReport: (input: ReportRangeInput & { limit?: number } = {}) => {
-    const params = reportRangeQuery(input);
-    if (input.limit) params.set('limit', String(input.limit));
-    return request<TopPartiesReport>(`/api/reports/top-parties?${params}`);
+  reportOptions: (signal?: AbortSignal) =>
+    request<ReportOptions>('/api/reports/options', signal ? { signal } : undefined),
+  reportTable: (kind: ReportKind, query: ReportQuery, signal?: AbortSignal) => {
+    const qs = reportQueryParams(query).toString();
+    return request<ReportTable>(`/api/reports/table/${kind}${qs ? `?${qs}` : ''}`, signal ? { signal } : undefined);
   },
-  reportExportUrl: (kind: ReportKind, input: ReportRangeInput & { limit?: number } = {}) => {
-    const params = reportRangeQuery(input);
-    if (input.limit) params.set('limit', String(input.limit));
-    const qs = params.toString();
-    return `/api/reports/${kind}/export${qs ? `?${qs}` : ''}`;
+  reportExport: (kind: ReportKind, query: ReportQuery & { format: ReportFormat; lang?: ReportLocale }) => {
+    const params = reportQueryParams(query);
+    params.set('format', query.format);
+    if (query.lang) params.set('lang', query.lang);
+    return requestFile(`/api/reports/${kind}/export?${params}`, `${kind}.${query.format}`);
   },
 
   // --- Integrations (Stage 11) ---------------------------------------------

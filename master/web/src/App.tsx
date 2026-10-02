@@ -25,12 +25,16 @@ import type {
   SignedInUser,
 } from '@orderbook/shared';
 import {
+  offeredReportKinds,
   RECYCLE_BIN_ENTITIES,
+  REPORT_META,
+  reportsOffered,
   RESTORE_PERMISSION,
   resolveCompanyFeatures,
 } from '@orderbook/shared';
 
 import { ApiError, api, desktopBridge } from './api';
+import { reportsTransport } from './transports';
 import {
   adoptDefaultLocale,
   AppShell,
@@ -50,6 +54,7 @@ import {
   PaletteButton,
   ConfirmProvider,
   onSessionEnded,
+  ReportsScreen,
   ResetProvider,
   ScreenHost,
   Splash,
@@ -109,7 +114,6 @@ const PartyAccessScreen = lazyScreen(
   'PartyAccessScreen',
 );
 const RecycleBinScreen = lazyScreen(() => import('./screens/RecycleBinScreen'), 'RecycleBinScreen');
-const ReportsScreen = lazyScreen(() => import('./screens/ReportsScreen'), 'ReportsScreen');
 const SettingsScreen = lazyScreen(() => import('./screens/SettingsScreen'), 'SettingsScreen');
 const UpdatesScreen = lazyScreen(() => import('./screens/UpdatesScreen'), 'UpdatesScreen');
 
@@ -630,7 +634,9 @@ function MasterPanel() {
   const canViewParties = user.permissions.includes('parties.view');
   const canViewLogs = user.permissions.includes('logs.view');
   const canViewRecycleBin = user.permissions.includes('recycleBin.view');
-  const canViewReports = user.permissions.includes('reports.view');
+  // The permission and the company's switch for this person's tier: the Master
+  // enforces both on every request, this only decides whether to draw the row.
+  const canViewReports = reportsOffered(user.roleTier, user.features, user.permissions);
   const canViewLeads = user.permissions.includes('leads.view');
   const canViewOrders = user.permissions.includes('orders.view');
   const canViewProducts = user.permissions.includes('products.view');
@@ -735,11 +741,11 @@ function MasterPanel() {
       { key: 'main', label: t('catalog.nav.mainProducts'), icon: 'inventory' },
       { key: 'brands', label: t('catalog.nav.brands'), icon: 'edit' },
     ],
-    reports: [
-      { key: 'dispatches', label: t('reports.tab.dispatches'), icon: 'upload' },
-      { key: 'lead-outcomes', label: t('reports.tab.leadOutcomes'), icon: 'leads' },
-      { key: 'top-parties', label: t('reports.tab.topParties'), icon: 'parties' },
-    ],
+    reports: offeredReportKinds(user.roleTier, user.features, user.permissions).map((kind) => ({
+      key: kind,
+      label: t(REPORT_META[kind].titleToken),
+      icon: REPORT_META[kind].icon,
+    })),
     access: [
       ...(user.permissions.includes('users.manage')
         ? [{ key: 'users', label: t('access.tab.users'), icon: 'parties' as const }]
@@ -1225,8 +1231,8 @@ function MasterPanel() {
       id: 'reports',
       render: () => (
         <ReportsScreen
+          transport={reportsTransport}
           revision={revisionOf(revisions, 'reports')}
-          permissions={user.permissions}
           kind={subKeyOf('reports') as ReportKind}
           onKindChange={(kind) => selectSubPage('reports', kind)}
         />
